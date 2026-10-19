@@ -116,6 +116,11 @@ import {
   createCoverCarousel,
   renderLead,
   renderNow,
+  renderSteps,
+  createQueue,
+  createVoteDeck,
+  createStepForm,
+  StepFormInvalid,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1547,6 +1552,68 @@ const piecesBSection = section('piecesb', 'Piezas comunes (lote B1)', 'MUELA-075
   el('h3', null, 'Calendario de precios'), priceHost,
 );
 
+// --- Piezas comunes, lote B2 (MUELA-075) --------------------------------------------------------------------
+const stepsOut = el('output', { id: 'stepsOpened' }, '—');
+const stepsHost = el('div', { id: 'stepsHost', style: 'display:grid;gap:12px' },
+  renderSteps({ feedbackId: 'demo.resumen.pasos', items: [
+    { id: 'datos', title: 'Tus datos', done: true, onClick: () => { stepsOut.textContent = 'datos'; } },
+    { id: 'dieta', title: 'Alimentación', done: false, stateText: 'Falta decir si tienes alergias', action: 'Revisar la alimentación', minutes: 2, icon: 'chef', onClick: () => { stepsOut.textContent = 'dieta'; } },
+    { id: 'firma', title: 'Firma', done: false, stateText: 'Sin firmar', onClick: () => { stepsOut.textContent = 'firma'; } },
+    { id: 'hab', title: 'Habitación', done: false, stateText: 'Sin elegir', href: '#piecesb2' },
+  ] }),
+  el('div', { id: 'stepsReady' }, renderSteps({ readyText: 'Nos vemos el 20 de octubre.', items: [{ id: 'a', title: 'Tus datos', done: true }, { id: 'b', title: 'Firma', done: true }] })),
+  el('p', null, 'Abierto: ', stepsOut));
+const queueOut = el('output', { id: 'queueOpened' }, '—');
+const queueItems = [
+  { id: 'f1', title: 'Ferretería Sierra', tone: 'alert' as const, toneText: 'Vence hoy', value: '1.240,00 €', facts: ['FVR_2026_014', '12 oct', 'Mantenimiento'], medal: { name: 'Ferretería Sierra' } },
+  { id: 'f2', title: 'Maderas del Valle', tone: 'warn' as const, toneText: 'Revisar importes', value: '386,20 €', facts: ['FVR_2026_015', '14 oct'] },
+  { id: 'f3', title: 'Panadería Ríos', tone: 'ok' as const, toneText: 'Lista para confirmar', value: '54,80 €', facts: ['FVR_2026_016'] },
+];
+const queue = createQueue({ label: 'Facturas por resolver', items: queueItems, feedbackId: 'demo.inicio.una',
+  primary: (item) => ({ label: 'Confirmar y siguiente', onClick: () => { queue.done(); toastWithAction(`Validada: ${item.title}.`, { label: 'Deshacer', onClick: () => queue.undo() }); } }),
+  secondary: (item) => (item.tone === 'warn' ? { label: 'Ver el desglose', onClick: () => toast('Desglose') } : null),
+  onOpen: (item) => { queueOut.textContent = item.id; }, onAll: () => { queueOut.textContent = 'todo'; },
+  doneText: 'No queda nada por resolver.' });
+const queueHost = el('div', { id: 'queueHost' }, queue.element, el('p', null, 'Abierta: ', queueOut));
+type DemoDecision = { id: string; name: string; why: string };
+const decisions: DemoDecision[] = [
+  { id: 'd1', name: 'Silencio después de las 23:00', why: 'Para que descanse quien madruga.' },
+  { id: 'd2', name: 'Comida vegetariana los lunes', why: 'Menos desperdicio y más huerta.' },
+  { id: 'd3', name: 'Sin coches en el patio', why: 'Seguridad de los niños.' },
+];
+const votesOut = el('output', { id: 'votesOut' }, '—');
+const votes: string[] = [];
+const deck: ReturnType<typeof createVoteDeck<DemoDecision>> = createVoteDeck<DemoDecision>({
+  label: '¿Se mantienen?', items: decisions, feedbackId: 'demo.decisiones.votar', name: (d) => d.name,
+  card: (d) => el('div', { style: 'padding:22px 18px;display:grid;gap:8px' }, el('h4', { style: 'margin:0;font-family:var(--serif);font-size:22px' }, d.name), el('p', { style: 'margin:0' }, d.why)),
+  onVote: (d, v) => { votes.push(`${d.id}:${v}`); votesOut.textContent = votes.join(', '); },
+  onOpen: (d) => toast(`Leer ${d.name}`), onRestart: () => deck.setItems(decisions),
+  texts: { keep: 'Se mantiene', drop: 'Retirar', keepLabel: 'Se mantiene: votar para que siga', dropLabel: 'Retirar: votar para que se retire', open: 'Leer entera', empty: 'Has revisado todas las vigentes', hint: 'Desliza la tarjeta: a la derecha se mantiene, a la izquierda se retira. Los votos orientan; al final decide quien administra.' },
+});
+const voteHost = el('div', { id: 'voteHost' }, deck.element, el('p', null, 'Votos: ', votesOut));
+const askOut = el('output', { id: 'askOut' }, '—');
+const askAnswers: string[] = [];
+const askForm = createStepForm({ label: 'Tus datos', feedbackId: 'demo.datos.preguntas', doneText: 'Nos vemos el 20 de octubre.',
+  questions: [
+    { id: 'name', question: '¿Cómo te llamas?', kind: 'text', value: 'Ana' },
+    { id: 'doc', question: '¿Qué documento tienes?', kind: 'choice', hint: 'Lo pide el registro de viajeros', options: [{ value: 'dni', label: 'DNI' }, { value: 'nie', label: 'NIE' }, { value: 'pas', label: 'Pasaporte' }] },
+    { id: 'birth', question: '¿Cuándo naciste?', kind: 'text', inputType: 'text', placeholder: 'dd/mm/aaaa' },
+    { id: 'diet', question: '¿Hay algo de comida que debamos saber?', kind: 'multi', options: [{ value: 'veg', label: 'Vegetariana' }, { value: 'gluten', label: 'Sin gluten' }, { value: 'lact', label: 'Sin lactosa' }] },
+  ],
+  onAnswer: async (q, value) => {
+    if (q.id === 'birth' && !/^\d{2}\/\d{2}\/\d{4}$/.test(String(value))) throw new StepFormInvalid('Revisa la fecha: dd/mm/aaaa.');
+    await new Promise((r) => setTimeout(r, 30));
+    askAnswers.push(`${q.id}=${Array.isArray(value) ? value.join('+') : value}`);
+    askOut.textContent = askAnswers.join(', ');
+  } });
+const askHost = el('div', { id: 'askHost' }, askForm.element, el('p', null, 'Respuestas: ', askOut));
+const piecesB2Section = section('piecesb2', 'Piezas comunes (lote B2)', 'MUELA-075: paso a paso con lo siguiente en grande, una cosa cada vez (con «Deshacer»), votar deslizando (con botones y flechas) y pregunta a pregunta (solo lo que falta).',
+  el('h3', null, 'Paso a paso'), stepsHost,
+  el('h3', null, 'Una cosa cada vez'), queueHost,
+  el('h3', null, 'Votar deslizando'), voteHost,
+  el('h3', null, 'Pregunta a pregunta'), askHost,
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
@@ -1559,5 +1626,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

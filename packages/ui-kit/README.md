@@ -239,6 +239,34 @@ Se ven en la demo, en `#piecesb`. El orden de las colas, qué está «ahora», l
   - El precio sale bajo el número y el día toma su tono.
   - `toneLabel` se lee siempre y aparece en el panel del día.
 
+### Lote B2 (0.44): recorrer y decidir
+
+Se ven en la demo, en `#piecesb2`. Qué falta, el orden de la cola, la validación y quién decide son de la app.
+
+- **`renderSteps({ items: [{ id, title, done, stateText?, action?, minutes?, icon?, href?|onClick? }], title?, readyText? })`**: paso a paso con lo siguiente en grande.
+  - Arriba, «Te quedan N cosas» con su barra.
+  - Lo siguiente va en grande, con su verbo y lo que tarda. El resto lleva su estado escrito, y lo hecho cabe en una línea.
+  - Sin pendientes, dice «¡Todo listo!».
+  - Clases `step-`.
+- **`createQueue({ label, items, primary?, secondary?, onOpen?, onAll?, readOnlyText?, doneTitle?, doneText?, doneActions? })`**: una cosa cada vez.
+  - Muestra «n de N» con un segmento por cosa, de color según la gravedad. La tarjeta lleva franja y etiqueta de gravedad, cifra grande y de 2 a 4 datos.
+  - La acción principal mide 54 px; «Saltar», «Abrir la ficha» y «Ver todo», 46 px. Al acabar, «Has pasado por todo».
+  - La app llama a `done()` tras su acción y a `undo()` desde el «Deshacer» de `toastWithAction`.
+  - La tarjeta sale de lado al pasar, salvo con movimiento reducido.
+  - Clases `queue-`.
+- **`createVoteDeck({ label, items, card, name, onVote, onOpen?, onRestart?, texts })`**: votar deslizando.
+  - Se vota deslizando: a la derecha, a favor; a la izquierda, en contra. El sello aparece a los 40 px y el voto cuenta a los 90 px. Un gesto vertical deja mover la página.
+  - Alternativas al gesto: dos botones de 46 px y las flechas del teclado ← →.
+  - Los textos son de cada app («Se mantiene» y «Retirar», o «Aprobar» y «Descartar»).
+  - Clases `vote-`.
+- **`createStepForm({ label, questions, answered?, onAnswer, onDone?, doneTitle?, doneText? })`**: pregunta a pregunta, solo de lo que falta.
+  - Muestra «Pregunta n de N» con su barra.
+  - Una opción guarda al tocarla y pasa a la siguiente; las de varias opciones y el texto se aceptan con «Aceptar» o Intro.
+  - El guardado se ve con `createSaveState`. Sin red, queda pendiente y se sigue; con otro fallo, no se avanza.
+  - Si `onAnswer` lanza `StepFormInvalid`, se queda en la pregunta y enseña el motivo.
+  - `goTo(id)` sirve para «Cambiar» desde una revisión.
+  - Clases `ask-`.
+
 ## Muestra y pruebas
 
 ```text

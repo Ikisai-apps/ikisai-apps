@@ -1,5 +1,26 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.44.0 · 19 de octubre de 2026
+
+**Piezas comunes, lote B2** (MUELA-075, tanda 27): recorrer y decidir. No cambia nada de lo que ya había. Detalle en el README («Lote B2»).
+
+- **Nuevas:**
+  - `renderSteps`: paso a paso con lo siguiente en grande.
+  - `createQueue`: una cosa cada vez, con `done`, `skip` y `undo` para el «Deshacer».
+  - `createVoteDeck`: votar deslizando, con botones y flechas como alternativa.
+  - `createStepForm` y `StepFormInvalid`: pregunta a pregunta, solo de lo que falta, con `createSaveState`.
+- **De dónde sale cada una:**
+  - `createStepForm` es la mecánica de `createFeedbackProgressiveForm`, sacada para cualquier formulario. El formulario de «Ayuda y sugerencias» no cambia.
+  - «Votar deslizando» calca la demo consolidada de Central (Decisiones), que Food copia para los platos sugeridos.
+  - En «Una cosa cada vez», la demo de Finance no tenía la ficha completa de la nota. Se ha hecho genérica a partir de la nota y de lo que sí había: tarjeta, «… y siguiente», «Saltar» y «Deshacer».
+- **Accesibilidad:**
+  - acción principal de 54 px y el resto de 46 px;
+  - recuentos y votos anunciados;
+  - gesto con alternativa por botones y teclado;
+  - sin giros ni salidas con movimiento reducido.
+- **Prefijos:** `step-`, `queue-`, `vote-` y `ask-`. Pasa `v45`.
+- **Demo:** `#piecesb2`. **Pruebas:** `v49`, con el deslizar probado con toques reales en el móvil.
+
 ## 0.43.0 · 19 de octubre de 2026
 
 **Piezas comunes, lote B1** (MUELA-075, tanda 27): las piezas compuestas más visuales. Lo que ya existía no cambia. Detalle en el README («Lote B1»).
