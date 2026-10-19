@@ -175,3 +175,31 @@ export async function loadImage(url: string): Promise<HTMLImageElement> {
   await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error('imagen')); img.src = local; });
   return img;
 }
+
+/**
+ * Imágenes ya cargadas para el cartel (foto de fondo y logotipo), por persona y archivo (`userId:fileId`), para no volver a
+ * pedirlas en cada dibujo. Se vacía al cerrar la sesión (`shell.ts`, junto a `cache.clearUser`).
+ */
+const posterImages = new Map<string, Promise<HTMLImageElement | null>>();
+
+/**
+ * La imagen de un archivo de los materiales, o `null` si no es una imagen o no se puede leer (sin red, por ejemplo). Con
+ * `url` (ya leída de `/files/{id}`), no se vuelve a pedir.
+ */
+export function posterImage(api: <T>(path: string) => Promise<T>, userId: string, fileId: string, url?: string): Promise<HTMLImageElement | null> {
+  const key = `${userId}:${fileId}`;
+  let hit = posterImages.get(key);
+  if (!hit) {
+    const meta = url ? Promise.resolve({ url, mime: 'image/' }) : api<{ url: string; mime: string }>(`/files/${fileId}`);
+    hit = meta
+      .then((m) => (m.mime.startsWith('image/') ? loadImage(m.url) : null))
+      .catch(() => { posterImages.delete(key); return null; });
+    posterImages.set(key, hit);
+  }
+  return hit;
+}
+
+export function clearPosterImages(): void {
+  for (const img of posterImages.values()) void img.then((i) => { if (i?.src.startsWith('blob:')) URL.revokeObjectURL(i.src); });
+  posterImages.clear();
+}

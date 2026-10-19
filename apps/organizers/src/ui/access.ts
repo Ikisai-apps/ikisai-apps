@@ -1,6 +1,7 @@
 /**
- * «Guarda tu acceso» (API.md §9.8): botón flotante para quien entró por enlace. La cuenta permanente (Google y código por
- * correo) la prepara Core con Workspace; hasta entonces, la hoja explica que guarde el enlace.
+ * «Guarda tu acceso» (API.md §9.8): botón flotante y compacto (54 × 54, solo el candado) para quien entró por enlace. La
+ * cuenta permanente (Google y código por correo) la prepara Core con Workspace; hasta entonces, la hoja explica que guarde
+ * el enlace.
  */
 import { el, icon, openSheet } from '@ikisai/ui-kit';
 import { t } from '../app/i18n.ts';
@@ -21,7 +22,11 @@ export function mountAccessButton(root: HTMLElement, api: PortalApi): { setVisib
           : t('Pronto podrás guardar tu acceso con tu cuenta de Google o con un código por correo, sin depender del enlace.')),
         el('p', null, t('Mientras tanto, guarda el enlace que te enviamos: es tu llave para entrar. Si lo pierdes, pídenos uno nuevo.')), el('p', { class: 'muted' }, contactLine())),
     }),
-  }, icon('lock', 18), el('span', null, t('Guarda tu acceso')));
+  }, icon('lock', 18), el('span', { class: 'orgaccess-text' }, t('Guarda tu acceso')));
   root.append(button);
-  return { setVisible: (on) => { button.hidden = !on; }, destroy: () => button.remove() };
+  // Botón compacto (solo el candado; el nombre va en `aria-label`). Mientras se ve, la página deja sitio debajo.
+  return {
+    setVisible: (on) => { button.hidden = !on; root.classList.toggle('orgaccess-on', on); },
+    destroy: () => { button.remove(); root.classList.remove('orgaccess-on'); },
+  };
 }

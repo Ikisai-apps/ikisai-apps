@@ -89,6 +89,51 @@ export function marginOf(input: { price: number; attendees: number; ikisai: numb
   return { revenue, cost, margin: round2(revenue - cost), breakEven: input.price > 0 ? Math.ceil(cost / input.price) : null };
 }
 
+const max0 = (n: number) => Math.max(0, Number(n) || 0);
+
+/**
+ * «¿Cuánto ganas?» (pasada única, zona 2). El precio por asistente con el que se cubren costes, redondeado al euro hacia
+ * arriba. `round2` antes de `ceil`, para que 148,0000001 no salga como 149.
+ */
+export function breakEvenPrice(input: { ikisai: number; otherCosts: number; attendees: number }): number | null {
+  if (!(input.attendees > 0)) return null;
+  return Math.ceil(round2((max0(input.ikisai) + max0(input.otherCosts)) / input.attendees));
+}
+
+/** Precio por asistente para ganar `pct` % por encima de los costes (el % es sobre los costes). */
+export function priceForMargin(input: { ikisai: number; otherCosts: number; attendees: number; pct: number }): number | null {
+  if (!(input.attendees > 0)) return null;
+  const cost = round2(max0(input.ikisai) + max0(input.otherCosts));
+  return Math.ceil(round2(cost * (1 + max0(input.pct) / 100) / input.attendees));
+}
+
+/** Lo que se gana sobre los costes, en %; sin costes, `null`. */
+export function marginPct(m: Margin): number | null {
+  return m.cost > 0 ? Math.round((m.margin / m.cost) * 100) : null;
+}
+
+/**
+ * Punto de equilibrio en asistentes cuando lo de Ikisai **varía con las plazas** (asistentes más colaboradores): el primer
+ * `a` (1…max) con `precio × a ≥ ikisaiFor(a + colaboradores) + otros gastos`. `null` si el precio es 0 o si no llega nunca.
+ */
+export function breakEvenAttendees(input: { price: number; collaborators: number; otherCosts: number; ikisaiFor: (seats: number) => number; max?: number }): number | null {
+  const price = Number(input.price) || 0;
+  if (price <= 0) return null;
+  const collaborators = max0(Math.round(input.collaborators));
+  const other = max0(input.otherCosts);
+  const max = input.max ?? 500;
+  for (let a = 1; a <= max; a++) {
+    if (round2(price * a) + 0.005 >= round2(max0(input.ikisaiFor(a + collaborators)) + other)) return a;
+  }
+  return null;
+}
+
+/** Precio medio por persona (el total entre N personas); sin personas, `null`. Nunca se enseña un «por persona» suelto. */
+export function averagePrice(total: number | string, persons: number | null | undefined): number | null {
+  const n = Number(persons) || 0;
+  return n > 0 ? round2((Number(total) || 0) / n) : null;
+}
+
 /**
  * Saldo = contratado (Booking) − cobrado (Finance). Cada vencimiento queda cubierto si lo cobrado llega a lo acumulado
  * hasta él (primero la señal y luego el saldo).

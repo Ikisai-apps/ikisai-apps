@@ -1,7 +1,8 @@
-import { el, icon, toast, type Child } from '@ikisai/ui-kit';
+import { bindOnline, el, icon, toast, type Child } from '@ikisai/ui-kit';
 import { t } from '../app/i18n.ts';
 import { timeLabel } from '../app/labels.ts';
 import { describeError } from '../app/client.ts';
+import type { ViewContext } from './shell.ts';
 
 /** Zona con datos personales: el gesto de feedback no se dispara aquí y su contenido nunca viaja en un reporte. */
 export function fbIgnore<T extends Element>(node: T): T {
@@ -30,9 +31,23 @@ export async function copyText(text: string, done = t('Copiado. Ya puedes pegarl
   toast(done);
 }
 
-/** Aviso de datos guardados en el dispositivo cuando no hay red. */
-export function staleNote(at: string): HTMLElement {
-  return el('p', { class: 'banner warn', role: 'status', id: 'staleNote' }, icon('offline', 18), ' ', t('Sin conexión · datos de las {hora}. Para guardar cambios necesitas red.', { hora: timeLabel(at) }));
+/**
+ * Aviso de datos guardados en el dispositivo cuando no hay red. No promete que «todo se desactiva»: lo que va por la cola
+ * de sincronización se sigue guardando. Con `retry`, «Reintentar» vuelve a leer.
+ */
+export function staleNote(at: string, retry?: () => void): HTMLElement {
+  return el('p', { class: 'banner warn', role: 'status', id: 'staleNote' }, icon('offline', 18),
+    el('span', null, t('Sin conexión · datos de las {hora}. Lo que necesita red queda apagado; lo demás se guarda al volver la conexión.', { hora: timeLabel(at) })),
+    retry ? el('button', { type: 'button', class: 'ghost orgretry', 'data-feedback-id': 'organizers.comun.sin_red.reintentar', 'data-feedback-label': 'Reintentar', onclick: retry }, t('Reintentar')) : null);
+}
+
+/**
+ * Botón que **necesita red** (MUELA-075, pieza 9): sin red se apaga con su motivo y «Reintentar». Solo para lo que no
+ * va por la cola de sincronización («Quiero confirmar», decidir solicitudes, «Enviar su enlace», abrir una factura…).
+ * Devuelve la función que lo suelta; la vista la llama al desmontarse.
+ */
+export function needsNet(ctx: Pick<ViewContext, 'client'>, button: HTMLElement, reason?: string): () => void {
+  return bindOnline(button, { client: ctx.client, reason, retry: () => void ctx.client.sync().catch(() => undefined) });
 }
 
 export function loading(text = t('Cargando…')): HTMLElement {

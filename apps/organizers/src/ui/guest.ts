@@ -2,25 +2,23 @@
  * Alta y ficha de un asistente (API.md §9.4 y §9.5). Lo que escribió otra persona (el propio asistente o Ikisai) llega como
  * `true` y se muestra «Rellenado ✓», sin valor ni edición. Lo tecleado se guarda como borrador local hasta guardarlo.
  */
-import { confirmDialog, createSaveState, el, icon, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, createSaveState, el, icon, renderChecks, replace, toast, type CheckItem } from '@ikisai/ui-kit';
 import { t } from '../app/i18n.ts';
 import type { GuestList, PortalGuest, PortalLink, PortalRestriction, ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
 import {
-  COUNTRY_CODES, countries, fieldsFor, RESTRICTION_HAS_SEVERITY, RESTRICTION_NEEDS_SUBJECT, RESTRICTION_TYPES, restrictionLabel, restrictionText, SEVERITIES, severityLabel, type FieldSpec,
+  COUNTRY_CODES, countries, dayLabel, fieldsFor, missingText, RESTRICTION_HAS_SEVERITY, RESTRICTION_NEEDS_SUBJECT, RESTRICTION_TYPES, restrictionLabel, restrictionText, SEVERITIES, severityLabel, type FieldSpec,
 } from '../app/labels.ts';
-import { linkMessage, personReminder } from '../app/texts.ts';
+import { personReminder } from '../app/texts.ts';
 import { commonText, textParagraphs } from '../app/common-texts.ts';
-import { copyText, failure, fbIgnore, loading, staleNote } from './common.ts';
-import { guestState, linksByGuest, linkText } from './guests.ts';
-import { openShareSheet } from './share.ts';
+import { guestState, linksByGuest, linkText, reasonOf, stageOf, type GuestTexts } from '../app/guests-state.ts';
+import { copyText, failure, fbIgnore, fbMark, loading, needsNet, staleNote } from './common.ts';
+import { issued, sendGuestLink, type GuestDraft } from './guest-link.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
-interface Draft { guestId?: string; fields: Record<string, string>; restrictions?: PortalRestriction[] }
-
-/** Enlaces emitidos en esta sesión: el recordatorio puede llevarlo mientras siga abierta la app. */
-const issued = new Map<string, string>();
+type Draft = GuestDraft;
+const TEXTS: GuestTexts = { t, day: dayLabel, missing: missingText };
 
 export const mountGuest = (reservationId: string, guestId: string): ViewMount => (ctx) => {
   const isNew = guestId === 'nuevo';
@@ -44,7 +42,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
         replace(host, el('div', { class: 'empty' }, el('strong', null, t('Este asistente ya no está en la lista')), el('p', null, t('Puede que se haya dado de baja.'))));
         return;
       }
-      paintGuest(detail.value, guests.value, guest, linksByGuest(links?.value.items).get(guest.id), draft, stale?.at ?? null);
+      paintGuest(detail.value, guests.value, guest, linksByGuest(links?.value.items).get(guest.id), links !== null, draft, stale?.at ?? null);
     } catch (error) {
       if (alive) replace(host, failure(error, () => void load()));
     }
@@ -66,6 +64,11 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
   async function busy<T>(button: HTMLButtonElement, work: () => Promise<T>): Promise<T> {
     button.dataset.busy = '1'; paintNet();
     try { return await work(); } finally { button.dataset.busy = ''; paintNet(); }
+  }
+  /** Mientras trabaja, el botón queda apagado (la red la vigila `needsNet`). */
+  async function working<T>(button: HTMLButtonElement, work: () => Promise<T>): Promise<T> {
+    button.disabled = true;
+    try { return await work(); } finally { button.disabled = false; }
   }
 
   interface Declaration { element: HTMLElement | null; needed(): boolean; checked(): boolean; show(focus?: boolean): void; hide(): void }
@@ -130,7 +133,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
    * Guardado automático (API.md §13.1): cada campo se envía al dejar de escribir (800 ms) o al salir de él, en un solo
    * envío a la vez que junta lo pendiente. Lo tecleado vive en el borrador local hasta que el servidor lo confirma.
    */
-  function paintGuest(detail: ReservationDetail, list: GuestList, guest: PortalGuest, link: PortalLink | undefined, draft: Draft | null, staleAt: string | null): void {
+  function paintGuest(detail: ReservationDetail, list: GuestList, guest: PortalGuest, link: PortalLink | undefined, linksKnown: boolean, draft: Draft | null, staleAt: string | null): void {
     document.title = `${guest.display_name} · ${detail.title}`;
     detach?.();
     const specs = fieldsFor(list.mode);
@@ -243,12 +246,13 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
       }
     }
 
+    const isMissing = (key: string) => guest.missing.some((m) => m === key || (m === 'contact' && (key === 'phone' || key === 'email')));
     const groups = new Map<string, HTMLElement[]>();
     for (const spec of specs) {
       const value = guest.fields[spec.key];
       const row = value === true
         ? el('div', { class: 'field orgfilled', 'data-field': spec.key }, el('span', null, t(spec.label)), el('p', null, icon('check', 16), ' ', t('Rellenado')))
-        : fieldInput(spec, pending.fields[spec.key] ?? saved[spec.key] ?? '', (v) => { pending.fields[spec.key] = v; persist(); schedule(); });
+        : fieldInput(spec, pending.fields[spec.key] ?? saved[spec.key] ?? '', (v) => { pending.fields[spec.key] = v; persist(); schedule(); }, isMissing(spec.key));
       groups.set(spec.group, [...(groups.get(spec.group) ?? []), row]);
     }
 
@@ -270,24 +274,18 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
     }
     paintRestrictions();
 
-    const sendLink = netButton({ class: 'primary', id: 'sendLink', 'data-feedback-id': link ? 'organizers.asistente.ficha.reenviar_enlace' : 'organizers.asistente.ficha.enviar_enlace', 'data-feedback-label': link ? 'Reenviar enlace' : 'Enviar su enlace' }, link ? t('Reenviar enlace') : t('Enviar su enlace'));
-    sendLink.onclick = () => void busy(sendLink, async () => {
-      if (link && !(await confirmDialog({ title: t('Reenviar enlace'), text: t('Se creará un enlace nuevo para {nombre} y el anterior dejará de funcionar.', { nombre: guest.display_name }), confirmLabel: t('Crear enlace nuevo') }))) return;
-      try {
-        await flush();
-        const email = typeof guest.fields.email === 'string' ? guest.fields.email : null;
-        const issue = () => ctx.api.issueGuestLink({ reservationId, guestId: guest.id, name: guest.display_name, email, replace: true });
-        const out = link ? await ctx.usage.run('organizers.asistente.ficha.reenviar_enlace', issue) : await ctx.usage.run('organizers.asistente.ficha.enviar_enlace', issue);
-        issued.set(guest.id, out.url);
-        openShareSheet({ name: guest.display_name, text: linkMessage(guest.display_name, detail, out.url, list.mode), phone: typeof guest.fields.phone === 'string' ? guest.fields.phone : null });
-        void load();
-      } catch (e) {
-        toast(describeError(e, guest.display_name));
-      }
+    const sendLink = el('button', { type: 'button', class: 'primary', id: 'sendLink', 'data-feedback-id': link ? 'organizers.asistente.ficha.reenviar_enlace' : 'organizers.asistente.ficha.enviar_enlace', 'data-feedback-label': link ? 'Reenviar enlace' : 'Enviar su enlace' }, link ? t('Reenviar enlace') : t('Enviar su enlace')) as HTMLButtonElement;
+    sendLink.onclick = () => void working(sendLink, async () => {
+      const sent = await sendGuestLink(ctx, {
+        reservationId, guest, detail, mode: list.mode, link, feedback: 'ficha',
+        // Lo pendiente se guarda antes; si no se pudo (sin la declaración, por ejemplo), no se emite el enlace.
+        flushPending: async () => { await flush(); return !Object.keys(changedFields()).length && !restrictionsDirty; },
+      });
+      if (sent) void load();
     });
 
-    const remove = netButton({ class: 'ghost danger-text', id: 'removeGuest', 'data-feedback-id': 'organizers.asistente.ficha.baja', 'data-feedback-label': 'Dar de baja' }, t('Dar de baja'));
-    remove.onclick = () => void busy(remove, async () => {
+    const remove = el('button', { type: 'button', class: 'ghost danger-text', id: 'removeGuest', 'data-feedback-id': 'organizers.asistente.ficha.baja', 'data-feedback-label': 'Dar de baja' }, t('Dar de baja')) as HTMLButtonElement;
+    remove.onclick = () => void working(remove, async () => {
       if (!(await confirmDialog({ title: t('¿Dar de baja a {nombre}?', { nombre: guest.display_name }), text: t('Se quitará de este retiro y su enlace dejará de funcionar.'), confirmLabel: t('Dar de baja'), danger: true }))) return;
       try {
         if (timer) clearTimeout(timer);
@@ -307,20 +305,51 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
     }, t('Copiar recordatorio'));
 
     const header = el('div', { class: 'pagehead', 'data-feedback-id': 'organizers.asistente.cabecera', 'data-feedback-label': 'Cabecera del asistente' });
+    // Lleva el nombre y lo que le falta: fuera de las capturas de «Ayuda y sugerencias».
+    const missingBox = fbIgnore(fbMark(el('section', { class: 'card orgcard orgmissing', id: 'guestMissing' }), 'organizers.asistente.ficha.falta', 'Lo que le falta'));
     function paintHeader(): void {
-      const state = guestState(guest, list.mode);
+      const state = guestState(guest, list.mode, TEXTS);
       replace(header, el('div', null,
         el('h2', { id: 'guestName' }, guest.display_name),
         el('p', { class: 'chips' }, el('span', { class: `chip status ${state.tone}`, id: 'guestState' }, state.label), el('span', { class: 'muted small', id: 'guestStateDetail' }, ` ${state.detail}`)),
-        el('p', { class: 'muted small', id: 'linkState' }, linkText(link))));
+        el('p', { class: 'muted small', id: 'linkState' }, linkText(link, TEXTS))));
+      paintMissing();
+    }
+
+    /** «Lo que le falta»: cada dato con «Rellenar» (lleva a su campo) y la firma, que solo puede hacer la persona. */
+    const hasField = (key: string) => specs.some((s) => (key === 'contact' ? s.key === 'phone' || s.key === 'email' : s.key === key) && guest.fields[s.key] !== true);
+    function focusField(key: string): void {
+      const target = key === 'contact' ? (guest.fields.phone === true ? 'email' : 'phone') : key;
+      const input = document.getElementById(`f-${target}`);
+      const group = input?.closest('details');
+      if (group) group.open = true;
+      input?.scrollIntoView({ block: 'center' });
+      input?.focus();
+    }
+    function paintMissing(): void {
+      const stage = stageOf(guest, link, list.mode, linksKnown);
+      if (stage === 'completo') { missingBox.hidden = true; replace(missingBox); return; }
+      missingBox.hidden = false;
+      const items: CheckItem[] = guest.missing.map((key) => ({
+        ok: false, text: missingText([key]),
+        ...(hasField(key) ? { action: { label: t('Rellenar'), onClick: () => focusField(key) } } : {}),
+      }));
+      if (list.mode === 'ses' && !guest.signed) {
+        items.push({ ok: false, text: t('Firma del registro de viajeros'), detail: t('La firma solo puede hacerla {nombre}, en su enlace o al llegar.', { nombre: guest.display_name }) });
+      }
+      replace(missingBox,
+        el('h3', null, t('Lo que le falta')),
+        renderChecks({ items, verdict: guest.missing.length ? t('Falta: {datos}', { datos: missingText(guest.missing) }) : t('Falta la firma'), onlyPending: true, label: t('Lo que le falta') }),
+        stage === 'sinenlace' || stage === 'sinabrir' ? el('p', { class: 'muted small' }, reasonOf(stage, guest, link, list.mode, TEXTS)) : null,
+        el('p', { class: 'muted small' }, t('Puedes rellenarlo tú abajo o pedírselo con su recordatorio.')));
     }
     paintHeader();
 
     const form = el('form', { id: 'guestForm', onsubmit: (e: Event) => { e.preventDefault(); void flush(); } },
-      ...[...groups].map(([group, rows], i) => {
-        // Solo el primer bloque abierto; en los demás, el resumen dice si falta algo.
-        const lacking = specs.some((s) => s.group === group && guest.missing.some((m) => m === s.key || (m === 'contact' && (s.key === 'phone' || s.key === 'email'))));
-        return el('details', { class: 'card orggroup', open: i === 0 ? '' : null, 'data-group': group },
+      ...[...groups].map(([group, rows]) => {
+        // Abiertos los bloques donde falta algo; en los demás, el resumen dice que están completos.
+        const lacking = specs.some((s) => s.group === group && isMissing(s.key));
+        return el('details', { class: 'card orggroup', open: lacking ? '' : null, 'data-group': group },
           el('summary', null, t(group), lacking ? el('span', { class: 'chip small warn' }, t('Falta algo')) : el('span', { class: 'muted small' }, ` · ${t('completo')}`)), ...rows);
       }),
       el('details', { class: 'card orggroup', open: '', 'data-group': 'Alimentación', 'data-feedback-id': 'organizers.asistente.alimentacion', 'data-feedback-label': 'Alimentación' },
@@ -331,19 +360,21 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
     replace(host,
       staleAt ? staleNote(staleAt) : null,
       fbIgnore(header),
+      missingBox,
       el('div', { class: 'btnrow orgtools' }, sendLink, reminder),
       declaration.element,
       fbIgnore(form),
       list.mode === 'ses' ? el('p', { class: 'muted small', id: 'signatureNote' }, guest.signed ? t('{nombre} ya ha firmado el registro de viajeros.', { nombre: guest.display_name }) : t('La firma del registro de viajeros la hace {nombre} en su enlace o al llegar.', { nombre: guest.display_name })) : null,
       el('div', { class: 'orgsave' }, stateHost),
       el('div', { class: 'orgdanger' }, remove));
-    paintNet();
+    // «Enviar su enlace» y «Dar de baja» necesitan red: sin ella se apagan con su motivo.
+    const offNet = [needsNet(ctx, sendLink), needsNet(ctx, remove)];
 
     // Lo pendiente de la vez anterior (o de antes de perder la red) se envía solo.
     const resume = () => { if (Object.keys(changedFields()).length || restrictionsDirty) void flush(); };
     window.addEventListener('online', resume);
-    detach = () => { window.removeEventListener('online', resume); if (timer) clearTimeout(timer); };
-    leave = () => { window.removeEventListener('online', resume); if (timer) void flush(); };
+    detach = () => { window.removeEventListener('online', resume); offNet.forEach((off) => off()); if (timer) clearTimeout(timer); };
+    leave = () => { window.removeEventListener('online', resume); offNet.forEach((off) => off()); if (timer) void flush(); };
     if (draft && (Object.keys(changedFields()).length || restrictionsDirty)) { setState('saving'); resume(); }
   }
 
@@ -360,7 +391,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
 };
 
 /** Un campo editable del formulario. `onInput` recibe el valor como texto. */
-function fieldInput(spec: FieldSpec, value: string, onInput: (value: string) => void): HTMLElement {
+function fieldInput(spec: FieldSpec, value: string, onInput: (value: string) => void, missing = false): HTMLElement {
   const id = `f-${spec.key}`;
   let control: HTMLElement;
   if (spec.type === 'select') {
@@ -379,7 +410,8 @@ function fieldInput(spec: FieldSpec, value: string, onInput: (value: string) => 
   } else {
     control = el('input', { id, type: spec.type, value, autocomplete: 'off', oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
   }
-  return el('label', { class: 'field', 'data-field': spec.key, for: id }, el('span', null, t(spec.label)), control, spec.hint ? el('span', { class: 'hint' }, t(spec.hint)) : null);
+  return el('label', { class: `field${missing ? ' orgfield-missing' : ''}`, 'data-field': spec.key, for: id },
+    el('span', null, t(spec.label), missing ? el('em', null, ` · ${t('Falta')}`) : null), control, spec.hint ? el('span', { class: 'hint' }, t(spec.hint)) : null);
 }
 
 /** Fila de una restricción del organizador: tipo, a qué, gravedad (alergias e intolerancias) y nota para cocina. */

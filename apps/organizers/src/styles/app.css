@@ -7,11 +7,14 @@
 .plainlist li{margin:4px 0}
 .chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
-.backlink{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px;color:var(--muted);text-decoration:none;font-weight:600}
+.backlink{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap,46px);margin:0 0 4px;color:color-mix(in srgb,var(--ink) 82%,var(--muted));text-decoration:none;font-weight:600}
 .backlink:hover{color:var(--ink)}
+.empty .ghost{min-height:var(--tap,46px)}
+/* Cabecera a 390 px: el nombre se corta antes que empujar ES | EN y «Cerrar sesión». */
+#shellSubtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* Sitio para el botón «Guarda tu acceso» al final de la página. */
-.nonav .main{padding-bottom:104px}
+/* Aviso sin red con «Reintentar». */
+.orgretry{flex:none;min-height:var(--tap,46px);margin-left:auto;padding:6px 14px}
 
 @media (min-width:1024px){
   .main{max-width:760px;margin-inline:auto}
@@ -22,17 +25,40 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgentry #entryContact{font-weight:600}
 .orgentry-foot{margin-top:16px}
 
-/* Mis retiros */
+/* Mis retiros: tarjeta con portada (o iniciales), recorrido y «Te toca»; pasados y cancelados plegados. */
 .orgcards{display:grid;gap:12px}
-.orgretreat{display:flex;flex-direction:column;gap:6px;padding:14px 16px;color:var(--ink);text-decoration:none}
-.orgretreat.muted{opacity:.65}
-.orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem}
+.orgretreat{display:flex;flex-direction:column;gap:8px;padding:14px 16px;color:var(--ink);text-decoration:none;overflow:hidden}
+.orgretreat .muted{color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgretreat-top{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr);column-gap:12px;row-gap:2px;align-items:center}
+.orgretreat-top>.medal-disc{grid-row:1 / span 3;align-self:start}
+.orgretreat-top>:not(.medal-disc):not(.medal-cover){grid-column:2;min-width:0}
+.orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem;overflow-wrap:anywhere}
+.orgretreat-when{font-size:var(--text-sm,.875rem)}
+/* Con foto: texto blanco sobre un velo que da al menos 4,5:1 en toda la foto, y el chip sólido. */
+.orgretreat-photo{grid-template-columns:minmax(0,1fr);align-content:end;min-height:140px;margin:-14px -16px 0;padding:16px;color:#fff;isolation:isolate}
+.orgretreat-photo>:not(.medal-cover){grid-column:1;position:relative;z-index:1}
+.orgretreat-photo .medal-cover::after{background:linear-gradient(180deg,rgba(16,22,18,.58),rgba(16,22,18,.82))}
+.orgretreat-photo .orgretreat-title{text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.orgretreat-photo .chip{background:rgba(255,253,248,.94);color:#1f2a22}
+.orgretreat-off .medal-cover{filter:grayscale(1)}
+.orgretreat .stage-box{margin:0}
+.orgretreat .stage-caption,.orgretreat .stage-stop{font-size:var(--text-sm,.875rem);font-weight:600;color:var(--ink)}
+.orgfold{margin-top:14px}
+.orgfold>summary{display:flex;align-items:center;min-height:var(--tap,46px);font-weight:700;cursor:pointer;list-style:none}
+.orgfold>summary::-webkit-details-marker{display:none}
+.orgfold>summary::after{content:"▾";margin-left:auto;padding:0 6px;color:var(--ink);transition:transform .15s}
+.orgfold[open]>summary::after{transform:rotate(180deg)}
+.orgfold>.orgcards{margin-top:6px}
 
-/* Ficha del retiro */
-.orghead h2{margin-bottom:4px}
+/* Ficha del retiro: portada, datos sobre el papel y pestañas con pista de desplazamiento. */
+#retreatHead{display:grid;gap:6px;margin:0 0 10px}
+#retreatHead .orghead-meta{margin:0;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+#retreatTabs{position:relative}
+#retreatTabs.orgtabs-fade::after{content:"";position:absolute;top:4px;right:0;bottom:14px;width:36px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2));pointer-events:none}
+#retreatTabs.orgtabs-fade.end::after{display:none}
 .orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto;scrollbar-width:none}
 .orgtabs::-webkit-scrollbar{display:none}
-.orgtabs a{flex:1 0 auto;padding:8px 12px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
+.orgtabs a{flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,46px);padding:8px 12px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
 .orgtabs a.on{background:var(--paper);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
 .orgcard{padding:14px 16px;margin:0 0 12px}
 .orgcard h3{margin:0 0 8px;font-size:1rem}
@@ -96,8 +122,18 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgmine{list-style:none;padding:0}
 .orgmine li{padding:6px 0;border-bottom:1px solid var(--line)}
 
-/* «Guarda tu acceso» */
-.orgaccess{display:inline-flex;align-items:center;gap:8px}
+/* «Guarda tu acceso»: compacto, 54 × 54, solo el candado (el nombre va en aria-label). Sin barra inferior, va abajo. */
+.orgaccess{display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;padding:0}
+.orgaccess .orgaccess-text{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.orgaccess-on .main{padding-bottom:calc(54px + 16px + 24px + env(safe-area-inset-bottom,0px))}
+@media (max-width:1023px){.orgaccess{bottom:calc(16px + env(safe-area-inset-bottom,0px))}}
+@media (min-width:1024px){.orgaccess-on .main{padding-bottom:calc(54px + 40px + 24px)}}
+
+/* Resumen del retiro */
+.orgsec{margin:18px 0 8px;font-weight:700;color:var(--ink)}
+#retreatBody>.orgsec:first-child,#retreatBody>#staleNote+.orgsec{margin-top:4px}
+#retreatBody>.stage-box{margin:14px 0}
+#retreatBody>.stat-row{margin:0 0 4px}
 
 /* Fase 4 y 5: experiencia, materiales, preguntas, ofertas y cartel */
 .orgmodule{padding:6px 0;border-bottom:1px solid var(--line,rgb(0 0 0 / 8%))}
@@ -123,7 +159,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgsubnav button{flex:0 0 auto;border:1px solid var(--line,rgb(0 0 0 / 12%));background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}
 .orgsubnav button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .orgday{margin:0 0 16px}
-.orgday h4{margin:0 0 6px;text-transform:capitalize}
+.orgday h4{margin:0 0 6px}
+/* Solo la primera letra («Sábado, 15 de mayo»): capitalize ponía «De» y «Mayo» en mayúscula. */
+.orgday h4::first-letter{text-transform:uppercase}
 .orgtime{min-width:88px;font-variant-numeric:tabular-nums;color:var(--muted,inherit)}
 .orgnote{display:block}
 .orgservice{margin:6px 0 10px}
@@ -151,7 +189,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgjoin-message{margin:6px 0 0;padding:6px 10px;border-left:3px solid var(--line,rgb(0 0 0 / 20%));white-space:pre-line;overflow-wrap:anywhere}
 .orgjoin-history{margin-top:10px}
 .orgjoin-history summary{cursor:pointer}
-.orgtab-count{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--warn,#b7791f);color:#fff;font-size:.75rem;line-height:18px;text-align:center}
+.orgtab-count{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--warn,#b7791f);color:#1f2a22;font-size:.75rem;line-height:18px;text-align:center}
 
 /* Supletorias por habitación (Booking §25) */
 .orgextra-beds{margin:4px 0 8px}
@@ -161,3 +199,170 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgstep:disabled{opacity:.4;cursor:default}
 .orgextra-count{min-width:60px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
 .orgextra-tag{margin-left:4px}
+
+/* Pasada única, zona 2: Diseño, Propuesta y Pagos */
+.orgpricebar{position:sticky;top:calc(68px + env(safe-area-inset-top,0px));z-index:3;max-height:64px;overflow:hidden;margin:0 0 12px;padding:6px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper);box-shadow:var(--shadow-1)}
+.orgpricebar p{margin:0}
+.orgpricebar-main{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 12px;font-size:.95rem;line-height:20px}
+.orgpricebar-main strong{font-variant-numeric:tabular-nums}
+.orgpricebar-avg,.orgpricebar-empty{font-size:12px;line-height:15px;color:var(--muted)}
+#designReady .check-box{margin:0}
+.orgversus{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.orgtap{min-height:var(--tap,46px);min-width:var(--tap,46px)}
+.orgcalcfield{align-content:start}
+.orgcalcfield .orgnumber{max-width:100%}
+.field input.orgrange,.orgrange{width:100%;min-height:var(--tap,46px);margin:0;padding:0;border:0;background:transparent;box-shadow:none;accent-color:var(--accent);cursor:pointer}
+.orgrange::-webkit-slider-thumb{width:28px;height:28px}
+.orgrange::-moz-range-thumb{width:28px;height:28px}
+.orgpriceblock{margin:0 0 14px;padding:12px;border:1px dashed var(--line);border-radius:14px}
+.orgpriceblock .field{margin-bottom:8px}
+.orgrangewrap{position:relative;padding-top:var(--tap,46px)}
+/* La raya roja del punto de equilibrio: 46 × 46 de toque, con la raya visible de 3 px dentro. */
+.orgbreakeven{position:absolute;top:0;z-index:1;width:var(--tap,46px);height:var(--tap,46px);margin:0;padding:0;border:0;background:transparent;transform:translateX(-50%);cursor:pointer;display:flex;justify-content:center}
+.orgbreakeven-line{display:block;width:3px;height:100%;border-radius:2px;background:var(--alert)}
+.orgbreakeven:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.orgbreakeven-label{font-size:var(--text-sm,.875rem);font-weight:700;color:var(--alert)}
+.orgwant{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.orgwant-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-weight:600}
+.orgwant-row input{width:76px;min-height:var(--tap,46px);border:1px solid var(--line);border-radius:var(--radius-sm,10px);padding:8px 10px;background:var(--paper);color:var(--ink);font:inherit}
+.orgwant .hint{display:block;margin-top:4px;font-size:12px;color:var(--muted)}
+#marginSeatsNote{flex-wrap:wrap}
+.orgpropviews{display:flex;margin:0 0 12px}
+.orgpropviews button{flex:1 1 0;min-height:var(--tap,46px);height:auto;padding:6px 12px;color:var(--ink)}
+.orgpropviews button[aria-pressed="true"]{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.orgproposal h4{margin:12px 0 4px;font-size:.95rem}
+.orgprevious-all{padding:4px 16px}
+.orgprevious-all>summary,.orgprevious>summary{min-height:var(--tap,46px);display:flex;align-items:center;font-weight:700;cursor:pointer}
+.orgprevious{border-top:1px solid var(--line)}
+.orgprevious .orgproposal{margin:0 0 12px;box-shadow:none}
+.orgscrollx{overflow-x:auto;max-width:100%}
+.orgcompare{min-width:460px}
+.orgcompare th:first-child,.orgcompare td:first-child{min-width:150px}
+.orgcompare th{text-align:left;padding:6px 8px 6px 0;font-size:12px;color:var(--muted)}
+.orgcompare th.num,.orgcompare td.num{text-align:right}
+.orgcompare td{padding:6px 8px 6px 0}
+.orgcompare-foot th,.orgcompare-foot td{font-weight:700;color:var(--ink);border-top:1px solid var(--line)}
+.orgwantsent{margin:0;flex-basis:100%}
+.orgstatement{margin:0 0 12px}
+#paymentType{margin:0 0 12px;font-weight:600}
+details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;align-items:center;font-weight:700;cursor:pointer}
+
+/* Pasada única, zona 3: Asistentes, ficha, Cocina, Experiencia y Ofertas. Todo lo que se toca mide 46 px. */
+.orgstep{width:var(--tap,46px);height:var(--tap,46px);min-height:var(--tap,46px)}
+.orgsubnav button{min-height:var(--tap,46px);display:inline-flex;align-items:center;gap:6px}
+.orgsubnav button[aria-current="page"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+/* La insignia en tonos de aviso del kit: tinta oscura sobre fondo claro (más de 4,5:1). */
+.orgtab-count{background:var(--warn-soft,#f5e7c9);color:var(--warn-ink,#7a5414);box-shadow:inset 0 0 0 1px var(--warn,#c58b2a)}
+.orgkicker{margin:0 0 6px;font-size:var(--text-sm,.875rem);font-weight:700;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+
+/* Asistentes: cifras, plazas y grupos */
+.orgguest-summary{margin:0 0 12px}
+.orgseats{margin:0 0 12px}
+.orgseat-legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 8px;padding:0;font-size:var(--text-sm,.875rem);color:var(--ink)}
+.orgseat-key{display:inline-flex;align-items:center;gap:6px}
+.orgseat-swatch{width:12px;height:12px;border-radius:50%;background:var(--seat,var(--line));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 20%,transparent)}
+.orgseat-sinenlace{--seat:var(--alert)}
+.orgseat-sinabrir,.orgseat-faltan,.orgseat-sinfirma{--seat:var(--warn)}
+.orgseat-completo{--seat:var(--ok)}
+.orgseat-key.orgseat-free .orgseat-swatch{background:transparent;border:1px dashed var(--line)}
+.orgseat-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:6px;margin:0;padding:0}
+.orgseat,.orgseat-grid .orgseat-free{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;min-height:var(--tap,46px);padding:6px 2px;border:0;border-radius:12px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.orgseat:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.orgseat-ring{--p:0;display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:conic-gradient(var(--seat,var(--accent)) calc(var(--p) * 1%),color-mix(in srgb,var(--line) 80%,transparent) 0)}
+.orgseat-ring .medal-disc{box-shadow:0 0 0 3px var(--paper)}
+.orgseat-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
+.orgseat-food{position:absolute;top:2px;right:8px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1)}
+.orgseat-grid .orgseat-free{cursor:default;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgseat-plus{display:grid;place-items:center;width:44px;height:44px;margin:4px;border-radius:50%;border:1px dashed var(--line);font-size:20px}
+.orgseat-waiting{margin:0 0 12px;padding:8px 12px;border-radius:12px;background:var(--warn-soft,#f5e7c9);color:var(--warn-ink,#7a5414);font-weight:600}
+.orgguests-title{margin:16px 0 8px;font-size:1rem}
+.orgrow-act{display:inline-flex;flex-direction:column;align-items:flex-end;gap:2px}
+#guestRows .row-actions .primary,#guestRows .row-actions .ghost{min-height:var(--tap,46px)}
+.orgquick p{margin:0 0 8px}
+#guestLinksUnknown{margin:0 0 8px}
+
+/* Ficha: lo que le falta y los campos que faltan */
+.orgmissing h3{margin:0 0 8px}
+.orgmissing .check-box{margin:0 0 6px}
+.orgmissing .check-action{height:auto;min-height:var(--tap,46px);padding:0 16px}
+.orgfield-missing>span:first-child em{font-style:normal;font-weight:700;color:var(--warn-ink,#7a5414)}
+.orgfield-missing input,.orgfield-missing select{border-color:var(--warn,#c58b2a)}
+
+/* Cocina */
+.orgkmenu{display:flex;align-items:center;gap:12px}
+.orgkmenu-icon{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:50%;background:var(--accent-soft);color:var(--accent-deep,var(--ink))}
+.orgkmenu-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.orgkcheck strong{display:block;margin:0 0 4px}
+.orgkcheck p{margin:0 0 4px}
+.orgkcheck-unchecked{font-weight:600;color:var(--warn-ink,#7a5414)}
+.orgkunverifiable{margin:0 0 12px;padding:8px 12px;border-radius:12px;background:var(--paper);box-shadow:inset 0 0 0 1px var(--line)}
+.orgkunverifiable p,.orgkdish-hit,.orgkdish-hint{display:flex;align-items:flex-start;gap:6px;margin:4px 0}
+.orgkunverifiable svg,.orgkdish-hit svg,.orgkdish-hint svg{flex:none;margin-top:2px}
+.orgksummary{margin:0 0 12px;font-weight:700}
+.orgkdish{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+.orgkdish-medal{position:relative;flex:none}
+.orgkdish-flag{position:absolute;right:-4px;bottom:-4px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--warn-soft,#f5e7c9);color:var(--warn-ink,#7a5414);font-size:12px;box-shadow:0 0 0 2px var(--paper)}
+.orgkdish-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.orgkdish-hit{color:var(--ink);font-weight:600}
+.orgkdish-hit svg{color:var(--warn-ink,#7a5414)}
+.orgkdish-hint{color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgservice h5{display:flex;align-items:center;gap:4px}
+
+/* Experiencia: lo siguiente, momentos y apartados */
+.orgexp-next{margin:0 0 14px}
+.orgexp-nextline{display:flex;flex-direction:column;gap:2px;margin:0;padding:12px 14px;border-radius:14px;background:var(--paper);box-shadow:inset 0 0 0 1px var(--line)}
+.orgexp-home>.muted{margin:0 0 10px}
+.orgexp-moments{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.orgexp-moment>h3{margin:0 0 2px;font-size:1rem}
+.orgexp-moment>.muted{margin:0 0 8px}
+.orgexp-rows{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}
+.orgexp-row{border:1px solid var(--line);border-radius:14px;background:var(--paper);overflow:hidden}
+.orgexp-row.hidden{border-color:var(--warn,#c58b2a)}
+.orgexp-row.todo{border-left:4px solid var(--warn,#c58b2a)}
+.orgexp-open{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap,46px);padding:10px 12px;border:0;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.orgexp-open.static{cursor:default}
+.orgexp-open:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.orgexp-icon{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent-deep,var(--ink))}
+.orgexp-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.orgexp-chev{flex:none;font-size:20px;color:var(--ink)}
+.orgexp-state{flex:none}
+.orgexp-state.ok{background:var(--ok-soft,#dfe9d7);color:var(--ink)}
+.orgexp-state.hidden,.orgexp-state.todo{background:var(--warn-soft,#f5e7c9);color:var(--warn-ink,#7a5414)}
+.orgexp-row .orgmodule{padding:0 12px 8px 58px;border:0}
+.orgexp-row .orgmodule .field.check{min-height:var(--tap,46px);margin:0;display:flex;align-items:center}
+.orgexp-row .orgmodule-window{margin:0 0 4px}
+.orgexp-moment #expMessage{margin-top:4px}
+.orgexp-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn,#c58b2a)}
+.orgexp-title{margin:0 0 8px;font-size:1rem}
+
+/* Ofertas: cartel al momento, cuenta y ofertas */
+.orgposter-quick .orgposter{margin:0 0 10px}
+.orgposter-quick .orgposter-canvas{max-width:280px}
+.orgposter-formats{display:flex;gap:6px;margin:0 0 10px}
+.orgposter-formats .softbtn{flex:1 1 0;min-height:var(--tap,46px);height:auto;color:var(--ink)}
+.orgposter-formats .softbtn[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);font-weight:800}
+.orgacct-res{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 4px}
+.orgacct-res b{font-size:1.6rem;font-variant-numeric:tabular-nums}
+.orgacct-res b.neg{color:var(--alert)}
+.orgacct-line{margin:0 0 10px}
+.orgacct-rows{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
+.orgacct-rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:baseline}
+.orgacct-rows b{font-variant-numeric:tabular-nums;color:var(--ink)}
+.orgacct-bar{grid-column:1 / -1;display:block;height:6px;border-radius:3px;background:var(--paper-2)}
+.orgacct-bar>span{display:block;height:100%;border-radius:3px}
+.orgacct-bar.in>span{background:var(--ok)}
+.orgacct-bar.out>span{background:var(--alert)}
+.orgacct-total{padding-top:6px;border-top:1px solid var(--line)}
+.orgoffer{flex-wrap:wrap;align-items:stretch;padding:8px 10px;gap:8px}
+.orgoffer-main{flex:1 1 100%;flex-direction:column;align-items:stretch;gap:4px;padding:4px 2px;min-height:var(--tap,46px)}
+.orgoffer-main>span{display:flex}
+.orgoffer-head{justify-content:space-between;gap:12px}
+.orgoffer-price{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums}
+.orgoffer-main>.orgoffer-includes{display:block}
+.orgoffer-main .chips{flex-wrap:wrap}
+.orgoffer-cap{flex:1 1 100%;display:block;height:6px;border-radius:3px;background:var(--paper-2)}
+.orgoffer-cap>span{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.orgoffer-steps{display:flex;align-items:center;gap:10px;flex:1 1 auto}
+.orgoffer-count{min-width:0;font-weight:700;font-variant-numeric:tabular-nums}
+.orgoffer-poster{display:flex;align-items:center;min-height:var(--tap,46px);margin:0}
+.orgoffer.expired{border-color:var(--warn,#c58b2a)}

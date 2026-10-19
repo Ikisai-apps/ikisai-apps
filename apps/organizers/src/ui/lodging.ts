@@ -11,7 +11,7 @@ import { el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import type { Row } from '../app/own.ts';
-import { failure, fbIgnore, loading, section, staleNote } from './common.ts';
+import { failure, fbIgnore, loading, needsNet, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
 interface Bed { bed_id: string; label: string; kind: string; free: boolean; assignment_id?: string; guest_id?: string | null; group_label?: string | null; status?: string; source?: string }
@@ -51,6 +51,9 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
   let data: PortalRooms | null = null;
   let names = new Map<string, string>();
   let guestIds: string[] = [];
+  /** Aprobar, asignar, supletorias y abrir habitaciones escriben en Booking: sin red se apagan con su motivo. */
+  let bound: Array<() => void> = [];
+  const release = () => { for (const off of bound) off(); bound = []; };
 
   async function load(): Promise<void> {
     try {
@@ -96,6 +99,7 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
 
   function paint(staleAt: string | null): void {
     const d = data!;
+    release();
     const exp = experience();
     const capability = String(exp?.lodging_capability ?? (d.settings.choice === 'off' ? (d.settings.preferences ? 'prefer' : 'view') : d.settings.choice));
     const chooseUntil = String(exp?.lodging_choose_until ?? d.settings.choose_until ?? '');
@@ -214,6 +218,7 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
       d.preferences.length ? section(t('Preferencias de tus asistentes'), { id: 'lodgingPreferences' },
         fbIgnore(el('ul', { class: 'plainlist' }, ...d.preferences.map((p) => el('li', null, el('strong', null, nameOf(p.guest_id)),
           p.text ? ` · ${p.text}` : '', p.ground_floor ? ` · ${t('Necesita planta baja o accesible')}` : ''))))) : null);
+    for (const b of host.querySelectorAll<HTMLElement>('[data-action="approve"], [data-action="reject"], [data-action="extra-minus"], [data-action="extra-plus"], #lodgingOpen [data-room] input[type="checkbox"]')) bound.push(needsNet(ctx, b));
   }
 
   function assign(room: Room, bed: Bed): void {
@@ -221,6 +226,8 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
     const select = el('select', { id: 'bed-guest' },
       el('option', { value: '' }, bed.guest_id ? t('Dejarla libre') : '—'),
       ...guestIds.map((id) => el('option', { value: id, selected: id === bed.guest_id ? '' : null }, `${nameOf(id)}${assigned.has(id) && id !== bed.guest_id ? ` (${t('ya tiene cama')})` : ''}`))) as HTMLSelectElement;
+    const saveButton = el('button', { type: 'button', class: 'primary', id: 'bed-save', onclick: () => void save() }, t('Guardar'));
+    const offSave = needsNet(ctx, saveButton);
     const sheet = openSheet({
       title: `${room.name} · ${bed.label}`,
       panelAttrs: { id: 'bedSheet' },
@@ -228,7 +235,8 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
         bed.group_label && !bed.guest_id ? el('p', { class: 'muted small' }, t('Ikisai la tiene reservada para tu grupo.')) : null,
         el('label', { class: 'field' }, el('span', null, t('Asistente')), select),
         el('p', { class: 'muted small' }, t('Si ya tenía otra cama, se la cambiamos a esta.'))),
-      foot: el('div', { class: 'choices' }, el('button', { type: 'button', class: 'primary', id: 'bed-save', onclick: () => void save() }, t('Guardar'))),
+      foot: el('div', { class: 'choices' }, saveButton),
+      onClose: () => offSave(),
     });
     async function save(): Promise<void> {
       const guest = select.value;
@@ -240,6 +248,6 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
   }
 
   void load();
-  (host as HTMLElement & { destroy?: () => void; refresh?: () => void }).destroy = () => { alive = false; };
+  (host as HTMLElement & { destroy?: () => void; refresh?: () => void }).destroy = () => { alive = false; release(); };
   return host;
 }

@@ -10,7 +10,7 @@ import { el, openSheet, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { t } from '../app/i18n.ts';
 import { dayLabel } from '../app/labels.ts';
-import { fbIgnore, section } from './common.ts';
+import { fbIgnore, needsNet, section } from './common.ts';
 import type { RetreatData } from './retreat.ts';
 import type { ViewContext } from './shell.ts';
 
@@ -46,6 +46,10 @@ export function renderJoinRequests(ctx: ViewContext, reservationId: string, data
     const error = el('p', { class: 'error', role: 'alert', id: 'join-error' });
     const guests = data.guests.value.items.length;
     const seats = data.detail.value.final_guests ?? data.detail.value.expected_guests;
+    // Decidir no se encola: sin red, el botón se apaga con su motivo (y `submit` lo vuelve a comprobar).
+    const confirm = el('button', { type: 'submit', class: decision === 'aceptar' ? 'primary' : 'ghost danger', form: 'joinForm', id: 'join-confirm' },
+      decision === 'aceptar' ? t('Aceptar') : t('Descartar'));
+    const release = needsNet(ctx, confirm, t('Para decidir necesitas conexión.'));
     const sheet = openSheet({
       title: decision === 'aceptar' ? t('¿Aceptar a {nombres}?', { nombres: who }) : t('¿Descartar la solicitud de {nombres}?', { nombres: who }),
       panelAttrs: { id: 'joinSheet' },
@@ -59,9 +63,8 @@ export function renderJoinRequests(ctx: ViewContext, reservationId: string, data
         el('label', { class: 'field' }, el('span', null, t('Mensaje (opcional)')), comment),
         el('p', { class: 'muted small' }, t('Lo verá en su portal de huésped.')),
         error),
-      foot: el('div', { class: 'choices' },
-        el('button', { type: 'submit', class: decision === 'aceptar' ? 'primary' : 'ghost danger', form: 'joinForm', id: 'join-confirm' },
-          decision === 'aceptar' ? t('Aceptar') : t('Descartar'))),
+      foot: el('div', { class: 'choices' }, confirm),
+      onClose: () => release(),
     });
     async function submit(): Promise<void> {
       if (!online()) { error.textContent = describeError({ code: 'OFFLINE' }); return; }
