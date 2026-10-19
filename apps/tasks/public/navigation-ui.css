@@ -69,3 +69,8 @@
 .arearow-edit{width:40px;height:40px;flex:none;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;font-size:0}
 .arearow-edit::before{content:'';width:19px;height:19px;background:currentColor;-webkit-mask:var(--icon-pencil) center/contain no-repeat;mask:var(--icon-pencil) center/contain no-repeat}
 
+/* Regla de nombres de etiquetas (FB_2026_033): aviso bajo el nombre en el editor. */
+.labelclash{margin:7px 2px 0;font-size:13px;font-weight:700;color:#8a442d}
+.labelclash.soft{font-weight:500;color:#766e64}
+html.dark .labelclash{color:#f0b9a5}
+html.dark .labelclash.soft{color:#b3ada0}

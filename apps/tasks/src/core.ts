@@ -8,6 +8,7 @@
 import { createSyncClient, type Bootstrap, type PendingConflict, type RejectedBatch, type RowOperation, type Session, type SyncClient, type SyncStatus, type TableName } from '@ikisai/sync-client';
 import {
   DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, effectiveScopes, emptyDataset, validateOperations,
+  assertLabelNames, labelClashMessage, labelNameClash, labelNameKey,
   addCommentOps, commentCounts, deleteCommentOps, editCommentOps, taskComments,
   approvalOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
   supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
@@ -415,7 +416,13 @@ export class TasksCore {
     const boot = this.client.bootstrap();
     const context = { role: (boot?.membership.role ?? 'reader') as Role, scopes: this.scopes() ?? '*' };
     const batches = decompose(this.data, tabs).flatMap((batch) => chunkOperations(batch));
-    for (const batch of batches) validateOperations(batch, context);
+    // Regla de nombres de etiquetas (FB_2026_033): lo mismo que el hook, sobre lo que habrá al aplicar cada lote.
+    let seen = this.data;
+    batches.forEach((batch, i) => {
+      validateOperations(batch, context);
+      assertLabelNames(seen, batch);
+      if (i < batches.length - 1) seen = applyOperations(seen, batch);
+    });
     return batches;
   }
 
@@ -556,6 +563,8 @@ const api = {
     supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
     receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations,
   },
+  /** Regla de nombres de etiquetas (FB_2026_033, §27.2): el aviso inmediato del editor (`public/navigation-ui.js`). */
+  labelNames: { key: labelNameKey, clash: labelNameClash, message: labelClashMessage },
   /** «Quién sabe hacerlo» (§34): quién sabe los oficios de una ficha (`public/who-knows-ui.js`). */
   whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
