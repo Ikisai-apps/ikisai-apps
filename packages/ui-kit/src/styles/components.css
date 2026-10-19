@@ -1906,3 +1906,10 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .return-link{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap);margin:6px 12px 0;padding:0 12px 0 6px;border-radius:var(--radius-pill);color:var(--accent-deep);font-weight:700;text-decoration:none}
 .return-link:hover{background:var(--hover,rgba(0,0,0,.055))}
 .return-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Inventario en baldosas (`createItemCatalog({ layout: 'baldosas' })`): la baldosa abre la ficha; las acciones, debajo. */
+.stk-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:6px 0 14px}
+.stk-tilecell{display:grid;gap:6px;align-content:start}
+.stk-tilecell.archived{opacity:.6}
+.stk-tileactions{display:flex;flex-wrap:wrap;gap:6px}
+.stk-tileactions button{min-height:var(--tap);height:auto}

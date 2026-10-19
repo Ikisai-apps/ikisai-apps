@@ -17,6 +17,7 @@ import { formatQuantity } from '../fields/quantity.ts';
 import { DEFAULT_SPACE_KINDS, ancestorsOf, indexSpaces, kindOf, spaceDescendants, type SpaceRow, type SpaceSource } from '../spaces/model.ts';
 import { openSheet } from '../overlay/sheet.ts';
 import { createItemPicker } from './picker.ts';
+import { renderTile } from '../pieces/tile.ts';
 import { DEFAULT_ITEM_KINDS, kindLabelOf, nextExpiry, searchItems, stockBySpace, type ItemRow, type ItemSnapshot, type ItemSource } from './model.ts';
 
 export type ItemCatalogAction = 'spend' | 'entry' | 'count';
@@ -63,6 +64,12 @@ export interface ItemCatalogOptions {
   storageKey?: string;
   /** Hoy (`YYYY-MM-DD`), para pruebas; por defecto la fecha local. */
   today?: string;
+  /**
+   * `baldosas` (Inventario de Central y Despensa de Food, elegida por el usuario en el Bloque 2): cada artículo como
+   * baldosa con su cifra y el relleno hasta el mínimo (`renderTile`, con el nivel dicho en palabras). Por defecto `list`,
+   * igual que siempre.
+   */
+  layout?: 'list' | 'baldosas';
   feedbackId?: string;
 }
 
@@ -219,6 +226,30 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
       actions.length ? el('span', { class: 'stk-actions' }, ...actions) : el('span', { class: 'stk-actions empty' }));
   }
 
+  /** Baldosa del artículo: la mitad del relleno es el mínimo; rojo si está por debajo, ámbar si va justo. */
+  function tile(l: Line): HTMLElement {
+    const it = l.item;
+    const min = it.minQuantity && it.minQuantity > 0 ? it.minQuantity : null;
+    const tone = min === null ? null : l.total < min ? 'alert' : l.total < min * 1.25 ? 'warn' : 'ok';
+    const levelText = l.low ? kt('Bajo mínimo')
+      : l.expiry ? expiryText(l.expiry, today)
+        : tone === 'warn' ? kt('Va justo')
+          : tone === 'ok' ? kt('Bien')
+            : where(l);
+    const actions = [
+      ...(options.onAction && it.active ? (options.actions ?? []).map((a) => el('button', { type: 'button', class: 'ghost small', ...mark('action'), 'aria-label': `${kt(ACTION_LABELS[a])}: ${it.name}`, onclick: () => options.onAction!(a, it) }, kt(ACTION_LABELS[a]))) : []),
+      ...(options.rowActions?.(it) ?? []).map((a) => el('button', { type: 'button', class: a.primary ? 'softbtn small' : 'ghost small', 'aria-label': `${a.label}: ${it.name}`, ...(a.feedbackId ? { 'data-feedback-id': a.feedbackId, 'data-feedback-label': a.label } : mark('action')), onclick: () => a.onClick(it) }, a.label)),
+    ];
+    return el('div', { class: `stk-tilecell${l.low ? ' low' : ''}${it.active ? '' : ' archived'}`, role: 'listitem', dataset: { itemId: it.id } },
+      renderTile({
+        title: it.name, value: `${formatQuantity(l.total, 3)} ${it.baseUnit}`, levelText,
+        level: min === null ? null : { pct: (l.total / (min * 2)) * 100, min: 50, tone },
+        medal: { name: it.name }, onClick: () => options.onOpen?.(it),
+        ...(base ? { feedbackId: `${base}.${ITEM_CATALOG_MARKS.open[0]}` } : {}),
+      }),
+      actions.length ? el('div', { class: 'stk-tileactions' }, ...actions) : null);
+  }
+
   function paintList(): void {
     const all = lines();
     const q = (filter.query ?? '').trim();
@@ -230,6 +261,15 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
       groups.set(g, [...(groups.get(g) ?? []), l]);
     }
     const ordered = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    if (options.layout === 'baldosas') {
+      replace(list,
+        ...ordered.flatMap(([g, ls]) => [el('div', { class: 'stk-group', role: 'heading', 'aria-level': '3' }, `${g} · ${ls.length}`), el('div', { class: 'stk-tiles', role: 'list' }, ...ls.map(tile))]),
+        shown.length ? null : el('p', { class: 'hint stk-empty' }, all.length ? kt('Nada coincide con estos filtros.') : kt('Aún no hay artículos.')));
+      list.classList.add('stk-list-tiles');
+      list.removeAttribute('role');
+      live.textContent = shown.length === 1 ? kt('1 artículo') : kt('{n} artículos', { n: String(shown.length) });
+      return;
+    }
     replace(list,
       shown.length ? el('div', { class: 'stk-head', 'aria-hidden': 'true' }, ...[kt('Artículo'), kt('Tipo'), kt('Dónde'), kt('Stock'), kt('Mínimo'), kt('Aviso'), ''].map((h) => el('span', null, h))) : null,
       ...ordered.flatMap(([g, ls]) => [el('div', { class: 'stk-group', role: 'heading', 'aria-level': '3' }, `${g} · ${ls.length}`), ...ls.map(row)]),

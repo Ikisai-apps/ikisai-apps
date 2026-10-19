@@ -809,4 +809,6 @@ export const KIT_EN: Dictionary = {
   '{n} conflictos · toca para resolver': '{n} conflicts · tap to resolve',
   'Volver a {place}': 'Back to {place}',
   'la app anterior': 'the previous app',
+  'Va justo': 'Running low',
+  'Bien': 'Fine',
 };

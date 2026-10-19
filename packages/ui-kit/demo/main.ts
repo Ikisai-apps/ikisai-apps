@@ -1284,11 +1284,16 @@ const invCatalog = createItemCatalog({
   onOpen: openInvSheet, today: invToday,
 });
 invCatalog.element.id = 'invCatalog';
+// La misma pieza en baldosas (Inventario de Central, Despensa de Food).
+const invTiles = createItemCatalog({ source: invSource, spaces: spaceSource, label: 'Despensa', layout: 'baldosas', feedbackId: 'demo.despensa', onOpen: openInvSheet, today: invToday,
+  rowActions: (it) => (it.minQuantity && it.id === 'harina-espelta' ? [{ label: 'Pedir', primary: true, onClick: () => toast('Pedido a Tasks') }] : []) });
+invTiles.element.id = 'invTiles';
 const inventorySection = section('inventory', 'Inventario (R3)', 'createItemCatalog: buscar, filtros a un toque (bajo mínimo, caduca pronto, sitios, tipos, archivados), agrupado por sitio, acciones del kit y de la app («Pedir»), y filas que se alinean en columnas con ancho. createItemSheet: stock por sitio y lote con coste medio, datos (máquinas con marca, serie y estado), unidades y movimientos con su origen.',
   el('div', { class: 'demo-row' },
     el('button', { type: 'button', class: 'ghost', id: 'invMove', onclick: () => openInvMovement('exit') }, 'Movimiento a mano'),
     el('button', { type: 'button', class: 'ghost', id: 'invCountKitchen', onclick: () => openInvCount('cocina') }, 'Recuento de la cocina')),
   el('div', { class: 'card' }, invCatalog.element), invSheetHost,
+  el('h3', null, 'En baldosas'), el('div', { class: 'card' }, invTiles.element),
 );
 // --- Calendario de persona (O2/O4) -----------------------------------------------------------------------
 const tp = todayKey();
