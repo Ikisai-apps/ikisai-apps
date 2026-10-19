@@ -50,8 +50,9 @@ test('organizers · diseño: sin comidas, régimen y menú están bien', () => {
   assert.equal(c.regimen!.detail, 'Sin comidas en Ikisai.');
 });
 
-test('organizers · diseño: cuántas faltan, para el Resumen del retiro', () => {
-  assert.equal(designPending({ expected_guests: null, requires_meals: true, meal_plan: null, menu_style: null }, offered), 4);
-  assert.equal(designPending({ expected_guests: 20, requires_meals: true, meal_plan: 'media_pension', menu_style: null }, offered), 2);
+test('organizers · diseño: cuántas faltan del formulario, para el Resumen del retiro (las fechas tienen su paso)', () => {
+  assert.equal(designPending({ expected_guests: null, requires_meals: true, meal_plan: null, menu_style: null }, offered), 3);
+  assert.equal(designPending({ expected_guests: 20, requires_meals: true, meal_plan: 'media_pension', menu_style: null }, offered), 1);
   assert.equal(designPending({ expected_guests: 20, requires_meals: false, meal_plan: null, menu_style: null }, { ...offered, options: [option('a', { organizer_ok: true })] }), 0);
+  assert.equal(designPending({ expected_guests: 20, requires_meals: false, meal_plan: null, menu_style: null }, offered), 0, 'sin fechas marcadas, el formulario sigue completo');
 });

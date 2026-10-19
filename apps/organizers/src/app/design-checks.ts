@@ -75,7 +75,10 @@ export function designChecks(state: DesignCheckState, dates: PortalDates | null,
   ];
 }
 
-/** Cuántas cosas faltan por rellenar del diseño (para el paso «Diseña tu retiro» del Resumen). */
+/**
+ * Cuántas cosas faltan por rellenar del formulario de diseño (para el paso «Diseña tu retiro» del Resumen). Las fechas no
+ * cuentan: en el Resumen tienen su propio paso, y contarlas dos veces inflaría lo que falta.
+ */
 export function designPending(detail: Pick<ReservationDetail, 'expected_guests' | 'requires_meals' | 'meal_plan' | 'menu_style'>, dates: PortalDates | null): number {
-  return designChecks(designStateOf(detail), dates).filter((c) => !c.ok).length;
+  return designChecks(designStateOf(detail), dates).filter((c) => !c.ok && c.key !== 'fechas').length;
 }

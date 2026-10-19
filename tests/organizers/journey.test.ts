@@ -137,11 +137,15 @@ test('organizers · resumen: en diseño, fechas, propuesta y «Diseña tu retiro
   const dates: PortalDates = { mode: 'ikisai_options', definitive: null, options: [] };
   const draft = (over: Partial<SummaryInput> = {}) => input({ status: 'negociacion', guests: { confirmed: false, mode: 'ses', items: [] }, dates, ...over });
   const steps = summarySteps(draft(), { proposals: [proposal({ valid_until: '2026-11-30' })], requests: [] }, TODAY, format);
-  assert.deepEqual(ids(steps), ['ver_fechas', 'paso_propuesta', 'ver_diseno']);
+  assert.deepEqual(ids(steps), ['ver_fechas', 'paso_propuesta', 'ver_diseno:hecho']);
   assert.equal(steps[0]!.stateText, 'Marca las fechas que te vienen bien; Ikisai confirmará la definitiva.');
   assert.equal(steps[1]!.stateText, 'Versión 2 · 4000 € orientativo · válida hasta el 2026-11-30');
-  // Faltan las fechas: la misma regla que «Lo que te falta por rellenar» (design-checks).
-  assert.equal(steps[2]!.stateText, 'Lo que te falta por rellenar: 1 cosa');
+  // Faltan solo las fechas, que ya tienen su paso: el formulario de diseño cuenta como hecho (design-checks, designPending).
+  assert.equal(steps[2]!.stateText, 'Personas, comidas, alojamiento y extras, con el precio orientativo al momento.');
+  const noGuests = draft();
+  noGuests.detail = { ...noGuests.detail, expected_guests: null };
+  const empty = summarySteps(noGuests, { proposals: [], requests: [] }, TODAY, format);
+  assert.equal(empty.find((x) => x.id === 'ver_diseno')?.stateText, 'Lo que te falta por rellenar: 1 cosa');
 
   // Ya pidió confirmar: el paso de la propuesta no sale. Con una fecha marcada, fechas y diseño quedan hechos.
   const marked: PortalDates = { mode: 'ikisai_options', definitive: null, options: [{ id: 'a', start: '2027-03-12', end: '2027-03-14', arrival_time: null, departure_time: null, proposed_by: 'ikisai', organizer_ok: true, availability: 'libre' }] };
@@ -157,7 +161,7 @@ test('organizers · resumen: en diseño, fechas, propuesta y «Diseña tu retiro
   assert.equal(accepted[1]!.title, 'Versión 2 aceptada · 4000 €');
 
   // Sin lectura de fechas ni de la propuesta: se omiten.
-  assert.deepEqual(ids(summarySteps(draft({ dates: null }), { proposals: null, requests: null }, TODAY, format)), ['ver_diseno']);
+  assert.deepEqual(ids(summarySteps(draft({ dates: null }), { proposals: null, requests: null }, TODAY, format)), ['ver_diseno:hecho']);
 });
 
 test('organizers · resumen: asistentes, y nada en cancelados ni terminados', () => {
