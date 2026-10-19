@@ -440,6 +440,14 @@ Rutas heredadas que **no** porta Tasks: `state`/`export` (sustituidas por `snaps
 
 ---
 
+
+### 8.1 K3 para miembros (19-10-2026)
+
+- `uploads.membersK3: true` (`TASKS_UPLOADS` en `tasks-api/app.ts`), como Central en #589 (núcleo #585). `GET files/:id` firma un archivo ajeno solo si quien pide ve (hook `visible`) una fila viva que lo referencia: un adjunto (`tasks.attachments.file_id`) o la foto de un comentario (`tasks.task_comments.file_id`), las dos únicas columnas de archivo, registradas en `core.register_file_field`.
+- Un editor con algunos proyectos no lee los archivos de los demás. El archivo de una fila en la papelera solo lo leen quien lo subió y la propietaria; al restaurar, como antes.
+- **En pantalla no cambia nada:** la app descarga por `attachments/:id` y `comments/:id/photo`, que ya comprobaban la visibilidad y solo sirven filas vivas. La papelera no abre adjuntos.
+- Prueba: `tests/tasks/files-k3.test.ts`.
+
 ## 9. Pantallas y navegación
 
 La interfaz actual se conserva sin cambios de marcado (`taskRow`, `projectCard`, `projectView`, `topbar`, `searchbar` son contrato con el agente de UI), con su navegación y su menú de cinco grupos tal como están. Vistas (`state.view`): **Inicio** (`home`: indicadores, proyectos, semana, personas, bloqueos y actividad del área), **Proyectos** (`projects`: tarjetas fijables y ordenables; `project`: página del proyecto en lista o tablero por fecha, alta en línea, lote; `inbox` es el acceso directo a Entrada), **Tareas** (`tasks`: todas o «Mis tareas», con filtros combinables, disponibilidad y vistas guardadas) y **Etiquetas** (`labels`: familias y etiquetas del área). Además, el área «General» que reúne todas las áreas, la paleta Ctrl K, el tema claro/oscuro y el acento derivado del color del área o proyecto.
