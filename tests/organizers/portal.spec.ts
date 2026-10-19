@@ -322,23 +322,56 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await expect(page.locator('#summaryDesign')).toBeVisible();
   await page.locator('#goDesign').click();
   await expect(page.locator('#designPeople')).toBeVisible();
+  // «Lo que te falta por rellenar»: la fecha de Ikisai aún no está marcada y faltan las personas.
+  await expect(page.locator('#designReady')).toContainText('Cuántas personas venís');
+  await expect(page.locator('#designReady')).toContainText('Fechas posibles');
+  await page.locator('#designReady .check-action', { hasText: 'Ir a Personas' }).click();
+  await expect(page.locator('#d-expected_guests')).toBeFocused();
   await page.locator('#d-expected_guests').fill('20');
+  await expect(page.locator('#designReady')).not.toContainText('Cuántas personas venís');
   // 20 personas × 2 noches × 60 € + 2 días de sala × 200 € = 2800 € (IVA incluido; regla de VG: tantos días como noches)
   await expect(page.locator('#quoteTotal')).toHaveText(/2\.?800,00/);
+  // El extra se guarda en su propia escritura (después de la de las personas): se espera a que llegue.
+  const extraSaved = page.waitForResponse((r) => r.url().includes('booking.portal_update_draft') && (r.request().postData() ?? '').includes('"extras"'));
   await page.locator(`.orgextra[data-rate="${extraId}"] input[type=checkbox]`).check();
   await expect(page.locator('#quoteTotal')).toHaveText(/2\.?950,00/);
   await expect(page.locator('#quoteDeposit')).toHaveText(/885,00/);
+  await extraSaved;
+  // Precio medio, nunca un «por persona» suelto: 2950 € entre 20 personas.
+  await expect(page.locator('#quoteAverage')).toContainText('147,50');
+  await expect(page.locator('#quoteAverage')).toContainText('el total entre 20 personas');
+  await expect(page.locator('#priceBar')).toContainText(/2\.?950,00/);
+  await expect(page.locator('#priceBar')).not.toContainText(/^Por persona/);
   await expect(page.locator('#designSaveState')).toContainText('Guardado');
 
-  // Calculadora privada: 20 asistentes a 300 € frente a 2950 € de Ikisai.
+  // «¿Cuánto ganas?»: 20 asistentes a 300 € frente a 2950 € de Ikisai.
   await page.locator('#margin-price').fill('300');
   await expect(page.locator('#marginValue')).toHaveText(/3\.?050,00/);
-  await expect(page.locator('#marginBreakEven')).toHaveText('10 asistentes');
+  // Lo de Ikisai varía con las plazas: con 9 asistentes (2700 €) ya se cubre el mínimo de 2500 €; con 8 (2400 €), no.
+  await expect(page.locator('#marginBreakEven')).toHaveText('9 asistentes');
+  // La raya roja: con 20 asistentes se cubren costes a 148 € (2950 / 20 = 147,50, al euro hacia arriba).
+  await expect(page.locator('#marginBreakEvenLabel')).toHaveText(/^Cubres costes: 148,00\s€$/);
+  await page.locator('#marginBreakEvenPrice').click();
+  await expect(page.locator('#margin-price')).toHaveValue('148');
+  await expect(page.locator('#margin-price')).toBeFocused();
+  await expect(page.locator('#margin-pct')).toHaveValue('0');
+  await expect(page.locator('#marginValue')).toHaveText(/^10,00/);
+  // Quiero ganar un 20 % sobre los costes: 2950 × 1,2 / 20 = 177 €.
+  await page.locator('#margin-pct').fill('20');
+  await expect(page.locator('#margin-price')).toHaveValue('177');
+  // Los colaboradores solo cuentan aquí: el aviso manda a «Personas» para cambiar las plazas de verdad.
+  await expect(page.locator('#marginSeatsNote')).toBeHidden();
+  await page.locator('#margin-collaborators').fill('2');
+  await expect(page.locator('#marginSeatsNote')).toBeVisible();
+  await expect(page.locator('#marginSeatsNote')).toContainText('Personas');
+  await expect(page.locator('#marginSeats')).toContainText('22 plazas');
 
   await page.reload();
+  // La calculadora no escribe en Booking: las plazas siguen en 20.
   await expect(page.locator('#d-expected_guests')).toHaveValue('20');
   await expect(page.locator(`.orgextra[data-rate="${extraId}"] input[type=checkbox]`)).toBeChecked();
-  await expect(page.locator('#margin-price')).toHaveValue('300');
+  await expect(page.locator('#margin-collaborators')).toHaveValue('2');
+  await expect(page.locator('#margin-price')).toHaveValue('177');
 
   // Propuesta enviada por el personal: el organizador no la acepta; pide confirmarla.
   await api.sendProposal(reservation, 20);
@@ -357,6 +390,40 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await page.getByRole('button', { name: 'Quiero confirmar' }).last().click();
   await expect(page.locator('#myRequests')).toContainText('Quiero confirmar');
   await expect(page.locator('#myRequests')).toContainText('Enviada');
+  // Ya pedido: el botón deja su sitio a la fecha en que se pidió; «Enviar un comentario» se queda.
+  await expect(page.locator('#wantSent')).toBeVisible();
+  await expect(page.locator('#wantConfirm')).toHaveCount(0);
+  await expect(page.locator('#sendCommentOpen')).toBeVisible();
+});
+
+test('organizers · propuesta con versiones: la vigente con acciones, las anteriores plegadas y comparar versiones', async ({ page }) => {
+  await api.seedRates();
+  const w = await api.friday(9);
+  const reservation = await api.draftReservation({ title: 'Retiro con dos versiones', status: 'negociacion', expected_guests: 20 });
+  await api.ikisaiOptions(reservation, [[w, plusDays(w, 2)]]);
+  await api.sendProposal(reservation, 20);
+  // La segunda deja la primera como sustituida (Booking #610).
+  await api.sendProposal(reservation, 20);
+  await enter(page, await api.organizerLink([reservation], 'versiones@example.invalid', 'Vera'));
+
+  await page.locator('#tab-propuesta').click();
+  await expect(page.locator('#proposal-2')).toBeVisible();
+  await expect(page.locator('#proposal-2 #wantConfirm')).toHaveCount(1);
+  await expect(page.locator('#proposalPrevious')).toContainText('Versión anterior · sustituida por la 2');
+  await expect(page.locator('#proposal-1 #wantConfirm')).toHaveCount(0);
+  await expect(page.locator('#wantConfirm')).toHaveCount(1);
+  await expect(page.locator('#proposalAverage')).toContainText('Precio medio por persona');
+  await expect(page.locator('#proposalAverage')).toContainText('el total entre 20 personas');
+  // Las unidades en lenguaje claro.
+  await expect(page.locator('#proposal-2 .orgquote')).toContainText('por persona y noche');
+
+  await page.locator('#propViewCompare').click();
+  await expect(page.locator('#propViewCompare')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#proposalCompare')).toContainText('Versión 2 frente a versión 1');
+  await expect(page.locator('#proposalCompare .orgviewhead')).toBeFocused();
+  await page.locator('#propViewBudget').click();
+  await expect(page.locator('#proposal-2')).toBeVisible();
+  await expect(page.getByText('Por persona', { exact: true })).toHaveCount(0);
 });
 
 test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de Finance; factura sin documento; cómo pagar', async ({ page }) => {
@@ -369,26 +436,58 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   await enter(page, await api.organizerLink([reservation], 'pagos@example.invalid', 'Nora'));
 
   await page.locator('#tab-pagos').click();
-  await expect(page.locator('#moneyInvoiced')).toHaveText(/1\.?000,00/);
-  await expect(page.locator('#moneyCollected')).toHaveText(/300,00/);
-  await expect(page.locator('#moneyPending')).toHaveText(/700,00/);
-  await expect(page.locator('#moneyInvoices .orginvoice')).toHaveCount(2);
-  await expect(page.locator('#moneyInvoices')).toContainText('Cobrada');
-  await expect(page.locator('#paymentInstructions')).toContainText('Por transferencia');
+  // El extracto: lo contratado (Booking, 2800 €) menos lo pagado (Finance, 300 €).
+  const statement = page.locator('#moneyStatement');
+  await expect(statement.locator('.mb-total .mb-amount')).toHaveText(/2\.?500,00/);
+  await expect(statement.locator('.mb-total')).toContainText(/de 2\.?800,00\s€ contratados/);
+  // Próximamente: la señal de 840 € pagada en parte (quedan 540 €); el saldo, sin fecha (su plazo es interno de Ikisai).
+  const deposit = statement.locator('li[data-move="senal"]');
+  await expect(deposit).toContainText('540,00');
+  await expect(deposit).toContainText('840,00');
+  await expect(deposit).toContainText('antes del');
+  await expect(deposit).toContainText('Pendiente');
+  await expect(statement.locator('li[data-move="saldo"]')).not.toContainText('antes del');
+  // Movimientos: las dos facturas y el pago recibido de la cobrada.
+  await expect(statement.locator('li.mb-doc')).toHaveCount(2);
+  await expect(statement.locator('li.mb-doc').filter({ hasText: 'Cobrada' })).toHaveCount(1);
+  await expect(statement.locator('li.mb-in')).toContainText('Pago recibido');
 
-  // Lo contratado (Booking): 2800 € con señal de 840 €; pagado 300 € (Finance); saldo 2500 €; la señal aún no está cubierta.
+  // Las seis cifras, con los ids de siempre.
   await expect(page.locator('#contractTotal')).toHaveText(/2\.?800,00/);
   await expect(page.locator('#contractPaid')).toHaveText(/300,00/);
   await expect(page.locator('#contractBalance')).toHaveText(/2\.?500,00/);
-  await expect(page.locator('#contractDue li[data-kind="senal"]')).toContainText('840,00');
-  await expect(page.locator('#contractDue li[data-kind="senal"]')).toContainText('Pendiente');
-  // El plazo del saldo es interno de Ikisai: el saldo sale sin fecha.
-  await expect(page.locator('#contractDue li[data-kind="saldo"]')).not.toContainText('antes del');
+  await expect(page.locator('#moneyInvoiced')).toHaveText(/1\.?000,00/);
+  await expect(page.locator('#moneyCollected')).toHaveText(/300,00/);
+  await expect(page.locator('#moneyPending')).toHaveText(/700,00/);
+  await expect(page.locator('#moneyTotals')).toContainText('Según la propuesta aceptada (versión 1)');
+
+  // «Cómo pagar», abierto bajo el extracto porque queda algo por pagar.
+  const how = page.locator('#paymentInstructions');
+  await expect(how).toContainText('Por transferencia');
+  expect(await how.evaluate((node) => node.tagName)).toBe('SECTION');
+  expect(await how.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('#moneyTotals')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
 
   // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
-  await page.locator('#moneyInvoices .orginvoice').first().click();
+  await statement.locator('li.mb-doc .mb-open').first().click();
   // El correo de organizadores de Central (`contact.organizers.email`), no el de reserva.
   await expect(page.locator('#askInvoice')).toContainText('hola-organizadores@ikisai.com');
+});
+
+test('organizers · pagos todo pagado: nada por pagar y «Cómo pagar» plegado al final', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro ya pagado', confirm: true });
+  await api.seedRates();
+  const proposal = await api.sendProposal(reservation, 20);
+  await api.acceptProposal(proposal);
+  await api.registeredInvoice(reservation, '2026-0301', 2800, true);
+  await enter(page, await api.organizerLink([reservation], 'pagado@example.invalid', 'Pilar'));
+
+  await page.locator('#tab-pagos').click();
+  await expect(page.locator('#moneyStatement .mb-total .mb-amount')).toHaveText(/^0,00/);
+  await expect(page.locator('#contractBalance')).toHaveText(/^0,00/);
+  const how = page.locator('#paymentInstructions');
+  await expect(how).toContainText('Por transferencia');
+  expect(await how.evaluate((node) => [node.tagName, (node as HTMLDetailsElement).open])).toEqual(['DETAILS', false]);
+  expect(await how.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('#moneyTotals')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
 });
 
 test('organizers · factura emitida desde Finance: la copia congelada se pinta e imprime con la página del kit', async ({ page }) => {
@@ -415,8 +514,12 @@ test('organizers · factura emitida desde Finance: la copia congelada se pinta e
   await enter(page, await api.organizerLink([reservation], 'emitida@example.invalid', 'Olga'));
   await page.locator('#tab-pagos').click();
   // Concepto del cobro (Finance #313): rótulo «Saldo».
-  await expect(page.locator('#moneyInvoices .orgpurpose')).toHaveText('Saldo');
-  await page.locator('#moneyInvoices .orginvoice').first().click();
+  await expect(page.locator('#moneyStatement .orgpurpose')).toHaveText('Saldo');
+  // Sin contrato, el extracto cuenta las facturas enviadas sin pagar.
+  await expect(page.locator('#moneyStatement .mb-total')).toContainText('Facturas enviadas sin pagar');
+  await expect(page.locator('#moneyStatement .mb-total .mb-amount')).toHaveText(/1\.?100,00/);
+  await expect(page.locator('#noContract')).toBeVisible();
+  await page.locator('#moneyStatement li.mb-doc .mb-open').first().click();
   await expect(page.locator('#invoiceDocumentView')).toContainText('Factura F2026-0001');
   await expect(page.locator('#docRecipient')).toContainText('Asociación Organiza');
   await expect(page.locator('#docTotal')).toHaveText(/1\.?100,00/);

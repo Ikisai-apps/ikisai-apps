@@ -1,14 +1,17 @@
 /**
- * Pagos y facturas (fase 3, API.md §13.3; Finance F1 y F2). Lo pagado sale **solo de Finance**: lo facturado, lo
- * cobrado y lo pendiente, y cada factura con su estado. La factura emitida desde Finance se pinta desde su copia
- * congelada con la página imprimible del kit (imprimir o guardar en PDF). Una factura antigua que solo tiene su PDF
- * guardado aún no se puede abrir desde el portal: «Pide esta factura a Ikisai», con el contacto público.
- * Lo contratado (total, señal y vencimientos) llegará de Booking; con ello se mostrará el saldo.
+ * Pagos y facturas (fase 3, API.md §13.3; Finance F1 y F2; pasada única, zona 2). Lo pagado sale **solo de Finance**: lo
+ * facturado, lo cobrado y lo pendiente, y cada factura con su estado. Lo contratado (total, señal y vencimientos) sale de
+ * Booking. Arriba, el extracto del kit (`renderMoneyBreakdown` en modo `statement`, con `app/pay-state.ts`): lo que te
+ * queda por pagar, lo próximo y los movimientos. Debajo, la forma de pago acordada, «Cómo pagar» (texto de Central) y la
+ * banda de las seis cifras con la regla escrita.
+ * - La factura emitida desde Finance se pinta desde su copia congelada con la página imprimible del kit (imprimir o
+ *   guardar en PDF), en español. Una factura antigua que solo tiene su PDF guardado aún no se puede abrir desde el portal:
+ *   «Pide esta factura a Ikisai», con el contacto público.
  */
-import { createPrintView, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { createPrintView, el, openSheet, renderMoneyBreakdown, replace, toast, type MoneyMove } from '@ikisai/ui-kit';
 import type { IssuedAddress, IssuedDocument, IssuerSnapshot } from '../../../../supabase/functions/_domain/invoices/issued.ts';
 import type { Contract, PortalInvoice, PortalMoney } from '../app/api.ts';
-import { balanceOf } from '../app/quote.ts';
+import { statementOf, type StatementMove } from '../app/pay-state.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, contactLine, textParagraphs } from '../app/common-texts.ts';
 import { i18n, L, t } from '../app/i18n.ts';
@@ -63,47 +66,58 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
 
   function paint(m: PortalMoney, staleAt: string | null): void {
     const totals = m.totals;
-    const list = m.invoices.length
-      ? el('div', { class: 'list', role: 'list', 'aria-label': t('Facturas') }, ...m.invoices.map((inv) => fbMark(el('button', {
-        type: 'button', class: 'orginvoice', 'data-invoice': inv.id, onclick: () => void open(inv),
-      },
-      el('span', { class: 'orginvoice-main' },
-        el('strong', null, inv.type.startsWith('R') ? t('Rectificativa {numero}', { numero: inv.number }) : t('Factura {numero}', { numero: inv.number })),
-        el('span', { class: 'muted small' }, purposeChip(inv.purpose), ' ', issueDay(inv.issue_date), inv.rectifies?.length ? ` · ${t('rectifica {numeros}', { numeros: inv.rectifies.join(', ') })}` : '')),
-      el('span', { class: 'orginvoice-side' },
-        el('strong', null, money(inv.total)),
-        el('span', { class: `chip small ${inv.collected ? 'ok' : 'warn'}` }, inv.collected ? t('Cobrada') : t('Pendiente')))),
-      'organizers.pagos.factura.abrir', 'Abrir factura')))
-      : el('p', { class: 'muted', id: 'noInvoices' }, t('Aún no hay facturas de este retiro.'));
+    const s = statementOf(contract, m, { t, money: (n) => money(n), day: issueDay });
+    const toMove = (x: StatementMove): MoneyMove => {
+      const chip = x.kind === 'doc' ? purposeChip(x.purpose) : null;
+      return {
+        id: x.id, date: x.date, label: x.label, amount: x.amount, kind: x.kind, chip: x.chip,
+        meta: chip ? el('span', null, chip, ' ', x.meta) : x.meta,
+        ...(x.invoice ? { onOpen: () => void open(x.invoice!) } : {}),
+      };
+    };
+    const statement = renderMoneyBreakdown({
+      mode: 'statement',
+      total: s.total,
+      totalLabel: s.hasContract ? t('Te queda por pagar') : t('Facturas enviadas sin pagar'),
+      subtitle: s.hasContract ? t('de {importe} contratados', { importe: money(s.contracted) }) : null,
+      upcoming: s.upcoming.map(toMove), upcomingLabel: t('Próximamente'),
+      moves: s.moves.map(toMove), movesLabel: t('Movimientos'),
+      emptyText: t('Aún no hay facturas ni pagos de este retiro.'),
+      format: (n) => money(n),
+    });
+    for (const button of statement.querySelectorAll('li.mb-doc button.mb-open')) fbMark(button, 'organizers.pagos.factura.abrir', 'Abrir factura');
+
+    // «Cómo pagar» (texto de Central): abierto bajo el extracto si queda algo; plegado al final si está todo pagado.
     const instructions = commonText('payment.instructions');
-    const b = contract ? balanceOf(contract, Number(totals.collected) || 0) : null;
-    const contracted = contract && b
-      ? section(t('Lo contratado'), { id: 'moneyContract' },
-        el('dl', { class: 'kv orgtotals' },
-          el('dt', null, t('Total contratado')), el('dd', { id: 'contractTotal' }, money(b.contracted)),
-          el('dt', null, t('Pagado')), el('dd', { id: 'contractPaid' }, money(b.collected)),
-          el('dt', null, t('Saldo pendiente')), el('dd', { id: 'contractBalance', class: b.balance > 0 ? 'warn-text' : '' }, el('strong', null, money(b.balance))),
-          contract.payment_type ? el('dt', null, t('Forma de pago acordada')) : null,
-          contract.payment_type ? el('dd', null, t(PAYMENT_TYPES[contract.payment_type] ?? contract.payment_type)) : null),
-        el('h4', null, t('Vencimientos')),
-        el('ul', { class: 'plainlist orgdue', id: 'contractDue' }, ...b.due.map((d) => el('li', { 'data-kind': d.kind },
-          el('strong', null, d.kind === 'senal' ? t('Señal') : t('Saldo')), ` · ${money(d.amount)}`,
-          // El plazo del saldo es interno de Ikisai (aclaración del usuario, 8-10-2026): solo la señal lleva fecha.
-          d.date && d.kind === 'senal' ? ` · ${t('antes del {fecha}', { fecha: issueDay(d.date) })}` : '', ' ',
-          el('span', { class: `chip small ${d.paid ? 'ok' : 'warn'}` }, d.paid ? t('Pagado') : t('Pendiente'))))),
-        el('p', { class: 'muted small' }, t('Según la propuesta aceptada (versión {n}). Lo pagado sale de las facturas cobradas.', { n: contract.proposal_version })))
-      : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.'));
+    const owes = s.total > 0 || Number(totals.pending) > 0;
+    const howTitle = instructions.title ?? t('Cómo pagar');
+    const how = owes
+      ? fbMark(section(howTitle, { id: 'paymentInstructions', 'data-feedback-ignore': '' }, ...textParagraphs(instructions.body)), 'organizers.pagos.como_pagar', 'Cómo pagar')
+      : fbMark(el('details', { id: 'paymentInstructions', class: 'card orgcard', 'data-feedback-ignore': '' }, el('summary', null, howTitle), ...textParagraphs(instructions.body)), 'organizers.pagos.como_pagar', 'Cómo pagar');
+
+    const figures = fbMark(section(t('Las cuentas'), { id: 'moneyTotals' },
+      el('dl', { class: 'kv orgtotals' },
+        s.hasContract ? [
+          el('dt', null, t('Total contratado')), el('dd', { id: 'contractTotal' }, money(s.contracted)),
+          el('dt', null, t('Pagado')), el('dd', { id: 'contractPaid' }, money(s.collected)),
+          el('dt', null, t('Te queda por pagar')), el('dd', { id: 'contractBalance', class: s.total > 0 ? 'warn-text' : '' }, el('strong', null, money(s.total))),
+        ] : null,
+        el('dt', null, t('Facturado')), el('dd', { id: 'moneyInvoiced' }, money(totals.invoiced)),
+        el('dt', null, t('Cobrado')), el('dd', { id: 'moneyCollected' }, money(totals.collected)),
+        el('dt', null, t('Facturas enviadas sin pagar')), el('dd', { id: 'moneyPending', class: Number(totals.pending) > 0 ? 'warn-text' : '' }, money(totals.pending))),
+      el('p', { class: 'muted small' }, t('«Te queda por pagar» es lo contratado menos lo pagado. «Facturas enviadas sin pagar» cuenta solo lo que ya te hemos facturado.')),
+      contract ? el('p', { class: 'muted small' }, t('Según la propuesta aceptada (versión {n}). Lo pagado sale de las facturas cobradas.', { n: contract.proposal_version })) : null,
+      el('p', { class: 'muted small' }, t('Lo cobrado lo registra el equipo de Ikisai al recibir cada pago.'))),
+    'organizers.pagos.cifras', 'Las cuentas');
+
     replace(host,
       staleAt ? staleNote(staleAt) : null,
-      contracted,
-      section(t('Facturación'), { id: 'moneyTotals' },
-        el('dl', { class: 'kv orgtotals' },
-          el('dt', null, t('Facturado')), el('dd', { id: 'moneyInvoiced' }, money(totals.invoiced)),
-          el('dt', null, t('Cobrado')), el('dd', { id: 'moneyCollected' }, money(totals.collected)),
-          el('dt', null, t('Pendiente de pago')), el('dd', { id: 'moneyPending', class: Number(totals.pending) > 0 ? 'warn-text' : '' }, money(totals.pending))),
-        el('p', { class: 'muted small' }, t('Lo cobrado lo registra el equipo de Ikisai al recibir cada pago.'))),
-      section(t('Facturas'), { id: 'moneyInvoices' }, list),
-      section(instructions.title ?? t('Cómo pagar'), { id: 'paymentInstructions', 'data-feedback-ignore': '' }, ...textParagraphs(instructions.body)));
+      contract ? null : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.')),
+      fbMark(el('div', { id: 'moneyStatement', class: 'orgstatement' }, statement), 'organizers.pagos.extracto', 'Extracto'),
+      contract?.payment_type ? el('p', { id: 'paymentType' }, t('Forma de pago acordada: {forma}', { forma: t(PAYMENT_TYPES[contract.payment_type] ?? contract.payment_type) })) : null,
+      owes ? how : null,
+      figures,
+      owes ? null : how);
   }
 
   void load();

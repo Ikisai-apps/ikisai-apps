@@ -93,7 +93,7 @@ export interface PortalRates { available: boolean; rates: PortalRate[]; conditio
 
 export interface ProposalLine { description: string; unit: string; quantity: number | string; unit_amount: number | string; discount_pct: number | string | null; amount: number | string | null }
 export interface PortalProposal {
-  id: string; version: number; status: 'enviada' | 'aceptada'; nature: 'orientativa' | 'cerrada'; start_date: string | null; end_date: string | null;
+  id: string; version: number; status: 'enviada' | 'aceptada' | 'sustituida' | 'caducada'; nature: 'orientativa' | 'cerrada'; start_date: string | null; end_date: string | null;
   persons: number | null; subtotal: number | string; adjustments: number | string; vat_amount: number | string; total: number | string; deposit_amount: number | string;
   valid_until: string | null; includes: string | null; excludes: string | null; sent_at: string | null; decided_at: string | null;
   conditions: {
@@ -102,6 +102,8 @@ export interface PortalProposal {
     tiers: Array<{ min_days_before: number; deposit_refund_pct: number | string; extra_costs: boolean }>;
   } | null;
   lines: ProposalLine[];
+  /** Con `include_history` (Booking #610): en las sustituidas, la versión que la sustituyó. */
+  superseded_by_version?: number | null;
 }
 /** Dinero del retiro según Finance (F1): sus facturas y lo facturado, cobrado y pendiente. Lo pagado sale solo de aquí. */
 export interface PortalInvoice {
@@ -137,7 +139,8 @@ export interface PortalApi {
   updateDraft(reservationId: string, change: { fields?: DraftFields; extras?: ExtraRequest[] }): Promise<{ reservation_id: string; revision: number }>;
   extraRequests(reservationId: string): Promise<Loaded<{ items: ExtraRequest[] }>>;
   rates(reservationId: string): Promise<Loaded<PortalRates>>;
-  proposals(reservationId: string): Promise<Loaded<{ items: PortalProposal[] }>>;
+  /** De la versión más alta a la más baja. Con `history`, también las sustituidas y caducadas (Booking #610). */
+  proposals(reservationId: string, options?: { history?: boolean }): Promise<Loaded<{ items: PortalProposal[] }>>;
   request(reservationId: string, request: { kind: 'quiere_confirmar' | 'comentario'; proposal_id?: string | null; message?: string | null }): Promise<{ id: string; status: string }>;
   myRequests(reservationId: string): Promise<Loaded<{ items: PortalRequest[] }>>;
   money(reservationId: string): Promise<Loaded<PortalMoney>>;
@@ -194,7 +197,7 @@ export function createPortalApi(client: SyncClient): PortalApi {
     updateDraft: (reservationId, change) => invoke('booking.portal_update_draft', { reservation_id: reservationId, ...change }) as Promise<{ reservation_id: string; revision: number }>,
     extraRequests: (reservationId) => read('booking.portal_extra_requests', { reservation_id: reservationId }),
     rates: (reservationId) => read('booking.portal_rates', { reservation_id: reservationId }),
-    proposals: (reservationId) => read('booking.portal_proposals', { reservation_id: reservationId }),
+    proposals: (reservationId, options) => read('booking.portal_proposals', { reservation_id: reservationId, ...(options?.history ? { include_history: true } : {}) }),
     request: (reservationId, request) => invoke('booking.portal_request', { reservation_id: reservationId, ...request }) as Promise<{ id: string; status: string }>,
     myRequests: (reservationId) => read('booking.portal_my_requests', { reservation_id: reservationId }),
     money: (reservationId) => read('invoices.portal_reservation_money', { reservation_id: reservationId }),

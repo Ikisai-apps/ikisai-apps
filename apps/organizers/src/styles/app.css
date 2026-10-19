@@ -161,3 +161,50 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgstep:disabled{opacity:.4;cursor:default}
 .orgextra-count{min-width:60px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
 .orgextra-tag{margin-left:4px}
+
+/* Pasada única, zona 2: Diseño, Propuesta y Pagos */
+.orgpricebar{position:sticky;top:calc(68px + env(safe-area-inset-top,0px));z-index:3;max-height:64px;overflow:hidden;margin:0 0 12px;padding:6px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper);box-shadow:var(--shadow-1)}
+.orgpricebar p{margin:0}
+.orgpricebar-main{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 12px;font-size:.95rem;line-height:20px}
+.orgpricebar-main strong{font-variant-numeric:tabular-nums}
+.orgpricebar-avg,.orgpricebar-empty{font-size:12px;line-height:15px;color:var(--muted)}
+#designReady .check-box{margin:0}
+.orgversus{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.orgtap{min-height:var(--tap,46px);min-width:var(--tap,46px)}
+.orgcalcfield{align-content:start}
+.orgcalcfield .orgnumber{max-width:100%}
+.field input.orgrange,.orgrange{width:100%;min-height:var(--tap,46px);margin:0;padding:0;border:0;background:transparent;box-shadow:none;accent-color:var(--accent);cursor:pointer}
+.orgrange::-webkit-slider-thumb{width:28px;height:28px}
+.orgrange::-moz-range-thumb{width:28px;height:28px}
+.orgpriceblock{margin:0 0 14px;padding:12px;border:1px dashed var(--line);border-radius:14px}
+.orgpriceblock .field{margin-bottom:8px}
+.orgrangewrap{position:relative;padding-top:var(--tap,46px)}
+/* La raya roja del punto de equilibrio: 46 × 46 de toque, con la raya visible de 3 px dentro. */
+.orgbreakeven{position:absolute;top:0;z-index:1;width:var(--tap,46px);height:var(--tap,46px);margin:0;padding:0;border:0;background:transparent;transform:translateX(-50%);cursor:pointer;display:flex;justify-content:center}
+.orgbreakeven-line{display:block;width:3px;height:100%;border-radius:2px;background:var(--alert)}
+.orgbreakeven:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.orgbreakeven-label{font-size:var(--text-sm,.875rem);font-weight:700;color:var(--alert)}
+.orgwant{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.orgwant-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-weight:600}
+.orgwant-row input{width:76px;min-height:var(--tap,46px);border:1px solid var(--line);border-radius:var(--radius-sm,10px);padding:8px 10px;background:var(--paper);color:var(--ink);font:inherit}
+.orgwant .hint{display:block;margin-top:4px;font-size:12px;color:var(--muted)}
+#marginSeatsNote{flex-wrap:wrap}
+.orgpropviews{display:flex;margin:0 0 12px}
+.orgpropviews button{flex:1 1 0;min-height:var(--tap,46px);height:auto;padding:6px 12px;color:var(--ink)}
+.orgpropviews button[aria-pressed="true"]{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.orgproposal h4{margin:12px 0 4px;font-size:.95rem}
+.orgprevious-all{padding:4px 16px}
+.orgprevious-all>summary,.orgprevious>summary{min-height:var(--tap,46px);display:flex;align-items:center;font-weight:700;cursor:pointer}
+.orgprevious{border-top:1px solid var(--line)}
+.orgprevious .orgproposal{margin:0 0 12px;box-shadow:none}
+.orgscrollx{overflow-x:auto;max-width:100%}
+.orgcompare{min-width:460px}
+.orgcompare th:first-child,.orgcompare td:first-child{min-width:150px}
+.orgcompare th{text-align:left;padding:6px 8px 6px 0;font-size:12px;color:var(--muted)}
+.orgcompare th.num,.orgcompare td.num{text-align:right}
+.orgcompare td{padding:6px 8px 6px 0}
+.orgcompare-foot th,.orgcompare-foot td{font-weight:700;color:var(--ink);border-top:1px solid var(--line)}
+.orgwantsent{margin:0;flex-basis:100%}
+.orgstatement{margin:0 0 12px}
+#paymentType{margin:0 0 12px;font-weight:600}
+details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;align-items:center;font-weight:700;cursor:pointer}

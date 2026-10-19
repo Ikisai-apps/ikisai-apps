@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { marginOf, offersMargin, quote, type QuoteInput } from '../../apps/organizers/src/app/quote.ts';
+import { averagePrice, breakEvenAttendees, breakEvenPrice, marginOf, marginPct, offersMargin, priceForMargin, quote, type QuoteInput } from '../../apps/organizers/src/app/quote.ts';
 import type { PortalRate } from '../../apps/organizers/src/app/api.ts';
 
 const rate = (fields: Partial<PortalRate> & Pick<PortalRate, 'id' | 'name' | 'layer' | 'unit' | 'amount'>): PortalRate => ({
@@ -80,4 +80,38 @@ test('organizers · ofertas: ingresos por oferta, asistentes previstos, margen y
   assert.equal(r.margin, 2400);
   assert.equal(r.breakEven, 10, 'precio medio 492,86 €: 10 asistentes cubren 4500 €');
   assert.equal(offersMargin([], 1000, 0).breakEven, null);
+});
+
+test('organizers · «¿Cuánto ganas?»: precio para cubrir costes, precio para ganar un % y % ganado (adenda)', () => {
+  // 7810 € entre 24 asistentes: 325,42 € → 326 € (al euro hacia arriba).
+  assert.equal(breakEvenPrice({ ikisai: 7810, otherCosts: 0, attendees: 24 }), 326);
+  // 20 % sobre los costes: 7810 × 1,2 / 24 = 390,5 → 391 €.
+  assert.equal(priceForMargin({ ikisai: 7810, otherCosts: 0, attendees: 24, pct: 20 }), 391);
+  assert.equal(breakEvenPrice({ ikisai: 7810, otherCosts: 0, attendees: 0 }), null);
+  assert.equal(priceForMargin({ ikisai: 7810, otherCosts: 0, attendees: 0, pct: 20 }), null);
+  assert.equal(marginPct(marginOf({ price: 391, attendees: 24, ikisai: 7810, otherCosts: 0 })), 20);
+  assert.equal(marginPct(marginOf({ price: 100, attendees: 0, ikisai: 0, otherCosts: 0 })), null, 'sin costes no hay %');
+  // `round2` antes de `ceil`: 148 exactos no salen como 149.
+  assert.equal(breakEvenPrice({ ikisai: 2950, otherCosts: 0, attendees: 20 }), 148);
+  assert.equal(breakEvenPrice({ ikisai: 1480, otherCosts: 0, attendees: 10 }), 148);
+});
+
+test('organizers · «¿Cuánto ganas?»: punto de equilibrio con lo de Ikisai variando con las plazas', () => {
+  // Mínimo por retiro de 2500 €; 120 € por plaza (2 noches × 60 €) y 400 € de sala.
+  const ikisaiFor = (n: number) => { const q = quote(base({ persons: n, reservation: { ...base().reservation, expected_guests: n } })); return q.available ? q.payable : 0; };
+  // Con 9 asistentes a 300 € (2700 €) se cubre el mínimo de 2500 €; con 8 (2400 €), no.
+  assert.equal(breakEvenAttendees({ price: 300, collaborators: 0, otherCosts: 0, ikisaiFor }), 9);
+  // Con 4 colaboradores aún se paga el mínimo (13 plazas): sigue en 9. Con 12 (21 plazas, 2920 €), sube a 11.
+  assert.equal(breakEvenAttendees({ price: 300, collaborators: 4, otherCosts: 0, ikisaiFor }), 9);
+  assert.equal(breakEvenAttendees({ price: 300, collaborators: 12, otherCosts: 0, ikisaiFor }), 11);
+  // A 100 € por asistente nunca se cubren los 120 € por plaza.
+  assert.equal(breakEvenAttendees({ price: 100, collaborators: 0, otherCosts: 0, ikisaiFor }), null);
+  assert.equal(breakEvenAttendees({ price: 0, collaborators: 0, otherCosts: 0, ikisaiFor }), null);
+});
+
+test('organizers · precio medio por persona: el total entre N; sin personas, nada', () => {
+  assert.equal(averagePrice(2950, 20), 147.5);
+  assert.equal(averagePrice('2800', 20), 140);
+  assert.equal(averagePrice(2800, null), null);
+  assert.equal(averagePrice(2800, 0), null);
 });

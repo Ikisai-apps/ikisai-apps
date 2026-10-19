@@ -1,29 +1,37 @@
 /**
- * «Diseña tu retiro» (fase 2, API.md §13.2; Booking B7d, B9 y B10). El borrador es la propia reserva de Booking «en
- * estudio»: lo que cambia aquí lo ve el personal al instante. Se guarda solo, campo a campo.
+ * «Diseña tu retiro» (fase 2, API.md §13.2; Booking B7d, B9 y B10; pasada única, zona 2). El borrador es la propia
+ * reserva de Booking «en estudio»: lo que cambia aquí lo ve el personal al instante. Se guarda solo, campo a campo.
+ * - Banda de precio fija arriba y «Lo que te falta por rellenar» (`app/design-checks.ts`): sin prometer la propuesta.
  * - Personas, comidas, alojamiento y espacios, extras y notas para Ikisai.
- * - Precio orientativo con el motor de tarifas de Booking (IVA incluido, mínimo comercial y señal).
- * - Calculadora privada de margen: solo en este dispositivo.
+ * - Precio orientativo con el motor de tarifas de Booking (IVA incluido, mínimo comercial y señal), el precio de cada
+ *   fecha en «Calcular para», el precio medio por persona y el diseño frente a la propuesta de Ikisai.
+ * - «¿Cuánto ganas?»: calculadora privada, solo en este dispositivo. Lo de Ikisai varía con las plazas (asistentes más
+ *   colaboradores); los colaboradores solo cuentan aquí y **nunca** se escriben en Booking (las plazas, en «Personas»).
  */
-import { createSaveState, el, replace, toast } from '@ikisai/ui-kit';
-import type { DraftFields, ExtraRequest, PortalDates, PortalRates, ReservationDetail } from '../app/api.ts';
+import { createSaveState, el, renderChecks, replace, toast, type CheckItem } from '@ikisai/ui-kit';
+import type { DraftFields, ExtraRequest, PortalDates, PortalProposal, PortalRates, ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
+import { designChecks, type DesignCheckTarget } from '../app/design-checks.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import { dateRange } from '../app/labels.ts';
-import { marginOf, quote, type Quote } from '../app/quote.ts';
+import { proposalVersions } from '../app/proposal-state.ts';
+import { averagePrice, breakEvenAttendees, breakEvenPrice, marginOf, marginPct, priceForMargin, quote, type Quote, type QuoteInput } from '../app/quote.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
 const MEAL_PLANS: Array<[string, string]> = [['pension_completa', L('Pensión completa')], ['media_pension', L('Media pensión')], ['desayuno', L('Desayuno')], ['segun_programa', L('Comidas según programa')]];
-const MENU_STYLES: Array<[string, string]> = [['vegetariano', L('Vegetariano')], ['vegano', L('Vegano')], ['mixto', L('Mixto (con carne o pescado)')], ['otro', L('A medida')]];
+const MENU_STYLES: Array<[string, string]> = [['vegetariano', L('Vegetariano')], ['vegano', L('Vegano')], ['mixto', L('Omnívoro')], ['otro', L('A medida')]];
 const SPACES: Array<[keyof DraftFields, string]> = [
   ['uses_accommodation', L('Alojamiento (dormir en Ikisai)')], ['uses_interpretation_center', L('Centro de interpretación')],
   ['uses_outdoors', L('Zonas exteriores')], ['uses_pool', L('Piscina')],
   ['special_setup', L('Montaje especial de las salas')], ['technical_support', L('Apoyo técnico (sonido, proyección…)')],
 ];
+const labelOf = (list: Array<[string, string]>, value: string) => { const hit = list.find(([k]) => k === value); return hit ? t(hit[1]) : value; };
 
-interface Margins { price: string; attendees: string; other: string }
+/** Lo que guarda la calculadora en el borrador local (todo en texto, tal como se teclea). Nunca viaja. */
+interface Margins { price: string; attendees: string; collaborators: string; other: string; pct: string }
+const EMPTY_MARGINS: Margins = { price: '', attendees: '', collaborators: '', other: '', pct: '' };
 
 export function renderDesign(ctx: ViewContext, reservationId: string, detail: ReservationDetail, dates: PortalDates | null, reload: () => void): HTMLElement {
   const host = el('div', { id: 'design', 'data-feedback-id': 'organizers.diseno', 'data-feedback-label': 'Diseño' }, loading());
@@ -43,6 +51,8 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
   };
   let extras: ExtraRequest[] = [];
   let rates: PortalRates = { available: false, rates: [], conditions: null };
+  /** La propuesta vigente de Ikisai (lectura sin historial, con caché), para «Diseño frente a la propuesta». */
+  let proposal: PortalProposal | null = null;
 
   async function save(): Promise<void> {
     if (timer) { clearTimeout(timer); timer = null; }
@@ -70,45 +80,115 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
     }
   }
   const schedule = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => void save(), 800); };
-  const change = (fields: DraftFields) => { Object.assign(state, fields); pendingFields = { ...pendingFields, ...fields }; schedule(); paintQuote(); };
+  // La calculadora (#margin-*) nunca pasa por aquí: no escribe en Booking.
+  const change = (fields: DraftFields) => { Object.assign(state, fields); pendingFields = { ...pendingFields, ...fields }; schedule(); paintQuote(); paintChecks(); };
   const changeExtras = (next: ExtraRequest[]) => { extras = next; pendingExtras = next; schedule(); paintQuote(); };
   const resume = () => { if (Object.keys(pendingFields).length || pendingExtras) void save(); };
   window.addEventListener('online', resume);
 
+  const money = (n: number) => i18n.formatMoney(n);
+  const averageLine = (total: number, persons: number | null) => {
+    const average = averagePrice(total, persons);
+    return average === null ? null : t('Precio medio por persona: {importe} · el total entre {n} personas', { importe: money(average), n: persons ?? 0 });
+  };
+
+  /** Lleva a un campo del diseño: se desplaza (sin animación si se pide menos movimiento) y le pone el foco. */
+  function goField(id: string): void {
+    const field = host.querySelector<HTMLElement>(`#${id}`);
+    if (!field) return;
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    field.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    field.focus({ preventScroll: true });
+  }
+  const go = (target: DesignCheckTarget) => (target.kind === 'tab' ? ctx.navigate(`#/retiro/${reservationId}/fechas`) : goField(target.field));
+
+  // --- Lo que te falta por rellenar ------------------------------------------------------------------------------------
+  const readyHost = el('div');
+  function paintChecks(): void {
+    const items: CheckItem[] = designChecks(state, dates, { t, mealPlan: (v) => labelOf(MEAL_PLANS, v), menuStyle: (v) => labelOf(MENU_STYLES, v) })
+      .map((c) => ({ ok: c.ok, text: c.text, detail: c.detail, action: c.ok ? null : { ...c.action, onClick: () => go(c.target) } }));
+    const pending = items.filter((i) => !i.ok).length;
+    replace(readyHost, renderChecks({
+      items, onlyPending: true, label: t('Lo que te falta por rellenar'),
+      verdict: pending === 0 ? t('Has rellenado lo básico. Puedes seguir cambiando el diseño cuando quieras.') : pending === 1 ? t('Te falta rellenar 1 cosa') : t('Te falta rellenar {n} cosas', { n: pending }),
+    }));
+  }
+
   // --- Precio orientativo --------------------------------------------------------------------------------------------
+  const priceBar = el('div', { id: 'priceBar', class: 'orgpricebar' });
   const quoteHost = el('div', { id: 'quote', 'data-feedback-id': 'organizers.diseno.precio', 'data-feedback-label': 'Precio orientativo' });
-  const marginHost = el('div', { id: 'margin', 'data-feedback-id': 'organizers.diseno.margen', 'data-feedback-label': 'Calculadora privada' });
-  // Fechas para el cálculo: la definitiva o una de las posibles (las que vienen bien primero).
+  const marginHost = el('div', { id: 'margin', 'data-feedback-id': 'organizers.diseno.margen', 'data-feedback-label': '¿Cuánto ganas?' });
+  // Fechas para el cálculo: la definitiva o una de las posibles (las que vienen bien primero). Nunca un hueco no ofrecido.
   const candidates = dates?.mode === 'fixed' && dates.definitive
     ? [{ id: 'fixed', start: dates.definitive.start, end: dates.definitive.end }]
     : [...(dates?.options ?? [])].sort((a, b) => Number(b.organizer_ok) - Number(a.organizer_ok)).map((o) => ({ id: o.id, start: o.start, end: o.end }));
   let chosen = candidates[0] ?? null;
   let lastQuote: Quote | null = null;
-  const money = (n: number) => i18n.formatMoney(n);
+
+  /** El mismo cálculo para el precio orientativo, cada fecha de «Calcular para» y la calculadora (con n plazas). */
+  const quoteInput = (range: { start: string; end: string }, persons: number): QuoteInput => ({
+    reservation: { event_type: detail.event_type ?? 'retiro', start_date: range.start, end_date: range.end, expected_guests: persons,
+      uses_accommodation: state.uses_accommodation, requires_meals: state.requires_meals, uses_interpretation_center: state.uses_interpretation_center,
+      uses_outdoors: state.uses_outdoors, uses_pool: state.uses_pool, special_setup: state.special_setup, technical_support: state.technical_support },
+    persons, rates: rates.rates, conditions: rates.conditions, extras,
+  });
+
+  function paintBar(q: Quote | null): void {
+    if (!rates.available) { priceBar.hidden = true; return; }
+    priceBar.hidden = false;
+    if (!q || !q.available) {
+      replace(priceBar, el('p', { class: 'orgpricebar-empty' }, t('Indica personas y una fecha para ver el precio.')));
+      return;
+    }
+    const average = averageLine(q.payable, state.expected_guests);
+    replace(priceBar,
+      el('p', { class: 'orgpricebar-main' },
+        el('span', null, t('Precio orientativo'), ' ', el('strong', null, money(q.payable))),
+        el('span', null, t('Señal'), ' ', el('strong', null, money(q.deposit)))),
+      average ? el('p', { class: 'orgpricebar-avg' }, average) : null);
+  }
+
+  function versusProposal(q: Extract<Quote, { available: true }>): HTMLElement | null {
+    const p = proposal;
+    if (!p) return null;
+    const guests = state.expected_guests ?? 0;
+    const same = Math.round(Number(p.total)) === Math.round(q.payable) && p.persons === state.expected_guests;
+    const text = same
+      ? t('Coincide con la propuesta de Ikisai (versión {v}).', { v: p.version })
+      : p.persons
+        ? t('La propuesta de Ikisai (versión {v}) es de {importe} para {n} personas. Con tu diseño de ahora ({m} personas) saldría {calculado}.', { v: p.version, importe: money(Number(p.total)), n: p.persons, m: guests, calculado: money(q.payable) })
+        : t('La propuesta de Ikisai (versión {v}) es de {importe}. Con tu diseño de ahora ({m} personas) saldría {calculado}.', { v: p.version, importe: money(Number(p.total)), m: guests, calculado: money(q.payable) });
+    return fbMark(el('p', { id: 'designVsProposal', class: 'orgversus' }, el('span', null, text), ' ',
+      el('button', { type: 'button', class: 'linkbtn orgtap', 'aria-label': t('Ver la propuesta de Ikisai'), onclick: () => ctx.navigate(`#/retiro/${reservationId}/propuesta`) }, t('Ver'))),
+    'organizers.diseno.frente_propuesta', 'Diseño frente a la propuesta');
+  }
 
   function paintQuote(): void {
     if (!rates.available) {
       replace(quoteHost, el('p', { class: 'muted' }, t('Ikisai te enviará el precio. Aún no hay tarifas publicadas para calcularlo aquí.')));
-      lastQuote = null; paintMargin(); return;
+      lastQuote = null; paintBar(null); paintMargin(); return;
     }
     if (!chosen) {
       replace(quoteHost, el('p', { class: 'muted' }, t('Marca primero alguna fecha posible en «Fechas» para calcular el precio.')));
-      lastQuote = null; paintMargin(); return;
+      lastQuote = null; paintBar(null); paintMargin(); return;
     }
-    const q = quote({
-      reservation: { event_type: detail.event_type ?? 'retiro', start_date: chosen.start, end_date: chosen.end, expected_guests: state.expected_guests,
-        uses_accommodation: state.uses_accommodation, requires_meals: state.requires_meals, uses_interpretation_center: state.uses_interpretation_center,
-        uses_outdoors: state.uses_outdoors, uses_pool: state.uses_pool, special_setup: state.special_setup, technical_support: state.technical_support },
-      persons: state.expected_guests ?? 0, rates: rates.rates, conditions: rates.conditions, extras,
-    });
+    const persons = state.expected_guests ?? 0;
+    const q = quote(quoteInput(chosen, persons));
     lastQuote = q;
+    paintBar(q);
+    // Cada fecha con su precio (si se puede calcular): sustituye a la hoja del calendario de precios.
+    const optionText = (c: { start: string; end: string }) => {
+      const each = quote(quoteInput(c, persons));
+      return each.available ? `${dateRange(c.start, c.end)} · ${money(each.payable)}` : dateRange(c.start, c.end);
+    };
     const picker = candidates.length > 1 ? el('label', { class: 'field' }, el('span', null, t('Calcular para')),
       el('select', { id: 'quoteDates', onchange: (e: Event) => { chosen = candidates.find((c) => c.id === (e.target as HTMLSelectElement).value) ?? chosen; paintQuote(); } },
-        ...candidates.map((c) => el('option', { value: c.id, selected: c.id === chosen?.id ? '' : null }, dateRange(c.start, c.end))))) : null;
+        ...candidates.map((c) => el('option', { value: c.id, selected: c.id === chosen?.id ? '' : null }, optionText(c))))) : null;
     if (!q.available) {
       replace(quoteHost, picker, el('p', { class: 'muted' }, q.reason === 'no_persons' ? t('Indica cuántas personas venís para calcular el precio.') : t('Marca primero alguna fecha posible en «Fechas» para calcular el precio.')));
       paintMargin(); return;
     }
+    const average = averageLine(q.payable, state.expected_guests);
     replace(quoteHost, picker,
       el('p', { class: 'muted small' }, q.nights === 1 ? t('1 noche') : t('{n} noches', { n: q.nights }),
         q.mealsIncluded ? ` · ${t('{n} comidas incluidas por persona', { n: q.mealsIncluded })}` : ''),
@@ -119,37 +199,173 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
         el('dt', null, t('Total con IVA incluido')), el('dd', { id: 'quoteTotal' }, money(q.payable)),
         el('dt', null, t('de los que IVA ({n} %)', { n: i18n.formatNumber(q.vatRate) })), el('dd', null, money(q.vatAmount)),
         el('dt', null, t('Señal para reservar')), el('dd', { id: 'quoteDeposit' }, money(q.deposit))),
+      average ? el('p', { class: 'muted', id: 'quoteAverage' }, average) : null,
       q.minimumApplied && q.minimum !== null ? el('p', { class: 'banner info', id: 'quoteMinimum' }, t('Se aplica el mínimo por retiro de {importe} (el cálculo daba {calculado}).', { importe: money(q.minimum), calculado: money(q.total) })) : null,
+      versusProposal(q),
       el('p', { class: 'muted small' }, t('Precio orientativo. La propuesta definitiva te la envía Ikisai.')));
     paintMargin();
   }
 
-  // --- Calculadora privada de margen (solo en el dispositivo) --------------------------------------------------------
+  // --- «¿Cuánto ganas?»: calculadora privada (solo en el dispositivo) ------------------------------------------------
   const marginKey = `margin:${reservationId}`;
-  let margins: Margins = { price: '', attendees: '', other: '' };
+  let margins: Margins = { ...EMPTY_MARGINS };
+  /** El máximo del deslizador del precio solo crece (no salta al mover el precio). */
+  let rangeMax = 1200;
+  let frame = 0;
+  let pctTyped = false;
+  const persist = () => void cache.saveDraft(ctx.userId, marginKey, margins);
+
   function paintMargin(): void {
-    const ikisai = lastQuote && lastQuote.available ? lastQuote.payable : 0;
-    const input = (key: keyof Margins, label: string, placeholder: string) => el('label', { class: 'field' }, el('span', null, label),
-      el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: `margin-${key}`, value: margins[key], placeholder,
-        oninput: (e: Event) => { margins = { ...margins, [key]: (e.target as HTMLInputElement).value }; void cache.saveDraft(ctx.userId, marginKey, margins); paintResults(); } }));
+    // Lo de Ikisai por n plazas: el mismo cálculo que el precio orientativo con persons = n. Memorizado mientras no cambie el diseño.
+    const memo = new Map<number, number>();
+    const ikisaiFor = (n: number): number => {
+      if (!(n > 0) || !chosen || !rates.available) return 0;
+      const hit = memo.get(n);
+      if (hit !== undefined) return hit;
+      const q = quote(quoteInput(chosen, n));
+      const value = q.available ? q.payable : 0;
+      memo.set(n, value);
+      return value;
+    };
+    const expected = state.expected_guests ?? 0;
+    const attendeesOf = () => (margins.attendees === '' ? expected : Math.max(0, Math.round(Number(margins.attendees) || 0)));
+    const collaboratorsOf = () => (margins.collaborators === '' ? 0 : Math.max(0, Math.round(Number(margins.collaborators) || 0)));
+    const otherOf = () => Math.max(0, Number(margins.other) || 0);
+
+    const numberInput = (id: string, value: string, placeholder: string, attrs: Record<string, string> = {}) => el('input', {
+      type: 'number', min: '0', step: 'any', inputmode: 'decimal', id, value, placeholder, class: 'orgnumber', ...attrs,
+    }) as HTMLInputElement;
+    const range = (id: string, label: string, max: number) => el('input', { type: 'range', min: '0', max: String(max), step: '1', id, class: 'orgrange', 'aria-label': label }) as HTMLInputElement;
+
+    const peopleMax = Math.max(50, Math.ceil((expected * 2) / 10) * 10);
+    const attendees = numberInput('margin-attendees', margins.attendees, String(state.expected_guests ?? ''), { step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-attendees-help' });
+    const attendeesRange = range('margin-attendees-range', t('Asistentes'), peopleMax);
+    const collaborators = numberInput('margin-collaborators', margins.collaborators, '0', { step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-collaborators-help' });
+    const collaboratorsRange = range('margin-collaborators-range', t('Colaboradores sin coste'), Math.max(20, Math.ceil(expected / 10) * 10));
+    const price = numberInput('margin-price', margins.price, '0');
+    const priceRange = range('margin-price-range', t('Precio por asistente'), rangeMax);
+    const pct = numberInput('margin-pct', margins.pct, '', { min: '0', max: '500', step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-pct-help' });
+    const other = numberInput('margin-other', margins.other, '0');
+
+    const seats = el('p', { id: 'marginSeats', class: 'small', 'aria-live': 'polite' });
+    const seatsText = el('span');
+    const seatsNote = el('p', { id: 'marginSeatsNote', class: 'banner info', hidden: '' }, seatsText,
+      fbMark(el('button', { type: 'button', class: 'linkbtn orgtap', onclick: () => goField('d-expected_guests') }, t('Ir a Personas')), 'organizers.diseno.margen.ir_personas', 'Ir a Personas'));
+    const beButton = fbMark(el('button', { type: 'button', id: 'marginBreakEvenPrice', class: 'orgbreakeven', onclick: () => {
+      const be = breakEvenPrice({ ikisai: ikisaiFor(attendeesOf() + collaboratorsOf()), otherCosts: otherOf(), attendees: attendeesOf() });
+      if (be === null) return;
+      margins = { ...margins, price: String(be), pct: '0' };
+      price.value = margins.price;
+      pct.value = '0';
+      persist();
+      price.focus();
+      update();
+    } }, el('span', { class: 'orgbreakeven-line', 'aria-hidden': 'true' })), 'organizers.diseno.margen.equilibrio', 'Cubres costes');
+    const beLabel = el('span', { id: 'marginBreakEvenLabel', class: 'orgbreakeven-label' });
+    const beNone = el('p', { class: 'muted small', id: 'marginBreakEvenNone', hidden: '' }, t('Pon asistentes para ver con qué precio cubres costes.'));
+    const noIkisai = el('p', { class: 'banner info', id: 'marginNoIkisai', hidden: '' }, t('Sin precio de Ikisai: esta cuenta solo lleva tus otros gastos.'));
     const results = el('dl', { class: 'kv orgtotals', id: 'marginResults' });
-    function paintResults(): void {
-      const att = margins.attendees === '' ? (state.expected_guests ?? 0) : Number(margins.attendees);
-      const r = marginOf({ price: Number(margins.price || 0), attendees: att, ikisai, otherCosts: Number(margins.other || 0) });
+
+    function compute(): void {
+      const a = attendeesOf();
+      const c = collaboratorsOf();
+      const otherCosts = otherOf();
+      const ikisai = ikisaiFor(a + c);
+      if (pctTyped && margins.pct !== '') {
+        const next = priceForMargin({ ikisai, otherCosts, attendees: a, pct: Number(margins.pct) || 0 });
+        if (next !== null) { margins = { ...margins, price: String(next) }; price.value = margins.price; persist(); }
+      }
+      const p = Number(margins.price) || 0;
+      const r = marginOf({ price: p, attendees: a, ikisai, otherCosts });
+      // El precio manda: el % se recalcula, salvo mientras se escribe en él.
+      if (!pctTyped && document.activeElement !== pct) {
+        const m = margins.price === '' ? null : marginPct(r);
+        const text = m === null || m < 0 ? '' : String(m);
+        if (text !== margins.pct) { margins = { ...margins, pct: text }; persist(); }
+        pct.value = text;
+      }
+      pctTyped = false;
+
+      attendeesRange.value = String(Math.min(a, Number(attendeesRange.max)));
+      collaboratorsRange.value = String(Math.min(c, Number(collaboratorsRange.max)));
+      seats.textContent = t('En esta cuenta: {plazas} con Ikisai ({asistentes} + {colaboradores}).', {
+        plazas: a + c === 1 ? t('1 plaza') : t('{n} plazas', { n: a + c }),
+        asistentes: a === 1 ? t('1 asistente') : t('{n} asistentes', { n: a }),
+        colaboradores: c === 1 ? t('1 colaborador') : t('{n} colaboradores', { n: c }),
+      });
+      const asked = state.expected_guests ?? 0;
+      seatsNote.hidden = asked > 0 && a + c === asked;
+      seatsText.textContent = asked > 0
+        ? t('A Ikisai le has pedido {m} plazas. Esta cuenta no las cambia: si van a venir más o menos personas, cámbialo en «Personas».', { m: asked })
+        : t('Aún no has dicho a Ikisai cuántas personas venís. Indícalo en «Personas».');
+      noIkisai.hidden = ikisai > 0;
+
+      const be = breakEvenPrice({ ikisai, otherCosts, attendees: a });
+      rangeMax = Math.max(rangeMax, Math.max(1200, Math.ceil((Math.max(be ?? 0, p) * 1.5) / 100) * 100));
+      priceRange.max = String(rangeMax);
+      priceRange.value = String(Math.min(p, rangeMax));
+      beButton.hidden = be === null;
+      beLabel.hidden = be === null;
+      beNone.hidden = be !== null;
+      if (be !== null) {
+        beButton.style.left = `${Math.min(100, (be / rangeMax) * 100)}%`;
+        beButton.setAttribute('aria-label', t('Cubres costes: {importe} por asistente. Poner este precio', { importe: money(be) }));
+        beLabel.textContent = t('Cubres costes: {importe}', { importe: money(be) });
+      }
+
+      const people = breakEvenAttendees({ price: p, collaborators: c, otherCosts, ikisaiFor });
       replace(results,
-        el('dt', null, t('Ingresos')), el('dd', null, money(r.revenue)),
-        el('dt', null, t('Gastos (Ikisai y otros)')), el('dd', null, money(r.cost)),
-        el('dt', null, t('Margen')), el('dd', { id: 'marginValue', class: r.margin < 0 ? 'danger-text' : '' }, money(r.margin)),
-        el('dt', null, t('Punto de equilibrio')), el('dd', { id: 'marginBreakEven' }, r.breakEven === null ? '—' : (r.breakEven === 1 ? t('1 asistente') : t('{n} asistentes', { n: r.breakEven }))));
+        el('dt', null, t('Ingresos (solo asistentes)')), el('dd', null, money(r.revenue)),
+        el('dt', null, a + c === 1 ? t('Gastos (Ikisai por 1 plaza y otros)') : t('Gastos (Ikisai por {n} plazas y otros)', { n: a + c })), el('dd', null, money(r.cost)),
+        el('dt', null, t('Margen')), el('dd', { id: 'marginValue', class: r.margin < 0 ? 'danger-text' : '' }, r.margin < 0 ? `−${money(-r.margin)}` : money(r.margin)),
+        el('dt', null, t('Punto de equilibrio')), el('dd', { id: 'marginBreakEven' },
+          p <= 0 ? '—' : people === null ? t('Con este precio no se cubren gastos') : people === 1 ? t('1 asistente') : t('{n} asistentes', { n: people })));
     }
+    // Hasta 500 cálculos puros por pulsación (punto de equilibrio): se agrupan en un solo fotograma.
+    function update(): void {
+      if (frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; if (alive) compute(); });
+    }
+    const typed = (key: keyof Margins, input: HTMLInputElement, mirror?: HTMLInputElement) => input.addEventListener('input', () => {
+      margins = { ...margins, [key]: input.value };
+      if (mirror) mirror.value = input.value;
+      if (key === 'pct') pctTyped = true;
+      persist();
+      update();
+    });
+    typed('attendees', attendees);
+    typed('collaborators', collaborators);
+    typed('price', price);
+    typed('pct', pct);
+    typed('other', other);
+    typed('attendees', attendeesRange, attendees);
+    typed('collaborators', collaboratorsRange, collaborators);
+    typed('price', priceRange, price);
+
+    // La etiqueta va solo con su número; el deslizador lleva la suya (`aria-label`) y la ayuda, `aria-describedby`.
+    const field = (label: string, input: HTMLInputElement, ...children: Array<HTMLElement | null>) => el('div', { class: 'field orgcalcfield' },
+      el('label', { class: 'label', for: input.id }, label), input, ...children);
     replace(marginHost,
       el('p', { class: 'muted small' }, t('Solo la ves tú y solo en este dispositivo: Ikisai no recibe nada de lo que pongas aquí.')),
       el('div', { class: 'orggrid' },
-        input('price', t('Precio por asistente'), '0'),
-        input('attendees', t('Asistentes'), String(state.expected_guests ?? '')),
-        input('other', t('Otros gastos (viajes, materiales…)'), '0')),
+        field(t('Asistentes'), attendees, attendeesRange,
+          el('small', { class: 'hint', id: 'margin-attendees-help' }, t('Pagan su plaza: suman ingresos y ocupan plaza.'))),
+        fbMark(field(t('Colaboradores sin coste'), collaborators, collaboratorsRange,
+          el('small', { class: 'hint', id: 'margin-collaborators-help' }, t('No pagan, pero ocupan plaza: Ikisai cobra su alojamiento y su comida. Solo cuentan en esta calculadora.'))),
+        'organizers.diseno.margen.colaboradores', 'Colaboradores sin coste')),
+      seats,
+      seatsNote,
+      el('div', { class: 'orgpriceblock' },
+        field(t('Precio por asistente'), price,
+          el('div', { class: 'orgrangewrap' }, beButton, priceRange), beLabel, beNone),
+        fbMark(el('div', { class: 'orgwant' },
+          el('label', { class: 'orgwant-row' }, el('span', null, t('Quiero ganar')), pct, el('span', null, t('% sobre los costes'))),
+          el('small', { class: 'hint', id: 'margin-pct-help' }, t('Mueve el precio para ganar ese porcentaje por encima de lo que te cuesta todo.'))),
+        'organizers.diseno.margen.porcentaje', 'Quiero ganar')),
+      field(t('Otros gastos (viajes, materiales…)'), other),
+      noIkisai,
       results);
-    paintResults();
+    compute();
   }
 
   // --- Formulario del diseño ------------------------------------------------------------------------------------------
@@ -185,6 +401,8 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
 
     replace(host,
       staleAt ? staleNote(staleAt) : null,
+      priceBar,
+      fbMark(section(t('Lo que te falta por rellenar'), { id: 'designReady' }, readyHost), 'organizers.diseno.falta', 'Lo que te falta por rellenar'),
       el('p', { class: 'muted' }, t('Lo que pongas aquí lo ve el equipo de Ikisai al momento. Se guarda solo.')),
       section(t('Personas'), { id: 'designPeople' }, el('div', { class: 'orggrid' },
         numberField('expected_guests', t('Personas previstas')), numberField('minors_count', t('De ellas, menores de edad')))),
@@ -200,22 +418,26 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
           el('textarea', { id: 'd-organizer_notes', rows: '3', maxlength: '2000', placeholder: t('Sonido, montaje especial, horarios…'),
             oninput: (e: Event) => change({ organizer_notes: (e.target as HTMLTextAreaElement).value || null }) }, state.organizer_notes))), 'organizers.diseno.extras', 'Extras'),
       section(t('Precio orientativo'), { id: 'designQuote' }, quoteHost),
-      section(t('Tu calculadora (privada)'), { id: 'designMargin' }, marginHost),
+      section(t('¿Cuánto ganas?'), { id: 'designMargin' }, marginHost),
       el('div', { class: 'orgsave' }, el('div', { class: 'orgsavestate', id: 'designSaveState' }, saves.field('diseno').element)));
+    paintChecks();
     paintQuote();
   }
 
   async function load(): Promise<void> {
     try {
-      const [r, e, m] = await Promise.all([
+      const [r, e, m, p] = await Promise.all([
         ctx.api.rates(reservationId),
         ctx.api.extraRequests(reservationId),
-        cache.draft<Margins>(ctx.userId, marginKey),
+        cache.draft<Partial<Margins>>(ctx.userId, marginKey),
+        ctx.api.proposals(reservationId).catch(() => null),
       ]);
       if (!alive) return;
       rates = r.value;
       extras = e.value.items.map((x) => ({ rate_id: x.rate_id, quantity: Number(x.quantity) || 1, note: x.note ?? null }));
-      if (m) margins = m;
+      // Borradores viejos (sin colaboradores ni %): lo que falte, vacío. El precio manda: el % se recalcula al pintar.
+      if (m) margins = { ...EMPTY_MARGINS, ...Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v === null || v === undefined ? '' : String(v)])) };
+      proposal = p ? proposalVersions(p.value.items).current : null;
       paint((r.stale && r.at) || (e.stale && e.at) || null);
     } catch (error) {
       if (alive) replace(host, failure(error, () => void load()));
@@ -225,6 +447,7 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
 
   (host as HTMLElement & { destroy?: () => void }).destroy = () => {
     alive = false;
+    if (frame) cancelAnimationFrame(frame);
     window.removeEventListener('online', resume);
     if (timer) void save();
   };
