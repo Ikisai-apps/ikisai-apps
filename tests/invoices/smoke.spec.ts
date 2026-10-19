@@ -48,6 +48,15 @@ async function login(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: `Hola, ${USER.displayName}` })).toBeVisible();
 }
 
+
+/** Tanda 27: en Compras, el periodo y los filtros van en su hoja; se abre, se hace lo que toque y «Hecho». */
+async function purchaseControls(page: Page, which: 'period' | 'filters', run: () => Promise<unknown>): Promise<void> {
+  await page.locator(which === 'period' ? '#purchasePeriod' : '#purchaseFilters').click();
+  await run();
+  await page.locator('.sheet[role="dialog"] .sheet-foot').getByRole('button', { name: 'Hecho' }).click();
+  await expect(page.locator('.sheet[role="dialog"]')).toBeHidden();
+}
+
 test('@smoke login → bootstrap → proveedores offline → sincronizar', async ({ page, context }) => {
   test.setTimeout(120_000);
 
@@ -179,7 +188,7 @@ test('@smoke login → bootstrap → proveedores offline → sincronizar', async
   await test.step('Compras y Gestoría se calculan en local', async () => {
     await page.getByRole('link', { name: /Compras/ }).click();
     await expect(page.getByRole('heading', { name: 'Compras', level: 2 })).toBeVisible();
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     await page.getByRole('tab', { name: 'Artículos' }).click();
     await expect(page.locator('#purchases')).toContainText('Tomate');
     await expect(page.locator('#purchaseTotals')).toContainText('Base 40,00 €');
