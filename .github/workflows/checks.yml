@@ -49,9 +49,10 @@ jobs:
             # CSS o HTML de una app: solo la prueba de prefijos de clases del kit (v45), para que un choque con el kit salga
             # en la PR de la app y no en la siguiente del kit. Si corre la suite del kit, ya va dentro.
             if [ "$uikit" = false ] && echo "$files" | grep -Eq '^apps/[^/]+/.*\.(css|html)$'; then prefijos=true; fi
-            # Historia, cáscara, hojas y diálogos del kit («atrás», FB_2026_025): cambian el recorrido de todas las apps, así
-            # que corre la batería completa de cada una, no solo el humo (regresión de la 0.27.1 en Booking).
-            if echo "$files" | grep -Eq '^packages/ui-kit/src/(shell/(back-navigation|app-shell)|overlay/(sheet|dialog))\.ts$'; then full="$apps"; fi
+            # Historia, cáscara (con el menú lateral), hojas, diálogos, paleta y avisos del kit («atrás», FB_2026_025): cambian
+            # el recorrido de todas las apps, así que corre la batería completa de cada una, no solo el humo (regresión de la
+            # 0.27.1 en Booking).
+            if echo "$files" | grep -Eq '^packages/ui-kit/src/(shell/(back-navigation|app-shell|workspace)|overlay/(sheet|dialog)|palette|toast)\.ts$'; then full="$apps"; fi
             for app in $apps; do
               if echo "$files" | grep -Eq "^(apps/$app/|supabase/functions/$app-api/|supabase/functions/_domain/$app/|packages/domain-$app/|tests/$app/|supabase/migrations/[0-9_]+_${app}_)"; then full="$full $app"; fi
             done
