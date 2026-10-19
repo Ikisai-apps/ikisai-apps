@@ -288,7 +288,8 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     app: 'booking',
     slug: 'booking-api',
     origins: base.origins ?? BOOKING_ORIGINS,
-    uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'] },
+    // K3 para miembros: un archivo ajeno (justificante o firma de un huésped) solo lo lee por su id quien ve la fila que lo referencia
+    uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar, ses),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
