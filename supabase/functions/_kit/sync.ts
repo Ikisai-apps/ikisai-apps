@@ -205,7 +205,7 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
   async function commit(ctx: RequestContext, body: any, options: { skipHooks?: boolean } = {}): Promise<CommitResult> {
     if (!body || typeof body !== 'object') fail(400, 'INVALID_JSON', messageFor('INVALID_JSON'));
     if (typeof body.requestId !== 'string' || !REQUEST_ID.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
-    if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    // El lector solo escribe donde la tabla (writable_roles) o el procedimiento (allow_reader_procedure) lo abren; lo decide core.commit.
     const operations = validateOperations(body.operations);
     const expectedCursor = body.expectedCursor === undefined || body.expectedCursor === null ? null : body.expectedCursor;
     if (expectedCursor !== null && !Number.isSafeInteger(expectedCursor)) fail(422, 'INVALID_OPERATION', 'expectedCursor inválido.');

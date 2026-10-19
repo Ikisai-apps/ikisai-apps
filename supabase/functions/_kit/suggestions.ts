@@ -46,7 +46,7 @@ export function createSuggestions(supabase: Supabase, app: string, validateOpera
     });
     if (scope === 'mine' || !hooks.suggestionVisible) return result;
     // Con ámbitos, el contador también cuenta solo lo visible (las pendientes son pocas: hasta 200).
-    const pending = await supabase.rpc<any>('core_suggestion_list', { p_app: app, p_actor: ctx.user.id, p_scope: 'pending', p_limit: 200, p_before: null });
+    const pending = await supabase.rpc<any>('core_suggestion_list', { p_app: app, p_actor: ctx.user.id, p_scope: scope === 'vote' ? 'vote' : 'pending', p_limit: 200, p_before: null });
     return { ...result, items: (result.items ?? []).filter((s: any) => canSee(ctx, s)), pendingCount: (pending.items ?? []).filter((s: any) => canSee(ctx, s)).length };
   }
 

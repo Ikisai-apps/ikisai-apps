@@ -211,6 +211,15 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - El worker `files/gc` de central-api, diario, marca los huérfanos de más de 2 días. Borra del proveedor y de `core.files` los que siguen sin referencia a los 30 días, salvo que alguna vez fueran `legal` o `permanent`. Antes de borrar vuelve a comprobarlo.
 - **Medición (migración `0073`):** cada semana, `core.storage_snapshot()` guarda los tamaños de la base, los esquemas, `core.changes` y los objetos por bucket lógico y proveedor. Los umbrales están en `core.storage_thresholds`. `GET admin/storage` (owner de Central) devuelve el estado actual, el nivel de cada límite (`ok | warn | critical`) y medio año de historial.
 
+### 3.11 El lector vota (migración `0099`, tanda 27; decisión del usuario del 19-10-2026)
+
+- **El lector escribe solo donde la app lo abre a propósito**, igual que el outsider:
+  - **tablas:** con `reader` en `writable_roles` (`core.register_table`). Hoy solo `central.decision_votes` y `food.suggestion_votes`. El resto sigue con `'{editor,owner}'` por defecto;
+  - **procedimientos (`call`):** con `core.allow_reader_procedure(app, procedimiento)`.
+- Un lote que mezcla algo abierto y algo cerrado falla entero con `FORBIDDEN`. Vale igual para `core.commit_preview`.
+- **Sugerencias, ámbito `vote`:** `GET suggestions?scope=vote` lista las pendientes para cualquier miembro humano salvo el outsider. A quien no es editor ni owner le llegan con `author: null` y `anonymous: true`, sin el id de quien propone. `pending` y `all` siguen siendo de quien decide.
+- Deshacer, portales, subidas y MCP no cambian para el lector.
+
 ### 3.10 Rol `outsider`, nivel de casa y sugerencias (migración `0092`, diseño en `coordinacion/ampliacion/RECURSOS.md` §13–15)
 
 - **Rol `outsider`**, junto a `reader`, `editor` y `owner`, para la gente de fuera por trato personal (voluntarios incluidos).
@@ -285,7 +294,7 @@ Reglas:
 ### 4.3 Secuencia dentro de la transacción
 
 1. `select … from core.app_state where app = p_app for update`.
-2. Releer `core.memberships(p_app, p_actor)`. Sin fila o `reader` → `FORBIDDEN`.
+2. Releer `core.memberships(p_app, p_actor)`. Sin fila → `FORBIDDEN`. El lector solo pasa donde lo abre la app (§3.11): si no, `apply_row_op` o `apply_operations` devuelven `FORBIDDEN`.
 3. Buscar `core.receipts(p_app, p_actor, p_request_id)`. Si existe y `digest` coincide → devolver `result` guardado sin tocar nada. Si existe y `digest` difiere → `IDEMPOTENCY_REUSE`.
 4. Si `p_expected_cursor` no es null y difiere del cursor actual → `CURSOR_CONFLICT`.
 5. Aplicar operaciones; cada una produce una o más filas en `core.changes` con `cursor = actual + 1`.
