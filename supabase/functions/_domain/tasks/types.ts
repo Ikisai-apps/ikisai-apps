@@ -84,19 +84,14 @@ export interface TaskCommentRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; task_id: Uuid; author_id: Uuid; author_name: string; body: string; file_id: Uuid | null;
 }
 
-// Compras no alimentarias (docs/tasks/API.md §18, migración 0305).
-export type SupplyCategory = 'cleaning' | 'pool' | 'maintenance' | 'textile' | 'other';
+// Compras no alimentarias (docs/tasks/API.md §18, migración 0305). Desde R6 (0333) el almacén es el inventario común de
+// Recursos: una solicitud apunta a un artículo (`item_id`).
 export type PurchaseStatus = 'requested' | 'approved' | 'purchased' | 'received' | 'rejected';
 export type PlanStatus = 'draft' | 'shopping' | 'done';
-export type MovementKind = 'in' | 'out' | 'adjust';
-export interface SupplyItemRow extends BaseRow {
-  tab_id: Uuid; name: string; category: SupplyCategory; unit: string; location: string; min_quantity: number; reorder_quantity: number | null;
-  supplier_id: string | null; supplier_name: string | null; note: string; archived: boolean; position: number;
-}
 export interface PurchasePlanRow extends BaseRow { tab_id: Uuid; title: string; planned_for: string | null; status: PlanStatus; note: string }
 export interface PurchasePlanStopRow extends BaseRow { tab_id: Uuid; plan_id: Uuid; supplier_id: string | null; supplier_name: string; position: number; note: string }
 export interface PurchaseRequestRow extends BaseRow {
-  tab_id: Uuid; project_id: Uuid | null; task_id: Uuid | null; supply_item_id: Uuid | null; plan_stop_id: Uuid | null;
+  tab_id: Uuid; project_id: Uuid | null; task_id: Uuid | null; item_id: Uuid | null; plan_stop_id: Uuid | null;
   title: string; note: string; quantity: number | null; unit: string | null; estimated_amount: number | null; priority: Priority;
   status: PurchaseStatus; needs_invoice: boolean; repeat_days: number | null; due: string | null;
   supplier_id: string | null; supplier_name: string | null; approved_at: string | null; purchased_at: string | null; received_at: string | null; position: number;
@@ -115,9 +110,6 @@ export interface RequestRouteRow extends BaseRow {
   owner_person_id?: Uuid | null;
   owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
 }
-export interface SupplyMovementRow extends BaseRow {
-  tab_id: Uuid; supply_item_id: Uuid; kind: MovementKind; delta: number; purchase_request_id: Uuid | null; note: string;
-}
 
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
@@ -125,7 +117,7 @@ export const TABLES = [
   'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces',
   'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
   'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments',
-  'tasks.supply_items', 'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests', 'tasks.supply_movements',
+  'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests',
   'tasks.request_routes', 'tasks.requests', 'tasks.settings',
 ] as const;
 export type TableName = (typeof TABLES)[number];
@@ -137,8 +129,7 @@ export interface RowTypes {
   'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow;
   'tasks.project_people': ProjectPersonRow; 'tasks.task_people': TaskPersonRow; 'tasks.task_dependencies': TaskDependencyRow;
   'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow;
-  'tasks.supply_items': SupplyItemRow; 'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow;
-  'tasks.purchase_requests': PurchaseRequestRow; 'tasks.supply_movements': SupplyMovementRow;
+  'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow; 'tasks.purchase_requests': PurchaseRequestRow;
   'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
 }
 
@@ -168,11 +159,9 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.saved_views': ['tab_id', 'name', 'search', 'filters', 'group_by', 'position'],
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
   'tasks.task_comments': ['tab_id', 'project_id', 'task_id', 'body', 'file_id'],
-  'tasks.supply_items': ['tab_id', 'name', 'category', 'unit', 'location', 'min_quantity', 'reorder_quantity', 'supplier_id', 'supplier_name', 'note', 'archived', 'position'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
-  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'supply_item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
-  'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id', 'note'],
+  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of'],
   'tasks.settings': ['key', 'value'],
@@ -198,12 +187,9 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.saved_views': ['tab_id'],
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],
   'tasks.task_comments': ['tab_id', 'task_id'],
-  'tasks.supply_items': ['tab_id'],
   'tasks.purchase_plans': ['tab_id'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id'],
   'tasks.purchase_requests': ['tab_id'],
-  // Un movimiento no se edita salvo su nota: corregir es otro movimiento o enviarlo a la papelera.
-  'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id'],
   'tasks.request_routes': [],
   // Una petición solo la da de alta `tasks.request_task`; después solo cambia su estado (lo comprueba el hook).
   'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by', 'on_behalf_of'],

@@ -1819,3 +1819,27 @@ La familia de responsables de cada área (`system_key = 'person'`, o con el nomb
 - **Datos:** `core.ts` lee `POST read/central.capability_options {limit, offset}` y `POST read/central.availability_options` (`refreshCapabilities()`, por páginas de 2000) al arrancar en los dos modos, al pasar a ellos y, como mucho una vez por minuto, al abrir una ficha con conexión. La última respuesta queda en el dispositivo (`ikisai-tasks-capabilities`, `ikisai-tasks-availability`) y se borra al cerrar sesión. Si la disponibilidad se niega (403, el outsider), se vacía y se ordena solo por grado, sin error visible.
 - **Código:** funciones puras en `apps/tasks/src/who-knows.ts` (`whoKnows`, `hasApprentices`; en `window.IkisaiTasks.whoKnows`) y la interfaz en `apps/tasks/public/who-knows-ui.js` y `.css`, después de `people-ui.js`. Los campos «Oficio» y «Personas» avisan de sus cambios con los eventos `trades-change` y `people-change`; `addPersonToField()` (people-ui.js) añade la persona al borrador de la ficha.
 - **Pruebas:** `tests/tasks/quien-sabe.test.ts` (orden, unión, aprendices, caché, 403) y `tests/tasks/quien-sabe.spec.ts` (móvil de 390 px, capturas `40-quien-sabe-…` en `coordinacion/tasks/p2-despues/`).
+
+## 35. Compras y Suministros sobre Recursos (fase R6, PR 2; aprobada por el usuario el 19-10-2026)
+
+Sustituye el almacén de §18.2 (`tasks.supply_items` y `tasks.supply_movements`). Con 0 suministros, movimientos, solicitudes y planes en producción, el usuario decidió no migrar datos: Tasks pasa directamente al inventario común de Recursos (`coordinacion/ampliacion/RECURSOS.md` §6 «Tasks»).
+
+- **Migración `0333`:**
+  - Retira las dos tablas **solo si están vacías**, papelera incluida. Si no lo están, falla y no se pierde nada.
+  - `tasks.purchase_requests` pierde `supply_item_id` y gana `item_id`: un artículo de `resources.items`, sin clave foránea entre esquemas. Lo comprueba `validate_batch`: al ponerlo o cambiarlo, el artículo tiene que existir y no estar en la papelera (`INVALID_ITEM`).
+  - Copia enteras, sin el almacén, `validate_batch` (de 0327), `convert_tab_into_project` y `empty_trash_prepare` (de 0328). Al convertir un área en proyecto, el almacén ya no se mueve: es de toda la casa.
+- **Qué es un suministro:** un artículo de Recursos que no es de cocina. Cocina es todo lo que tiene tipo `ingrediente`, `bebida` o `menaje`. Lo deciden `tasks.supply_kind` en SQL e `isSupplyKind` en el dominio. El inventario es uno solo para toda la casa, así que las áreas no filtran artículos (decisión del usuario).
+- **Lecturas:**
+  - `tasks.low_stock {tabId?}`: artículos de tipo suministro, activos, con mínimo y con menos stock que él (sumado en todos los sitios). Devuelve `{id, name, kind, category, unit, defaultSpaceId, stock, minQuantity, reorderQuantity, supplierId, openRequestId}`. La solicitud abierta es la del área `tabId`, si se indica. Solo la ve quien tiene alguna área entera.
+  - `tasks.supply_item {itemId}`: un artículo con su stock, o `{item: null}`. Es la que usa MCP.
+  - Indicador de Central `tasks.supplies_below_min`: cuenta lo mismo que `tasks.low_stock`.
+- **Recibir:**
+  - Primero la entrada en Recursos, con el segundo cliente (`TasksCore.recordReceipt`). Es una `entrada_manual` con `source_app 'tasks'`, `source_ref 'purchase_request:<id>'` y un id estable por solicitud. Lleva coste unitario (importe estimado ÷ cantidad) si la solicitud tiene importe.
+  - Después, el estado en Tasks.
+  - Repetirla no suma dos veces: el núcleo responde `ROW_EXISTS`.
+  - Va al sitio habitual del artículo o, si no lo tiene, al que se elige al recibir.
+  - Sin artículo o sin cantidad, no hay entrada.
+  - Que la factura validada en Finance no vuelva a sumar lo ya recibido es cosa de Finance (R4 PR 5), antes de encender `resources_links`.
+- **Interfaz** (`public/purchases-ui.js`): «Suministros» es `createItemCatalog` filtrado a suministros. La ficha es `createItemSheet`, gastar, entrada y traslado son `createMovementForm`, y el recuento es `createCountSession`. Todas son piezas del kit sobre `createSyncItemSource(Sync.core.resources)`. «Queda poco: pedir» es una acción de la fila; si ya hay una solicitud abierta, la acción es «Pedido», que la abre. El aviso de Inicio suma los movimientos del espejo (`Sync.core.inventory`).
+- **MCP:** `tasks_low_stock` lee `tasks.low_stock` y devuelve `itemId` y `openRequestId`. `tasks_request_purchase` admite `item_id` en lugar de `supply_item_id` y pide siempre el área.
+- **Pruebas:** `tests/tasks/supplies-resources.test.ts` (la migración con y sin datos, `item_id`, recibir una sola vez, lecturas e indicador) y las de Compras adaptadas.

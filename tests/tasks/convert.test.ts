@@ -18,7 +18,7 @@ const ANA_J = uuid(), PODA = uuid(), ANA_M = uuid();
 const T_REGAR = uuid(), T_PODAR = uuid(), T_SUB = uuid(), T_BORRADA = uuid(), T_ENTRADA = uuid();
 const DEP = uuid(), DEP_BORRADA = uuid(), TL_PODA = uuid(), TL_ANA = uuid();
 const FOTO = uuid(), PLANO = uuid(), FILE = uuid();
-const ABONO = uuid(), CLORO_J = uuid(), CLORO_M = uuid(), MOV = uuid(), PLAN = uuid(), STOP = uuid(), COMPRA = uuid(), COMPRA_SUELTA = uuid();
+const PLAN = uuid(), STOP = uuid(), COMPRA = uuid(), COMPRA_SUELTA = uuid();
 const ROUTE = uuid();
 const SUPPLIER = uuid(), INVOICE = uuid(), LINE = uuid(), ALLOC_TASK = uuid(), ALLOC_AREA = uuid();
 let app: TestApp;
@@ -27,7 +27,7 @@ let seq = 0;
 const rows = async (table: string) => (await app.call(`/api/v1/snapshot?tables=${table}&includeDeleted=1&limit=2000`)).data.tables[0].rows as any[];
 const row = async (table: string, id: string) => (await rows(table)).find((r) => r.id === id);
 // Las altas de la siembra llevan posición si su tabla la tiene (la API la exige).
-const POSITIONED = new Set(['tasks.tasks', 'tasks.labels', 'tasks.task_dependencies', 'tasks.attachments', 'tasks.supply_items', 'tasks.purchase_requests', 'tasks.purchase_plan_stops', 'tasks.request_routes']);
+const POSITIONED = new Set(['tasks.tasks', 'tasks.labels', 'tasks.task_dependencies', 'tasks.attachments', 'tasks.purchase_requests', 'tasks.purchase_plan_stops', 'tasks.request_routes']);
 const commit = (operations: Operation[], token?: string) => app.call('/api/v1/commands', { token, body: { requestId: `seed-${++seq}`,
   operations: operations.map((o) => (o.op === 'insert' && POSITIONED.has(o.table ?? '') && o.fields?.position === undefined ? { ...o, fields: { ...o.fields, position: ++seq * 1024 } } : o)) } });
 const ok = async (operations: Operation[]) => { const res = await commit(operations); assert.equal(res.status, 200, JSON.stringify(res.data)); return res; };
@@ -68,20 +68,16 @@ test.before(async () => {
     { op: 'insert', table: 'tasks.attachments', id: FOTO, fields: { tab_id: JARDIN, project_id: RIEGO, task_id: T_REGAR, name: 'goteo.jpg', mime: 'image/jpeg', size: 900, sha256: sha, file_id: FILE } },
     { op: 'insert', table: 'tasks.attachments', id: PLANO, fields: { tab_id: JARDIN, project_id: RIEGO, name: 'plano.jpg', mime: 'image/jpeg', size: 900, sha256: sha, file_id: FILE } },
   ]);
-  // Suministros (uno con el mismo nombre que uno del destino), un plan con su parada y compras.
+  // Un plan con su parada y compras (el almacén es de Recursos desde R6: no se mueve con el área).
   await ok([
-    { op: 'insert', table: 'tasks.supply_items', id: ABONO, fields: { tab_id: JARDIN, name: 'Abono', unit: 'kg' } },
-    { op: 'insert', table: 'tasks.supply_items', id: CLORO_J, fields: { tab_id: JARDIN, name: 'Cloro' } },
-    { op: 'insert', table: 'tasks.supply_items', id: CLORO_M, fields: { tab_id: MANT, name: 'cloro' } },
     { op: 'insert', table: 'tasks.purchase_plans', id: PLAN, fields: { tab_id: JARDIN, title: 'Vivero del sábado' } },
   ]);
   await ok([
     { op: 'insert', table: 'tasks.purchase_plan_stops', id: STOP, fields: { tab_id: JARDIN, plan_id: PLAN, supplier_name: 'Vivero Sur' } },
-    { op: 'insert', table: 'tasks.purchase_requests', id: COMPRA, fields: { tab_id: JARDIN, project_id: RIEGO, task_id: T_REGAR, supply_item_id: ABONO, title: 'Goteros nuevos', status: 'requested' } },
+    { op: 'insert', table: 'tasks.purchase_requests', id: COMPRA, fields: { tab_id: JARDIN, project_id: RIEGO, task_id: T_REGAR, title: 'Goteros nuevos', status: 'requested' } },
     { op: 'insert', table: 'tasks.purchase_requests', id: COMPRA_SUELTA, fields: { tab_id: JARDIN, title: 'Guantes', status: 'requested' } },
   ]);
   await ok([{ op: 'update', table: 'tasks.purchase_requests', id: COMPRA, expectedRevision: 1, fields: { status: 'approved', plan_stop_id: STOP } }]);
-  await ok([{ op: 'insert', table: 'tasks.supply_movements', id: MOV, fields: { tab_id: JARDIN, supply_item_id: ABONO, kind: 'in', delta: 5 } }]);
   // Una regla de entrada al proyecto «Riego» con Ana de responsable.
   await ok([{ op: 'insert', table: 'tasks.request_routes', id: ROUTE, fields: { kind: 'feedback.space.garden', tab_id: JARDIN, project_id: RIEGO, owner_label_id: ANA_J } }]);
   // Finance: una línea asignada a la tarea (se conserva) y otra al área (la vista previa la avisa: hay que reasignarla).
@@ -106,7 +102,7 @@ test('convertir: mismos ids en un proyecto nuevo, con etiquetas, dependencias, f
   const res = await convert({ targetTabId: MANT, title: 'Jardinería' });
   assert.equal(res.status, 200, JSON.stringify(res.data));
   const project = res.data.projectId as string;
-  assert.deepEqual(res.data.counts, { tasks: 4, labelsCreated: 1, dependencies: 1, attachments: 2, supplies: 2, suppliesRenamed: 1, purchaseRequests: 2, routes: 1 });
+  assert.deepEqual(res.data.counts, { tasks: 4, labelsCreated: 1, dependencies: 1, attachments: 2, purchaseRequests: 2, routes: 1 });
 
   const created = await row('tasks.projects', project);
   assert.deepEqual([created.tab_id, created.title, created.deleted_at], [MANT, 'Jardinería', null]);
@@ -142,15 +138,12 @@ test('convertir: mismos ids en un proyecto nuevo, con etiquetas, dependencias, f
   }
   assert.equal((await row('tasks.attachments', FOTO)).task_id, T_REGAR);
 
-  // Compras y almacén: al destino, con sus enlaces; el «Cloro» repetido se renombra.
+  // Compras: al destino, con sus enlaces.
   const compra = await row('tasks.purchase_requests', COMPRA);
-  assert.deepEqual([compra.tab_id, compra.project_id, compra.task_id, compra.supply_item_id, compra.plan_stop_id, compra.status], [MANT, project, T_REGAR, ABONO, STOP, 'approved']);
+  assert.deepEqual([compra.tab_id, compra.project_id, compra.task_id, compra.plan_stop_id, compra.status], [MANT, project, T_REGAR, STOP, 'approved']);
   assert.deepEqual([(await row('tasks.purchase_requests', COMPRA_SUELTA)).tab_id, (await row('tasks.purchase_requests', COMPRA_SUELTA)).project_id], [MANT, null]);
   assert.equal((await row('tasks.purchase_plans', PLAN)).tab_id, MANT);
   assert.equal((await row('tasks.purchase_plan_stops', STOP)).tab_id, MANT);
-  assert.equal((await row('tasks.supply_movements', MOV)).tab_id, MANT);
-  assert.equal((await row('tasks.supply_items', ABONO)).name, 'Abono');
-  assert.deepEqual([(await row('tasks.supply_items', CLORO_J)).tab_id, (await row('tasks.supply_items', CLORO_J)).name], [MANT, 'Cloro · Jardinería']);
 
   // La regla, al proyecto nuevo con la «Ana» del destino.
   const route = await row('tasks.request_routes', ROUTE);

@@ -17,10 +17,8 @@ function convertPreview(sourceId,targetId){
   const sameFamily=(a,b)=>a&&b&&(a.system_key?a.system_key===b.system_key:!b.system_key&&a.name.toLowerCase()===b.name.toLowerCase());
   const newLabels=labels.filter(l=>l.tab_id===sourceId&&used.has(l.id)).filter(l=>!labels.some(d=>d.tab_id===targetId&&d.name.toLowerCase()===l.name.toLowerCase()&&sameFamily(families.get(l.family_id),families.get(d.family_id))));
   const attachments=convertLive('tasks.attachments').filter(a=>a.tab_id===sourceId&&(!a.task_id||taskIds.has(a.task_id)));
-  const supplies=convertLive('tasks.supply_items').filter(s=>s.tab_id===sourceId);
-  const renamed=supplies.filter(s=>convertLive('tasks.supply_items').some(d=>d.tab_id===targetId&&d.name.trim().toLowerCase()===s.name.trim().toLowerCase()));
   return {projects,tasks,open:tasks.filter(t=>!t.done).length,done:tasks.filter(t=>t.done).length,newLabels:[...new Set(newLabels.map(l=>l.name))],
-    attachments:attachments.length,purchases:convertLive('tasks.purchase_requests').filter(r=>r.tab_id===sourceId).length,supplies:supplies.length,renamed:renamed.map(s=>s.name),
+    attachments:attachments.length,purchases:convertLive('tasks.purchase_requests').filter(r=>r.tab_id===sourceId).length,
     routes:convertLive('tasks.request_routes').filter(r=>r.tab_id===sourceId).length};
 }
 
@@ -54,7 +52,7 @@ function convertTabSheet(id){
       ${line(p.tasks.length,`${p.tasks.length===1?'tarea':'tareas'} (pendientes: ${p.open}; hechas: ${p.done})`)}
       ${line(p.newLabels.length,p.newLabels.length?`etiquetas nuevas en ${esc(name)}: ${p.newLabels.map(esc).join(', ')}`:'etiquetas nuevas (todas existen ya en el destino)')}
       ${line(p.attachments,'fotos y adjuntos')}
-      ${line(p.purchases,'solicitudes de compra')}${line(p.supplies,'suministros'+(p.renamed.length?` (se renombran por repetidos: ${p.renamed.map(esc).join(', ')})`:''))}
+      ${line(p.purchases,'solicitudes de compra')}
       ${line(p.routes,'reglas de entrada, que pasarán a apuntar al proyecto nuevo')}</ul>
       <div id="convertFinance">${!asked?'<p class="small muted">Consultando Finance…</p>':finance===null?'<p class="notice">No se pudo consultar Finance. Si hay facturas asignadas al área o a sus proyectos, habrá que reasignarlas a mano en Finance.</p>'
         :`<p class="small">${finance.kept} ${finance.kept===1?'asignación de Finance a una tarea se conserva':'asignaciones de Finance a tareas se conservan'}.</p>${finance.manual.length?`<div class="notice" id="convertFinanceManual"><strong>Hay que reasignar a mano en Finance ${finance.manual.length===1?'esta línea':'estas líneas'}</strong>, asignadas al área o a sus proyectos:<ul>${finance.manual.map(r=>`<li><a href="${CONVERT_FINANCE_URL}${encodeURIComponent(r.invoice_code||'')}" target="_blank" rel="noopener" data-feedback-id="tasks.convertir_area.finance.abrir" data-feedback-label="Abrir factura en Finance">${esc(r.invoice_code||'')}</a>${r.invoice_date?' · '+esc(shortDate(r.invoice_date)):''} · ${esc(String(r.allocated_amount??''))} € · ${esc(r.target)}</li>`).join('')}</ul></div>`:'<p class="small muted">Nada en Finance asignado al área ni a sus proyectos.</p>'}`}</div>`;

@@ -1,10 +1,11 @@
 /* Compras no alimentarias (docs/tasks/API.md §18): solicitudes de compra con aprobación del responsable de compras del
-   área, suministros con stock por movimientos («Queda poco: pedir») y planes de compra por proveedor con hoja de ruta.
-   Las filas salen del modelo del núcleo (Sync.core.data: no forman parte del modelo anidado de tareas) y los cambios son
-   operaciones del dominio (IkisaiTasks.purchases) que se confirman por el mismo camino que save(). */
+   área, suministros («Queda poco: pedir») y planes de compra por proveedor con hoja de ruta.
+   Las solicitudes y los planes salen del modelo del núcleo (Sync.core.data: no forman parte del modelo anidado de tareas) y
+   los cambios son operaciones del dominio (IkisaiTasks.purchases) que se confirman por el mismo camino que save().
+   Desde R6 el almacén es el inventario común de Recursos (el segundo cliente, Sync.core.resources) con las piezas del kit:
+   catálogo, ficha, movimiento y recuento. Una solicitud apunta a su artículo con `item_id`. */
 const PURCHASE_VIEWS=['purchases','supplies','plans'];
 const PURCHASE_STATUS={requested:['Pedida','pending'],approved:['Aprobada','ok'],purchased:['Comprada','ok'],received:['Recibida','ok'],rejected:['Rechazada','trash']};
-const SUPPLY_CATEGORY={cleaning:'Limpieza',pool:'Piscina',maintenance:'Mantenimiento',textile:'Textil',other:'Otros'};
 const PLAN_STATUS={draft:'Preparando',shopping:'De compras',done:'Terminado'};
 Object.assign(menuPaths,{cart:'M3 4h2l2.4 11h11.2L21 7H6 M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z M18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',box:'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10',route:'M5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M19 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M7 17h6a3 3 0 0 0 0-6h-2a3 3 0 0 1 0-6h6'});
 
@@ -32,7 +33,8 @@ function purchaseRun(build,message){try{return purchaseCommit(build(purchasesDat
 let purchaseListening=false;
 /* En Inicio, solo si cambia el número del aviso de suministros: un movimiento de almacén no cambia el modelo de tareas. */
 let homeLowStock=0;
-function lowStockCount(){return state.view==='home'&&tab()&&Sync.core&&fullScope(tab().id)?IkisaiTasks.purchases.lowStock(purchasesData(),tab().id).length:0}
+function lowSupplies(){const inv=Sync.core?.inventory;return inv?IkisaiTasks.purchases.lowStock(purchasesData(),inv.items,inv.movements):[]}
+function lowStockCount(){return state.view==='home'&&tab()&&Sync.core&&fullScope(tab().id)?lowSupplies().length:0}
 function listenPurchases(){if(purchaseListening||!Sync.core)return;purchaseListening=true;Sync.core.onChange(kind=>{if(kind!=='data'||document.getElementById('sheetBack')?.classList.contains('show'))return;if(PURCHASE_VIEWS.includes(state.view)||state.view==='home'&&lowStockCount()!==homeLowStock)render()})}
 
 /* --- Menú ---------------------------------------------------------------------------------------------------------- */
@@ -66,6 +68,19 @@ function supplierValue(id){const input=document.getElementById(id),name=input.va
   const known=supplierKnown.get(name.toLowerCase());if(known)return {supplier_id:known.id,supplier_name:known.name};
   if(name===input.dataset.initial&&input.dataset.supplierId)return {supplier_id:input.dataset.supplierId,supplier_name:name};
   return {supplier_id:null,supplier_name:name}}
+/* Nombre de un proveedor del catálogo de Finance por su id: lo ya buscado o lo que dicen las solicitudes y paradas. */
+function supplierNameOf(id){if(!id)return '';for(const x of supplierKnown.values())if(x.id===id)return x.name;
+  return liveRows('tasks.purchase_requests').find(r=>r.supplier_id===id&&r.supplier_name)?.supplier_name||liveRows('tasks.purchase_plan_stops').find(s=>s.supplier_id===id)?.supplier_name||''}
+/* Proveedor habitual de un artículo (ficha del kit, `supplierField`): solo del catálogo de Finance, porque Recursos guarda
+   su id. Vaciarlo lo quita; un nombre que no está en el catálogo no se guarda. */
+function itemSupplierField(value,onChange){const wrap=document.createElement('div');wrap.className='field';
+  wrap.innerHTML=`<label for="itemSupplier">Proveedor habitual</label>${supplierInput('itemSupplier',supplierNameOf(value),value,!canEdit())}<p class="small muted">Del catálogo de proveedores de Finance.</p>`;
+  const input=wrap.querySelector('input'),list=wrap.querySelector('datalist');let timer=null;
+  const ask=()=>{const q=input.value.trim().toLowerCase();const fill=items=>{list.innerHTML=items.map(x=>`<option value="${esc(x.name)}"></option>`).join('')};if(supplierCache.has(q))return fill(supplierCache.get(q));if(!Sync.core||!navigator.onLine)return;
+    Sync.core.api('/read/invoices.supplier_options',{method:'POST',json:{q,limit:20}}).then(out=>{const items=out?.items||[];supplierCache.set(q,items);for(const x of items)supplierKnown.set(x.name.toLowerCase(),x);fill(items)}).catch(()=>{})};
+  input.addEventListener('focus',ask);input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(ask,250);const name=input.value.trim();
+    if(!name)return onChange(null);const known=supplierKnown.get(name.toLowerCase());if(known)onChange(known.id)});
+  return wrap}
 
 /* --- Vistas -------------------------------------------------------------------------------------------------------- */
 function purchaseAreaNote(){return generalMode()?'<div class="notice">Elige un área en la tira de arriba: las compras se llevan por área.</div>':''}
@@ -95,14 +110,48 @@ function purchasesView(){listenPurchases();if(generalMode()||!tab())return `<mai
     ${rejected.length?`<button class="ghost" id="toggleRejectedPurchases" type="button" data-feedback-id="tasks.compras.lista.ver_rechazadas" data-feedback-label="Ver rechazadas">${showRejectedPurchases?'Ocultar rechazadas':`Ver rechazadas (${rejected.length})`}</button>${showRejectedPurchases?rejected.map(purchaseRow).join(''):''}`:''}</main>`}
 function suppliesView(){listenPurchases();if(generalMode()||!tab())return `<main class="screen"><h1 class="title">Suministros</h1>${purchaseAreaNote()}</main>`;
   if(!fullScope(tab().id))return `<main class="screen"><h1 class="title">Suministros</h1><div class="notice">El almacén es del área entera; tu acceso es a algunos proyectos.</div></main>`;
-  const P=IkisaiTasks.purchases,data=purchasesData(),items=liveRows('tasks.supply_items').filter(s=>s.tab_id===tab().id&&!s.archived).sort((a,b)=>(a.position||0)-(b.position||0));
-  const low=new Map(P.lowStock(data,tab().id).map(x=>[x.item.id,x]));
-  const row=s=>{const stock=P.supplyStock(data,s.id),l=low.get(s.id);return `<div class="pcard supplyrow" data-supply-row="${s.id}"><button type="button" class="psupply" data-supply="${s.id}" data-feedback-id="tasks.suministros.lista.suministro" data-feedback-label="Suministro"><span class="phead"><strong>${esc(s.name)}</strong></span><span class="pmeta">${esc(SUPPLY_CATEGORY[s.category]||'')}${s.location?' · '+esc(s.location):''}</span></button>
-      <div class="pactions"><span class="pstock ${l?'alert':''}" data-stock>${qty(stock,s.unit)}</span><span class="pmeta" style="margin:0">mínimo ${qty(s.min_quantity,s.unit)}</span><span class="pgrow"></span>
-      ${l?(l.openRequest?'<span class="pstate pending">Pedido</span>':canEdit()?`<button class="softbtn small" data-reorder="${s.id}" type="button" data-feedback-id="tasks.suministros.lista.pedir" data-feedback-label="Queda poco: pedir">Queda poco: pedir</button>`:'<span class="pstate alert">Queda poco</span>'):''}
-      ${canEdit()?`<button class="ghost small" data-supply-move="${s.id}|out" type="button" data-feedback-id="tasks.suministros.lista.gastar" data-feedback-label="Gastar">Gastar</button><button class="ghost small" data-supply-move="${s.id}|in" type="button" data-feedback-id="tasks.suministros.lista.entrada" data-feedback-label="Entrada">Entrada</button><button class="ghost small" data-supply-move="${s.id}|count" type="button" data-feedback-id="tasks.suministros.lista.recontar" data-feedback-label="Recontar">Recontar</button>`:''}</div></div>`};
-  return `<main class="screen supplies"><div class="screenhead"><div><h1 class="title">Suministros</h1><p class="subtitle">${esc(tab().name)} · ${items.length} en el almacén${low.size?` · ${low.size} con poco`:''}</p></div>${canEdit()?'<button class="primary" id="newSupply" type="button" data-feedback-id="tasks.suministros.cabecera.nuevo" data-feedback-label="Nuevo suministro">+ Suministro</button>':''}</div>
-    ${items.length?items.map(row).join(''):'<div class="empty">Añade lo que guardas (cloro, lejía, bombillas…) con su mínimo, y te avisará cuando quede poco.</div>'}</main>`}
+  if(!Sync.core?.resources)return `<main class="screen supplies"><h1 class="title">Suministros</h1><div class="notice">El inventario de la casa no está disponible ahora mismo. Vuelve a intentarlo en un momento.</div></main>`;
+  const inv=Sync.core.inventory,items=inv.items.filter(i=>!i.deleted_at&&i.active!==false&&IkisaiTasks.purchases.isSupplyKind(i.kind)),low=lowSupplies().length;
+  return `<main class="screen supplies"><div class="screenhead"><div><h1 class="title">Suministros</h1><p class="subtitle">Inventario de la casa · ${items.length} ${items.length===1?'suministro':'suministros'}${low?` · ${low} con poco`:''}</p></div></div>
+    <div class="ikisai-kit" id="suppliesCatalog"></div></main>`}
+
+/* --- Inventario de Recursos con las piezas del kit (R6) ------------------------------------------------------------------
+   Una fuente de artículos y una de espacios sobre el segundo cliente (como spaces-ui.js); el catálogo se crea una vez y se
+   vuelve a enganchar en cada render. Las piezas hacen sus propios lotes en Recursos (entrada, salida, traslado, recuento,
+   alta de artículos). Las hojas salen en la capa del kit (setKitLayer, feedback-ui.js). */
+let inventoryItems=null,inventorySpaces=null,suppliesCatalog=null,inventoryHandle=null,inventoryTool=null;
+function inventorySources(){const r=Sync.core?.resources;if(!r)return null;
+  inventoryItems??=IkisaiKit.createSyncItemSource(r,{supplierName:supplierNameOf});inventorySpaces??=IkisaiKit.createSyncSpaceSource(r);return {items:inventoryItems,spaces:inventorySpaces}}
+const isSupply=item=>IkisaiTasks.purchases.isSupplyKind(item.kind);
+function supplyLow(item){const inv=Sync.core?.inventory;if(!inv||!(Number(item.minQuantity)>0))return false;return IkisaiTasks.purchases.itemStock(inv.movements,item.id)<Number(item.minQuantity)}
+function closeInventorySheet(){const h=inventoryHandle;inventoryHandle=null;inventoryTool?.destroy();inventoryTool=null;if(h)void h.close(true)}
+function inventorySheet(title,build){closeInventorySheet();inventoryTool=build(()=>closeInventorySheet());
+  inventoryHandle=IkisaiKit.openSheet({title,body:inventoryTool.element,onClose:()=>{inventoryTool?.destroy();inventoryTool=null;inventoryHandle=null}})}
+/* Gastar, entrada, traslado o recuento de un artículo: el formulario de movimiento o la sesión de recuento del kit. */
+function supplyAct(action,item){const src=inventorySources();if(!src||!canEdit())return;
+  if(action==='count')return inventorySheet(`Contar ${item.name}`,done=>IkisaiKit.createCountSession({source:src.items,spaces:src.spaces,itemIds:[item.id],feedbackId:'tasks.suministros.recuento',onClosed:done,onLeave:done}));
+  const title={spend:'Gastar',entry:'Entrada',transfer:'Trasladar'}[action]||'Movimiento';
+  inventorySheet(`${title} · ${item.name}`,done=>IkisaiKit.createMovementForm({source:src.items,spaces:src.spaces,itemId:item.id,sourceApp:'tasks',feedbackId:'tasks.suministros.movimiento',onDone:done,onCancel:done,
+    ...(action==='spend'?{modes:['exit'],reason:'uso'}:{mode:action==='entry'?'entry':'transfer'})}))}
+/* Ficha del artículo: datos, unidades, stock por sitio y movimientos (lo de Food o Finance también sale: es el mismo). */
+function openSupply(item){const src=inventorySources();if(!src)return;closeInventorySheet();
+  const sheet=IkisaiKit.createItemSheet({source:src.items,itemId:item.id,spaces:src.spaces,feedbackId:'tasks.suministros.ficha',permissions:{edit:canEdit()},supplierField:itemSupplierField,
+    ...(canEdit()?{actions:['spend','entry','transfer','count'],onAction:(a,it)=>supplyAct(a,it)}:{})});
+  inventoryTool=sheet;inventoryHandle=IkisaiKit.openSheet({title:item.name,body:sheet.element,onClose:()=>{sheet.destroy();if(inventoryTool===sheet)inventoryTool=null;inventoryHandle=null}})}
+/* «Queda poco: pedir» desde un artículo: la hoja de pedir, precargada (cantidad de reposición o lo que falta, en su unidad). */
+function reorderItem(item){const inv=Sync.core?.inventory,row=inv?.items.find(i=>i.id===item.id);if(!row)return;
+  const op=IkisaiTasks.purchases.reorderItemOps(purchasesData(),{tab_id:tab().id,item:row,stock:IkisaiTasks.purchases.itemStock(inv.movements,row.id),supplier_name:supplierNameOf(row.default_supplier_id)||null})[0];
+  purchaseSheet(null,{...op.fields})}
+function mountSuppliesCatalog(){const host=document.getElementById('suppliesCatalog');if(!host)return;const src=inventorySources();if(!src)return;
+  if(!suppliesCatalog)suppliesCatalog=IkisaiKit.createItemCatalog({source:src.items,spaces:src.spaces,label:'Suministros',filter:isSupply,groupBy:'kind',storageKey:'tasks.suministros',
+    feedbackId:'tasks.suministros.catalogo',canCreate:canEdit(),onOpen:item=>openSupply(item),
+    ...(canEdit()?{actions:['spend','entry','count'],onAction:(a,item)=>supplyAct(a,item)}:{}),
+    rowActions:item=>{if(!supplyLow(item))return [];const open=IkisaiTasks.purchases.openRequestFor(purchasesData(),item.id);
+      if(open)return [{label:'Pedido',feedbackId:'tasks.suministros.lista.pedido',onClick:()=>purchaseSheet(open.id)}];
+      return canEdit()?[{label:'Queda poco: pedir',feedbackId:'tasks.suministros.lista.pedir',primary:true,onClick:()=>reorderItem(item)}]:[]}});
+  host.append(suppliesCatalog.element);
+  // Las acciones de fila dependen de las solicitudes de Tasks («Pedido»), que el catálogo no escucha: se repintan aquí.
+  suppliesCatalog.setFilter(suppliesCatalog.getFilter())}
 function plansView(){listenPurchases();if(generalMode()||!tab())return `<main class="screen"><h1 class="title">Planes de compra</h1>${purchaseAreaNote()}</main>`;
   if(!fullScope(tab().id))return `<main class="screen"><h1 class="title">Planes de compra</h1><div class="notice">Los planes de compra son del área entera.</div></main>`;
   const plans=liveRows('tasks.purchase_plans').filter(p=>p.tab_id===tab().id).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
@@ -127,6 +176,7 @@ function purchaseSheet(id=null,preset={}){
   const projects=tab().projects.filter(p=>!p.deleted&&p.status!=='archived');
   openSheet(`<h2 class="sheettitle">${id?'Solicitud de compra':'Pedir algo'}</h2>${id?`<p class="small">${esc((PURCHASE_STATUS[r.status]||[r.status])[0])}${r.approved_at?' · aprobada '+shortDate(r.approved_at):''}${r.purchased_at?' · comprada '+shortDate(r.purchased_at):''}${r.received_at?' · recibida '+shortDate(r.received_at):''}</p>`:''}
     <div class="field"><label for="prTitle">Qué hay que comprar</label><input id="prTitle" maxlength="300" value="${esc(r.title)}" ${editable?'':'disabled'} data-feedback-id="tasks.solicitud.campos.titulo" data-feedback-label="Qué hay que comprar"></div>
+    ${r.item_id?`<p class="small muted" id="prItem">Del inventario: <strong>${esc(inventoryItemName(r.item_id)||'artículo de Recursos')}</strong>. Al recibirla, entra en el almacén.</p>`:''}
     <div class="row"><div class="field"><label for="prQuantity">Cantidad</label><input id="prQuantity" type="number" min="0" step="any" inputmode="decimal" value="${r.quantity??''}" ${editable?'':'disabled'} data-feedback-id="tasks.solicitud.campos.cantidad" data-feedback-label="Cantidad"></div><div class="field"><label for="prUnit">Unidad</label><input id="prUnit" maxlength="20" placeholder="ud, l, kg…" value="${esc(r.unit||'')}" ${editable?'':'disabled'} data-feedback-id="tasks.solicitud.campos.unidad" data-feedback-label="Unidad"></div></div>
     <div class="field"><label for="prProject">Para</label><select id="prProject" ${editable?'':'disabled'} data-feedback-id="tasks.solicitud.campos.para" data-feedback-label="Para"><option value="">El área en general</option>${projects.map(p=>`<option value="${p.id}" ${p.id===r.project_id?'selected':''}>${esc(p.title)}</option>`).join('')}</select></div>
     <div class="field"><label for="prSupplier">Proveedor</label>${supplierInput('prSupplier',r.supplier_name,r.supplier_id,!editable)}</div>
@@ -147,45 +197,37 @@ function purchaseSheet(id=null,preset={}){
   const P=IkisaiTasks.purchases,val=()=>{const n=id=>{const v=document.getElementById(id).value.trim();return v===''?null:Number(v)};return {title:document.getElementById('prTitle').value.trim(),quantity:n('prQuantity'),unit:document.getElementById('prUnit').value.trim()||null,project_id:document.getElementById('prProject').value||null,...supplierValue('prSupplier'),estimated_amount:n('prAmount'),due:document.getElementById('prDue').value||null,priority:document.getElementById('prPriority').value,repeat_days:n('prRepeat'),needs_invoice:document.getElementById('prInvoice').checked,note:document.getElementById('prNote').value}};
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn};
   on('prSave',()=>{const v=val();if(!v.title)return toast('Escribe qué hay que comprar.');
-    if(!id){if(purchaseRun(d=>P.requestPurchaseOps(d,{tab_id:tab().id,supply_item_id:preset.supply_item_id||null,...v}),canApprovePurchases()?'Pedido.':'Pedido. Lo verá '+approverName(tab().id)+'.'))closeSheet();return}
+    if(!id){if(purchaseRun(d=>P.requestPurchaseOps(d,{tab_id:tab().id,item_id:preset.item_id||null,...v}),canApprovePurchases()?'Pedido.':'Pedido. Lo verá '+approverName(tab().id)+'.'))closeSheet();return}
     const fields=Object.fromEntries(Object.entries(v).filter(([k,x])=>JSON.stringify(x??null)!==JSON.stringify(r[k]??null)));
     if(!Object.keys(fields).length)return closeSheet();
     if(purchaseCommit([{op:'update',table:'tasks.purchase_requests',id,expectedRevision:r.revision,fields}],'Guardado.'))closeSheet()});
   on('prApprove',()=>{if(purchaseRun(d=>P.setPurchaseStatusOps(d,id,'approved'),'Aprobada.')){usage.track('tasks.compras.aprobar');closeSheet()}});
   on('prReject',()=>{if(purchaseRun(d=>P.setPurchaseStatusOps(d,id,'rejected'),'Rechazada.'))closeSheet()});
   on('prPurchased',()=>{if(purchaseRun(d=>P.setPurchaseStatusOps(d,id,'purchased'),'Marcada como comprada.'))closeSheet()});
-  on('prReceive',()=>{const ok=purchaseRun(d=>P.receivePurchaseOps(d,id),r.supply_item_id?'Recibida y sumada al almacén.':'Recibida.');if(!ok)return;usage.track('tasks.compras.recibir');
-    if(r.repeat_days){openSheet(`<h2 class="sheettitle">Compra recurrente</h2><p>«${esc(r.title)}» se repite cada ${r.repeat_days} días. ¿Pides ya la siguiente?</p><div class="actions"><button class="primary" id="prNextNow" type="button" data-feedback-id="tasks.solicitud.recurrente.pedir_siguiente" data-feedback-label="Pedir la siguiente">Pedir la siguiente</button><button class="ghost" id="prNextLater" type="button" data-feedback-id="tasks.solicitud.recurrente.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);
-      document.getElementById('prNextNow').onclick=()=>{if(purchaseRun(d=>P.nextRecurringOps(d,id),'Pedida la siguiente.'))closeSheet()};document.getElementById('prNextLater').onclick=()=>closeSheet()}else closeSheet()});
+  on('prReceive',()=>receivePurchase(r));
   on('prNext',()=>{if(purchaseRun(d=>P.nextRecurringOps(d,id),'Pedida la siguiente.'))closeSheet()});
   on('prDelete',()=>{if(purchaseCommit([{op:'delete',table:'tasks.purchase_requests',id,expectedRevision:r.revision}],'Enviada a la papelera.'))closeSheet()});
 }
-function supplySheet(id=null){
-  const s=id?liveRows('tasks.supply_items').find(x=>x.id===id):{name:'',category:'other',unit:'ud',location:'',min_quantity:0,reorder_quantity:null,supplier_name:'',note:''};if(!s)return;
-  const stock=id?IkisaiTasks.purchases.supplyStock(purchasesData(),id):null;
-  openSheet(`<h2 class="sheettitle">${id?esc(s.name):'Nuevo suministro'}</h2>${id?`<p>En el almacén: <strong>${qty(stock,s.unit)}</strong> · mínimo ${qty(s.min_quantity,s.unit)}</p>`:''}
-    <div class="field"><label for="suName">Nombre</label><input id="suName" maxlength="200" value="${esc(s.name)}" data-feedback-id="tasks.suministro.campos.nombre" data-feedback-label="Nombre"></div>
-    <div class="row"><div class="field"><label for="suCategory">Tipo</label><select id="suCategory" data-feedback-id="tasks.suministro.campos.tipo" data-feedback-label="Tipo">${Object.entries(SUPPLY_CATEGORY).map(([k,v])=>`<option value="${k}" ${k===s.category?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label for="suUnit">Unidad</label><input id="suUnit" maxlength="20" value="${esc(s.unit)}" data-feedback-id="tasks.suministro.campos.unidad" data-feedback-label="Unidad"></div></div>
-    <div class="field"><label for="suLocation">Dónde está</label><input id="suLocation" maxlength="200" placeholder="Almacén piscina" value="${esc(s.location||'')}" data-feedback-id="tasks.suministro.campos.ubicacion" data-feedback-label="Dónde está"></div>
-    <div class="row"><div class="field"><label for="suMin">Mínimo</label><input id="suMin" type="number" min="0" step="any" inputmode="decimal" value="${s.min_quantity??0}" data-feedback-id="tasks.suministro.campos.minimo" data-feedback-label="Mínimo"></div><div class="field"><label for="suReorder">Al pedir, cuánto</label><input id="suReorder" type="number" min="0" step="any" inputmode="decimal" placeholder="Lo que falte" value="${s.reorder_quantity??''}" data-feedback-id="tasks.suministro.campos.al_pedir" data-feedback-label="Al pedir, cuánto"></div></div>
-    <div class="field"><label for="suSupplier">Proveedor habitual</label>${supplierInput('suSupplier',s.supplier_name,s.supplier_id,false)}</div>
-    <div class="actions"><button class="primary" id="suSave" type="button" data-feedback-id="tasks.suministro.guardar" data-feedback-label="Guardar">Guardar</button>${id?'<button class="ghost danger-text" id="suDelete" type="button" data-feedback-id="tasks.suministro.papelera" data-feedback-label="Papelera">Papelera</button>':''}</div>`);
-  bindSupplierInput('suSupplier');
-  const num=(el,blank=null)=>{const v=document.getElementById(el).value.trim();return v===''?blank:Number(v)};
-  document.getElementById('suSave').onclick=()=>{const v={name:document.getElementById('suName').value.trim(),category:document.getElementById('suCategory').value,unit:document.getElementById('suUnit').value.trim()||'ud',location:document.getElementById('suLocation').value.trim(),min_quantity:num('suMin',0),reorder_quantity:num('suReorder'),...supplierValue('suSupplier')};
-    if(!v.name)return toast('Pon un nombre.');
-    if(!id){const items=liveRows('tasks.supply_items').filter(x=>x.tab_id===tab().id);if(purchaseCommit([{op:'insert',table:'tasks.supply_items',id:crypto.randomUUID(),fields:{tab_id:tab().id,...v,position:Math.max(0,...items.map(x=>Number(x.position)||0))+1024}}],'Suministro añadido.'))closeSheet();return}
-    const fields=Object.fromEntries(Object.entries(v).filter(([k,x])=>JSON.stringify(x??null)!==JSON.stringify(s[k]??null)));if(!Object.keys(fields).length)return closeSheet();
-    if(purchaseCommit([{op:'update',table:'tasks.supply_items',id,expectedRevision:s.revision,fields}],'Guardado.'))closeSheet()};
-  const del=document.getElementById('suDelete');if(del)del.onclick=()=>{if(purchaseRun(d=>IkisaiTasks.purchases.deleteSupplyItemOps(d,id),'Suministro enviado a la papelera.'))closeSheet()};
-}
-function supplyMoveSheet(id,kind){const s=liveRows('tasks.supply_items').find(x=>x.id===id);if(!s)return;const stock=IkisaiTasks.purchases.supplyStock(purchasesData(),id);
-  const title={out:'Gastar',in:'Entrada',count:'Recontar'}[kind],help={out:'¿Cuánto se ha gastado?',in:'¿Cuánto ha entrado?',count:'¿Cuánto hay ahora mismo?'}[kind];
-  openSheet(`<h2 class="sheettitle">${title} · ${esc(s.name)}</h2><p class="small muted">Ahora: ${qty(stock,s.unit)}</p><div class="field"><label for="moveAmount">${help} (${esc(s.unit)})</label><input id="moveAmount" type="number" min="0" step="any" inputmode="decimal" value="${kind==='count'?stock:''}" data-feedback-id="tasks.movimiento.campos.cantidad" data-feedback-label="Cantidad"></div><div class="field"><label for="moveNote">Nota</label><input id="moveNote" maxlength="200" placeholder="Opcional" data-feedback-id="tasks.movimiento.campos.nota" data-feedback-label="Nota"></div><div class="actions"><button class="primary" id="moveSave" type="button" data-feedback-id="tasks.movimiento.guardar" data-feedback-label="Apuntar">${title}</button></div>`);
-  document.getElementById('moveAmount').focus();
-  document.getElementById('moveSave').onclick=()=>{const amount=Number(document.getElementById('moveAmount').value);if(!Number.isFinite(amount)||amount<0||(kind!=='count'&&amount===0))return toast('Escribe una cantidad.');
-    const ops=IkisaiTasks.purchases.supplyMovementOps(purchasesData(),id,{kind,amount,note:document.getElementById('moveNote').value.trim()});if(!ops.length){closeSheet();return toast('Sin cambios: coincide con lo que había.')}
-    if(purchaseCommit(ops,'Apuntado.'))closeSheet()}}
+function inventoryItemName(id){return Sync.core?.inventory?.items.find(i=>i.id===id)?.name||''}
+/* Recibir (R6): si la solicitud es de un artículo con cantidad, su entrada en Recursos va primero, en el sitio habitual del
+   artículo o en el que se elija aquí; después la solicitud pasa a recibida. Con repetición, pregunta por la siguiente. */
+async function receivePurchase(r){const entry=!!r.item_id&&Number(r.quantity)>0;let item=Sync.core?.inventory?.items.find(i=>i.id===r.item_id);
+  // El artículo puede ser más nuevo que la copia de este dispositivo: con red, se pone al día antes de decidir el sitio.
+  if(entry&&!item&&Sync.core?.resources&&navigator.onLine){try{await Sync.core.resources.sync();item=(await Sync.core.resources.list('resources.items')).find(i=>i.id===r.item_id)}catch{}}
+  if(entry&&!item?.default_space_id)return receiptSpaceSheet(r);
+  finishReceive(r,entry?item.default_space_id:null)}
+function receiptSpaceSheet(r){const rows=(typeof spaceRows==='function'?spaceRows():[]).filter(s=>s.active!==false);
+  openSheet(`<h2 class="sheettitle">¿Dónde se guarda?</h2><p class="small">«${esc(r.title)}» entra en el inventario de la casa. Su artículo no tiene sitio habitual: elige dónde se guarda.</p>
+    <div class="field"><label for="receiptSpace">Sitio</label><select id="receiptSpace" data-feedback-id="tasks.solicitud.recibir.sitio" data-feedback-label="Sitio"><option value="">Elige un sitio…</option>${rows.map(s=>`<option value="${esc(s.id)}">${esc(spaceShort(s.id)||s.name)}</option>`).join('')}</select></div>
+    <div class="actions"><button class="primary" id="receiptSave" type="button" data-feedback-id="tasks.solicitud.recibir.guardar" data-feedback-label="Recibida">Recibida</button><button class="ghost" id="receiptCancel" type="button" data-feedback-id="tasks.solicitud.recibir.cancelar" data-feedback-label="Cancelar">Cancelar</button></div>`);
+  document.getElementById('receiptCancel').onclick=()=>closeSheet();
+  document.getElementById('receiptSave').onclick=()=>{const space=document.getElementById('receiptSpace').value;if(!space)return toast('Elige dónde se guarda.');finishReceive(r,space)}}
+async function finishReceive(r,spaceId){let entered=false;
+  try{entered=await Sync.core.recordReceipt(r.id,spaceId)}catch(e){return toast(e.message||'No se pudo apuntar la entrada en el inventario.')}
+  const P=IkisaiTasks.purchases,ok=purchaseRun(d=>P.receivePurchaseOps(d,r.id),entered?'Recibida y sumada al almacén.':'Recibida.');if(!ok)return;usage.track('tasks.compras.recibir');
+  if(!r.repeat_days)return closeSheet();
+  openSheet(`<h2 class="sheettitle">Compra recurrente</h2><p>«${esc(r.title)}» se repite cada ${r.repeat_days} días. ¿Pides ya la siguiente?</p><div class="actions"><button class="primary" id="prNextNow" type="button" data-feedback-id="tasks.solicitud.recurrente.pedir_siguiente" data-feedback-label="Pedir la siguiente">Pedir la siguiente</button><button class="ghost" id="prNextLater" type="button" data-feedback-id="tasks.solicitud.recurrente.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);
+  document.getElementById('prNextNow').onclick=()=>{if(purchaseRun(d=>P.nextRecurringOps(d,r.id),'Pedida la siguiente.'))closeSheet()};document.getElementById('prNextLater').onclick=()=>closeSheet()}
 function planSheet(id){const plan=liveRows('tasks.purchase_plans').find(p=>p.id===id);if(!plan)return;
   const stops=liveRows('tasks.purchase_plan_stops').filter(s=>s.plan_id===id).sort((a,b)=>(a.position||0)-(b.position||0)),requests=liveRows('tasks.purchase_requests');
   const editable=plan.status!=='done'&&canEdit();
@@ -223,14 +265,11 @@ const bindBeforePurchases=bind;
 bind=function(){bindBeforePurchases();
   const on=(sel,fn)=>document.querySelectorAll(sel).forEach(fn);
   const np=document.getElementById('newPurchase');if(np)np.onclick=()=>purchaseSheet();
-  const ns=document.getElementById('newSupply');if(ns)ns.onclick=()=>supplySheet();
   const pp=document.getElementById('preparePlan');if(pp)pp.onclick=()=>{const title='Compra del '+new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long'});if(purchaseRun(d=>IkisaiTasks.purchases.preparePlanOps(d,{tab_id:tab().id,title,today:today()}),'Plan preparado.'))usage.track('tasks.planes.preparar')};
   const tr=document.getElementById('toggleRejectedPurchases');if(tr)tr.onclick=()=>{showRejectedPurchases=!showRejectedPurchases;render()};
   document.querySelectorAll('[data-purchase-grouping]').forEach(b=>b.onclick=()=>{purchaseGrouping=b.dataset.purchaseGrouping;try{localStorage.setItem('tasks.purchases.grouping',purchaseGrouping)}catch{}render()});
   on('[data-purchase]',b=>b.onclick=()=>purchaseSheet(b.dataset.purchase));
-  on('[data-supply]',b=>b.onclick=()=>supplySheet(b.dataset.supply));
-  on('[data-supply-move]',b=>b.onclick=()=>{const [id,kind]=b.dataset.supplyMove.split('|');supplyMoveSheet(id,kind)});
-  on('[data-reorder]',b=>b.onclick=()=>{const id=b.dataset.reorder,s=liveRows('tasks.supply_items').find(x=>x.id===id),ops=IkisaiTasks.purchases.reorderSupplyOps(purchasesData(),id);purchaseSheet(null,{...ops[0].fields,supply_item_id:id,title:s?.name||ops[0].fields.title})});
+  mountSuppliesCatalog();
   on('[data-plan]',b=>b.onclick=()=>planSheet(b.dataset.plan));
   on('[data-open-supplies]',b=>b.onclick=()=>navigateView('supplies'));
 };

@@ -5,10 +5,11 @@
  * propuesta con ese lote exacto y se la devuelve al agente.
  */
 import { fail, type McpTool, type McpToolKit, type RequestContext } from '../_kit/mod.ts';
-import { DomainError, TABLES, TASK_TOOL_SPECS, buildTaskTool, effectiveScopes, emptyDataset, fullTab, lowStock, type Dataset } from '../_domain/tasks/mod.ts';
+import { DomainError, TABLES, TASK_TOOL_SPECS, buildTaskTool, effectiveScopes, emptyDataset, type Dataset, type ResourceItem } from '../_domain/tasks/mod.ts';
 
 const PAGE = 2000;
 const REQUEST_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** El conjunto visible para quien llama, papelera incluida (la necesitan las cascadas para reutilizar filas puente). */
 export async function visibleDataset(kit: McpToolKit): Promise<Dataset> {
@@ -43,26 +44,37 @@ async function idsFor(requestId: string, count = 256): Promise<() => string> {
 const APPROVAL = ' Si el cambio necesita aprobación (borrar, archivar o 10 elementos o más), la respuesta trae `needsApproval: true` y la propuesta ya preparada: cuando una persona la apruebe, envíala con `tasks_commit` usando `requestId`, `operations` y `confirmationId: proposal.id` de esa propuesta.';
 const REQUEST_ID_SCHEMA = { type: 'string', pattern: REQUEST_ID.source, description: 'Opcional. Repetir la llamada con el mismo requestId no duplica el cambio.' };
 
-/** «Qué queda poco»: suministros bajo mínimo de las áreas enteras visibles, con su solicitud abierta si ya se pidió. */
+/**
+ * «Qué queda poco»: artículos del inventario común de Recursos de tipo suministro bajo su mínimo (R6), con la solicitud
+ * abierta del área si ya se pidió. Lo calcula la lectura `tasks.low_stock` (solo para quien tiene alguna área entera).
+ */
 const LOW_STOCK_TOOL: McpTool = {
   name: 'tasks_low_stock',
-  description: 'Suministros por debajo de su mínimo (stock = suma de entradas, gastos y recuentos), con la solicitud de compra abierta si ya se pidió. Para pedir uno, usa tasks_request_purchase con su supply_item_id.',
+  description: 'Suministros del inventario de la casa (Recursos) por debajo de su mínimo, con la solicitud de compra abierta si ya se pidió (de tab_id, si lo indicas). Para pedir uno, usa tasks_request_purchase con su item_id y el área.',
   inputSchema: { type: 'object', additionalProperties: false, properties: { tab_id: { type: 'string', format: 'uuid' } } },
   annotations: { readOnlyHint: true },
-  async handler(args: Record<string, unknown>, ctx: RequestContext, kit: McpToolKit) {
+  async handler(args: Record<string, unknown>, _ctx: RequestContext, kit: McpToolKit) {
     const tabId = args?.tab_id;
-    if (tabId !== undefined && (typeof tabId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tabId))) fail(422, 'INVALID_INPUT', 'tab_id debe ser un uuid.', { field: 'tab_id' });
-    const data = await visibleDataset(kit);
-    const items = lowStock(data, (tabId as string | undefined)?.toLowerCase()).filter(({ item }) => fullTab(effectiveScopes(ctx.membership), item.tab_id));
+    if (tabId !== undefined && (typeof tabId !== 'string' || !UUID.test(tabId))) fail(422, 'INVALID_INPUT', 'tab_id debe ser un uuid.', { field: 'tab_id' });
+    const out = await kit.read('tasks.low_stock', tabId ? { tabId: (tabId as string).toLowerCase() } : {}) as { items?: Array<Record<string, unknown>> };
     return {
-      items: items.map(({ item, stock, openRequest }) => ({
-        supplyItemId: item.id, tabId: item.tab_id, name: item.name, category: item.category, unit: item.unit, location: item.location,
-        stock, minQuantity: Number(item.min_quantity), reorderQuantity: item.reorder_quantity == null ? null : Number(item.reorder_quantity),
-        supplierName: item.supplier_name, openRequest: openRequest ? { id: openRequest.id, status: openRequest.status, quantity: openRequest.quantity } : null,
+      items: (out?.items ?? []).map((item) => ({
+        itemId: item.id, name: item.name, kind: item.kind, unit: item.unit, stock: Number(item.stock),
+        minQuantity: Number(item.minQuantity), reorderQuantity: item.reorderQuantity == null ? null : Number(item.reorderQuantity),
+        openRequestId: item.openRequestId ?? null,
       })),
     };
   },
 };
+
+/** El artículo de Recursos que pide `tasks_request_purchase` (con su stock), o `null` si no existe. */
+async function resourceItem(kit: McpToolKit, input: Record<string, unknown>): Promise<(ResourceItem & { stock: number }) | null | undefined> {
+  const itemId = input.item_id;
+  if (itemId === undefined) return undefined;
+  if (typeof itemId !== 'string' || !UUID.test(itemId)) fail(422, 'INVALID_INPUT', 'item_id debe ser un uuid.', { field: 'item_id' });
+  const out = await kit.read('tasks.supply_item', { itemId: itemId.toLowerCase() }) as { item?: (ResourceItem & { stock: number }) | null };
+  return out?.item ?? null;
+}
 
 export function tasksMcpTools(): McpTool[] {
   return [LOW_STOCK_TOOL, ...TASK_TOOL_SPECS.map((spec): McpTool => ({
@@ -77,7 +89,8 @@ export function tasksMcpTools(): McpTool[] {
       const requestId = (given as string | undefined) ?? `mcp-${spec.name}-${crypto.randomUUID()}`;
       let operations;
       try {
-        operations = buildTaskTool(spec.name, await visibleDataset(kit), input, await idsFor(requestId), { scopes: effectiveScopes(ctx.membership) });
+        const item = spec.name === 'tasks_request_purchase' ? await resourceItem(kit, input) : undefined;
+        operations = buildTaskTool(spec.name, await visibleDataset(kit), input, await idsFor(requestId), { scopes: effectiveScopes(ctx.membership), ...(item !== undefined ? { item } : {}) });
       } catch (error) {
         if (error instanceof DomainError) fail(error.status, error.code, error.message, error.details);
         throw error;

@@ -9,7 +9,7 @@
  */
 import { createTaskOps, deleteTaskOps, moveTaskOps, setDependenciesOps, setTaskDoneOps, setTaskLabelsOps, setTaskPeopleOps, setTaskSpacesOps, setTaskTradesOps, type NewId } from './ops.ts';
 import { isPersonKey, personFields } from './people.ts';
-import { preparePlanOps, reorderSupplyOps, requestPurchaseOps } from './purchases.ts';
+import { preparePlanOps, reorderItemOps, requestPurchaseOps, type ResourceItem } from './purchases.ts';
 import { fullTab, type Scopes } from './scopes.ts';
 import { reject, type Dataset, type Operation, type Priority, type TaskRow, type Uuid } from './types.ts';
 
@@ -110,9 +110,9 @@ export const TASK_TOOL_SPECS: readonly TaskToolSpec[] = [
   // compras del área. Preparar un plan siempre pide aprobación: es la lista con la que alguien saldrá a comprar.
   {
     name: 'tasks_request_purchase',
-    description: 'Pide una compra: crea una solicitud «pedida» que el responsable de compras del área aprobará o rechazará. Con supply_item_id es «Queda poco: pedir»: toma del suministro el nombre, la unidad, el proveedor y la cantidad de reposición (o lo que falta hasta el mínimo), y los campos que indiques los sustituyen. Sin suministro, indica tab_id (o project_id o task_id) y title.',
+    description: 'Pide una compra: crea una solicitud «pedida» que el responsable de compras del área aprobará o rechazará. Indica siempre el área (tab_id, project_id o task_id). Con item_id (un artículo del inventario de Recursos, el de tasks_low_stock) es «Queda poco: pedir»: toma del artículo el nombre, la unidad, el proveedor habitual y la cantidad de reposición (o lo que falta hasta el mínimo), y los campos que indiques los sustituyen. Sin artículo, indica title.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {
-      supply_item_id: uuid, tab_id: uuid, project_id: uuid, task_id: uuid,
+      item_id: uuid, tab_id: uuid, project_id: uuid, task_id: uuid,
       title: { type: 'string', minLength: 1, maxLength: 300 }, note: { type: 'string', maxLength: 5000 },
       quantity: { type: 'number', exclusiveMinimum: 0 }, unit: { type: 'string', maxLength: 20 }, estimated_amount: { type: 'number', minimum: 0 },
       priority: { type: 'string', enum: PRIORITIES }, due: { type: 'string', description: 'Para cuándo, AAAA-MM-DD.' },
@@ -267,7 +267,12 @@ function wholeTab(scopes: Scopes | undefined, tabId: Uuid): void {
 }
 
 /** Opciones de construcción: el día de hoy (para el título del plan) y los ámbitos de quien llama. */
-export interface TaskToolOptions { today?: string; scopes?: Scopes }
+export interface TaskToolOptions {
+  today?: string;
+  scopes?: Scopes;
+  /** El artículo de Recursos de `item_id` con su stock (lo lee tasks-api con `tasks.supply_item`); `null` si no existe. */
+  item?: (ResourceItem & { stock: number }) | null;
+}
 
 // --- Constructores --------------------------------------------------------------------------------------------------
 
@@ -358,7 +363,7 @@ export function buildTaskTool(name: TaskToolName, data: Dataset, raw: unknown, n
       return setTaskPeopleOps(data, task.id, personList(input, 'people'), newId);
     }
     case 'tasks_request_purchase': {
-      const input = object(raw, ['supply_item_id', 'tab_id', 'project_id', 'task_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'due', 'supplier_name', 'needs_invoice', 'repeat_days']);
+      const input = object(raw, ['item_id', 'tab_id', 'project_id', 'task_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'due', 'supplier_name', 'needs_invoice', 'repeat_days']);
       const given: Record<string, unknown> = {};
       const put = (key: string, value: unknown) => { if (value !== undefined) given[key] = value; };
       put('title', text(input, 'title', 300)); put('note', text(input, 'note', 5000)); put('unit', text(input, 'unit', 20)); put('supplier_name', text(input, 'supplier_name', 200));
@@ -370,16 +375,8 @@ export function buildTaskTool(name: TaskToolName, data: Dataset, raw: unknown, n
         put('repeat_days', input.repeat_days);
       }
       if (given.title === '') invalid('title', 'El nombre no puede estar vacío.');
-      const supplyId = id(input, 'supply_item_id', false);
-      if (supplyId) {
-        const item = data['tasks.supply_items'].find((s) => s.id === supplyId);
-        if (!item || item.deleted_at) notFound('el suministro', supplyId);
-        if (input.tab_id !== undefined && id(input, 'tab_id') !== item!.tab_id) invalid('tab_id', 'El suministro es de otra área.');
-        if (input.project_id !== undefined || input.task_id !== undefined) invalid('supply_item_id', 'Un suministro es del área entera: no lleva proyecto ni tarea.');
-        const op = reorderSupplyOps(data, item!.id, newId)[0]!;
-        Object.assign(op.fields!, given);
-        return [op];
-      }
+      const itemId = id(input, 'item_id', false);
+      if (itemId && (!options.item || options.item.id !== itemId || options.item.deleted_at)) notFound('el artículo', itemId);
       let tabId = id(input, 'tab_id', false), projectId = id(input, 'project_id', false);
       const taskId = id(input, 'task_id', false);
       if (taskId) {
@@ -392,9 +389,14 @@ export function buildTaskTool(name: TaskToolName, data: Dataset, raw: unknown, n
         if (tabId && tabId !== project.tab_id) invalid('tab_id', 'El proyecto es de otra área.');
         tabId = project.tab_id;
       }
-      if (!tabId) invalid('tab_id', 'Indica supply_item_id, o el área (tab_id, project_id o task_id).');
+      if (!tabId) invalid('tab_id', 'Indica el área (tab_id, project_id o task_id).');
       liveTab(data, tabId!);
       if (!projectId) wholeTab(options.scopes, tabId!);
+      if (itemId) {
+        const op = reorderItemOps(data, { tab_id: tabId!, item: options.item!, stock: options.item!.stock }, newId)[0]!;
+        Object.assign(op.fields!, { project_id: projectId ?? null, task_id: taskId ?? null }, given);
+        return [op];
+      }
       if (given.title === undefined) invalid('title', 'Falta title.');
       return requestPurchaseOps(data, { ...(given as { title: string }), tab_id: tabId!, project_id: projectId ?? null, task_id: taskId ?? null }, newId);
     }

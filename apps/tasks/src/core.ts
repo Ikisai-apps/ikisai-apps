@@ -11,8 +11,8 @@ import {
   assertLabelNames, generalMergeProblem, labelClashMessage, labelNameClash, labelNameKey,
   addCommentOps, commentCounts, deleteCommentOps, editCommentOps, taskComments,
   approvalOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
-  supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
-  receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps,
+  itemStock, isSupplyKind, lowStock, openRequestFor, receiptEntryOperation, requestPurchaseOps, reorderItemOps, setPurchaseStatusOps,
+  receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, KITCHEN_KINDS, type ResourceItem, type ResourceMovement,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
@@ -26,6 +26,18 @@ export interface CoreOptions {
   /** Solo lectura del espejo (pestaña secundaria): no arranca el ciclo de sincronización. */
   readOnly?: boolean;
   pullIntervalMs?: number;
+}
+
+/** Tablas del inventario de Recursos que sincroniza el segundo cliente (las que lee `createSyncItemSource` del kit). */
+const RESOURCE_INVENTORY_TABLES = ['resources.items', 'resources.item_units', 'resources.item_kinds', 'resources.lots', 'resources.movements',
+  'resources.movement_costs', 'resources.counts', 'resources.count_lines'];
+
+/** Uuid estable a partir de un texto (la misma solicitud, la misma entrada en Recursos). */
+async function stableUuid(seed: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed))).slice(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40; bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 const BLOCKERS_KEY = 'ikisai-tasks-blockers';
@@ -258,14 +270,44 @@ export class TasksCore {
       if (!this.resources) {
         this.resources = createSyncClient({
           app: 'resources', apiBase: `${this.options.apiBase ?? '/api/v1'}/resources`, sessionFrom: this.client, clearOnLogout: true,
-          tables: ['resources.spaces', 'resources.space_kinds'] as TableName[],
+          // Espacios (R2) e inventario común (R6): lo que leen `createSyncSpaceSource` y `createSyncItemSource` del kit.
+          tables: ['resources.spaces', 'resources.space_kinds', ...RESOURCE_INVENTORY_TABLES] as TableName[],
           pullIntervalMs: this.options.pullIntervalMs ?? 20000,
         });
         this.resources.onTable('resources.spaces' as TableName, () => void this.readSpaces());
+        for (const table of ['resources.items', 'resources.movements']) this.resources.onTable(table as TableName, () => void this.readInventory());
       }
       await this.resources.start();
       await this.readSpaces();
+      await this.readInventory();
     } catch (error) { console.warn('Recursos no disponible', error); }
+  }
+
+  /** Artículos y movimientos del espejo de Recursos, para el aviso «Queda poco» de Inicio (síncrono en la interfaz). */
+  inventory: { items: ResourceItem[]; movements: ResourceMovement[] } = { items: [], movements: [] };
+
+  private async readInventory(): Promise<void> {
+    if (!this.resources) return;
+    const [items, movements] = await Promise.all([this.resources.list('resources.items' as TableName), this.resources.list('resources.movements' as TableName)]);
+    this.inventory = { items: items as unknown as ResourceItem[], movements: movements as unknown as ResourceMovement[] };
+    this.emit('data');
+  }
+
+  /**
+   * La entrada en Recursos al recibir una solicitud de compra (R6): `entrada_manual` en `spaceId`, con id y requestId
+   * estables por solicitud (repetirla no suma dos veces). Sin artículo o sin cantidad no hay entrada. Va antes del lote de
+   * Tasks que la marca recibida (lo envía la interfaz). Devuelve si se apuntó ahora.
+   */
+  async recordReceipt(requestId: string, spaceId: string | null): Promise<boolean> {
+    const request = this.data['tasks.purchase_requests'].find((r) => r.id === requestId && !r.deleted_at);
+    if (!request) throw new DomainError(404, 'NOT_FOUND', 'No existe esa solicitud.');
+    if (!request.item_id || !(Number(request.quantity) > 0)) return false;
+    if (!this.resources) throw new DomainError(503, 'RESOURCES_UNAVAILABLE', 'El inventario no está disponible ahora mismo.');
+    if (!spaceId) throw new DomainError(422, 'SPACE_REQUIRED', 'Elige dónde se guarda lo recibido.');
+    const id = await stableUuid(`tasks-receipt:${request.id}`);
+    if ((await this.resources.list('resources.movements' as TableName)).some((m) => (m as { id?: string }).id === id)) return false;
+    await this.resources.commit([receiptEntryOperation(request, { id, spaceId }) as RowOperation], { requestId: `tasks-receipt-${request.id}` });
+    return true;
   }
 
   private async readSpaces(): Promise<void> {
@@ -560,8 +602,8 @@ const api = {
   DomainError,
   /** Compras no alimentarias (§18): operaciones puras del dominio para la interfaz (`public/purchases-ui.js`). */
   purchases: {
-    supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
-    receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations,
+    itemStock, isSupplyKind, lowStock, openRequestFor, requestPurchaseOps, reorderItemOps, setPurchaseStatusOps,
+    receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations, KITCHEN_KINDS,
   },
   /** Regla de nombres de etiquetas (FB_2026_033, §27.2): el aviso inmediato del editor (`public/navigation-ui.js`) y,
    *  con `mergeProblem`, lo que la vista previa de «Repetidas → General» anticipa del servidor (`public/general-ui.js`). */

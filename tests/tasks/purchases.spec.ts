@@ -33,6 +33,23 @@ test.afterAll(async () => { await contextA?.close(); await contextB?.close(); aw
 
 const go = (page: Page, view: string) => page.evaluate((v) => navigateView(v), view);
 const syncBoth = async () => { await settled(owner); await editor.evaluate(() => (window as any).syncNow?.()); await settled(editor); };
+// R6: el almacén es el inventario común de Recursos (piezas del kit). Conductor: el artículo nace en Recursos por la API (como
+// si lo diera de alta otra app o la ficha del kit), el segundo cliente se pone al día a mano y los movimientos van por el kit.
+const CLORO = crypto.randomUUID(), ALMACEN = crypto.randomUUID();
+const resources = async (operations: unknown[]) => {
+  const res = await server.app.call('/api/v1/resources/commands', { body: { requestId: `r-${crypto.randomUUID()}`, operations } });
+  expect(res.status, JSON.stringify(res.data)).toBe(200);
+};
+const syncResources = (page: Page) => page.evaluate(() => Sync.core.resources?.sync());
+const stock = async (item: string) => Number((await server.app.t.db.query<{ q: string }>(`select coalesce(sum(quantity), 0) as q from resources.movements where item_id = $1 and deleted_at is null`, [item])).rows[0]!.q);
+const itemRow = (page: Page, id: string) => page.locator(`.stk-row[data-item-id="${id}"]`);
+const kitDialog = (page: Page) => page.locator('#kitLayer [role="dialog"]');
+const kitMove = async (page: Page, id: string, kind: 'Entrada' | 'Gastar', amount: string) => {
+  await itemRow(page, id).getByRole('button', { name: kind, exact: true }).click();
+  await kitDialog(page).getByLabel(kind === 'Entrada' ? 'Cuánto entra' : 'Cuánto sale', { exact: true }).fill(amount);
+  await kitDialog(page).getByRole('button', { name: kind === 'Entrada' ? 'Registrar entrada' : 'Registrar salida' }).click();
+  await expect(kitDialog(page)).toHaveCount(0);
+};
 
 test('la propietaria nombra responsable de compras en el editor de área', async () => {
   const editorId = (await server.app.t.db.query<{ user_id: string }>(`select user_id from core.memberships where app = 'tasks' and role = 'editor' and scopes is null`)).rows[0]!.user_id;
@@ -45,31 +62,29 @@ test('la propietaria nombra responsable de compras en el editor de área', async
 });
 
 test('suministro bajo mínimo: aviso en Inicio y «Queda poco: pedir»', async () => {
+  const altura = (await server.app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
+  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { parent_id: altura, kind: 'edificio', name: 'Almacén piscina', position: 1024 } }]);
+  await resources([{ op: 'insert', table: 'resources.items', id: CLORO, fields: { name: 'Cloro granulado', kind: 'material', base_unit: 'kg', min_quantity: 5, reorder_quantity: 10, default_space_id: ALMACEN } }]);
+  await syncResources(owner);
   await go(owner, 'supplies');
-  await owner.locator('#newSupply').click();
-  await owner.locator('#suName').fill('Cloro granulado');
-  await owner.locator('#suCategory').selectOption('pool');
-  await owner.locator('#suUnit').fill('kg');
-  await owner.locator('#suMin').fill('5');
-  await owner.locator('#suReorder').fill('10');
-  await owner.locator('#suSupplier').fill('Piscinas Norte');
-  await owner.locator('#suSave').click();
-  await expect(owner.locator('.supplyrow')).toHaveCount(1);
+  await expect(itemRow(owner, CLORO)).toHaveCount(1);
   // Entrada de 3 kg: sigue por debajo del mínimo.
-  await owner.locator('[data-supply-move$="|in"]').click();
-  await owner.locator('#moveAmount').fill('3');
-  await owner.locator('#moveSave').click();
-  await expect(owner.locator('.supplyrow [data-stock]')).toHaveText('3 kg');
+  await kitMove(owner, CLORO, 'Entrada', '3');
+  await expect.poll(() => stock(CLORO)).toBe(3);
+  await expect(itemRow(owner, CLORO)).toContainText('3 kg');
   await go(owner, 'home');
   await expect(owner.locator('.lowstock')).toContainText('Queda poco de 1 suministro');
   await owner.locator('[data-open-supplies]').click();
-  await owner.locator('[data-reorder]').click();
+  await itemRow(owner, CLORO).getByRole('button', { name: 'Queda poco: pedir' }).click();
   await expect(owner.locator('#prTitle')).toHaveValue('Cloro granulado');
   await expect(owner.locator('#prQuantity')).toHaveValue('10');
-  await expect(owner.locator('#prSupplier')).toHaveValue('Piscinas Norte');
+  await expect(owner.locator('#prUnit')).toHaveValue('kg');
+  await expect(owner.locator('#prItem')).toContainText('Cloro granulado');
+  await owner.locator('#prSupplier').fill('Piscinas Norte');
   await owner.locator('#prSave').click();
-  await expect(owner.locator('.supplyrow')).toContainText('Pedido');
+  await expect(itemRow(owner, CLORO).getByRole('button', { name: 'Pedido' })).toHaveCount(1);
   await settled(owner);
+  expect((await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Cloro granulado')?.item_id).toBe(CLORO);
 });
 
 test('solo el responsable aprueba; el plan agrupa por proveedor y se reordena', async () => {
@@ -117,12 +132,20 @@ test('recibir suma al almacén y quita el aviso', async () => {
   await go(editor, 'purchases');
   await editor.locator('[data-purchase]', { hasText: 'Cloro granulado' }).click();
   await editor.locator('#prReceive').click();
-  await go(editor, 'supplies');
-  await expect(editor.locator('.supplyrow [data-stock]')).toHaveText('13 kg');
-  await expect(editor.locator('[data-reorder]')).toHaveCount(0);
+  // La entrada va a Recursos, en el sitio habitual del artículo, una sola vez.
+  await expect.poll(() => stock(CLORO)).toBe(13);
+  await expect.poll(async () => (await server.rows('tasks.purchase_requests')).filter((r) => r.title === 'Cloro granulado').map((r) => r.status)).toEqual(['received']);
+  const entry = (await server.app.t.db.query<Record<string, unknown>>(`select kind, space_id, source_app, source_ref from resources.movements where item_id = $1 and source_app = 'tasks' and source_ref like 'purchase_request:%'`, [CLORO])).rows;
+  const req = (await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Cloro granulado');
+  expect(entry).toEqual([{ kind: 'entrada_manual', space_id: ALMACEN, source_app: 'tasks', source_ref: `purchase_request:${req.id}` }]);
   await settled(editor);
+  await syncResources(editor);
+  await go(editor, 'supplies');
+  await expect(itemRow(editor, CLORO)).toContainText('13 kg');
+  await expect(itemRow(editor, CLORO).getByRole('button', { name: 'Queda poco: pedir' })).toHaveCount(0);
   await owner.evaluate(() => (window as any).syncNow?.());
   await settled(owner);
+  await syncResources(owner);
   await go(owner, 'home');
   await expect(owner.locator('.lowstock')).toHaveCount(0);
 });
@@ -131,18 +154,15 @@ test('Inicio se entera sin cambiar de pantalla: el aviso sale y se va con los mo
   // El aviso depende del almacén, que no cambia el modelo de tareas: Inicio tiene que repintarse igual.
   await go(owner, 'home');
   await expect(owner.locator('.lowstock')).toHaveCount(0);
-  const move = async (kind: 'in' | 'out', amount: string) => {
-    await editor.locator(`[data-supply-move$="|${kind}"]`).click();
-    await editor.locator('#moveAmount').fill(amount);
-    await editor.locator('#moveSave').click();
-    await settled(editor);
-    await owner.evaluate(() => (window as any).syncNow?.());
-    await settled(owner);
+  const move = async (kind: 'Entrada' | 'Gastar', amount: string) => {
+    await kitMove(editor, CLORO, kind, amount);
+    await expect.poll(() => stock(CLORO)).toBe(kind === 'Gastar' ? 3 : 13);
+    await syncResources(owner);
   };
   await go(editor, 'supplies');
-  await move('out', '10');
+  await move('Gastar', '10');
   await expect(owner.locator('.lowstock')).toContainText('Queda poco de 1 suministro');
-  await move('in', '10');
+  await move('Entrada', '10');
   await expect(owner.locator('.lowstock')).toHaveCount(0);
   expect(await owner.evaluate(() => state.view)).toBe('home');
 });
@@ -169,16 +189,23 @@ test('Finance: factura asignada en la solicitud y proveedor del catálogo (con n
   await expect(link).toHaveAttribute('href', 'https://finance.ikisai.com/#/facturas/F-2026-0042');
   await owner.evaluate(() => (window as any).closeSheet());
 
-  // Proveedor habitual del suministro: se elige del catálogo y queda enlazado por su id.
+  // Proveedor habitual del artículo (ficha del kit): se elige del catálogo de Finance y queda enlazado por su id.
+  const SUPPLIER = crypto.randomUUID();
+  await owner.unroute('**/read/invoices.supplier_options');
+  await owner.route('**/read/invoices.supplier_options', async (route) => {
+    const { q } = route.request().postDataJSON();
+    const all = [{ id: SUPPLIER, name: 'Piscinas Norte SL', slug: 'piscinas-norte' }];
+    await route.fulfill({ json: { items: all.filter((x) => !q || x.name.toLowerCase().includes(q)) } });
+  });
   await go(owner, 'supplies');
-  await owner.locator('[data-supply]').first().click();
-  await owner.locator('#suSupplier').fill('');
-  await owner.locator('#suSupplier').pressSequentially('pisc');
-  await expect(owner.locator('#suSupplierList option')).toHaveCount(1);
-  await expect(owner.locator('#suSupplierList option')).toHaveAttribute('value', 'Piscinas Norte SL');
-  await owner.locator('#suSupplier').fill('Piscinas Norte SL');
-  await owner.locator('#suSave').click();
-  await expect.poll(async () => (await server.rows('tasks.supply_items')).find((x) => x.name === 'Cloro granulado')?.supplier_id).toBe('sup-piscinas');
+  await itemRow(owner, CLORO).getByRole('button', { name: 'Abrir Cloro granulado' }).click();
+  await kitDialog(owner).getByRole('tab', { name: 'Datos' }).click();
+  await kitDialog(owner).locator('#itemSupplier').pressSequentially('pisc');
+  await expect(kitDialog(owner).locator('#itemSupplierList option')).toHaveAttribute('value', 'Piscinas Norte SL');
+  await kitDialog(owner).locator('#itemSupplier').fill('Piscinas Norte SL');
+  await kitDialog(owner).getByRole('button', { name: 'Guardar' }).click();
+  await expect.poll(async () => (await server.app.t.db.query<{ s: string }>(`select default_supplier_id::text s from resources.items where id = $1`, [CLORO])).rows[0]!.s).toBe(SUPPLIER);
+  await owner.keyboard.press('Escape');
   // Un nombre que no está en el catálogo se guarda como nombre libre, sin id.
   await go(owner, 'purchases');
   await owner.locator('#newPurchase').click();
