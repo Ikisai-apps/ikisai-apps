@@ -1,5 +1,26 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.43.0 · 19 de octubre de 2026
+
+**Piezas comunes, lote B1** (MUELA-075, tanda 27): las piezas compuestas más visuales. Lo que ya existía no cambia. Detalle en el README («Lote B1»).
+
+- **Nuevas:**
+  - `renderCover` y `createFocus` (portada y foco);
+  - `createCoverCarousel` (portada que se pasa con flechas, puntos, teclado y dedo, con «n de N» anunciado);
+  - `renderLead` (lo primero en grande y la cola);
+  - `renderNow` (lo de ahora abierto, el resto plegado).
+- **Ampliado:** `createCalendar` acepta `price`, `tone` y `toneLabel` en `dayInfo` (calendario de precios). Sin esos campos, la celda es la de siempre.
+- **Accesibilidad:**
+  - objetivos de 46 px;
+  - «✓ Hecha» con `role="checkbox"`;
+  - recuentos anunciados;
+  - el tono del precio dicho con palabras;
+  - sin animaciones que reducir.
+- **Prefijos:** `cover-`, `focus-`, `lead-`, `now-` y `cal-tone-`. Pasa `v45`.
+- **Medallón:** fondo opaco, para que las iniciales se lean también sobre una foto o un color oscuro.
+- **Demo:** sección `#piecesb`, sin enlace en la cabecera, que en el móvil ya tapaba el calendario de `v39`.
+- **Pruebas:** `v48`, con el deslizar probado con toques reales por CDP en el móvil.
+
 ## 0.42.0 · 19 de octubre de 2026
 
 **Piezas comunes, lote A** (MUELA-075, tanda 27): piezas pequeñas sin estado, para que las apps las usen al rehacerse. No cambia nada de lo que ya había. Detalle de cada una en el README («Piezas comunes»).
