@@ -66,7 +66,7 @@ test.afterAll(async () => { await server?.close(); });
 /** Espera a que la interfaz quede al día con el servidor; si no llega, explica en qué estado se quedó. */
 async function settled(page: Page): Promise<void> {
   try {
-    await page.waitForFunction(() => typeof Sync !== 'undefined' && Sync.ready && Sync.mode === 'online' && !Sync.busy && Sync.record.queue.length === 0, null, { timeout: 20_000 });
+    await page.waitForFunction(() => typeof Sync !== 'undefined' && Sync.ready && Sync.mode === 'online' && !Sync.busy && Sync.record.queue.length === 0 && (!Sync.core?.idle || Sync.core.idle()), null, { timeout: 20_000 });
   } catch (error) {
     const snapshot = await page.evaluate(() => JSON.stringify({ ready: Sync.ready, tabs: state.tabs.length, mode: Sync.mode, busy: Sync.busy, queue: Sync.record.queue.length, conflict: Sync.record.conflict, failure: Sync.record.failure, status: Sync.core?.status() })).catch(() => 'sin página');
     throw new Error(`La interfaz no quedó al día: ${snapshot}`);

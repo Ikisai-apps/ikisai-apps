@@ -1,0 +1,18 @@
+/* Ikisai Tasks · O1, pasos 3 y 4: propuestas del outsider (proposals-ui.js). */
+.proposeform{display:grid;gap:12px;margin:12px 0}
+.proposeform .field{display:grid;gap:6px}
+.proposeform .field>span{font-weight:600;font-size:.9rem}
+.proposeform textarea{min-height:72px}
+.proposephoto{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.proposephoto img{width:64px;height:64px;object-fit:cover;border-radius:10px}
+.proposeform .segmented{display:flex;gap:6px;flex-wrap:wrap}
+.proposeform .segmented button{flex:1 1 auto;min-height:40px}
+.proposalreview{margin:4px 0 18px}
+.proposalreview .proposals{margin-top:6px}
+.proposaldetail{display:grid;gap:8px}
+.proposaldetail p{margin:0;overflow-wrap:anywhere}
+.proposalnote{white-space:pre-wrap}
+.proposalphoto{max-width:100%;max-height:240px;border-radius:12px;object-fit:contain}
+.proposalphoto.missing{display:none}
+.myproposals .ikisai-kit{margin-top:8px}
+.opento .checkline{display:flex;gap:10px;align-items:center;padding:6px 0;text-transform:none;letter-spacing:normal;font-size:1rem;font-weight:500;color:inherit}

@@ -1,7 +1,7 @@
 /** Ikisai Tasks · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/tasks/API.md §4–§6). */
 import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, createStorage, r2ConfigFromEnv, type StorageAccess } from '../_kit/mod.ts';
 import {
-  ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, effectiveScopes, riskNeedsData, statuses, tasksAgentRisk, validateOperations, visible, visibleRow,
+  ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, effectiveScopes, riskNeedsData, statuses, suggestionVisibleFor, tasksAgentRisk, validateOperations, visible, visibleRow,
   type AttachmentRow, type ProjectRow, type Role, type TaskCommentRow, type TaskDependencyRow, type TaskRow,
 } from '../_domain/tasks/mod.ts';
 
@@ -150,6 +150,8 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       visible,
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),
       agentRisk: tasksAgentRiskHook(supabase),
+      // O1 (0098): quien revisa solo ve, previsualiza y decide las propuestas cuyo destino está en sus ámbitos.
+      suggestionVisible: (suggestion, ctx) => suggestionVisibleFor(suggestion, effectiveScopes(ctx.membership)),
     },
     routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase), ...peopleRoutes(supabase), ...tradeRoutes(supabase)],
     workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes(supabase)],

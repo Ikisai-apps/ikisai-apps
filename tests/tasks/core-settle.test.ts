@@ -52,3 +52,13 @@ test('aviso del espejo con un guardado local en vuelo: no toca la copia en memor
   core.tableChanged('tasks.saved_views', [{ id: 'v1', revision: 1 }]);
   assert.equal(core.data['tasks.saved_views'], before);
 });
+
+test('idle: en reposo solo sin refresco pendiente ni guardados en vuelo', () => {
+  const core = new TasksCore({ readOnly: true }) as any;
+  core.dirty = false; core.localPending = 0; core.refreshTimer = null;
+  assert.equal(core.idle(), true);
+  core.dirty = true;
+  assert.equal(core.idle(), false);
+  core.dirty = false; core.localPending = 1;
+  assert.equal(core.idle(), false);
+});

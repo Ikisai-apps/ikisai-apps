@@ -14,3 +14,4 @@ export * from './portable.ts';
 export * from './zip.ts';
 export * from './trades.ts';
 export * from './people.ts';
+export * from './suggestions.ts';
