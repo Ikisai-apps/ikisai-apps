@@ -599,6 +599,20 @@ Privacidad y dispositivo:
 - Las plazas de Asistentes, «Lo que le falta» y los nombres de Cocina quedan fuera de las capturas de feedback.
 - **Sin red:** los botones que necesitan red (enviar enlace, decidir solicitudes, avisar a Ikisai, escribir en Booking o Food) quedan desactivados con el motivo (`needsNet`, sobre `bindOnline`). Lo que va por la cola de sincronización no se ata.
 
+### 18.1 Menú lateral y «‹ Volver a…» (19-10-2026)
+
+- **`createAppShell({ menu })`** (kit 0.47), con:
+  - `sections`: «Este retiro», que pinta `retreat.ts` con `ctx.setMenuRetreat`, y «Mis retiros», de la última lectura de `portal_reservations`, también sin red;
+  - `launcher`: las apps de Ikisai y «Ayuda y sugerencias»;
+  - `profile`;
+  - `feedbackId: 'organizers.menu'`.
+- **Sincronización:** la línea sale de `status: { client }`.
+- **Ids de feedback** literales: `organizers.menu.retiro.pestana`, `organizers.menu.retiros.abrir` y `organizers.menu.retiros.todos`.
+- **`returnTo`** (0.48): con `?volver=…&titulo=…` sale «‹ Volver a {titulo}» (`organizers.cabecera.volver_app`).
+- **«Cerrar sesión»:**
+  - en el cajón, el del kit;
+  - en la cabecera, el propio (`#logoutButton`), mientras el del kit no se vea en el móvil ni se traduzca.
+
 ## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
 
 Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal de Ikisai la pasa al organizador, la decide él. El portal no escribe tablas propias: lee y decide con las funciones de Booking.

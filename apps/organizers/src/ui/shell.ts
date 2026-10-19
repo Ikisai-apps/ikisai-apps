@@ -1,12 +1,15 @@
 /**
- * Cabecera del kit con el lanzador (sesión única) y «Ayuda y sugerencias», rutas del portal y botón «Guarda tu acceso».
- * Dos niveles (API.md §9): Mis retiros → Retiro (Resumen · Asistentes · Cocina) → ficha del asistente.
+ * Cabecera del kit con el menú lateral común (kit 0.47: la marca abre el cajón con tus retiros, las pestañas del retiro
+ * abierto, las apps de Ikisai con «Ayuda y sugerencias» y «Cerrar sesión») y «‹ Volver a…» (0.48), rutas del portal y botón
+ * «Guarda tu acceso». Dos niveles (API.md §9): Mis retiros → Retiro (Resumen · Asistentes · Cocina) → ficha del asistente.
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import { i18n, t } from '../app/i18n.ts';
 import { install } from '../app/install.ts';
-import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, replace, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
-import { createPortalApi, type PortalApi } from '../app/api.ts';
+import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, replace, type AppMenuSection, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
+import { createPortalApi, type PortalApi, type PortalReservation } from '../app/api.ts';
+import { describeError } from '../app/client.ts';
+import { dateRange, isCancelled } from '../app/labels.ts';
 import { cache } from '../app/cache.ts';
 import { loadCommonTexts } from '../app/common-texts.ts';
 import { clearPosterImages } from '../app/poster.ts';
@@ -31,6 +34,15 @@ export interface ViewContext {
   usage: Usage;
   userId: string;
   navigate(hash: string, replaceHistory?: boolean): void;
+  /** La ficha del retiro dice al menú lateral qué pestañas tiene (con su misma regla de visibilidad); `null` al salir. */
+  setMenuRetreat(info: MenuRetreat | null): void;
+}
+
+/** El retiro abierto, para la sección «Este retiro» del menú lateral. */
+export interface MenuRetreat {
+  id: string;
+  title: string;
+  tabs: Array<{ tab: RetreatTab | 'resumen'; label: string; count?: number }>;
 }
 
 export type ViewMount = (ctx: ViewContext) => () => void;
@@ -72,6 +84,35 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     type: 'button', class: 'iconbtn', id: 'logoutButton', 'aria-label': t('Cerrar sesión'), title: t('Cerrar sesión'),
     'data-feedback-id': 'organizers.cabecera.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', onclick: () => void logout(),
   }, icon('logout', 18));
+  /** Lo que enseña el menú lateral: los retiros (de la última lectura, también sin red) y el retiro abierto. */
+  let menuRetreats: PortalReservation[] = [];
+  let menuRetreat: MenuRetreat | null = null;
+  function refreshMenuRetreats(): void {
+    api.reservations().then((out) => { menuRetreats = out.value.items; shell.menu?.refresh(); }).catch(() => undefined);
+  }
+  function menuSections(): AppMenuSection[] {
+    const out: AppMenuSection[] = [];
+    const open = menuRetreat;
+    if (open) {
+      out.push({
+        key: 'retiro', label: open.title, icon: 'organizer', head: open.title, summary: t('Este retiro'),
+        rows: open.tabs.map((x) => ({
+          label: x.label, href: x.tab === 'resumen' ? `#/retiro/${open.id}` : `#/retiro/${open.id}/${x.tab}`, feedbackId: 'organizers.menu.retiro.pestana',
+          count: x.count ? { text: t('{n} por decidir', { n: x.count }), tone: 'warn' as const } : null,
+        })),
+      });
+    }
+    const active = menuRetreats.filter((r) => !isCancelled(r.status));
+    out.push({
+      key: 'retiros', label: t('Mis retiros'), icon: 'calendar',
+      rows: [
+        ...active.slice(0, 6).map((r) => ({ label: r.title, sub: dateRange(r.start_date, r.end_date), href: `#/retiro/${r.id}`, feedbackId: 'organizers.menu.retiros.abrir' })),
+        { label: t('Ver todos tus retiros'), icon: 'list' as const, href: '#/', feedbackId: 'organizers.menu.retiros.todos' },
+      ],
+    });
+    return out;
+  }
+
   const shell = createAppShell(root, {
     appName: 'Organizers',
     markIcon: 'organizer',
@@ -79,8 +120,21 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
     navigate,
-    launcher,
+    onLogout: logout,
+    status: { client, onSync: () => client.sync(), describeError: (error) => describeError(error) },
+    menu: {
+      label: t('Menú de Organizers'),
+      profile: { name: client.bootstrap()?.profile.displayName ?? '', role: t('Organizas retiros en Ikisai') },
+      sections: menuSections,
+      launcher,
+      feedbackId: 'organizers.menu',
+    },
+    returnTo: { feedbackId: 'organizers.cabecera.volver_app' },
   });
+  // «Cerrar sesión» del kit en la cabecera: solo se ve en escritorio y no se traduce (petición al kit, tanda 29). Se queda
+  // el propio de Organizers, de 46 px y visible también en el móvil; el del cajón del menú sí es el del kit.
+  shell.header.querySelector('#logoutButton.desktop-only')?.remove();
+  refreshMenuRetreats();
   const { main } = shell;
   shell.header.setAttribute('data-feedback-id', 'organizers.cabecera');
   shell.header.setAttribute('data-feedback-label', 'Cabecera');
@@ -130,7 +184,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView?.();
     unmountView = null;
     replace(main);
-    const view: ViewContext = { client, api, main, usage, userId, navigate };
+    // «Este retiro» del menú: se queda mientras se esté dentro del mismo retiro (también en la ficha de un asistente).
+    const inside = (guest?.[1] ?? retreat?.[1])?.toLowerCase() ?? null;
+    if (menuRetreat && menuRetreat.id !== inside) { menuRetreat = null; shell.menu?.refresh(); }
+    const view: ViewContext = {
+      client, api, main, usage, userId, navigate,
+      setMenuRetreat: (info) => { menuRetreat = info; shell.menu?.refresh(); },
+    };
     if (guest) {
       currentReservation = guest[1]!.toLowerCase();
       unmountView = mountGuest(currentReservation, guest[2]!.toLowerCase())(view);
@@ -144,6 +204,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       main.setAttribute('data-feedback-label', 'Retiro');
     } else {
       currentReservation = null;
+      refreshMenuRetreats();
       // Con un solo retiro, la primera vez se abre su ficha directamente (API.md §9.2).
       unmountView = mountRetreats({ autoOpen: firstRoute })(view);
       main.setAttribute('data-feedback-id', 'organizers.retiros');
