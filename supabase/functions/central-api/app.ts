@@ -25,10 +25,13 @@ export const CENTRAL_UPLOADS: UploadsConfig = {
   bucket: 'central-documents',
   maxBytes: 25 * 1024 * 1024,
   allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
+  // K3 para miembros (núcleo #585): un archivo ajeno se lee solo si se ve una fila viva que lo referencia (`visibleRow`).
+  membersK3: true,
 };
 
-/** Columnas que referencian un archivo de Central, y los tipos que admite cada una (vacío = cualquiera del bucket). */
-const FILE_FIELDS: Record<string, Array<{ field: string; mime: readonly string[] }>> = {
+/** Columnas que referencian un archivo de Central, y los tipos que admite cada una (vacío = cualquiera del bucket). Todas en
+ *  `core.register_file_field`: con K3, un archivo que no esté en ellas no lo lee más que quien lo subió y el owner. */
+export const FILE_FIELDS: Record<string, Array<{ field: string; mime: readonly string[] }>> = {
   [TABLES.personRecords]: [{ field: 'file_id', mime: [] }],
   [ENTITY_TABLE]: [{ field: 'logo_file_id', mime: LOGO_MIME }, { field: 'site_plan_file_id', mime: SITE_PLAN_MIME }],
   [COMPLIANCE_TABLES.keyDocuments]: [{ field: 'file_id', mime: [] }],
