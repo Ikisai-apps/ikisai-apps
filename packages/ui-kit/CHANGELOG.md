@@ -1,5 +1,28 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.41.0 · 19 de octubre de 2026
+
+**Tres arreglos de la revisión de La Muela (MUELA-075, tanda 26).** No cambian el diseño.
+
+- **Conflictos (`renderConflict`), que usan Booking, Central, Food e Invoices:**
+  - **La acción principal es «Reintentar con lo mío» y va primero.** «Quedarme con lo del servidor», que descarta lo tuyo, queda al lado y sin destacar. Los `data-choice` y las marcas no cambian.
+  - **Compara por contenido.** Un campo lista u objeto igual en las dos versiones ya no sale como cambiado. La función nueva `sameValue` está exportada.
+- **Aviso con acción (`toastWithAction`):**
+  - El botón mide al menos 46 px de alto.
+  - **Otro aviso ya no quita el «Deshacer» de uno vivo:** se apilan en el mismo `.toast`, cada uno con su tiempo, el más antiguo arriba.
+    - Hasta 3 avisos con acción a la vez.
+    - Un aviso sin acción sigue sustituyendo al anterior sin acción.
+    - Con un solo aviso, el HTML es el de siempre.
+  - `hideToast()` quita todos.
+  - El aviso ya no se queda en media pantalla en el móvil: antes partía «Tarea completada» en dos líneas. Ahora mide lo que el texto (`max-content`), hasta el 92 % del ancho.
+- **Contraste (WCAG AA, 4,5:1), cambiando el color lo mínimo:**
+  - **Claro:**
+    - `--muted` pasa de #6d7a70 a #616d64: sobre `--bg`, de 3,79 a 4,56.
+    - `--ok` pasa de #4f7a4a a #497044: chip `.ok`, de 3,98 a 4,55.
+    - `--alert` pasa de #b3412a a #ae3f29: chip `.alert`, de 4,39 a 4,60.
+  - **Oscuro:** `--alert` pasa de #e07a5f a #e3866e: chip `.alert`, de 4,12 a 4,58. Lo demás del oscuro ya pasaba.
+- **Pruebas:** `v46` (conflictos, aviso y contraste medido en el navegador en los dos temas). En la demo, la muestra de conflicto lleva una lista y un objeto iguales; `v02` ya contaba 3 filas, y sin el arreglo serían 5.
+
 ## Sin versión · 19 de octubre de 2026
 
 **Regla de prefijos de clases, con prueba** (Core, tras el `inv-` que escondía «Validar» en Finance).

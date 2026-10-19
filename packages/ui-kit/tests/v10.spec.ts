@@ -26,8 +26,8 @@ test.describe('ui-kit v0.7.1', () => {
     const toast = page.locator('.toast.show');
     await expect(toast).toHaveClass(/top/);
     const head = await page.locator('.sheetback.show .sheet-head').boundingBox();
-    const box = await toast.boundingBox();
-    expect(box!.y).toBeGreaterThanOrEqual(head!.y + head!.height);
+    // Sin esperar, se medía a mitad de la entrada (sube 15 px con transición) y fallaba a veces.
+    await expect.poll(async () => (await toast.boundingBox())!.y).toBeGreaterThanOrEqual(head!.y + head!.height);
     await page.keyboard.press('Escape');
     await expect(page.locator('.sheetback.show')).toHaveCount(0);
     await page.evaluate(() => (window as any).ikisaiKit.toast('Aviso sin hoja'));
