@@ -906,6 +906,7 @@ export class SyncClientImpl implements SyncClient {
 
         await this.db.ensureStores(this.mirrorTables());
         if (this.cursor === null) await this.snapshot();
+        else await this.seedNewTables();
         void this.sync().catch(() => undefined);
       } catch (error) {
         this.handleFailure(error);
@@ -1039,6 +1040,34 @@ export class SyncClientImpl implements SyncClient {
       await this.markPulled();
       return;
     }
+    const snapshotCursor = await this.fetchSnapshot(tables);
+    await this.setCursor(snapshotCursor ?? this.boot?.cursor ?? 0);
+    await this.saveMeta('seededTables', tables);
+    await this.markPulled();
+    await this.emitTables(tables);
+  }
+
+  /**
+   * Tablas del espejo que nunca recibieron snapshot: una versión nueva de la app añade una tabla a un dispositivo ya
+   * sincronizado. Se piden solas, sin tocar el cursor; el pull que sigue trae lo que cambió después. En dispositivos
+   * de antes de este registro, cuenta como nueva la tabla vacía (una sola vez).
+   */
+  private async seedNewTables(): Promise<void> {
+    const tables = this.mirrorTables();
+    const seeded = new Set((await this.db.get<MetaRecord<TableName[]>>(META_STORE, 'seededTables'))?.value ?? []);
+    const fresh: TableName[] = [];
+    for (const table of tables) {
+      if (!seeded.has(table) && (await this.db.count(table)) === 0) fresh.push(table);
+    }
+    if (fresh.length > 0) {
+      await this.fetchSnapshot(fresh);
+      await this.emitTables(fresh);
+    }
+    await this.saveMeta('seededTables', tables);
+  }
+
+  /** Pide el snapshot de esas tablas, página a página, y lo escribe respetando las filas con comando pendiente. */
+  private async fetchSnapshot(tables: TableName[]): Promise<number | null> {
     await this.db.ensureStores(tables);
     const owners = await this.pendingOwners();
     let remaining: TableName[] = [...tables];
@@ -1062,9 +1091,7 @@ export class SyncClientImpl implements SyncClient {
       remaining = next;
       offset += PAGE_LIMIT;
     }
-    await this.setCursor(snapshotCursor ?? this.boot?.cursor ?? 0);
-    await this.markPulled();
-    await this.emitTables(tables);
+    return snapshotCursor;
   }
 
   /**

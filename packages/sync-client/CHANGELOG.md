@@ -1,5 +1,9 @@
 # Cambios de @ikisai/sync-client
 
+## 0.7.2 · 19 de octubre de 2026
+
+- **Tabla nueva en un dispositivo ya sincronizado:** al arrancar con red, el espejo pide el snapshot solo de las tablas que nunca lo recibieron (una versión nueva de la app añade una tabla), sin rehacer el resto ni tocar el cursor. Se recuerdan en `meta.seededTables`. En dispositivos de antes, cuenta como nueva la tabla vacía, una sola vez. Petición de Finance (`invoices.item_labels`, tanda 27).
+
 ## 0.7.1 · 14 de octubre de 2026
 
 - **`loginWithLink` devuelve `grant`**, el ámbito del enlace canjeado (`POST auth/link` lo añade a la respuesta). Así un portal entra por ese enlace cuando la cuenta tiene varios (petición C10 de Guests). No se guarda en la sesión.
