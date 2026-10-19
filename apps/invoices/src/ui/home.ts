@@ -1,7 +1,9 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, formatDate, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
-import { describeError } from '../app/client.ts';
+import { SETTINGS, describeError } from '../app/client.ts';
+import { linksEnabled } from '../app/resources.ts';
 import { fb, type FbMark } from './feedback.ts';
+import { commitSafely } from './common.ts';
 import { fiscalSummary, purchaseItems } from '@ikisai/domain-invoices';
 import { workingQuarter, eur, loadMirror, onAnyTable, rangeLabel, todayIso } from '../app/data.ts';
 import type { ViewMount } from './shell.ts';
@@ -44,6 +46,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const driveState = el('p', { class: 'hint', id: 'driveState' });
   const isOwner = client.bootstrap()?.membership.role === 'owner';
   const quarterBase = stat('statQuarterBase'); const quarterVat = stat('statQuarterVat'); const quarterCount = stat('statQuarterCount');
+  // R4, PR 5: estado del enlace con el inventario y su interruptor (owner)
+  const linksState = el('dd', { id: 'resourceLinksState' }, '…');
+  const linksSwitch = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.interruptor', 'data-feedback-label': 'Encender o apagar el enlace', class: 'ghost', type: 'button', id: 'resourceLinksSwitch', onclick: () => void switchResourceLinks() }, '…') as HTMLButtonElement;
   const network = el('dd'); const pending = el('dd'); const conflicts = el('dd'); const lastPull = el('dd'); const role = el('dd');
 
   function paintStatus(status: SyncStatus): void {
@@ -72,6 +77,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     unpaid.textContent = overdue ? `${due.length} (${overdue} vencidas)` : String(due.length);
     supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
     const q = fiscalSummary({ invoices: m.invoices, taxLines: m.taxes }, workingQuarter());
+    const on = linksEnabled();
+    linksState.textContent = on ? 'Encendido' : 'Apagado';
+    linksSwitch.textContent = on ? 'Apagar' : 'Encender';
     quarterBase.textContent = eur(q.base); quarterVat.textContent = eur(q.vat); quarterCount.textContent = String(q.invoices.validada + q.invoices.archivada);
   }
 
@@ -112,7 +120,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       isOwner ? fb(el('article', { class: 'card' },
         el('h3', null, 'Inventario (Recursos)'),
         el('p', null, 'Enlaza los artículos de las facturas ya validadas con el inventario común. Primero ves qué se enlaza, qué se crea y qué queda por decidir.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa')),
+        el('dl', { class: 'kv' }, el('dt', null, 'Enlace'), linksState),
+        el('p', { style: 'margin-top:10px', class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa'), linksSwitch),
       ), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' }) : null,
       link({ feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }, '#/proveedores', 'Proveedores', 'Altas, NIF, alias y categoría por defecto.', supplierCount, 'Activos'),
       el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.sincronizacion', 'data-feedback-label': 'Sincronización' },
@@ -240,6 +249,28 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     } catch (error) { toast(describeError(error)); }
     button.disabled = false;
   }
+  /**
+   * R4, PR 5: encender o apagar el enlace con el inventario (`invoices.settings.resources_links`, solo el owner). Al
+   * encenderlo, la Edge cuadra todo lo enlazado: lo ya validado entra con la fecha de cada factura, sin contar dos veces lo
+   * que ya entró por Food o por una compra recibida en Tasks. Apagarlo no quita lo que ya entró.
+   */
+  async function switchResourceLinks(): Promise<void> {
+    const on = !linksEnabled();
+    const ok = await confirmDialog(on
+      ? { title: 'Encender el enlace con el inventario', confirmLabel: 'Encender',
+          text: 'Las líneas enlazadas de las facturas validadas entran en el inventario con la fecha de cada factura. Lo que ya entró desde la compra de Food o al recibir una compra en Tasks no se cuenta dos veces. Antes conviene aplicar la vista previa.' }
+      : { title: 'Apagar el enlace con el inventario', confirmLabel: 'Apagar', danger: true,
+          text: 'Las facturas que valides dejan de entrar en el inventario y la app vuelve a verse como antes. Lo que ya entró se queda.' });
+    if (!ok) return;
+    const current = (await client.list(SETTINGS)).find((x) => !x.deleted_at && x.key === 'resources_links');
+    linksSwitch.disabled = true;
+    await commitSafely(client, [current
+      ? { op: 'update', table: SETTINGS, id: current.id, expectedRevision: current.revision, fields: { value: on } }
+      : { op: 'insert', table: SETTINGS, id: crypto.randomUUID(), fields: { key: 'resources_links', value: on } }],
+    on ? 'Enlace con el inventario encendido.' : 'Enlace con el inventario apagado.');
+    linksSwitch.disabled = false;
+  }
+
   async function runDrive(button: HTMLButtonElement): Promise<void> {
     if (!navigator.onLine) { toast('Buscar en Drive necesita conexión.'); return; }
     button.disabled = true;

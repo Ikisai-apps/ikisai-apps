@@ -2585,3 +2585,35 @@ test('R4 · PR 3: con el enlace encendido, «Artículo» enlaza la línea (conve
     await context.close();
   }
 });
+
+test('R4 · PR 5: el owner enciende y apaga el enlace con el inventario desde Inicio, con confirmación', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const value = () => api.rows('invoices.settings').find((s) => s.key === 'resources_links' && !s.deleted_at)?.value;
+  try {
+    await login(page);
+    await synced(page);
+    await expect(page.locator('#resourceLinksState')).toHaveText('Apagado', { timeout: 20_000 });
+    // Cancelar no cambia nada
+    await page.locator('#resourceLinksSwitch').click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Cancelar' }).click();
+    expect(value() ?? false).toBe(false);
+    // Encender: lo ya validado entra (lo hace la Edge al cambiar el ajuste)
+    await expect(page.locator('#resourceLinksSwitch')).toHaveText('Encender');
+    await page.locator('#resourceLinksSwitch').click();
+    await expect(page.getByRole('alertdialog')).toContainText('no se cuenta dos veces');
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Encender' }).click();
+    await expect.poll(value, { timeout: 20_000 }).toBe(true);
+    await expect(page.locator('#resourceLinksState')).toHaveText('Encendido', { timeout: 20_000 });
+    // Apagar
+    await page.locator('#resourceLinksSwitch').click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Apagar' }).click();
+    await expect.poll(value, { timeout: 20_000 }).toBe(false);
+    await expect(page.locator('#resourceLinksState')).toHaveText('Apagado', { timeout: 20_000 });
+  } finally {
+    const setting = api.rows('invoices.settings').find((s) => s.key === 'resources_links');
+    if (setting) api.serverUpdate('invoices.settings', setting.id, { value: false });
+    await context.close();
+  }
+});
