@@ -1,5 +1,14 @@
 # Cambios de @ikisai/ui-kit
 
+## Sin versión · 19 de octubre de 2026
+
+**Regla de prefijos de clases, con prueba** (Core, tras el `inv-` que escondía «Validar» en Finance).
+- Las clases nuevas del kit no usan prefijos de app, ni las apps los del kit. Está en el README, en «Clases».
+- **`v45`** lee el CSS del kit, las clases que pone su código y el CSS de todas las apps (también `<style>` en HTML), y falla si una clase de app comparte prefijo con el kit.
+  - Excepción: las coincidencias que ya había (`date-` de Booking, `space-item`/`space-main` de Booking, `drop-` y `star-` de Tasks, `ikisai-kit`/`ikisai-legacy`), cada una con su motivo.
+  - Comprobado a mano: con una `.inv-prueba` en el kit, la prueba falla y nombra `.inv-head`, `.inv-actions`… de Finance.
+- No cambia el código del kit: sin versión nueva.
+
 ## 0.40.0 · 19 de octubre de 2026
 
 **`createItemCatalog` con `refresh()`** (petición de Tasks, R6).
