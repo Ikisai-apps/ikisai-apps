@@ -11,7 +11,12 @@ export interface TargetChoice {
   path: string[];
   revision: number | null;
   archived: boolean;
+  /** Último día del evento de Booking (tanda 27); null o ausente en los demás destinos. */
+  ends_on?: string | null;
 }
+
+/** Regla de destino abierto del dominio (tanda 27). */
+export { targetOpenFor } from '@ikisai/domain-invoices';
 
 const RECENT_KEY = 'ikisai-invoices-recent-targets';
 const RECENT_MAX = 50;
