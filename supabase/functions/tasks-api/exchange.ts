@@ -4,9 +4,10 @@
  */
 import { createSync, fail, sha256Hex, type AppRoute, type RequestContext, type Supabase, type WorkerRoute, createStorage, type StorageAccess } from '../_kit/mod.ts';
 import {
-  ATTACHMENT_MIME, DomainError, PORTABLE_FORMAT, TABLES, checkPortableTabs, chunkOperations, collectIds, compose, decompose, effectiveScopes, emptyDataset, exportCSV, importCSV,
-  importRows, isAdministrator, portableSummary, remapTabs, unzipStore, validateOperations, visibleRow, zipStore,
-  type Dataset, type LegacyTab, type PortableManifest, type Role, type ZipEntry,
+  ATTACHMENT_MIME, DomainError, PHOTO_MIME, PORTABLE_FORMAT, TABLES, checkPortableComments, checkPortableSettings, checkPortableTabs, chunkOperations, collectIds, compose, decompose,
+  effectiveScopes, emptyDataset, exportCSV, importCSV, importNotices, importRows, isAdministrator, portableComments, portableSettings, portableSummary, remapComments, remapTabs,
+  unzipStore, validateOperations, visibleRow, zipStore,
+  type CsvCatalogs, type Dataset, type LegacyTab, type PersonOption, type PortableComment, type PortableManifest, type PortableSettings, type Role, type TradeOption, type ZipEntry,
 } from '../_domain/tasks/mod.ts';
 
 const BUCKET = 'ikisai-files';
@@ -17,6 +18,9 @@ const IMPORT_NAME = /^(\d{9,11})\.([0-9a-f]{64})\.zip$/;
 const IMPORT_GRACE_SECONDS = 600;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const encoder = new TextEncoder();
+const PAGE = 2000;
+const GROUPS: Record<string, string> = { direccion: 'Toda la dirección', staff: 'Todo el staff', outsider: 'Todos los outsiders' };
+type CoreFile = { bucket: string; path: string; status: string; storage_provider?: 'supabase' | 'r2'; sha256: string; mime: string; size: number; filename: string };
 
 /** Ejecuta código de dominio y convierte sus errores al sobre de la API. */
 function domain<T>(run: () => T): T {
@@ -45,14 +49,19 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
     }
     return data as unknown as Dataset;
   }
+  /** Los ajustes de origen de esta instalación (`tasks.settings`), para los avisos de la importación. */
+  const settingsHere = async (ctx: RequestContext): Promise<PortableSettings> => {
+    const page = await supabase.rpc<{ rows: Dataset['tasks.settings'] }>('core_snapshot_table', { p_app: 'tasks', p_role: ctx.membership.role, p_table: 'tasks.settings', p_include_deleted: false, p_limit: 100, p_offset: 0 });
+    return portableSettings({ 'tasks.settings': page.rows });
+  };
   const model = async (ctx: RequestContext) => { const data = await visibleData(ctx); return { data, tabs: compose(data, { scopes: effectiveScopes(ctx.membership) ?? '*' }) }; };
   const admin = (ctx: RequestContext) => { if (!isAdministrator({ role: ctx.membership.role as Role, scopes: effectiveScopes(ctx.membership), kind: ctx.bootstrap.profile.kind })) fail(403, 'FORBIDDEN', 'Se necesita un propietario con acceso a toda la app.'); };
   const findTab = (tabs: LegacyTab[], id: string | null) => tabs.find((t) => t.id === id) ?? fail(404, 'NOT_FOUND', 'No existe el área solicitada.');
 
-  async function readFile(ctx: RequestContext, fileId: string): Promise<Uint8Array> {
+  async function readFile(ctx: RequestContext, fileId: string, known?: CoreFile): Promise<Uint8Array> {
     // Archivos de core.files: por el proveedor que diga su fila (contrato §3.9). Los ZIP temporales de importación siguen
     // en el bucket de Tasks en Supabase Storage: no son archivos de core.files.
-    const file = await supabase.rpc<{ bucket: string; path: string; status: string; storage_provider?: 'supabase' | 'r2' }>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: fileId });
+    const file = known ?? await supabase.rpc<CoreFile>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: fileId });
     const response: Response = await storage.download(file);
     if (!response.ok) fail(503, 'STORAGE_UNAVAILABLE', 'No se pudo leer un archivo adjunto.');
     return new Uint8Array(await response.arrayBuffer());
@@ -62,7 +71,54 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
     if (!response.ok) fail(503, 'STORAGE_UNAVAILABLE', 'No se pudo guardar un archivo.');
   }
 
-  /** ZIP con el modelo visible y sus adjuntos vivos. */
+  /**
+   * Catálogos de las fuentes activas para el CSV (2c): espacios de Recursos con su ruta corta, oficios de Central con su
+   * ruta y personas de Central con su nombre e iniciales (y los tres grupos). Sin fuente activa, no se lee nada.
+   */
+  async function csvCatalogs(ctx: RequestContext, data: Dataset): Promise<CsvCatalogs> {
+    const sources = portableSettings(data), out: CsvCatalogs = {};
+    const pages = async <T>(name: string): Promise<T[]> => {
+      const rows: T[] = [];
+      try {
+        for (let offset = 0; ; offset += PAGE) {
+          const page = await internal.read(ctx, name, { limit: PAGE, offset }) as { rows?: T[]; total?: number } | null;
+          if (!page || !Array.isArray(page.rows)) throw new Error('lectura sin filas');
+          rows.push(...page.rows);
+          if (page.rows.length < PAGE || rows.length >= Number(page.total ?? 0)) break;
+        }
+      } catch (error) {
+        console.error('[tasks] ' + name, (error as Error)?.message);
+        fail(503, 'CENTRAL_UNAVAILABLE', 'No se pudo leer Central para las columnas de oficios o personas. Inténtalo de nuevo más tarde.');
+      }
+      return rows;
+    };
+    if (sources.zoneSource === 'spaces') {
+      const rows: Array<{ id: string; parent_id: string | null; kind: string; name: string; active: boolean; deleted_at: string | null }> = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const page = await supabase.rpc<{ rows: typeof rows }>('core_snapshot_table', { p_app: 'resources', p_role: 'reader', p_table: 'resources.spaces', p_include_deleted: false, p_limit: PAGE, p_offset: offset });
+        rows.push(...page.rows);
+        if (page.rows.length < PAGE) break;
+      }
+      const byId = new Map(rows.filter((r) => !r.deleted_at).map((r) => [r.id, r]));
+      const chain = (r: (typeof rows)[number]) => { const out = [r]; for (let up = r.parent_id ? byId.get(r.parent_id) : undefined; up && out.length < 20; up = up.parent_id ? byId.get(up.parent_id) : undefined) out.unshift(up); return out; };
+      // La ruta corta es la de las chips (`spaceShort`): la madre y el espacio, salvo que la madre sea una altura.
+      out.spaces = [...byId.values()].map((r) => {
+        const up = r.parent_id ? byId.get(r.parent_id) : undefined;
+        return { id: r.id, path: up && up.kind !== 'altura' ? `${up.name} › ${r.name}` : r.name, aliases: [chain(r).map((x) => x.name).join(' › ')], active: r.active };
+      });
+    }
+    if (sources.tradeSource === 'central') out.trades = (await pages<TradeOption>('central.trade_options')).map((t) => ({ id: t.trade_id, path: t.path || t.name, name: t.name }));
+    if (sources.peopleSource === 'central') {
+      out.people = [
+        ...Object.entries(GROUPS).map(([level, label]) => ({ key: `level:${level}`, label })),
+        ...(await pages<PersonOption>('central.people_options')).filter((p) => p.active !== false)
+          .map((p) => ({ key: p.person_id, label: p.initials ? `${p.name} (${p.initials})` : p.name, name: p.name, initials: p.initials ?? null })),
+      ];
+    }
+    return out;
+  }
+
+  /** ZIP con el modelo visible, sus adjuntos vivos y (2c) los ajustes de origen y los comentarios con sus fotos. */
   async function bundle(ctx: RequestContext): Promise<Uint8Array> {
     const { data, tabs } = await model(ctx);
     const files = new Map<string, Uint8Array>();
@@ -72,7 +128,21 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
       if ((await sha256Hex(bytes)) !== row.sha256) fail(503, 'STORAGE_UNAVAILABLE', 'Un archivo adjunto no coincide con su huella.');
       files.set(row.sha256, bytes);
     }
-    const dataBytes = encoder.encode(JSON.stringify({ tabs }));
+    // Fotos de los comentarios: como los adjuntos, por su huella. Una foto que ya no está verificada no viaja.
+    const photos = new Map<string, PortableComment['photo']>();
+    for (const row of data['tasks.task_comments'] ?? []) {
+      if (row.deleted_at || !row.file_id || photos.has(row.file_id)) continue;
+      const file = await supabase.rpc<CoreFile>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: row.file_id });
+      if (file.status !== 'verified' || !PHOTO_MIME.includes(String(file.mime).toLowerCase())) { photos.set(row.file_id, null); continue; }
+      if (!files.has(file.sha256)) {
+        const bytes = await readFile(ctx, row.file_id, file);
+        if ((await sha256Hex(bytes)) !== file.sha256) fail(503, 'STORAGE_UNAVAILABLE', 'La foto de un comentario no coincide con su huella.');
+        files.set(file.sha256, bytes);
+      }
+      photos.set(row.file_id, { sha256: file.sha256, mime: String(file.mime).toLowerCase(), size: Number(file.size), name: file.filename });
+    }
+    const comments = portableComments(data, tabs, (fileId) => photos.get(fileId) ?? null);
+    const dataBytes = encoder.encode(JSON.stringify({ tabs, settings: portableSettings(data), comments }));
     const manifest: PortableManifest = {
       format: PORTABLE_FORMAT, exportedAt: new Date().toISOString(), data: { path: 'data.json', sha256: await sha256Hex(dataBytes) },
       files: [...files].map(([sha, bytes]) => ({ path: `files/${sha}`, sha256: sha, size: bytes.length })),
@@ -82,8 +152,11 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
   }
   const zipResponse = (bytes: Uint8Array, filename: string) => new Response(bytes as unknown as BodyInit, { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename=${filename}`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
 
-  /** Abre una copia: verifica manifiesto y huellas y devuelve el modelo y los archivos por huella. */
-  async function openBundle(bytes: Uint8Array): Promise<{ tabs: LegacyTab[]; files: Map<string, Uint8Array> }> {
+  /**
+   * Abre una copia: verifica manifiesto y huellas y devuelve el modelo, los archivos por huella y, si la copia es de la 2c
+   * o posterior, sus ajustes de origen y sus comentarios (una copia anterior no los trae: `settings` nulo, sin comentarios).
+   */
+  async function openBundle(bytes: Uint8Array): Promise<{ tabs: LegacyTab[]; files: Map<string, Uint8Array>; comments: PortableComment[]; settings: PortableSettings | null }> {
     const entries = new Map(domain(() => unzipStore(bytes)).map((e) => [e.path, e.bytes]));
     let manifest: PortableManifest;
     try { manifest = JSON.parse(new TextDecoder().decode(entries.get('manifest.json') ?? new Uint8Array())); } catch { fail(422, 'INVALID_BUNDLE', 'Copia inválida: falta el manifiesto.'); }
@@ -96,14 +169,16 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
       if (!content || content.length !== file.size || (await sha256Hex(content)) !== file.sha256) fail(422, 'INVALID_BUNDLE', 'Copia inválida: un adjunto no coincide con su huella.');
       files.set(file.sha256, content);
     }
-    let parsed: { tabs?: unknown };
+    let parsed: { tabs?: unknown; settings?: unknown; comments?: unknown };
     try { parsed = JSON.parse(new TextDecoder().decode(dataBytes)); } catch { fail(422, 'INVALID_BUNDLE', 'Copia inválida: datos ilegibles.'); }
     const tabs = domain(() => checkPortableTabs(parsed.tabs));
+    const comments = domain(() => checkPortableComments(parsed.comments, tabs));
+    for (const c of comments) if (c.photo && !files.has(c.photo.sha256)) fail(422, 'INVALID_BUNDLE', 'Copia inválida: falta la foto de un comentario.');
     for (const tab of tabs) for (const project of tab.projects) for (const a of [...(project.attachments ?? []), ...project.tasks.flatMap((t) => t.attachments ?? [])]) {
       if (!a.sha256 || !files.has(a.sha256)) fail(422, 'INVALID_BUNDLE', 'Copia inválida: falta un archivo adjunto.');
       if (!ATTACHMENT_MIME.includes(String(a.mime).toLowerCase())) fail(422, 'INVALID_BUNDLE', 'Copia inválida: tipo de adjunto no admitido.');
     }
-    return { tabs, files };
+    return { tabs, files, comments, settings: checkPortableSettings(parsed.settings) };
   }
   /** uuid determinista por copia e id de origen: reintentar la misma importación produce el mismo lote. */
   async function stableId(ticket: string, id: string): Promise<string> {
@@ -134,8 +209,9 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
     },
     {
       method: 'GET', pattern: 'csv', handler: async ({ ctx, url }) => {
-        const tab = findTab((await model(ctx)).tabs, url.searchParams.get('tabId'));
-        return new Response(exportCSV(tab), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=Ikisai-tareas.csv', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+        const { data, tabs } = await model(ctx);
+        const tab = findTab(tabs, url.searchParams.get('tabId'));
+        return new Response(exportCSV(tab, await csvCatalogs(ctx, data)), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=Ikisai-tareas.csv', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
       },
     },
     /** No escribe: devuelve las operaciones de fila para que el cliente las confirme por `commands` (se pueden deshacer). */
@@ -147,7 +223,8 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         const { data, tabs } = await model(ctx);
         const tab = findTab(tabs, url.searchParams.get('tabId'));
         if (tab.restricted) fail(403, 'FORBIDDEN', 'La importación exige edición de toda el área.');
-        const result = domain(() => importCSV(tab, source));
+        const catalogs = await csvCatalogs(ctx, data);
+        const result = domain(() => importCSV(tab, source, undefined, catalogs));
         const batches = domain(() => decompose(data, tabs).flatMap((batch) => chunkOperations(batch)));
         if (batches.length !== 1) fail(422, 'CSV_TOO_LARGE', 'Demasiados elementos para un solo lote; divide el CSV.', { operations: batches.reduce((n, b) => n + b.length, 0) });
         domain(() => validateOperations(batches[0]!, { role: ctx.membership.role as Role, scopes: effectiveScopes(ctx.membership) }));
@@ -245,10 +322,11 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         if (Number(request.headers.get('content-length') ?? 0) > 32 * 1024 * 1024) fail(413, 'BUNDLE_TOO_LARGE', 'Máximo 32 MB.');
         const bytes = new Uint8Array(await request.arrayBuffer());
         if (bytes.length > 32 * 1024 * 1024) fail(413, 'BUNDLE_TOO_LARGE', 'Máximo 32 MB.');
-        const { tabs } = await openBundle(bytes);
+        const { tabs, comments, settings } = await openBundle(bytes);
         const expires = Math.floor(Date.now() / 1000) + 3600, ticket = `${expires}.${await sha256Hex(bytes)}`;
         await writeObject(`${IMPORTS}/${ticket}.zip`, bytes, 'application/zip');
-        return { ticket, expiresAt: new Date(expires * 1000).toISOString(), summary: portableSummary(tabs) };
+        const here = await settingsHere(ctx);
+        return { ticket, expiresAt: new Date(expires * 1000).toISOString(), summary: portableSummary(tabs, { comments, settings }), notices: importNotices(null, settings, here) };
       },
     },
     {
@@ -262,13 +340,15 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         if (!stored.ok) fail(409, 'IMPORT_UNAVAILABLE', 'La copia revisada ya no está disponible.');
         const bytes = new Uint8Array(await stored.arrayBuffer());
         if ((await sha256Hex(bytes)) !== match[2]) fail(409, 'IMPORT_UNAVAILABLE', 'La copia revisada no coincide con su huella.');
-        const { tabs, files } = await openBundle(bytes);
-        const ids = collectIds(tabs), map = new Map<string, string>();
+        const { tabs, files, comments, settings } = await openBundle(bytes);
+        const ids = collectIds(tabs, comments), map = new Map<string, string>();
         for (const id of ids) map.set(id, await stableId(body.ticket, id));
         const copy = domain(() => remapTabs(tabs, map));
-        // Adjuntos: se reutiliza el archivo verificado con la misma huella si ya existe; si no, se sube y se verifica.
+        const copiedComments = domain(() => remapComments(comments, map));
+        // Adjuntos y fotos de comentarios: se reutiliza el archivo verificado con la misma huella si ya existe; si no, se sube y se verifica.
         const fileIds = new Map<string, string>();
-        const meta = new Map(copy.flatMap((t) => t.projects.flatMap((p) => [...(p.attachments ?? []), ...p.tasks.flatMap((x) => x.attachments ?? [])])).map((a) => [a.sha256!, a]));
+        const meta = new Map<string, { name: string; mime?: string }>(copiedComments.flatMap((c) => (c.photo ? [[c.photo.sha256, { name: c.photo.name || 'foto', mime: c.photo.mime }] as const] : [])));
+        for (const a of copy.flatMap((t) => t.projects.flatMap((p) => [...(p.attachments ?? []), ...p.tasks.flatMap((x) => x.attachments ?? [])]))) meta.set(a.sha256!, a);
         for (const [sha, content] of files) {
           const a = meta.get(sha);
           if (!a) continue;
@@ -282,9 +362,12 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         const seed = await sha256Hex(`${body.ticket}|filas`);
         let counter = 0;
         const nextId = () => `${seed.slice(0, 8)}-${seed.slice(8, 12)}-4${seed.slice(13, 16)}-8${seed.slice(17, 20)}-${(counter++).toString(16).padStart(12, '0')}`;
-        const rows = domain(() => importRows(copy, fileIds, nextId));
+        const rows = domain(() => importRows(copy, fileIds, nextId, copiedComments));
+        const here = await settingsHere(ctx);
         const result = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.import_rows', args: { mode: 'portable', rows } }] });
-        return { cursor: result.cursor, replayed: result.replayed ?? false, inserted: (result.results[0] as { result?: { inserted?: unknown } })?.result?.inserted ?? null };
+        const done = (result.results[0] as { result?: { inserted?: unknown; dropped?: { spaces?: string[]; trades?: string[]; people?: string[] } } })?.result;
+        const dropped = { spaces: done?.dropped?.spaces ?? [], trades: done?.dropped?.trades ?? [], people: done?.dropped?.people ?? [] };
+        return { cursor: result.cursor, replayed: result.replayed ?? false, inserted: done?.inserted ?? null, dropped, notices: importNotices(dropped, settings, here) };
       },
     },
   ];

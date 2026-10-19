@@ -152,3 +152,48 @@ test('mcp de Compras · qué queda poco, pedir sin aprobación y preparar el pla
   const empty = await call('tasks_prepare_purchase_plan', { tab_id: TAB });
   assert.equal(empty.structuredContent.error.code, 'INVALID_PURCHASE');
 });
+
+test('mcp de Tasks · 2c: espacios, oficios y personas solo con su fuente activa; lo que no está vivo lo rechaza el hook', async () => {
+  const sql = (text: string, params: unknown[] = []) => app.t.db.query(text, params);
+  const SPACE = uuid(), TRADE = uuid(), OLD_TRADE = uuid(), PERSON = uuid();
+  const altura = (await sql(`select id from resources.spaces where name = 'Altura 3' and deleted_at is null`)).rows[0] as { id: string };
+  await sql(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $2, 'edificio', 'Albergue Prueba', 1)`, [SPACE, altura.id]);
+  await sql(`insert into central.trades (id, name, active) values ($1, 'Fontanería', true), ($2, 'Oficio retirado', false)`, [TRADE, OLD_TRADE]);
+  await sql(`insert into central.people (id, display_name, relation, house_level, initials, active) values ($1, 'Lucía Prueba', 'equipo', 'staff', 'LP', true)`, [PERSON]);
+  const created = await call('tasks_create_task', { project_id: OBRA, title: 'Revisar caldera' });
+  const task = created.structuredContent.changes.find((c: any) => c.table === 'tasks.tasks').id;
+
+  const tools = (await rpc('tools/list', {}, agent)).result.tools.map((t: any) => t.name);
+  for (const name of ['tasks_set_spaces', 'tasks_set_trades', 'tasks_set_people']) assert.ok(tools.includes(name), name);
+  // Con las fuentes en etiquetas (sin fila en tasks.settings): 409 SOURCE_INACTIVE, sin tocar nada.
+  for (const [name, args] of [['tasks_set_spaces', { space_ids: [SPACE] }], ['tasks_set_trades', { trade_ids: [TRADE] }], ['tasks_set_people', { people: [PERSON] }], ['tasks_update_task', { owner_person: PERSON }]] as const) {
+    const off = await call(name, { task_id: task, ...args });
+    assert.equal(off.structuredContent.error?.code, 'SOURCE_INACTIVE', `${name} ${JSON.stringify(off)}`);
+  }
+
+  for (const [key, value] of [['zone_source', 'spaces'], ['trade_source', 'central'], ['people_source', 'central']]) await sql(`insert into tasks.settings (key, value) values ($1, to_jsonb($2::text))`, [key, value]);
+  const spaces = await call('tasks_set_spaces', { task_id: task, space_ids: [SPACE] });
+  assert.equal(spaces.isError, undefined, JSON.stringify(spaces));
+  const trades = await call('tasks_set_trades', { task_id: task, trade_ids: [TRADE] });
+  assert.equal(trades.isError, undefined, JSON.stringify(trades));
+  const people = await call('tasks_set_people', { task_id: task, people: [PERSON, 'level:staff'] });
+  assert.equal(people.isError, undefined, JSON.stringify(people));
+  const owner = await call('tasks_update_task', { task_id: task, owner_person: 'level:outsider' });
+  assert.equal(owner.isError, undefined, JSON.stringify(owner));
+  assert.deepEqual((await rows('tasks.task_spaces')).filter((r) => r.task_id === task && !r.deleted_at).map((r) => r.space_id), [SPACE]);
+  assert.deepEqual((await rows('tasks.task_trades')).filter((r) => r.task_id === task && !r.deleted_at).map((r) => r.trade_id), [TRADE]);
+  assert.deepEqual((await rows('tasks.task_people')).filter((r) => r.task_id === task && !r.deleted_at).map((r) => r.person_id ?? `level:${r.house_level}`).sort(), [PERSON, 'level:staff'].sort());
+  const row = (await rows('tasks.tasks')).find((t) => t.id === task);
+  assert.deepEqual([row.owner_person_id, row.owner_house_level, row.owner_label_id], [null, 'outsider', null]);
+  // Repetir no cambia nada; quitar es borrar una fila: como con las etiquetas, el agente necesita aprobación.
+  assert.equal((await call('tasks_set_trades', { task_id: task, trade_ids: [TRADE] })).structuredContent.unchanged, true);
+  assert.equal((await call('tasks_set_spaces', { task_id: task, space_ids: [] })).structuredContent.needsApproval, true);
+  assert.equal((await rows('tasks.task_spaces')).filter((r) => r.task_id === task && !r.deleted_at).length, 1, 'aún sin aprobar');
+
+  // Validación de la entrada y del hook.
+  assert.equal((await call('tasks_set_people', { task_id: task, people: ['level:jefes'] })).structuredContent.error.code, 'INVALID_INPUT');
+  assert.equal((await call('tasks_update_task', { task_id: task, owner_person: PERSON, owner_label_id: null })).structuredContent.error.code, 'INVALID_INPUT');
+  assert.equal((await call('tasks_set_trades', { task_id: task, trade_ids: [OLD_TRADE] })).structuredContent.error.code, 'INVALID_TRADE');
+  assert.equal((await call('tasks_set_spaces', { task_id: SECRETA, space_ids: [SPACE] }, limited)).structuredContent.error.code, 'NOT_FOUND');
+  await sql(`delete from tasks.settings`);
+});
