@@ -1,5 +1,22 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.46.0 · 19 de octubre de 2026
+
+**Bandeja por áreas, lote C** (MUELA-075 K20, K15 y K16, tanda 27). Con esto, la tanda 27 está completa. Detalle en el README («Lote C»).
+
+- **Nueva: `renderTray` y `renderTrayRow`.**
+  - Es una bandeja visual genérica, por áreas o por estado: SES la usa así.
+  - Las áreas se pliegan y llevan su recuento.
+  - La línea pone el título junto al medallón y el resto a todo el ancho. Variante «rechazado».
+- **Ampliada: `renderConflicts` con `layout: 'tray'`.**
+  - Agrupa con `groupBy` y pone medallón en cada línea.
+  - Dice lo que choca en una línea, con dos botones al mismo nivel («Lo mío» / «Lo de Laura» con `theirsName`). En un borrado son «Borrar» y «Conservar».
+  - «Los dos» para listas; «Ver diferencias» abre la tarjeta de siempre, con «Combinar».
+  - `undoMs` retrasa el envío y ofrece «Deshacer».
+  - **Sin `layout`, todo queda igual que antes.**
+- **Arreglo en el aviso:** un aviso con acción ya oculto seguía recibiendo toques y tapaba lo que tenía debajo. Ahora solo los recibe mientras se ve.
+- **Demo:** `#piecesc`. **Pruebas:** `v51`, que comprueba también que sin `layout` siguen las tarjetas.
+
 ## 0.45.0 · 19 de octubre de 2026
 
 **Piezas comunes, lote B3** (MUELA-075, tanda 27): dinero y tiempo. Con esto, el lote B está completo. Detalle en el README («Lote B3»).

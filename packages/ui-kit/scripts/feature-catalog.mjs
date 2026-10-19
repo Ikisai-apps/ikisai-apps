@@ -139,6 +139,7 @@ function ternaryLiterals(text, at) {
 const KIT_CHILDREN = {
   renderConflict: [['mantener_mia', 'Reintentar con lo mío', 'button'], ['tomar_servidor', 'Quedarme con lo del servidor', 'button'], ['diferencias', 'Ver diferencias', 'button'], ['combinar', 'Combinar campo a campo', 'button'], ['guardar_combinacion', 'Guardar combinación', 'button'], ['volver', 'Volver', 'button']],
 };
+// Con `layout: 'tray'` aparecen además `.los_dos` y `.deshacer`; no se listan aquí porque la mayoría de las apps usan las tarjetas.
 KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
 // Mantener al día con `SPACE_TREE_MARKS` (src/spaces/tree.ts) y `SPACE_PICKER_MARKS` (src/spaces/picker.ts).
 KIT_CHILDREN.createSpaceTree = [['buscar', 'Buscar espacio', 'input'], ['nueva_altura', 'Nueva altura', 'button'], ['ver_archivados', 'Ver archivados', 'input'], ['fila', 'Espacio', 'button'], ['desplegar', 'Desplegar o plegar', 'button'], ['mover', 'Arrastrar para mover', 'button'], ['anadir', 'Añadir dentro', 'button'], ['editar', 'Editar espacio', 'button'], ['subir', 'Subir', 'button'], ['bajar', 'Bajar', 'button'], ['guardar', 'Guardar espacio', 'button'], ['duplicar', 'Duplicar', 'button'], ['archivar', 'Archivar', 'button'], ['recuperar', 'Recuperar', 'button']];
