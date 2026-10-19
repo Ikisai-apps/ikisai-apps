@@ -140,7 +140,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.consumptions': ['menu_item_id', 'status', 'automatic', 'notes'],
   // Tanda 27: votos de los platos sugeridos (quién vota lo pone la ruta, como el trigger real) y avisos a Tasks.
   'food.suggestion_votes': ['suggestion_id', 'voter_id', 'vote'],
-  'food.equipment_notices': ['equipment_id', 'notified_on', 'equipment_status', 'task_id'],
+  'food.equipment_notices': ['equipment_id', 'notified_on', 'equipment_status', 'task_id', 'request_status'],
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
     'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],

@@ -274,7 +274,8 @@ food.equipment_notices                          (1104)
   - **Funciona:** está operativa.
   - **Falla:** no hay aviso desde `status_since`.
   - **Avisado:** hay aviso.
-  - **En reparación:** solo si Tasks dice que la petición está en curso, y ese dato aún no llega a Food.
+  - **En reparación:** solo si Tasks dice que la petición está en curso (`open`). Lo copia el worker `POST /api/v1/worker/equipment/tick` (cada 15 min, con la cuenta de servicio `food`) desde `tasks-api` `worker/requests/status` (Tasks #606) en `food.equipment_notices.request_status` (1106), que solo escribe esa cuenta.
+  - `pending` sigue «Avisado»; `done`, `dismissed`, `deleted` y `unknown` vuelven a «Falla», con «Avisar a Tasks».
   - Siempre con la palabra del estado («averiada»).
 
 ### 2.3 Compra, preparación y stock

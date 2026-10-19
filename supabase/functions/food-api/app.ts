@@ -7,6 +7,8 @@ import {
 } from '../_domain/food/mod.ts';
 
 export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pages.dev'];
+import { runEquipmentTick } from './equipment.ts';
+
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
 
 export interface FoodAppOptions {
@@ -273,6 +275,8 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
     },
     routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
-    workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) }],
+    // Tanda 27: el estado de las peticiones de máquina en Tasks, para «En reparación» (migración 1106).
+    workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) },
+      { method: 'POST', pattern: 'equipment/tick', handler: () => runEquipmentTick(supabase, { workerKey: base.workerKey, fetch: options.tasksFetch }) }],
   });
 }

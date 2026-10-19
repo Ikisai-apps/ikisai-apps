@@ -66,7 +66,7 @@ test.after(async () => { await app.close(); });
 test('worker · se programa cada 15 minutos y se despierta solo si hay trabajo', async () => {
   assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, true);
   assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, true, 'sin efectos al preguntar');
-  assert.deepEqual((await q(`select route, probe from core.scheduled_ticks where app = 'food'`)), [{ route: 'consumption/tick', probe: 'food.consumption_has_work' }]);
+  assert.deepEqual((await q(`select route, probe from core.scheduled_ticks where app = 'food' and route = 'consumption/tick'`)), [{ route: 'consumption/tick', probe: 'food.consumption_has_work' }]);
 });
 
 test('worker · anota y descuenta lo vencido; reintenta lo que se quedó a medias; repetir no hace nada', async () => {
