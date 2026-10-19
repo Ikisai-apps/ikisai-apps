@@ -74,6 +74,11 @@ Regla: **el acento tiñe lo neutro** (botones primarios, anillos, navegación ac
 - Página imprimible: `.print-view`, `.print-actions`, `.print-page[data-draft]`, `.pp-head`, `.pp-title`, `.pp-section` (`.page`), `.pp-group`, `.pp-items`, `.pp-item` (`.with-image`), `.pp-notes`, `.pp-foot`, `.pp-draft`.
 - Tablas e importación: `.table` (`.num`, `tr.bad`), `.imp`, `.imp-source`, `.imp-preview`, `.imp-head`, `.imp-lines`, `.imp-taxes`, `.imp-cuadre`, `.imp-verdict` (`.ok`/`.bad`), `.imp-warnings`, `.imp-errors`.
 
+**Prefijos (regla del 19-10-2026):**
+- Las clases nuevas del kit no usan un prefijo que ya use una app (`inv-` es de Finance), ni las apps uno del kit (`stk-`, `space-`, `cal-`…). El prefijo es lo que va antes del primer guion.
+- Lo vigila `tests/v45.spec.ts`, que lee el CSS de todas las apps.
+- Las coincidencias que ya había el 19-10 están en su lista `KNOWN`, con su motivo. Esa lista no crece: si algo choca, se cambia el nombre.
+
 Móvil primero a 390 px; escritorio desde 1024 px (navegación lateral, pastilla de estado larga, `.desktop-only`). Movimiento desactivado con `prefers-reduced-motion`.
 
 ## Atributo `hidden`
