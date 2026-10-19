@@ -88,16 +88,19 @@ test('votos · por la ruta de votos; el servidor pone quién vota; uno por perso
   assert.equal((await app.call('/api/v1/suggestion-votes', { token: app.tokens.editor, body: { requestId: 'x2', suggestionId: 'no', vote: 'keep' } })).status, 422);
 });
 
-// Decisión de VG: vota también quien solo lee. El núcleo no deja escribir al lector (core.commit, 0040) y la regla es
-// suya: pedido a Core en SALIDA un `core.allow_reader_procedure`, como `allow_outsider_procedure`. Cuando esté, esta
-// prueba pasa sin tocarla y se quita el `todo`.
-test('votos · quien solo lee también vota (pendiente del núcleo)', { todo: 'core.commit rechaza al lector: pedido a Core' }, async () => {
+// Decisión de VG: vota también quien solo lee (núcleo 0099, #608; Food 1105 abre `food.vote_suggestion` al lector).
+test('votos · quien solo lee también vota, solo con su propio voto', async () => {
   const suggestion = uuid();
   const res = await app.call('/api/v1/suggestion-votes', { token: app.tokens.reader, body: voteRequest(suggestion, 'keep', `r${++counter}`) });
   assert.equal(res.status, 200, JSON.stringify(res.data));
-  assert.deepEqual(((await rows('food.suggestion_votes')) as any[]).filter((v) => v.suggestion_id === suggestion).map((v) => v.voter_id), [app.users.reader]);
-  // Por la ruta de comandos, el lector sigue sin escribir nada, tampoco un voto.
-  assert.equal((await commit([{ op: 'insert', table: 'food.suggestion_votes', id: uuid(), fields: { suggestion_id: uuid(), vote: 'keep' } }], app.tokens.reader)).status, 403);
+  const votes = ((await rows('food.suggestion_votes')) as any[]).filter((v) => v.suggestion_id === suggestion);
+  assert.deepEqual(votes.map((v) => [v.voter_id, v.vote]), [[app.users.reader, 'keep']]);
+  // Desde 0099 el lector escribe en las tablas que lo admiten, también por la ruta de comandos; el trigger sigue
+  // poniendo quién vota, y el voto de otra persona no se toca.
+  const editorVote = await app.call('/api/v1/suggestion-votes', { token: app.tokens.editor, body: voteRequest(suggestion, 'drop', `r${++counter}`) });
+  assert.equal(editorVote.status, 200);
+  const theirs = ((await rows('food.suggestion_votes')) as any[]).find((v) => v.suggestion_id === suggestion && v.voter_id === app.users.editor);
+  assert.equal((await commit([{ op: 'update', table: 'food.suggestion_votes', id: theirs.id, expectedRevision: theirs.revision, fields: { vote: 'keep' } }], app.tokens.reader)).status, 403);
 });
 
 test('votos · el lector sigue sin escribir nada más de Food', async () => {

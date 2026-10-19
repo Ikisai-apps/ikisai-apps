@@ -267,8 +267,8 @@ food.equipment_notices                          (1104)
 ```
 
 - **Votos:** orientan; decide editor u owner con `core.suggestion_decide`, como hoy. Se vota con `POST suggestion-votes` (§6), que llama a `food.vote_suggestion` como quien vota: crea, cambia o quita (`vote: null`) el voto propio. Nadie toca el voto de otra persona (`FORBIDDEN`). El recuento y «Tu voto» salen del espejo (`voteTally`).
-  - **Pendiente del núcleo:** que vote quien solo lee. `core.commit` rechaza al lector (0040) y la regla es de Core (pedido en SALIDA).
-  - **Pendiente del núcleo:** que el lector vea las sugerencias sin el nombre de quien propone. `core.suggestion_list` solo deja listar a editor y owner (0092).
+  - **Vota también quien solo lee** (núcleo 0099, #608; Food 1105 abre `food.vote_suggestion` con `core.allow_reader_procedure`).
+  - El lector ve las pendientes con `GET suggestions?scope=vote`, sin el nombre de quien propone (`author: null`, `anonymous: true`; contrato §3.11).
 - **Sugerencia de plato:** `food.house_dish_from_suggestion` (1102) admite `recipe_id` («Usar “receta parecida”», `houseDishWithRecipe`): quien aprueba manda el lote corregido. La receta tiene que estar viva y no archivada. Rechaza los días que ya pasaron en Madrid (`INVALID_OPERATION`, `argument: 'date'`, `reason: 'past'`): la sugerencia sigue pendiente.
 - **Recorrido de la máquina** (`equipmentJourney`):
   - **Funciona:** está operativa.
@@ -522,7 +522,7 @@ Además de las del núcleo (contrato §5), con `uploads` configurado como en §8
 | `GET events` | `scope=upcoming` (por defecto: `end_date ≥ hoy − 7 días`) o `scope=all`; `from`, `to` opcionales | `{events: [fila de la proyección], serverTime}` | `PROJECTION_UNAVAILABLE 503` | `reader` |
 | `GET events/:id` | — | `{event}` | `NOT_FOUND 404` | `reader` |
 | `POST equipment/:id/fault` | `{name, status: limitado\|averiado\|fuera_de_servicio, location?, note?}` | `{created, routed, taskId, recorded}` | `INVALID_OPERATION 422`, `TASKS_FORBIDDEN 403`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` | `editor` |
-| `POST suggestion-votes` | `{requestId, suggestionId, vote: keep\|drop\|null}` | `{cursor, suggestionId, vote}` | `INVALID_OPERATION 422`, `FORBIDDEN 403` | `editor` (y `reader` cuando el núcleo lo abra, §2.9) |
+| `POST suggestion-votes` | `{requestId, suggestionId, vote: keep\|drop\|null}` | `{cursor, suggestionId, vote}` | `INVALID_OPERATION 422`, `FORBIDDEN 403` | `reader` |
 
 Son las únicas, junto con `POST suggestion-votes` (tanda 27). Lo que el handoff §25 listaba como rutas REST de cocina lo cubren `snapshot`, `changes` y `commands` sobre las tablas de §2; las regeneraciones son `call`. El panel de Inicio, la vista de cocinero y la del organizador se calculan en el cliente sobre el espejo local, que es lo que permite verlos sin red; no hay `GET dashboard`.
 
