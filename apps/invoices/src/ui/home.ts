@@ -1,11 +1,15 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, el, formatDate, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
-import { SETTINGS, describeError } from '../app/client.ts';
+import { bindOnline, closeSheet, confirmDialog, createQueue, el, formatDate, icon, openSheet, renderStats, replace, toast, toastWithAction, type QueueItem } from '@ikisai/ui-kit';
+import { INVOICES, ISSUED_INVOICES, SETTINGS, describeError } from '../app/client.ts';
 import { linksEnabled } from '../app/resources.ts';
-import { fb, type FbMark } from './feedback.ts';
+import { fb } from './feedback.ts';
 import { commitSafely } from './common.ts';
 import { fiscalSummary, purchaseItems } from '@ikisai/domain-invoices';
-import { workingQuarter, eur, loadMirror, onAnyTable, rangeLabel, todayIso } from '../app/data.ts';
+import { workingQuarter, eur, loadMirror, onAnyTable, rangeLabel, shortDate, supplierName, todayIso, type Mirror } from '../app/data.ts';
+import { homeQueue, daysBetween } from '../app/work-state.ts';
+import { mirrorRows, type MirrorRow } from '../app/work-mirror.ts';
+import { validateNow } from '../app/validate.ts';
+import { quietOwnMerges } from './undo.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -37,19 +41,91 @@ window.addEventListener('beforeinstallprompt', (event) => {
   deferredInstall = event as InstallPromptEvent;
 });
 
-/** Inicio (API.md §9.1): estado antes que formulario; tarjetas con número y acción. */
-export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
-  const stat = (id: string) => el('dd', { id }, '…');
-  const pendingData = stat('statPendingData'); const pendingReview = stat('statPendingReview'); const unassigned = stat('statUnassigned'); const unpaid = stat('statUnpaid');
-  const supplierCount = stat('statSuppliers');
-  const fromDrive = stat('statFromDrive');
+const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
+/** Una emitida pasa de 30 días sin cobrar (desde el envío o, si no se envió, desde la emisión). */
+const OLD_DAYS = 30;
+
+/**
+ * Inicio (API.md §9.1; tanda 27, MUELA-032 y 070):
+ * - si hay trabajo, la factura que toca, una a una (`createQueue` del kit): «Confirmar y siguiente» solo si está lista
+ *   (valida al momento, con «Deshacer», que la devuelve a «Pendiente de revisión»; lo aprendido se queda); si le falta
+ *   algo, «Completar en la ficha»;
+ * - el recorrido con su cifra: Llegan · Por resolver · Por pagar · Por cobrar · Por repartir · Gestoría;
+ * - Herramientas en una fila, cada una con su hoja (Drive, Claude, Inventario, Proveedores, Sincronización, Instalar,
+ *   Cuenta), con los mismos permisos y los mismos ids de siempre; sin red, lo que necesita red se apaga con su motivo;
+ * - con todo al día, «Todo al día» y tres accesos.
+ */
+export const mountHome: ViewMount = (ctx) => {
+  const { main, client, navigate, logout } = ctx;
+  const role = client.bootstrap()?.membership.role ?? 'reader';
+  const isOwner = role === 'owner';
+  const canEdit = role !== 'reader';
+  const name = client.bootstrap()?.profile.displayName;
+
+  // --- Recorrido: las cifras (los ids de siempre en la cifra de cada etapa) -----------------------------------------
+  const stagesHost = el('section', { class: 'inv-home-stages', 'data-feedback-id': 'invoices.inicio.recorrido', 'data-feedback-label': 'Recorrido' });
+  // --- Lo que toca: la cola ----------------------------------------------------------------------------------------
+  const workHost = el('section', { class: 'inv-home-work', id: 'homeWork', 'data-feedback-id': 'invoices.inicio.una_a_una', 'data-feedback-label': 'La factura que toca' });
+  let queueIds = '';
+  let queue: ReturnType<typeof createQueue> | null = null;
+
+  // --- Herramientas: lo de cada hoja se crea una vez y se pinta siempre (mismos ids) ------------------------------------
+  const fromDrive = el('dd', { id: 'statFromDrive' }, '…');
   const driveState = el('p', { class: 'hint', id: 'driveState' });
-  const isOwner = client.bootstrap()?.membership.role === 'owner';
-  const quarterBase = stat('statQuarterBase'); const quarterVat = stat('statQuarterVat'); const quarterCount = stat('statQuarterCount');
-  // R4, PR 5: estado del enlace con el inventario y su interruptor (owner)
   const linksState = el('dd', { id: 'resourceLinksState' }, '…');
   const linksSwitch = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.interruptor', 'data-feedback-label': 'Encender o apagar el enlace', class: 'ghost', type: 'button', id: 'resourceLinksSwitch', onclick: () => void switchResourceLinks() }, '…') as HTMLButtonElement;
-  const network = el('dd'); const pending = el('dd'); const conflicts = el('dd'); const lastPull = el('dd'); const role = el('dd');
+  const linksPreviewButton = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa');
+  const supplierCount = el('span', { id: 'statSuppliers' }, '…');
+  const network = el('dd'); const pending = el('dd'); const conflicts = el('dd'); const lastPull = el('dd'); const roleText = el('dd');
+  const driveRun = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null;
+  const driveReread = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.releer', 'data-feedback-label': 'Volver a leer las pendientes', class: 'ghost', type: 'button', id: 'driveReread', onclick: (e: Event) => void rereadDrive(e.currentTarget as HTMLButtonElement) }, 'Volver a leer las pendientes') : null;
+  const connectButton = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.claude.conectar', 'data-feedback-label': 'Conectar Claude', class: 'ghost', type: 'button', id: 'connectClaude', onclick: () => void connectClaude() }, 'Conectar Claude') : null;
+  const offline: Array<() => void> = [];
+  const needsNetwork = (button: HTMLElement | null, reason: string) => { if (button) offline.push(bindOnline(button, { client, reason })); };
+  needsNetwork(driveRun, 'Buscar en Drive necesita conexión.');
+  needsNetwork(driveReread, 'Volver a leer necesita conexión.');
+  needsNetwork(connectButton, 'Conectar Claude necesita conexión.');
+  needsNetwork(linksPreviewButton, 'La vista previa la calcula el servidor: necesita conexión.');
+
+  const toolHint: Record<string, HTMLElement> = {};
+  const toolsRow = el('div', { class: 'inv-tools', role: 'group', 'aria-label': 'Herramientas', 'data-feedback-id': 'invoices.inicio.herramientas', 'data-feedback-label': 'Herramientas' });
+  function tool(key: string, id: string, label: string, iconName: Parameters<typeof icon>[0], body: () => HTMLElement, mark: { feedbackId: string; feedbackLabel: string }): HTMLElement {
+    toolHint[key] = el('span', { class: 'inv-tool-hint' });
+    return fb(el('button', { type: 'button', class: 'inv-tool', id, onclick: () => openSheet({ title: label, body: body(), foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] }) },
+      icon(iconName, 20), el('span', { class: 'inv-tool-label' }, label), toolHint[key]), mark);
+  }
+  const install = () => el('div', null,
+    el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
+    deferredInstall
+      ? el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.instalar', 'data-feedback-label': 'Instalar Ikisai Finance', class: 'primary', type: 'button', onclick: async () => { await deferredInstall?.prompt(); deferredInstall = null; await closeSheet(); } }, 'Instalar Ikisai Finance'))
+      : el('p', null, 'En Android: menú del navegador → «Instalar aplicación». En iPhone: Compartir → «Añadir a pantalla de inicio».'));
+  replace(toolsRow,
+    tool('drive', 'toolDrive', 'Google Drive', 'upload', () => el('div', null,
+      el('p', null, 'Las facturas que dejas en la carpeta «Entrada» llegan solas cada 15 minutos, leídas si el PDF tiene texto. Revísalas y valídalas.'),
+      el('dl', { class: 'kv' }, el('dt', null, 'Por revisar'), fromDrive),
+      el('p', { class: 'btnrow' },
+        el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/facturas?filtro=drive'); } }, 'Ver las de Drive'),
+        driveRun, driveReread),
+      isOwner ? driveState : null), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
+    ...(isOwner ? [tool('claude', 'toolClaude', 'Leer con Claude', 'bot', () => el('div', null,
+      el('p', null, 'Una sesión de Claude Code completa las facturas que llegan sin leer (escaneadas o con datos que faltan). Tú las revisas y validas.'),
+      el('p', null, connectButton)), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' })] : []),
+    // R4: el inventario es un ajuste de toda la casa: estado, vista previa y el interruptor con su diálogo (solo el owner)
+    ...(isOwner ? [tool('inventory', 'toolInventory', 'Inventario', 'cart', () => el('div', null,
+      el('p', null, 'Enlaza los artículos de las facturas ya validadas con el inventario común. Primero ves qué se enlaza, qué se crea y qué queda por decidir.'),
+      el('dl', { class: 'kv' }, el('dt', null, 'Enlace'), linksState),
+      el('p', { class: 'btnrow' }, linksPreviewButton, linksSwitch)), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' })] : []),
+    // La única entrada a Proveedores (no está en el menú)
+    fb(el('a', { class: 'inv-tool', id: 'toolSuppliers', href: '#/proveedores', onclick: (e: Event) => { e.preventDefault(); navigate('#/proveedores'); } },
+      icon('people', 20), el('span', { class: 'inv-tool-label' }, 'Proveedores'), el('span', { class: 'inv-tool-hint' }, supplierCount)), { feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }),
+    tool('sync', 'toolSync', 'Sincronización', 'sync', () => el('div', null,
+      el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Conflictos y rechazados'), conflicts, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), roleText),
+      el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.sincronizacion.ver_conflictos', 'data-feedback-label': 'Ver conflictos', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/conflictos'); } }, 'Ver conflictos'))), { feedbackId: 'invoices.inicio.sincronizacion', feedbackLabel: 'Sincronización' }),
+    tool('install', 'toolInstall', 'Instalar', 'download', install, { feedbackId: 'invoices.inicio.instalar_hoja', feedbackLabel: 'Instalar en este dispositivo' }),
+    tool('account', 'toolAccount', 'Cuenta', 'user', () => el('div', null,
+      el('p', null, name ? `Sesión iniciada como ${name}.` : 'Sesión iniciada.'),
+      el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.cuenta.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', class: 'ghost', type: 'button', id: 'logoutHome', onclick: () => { void closeSheet(true); void logout(); } }, 'Cerrar sesión'))), { feedbackId: 'invoices.inicio.cuenta', feedbackLabel: 'Cuenta' }),
+  );
 
   function paintStatus(status: SyncStatus): void {
     network.textContent = status.network === 'online' ? 'En línea' : status.network === 'offline' ? 'Sin conexión' : status.network === 'syncing' ? 'Sincronizando…' : 'Error';
@@ -57,92 +133,145 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     conflicts.textContent = String(status.conflicts + status.rejected);
     lastPull.textContent = formatDate(status.lastPullAt);
     const boot = client.bootstrap();
-    role.textContent = boot ? { owner: 'Propietario', editor: 'Editor', reader: 'Solo lectura', outsider: 'Outsider' }[boot.membership.role] : '—';
+    roleText.textContent = boot ? { owner: 'Propietario', editor: 'Editor', reader: 'Solo lectura', outsider: 'Outsider' }[boot.membership.role] : '—';
+    const problems = status.conflicts + status.rejected;
+    if (toolHint.sync) toolHint.sync.textContent = problems ? `${problems} por resolver` : network.textContent;
+  }
+
+  /** «Confirmar y siguiente»: valida al momento; «Deshacer» la devuelve a «Pendiente de revisión». */
+  async function confirmNext(row: MirrorRow): Promise<void> {
+    const ok = await validateNow(ctx, row.invoice.id, null);
+    if (!ok) return;
+    queue?.done();
+    const code = row.invoice.code ?? 'la factura';
+    toastWithAction(`${code} validada. «Deshacer» la devuelve a «Pendiente de revisión»; lo aprendido del proveedor se queda.`, {
+      label: 'Deshacer',
+      onClick: () => void unvalidate(row.invoice.id, code),
+    }, 8000);
+  }
+  async function unvalidate(id: string, code: string): Promise<void> {
+    quietOwnMerges();
+    try {
+      const current = await client.get(INVOICES, id) as { revision: number; status: string } | null;
+      if (!current || current.status !== 'validada') { toast(`${code} ya no está validada en este dispositivo.`); return; }
+      await client.commit([{ op: 'update', table: INVOICES, id, expectedRevision: current.revision, fields: { status: 'pendiente_revision' } }]);
+      queue?.undo();
+      toast(`${code} vuelve a estar pendiente de revisión.`);
+    } catch (error) { toast(describeError(error)); }
+  }
+
+  function queueItem(row: MirrorRow, m: Mirror): QueueItem {
+    const supplier = supplierName(m.supplierById.get(row.invoice.supplier_id), 'Proveedor');
+    const reason = row.state.caption.split(' · ').slice(1).join(' · ');
+    return {
+      id: row.invoice.id,
+      title: supplier,
+      tone: row.state.ready ? 'ok' : row.state.tone,
+      toneText: reason ? reason[0]!.toUpperCase() + reason.slice(1) : row.state.caption,
+      medal: { name: supplier },
+      value: eur(row.invoice.calculated_total),
+      // El pago ya va en la etiqueta («Pagada (sin confirmar)», «Vencida…») si pide algo
+      facts: [row.invoice.object, row.invoice.invoice_date ? shortDate(row.invoice.invoice_date) : 'Sin fecha', row.invoice.code ?? 'código pendiente', row.state.pay.kind === 'unconfirmed' || row.state.pay.kind === 'overdue' ? '' : row.state.pay.text].filter(Boolean),
+      body: row.labels.length ? el('div', { class: 'chips' }, ...row.labels.slice(0, 3).map((l) => el('span', { class: `chip${l.kind ? ` ${l.kind}` : ''}` }, l.text))) : undefined,
+    };
+  }
+
+  function paintWork(m: Mirror, rows: MirrorRow[]): void {
+    const list = homeQueue(rows);
+    const byId = new Map(list.map((r) => [r.invoice.id, r]));
+    const items = list.map((r) => queueItem(r, m));
+    const ids = items.map((i) => i.id).join(',');
+    if (!list.length) {
+      queue = null; queueIds = '';
+      replace(workHost, el('div', { class: 'card inv-home-done', id: 'homeAllDone' },
+        el('h3', null, 'Todo al día'), el('p', null, 'No queda ninguna factura por resolver.'),
+        el('p', { class: 'btnrow' },
+          // «Nueva factura» ya está en el botón flotante
+          el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/facturas?filtro=activas') }, icon('invoice', 16), 'Ver las facturas'),
+          el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/compras') }, icon('cart', 16), 'Compras'),
+          el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/gestoria') }, icon('briefcase', 16), 'Ir a Gestoría'))));
+      return;
+    }
+    if (queue && ids === queueIds) return;
+    if (queue) { queue.setItems(items); queueIds = ids; return; }
+    queueIds = ids;
+    queue = createQueue({
+      label: 'La factura que toca', items, feedbackId: 'invoices.inicio.cola',
+      primary: canEdit ? (item) => {
+        const row = byIdNow(item.id);
+        if (!row) return null;
+        return row.state.ready
+          ? { label: 'Confirmar y siguiente', onClick: () => void confirmNext(row) }
+          : { label: 'Completar en la ficha', onClick: () => navigate(`#/facturas/${item.id}`) };
+      } : undefined,
+      onOpen: (item) => navigate(`#/facturas/${item.id}`),
+      onAll: () => navigate('#/facturas?filtro=por_resolver'),
+      readOnlyText: 'Solo lectura: la gestoría ve lo que queda por resolver, sin confirmar.',
+      doneTitle: 'Todo al día', doneText: 'Has pasado por todas las facturas por resolver.',
+    });
+    replace(workHost, queue.element);
+    function byIdNow(id: string): MirrorRow | undefined { return currentRows.get(id) ?? byId.get(id); }
+  }
+  let currentRows = new Map<string, MirrorRow>();
+  // «Encendido · 2 por decidir»: lo dice la vista previa del servidor (con red, una vez, solo el owner)
+  let undecided = 0;
+  if (isOwner && navigator.onLine) {
+    void client.api<ResourceLinksPreview>('/resource-links/preview').then((p) => { undecided = p.counts.dudoso ?? 0; void paintCounts(); }).catch(() => undefined);
   }
 
   async function paintCounts(): Promise<void> {
     const m = await loadMirror(client);
-    const live = m.invoices.filter((i) => !i.deleted_at && i.status !== 'anulada');
     const today = todayIso();
-    pendingData.textContent = String(live.filter((i) => i.status === 'pendiente_datos').length);
-    const drive = live.filter((i) => i.drive_file_id && (i.status === 'pendiente_datos' || i.status === 'pendiente_revision'));
-    fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((i) => i.status === 'pendiente_datos').length} sin leer)` : '0';
-    const review = live.filter((i) => i.status === 'pendiente_revision');
-    const revisar = review.filter((i) => i.review_reason === 'REVISAR IMPORTES').length;
-    pendingReview.textContent = revisar ? `${review.length} (${revisar} con importes por revisar)` : String(review.length);
+    const rows = mirrorRows(m, today);
+    currentRows = new Map(rows.map((r) => [r.invoice.id, r]));
+    const live = rows.filter((r) => r.invoice.status !== 'anulada');
+    const arrived = live.filter((r) => r.invoice.status === 'pendiente_datos');
+    const review = live.filter((r) => r.invoice.status === 'pendiente_revision');
+    const revisar = review.filter((r) => r.invoice.review_reason === 'REVISAR IMPORTES').length;
+    const due = live.filter((r) => r.invoice.payment_status === 'pendiente');
+    const overdue = due.filter((r) => r.state.pay.kind === 'overdue').length;
+    const unconfirmed = live.filter((r) => r.state.pay.kind === 'unconfirmed').length;
     const items = purchaseItems({ invoices: m.invoices, lines: m.lines, suppliers: m.suppliers, allocations: m.allocations }, { unassignedOnly: true });
-    unassigned.textContent = items.items.length ? `${items.items.length} · ${eur(items.total_unallocated)}` : '0';
-    const due = live.filter((i) => i.payment_status === 'pendiente');
-    const overdue = due.filter((i) => i.due_date && i.due_date < today).length;
-    unpaid.textContent = overdue ? `${due.length} (${overdue} vencidas)` : String(due.length);
-    supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
     const q = fiscalSummary({ invoices: m.invoices, taxLines: m.taxes }, workingQuarter());
+    // Por cobrar: emitidas registradas sin cobrar (sin borradores ni anuladas; las rectificativas restan), como Booking
+    const issued = (await client.list(ISSUED_INVOICES)).filter((i) => !i.deleted_at && i.status !== 'borrador' && i.status !== 'anulada' && i.payment_status !== 'cobrada') as Array<Record<string, any>>;
+    const receivable = issued.reduce((sum, i) => sum + cents(i.total), 0) / 100;
+    const toCollect = issued.filter((i) => cents(i.total) > 0);
+    const old = toCollect.filter((i) => daysBetween(String(i.sent_at ?? i.issue_date), today) > OLD_DAYS).length;
+    const unsent = toCollect.filter((i) => !i.sent_at).length;
+    const sum = (list: MirrorRow[]) => eur(list.reduce((s, r) => s + cents(r.invoice.calculated_total), 0) / 100);
+    replace(stagesHost, el('h3', { class: 'sectionlabel' }, 'Recorrido'), renderStats([
+      { value: arrived.length, label: 'Llegan', hint: arrived.length ? 'sin datos: léelas' : 'ninguna sin leer', tone: arrived.length ? 'warn' : null, onClick: () => navigate('#/facturas?filtro=pendiente_datos'), feedbackId: 'invoices.inicio.pendientes_datos' },
+      { value: review.length, label: 'Por resolver', hint: revisar ? `${revisar} con importes por revisar` : review.length ? sum(review) : 'nada por revisar', tone: revisar ? 'alert' : review.length ? 'warn' : null, onClick: () => navigate('#/facturas?filtro=pendiente_revision'), feedbackId: 'invoices.inicio.pendientes_revision' },
+      { value: due.length, label: 'Por pagar', hint: [overdue ? `${overdue} vencida${overdue === 1 ? '' : 's'}` : null, unconfirmed ? `${unconfirmed} pago${unconfirmed === 1 ? '' : 's'} por confirmar` : null].filter(Boolean).join(' · ') || sum(due), tone: overdue ? 'alert' : unconfirmed ? 'warn' : null, onClick: () => navigate('#/facturas?filtro=sin_pagar'), feedbackId: 'invoices.inicio.sin_pagar' },
+      { value: toCollect.length, label: 'Por cobrar', hint: [receivable > 0 ? eur(receivable) : null, old ? `${old} de más de ${OLD_DAYS} días` : null, unsent ? `${unsent} sin enviar` : null].filter(Boolean).join(' · ') || 'nada por cobrar', tone: old ? 'alert' : unsent ? 'warn' : null, onClick: () => navigate('#/facturas?vista=emitidas'), feedbackId: 'invoices.inicio.por_cobrar' },
+      { value: items.items.length, label: 'Por repartir', hint: items.items.length ? eur(items.total_unallocated) : 'todo asignado', tone: items.items.length ? 'warn' : null, onClick: () => navigate('#/compras'), feedbackId: 'invoices.inicio.sin_asignar' },
+      { value: q.invoices.validada + q.invoices.archivada, label: 'Gestoría', hint: `${rangeLabel(workingQuarter())}: validadas`, onClick: () => navigate('#/gestoria'), feedbackId: 'invoices.inicio.trimestre' },
+    ], { label: 'Recorrido de tus facturas' }));
+    // Los ids de siempre, en la cifra de cada etapa
+    const values = stagesHost.querySelectorAll<HTMLElement>('.stat-value');
+    ['statPendingData', 'statPendingReview', 'statUnpaid', 'statToCollect', 'statUnassigned', 'statQuarterCount'].forEach((id, i) => { if (values[i]) values[i]!.id = id; });
+    // El trimestre en el que se trabaja, con sus cifras (las de la tarjeta Trimestre de antes; el detalle, en Gestoría)
+    stagesHost.append(el('p', { class: 'hint inv-home-quarter', id: 'homeQuarter', 'data-feedback-ignore': '' },
+      `${rangeLabel(workingQuarter())}, solo lo validado: base ${eur(q.base)} · IVA soportado ${eur(q.vat)} · ${q.invoices.validada + q.invoices.archivada === 1 ? '1 factura' : `${q.invoices.validada + q.invoices.archivada} facturas`}.`));
+    // Herramientas
+    const drive = live.filter((r) => r.invoice.drive_file_id && (r.invoice.status === 'pendiente_datos' || r.invoice.status === 'pendiente_revision'));
+    fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((r) => r.invoice.status === 'pendiente_datos').length} sin leer)` : '0';
+    if (toolHint.drive) toolHint.drive.textContent = drive.length ? `${drive.length} por revisar` : 'Al día';
+    supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
     const on = linksEnabled();
     linksState.textContent = on ? 'Encendido' : 'Apagado';
     linksSwitch.textContent = on ? 'Apagar' : 'Encender';
-    quarterBase.textContent = eur(q.base); quarterVat.textContent = eur(q.vat); quarterCount.textContent = String(q.invoices.validada + q.invoices.archivada);
+    if (toolHint.inventory) toolHint.inventory.textContent = on ? `Encendido${undecided ? ` · ${undecided} por decidir` : ''}` : 'Apagado';
+    paintWork(m, rows);
   }
-
-  const name = client.bootstrap()?.profile.displayName;
-  const link = (mark: FbMark, href: string, title: string, text: string, dd: HTMLElement, dt: string) =>
-    fb(el('a', { class: 'card cardlink', href, onclick: (e: Event) => { e.preventDefault(); navigate(href); } },
-      el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'), el('h3', null, title), el('p', null, text), el('dl', { class: 'kv' }, el('dt', null, dt), dd)), mark);
 
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Facturas de compra: documento, datos, revisión, asignación y gestoría. Todo funciona sin conexión.'))),
-    el('div', { class: 'cardgrid' },
-      link({ feedbackId: 'invoices.inicio.pendientes_datos', feedbackLabel: 'Pendientes de datos' }, '#/facturas?filtro=pendiente_datos', 'Pendientes de datos', 'Facturas con documento pero sin importar ni teclear.', pendingData, 'Facturas'),
-      link({ feedbackId: 'invoices.inicio.pendientes_revision', feedbackLabel: 'Pendientes de revisión' }, '#/facturas?filtro=pendiente_revision', 'Pendientes de revisión', 'Importadas o editadas; hay que validarlas a mano.', pendingReview, 'Facturas'),
-      link({ feedbackId: 'invoices.inicio.sin_asignar', feedbackLabel: 'Sin asignar' }, '#/compras', 'Sin asignar', 'Artículos de facturas validadas sin destino.', unassigned, 'Artículos'),
-      link({ feedbackId: 'invoices.inicio.sin_pagar', feedbackLabel: 'Sin pagar' }, '#/facturas?filtro=sin_pagar', 'Sin pagar', 'Facturas con el pago pendiente.', unpaid, 'Facturas'),
-      el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.trimestre', 'data-feedback-label': 'Trimestre' },
-        el('h3', null, rangeLabel(workingQuarter())),
-        el('p', null, 'Solo lo validado. Detalle y entrega en Gestoría.'),
-        el('dl', { class: 'kv', 'data-feedback-ignore': '' }, el('dt', null, 'Base'), quarterBase, el('dt', null, 'IVA soportado'), quarterVat, el('dt', null, 'Facturas'), quarterCount),
-        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.trimestre.ir_gestoria', 'data-feedback-label': 'Ir a Gestoría', class: 'ghost', type: 'button', onclick: () => navigate('#/gestoria') }, icon('briefcase', 16), 'Ir a Gestoría')),
-      ),
-      fb(el('article', { class: 'card' },
-        el('h3', null, 'Desde Google Drive'),
-        el('p', null, 'Las facturas que dejas en la carpeta «Entrada» llegan solas cada 15 minutos, leídas si el PDF tiene texto. Revísalas y valídalas.'),
-        el('dl', { class: 'kv' }, el('dt', null, 'Por revisar'), fromDrive),
-        el('p', { style: 'margin-top:10px', class: 'btnrow' },
-          el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => navigate('#/facturas?filtro=drive') }, 'Ver las de Drive'),
-          isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null,
-          isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.releer', 'data-feedback-label': 'Volver a leer las pendientes', class: 'ghost', type: 'button', id: 'driveReread', onclick: (e: Event) => void rereadDrive(e.currentTarget as HTMLButtonElement) }, 'Volver a leer las pendientes') : null),
-        isOwner ? driveState : null,
-      ), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
-      isOwner ?       fb(el('article', { class: 'card' },
-        el('h3', null, 'Leer con Claude'),
-        el('p', null, 'Una sesión de Claude Code completa las facturas que llegan sin leer (escaneadas o con datos que faltan). Tú las revisas y validas.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.claude.conectar', 'data-feedback-label': 'Conectar Claude', class: 'ghost', type: 'button', id: 'connectClaude', onclick: () => void connectClaude() }, 'Conectar Claude')),
-      ), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' }) : null,
-      // R4, PR 4: el owner ve la vista previa del enlace de lo ya validado con artículos de Recursos y la aplica.
-      isOwner ? fb(el('article', { class: 'card' },
-        el('h3', null, 'Inventario (Recursos)'),
-        el('p', null, 'Enlaza los artículos de las facturas ya validadas con el inventario común. Primero ves qué se enlaza, qué se crea y qué queda por decidir.'),
-        el('dl', { class: 'kv' }, el('dt', null, 'Enlace'), linksState),
-        el('p', { style: 'margin-top:10px', class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa'), linksSwitch),
-      ), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' }) : null,
-      link({ feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }, '#/proveedores', 'Proveedores', 'Altas, NIF, alias y categoría por defecto.', supplierCount, 'Activos'),
-      el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.sincronizacion', 'data-feedback-label': 'Sincronización' },
-        el('h3', null, 'Sincronización'),
-        el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Conflictos y rechazados'), conflicts, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), role),
-        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.sincronizacion.ver_conflictos', 'data-feedback-label': 'Ver conflictos', class: 'ghost', type: 'button', onclick: () => navigate('#/conflictos') }, 'Ver conflictos')),
-      ),
-      el('article', { class: 'card' },
-        el('h3', null, 'Instalar en este dispositivo'),
-        el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
-        deferredInstall
-          ? el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.instalar', 'data-feedback-label': 'Instalar Ikisai Finance', class: 'ghost', type: 'button', style: 'margin-top:10px', onclick: async () => { await deferredInstall?.prompt(); deferredInstall = null; } }, 'Instalar Ikisai Finance'))
-          : el('p', { style: 'margin-top:8px' }, 'En Android: menú del navegador → «Instalar aplicación». En iPhone: Compartir → «Añadir a pantalla de inicio».'),
-      ),
-      el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.cuenta', 'data-feedback-label': 'Cuenta' },
-        el('h3', null, 'Cuenta'),
-        el('p', null, name ? `Sesión iniciada como ${name}.` : 'Sesión iniciada.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.cuenta.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', class: 'ghost', type: 'button', id: 'logoutHome', onclick: () => void logout() }, 'Cerrar sesión')),
-      ),
-    ),
-    el('button', { 'data-feedback-id': 'invoices.inicio.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'homeNewInvoice', hidden: client.bootstrap()?.membership.role === 'reader', onclick: () => navigate('#/facturas/nueva') }, icon('plus'), 'Nueva factura'),
+    workHost,
+    stagesHost,
+    el('section', { class: 'inv-home-tools' }, el('h3', { class: 'sectionlabel' }, 'Herramientas'), toolsRow),
+    el('button', { 'data-feedback-id': 'invoices.inicio.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'homeNewInvoice', hidden: !canEdit, onclick: () => navigate('#/facturas/nueva') }, icon('plus'), 'Nueva factura'),
   );
 
   /**
@@ -292,5 +421,5 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   void paintDrive();
   const offStatus = client.onStatus(paintStatus);
   const offTables = onAnyTable(client, () => void paintCounts());
-  return () => { offStatus(); offTables(); };
+  return () => { offStatus(); offTables(); offline.forEach((off) => off()); };
 };

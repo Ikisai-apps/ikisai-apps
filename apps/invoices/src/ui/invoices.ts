@@ -1,13 +1,13 @@
 /**
- * Facturas (API.md §9.2): lista por mes, ficha en hoja (documento, artículos, impuestos, asignación, pago, fiscal),
+ * Facturas (API.md §9.2): la lista vive en `invoice-list.ts`; aquí la ficha en hoja (documento, artículos, impuestos, asignación, pago, fiscal),
  * alta con documento, importación del JSON `ikisai.invoice.v1`, validar, anular, archivar.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, MISSING_LABELS, validationMissing, type MissingKey, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, type ReadPayment, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, emptyPartial, MISSING_LABELS, type MissingKey, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, softDuplicate, type FieldProvenance, type PdfTextItem, type ReadPayment, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -15,27 +15,26 @@ import {
   type LocalAllocation, type LocalInvoice, type LocalInvoiceFile, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from '../app/client.ts';
 import {
-  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, lineName, loadMirror, supplierName, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
+  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, lineName, loadMirror, supplierName, workingQuarter, parseAmount, shortDate,
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
 import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
-import type { ViewContext, ViewMount } from './shell.ts';
-import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedDocuments, takeSharedText } from '../app/ai-share.ts';
+import type { ViewContext } from './shell.ts';
+import { fetchStoredDocument, sha256Hex, shareWithAi } from '../app/ai-share.ts';
 import { READ_LIMITS, ReadLimitError, readPdfItems } from '../app/pdf-text.ts';
 import { flushDocumentTexts, queueDocumentText } from '../app/text-queue.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { articleForm } from './article.ts';
 import { linkedItem, linksEnabled, spaceName } from '../app/resources.ts';
-import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
 import type { ManualPrefill } from './manual.ts';
 import { createInvoiceEditor, type InvoiceEditor } from './editor.ts';
+import { missingOf, saveDocumentText, settlePending, validateNow } from '../app/validate.ts';
+import { commitWithUndo, pick } from './undo.ts';
 import { currentReading, documentReadingBlock, extractFor, readingPanel } from './reading.ts';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // Utilidades de la vista
@@ -44,7 +43,7 @@ function supplierOptions(suppliers: LocalSupplier[]): Array<[string, string]> {
   return suppliers.filter((s) => !s.deleted_at).sort((a, b) => supplierName(a).localeCompare(supplierName(b), 'es')).map((s) => [s.id, s.label ? `${s.label} (${s.name})` : s.name] as [string, string]);
 }
 
-function invoiceTitle(invoice: LocalInvoice, mirror: Mirror): string {
+export function invoiceTitle(invoice: LocalInvoice, mirror: Mirror): string {
   const supplier = mirror.supplierById.get(invoice.supplier_id);
   return `${supplierName(supplier, 'Proveedor')} · ${invoice.object}`;
 }
@@ -64,11 +63,7 @@ async function pickFiles(input: HTMLInputElement, client: SyncClient): Promise<S
 // ---------------------------------------------------------------------------
 // Lista
 // ---------------------------------------------------------------------------
-/** Pestañas Recibidas · Emitidas y apps de la hoja de asignación: ids literales para el catálogo de «Uso». */
-const INVOICE_TAB_MARKS: Record<string, Record<string, string>> = {
-  recibidas: { 'data-feedback-id': 'invoices.facturas.pestanas.recibidas', 'data-feedback-label': 'Recibidas' },
-  emitidas: { 'data-feedback-id': 'invoices.facturas.pestanas.emitidas', 'data-feedback-label': 'Emitidas' },
-};
+/** Apps de la hoja de asignación: ids literales para el catálogo de «Uso». */
 const ALLOC_APP_MARKS: Record<string, Record<string, string>> = {
   general: { 'data-feedback-id': 'invoices.facturas.asignar.app.general', 'data-feedback-label': 'General' },
   tasks: { 'data-feedback-id': 'invoices.facturas.asignar.app.tareas', 'data-feedback-label': 'Tareas' },
@@ -76,174 +71,9 @@ const ALLOC_APP_MARKS: Record<string, Record<string, string>> = {
   booking: { 'data-feedback-id': 'invoices.facturas.asignar.app.reservas', 'data-feedback-label': 'Reservas' },
 };
 
-export const mountInvoices: ViewMount = (ctx) => {
-  const { main, client } = ctx;
-  let mirror: Mirror | null = null;
-  let query = '';
-  let filter = 'activas';
-  let opened: string | null = null;
-
-  const search = el('input', { 'data-feedback-id': 'invoices.facturas.buscar', 'data-feedback-label': 'Buscar facturas', type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
-    oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['drive', 'Llegadas por Drive, sin validar'], ['rect_sin_enlazar', 'Rectificativas sin enlazar'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
-    { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Filtrar por estado', 'aria-label': 'Filtrar por estado', onchange: () => { filter = statusSelect.value; paint(); } });
-  const listHost = el('div', { 'data-feedback-id': 'invoices.facturas.lista', 'data-feedback-label': 'Facturas recibidas', id: 'invoiceList' });
-  const canEdit = client.bootstrap()?.membership.role !== 'reader';
-  const newButton = el('button', { 'data-feedback-id': 'invoices.facturas.nueva', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newInvoice', hidden: !canEdit, onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
-  const extractAll = el('button', { 'data-feedback-id': 'invoices.facturas.extraer_pendientes', 'data-feedback-label': 'Extraer pendientes', class: 'softbtn small', type: 'button', id: 'extractPending', hidden: true, onclick: () => void extractPending() }, icon('upload', 16), 'Extraer pendientes');
-  // Pestañas «Recibidas · Emitidas» (API.md §13.5): las emitidas registradas viven en su propio panel.
-  const received = el('div', { id: 'receivedPanel' },
-    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
-    el('div', { class: 'toolbar', id: 'invoiceTools' }, canEdit ? el('button', { 'data-feedback-id': 'invoices.facturas.subir_varias', 'data-feedback-label': 'Subir varias', class: 'softbtn small', type: 'button', id: 'batchUpload', onclick: () => openBatchUpload(ctx, () => loadMirror(client), () => void load()) }, icon('upload', 16), 'Subir varias') : null, extractAll),
-    listHost,
-    newButton);
-  let issuedPanel: { element: HTMLElement; destroy: () => void } | null = null;
-  const tabs = el('div', { 'data-feedback-id': 'invoices.facturas.pestanas', 'data-feedback-label': 'Recibidas y emitidas', class: 'segmented', role: 'tablist', id: 'invoiceTabs' },
-    ...([['recibidas', 'Recibidas'], ['emitidas', 'Emitidas']] as Array<[string, string]>).map(([value, label]) =>
-      el('button', { ...INVOICE_TAB_MARKS[value], type: 'button', role: 'tab', class: value === 'recibidas' ? 'on' : '', dataset: { tab: value }, onclick: () => showTab(value) }, label)));
-  const issuedHost = el('div', { id: 'issuedHost', hidden: true });
-  function showTab(value: string): void {
-    for (const b of Array.from(tabs.querySelectorAll('button'))) { b.classList.toggle('on', b.dataset.tab === value); b.setAttribute('aria-selected', String(b.dataset.tab === value)); }
-    received.hidden = value !== 'recibidas';
-    issuedHost.hidden = value !== 'emitidas';
-    if (value === 'emitidas' && !issuedPanel) { issuedPanel = renderIssuedPanel(ctx); replace(issuedHost, issuedPanel.element); }
-  }
-  replace(
-    main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Facturas'), el('p', null, 'Recibidas: documento, datos importados, revisión y validación. Emitidas: registro de las que expides.'))),
-    tabs,
-    received,
-    issuedHost,
-  );
-
-  /** Facturas con documento y sin datos: candidatas a la extracción automática. */
-  function extractable(): LocalInvoice[] {
-    if (!mirror) return [];
-    return mirror.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (mirror!.filesByInvoice.get(i.id) ?? []).some((f) => f.kind === 'original'))
-      .sort((a, b) => (a.invoice_date ?? '').localeCompare(b.invoice_date ?? ''));
-  }
-
-  async function extractPending(): Promise<void> {
-    const list = extractable();
-    if (!list.length) return;
-    extractionQueue.ids = list.map((i) => i.id);
-    extractionQueue.total = list.length;
-    await extractNext(ctx);
-  }
-
-  function matches(invoice: LocalInvoice): boolean {
-    if (!mirror) return false;
-    const supplier = mirror.supplierById.get(invoice.supplier_id);
-    const hay = [supplier?.name ?? '', supplier?.label ?? '', invoice.object, invoice.invoice_number ?? '', invoice.code ?? ''].join(' ').toLowerCase();
-    if (query && !hay.includes(query)) return false;
-    const hasFile = (mirror.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original');
-    switch (filter) {
-      case 'activas': return invoice.status !== 'anulada';
-      case 'anulada': return invoice.status === 'anulada';
-      case 'sin_pagar': return invoice.status !== 'anulada' && invoice.payment_status === 'pendiente';
-      case 'sin_documento': return invoice.status !== 'anulada' && !hasFile;
-      case 'rect_sin_enlazar': return invoice.status !== 'anulada' && invoice.invoice_kind === 'rectificativa' && !invoice.rectifies_invoice_id && !invoice.rectification_without_original;
-      case 'drive': return !!invoice.drive_file_id && (invoice.status === 'pendiente_datos' || invoice.status === 'pendiente_revision');
-      default: return invoice.status === filter;
-    }
-  }
-
-  function rowSpec(invoice: LocalInvoice): ListRowSpec {
-    const m = mirror!;
-    const hasFile = (m.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original');
-    const chips = [el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice))];
-    if (invoice.payment_status === 'pagada') chips.push(invoice.payment_source === 'sin_confirmar' ? el('span', { class: 'chip' }, 'Pagada (sin confirmar)') : el('span', { class: 'chip ok' }, 'Pagada'));
-    if (!hasFile && invoice.status !== 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Sin documento'));
-    if (isLate(invoice)) chips.push(el('span', { class: 'chip warn' }, `Atrasada (${quarterName(periodOfDate(invoice.invoice_date))})`));
-    if (invoice.invoice_kind === 'rectificativa') chips.push(el('span', { class: invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'chip' : 'chip warn' }, invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'Rectificativa' : 'Rectificativa sin enlazar'));
-    return {
-      id: invoice.id,
-      title: invoiceTitle(invoice, m),
-      meta: [shortDate(invoice.invoice_date), invoice.code ?? 'código pendiente', eur(invoice.calculated_total)],
-      chips,
-      pending: invoice._pending === true,
-      onClick: () => openInvoice(ctx, invoice.id),
-      label: `Abrir ${invoiceTitle(invoice, m)}`,
-    };
-  }
-
-  function paint(): void {
-    if (!mirror) return;
-    const pendingDocs = extractable().length;
-    extractAll.hidden = !canEdit || pendingDocs === 0;
-    extractAll.textContent = '';
-    extractAll.append(icon('upload', 16), pendingDocs === 1 ? 'Extraer la factura pendiente' : `Extraer ${pendingDocs} pendientes`);
-    const visible = mirror.invoices.filter((i) => !i.deleted_at && matches(i)).sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? '') || (b.code ?? '').localeCompare(a.code ?? ''));
-    if (!visible.length) {
-      replace(listHost, el('div', { class: 'empty' }, el('strong', null, mirror.invoices.length ? 'Ninguna factura coincide' : 'Todavía no hay facturas'),
-        mirror.invoices.length ? 'Cambia el filtro o la búsqueda.' : 'Sube el documento con «Nueva factura» o importa el JSON de ChatGPT. Funciona también sin conexión.'));
-      return;
-    }
-    const groups = new Map<string, LocalInvoice[]>();
-    for (const inv of visible) { const k = monthKey(inv.invoice_date); groups.set(k, [...(groups.get(k) ?? []), inv]); }
-    replace(listHost, ...[...groups.entries()].map(([key, rows]) => el('section', null,
-      el('div', { class: 'sectionlabel' }, monthLabel(key), el('span', { class: 'count' }, String(rows.length))),
-      fbRows(renderList({ label: `Facturas de ${monthLabel(key)}`, rows: rows.map(rowSpec) }), { feedbackId: 'invoices.facturas.lista.mes', feedbackLabel: 'Facturas del mes' }, { feedbackId: 'invoices.facturas.lista.fila', feedbackLabel: 'Factura' }),
-    )));
-  }
-
-  async function load(): Promise<void> {
-    mirror = await loadMirror(client);
-    paint();
-    if (opened) refreshOpenInvoice(ctx, opened, mirror);
-  }
-
-  function fromHash(): void {
-    const tail = location.hash.replace(/^#\/facturas\/?/, '');
-    // Resultado compartido hacia Ikisai (share_target): se abre la importación sobre la pendiente más reciente con documento.
-    // Facturas (PDF o fotos) compartidas desde otra app: «Subir varias» con ellas.
-    if (/^\?compartido=docs/.test(tail) && mirror) {
-      history.replaceState(null, '', '#/facturas');
-      void takeSharedDocuments().then((files) => {
-        if (!files.length) { toast('No ha llegado ninguna factura. Vuelve a compartirla o usa «Subir varias».'); return; }
-        if (!canEdit) { toast('Tu cuenta no puede subir facturas.'); return; }
-        openBatchUpload(ctx, () => loadMirror(client), () => void load(), files);
-      });
-      return;
-    }
-    const shared = tail.match(/^\?compartido=([01])/);
-    if (shared && mirror) {
-      history.replaceState(null, '', '#/facturas');
-      if (shared[1] === '0') { toast('No se pudo recibir lo compartido. Copia el resultado y usa «Pegar resultado».'); return; }
-      void takeSharedText().then((text) => {
-        if (!text) { toast('No ha llegado ningún resultado. Copia el resultado y usa «Pegar resultado».'); return; }
-        const pending = mirror!.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (mirror!.filesByInvoice.get(i.id) ?? []).some((f) => f.kind === 'original'))
-          .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
-        openImport(ctx, mirror!, pending, undefined, { text });
-      });
-      return;
-    }
-    // Tarjetas de Inicio: `#/facturas?filtro=pendiente_datos|pendiente_revision|sin_pagar|drive`.
-    const wanted = tail.match(/^\?filtro=([a-z_]+)/);
-    if (wanted && [...statusSelect.options].some((o) => o.value === wanted[1])) { filter = wanted[1]!; statusSelect.value = filter; history.replaceState(null, '', '#/facturas'); paint(); return; }
-    if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
-    else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
-    else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {
-      // Enlace por código desde otras apps (Reservas, Cocina): `#/facturas/FVR_2026_012`.
-      const code = tail.toUpperCase();
-      const found = mirror.invoices.find((i) => !i.deleted_at && i.code === code);
-      history.replaceState(null, '', '#/facturas');
-      if (found) openInvoice(ctx, found.id);
-      else toast(`No encuentro la factura ${code} en este dispositivo.`);
-    }
-  }
-
-  // Las filas (también su marca «pendiente») llegan por onTable; el estado de red no cambia la lista.
-  const offTables = onAnyTable(client, () => void load());
-  const offOpen = onOpen((id) => { opened = id; });
-  void load().then(fromHash);
-  if (/[?&]vista=emitidas\b/.test(location.hash)) showTab('emitidas');
-  return () => { offTables(); offOpen(); issuedPanel?.destroy(); void closeSheet(true); };
-};
-
 // Quién tiene la ficha abierta (para refrescarla cuando llegan cambios).
 const openListeners = new Set<(id: string | null) => void>();
-function onOpen(listener: (id: string | null) => void): () => void { openListeners.add(listener); return () => openListeners.delete(listener); }
+export function onOpen(listener: (id: string | null) => void): () => void { openListeners.add(listener); return () => openListeners.delete(listener); }
 let openInvoiceId: string | null = null;
 let openSheetRef: Sheet | null = null;
 function setOpen(id: string | null): void { openInvoiceId = id; for (const l of openListeners) l(id); }
@@ -251,7 +81,7 @@ function setOpen(id: string | null): void { openInvoiceId = id; for (const l of 
 /** El editor de «Datos de la factura» de la ficha abierta (para «Leer PDF»). */
 let activeEditor: InvoiceEditor | null = null;
 
-function refreshOpenInvoice(ctx: ViewContext, id: string, mirror: Mirror): void {
+export function refreshOpenInvoice(ctx: ViewContext, id: string, mirror: Mirror): void {
   if (openInvoiceId !== id || !openSheetRef) return;
   // Con cambios sin guardar en «Datos de la factura», no se repinta (se perdería lo escrito).
   if (guard.dirtyEditor) return;
@@ -297,17 +127,6 @@ function compactAction(button: HTMLElement): HTMLElement {
   if (text && !button.getAttribute('aria-label')) button.setAttribute('aria-label', text);
   if (text && !button.title) button.title = text;
   return button;
-}
-
-/** Lo que falta para validar una factura, con lo que hay en el espejo. */
-function missingOf(mirror: Mirror, invoice: LocalInvoice): MissingKey[] {
-  const lines = (mirror.linesByInvoice.get(invoice.id) ?? []).filter((l) => !l.deleted_at);
-  const taxes = (mirror.taxesByInvoice.get(invoice.id) ?? []).filter((t) => !t.deleted_at);
-  return validationMissing({
-    invoice, hasOriginal: (mirror.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original' && !f.deleted_at),
-    lines: lines.map((l) => ({ quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), discount_amount: Number(l.discount_amount ?? 0), net_amount: Number(l.net_amount) })),
-    taxes: taxes.map((t) => ({ tax_type: t.tax_type, rate: t.rate === null ? null : Number(t.rate), taxable_base: t.taxable_base === null ? null : Number(t.taxable_base), amount: Number(t.amount) })),
-  });
 }
 
 function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror): HTMLElement {
@@ -388,17 +207,21 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   if (canEdit && invoice.status !== 'anulada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.anular', 'data-feedback-label': 'Anular', class: 'danger', type: 'button', id: 'annulInvoice', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
 
   // FB_2026_027 y FB_2026_030: la fecha de pago nunca es la del clic. Sin confirmar, un toque la confirma tal cual.
+  // Tanda 27: todo cambio del pago sale al momento con «Deshacer», que vuelve a poner los cuatro campos como estaban.
+  const PAY_FIELDS = ['payment_status', 'paid_at', 'payment_method', 'payment_source'];
+  const payChange = (fields: Record<string, unknown>, message: string, undone: string) =>
+    commitWithUndo(client, { table: INVOICES, id: invoice.id, revision: invoice.revision, fields, before: pick(invoice as unknown as Record<string, unknown>, PAY_FIELDS) }, message, undone);
   async function confirmPaid(): Promise<void> {
-    await update({ payment_source: 'confirmado' }, 'Pago confirmado.');
+    await payChange({ payment_source: 'confirmado' }, 'Pago confirmado.', 'Vuelve a estar sin confirmar.');
   }
   async function togglePaid(): Promise<void> {
-    if (invoice.payment_status === 'pagada') { await update({ payment_status: 'pendiente', paid_at: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.'); return; }
+    if (invoice.payment_status === 'pagada') { await payChange({ payment_status: 'pendiente', paid_at: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.', 'Vuelve a estar pagada.'); return; }
     const date = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.pago.fecha', 'data-feedback-label': 'Fecha de pago', type: 'date', value: invoice.paid_at ?? invoice.invoice_date ?? '', id: 'paidAt' });
     const method = select('paidMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, PAYMENT_METHOD_LABELS[m] ?? m] as [string, string])], invoice.payment_method, { 'data-feedback-id': 'invoices.facturas.ficha.pago.metodo', 'data-feedback-label': 'Método de pago' });
     const ok = await confirmDialog({ title: 'Marcar como pagada', text: el('div', null, field('Fecha de pago', date), field('Método', method)), confirmLabel: 'Marcar pagada' });
     if (!ok) return;
     if (!date.value) { toast('Indica la fecha de pago.'); return; }
-    await update({ payment_status: 'pagada', paid_at: date.value, payment_method: method.value || null, payment_source: 'confirmado' }, 'Factura marcada como pagada.');
+    await payChange({ payment_status: 'pagada', paid_at: date.value, payment_method: method.value || null, payment_source: 'confirmado' }, 'Factura marcada como pagada.', 'Vuelve a estar pendiente de pago.');
   }
 
   async function annul(): Promise<void> {
@@ -440,7 +263,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
       el('dt', null, 'Pago'), el('dd', { id: 'invPayment' }, ...paymentText(),
         unconfirmedPaid && canEdit ? [' · ', el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago.no_pagada', 'data-feedback-label': 'No está pagada', class: 'linkbtn inline', type: 'button', id: 'notPaid',
-          onclick: () => void update({ payment_status: 'pendiente', paid_at: null, payment_method: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.') }, 'No está pagada')] : []),
+          onclick: () => void payChange({ payment_status: 'pendiente', paid_at: null, payment_method: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.', 'Vuelve a estar pagada (sin confirmar).') }, 'No está pagada')] : []),
       ...rectificationRows(ctx, invoice, mirror),
       el('dt', null, 'Se declara en'), el('dd', { id: 'declaredPeriod' }, invoice.invoice_date || invoice.declared_period
         ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${invoice.delivered_elsewhere ? ' · ya pasada a la gestoría' : isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),
@@ -490,14 +313,20 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const lineForm = (line: LocalInvoiceLine | null) => renderLineForm(client, invoice, line, lines.length);
   // Orden manual (decisión del usuario, TABLÓN): con dos o más artículos y permiso de edición, lista reordenable del kit.
   // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
-  const lineRow = (l: LocalInvoiceLine) => el('div', { class: 'line-row', 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
+  const canLink = canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada';
+  const openArticle = (l: LocalInvoiceLine) => openArticleSheet(ctx, invoice, l, mirror);
+  const lineRow = (l: LocalInvoiceLine) => el('div', { class: `line-row${linksEnabled() && !l.item_id ? ' inv-line-free' : ''}`, 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
     el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' }, lineName(l)),
       (linksEnabled() && l.item_id ? l.item_source : l.label_source) === 'recordado' ? el('span', { class: 'chip', title: 'Puesto solo: lo recordaba de otra factura de este proveedor' }, 'recordado') : null,
       l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null,
       // La descripción de la factura (la que vale fiscalmente) sigue a la vista bajo «Mi nombre».
       lineName(l) !== l.description ? el('span', { class: 'hint line-original', 'data-feedback-ignore': '' }, `En la factura: ${l.description}`) : null,
       // R4: con el enlace encendido, cómo entra al inventario («1 saco = 25 kg → Despensa»)
-      linksEnabled() && l.item_id ? el('span', { class: 'hint line-stock', 'data-feedback-ignore': '' }, stockText(l)) : null),
+      linksEnabled() && l.item_id ? el('span', { class: 'hint line-stock', 'data-feedback-ignore': '' }, stockText(l)) : null,
+      // Tanda 27: la línea sin artículo lo dice y se toca para elegirlo
+      linksEnabled() && !l.item_id ? (canLink
+        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.sin_articulo', 'data-feedback-label': 'Elegir artículo', class: 'linkbtn inv-line-pick', type: 'button', 'aria-label': `Elegir el artículo de ${l.description}`, onclick: () => openArticle(l) }, 'Sin artículo: no entra al inventario. Toca para elegirlo.')
+        : el('span', { class: 'hint' }, 'Sin artículo: no entra al inventario.')) : null),
     el('div', { class: 'line-nums' },
       el('span', { 'data-feedback-ignore': '' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
       el('strong', { 'data-feedback-ignore': '' }, eur(l.net_amount)),
@@ -507,7 +336,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       // «Mi nombre»: también en una factura validada (no la devuelve a revisión).
       canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada' ? (linksEnabled()
         // R4: «Artículo» sustituye a «Mi nombre» (el texto sin artículo sigue siendo posible)
-        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.articulo', 'data-feedback-label': 'Artículo', class: 'linkbtn', type: 'button', 'aria-label': `Artículo para ${l.description}`, onclick: () => replace(lineEditor, articleForm(client, invoice, l, (id) => mirror.supplierById.get(id)?.name ?? null, () => replace(lineEditor))) }, 'Artículo')
+        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.articulo', 'data-feedback-label': 'Artículo', class: 'linkbtn', type: 'button', 'aria-label': `${l.item_id ? 'Cambiar el artículo de' : 'Artículo para'} ${l.description}`, onclick: () => openArticle(l) }, l.item_id ? 'Cambiar' : 'Artículo')
         : el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'linkbtn', type: 'button', 'aria-label': `Mi nombre para ${l.description}`, onclick: () => replace(lineEditor, labelForm(client, l, () => replace(lineEditor))) }, 'Mi nombre')) : null,
     ),
   );
@@ -522,7 +351,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
         },
       }).element
       : el('div', { class: 'list plain-lines', id: 'invoiceLines' }, ...lines.map(lineRow));
-  const linesBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.articulos', feedbackLabel: 'Artículos' }, 'Artículos', String(lines.length), true,
+  const linesBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.articulos', feedbackLabel: 'Artículos' }, 'Artículos', linksEnabled() ? articlesSummary(lines) : String(lines.length), true,
     linesView,
     editable ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.anadir', 'data-feedback-label': 'Añadir artículo', class: 'softbtn', type: 'button', id: 'addLine', onclick: () => replace(lineEditor, lineForm(null)) }, icon('plus', 18), 'Añadir artículo')) : null,
   );
@@ -716,12 +545,12 @@ function openReadWithAi(ctx: ViewContext, invoice: LocalInvoice, original: Local
 }
 
 /** «2026T3» → «3T 2026». */
-function quarterName(period: string | null): string {
+export function quarterName(period: string | null): string {
   const m = period?.match(/^(\d{4})T([1-4])$/);
   return m ? `${m[2]}T ${m[1]}` : '—';
 }
 /** Se declara en un trimestre posterior al de su fecha (0228). */
-function isLate(invoice: LocalInvoice): boolean {
+export function isLate(invoice: LocalInvoice): boolean {
   const own = periodOfDate(invoice.invoice_date);
   return !!invoice.declared_period && !!own && invoice.declared_period > own;
 }
@@ -813,6 +642,31 @@ function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalIn
 
 /** «Mi nombre» de una línea, en una sola casilla (también en facturas validadas: no las devuelve a revisión). */
 /** R4: cómo entra una línea enlazada al inventario: «2 saco = 50 kg → Despensa», «Ya entró desde la compra de Food». */
+/** «3 artículos · 2 entran al inventario · 1 sin artículo» (tanda 27). */
+function articlesSummary(lines: LocalInvoiceLine[]): string {
+  const live = lines.filter((l) => !l.deleted_at);
+  const linked = live.filter((l) => l.item_id);
+  const entering = linked.filter((l) => !l.entered_movement_id && l.quantity !== null && !!spaceName(l.space_id ?? linkedItem(l.item_id)?.defaultSpaceId ?? null)).length;
+  const free = live.length - linked.length;
+  return [`${live.length} artículo${live.length === 1 ? '' : 's'}`, `${entering} entra${entering === 1 ? '' : 'n'} al inventario`, free ? `${free} sin artículo` : null].filter(Boolean).join(' · ');
+}
+
+/**
+ * «Artículo» de una línea en su hoja (tanda 27): sustituye a la ficha mientras se elige y, al guardar, quitar o cerrar,
+ * vuelve a la ficha (como la hoja de asignar).
+ */
+function openArticleSheet(ctx: ViewContext, invoice: LocalInvoice, line: LocalInvoiceLine, mirror: Mirror): void {
+  let back = true;
+  const done = () => { void closeSheet(true); };
+  const form = articleForm(ctx.client, invoice, line, (id) => mirror.supplierById.get(id)?.name ?? null, done);
+  openSheet({
+    title: `Artículo · ${lineName(line)}`,
+    body: form,
+    panelAttrs: { 'data-feedback-id': 'invoices.facturas.articulo.hoja', 'data-feedback-label': 'Hoja de artículo' },
+    onClose: () => { if (back) { back = false; void openInvoice(ctx, invoice.id); } },
+  });
+}
+
 function stockText(l: LocalInvoiceLine): string {
   const item = linkedItem(l.item_id);
   if (!item) return 'Artículo enlazado';
@@ -1167,41 +1021,7 @@ function validateAndReopen(ctx: ViewContext): (invoiceId: string) => Promise<voi
 // Validar sin chocar con uno mismo (incidencia del usuario, 9-10-2026): elegir la categoría y validar al instante
 // salía con la revisión de antes del acuse del cambio → VERSION_CONFLICT contra el propio cambio.
 // ---------------------------------------------------------------------------
-/**
- * Valida con la revisión que tiene el servidor: con red, espera (hasta 8 s) a que se confirmen los cambios pendientes;
- * si siguen pendientes (sin red), la validación sale sin revisión esperada (los cambios propios van antes en la cola).
- */
-/** Deja que el último cambio entre en la cola y, con red, espera (hasta 8 s) a que el servidor lo confirme. */
-async function settlePending(client: SyncClient): Promise<void> {
-  await new Promise((r) => setTimeout(r, 250));
-  if (client.status().pendingCommands && navigator.onLine) {
-    void client.sync().catch(() => undefined);
-    const until = Date.now() + 8000;
-    while (client.status().pendingCommands && Date.now() < until && navigator.onLine) await new Promise((r) => setTimeout(r, 150));
-  }
-}
-
-async function validateNow(ctx: ViewContext, invoiceId: string, okMessage: string): Promise<boolean> {
-  const { client } = ctx;
-  await settlePending(client);
-  const mirror = await loadMirror(client);
-  const invoice = mirror.invoices.find((i) => i.id === invoiceId);
-  if (!invoice) return false;
-  const ops = await validateWithLearning(ctx, mirror, invoice);
-  if (client.status().pendingCommands) {
-    const call = ops[0] as { op: 'call'; args: Record<string, unknown> };
-    delete call.args.expectedRevision;
-  }
-  try {
-    await client.commit(ops);
-    toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
-    return true;
-  } catch (error) {
-    toast(describeError(error));
-    return false;
-  }
-}
-
+// `settlePending` y `validateNow` viven en `app/validate.ts`.
 let resolving = false;
 /** Facturas cuya validación ya se ha reintentado sola en esta sesión: un solo intento, luego decide el usuario. */
 const retriedValidations = new Set<string>();
@@ -1263,46 +1083,6 @@ async function rereadIntoEditor(ctx: ViewContext, mirror: Mirror, invoice: Local
   } catch (error) {
     toast(error instanceof ReadLimitError ? 'El PDF es muy grande o tarda demasiado: usa «Leer con IA».' : 'No se pudo abrir el PDF. Puede estar dañado o protegido.');
   }
-}
-
-async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfTextItem[]): Promise<void> {
-  try { await ctx.client.api(`/documents/${fileId}/text`, { json: { source: 'pdf_text', items: items.slice(0, 20_000) } }); } catch { /* aprender al validar volverá a leer el PDF */ }
-}
-
-/**
- * Validar y, en el mismo lote, aprender la plantilla del proveedor con lo confirmado (API.md §6.9). El servidor exige que
- * vayan juntos. Si no hay texto del documento (sin red, foto o escaneado), se valida sin aprender: nunca bloquea.
- */
-async function validateWithLearning(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice): Promise<RowOperation[]> {
-  const ops: RowOperation[] = [{ op: 'call', procedure: 'invoices.validate', args: { invoice_id: invoice.id, expectedRevision: invoice.revision } }];
-  // La categoría con que se valida pasa a ser la del proveedor si no tenía ninguna (sin pisarla): la siguiente ya la lleva.
-  const owner = mirror.supplierById.get(invoice.supplier_id);
-  if (owner && owner.slug !== 'sin_identificar' && !owner.default_category && invoice.expense_category) {
-    ops.push({ op: 'update', table: SUPPLIERS, id: owner.id, expectedRevision: owner.revision, fields: { default_category: invoice.expense_category } });
-  }
-  try {
-    const original = (mirror.filesByInvoice.get(invoice.id) ?? []).filter((f) => f.kind === 'original' && f.mime_type === 'application/pdf').sort((a, b) => a.page_order - b.page_order)[0];
-    if (!original || !navigator.onLine) return ops;
-    let items: PdfTextItem[] | null = null;
-    const stored = await ctx.client.api<{ items: PdfTextItem[] } | null>('/read/invoices.document_text', { json: { file_id: original.file_id } }).catch(() => null);
-    if (stored && Array.isArray(stored.items) && stored.items.length) items = stored.items;
-    else {
-      const file = await fetchStoredDocument(ctx.client, original.file_id, original.normalized_filename, original.mime_type);
-      items = await readPdfItems(file);
-      if (items.length) void saveDocumentText(ctx, original.file_id, items);
-    }
-    if (!items?.length) return ops;
-    const supplier = mirror.supplierById.get(invoice.supplier_id);
-    const learning = await learnFromConfirmation({
-      lines: linesFromItems(items), supplierId: invoice.supplier_id, invoiceId: invoice.id, templates: mirror.templates,
-      confirmed: confirmedFromInvoice(invoice, supplier?.tax_id ?? null, mirror.taxesByInvoice.get(invoice.id) ?? []),
-      items: (mirror.linesByInvoice.get(invoice.id) ?? []).filter((l) => !l.deleted_at).sort((a, b) => a.position - b.position).map((l) => ({ description: l.description, quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), net_amount: Number(l.net_amount) })),
-    });
-    if (!learning) return ops;
-    const current = learning.template.id ? mirror.templates.find((t) => t.id === learning.template.id) ?? null : null;
-    ops.push(templateOperation(learning, current, invoice.id, crypto.randomUUID()) as RowOperation);
-  } catch { /* aprender es un extra: la validación sigue */ }
-  return ops;
 }
 
 export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill, options: { files?: File[]; text?: string } = {}): void {

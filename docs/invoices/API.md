@@ -1723,3 +1723,30 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
   - «Deshacer» del pago de una recibida: el contrario con los cuatro campos (`payment_status`, `paid_at`, `payment_method`, `payment_source`), ya admitido también en archivadas (0233).
   - Volver a «Pendiente de revisión» desde validada (`guard_invoice`).
   - Las entregas de Gestoría por trimestre (`exports`, ya en el dispositivo).
+
+#### 16.21.1 Interfaz, parte 1: Facturas, ficha e Inicio
+- **Capa pura** `app/work-state.ts`, con sus pruebas: el recorrido de cada recibida, el pago en palabras, las etiquetas, los buzones, los grupos por proveedor y la cola de Inicio.
+  - **Recorrido:** Llega · Por resolver · Validada · Pagada · En gestoría.
+  - **«Pagada»** solo se marca con el pago confirmado o leído del documento. Sin confirmar lleva «!» y lo dice la frase.
+  - **Anulada:** el recorrido queda parado.
+  - **Archivada, ya pasada a la gestoría y rectificativa** van como etiqueta.
+- **Facturas:**
+  - buzones con su número e importe: Por resolver (al abrir, con «Sin datos» y «Por revisar»), Sin pagar, Validadas, Todas (sin anuladas) y Más;
+  - `#invoiceFilter` es ahora el contenedor de los buzones (`[data-box]`), y los `?filtro=` de siempre llevan a su buzón;
+  - grupos por proveedor (`renderGroups`) y recorrido mini (`renderStages`);
+  - en cada factura, las dos etiquetas más graves y «+n», y «Confirmar pago» con «Deshacer».
+- **«Deshacer»** (`ui/undo.ts`): envía el cambio contrario con la revisión del dispositivo y nunca retiene nada.
+  - En el pago, vuelve a poner los cuatro campos como estaban.
+  - En Inicio, devuelve la validada a «Pendiente de revisión». Lo aprendido se queda, y el inventario se recuadra solo.
+- **«Artículo»** se abre en su hoja:
+  - antes de guardar dice qué entra al inventario;
+  - Guardar y Quitar llevan «Deshacer», que también quita un enlace aplazado de la lista;
+  - la línea sin artículo se ve punteada y se toca para elegirlo.
+- **Inicio:**
+  - **La factura que toca** (`createQueue`).
+  - **El recorrido con su cifra**, conservando los ids `#statPendingData`, `#statPendingReview`, `#statUnpaid` y `#statUnassigned`.
+  - **Herramientas en una fila**, cada una con su hoja:
+    - `#toolDrive`, y para el owner `#toolClaude` y `#toolInventory`;
+    - `#toolSuppliers`, que es un enlace;
+    - `#toolSync`, `#toolInstall` y `#toolAccount`.
+  - **Ids de dentro:** no cambian (`#driveRun`, `#resourceLinksSwitch`, `#logoutHome`…).

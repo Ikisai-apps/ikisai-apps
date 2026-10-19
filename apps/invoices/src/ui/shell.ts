@@ -4,7 +4,9 @@ import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
-import { mountInvoices, startValidationConflictWatcher } from './invoices.ts';
+import { startValidationConflictWatcher } from './invoices.ts';
+import { mountInvoices } from './invoice-list.ts';
+import { mergesAreOwn } from './undo.ts';
 import { mountPurchases } from './purchases.ts';
 import { mountAccounting } from './accounting.ts';
 import { fb } from './feedback.ts';
@@ -127,7 +129,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   function paintStatus(status: SyncStatus): void {
     shell.setSubtitle(client.bootstrap()?.profile.displayName ?? '');
     paintBanners(status);
-    if (status.autoMerged > lastAutoMerged) {
+    // Tras un «Deshacer» el rebase es de la propia fila: no se avisa de «otra persona» (tanda 27).
+    if (status.autoMerged > lastAutoMerged && !mergesAreOwn()) {
       toast('Se incorporaron cambios de otra persona en una fila que editaste.');
     }
     lastAutoMerged = status.autoMerged;
