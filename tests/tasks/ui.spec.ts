@@ -829,11 +829,15 @@ test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y c
     const target = await a.evaluate(() => { const t = leaves(project()).find((x: any) => !x.done); t.due = boardDay(-1); touch(t); save(); render(); return t.id; });
     await settled(a);
     await expect(a.locator(`.boardcol[data-board-col="overdue"] [data-board-task="${target}"]`)).toHaveCount(1);
-    const today = (await a.locator('.boardcol[data-board-col="today"]').boundingBox())!, card = (await a.locator(`[data-board-task="${target}"]`).boundingBox())!;
+    // Su sitio en «Vencidas» depende de la fecha (de noche en Madrid, «ayer» la pone tercera): se centra para que la
+    // barra inferior del móvil no tape el punto donde empieza el arrastre. Se suelta a su misma altura, dentro de «Hoy»
+    // y lejos de la cabecera fija.
+    await a.locator(`[data-board-task="${target}"]`).evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    const today =(await a.locator('.boardcol[data-board-col="today"]').boundingBox())!, card = (await a.locator(`[data-board-task="${target}"]`).boundingBox())!;
     await a.mouse.move(card.x + 40, card.y + 12);
     await a.mouse.down();
     await a.mouse.move(card.x + 60, card.y + 30, { steps: 4 });
-    await a.mouse.move(today.x + 40, today.y + 60, { steps: 6 });
+    await a.mouse.move(today.x + 40, card.y + 30, { steps: 6 });
     await a.mouse.up();
     await a.waitForFunction((t) => taskLocation(t).t.due === boardDay(0), target);
     await expect(a.locator(`.boardcol[data-board-col="today"] [data-board-task="${target}"]`)).toHaveCount(1);
