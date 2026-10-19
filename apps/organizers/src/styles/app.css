@@ -7,11 +7,14 @@
 .plainlist li{margin:4px 0}
 .chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
-.backlink{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px;color:var(--muted);text-decoration:none;font-weight:600}
+.backlink{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap,46px);margin:0 0 4px;color:color-mix(in srgb,var(--ink) 82%,var(--muted));text-decoration:none;font-weight:600}
 .backlink:hover{color:var(--ink)}
+.empty .ghost{min-height:var(--tap,46px)}
+/* Cabecera a 390 px: el nombre se corta antes que empujar ES | EN y «Cerrar sesión». */
+#shellSubtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* Sitio para el botón «Guarda tu acceso» al final de la página. */
-.nonav .main{padding-bottom:104px}
+/* Aviso sin red con «Reintentar». */
+.orgretry{flex:none;min-height:var(--tap,46px);margin-left:auto;padding:6px 14px}
 
 @media (min-width:1024px){
   .main{max-width:760px;margin-inline:auto}
@@ -22,17 +25,40 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgentry #entryContact{font-weight:600}
 .orgentry-foot{margin-top:16px}
 
-/* Mis retiros */
+/* Mis retiros: tarjeta con portada (o iniciales), recorrido y «Te toca»; pasados y cancelados plegados. */
 .orgcards{display:grid;gap:12px}
-.orgretreat{display:flex;flex-direction:column;gap:6px;padding:14px 16px;color:var(--ink);text-decoration:none}
-.orgretreat.muted{opacity:.65}
-.orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem}
+.orgretreat{display:flex;flex-direction:column;gap:8px;padding:14px 16px;color:var(--ink);text-decoration:none;overflow:hidden}
+.orgretreat .muted{color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgretreat-top{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr);column-gap:12px;row-gap:2px;align-items:center}
+.orgretreat-top>.medal-disc{grid-row:1 / span 3;align-self:start}
+.orgretreat-top>:not(.medal-disc):not(.medal-cover){grid-column:2;min-width:0}
+.orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem;overflow-wrap:anywhere}
+.orgretreat-when{font-size:var(--text-sm,.875rem)}
+/* Con foto: texto blanco sobre un velo que da al menos 4,5:1 en toda la foto, y el chip sólido. */
+.orgretreat-photo{grid-template-columns:minmax(0,1fr);align-content:end;min-height:140px;margin:-14px -16px 0;padding:16px;color:#fff;isolation:isolate}
+.orgretreat-photo>:not(.medal-cover){grid-column:1;position:relative;z-index:1}
+.orgretreat-photo .medal-cover::after{background:linear-gradient(180deg,rgba(16,22,18,.58),rgba(16,22,18,.82))}
+.orgretreat-photo .orgretreat-title{text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.orgretreat-photo .chip{background:rgba(255,253,248,.94);color:#1f2a22}
+.orgretreat-off .medal-cover{filter:grayscale(1)}
+.orgretreat .stage-box{margin:0}
+.orgretreat .stage-caption,.orgretreat .stage-stop{font-size:var(--text-sm,.875rem);font-weight:600;color:var(--ink)}
+.orgfold{margin-top:14px}
+.orgfold>summary{display:flex;align-items:center;min-height:var(--tap,46px);font-weight:700;cursor:pointer;list-style:none}
+.orgfold>summary::-webkit-details-marker{display:none}
+.orgfold>summary::after{content:"▾";margin-left:auto;padding:0 6px;color:var(--ink);transition:transform .15s}
+.orgfold[open]>summary::after{transform:rotate(180deg)}
+.orgfold>.orgcards{margin-top:6px}
 
-/* Ficha del retiro */
-.orghead h2{margin-bottom:4px}
+/* Ficha del retiro: portada, datos sobre el papel y pestañas con pista de desplazamiento. */
+#retreatHead{display:grid;gap:6px;margin:0 0 10px}
+#retreatHead .orghead-meta{margin:0;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+#retreatTabs{position:relative}
+#retreatTabs.orgtabs-fade::after{content:"";position:absolute;top:4px;right:0;bottom:14px;width:36px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2));pointer-events:none}
+#retreatTabs.orgtabs-fade.end::after{display:none}
 .orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto;scrollbar-width:none}
 .orgtabs::-webkit-scrollbar{display:none}
-.orgtabs a{flex:1 0 auto;padding:8px 12px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
+.orgtabs a{flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,46px);padding:8px 12px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
 .orgtabs a.on{background:var(--paper);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
 .orgcard{padding:14px 16px;margin:0 0 12px}
 .orgcard h3{margin:0 0 8px;font-size:1rem}
@@ -96,8 +122,18 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgmine{list-style:none;padding:0}
 .orgmine li{padding:6px 0;border-bottom:1px solid var(--line)}
 
-/* «Guarda tu acceso» */
-.orgaccess{display:inline-flex;align-items:center;gap:8px}
+/* «Guarda tu acceso»: compacto, 54 × 54, solo el candado (el nombre va en aria-label). Sin barra inferior, va abajo. */
+.orgaccess{display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;padding:0}
+.orgaccess .orgaccess-text{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.orgaccess-on .main{padding-bottom:calc(54px + 16px + 24px + env(safe-area-inset-bottom,0px))}
+@media (max-width:1023px){.orgaccess{bottom:calc(16px + env(safe-area-inset-bottom,0px))}}
+@media (min-width:1024px){.orgaccess-on .main{padding-bottom:calc(54px + 40px + 24px)}}
+
+/* Resumen del retiro */
+.orgsec{margin:18px 0 8px;font-weight:700;color:var(--ink)}
+#retreatBody>.orgsec:first-child,#retreatBody>#staleNote+.orgsec{margin-top:4px}
+#retreatBody>.stage-box{margin:14px 0}
+#retreatBody>.stat-row{margin:0 0 4px}
 
 /* Fase 4 y 5: experiencia, materiales, preguntas, ofertas y cartel */
 .orgmodule{padding:6px 0;border-bottom:1px solid var(--line,rgb(0 0 0 / 8%))}
@@ -151,7 +187,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgjoin-message{margin:6px 0 0;padding:6px 10px;border-left:3px solid var(--line,rgb(0 0 0 / 20%));white-space:pre-line;overflow-wrap:anywhere}
 .orgjoin-history{margin-top:10px}
 .orgjoin-history summary{cursor:pointer}
-.orgtab-count{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--warn,#b7791f);color:#fff;font-size:.75rem;line-height:18px;text-align:center}
+.orgtab-count{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--warn,#b7791f);color:#1f2a22;font-size:.75rem;line-height:18px;text-align:center}
 
 /* Supletorias por habitación (Booking §25) */
 .orgextra-beds{margin:4px 0 8px}

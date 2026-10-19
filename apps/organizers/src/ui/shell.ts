@@ -5,7 +5,7 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { i18n, t } from '../app/i18n.ts';
 import { install } from '../app/install.ts';
-import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, replace, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, replace, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
 import { createPortalApi, type PortalApi } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { loadCommonTexts } from '../app/common-texts.ts';
@@ -34,8 +34,15 @@ export interface ViewContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-const RETREAT = new RegExp(`^#/retiro/(${UUID})(?:/(fechas|diseno|propuesta|pagos|experiencia|ofertas|asistentes|cocina))?$`, 'i');
+/** Pestañas de la ficha con ruta propia (`#/retiro/{id}/{pestaña}`); sin pestaña, el Resumen. Para ampliar, aquí. */
+const RETREAT_TABS: readonly RetreatTab[] = ['fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'ofertas', 'asistentes', 'cocina'];
+const RETREAT = new RegExp(`^#/retiro/(${UUID})(?:/(${RETREAT_TABS.join('|')}))?$`, 'i');
 const GUEST = new RegExp(`^#/retiro/(${UUID})/asistentes/(${UUID}|nuevo)$`, 'i');
+/**
+ * Pestañas donde «Guarda tu acceso» se oculta: en los formularios y en las fechas taparía el estado del guardado. Se ve en
+ * Mis retiros, en el Resumen, en Asistentes y en Cocina; nunca en la ficha del asistente.
+ */
+const ACCESS_HIDDEN: ReadonlySet<string> = new Set(['fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'ofertas']);
 
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { client } = ctx;
@@ -55,13 +62,18 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     centerLabel: t('Ayuda y sugerencias'),
     centerText: t('Cuéntanos un problema o una idea sobre la aplicación, tu retiro o un espacio.'),
   });
+  // «Cerrar sesión» propio, como Guests: el del kit solo se ve en escritorio y no se traduce. Nunca se ata a la red:
+  // sin conexión también tiene que poder borrar la sesión de este dispositivo.
+  const logoutButton = el('button', {
+    type: 'button', class: 'iconbtn', id: 'logoutButton', 'aria-label': t('Cerrar sesión'), title: t('Cerrar sesión'),
+    'data-feedback-id': 'organizers.cabecera.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', onclick: () => void logout(),
+  }, icon('logout', 18));
   const shell = createAppShell(root, {
     appName: 'Organizers',
     markIcon: 'organizer',
-    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } })],
+    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } }), logoutButton],
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
-    onLogout: logout,
     navigate,
     launcher,
   });
@@ -74,9 +86,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let firstRoute = true;
 
   async function logout(): Promise<void> {
+    // Organizers no borra la cola al salir (sin `clearOnLogout`): lo pendiente se envía al volver a entrar.
+    const pending = client.status().pendingCommands;
     const ok = await confirmDialog({
       title: t('¿Salir de Organizers?'),
-      text: t('Para volver a entrar necesitarás el enlace que te enviamos.'),
+      text: [t('Para volver a entrar necesitarás el enlace que te enviamos.'),
+        pending > 0 ? (pending === 1 ? t('Tienes 1 cambio sin enviar. Se queda en este dispositivo y se enviará cuando vuelvas a entrar.') : t('Tienes {n} cambios sin enviar. Se quedan en este dispositivo y se enviarán cuando vuelvas a entrar.', { n: pending })) : null,
+      ].filter(Boolean).join(' '),
       confirmLabel: t('Salir'),
     });
     if (!ok) return;
@@ -118,8 +134,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       main.setAttribute('data-feedback-label', 'Mis retiros');
       document.title = t('Mis retiros · Ikisai Organizers');
     }
-    // En Mis retiros y en la ficha del retiro; en los formularios y en las fechas taparía el estado del guardado.
-    access.setVisible(!guest && !['fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'ofertas'].includes(retreat?.[2]?.toLowerCase() ?? ''));
+    access.setVisible(!guest && !ACCESS_HIDDEN.has(retreat?.[2]?.toLowerCase() ?? ''));
     if (firstRoute && ctx.fromLink && install.shouldPromote()) setTimeout(() => { if (install.shouldPromote()) install.openSheet(); }, 800);
     firstRoute = false;
     main.focus({ preventScroll: true });

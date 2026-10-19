@@ -67,6 +67,8 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
   await expect(page.locator('#summaryIncludes')).toContainText('Pensión completa, menú vegetariano');
   await expect(page.locator('#retreatOrganizers')).toHaveText('Organizas este retiro');
+  // Resumen paso a paso: confirmado y sin asistentes, lo siguiente es añadirlos.
+  await expect(page.locator('.step-box')).toContainText('Añadir a tus asistentes');
 
   // Coorganizador: su propio enlace y su cuenta; los dos ven lo mismo.
   await api.organizerLink([reservation], 'pablo@example.invalid', 'Pablo');
@@ -151,6 +153,10 @@ test('organizers · varios retiros: sin confirmar no se añaden asistentes; sin 
   await expect(page.locator('.orgretreat')).toHaveCount(2);
   await expect(page.locator('.orgretreat').first()).toContainText('Retiro de otoño');
   await expect(page.locator('.orgretreat').first()).toContainText('Prerreservada');
+  // «Te toca» y el recorrido de cada tarjeta, solo con lo que trae la tarjeta.
+  await expect(page.locator('.orgretreat').first()).toContainText('Te toca: revisar la señal en Pagos');
+  await expect(page.locator('.orgretreat').first().locator('.stage-list')).toHaveAttribute('aria-label', /etapa 2 de 5, Prerreserva/);
+  await expect(page.locator('.orgretreat', { hasText: 'Encuentro de invierno' })).toContainText('Te toca: añadir a tus asistentes');
 
   await page.locator('.orgretreat', { hasText: 'Retiro de otoño' }).click();
   await page.locator('#tab-asistentes').click();
@@ -188,6 +194,11 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await page.locator('#backToGuests').click();
   await expect(page.locator('#staleNote')).toBeVisible();
   await expect(page.locator('#guestRows')).toContainText('Rosa');
+  // Mis retiros sin red: la última copia, con «Reintentar».
+  await page.locator('#backToRetreats').click();
+  await expect(page.locator('#staleNote')).toBeVisible();
+  await expect(page.locator('#staleNote').getByRole('button', { name: 'Reintentar' })).toBeVisible();
+  await expect(page.locator('.orgretreat')).toContainText('Retiro sin cobertura');
   await page.goto(guestUrl).catch(() => undefined);
   await page.evaluate(() => { location.hash = location.hash; });
   await expect(page.locator('#staleNote')).toBeVisible();
@@ -245,6 +256,7 @@ test('organizers · en inglés: navegador en inglés, selector ES | EN y textos 
   // ICU escribe el rango con o sin espacios finos según la plataforma (Windows «12–15», Linux «12 – 15»).
   await expect(page.locator('#retreatHead')).toContainText(/12\s?–\s?15 March 2027/);
   await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
+  await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Log out');
 
   // Cambio manual a español: se repinta y se recuerda en el dispositivo.
   await page.locator('#langSelect [data-locale="es"]').click();
@@ -285,7 +297,7 @@ test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ik
 
   // Calendario: lo ocupado no se puede marcar; lo marcado se guarda solo y sigue al volver.
   await page.locator('.orgretreat', { hasText: 'Retiro por decidir' }).click();
-  await expect(page.locator('#summaryDates')).toContainText('Ikisai confirmará');
+  await expect(page.locator('#goDates')).toContainText('Ikisai confirmará');
   await page.locator('#tab-fechas').click();
   await expect(page.locator('#datesCalendar')).toBeVisible();
   await expect(page.locator(`.orgweekend[data-start="${w3}"]`)).toBeDisabled();
@@ -319,7 +331,7 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await api.ikisaiOptions(reservation, [[w, plusDays(w, 2)]]);
   await enter(page, await api.organizerLink([reservation], 'diseno@example.invalid', 'Tere'));
 
-  await expect(page.locator('#summaryDesign')).toBeVisible();
+  await expect(page.locator('#goDesign')).toBeVisible();
   await page.locator('#goDesign').click();
   await expect(page.locator('#designPeople')).toBeVisible();
   // «Lo que te falta por rellenar»: la fecha de Ikisai aún no está marcada y faltan las personas.
@@ -730,8 +742,9 @@ test('organizers · solicitudes para apuntarse (Booking §26.3): aviso en Resume
   const link = await api.organizerLink([reservation], 'apuntarme-ui@example.invalid', 'Sara');
   await enter(page, link);
 
-  // Resumen: el aviso con cuántas personas, y el número en la pestaña.
-  await expect(page.locator('#summaryJoins')).toContainText('3 personas piden apuntarse a tu retiro.');
+  // Resumen: el paso con cuántas solicitudes y personas, y el número en la pestaña.
+  await expect(page.locator('#goJoins')).toContainText('3 personas piden apuntarse a tu retiro.');
+  await expect(page.locator('#goJoins')).toContainText('Decidir 2 solicitudes para apuntarse');
   await expect(page.locator('#tab-asistentes .orgtab-count')).toHaveText('2');
   await page.locator('#goJoins').click();
   const joins = page.locator('#joinRequests');
@@ -763,8 +776,118 @@ test('organizers · solicitudes para apuntarse (Booking §26.3): aviso en Resume
   await expect(joins.locator('#joinHistory li', { hasText: 'Marta y Nico' })).toContainText('Aceptada · ¡Bienvenidos!');
   await expect(joins.locator('#joinHistory li', { hasText: 'Iker' })).toContainText('Descartada');
 
-  // En Resumen ya no hay aviso.
+  // En Resumen ya no hay paso de solicitudes.
   await page.locator('#tab-resumen').click();
   await expect(page.locator('#summaryGuests')).toBeVisible();
-  await expect(page.locator('#summaryJoins')).toHaveCount(0);
+  await expect(page.locator('#goJoins')).toHaveCount(0);
+});
+
+test('organizers · mis retiros: pasados y cancelados plegados aparte; el cancelado lo dice con texto', async ({ page }) => {
+  const next = await api.reservation({ title: 'Retiro que viene', confirm: false, start: '2027-05-07', end: '2027-05-09' });
+  const past = await api.draftReservation({ title: 'Retiro del año pasado', status: 'en_estudio', start_date: '2025-05-02', end_date: '2025-05-04' });
+  const lost = await api.draftReservation({ title: 'Retiro perdido', status: 'perdida' });
+  // Se entra con el enlace del último retiro (el que viene): los de un retiro pasado o perdido ya han caducado.
+  await enter(page, await api.organizerLink([past, lost, next], 'pasados@example.invalid', 'Olga'));
+
+  // Dos no cancelados: no se abre ninguna ficha sola.
+  await expect(page.locator('#retreats')).toBeVisible();
+  const list = page.locator('#retreats > .orgcards > .orgretreat');
+  await expect(list).toHaveCount(1);
+  await expect(page.locator('#retreatTitle')).toHaveCount(0);
+  await expect(list).toContainText('Retiro que viene');
+  const folds = page.locator('#retreats details.orgfold');
+  await expect(folds).toHaveCount(2);
+  await expect(folds.nth(0).locator('summary')).toHaveText('Pasados · 1');
+  await expect(folds.nth(1).locator('summary')).toHaveText('Cancelados · 1');
+  expect(await folds.evaluateAll((nodes) => nodes.map((n) => (n as HTMLDetailsElement).open))).toEqual([false, false]);
+  await expect(folds.nth(0)).toContainText('Retiro del año pasado');
+  const cancelled = folds.nth(1).locator('.orgretreat');
+  await expect(cancelled).toBeHidden();
+  await expect(cancelled).toContainText('Retiro perdido');
+  await expect(cancelled).toContainText('Cancelada');
+  await expect(cancelled).toContainText('Cancelado: ya no sigue adelante.');
+  await folds.nth(1).locator('summary').click();
+  await expect(cancelled).toBeVisible();
+  // El resumen de cada pliegue se toca con comodidad (46 px).
+  expect((await folds.nth(1).locator('summary').boundingBox())!.height).toBeGreaterThanOrEqual(46);
+});
+
+/** Número de portadas guardadas en el dispositivo (IndexedDB de Organizers). */
+const storedCovers = (page: Page) => page.evaluate(() => new Promise<number>((resolve) => {
+  const open = indexedDB.open('ikisai-organizers');
+  open.onerror = () => resolve(-1);
+  open.onsuccess = () => {
+    const db = open.result;
+    if (!db.objectStoreNames.contains('images')) { db.close(); resolve(-1); return; }
+    const count = db.transaction('images').objectStore('images').count();
+    count.onsuccess = () => { db.close(); resolve(count.result); };
+  };
+}));
+
+test('organizers · cerrar sesión en el móvil: botón visible de 46 px; al salir se borran las portadas guardadas', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-ES' });
+  await context.addInitScript(() => { try { localStorage.setItem('ikisai-install-dismissed:organizers', String(Date.now())); } catch { /* */ } });
+  const page = await context.newPage();
+  const reservation = await api.reservation({ title: 'Retiro para salir', confirm: true });
+  await enter(page, await api.organizerLink([reservation], 'salir@example.invalid', 'Rita'));
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro para salir');
+
+  const button = page.locator('#logoutButton');
+  await expect(button).toBeVisible();
+  const box = (await button.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(46);
+  expect(box.height).toBeGreaterThanOrEqual(46);
+
+  // Una portada guardada de esta persona (la clave lleva su id, que sale de sus lecturas guardadas).
+  const stored = await page.evaluate(() => new Promise<boolean>((resolve) => {
+    const open = indexedDB.open('ikisai-organizers');
+    open.onerror = () => resolve(false);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction('reads').objectStore('reads').getAll();
+      read.onsuccess = () => {
+        const userId = (read.result as Array<{ userId: string }>)[0]?.userId;
+        if (!userId) { db.close(); resolve(false); return; }
+        const put = db.transaction('images', 'readwrite').objectStore('images')
+          .put({ key: `${userId}|cover|prueba`, userId, at: new Date().toISOString(), value: { fileId: 'f', blob: new Blob(['x'], { type: 'image/png' }), mime: 'image/png' } });
+        put.onsuccess = () => { db.close(); resolve(true); };
+        put.onerror = () => { db.close(); resolve(false); };
+      };
+    };
+  }));
+  expect(stored).toBe(true);
+  await expect.poll(() => storedCovers(page)).toBe(1);
+
+  await button.click();
+  await page.getByRole('button', { name: 'Salir' }).click();
+  await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
+  await expect.poll(() => storedCovers(page)).toBe(0);
+  await context.close();
+});
+
+test('organizers · guarda tu acceso: botón compacto en Mis retiros y en la ficha, oculto en Diseño; sin desplazamiento lateral', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-ES' });
+  await context.addInitScript(() => { try { localStorage.setItem('ikisai-install-dismissed:organizers', String(Date.now())); } catch { /* */ } });
+  const page = await context.newPage();
+  const reservation = await api.draftReservation({ title: 'Retiro con acceso guardado' });
+  await enter(page, await api.organizerLink([reservation], 'acceso@example.invalid', 'Alba'));
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro con acceso guardado');
+  const access = page.locator('#saveAccess');
+  await expect(access).toBeVisible();
+  const box = (await access.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(46);
+  expect(box.height).toBeGreaterThanOrEqual(46);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+  await page.locator('#tab-diseno').click();
+  await expect(page.locator('#designPeople')).toBeVisible();
+  await expect(access).toBeHidden();
+
+  await page.locator('#backToRetreats').click();
+  await expect(page.locator('.orgretreat')).toContainText('Retiro con acceso guardado');
+  await expect(access).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await access.click();
+  await expect(page.locator('#accessSheet')).toBeVisible();
+  await context.close();
 });
