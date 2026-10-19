@@ -33,6 +33,7 @@ import { openBatchUpload } from './batch.ts';
 import type { ManualPrefill } from './manual.ts';
 import { createInvoiceEditor, type InvoiceEditor } from './editor.ts';
 import { missingOf, saveDocumentText, settlePending, validateNow } from '../app/validate.ts';
+import { commitWithUndo, pick } from './undo.ts';
 import { currentReading, documentReadingBlock, extractFor, readingPanel } from './reading.ts';
 
 // ---------------------------------------------------------------------------
@@ -206,17 +207,21 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   if (canEdit && invoice.status !== 'anulada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.anular', 'data-feedback-label': 'Anular', class: 'danger', type: 'button', id: 'annulInvoice', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
 
   // FB_2026_027 y FB_2026_030: la fecha de pago nunca es la del clic. Sin confirmar, un toque la confirma tal cual.
+  // Tanda 27: todo cambio del pago sale al momento con «Deshacer», que vuelve a poner los cuatro campos como estaban.
+  const PAY_FIELDS = ['payment_status', 'paid_at', 'payment_method', 'payment_source'];
+  const payChange = (fields: Record<string, unknown>, message: string, undone: string) =>
+    commitWithUndo(client, { table: INVOICES, id: invoice.id, revision: invoice.revision, fields, before: pick(invoice as unknown as Record<string, unknown>, PAY_FIELDS) }, message, undone);
   async function confirmPaid(): Promise<void> {
-    await update({ payment_source: 'confirmado' }, 'Pago confirmado.');
+    await payChange({ payment_source: 'confirmado' }, 'Pago confirmado.', 'Vuelve a estar sin confirmar.');
   }
   async function togglePaid(): Promise<void> {
-    if (invoice.payment_status === 'pagada') { await update({ payment_status: 'pendiente', paid_at: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.'); return; }
+    if (invoice.payment_status === 'pagada') { await payChange({ payment_status: 'pendiente', paid_at: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.', 'Vuelve a estar pagada.'); return; }
     const date = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.pago.fecha', 'data-feedback-label': 'Fecha de pago', type: 'date', value: invoice.paid_at ?? invoice.invoice_date ?? '', id: 'paidAt' });
     const method = select('paidMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, PAYMENT_METHOD_LABELS[m] ?? m] as [string, string])], invoice.payment_method, { 'data-feedback-id': 'invoices.facturas.ficha.pago.metodo', 'data-feedback-label': 'Método de pago' });
     const ok = await confirmDialog({ title: 'Marcar como pagada', text: el('div', null, field('Fecha de pago', date), field('Método', method)), confirmLabel: 'Marcar pagada' });
     if (!ok) return;
     if (!date.value) { toast('Indica la fecha de pago.'); return; }
-    await update({ payment_status: 'pagada', paid_at: date.value, payment_method: method.value || null, payment_source: 'confirmado' }, 'Factura marcada como pagada.');
+    await payChange({ payment_status: 'pagada', paid_at: date.value, payment_method: method.value || null, payment_source: 'confirmado' }, 'Factura marcada como pagada.', 'Vuelve a estar pendiente de pago.');
   }
 
   async function annul(): Promise<void> {
@@ -258,7 +263,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
       el('dt', null, 'Pago'), el('dd', { id: 'invPayment' }, ...paymentText(),
         unconfirmedPaid && canEdit ? [' · ', el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago.no_pagada', 'data-feedback-label': 'No está pagada', class: 'linkbtn inline', type: 'button', id: 'notPaid',
-          onclick: () => void update({ payment_status: 'pendiente', paid_at: null, payment_method: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.') }, 'No está pagada')] : []),
+          onclick: () => void payChange({ payment_status: 'pendiente', paid_at: null, payment_method: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.', 'Vuelve a estar pagada (sin confirmar).') }, 'No está pagada')] : []),
       ...rectificationRows(ctx, invoice, mirror),
       el('dt', null, 'Se declara en'), el('dd', { id: 'declaredPeriod' }, invoice.invoice_date || invoice.declared_period
         ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${invoice.delivered_elsewhere ? ' · ya pasada a la gestoría' : isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),

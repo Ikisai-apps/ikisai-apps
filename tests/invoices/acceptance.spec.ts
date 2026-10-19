@@ -2408,6 +2408,12 @@ test('FB_2026_027 · FB_2026_030 · pago: nunca la fecha del clic; sin confirmar
     // Un toque la confirma, con la misma fecha
     await f.locator('#confirmPaid').click();
     await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === inv.id)?.payment_source, { timeout: 20_000 }).toBe('confirmado');
+    // Tanda 27: «Deshacer» envía el contrario y la deja otra vez sin confirmar; se vuelve a confirmar
+    await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === inv.id)?.payment_source, { timeout: 20_000 }).toBe('sin_confirmar');
+    await expect(f.locator('#confirmPaid')).toBeVisible({ timeout: 20_000 });
+    await f.locator('#confirmPaid').click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === inv.id)?.payment_source, { timeout: 20_000 }).toBe('confirmado');
     expect(api.rows('invoices.invoices').find((i) => i.id === inv.id)).toMatchObject({ payment_status: 'pagada', paid_at: '2026-09-03' });
     // Pendiente y otra vez pagada: la fecha propuesta es la de la factura, no la de hoy
     await expect(f.locator('#togglePaid')).toBeVisible({ timeout: 20_000 });
