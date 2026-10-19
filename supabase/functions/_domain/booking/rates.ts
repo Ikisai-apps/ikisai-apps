@@ -84,12 +84,17 @@ const SERVICE_FLAG: Record<string, keyof ReservationForRates> = {
   tecnico: 'technical_support',
 };
 
-/** Noches y días de la reserva (la salida no es noche; sí día). */
-export function stayLength(reservation: Pick<ReservationForRates, 'start_date' | 'end_date'>): { nights: number; days: number } | null {
+/**
+ * Noches y días que se cobran (regla de VG, tanda 27): «un retiro de 2 noches son 2 días de comidas y salas; cualquier
+ * comida o uso extra es un extra». Con alojamiento, tantos días como noches (una jornada sin noche, 1); la llegada y la
+ * salida no suman un día más: si se usan, van como extra. Sin alojamiento, cada fecha es un día entero.
+ */
+export function stayLength(reservation: Pick<ReservationForRates, 'start_date' | 'end_date' | 'uses_accommodation'>): { nights: number; days: number } | null {
   const from = dayNumber(reservation.start_date);
   const to = dayNumber(reservation.end_date);
   if (from === null || to === null || to < from) return null;
-  return { nights: to - from, days: to - from + 1 };
+  const nights = to - from;
+  return { nights, days: reservation.uses_accommodation === false ? nights + 1 : Math.max(nights, 1) };
 }
 
 /** Cantidad que corresponde a una unidad de tarifa para esa reserva. */

@@ -1291,7 +1291,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('#editProposal').click();
     await page.getByRole('button', { name: 'Editar Sala grande' }).click();
     await page.locator('#f-discount_pct').fill('10');
-    await expect(page.locator('#lineAmountPreview')).toContainText('4500');
+    await expect(page.locator('#lineAmountPreview')).toContainText('4050');
     await page.locator('#saveRow').click();
     await expect.poll(() => api.rows('booking.proposal_lines').filter((l) => l.proposal_id === v2 && l.discount_pct === 10).length).toBe(1);
     const t2 = totalOf(v2);
