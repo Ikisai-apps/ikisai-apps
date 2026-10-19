@@ -84,7 +84,7 @@ test.describe('ui-kit v0.49 · ajustes de las pasadas', () => {
     await expect(page.getByRole('button', { name: 'Rellenar la fecha de Luis' })).toBeVisible();
   });
 
-  test('@smoke ids de feedback literales en grupos y pasos (los construidos ya no salen)', async ({ page }) => {
+  test('@smoke ids de feedback literales en grupos y pasos (y los de siempre si no se dan)', async ({ page }) => {
     await page.goto('/#tokens');
     await host(page);
     const ids = await page.evaluate(() => {
@@ -98,7 +98,8 @@ test.describe('ui-kit v0.49 · ajustes de las pasadas', () => {
     expect(ids).toContain('org.pagos.senal');
     expect(ids).toContain('org.pagos.grupo');
     expect(ids).toContain('org.resumen.datos');
-    expect(ids).not.toContain('org.resumen.firma');
+    // Sin id literal, el construido de siempre (Organizers localiza así sus pasos).
+    expect(ids).toContain('org.resumen.firma');
   });
 
   test('@smoke `bindOnline`: varios botones comparten una sola línea de motivo', async ({ page }) => {

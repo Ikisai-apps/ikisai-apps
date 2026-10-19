@@ -2,7 +2,7 @@
 
 ## 0.49.0 · 19 de octubre de 2026
 
-**Ajustes que piden las pasadas** (Organizers, #623; tanda 29). No hay cambios de diseño y lo de hoy queda igual por defecto, salvo los ids construidos de `renderSteps`.
+**Ajustes que piden las pasadas** (Organizers, #623; tanda 29). No hay cambios de diseño y lo de hoy queda igual por defecto.
 
 1. **`renderCover`:**
    - `headingLevel` (2–4) y `titleId`: el título es un encabezado de verdad. Con `onOpen`, el botón va dentro del encabezado y su zona de toque sigue cubriendo toda la portada.
@@ -12,7 +12,7 @@
 4. **`renderChecks`:** la acción mide de verdad 46 px (`.ghost.small` la dejaba en 36), y `action.aria` le da nombre cuando el texto se repite («Rellenar»).
 5. **Ids de feedback literales**, para que entren en el catálogo:
    - `feedbackId` por grupo en `renderGroups`; sin él, sigue `${base}.grupo`.
-   - `feedbackId` por paso en `renderSteps`. **Ya no se construye `${base}.${id}`:** un paso sin id literal no se marca.
+   - `feedbackId` por paso en `renderSteps`; sin él, sigue `${base}.${id}`, porque Organizers localiza así sus pasos y quitarlo rompía su batería.
 6. **`bindOnline`:** `renderOfflineReason()` crea una línea de motivo que comparten varios botones (`bindOnline(b, { line })`).
 7. **Extracto:** `afterUpcoming` deja un hueco entre «Próximamente» y «Movimientos» (p. ej. «Cómo pagar»).
 
