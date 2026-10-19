@@ -396,6 +396,11 @@ export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'upda
   if (fields.origin === 'app') domainFail('UNSUPPORTED_IN_V1', 'Las facturas de la app nacen como borrador en una serie de emisión y se emiten con «Emitir».', { field: 'origin' });
   oneOf(fields, 'income_category', INCOME_CATEGORIES);
   oneOf(fields, 'payment_status', ['pendiente', 'cobrada'], { nullable: false });
+  // Tanda 27 (0240): «Cobrada» lleva la fecha real del cobro (nunca la del clic), el medio va aparte y opcional
+  date(fields, 'sent_at');
+  oneOf(fields, 'payment_method', PAYMENT_METHODS);
+  if (fields.payment_status === 'cobrada' && has(fields, 'paid_at') && fields.paid_at === null) domainFail('PAID_AT_REQUIRED', 'Indica la fecha del cobro.', { field: 'paid_at' });
+  if (draft && has(fields, 'sent_at') && fields.sent_at !== null) domainFail('INVALID_FIELDS', 'Un borrador no se ha enviado: emítela antes.', { field: 'sent_at' });
   for (const key of ['external_tool', 'external_id', 'external_qr_url', 'external_csv', 'review_reason', 'annulled_reason', 'currency']) text(fields, key, { max: 500 });
   if (has(fields, 'import_sha256') && fields.import_sha256 !== null && (typeof fields.import_sha256 !== 'string' || !SHA256.test(fields.import_sha256))) domainFail('INVALID_FIELDS', 'Hash inválido.', { field: 'import_sha256' });
 }

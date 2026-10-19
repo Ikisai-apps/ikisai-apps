@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
-import { buildImportArgs, extractFromPdfText, importDocumentSha256, issuedCsv, issuedSummary, recalculate, slugify, normalizedFilename, taxesCsv, vfAltaHash, vfAnulacionHash, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
+import { buildImportArgs, extractFromPdfText, importDocumentSha256, issuedCsv, issuedSummary, recalculate, reservationCollected, slugify, normalizedFilename, taxesCsv, vfAltaHash, vfAnulacionHash, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLE: ImportDocument = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/invoice-import-v1.example.json'), 'utf8'));
@@ -1065,4 +1065,31 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   await assert.rejects(collected(R), /INVALID_OPERATION/);
   // No es lectura de portal: el organizador no la tiene
   await assert.rejects(portal('invoices.reservation_collected', { reservation_ids: [R] }));
+
+  // Tanda 27 (0240): Finance lee la misma cifra que Booking, y sin red su regla local da lo mismo
+  const finance = (await app.t.db.query<{ r: any }>(`select core.read('invoices', $1, 'invoices.reservation_collected', $2) r`, [uid, JSON.stringify({ reservation_ids: [R, R2, NONE] })])).rows[0]!.r;
+  assert.deepEqual(finance, byRes);
+  const local = reservationCollected([R, R2, NONE], (await rows('invoices.issued_invoices')) as never, (await rows('invoices.issued_allocations')) as never);
+  assert.deepEqual(local.map((x) => ({ ...x, invoiced: Number(x.invoiced), collected: Number(x.collected) })),
+    finance.map((x: any) => ({ ...x, invoiced: Number(x.invoiced), collected: Number(x.collected) })));
+  // Anular la registrada la saca de las dos cuentas (en el servidor y en local)
+  await ok([call('invoices.annul_issued', { issued_invoice_id: reg, reason: 'Duplicada' })]);
+  const afterAnnul = (await app.t.db.query<{ r: any }>(`select core.read('invoices', $1, 'invoices.reservation_collected', $2) r`, [uid, JSON.stringify({ reservation_ids: [R] })])).rows[0]!.r[0];
+  assert.deepEqual([Number(afterAnnul.invoiced), Number(afterAnnul.collected)], [990, 0]);
+  const localAfter = reservationCollected([R], (await rows('invoices.issued_invoices')) as never, (await rows('invoices.issued_allocations')) as never)[0]!;
+  assert.deepEqual([localAfter.invoiced, localAfter.collected, localAfter.last_collected_at], [990, 0, null]);
+
+  // Fecha de envío y medio del cobro (0240): se ponen en una emitida congelada; nunca en un borrador, y el cobro lleva fecha
+  const sentRow = await row('invoices.issued_invoices', e1);
+  await ok([update('invoices.issued_invoices', e1, sentRow.revision, { sent_at: today.d, payment_status: 'cobrada', paid_at: today.d, payment_method: 'transferencia' })]);
+  const sent = await row('invoices.issued_invoices', e1);
+  assert.deepEqual([sent.sent_at, sent.payment_method, sent.payment_status], [today.d, 'transferencia', 'cobrada']);
+  await rejected([update('invoices.issued_invoices', e1, sent.revision, { payment_method: 'cheque' })], 'INVALID_FIELDS');
+  await rejected([update('invoices.issued_invoices', e1, sent.revision, { payment_status: 'cobrada', paid_at: null })], 'PAID_AT_REQUIRED');
+  await rejected([update('invoices.issued_invoices', draft, (await row('invoices.issued_invoices', draft)).revision, { sent_at: today.d })], 'INVALID_FIELDS');
+  // Saltándose el dominio, la guarda del servidor también lo rechaza
+  await assert.rejects(app.t.db.query(`update invoices.issued_invoices set sent_at = current_date where id = $1`, [draft]), /INVALID_FIELDS/);
+  // Deshacer el cobro con el contrario: vuelve a pendiente, sin fecha ni medio
+  await ok([update('invoices.issued_invoices', e1, sent.revision, { payment_status: 'pendiente', paid_at: null, payment_method: null })]);
+  assert.deepEqual(await (async () => { const r = await row('invoices.issued_invoices', e1); return [r.payment_status, r.paid_at, r.payment_method, r.sent_at]; })(), ['pendiente', null, null, today.d]);
 });
