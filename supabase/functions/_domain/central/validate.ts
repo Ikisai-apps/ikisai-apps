@@ -10,7 +10,8 @@ import {
 import { ENTITY_TABLE, VENUE_MAP_URL, ibanProblem, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
 import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
-import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES } from './decisions.ts';
+import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES, DECISION_VOTES, DECISION_VOTES_TABLE } from './decisions.ts';
+import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
@@ -172,8 +173,33 @@ const SPECS: Record<string, TableSpec> = {
       scopes: { kind: 'tags', values: DECISION_SCOPES, max: 10 },
       link_url: { kind: 'text', max: 500, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
       link_label: { kind: 'text', min: 1, max: 120, nullable: true },
+      // Decisión final (1512): solo el owner. `reviewed_at` solo avisa de que se vuelve a decidir; la hora la pone el servidor.
+      review_outcome: { kind: 'enum', values: DECISION_VOTES, nullable: true },
+      reviewed_at: { kind: 'text', max: 40, nullable: true, pattern: /^\d{4}-\d{2}-\d{2}T/, patternText: 'fecha y hora ISO' },
     },
     required: ['decided_on', 'name', 'summary'],
+  },
+  [DECISION_VOTES_TABLE]: {
+    fields: {
+      decision_id: { kind: 'uuid' },
+      vote: { kind: 'enum', values: DECISION_VOTES },
+    },
+    required: ['decision_id', 'vote'],
+    immutable: ['decision_id'],
+  },
+  [REVIEW_SCREENS_TABLE]: {
+    fields: {
+      app: { kind: 'enum', values: REVIEW_APPS },
+      name: { kind: 'text', min: 1, max: 120 },
+      step: { kind: 'enum', values: REVIEW_STEPS },
+      url: { kind: 'text', max: 500, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
+      route: { kind: 'text', max: 120, nullable: true, pattern: /^#\//, patternText: 'debe empezar por #/' },
+      feedback_prefix: { kind: 'text', max: 120, nullable: true, pattern: /^[a-z][a-z0-9_]*(\.[a-z0-9_-]+)*$/, patternText: 'como central.cumplimiento' },
+      handoff: { kind: 'text', min: 1, max: 40, nullable: true },
+      note: { kind: 'text', max: 1000, nullable: true },
+      position: { kind: 'number' },
+    },
+    required: ['app', 'name'],
   },
   [TABLES.teams]: {
     fields: {
@@ -373,6 +399,23 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       if (replaced && !row.superseded_by) return fieldIssue(index, table, 'superseded_by', 'indica la decisión que la sustituye');
       if (!replaced && row.superseded_by) return fieldIssue(index, table, 'superseded_by', 'solo se indica si está sustituida');
       if (row.superseded_by && row.superseded_by === op.id) return fieldIssue(index, table, 'superseded_by', 'no puede sustituirse a sí misma');
+      // Lo que cuenta es cambiarlo (un editor que reenvía la fila tal cual no decide nada).
+      const before = op.id && current ? current(table, op.id) : undefined;
+      const deciding = (['review_outcome', 'reviewed_at'] as const).some((f) => f in fields && (fields[f] ?? null) !== (before?.[f] ?? null));
+      if (deciding && op.op !== 'restore') {
+        if (op.op === 'insert') return fieldIssue(index, table, 'review_outcome', 'se decide cuando la decisión ya existe');
+        if (actor.role !== 'owner') return { code: 'FORBIDDEN', message: 'Solo quien administra decide si una decisión se mantiene o se retira.', details: { index, table, field: 'review_outcome' } };
+        if (fields.review_outcome === 'retirar' && row.status === 'sustituida') return fieldIssue(index, table, 'review_outcome', 'una decisión sustituida no se retira');
+      }
+    }
+    if (table === DECISION_VOTES_TABLE && op.op === 'insert' && typeof fields.decision_id === 'string' && current) {
+      const decision = current(DECISIONS_TABLE, fields.decision_id);
+      if (decision && (decision.deleted_at || decision.status !== 'vigente')) {
+        return { code: 'DECISION_NOT_VOTABLE', message: 'Solo se votan las decisiones vigentes.', details: { index, table, field: 'decision_id' } };
+      }
+    }
+    if (table === REVIEW_SCREENS_TABLE && actor.role !== 'owner') {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra cambia el avance de las pantallas.', details: { index, table } };
     }
     if (table === TEXTS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede cambiar los textos y el contacto.', details: { index, table } };
