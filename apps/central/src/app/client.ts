@@ -13,12 +13,14 @@ export const T = {
   requirementTasks: 'central.requirement_tasks',
   kpiTargets: 'central.kpi_targets',
   decisions: 'central.decisions',
+  decisionVotes: 'central.decision_votes',
   teams: 'central.teams',
   personTeams: 'central.person_teams',
   trades: 'central.trades',
   personTrades: 'central.person_trades',
   tradeKit: 'central.trade_kit',
   texts: 'central.texts',
+  reviewScreens: 'central.review_screens',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
@@ -67,6 +69,7 @@ export function describeError(error: unknown): string {
     case 'EXTERNAL_REF_IN_USE': return 'Esa tarea ya existe en Tasks y no la ves.';
     case 'IMMUTABLE_FIELD': return 'Ese dato no se puede cambiar.';
     case 'INVALID_FILE': return 'El archivo no se pudo enlazar. Vuelve a elegirlo.';
+    case 'DECISION_NOT_VOTABLE': return 'Solo se votan las decisiones vigentes.';
     case 'OFFLINE': return 'Esta acción necesita conexión.';
     default: {
       const message = typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';

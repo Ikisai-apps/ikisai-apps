@@ -279,10 +279,34 @@ Migración `0530_central_decisions`. Lectura `{reader, editor, owner}`; escritur
 | `superseded_by` | `uuid null → central.decisions` | Obligatorio si y solo si `sustituida`; nunca ella misma. |
 | `scopes` | `text[] not null default '{}'` | Apps o áreas afectadas: `ecosistema`, `central`, `tasks`, `invoices`, `booking`, `food`, `guests`, `organizers` (≤ 10). |
 | `link_url`, `link_label` | `text null` | Enlace `https://` a un documento, una tarea o un PR, con su texto. |
+| `review_outcome` | `text null` | Decisión final de quien administra (`1512`): `mantener` o `retirar`. Solo el owner. |
+| `reviewed_at` | `timestamptz null` | Cuándo. La pone el servidor; el owner la manda (cualquier valor) solo para volver a decidir lo mismo. |
+| `reviewed_by`, `review_tally` | `uuid null`, `jsonb null` | Quién y con qué votación (`{"mantener": n, "retirar": m}`, votos vivos en ese momento). Solo los escribe el servidor. |
 
 Invariantes (`central.check_decisions`): una decisión viva no puede estar sustituida por una que esté en la papelera (`ORPHAN_CHILD`); el responsable no puede estar en la papelera (`PERSON_IN_USE`).
 
 **Pantalla Decisiones** (se abre desde Inicio): lista de nombres, más recientes primero, con código, fecha, estado y apps; cada decisión es un bloque plegable con su descripción, el enlace «Sustituida por», la explicación técnica plegada, el responsable y el enlace. Búsqueda por texto sin acentos (código, nombre, descripción y explicación) y filtros por app y estado (`filterDecisions` en `_domain/central/decisions.ts`). Funciona sin red como el resto de tablas. Las decisiones ya tomadas en V1 y V2 las carga Core desde la app, no por Git.
+
+**Votos y decisión final** (tanda 27, MUELA-014 r2, aprobada por el usuario el 19-10-2026; migración `1512`). Todo el equipo vota si una decisión vigente se mantiene o se retira, también quien solo lee. Los votos orientan; quien administra decide en la ficha aunque los votos digan otra cosa.
+
+- **`central.decision_votes`:** `decision_id` (no cambia), `voter_id` y `vote` (`mantener` o `retirar`).
+  - Leen todos los miembros de Central y escriben `{reader, editor, owner}`. **El lector aún no puede**: el kit y `core.commit` rechazan cualquier escritura de un lector (petición P10).
+  - `voter_id` lo pone el servidor con quien escribe: no se manda.
+  - Un voto vivo por persona y decisión. Cambiar de opinión es cambiar el voto; retirarlo es mandarlo a la papelera.
+  - Solo quien votó cambia o borra su voto (`FORBIDDEN`, también para el owner).
+  - Solo se vota en decisiones vivas y vigentes (`DECISION_NOT_VOTABLE`, en la Edge y en la base).
+- **Decisión final:** el owner escribe `review_outcome`, y el disparador pone `reviewed_by`, `reviewed_at` y `review_tally`.
+  - «Retirar» deja la decisión `revocada`; una sustituida no se retira.
+  - Volver a decidir lo mismo más tarde: `review_outcome` con `reviewed_at`.
+  - Una decisión nueva nace sin decidir.
+  - Si alguien vuelve a poner vigente una decisión retirada, deja de constar como retirada (`review_outcome` a `null`); lo último decidido se queda en `reviewed_*`.
+  - Un editor puede reenviar la fila tal cual: solo cuenta cambiarla.
+- **Reglas del cliente** (`_domain/central/decisions.ts`):
+  - `voteTally` y `myVote`.
+  - `decisionsToDecide` («lo que te toca decidir»): vigentes con más votos para retirar que para mantener. Tras una decisión final, solo cuentan los votos puestos o cambiados después, así que «Mantener» la saca del foco hasta que el equipo vuelva a pedirlo.
+  - `decisionsToVote`: las vigentes en las que aún no has votado.
+  - `recentDecisions`: las tres últimas vigentes, las mismas de Inicio.
+  - `decisionTrail`: la cadena de sustituciones en los dos sentidos.
 
 ### 2.11 Equipos (`central.teams`, `central.person_teams`; aprobado por el usuario el 7-10-2026)
 
@@ -370,6 +394,33 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
   - Cada oficio guarda una etiqueta de origen (la de General si la hay); P2 casará las demás por la ruta.
   - **Las etiquetas de Tasks no se tocan.**
 
+### 2.14 Revisión: pantallas y su avance (`central.review_screens`; tanda 27, MUELA-027, aprobada por el usuario el 19-10-2026)
+
+Migración `1512`. Lectura `{reader, editor, owner}`: todos ven el avance. Escritura `{owner}`: decidir, revisar y comprobar son de quien administra.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `app` | `text not null` | `central`, `tasks`, `invoices`, `booking`, `food`, `guests`, `organizers`, `resources` o `transversal` (piezas comunes y menú). |
+| `name` | `text not null` | 1–120. Único por app, sin distinguir mayúsculas. |
+| `step` | `text not null default 'sin'` | Uno de los diez pasos del cuadro: `cal` Sevilla la está tocando, `fuera` Sin agente, `sin` Sin empezar, `hoy` En estudio, `alt` Prototipo hecho: te toca valorarlo, `demo` Montaje: se hace la demo, `listo` Demo hecha: te toca validarla, `cons` Construcción, `aprob` Aprobada, `hecha` Pasada a Sevilla. |
+| `url` | `text null` | «Ir al sitio», `https://`. |
+| `route` | `text null` | Ruta de la app (`#/cumplimiento`), para unir el feedback. |
+| `feedback_prefix` | `text null` | Prefijo de los ids de feedback de la pantalla (`central.cumplimiento`). |
+| `handoff` | `text null` | Traspaso de La Muela (`MUELA-069`). |
+| `note` | `text null` | ≤ 1000. |
+| `position` | `integer` | Orden dentro de su app. |
+
+- **El feedback se une a su pantalla sin dato nuevo en el kit:**
+  - con el id del nodo del reporte, la pantalla de su app con el prefijo de feedback más largo que encaje;
+  - si no hay, la de ruta más larga que encaje con la ruta desde donde se mandó (`#/` solo encaja con Inicio);
+  - si no hay ninguna, «Sin pantalla» dentro de su app.
+- **Lectura de los reportes:** el owner los lee de todas las apps con `GET feedback?app=all`, la ruta del kit que ya usa el «Revisor de QA».
+- **Reglas del cliente** (`_domain/central/review.ts`):
+  - `REVIEW_STEPS` y `REVIEW_STEP_LABELS`;
+  - `sortScreens`, `stepCounts` (los diez pasos, también a cero) y `reviewProgress` («33 de 92 pantallas pasadas a Sevilla»);
+  - `screensToAct` (pasos `alt` y `listo`: te toca) y `screenOfReport`.
+- **Carga inicial:** las pantallas del cuadro de avance no van por Git. Las carga quien administra desde la app, o Core con la cuenta del owner.
+
 ## 3. Procedimientos y lecturas
 
 ### 3.1 Procedimientos (`call`)
@@ -441,7 +492,7 @@ al_dia      el resto
 |---|---|
 | `owner` | **Administra el ecosistema** (`admin/*` en todas las apps, contrato §3.5) y todo lo de Central, también los datos reservados de personas. |
 | `editor` | Edita personas (ficha básica), requisitos, documentos clave. Datos reservados de personas **solo con ámbito `people`**. No administra cuentas. No toca objetivos de KPIs. |
-| `reader` | Ve el panel de dirección, cumplimiento, documentos clave y el directorio básico de personas. Nunca datos reservados. |
+| `reader` | Ve el panel de dirección, cumplimiento, documentos clave y el directorio básico de personas. Nunca datos reservados. Solo escribe su voto en Decisiones (§2.10; pendiente de P10). |
 
 ### 5.2 Ámbitos (`core.memberships.scopes` de `central`)
 
@@ -788,6 +839,7 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P6 | Petición a **Booking**: usar `target_app = 'central'` (no `'encarna'`) en `staff_assignments.person_ref_app` y decir si quiere ya `central.booking_person_projection`. | Turnos con la persona de Central | — |
 | P7 | Llevar a los equipos el contrato de KPIs (§7.2) cuando se apruebe, para que cada uno publique su `central_kpi_projection` en su ronda. | Panel de dirección | Panel solo con KPIs de Central |
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
+| P10 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como ya hace el outsider: hoy el kit (`sync.ts`, `commit`) y `core.commit` rechazan cualquier escritura de un lector. También `sync-client`, si no deja encolar al lector. | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | Votan editor y owner; la tabla ya admite al lector |
 
 ---
 

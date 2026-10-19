@@ -72,6 +72,11 @@
   - `GET files/:id` ya no firma un archivo ajeno solo por conocer su id: hace falta ver una fila viva que lo referencia.
   - La documentación de personas, solo el owner y el editor con `scopes.people`; logotipo, plano y documentos clave, todos los miembros.
   - Sin cambios en pantalla.
+- 2026-10-19 · **Tanda 27 · datos y servidor del rediseño** (`1512`, aprobada por el usuario):
+  - **Votos de Decisiones:** `central.decision_votes` (un voto por persona, solo el suyo y solo en vigentes) y la decisión final del owner en `central.decisions`, con quién, cuándo y la votación.
+  - **Revisión:** `central.review_screens`, con los diez pasos del cuadro; el feedback se une por prefijo o por ruta.
+  - Reglas puras en el dominio para las pantallas (lo que te toca decidir, por votar, recientes, rastro, avance y feedback por pantalla).
+  - El lector aún no vota: lo impide el núcleo (P10). La interfaz llega cuando el kit publique los lotes A y B.
 
 ## Pendiente
 
