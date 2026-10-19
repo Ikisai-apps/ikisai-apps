@@ -563,6 +563,15 @@ Se genera **en el dispositivo**, sin servidor:
 - **Papelera:** el portal no enseña materiales borrados, así que nadie necesita el adjunto de una fila borrada; ese adjunto lo leen quien lo subió y la propietaria.
 - **Huéspedes:** abren los materiales publicados por `portal-files` (C8, resolutor `organizers.guest_material_file`), que no cambia.
 
+## 16.6 Logotipo del retiro para Booking (tanda 27)
+
+- Es la vista `organizers.booking_logo_projection` (0702), con `core.allow_read('booking', …, 'view')` y los roles por defecto. Solo la lee Booking.
+- Columnas: `reservation_id`, `material_id`, `updated_at`, `logo_file_id`, `logo_bucket`, `logo_path`, `logo_mime`, `logo_sha256` y `logo_provider`.
+- Booking la lee con `core_read` y `{ where: { reservation_id } }`, o sin filtro para las listas. Firma el archivo con `createStorage(...).readUrl({ bucket, path, storage_provider })`, igual que el logotipo de Central (0550).
+- Entra solo el material vivo con `is_logo` (uno por reserva, `materials_one_logo`), y solo si es de tipo `file` y su archivo de Organizers está verificado y es una imagen. No entra nada más de los materiales.
+- Un logotipo sin publicar también sale. Lo ve el personal de Ikisai, no los huéspedes.
+- `materials.file_id` ya está registrado (0700): mientras haya una fila viva, la recogida de archivos no lo borra.
+
 ## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
 
 Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal de Ikisai la pasa al organizador, la decide él. El portal no escribe tablas propias: lee y decide con las funciones de Booking.
