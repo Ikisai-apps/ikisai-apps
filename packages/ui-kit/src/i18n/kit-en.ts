@@ -811,4 +811,6 @@ export const KIT_EN: Dictionary = {
   'la app anterior': 'the previous app',
   'Va justo': 'Running low',
   'Bien': 'Fine',
+  'Decisión deshecha.': 'Decision undone.',
+  'Aún se puede deshacer.': 'You can still undo it.',
 };

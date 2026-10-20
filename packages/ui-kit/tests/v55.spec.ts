@@ -42,15 +42,15 @@ test.describe('ui-kit v0.50 · baldosas del inventario y ayudantes con menú', (
     expect((await off.boundingBox())!.height).toBeGreaterThanOrEqual(46);
     const ratios = await off.evaluate((b) => {
       const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
-      const lum = ([r, g, bb]: number[]) => [r, g, bb].map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
-      const mix = (fg: number[], bg: number[]) => { const a = fg[3] ?? 1; return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a)); };
+      const lum = (c: number[]) => [c[0]!, c[1]!, c[2]!].map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i]!, 0);
+      const mix = (fg: number[], bg: number[]) => { const a = fg[3] ?? 1; return [0, 1, 2].map((i) => fg[i]! * a + bg[i]! * (1 - a)); };
       const ink = rgb(getComputedStyle(b).color);
       const group = rgb(getComputedStyle(b.parentElement!).backgroundColor);
       const css = getComputedStyle(document.documentElement);
       const tmp = document.createElement('i'); document.body.append(tmp);
       const out = ['--paper', '--paper-2', '--bg'].filter((v) => css.getPropertyValue(v).trim()).map((v) => {
         tmp.style.color = `var(${v})`; const base = rgb(getComputedStyle(tmp).color);
-        const bg = mix(group, base); const [l1, l2] = [lum(ink), lum(bg)].sort((x, y) => y - x);
+        const bg = mix(group, base); const l1 = Math.max(lum(ink), lum(bg)); const l2 = Math.min(lum(ink), lum(bg));
         return (l1 + 0.05) / (l2 + 0.05);
       });
       tmp.remove();
@@ -58,5 +58,36 @@ test.describe('ui-kit v0.50 · baldosas del inventario y ayudantes con menú', (
     });
     expect(ratios.length).toBeGreaterThan(0);
     for (const r of ratios) expect(r).toBeGreaterThanOrEqual(4.5);
+  });
+  test('@smoke punto 10: `confirm: false` y `undoMs` deciden al momento, con el comentario en la tarjeta y «Deshacer»', async ({ page }) => {
+    await page.clock.install();
+    await page.addInitScript(() => { addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '.demo-head{position:static!important}'; document.head.append(s); }); });
+    await page.goto('/#proposals');
+    await page.locator('#showQuick').click();
+    const card = page.locator('.pl-card[data-id="q1"]');
+    const wide = (page.viewportSize()?.width ?? 0) >= 900;
+    const scope = wide ? page.locator('.pl-detail') : card;
+    await scope.getByLabel('Comentario (opcional): Cambiar la bombilla del pasillo').fill('Mañana a primera hora');
+    await scope.getByRole('button', { name: 'Aprobar: Cambiar la bombilla del pasillo' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Sale de pendientes al momento; aún no se ha guardado.
+    await expect(page.locator('.pl-card[data-id="q1"]')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).quickLog)).toEqual([]);
+    await page.locator('.toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-status="pending"]').first()).toBeVisible();
+    // La segunda vez se deja correr el plazo: se guarda con el comentario y la tarjeta lo enseña en Aprobadas.
+    await scope.getByRole('button', { name: 'Aprobar: Cambiar la bombilla del pasillo' }).click();
+    await page.locator('.pl-tabs button[data-status="approved"]').click();
+    await expect(card.locator('.pl-undo')).toBeVisible();
+    await page.clock.runFor(4100);
+    await expect.poll(() => page.evaluate(() => (window as any).quickLog)).toEqual(['approve:q1:Mañana a primera hora']);
+    await expect(card.locator('.pl-quote')).toHaveText('«Mañana a primera hora»');
+    await expect(card.locator('.pl-undo')).toHaveCount(0);
+  });
+
+  test('@smoke punto 10: por defecto la cola sigue confirmando con diálogo', async ({ page }) => {
+    await page.goto('/#proposals');
+    await expect(page.locator('#proposalPanes .pl-comment')).toHaveCount(0);
   });
 });

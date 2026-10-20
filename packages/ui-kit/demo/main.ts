@@ -1406,17 +1406,31 @@ const mineList = createProposalList({
   onCreate: () => toast('Proponer: lo abre la app'),
   link: (item) => (item.kind === 'task' ? { label: 'Ver la tarea', href: '#proposals' } : null),
 });
+// Tasks (tanda 29, punto 10): decidir al momento, con el comentario en la tarjeta y «Deshacer» 4 s.
+const quickLog: string[] = [];
+const quickList = createProposalList({
+  mode: 'review', title: 'Al momento', feedbackId: 'demo.propuestas_rapidas', kinds: proposalKinds, confirm: false, undoMs: 4000,
+  items: [
+    { id: 'q1', kind: 'task', summary: 'Cambiar la bombilla del pasillo', author: { id: 'u-3', name: 'Lucía' }, createdAt: '2026-10-19T09:00:00Z', status: 'pending' },
+    { id: 'q2', kind: 'task', summary: 'Barnizar el banco del jardín', author: { id: 'u-4', name: 'Tomás' }, createdAt: '2026-10-19T10:00:00Z', status: 'pending' },
+  ],
+  onApprove: (item, comment) => { quickLog.push(`approve:${item.id}:${comment ?? ''}`); },
+  onReject: (item, comment) => { quickLog.push(`reject:${item.id}:${comment ?? ''}`); },
+});
+(window as unknown as { quickLog: string[] }).quickLog = quickLog;
 const proposalPanes = el('div', { id: 'proposalPanes' }, reviewList.element);
 const proposalSwitch = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Vista de propuestas', style: 'margin-bottom:12px' },
   el('button', { type: 'button', class: 'on', id: 'showReview', 'aria-pressed': 'true', onclick: () => showProposals('review') }, 'Revisar'),
-  el('button', { type: 'button', id: 'showMine', 'aria-pressed': 'false', onclick: () => showProposals('mine') }, 'Mis propuestas'));
-function showProposals(which: 'review' | 'mine'): void {
-  proposalSwitch.querySelectorAll('button').forEach((b, i) => { const on = (i === 0) === (which === 'review'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
-  const list = which === 'review' ? reviewList : mineList;
+  el('button', { type: 'button', id: 'showMine', 'aria-pressed': 'false', onclick: () => showProposals('mine') }, 'Mis propuestas'),
+  el('button', { type: 'button', id: 'showQuick', 'aria-pressed': 'false', onclick: () => showProposals('quick') }, 'Al momento'));
+function showProposals(which: 'review' | 'mine' | 'quick'): void {
+  const order = ['review', 'mine', 'quick'];
+  proposalSwitch.querySelectorAll('button').forEach((b, i) => { const on = order[i] === which; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  const list = which === 'review' ? reviewList : which === 'mine' ? mineList : quickList;
   replace(proposalPanes, list.element);
   void list.refresh();
 }
-const proposalSection = section('proposals', 'Propuestas (O1)', 'createProposalList: la cola para quien decide (pendientes, aprobadas y descartadas; filtro por tipo; aprobar o descartar confirmando, con comentario opcional; detalle a la derecha en escritorio, ↑ ↓ y paso a la siguiente) y «Mis propuestas» para quien propone (pendientes y resueltas, con el comentario y «Retirar»). Un comentario con «fallo» simula un rechazo del servidor.',
+const proposalSection = section('proposals', 'Propuestas (O1)', 'createProposalList: la cola para quien decide (pendientes, aprobadas y descartadas; filtro por tipo; aprobar o descartar confirmando, con comentario opcional; detalle a la derecha en escritorio, ↑ ↓ y paso a la siguiente) y «Mis propuestas» para quien propone (pendientes y resueltas, con el comentario y «Retirar»). Un comentario con «fallo» simula un rechazo del servidor. «Al momento»: `confirm: false` y `undoMs`, sin diálogo, con el comentario en la tarjeta y «Deshacer».',
   proposalSwitch, proposalPanes,
 );
 (window as unknown as { proposalStore: unknown }).proposalStore = proposalStore;
