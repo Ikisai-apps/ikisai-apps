@@ -69,7 +69,8 @@ export async function simulateKeyboard(page: Page, visible: number | null): Prom
  * (opción `before`), porque el lanzador es otra hoja y sustituiría a la abierta.
  */
 export async function setMode(page: Page, launcher: string, on: boolean): Promise<void> {
-  await page.locator(launcher).first().click();
+  // Si el cajón del menú ya está abierto, pulsar la marca lo cerraría (punto 12).
+  if (!(await page.locator(MENU).first().isVisible().catch(() => false))) await page.locator(launcher).first().click();
   const scope = await openedScope(page);
   const toggle = scope.locator('.launcher-signal input');
   await expect(toggle).toBeVisible();
@@ -127,6 +128,10 @@ async function defaultTarget(page: Page): Promise<Locator> {
   return page.locator('[data-fb-smoke-target]');
 }
 
+/**
+ * Ida y vuelta del feedback. El interruptor «Señalar para comentar» se busca solo dentro de lo abierto (el cajón del
+ * menú común o la hoja del lanzador), también con la columna del ordenador, que lo repite (punto 12; Tasks y Booking).
+ */
 export async function feedbackRoundTrip(page: Page, options: FeedbackRoundTripOptions = {}): Promise<{ code: string }> {
   const launcher = options.launcher ?? '#appLauncher';
   const timeout = options.timeout ?? 8000;

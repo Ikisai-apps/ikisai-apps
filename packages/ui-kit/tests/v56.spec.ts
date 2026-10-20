@@ -1,4 +1,5 @@
 import { expect, test } from 'playwright/test';
+import { setMode } from '../testing/feedback-smoke.ts';
 
 /** Punto 11 (Organizers): `renderMedal({ cover: true, veil: 'full' })` da 4,5:1 al texto blanco en toda la foto. */
 test.describe('ui-kit v0.51 · velo completo de la portada', () => {
@@ -26,5 +27,16 @@ test.describe('ui-kit v0.51 · velo completo de la portada', () => {
       return m ? m.className : document.querySelector('.medal-cover:not(.medal-veil-full)')?.className ?? 'medal-cover';
     });
     expect(plain).toBe('medal-cover');
+  });
+  test('@smoke punto 12: con el cajón ya abierto y la columna, `setMode` no lo cierra y usa su interruptor', async ({ page }, info) => {
+    test.skip(info.project.name !== 'escritorio', 'la columna es del ordenador');
+    await page.goto('/#tokens');
+    await page.evaluate(() => { document.querySelector('#app')!.setAttribute('hidden', ''); scrollTo(0, 0); (window as any).ikisaiMenuDemo({ column: true }); });
+    await page.locator('#appLauncher').click();
+    await expect(page.locator('.appmenu-drawer')).toBeVisible();
+    await expect(page.locator('.launcher-signal input')).toHaveCount(2);
+    await setMode(page, '#appLauncher', true);
+    expect(await page.evaluate(() => (window as any).menuLog)).toContain('signal:true');
+    await expect(page.locator('.appmenu-drawer')).toHaveCount(0);
   });
 });

@@ -2,10 +2,11 @@
 
 ## 0.51.0 · 20 de octubre de 2026
 
-**Velo completo para portadas con texto** (punto 11, Organizers).
+**Velo completo para portadas con texto** (punto 11, Organizers) **y `feedbackRoundTrip` dentro del cajón** (punto 12, Tasks y Booking).
 
 - `renderMedal({ cover: true, veil: 'full' })`: el velo cubre toda la foto y el texto blanco da 4,5:1 de arriba abajo, también sobre una foto blanca (antes, en la franja media, el velo era de 0,15). Organizers puede quitar su refuerzo.
 - Sin `veil` (o con `veil: 'edges'`), el de siempre: oscurece abajo y arriba y deja ver la foto en medio.
+- **`feedbackRoundTrip` y `setMode`:** el interruptor se busca solo en el cajón abierto (o en la hoja), también con la columna, desde la 0.50. Ahora, si el cajón ya está abierto, no se pulsa la marca, que lo cerraría. Tasks y Booking pueden quitar sus apaños.
 - **Pruebas:** `v56`.
 
 ## 0.50.0 · 20 de octubre de 2026
