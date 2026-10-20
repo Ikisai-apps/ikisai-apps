@@ -93,10 +93,12 @@
 
 - 2026-10-20 · **Mapa de zonas** (API.md §9.16): ruta `GET plans` en la Edge (dibujos firmados) y «Ver en el plano» con `createSpaceMap` y el sitio resaltado; el plano de Central, de respaldo. Pruebas en `api.test.ts` y `modules.spec.ts`.
 
+- 2026-10-20 · **Mapa en Alojamiento y Ayuda** (API.md §9.16): las habitaciones abiertas en el plano con su estado en texto, y «Tócalo en el plano» en Ayuda, con `space_id` en el aviso. Pruebas en `modules.spec.ts` y `portal.spec.ts`.
+
 ## Pendiente
 
 - «Mis tareas» (TK1), cuando Tasks lo publique.
-- El mapa en Alojamiento (camas por estado) y en Ayuda (elegir el sitio): la segunda PR del mapa.
+- Las camas sobre el plano en Alojamiento, cuando el kit recorte el dibujo a la habitación (hoy, botones con texto).
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 

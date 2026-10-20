@@ -347,6 +347,32 @@ test('guests · «Ayuda y sugerencias» con el teclado abierto en el móvil: un 
   expect(stored[0]).toMatchObject({ subject: 'space', category: 'utilities', destination: 'operations' });
 });
 
+test('guests · «Ayuda y sugerencias» con el mapa de zonas: «Tócalo en el plano» elige el sitio y el aviso lleva su space_id', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con plano de ayuda' });
+  const max = await api.guest(event, { first_name: 'Max' });
+  const square = (x: number, y: number, s = 0.3): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  const { ids } = await api.floorPlan([
+    { name: 'Sala del pinar', kind: 'sala', points: square(0.05, 0.1) },
+    { name: 'Almacén del fondo', kind: 'almacen', points: square(0.5, 0.1) },
+  ]);
+  await enter(page, await api.guestLink(reservation, max, 'Max'));
+  await acceptPrivacy(page);
+  await page.locator('#openHelp').click();
+  await page.locator('#helpPlan > summary').click();
+  // Solo los sitios de huéspedes se tocan (el almacén sale apagado).
+  await expect(page.locator('#helpPlan .map-svg [role="button"]')).toHaveCount(1);
+  await page.locator('#helpPlan .map-svg [role="button"][aria-label^="Sala del pinar"]').click();
+  await expect(page.locator('#helpPicked')).toContainText('Sala del pinar');
+  await expect(page.locator('#blockSpace .ghelp-tiles [data-value="habitacion"]')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#blockSpace .ghelp-kinds [data-value="damage"]').click();
+  await sendHelp(page, [], 'La persiana no baja');
+  const stored = await reportsWith('persiana no baja');
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({ subject: 'space', category: 'damage' });
+  expect(stored[0]!.scope).toMatchObject({ reservation_id: reservation, guest_id: max, space_id: ids['Sala del pinar'] });
+  await expect(page.locator('#helpMine')).toContainText('Sala del pinar');
+});
+
 // Último: siembra los textos de Central para el resto del archivo (los anteriores usan los textos de reserva).
 test('guests · textos de Central: aviso en inglés con su versión, vale en los dos idiomas, e información práctica', async ({ browser }) => {
   await api.seedCentralTexts();

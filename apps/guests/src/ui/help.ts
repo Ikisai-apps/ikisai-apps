@@ -21,6 +21,8 @@ import { describeError } from '../app/client.ts';
 import { contactPhone } from '../app/common-texts.ts';
 import type { Grant } from '../app/api.ts';
 import { formatDate, t } from '../app/i18n.ts';
+import type { PortalPlans, PortalReads } from '../app/portal.ts';
+import { loadPlans, portalMap } from './plan.ts';
 
 export interface HelpOptions {
   client: SyncClient;
@@ -29,10 +31,14 @@ export interface HelpOptions {
   grant: Grant | null;
   /** `place`: «Necesito ayuda» (título de la hoja); `event`: «Cuéntanos qué tal» (después del retiro). */
   start?: 'place' | 'event';
+  /** Para «Tócalo en el plano» (mapa de zonas, MUELA-054 y 024); sin ellas, solo las baldosas. */
+  reads?: PortalReads | null;
 }
 
 /** Respuestas del formulario (forma de siempre, para `reportShape`). */
-export interface HelpAnswers { about?: 'application' | 'event' | 'space'; appKind?: 'bug' | 'improvement'; eventCat?: string; place?: string; spaceKind?: string }
+export interface HelpAnswers { about?: 'application' | 'event' | 'space'; appKind?: 'bug' | 'improvement'; eventCat?: string; place?: string; spaceKind?: string;
+  /** Elegido en el plano (`place = 'mapa'`): el espacio de Recursos y su nombre público. */
+  spaceId?: string; spaceName?: string }
 
 const EVENT: Array<[string, IconName]> = [['schedule', 'history'], ['organization', 'people'], ['activities', 'sun'], ['communication', 'info'], ['food', 'chef'], ['other', 'more']];
 const PLACES: Array<[string, IconName]> = [['habitacion', 'bed'], ['comedor', 'chef'], ['sala', 'home'], ['banos', 'info'], ['exterior', 'sun'], ['piscina', 'pin'], ['otro', 'pin']];
@@ -44,7 +50,12 @@ const MAX_IMAGES = 3;
 export function reportShape(answers: HelpAnswers, grant: Grant | null): { subject: FeedbackSubject; intent: FeedbackIntent; category?: string; scope?: Record<string, string>; place?: string } {
   const scope = grant ? { reservation_id: grant.reservation_id, guest_id: grant.guest_id } : undefined;
   if (answers.about === 'event') return { subject: 'event', intent: answers.eventCat === 'other' ? 'suggestion' : 'problem', category: answers.eventCat, scope };
-  if (answers.about === 'space') return { subject: 'space', intent: 'problem', category: answers.spaceKind, scope, place: PLACE_ES[answers.place ?? ''] };
+  if (answers.about === 'space') {
+    // Elegido en el plano: el aviso lleva el espacio de Recursos (`scope.space_id`) y su nombre, en texto, como siempre.
+    const fromMap = answers.place === 'mapa' && answers.spaceId;
+    return { subject: 'space', intent: 'problem', category: answers.spaceKind, scope: fromMap && scope ? { ...scope, space_id: answers.spaceId! } : scope,
+      place: fromMap ? answers.spaceName : PLACE_ES[answers.place ?? ''] };
+  }
   return { subject: 'application', intent: answers.appKind === 'improvement' ? 'improvement' : 'bug' };
 }
 
@@ -67,6 +78,37 @@ export function openHelp(options: HelpOptions): void {
 
   const eventBlock = el('section', { class: 'ghelp-block', id: 'blockEvent' });
   const spaceBlock = el('section', { class: 'ghelp-block', id: 'blockSpace' });
+  // «Tócalo en el plano»: el mapa de zonas, si hay; se crea una vez y se conserva al repintar (abierto o cerrado).
+  const HELP_KINDS = new Set(['habitacion', 'sala', 'bano', 'comedor', 'exterior', 'zona_paso', 'otro']);
+  let planData: PortalPlans | null = null;
+  let planBox: HTMLDetailsElement | null = null;
+  let helpMap: ReturnType<typeof portalMap> | null = null;
+  if (options.reads) void loadPlans(options.reads).then((loaded) => {
+    if (!loaded?.value.plans.length || !loaded.value.spaces.some((s) => HELP_KINDS.has(s.kind))) return;
+    planData = loaded.value;
+    paint();
+  });
+  function planPicker(): HTMLDetailsElement {
+    if (planBox) { helpMap?.select(answers.place === 'mapa' ? answers.spaceId ?? null : null); return planBox; }
+    const inner = el('div', { class: 'ghelp-planbox' });
+    planBox = el('details', { class: 'gplan ghelp-plan', id: 'helpPlan', 'data-feedback-id': 'guests.ayuda.sitio.plano', 'data-feedback-label': 'Tócalo en el plano' },
+      el('summary', null, icon('pin', 16), el('span', { class: 'gplan-label' }, t('help.onPlan')), el('span', { class: 'gplan-hint' }, t('plan.see'))), inner) as HTMLDetailsElement;
+    planBox.addEventListener('toggle', () => {
+      if (!planBox!.open || helpMap) return;
+      helpMap = portalMap(planData!, {
+        mode: 'map', label: t('help.planLabel'), feedbackId: 'guests.ayuda.sitio.mapa',
+        filter: (s) => HELP_KINDS.has(s.kind),
+        selected: answers.place === 'mapa' ? answers.spaceId ?? null : null,
+        onPick: (s) => {
+          Object.assign(answers, { place: 'mapa', spaceId: s.id, spaceName: s.publicName ?? s.name, spaceKind: undefined });
+          if (answers.about === 'space') answers.about = undefined;
+          paint('kind');
+        },
+      });
+      replace(inner, helpMap.element);
+    });
+    return planBox;
+  }
   const appBlock = el('section', { class: 'ghelp-block', id: 'blockApp' });
   const message = el('textarea', { id: 'helpText', rows: '3', maxlength: '4000', 'aria-label': t('help.message'), placeholder: t('help.placeholder'), 'data-feedback-ignore': '' }) as HTMLTextAreaElement;
   const fileInput = el('input', { type: 'file', accept: 'image/*', multiple: '', hidden: true, onchange: () => void addImages() }) as HTMLInputElement;
@@ -128,7 +170,7 @@ export function openHelp(options: HelpOptions): void {
       images = [];
       attempt = null;
       signalled = null;
-      Object.assign(answers, { about: undefined, appKind: undefined, eventCat: undefined, spaceKind: undefined, place: grant ? 'habitacion' : undefined });
+      Object.assign(answers, { about: undefined, appKind: undefined, eventCat: undefined, spaceKind: undefined, spaceId: undefined, spaceName: undefined, place: grant ? 'habitacion' : undefined });
       paint();
       void paintMine(pending ? text : null);
     } catch (error) {
@@ -156,7 +198,9 @@ export function openHelp(options: HelpOptions): void {
     replace(spaceBlock,
       el('h3', null, icon('pin', 20), ' ', t('help.space')),
       el('div', { class: 'ghelp-tiles', role: 'group', 'aria-label': t('help.where'), 'data-feedback-id': 'guests.ayuda.sitio.elegir', 'data-feedback-label': 'Elegir el sitio' },
-        ...PLACES.filter(([v]) => grant || v !== 'habitacion').map(([v, ic]) => card(answers.place === v, 'ghelp-tile', ic, t(`help.place.${v}`), () => { answers.place = v; if (answers.about === 'space') answers.about = undefined; answers.spaceKind = undefined; paint('kind'); }, { 'data-value': v }))),
+        ...PLACES.filter(([v]) => grant || v !== 'habitacion').map(([v, ic]) => card(answers.place === v, 'ghelp-tile', ic, t(`help.place.${v}`), () => { Object.assign(answers, { place: v, spaceId: undefined, spaceName: undefined }); if (answers.about === 'space') answers.about = undefined; answers.spaceKind = undefined; paint('kind'); }, { 'data-value': v }))),
+      planData ? planPicker() : null,
+      answers.place === 'mapa' && answers.spaceName ? el('p', { class: 'ghelp-picked', id: 'helpPicked', role: 'status' }, icon('pin', 16), ' ', t('help.picked', { name: answers.spaceName })) : null,
       answers.place ? el('div', { class: 'ghelp-tiles ghelp-kinds', role: 'group', 'aria-label': t('help.spaceKind'), 'data-feedback-id': 'guests.ayuda.sitio.que_pasa', 'data-feedback-label': 'Qué pasa' },
         ...KINDS.map(([v, ic, urgent]) => {
           const b = card(answers.about === 'space' && answers.spaceKind === v, 'ghelp-tile', ic, t(`help.kindShort.${v}`), () => { Object.assign(answers, { about: 'space', spaceKind: v }); paint('text'); }, { 'data-value': v }, urgent);

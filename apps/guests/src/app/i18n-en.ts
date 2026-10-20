@@ -758,4 +758,11 @@ export const EN: Dictionary = {
   'plan.here': 'Here',
   'plan.house': 'The house plan',
   'plan.centerBackup': 'The centre plan (image or PDF)',
+  'lodging.mapLabel': 'Plan: tap a room to see it below',
+  'lodging.mapFree': { one: '1 free', other: '{count} free' },
+  'lodging.mapFull': 'Full',
+  'lodging.mapNo': 'No match',
+  'help.onPlan': 'Tap it on the plan',
+  'help.planLabel': 'Plan: tap the place',
+  'help.picked': 'Place: {name}',
 };

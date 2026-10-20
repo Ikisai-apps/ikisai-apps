@@ -559,3 +559,11 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 /* Outsider (FD2): lo que hay en cada hueco del menú de casa, con su línea de alérgenos (#597) */
 .goutdishes{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
 .goutdishes li{display:flex;flex-direction:column}
+
+/* Mapa de zonas (MUELA-024): en Alojamiento, las habitaciones abiertas; en Ayuda, «Tócalo en el plano» y el sitio elegido */
+.grooms-map{margin:8px 0}
+.ghelp-plan{margin:0}
+.ghelp-planbox{padding-top:8px}
+.ghelp-picked{display:flex;align-items:center;gap:6px;margin:0;padding:8px 12px;border-radius:14px;border:2px solid var(--accent-deep);font-weight:700}
+.gplan-backup{margin-top:8px}
+.gplan-backup>summary{cursor:pointer;font-size:var(--text-sm,.875rem);font-weight:700;min-height:44px;display:flex;align-items:center}

@@ -12,13 +12,14 @@
  * **La familia junta** (065): arriba, cada persona con su cama o «Falta por colocar»; al tocar a alguien, «Eligiendo
  * para Leo»; y «Dormir todos aquí» reparte las camas libres de la habitación (una llamada por persona, la RPC de hoy).
  */
-import { bindOnline, confirmDialog, el, icon, renderMedal, replace, toast } from '@ikisai/ui-kit';
+import { bindOnline, confirmDialog, el, icon, renderMedal, replace, toast, type SpaceMap } from '@ikisai/ui-kit';
 import type { GuestContext } from '../app/context.ts';
 import { describeError, errorCode, isNetworkError, online } from '../app/client.ts';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import type { Lodging } from '../app/portal.ts';
 import { failure, fbIgnore, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
+import { findSpace, loadPlans, portalMap } from './plan.ts';
 
 const DEBOUNCE = 800;
 
@@ -61,6 +62,8 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
   let roomId: string | null = null;
   let changing = false;
   const filters = new Set<Filter>();
+  /** Las habitaciones abiertas en el mapa de zonas (MUELA-056 y 024), si están dibujadas: espacio de Recursos ↔ habitación de Booking. */
+  let roomsMap: { map: SpaceMap; toRoom: Map<string, string>; toSpace: Map<string, string> } | null = null;
   const unbinds: Array<() => void> = [];
   const needsNet = (button: HTMLElement) => { unbinds.push(bindOnline(button, { ...(options.client ? { client: options.client } : {}), reason: t('lodging.needsNetwork') })); return button; };
 
@@ -74,6 +77,7 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
       if (!family) active = people[0]!;
       else if (active) active = people.find((p) => p.ctx === active!.ctx) ?? null;
       paint();
+      if (!roomsMap && choosing() && choiceOpen(data())) void loadRoomsMap();
     } catch (error) {
       if (alive) replace(main, failure(error, () => void load()));
     }
@@ -253,6 +257,14 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
         el('li', null, el('span', { class: 'gsw st-mine' }), family ? t('lodging.legendOurs') : t('lodging.bedMine'))));
   }
 
+  /** El plano con la que se ve resaltada y los estados al día (filtros, plazas). */
+  function mapBox(shown: Room | null): HTMLElement {
+    const m = roomsMap!;
+    m.map.repaint();
+    m.map.select(shown ? m.toSpace.get(shown.space_id) ?? null : null);
+    return el('div', { class: 'grooms-map', id: 'lodgingMap' }, m.map.element);
+  }
+
   function paint(): void {
     for (const off of unbinds.splice(0)) off();
     const d = data();
@@ -289,6 +301,7 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
               paint();
             },
           }, label))),
+        roomsMap ? mapBox(shown) : null,
         shown ? change : null,
         changing || !shown ? el('div', { id: listId, class: 'groom-list' }, ...[...groups].map(([key, group]) => {
           const option = notes.get(key) ?? notes.get('');
@@ -300,12 +313,7 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
             el('ul', null, ...group.map((room) => el('li', null, el('button', {
               type: 'button', class: `groom-row${room.space_id === roomId ? ' on' : ''}${fits(room) ? '' : ' nofit'}`, 'aria-pressed': String(room.space_id === roomId), dataset: { space: room.space_id },
               'data-feedback-id': 'guests.alojamiento.habitacion.ver', 'data-feedback-label': 'Ver una habitación',
-              onclick: () => {
-                roomId = room.space_id; changing = false; paint();
-                const target = main.querySelector<HTMLElement>('#lodgingRoom');
-                target?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-                target?.focus({ preventScroll: true });
-              },
+              onclick: () => showRoom(room.space_id),
             }, renderMedal({ name: room.name, size: 44 }),
             el('span', { class: 'groom-text' }, el('strong', null, room.name, room.zone ? el('span', { class: 'small' }, ` · ${room.zone}`) : null),
               el('span', { class: 'small' }, [room.en_suite ? t('lodging.enSuite') : t('lodging.shared'), freeText(room), room.supplement ? t('lodging.withSupplement') : null].filter(Boolean).join(' · ')),
@@ -327,6 +335,49 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
       !choice && shown && myBed ? roomBlock(shown, open) : null);
   }
 
+  /**
+   * El plano de las habitaciones abiertas: tocar una la enseña abajo, como la fila de la lista. Se casa por nombre (único)
+   * mientras Booking no dé el id de Recursos de cada habitación en `portal_lodging`. Sin dibujo o sin ninguna, no sale.
+   */
+  async function loadRoomsMap(): Promise<void> {
+    const loaded = await loadPlans(ctx.reads);
+    if (!alive || !loaded?.value.plans.length) return;
+    const toRoom = new Map<string, string>();
+    const toSpace = new Map<string, string>();
+    for (const room of data().rooms) {
+      const space = findSpace(loaded.value.spaces, null, { space: room.name });
+      if (space && space.kind !== 'cama' && !toRoom.has(space.id)) { toRoom.set(space.id, room.space_id); toSpace.set(room.space_id, space.id); }
+    }
+    if (!toRoom.size) return;
+    const map = portalMap(loaded.value, {
+      mode: 'map',
+      label: t('lodging.mapLabel'),
+      feedbackId: 'guests.alojamiento.plano',
+      offline: loaded.stale,
+      selected: roomId ? toSpace.get(roomId) ?? null : null,
+      filter: (s) => toRoom.has(s.id),
+      layer: (s) => {
+        const room = data().rooms.find((r) => r.space_id === toRoom.get(s.id));
+        if (!room) return null;
+        // Corto, porque va dentro de la habitación en el plano; el color nunca va solo.
+        if (room.beds_free < 1) return { tone: 'muted', label: t('lodging.mapFull') };
+        if (!fits(room)) return { tone: 'muted', label: t('lodging.mapNo') };
+        return { tone: 'ok', label: t('lodging.mapFree', { count: room.beds_free }) };
+      },
+      onPick: (s) => { const id = toRoom.get(s.id); if (id) showRoom(id); },
+    });
+    roomsMap = { map, toRoom, toSpace };
+    paint();
+  }
+
+  /** Enseña una habitación abajo (desde la lista o el plano) y lleva allí el foco. */
+  function showRoom(id: string): void {
+    roomId = id; changing = false; paint();
+    const target = main.querySelector<HTMLElement>('#lodgingRoom');
+    target?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    target?.focus({ preventScroll: true });
+  }
+
   void load();
-  return () => { alive = false; if (timer) clearTimeout(timer); for (const off of unbinds.splice(0)) off(); };
+  return () => { alive = false; roomsMap?.map.destroy(); if (timer) clearTimeout(timer); for (const off of unbinds.splice(0)) off(); };
 }

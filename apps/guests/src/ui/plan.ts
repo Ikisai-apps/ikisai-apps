@@ -11,7 +11,7 @@
  * por su `sha256` para verlo sin red y no volver a bajarlo si no cambia. Sin plano y sin texto, nada; sin plano pero con
  * texto, solo la línea del sitio.
  */
-import { createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type FloorPlan, type SpaceRow } from '@ikisai/ui-kit';
+import { createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type FloorPlan, type SpaceMap, type SpaceMapOptions, type SpaceRow } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { t } from '../app/i18n.ts';
 import type { Loaded } from '../app/api.ts';
@@ -99,6 +99,22 @@ async function planImage(plan: PortalPlan | undefined): Promise<string> {
   }
 }
 
+/** El mapa de zonas leído (recordado un minuto), o null si no hay. */
+export function loadPlans(reads: PortalReads): Promise<Loaded<PortalPlans> | null> {
+  return readsOf(reads).plans;
+}
+
+/** El mapa del kit sobre la lectura del portal (Alojamiento y Ayuda ponen su capa, su filtro y su `onPick`). */
+export function portalMap(data: PortalPlans, options: Omit<SpaceMapOptions, 'source' | 'plans' | 'planUrl'>): SpaceMap {
+  const plans: FloorPlan[] = data.plans.map((x) => ({ id: x.id, buildingId: x.buildingId, floor: x.floor, position: x.position, fileId: x.fileId, width: x.width, height: x.height }));
+  return createSpaceMap({
+    source: createMemorySpaceSource(toRows(data.spaces)),
+    plans,
+    planUrl: (fileId) => planImage(data.plans.find((x) => x.fileId === fileId)),
+    ...options,
+  });
+}
+
 /** Borra los dibujos guardados (al salir del dispositivo). */
 export async function clearPlanImages(): Promise<void> {
   try { await caches.delete(PLAN_CACHE); } catch { /* sin Cache Storage */ }
@@ -147,11 +163,7 @@ export function verEnPlano(options: PlanOptions): HTMLElement | null {
       done = true;
       const where = el('p', { class: 'small gplan-where' }, icon('pin', 14), ' ', el('strong', null, place ?? p?.name ?? t('plan.center')), p?.name && place ? ` · ${p.name}` : '');
       if (!withMap) { centralPlan(reads, p!, box, where); return; }
-      const plans: FloorPlan[] = data!.plans.map((x) => ({ id: x.id, buildingId: x.buildingId, floor: x.floor, position: x.position, fileId: x.fileId, width: x.width, height: x.height }));
-      const map = createSpaceMap({
-        source: createMemorySpaceSource(toRows(data!.spaces)),
-        plans,
-        planUrl: (fileId) => planImage(data!.plans.find((x) => x.fileId === fileId)),
+      const map = portalMap(data!, {
         selected: target?.id ?? null,
         mode: 'map',
         label: options.label ?? place ?? t('plan.house'),
