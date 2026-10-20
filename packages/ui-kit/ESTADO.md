@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.55.0: `createSpaceMap` para Tasks: todos los dibujos a la vez, solo plano y cifra corta en el dibujo.
 - v0.54.1: `bedNumbers: false` en `createSpaceMap` (camas solo por color).
 - v0.54.0: «la elegida ampliada» en `createSpaceMap` (`focus`, MUELA-056).
 - v0.53.1: `floorPlanFromRow` con `$blob` = sin archivo; `v39` estable (cabecera de la demo).

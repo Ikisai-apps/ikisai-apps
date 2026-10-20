@@ -1182,9 +1182,17 @@ const spaceMapZoom = createSpaceMap({ source: mapSource, plans: mapPlans, planUr
   onPick: (s) => { mapPicked.textContent = `${s.id} · ampliada`; } });
 spaceMapZoom.element.id = 'spaceMapZoom';
 (window as unknown as { spaceMapZoom: typeof spaceMapZoom }).spaceMapZoom = spaceMapZoom;
+// Como Tasks (MUELA-090): todos los dibujos a la vez, solo el plano (la lista es su árbol) y la cifra corta en el dibujo.
+const TASKS_OPEN: Record<string, [number, number]> = { 'banos-alb': [2, 1], 'sala-roble': [1, 0] };
+const spaceMapTasks = createSpaceMap({ source: mapSource, plans: mapPlans, planUrl: (fileId) => PLAN_FILES[fileId] ?? '', label: 'Dónde hay trabajo', layout: 'all', mode: 'plan',
+  filter: (s) => s.kind !== 'cama',
+  layer: (s) => { const n = TASKS_OPEN[s.id]; return n ? { tone: n[1] ? 'alert' : 'warn', short: String(n[0]), label: `${n[0]} ${n[0] === 1 ? 'tarea abierta' : 'tareas abiertas'}${n[1] ? `, ${n[1]} vencida` : ''}` } : null; },
+  onPick: (s) => { mapPicked.textContent = `${s.id} · tasks`; } });
+spaceMapTasks.element.id = 'spaceMapTasks';
 const spaceMapSection = section('spacemap', 'Mapa de zonas (MUELA-024)', 'createSpaceMap: el dibujo de cada edificio y planta como imagen, entero y sin zoom, con la capa de estancias encima (contorno al tocar), camas por colores con su número (gris no se puede, azul con rayado ocupada, verde claro libre, verde intenso elegida) y la lista equivalente con la ruta: conmutador Plano/Lista en el móvil y lado a lado en el ordenador. Sin formas, solo la lista; sin red, la última copia con aviso.',
   el('div', { class: 'card' }, spaceMap.element, el('p', null, 'Tocado: ', mapPicked)),
   el('div', { class: 'card', style: 'margin-top:12px' }, el('h3', null, 'La elegida ampliada'), spaceMapZoom.element),
+  el('div', { class: 'card', style: 'margin-top:12px' }, el('h3', null, 'Como Tasks: todos los dibujos, solo plano'), spaceMapTasks.element),
   el('div', { class: 'card', style: 'margin-top:12px' }, spaceMapBare.element),
 );
 // --- Artículos del inventario (R3) ------------------------------------------------------------------------

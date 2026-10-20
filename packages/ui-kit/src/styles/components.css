@@ -1940,6 +1940,12 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .map-plan{display:grid;gap:8px;min-width:0}
 .map-stage{border-radius:var(--radius-md);overflow:hidden;background:var(--paper-2);border:1px solid var(--line)}
 .map-svg{display:block;width:100%;height:auto;max-height:62vh}
+/* `layout: 'all'`: todos los dibujos, uno por fila en el móvil y dos en el ordenador. */
+.map-stage.map-all{display:grid;gap:12px;border:0;background:none;overflow:visible}
+.map-figure{margin:0;display:grid;gap:6px;min-width:0;align-content:start}
+.map-figure .map-svg{border-radius:var(--radius-md);background:var(--paper-2);border:1px solid var(--line)}
+.map-figcap{font-size:var(--text-sm);font-weight:700;color:var(--ink)}
+@media(min-width:900px){.map-stage.map-all{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .map-paper{fill:var(--paper)}
 :root[data-theme="dark"] .map-bg{filter:invert(.88) hue-rotate(180deg)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .map-bg{filter:invert(.88) hue-rotate(180deg)}}
@@ -1970,6 +1976,7 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .map-labels text{pointer-events:none;font-family:var(--sans);text-anchor:middle;paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round}
 .map-room-txt{fill:var(--ink);font-weight:700}
 .map-room-state{fill:var(--ink);font-weight:600}
+.map-room-short{fill:var(--ink);font-weight:800}
 .map-bed-txt{fill:var(--ink);font-weight:800;stroke:none!important}
 .map-bed-txt.map-st-picked{fill:var(--bed-pick-ink)}
 .map-legend{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:var(--text-sm);color:var(--ink)}

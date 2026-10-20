@@ -64,8 +64,10 @@ export type SpaceMapBedState = 'off' | 'occupied' | 'free' | 'picked';
 
 export interface SpaceMapLayer {
   tone?: SpaceMapTone | null;
-  /** Estado en palabras («Tareas abiertas: 2», «Libre a las 18:00»). En las camas, por defecto el de `state`. */
+  /** Estado en palabras («2 tareas abiertas, 1 vencida»): lista y nombre accesible. En las camas, por defecto el de `state`. */
   label?: string | null;
+  /** Lo que se pinta en el dibujo, corto («2»); sin él, `label`. El lector de pantalla y la lista dicen `label`. */
+  short?: string | null;
   /** Solo camas. */
   state?: SpaceMapBedState | null;
   /** Se ve, apagado, pero no se toca (y en la lista sale desactivado). */
@@ -89,7 +91,13 @@ export interface SpaceMapOptions {
   layer?: (space: SpaceRow) => SpaceMapLayer | null | undefined;
   onPick?: (space: SpaceRow, context: SpaceMapPickContext) => void;
   /** `both` (por defecto): conmutador en el móvil y lado a lado en el ordenador. `map`: el plano primero y la lista con el conmutador. `list`: solo la lista. */
-  mode?: 'map' | 'list' | 'both';
+  /**
+   * `plan` (solo plano): sin lista ni conmutador propios, para la app que ya enseña su lista equivalente (Tasks, su
+   * árbol). **La app tiene que poner esa lista**: el plano solo no basta. Sin dibujo, la pieza enseña su lista igualmente.
+   */
+  mode?: 'map' | 'list' | 'both' | 'plan';
+  /** `all`: todos los dibujos a la vez (dos por fila en el ordenador, uno en el móvil). Por defecto `switch`, el selector. */
+  layout?: 'switch' | 'all';
   /** URL del dibujo (`/api/v1/resources/files/:id`); puede ser una promesa (p. ej. un `blob:` con el token). */
   planUrl?: (fileId: string) => string | Promise<string>;
   /** Nombre que se pinta; por defecto `name` (en los portales, `publicName ?? name`). */
@@ -204,8 +212,8 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   let wanted: 'plan' | 'list' = mode === 'list' ? 'list' : 'plan';
   let view: 'plan' | 'list' = wanted;
   const urls = new Map<string, Promise<string>>();
-  /** Píxeles de pantalla por unidad del dibujo: los rótulos no bajan de 11 px aunque el plano se vea pequeño. */
-  let scale = 0;
+  /** Píxeles de pantalla por unidad de cada dibujo: los rótulos no bajan de 11 px aunque el plano se vea pequeño. */
+  const scales = new Map<string, number>();
   const failed = new Set<string>();
 
   const head = el('div', { class: 'map-head' });
@@ -274,14 +282,14 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
 
   // --- Pintar ------------------------------------------------------------------------------------------------
   function paintHead(hasPlan: boolean, useful: FloorPlan[]): void {
-    const toggle = hasPlan && mode !== 'list'
+    const toggle = hasPlan && mode !== 'list' && mode !== 'plan'
       ? el('div', { class: 'segmented map-view', role: 'group', 'aria-label': kt('Ver como') },
         ...(['plan', 'list'] as const).map((v) => el('button', {
           type: 'button', class: view === v ? 'on' : '', 'aria-pressed': String(view === v), dataset: { view: v }, ...mark('view'),
           onclick: () => { wanted = v; paint(); head.querySelector<HTMLElement>(`.map-view [data-view="${v}"]`)?.focus(); },
         }, v === 'plan' ? kt('Plano') : kt('Lista'))))
       : null;
-    const chooser = hasPlan && useful.length > 1
+    const chooser = hasPlan && useful.length > 1 && options.layout !== 'all'
       ? el('div', { class: 'segmented map-plans', role: 'group', 'aria-label': kt('Dibujo') },
         ...useful.map((p) => el('button', {
           type: 'button', class: p.id === planId ? 'on' : '', 'aria-pressed': String(p.id === planId), dataset: { planId: p.id }, ...mark('plan'),
@@ -295,10 +303,11 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   /** El espacio y lo de dentro (la elegida ampliada). */
   const within = (root: SpaceRow, index: Map<string, SpaceRow>) => (s: SpaceRow) => s.id === root.id || ancestorsOf(index, s.id).some((a) => a.id === root.id);
 
-  function paintPlan(plan: FloorPlan, crop: SpaceRow | null = null): void {
+  function paintPlan(plan: FloorPlan, crop: SpaceRow | null = null): { nodes: Array<Element | null>; states: Set<SpaceMapBedState> } {
     const w = plan.width > 0 ? plan.width : 1000;
     const h = plan.height > 0 ? plan.height : 700;
-    const hatch = `${id}-hatch`;
+    const key = crop ? `${plan.id}:${crop.id}` : plan.id;
+    const hatch = `${id}-hatch-${plans.indexOf(plan)}`;
     // Recorte: la caja de la forma con un margen, sin salir de la imagen.
     let box = { x: 0, y: 0, w, h };
     if (crop) {
@@ -311,9 +320,10 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       box = { x: x0, y: y0, w: Math.min(w, Math.max(...xs) + pad) - x0, h: Math.min(h, Math.max(...ys) + pad) - y0 };
     }
     const unit = Math.max(box.w, box.h);
+    const scale = scales.get(key) ?? 0;
     const px = (n: number) => (scale > 0 ? n / scale : 0);
     const name = crop ? kt('{name} en el plano', { name: nameOf(crop) }) : kt('Plano de {name}', { name: planName(plan) });
-    const root = svg('svg', { class: `map-svg${crop ? ' map-zoom' : ''}`, viewBox: [box.x, box.y, box.w, box.h].map((n) => +n.toFixed(1)).join(' '), preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': name },
+    const root = svg('svg', { class: `map-svg${crop ? ' map-zoom' : ''}`, viewBox: [box.x, box.y, box.w, box.h].map((n) => +n.toFixed(1)).join(' '), preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': name, 'data-key': key },
       svg('defs', {}, svg('pattern', { id: hatch, patternUnits: 'userSpaceOnUse', width: unit / 90, height: unit / 90, patternTransform: 'rotate(45)' },
         svg('rect', { class: 'map-hatch-line', width: unit / 270, height: unit / 90 }))),
       svg('rect', { class: 'map-paper', width: w, height: h }));
@@ -360,25 +370,40 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const bh = c.h * h;
       if (bed) {
         const size = Math.max(Math.min(bw * 0.5, bh * 0.5, unit * (crop ? 0.08 : 0.034)), unit * 0.008, px(crop ? 16 : 11));
-        if (options.bedNumbers !== false) labels.append(svg('text', { class: `map-bed-txt${layer.state ? ` map-st-${layer.state}` : ''}`, x: c.x * w, y: c.y * h, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, bedNumber(s, rows)));
+        // Una cama fuera de este uso (filtro) se ve apagada y sin número.
+        if (options.bedNumbers !== false && use) labels.append(svg('text', { class: `map-bed-txt${layer.state ? ` map-st-${layer.state}` : ''}`, x: c.x * w, y: c.y * h, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, bedNumber(s, rows)));
         continue;
       }
       if (off && !use) continue;
       const name = nameOf(s);
-      const text = stateText(s, layer);
+      // En el dibujo, lo corto si la app lo da («2»); la frase entera va al lector de pantalla y a la lista.
+      const text = layer.short ?? stateText(s, layer);
       const size = Math.max(Math.min(bw / Math.max(name.length * 0.62, 1), bh / (text ? 3.2 : 2.2), unit * 0.03), unit * 0.012, px(12));
       // Si dentro hay camas dibujadas, el rótulo va abajo para no taparlas.
       const bedsInside = here.some(({ s: b }) => b.parentId === s.id && b.kind === 'cama');
       const bottom = Math.max(...shape.points.map((p) => p[1])) * h;
       const y = bedsInside ? bottom - size * (text ? 2.1 : 1) : c.y * h - (text ? size * 0.55 : 0);
       labels.append(svg('text', { class: 'map-room-txt', x: c.x * w, y, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, name));
-      if (text) labels.append(svg('text', { class: 'map-room-state', x: c.x * w, y: y + size * 1.15, 'font-size': Math.max(size * 0.82, px(11)).toFixed(1), 'dominant-baseline': 'central' }, text));
+      if (text && layer.short) labels.append(svg('text', { class: 'map-room-short', x: c.x * w, y: y + size * 1.3, 'font-size': Math.max(size * 1.15, px(15)).toFixed(1), 'dominant-baseline': 'central' }, text));
+      else if (text) labels.append(svg('text', { class: 'map-room-state', x: c.x * w, y: y + size * 1.15, 'font-size': Math.max(size * 0.82, px(11)).toFixed(1), 'dominant-baseline': 'central' }, text));
     }
     root.append(shapesLayer, ring, labels);
     const missing = plan.fileId && failed.has(plan.fileId) ? el('p', { class: 'hint map-nobg' }, kt('No se ha podido cargar el dibujo: las estancias siguen en su sitio y en la lista.')) : null;
-    replace(stage, root, missing);
-    // Leyenda de las camas: solo los estados que hay.
     const states = new Set(here.filter(({ s }) => s.kind === 'cama' && inUse(s)).map(({ s }) => layerOf(s).state).filter(Boolean) as SpaceMapBedState[]);
+    return { nodes: [root, missing], states };
+  }
+
+  /** Pinta uno o varios dibujos y la leyenda de las camas (solo los estados que hay). */
+  function paintStage(drawn: Array<{ plan: FloorPlan; crop?: SpaceRow | null }>): void {
+    const states = new Set<SpaceMapBedState>();
+    const all = drawn.length > 1 || options.layout === 'all';
+    const parts = drawn.map(({ plan, crop }) => {
+      const out = paintPlan(plan, crop ?? null);
+      out.states.forEach((s) => states.add(s));
+      return all ? el('figure', { class: 'map-figure' }, el('figcaption', { class: 'map-figcap' }, planName(plan)), ...out.nodes) : out.nodes;
+    });
+    stage.classList.toggle('map-all', all);
+    replace(stage, ...parts.flat());
     replace(legend, ...BED_ORDER.filter((st) => states.has(st)).map((st) => el('li', null, el('span', { class: 'map-seat', dataset: { state: st }, 'aria-hidden': 'true' }), kt(BED_TEXT[st]))));
     legend.hidden = !states.size;
   }
@@ -443,7 +468,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       element.dataset.focus = focus;
       element.classList.toggle('map-noplan', !plan);
       paintHead(!!plan, []);
-      if (plan && crop) paintPlan(plan, crop); else { replace(stage); replace(legend); }
+      if (plan && crop) paintStage([{ plan, crop }]); else { replace(stage); replace(legend); }
       planBox.hidden = !plan;
       if (crop) paintList(plan, crop); else replace(list, el('p', { class: 'hint map-empty' }, kt('No hay espacios que enseñar.')));
       if (!plan && crop && mode !== 'list') list.prepend(el('p', { class: 'hint map-why' }, kt('Sin sitio en el plano: lo de dentro, en lista.')));
@@ -467,9 +492,10 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     element.dataset.view = view;
     element.classList.toggle('map-noplan', !hasPlan);
     paintHead(hasPlan, useful);
-    if (plan) paintPlan(plan); else { replace(stage); replace(legend); }
+    if (plan) paintStage(options.layout === 'all' ? useful.map((p) => ({ plan: p })) : [{ plan }]); else { replace(stage); replace(legend); }
     planBox.hidden = !hasPlan;
-    paintList(plan);
+    // Con todos los dibujos, la lista es la de todos.
+    paintList(options.layout === 'all' ? null : plan);
     const why = !hasPlan && mode !== 'list' ? kt('Sin plano todavía: la misma información en lista, con la ruta de cada espacio.') : null;
     const intro = list.querySelector('.map-why');
     if (why && !intro) list.prepend(el('p', { class: 'hint map-why' }, why));
@@ -486,11 +512,16 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
 
   // Al cambiar el ancho (girar el móvil, abrir la columna), se recalculan los rótulos.
   const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
-    const svgNode = stage.querySelector<SVGSVGElement>('.map-svg');
-    const vb = svgNode?.viewBox.baseVal;
-    if (!svgNode || !vb?.width) return;
-    const next = svgNode.getBoundingClientRect().width / vb.width;
-    if (next > 0 && Math.abs(next - scale) / next > 0.08) { scale = next; paint(); }
+    let changed = false;
+    for (const svgNode of stage.querySelectorAll<SVGSVGElement>('.map-svg')) {
+      const vb = svgNode.viewBox.baseVal;
+      const key = svgNode.getAttribute('data-key');
+      if (!vb?.width || !key) continue;
+      const next = svgNode.getBoundingClientRect().width / vb.width;
+      const before = scales.get(key) ?? 0;
+      if (next > 0 && Math.abs(next - before) / next > 0.08) { scales.set(key, next); changed = true; }
+    }
+    if (changed) paint();
   }) : null;
   resize?.observe(stage);
 
