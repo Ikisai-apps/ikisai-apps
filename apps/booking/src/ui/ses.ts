@@ -119,17 +119,18 @@ export function createSesBlock(): SesBlock {
     const accepted = acceptedReservationComm(list);
     const live = liveReservationComm(list);
     const cancelling = accepted ? pendingCancellation(list, accepted.id) : null;
-    const changed = !!accepted && changedSinceCommunicated(reservation, event?.final_guests as number | null | undefined, accepted);
+    // También si se desactivó SES después de comunicarla: la comunicación sigue viva y hay que anularla (plazo legal).
+    const changed = !!accepted && (!enabled || changedSinceCommunicated(reservation, event?.final_guests as number | null | undefined, accepted));
     const canceller = (id: string, label: string): HTMLElement => el('button', { class: 'ghost small', type: 'button', id, 'data-feedback-id': 'booking.reserva.ses.anular', 'data-feedback-label': 'Anular en SES', disabled: !online || busy || !!cancelling, onclick: () => void cancel(accepted!) }, label);
 
     const out: Child[] = [];
     if (!online) out.push(el('p', { class: 'hint', id: 'sesOffline', role: 'status' }, 'Sin conexión: el estado de SES y los envíos necesitan red. Se actualizará al reconectar.'));
     if (loadError && online) out.push(el('p', { class: 'formerror', id: 'sesLoadError', role: 'alert' }, loadError));
 
-    // Aviso de cambios: la comunicación aceptada ya no refleja la reserva.
+    // Aviso de cambios: la comunicación aceptada ya no refleja la reserva (o SES se desactivó después de comunicarla).
     if (accepted && changed) {
       out.push(el('div', { class: 'banner alert', id: 'sesChanged', role: 'alert', 'data-feedback-id': 'booking.reserva.ses.aviso_cambios', 'data-feedback-label': 'Aviso de cambios' },
-        el('span', null, 'La reserva cambió desde que se comunicó: anula y vuelve a comunicar'), canceller('sesCancelChanged', 'Anular en SES')));
+        el('span', null, enabled ? 'La reserva cambió desde que se comunicó: anula y vuelve a comunicar' : 'SES se desactivó después de comunicarla: anula la comunicación'), canceller('sesCancelChanged', 'Anular en SES')));
     }
 
     // Plazo de 24 h: desde el momento legal de la comunicación o, sin comunicación, desde el registro del pago.
