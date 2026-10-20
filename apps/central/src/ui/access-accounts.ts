@@ -373,7 +373,7 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
       const roles = rolesFor(account, app.id);
       const select = el('select', { id: `role-${app.id}`, 'aria-label': 'Acceso' },
         el('option', { value: '', selected: !m }, 'Sin acceso'),
-        ...roles.map((r) => el('option', { value: r, selected: m?.role === r }, ROLE_LABELS[r])),
+        ...[...roles].reverse().map((r) => el('option', { value: r, selected: m?.role === r }, ROLE_LABELS[r])),
         // Un rol que no se da a mano (outsider, por el nivel de casa) se enseña igual, sin ofrecerlo a las demás.
         ...(m && !roles.includes(m.role) ? [el('option', { value: m.role, selected: true }, ROLE_LABELS[m.role])] : [])) as HTMLSelectElement;
       // Id fijo (la lista de apps cambia); la etiqueta, con la app, solo en la pantalla.

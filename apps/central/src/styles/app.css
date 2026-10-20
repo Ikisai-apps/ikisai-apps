@@ -312,3 +312,27 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-logline{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--line)}
 .ctl-logline.alert .ctl-logwhat{color:var(--alert);font-weight:700}
 .ctl-logmeta{font-size:var(--text-sm,.875rem);color:var(--muted)}
+
+/* Personas · Directorio de caras (Bloque 2, MUELA-085). El anillo, solo con permiso de datos reservados (si no, borde neutro). */
+.ctl-searchrow{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;padding:8px 0;background:var(--bg)}
+.ctl-searchrow input[type=search]{flex:1;min-width:0;min-height:var(--tap,46px)}
+.ctl-searchrow .ghost{min-height:var(--tap,46px);flex:none}
+.ctl-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.ctl-filters select{min-height:var(--tap,46px)}
+.ctl-directory{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.ctl-directory > li{display:flex}
+.personrow.ctl-personface{align-items:center;text-align:center;gap:6px;height:100%}
+.ctl-personface .chips{justify-content:center}
+.ctl-personface.inactive .medal-disc{opacity:.6}
+.ctl-ring{display:inline-flex;border-radius:50%;padding:3px;border:3px solid var(--line)}
+.ctl-personface[data-ring="alert"] .ctl-ring{border-color:var(--alert)}
+.ctl-personface[data-ring="warn"] .ctl-ring{border-color:var(--warn)}
+.ctl-personface[data-ring="ok"] .ctl-ring{border-color:var(--ok,var(--accent))}
+.ctl-attention{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;padding:0;list-style:none}
+.ctl-attrow{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap,46px);padding:6px 10px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.ctl-attrow.alert{border-left-color:var(--alert)}
+.ctl-attrow > span{display:flex;flex-direction:column;min-width:0}
+.ctl-attwhy{font-size:var(--text-sm,.875rem);color:var(--muted)}
+/* Papelera de Personas a 46 px (MUELA-085, tres cambios de app.css). */
+.ctl-trashhead{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer}
+.ctl-trashrow .linkbtn{min-height:var(--tap,46px)}

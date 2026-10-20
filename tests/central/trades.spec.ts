@@ -95,6 +95,7 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
   // Personas: filtrar por «Fontanería» incluye a quien sabe «ACS»; chips del oficio en la fila.
   await page.goto(`${baseURL}/#/personas`);
   await expect(page.locator('.personrow', { hasText: 'Ana Ficticia' })).toContainText('ACS');
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await page.locator('#peopleTrade').selectOption({ label: 'Fontanería' });
   await expect(page.locator('.personrow')).toHaveCount(1);
   await expect(page.locator('.personrow', { hasText: 'Ana Ficticia' })).toBeVisible();
@@ -157,6 +158,7 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
   // Filtrar Personas por ACS enseña también a quien lo sabe por Fontanería; por Fontanería, a quien sabe ACS (como antes).
   await page.goto(`${baseURL}/#/personas`);
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2)
   await page.locator('#peopleTrade').selectOption({ label: '· ACS' });
   await expect(page.locator('.personrow')).toHaveCount(2);
   await page.locator('#peopleTrade').selectOption({ label: 'Fontanería' });

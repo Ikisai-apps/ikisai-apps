@@ -67,6 +67,7 @@ test('equipos · semilla, persona en dos equipos, filtro, papelera y lector', as
   // Lista: chips y filtro por equipo.
   await page.locator('.backlink').click();
   await expect(page.locator('.personrow', { hasText: 'Marga' })).toContainText('Recepción');
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await page.locator('#peopleTeam').selectOption({ label: 'Limpieza' });
   await expect(page.getByText('Ninguna persona coincide')).toBeVisible();
   await page.locator('#peopleTeam').selectOption({ label: 'Cocina' });

@@ -75,13 +75,14 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
 
   // Lista: el filtro «Outsider» deja solo a los outsiders, con dónde entran o el aviso de que sin cuenta no entran.
   await page.goto(`${baseURL}/#/personas`);
-  await page.locator('#peopleLevel').selectOption('outsider');
+  await page.locator('#peopleLevels [data-level="outsider"]').click();
   await expect(page.locator('.personrow')).toHaveCount(1);
   const bea = rowOf(page, 'Bea Ficticia');
   await expect(bea).toContainText('Mantenimiento y logística · Outsider');
   await expect(bea).toContainText('Fontanería');
   await expect(bea).toContainText('Tasks · Outsider');
   await expect(bea).toContainText('Guests · Editor');
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await page.locator('#peopleInactive').check();
   await expect(page.locator('.personrow')).toHaveCount(2);
   await expect(rowOf(page, 'Ciro Ficticio')).toContainText('Inactiva');
@@ -93,7 +94,7 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   await expect(page.locator('#p-level')).toHaveValue('outsider');
   await expect(page.locator('#p-level-hint')).toContainText('Como outsider entrará en Guests');
   await page.keyboard.press('Escape');
-  await page.locator('#peopleLevel').selectOption('');
+  await page.locator('#peopleLevels [data-level="outsider"]').click();
   await expect(page.locator('#newPerson')).toContainText('Nueva persona');
 
   // Ficha: la cabecera dice el nivel; el bloque Cuenta marca lo que da el nivel y lo que tenía antes.
@@ -109,11 +110,20 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   // Accesos › Cuentas: lo que da el nivel sale marcado y fijo; «Outsider» no se ofrece a mano en ninguna app.
   await page.goto(`${baseURL}/#/accesos`);
   const accountRow = page.locator('.accountrow', { hasText: 'Bea Ficticia' });
-  await expect(accountRow.locator('[data-derived]', { hasText: 'Tasks · Outsider' })).toContainText('por nivel de casa');
-  await accountRow.click();
+  const tasksCell = accountRow.locator('.ctl-cell[data-app="tasks"]');
+  await expect(tasksCell).toHaveText('O');
+  await expect(tasksCell).toHaveClass(/derived/);
+  await expect(tasksCell).toHaveAttribute('aria-label', /por nivel de casa/);
+  // La hoja de la casilla la deja bloqueada, con «se cambia en Personas».
+  await tasksCell.click();
+  await expect(page.getByRole('dialog').locator('[data-locked]')).toContainText('se cambia en Personas');
+  await expect(page.getByRole('dialog').locator('.ctl-roles')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await accountRow.locator('.ctl-acbtn').click();
   await expect(page.locator('#role-tasks')).toHaveValue('outsider');
   await expect(page.locator('#role-tasks')).toBeDisabled();
   await expect(page.locator('[data-derived="tasks"]')).toContainText('cámbialo en Personas');
+  await page.locator('#addApp').click();
   await expect(page.locator('#role-booking option')).toHaveText(['Sin acceso', 'Lector', 'Editor', 'Propietario']);
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
 

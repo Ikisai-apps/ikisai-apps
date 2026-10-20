@@ -60,9 +60,10 @@ test('nivel de casa · vista previa, aplicar, pantalla nueva, Alta con nivel y m
   await login(page);
   await page.goto(`${baseURL}/#/personas`);
 
-  // Antes de aplicar: la pantalla de siempre y el aviso para dirección.
+  // Antes de aplicar: la pantalla de siempre (la relación, en «Filtros») y el aviso para dirección.
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await expect(page.locator('#peopleRelation')).toBeVisible();
-  await expect(page.locator('#peopleLevel')).toBeHidden();
+  await expect(page.locator('#peopleLevels')).toBeHidden();
   await expect(page.locator('#levelsNote')).toContainText('5 personas no lo tienen');
 
   // Vista previa: propuesta por función y relación, editable.
@@ -82,14 +83,14 @@ test('nivel de casa · vista previa, aplicar, pantalla nueva, Alta con nivel y m
   // Después: filtro de nivel en el mismo sitio, «Área · Nivel», y el directorio solo con nivel.
   await expect(page.locator('#levelsNote')).toHaveCount(0);
   await expect(page.locator('#peopleRelation')).toBeHidden();
-  await expect(page.locator('#peopleLevel')).toBeVisible();
+  await expect(page.locator('#peopleLevels')).toBeVisible();
   await expect(rowOf(page, 'Ana Ficticia')).toContainText('Cocina · Staff');
   await expect(rowOf(page, 'Dora Ficticia')).toContainText('Dirección general · Dirección');
   await expect(rowOf(page, 'Eva Ficticia')).toHaveCount(0);
-  await page.locator('#peopleLevel').selectOption('sin_nivel');
+  await page.locator('#peopleLevels [data-level="sin_nivel"]').click();
   await expect(page.locator('.personrow')).toHaveCount(1);
   await expect(rowOf(page, 'Eva Ficticia')).toBeVisible();
-  await page.locator('#peopleLevel').selectOption('staff');
+  await page.locator('#peopleLevels [data-level="staff"]').click();
   await expect(page.locator('.personrow')).toHaveCount(2);
 
   // Ficha: Nivel de casa y Área principal; Relación y Cobertura ya no se ven.
@@ -118,10 +119,11 @@ test('nivel de casa · vista previa, aplicar, pantalla nueva, Alta con nivel y m
 
   // Alta con «Persona nueva»: elige el nivel (por defecto, Staff).
   await page.goto(`${baseURL}/#/accesos/alta`);
+  await page.locator('#invitePeople .ctl-face[data-person=""]').click();
   await expect(page.locator('#inviteLevel')).toHaveValue('staff');
   await page.locator('#inviteName').fill('Nueva Ficticia');
   await page.locator('#inviteEmail').fill('nueva-nivel@example.invalid');
-  await page.locator('#invite-tasks').selectOption('reader');
+  await page.locator('#invite-tasks button[data-role="reader"]').click();
   await page.locator('#inviteSubmit').click();
   await page.getByRole('button', { name: 'Hecho' }).click();
   await page.getByLabel('La he guardado en un lugar seguro').check();
@@ -136,6 +138,7 @@ test('nivel de casa · vista previa, aplicar, pantalla nueva, Alta con nivel y m
   await page.goto(`${baseURL}/#/personas`);
   await page.reload();
   await expect(rowOf(page, 'Bea Ficticia')).toContainText('Limpieza · Voluntariado');
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await expect(page.locator('#peopleRelation')).toBeVisible();
-  await expect(page.locator('#peopleLevel')).toBeHidden();
+  await expect(page.locator('#peopleLevels')).toBeHidden();
 });
