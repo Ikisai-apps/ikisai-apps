@@ -1,23 +1,25 @@
 /**
  * «Diseña tu retiro» (fase 2, API.md §13.2; Booking B7d, B9 y B10; pasada única, zona 2). El borrador es la propia
  * reserva de Booking «en estudio»: lo que cambia aquí lo ve el personal al instante. Se guarda solo, campo a campo.
- * - Banda de precio fija arriba y «Lo que te falta por rellenar» (`app/design-checks.ts`): sin prometer la propuesta.
+ * - Banda de precio fija arriba y el veredicto con «Siguiente: …» y lo que falta debajo (`app/design-checks.ts`,
+ *   `ui/ready.ts`; MUELA-072:47 y MUELA-084): dice si está todo para pedir la propuesta, sin prometer plazos de Ikisai.
  * - Personas, comidas, alojamiento y espacios, extras y notas para Ikisai.
  * - Precio orientativo con el motor de tarifas de Booking (IVA incluido, mínimo comercial y señal), el precio de cada
  *   fecha en «Calcular para», el precio medio por persona y el diseño frente a la propuesta de Ikisai.
  * - «¿Cuánto ganas?»: calculadora privada, solo en este dispositivo. Lo de Ikisai varía con las plazas (asistentes más
  *   colaboradores); los colaboradores solo cuentan aquí y **nunca** se escriben en Booking (las plazas, en «Personas»).
  */
-import { createSaveState, el, renderChecks, replace, toast, type CheckItem } from '@ikisai/ui-kit';
+import { createSaveState, el, replace, toast, type CheckItem } from '@ikisai/ui-kit';
 import type { DraftFields, ExtraRequest, PortalDates, PortalProposal, PortalRates, ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
-import { designChecks, type DesignCheckTarget } from '../app/design-checks.ts';
+import { designChecks, readyVerdict, type DesignCheckTarget } from '../app/design-checks.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import { dateRange } from '../app/labels.ts';
 import { proposalVersions } from '../app/proposal-state.ts';
 import { averagePrice, breakEvenAttendees, breakEvenPrice, marginOf, marginPct, priceForMargin, quote, type Quote, type QuoteInput } from '../app/quote.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
+import { renderReady } from './ready.ts';
 import type { ViewContext } from './shell.ts';
 
 const MEAL_PLANS: Array<[string, string]> = [['pension_completa', L('Pensión completa')], ['media_pension', L('Media pensión')], ['desayuno', L('Desayuno')], ['segun_programa', L('Comidas según programa')]];
@@ -32,6 +34,10 @@ const labelOf = (list: Array<[string, string]>, value: string) => { const hit = 
 /** Lo que guarda la calculadora en el borrador local (todo en texto, tal como se teclea). Nunca viaja. */
 interface Margins { price: string; attendees: string; collaborators: string; other: string; pct: string }
 const EMPTY_MARGINS: Margins = { price: '', attendees: '', collaborators: '', other: '', pct: '' };
+
+/** Campo al que llevar al abrir Diseño (desde el «Siguiente» de Fechas: «Ir a Personas»…). Se usa una vez. */
+let focusOnOpen: string | null = null;
+export function openDesignAt(field: string): void { focusOnOpen = field; }
 
 export function renderDesign(ctx: ViewContext, reservationId: string, detail: ReservationDetail, dates: PortalDates | null, reload: () => void): HTMLElement {
   const host = el('div', { id: 'design', 'data-feedback-id': 'organizers.diseno', 'data-feedback-label': 'Diseño' }, loading());
@@ -102,15 +108,15 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
   }
   const go = (target: DesignCheckTarget) => (target.kind === 'tab' ? ctx.navigate(`#/retiro/${reservationId}/fechas`) : goField(target.field));
 
-  // --- Lo que te falta por rellenar ------------------------------------------------------------------------------------
+  // --- Veredicto, «Siguiente» y lo que te falta -----------------------------------------------------------------------
   const readyHost = el('div');
   function paintChecks(): void {
-    const items: CheckItem[] = designChecks(state, dates, { t, mealPlan: (v) => labelOf(MEAL_PLANS, v), menuStyle: (v) => labelOf(MENU_STYLES, v) })
-      .map((c) => ({ ok: c.ok, text: c.text, detail: c.detail, action: c.ok ? null : { ...c.action, onClick: () => go(c.target) } }));
-    const pending = items.filter((i) => !i.ok).length;
-    replace(readyHost, renderChecks({
-      items, onlyPending: true, label: t('Lo que te falta por rellenar'),
-      verdict: pending === 0 ? t('Has rellenado lo básico. Puedes seguir cambiando el diseño cuando quieras.') : pending === 1 ? t('Te falta rellenar 1 cosa') : t('Te falta rellenar {n} cosas', { n: pending }),
+    const checks = designChecks(state, dates, { t, mealPlan: (v) => labelOf(MEAL_PLANS, v), menuStyle: (v) => labelOf(MENU_STYLES, v) });
+    const items: CheckItem[] = checks.map((c) => ({ ok: c.ok, text: c.text, detail: c.detail, action: c.ok ? null : { ...c.action, onClick: () => go(c.target) } }));
+    replace(readyHost, renderReady(readyVerdict(checks, proposal, { t }), items, {
+      label: t('Lo que te falta por rellenar'),
+      go: (next) => (next.kind === 'check' ? go(next.check.target) : ctx.navigate(`#/retiro/${reservationId}/propuesta`)),
+      mark: (button) => fbMark(button, 'organizers.diseno.siguiente', 'Siguiente paso del diseño'),
     }));
   }
 
@@ -402,7 +408,7 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
     replace(host,
       staleAt ? staleNote(staleAt) : null,
       priceBar,
-      fbMark(section(t('Lo que te falta por rellenar'), { id: 'designReady' }, readyHost), 'organizers.diseno.falta', 'Lo que te falta por rellenar'),
+      fbMark(section(t('Cómo vas'), { id: 'designReady' }, readyHost), 'organizers.diseno.falta', 'Lo que te falta por rellenar'),
       el('p', { class: 'muted' }, t('Lo que pongas aquí lo ve el equipo de Ikisai al momento. Se guarda solo.')),
       section(t('Personas'), { id: 'designPeople' }, el('div', { class: 'orggrid' },
         numberField('expected_guests', t('Personas previstas')), numberField('minors_count', t('De ellas, menores de edad')))),
@@ -422,6 +428,7 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
       el('div', { class: 'orgsave' }, el('div', { class: 'orgsavestate', id: 'designSaveState' }, saves.field('diseno').element)));
     paintChecks();
     paintQuote();
+    if (focusOnOpen) { const field = focusOnOpen; focusOnOpen = null; requestAnimationFrame(() => goField(field)); }
   }
 
   async function load(): Promise<void> {

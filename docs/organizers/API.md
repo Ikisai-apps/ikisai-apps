@@ -586,7 +586,7 @@ Reglas de la app (puras, con su prueba de Node):
 | Módulo | Qué decide |
 |---|---|
 | `app/journey.ts` | la fase y etapa, «Te toca», los grupos de Mis retiros y los pasos del Resumen. «Pasados» son los retiros no cancelados con `end_date` anterior a hoy (Madrid); «perdida» va a Cancelados. |
-| `app/design-checks.ts` | «Lo que te falta por rellenar»: fechas, personas, régimen y orientación del menú. No promete la propuesta. El Resumen cuenta solo las del formulario. |
+| `app/design-checks.ts` | las comprobaciones (fechas, personas, régimen y orientación del menú) y el veredicto de Diseño y Fechas (§18.2). El Resumen cuenta solo las del formulario. |
 | `app/quote.ts` | el precio medio por persona (siempre «el total entre N»), el punto de equilibrio con el coste de Ikisai para esas plazas, y el precio para un % de margen, redondeado al euro hacia arriba. |
 | `app/proposal-state.ts` · `app/pay-state.ts` | las versiones vigente y anteriores, la comparación, y el extracto: lo que queda, «Próximamente» y los movimientos. |
 | `app/kitchen-state.ts` | el cruce del menú con los requisitos del grupo. |
@@ -612,6 +612,18 @@ Privacidad y dispositivo:
 - **«Cerrar sesión»:**
   - en el cajón, el del kit;
   - en la cabecera, el propio (`#logoutButton`), mientras el del kit no se vea en el móvil ni se traduzca.
+
+### 18.2 Veredicto de Diseño y Fechas (tanda 30, 20-10-2026)
+
+MUELA-072:47, que VG mantiene en la MUELA-084: arriba, el veredicto ✓ / !; debajo, «Siguiente» en grande con la acción que toca; y al final, lo que falta con «Ir a…». La regla es pura y común (`readyVerdict` en `app/design-checks.ts`) y la pinta `ui/ready.ts`.
+- **Qué cuenta:** las cuatro comprobaciones de siempre, en las dos pestañas. Con la reserva ya prerreservada (Fechas sin Diseño), solo las fechas, y sin «Siguiente» si están bien.
+- **Lo siguiente:**
+  - si falta algo, la primera que falta, que no se repite en la lista;
+  - con todo bien y sin propuesta, «Pedir la propuesta a Ikisai», que lleva a Propuesta (allí se escribe al equipo y se ve lo enviado);
+  - con una propuesta vigente (enviada o aceptada), «Revisar la propuesta».
+- **No promete plazos de Ikisai** ni que la propuesta llegue sola. No hay escritura nueva: lo de Propuesta es el comentario de siempre.
+- **Fechas** se recalcula al marcar, antes de guardar. «Ir a Personas» o «Ir a Comidas» abren Diseño con el campo enfocado.
+- **Ids de feedback:** `organizers.diseno.siguiente`, `organizers.fechas.veredicto` y `organizers.fechas.siguiente`.
 
 ## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
 

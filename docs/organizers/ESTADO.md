@@ -66,7 +66,7 @@
 - 2026-10-19 · **Rediseño de una pasada (tanda 27, La Muela, consolidado MUELA-072)**, hecho con las piezas del kit 0.42–0.45. Detalle en API.md §18.
   - **Mis retiros:** la lista con portada o iniciales, el recorrido y «Te toca», y «Pasados» y «Cancelados» plegados.
   - **Ficha:** portada, pestañas de 46 px y el Resumen paso a paso.
-  - **Diseño:** «Lo que te falta por rellenar» y la calculadora «¿Cuánto ganas?», que solo se guarda en el dispositivo.
+  - **Diseño:** «Lo que te falta por rellenar» (en la tanda 30 vuelve el veredicto con «Siguiente») y la calculadora «¿Cuánto ganas?», que solo se guarda en el dispositivo.
   - **Propuesta:** las versiones, con «Comparar versiones» (Booking #610).
   - **Pagos:** el extracto.
   - **Asistentes:** por grupos, con la acción en la fila.
@@ -80,6 +80,10 @@
   - **Cajón:** la marca abre el cajón con «Este retiro» (las pestañas visibles de la ficha, con las solicitudes por decidir), tus retiros, las apps de Ikisai con «Ayuda y sugerencias» y «Cerrar sesión». La línea de sincronización sale del cliente.
   - **Cabecera:** se queda el «Cerrar sesión» propio, visible en el móvil. El del kit, que solo se ve en escritorio y no está traducido, se retira hasta la tanda 29 del kit.
   - **`--muted`:** sin el `color-mix`, porque ya da 4,56:1.
+- 2026-10-20 · Tanda 30 (MUELA-084, decisión de VG):
+  - **Diseño y Fechas:** vuelven al veredicto con «Siguiente: …» de la MUELA-072, con lo que falta debajo (API.md §18.2).
+  - **Señal:** «hasta el {fecha}» en lugar de «antes del {fecha}» (Booking): el mismo día del plazo, «antes del» ya parecía tarde.
+  - **Comentarios del código:** lo que no decidió VG pone «decisión de Core Sevilla (19-10)».
 
 ## Pendiente
 

@@ -28,13 +28,13 @@ test('organizers · extracto: señal pagada en parte, «Pagado 300 de 840»; el 
   const [senal, saldo] = s.upcoming;
   assert.equal(senal!.id, 'senal');
   assert.equal(senal!.amount, 540);
-  assert.equal(senal!.meta, 'antes del 2026-11-01 · Pagado 300 € de 840 €');
+  assert.equal(senal!.meta, 'hasta el 2026-11-01 · Pagado 300 € de 840 €');
   assert.equal(senal!.chip?.text, 'Pendiente');
   assert.equal(saldo!.id, 'saldo');
   assert.equal(saldo!.amount, 1960);
   assert.equal(saldo!.date, null);
   assert.equal(saldo!.meta, 'cuando te llegue la factura');
-  assert.ok(!saldo!.meta.includes('antes del'), 'el plazo del saldo es interno de Ikisai');
+  assert.ok(!saldo!.meta.includes('hasta el'), 'el plazo del saldo es interno de Ikisai');
   // Movimientos: dos facturas y un pago recibido (el de la cobrada), del más reciente al más antiguo.
   assert.deepEqual(s.moves.map((m) => [m.kind, m.label]), [['in', 'Pago recibido · Señal'], ['doc', 'Factura 0101'], ['doc', 'Factura 0102']]);
   assert.equal(s.moves[0]!.meta, '2026-10-12 · te quedan 2500 €');

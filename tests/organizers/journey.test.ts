@@ -102,7 +102,7 @@ test('organizers · resumen: la señal atrasada va antes que las solicitudes; el
   const late = summarySteps(input({ contract: contract(due), joins: { requests: 2, persons: 3 } }), { money: money(0) }, TODAY, format);
   assert.deepEqual(ids(late), ['paso_pagos', 'ver_solicitudes', 'paso_asistentes']);
   assert.equal(late[0]!.title, 'Pagar la señal (300 €)');
-  assert.equal(late[0]!.stateText, 'Atrasado · era antes del 2026-10-01');
+  assert.equal(late[0]!.stateText, 'Atrasado · el plazo era hasta el 2026-10-01');
   assert.equal(late[1]!.title, 'Decidir 2 solicitudes para apuntarse');
   assert.equal(late[1]!.stateText, '3 personas piden apuntarse a tu retiro.');
 
@@ -115,8 +115,8 @@ test('organizers · resumen: la señal atrasada va antes que las solicitudes; el
 
   // Señal aún en plazo.
   const onTime = summarySteps(input({ contract: contract([{ kind: 'senal', date: '2026-11-01', amount: 300 }, { kind: 'saldo', date: null, amount: 700 }]) }), { money: money(0) }, TODAY, format);
-  assert.equal(onTime[0]!.title, 'Pagar la señal (300 €) antes del 2026-11-01');
-  assert.equal(onTime[0]!.stateText, 'Señal de 300 € antes del 2026-11-01');
+  assert.equal(onTime[0]!.title, 'Pagar la señal (300 €) hasta el 2026-11-01');
+  assert.equal(onTime[0]!.stateText, 'Señal de 300 € hasta el 2026-11-01');
 
   // Todo pagado: hecho.
   const paid = summarySteps(input({ contract: contract(due) }), { money: money(1000) }, TODAY, format);

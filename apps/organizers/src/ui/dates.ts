@@ -5,13 +5,20 @@
  * - `calendar`: los fines de semana de los próximos doce meses (libre, en opción u ocupado, sin decir quién); marca los
  *   que le vienen bien entre los que no están ocupados.
  * Lo marcado son posibilidades, nunca la fecha definitiva. Se guarda solo (sin botón) y avisa al comercial por la cola.
+ * Arriba, el veredicto de Diseño y Fechas con «Siguiente: …» (`ui/ready.ts`; MUELA-072:47 y MUELA-084): las mismas
+ * comprobaciones que Diseño, recalculadas al marcar. Con la reserva ya prerreservada (sin Diseño), solo las fechas.
  */
-import { createSaveState, el, replace, toast } from '@ikisai/ui-kit';
-import type { DateOption, DatePreference, PortalDates, Weekend } from '../app/api.ts';
+import { createSaveState, el, replace, toast, type CheckItem } from '@ikisai/ui-kit';
+import type { DateOption, DatePreference, PortalDates, PortalProposal, ReservationDetail, Weekend } from '../app/api.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
+import { designChecks, designStateOf, readyVerdict, type DesignCheckTarget } from '../app/design-checks.ts';
 import { i18n, t } from '../app/i18n.ts';
+import { DRAFT_STATUSES } from '../app/journey.ts';
 import { dateRange, hourLabel } from '../app/labels.ts';
+import { proposalVersions } from '../app/proposal-state.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
+import { openDesignAt } from './design.ts';
+import { renderReady } from './ready.ts';
 import type { ViewContext } from './shell.ts';
 
 const MAX_OPTIONS = 20;
@@ -31,7 +38,7 @@ const monthLabel = (date: string) => {
 };
 const dayNumber = (date: string) => Number(date.slice(8, 10));
 
-export function renderDates(ctx: ViewContext, reservationId: string, onSaved?: () => void): HTMLElement {
+export function renderDates(ctx: ViewContext, reservationId: string, detail: ReservationDetail, onSaved?: () => void): HTMLElement {
   const host = el('div', { id: 'dates', 'data-feedback-id': 'organizers.fechas', 'data-feedback-label': 'Fechas' }, loading());
   const saves = createSaveState({ savedMs: 4000 });
   let alive = true;
@@ -60,12 +67,42 @@ export function renderDates(ctx: ViewContext, reservationId: string, onSaved?: (
   const resume = () => { if (pending) void save(); };
   window.addEventListener('online', resume);
 
+  // --- Veredicto ---------------------------------------------------------------------------------------------------
+  const draft = DRAFT_STATUSES.has(detail.status);
+  /** La propuesta vigente (lectura con caché; sin ella, el veredicto no la da por enviada). */
+  let proposal: PortalProposal | null = null;
+  const readyHost = el('div', { id: 'datesReady' });
+  /** Se repinta con lo marcado en pantalla, antes de que se guarde. */
+  function paintReady(current: PortalDates): void {
+    const checks = designChecks(designStateOf(detail), current, { t });
+    const shown = draft ? checks : checks.filter((c) => c.key === 'fechas');
+    const items: CheckItem[] = shown.map((c) => ({ ok: c.ok, text: c.text, detail: c.detail, action: c.ok ? null : { ...c.action, onClick: () => goCheck(c.target) } }));
+    replace(readyHost, renderReady(readyVerdict(checks, proposal, { draft, t }), items, {
+      label: draft ? t('Lo que te falta por rellenar') : t('Tus fechas'),
+      go: (next) => (next.kind === 'check' ? goCheck(next.check.target) : ctx.navigate(`#/retiro/${reservationId}/propuesta`)),
+      mark: (button) => fbMark(button, 'organizers.fechas.siguiente', 'Siguiente paso de las fechas'),
+    }));
+  }
+  /** Fechas: a la lista de esta misma pestaña. Lo demás vive en Diseño, que se abre con el campo enfocado. */
+  function goCheck(target: DesignCheckTarget): void {
+    if (target.kind === 'field') { openDesignAt(target.field); ctx.navigate(`#/retiro/${reservationId}/diseno`); return; }
+    const list = host.querySelector<HTMLElement>('#datesIkisai, #datesCalendar');
+    if (!list) return;
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    list.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    list.querySelector<HTMLElement>('input:not([disabled]), button.orgweekend:not([disabled])')?.focus({ preventScroll: true });
+  }
+
   async function load(): Promise<void> {
     replace(host, loading());
     try {
-      const dates = await ctx.api.dates(reservationId);
+      const [dates, proposals] = await Promise.all([
+        ctx.api.dates(reservationId),
+        draft ? ctx.api.proposals(reservationId).catch(() => null) : Promise.resolve(null),
+      ]);
       const weekends = dates.value.mode === 'calendar' ? await ctx.api.availability(reservationId) : null;
       if (!alive) return;
+      proposal = proposals ? proposalVersions(proposals.value.items).current : null;
       paint(dates.value, weekends?.value.weekends ?? [], (dates.stale && dates.at) || (weekends?.stale && weekends.at) || null);
     } catch (error) {
       if (alive) replace(host, failure(error, () => void load()));
@@ -74,10 +111,12 @@ export function renderDates(ctx: ViewContext, reservationId: string, onSaved?: (
 
   function paint(dates: PortalDates, weekends: Weekend[], staleAt: string | null): void {
     const note = el('p', { class: 'muted small', id: 'datesNote' }, t('Lo que marques son posibilidades: Ikisai confirmará la fecha definitiva.'));
+    paintReady(dates);
+    const ready = fbMark(section(draft ? t('Cómo vas') : t('Tus fechas'), { id: 'datesVerdict' }, readyHost), 'organizers.fechas.veredicto', 'Veredicto de las fechas');
     if (dates.mode === 'fixed' && dates.definitive) {
       const d = dates.definitive;
       const hours = [hourLabel(d.arrival_time) && t('llegada a las {hora}', { hora: hourLabel(d.arrival_time) }), hourLabel(d.departure_time) && t('salida a las {hora}', { hora: hourLabel(d.departure_time) })].filter(Boolean).join(' · ');
-      replace(host, staleAt ? staleNote(staleAt) : null,
+      replace(host, staleAt ? staleNote(staleAt) : null, ready,
         section(t('Fecha definitiva'), { id: 'datesFixed' },
           el('p', null, el('strong', null, dateRange(d.start, d.end))),
           hours ? el('p', { class: 'muted' }, hours) : null,
@@ -93,11 +132,12 @@ export function renderDates(ctx: ViewContext, reservationId: string, onSaved?: (
           onchange: (e: Event) => {
             ok.set(o.id, (e.target as HTMLInputElement).checked);
             schedule(dates.options.map((x) => ({ option_id: x.id, ok: ok.get(x.id) === true })));
+            paintReady({ ...dates, options: dates.options.map((x) => ({ ...x, organizer_ok: ok.get(x.id) === true })) });
           } }) as HTMLInputElement;
         return el('label', { class: `field check orgdateoption${busy ? ' muted' : ''}`, 'data-option': o.id },
           input, el('span', null, dateRange(o.start, o.end), ' ', availabilityChip(o.availability)));
       });
-      replace(host, staleAt ? staleNote(staleAt) : null,
+      replace(host, staleAt ? staleNote(staleAt) : null, ready,
         section(t('Fechas que te propone Ikisai'), { id: 'datesIkisai' },
           el('p', null, t('Marca las que te vienen bien.')),
           fbMark(el('div', { class: 'orgdateoptions' }, ...rows), 'organizers.fechas.opciones.marcar', 'Marcar fechas propuestas'),
@@ -120,6 +160,7 @@ export function renderDates(ctx: ViewContext, reservationId: string, onSaved?: (
       button.setAttribute('aria-pressed', String(selected.has(w.start)));
       paintCount();
       schedule([...selected].sort(([a], [b]) => a.localeCompare(b)).map(([start, end]) => ({ start, end })));
+      paintReady({ ...dates, options: [...selected].map(([start, end]): DateOption => ({ id: start, start, end, arrival_time: null, departure_time: null, proposed_by: 'organizer', organizer_ok: true, availability: 'libre' })) });
     };
     const count = el('p', { class: 'muted small', id: 'datesCount' });
     const paintCount = () => replace(count, selected.size
@@ -138,7 +179,7 @@ export function renderDates(ctx: ViewContext, reservationId: string, onSaved?: (
         }, el('strong', null, `${dayNumber(w.start)}–${dayNumber(w.end)}`), availabilityChip(w.status)) as HTMLButtonElement;
         return button;
       }))));
-    replace(host, staleAt ? staleNote(staleAt) : null,
+    replace(host, staleAt ? staleNote(staleAt) : null, ready,
       section(t('¿Qué fines de semana te vienen bien?'), { id: 'datesCalendar' },
         el('p', null, t('Marca uno o varios, de viernes a domingo. Puedes cambiarlos cuando quieras.')),
         note, legend(), count,

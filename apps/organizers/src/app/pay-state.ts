@@ -60,7 +60,7 @@ export function statementOf(contract: Contract | null, m: PortalMoney, format: S
       const pending = Math.max(0, Math.min(d.amount, Math.round((accumulated - collected) * 100) / 100));
       if (d.kind === 'senal') {
         const paidHere = Math.round((d.amount - pending) * 100) / 100;
-        const meta = [d.date ? t('antes del {fecha}', { fecha: day(d.date) }) : null,
+        const meta = [d.date ? t('hasta el {fecha}', { fecha: day(d.date) }) : null,
           paidHere > 0 ? t('Pagado {a} de {b}', { a: money(paidHere), b: money(d.amount) }) : null].filter(Boolean).join(' · ');
         upcoming.push({ id: 'senal', date: null, label: t('Señal'), meta, amount: pending, kind: 'due', chip: { text: t('Pendiente'), tone: 'warn' } });
       } else {

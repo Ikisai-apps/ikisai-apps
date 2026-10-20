@@ -1,11 +1,11 @@
 /**
- * Organizers · «Lo que te falta por rellenar» del diseño (pasada única, zona 2): las cuatro comprobaciones, sin comidas
- * y el recuento para el Resumen del retiro (`designPending`).
+ * Organizers · veredicto y «Lo que te falta por rellenar» del diseño (pasada única, zona 2; tanda 30, MUELA-084): las
+ * cuatro comprobaciones, sin comidas, el veredicto con «Siguiente» de Diseño y Fechas, y el recuento para el Resumen.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { DateOption, PortalDates } from '../../apps/organizers/src/app/api.ts';
-import { designChecks, designPending, type DesignCheckState } from '../../apps/organizers/src/app/design-checks.ts';
+import { designChecks, designPending, readyVerdict, type DesignCheckState } from '../../apps/organizers/src/app/design-checks.ts';
 
 const option = (id: string, over: Partial<DateOption> = {}): DateOption => ({
   id, start: '2027-03-12', end: '2027-03-14', arrival_time: null, departure_time: null, proposed_by: 'ikisai', organizer_ok: false, availability: 'libre', ...over,
@@ -55,4 +55,42 @@ test('organizers · diseño: cuántas faltan del formulario, para el Resumen del
   assert.equal(designPending({ expected_guests: 20, requires_meals: true, meal_plan: 'media_pension', menu_style: null }, offered), 1);
   assert.equal(designPending({ expected_guests: 20, requires_meals: false, meal_plan: null, menu_style: null }, { ...offered, options: [option('a', { organizer_ok: true })] }), 0);
   assert.equal(designPending({ expected_guests: 20, requires_meals: false, meal_plan: null, menu_style: null }, offered), 0, 'sin fechas marcadas, el formulario sigue completo');
+});
+
+test('organizers · veredicto: lo que falta para pedir la propuesta, con la primera como «Siguiente»', () => {
+  const v = readyVerdict(designChecks(empty, offered), null);
+  assert.equal(v.ok, false);
+  assert.equal(v.pending, 4);
+  assert.equal(v.text, 'Te faltan 4 cosas para pedir la propuesta');
+  assert.equal(v.next?.kind, 'check');
+  assert.equal(v.next?.title, 'Fechas posibles');
+  assert.equal(v.next?.action, 'Ir a Fechas');
+  const one = readyVerdict(designChecks({ ...empty, expected_guests: 8, requires_meals: false }, offered), null);
+  assert.equal(one.text, 'Te falta 1 cosa para pedir la propuesta');
+  assert.equal(one.next?.kind === 'check' && one.next.check.key, 'fechas');
+  const noDates = readyVerdict(designChecks({ ...empty, requires_meals: false }, { ...offered, options: [option('a', { organizer_ok: true })] }), null);
+  assert.equal(noDates.next?.kind === 'check' && noDates.next.check.key, 'personas');
+});
+
+test('organizers · veredicto: con todo, pedir la propuesta o revisarla; nunca promete plazos', () => {
+  const full: DesignCheckState = { expected_guests: 20, requires_meals: false, meal_plan_requested: null, menu_style_requested: null };
+  const marked: PortalDates = { ...offered, options: [option('a', { organizer_ok: true })] };
+  const ask = readyVerdict(designChecks(full, marked), null);
+  assert.equal(ask.ok, true);
+  assert.equal(ask.text, 'Lo tienes todo para pedir la propuesta');
+  assert.deepEqual([ask.next?.kind, ask.next?.title, ask.next?.action], ['proposal', 'Pedir la propuesta a Ikisai', 'Ir a Propuesta']);
+  const review = readyVerdict(designChecks(full, marked), { status: 'enviada' });
+  assert.deepEqual([review.next?.kind, review.next?.action], ['proposal', 'Ver la propuesta']);
+  // Una caducada no cuenta como propuesta vigente.
+  assert.equal(readyVerdict(designChecks(full, marked), { status: 'caducada' }).next?.title, 'Pedir la propuesta a Ikisai');
+  for (const x of [ask, review]) assert.ok(!/\b(horas?|días?|semanas?|plazo|pronto|en breve)\b/i.test(`${x.text} ${x.next?.title} ${x.next?.detail}`), 'sin plazos de Ikisai');
+});
+
+test('organizers · veredicto: ya prerreservada (sin Diseño), solo cuentan las fechas', () => {
+  const fixed: PortalDates = { mode: 'fixed', definitive: { start: '2027-03-12', end: '2027-03-14', arrival_time: null, departure_time: null }, options: [] };
+  const v = readyVerdict(designChecks(empty, fixed), null, { draft: false });
+  assert.deepEqual([v.ok, v.text, v.next], [true, 'Fecha fijada por Ikisai.', null]);
+  const open = readyVerdict(designChecks(empty, offered), null, { draft: false });
+  assert.deepEqual([open.ok, open.pending, open.text], [false, 1, 'Te falta marcar alguna fecha posible']);
+  assert.equal(open.next?.kind === 'check' && open.next.check.key, 'fechas');
 });

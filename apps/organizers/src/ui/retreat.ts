@@ -177,7 +177,7 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     destroySub?.();
     destroySub = null;
     const sub = (node: HTMLElement) => { destroySub = () => (node as HTMLElement & { destroy?: () => void }).destroy?.(); content.push(node); };
-    if (tab === 'fechas' && showDates) sub(renderDates(ctx, reservationId));
+    if (tab === 'fechas' && showDates) sub(renderDates(ctx, reservationId, d));
     else if (tab === 'diseno' && showDesign) sub(renderDesign(ctx, reservationId, d, data.dates, () => void load()));
     else if (tab === 'propuesta' && showProposal) sub(renderProposal(ctx, reservationId));
     else if (tab === 'pagos' && showPayments) sub(renderPayments(ctx, reservationId, d.contract ?? null));

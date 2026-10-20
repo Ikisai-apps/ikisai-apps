@@ -347,7 +347,12 @@ test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ik
   await page.goto(`${baseURL}/#/retiro/${offered}/fechas`);
   await expect(page.locator('#datesIkisai')).toBeVisible();
   await expect(page.locator('#datesIkisai .orgdateoption')).toHaveCount(2);
+  // Veredicto arriba (tanda 30, MUELA-084): falta marcar una fecha, y es lo siguiente; se recalcula al marcar.
+  const verdict = page.locator('#datesVerdict');
+  await expect(verdict.locator('.check-verdict')).toContainText('para pedir la propuesta');
+  await expect(verdict.locator('#readyNext')).toContainText('Fechas posibles');
   await page.locator('#datesIkisai .orgdateoption').first().locator('input').check();
+  await expect(verdict.locator('#readyNext')).not.toContainText('Fechas posibles');
   await expect(page.locator('#datesSaveState')).toContainText('Guardado');
   await page.reload();
   await expect(page.locator('#datesIkisai .orgdateoption').first().locator('input')).toBeChecked();
@@ -356,6 +361,10 @@ test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ik
   await page.goto(`${baseURL}/#/retiro/${fixed}/fechas`);
   await expect(page.locator('#datesFixed')).toBeVisible();
   await expect(page.locator('#datesFixed input, #datesFixed .orgweekend')).toHaveCount(0);
+  // Con la fecha fijada, lo siguiente es el diseño: «Ir a Personas» abre Diseño con el campo enfocado.
+  await expect(page.locator('#datesVerdict #readyNext')).toContainText('Cuántas personas venís');
+  await page.locator('#datesVerdict #readyNext').click();
+  await expect(page.locator('#d-expected_guests')).toBeFocused();
 });
 
 test('organizers · diseño (fase 2): datos, extras y precio orientativo; calculadora privada; propuesta con «Quiero confirmar»', async ({ page }) => {
@@ -368,9 +377,11 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await expect(page.locator('#goDesign')).toBeVisible();
   await page.locator('#goDesign').click();
   await expect(page.locator('#designPeople')).toBeVisible();
-  // «Lo que te falta por rellenar»: la fecha de Ikisai aún no está marcada y faltan las personas.
-  await expect(page.locator('#designReady')).toContainText('Cuántas personas venís');
-  await expect(page.locator('#designReady')).toContainText('Fechas posibles');
+  // Veredicto arriba con «Siguiente» (MUELA-072:47 y MUELA-084): la fecha de Ikisai aún no está marcada (lo siguiente) y
+  // faltan las personas (en la lista de debajo).
+  await expect(page.locator('#designReady .check-verdict')).toContainText(/Te faltan? \d+ cosas? para pedir la propuesta/);
+  await expect(page.locator('#designReady #readyNext')).toContainText('Fechas posibles');
+  await expect(page.locator('#designReady .check-list')).toContainText('Cuántas personas venís');
   await page.locator('#designReady .check-action', { hasText: 'Ir a Personas' }).click();
   await expect(page.locator('#d-expected_guests')).toBeFocused();
   await page.locator('#d-expected_guests').fill('20');
@@ -490,9 +501,9 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   const deposit = statement.locator('li[data-move="senal"]');
   await expect(deposit).toContainText('540,00');
   await expect(deposit).toContainText('840,00');
-  await expect(deposit).toContainText('antes del');
+  await expect(deposit).toContainText('hasta el');
   await expect(deposit).toContainText('Pendiente');
-  await expect(statement.locator('li[data-move="saldo"]')).not.toContainText('antes del');
+  await expect(statement.locator('li[data-move="saldo"]')).not.toContainText('hasta el');
   // Movimientos: las dos facturas y el pago recibido de la cobrada.
   await expect(statement.locator('li.mb-doc')).toHaveCount(2);
   await expect(statement.locator('li.mb-doc').filter({ hasText: 'Cobrada' })).toHaveCount(1);
