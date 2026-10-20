@@ -30,6 +30,8 @@ export interface TabContext {
   house?: boolean;
   /** Ir a otra pantalla (las comprobaciones del Organizador y del Cierre llevan a su arreglo). */
   navigate?: (hash: string) => void;
+  /** Ir a los comentarios del organizador en la pestaña Menú, con su plegado abierto (el Cierre lo usa). */
+  goToComments?: () => void;
 }
 
 /** Lista de compra del menú: generar y regenerar (con red), «en casa», «comprar», estado y líneas a mano (también sin red). */

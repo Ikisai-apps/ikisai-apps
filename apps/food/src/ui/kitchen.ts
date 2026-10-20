@@ -9,7 +9,7 @@
  * Escribe lo mismo que Preparación (hecho, responsable, hora) y el consumo con la hoja compartida. Sin datos nuevos.
  */
 import {
-  dishNotes, isMenuStale, isOverdue, nextStep, restrictionLines, scaledIngredients, serviceConsumption, servicePhases, stepDay, stepService, untilText,
+  dishNotes, isMenuStale, normalizeTerm, isOverdue, nextStep, restrictionLines, scaledIngredients, serviceConsumption, servicePhases, stepDay, stepService, untilText,
   type Consumption, type DishNotes, type FoodEvent, type Menu, type MenuGraph, type MenuService, type ServicePhase,
 } from '@ikisai/domain-food';
 import { el, focusFirst, icon, lockScroll, openSheet, renderMedal, replace, toast, trackOverlay, trapFocus, type Sheet } from '@ikisai/ui-kit';
@@ -45,11 +45,16 @@ const byTime = (a: PrepRow, b: PrepRow) => (a.scheduled_time ?? '99').localeComp
 const PHASE_LABEL: Record<ServicePhase, string> = { ahora: 'Ahora', despues: 'Después', hecho: 'Hecho' };
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** «⚠ lleva frutos de cáscara (pistacho) · 1 persona · alergia grave». */
+/**
+ * «⚠ lleva frutos de cáscara (pistacho) · 1 persona · alergia grave». Si el texto de Booking ya nombra el alérgeno
+ * («frutos de cáscara (pistacho)», «huevo»), basta con él: nada de «huevos (huevo)» (M1, MUELA-091).
+ */
 function allergyText(match: DishNotes['allergies'][number]): string {
   const { restriction, crossing } = match;
   const declared = crossing.declared ? ALLERGEN_LABELS[crossing.declared] : null;
-  const what = declared && declared.toLowerCase() !== restriction.subject.toLowerCase() ? `${declared.toLowerCase()} (${restriction.subject})` : restriction.subject;
+  const subject = normalizeTerm(restriction.subject);
+  const named = !!declared && (subject.includes(normalizeTerm(declared)) || normalizeTerm(declared).includes(subject));
+  const what = declared && !named ? `${declared.toLowerCase()} (${restriction.subject})` : restriction.subject;
   return `⚠ lleva ${what} · ${plural(restriction.people, 'persona', 'personas')} · ${restriction.type}${restriction.severe ? ' grave' : ''}`;
 }
 
@@ -65,7 +70,7 @@ export function dishSafety(notes: DishNotes | undefined): HTMLElement | null {
 }
 
 /** El medallón del plato: iniciales al momento y la foto cuando llega (solo las ya descargadas, sin red). */
-function dishMedal(client: Parameters<typeof photoUrl>[0], recipe: RecipeRow | undefined, size = 44): HTMLElement {
+export function dishMedal(client: Parameters<typeof photoUrl>[0], recipe: RecipeRow | undefined, size = 44): HTMLElement {
   const medal = renderMedal({ name: recipe?.name ?? 'Plato', size });
   const ref = recipe ? recipe.photo_thumb_file_id ?? recipe.photo_file_id : null;
   if (ref) void photoUrl(client, ref).then((url) => { if (url && medal.isConnected) medal.replaceWith(renderMedal({ name: recipe?.name ?? 'Plato', image: url, size })); }).catch(() => undefined);

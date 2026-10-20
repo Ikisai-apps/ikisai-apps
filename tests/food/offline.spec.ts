@@ -150,8 +150,9 @@ test('sin red con dos dispositivos: fusión automática, conflicto y rechazo por
     expect(row('food.menu_items', dish.id).servings).toBe(22);
     // El espejo vuelve a lo que dice el servidor y el menú aparece validado y bloqueado.
     await expect(page.locator('#menuStatus')).toHaveText('Validado');
-    await expect(page.getByLabel('Raciones de Curry de verduras', { exact: true })).toHaveValue('22');
-    await expect(page.getByLabel('Raciones de Curry de verduras', { exact: true })).toBeDisabled();
+    // Tanda 38: validado, el menú se lee (raciones en texto, sin campo que editar).
+    await expect(page.locator('.dish', { hasText: 'Curry de verduras' }).locator('.fd-servings')).toContainText('22 raciones');
+    await expect(page.getByLabel('Raciones de Curry de verduras', { exact: true })).toHaveCount(0);
 
     await page.goto(`${baseURL}/#/conflictos`);
     const rejected = page.locator('#rejectedList');

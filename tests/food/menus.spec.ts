@@ -78,7 +78,14 @@ async function addDish(page: Page, recipe: string): Promise<void> {
   await expect(page.locator('.service').first().locator('.dish', { hasText: recipe })).toBeVisible();
 }
 
+/** Tanda 38: el estado, el portal, los comentarios y el coste van plegados debajo del menú; se abren con un toque. */
+async function openFold(page: Page, id: string): Promise<void> {
+  const fold = page.locator(`#${id}`);
+  if (!(await fold.evaluate((node) => (node as HTMLDetailsElement).open))) await fold.locator('summary').first().click();
+}
+
 async function validate(page: Page, acknowledgements: number): Promise<void> {
+  await openFold(page, 'menuStateFold');
   await page.locator('#validateMenu').click();
   const dialog = page.getByRole('dialog', { name: 'Antes de validar' });
   await expect(dialog.locator('#ackList input')).toHaveCount(acknowledgements);
@@ -131,6 +138,11 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect(page.locator('#menuWarnings')).toHaveCount(0);
     await addDish(page, 'Pasta al pesto');
     await expect(page.locator('#menuWarnings')).toContainText('«Pasta al pesto» declara frutos de cáscara: 1 alergia a pistacho.');
+    // Tanda 38: en borrador y con avisos por aceptar, la línea se abre sola y lo dice en rojo; plegada, solo la grave y el recuento.
+    const restrictions = page.locator('#menuRestrictions');
+    await expect(restrictions).toHaveAttribute('open', '');
+    await expect(restrictions.locator('summary')).toContainText('1 alergia a pistacho (grave)');
+    await expect(restrictions.locator('.fd-restralert')).toHaveText('1 aviso por revisar antes de validar');
     // El pesto es para dos: se cambian las raciones en línea.
     const pesto = page.locator('.dish', { hasText: 'Pasta al pesto' }).locator('.servings');
     await pesto.fill('2');
@@ -172,8 +184,13 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await validate(page, 1);
     expect(menu()).toMatchObject({ status: 'validado', source_event_revision: 3 });
     expect(menu().validated_warnings).toHaveLength(1);
-    await expect(page.locator('.dish .servings').first()).toBeDisabled();
+    // Tanda 38: validado, el menú se lee; raciones en texto y el ⚠ del cruce en cada plato, nunca «apto».
+    await expect(page.locator('.dish input.servings')).toHaveCount(0);
+    await expect(page.locator('.dish', { hasText: 'Curry de verduras' }).locator('.fd-servings')).toContainText('22 raciones');
+    await expect(page.locator('.dish', { hasText: 'Pasta al pesto' }).locator('.fd-safety')).toContainText('⚠ lleva frutos de cáscara (pistacho) · 1 persona · alergia grave');
+    await expect(page.locator('#menuBuilder')).not.toContainText(/apto|✓ sin/);
     await expect(page.getByRole('button', { name: 'Añadir plato' })).toHaveCount(0);
+    await expect(page.locator('#menuStateFold .fd-mfolds')).toHaveText('Validado');
   });
 
   await test.step('hoja del organizador: solo lo público, en el orden fijado, y se imprime en A4', async () => {
@@ -280,6 +297,8 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     // Sin compartir y sin comentarios: no hay sección de comentarios.
     await expect(page.locator('#menuComments')).toBeHidden();
     await expect(page.locator('#menuShare')).toContainText('El organizador lo verá en su portal como propuesta hasta que esté validado.');
+    await expect(page.locator('#menuShareFold .fd-mfolds')).toHaveText('Sin compartir');
+    await openFold(page, 'menuShareFold');
     await page.locator('#shareMenu').click();
     // MUELA-086: el cruce mira también el texto del plato; «leche de coco» en la descripción del curry nombra lácteos, que
     // no declara. Ante la duda, avisa y pide confirmación antes de compartir.
@@ -287,6 +306,7 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await page.locator('#dialogConfirm').click();
     await expect(page.locator('#menuShared')).toHaveText('Compartido con el organizador');
     await expect(page.locator('#unshareMenu')).toBeVisible();
+    await expect(page.locator('#menuShareFold .fd-mfolds')).toHaveText('Compartido con el organizador');
     await expect.poll(() => menu().organizer_shared).toBe(true);
     expect(api.rows('food.menus').find((m) => m.id === retiro.id)).toMatchObject({ organizer_shared: true, status: 'validado' });
     await expect(page.locator('#menuComments')).toContainText('Sin comentarios del organizador.');
