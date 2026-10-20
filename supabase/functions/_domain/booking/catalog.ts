@@ -90,6 +90,8 @@ export const CHECKLIST_STATUSES = ['pendiente', 'hecho', 'no_aplica'] as const;
 
 export const SPACE_KINDS = ['habitacion', 'sala', 'zona_exterior', 'otro'] as const;
 export const PROGRAM_KINDS = ['actividad', 'comida', 'descanso', 'otro'] as const;
+/** Para quién es una actividad (MUELA-065): con 'personas', `audience_guest_ids` dice a quién. */
+export const PROGRAM_AUDIENCES = ['todos', 'adultos', 'menores', 'personas'] as const;
 export const BED_KINDS = ['individual', 'doble', 'litera', 'sofa_cama', 'supletoria'] as const;
 export type SpaceKind = (typeof SPACE_KINDS)[number];
 export type BedKind = (typeof BED_KINDS)[number];
