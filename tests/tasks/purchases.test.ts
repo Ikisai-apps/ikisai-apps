@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deletePlanOps, dueRecurring, nextRecurringOps, preparePlanOps, receivePurchaseOps, requestPurchaseOps, setPurchaseStatusOps, validateOperations, visibleRow,
+  deletePlanOps, dueRecurring, nextRecurringOps, preparePlanOps, receivePurchaseOps, requestPurchaseOps, setPurchaseStatusOps, undoPurchaseOps, validateOperations, visibleRow,
 } from '../../packages/domain-tasks/src/index.ts';
 import { createTasksDb, insert, newId, rejects, remove, update, type TasksDb } from './db.ts';
 
@@ -67,6 +67,52 @@ test('compras · plan por proveedor: solo aprobadas, paradas de un plan vivo, y 
   await rejects(db.commit([remove('tasks.purchase_plans', empty, 1)]), 'INVALID_PURCHASE');
   await db.commit([remove('tasks.purchase_plans', empty, 1), remove('tasks.purchase_plan_stops', emptyStop, 1)]);
 });
+
+test('compras · «No se compró» (0337): terminar por error y deshacer, reabrir el plan y, con factura, no', async () => {
+  const { tab, inbox } = await db.area('Deshacer compra');
+  const editor = await db.member('editor', { tabs: [tab], projects: {} });
+  const plan = newId(), stop = newId(), buy = newId(), invoiced = newId();
+  await db.commit([
+    insert('tasks.purchase_plans', plan, { tab_id: tab, title: 'Compra del martes', status: 'shopping' }),
+    insert('tasks.purchase_plan_stops', stop, { tab_id: tab, plan_id: plan, supplier_name: 'Ferretería', position: 1024 }),
+    request(tab, buy, { project_id: inbox, status: 'approved', plan_stop_id: stop }),
+    request(tab, invoiced, { project_id: inbox, title: 'Pintura', status: 'approved', plan_stop_id: stop }),
+  ]);
+  await db.commit([update('tasks.purchase_requests', buy, 1, { status: 'purchased' }), update('tasks.purchase_requests', invoiced, 1, { status: 'purchased' })], editor);
+  // VG pulsa «Terminar» por error.
+  await db.commit([update('tasks.purchase_plans', plan, 1, { status: 'done' })], editor);
+  // Deshacer la compra: vuelve a aprobada, sin fecha de compra y fuera del plan terminado (lo hace un editor, como marcarla).
+  let data = await db.data();
+  const ops = undoPurchaseOps(data, buy);
+  assert.deepEqual(ops[0]!.fields, { status: 'approved', plan_stop_id: null });
+  await run(ops, editor);
+  let r = await row('tasks.purchase_requests', buy);
+  assert.deepEqual([r.status, r.purchased_at, r.plan_stop_id], ['approved', null, null]);
+  assert.ok(r.approved_at, 'sigue aprobada desde cuando lo estaba');
+  // Elegible para otro plan.
+  const other = newId(), otherStop = newId();
+  await db.commit([
+    insert('tasks.purchase_plans', other, { tab_id: tab, title: 'Compra del jueves' }),
+    insert('tasks.purchase_plan_stops', otherStop, { tab_id: tab, plan_id: other, supplier_name: 'Ferretería', position: 1024 }),
+    update('tasks.purchase_requests', buy, r.revision, { plan_stop_id: otherStop }),
+  ], editor);
+  // Reabrir el plan terminado: vuelve a «De compras».
+  await db.commit([update('tasks.purchase_plans', plan, 2, { status: 'shopping' })], editor);
+  assert.equal((await row('tasks.purchase_plans', plan)).status, 'shopping');
+  // En un plan abierto, deshacer deja la solicitud en su parada (es desmarcar la casilla).
+  data = await db.data();
+  assert.deepEqual(undoPurchaseOps(data, invoiced)[0]!.fields, { status: 'approved' });
+  // Con una factura ligada (lo que lee la pantalla de Finance), el dominio no lo construye.
+  assert.throws(() => undoPurchaseOps(data, invoiced, { invoiced: true }), /Finance/);
+  await run(undoPurchaseOps(data, invoiced), editor);
+  // Lo recibido no se deshace por aquí.
+  await run(setPurchaseStatusOps(await db.data(), buy, 'purchased'));
+  await run(receivePurchaseOps(await db.data(), buy));
+  data = await db.data();
+  assert.throws(() => undoPurchaseOps(data, buy), /aún no se ha recibido/);
+});
+
+test('compras · «No se compró» con factura ligada: el servidor también lo rechaza', { todo: 'espera la comprobación publicada por Finance (pedida a Core en SALIDA del 20-10)' }, () => {});
 
 test('compras · ámbitos y visibilidad: los planes son del área entera; las solicitudes, de su proyecto', async () => {
   const { tab, inbox } = await db.area('Ámbitos');

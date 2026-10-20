@@ -52,6 +52,9 @@ function loadPurchaseInvoices(ids){const key=[...ids].sort().join(',');if(!ids.l
   Sync.core.api('/read/invoices.allocations_by_target',{method:'POST',json:{targetApp:'tasks',targetKind:'purchase_request',ids}}).then(out=>{
     for(const id of ids)purchaseInvoices.set(id,[]);for(const row of out?.rows||[])purchaseInvoices.get(row.target_id)?.push(row);
     if(state.view==='purchases'&&!document.getElementById('sheetBack')?.classList.contains('show'))render()}).catch(()=>{invoicesAsked={key:'',at:0}})}
+/* Una compra ligada a una factura viva de Finance ya no se deshace (0337): se corrige en Finance. Sin la lectura (sin red o
+   sin Finance), no se sabe: se ofrece y, si la hay, el servidor lo rechaza con PURCHASE_INVOICED. */
+function purchaseInvoiced(id){return (purchaseInvoices.get(id)||[]).length>0}
 function invoiceCodes(id){return [...new Set((purchaseInvoices.get(id)||[]).map(x=>x.invoice_code).filter(Boolean))]}
 function invoiceSection(r){if(!r.needs_invoice||!['approved','purchased','received'].includes(r.status)||!purchaseInvoices.has(r.id))return '';const list=purchaseInvoices.get(r.id);
   if(!list.length)return r.status==='approved'?'':'<p class="pmeta pinvoices">Sin factura asignada todavía en Finance.</p>';
@@ -190,6 +193,7 @@ function purchaseSheet(id=null,preset={}){
       ${approve&&r.status==='requested'?'<button class="primary" id="prApprove" type="button" data-feedback-id="tasks.solicitud.aprobar" data-feedback-label="Aprobar">Aprobar</button><button class="danger" id="prReject" type="button" data-feedback-id="tasks.solicitud.rechazar" data-feedback-label="Rechazar">Rechazar</button>':''}
       ${id&&canEdit()&&r.status==='approved'?'<button class="softbtn" id="prPurchased" type="button" data-feedback-id="tasks.solicitud.marcar_comprada" data-feedback-label="Marcar comprada">Marcar comprada</button>':''}
       ${id&&canEdit()&&r.status==='purchased'?'<button class="softbtn" id="prReceive" type="button" data-feedback-id="tasks.solicitud.recibida" data-feedback-label="Recibida">Recibida</button>':''}
+      ${id&&canEdit()&&r.status==='purchased'?(purchaseInvoiced(r.id)?'<p class="small muted" id="prInvoiced">Ya está ligada a una factura: corrígelo en Finance.</p>':'<button class="ghost" id="prUndoPurchase" type="button" data-feedback-id="tasks.solicitud.no_se_compro" data-feedback-label="No se compró">No se compró</button>'):''}
       ${id&&canEdit()&&r.status==='received'&&r.repeat_days?'<button class="softbtn" id="prNext" type="button" data-feedback-id="tasks.solicitud.pedir_siguiente" data-feedback-label="Pedir la siguiente">Pedir la siguiente</button>':''}
       ${id&&canEdit()&&!['purchased','received'].includes(r.status)?'<button class="ghost danger-text" id="prDelete" type="button" data-feedback-id="tasks.solicitud.papelera" data-feedback-label="Papelera">Papelera</button>':''}
     </div>`);
@@ -205,9 +209,18 @@ function purchaseSheet(id=null,preset={}){
   on('prReject',()=>{if(purchaseRun(d=>P.setPurchaseStatusOps(d,id,'rejected'),'Rechazada.'))closeSheet()});
   on('prPurchased',()=>{if(purchaseRun(d=>P.setPurchaseStatusOps(d,id,'purchased'),'Marcada como comprada.'))closeSheet()});
   on('prReceive',()=>receivePurchase(r));
+  on('prUndoPurchase',()=>undoPurchase(r.id));
   on('prNext',()=>{if(purchaseRun(d=>P.nextRecurringOps(d,id),'Pedida la siguiente.'))closeSheet()});
   on('prDelete',()=>{if(purchaseCommit([{op:'delete',table:'tasks.purchase_requests',id,expectedRevision:r.revision}],'Enviada a la papelera.'))closeSheet()});
 }
+/* «No se compró» (0337, a petición de VG): la compra marcada por error vuelve a aprobada, al momento y con «Deshacer». Si
+   su plan ya estaba terminado sale de él, para poder entrar en otro. */
+function undoPurchase(id){const before=liveRows('tasks.purchase_requests').find(x=>x.id===id);if(!before)return;
+  if(!purchaseRun(d=>IkisaiTasks.purchases.undoPurchaseOps(d,id,{invoiced:purchaseInvoiced(id)})))return;
+  closeSheet();usage.track('tasks.compras.no_se_compro');
+  const left=before.plan_stop_id&&!liveRows('tasks.purchase_requests').find(x=>x.id===id)?.plan_stop_id;
+  offerLocalUndo(left?'Vuelve a estar aprobada, fuera del plan.':'Vuelve a estar aprobada.',()=>{const now=liveRows('tasks.purchase_requests').find(x=>x.id===id);if(!now||now.status!=='approved')return;
+    purchaseCommit([{op:'update',table:'tasks.purchase_requests',id,expectedRevision:now.revision,fields:{status:'purchased',plan_stop_id:before.plan_stop_id}}],'Vuelve a estar comprada.')})}
 function inventoryItemName(id){return Sync.core?.inventory?.items.find(i=>i.id===id)?.name||''}
 /* Recibir (R6): si la solicitud es de un artículo con cantidad, su entrada en Recursos va primero, en el sitio habitual del
    artículo o en el que se elija aquí; después la solicitud pasa a recibida. Con repetición, pregunta por la siguiente. */
@@ -238,8 +251,8 @@ function planSheet(id){const plan=liveRows('tasks.purchase_plans').find(p=>p.id=
   const editable=plan.status!=='done'&&canEdit();
   openSheet(`<h2 class="sheettitle">${esc(plan.title)}</h2><p class="purchasearea"><span class="pstate ${plan.status==='done'?'':'pending'}">${PLAN_STATUS[plan.status]}</span>${plan.planned_for?' · '+shortDate(plan.planned_for):''} · hoja de ruta en el orden de visita</p>
     <ol class="routelist">${stops.map((s,i)=>{const items=requests.filter(r=>r.plan_stop_id===s.id);return `<li class="pcard" data-stop="${s.id}"><div class="phead"><strong>${i+1}. ${esc(s.supplier_name)}</strong>${editable?`<button class="iconbtn small" data-stop-move="${s.id}|-1" aria-label="Antes" type="button" ${i===0?'disabled':''} data-feedback-id="tasks.plan.paradas.subir" data-feedback-label="Antes">↑</button><button class="iconbtn small" data-stop-move="${s.id}|1" aria-label="Después" type="button" ${i===stops.length-1?'disabled':''} data-feedback-id="tasks.plan.paradas.bajar" data-feedback-label="Después">↓</button>`:''}</div>
-      ${items.map(r=>`<label class="pline"><input type="checkbox" data-route-item="${r.id}" ${['purchased','received'].includes(r.status)?'checked':''} ${editable&&r.status!=='received'?'':'disabled'} data-feedback-id="tasks.plan.paradas.comprado" data-feedback-label="Comprado"><span>${esc(r.title)}</span><span class="pqty">${qty(r.quantity,r.unit)}</span></label>`).join('')||'<p class="small muted">Sin nada que comprar aquí.</p>'}</li>`}).join('')}</ol>
-    <div class="actions" style="flex-wrap:wrap"><button class="softbtn" id="planPrint" type="button" data-feedback-id="tasks.plan.imprimir" data-feedback-label="Imprimir">Imprimir</button>${editable&&plan.status==='draft'?'<button class="primary" id="planShop" type="button" data-feedback-id="tasks.plan.salir_compras" data-feedback-label="Salir de compras">Salir de compras</button>':''}${editable?'<button class="primary" id="planDone" type="button" data-feedback-id="tasks.plan.terminar" data-feedback-label="Terminar">Terminar</button>':''}${editable?'<button class="ghost danger-text" id="planDelete" type="button" data-feedback-id="tasks.plan.quitar" data-feedback-label="Quitar plan">Quitar plan</button>':''}</div>`);
+      ${items.map(r=>`<label class="pline"><input type="checkbox" data-route-item="${r.id}" ${['purchased','received'].includes(r.status)?'checked':''} ${editable&&r.status!=='received'&&!(r.status==='purchased'&&purchaseInvoiced(r.id))?'':'disabled'} ${r.status==='purchased'&&purchaseInvoiced(r.id)?'title="Ya está ligada a una factura: corrígelo en Finance."':''} data-feedback-id="tasks.plan.paradas.comprado" data-feedback-label="Comprado"><span>${esc(r.title)}</span><span class="pqty">${qty(r.quantity,r.unit)}</span></label>`).join('')||'<p class="small muted">Sin nada que comprar aquí.</p>'}</li>`}).join('')}</ol>
+    <div class="actions" style="flex-wrap:wrap"><button class="softbtn" id="planPrint" type="button" data-feedback-id="tasks.plan.imprimir" data-feedback-label="Imprimir">Imprimir</button>${editable&&plan.status==='draft'?'<button class="primary" id="planShop" type="button" data-feedback-id="tasks.plan.salir_compras" data-feedback-label="Salir de compras">Salir de compras</button>':''}${editable?'<button class="primary" id="planDone" type="button" data-feedback-id="tasks.plan.terminar" data-feedback-label="Terminar">Terminar</button>':''}${plan.status==='done'&&canEdit()?'<button class="softbtn" id="planReopen" type="button" data-feedback-id="tasks.plan.reabrir" data-feedback-label="Reabrir el plan">Reabrir el plan</button>':''}${editable?'<button class="ghost danger-text" id="planDelete" type="button" data-feedback-id="tasks.plan.quitar" data-feedback-label="Quitar plan">Quitar plan</button>':''}</div>`);
   const commitPlan=(fields,msg)=>purchaseCommit([{op:'update',table:'tasks.purchase_plans',id,expectedRevision:plan.revision,fields}],msg);
   document.querySelectorAll('[data-route-item]').forEach(box=>box.onchange=()=>{const ok=purchaseRun(d=>IkisaiTasks.purchases.setPurchaseStatusOps(d,box.dataset.routeItem,box.checked?'purchased':'approved'));if(ok)planSheet(id)});
   document.querySelectorAll('[data-stop-move]').forEach(b=>b.onclick=()=>{const [stopId,dir]=b.dataset.stopMove.split('|'),i=stops.findIndex(s=>s.id===stopId),j=i+Number(dir);if(j<0||j>=stops.length)return;
@@ -247,6 +260,8 @@ function planSheet(id){const plan=liveRows('tasks.purchase_plans').find(p=>p.id=
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn};
   on('planShop',()=>{if(commitPlan({status:'shopping'},'¡A comprar!'))planSheet(id)});
   on('planDone',()=>{if(commitPlan({status:'done'},'Plan terminado.'))closeSheet()});
+  // Reabrir (0337): un plan terminado por error vuelve a «De compras» y sus casillas se pueden volver a desmarcar.
+  on('planReopen',()=>{if(commitPlan({status:'shopping'},'Plan reabierto.'))planSheet(id)});
   on('planDelete',()=>{if(purchaseRun(d=>IkisaiTasks.purchases.deletePlanOps(d,id),'Plan quitado; sus solicitudes vuelven a estar sin plan.'))closeSheet()});
   on('planPrint',()=>printRoute(plan,stops,requests));
 }

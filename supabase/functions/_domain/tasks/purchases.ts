@@ -134,6 +134,21 @@ export function setPurchaseStatusOps(data: Dataset, requestId: Uuid, status: 're
 }
 
 /**
+ * «No se compró» (0337): una compra marcada por error vuelve a aprobada. Si su plan ya está terminado, sale de la parada
+ * para poder entrar en otro plan; si el plan sigue abierto, se queda en él. Con una factura ligada no se puede (`invoiced`
+ * lo sabe quien lee Finance; el servidor lo comprueba igual con `PURCHASE_INVOICED`). Lo recibido no se deshace aquí.
+ */
+export function undoPurchaseOps(data: Dataset, requestId: Uuid, opts: { invoiced?: boolean } = {}): Operation[] {
+  const request = liveRequest(data, requestId);
+  if (request.status !== 'purchased') reject(422, 'INVALID_PURCHASE', 'Solo se deshace una compra que aún no se ha recibido.', { id: requestId });
+  if (opts.invoiced) reject(422, 'PURCHASE_INVOICED', 'Ya está ligada a una factura: corrígelo en Finance.', { id: requestId });
+  const stop = request.plan_stop_id ? data['tasks.purchase_plan_stops'].find((s) => s.id === request.plan_stop_id) : null;
+  const plan = stop ? data['tasks.purchase_plans'].find((p) => p.id === stop.plan_id) : null;
+  const leave = !!stop && (!plan || plan.deleted_at != null || plan.status === 'done');
+  return [update('tasks.purchase_requests', request, leave ? { status: 'approved', plan_stop_id: null } : { status: 'approved' })];
+}
+
+/**
  * Recibir: la solicitud pasa a recibida. La entrada en el stock es de Recursos (otra app, otro lote): la construye
  * `receiptEntryOperation` y la envía el cliente de Recursos antes de este lote.
  */
