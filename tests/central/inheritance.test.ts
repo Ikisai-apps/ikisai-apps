@@ -20,7 +20,7 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('herencia · del padre a los hijos, nunca al revés: base, Tasks (también el outsider) y dominio dicen lo mismo', async () => {
+test('herencia · del padre a los hijos, nunca al revés: base, Tasks (el equipo; el outsider no, desde la 1513) y dominio dicen lo mismo', async () => {
   // Albañilería › Demolición › Escombros (tres niveles) y Pintura › Interior (se archiva) › Techos.
   const T = { alb: uuid(), dem: uuid(), esc: uuid(), pin: uuid(), int: uuid(), tec: uuid() };
   const P = { sabe: uuid(), mas: uuid(), hijo: uuid(), menos: uuid(), igual: uuid(), pinta: uuid() };
@@ -55,8 +55,8 @@ test('herencia · del padre a los hijos, nunca al revés: base, Tasks (también 
   const ours = new Set(Object.values(P));
   const sort = (a: Array<[string, number, boolean]>) => [...a].sort((x, y) => x[0].localeCompare(y[0]));
 
-  // Tasks: el lector y el outsider leen lo mismo, con `inherited` al final.
-  for (const role of ['reader', 'outsider']) {
+  // Tasks: el lector y el editor leen lo mismo, con `inherited` al final. El outsider no las lee (1513, options.test.ts).
+  for (const role of ['reader', 'editor']) {
     const user = await app.t.createUser();
     await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('tasks', $1, $2)`, [user, role]);
     const out = (await app.t.rpc('core_read', { p_app: 'tasks', p_actor: user, p_name: 'central.capability_options', p_args: {} }) as { rows: any[] }).rows;

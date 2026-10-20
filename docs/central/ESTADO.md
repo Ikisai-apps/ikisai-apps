@@ -63,7 +63,7 @@
 - 2026-10-18 · **Lecturas para Tasks P2 y O1** (`1509`, aprobadas por el usuario):
   - «Iniciales» en la ficha, opcionales, y en `people_options`.
   - `availability_options`, con la disponibilidad y su orden, para «Quién sabe hacerlo».
-  - `people_options`, `trade_options` y `capability_options` abiertas al outsider de Tasks, sin nada reservado.
+  - `people_options`, `trade_options` y `capability_options` abiertas al outsider de Tasks, sin nada reservado (`capability_options` se cerró en la `1513`).
 - 2026-10-18 · **Herencia de capacidades** (`1510`, decisión del usuario): lo del padre baja a los hijos, nunca al revés.
   - Grado efectivo en la cobertura, los indicadores y `capability_options` (con `inherited`).
   - En la ficha, el hijo no baja del padre.
@@ -95,6 +95,7 @@
   - **Accesos sin red:** el aviso sustituye al vacío (085, C6): ni «Todavía no hay cuentas» ni «No hay claves» cuando no se han podido leer. Las fichas salen del espejo también sin red, y la lista guardada ya no marca «Sin ficha» en todas.
   - **`app.css`:** `.note.warn` y `.chip.warn` con la tinta de aviso del kit (5,52:1 en claro y 7,76:1 en oscuro), `.backlink` a 46 px y fuera las compensaciones `color-mix(ink …)`: el `--muted` del kit da 4,56:1 sobre el fondo y más sobre el papel.
   - **Menú:** recuentos en «Cuentas y accesos» (cuentas, por revisar y claves en uso); sin red, «se leen con red».
+- 2026-10-20 · **Privacidad · capacidades fuera del alcance del outsider de Tasks** (`1513`, revisión de Tasks): `central.capability_options` queda para lector, editor y owner de Tasks, como la disponibilidad. Los grados de habilidad del personal son datos internos de personas. El outsider sigue viendo quién hace sus tareas y su oficio (`people_options` y `trade_options`).
 
 ## Pendiente
 

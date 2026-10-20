@@ -1,6 +1,7 @@
 /**
  * Central · lecturas para Tasks de P2 y O1 (1509): iniciales en la ficha y en `people_options`, disponibilidad aparte
- * (`availability_options`) y las tres lecturas de opciones abiertas al outsider sin nada reservado. Datos ficticios.
+ * (`availability_options`), las lecturas de opciones abiertas al outsider sin nada reservado y, desde la `1513`, las
+ * capacidades fuera de su alcance (los grados son datos internos de personas). Datos ficticios.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,7 +37,7 @@ test('iniciales · opcionales, de 1 a 4 caracteres y sin espacios a los lados (d
   for (const bad of ['', 'ABCDE', ' IF']) await assert.rejects(app.t.db.query(`update central.people set initials = $2 where id = $1`, [id, bad]), `«${bad}»`);
 });
 
-test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte con su orden; el outsider lee quién y qué oficio, y nada más', async () => {
+test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte con su orden; el outsider lee quién y qué oficio, y nada más (ni grados ni disponibilidad)', async () => {
   const ana = uuid(); const blas = uuid(); const trade = uuid();
   const ok = await commit([
     { op: 'insert', table: TABLES.people, id: ana, fields: { display_name: 'Ana Opciones', relation: 'equipo', house_level: 'staff', initials: 'AO', availability: 'baja', availability_notes: 'Nota reservada ficticia' } },
@@ -49,14 +50,16 @@ test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte 
 
   const reader = await member('tasks', 'reader');
   const outsider = await member('tasks', 'outsider');
-  // Columnas exactas de cada lectura: lo mismo para el lector y para el outsider.
+  // Columnas exactas de cada lectura. El outsider lee las dos primeras; las capacidades, solo el equipo (1513).
   const columns = {
     'central.people_options': ['active', 'house_level', 'initials', 'name', 'person_id', 'user_id'],
     'central.trade_options': ['name', 'parent_id', 'path', 'position', 'source_label_id', 'trade_id'],
     'central.capability_options': ['inherited', 'level', 'person_id', 'trade_id'], // 1510: + inherited
   };
+  const team = new Set(['central.capability_options']);
   for (const actor of [reader, outsider]) {
     for (const [name, keys] of Object.entries(columns)) {
+      if (actor === outsider && team.has(name)) continue;
       const out = await read(actor, name);
       assert.ok(out.length > 0, name);
       for (const r of out) assert.deepEqual(Object.keys(r).sort(), keys, name);
@@ -67,8 +70,11 @@ test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte 
     }
     const people = await read(actor, 'central.people_options');
     assert.deepEqual(people.filter((p) => String(p.name).endsWith('Opciones')).map((p) => [p.name, p.initials]).sort(), [['Ana Opciones', 'AO'], ['Blas Opciones', null]]);
-    assert.deepEqual((await read(actor, 'central.capability_options')).filter((c) => c.trade_id === trade).map((c) => [c.person_id, c.level]), [[ana, 2]]);
   }
+  assert.deepEqual((await read(reader, 'central.capability_options')).filter((c) => c.trade_id === trade).map((c) => [c.person_id, c.level]), [[ana, 2]]);
+  // Los grados de habilidad son datos internos de personas: el outsider no los lee (1513), como la disponibilidad.
+  await assert.rejects(read(outsider, 'central.capability_options'));
+  for (const role of ['editor', 'owner']) assert.ok((await read(await member('tasks', role), 'central.capability_options')).length > 0, role);
 
   // Disponibilidad: el lector de Tasks sí, con el orden para «Quién sabe hacerlo»; el outsider no; nunca las notas.
   const avail = (await read(reader, 'central.availability_options')).filter((a) => a.person_id === ana || a.person_id === blas);
