@@ -1456,6 +1456,8 @@ const FB_PATTERN = /^invoices(\.[a-z0-9_]+){1,4}$/;
 
 /** Pulsación larga con el ratón sobre el centro del elemento (el gesto del kit son 600 ms). */
 async function hold(page: Page, selector: string, ms = 900): Promise<void> {
+  // A la vista antes de medir: la tarjeta de Inicio (tanda 30) puede dejar lo de abajo fuera de la pantalla
+  await page.locator(selector).first().scrollIntoViewIfNeeded();
   const box = await page.locator(selector).first().boundingBox();
   if (!box) throw new Error(`Sin caja para ${selector}`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
