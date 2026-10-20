@@ -1,7 +1,9 @@
 /**
  * Guests · O4b, primera parte (RECURSOS.md §17; Booking §26, Food §2.6, contrato §3.10), contra las API reales sobre PGlite:
  * - **pestaña Outsider** solo con nivel de casa `outsider`, entre los retiros pasados y los demás; sin retiros, se entra en ella;
- * - **estancias** creadas eligiendo días en el calendario, con la cama habitual, cambio de fechas y quitar;
+ * - **estancias** creadas con llegada y salida (tanda 31, MUELA-030: hoja con las noches al momento) o eligiendo días en el
+ *   mes, con la cama habitual, cambio de fechas y quitar; «Tu año» con estancias, días con staff e invitaciones;
+ * - **«Ikisai»** (MUELA-066): la casa según el momento, la guía y el plano;
  * - **«hay alguien del staff»** y **notas con hora** (las del equipo y las propias);
  * - **«Sugerir un plato»** para el menú de casa: una sugerencia `plato_casa` de Food que sale en «Mis propuestas»;
  * - **la familia**: estancia para todos por defecto (con la clave de persona de sus fichas) y «Separar»;
@@ -54,6 +56,7 @@ function nextMonthDay(n: number): string {
 }
 const navMain = (page: Page) => page.locator('nav.nav > a.navbtn:not(.navextra)');
 const bar = (page: Page, label: string) => navMain(page).filter({ hasText: label });
+const openMonth = (page: Page) => page.locator('#calendarMonth > summary').click();
 const cell = (page: Page, d: string) => page.locator(`#calendar .cal-day:not(.outside)[data-day="${d}"]`);
 
 async function capture(page: Page, name: string): Promise<void> {
@@ -72,6 +75,8 @@ test('O4b · un huésped sin nivel outsider no ve la pestaña Outsider ni las es
   await expect(page.locator('#outsiderTab')).toHaveCount(0);
   await bar(page, 'Calendario').click();
   await expect(page.locator('#calendarNewStay')).toHaveCount(0);
+  await expect(page.locator('#calendarYear')).toBeVisible();
+  await expect(page.locator('#calendarYear .year-lane[data-kind="outsider"]')).toHaveCount(0);
   await expect(page.locator('#calendar .cal-legend')).not.toContainText('Mis estancias');
 });
 
@@ -101,16 +106,22 @@ test('O4b · outsider y huésped: pestaña Outsider entre retiros, estancia con 
   await expect(page.locator('#outsiderNoStay')).toBeVisible();
   await expect(page.locator('#outsiderDefaultBed')).toContainText('Habitación del jardín · Cama 1');
 
-  // Nueva estancia: el calendario en «elegir días»; llegada el 10 y salida el 12 del mes que viene (2 noches).
+  // Nueva estancia (tanda 31, MUELA-030): la hoja con llegada y salida; el 10 y el 12 del mes que viene (2 noches).
   await page.locator('#newStay').click();
   await expect(page).toHaveURL(/#\/calendario\/nueva$/);
-  await expect(page.locator('.cal-selectbar')).toBeVisible();
-  await page.locator('#calendar button[aria-label="Siguiente"]').click();
-  await cell(page, nextMonthDay(10)).click();
-  await cell(page, nextMonthDay(12)).click();
-  await expect(page.locator('.cal-selectbar')).toContainText('2 noches');
-  await page.locator('.cal-selectbar button', { hasText: 'Guardar estancia' }).click();
+  await expect(page.locator('#stayForm')).toBeVisible();
+  await page.locator('#stayTo').fill(nextMonthDay(9));
+  await page.locator('#stayFrom').fill(nextMonthDay(10));
+  await expect(page.locator('#stayForm .gnights')).toHaveText('La salida tiene que ser después de la llegada.');
+  await expect(page.locator('#staySave')).toBeDisabled();
+  await page.locator('#stayTo').fill(nextMonthDay(12));
+  await expect(page.locator('#stayForm .gnights')).toContainText('2 noches');
+  await page.locator('#staySave').click();
   await expect(page.getByText('Estancia guardada.')).toBeVisible();
+  await expect(page.locator('#calendarYear .year-lane[data-kind="outsider"] .year-bar')).toHaveCount(1);
+  await expect(page.locator('#calendarYear .year-summary')).toContainText('Estancia (2 noches)');
+  await openMonth(page);
+  await page.locator('#calendar button[aria-label="Siguiente"]').click();
   await expect(page.locator('#calendar .cal-event[data-layer="stay"]').first()).toBeVisible();
   const stays = async () => (await api.booking.t.db.query<{ from_date: string; to_date: string; bed_id: string; source: string }>(
     `select from_date::text, to_date::text, bed_id, source from booking.stays where account_id = $1 and deleted_at is null`, [account])).rows;
@@ -149,7 +160,11 @@ test('O4b · outsider sin retiros: entra en la pestaña Outsider; «hay alguien�
   await expect(page.locator('#retreatTabs')).toHaveCount(0); // sin retiros, sin pestañas
   await expect(navMain(page)).toHaveText(['Calendario', 'Retiros']);
 
+  // Tanda 31 (MUELA-028): sin estancia, los próximos tres días con sus comidas; el formulario de siempre, plegado.
+  await expect(page.locator('#outsiderMeals .goutday')).toHaveCount(3);
+  await expect(page.locator(`#outsiderMeals .goutday[data-day="${day(0)}"]`)).toContainText('Hoy');
   // «Sugerir un plato»: una sugerencia `plato_casa` de Food, pendiente, en «Mis propuestas».
+  await page.locator('#outsiderOtherDay > summary').click();
   await page.locator('#dishName').fill('Lentejas de la abuela');
   await page.locator('#dishService').selectOption('cena');
   await page.locator('#dishSend').click();
@@ -160,10 +175,35 @@ test('O4b · outsider sin retiros: entra en la pestaña Outsider; «hay alguien�
   expect(suggestions).toHaveLength(1);
   expect(suggestions[0]).toMatchObject({ app: 'food', kind: 'plato_casa', status: 'pending' });
   expect(suggestions[0]!.operations[0]).toMatchObject({ op: 'call', procedure: 'food.house_dish_from_suggestion', args: { name: 'Lentejas de la abuela', service: 'cena' } });
+  // «Sugerir aquí», en el hueco de la comida de mañana.
+  const slot = page.locator(`#outsiderMeals .goutday[data-day="${day(1)}"] .goutslot[data-service="comida"]`);
+  await slot.getByRole('button', { name: 'Sugerir aquí' }).click();
+  await expect(page.locator(`[id="dish-${day(1)}:comida"]`)).toBeFocused();
+  await page.locator(`[id="dish-${day(1)}:comida"]`).fill('Pisto con huevo');
+  await slot.locator('form button[type="submit"]').click();
+  await expect(page.locator('#outsiderProposals')).toContainText('Pisto con huevo');
+  await expect.poll(async () => (await api.booking.t.db.query<{ args: any }>(
+    `select operations->0->'args' args from core.suggestions where author_id = $1 order by created_at`, [account])).rows.map((r) => [r.args.name, r.args.service, r.args.date]))
+    .toEqual([['Lentejas de la abuela', 'cena', day(0)], ['Pisto con huevo', 'comida', day(1)]]);
   await capture(page, 'outsider-pestana');
+
+  // «Ikisai» (MUELA-066): sin estancia, «Cuando vengas» con «Nueva estancia»; la guía y el plano dentro.
+  await page.locator('#outsiderInfo').click();
+  await expect(page).toHaveURL(/#\/outsider\/info$/);
+  await expect(page.locator('#outsiderTitle')).toHaveText('Ikisai');
+  await expect(page.locator('#oiStay')).toHaveClass(/st-none/);
+  await expect(page.locator('#oiStay')).toContainText('No tienes ninguna estancia próxima');
+  await expect(page.locator('#oiNewStay')).toBeVisible();
+  await capture(page, 'outsider-ikisai');
+  await page.locator('#oiNewStay').click();
+  await expect(page).toHaveURL(/#\/calendario\/nueva$/);
+  await expect(page.locator('#stayForm')).toBeVisible();
+  await page.keyboard.press('Escape');
 
   // Calendario: «hay alguien» rayado, la nota del equipo con su hora de Madrid, y una nota propia que se añade y se borra.
   await bar(page, 'Calendario').click();
+  await expect(page.locator('#calendarYear .year-summary')).toContainText('Hay alguien del staff');
+  await openMonth(page);
   await expect(page.locator('#calendar .cal-legend-shade')).toHaveText('Hay alguien del staff');
   await expect(cell(page, day(2))).toHaveClass(/shaded/);
   await cell(page, day(2)).click();
@@ -195,10 +235,10 @@ test('O4b · la familia: estancia para todos por defecto (con su clave de person
   await page.goto(`${baseURL}/#/calendario`);
   await page.reload();
   await page.locator('#calendarNewStay').click();
-  await page.locator('#calendar button[aria-label="Siguiente"]').click();
-  await cell(page, nextMonthDay(5)).click();
-  await cell(page, nextMonthDay(8)).click();
-  await page.locator('.cal-selectbar button', { hasText: 'Guardar estancia' }).click();
+  await page.locator('#stayFrom').fill(nextMonthDay(5));
+  await page.locator('#stayTo').fill(nextMonthDay(8));
+  await expect(page.locator('#stayForm .gnights')).toContainText('3 noches');
+  await page.locator('#staySave').click();
   // Para todos por defecto, con una casilla por persona.
   await expect(page.locator('#whoList input:checked')).toHaveCount(2);
   await page.locator('#whoOk').click();
@@ -213,7 +253,9 @@ test('O4b · la familia: estancia para todos por defecto (con su clave de person
   const byGuest = new Map((await keys()).map((k) => [k.id, k.person_key]));
   expect((await persons())[0]!.keys).toEqual([byGuest.get(marta), byGuest.get(nico)]);
 
-  // «Separar»: Nico llega un día más tarde.
+  // «Separar»: Nico llega un día más tarde (desde el día, en el mes).
+  await openMonth(page);
+  await page.locator('#calendar button[aria-label="Siguiente"]').click();
   await cell(page, nextMonthDay(5)).click();
   await expect(page.locator('#dayActions .gday-who')).toHaveText('Para: Marta, Nico');
   await page.locator('#dayActions button', { hasText: 'Separar' }).click();
@@ -238,6 +280,12 @@ test('O4b · retiros abiertos: cualquier huésped los ve en el calendario, con s
   await page.goto(`${baseURL}/i/${await api.guestLink(mio.id, g, 'Iván')}`);
   await page.locator('#privacyOk').click();
   await bar(page, 'Calendario').click();
+  // Tanda 31 (MUELA-030): las invitaciones, bajo «Tu año», con su resumen y sin precio.
+  await expect(page.locator(`#calendarOpen [data-open="${abierto.id}"]`)).toContainText('Invitación · retiro abierto');
+  await expect(page.locator(`#calendarOpen [data-open="${abierto.id}"]`)).toContainText('Tres días de yoga suave y trabajo en el huerto.');
+  await expect(page.locator(`#calendarOpen [data-open="${oculto.id}"]`)).toHaveCount(0);
+  await expect(page.locator('#calendarOpen')).not.toContainText('€');
+  await openMonth(page);
   await expect(page.locator('#calendar .cal-legend')).toContainText('Retiros abiertos');
   await page.locator('#calendar button[aria-label="Siguiente"]').click();
   await expect(page.locator(`#calendar .cal-event[data-event-id="abierto:${abierto.id}"]`).first()).toBeVisible();
@@ -259,6 +307,7 @@ test('O4b · «Apuntarme»: sugerencia a Booking con la persona y su mensaje; el
   await page.locator('#privacyOk').click();
   const account = await api.accountOf(ana);
   await bar(page, 'Calendario').click();
+  await openMonth(page);
   await page.locator('#calendar button[aria-label="Siguiente"]').click();
   await cell(page, nextMonthDay(16)).click();
   await page.locator('#dayActions .gday-open button', { hasText: 'Apuntarme' }).click();
@@ -285,6 +334,8 @@ test('O4b · «Apuntarme»: sugerencia a Booking con la persona y su mensaje; el
   await page.reload();
   await expect(page.locator('#retreatTabs .cover-dot[aria-label^="Silencio y bosque"]')).toHaveCount(1);
   await bar(page, 'Calendario').click();
+  await expect(page.locator(`#calendarOpen [data-open="${abierto.id}"]`)).toHaveCount(0);
+  await openMonth(page);
   await page.locator('#calendar button[aria-label="Siguiente"]').click();
   await expect(page.locator(`#calendar .cal-event[data-event-id="abierto:${abierto.id}"]`)).toHaveCount(0);
   await expect(page.locator(`#calendar .cal-event[data-event-id="${abierto.id}"]`).first()).toBeVisible();

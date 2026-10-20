@@ -498,8 +498,35 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   nunca en verde) y la respuesta escrita cuando llegue en `/feedback?mine`. El sitio sigue viajando como texto
   («[Mi habitación] …») hasta que el aviso lleve `space_id`.
 - **Entrada** (`ui/entry.ts`, MUELA-060): bienvenida, qué ha pasado (con «Reintentar» sin red), «Encuentra tu enlace» paso a
-  paso (correo y WhatsApp) y siempre las salidas de Central (correo, teléfono y, con `contact.whatsapp`, WhatsApp). El paso
+  paso (correo y WhatsApp) y siempre las salidas de Central (correo y teléfono; WhatsApp cuando Central publique `contact.whatsapp`). El paso
   «con tu código» llegará con el reenvío del enlace sin sesión del núcleo.
+
+**Parte C · Outsider, «Ikisai» y Calendario:**
+- **Outsider** (`ui/outsider.ts`, MUELA-028): arriba «Tu estancia» (la de ahora o la próxima, con habitación y cama, fechas,
+  el aviso si coincide con un retiro y «Ver en el plano»), o «No tienes ninguna estancia próxima» con la cama habitual; las
+  demás estancias plegadas («Otras estancias (N)», con «la puso el equipo»). Debajo, **tus días en la casa** (los de la
+  estancia, o los próximos tres sin ella) con comida y cena y «Sugerir aquí» en cada hueco desde hoy (el plato va a Food
+  como siempre, `plato_casa`, con ese día y esa comida); «Otro día u otra comida» conserva plegado el formulario de siempre
+  (cualquier día desde hoy y las seis comidas). «Nueva estancia», «Ikisai» y «Mis propuestas» (plegado). Sin red se ve todo
+  y solo sugerir y pedir estancia se desactivan, con su motivo. La cabecera ya no repite la pestaña Outsider: solo el
+  selector de persona. Cuando Food publique el menú de casa (FD2), cada hueco enseñará lo que hay.
+- **«Ikisai»** (`ui/house.ts`, MUELA-066; ruta `#/outsider/info`): sustituye a la Información práctica del retiro para el
+  outsider. Según el momento (`duringOf`, día de Madrid): «Ahora, en la casa» (hasta cuándo, llamar al equipo, tu cama,
+  normas), «Antes de venir» («Llegas el martes, 20 (en 5 días)», cómo llegar, tu cama, aparcamiento) o «Cuando vengas»
+  (nueva estancia, cómo llegar, tu cama habitual). Debajo, la guía en tarjetas con la primera frase a la vista (En la casa ·
+  Al llegar, con los textos `info.*` de Central), el plano de la casa (el del centro de Central; la sección no sale si no
+  hay plano ni cama), el lugar y el contacto. Los textos propios de la casa (`house.*`) llegarán cuando Central los publique.
+- **Calendario** (`ui/calendar.ts`, MUELA-030): arriba «Tu próximo retiro» (o «Ahora») con su cuenta atrás y «Abrir el
+  retiro»; **«Tu año»** (`renderTimeline` del kit, doce meses): los retiros en una banda que abre cada uno, las estancias
+  en una pista por persona (con la familia) y, en texto, mes a mes: retiros, estancias con sus noches, invitaciones y los
+  días con alguien del staff (sin nombres). «Nueva estancia» abre una hoja con llegada y salida y las noches al momento,
+  con aviso si coincide con un retiro y los días con staff; después, «¿Para quién?» como siempre. Las invitaciones a
+  retiros abiertos, en tarjetas con su resumen, sin precio y con «Apuntarme» y su estado. El mes, plegado en «Ver como
+  mes», conserva todo lo de antes: elegir días para una estancia, el panel del día con sus notas, «Cambiar fechas»,
+  «Separar», «Quitar», «hay alguien del staff» y los retiros abiertos con «Apuntarme». La lista de todos los retiros sigue
+  al pie.
+- Se borran `ui/retreats.ts` (la cabecera vieja de pestañas, sustituida por `frame.ts` en la parte A) y `ui/info.ts` (la
+  Información práctica del outsider, sustituida por «Ikisai»).
 
 ## 10. Offline
 

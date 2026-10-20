@@ -1,5 +1,11 @@
 /**
- * Calendario de la persona (O4a y O4b; kit 0.33, `createCalendar` con capas): sus retiros, pasados y futuros, en un mes
+ * Calendario (MUELA-030, tanda 31): arriba, el cuadro «Lo próximo» (`#calendarNext`: tu próximo retiro o el que está en
+ * curso, con cuánto falta y «Abrir el retiro»); debajo, **«Tu año»** con la línea de tiempo del kit (`renderTimeline`: los
+ * retiros arriba, las estancias de cada persona y el resumen mes a mes, también los días con alguien del staff); las
+ * **invitaciones** a retiros abiertos con «Apuntarme» y su estado; y la **estancia nueva con llegada y salida** (las noches
+ * al momento y los avisos antes de guardar). El mes de siempre queda a un toque en «Ver como mes», con su panel del día.
+ *
+ * El mes de la persona (O4a y O4b; kit 0.33, `createCalendar` con capas): sus retiros, pasados y futuros, en un mes
  * de lunes a domingo. Tocar un retiro abre su pestaña. Con «Todos», un retiro que no es de todos lleva el nombre de a
  * quién toca. Debajo, la lista de todos los retiros con sus fechas: así se llega a uno lejano sin pasar meses, y se lee
  * bien con un lector de pantalla.
@@ -17,10 +23,10 @@
  * casillas para quitar a alguien y un mensaje opcional. Después, su estado: enviada (con «Retirar»), con el organizador,
  * aceptada o descartada (con el comentario).
  */
-import { confirmDialog, createCalendar, daysBetween, el, icon, openSheet, replace, toast, type CalendarDayInfo, type CalendarEvent } from '@ikisai/ui-kit';
+import { confirmDialog, createCalendar, daysBetween, el, icon, openSheet, renderTimeline, replace, timelineWindow, toast, type CalendarDayInfo, type CalendarEvent, type TimelineItem, type TimelineLane } from '@ikisai/ui-kit';
 import type { Suggestion } from '@ikisai/sync-client';
 import { describeError, isNetworkError, online } from '../app/client.ts';
-import { localeTag, t } from '../app/i18n.ts';
+import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { dateRange } from '../app/labels.ts';
 import { madridInstant, madridParts, type JoinPerson, type OpenRetreat, type OutsiderApi, type Stay, type StayNote, type StayPerson } from '../app/outsider.ts';
 import { retreatsFor, whenOf, type Person, type Retreat, type Roster, type Selection } from '../app/roster.ts';
@@ -156,6 +162,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
       toast(isNetworkError(error) ? t('outsider.needsNetwork') : describeError(error));
     }
     await calendar.refresh();
+    void loadYear();
   }
 
   /** «Separar»: unas personas de la estancia pasan a otra, con sus fechas y la misma cama. */
@@ -178,6 +185,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
       toast(describeError(error));
     }
     await calendar.refresh();
+    void loadYear();
   }
 
   async function removeStay(stay: Stay): Promise<void> {
@@ -186,6 +194,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
     if (!ok) return;
     try { await out.removeStay(stay.id, stay.revision); toast(t('calendar.stayRemoved')); } catch (error) { toast(describeError(error)); }
     await calendar.refresh();
+    void loadYear();
   }
 
   function addNote(day: string): void {
@@ -240,6 +249,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
       toast(isNetworkError(error) ? t('outsider.needsNetwork') : describeError(error));
     }
     await calendar.refresh();
+    void loadYear();
   }
 
   async function withdrawJoin(s: Suggestion): Promise<void> {
@@ -248,6 +258,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
     if (!ok) return;
     try { await actions.join.withdraw(s.id); toast(t('calendar.joinWithdrawn')); } catch (error) { toast(describeError(error)); }
     await calendar.refresh();
+    void loadYear();
   }
 
   /** Estado de su «Apuntarme» en un retiro abierto, o el botón para apuntarse. */
@@ -339,12 +350,124 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   const today = todayMadrid();
   const when = { before: t('calendar.before'), during: t('calendar.during'), after: t('calendar.after') };
   const label = (r: Retreat) => when[whenOf(r, today)];
+  const win = timelineWindow(today, 12);
+
+  // «Tu año»: lo de los próximos doce meses (estancias, días con alguien del staff y retiros abiertos).
+  let yearStays: Stay[] = [];
+  let yearStaff: string[] = [];
+  let yearOpen: OpenRetreat[] = [];
+  const top = el('div', { id: 'calendarTop' });
+  async function loadYear(): Promise<void> {
+    const range = { from: win.start, to: win.end };
+    const [st, pr, op, mine] = await Promise.all([
+      out ? out.stays(range).catch(() => null) : null,
+      out ? out.presence(range).catch(() => null) : null,
+      actions.openRetreats ? actions.openRetreats(range).catch(() => [] as OpenRetreat[]) : [] as OpenRetreat[],
+      actions.join ? actions.join.mine().catch(() => new Map<string, Suggestion>()) : new Map<string, Suggestion>(),
+    ]);
+    yearStays = st?.value.items ?? [];
+    yearStaff = (pr?.value.items ?? []).filter((x) => x.present).map((x) => x.date);
+    yearOpen = op.filter((o) => !o.joined && o.start_date && !byId.has(o.reservation_id) && (o.end_date ?? o.start_date) >= today)
+      .sort((a, b) => a.start_date!.localeCompare(b.start_date!));
+    joins = mine;
+    paintTop();
+  }
+
+  function paintTop(): void {
+    const next = list.filter((r) => r.start && (r.end ?? r.start) >= today).sort((a, b) => a.start!.localeCompare(b.start!))[0];
+    const n = next?.start ? daysBetween(today, next.start) : 0;
+    const nextBox = next ? el('section', { class: 'gnext', id: 'calendarNext', 'aria-labelledby': 'calendarNextTitle' },
+      el('p', { class: 'glabel' }, n > 0 ? t('calendar.nextRetreat') : t('frame.now')),
+      el('p', { class: 'gnext-title', id: 'calendarNextTitle' }, next.title ?? t('picker.unknown')),
+      el('p', null, [dateRange(next.start, next.end), actions.who(next)].filter(Boolean).join(' · ')),
+      el('p', { class: 'gnext-count' }, n > 0 ? t('home2.inDays', { count: n }) : t('calendar.during')),
+      el('a', { class: 'primary', href: actions.href(next), 'data-feedback-id': 'guests.calendario.proximo.abrir', 'data-feedback-label': 'Abrir el retiro' }, t('calendar.openRetreat'))) : null;
+    // Las estancias, por persona (con la familia) o en una sola pista.
+    const stayItem = (st: Stay): TimelineItem => ({
+      id: st.id, from: st.from, to: st.to, past: st.to < today, clash: st.clash,
+      label: [stayTitle(st), dateRange(st.from, st.to), stayText(st)].filter(Boolean).join(' · '), short: stayText(st) || t('calendar.stay'),
+    });
+    const lanes: TimelineLane[] = !out ? [] : family.length
+      ? family.map((p) => ({ id: p.key, label: p.name || t('picker.unknown'), kind: 'outsider', items: yearStays.filter((st) => st.persons.some((x) => x.person_key === p.personKey || x.name === p.name)).map(stayItem) }))
+      : [{ id: 'stays', label: t('calendar.stays'), kind: 'outsider', items: yearStays.map(stayItem) }];
+    const bands: TimelineItem[] = list.filter((r) => r.start).map((r) => ({
+      id: r.reservation_id, from: r.start!, to: r.end ?? r.start!, past: (r.end ?? r.start!) < today,
+      label: [r.title ?? t('picker.unknown'), dateRange(r.start, r.end), actions.who(r)].filter(Boolean).join(' · '), short: r.title ?? '',
+      onClick: () => actions.navigate(actions.href(r)),
+    }));
+    // Mes a mes, en texto: retiros, estancias (noches), invitaciones y días con alguien del staff (sin nombres).
+    const summary: Record<string, string> = {};
+    const add = (month: string, text: string) => { summary[month] = summary[month] ? `${summary[month]} · ${text}` : text; };
+    for (const r of list) if (r.start && r.start >= win.start && r.start < win.end) add(r.start.slice(0, 7), r.title ?? '');
+    for (const st of yearStays) add(st.from.slice(0, 7), `${t('calendar.stay')} (${t('calendar.nights', { count: daysBetween(st.from, st.to) })})`);
+    for (const o of yearOpen) add(o.start_date!.slice(0, 7), t('calendar.invitationShort', { title: o.title }));
+    const staffByMonth = new Map<string, string[]>();
+    for (const d of yearStaff) staffByMonth.set(d.slice(0, 7), [...(staffByMonth.get(d.slice(0, 7)) ?? []), String(Number(d.slice(8, 10)))]);
+    for (const [m, ds] of staffByMonth) add(m, `${t('calendar.someone')}: ${ds.join(', ')}`);
+    const year = renderTimeline({ label: t('calendar.year'), from: today, today, bands, bandsLabel: t('calendar.mine'), lanes, summary, summaryLabel: t('calendar.monthByMonth'), emptyText: t('calendar.yearEmpty') });
+    year.id = 'calendarYear';
+    // El kit (0.48) solo mira las pistas para decir «Nada en estos meses»; con retiros en la ventana, sobra (petición al kit).
+    if (bands.some((b) => b.to >= win.start && b.from < win.end)) year.querySelector('.year-empty')?.remove();
+    const invitations = yearOpen.length ? el('section', { class: 'ginvites', id: 'calendarOpen', 'aria-labelledby': 'calendarOpenTitle' },
+      el('h3', { id: 'calendarOpenTitle' }, t('calendar.invitations')),
+      ...yearOpen.map((o) => el('article', { class: 'ginvite', dataset: { open: o.reservation_id } },
+        el('span', { class: 'ginvite-date', 'aria-hidden': 'true' }, el('small', null, formatDate(o.start_date!, { month: 'short' }).replace('.', '')), el('strong', null, String(Number(o.start_date!.slice(8, 10))))),
+        el('div', null,
+          el('p', { class: 'glabel' }, t('calendar.invitation')),
+          el('strong', null, o.title),
+          el('p', { class: 'small' }, dateRange(o.start_date, o.end_date)),
+          o.summary ? el('p', { class: 'small gtext' }, o.summary) : null,
+          joinState(o) ?? el('p', { class: 'muted small' }, t('calendar.openSoon')))))) : null;
+    replace(top, nextBox,
+      el('h3', { class: 'gyear-title' }, t('calendar.year')),
+      out ? el('div', { class: 'btnrow gcal-tools' },
+        el('button', { type: 'button', class: 'primary', id: 'calendarNewStay', 'data-feedback-id': 'guests.calendario.estancia.nueva', 'data-feedback-label': 'Nueva estancia', onclick: () => openStaySheet() }, icon('plus', 16), t('outsider.newStay'))) : null,
+      year, invitations);
+  }
+
+  /** Estancia nueva con llegada y salida (MUELA-030): las noches al momento y los avisos antes de guardar. */
+  function openStaySheet(): void {
+    if (!out) return;
+    const plus = (n: number) => new Date(Date.parse(`${today}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    const from = el('input', { type: 'date', id: 'stayFrom', value: plus(5), min: today }) as HTMLInputElement;
+    const to = el('input', { type: 'date', id: 'stayTo', value: plus(8), min: today }) as HTMLInputElement;
+    const nights = el('p', { class: 'gnights', role: 'status' });
+    const save = el('button', { type: 'submit', class: 'primary wide', id: 'staySave', 'data-feedback-id': 'guests.calendario.estancia.guardar', 'data-feedback-label': 'Guardar estancia' }, t('calendar.staySave')) as HTMLButtonElement;
+    const update = () => {
+      const n = from.value && to.value ? daysBetween(from.value, to.value) : 0;
+      save.disabled = n < 1;
+      if (n < 1) { replace(nights, t('calendar.stayBadDates')); return; }
+      const clash = list.some((r) => r.start && r.start <= to.value && (r.end ?? r.start) >= from.value);
+      const staff = yearStaff.filter((d) => d >= from.value && d <= to.value).length;
+      replace(nights, el('strong', null, t('calendar.nights', { count: n })),
+        clash ? el('span', { class: 'gwarn' }, ` · ⚠ ${t('calendar.stayClash')}`) : null,
+        staff ? ` · ${t('calendar.staffDays', { count: staff })}` : null);
+    };
+    from.addEventListener('input', update);
+    to.addEventListener('input', update);
+    update();
+    const sheet = openSheet({
+      title: t('outsider.newStay'),
+      body: el('form', { class: 'gform', id: 'stayForm', onsubmit: (event: Event) => {
+        event.preventDefault();
+        if (!online()) { toast(t('outsider.needsNetwork')); return; }
+        void sheet.close(true);
+        void saveStay({ from: from.value, to: to.value });
+      } },
+      el('div', { class: 'gfield-row' },
+        el('div', { class: 'gfield' }, el('label', { for: 'stayFrom' }, t('calendar.splitFrom')), from),
+        el('div', { class: 'gfield' }, el('label', { for: 'stayTo' }, t('calendar.splitTo')), to)),
+      nights, save),
+    });
+  }
+
   replace(main,
     header,
     el('div', { class: 'pagehead' }, el('h2', null, t('calendar.title'))),
-    out ? el('div', { class: 'btnrow gcal-tools' },
-      el('button', { type: 'button', class: 'primary', id: 'calendarNewStay', 'data-feedback-id': 'guests.calendario.estancia.nueva', 'data-feedback-label': 'Nueva estancia', onclick: () => calendar.selectRange() }, icon('plus', 16), t('outsider.newStay'))) : null,
-    calendar.element,
+    top,
+    el('details', { class: 'gmonth', id: 'calendarMonth', 'data-feedback-id': 'guests.calendario.mes.abrir', 'data-feedback-label': 'Ver como mes' },
+      el('summary', null, icon('calendar', 18), ' ', t('calendar.asMonth')),
+      calendar.element),
     el('section', { class: 'gcalendar-list', 'aria-labelledby': 'calendarListTitle' },
       el('h3', { id: 'calendarListTitle' }, t('calendar.list')),
       list.length
@@ -355,6 +478,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
           el('strong', null, r.title ?? t('picker.unknown')),
           el('span', { class: 'muted small' }, [dateRange(r.start, r.end), label(r), actions.who(r)].filter(Boolean).join(' · ')))))))
         : el('p', { class: 'card gcard muted', id: 'calendarEmpty' }, t('calendar.empty'))));
-  if (out && actions.newStay) requestAnimationFrame(() => calendar.selectRange());
+  paintTop();
+  void loadYear().then(() => { if (out && actions.newStay) openStaySheet(); });
   return () => calendar.destroy();
 }

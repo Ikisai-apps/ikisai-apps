@@ -466,3 +466,69 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .gask-btns{display:flex;gap:8px;justify-content:flex-end}
 .gask-btns>*{min-height:46px}
 .gask .gfield input{min-height:52px}
+
+/* Calendario (MUELA-030): el próximo retiro, tu año, invitaciones y el mes plegado */
+.gnext{display:grid;gap:4px;padding:14px;border-radius:18px;background:linear-gradient(150deg,var(--accent-soft),var(--paper));border:1px solid var(--line)}
+.gnext p{margin:0}
+.gnext-title{font-size:1.2rem;font-weight:800}
+.gnext-count{font-weight:700;color:var(--accent-deep)}
+.gnext .primary{justify-self:start;margin-top:6px;min-height:46px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;text-decoration:none}
+.gyear-title{margin:16px 0 4px}
+.ginvites{display:grid;gap:8px;margin-top:12px}
+.ginvites h3{margin:0}
+.ginvite{display:flex;gap:12px;padding:12px;border-radius:16px;border:1px dashed var(--accent-deep);background:var(--paper)}
+.ginvite p{margin:0 0 4px}
+.ginvite>div{flex:1;min-width:0}
+.ginvite-date{flex:none;display:grid;place-items:center;align-content:center;width:52px;height:56px;border-radius:12px;background:var(--accent-soft);color:var(--accent-deep);line-height:1.05}
+.ginvite-date small{text-transform:uppercase;font-size:var(--text-xs,.75rem);font-weight:700}
+.ginvite-date strong{font-size:1.25rem}
+.gmonth{margin-top:14px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.gmonth>summary{display:flex;align-items:center;gap:6px;min-height:48px;padding:0 12px;font-weight:700;cursor:pointer}
+.gmonth[open]>summary{border-bottom:1px solid var(--line)}
+.gmonth>:not(summary){padding:8px}
+.gnights{margin:4px 0;min-height:1.4em}
+
+/* Outsider (MUELA-028): tu estancia, tus días con sus comidas y lo demás plegado */
+.gsub{margin:14px 0 2px}
+.goutdays{display:grid;gap:10px}
+.goutdays>p{margin:0}
+.goutday h4{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px;text-transform:capitalize}
+.goutday.today{border:2px solid var(--accent-deep)}
+.goutslot{padding:8px 0;border-top:1px solid var(--line)}
+.goutslot-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.goutslot-head .small{color:var(--gsoft,var(--muted))}
+.goutslot-head button{margin-left:auto;min-height:40px}
+.goutinline{display:flex;gap:6px;margin-top:6px}
+.goutinline input{flex:1;min-width:0;min-height:44px}
+.goutinline button{min-height:44px}
+.gothers{border:1px solid var(--line);border-radius:14px;background:var(--paper);margin-top:10px}
+.gothers>summary{display:flex;align-items:center;gap:6px;min-height:48px;padding:0 12px;font-weight:700;cursor:pointer}
+.gothers[open]>summary{border-bottom:1px solid var(--line)}
+.gothers>:not(summary){margin:10px 12px}
+
+/* «Ikisai» (MUELA-066): según el momento, la guía en tarjetas y el plano */
+.ghouse-head{display:flex;align-items:center;gap:12px}
+.ghouse-head h2,.ghouse-head p{margin:0}
+.ghouse-ico{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent-deep)}
+.ghouse-ico.big{width:52px;height:52px;border-radius:16px}
+.ghouse-moment{display:grid;gap:8px;padding:14px;border-radius:18px;border:1px solid var(--line);background:var(--paper)}
+.ghouse-moment.st-now{background:linear-gradient(150deg,var(--accent-soft),var(--paper));border-color:var(--accent-deep)}
+.ghouse-moment.st-next{background:color-mix(in srgb,var(--accent-soft) 45%,var(--paper))}
+.ghouse-moment p,.ghouse-moment h3{margin:0}
+.ghouse-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.ghouse-tile{display:flex;align-items:center;gap:10px;min-height:60px;padding:8px 10px;border-radius:14px;border:1px solid var(--line);background:var(--paper);color:var(--ink);text-decoration:none;text-align:left;font:inherit}
+.ghouse-tile>span:last-child{display:flex;flex-direction:column;min-width:0}
+.ghouse-tile .small{color:var(--gsoft,var(--muted));overflow-wrap:anywhere}
+.ghouse-tile[aria-disabled="true"],.ghouse-tile:disabled{opacity:.6}
+.ghouse-grid{display:grid;gap:8px}
+@media (min-width:700px){.ghouse-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ghouse-card{border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.ghouse-card>summary{display:flex;align-items:center;gap:10px;min-height:60px;padding:8px 10px;cursor:pointer;list-style:none}
+.ghouse-card>summary::-webkit-details-marker{display:none}
+.ghouse-card[open]>summary{border-bottom:1px solid var(--line)}
+.ghouse-card>:not(summary){margin:10px 12px}
+.ghouse-cardtext{display:flex;flex-direction:column;min-width:0}
+.ghouse-cardtext .small{color:var(--gsoft,var(--muted));display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ghouse-card[open] .ghouse-cardtext .small{display:none}
+/* Sin plano en Central ni cama que señalar, la sección no se enseña (el plano llega después, si lo hay). */
+.ghouse-plan:has(> .gplan-host:empty){display:none}

@@ -86,7 +86,11 @@ test('O4a · entrada por el retiro del enlace y, sin enlace, en el que está en 
   await bar(page, 'Calendario').click();
   await expect(page).toHaveURL(/#\/calendario$/);
   await expect(bar(page, 'Calendario')).toHaveAttribute('aria-current', 'page');
-  // La barra del retiro en curso, en el mes de hoy; y la lista con todos y su momento.
+  // La barra del retiro en curso, en «Tu año» y en el mes de hoy (plegado, tanda 31); y la lista con todos y su momento.
+  await expect(page.locator('#calendarNext')).toContainText('Retiro en curso');
+  await expect(page.locator(`#calendarYear .year-band[data-id="${curso.id}"]`)).toBeVisible();
+  await expect(page.locator('#calendarYear .year-empty')).toHaveCount(0);
+  await page.locator('#calendarMonth > summary').click(); // Tanda 31 (MUELA-030): el mes, plegado bajo «Tu año»
   await expect(page.locator(`#calendar .cal-event[data-event-id="${curso.id}"]`).first()).toBeVisible();
   await expect(page.locator('#calendarList a')).toHaveCount(2);
   await expect(page.locator('#calendarList a').first()).toContainText('En curso');
@@ -100,7 +104,7 @@ test('O4a · entrada por el retiro del enlace y, sin enlace, en el que está en 
   await bar(page, 'Retiros').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro próximo');
   await bar(page, 'Calendario').click();
-  await page.locator(`#calendar .cal-event[data-event-id="${curso.id}"]`).first().click();
+  await page.locator(`#calendarYear .year-band[data-id="${curso.id}"]`).click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro en curso');
 });
 
