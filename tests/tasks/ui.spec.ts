@@ -632,7 +632,7 @@ test('[61][62] barra de facetas en escritorio y acciones en lote', async () => {
 });
 
 declare const cachedAttachment: any;
-declare const aliasSheet: any, touch: any, save: any, leaves: any, boardDay: any, duplicateProject: any, isoDay: any;
+declare const aliasSheet: any, touch: any, save: any, leaves: any, boardDay: any, duplicateProject: any, isoDay: any, withArea: any;
 const cursor = async () => (await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor as number;
 
 test('[63][64] duplicar proyectos, plantillas entre áreas, alias y «Mis tareas»', async () => {
@@ -782,12 +782,28 @@ test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciad
 });
 
 test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y copias con dependencias', async () => {
-  await test.step('[69] Inicio muestra indicadores, proyectos, semana, personas, calor y actividad, y es la vista de entrada de un área', async () => {
+  await test.step('[69] Inicio muestra cifras, «Lo primero» y la cola, proyectos, semana, personas, calor y actividad, y es la vista de entrada de un área', async () => {
     await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('home'); });
     await expect(a.locator('main.home')).toHaveCount(1);
-    await expect(a.locator('.kpi')).toHaveCount(4);
+    // Cifras de color del kit (MUELA-055): pendientes, vencidas, para hoy, bloqueadas, hechas esta semana y % hecho.
+    await expect(a.locator('#homeStats .stat-item')).toHaveCount(6);
+    await expect(a.locator('#homeStats')).toContainText('hechas esta semana');
     expect(await a.locator('.homeproject').count()).toBeGreaterThan(0);
-    expect(await a.locator('.hometask[data-home-task]').count()).toBeGreaterThan(0);
+    // «Lo primero»: hasta tres en grande, con «✓ Hecha», «Abrir» y «⋯ Mover a…»; el resto, numerado en la cola.
+    const cards = a.locator('#homeLead .lead-card');
+    expect(await cards.count()).toBeGreaterThan(0);
+    expect(await cards.count()).toBeLessThanOrEqual(3);
+    await expect(cards.first().getByRole('button', { name: /Mover a otro día/ })).toHaveCount(1);
+    await expect(cards.first().locator('[data-feedback-id="tasks.inicio.lo_primero.hecha"]')).toHaveCount(1);
+    // «⋯ Mover a…» cambia la FECHA de la tarea (no el proyecto).
+    const [area, id] = (await cards.first().getAttribute('data-id'))!.split('|');
+    const before = await a.evaluate(([ar, t]) => withArea(ar, () => { const loc = taskLocation(t); return { project: loc.p.id, due: loc.t.due || '' }; }), [area, id]);
+    await cards.first().getByRole('button', { name: /Mover a otro día/ }).click();
+    const target = await a.evaluate(() => isoDay(3));
+    await a.locator(`[data-home-move="${target}"]`).click();
+    expect(await a.evaluate(([ar, t]) => withArea(ar, () => { const loc = taskLocation(t); return { project: loc.p.id, due: loc.t.due }; }), [area, id])).toEqual({ project: before.project, due: target });
+    await settled(a);
+    expect((await serverRow('tasks.tasks', id!)).due).toBe(target);
     expect(await a.locator('.weekday').count()).toBeGreaterThanOrEqual(8);
     // Los días de la semana, en hora local (MUELA-055): con toISOString, en Madrid salían con un día de retraso.
     expect(await a.evaluate(() => [isoDay(0), isoDay(1)])).toEqual(await a.evaluate(() => [boardDay(0), boardDay(1)]));
@@ -802,6 +818,14 @@ test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y c
     expect(await a.evaluate(() => state.view + '/' + state.activeTab)).toBe(`home/${ID.personal}`);
     await a.evaluate(() => { state.taskScope = 'all'; render(); });
     await expect(a.locator('.homehead .title')).toContainText('General');
+    // En General, «✓ Hecha» desde Inicio marca la tarea de otra área sin cambiar de área, con su «Deshacer».
+    const [doneArea, doneId] = (await a.locator('#homeLead .lead-card').first().getAttribute('data-id'))!.split('|');
+    const activeBefore = await a.evaluate(() => state.activeTab);
+    await a.locator('#homeLead .lead-card').first().locator('[data-feedback-id="tasks.inicio.lo_primero.hecha"]').click();
+    expect(await a.evaluate(([ar, t]) => withArea(ar, () => !!taskLocation(t).t.done), [doneArea, doneId])).toBe(true);
+    expect(await a.evaluate(() => state.activeTab)).toBe(activeBefore);
+    await a.locator('.ikisai-toast button', { hasText: 'Deshacer' }).last().click();
+    expect(await a.evaluate(([ar, t]) => withArea(ar, () => !!taskLocation(t).t.done), [doneArea, doneId])).toBe(false);
     await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; navigateView('projects'); });
   });
 

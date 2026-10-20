@@ -153,5 +153,11 @@ test('lectura: ve los materiales de la tarea, sin botones para cambiarlos', asyn
   await expect(reader.locator('#taskMaterials .materialrow')).toHaveCount(2);
   await expect(reader.locator('#materialAdd, #materialConsume, [data-material-remove], [data-material-qty]')).toHaveCount(0);
   await close(reader);
+  // Inicio de la lectora (MUELA-055): cifras y «Lo primero», sin «✓ Hecha» ni «⋯ Mover a…» (solo «Abrir»).
+  await reader.evaluate(() => (window as any).navigateView('home'));
+  await expect(reader.locator('#homeStats .stat-item')).toHaveCount(6);
+  expect(await reader.locator('#homeLead .lead-card').count()).toBeGreaterThan(0);
+  await expect(reader.locator('#homeLead [data-feedback-id="tasks.inicio.lo_primero.hecha"], #homeLead [data-feedback-id="tasks.inicio.lo_primero.mover"]')).toHaveCount(0);
+  await expect(reader.locator('#homeLead [data-feedback-id="tasks.inicio.lo_primero.abrir"]').first()).toBeVisible();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
