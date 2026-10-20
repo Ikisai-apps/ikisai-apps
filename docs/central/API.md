@@ -823,6 +823,14 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
   - **A mano:** arrastrar para mover y las esquinas para estirar; con el teclado, Tab hasta la estancia, las flechas mueven y, con Mayúsculas, estiran (Alt, paso fino). Se guarda solo: la forma pasa por `setShape` de la pieza y se guarda en su `onShape`.
   - **«Por revisar»:** las estancias del edificio sin forma en ese dibujo, con «Poner» (al centro; una cama, dentro de su habitación si ya está). «Quitar del plano» la devuelve a la lista.
 - Dependencia nueva de Central: `dompurify` 3.4.17 (fija).
+- **Ajustes de la tanda 37 (MUELA-092, decididos por Core Sevilla):**
+  - **Se sube el SVG limpio, no el original** (`cleanSvg`): DOMPurify (perfil SVG) y, además, fuera los enlaces que no son de dentro del dibujo (`#…`) ni imágenes incrustadas, el CSS con enlaces activos y los atributos sin espacio de nombres (`inkscape:label` pasa a `data-name`). El tamaño y el `sha256` son los del limpio. Si aun así lleva contenido activo, no se sube: «El SVG lleva contenido activo. Guárdalo limpio desde tu programa de dibujo». El mismo aviso si el servidor lo rechaza en `verify` (#694, 422 `UNSUPPORTED_MEDIA`).
+  - **Las camas acompañan a su habitación:** mover o estirar una estancia aplica la misma traslación y escala a lo que tiene dentro en el mismo dibujo, en **un solo lote** (`commit` con todas las filas) y con **un solo «Deshacer»**. El aviso con «Deshacer» sale al soltar el ratón y, con el teclado, cuando se mueven también sus camas (la flecha contraria deshace lo suelto).
+  - **Sin red**, «Subir», «Sustituir», «Quitar» y «Colocar solo» se apagan con su motivo (`bindOnline`; una línea compartida en los dibujos).
+  - **El aviso de «Colocar solo» dice qué nombres del SVG no son de ninguna estancia** de Recursos (hasta 10 y «+N más»), sin los que pone el programa de dibujo (`layer1`, `rect123`, «Capa 1»…). También queda una nota en «Colocar» hasta el siguiente «Colocar solo».
+  - **Giros e inclinaciones:** la matriz completa (`translate`, `scale`, `rotate` con o sin centro, `skewX`, `skewY` y `matrix`). Si no se puede leer (CSS, un `<svg>` dentro de otro o un valor como `rotate(10deg)`), la estancia va a «Por revisar» con el motivo y no se coloca.
+  - El rótulo de «Colocar» lleva el halo de la pieza del kit (`paint-order: stroke` con el color del papel).
+  - «Quitar» desactivado lleva `aria-describedby` con su motivo.
 
 ---
 
