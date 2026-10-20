@@ -112,6 +112,8 @@ export function portalMap(data: PortalPlans, options: Omit<SpaceMapOptions, 'sou
     source: createMemorySpaceSource(toRows(data.spaces)),
     plans,
     planUrl: (fileId) => planImage(data.plans.find((x) => x.fileId === fileId)),
+    // Sin números en las camas (056): el estado va en el color, el rayado y el nombre accesible.
+    bedNumbers: false,
     ...options,
   });
 }

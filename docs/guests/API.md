@@ -564,7 +564,8 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   la enseña abajo, como la fila de la lista, y queda resaltada. **La elegida ampliada** (`focus` del kit 0.54,
   `#lodgingBedsMap`): en la habitación de abajo, su dibujo recortado con las camas encima, cada una con su estado en texto
   («Libre», «Ocupada», «Elegida» o la de quién de la familia; apagada si no se puede elegir); tocar una hace lo mismo que
-  su botón (confirmación incluida). Los botones de color con texto siguen debajo, como lista equivalente. Sin forma de la
+  su botón (confirmación incluida). Sin números en las camas (`bedNumbers: false`, kit 0.54.1, en todos los mapas de
+  Guests): el estado va en el color, el rayado y el nombre accesible, y el nombre, en los botones. Los botones de color con texto siguen debajo, como lista equivalente. Sin forma de la
   habitación o sin camas dibujadas, solo los botones.
 - **Ayuda** (MUELA-054, `#helpPlan`): bajo las baldosas de «Un sitio», «Tócalo en el plano» (solo los sitios de huéspedes:
   habitaciones, salas, baños, comedor, exteriores, zonas de paso y otros). Tocar un sitio lo elige («Sitio: …»,
