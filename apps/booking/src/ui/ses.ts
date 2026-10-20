@@ -294,7 +294,8 @@ export const mountSes: ViewMount = ({ main, client, navigate }) => {
     el('p', { class: 'hint' }, 'El plazo legal es de 24 horas desde el pago, también con los envíos en pausa.'));
   replace(main, el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'SES.HOSPEDAJES'), el('p', null, allowed ? 'Qué falta por comunicar, los rechazos y los partes de viajeros.' : 'Registro de viajeros.'))),
     ...(allowed ? [bands, trayHost, settingsFold, howFold] : [host]));
-  const tray = allowed ? createSesTray(trayHost, { client, navigate, writable: canWrite(client) }) : null;
+  const openSettings = owner ? () => { settingsFold.open = true; settingsFold.scrollIntoView({ block: 'start' }); settingsFold.querySelector<HTMLElement>('summary')?.focus(); } : undefined;
+  const tray = allowed ? createSesTray(trayHost, { client, navigate, writable: canWrite(client), openSettings }) : null;
 
   async function paint(): Promise<void> {
     if (!allowed) return replace(host, el('div', { class: 'empty plain' }, el('strong', null, 'Sin acceso'), 'Estos ajustes los ven el equipo editor y los propietarios.'));
