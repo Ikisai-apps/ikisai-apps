@@ -1066,6 +1066,27 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   // No es lectura de portal: el organizador no la tiene
   await assert.rejects(portal('invoices.reservation_collected', { reservation_ids: [R] }));
 
+  // Tanda 31 (0241): las mismas facturas, una a una, para «Movimientos» de Booking; suman lo mismo y sin datos del destinatario
+  const movements = async (ids: unknown) => (await app.t.db.query<{ r: any }>(`select core.read('booking', $1, 'invoices.reservation_movements', $2) r`, [uid, JSON.stringify({ reservation_ids: ids })])).rows[0]!.r;
+  const moves = await movements([R, R2, NONE]);
+  const sumOf = (list: any[]) => Math.round(list.reduce((t, m) => t + Number(m.total), 0) * 100) / 100;
+  for (const x of byRes) {
+    const mine = moves.filter((m: any) => m.reservation_id === x.reservation_id);
+    assert.equal(sumOf(mine), Number(x.invoiced));
+    assert.equal(sumOf(mine.filter((m: any) => m.collected)), Number(x.collected));
+  }
+  assert.equal(moves.some((m: any) => m.reservation_id === NONE), false);
+  const forRMoves = moves.filter((m: any) => m.reservation_id === R);
+  assert.ok(forRMoves.length >= 2);
+  assert.ok(forRMoves.some((m: any) => m.kind === 'rectificativa' && Number(m.total) < 0));
+  assert.deepEqual(Object.keys(forRMoves[0]).sort(), ['collected', 'concept', 'full_number', 'issue_date', 'issued_invoice_id', 'kind', 'paid_at', 'purpose', 'reservation_id', 'total']);
+  assert.deepEqual(forRMoves.map((m: any) => m.issue_date), [...forRMoves.map((m: any) => m.issue_date)].sort());
+  assert.ok(forRMoves.every((m: any) => m.collected ? m.paid_at : m.paid_at === null));
+  assert.equal(JSON.stringify(moves).includes('Asociación'), false);
+  await assert.rejects(movements(['x']), /INVALID_OPERATION/);
+  await assert.rejects(movements(R), /INVALID_OPERATION/);
+  await assert.rejects(portal('invoices.reservation_movements', { reservation_ids: [R] }));
+
   // Tanda 27 (0240): Finance lee la misma cifra que Booking, y sin red su regla local da lo mismo
   const finance = (await app.t.db.query<{ r: any }>(`select core.read('invoices', $1, 'invoices.reservation_collected', $2) r`, [uid, JSON.stringify({ reservation_ids: [R, R2, NONE] })])).rows[0]!.r;
   assert.deepEqual(finance, byRes);
