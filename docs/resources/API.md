@@ -121,7 +121,7 @@ Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de art
 |---|---|---|
 | `item_kinds` | `kind`, `label`, `consumable`, `position`, `active` | 11 de partida. `consumable = false` (menaje, textil, herramienta, máquina): se cuentan, no se gastan |
 | `items` | `name` (único), `kind`, `category`, `base_unit`, `min_quantity`, `reorder_quantity`, `default_space_id`, `default_supplier_id` (Finance), `tracks_lots`, `tracks_expiry`, `attributes`, `active`, `notes`, `source_refs` | Con movimientos no se borra (`ITEM_IN_USE`): se archiva |
-| `item_units` | `item_id`, `unit`, `factor` (> 0, hacia la base), `supplier_id` | Distinta de la base (`INVALID_UNIT`) |
+| `item_units` | `item_id`, `unit` (el envase: «paquete», «bolsa»…), `factor` (> 0, hacia la base), `supplier_id`, `usual` (el habitual, el que se propone al comprar), `price` (€ por envase, ≥ 0) | Distinta de la base (`INVALID_UNIT`); un `usual` como mucho por artículo entre los vivos, comprobado al final del commit: para cambiarlo, marcar el nuevo y desmarcar el anterior en el mismo commit (`INVALID_FIELDS`, 0810) |
 | `lots` | `item_id`, `code`, `expires_on` | |
 | `movements` | `item_id`, `space_id`, `lot_id`, `quantity` (con signo, en la base), `kind`, `reason`, `unit_cost`, `transfer_id`, `count_id`, `source_app`, `source_ref`, `note`, `at` | **Solo se añaden** (`MOVEMENT_IMMUTABLE`) |
 | `counts` y `count_lines` | `space_id` (null = todo), `note` · `count_id`, `item_id`, `space_id`, `lot_id`, `quantity` | Las líneas solo en abierto (`COUNT_CLOSED`) |
