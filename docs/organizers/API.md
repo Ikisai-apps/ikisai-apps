@@ -623,6 +623,14 @@ MUELA-072:47, que VG mantiene en la MUELA-084: arriba, el veredicto ✓ / !; deb
 - **Fechas** se recalcula al marcar, antes de guardar. «Ir a Personas» o «Ir a Comidas» abren Diseño con el campo enfocado.
 - **Ids de feedback:** `organizers.diseno.siguiente`, `organizers.fechas.veredicto` y `organizers.fechas.siguiente`.
 
+### 18.3 «Para quién» en el Programa (MUELA-065, Booking #664, 20-10-2026)
+
+- **Dato de Booking** (API de Booking §23): `audience` (`todos` por defecto, `adultos`, `menores` o `personas`) y `audience_guest_ids`, que solo se usa con `personas`, de 1 a 100 huéspedes vivos del retiro. Lo lee `portal_program` y lo escribe `portal_program_save`.
+- **En la hoja de la actividad:** el selector «Para quién», con «Todos» por defecto. Con «Algunas personas» se marcan entre los asistentes de `portal_guests`, y hay que elegir al menos a una. Sin asistentes, esa opción queda apagada.
+- **En la lista del día:** «Solo adultos», «Solo menores» o «Solo: Ana, Leo» (como mucho 3 y «y N más»). «Todos» no lleva etiqueta. Los nombres quedan fuera de las capturas de feedback.
+- **Si Booking rechaza la lista** (`INVALID_FIELDS`, por ejemplo por una baja), se avisa y se vuelve a leer.
+- **La regla es pura:** `app/program-audience.ts`, con su prueba de Node. Lo que ve cada familia en Guests lo decide Booking.
+
 ## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
 
 Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal de Ikisai la pasa al organizador, la decide él. El portal no escribe tablas propias: lee y decide con las funciones de Booking.

@@ -688,6 +688,51 @@ test('organizers · ofertas y cartel (fase 5): ofertas privadas, calculadora con
   expect((await download).suggestedFilename()).toBe('cartel-retiro-con-cartel.jpg');
 });
 
+test('organizers · programa «para quién» (MUELA-065): todos por defecto, algunas personas con sus nombres y solo adultos', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro en familia', confirm: true, start: '2027-05-14', end: '2027-05-16' });
+  await enter(page, await api.organizerLink([reservation], 'familia@example.invalid', 'Fina'));
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro en familia');
+  for (const name of ['Ana', 'Leo']) {
+    await page.goto(`${baseURL}/#/retiro/${reservation}/asistentes/nuevo`);
+    await page.locator('#f-first_name').fill(name);
+    // La declaración se pide una vez por retiro.
+    if (name === 'Ana') await page.locator('#declaration').check();
+    await page.locator('#saveNewGuest').click();
+    await expect(page.locator('#guestName')).toHaveText(name);
+  }
+
+  await page.goto(`${baseURL}/#/retiro/${reservation}/experiencia/programa`);
+  await page.locator('[data-add-day="2027-05-15"]').click();
+  await expect(page.locator('#pr-audience')).toHaveValue('todos');
+  await expect(page.locator('#pr-people')).toBeHidden();
+  await page.locator('#pr-title').fill('Taller de barro');
+  // Con «Algunas personas» hay que elegir al menos a una.
+  await page.locator('#pr-audience').selectOption('personas');
+  await expect(page.locator('#pr-people')).toBeVisible();
+  await page.locator('#pr-save').click();
+  await expect(page.locator('#pr-error')).toContainText('al menos a una persona');
+  await page.locator('#pr-people label', { hasText: 'Leo' }).locator('input').check();
+  await page.locator('#pr-save').click();
+  const row = page.locator('[data-day="2027-05-15"] .orgitem', { hasText: 'Taller de barro' });
+  await expect(row.locator('.orgaudience')).toHaveText('Solo: Leo');
+
+  // Se relee de Booking con el mismo público; a «Solo adultos», y la lista de personas se vacía.
+  await page.reload();
+  await expect(row.locator('.orgaudience')).toHaveText('Solo: Leo');
+  await row.locator('.orgitem-main').click();
+  await expect(page.locator('#pr-audience')).toHaveValue('personas');
+  await expect(page.locator('#pr-people label', { hasText: 'Leo' }).locator('input')).toBeChecked();
+  await page.locator('#pr-audience').selectOption('adultos');
+  await page.locator('#pr-save').click();
+  await expect(row.locator('.orgaudience')).toHaveText('Solo adultos');
+
+  // Lo de siempre, para todos, no lleva etiqueta.
+  await page.locator('[data-add-day="2027-05-15"]').click();
+  await page.locator('#pr-title').fill('Comida');
+  await page.locator('#pr-save').click();
+  await expect(page.locator('[data-day="2027-05-15"] .orgitem', { hasText: 'Comida' }).locator('.orgaudience')).toHaveCount(0);
+});
+
 test('organizers · experiencia (fases 4 y 5): programa por días, menú aún sin compartir, alojamiento y vista previa', async ({ page, context }) => {
   const reservation = await api.reservation({ title: 'Retiro con programa', confirm: true, start: '2027-05-14', end: '2027-05-16' });
   await enter(page, await api.organizerLink([reservation], 'programa@example.invalid', 'Pablo'));

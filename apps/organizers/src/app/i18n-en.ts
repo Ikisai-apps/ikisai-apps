@@ -1003,4 +1003,18 @@ export const EN: Dictionary = {
   'Sin conexión: para enviar enlaces necesitas red.': 'Offline: you need a connection to send links.',
   'Sin conexión: para cambiar el alojamiento necesitas red.': 'Offline: you need a connection to change the accommodation.',
   'Tus fechas': 'Your dates',
+  // «Para quién» en el Programa (program-audience.ts, program.ts; MUELA-065)
+  'Solo adultos': 'Adults only',
+  'Solo menores': 'Minors only',
+  'Algunas personas': 'Some people',
+  'Todos': 'Everyone',
+  'Solo algunas personas': 'Only some people',
+  'Solo: {nombres} y {n} más': 'Only: {nombres} and {n} more',
+  'Solo: {nombres}': 'Only: {nombres}',
+  'Elige al menos a una persona.': 'Choose at least one person.',
+  'Como mucho {n} personas.': 'At most {n} people.',
+  '¿Quiénes?': 'Who?',
+  'Añade asistentes para elegir personas.': 'Add attendees to choose people.',
+  'Para quién': 'For whom',
+  'Alguna de esas personas ya no está en el retiro. Vuelve a elegirlas.': 'One of those people is no longer in the retreat. Choose them again.',
 };

@@ -363,3 +363,10 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgoffer-count{min-width:0;font-weight:700;font-variant-numeric:tabular-nums}
 .orgoffer-poster{display:flex;align-items:center;min-height:var(--tap,46px);margin:0}
 .orgoffer.expired{border-color:var(--warn,#c58b2a)}
+
+/* «Para quién» en el Programa (MUELA-065) */
+.orgaudience{margin-left:6px;vertical-align:middle}
+.orgaudience-people{margin:0 0 12px;padding:8px 12px;border:1px solid var(--line);border-radius:12px}
+.orgaudience-people legend{padding:0 4px;font-weight:600}
+.orgaudience-list{display:grid;gap:2px;max-height:240px;overflow:auto}
+.orgaudience-list .field.check{min-height:var(--tap,46px);margin:0;align-items:center}
