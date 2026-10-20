@@ -225,7 +225,10 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await expect(page.locator('#guestRows')).toContainText('Rosa');
   // Rosa aún no tiene enlace: «Enviar su enlace» necesita red y lo dice; «Recordar» y las herramientas siguen.
   await expect(page.locator('#guestRows [data-act="sinenlace"]')).toBeDisabled();
-  await expect(page.locator('#guestRows').getByText('Necesita conexión.')).toBeVisible();
+  // Una sola línea con el motivo para toda la lista (kit 0.49), no una por fila.
+  await expect(page.locator('#guestRowsOffline')).toBeVisible();
+  await expect(page.locator('#guestRowsOffline')).toContainText('para enviar enlaces necesitas red');
+  await expect(page.locator('#guestRows .offline-why')).toHaveCount(1);
   await expect(page.locator('#addGuest')).toBeEnabled();
   await expect(page.locator('#guestSeats button')).toHaveCount(1);
   // Mis retiros sin red: la última copia, con «Reintentar».
@@ -290,7 +293,7 @@ test('organizers · en inglés: navegador en inglés, selector ES | EN y textos 
   // ICU escribe el rango con o sin espacios finos según la plataforma (Windows «12–15», Linux «12 – 15»).
   await expect(page.locator('#retreatHead')).toContainText(/12\s?–\s?15 March 2027/);
   await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
-  await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Log out');
+  await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Sign out');
 
   // Cambio manual a español: se repinta y se recuerda en el dispositivo.
   await page.locator('#langSelect [data-locale="es"]').click();
@@ -347,7 +350,12 @@ test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ik
   await page.goto(`${baseURL}/#/retiro/${offered}/fechas`);
   await expect(page.locator('#datesIkisai')).toBeVisible();
   await expect(page.locator('#datesIkisai .orgdateoption')).toHaveCount(2);
+  // Veredicto arriba (tanda 30, MUELA-084): falta marcar una fecha, y es lo siguiente; se recalcula al marcar.
+  const verdict = page.locator('#datesVerdict');
+  await expect(verdict.locator('.check-verdict')).toContainText('para pedir la propuesta');
+  await expect(verdict.locator('#readyNext')).toContainText('Fechas posibles');
   await page.locator('#datesIkisai .orgdateoption').first().locator('input').check();
+  await expect(verdict.locator('#readyNext')).not.toContainText('Fechas posibles');
   await expect(page.locator('#datesSaveState')).toContainText('Guardado');
   await page.reload();
   await expect(page.locator('#datesIkisai .orgdateoption').first().locator('input')).toBeChecked();
@@ -356,6 +364,10 @@ test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ik
   await page.goto(`${baseURL}/#/retiro/${fixed}/fechas`);
   await expect(page.locator('#datesFixed')).toBeVisible();
   await expect(page.locator('#datesFixed input, #datesFixed .orgweekend')).toHaveCount(0);
+  // Con la fecha fijada, lo siguiente es el diseño: «Ir a Personas» abre Diseño con el campo enfocado.
+  await expect(page.locator('#datesVerdict #readyNext')).toContainText('Cuántas personas venís');
+  await page.locator('#datesVerdict #readyNext').click();
+  await expect(page.locator('#d-expected_guests')).toBeFocused();
 });
 
 test('organizers · diseño (fase 2): datos, extras y precio orientativo; calculadora privada; propuesta con «Quiero confirmar»', async ({ page }) => {
@@ -368,9 +380,11 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await expect(page.locator('#goDesign')).toBeVisible();
   await page.locator('#goDesign').click();
   await expect(page.locator('#designPeople')).toBeVisible();
-  // «Lo que te falta por rellenar»: la fecha de Ikisai aún no está marcada y faltan las personas.
-  await expect(page.locator('#designReady')).toContainText('Cuántas personas venís');
-  await expect(page.locator('#designReady')).toContainText('Fechas posibles');
+  // Veredicto arriba con «Siguiente» (MUELA-072:47 y MUELA-084): la fecha de Ikisai aún no está marcada (lo siguiente) y
+  // faltan las personas (en la lista de debajo).
+  await expect(page.locator('#designReady .check-verdict')).toContainText(/Te faltan? \d+ cosas? para pedir la propuesta/);
+  await expect(page.locator('#designReady #readyNext')).toContainText('Fechas posibles');
+  await expect(page.locator('#designReady .check-list')).toContainText('Cuántas personas venís');
   await page.locator('#designReady .check-action', { hasText: 'Ir a Personas' }).click();
   await expect(page.locator('#d-expected_guests')).toBeFocused();
   await page.locator('#d-expected_guests').fill('20');
@@ -490,9 +504,9 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   const deposit = statement.locator('li[data-move="senal"]');
   await expect(deposit).toContainText('540,00');
   await expect(deposit).toContainText('840,00');
-  await expect(deposit).toContainText('antes del');
+  await expect(deposit).toContainText('hasta el');
   await expect(deposit).toContainText('Pendiente');
-  await expect(statement.locator('li[data-move="saldo"]')).not.toContainText('antes del');
+  await expect(statement.locator('li[data-move="saldo"]')).not.toContainText('hasta el');
   // Movimientos: las dos facturas y el pago recibido de la cobrada.
   await expect(statement.locator('li.mb-doc')).toHaveCount(2);
   await expect(statement.locator('li.mb-doc').filter({ hasText: 'Cobrada' })).toHaveCount(1);
@@ -507,10 +521,11 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   await expect(page.locator('#moneyPending')).toHaveText(/700,00/);
   await expect(page.locator('#moneyTotals')).toContainText('Según la propuesta aceptada (versión 1)');
 
-  // «Cómo pagar», abierto bajo el extracto porque queda algo por pagar.
+  // «Cómo pagar», abierto entre «Próximamente» y «Movimientos» (afterUpcoming, kit 0.49) porque queda algo por pagar.
   const how = page.locator('#paymentInstructions');
   await expect(how).toContainText('Por transferencia');
   expect(await how.evaluate((node) => node.tagName)).toBe('SECTION');
+  expect(await how.evaluate((node) => [node.previousElementSibling?.getAttribute('aria-label'), node.nextElementSibling?.getAttribute('aria-label')])).toEqual(['Próximamente', 'Movimientos']);
   expect(await how.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('#moneyTotals')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
 
   // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
@@ -1076,7 +1091,7 @@ test('organizers · menú lateral: la marca abre el cajón con «Este retiro», 
   await expect(drawer.locator('.appmenu-logout button')).toContainText('Cerrar sesión');
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
-  // En la cabecera sigue un solo «Cerrar sesión», el de Organizers.
+  // En la cabecera sigue un solo «Cerrar sesión», el del kit (0.49), con el id de feedback de Organizers.
   await expect(page.locator('#logoutButton')).toHaveCount(1);
   await expect(page.locator('#logoutButton')).toHaveAttribute('data-feedback-id', 'organizers.cabecera.cerrar_sesion');
 

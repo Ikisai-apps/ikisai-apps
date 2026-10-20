@@ -1,7 +1,10 @@
 /**
- * «Lo que te falta por rellenar» del diseño (pasada única, zona 2). Puro: sale de los campos del borrador que ya existen
- * y no se guarda nunca. **No promete nada**: no dice que con esto llegue la propuesta.
- * - Lo usan Diseño (`ui/design.ts`) y el Resumen del retiro (paso «Diseña tu retiro», con `designPending`).
+ * Veredicto y «Lo que te falta por rellenar» del diseño (pasada única, zona 2; veredicto de la MUELA-072:47, que VG
+ * mantiene en la MUELA-084). Puro: sale de los campos del borrador que ya existen y no se guarda nunca.
+ * - El veredicto (`readyVerdict`) dice si está todo para pedir la propuesta y qué es lo siguiente. **No promete plazos**
+ *   de Ikisai ni que la propuesta llegue sola.
+ * - Lo usan Diseño (`ui/design.ts`), Fechas (`ui/dates.ts`) y el Resumen del retiro (paso «Diseña tu retiro», con
+ *   `designPending`).
  * - Fuera, a propósito: menores (0 por defecto, no se distingue de «sin contestar»), espacios (casillas), extras y notas.
  * - Sin dependencias del navegador, para las pruebas de Node: los textos se traducen con el `t` que se pase (la clave es
  *   el español, como en el resto de la app) y los nombres del régimen y del menú, con `mealPlan` y `menuStyle`.
@@ -81,4 +84,55 @@ export function designChecks(state: DesignCheckState, dates: PortalDates | null,
  */
 export function designPending(detail: Pick<ReservationDetail, 'expected_guests' | 'requires_meals' | 'meal_plan' | 'menu_style'>, dates: PortalDates | null): number {
   return designChecks(designStateOf(detail), dates).filter((c) => !c.ok && c.key !== 'fechas').length;
+}
+
+/** Lo siguiente del veredicto: resolver una comprobación o ir a la propuesta. */
+export type VerdictNext =
+  | { kind: 'check'; check: DesignCheck; title: string; detail: string; action: string }
+  | { kind: 'proposal'; title: string; detail: string; action: string };
+
+export interface ReadyVerdict {
+  ok: boolean;
+  /** «Lo tienes todo para pedir la propuesta» o «Te faltan 2 cosas para pedir la propuesta». */
+  text: string;
+  pending: number;
+  next: VerdictNext | null;
+}
+
+/**
+ * Veredicto de Diseño y Fechas (las mismas comprobaciones en las dos pestañas). Lo siguiente es la primera que falta y,
+ * con todo bien, la propuesta: revisarla si Ikisai ya la ha enviado o, si no, pedirla desde Propuesta (allí se escribe
+ * a Ikisai y se ve lo enviado).
+ * - `draft: false` (reserva ya prerreservada, sin Diseño): solo cuentan las fechas, y sin «Siguiente» con todo bien.
+ * - `proposal`: la vigente (enviada o aceptada), o `null` si no hay o no se pudo leer.
+ */
+export function readyVerdict(checks: DesignCheck[], proposal: { status: string } | null, options: { draft?: boolean; t?: Tr } = {}): ReadyVerdict {
+  const t = options.t ?? plain;
+  const draft = options.draft ?? true;
+  const counted = draft ? checks : checks.filter((c) => c.key === 'fechas');
+  const missing = counted.filter((c) => !c.ok);
+  const first = missing[0];
+  const fromCheck = (c: DesignCheck): VerdictNext => ({ kind: 'check', check: c, title: c.text, detail: c.detail, action: c.action.label });
+  if (!draft) {
+    const dates = counted[0]!; // `designChecks` siempre trae la de fechas
+    return dates.ok
+      ? { ok: true, text: dates.detail, pending: 0, next: null }
+      : { ok: false, text: t('Te falta marcar alguna fecha posible'), pending: 1, next: fromCheck(dates) };
+  }
+  if (first) {
+    return {
+      ok: false, pending: missing.length, next: fromCheck(first),
+      text: missing.length === 1 ? t('Te falta 1 cosa para pedir la propuesta') : t('Te faltan {n} cosas para pedir la propuesta', { n: missing.length }),
+    };
+  }
+  if (proposal && (proposal.status === 'enviada' || proposal.status === 'aceptada')) {
+    return {
+      ok: true, pending: 0, text: t('Lo tienes todo, y ya tienes la propuesta de Ikisai'),
+      next: { kind: 'proposal', title: t('Revisar la propuesta'), detail: t('Si cambias el diseño, el equipo de Ikisai lo ve al momento.'), action: t('Ver la propuesta') },
+    };
+  }
+  return {
+    ok: true, pending: 0, text: t('Lo tienes todo para pedir la propuesta'),
+    next: { kind: 'proposal', title: t('Pedir la propuesta a Ikisai'), detail: t('El equipo de Ikisai ve tu diseño al momento. En Propuesta puedes escribirle y verás la propuesta cuando llegue.'), action: t('Ir a Propuesta') },
+  };
 }

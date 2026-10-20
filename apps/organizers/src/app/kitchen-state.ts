@@ -2,7 +2,7 @@
  * Cocina contra el menú (pasada única, zona 3): qué requisitos del grupo se pueden comprobar con lo que declara el menú y
  * qué platos declaran un alérgeno del grupo. Puro y sin navegador (`tests/organizers/kitchen-state.test.ts`).
  *
- * Reglas de seguridad alimentaria (decisión del usuario):
+ * Reglas de seguridad alimentaria (decisión de Core Sevilla, 19-10; el texto de la pista lo da por bueno VG en la MUELA-084):
  * - Solo se compara con los 14 alérgenos de la lista europea que **declara** cada plato (`dish.allergens`, códigos de Food).
  * - Lo que no es de esa lista nunca se calla: es «no se puede comprobar: lo revisa cocina». El nombre o la descripción del
  *   plato solo dan una **pista**, siempre con ese texto al lado.

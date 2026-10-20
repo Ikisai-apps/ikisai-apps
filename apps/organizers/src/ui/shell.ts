@@ -19,6 +19,7 @@ import { mountGuest } from './guest.ts';
 import { openHelp } from './help.ts';
 import { mountAccessButton } from './access.ts';
 import { clearDishPhotos } from './menu.ts';
+import { fbMark } from './common.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -78,12 +79,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     centerLabel: t('Ayuda y sugerencias'),
     centerText: t('Cuéntanos un problema o una idea sobre la aplicación, tu retiro o un espacio.'),
   });
-  // «Cerrar sesión» propio, como Guests: el del kit solo se ve en escritorio y no se traduce. Nunca se ata a la red:
-  // sin conexión también tiene que poder borrar la sesión de este dispositivo.
-  const logoutButton = el('button', {
-    type: 'button', class: 'iconbtn', id: 'logoutButton', 'aria-label': t('Cerrar sesión'), title: t('Cerrar sesión'),
-    'data-feedback-id': 'organizers.cabecera.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', onclick: () => void logout(),
-  }, icon('logout', 18));
   /** Lo que enseña el menú lateral: los retiros (de la última lectura, también sin red) y el retiro abierto. */
   let menuRetreats: PortalReservation[] = [];
   let menuRetreat: MenuRetreat | null = null;
@@ -116,11 +111,14 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const shell = createAppShell(root, {
     appName: 'Organizers',
     markIcon: 'organizer',
-    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } }), logoutButton],
+    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } })],
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
     navigate,
     onLogout: logout,
+    // «Cerrar sesión» del kit (0.49): traducido y también en el móvil. Nunca se ata a la red: sin conexión también tiene
+    // que poder borrar la sesión de este dispositivo.
+    logoutOnMobile: true,
     status: { client, onSync: () => client.sync(), describeError: (error) => describeError(error) },
     menu: {
       label: t('Menú de Organizers'),
@@ -131,9 +129,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     },
     returnTo: { feedbackId: 'organizers.cabecera.volver_app' },
   });
-  // «Cerrar sesión» del kit en la cabecera: solo se ve en escritorio y no se traduce (petición al kit, tanda 29). Se queda
-  // el propio de Organizers, de 46 px y visible también en el móvil; el del cajón del menú sí es el del kit.
-  shell.header.querySelector('#logoutButton.desktop-only')?.remove();
+  const logoutButton = shell.header.querySelector<HTMLElement>('#logoutButton');
+  if (logoutButton) fbMark(logoutButton, 'organizers.cabecera.cerrar_sesion', 'Cerrar sesión');
   refreshMenuRetreats();
   const { main } = shell;
   shell.header.setAttribute('data-feedback-id', 'organizers.cabecera');

@@ -1,7 +1,7 @@
 /**
  * Cuentas de las ofertas (pasada única, zona 3): margen, caducadas, próximas, plazas ofrecidas y lo que sale en el cartel.
  * Puro y sin navegador (`tests/organizers/offers-state.test.ts`).
- * - Las caducadas **siguen sumando** en las cuentas (decisión del usuario): esas plazas pueden estar ya vendidas. Llevan su
+ * - Las caducadas **siguen sumando** en las cuentas (decisión de Core Sevilla, 19-10): esas plazas pueden estar ya vendidas. Llevan su
  *   marca y un aviso, y nunca salen en el cartel.
  * - El margen solo cuenta lo contratado con Ikisai (nunca el precio orientativo).
  */

@@ -332,7 +332,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
       missingBox.hidden = false;
       const items: CheckItem[] = guest.missing.map((key) => ({
         ok: false, text: missingText([key]),
-        ...(hasField(key) ? { action: { label: t('Rellenar'), onClick: () => focusField(key) } } : {}),
+        ...(hasField(key) ? { action: { label: t('Rellenar'), aria: t('Rellenar: {dato}', { dato: missingText([key]) }), onClick: () => focusField(key) } } : {}),
       }));
       if (list.mode === 'ses' && !guest.signed) {
         items.push({ ok: false, text: t('Firma del registro de viajeros'), detail: t('La firma solo puede hacerla {nombre}, en su enlace o al llegar.', { nombre: guest.display_name }) });

@@ -11,7 +11,7 @@ import { t } from '../app/i18n.ts';
 import { guestComplete, guestState, linksByGuest, linkText, reasonOf, stageOf, STAGE_GROUPS, STAGE_RING, type GuestTexts, type Stage } from '../app/guests-state.ts';
 import { dayLabel, missingText, restrictionText } from '../app/labels.ts';
 import { groupReminder, personReminder } from '../app/texts.ts';
-import { copyText, fbIgnore, fbMark, needsNet } from './common.ts';
+import { copyText, fbIgnore, fbMark, needsNet, offlineReason } from './common.ts';
 import { issued, rowFlushPending, sendGuestLink } from './guest-link.ts';
 import type { RetreatData } from './retreat.ts';
 import { pendingJoins, renderJoinRequests } from './joins.ts';
@@ -19,6 +19,15 @@ import type { ViewContext } from './shell.ts';
 
 const TEXTS: GuestTexts = { t, day: dayLabel, missing: missingText };
 const MAX_FREE_SEATS = 60;
+
+/** Id literal de feedback de la cabecera de cada grupo (kit 0.49: así entran en el catálogo). */
+const GROUP_MARKS: Record<Stage, Record<'feedbackId' | 'feedbackLabel', string>> = {
+  sinenlace: { feedbackId: 'organizers.asistentes.grupo.sinenlace', feedbackLabel: 'Grupo sin enlace' },
+  sinabrir: { feedbackId: 'organizers.asistentes.grupo.sinabrir', feedbackLabel: 'Grupo sin abrir' },
+  faltan: { feedbackId: 'organizers.asistentes.grupo.faltan', feedbackLabel: 'Grupo con datos por rellenar' },
+  sinfirma: { feedbackId: 'organizers.asistentes.grupo.sinfirma', feedbackLabel: 'Grupo sin firmar' },
+  completo: { feedbackId: 'organizers.asistentes.grupo.completo', feedbackLabel: 'Grupo completo' },
+};
 
 export function renderGuestList(ctx: ViewContext, reservationId: string, data: RetreatData, reload: () => void): HTMLElement {
   const { navigate, usage } = ctx;
@@ -73,16 +82,19 @@ export function renderGuestList(ctx: ViewContext, reservationId: string, data: R
       'aria-label': `${t('Recordar')}: ${x.g.display_name} · ${state.detail}`,
     }, t('Recordar')) as HTMLButtonElement, 'organizers.asistentes.lista.recordar', 'Recordar');
   }
-  /** La acción de la fila, o nada si está completo. Va envuelta para que Intro o Espacio no abran la ficha (fallo del kit). */
-  function action(x: Item, bind: Array<() => void>, after?: () => void): HTMLElement | null {
+  /**
+   * La acción de la fila, o nada si está completo. «Enviar su enlace» necesita red: con `line`, todas las filas comparten
+   * una sola línea con el motivo (kit 0.49), en vez de una por fila.
+   */
+  function action(x: Item, bind: Array<() => void>, after?: () => void, line?: HTMLElement): HTMLElement | null {
     if (x.stage === 'completo') return null;
     if (x.stage === 'sinenlace') {
       const b = sendButton(x, after);
-      const wrap = el('span', { class: 'orgrow-act', onkeydown: (e: Event) => e.stopPropagation() }, b);
-      bind.push(needsNet(ctx, b));
+      const wrap = el('span', { class: 'orgrow-act' }, b);
+      bind.push(needsNet(ctx, b, undefined, line));
       return wrap;
     }
-    return el('span', { class: 'orgrow-act', onkeydown: (e: Event) => e.stopPropagation() }, remindButton(x));
+    return el('span', { class: 'orgrow-act' }, remindButton(x));
   }
 
   // --- Hoja rápida de una plaza -------------------------------------------------------------------------------------
@@ -143,11 +155,14 @@ export function renderGuestList(ctx: ViewContext, reservationId: string, data: R
 
   // --- Lo que falta, persona a persona ------------------------------------------------------------------------------
   const rows = fbIgnore(el('div', { id: 'guestRows' }));
+  /** Una sola línea «sin red» para todos los «Enviar su enlace» de la lista. */
+  const offlineLine = offlineReason(ctx, t('Sin conexión: para enviar enlaces necesitas red.'));
+  offlineLine.id = 'guestRowsOffline';
   if (!n) {
     replace(rows, el('div', { class: 'empty' }, el('strong', null, t('Aún no has añadido a nadie')), el('p', null, t('Añade a tus asistentes y envía a cada uno su enlace personal para que completen sus datos.'))));
   } else {
     const groups = STAGE_GROUPS.map((s) => ({
-      key: s.key, title: t(s.title), summary: t(s.summary), items: items.filter((x) => x.stage === s.key),
+      key: s.key, title: t(s.title), summary: t(s.summary), items: items.filter((x) => x.stage === s.key), ...GROUP_MARKS[s.key],
       ...(s.key === 'completo' ? { open: false } : {}),
     })).filter((grp) => grp.items.length);
     const tone = new Map(STAGE_GROUPS.map((s) => [s.key, s.tone]));
@@ -156,7 +171,7 @@ export function renderGuestList(ctx: ViewContext, reservationId: string, data: R
       groups,
       toneOf: (x) => tone.get(x.stage),
       row: (x) => {
-        const act = action(x, releases);
+        const act = action(x, releases, undefined, offlineLine);
         const row = listRow({
           id: x.g.id,
           title: x.g.display_name,
@@ -175,6 +190,7 @@ export function renderGuestList(ctx: ViewContext, reservationId: string, data: R
     });
     replace(rows,
       linksKnown ? null : el('p', { class: 'muted', id: 'guestLinksUnknown' }, t('No se ha podido leer el estado de los enlaces.')),
+      offlineLine,
       view.element);
   }
 

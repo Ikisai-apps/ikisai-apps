@@ -1,5 +1,5 @@
 /**
- * Propuesta de Ikisai (fase 2 y 3, API.md §13.3; Booking B12 y #610; pasada única, zona 2). Decisión del usuario: el
+ * Propuesta de Ikisai (fase 2 y 3, API.md §13.3; Booking B12 y #610; pasada única, zona 2). Decisión del usuario (7-10-2026): el
  * organizador **no acepta** desde el portal. Ve la propuesta vigente (la aceptada o la enviada más reciente) con sus
  * líneas, condiciones y tramos de cancelación, y puede pulsar «Quiero confirmar» o enviar un comentario: las dos cosas
  * avisan al comercial y quedan con su estado.

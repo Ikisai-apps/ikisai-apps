@@ -170,12 +170,12 @@ function paymentStep(input: SummaryInput, money: PortalMoney, today: string, f: 
     if (d.kind === 'senal') {
       // Atrasada solo con la fecha vencida (011-FE); el saldo nunca se marca atrasado.
       if (d.date && d.date < today) {
-        return { ...base, prio: 0, done: false, title: t('Pagar la señal ({importe})', { importe }), stateText: t('Atrasado · era antes del {fecha}', { fecha: f.day(d.date) }) + paidNote };
+        return { ...base, prio: 0, done: false, title: t('Pagar la señal ({importe})', { importe }), stateText: t('Atrasado · el plazo era hasta el {fecha}', { fecha: f.day(d.date) }) + paidNote };
       }
       return {
         ...base, prio: 2, done: false,
-        title: d.date ? t('Pagar la señal ({importe}) antes del {fecha}', { importe, fecha: f.day(d.date) }) : t('Pagar la señal ({importe})', { importe }),
-        stateText: (d.date ? t('Señal de {importe} antes del {fecha}', { importe, fecha: f.day(d.date) }) : t('Señal de {importe} pendiente', { importe })) + paidNote,
+        title: d.date ? t('Pagar la señal ({importe}) hasta el {fecha}', { importe, fecha: f.day(d.date) }) : t('Pagar la señal ({importe})', { importe }),
+        stateText: (d.date ? t('Señal de {importe} hasta el {fecha}', { importe, fecha: f.day(d.date) }) : t('Señal de {importe} pendiente', { importe })) + paidNote,
       };
     }
     return { ...base, prio: 2, done: false, title: t('Pagar el saldo ({importe})', { importe }), stateText: t('Saldo de {importe} pendiente', { importe }) + paidNote };

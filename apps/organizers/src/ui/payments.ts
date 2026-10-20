@@ -75,25 +75,26 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
         ...(x.invoice ? { onOpen: () => void open(x.invoice!) } : {}),
       };
     };
-    const statement = renderMoneyBreakdown({
-      mode: 'statement',
-      total: s.total,
-      totalLabel: s.hasContract ? t('Te queda por pagar') : t('Facturas enviadas sin pagar'),
-      subtitle: s.hasContract ? t('de {importe} contratados', { importe: money(s.contracted) }) : null,
-      upcoming: s.upcoming.map(toMove), upcomingLabel: t('Próximamente'),
-      moves: s.moves.map(toMove), movesLabel: t('Movimientos'),
-      emptyText: t('Aún no hay facturas ni pagos de este retiro.'),
-      format: (n) => money(n),
-    });
-    for (const button of statement.querySelectorAll('li.mb-doc button.mb-open')) fbMark(button, 'organizers.pagos.factura.abrir', 'Abrir factura');
-
-    // «Cómo pagar» (texto de Central): abierto bajo el extracto si queda algo; plegado al final si está todo pagado.
+    // «Cómo pagar» (texto de Central): entre «Próximamente» y «Movimientos» si queda algo; plegado al final si está todo pagado.
     const instructions = commonText('payment.instructions');
     const owes = s.total > 0 || Number(totals.pending) > 0;
     const howTitle = instructions.title ?? t('Cómo pagar');
     const how = owes
       ? fbMark(section(howTitle, { id: 'paymentInstructions', 'data-feedback-ignore': '' }, ...textParagraphs(instructions.body)), 'organizers.pagos.como_pagar', 'Cómo pagar')
       : fbMark(el('details', { id: 'paymentInstructions', class: 'card orgcard', 'data-feedback-ignore': '' }, el('summary', null, howTitle), ...textParagraphs(instructions.body)), 'organizers.pagos.como_pagar', 'Cómo pagar');
+
+    const statement = renderMoneyBreakdown({
+      mode: 'statement',
+      total: s.total,
+      totalLabel: s.hasContract ? t('Te queda por pagar') : t('Facturas enviadas sin pagar'),
+      subtitle: s.hasContract ? t('de {importe} contratados', { importe: money(s.contracted) }) : null,
+      upcoming: s.upcoming.map(toMove), upcomingLabel: t('Próximamente'),
+      afterUpcoming: owes ? how : null,
+      moves: s.moves.map(toMove), movesLabel: t('Movimientos'),
+      emptyText: t('Aún no hay facturas ni pagos de este retiro.'),
+      format: (n) => money(n),
+    });
+    for (const button of statement.querySelectorAll('li.mb-doc button.mb-open')) fbMark(button, 'organizers.pagos.factura.abrir', 'Abrir factura');
 
     const figures = fbMark(section(t('Las cuentas'), { id: 'moneyTotals' },
       el('dl', { class: 'kv orgtotals' },
@@ -115,7 +116,6 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
       contract ? null : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.')),
       fbMark(el('div', { id: 'moneyStatement', class: 'orgstatement' }, statement), 'organizers.pagos.extracto', 'Extracto'),
       contract?.payment_type ? el('p', { id: 'paymentType' }, t('Forma de pago acordada: {forma}', { forma: t(PAYMENT_TYPES[contract.payment_type] ?? contract.payment_type) })) : null,
-      owes ? how : null,
       figures,
       owes ? null : how);
   }
