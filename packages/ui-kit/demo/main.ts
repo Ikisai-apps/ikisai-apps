@@ -132,6 +132,11 @@ import {
   conflictRowName,
   captureFeedbackTarget,
   renderOfflineReason,
+  Envase,
+  createShelves,
+  type PackFormatInput,
+  type TileAction,
+  type ShelfRow,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1195,6 +1200,63 @@ const spaceMapSection = section('spacemap', 'Mapa de zonas (MUELA-024)', 'create
   el('div', { class: 'card', style: 'margin-top:12px' }, el('h3', null, 'Como Tasks: todos los dibujos, solo plano'), spaceMapTasks.element),
   el('div', { class: 'card', style: 'margin-top:12px' }, spaceMapBare.element),
 );
+// --- El envase, la baldosa con varios mandos y la estantería (0.57, MUELA-093 y 094) ----------------------
+interface DemoBuy { id: string; name: string; need: number; unit: string; formats: PackFormatInput[]; perishable?: boolean; bought?: boolean; ticket?: { label: string; size: number; price: number; supplier: string; date: string } }
+const demoBuys: DemoBuy[] = [
+  { id: 'harina', name: 'Harina', need: 4800, unit: 'g', formats: [{ unit: 'paquete de 1 kg', factor: 1000, usual: true, price: 1.2 }] },
+  { id: 'aceite', name: 'Aceite', need: 2600, unit: 'ml', formats: [{ unit: 'botella de 1 l', factor: 1000, price: 4.5 }] },
+  { id: 'lentejas', name: 'Lentejas', need: 1100, unit: 'g', formats: [], ticket: { label: 'bolsa de 200 g', size: 200, price: 3.4, supplier: 'Mercadona', date: '2026-10-03' } },
+  { id: 'leche', name: 'Leche', need: 5500, unit: 'ml', formats: [{ unit: 'brik de 1 l', factor: 1000 }], perishable: true },
+  { id: 'huevos', name: 'Huevos', need: 20, unit: 'unidad', formats: [{ unit: 'docena', factor: 12, price: 3, usual: true }] },
+  { id: 'limones', name: 'Limones', need: 2.4, unit: 'unidad', formats: [] },
+];
+let demoShelfOf: Record<string, string> = { harina: 'mercadona', aceite: 'mercadona', lentejas: 'mercadona', leche: 'mercadona', huevos: 'fruteria', limones: 'fruteria' };
+const envaseLog = el('output', { id: 'envaseLog' }, '—');
+const buyPlan = (b: DemoBuy) => Envase.plan({ need: b.need, unit: b.unit, formats: b.formats, perishable: b.perishable });
+const envaseTile = (b: DemoBuy): HTMLElement => {
+  const r = buyPlan(b);
+  const x = Envase.extraText(r);
+  const level = b.bought ? 'En el carro' : r.kind === 'sin' ? 'Sin envase: lo justo' : `usa ${Envase.legible(r.need, r.unit)}${x ? ` · sobra ${x}` : ''}`;
+  const sel = `#envaseShelves .shelf-cell[data-shelf-key="${b.id}"] .tile-media`;
+  const actions: TileAction[] = [];
+  // En el carro, el dibujo no es botón (H-C5).
+  if (!b.bought) actions.push({ slot: 'media', label: r.kind === 'sin' ? `¿Cómo se vende? ${b.name}` : `Cambiar el envase: ${b.name}`, onClick: () => { Envase.formatSheet({
+    name: b.name, r, ticket: b.ticket ?? null, feedbackId: 'demo.envase.hoja', returnFocus: () => document.querySelector<HTMLElement>(sel),
+    onSave: (f, all) => { b.formats = all.map((a) => ({ unit: a.label, factor: a.size, price: a.price, usual: a.usual })); envaseLog.textContent = `${b.id}: ${f.label} · ${f.isNew ? 'nuevo' : 'existente'} · ${all.length} envases`; paintShelves(); toast(`Envase de ${b.name.toLowerCase()} guardado`); },
+  }); } });
+  actions.push({ slot: 'more', label: `Más: ${b.name}`, onClick: () => { const s = openSheet({ title: b.name, body: el('div', { class: 'shelf-menu' }, el('button', { type: 'button', class: 'ghost', id: 'envaseMoveOpen', onclick: () => { envaseShelves.moveSheet(b); } }, 'Mover a…'), el('button', { type: 'button', class: 'ghost', onclick: () => { void s.close(); toast('Detalles'); } }, 'Ver detalles')) }); } });
+  actions.push({ slot: 'corner', label: b.bought ? `Quitar del carro: ${b.name}` : `Marcar comprado: ${b.name}`, icon: 'cart', pressed: !!b.bought, onClick: () => { b.bought = !b.bought; envaseLog.textContent = `${b.id}: ${b.bought ? 'comprado' : 'pendiente'}`; paintShelves(); } });
+  return renderTile({
+    title: b.name, value: r.kind === 'sin' ? '¿Cómo se vende?' : Envase.buyText(r), levelText: level, medal: { name: b.name },
+    level: b.bought ? { pct: 100, tone: 'ok' } : null, media: Envase.draw(r, { scale: 0.8 }), feedbackId: `demo.envase.${b.id}`, actions,
+  });
+};
+const shelfRows = (): ShelfRow<DemoBuy>[] => [['mercadona', 'Mercadona', '#c4712f'], ['fruteria', 'Frutería Paqui', '#3f6d8e']].map(([key, label, color]) => {
+  const items = demoBuys.filter((b) => demoShelfOf[b.id] === key);
+  const cost = items.map((b) => buyPlan(b).cost);
+  const known = cost.filter((c): c is number => c !== null);
+  return { key: key!, label: label!, medal: { name: label!, color }, items, sub: `${items.length} · ≈ ${known.reduce((a, c) => a + c, 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}${known.length < cost.length ? ' · falta algún precio' : ''}` };
+});
+const envaseShelves = createShelves<DemoBuy>({
+  rows: shelfRows(), key: (b) => b.id, name: (b) => b.name, tile: envaseTile, label: 'Estanterías por tienda', noun: 'tienda', feedbackId: 'demo.estanteria',
+  canMove: (b) => !b.bought,
+  onAdd: (row) => toast(`Añadir en ${row.label}`),
+  onMove: (b, from, to) => {
+    const before = { ...demoShelfOf };
+    demoShelfOf[b.id] = to.key;
+    envaseLog.textContent = `${b.id}: ${from.key} → ${to.key}`;
+    toastWithAction(`${b.name}: a ${to.label}`, { label: 'Deshacer', onClick: () => { demoShelfOf = before; paintShelves(); } });
+  },
+});
+envaseShelves.element.id = 'envaseShelves';
+function paintShelves(): void { envaseShelves.setRows(shelfRows()); }
+const envaseRow = (b: DemoBuy, keep?: string) => { const r = buyPlan(b); return el('div', { class: 'demo-envase-row' }, el('b', null, b.name), Envase.tube(r, { keep }), el('small', null, Envase.words(r, { keep }))); };
+const envaseSection = section('envase', 'El envase y la estantería (MUELA-093 y 094)', 'Envase: lo que hace falta → envases enteros del habitual (a granel, lo justo; en unidades, el entero) → lo que sobra → coste (sin precio, null). Dibujado (macizo lo que se usa, rayado lo que sobra, ámbar si caduca) con su frase. La baldosa con varios mandos: el dibujo es botón (la hoja del envase), el carrito de la esquina y el «⋯» (pulsación larga), sin anidar botones. La estantería: arrastre entre filas, «Mover a…» y Alt+↑/↓.',
+  el('div', { class: 'card' }, Envase.legend(), envaseShelves.element, el('p', null, 'Último: ', envaseLog)),
+  el('div', { class: 'card', style: 'margin-top:12px', id: 'envaseTasks' }, el('h3', null, 'Como Tasks: al almacén'), Envase.legend({ keep: 'al almacén', used: 'Lo que hace falta' }),
+    envaseRow({ id: 'lejia', name: 'Lejía', need: 19000, unit: 'ml', formats: [{ unit: 'garrafa de 5 l', factor: 5000, price: 9.7 }] }, 'al almacén'),
+    envaseRow({ id: 'guantes', name: 'Guantes', need: 165, unit: 'unidad', formats: [{ unit: 'caja de 100', factor: 100 }] }, 'al almacén')),
+);
 // --- Artículos del inventario (R3) ------------------------------------------------------------------------
 const demoItem = (id: string, name: string, kind: string, baseUnit: string, extra: Partial<ItemRow> = {}): ItemRow => ({
   id, name, kind, baseUnit, category: null, minQuantity: null, reorderQuantity: null, defaultSpaceId: null, defaultSupplierId: null,
@@ -1826,7 +1888,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
@@ -1837,5 +1899,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

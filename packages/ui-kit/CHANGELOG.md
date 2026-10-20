@@ -1,5 +1,40 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.57.0 · 20 de octubre de 2026
+
+**El envase, la baldosa con varios mandos y la estantería** (tanda 40, MUELA-093 y 094). Las piden la Compra de Food y Compras R6 de Tasks. Todo es nuevo u opcional: lo de antes no cambia.
+
+1. **`Envase`** (`pieces/envase.ts`), la pieza común de La Muela pasada al kit con la misma API:
+   - `plan`, `buyText`, `extraText`, `packText`, `legible`, `words`, `draw`, `tube`, `legend` y `formatSheet`.
+   - **Las cuentas:**
+     - con envase, envases enteros del habitual;
+     - a granel, lo justo;
+     - en unidades, manojos o paquetes, el entero;
+     - lo que sobra = lo que se compra − lo que hace falta;
+     - coste = envases × precio.
+   - **Sin precio, `cost` es `null`, nunca 0.**
+   - `formats` acepta las filas de `item_units` tal cual: `unit` es la etiqueta, `factor` el tamaño, y además `usual` y `price`. La fila vuelve en `source`.
+   - `keep` («al almacén») y `where` («en el inventario») son configurables.
+   - **`formatSheet` nunca cambia el tamaño de un envase que ya existe:** «Otro envase» es una fila nueva (`isNew`) y pasa a ser la habitual. Devuelve lo elegido en `onSave`; escribir es cosa de la app.
+   - `returnFocus` devuelve el foco al dibujo aunque la app repinte la baldosa.
+   - Clases con los prefijos `ev-` y `fs-`, comprobados con `git grep`.
+2. **`renderTile` con varios mandos:** `actions: [{ slot: 'media' | 'corner' | 'more', label, onClick, icon?, pressed? }]` y `media`.
+   - Con mandos, la baldosa es un `div` con botones hermanos: ningún botón va dentro de otro.
+   - `media`: el dibujo es un botón; sin esa acción, el dibujo no es botón.
+   - `corner`: la esquina de 46 px (el carrito o la casilla), con `aria-pressed`.
+   - `more`: el «⋯» de 46 px, a la izquierda de la esquina, en la fila del medallón y fuera del flujo, así que la baldosa no crece. El nombre va bajo el medallón.
+   - La pulsación larga equivale al «⋯» (`onLongPress`, también exportada como `bindLongPress`). Los botones lo dicen en su descripción accesible.
+   - `onClick` sigue siendo tocar la baldosa, en un botón que la cubre por debajo de los demás.
+3. **`createShelves`:** baldosas en filas con arrastre **entre filas**.
+   - Con el ratón, desde cualquier punto de la baldosa. Con el dedo, tras la pulsación larga; si se suelta sin moverla, se abre el «⋯».
+   - Al soltar llama a `onMove(item, fromRow, toRow)`.
+   - Alternativa con el teclado: `moveSheet(item)` («Mover … a otra tienda», para el «⋯») y Alt+↑ / Alt+↓, con anuncio y el foco en la baldosa movida.
+   - `canMove` indica lo que no se mueve (lo comprado, lo que está en un plan).
+   - Prefijo de clases: `shelf-`.
+4. **El asa de `createSortableList`** pasa a medir 46 × 46 (antes, 36 × 44). Lo pide el «Plan de hoy» de Tasks (MUELA-095).
+- **Demo:** `#envase`.
+- **Pruebas:** `v61` (8 casos).
+
 ## 0.56.0 · 20 de octubre de 2026
 
 **Dos peticiones menores.** Opcionales: por defecto no cambia nada.

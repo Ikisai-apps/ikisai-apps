@@ -52,7 +52,9 @@ export { renderStages, stageStates, type Stage, type StageState, type StagesOpti
 export { renderGroups, worstOf, type Group, type GroupsOptions, type GroupsView, type Tone } from './pieces/groups.ts';
 export { renderStats, type Stat } from './pieces/stats.ts';
 export { renderChecks, type CheckItem, type ChecksOptions } from './pieces/checks.ts';
-export { renderTile, type TileOptions } from './pieces/tile.ts';
+export { renderTile, bindLongPress, type TileOptions, type TileAction } from './pieces/tile.ts';
+export { createShelves, type Shelves, type ShelvesOptions, type ShelfRow } from './pieces/shelves.ts';
+export { Envase, type PackPlan, type PackPlanInput, type PackFormat, type PackFormatInput, type PackKind, type PackSaved, type PackSheetOptions, type PackTicket, type PackDrawOptions, type PackTextOptions } from './pieces/envase.ts';
 export { bindOnline, renderOfflineReason, type OnlineOptions } from './pieces/online.ts';
 export { renderCover, createFocus, createCoverCarousel, type CoverOptions, type FocusItem, type FocusOptions, type Focus, type CoverSlide, type CoverCarouselOptions, type CoverCarousel } from './pieces/cover.ts';
 export { renderLead, type LeadItem, type LeadOptions } from './pieces/lead.ts';
