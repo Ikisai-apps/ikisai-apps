@@ -95,10 +95,11 @@
 
 - 2026-10-20 · **Mapa en Alojamiento y Ayuda** (API.md §9.16): las habitaciones abiertas en el plano con su estado en texto, y «Tócalo en el plano» en Ayuda, con `space_id` en el aviso. Pruebas en `modules.spec.ts` y `portal.spec.ts`.
 
+- 2026-10-20 · **Ids de Recursos y camas en el plano** (API.md §9.16): se casa por `resource_space_id` y `resource_bed_id` de Booking (#680), con el nombre solo de respaldo; en Alojamiento, la habitación ampliada con sus camas encima (kit 0.54). Prueba en `modules.spec.ts`.
+
 ## Pendiente
 
 - «Mis tareas» (TK1), cuando Tasks lo publique.
-- Las camas sobre el plano en Alojamiento, cuando el kit recorte el dibujo a la habitación (hoy, botones con texto).
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 

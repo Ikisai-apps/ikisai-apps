@@ -20,6 +20,7 @@ import type { Lodging } from '../app/portal.ts';
 import { failure, fbIgnore, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
 import { findSpace, loadPlans, portalMap } from './plan.ts';
+import type { PortalPlans } from '../app/portal.ts';
 
 const DEBOUNCE = 800;
 
@@ -64,6 +65,11 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
   const filters = new Set<Filter>();
   /** Las habitaciones abiertas en el mapa de zonas (MUELA-056 y 024), si están dibujadas: espacio de Recursos ↔ habitación de Booking. */
   let roomsMap: { map: SpaceMap; toRoom: Map<string, string>; toSpace: Map<string, string> } | null = null;
+  /** Las camas de la habitación que se ve, sobre su dibujo recortado (`focus` del kit 0.54, «la elegida ampliada»). */
+  let bedsMap: SpaceMap | null = null;
+  let plansData: PortalPlans | null = null;
+  /** Lo que la capa de camas necesita saber al pintar: la habitación que se ve y si se puede elegir. */
+  let bedsView: { room: Room; canPick: boolean; toBed: Map<string, Bed> } | null = null;
   const unbinds: Array<() => void> = [];
   const needsNet = (button: HTMLElement) => { unbinds.push(bindOnline(button, { ...(options.client ? { client: options.client } : {}), reason: t('lodging.needsNetwork') })); return button; };
 
@@ -77,7 +83,7 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
       if (!family) active = people[0]!;
       else if (active) active = people.find((p) => p.ctx === active!.ctx) ?? null;
       paint();
-      if (!roomsMap && choosing() && choiceOpen(data())) void loadRoomsMap();
+      if (!roomsMap && data().rooms.length) void loadRoomsMap();
     } catch (error) {
       if (alive) replace(main, failure(error, () => void load()));
     }
@@ -250,11 +256,61 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
       canPick && !fits(room) ? el('p', { class: 'small groom-nofit' }, icon('warn', 14), ' ', t('lodging.noFit')) : null,
       hereButton,
       canPick ? el('p', { class: 'groom-hint' }, family && !active ? t('lodging.hintFamily') : t('lodging.hint')) : null,
+      bedsPlan(room, canPick),
       el('div', { class: 'gbeds', role: 'group', 'aria-label': t('lodging.bedsOf', { room: room.name }) }, ...beds),
       el('ul', { class: 'glegend', 'aria-label': t('lodging.legend') },
         el('li', null, el('span', { class: 'gsw st-free' }), t('lodging.bedFree')),
         el('li', null, el('span', { class: 'gsw st-full' }), t('lodging.bedTaken')),
         el('li', null, el('span', { class: 'gsw st-mine' }), family ? t('lodging.legendOurs') : t('lodging.bedMine'))));
+  }
+
+  /**
+   * Las camas sobre el dibujo de su habitación (MUELA-056, la variante elegida por VG): cada una con su estado en texto
+   * («Libre», «Ocupada», «Elegida»; apagada si no se puede elegir) y, al tocarla, lo mismo que su botón de abajo, que sigue
+   * (la lista equivalente). Camas casadas por `resource_bed_id` (Booking #680) o, sin él, por su nombre en la habitación.
+   * Si la habitación no tiene forma en el dibujo o no hay camas dibujadas, no sale.
+   */
+  function bedsPlan(room: Room, canPick: boolean): HTMLElement | null {
+    const roomSpace = roomsMap?.toSpace.get(room.space_id);
+    if (!plansData || !roomSpace) return null;
+    const self = plansData.spaces.find((x) => x.id === roomSpace);
+    const inside = plansData.spaces.filter((x) => x.parentId === roomSpace && x.planId && x.planShape);
+    if (!self?.planId || !self.planShape || !inside.length) return null;
+    const toBed = new Map<string, Bed>();
+    for (const bed of room.beds) {
+      const space = bed.resource_bed_id ? inside.find((x) => x.id === bed.resource_bed_id)
+        : inside.filter((x) => x.name.trim().toLocaleLowerCase('es') === bed.label.trim().toLocaleLowerCase('es')).length === 1
+          ? inside.find((x) => x.name.trim().toLocaleLowerCase('es') === bed.label.trim().toLocaleLowerCase('es')) : undefined;
+      if (space) toBed.set(space.id, bed);
+    }
+    if (!toBed.size) return null;
+    bedsView = { room, canPick, toBed };
+    if (!bedsMap) {
+      bedsMap = portalMap(plansData, {
+        mode: 'map',
+        focus: roomSpace,
+        label: t('lodging.bedsOf', { room: room.name }),
+        feedbackId: 'guests.alojamiento.camas',
+        filter: (x) => Boolean(bedsView?.toBed.has(x.id)),
+        layer: (x) => {
+          const bed = bedsView?.toBed.get(x.id);
+          if (!bed) return null;
+          const owner = ownerOf(bed.bed_id);
+          if (owner) return { state: 'picked', label: owner === active || !family ? t('lodging.bedMine') : t('lodging.bedOf', { name: owner.name }) };
+          if (!bed.free) return { state: 'occupied' };
+          return { state: 'free', disabled: !(bedsView!.canPick && !ctx.readOnly()) };
+        },
+        onPick: (x) => {
+          const v = bedsView;
+          const bed = v?.toBed.get(x.id);
+          if (v && bed && v.canPick) void pickBed(v.room, bed);
+        },
+      });
+    } else {
+      bedsMap.setFocus(roomSpace);
+      bedsMap.repaint();
+    }
+    return el('div', { class: 'gbeds-map', id: 'lodgingBedsMap' }, bedsMap.element);
   }
 
   /** El plano con la que se ve resaltada y los estados al día (filtros, plazas). */
@@ -345,10 +401,12 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
     const toRoom = new Map<string, string>();
     const toSpace = new Map<string, string>();
     for (const room of data().rooms) {
-      const space = findSpace(loaded.value.spaces, null, { space: room.name });
+      // Por el id de Recursos (Booking #680); por el nombre (único) solo si Booking no tiene pareja.
+      const space = findSpace(loaded.value.spaces, room.resource_space_id ?? null, { space: room.name });
       if (space && space.kind !== 'cama' && !toRoom.has(space.id)) { toRoom.set(space.id, room.space_id); toSpace.set(room.space_id, space.id); }
     }
     if (!toRoom.size) return;
+    plansData = loaded.value;
     const map = portalMap(loaded.value, {
       mode: 'map',
       label: t('lodging.mapLabel'),
@@ -379,5 +437,5 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
   }
 
   void load();
-  return () => { alive = false; roomsMap?.map.destroy(); if (timer) clearTimeout(timer); for (const off of unbinds.splice(0)) off(); };
+  return () => { alive = false; roomsMap?.map.destroy(); bedsMap?.destroy(); if (timer) clearTimeout(timer); for (const off of unbinds.splice(0)) off(); };
 }
