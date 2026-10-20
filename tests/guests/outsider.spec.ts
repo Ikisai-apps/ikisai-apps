@@ -226,7 +226,8 @@ test('O4b · la familia: estancia para todos por defecto (con su clave de person
 });
 
 test('O4b · retiros abiertos: cualquier huésped los ve en el calendario, con su resumen y sin precio', async ({ page }) => {
-  const mio = await api.reservation({ title: 'Mi retiro', start: day(30), end: day(31) });
+  // Lejos del mes siguiente: con day(30) caía junto al abierto según la fecha (el 20-10 tapaba el día 20 de noviembre).
+  const mio = await api.reservation({ title: 'Mi retiro', start: day(70), end: day(71) });
   const abierto = await api.reservation({ title: 'Yoga y huerto', start: nextMonthDay(20), end: nextMonthDay(22) });
   const oculto = await api.reservation({ title: 'Retiro privado', start: nextMonthDay(24), end: nextMonthDay(25) });
   await api.booking.t.db.query(`update booking.reservations set guests_visible = true, public_summary = $2 where id = $1`, [abierto.id, 'Tres días de yoga suave y trabajo en el huerto.']);

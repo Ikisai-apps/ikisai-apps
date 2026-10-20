@@ -417,7 +417,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       case 'programa': unmountView = mountProgram(view, gctx); break;
       case 'menu': {
         const notice = commonText('guests.menu_notice');
-        unmountView = mountMenu(view, gctx, notice ? centralText(notice.body, notice.spanishOnly, { id: 'menuNotice', class: 'gtext muted small' }) : null);
+        unmountView = mountMenu(view, ctxs, notice ? centralText(notice.body, notice.spanishOnly, { id: 'menuNotice', class: 'gtext muted small' }) : null);
         break;
       }
       case 'alojamiento': unmountView = family ? mountFamilyLodging(view, people) : mountLodging(view, gctx); break;

@@ -127,6 +127,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gdish:last-child{border-bottom:0}
 .gdish-photo{width:100%;max-height:160px;object-fit:cover;border-radius:var(--radius-sm,8px);margin-bottom:4px}
 .gtags{display:flex;flex-wrap:wrap;gap:4px}
+/* G13: el cruce de cada plato con lo que indicó cada persona */
+.gcrossings{display:flex;flex-direction:column;gap:2px}
+.gcross.warn{font-weight:600;color:var(--warn-ink)}
 
 /* Guests por persona (O4a): selector de persona, pestañas de retiros y secciones de cada retiro */
 .gframe{display:grid;gap:8px;margin:0 0 14px}

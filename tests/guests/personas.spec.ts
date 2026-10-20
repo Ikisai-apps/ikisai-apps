@@ -3,7 +3,8 @@
  * - **regla de entrada**: el retiro del enlace (C10); si no, el que está en curso; si no, el próximo; si no, el calendario;
  * - **calendario** con los retiros de la persona: tocar uno abre su pestaña, y «Retiros» vuelve al último visto;
  * - **pestañas de retiros** que conservan la sección (Programa en uno → Programa en otro);
- * - **la familia junta** («Todos»): retiros de todos con el nombre de a quién toca, la cama de cada uno y el selector.
+ * - **la familia junta** («Todos»): retiros de todos con el nombre de a quién toca, la cama de cada uno y el selector;
+ * - **el menú de la familia** (G13, seguridad alimentaria) cruza cada plato con **cada persona**, con su nombre.
  * Con `GUESTS_CAPTURAS=<carpeta>` guarda las capturas de lo nuevo (como `caracterizacion.spec.ts`).
  */
 import { expect, test, type Page } from 'playwright/test';
@@ -132,6 +133,55 @@ test('O4a · las pestañas de retiros conservan la sección: Programa en uno →
   await expect(page).toHaveURL(new RegExp(`#/p/${b}/programa$`));
   await expect(page.locator('#programList')).toContainText('Yoga de dos');
   await expect(page.locator('#sections a[aria-current="page"]')).toHaveText('Programa');
+});
+
+test('G13 · el menú de la familia cruza a cada persona: la alergia de la segunda sale con su nombre, revisada o no', async ({ page }) => {
+  const r = await api.reservation({ title: 'Retiro con niños', start: day(25), end: day(27) });
+  const ana = await api.guest(r.event, { first_name: 'Ana', last_name_1: 'Gil' });
+  const lucia = await api.guest(r.event, { first_name: 'Lucía', last_name_1: 'Gil' });
+  await api.experience(r.id, { menu_visible: true });
+  // La alergia es de la segunda persona; la primera solo tiene una preferencia.
+  await api.restriction(r.event, ana, { type: 'preferencia', subject: 'cilantro' });
+  await api.restriction(r.event, lucia, { type: 'alergia', subject: 'frutos secos', severity: 'grave' });
+  await api.menu(r.event, [{ date: day(25), type: 'cena', time: '21:00', dishes: [
+    { name: 'Bizcocho', allergens: ['frutos_de_cascara', 'gluten'], allergensChecked: false },
+    { name: 'Tarta de almendra', allergensChecked: true },
+    { name: 'Crema con cilantro', allergensChecked: true },
+    { name: 'Arroz blanco', allergensChecked: true },
+  ] }]);
+  await api.guestLink(r.id, lucia, 'Lucía', 'gil@example.invalid');
+  await page.goto(`${baseURL}/i/${await api.guestLink(r.id, ana, 'Ana', 'gil@example.invalid')}`);
+  await page.locator('#privacyOk').click();
+  await expect(page).toHaveURL(new RegExp(`#/r/${r.id}$`));
+  await page.locator('#sections a[data-section="menu"]').click();
+
+  const dishOf = (name: string) => page.locator('#menuList .gdish').filter({ has: page.locator('strong', { hasText: name }) });
+  // Lo que tiene registrado cocina, persona a persona.
+  await expect(page.locator(`#menuKitchen [data-guest="${lucia}"]`)).toHaveText('Cocina tiene registrado lo que indicó Lucía: frutos secos.');
+  await expect(page.locator(`#menuKitchen [data-guest="${ana}"]`)).toContainText('Cocina tiene registrado lo que indicó Ana: cilantro.');
+  // Declarado aunque sin revisar: avisa con el nombre de Lucía, y la línea de #597 sigue.
+  await expect(dishOf('Bizcocho').locator('.gcross')).toHaveText('⚠ Lucía: lleva frutos de cáscara.');
+  await expect(dishOf('Bizcocho').locator('.gallergens')).toHaveText('Alérgenos declarados: frutos de cáscara, gluten (sin revisar por cocina).');
+  // Sin declarar, pero el nombre del plato lo dice (la regla común de Food).
+  await expect(dishOf('Tarta de almendra').locator('.gcross')).toHaveText('⚠ Lucía: lleva frutos secos.');
+  // La preferencia de Ana, como información.
+  await expect(dishOf('Crema con cilantro').locator('.gcross')).toHaveText('Ana: lleva cilantro (preferencia).');
+  // Sin coincidencias, nada: nunca «apto».
+  await expect(dishOf('Arroz blanco').locator('.gcross')).toHaveCount(0);
+  await expect(page.locator('#menuList')).not.toContainText(/apto/i);
+  await capture(page, 'g13-menu-familia');
+
+  // Solo Lucía: su aviso, sin nombre.
+  await page.locator('#persons button', { hasText: 'Lucía' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/p/${lucia}/menu$`));
+  await expect(dishOf('Bizcocho').locator('.gcross')).toHaveText('⚠ Lleva frutos de cáscara, que nos indicaste.');
+  await expect(dishOf('Crema con cilantro').locator('.gcross')).toHaveCount(0);
+
+  // Lo personal nunca se abre con la familia junta (serían los datos de la primera persona): la ruta de familia no lo admite.
+  await page.locator('#persons button', { hasText: 'Todos' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/r/${r.id}/menu$`));
+  await page.evaluate((hash) => { location.hash = hash; }, `#/r/${r.id}/alimentacion`);
+  await expect(page.locator('#todoFamily .gperson')).toHaveCount(2);
 });
 
 test('O4a · la familia junta: retiros de todos con a quién toca, la cama de cada uno y el selector de persona', async ({ page }) => {
