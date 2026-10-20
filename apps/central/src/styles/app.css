@@ -255,3 +255,12 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-rv-sheet{display:grid;gap:10px}
 .ctl-rv-where{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0}
 .ctl-rv-go{width:max-content;max-width:100%;min-height:var(--tap,46px);justify-content:center}
+/* Ficha de artículo · foco (Bloque 2, MUELA-048 y 076): reponer, gastar antes o juntar, cada uno con su acción. */
+.ctl-itemfocus{display:grid;gap:10px;margin:12px 0}
+@media (min-width:760px){.ctl-itemfocus{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}}
+.ctl-itemfocus-card{display:grid;gap:6px;align-content:start;border-left:4px solid var(--line)}
+.ctl-itemfocus-card.alert{border-left-color:var(--alert)}
+.ctl-itemfocus-card.warn{border-left-color:var(--warn)}
+.ctl-itemfocus-card h3{margin:0;font-size:var(--text-md,1rem)}
+.ctl-itemfocus-card p{margin:0}
+.ctl-itemfocus-card button{justify-self:start;min-height:var(--tap,46px)}
