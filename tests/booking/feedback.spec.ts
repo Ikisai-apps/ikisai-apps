@@ -124,7 +124,8 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
 
   await test.step('«Sugerencias y QA» lista el reporte (Abiertos y Mapa)', async () => {
     await page.locator('#appLauncher').click();
-    await page.locator('.launcher-center').click();
+    // Dentro del cajón abierto: con la columna del menú, `.launcher-center` también está en la columna (oculta en el móvil).
+    await page.getByRole('dialog', { name: 'Menú de Booking' }).locator('.launcher-center').click();
     const sheet = page.getByRole('dialog', { name: 'Sugerencias y QA' });
     await expect(sheet).toBeVisible();
     await sheet.getByRole('tab', { name: 'Abiertos' }).click();
