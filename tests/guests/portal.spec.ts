@@ -8,6 +8,7 @@ import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
 import { freePort } from '../food/helpers.ts';
 import { startGuestsServer, type GuestsTestServer } from './server.ts';
 import { buildGuestsApp } from './build.ts';
@@ -15,6 +16,14 @@ import { simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.t
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/guests/vite.config.ts');
+const CAPTURAS = process.env.GUESTS_CAPTURAS ?? '';
+const PREFIJO = process.env.GUESTS_CAPTURAS_PREFIJO ?? 'despues';
+/** Captura de pantalla entera, solo con GUESTS_CAPTURAS (tanda 31: capturas a 390 px de cada pantalla). */
+async function capture(page: Page, name: string): Promise<void> {
+  if (!CAPTURAS) return;
+  mkdirSync(CAPTURAS, { recursive: true });
+  await page.screenshot({ path: path.join(CAPTURAS, `${PREFIJO}-${name}.png`), fullPage: true });
+}
 
 let api: GuestsTestServer;
 let server: PreviewServer;
@@ -102,6 +111,7 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
   // Tanda 31 (MUELA-018): Tus datos, pregunta a pregunta y solo lo que falta (el apellido que puso el organizador se salta).
   await page.locator('#task-data').click();
   await expect(page.locator('#fillLeft')).toContainText('Te faltan:');
+  await capture(page, 'datos-pregunta');
   await answer(page, 'Fecha de nacimiento', '1990-05-01');
   await answer(page, 'Tipo de documento', 'Pasaporte', 'choice');
   await answer(page, 'Número de documento', 'xa 123456');
@@ -122,6 +132,7 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
   await page.locator('#dietForm .ask-choice', { hasText: 'Grave' }).click();
   await page.locator('#dietAddSave').click();
   await expect(page.locator('#dietList')).toContainText('frutos secos');
+  await capture(page, 'alimentacion');
   await page.locator('#shareAllergies').click();
   await expect.poll(async () => (await api.row(ana)).allergies_visible_to_organizer).toBe(true);
   expect((await api.row(ana)).diet_reviewed_at).not.toBeNull();
@@ -130,6 +141,7 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
   await page.locator('#nextTask').click();
   await expect(page).toHaveURL(new RegExp(`#/p/${ana}/firma$`));
   await expect(page.locator('#signSummary')).toContainText('XA123456');
+  await capture(page, 'firma');
   await expect(page.locator('#signSummary dd[data-field="last_name_1"]')).toContainText('Lo indicó tu organizador');
   await page.locator('#signSummary button[data-key="last_name_1"]').click();
   await answer(page, 'Primer apellido', 'Sintética');
@@ -149,7 +161,9 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
 
   // Cambiar un dato del registro después de firmar invalida la firma (BG5) y se avisa: «Ver todos mis datos» y «Cambiar».
   await page.locator('#task-data').click();
+  await capture(page, 'datos-lista');
   await page.locator('#allData').click();
+  await capture(page, 'datos-todos');
   await page.locator('#dataReview button[data-key="residence_city"]').click();
   await answer(page, /Ciudad/, 'Madrid');
   await expect(page.locator('#signatureReset')).toBeVisible();
@@ -312,6 +326,7 @@ test('guests · «Ayuda y sugerencias»: «Tu retiro» con doble toque, un solo 
   expect(stored[0]!.scope).toMatchObject({ reservation_id: reservation, guest_id: eva });
   await expect(page.locator('#helpMine')).toContainText('La cena empieza muy tarde');
   await expect(page.locator('#helpMine')).toContainText('Recibido');
+  await capture(page, 'ayuda');
 });
 
 test('guests · «Ayuda y sugerencias» con el teclado abierto en el móvil: un sitio, lo urgente con «Llama ya», y el aviso se ve @smoke', async ({ page }) => {

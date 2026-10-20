@@ -9,12 +9,21 @@ import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
 import { freePort } from '../food/helpers.ts';
 import { startGuestsServer, type GuestsTestServer } from './server.ts';
 import { buildGuestsApp } from './build.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/guests/vite.config.ts');
+const CAPTURAS = process.env.GUESTS_CAPTURAS ?? '';
+const PREFIJO = process.env.GUESTS_CAPTURAS_PREFIJO ?? 'despues';
+/** Captura de pantalla entera, solo con GUESTS_CAPTURAS (tanda 31: capturas a 390 px de cada pantalla). */
+async function capture(page: Page, name: string): Promise<void> {
+  if (!CAPTURAS) return;
+  mkdirSync(CAPTURAS, { recursive: true });
+  await page.screenshot({ path: path.join(CAPTURAS, `${PREFIJO}-${name}.png`), fullPage: true });
+}
 
 let api: GuestsTestServer;
 let server: PreviewServer;
@@ -121,6 +130,7 @@ test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitac
   await expect(page.locator('#programList .now-hero')).toContainText('Quedan 1 h 30 min');
   await expect(page.locator('#programList .now-next')).toContainText('Paseo al pinar');
   await expect(page.locator('#programList .now-next')).toContainText('sin hora de fin');
+  await capture(page, 'programa');
   await expect(page.locator('#programList')).toContainText('Yoga suave');
   await expect(page.locator('#programList')).not.toContainText('nota interna');
   await page.locator('#programDays [role="tab"]').nth(1).click();
@@ -150,6 +160,7 @@ test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitac
   await page.locator('#materialsList button[data-file]').click();
   expect((await signed).status()).toBe(200); // resolutor real de Organizers (C8)
   await expect(page.locator('#materialsList button[data-file]')).toHaveText('Guardado en este dispositivo');
+  await capture(page, 'guia-materiales');
 });
 
 test('guests · preguntas del organizador: pendiente en Inicio, se responden sin «Guardar» y avisa de quién las ve', async ({ page }) => {
@@ -169,6 +180,7 @@ test('guests · preguntas del organizador: pendiente en Inicio, se responden sin
   await expect(page.locator('#questionsNotice')).toHaveText(' Tu organizador verá tus respuestas.');
   await expect(page.locator(`.gq-list [data-question="${q3}"]`)).toContainText('Cerrada');
   await expect(page.locator('.ask-meta')).toHaveText('Pregunta 1 de 2');
+  await capture(page, 'guia-preguntas');
   await page.locator('.ask-input').fill('Descansar y aprender a respirar');
   await page.locator('.ask-input').press('Enter');
   await page.locator('.ask-choice', { hasText: 'Sí' }).click();
