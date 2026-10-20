@@ -31,6 +31,20 @@ const OUTSIDER_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const OUTSIDER_MAX_BYTES = 10 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Un SVG es un documento: abierto con su URL firmada, ejecutaría lo que lleve dentro. La verificación rechaza el que traiga
+ *  contenido activo (scripts, `foreignObject`, incrustados, manejadores `on…` o enlaces `javascript:`); el cliente sube el
+ *  SVG ya limpio (MUELA-092). Devuelve el motivo, o `null` si está limpio. */
+export function svgUnsafeReason(text: string): string | null {
+  const t = text.replace(/<!--[\s\S]*?-->/g, '');
+  if (/<\s*(?:[a-z0-9_-]+:)?script\b/i.test(t)) return 'script';
+  if (/<\s*(?:[a-z0-9_-]+:)?foreignObject\b/i.test(t)) return 'foreignObject';
+  if (/<\s*(?:[a-z0-9_-]+:)?(?:iframe|embed|object)\b/i.test(t)) return 'embed';
+  if (/[\s"'\/]on[a-z]+\s*=/i.test(t)) return 'handler';
+  if (/(?:java|vb)script\s*:|data\s*:\s*text\/html/i.test(t.replace(/&#x?[0-9a-f]+;?|[\t\n\r]/gi, ''))) return 'link';
+  if (/<!ENTITY/i.test(t)) return 'entity';
+  return null;
+}
+
 export function createUploads(supabase: Supabase, app: string, config: UploadsConfig, storage: StorageAccess = createStorage(supabase),
   visible?: (table: string, row: Record<string, unknown>, ctx: RequestContext) => boolean) {
   const maxBytes = config.maxBytes ?? 50 * 1024 * 1024;
@@ -105,7 +119,18 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
         fail(422, 'FILE_MISMATCH', messageFor('FILE_MISMATCH'), { expected: file.sha256, actual: digest });
       }
       hashVerified = true;
+      if (String(file.mime).toLowerCase() === 'image/svg+xml') {
+        const reason = svgUnsafeReason(new TextDecoder().decode(bytes));
+        if (reason) {
+          await supabase.rpc('core_file_mark', { p_id: id, p_status: 'missing', p_size: size, p_hash_verified: false });
+          fail(422, 'UNSUPPORTED_MEDIA', 'El SVG lleva contenido activo (scripts o enlaces). Súbelo limpio.', { reason });
+        }
+      }
     } else {
+      if (String(file.mime).toLowerCase() === 'image/svg+xml') {
+        await response.body?.cancel();
+        fail(422, 'UNSUPPORTED_MEDIA', 'El SVG es demasiado grande para comprobarlo.');
+      }
       await response.body?.cancel();
     }
     if (Number.isFinite(size) && size !== declared) {
