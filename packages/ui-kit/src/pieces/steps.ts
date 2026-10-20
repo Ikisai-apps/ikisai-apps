@@ -23,6 +23,11 @@ export interface StepItem {
   icon?: IconName | null;
   href?: string | null;
   onClick?: () => void;
+  /**
+   * Id literal de feedback de este paso (entra en el catálogo). Sin él, como siempre: `${feedbackId}.${id}` si hay base
+   * (Organizers localiza así sus pasos), o nada.
+   */
+  feedbackId?: string;
 }
 
 export interface StepsOptions {
@@ -42,7 +47,13 @@ function link(item: StepItem, cls: string, children: Child[], attrs: Record<stri
 
 export function renderSteps(options: StepsOptions): HTMLElement {
   const base = options.feedbackId;
-  const mark = (id: string): Record<string, string> => (base ? { 'data-feedback-id': `${base}.${id}`, 'data-feedback-label': 'Paso' } : {});
+  // El id literal manda (entra en el catálogo); sin él, el construido de siempre.
+  const byId = new Map(options.items.map((i) => [i.id, i]));
+  const mark = (id: string): Record<string, string> => {
+    const it = byId.get(id);
+    if (it?.feedbackId) return { 'data-feedback-id': it.feedbackId, 'data-feedback-label': it.title };
+    return base ? { 'data-feedback-id': `${base}.${id}`, 'data-feedback-label': 'Paso' } : {};
+  };
   const todo = options.items.filter((i) => !i.done);
   const done = options.items.filter((i) => i.done);
   const total = options.items.length;

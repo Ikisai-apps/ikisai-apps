@@ -1,5 +1,24 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.49.0 · 19 de octubre de 2026
+
+**Ajustes que piden las pasadas** (Organizers, #623; tanda 29). No hay cambios de diseño y lo de hoy queda igual por defecto.
+
+1. **`renderCover`:**
+   - `headingLevel` (2–4) y `titleId`: el título es un encabezado de verdad. Con `onOpen`, el botón va dentro del encabezado y su zona de toque sigue cubriendo toda la portada.
+   - El velo de `.medal-cover` da contraste también arriba.
+2. **Salir:** «Cerrar sesión» se traduce, y `logoutOnMobile` lo enseña también en el móvil. Por defecto, solo en el ordenador, como siempre.
+3. **`listRow`:** Intro y Espacio sobre una acción de la fila la pulsan a ella; ya no abren la ficha.
+4. **`renderChecks`:** la acción mide de verdad 46 px (`.ghost.small` la dejaba en 36), y `action.aria` le da nombre cuando el texto se repite («Rellenar»).
+5. **Ids de feedback literales**, para que entren en el catálogo:
+   - `feedbackId` por grupo en `renderGroups`; sin él, sigue `${base}.grupo`.
+   - `feedbackId` por paso en `renderSteps`; sin él, sigue `${base}.${id}`, porque Organizers localiza así sus pasos y quitarlo rompía su batería.
+6. **`bindOnline`:** `renderOfflineReason()` crea una línea de motivo que comparten varios botones (`bindOnline(b, { line })`).
+7. **Extracto:** `afterUpcoming` deja un hueco entre «Próximamente» y «Movimientos» (p. ej. «Cómo pagar»).
+
+- **Nota:** `--muted` ya da 4,56:1 sobre `--bg` desde la 0.41.0. No había que tocarlo.
+- **Pruebas:** `v54`.
+
 ## 0.48.0 · 19 de octubre de 2026
 
 **«‹ Volver a…» entre apps (K9, MUELA-013, tanda 28).** Va solo, porque toca «atrás». **Es opcional:** sin `returnTo`, nada cambia.

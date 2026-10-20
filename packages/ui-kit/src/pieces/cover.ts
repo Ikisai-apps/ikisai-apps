@@ -33,10 +33,18 @@ export interface CoverOptions {
   /** Más baja (cabecera de ficha). */
   compact?: boolean;
   feedbackId?: string;
+  /**
+   * El título como encabezado (`h2`…`h4`) en vez de texto suelto. Con `onOpen`, el botón va dentro del encabezado y su
+   * zona de toque cubre toda la portada (como siempre).
+   */
+  headingLevel?: 2 | 3 | 4;
+  /** Id del título (para `aria-labelledby` desde fuera); la portada se nombra con él. */
+  titleId?: string;
 }
 
 export function renderCover(options: CoverOptions): HTMLElement {
   const faces = (options.faces ?? []).slice(0, 4);
+  if (options.headingLevel || options.titleId) return renderCoverWithHeading(options, faces);
   const body: Child[] = [
     options.pill ? el('span', { class: 'cover-pill', dataset: { tone: options.pillTone ?? 'none' } }, options.pill) : null,
     options.image ? null : el('span', { class: 'cover-initials', 'aria-hidden': 'true' }, initialsOf(options.title)),
@@ -51,6 +59,27 @@ export function renderCover(options: CoverOptions): HTMLElement {
     'aria-label': options.title,
   },
   main,
+  options.tools?.length ? el('div', { class: 'cover-tools' }, ...options.tools) : null,
+  faces.length || options.stats ? el('div', { class: 'cover-strip' },
+    faces.length ? el('span', { class: 'cover-faces', 'aria-hidden': 'true' }, ...faces.map((f) => renderMedal({ size: 30, ...f }))) : null,
+    options.stats ? el('span', { class: 'cover-stats' }, options.stats) : null) : null);
+}
+
+/** Portada con el título como encabezado: el botón (si hay `onOpen`) va dentro del encabezado y se estira a toda la portada. */
+function renderCoverWithHeading(options: CoverOptions, faces: MedalOptions[]): HTMLElement {
+  const tag = (`h${options.headingLevel ?? 2}`) as 'h2' | 'h3' | 'h4';
+  const titleText = options.onOpen
+    ? el('button', { type: 'button', class: 'cover-titlebtn', onclick: options.onOpen, ...(options.feedbackId ? { 'data-feedback-id': options.feedbackId, 'data-feedback-label': options.title } : {}) }, options.title)
+    : options.title;
+  return el('section', {
+    class: `cover-box cover-headed${options.image ? ' cover-has-image' : ''}${options.compact ? ' cover-compact' : ''}`,
+    style: [bg(options.image), itemColorStyle(options.color ?? null)].filter(Boolean).join(';'),
+    ...(options.titleId ? { 'aria-labelledby': options.titleId } : { 'aria-label': options.title }),
+  },
+  el('div', { class: 'cover-main' },
+    options.pill ? el('span', { class: 'cover-pill', dataset: { tone: options.pillTone ?? 'none' } }, options.pill) : null,
+    options.image ? null : el('span', { class: 'cover-initials', 'aria-hidden': 'true' }, initialsOf(options.title)),
+    el(tag, { class: 'cover-title', ...(options.titleId ? { id: options.titleId } : {}) }, titleText, options.titleExtra ?? null)),
   options.tools?.length ? el('div', { class: 'cover-tools' }, ...options.tools) : null,
   faces.length || options.stats ? el('div', { class: 'cover-strip' },
     faces.length ? el('span', { class: 'cover-faces', 'aria-hidden': 'true' }, ...faces.map((f) => renderMedal({ size: 30, ...f }))) : null,

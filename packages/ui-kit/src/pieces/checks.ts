@@ -13,7 +13,8 @@ export interface CheckItem {
   ok: boolean;
   text: string;
   detail?: string | null;
-  action?: { label: string; onClick: () => void; feedbackId?: string } | null;
+  /** Botón para resolverla. `aria`: nombre accesible cuando el texto se repite («Rellenar la fecha de Ana»). */
+  action?: { label: string; onClick: () => void; feedbackId?: string; aria?: string } | null;
 }
 
 export interface ChecksOptions {
@@ -37,5 +38,5 @@ export function renderChecks(options: ChecksOptions): HTMLElement {
       el('span', { class: 'check-mark', 'aria-hidden': 'true' }, item.ok ? '✓' : '!'),
       el('span', { class: 'check-text' }, el('span', { class: 'vh' }, item.ok ? kt('Bien: ') : kt('Falta: ')), item.text,
         item.detail ? el('span', { class: 'check-detail' }, item.detail) : null),
-      item.action ? el('button', { type: 'button', class: 'ghost small check-action', ...(item.action.feedbackId ? { 'data-feedback-id': item.action.feedbackId, 'data-feedback-label': item.action.label } : {}), onclick: item.action.onClick }, item.action.label) : null))) : null);
+      item.action ? el('button', { type: 'button', class: 'ghost small check-action', ...(item.action.aria ? { 'aria-label': item.action.aria } : {}), ...(item.action.feedbackId ? { 'data-feedback-id': item.action.feedbackId, 'data-feedback-label': item.action.label } : {}), onclick: item.action.onClick }, item.action.label) : null))) : null);
 }
