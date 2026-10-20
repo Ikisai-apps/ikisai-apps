@@ -134,7 +134,7 @@ body{background:var(--bg)}
 .quickadd,.linkbtn,.quickdetail:hover{color:var(--accent-deep)}
 .addtask{background:transparent;border-top-color:var(--edge)}
 .rootdrop,.drop-child,.drop-project{outline-color:var(--accent)}
-.drop-before{box-shadow:0 -3px 0 var(--accent)}.drop-after{box-shadow:0 3px 0 var(--accent)}
+/* Solo las filas de tareas del arrastre heredado (index.html, updateDragTarget): el kit tiene sus propias marcas. */[data-row].drop-before{box-shadow:0 -3px 0 var(--accent)}[data-row].drop-after{box-shadow:0 3px 0 var(--accent)}
 .drop-child,.drop-child:after,.drop-project{background:var(--accent-soft)!important;color:var(--accent-deep)}
 .inlineedit{border-color:var(--accent)}
 .task.newtask{background:var(--paper-2)}

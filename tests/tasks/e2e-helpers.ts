@@ -149,6 +149,14 @@ export async function setSignal(page: Page, on: boolean): Promise<void> {
   await page.keyboard.press('Escape');
   await expect(page.locator('.appmenu-drawer')).toHaveCount(0);
 }
+/**
+ * Etiquetas en fichas (MUELA-061, tanda 31, zona 3): el catálogo de siempre, con todos sus mandos, va detrás de «Editar el
+ * catálogo» (#labelsCatalog). Para las pruebas del catálogo: lo abre sin pulsar (el botón lo prueban bandejas.spec.ts).
+ */
+export async function openLabelCatalog(page: Page): Promise<void> {
+  await page.evaluate('tkeCatalog = true; render();');
+  await expect(page.locator('#labelsTiles')).toHaveCount(1);
+}
 /** `feedbackRoundTrip` del kit con el interruptor del cajón del menú común (la única diferencia). */
 export async function feedbackRoundTrip(page: Page, options: { target: string; text?: string; keyboard?: number; timeout?: number }): Promise<{ code: string }> {
   const timeout = options.timeout ?? 8000;

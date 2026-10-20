@@ -5,7 +5,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, type Aliases } from './e2e-helpers.ts';
+import { openApp, openLabelCatalog, seedDemo, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any;
@@ -75,6 +75,7 @@ test('FB_2026_043: agrupar por Persona pone la tarea solo en el grupo de VG', as
 
 test('FB_2026_034: en la vista General de «Etiquetas», lo General una sola vez arriba y en cada área solo lo suyo', async () => {
   await page.evaluate(() => { state.taskScope = 'all'; state.view = 'labels'; render(); });
+  await openLabelCatalog(page);
   await expect(page.locator('#catalogGeneral')).toContainText('Revisar');
   await expect(page.locator('main')).toContainText('Revisar');
   expect(await page.locator('main .chip', { hasText: 'Revisar' }).count()).toBe(1);

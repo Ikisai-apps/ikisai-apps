@@ -1,0 +1,58 @@
+/* Bandejas (tanda 31, zona 3): «Por clasificar» por origen (tkc-), el Reporte como resguardo (tkr-) y Etiquetas en fichas
+   (tke-). Las piezas son del kit (renderGroups, renderTile, renderStages, renderMedal, toastWithAction); aquí solo el sitio de
+   cada cosa en Tasks. Objetivos de 46 px y texto en --ink / --muted del kit (4,5:1). */
+
+/* --- Por clasificar ----------------------------------------------------------------------------------------------- */
+.tkc-screen .tkc-bands{margin-top:12px}
+.tkc-bands .worst-items{list-style:none;padding:0}
+.tkc-item{list-style:none;padding:0 10px 10px}
+.tkc-item:first-child{padding-top:10px}
+.tkc-kind{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:6px 2px 8px}
+.tkc-kind h2.sectionlabel{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.tkc-kindactions{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.tkc-kindactions button,.tkc-actions button{min-height:46px}
+.tkc-row{display:grid;gap:4px}
+.tkc-row[data-tkc-tone="alert"]{box-shadow:inset 4px 0 0 var(--alert)}
+.tkc-row[data-tkc-tone="warn"]{box-shadow:inset 4px 0 0 var(--warn)}
+.tkc-dest strong{color:var(--ink)}
+.tkc-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.tkc-proposals{margin:12px 0}
+.tkc-proposalhead{display:flex;align-items:center;gap:10px}
+.tkc-proposalhead .sectionlabel{margin:0}
+.tkc-proposalhint{margin:4px 0 8px}
+
+/* --- Reporte ------------------------------------------------------------------------------------------------------ */
+.tkr-tools{display:flex;gap:6px;align-items:center}
+.tkr-tools .iconbtn{min-width:46px;min-height:46px;display:inline-flex;align-items:center;justify-content:center}
+.tkr-tools .tkr-edit[aria-pressed="true"]{background:var(--accent-soft, var(--paper-2))}
+.tkr-eyebrow{margin:0 0 2px;font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.tkr-card{display:grid;gap:10px;margin-top:10px;padding:14px;border-radius:var(--radius, 14px);background:var(--paper, #fff);box-shadow:inset 0 0 0 1px var(--line)}
+.tkr-card[data-tkr-status="dismissed"],.tkr-card[data-tkr-status="deleted"]{box-shadow:inset 0 0 0 1px var(--line),inset 4px 0 0 var(--muted)}
+.tkr-state{display:flex;flex-wrap:wrap;gap:6px;margin:0}
+.tkr-stages .stage-box{margin:0}
+.tkr-open{display:grid;gap:4px;text-align:left;min-height:46px;padding:10px 12px;border:0;border-radius:10px;background:var(--paper-2, #f3f1ea);color:var(--ink);font:inherit;cursor:pointer}
+.tkr-open:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tkr-note{white-space:pre-wrap}
+.tkr-openlabel{font-weight:700;color:var(--accent-ink-strong, var(--ink))}
+.tkr-openlabel:empty{display:none}
+.tkr-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px;margin:0}
+.tkr-facts dt{font-size:.78rem;font-weight:700;color:var(--muted)}
+.tkr-facts dd{margin:2px 0 0;display:flex;align-items:center;gap:6px}
+.tkr-editor{display:grid;gap:8px;padding:10px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line)}
+.tkr-editor select,.tkr-editor input,.tkr-editor button{min-height:46px}
+.tkr-actions{justify-content:flex-start}
+.tkr-gap{margin-top:16px;padding:12px;border:2px dashed var(--line);border-radius:12px}
+.tkr-gap .sectionlabel{margin-top:0}
+
+/* --- Etiquetas ---------------------------------------------------------------------------------------------------- */
+.tke-groups{margin-top:12px}
+.tke-groups .worst-items{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:10px}
+.tke-groups .worst-items > li{list-style:none;display:grid}
+.tke-groups .tile-box{min-height:120px;text-align:left;font:inherit;color:var(--ink)}
+.tke-groups .tile-box .tile-fill{background:color-mix(in srgb,var(--tke-color, var(--ok)) 22%,transparent)}
+.tke-groups .tile-box .tile-level{color:var(--muted)}
+.tke-faces{display:flex;align-items:center;gap:2px}
+.tke-faces .medal-disc{box-shadow:0 0 0 2px var(--paper, #fff)}
+.tke-more{font-size:.75rem;font-weight:700;color:var(--muted);margin-left:4px}
+.tke-central{margin:6px 0 0}
+#labelsCatalog,#labelsTiles{min-height:46px}
