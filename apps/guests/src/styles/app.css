@@ -239,7 +239,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gpass-help{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .gpass-help>*{min-height:var(--tap,46px);flex:1 1 auto;white-space:nowrap}
 .gpass .primary{background:var(--paper);color:var(--accent-deep);box-shadow:none}
-.gpass .ghost{color:#fff;border-color:rgba(255,255,255,.7)}
+.gpass .ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7)}
 .gpass-after h3{margin:14px 0 4px;font-size:1.2rem;color:inherit}
 .gpass-next{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 12px;min-height:var(--tap,46px);border-radius:var(--radius-sm,10px);background:color-mix(in srgb,var(--accent-ink,#fff) 14%,transparent);color:inherit;text-decoration:none}
 .gpass-next>span{display:flex;flex-direction:column;flex:1}
@@ -351,3 +351,118 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gview .now-hero .small,.gview .now-hero .muted,.gview .now-hero .gplace,.gview .now-has-image .small{color:inherit;opacity:.95}
 .now-hero .gplan>summary{color:inherit}
 .gfam-person .small{overflow-wrap:anywhere}
+
+/* Entrada (MUELA-060): bienvenida con salidas y «Encuentra tu enlace» */
+.gentry-card{display:grid;gap:12px}
+.gentry .login-card h2{margin:6px 0 0}
+.gentry-hero{min-height:110px;border-radius:14px;display:flex;align-items:flex-end;padding:12px;color:#fff;font-weight:800;font-size:1.1rem;background:linear-gradient(150deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#1f2a22))}
+.gentry-frame{display:grid;gap:10px;padding:12px;border-radius:16px;border:2px solid var(--accent-deep);background:var(--paper)}
+.gentry-frame-h{display:flex;align-items:center;gap:6px;margin:0;font-weight:800}
+.gentry-steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.gentry-step{display:flex;gap:10px}
+.gentry-step p{margin:0}
+.gentry-step-n{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:999px;background:var(--accent-deep);color:var(--accent-ink,#fff);font-weight:800}
+.gentry-step-h{display:flex;align-items:center;gap:4px;font-weight:800}
+.gentry-acts{display:grid;gap:8px}
+.gentry-exit{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--ink);text-decoration:none}
+.gentry-exit-ico{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent-deep)}
+.gentry-exit-text{display:flex;flex-direction:column;flex:1;min-width:0}
+.gentry .small{color:var(--gsoft)}
+
+/* Ayuda y sugerencias (MUELA-054 sin plano): tarjetas grandes, sitios en baldosas y lo enviado con su estado */
+.ghelp{display:grid;gap:14px}
+.ghelp-urgent{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 12px;border-radius:16px;background:var(--alert-soft);border:1px solid var(--alert);font-weight:700}
+.ghelp-urgent>span{display:flex;align-items:center;gap:6px}
+.ghelp-urgent a{min-height:46px;padding:0 16px;border-radius:999px;white-space:nowrap}
+.ghelp-block{display:grid;gap:10px}
+.ghelp-block h3{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:1.05rem}
+.ghelp-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width:700px){.ghelp-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.ghelp-card{position:relative;min-height:118px;padding:12px;border-radius:18px;border:2px solid transparent;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;gap:6px;color:#fff;font-weight:800;text-align:left;font:inherit;font-weight:800;background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 80%,#1f2a22),#262b27)}
+.ghelp-card-ico{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:rgba(255,253,248,.92);color:#26321f}
+.ghelp-card-l{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ghelp-card.on{border-color:var(--accent-deep);box-shadow:0 0 0 3px var(--accent-deep)}
+.ghelp-card.on .ghelp-card-ico{background:var(--accent-deep);color:#fff}
+.ghelp-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.ghelp-tile{position:relative;min-height:84px;padding:10px 6px;border-radius:16px;border:1px solid var(--line);background:var(--paper);color:var(--ink);display:grid;justify-items:center;align-content:center;gap:6px;font:inherit;font-weight:700;font-size:var(--text-sm,.875rem);line-height:1.15;text-align:center}
+.ghelp-tile-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--accent-soft);color:var(--accent-deep)}
+.ghelp-tile.on{border:2px solid var(--accent-deep);background:color-mix(in srgb,var(--accent-soft) 70%,var(--paper))}
+.ghelp-tile.on .ghelp-tile-ico{background:var(--accent-deep);color:var(--accent-ink,#fff)}
+.ghelp-tile.urgent{border-color:var(--alert)}
+.ghelp-tile.urgent .ghelp-tile-ico{background:var(--alert-soft);color:var(--alert)}
+.ghelp-flag{position:absolute;top:6px;right:8px;color:var(--alert)}
+.ghelp-card:focus-visible,.ghelp-tile:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.ghelp-urgentnote{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0;padding:8px 10px;border-radius:12px;background:var(--alert-soft);font-weight:700}
+.ghelp-urgentnote a{min-height:46px;padding:0 14px;border-radius:999px}
+.ghelp-compose{display:grid;gap:8px;padding:10px;border-radius:14px;background:var(--paper-2,var(--paper))}
+.ghelp-compose textarea{width:100%;min-height:96px}
+.ghelp-who{display:flex;align-items:center;gap:6px;margin:0}
+.ghelp-btns{display:flex;gap:8px}
+.ghelp-btns>*{min-height:46px}
+.ghelp-btns .primary{flex:1}
+.ghelp-photos{display:flex;flex-wrap:wrap;gap:6px}
+.ghelp-photos:empty,.ghelp-status:empty{display:none}
+.ghelp-signal{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ghelp-sent{list-style:none;margin:0;padding:0}
+.ghelp-sent-row{padding:10px 0;border-bottom:1px solid var(--line)}
+.ghelp-sent-row p{margin:0 0 4px}
+.ghelp-sent-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ghelp-sent-msg{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ghelp-st{display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid var(--line);background:var(--paper);font-size:var(--text-xs,.75rem);font-weight:700}
+.ghelp-st.st-in_progress{background:var(--warn-soft);border-color:var(--warn)}
+.ghelp-st.st-pending_verify,.ghelp-st.st-verified{background:var(--ok-soft);border-color:var(--ok)}
+.ghelp-st.st-dismissed{background:var(--paper-2,var(--paper));border-color:var(--line);color:var(--ink)}
+.ghelp-st.st-pending{border-style:dashed}
+.ghelp-reply{margin-top:6px;padding:8px 10px;border-left:3px solid var(--accent-deep);background:var(--paper-2,var(--paper));border-radius:0 10px 10px 0}
+.ghelp-away{opacity:.06;transform:translateY(70%);pointer-events:none}
+
+/* Guía del retiro (MUELA-037): avisos, índice fijo, secciones, «Nuevo» y preguntas */
+.gtodo{display:flex;align-items:center;gap:12px;min-height:56px;margin:8px 0 10px;padding:10px 12px;border-radius:14px;background:var(--warn-soft);color:var(--ink);text-decoration:none}
+.gtodo>span:nth-child(2){display:grid;flex:1}
+.gtodo .small{color:var(--ink)}
+.gtodo-news{background:var(--accent-soft)}
+.gbadge{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 6px;border-radius:999px;background:var(--alert);color:#fff;font-weight:800}
+.gnew{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--accent);color:var(--accent-ink,#fff);font-size:var(--text-xs,.75rem);font-weight:700;vertical-align:middle}
+.gtodo .gnew{margin:0;flex:none}
+.gindex{position:sticky;top:var(--gtop,60px);z-index:4;display:flex;gap:6px;overflow-x:auto;padding:8px 0;margin:0 0 6px;background:var(--bg);scrollbar-width:none}
+.gindex::-webkit-scrollbar{display:none}
+.gindex a{flex:none;display:inline-flex;align-items:center;min-height:46px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-weight:600;white-space:nowrap;text-decoration:none}
+.gsec{display:grid;gap:10px;margin:18px 0 0;scroll-margin-top:calc(var(--gtop,60px) + 64px);outline:none}
+.gsec-head{margin:0;font-size:var(--text-md,1rem);text-transform:uppercase;letter-spacing:.06em;color:var(--gsoft)}
+.gsec .ggroup,.gsec .gcard{margin:0}
+.gmedrow{display:flex;align-items:center;gap:10px}
+a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-height:46px}
+.gmaterial .ghost.small{min-height:46px}
+.gquestions{display:grid;gap:10px}
+.gq-head{margin:8px 0 0}
+.gq-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.gq-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.gq-text{display:flex;flex-direction:column;min-width:0}
+.gq-list button{min-height:46px}
+
+/* Lo que me piden rellenar (MUELA-018): la lista, la comida y la revisión */
+.gleft{display:flex;gap:6px;align-items:flex-start;margin:0 0 12px;padding:10px 12px;border-radius:var(--radius-sm,10px);background:var(--warn-soft);color:var(--warn-ink,var(--ink));font-weight:600;font-size:var(--text-sm,.875rem)}
+.gcount{margin:0 0 8px}
+.gfilltasks{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:10px}
+.gfilltask{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;min-height:64px;padding:12px 14px;border-radius:var(--radius-md,14px);border:1px solid var(--edge,var(--line));background:var(--paper);box-shadow:var(--shadow-1);color:var(--ink);text-align:left;font:inherit}
+.gfilltask:disabled{cursor:default;opacity:.85}
+.gfilltask-num{display:grid;place-items:center;width:32px;height:32px;border-radius:999px;background:var(--paper-2,var(--paper));font-weight:800}
+.gfilltask.done .gfilltask-num{background:var(--ok-soft);color:var(--ok)}
+.gfilltask-text{display:flex;flex-direction:column;min-width:0}
+.gfilltask-text .small{color:var(--warn-ink,var(--ink))}
+.gtag{font-size:var(--text-xs,.75rem);font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:4px 8px;border-radius:6px;white-space:nowrap}
+.gtag.done{background:var(--ok-soft);color:var(--ok)}
+.gtag.todo,.gtag.doing{background:var(--warn-soft);color:var(--warn-ink,var(--ink))}
+.gtag.locked{background:var(--paper-2,var(--paper));color:var(--ink)}
+.gfieldlinks{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0 58px}
+.gfieldlink{display:inline-flex;align-items:center;gap:4px;min-height:46px;padding:6px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-soft);color:var(--warn-ink,var(--ink));font:inherit;font-size:var(--text-sm,.875rem);font-weight:700}
+.gcheck{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto;gap:10px 12px;align-items:center;margin:0 0 14px;padding:14px 16px;background:var(--paper);border:1px solid var(--edge,var(--line));border-radius:var(--radius-md,14px)}
+.gcheck dt{color:var(--gsoft);font-size:var(--text-sm,.875rem)}
+.gcheck dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.gcheck .linklike{margin:0;min-height:46px}
+.gask{display:grid;gap:10px;margin:0 0 14px;padding:14px 16px;border-radius:var(--radius-md,14px);background:var(--paper);border:1px solid var(--edge,var(--line))}
+.gask-q{margin:0;font-family:var(--font-display,inherit);font-size:1.2rem;line-height:1.25}
+.gask-sub{margin:4px 0 0;font-weight:700}
+.gask-btns{display:flex;gap:8px;justify-content:flex-end}
+.gask-btns>*{min-height:46px}
+.gask .gfield input{min-height:52px}

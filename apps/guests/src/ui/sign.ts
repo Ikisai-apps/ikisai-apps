@@ -8,9 +8,10 @@ import { el, icon, replace } from '@ikisai/ui-kit';
 import { signsOwnEntry } from '@ikisai/domain-booking';
 import { commonText, textVersion } from '../app/common-texts.ts';
 import type { GuestContext } from '../app/context.ts';
-import { formatDate, t } from '../app/i18n.ts';
-import { countryName, dateRange, missingText } from '../app/labels.ts';
-import { backLink, centralText, fbIgnore, staleNote } from './common.ts';
+import { t } from '../app/i18n.ts';
+import { dateRange, missingText } from '../app/labels.ts';
+import { backLink, centralText, staleNote } from './common.ts';
+import { requestChange, reviewList } from './data.ts';
 
 /** Recuadro de firma: trazos con puntero (dedo, ratón o lápiz) y exportación PNG recortada a la firma (API.md §8). */
 export interface SignaturePad { element: HTMLElement; isEmpty(): boolean; clear(): void; toBlob(): Promise<Blob | null> }
@@ -91,14 +92,17 @@ export function mountSign(main: HTMLElement, ctx: GuestContext, base: string): (
     const g = ctx.guest();
     const r = g.reservation;
     const stale = ctx.staleAt() ? staleNote(ctx.staleAt()!) : null;
-    const head = el('div', { class: 'pagehead' }, el('h2', null, t('sign.title')), el('p', { class: 'muted' }, t('sign.intro')));
+    const head = el('div', { class: 'pagehead' }, el('h2', null, t('fill.check')), el('p', { class: 'muted' }, g.mode === 'ses' ? t('fill.checkIntro') : t('sign.intro')));
+    // «Cambiar» abre esa pregunta en Tus datos y vuelve aquí.
+    const review = () => reviewList(ctx, (key) => { requestChange(key, `${base}/firma`); location.hash = `${base}/datos`; });
     if (g.mode !== 'ses') {
-      replace(main, backLink(base), stale, head, el('p', { id: 'signNotNeeded' }, t('sign.notNeeded')));
+      replace(main, backLink(base), stale, head, review(), el('p', { id: 'signNotNeeded' }, t('sign.notNeeded')));
       return;
     }
     if (g.signed) {
-      replace(main, backLink(base), stale, head, el('section', { class: 'card gcard gdone', id: 'signDone', 'data-feedback-id': 'guests.firma.hecha', 'data-feedback-label': 'Firma hecha' },
-        icon('check', 22), el('p', null, t('sign.done'))));
+      replace(main, backLink(base), stale, head, review(), el('section', { class: 'card gcard gdone', id: 'signDone', 'data-feedback-id': 'guests.firma.hecha', 'data-feedback-label': 'Firma hecha' },
+        icon('check', 22), el('p', null, t('sign.done'))),
+        el('a', { class: 'primary wide', href: base, id: 'nextTask', 'data-feedback-id': 'guests.firma.volver', 'data-feedback-label': 'Volver a tu retiro' }, t('fill.backRetreat'), icon('chevronRight', 16)));
       return;
     }
     if (sending || ctx.writer.busy() && ctx.writer.state() === 'offline') {
@@ -131,19 +135,11 @@ export function mountSign(main: HTMLElement, ctx: GuestContext, base: string): (
         paint();
       } }, t('sign.submit'));
     const statement = commonText('guests.signature_statement');
-    const summary: Array<[string, string]> = [
-      [t('sign.name'), fullName],
-      ...(f.document_number ? [[t('sign.document'), `${f.document_type ?? ''} ${f.document_number}`.trim()] as [string, string]] : []),
-      ...(f.birth_date ? [[t('sign.birth'), formatDate(String(f.birth_date))] as [string, string]] : []),
-      [t('sign.address'), [f.residence_address, f.residence_postal_code, f.residence_city, f.residence_country ? countryName(String(f.residence_country)) : null].filter(Boolean).join(', ')],
-      [t('sign.stay'), dateRange(r.start_date, r.end_date)],
-    ];
     replace(main, backLink(base), stale, head,
       ctx.signatureReset() ? el('p', { class: 'banner warn', id: 'signatureReset' }, icon('warn', 18), ' ', t('data.signatureReset')) : null,
-      fbIgnore(el('section', { class: 'card gcard', id: 'signSummary', 'data-feedback-id': 'guests.firma.resumen', 'data-feedback-label': 'Lo que firmas' },
-        el('h3', null, t('sign.summary')),
-        el('dl', { class: 'gdl' }, ...summary.flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)])),
-        el('a', { class: 'ghost', href: `${base}/datos`, 'data-feedback-id': 'guests.firma.datos.corregir', 'data-feedback-label': 'Corregir' }, icon('edit', 16), t('sign.correct')))),
+      // «Comprueba tus respuestas» (MUELA-018): todo lo que se firma, con «Cambiar» en cada dato.
+      el('section', { id: 'signSummary', 'data-feedback-id': 'guests.firma.resumen', 'data-feedback-label': 'Lo que firmas' },
+        el('p', { class: 'small' }, `${t('sign.stay')}: ${dateRange(r.start_date, r.end_date)}`), review()),
       statement ? centralText(statement.body, statement.spanishOnly, { id: 'signStatement', class: 'gtext card gcard' }) : null,
       el('section', { class: 'card gcard', 'data-feedback-id': 'guests.firma.recuadro', 'data-feedback-label': 'Recuadro de firma' },
         el('p', { id: 'signWho' }, own ? t('sign.own') : t('sign.companion', { name: String(f.first_name ?? '') })),
@@ -162,7 +158,8 @@ export function mountSign(main: HTMLElement, ctx: GuestContext, base: string): (
     if (g.mode !== 'ses') return 'off';
     if (g.signed) return 'done';
     if (sending || (ctx.writer.busy() && ctx.writer.state() === 'offline')) return `sending:${ctx.writer.state() === 'offline'}`;
-    return g.missing.length ? `data:${g.missing.join()}` : `pad:${ctx.signatureReset()}`;
+    // Con los datos que se firman: si cambian (p. ej. al volver de «Cambiar»), la revisión y el nombre se repintan.
+    return g.missing.length ? `data:${g.missing.join()}` : `pad:${ctx.signatureReset()}:${JSON.stringify(g.fields)}`;
   }
 
   let shown = '';

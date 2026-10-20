@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { startGuestsServer, type GuestsTestServer } from './server.ts';
 import { buildGuestsApp } from './build.ts';
-import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/guests/vite.config.ts');
@@ -59,8 +59,11 @@ async function acceptPrivacy(page: Page): Promise<void> {
   await page.locator('#privacyOk').click();
 }
 
-async function openGroup(page: Page, group: string): Promise<void> {
-  await page.locator(`details[data-group="${group}"]`).evaluate((node) => { (node as HTMLDetailsElement).open = true; });
+/** Pregunta a pregunta del kit (tanda 31, MUELA-018): responde la pregunta que se ve (texto con Intro u opción). */
+async function answer(page: Page, question: string | RegExp, value: string, kind: 'text' | 'choice' = 'text'): Promise<void> {
+  await expect(page.locator('.ask-question')).toHaveText(question);
+  if (kind === 'choice') await page.locator('.ask-choice', { hasText: value }).click();
+  else { await page.locator('.ask-input').fill(value); await page.locator('.ask-input').press('Enter'); }
 }
 
 /** Firma con el ratón dentro del recuadro. */
@@ -96,52 +99,42 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
   await expect(page.locator('#task-sign')).toContainText('Primero completa tus datos');
   await expect.poll(async () => (await api.row(ana)).privacy_ack_version).toBe('reserva-1');
 
-  // Mis datos: la marca del organizador; al corregirlo pasa a ser suyo, sin botón «Guardar».
+  // Tanda 31 (MUELA-018): Tus datos, pregunta a pregunta y solo lo que falta (el apellido que puso el organizador se salta).
   await page.locator('#task-data').click();
-  await expect(page.locator('#src-last_name_1')).toHaveText('Lo indicó tu organizador');
-  await page.locator('#f-last_name_1').fill('Sintética');
-  await expect(page.locator('#s-last_name_1')).toHaveText('Guardado ✓');
-  await expect(page.locator('#src-last_name_1')).toHaveText('');
-  expect((await api.row(ana)).field_sources.last_name_1.by).toBe('guest');
-
-  await page.locator('#f-birth_date').fill('1990-05-01');
-  await page.locator('#f-nationality').selectOption('ESP');
-  await openGroup(page, 'document');
-  await page.locator('#f-document_type').selectOption('Pasaporte');
-  await page.locator('#f-document_number').fill('xa 123456');
-  await openGroup(page, 'residence');
-  await page.locator('#f-residence_address').fill('Calle Falsa 1');
-  await page.locator('#f-residence_postal_code').fill('40001');
-  await page.locator('#f-residence_city').fill('Segovia');
-  await page.locator('#f-residence_country').selectOption('ESP');
-  await openGroup(page, 'contact');
-  await page.locator('#f-email').fill('ana@example.invalid');
-  await page.locator('#f-phone').focus();
-  await expect(page.locator('#saveState')).toHaveText('Todo guardado');
+  await expect(page.locator('#fillLeft')).toContainText('Te faltan:');
+  await answer(page, 'Fecha de nacimiento', '1990-05-01');
+  await answer(page, 'Tipo de documento', 'Pasaporte', 'choice');
+  await answer(page, 'Número de documento', 'xa 123456');
+  await answer(page, /Dirección/, 'Calle Falsa 1');
+  await answer(page, 'Código postal', '40001');
+  await answer(page, /Ciudad/, 'Segovia');
+  await answer(page, 'País', 'España');
+  // Teléfono o correo: basta con uno; con el teléfono en blanco se pregunta el correo.
+  await answer(page, 'Teléfono', '');
+  await answer(page, /Correo/, 'ana@example.invalid');
   await expect.poll(async () => (await api.row(ana)).document_number).toBe('XA123456');
+  expect((await api.row(ana)).residence_country).toBe('ESP');
 
-  // Inicio: datos completos; la firma ya se puede hacer.
-  await page.locator('#back').click();
-  await expect(page.locator('#task-data')).toHaveAttribute('title', /Completos/); // en la línea «Hecho:» (tanda 31)
-  await expect(page.locator('#task-sign')).toContainText('Pendiente');
-
-  // Alimentación: una alergia grave y el interruptor para compartirla.
-  await page.locator('#task-diet').click();
+  // Al acabar, la comida: una alergia grave y, aparte, si la sabe el organizador.
+  await expect(page).toHaveURL(new RegExp(`#/p/${ana}/alimentacion$`));
   await page.locator('#dietAdd').click();
-  await page.locator('#r-type').selectOption('alergia');
   await page.locator('#r-subject').fill('frutos secos');
-  await page.locator('#r-severity').selectOption('grave');
+  await page.locator('#dietForm .ask-choice', { hasText: 'Grave' }).click();
   await page.locator('#dietAddSave').click();
   await expect(page.locator('#dietList')).toContainText('frutos secos');
-  await page.locator('#shareAllergies').check();
+  await page.locator('#shareAllergies').click();
   await expect.poll(async () => (await api.row(ana)).allergies_visible_to_organizer).toBe(true);
   expect((await api.row(ana)).diet_reviewed_at).not.toBeNull();
 
-  // Firma: resumen, firma con el dedo y «Firmado».
-  await page.locator('#back').click();
-  await expect(page.locator('#task-diet')).toHaveAttribute('title', /Revisada/); // en la línea «Hecho:» (tanda 31)
-  await page.locator('#task-sign').click();
+  // «Comprueba tus respuestas» y la firma: con la marca del organizador y «Cambiar», que vuelve aquí.
+  await page.locator('#nextTask').click();
+  await expect(page).toHaveURL(new RegExp(`#/p/${ana}/firma$`));
   await expect(page.locator('#signSummary')).toContainText('XA123456');
+  await expect(page.locator('#signSummary dd[data-field="last_name_1"]')).toContainText('Lo indicó tu organizador');
+  await page.locator('#signSummary button[data-key="last_name_1"]').click();
+  await answer(page, 'Primer apellido', 'Sintética');
+  await expect(page).toHaveURL(new RegExp(`#/p/${ana}/firma$`));
+  await expect.poll(async () => (await api.row(ana)).field_sources.last_name_1.by).toBe('guest');
   await expect(page.locator('#signerName')).toHaveValue('Ana Sintética');
   await page.locator('#signSubmit').click();
   await expect(page.locator('#signError')).toHaveText('Firma dentro del recuadro.');
@@ -151,14 +144,14 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
   const signed = await api.row(ana);
   expect(signed.signed_by_name).toBe('Ana Sintética');
   expect(signed.signature_file_id).toBeTruthy();
-  await page.locator('#back').click();
+  await page.locator('#nextTask').click();
   await expect(page.locator('#todo .step-readytitle')).toContainText('¡Todo listo!'); // paso a paso del kit (tanda 31)
 
-  // Cambiar un dato del registro después de firmar invalida la firma (BG5) y se avisa.
+  // Cambiar un dato del registro después de firmar invalida la firma (BG5) y se avisa: «Ver todos mis datos» y «Cambiar».
   await page.locator('#task-data').click();
-  await openGroup(page, 'residence');
-  await page.locator('#f-residence_city').fill('Madrid');
-  await page.locator('#f-residence_postal_code').focus();
+  await page.locator('#allData').click();
+  await page.locator('#dataReview button[data-key="residence_city"]').click();
+  await answer(page, /Ciudad/, 'Madrid');
   await expect(page.locator('#signatureReset')).toBeVisible();
   await expect.poll(async () => (await api.row(ana)).signed_at).toBeNull();
 });
@@ -175,15 +168,16 @@ test('guests · modo operativo en inglés: solo nombre y contacto, sin firma @sm
     await expect(page.locator('#hello')).toHaveText('Hello, Leo');
     await expect(page.locator('#retreatDates')).toContainText('March');
     await expect(page.locator('#task-sign')).toHaveCount(0);
+    // Pregunta a pregunta: sin registro de viajeros solo el contacto (ni documento ni fecha de nacimiento).
     await page.locator('#task-data').click();
-    await expect(page.locator('#f-document_number')).toHaveCount(0);
-    await expect(page.locator('#f-birth_date')).toHaveCount(0);
-    await page.locator('#f-phone').fill('600 000 000');
-    await page.locator('#f-email').focus();
-    await expect(page.locator('#s-phone')).toHaveText('Saved ✓');
+    await expect(page.locator('.ask-meta')).toHaveText('Question 1 of 1');
+    await answer(page, 'Phone', '600 000 000');
+    await expect.poll(async () => (await api.row(leo)).phone).toBe('600 000 000');
+    // Al acabar, la comida.
+    await expect(page.locator('.pagehead h2')).toHaveText('Food');
     // Cambio de idioma a mano: se recuerda en el dispositivo.
     await page.locator('#language button[data-locale="es"]').click();
-    await expect(page.locator('.pagehead h2')).toHaveText('Mis datos');
+    await expect(page.locator('.pagehead h2')).toHaveText('Alimentación');
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   } finally {
@@ -215,18 +209,17 @@ test('guests · sin red: lo escrito espera y se guarda solo al volver la conexi�
   await enter(page, await api.guestLink(reservation, rosa, 'Rosa'));
   await acceptPrivacy(page);
   await page.locator('#task-data').click();
-  await openGroup(page, 'contact');
 
+  // Sin red, la respuesta se queda en el móvil y la pregunta sigue (tanda 31: pregunta a pregunta).
   await context.setOffline(true);
-  await page.locator('#f-phone').fill('611 222 333');
-  await page.locator('#f-email').focus();
-  await expect(page.locator('#s-phone')).toHaveText('Se guardará al volver la conexión');
+  await answer(page, 'Primer apellido', 'Sanz');
   await expect(page.locator('#saveState')).toContainText('Sin conexión');
-  expect((await api.row(rosa)).phone).toBeNull();
+  await expect(page.locator('.ask-question')).toHaveText('Fecha de nacimiento');
+  expect((await api.row(rosa)).last_name_1).toBeNull();
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect.poll(async () => (await api.row(rosa)).phone, { timeout: 20_000 }).toBe('611 222 333');
+  await expect.poll(async () => (await api.row(rosa)).last_name_1, { timeout: 20_000 }).toBe('Sanz');
   await expect(page.locator('#saveState')).toHaveText('Todo guardado');
 });
 
@@ -235,11 +228,14 @@ test('guests · conflicto: el organizador cambia un dato mientras el huésped lo
   const iris = await api.guest(event, { first_name: 'Iris' });
   await enter(page, await api.guestLink(reservation, iris, 'Iris'));
   await acceptPrivacy(page);
+  // Desde la lista, el botón del dato que falta abre esa pregunta (tanda 31).
   await page.locator('#task-data').click();
-  await openGroup(page, 'contact');
+  await page.locator('#back').click();
+  await page.locator('#missingLinks button[data-key="phone"]').click();
+  await expect(page.locator('.ask-question')).toHaveText('Teléfono');
   await api.organizerWrites(reservation, iris, { phone: '699 000 111' });
-  await page.locator('#f-phone').fill('622 333 444');
-  await page.locator('#f-email').focus();
+  await page.locator('.ask-input').fill('622 333 444');
+  await page.locator('.ask-input').press('Enter');
   await expect(page.locator('#conflicts')).toContainText('699 000 111');
   await expect(page.locator('#conflicts')).toContainText('622 333 444');
   await page.getByRole('button', { name: 'Quedarme con el mío' }).click();
@@ -273,27 +269,64 @@ test('guests · una cuenta con dos personas: la familia junta por defecto, se el
 const reportsWith = async (text: string) =>
   (await api.booking.t.db.query<{ subject: string; category: string; scope: any; destination: string }>(`select subject, category, scope, destination from core.feedback_reports where message like $1`, [`%${text}%`])).rows;
 
-test('guests · «Ayuda y sugerencias»: «Mi retiro» con doble toque, un solo reporte para el organizador y se ve en lo enviado @smoke', async ({ page }) => {
+/**
+ * «Ayuda y sugerencias» (tanda 31, MUELA-054): la hoja nueva con tarjetas. Las mismas garantías que la prueba común del kit:
+ * un doble toque en «Enviar» no duplica el aviso, y el aviso de «Enviado» se ve dentro de lo visible (también con el teclado).
+ */
+async function sendHelp(page: Page, picks: string[], text: string, keyboard?: number): Promise<void> {
+  const sheet = page.locator('#helpSheet');
+  await expect(sheet).toBeVisible();
+  for (const pick of picks) await sheet.locator(pick).click();
+  await page.locator('#helpText').fill(text);
+  if (keyboard) await simulateKeyboard(page, keyboard);
+  await page.locator('#helpSend').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter').catch(() => undefined);
+  const toast = page.locator('.toast.show').filter({ hasText: /Enviado|Sent|Sin conexión|Offline/ });
+  await expect(toast).toBeVisible();
+  const fit = await toast.evaluate((node) => {
+    const r = node.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    return r.top >= top && r.bottom <= bottom && r.left >= 0 && r.right <= innerWidth;
+  });
+  expect(fit, 'el aviso tiene que verse dentro de lo visible').toBe(true);
+  if (keyboard) await simulateKeyboard(page, null);
+}
+
+test('guests · «Ayuda y sugerencias»: «Tu retiro» con doble toque, un solo reporte para el organizador y se ve en lo enviado @smoke', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con comentario' });
   const eva = await api.guest(event, { first_name: 'Eva' });
   await enter(page, await api.guestLink(reservation, eva, 'Eva'));
   await acceptPrivacy(page);
-  // Prueba común del kit (0.25.2): entrada del lanzador, respuestas, doble toque en «Enviar», hoja cerrada y aviso visible.
-  await portalHelpRoundTrip(page, { choices: ['Mi retiro', 'Horarios'], text: 'La cena empieza muy tarde' });
+  await page.locator('#openHelp').click();
+  // Orden de VG: Tu retiro · Un sitio · La app; arriba, siempre el teléfono.
+  await expect(page.locator('#helpSheet > .ghelp-block h3')).toHaveText([/Tu retiro/, /Un sitio/, /La app/]);
+  await expect(page.locator('#helpCall')).toHaveAttribute('href', /^tel:/);
+  await sendHelp(page, ['#blockEvent [data-value="schedule"]'], 'La cena empieza muy tarde');
+  await expect(page.locator('#helpWho')).toHaveCount(0); // vuelve al estado de partida
   const stored = await reportsWith('cena empieza');
-  expect(stored).toHaveLength(1); // `id` y `requestId` estables del formulario: el doble toque no duplica
+  expect(stored).toHaveLength(1); // `id` y `requestId` estables: el doble toque no duplica
   expect(stored[0]).toMatchObject({ subject: 'event', category: 'schedule', destination: 'organizer' });
   expect(stored[0]!.scope).toMatchObject({ reservation_id: reservation, guest_id: eva });
-  await page.locator('#openHelp').click();
   await expect(page.locator('#helpMine')).toContainText('La cena empieza muy tarde');
+  await expect(page.locator('#helpMine')).toContainText('Recibido');
 });
 
-test('guests · «Ayuda y sugerencias» con el teclado abierto en el móvil: se envía, se cierra y el aviso se ve @smoke', async ({ page }) => {
+test('guests · «Ayuda y sugerencias» con el teclado abierto en el móvil: un sitio, lo urgente con «Llama ya», y el aviso se ve @smoke', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con teclado' });
   const leo = await api.guest(event, { first_name: 'Leo' });
   await enter(page, await api.guestLink(reservation, leo, 'Leo'));
   await acceptPrivacy(page);
-  await portalHelpRoundTrip(page, { open: (p) => p.locator('#openHelp').click(), choices: ['Un espacio de Ikisai', 'Baños', 'Agua o electricidad'], text: 'No sale agua caliente', keyboard: 686 });
+  await page.locator('#openHelp').click();
+  // Con retiro, «Mi habitación» ya elegida; aquí, los baños y «Agua o luz», que es urgente.
+  await expect(page.locator('#blockSpace [data-value="habitacion"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#blockSpace [data-value="banos"]').click();
+  await page.locator('#blockSpace [data-value="utilities"]').click();
+  await expect(page.locator('#helpUrgentKind')).toContainText('Si hay peligro, llama ya.');
+  await expect(page.locator('#helpWho')).toContainText('el equipo de Ikisai');
+  await sendHelp(page, [], 'No sale agua caliente', 686);
   const stored = await reportsWith('agua caliente');
   expect(stored).toHaveLength(1);
   expect(stored[0]).toMatchObject({ subject: 'space', category: 'utilities', destination: 'operations' });

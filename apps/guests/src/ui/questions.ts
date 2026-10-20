@@ -1,15 +1,18 @@
 /**
- * Preguntas del organizador (API.md §13.6, dueño Organizers): cada respuesta se guarda sola (cola local de `writer.ts`,
- * operación `answer`), sin botón «Guardar». Fuera de la ventana de respuesta se ven y no se cambian. Aviso fijo: el
- * organizador verá las respuestas.
+ * Preguntas del organizador (API.md §13.6, dueño Organizers), en la «Guía del retiro» (tanda 31, MUELA-037 con
+ * «pregunta a pregunta» de 018): `createStepForm` del kit, solo con lo abierto y sin responder, «Pregunta n de N» y su
+ * barra; una opción guarda al tocarla y pasa. Las no obligatorias se pueden dejar con «Ahora no» (pasan sin guardar y
+ * quedan «Sin responder»). Al acabar, la lista de todas con su respuesta y «Cambiar» (las abiertas) o «Cerrada».
+ * Cada respuesta se guarda sola (cola local de `writer.ts`, operación `answer`): sin red, se envía al volver. Aviso fijo:
+ * el organizador verá las respuestas. En la vista previa del organizador no se escribe nada.
  */
-import { el, icon, replace } from '@ikisai/ui-kit';
+import { createStepForm, el, icon, replace, type StepQuestion } from '@ikisai/ui-kit';
 import type { GuestContext } from '../app/context.ts';
 import { t } from '../app/i18n.ts';
 import type { Question } from '../app/portal.ts';
-import { failure, fbIgnore, loading, staleNote } from './common.ts';
+import { fbIgnore } from './common.ts';
 
-const DEBOUNCE = 800;
+const SKIP = '__ahora_no';
 
 /** ¿Está contestada? (vacío, lista vacía o null no cuentan). */
 export function answered(q: Question): boolean {
@@ -17,72 +20,90 @@ export function answered(q: Question): boolean {
   return !(v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0));
 }
 
-export function mountQuestions(main: HTMLElement, ctx: GuestContext): () => void {
-  let alive = true;
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  replace(main, loading());
+/** La respuesta en palabras, para la lista final. */
+function answerText(q: Question): string {
+  if (!answered(q)) return t('questions.notAnswered');
+  const v = q.answer!.value;
+  if (q.type === 'yes_no') return v === true ? t('questions.yes') : t('questions.no');
+  const label = (x: unknown) => q.options.find((o) => o.value === x)?.label ?? String(x);
+  return Array.isArray(v) ? v.map(label).join(', ') : label(v);
+}
+
+/** Pregunta del organizador → pregunta del kit. */
+function toStep(q: Question): StepQuestion {
+  const skip = q.required ? [] : [{ value: SKIP, label: t('questions.notNow') }];
+  const base = { id: q.id, question: q.required ? `${q.label} · ${t('questions.required')}` : q.label, ...(q.help ? { hint: q.help } : {}) };
+  const v = q.answer?.value;
+  switch (q.type) {
+    case 'yes_no': return { ...base, kind: 'choice', options: [{ value: 'true', label: t('questions.yes') }, { value: 'false', label: t('questions.no') }, ...skip] };
+    case 'choice': return { ...base, kind: 'choice', options: [...q.options, ...skip] };
+    case 'multi': return { ...base, kind: 'multi', options: q.options, value: Array.isArray(v) ? v.map(String) : [] };
+    case 'number': return { ...base, kind: 'text', inputType: 'number', value: v === null || v === undefined ? '' : String(v) };
+    case 'date': return { ...base, kind: 'text', inputType: 'date', value: typeof v === 'string' ? v : '' };
+    default: return { ...base, kind: 'text', value: typeof v === 'string' ? v : '' };
+  }
+}
+
+export interface QuestionsBlock { element: HTMLElement; destroy(): void }
+
+/** El bloque de preguntas de la Guía: pieza del kit y, debajo, la lista con lo respondido. */
+export function questionsBlock(ctx: GuestContext, items: Question[], onChange: () => void): QuestionsBlock {
+  const readOnly = ctx.readOnly();
+  const list = el('ul', { class: 'gq-list' });
+  const host = el('div', { class: 'gq-form', id: 'questionsForm' });
+  const byId = new Map(items.map((q) => [q.id, q]));
 
   function save(q: Question, value: unknown): void {
     q.answer = { ...(q.answer ?? {}), value };
     ctx.writer.enqueue({ kind: 'answer', questionId: q.id, value });
   }
-  function later(q: Question, read: () => unknown): void {
-    clearTimeout(timers.get(q.id));
-    timers.set(q.id, setTimeout(() => { timers.delete(q.id); save(q, read()); }, DEBOUNCE));
-  }
 
-  function control(q: Question): HTMLElement {
-    const id = `q-${q.id}`;
-    const disabled = !q.open || ctx.readOnly() ? '' : null;
-    const value = q.answer?.value;
-    const choiceList = (multi: boolean, options: Array<{ value: string; label: string }>) => el('div', { class: 'gchoices', role: multi ? 'group' : 'radiogroup', id },
-      ...options.map((o) => {
-        const input = el('input', { type: multi ? 'checkbox' : 'radio', name: id, value: o.value, disabled,
-          checked: (multi ? Array.isArray(value) && value.includes(o.value) : value === o.value) ? '' : null,
-          onchange: () => {
-            if (!multi) { save(q, o.value === 'true' ? true : o.value === 'false' ? false : o.value); return; }
-            save(q, [...main.querySelectorAll<HTMLInputElement>(`input[name="${CSS.escape(id)}"]:checked`)].map((x) => x.value));
-          } }) as HTMLInputElement;
-        return el('label', { class: 'gswitch' }, input, el('span', null, o.label));
-      }));
-    switch (q.type) {
-      case 'choice': return choiceList(false, q.options);
-      case 'multi': return choiceList(true, q.options);
-      case 'yes_no': return choiceList(false, [{ value: 'true', label: t('questions.yes') }, { value: 'false', label: t('questions.no') }]);
-      case 'number':
-      case 'date': {
-        const input = el('input', { id, type: q.type, disabled, value: value === null || value === undefined ? '' : String(value),
-          onchange: () => save(q, input.value === '' ? null : q.type === 'number' ? Number(input.value) : input.value) }) as HTMLInputElement;
-        return input;
-      }
-      default: {
-        const area = el('textarea', { id, rows: '3', maxlength: '2000', disabled, oninput: () => later(q, () => area.value.trim() || null),
-          onblur: () => { if (timers.has(q.id)) { clearTimeout(timers.get(q.id)); timers.delete(q.id); save(q, area.value.trim() || null); } } }, typeof value === 'string' ? value : '') as HTMLTextAreaElement;
-        return area;
-      }
-    }
-  }
+  const form = readOnly ? null : createStepForm({
+    label: t('questions.title'),
+    // Solo lo abierto y sin responder; las cerradas solo salen en la lista.
+    questions: items.filter((q) => q.open).map(toStep),
+    answered: (s) => answered(byId.get(s.id)!),
+    onAnswer: (s, value) => {
+      const q = byId.get(s.id)!;
+      if (value === SKIP) return;
+      if (q.type === 'yes_no') save(q, value === 'true');
+      else if (q.type === 'number') save(q, value === '' ? null : Number(value));
+      else if (q.type === 'multi') save(q, value);
+      else save(q, value === '' ? null : value);
+      paintList();
+      onChange();
+    },
+    onDone: () => paintList(),
+    doneTitle: t('questions.allDone'),
+    feedbackId: 'guests.preguntas.pregunta',
+  });
+  if (form) host.append(form.element);
 
-  void ctx.reads.questions(ctx.grant.reservation_id, ctx.grant.guest_id).then((loaded) => {
-    if (!alive) return;
-    const items = loaded?.value.items ?? [];
-    replace(main,
-      loaded?.stale ? staleNote(loaded.at) : null,
-      el('div', { class: 'pagehead' }, el('h2', null, t('questions.title')), el('p', { class: 'muted' }, t('questions.intro'))),
+  function paintList(): void {
+    const open = items.filter((q) => q.open);
+    const closed = items.filter((q) => !q.open);
+    replace(list, ...[...open, ...closed].map((q) => el('li', { dataset: { question: q.id } },
+      el('span', { class: 'gq-text' }, el('strong', null, q.label), el('span', { class: 'small' }, answerText(q))),
+      q.open && !readOnly
+        ? el('button', { type: 'button', class: 'ghost small', 'data-feedback-id': 'guests.preguntas.lista.cambiar', 'data-feedback-label': 'Cambiar una respuesta',
+          onclick: () => { form?.goTo(q.id); host.scrollIntoView({ block: 'nearest' }); } }, t('questions.change'), el('span', { class: 'vh' }, ` ${q.label}`))
+        : el('span', { class: 'small muted' }, q.open ? '' : t('questions.closedShort')))));
+  }
+  paintList();
+
+  return {
+    element: fbIgnore(el('div', { class: 'gquestions' },
       el('p', { class: 'banner', id: 'questionsNotice' }, icon('info', 18), ' ', t('questions.visible')),
-      items.length
-        ? fbIgnore(el('form', { class: 'gform', id: 'questionsForm', onsubmit: (e: Event) => e.preventDefault() },
-          ...items.map((q) => el('section', { class: 'card gcard gquestion', dataset: { question: q.id } },
-            el('label', { for: `q-${q.id}`, class: 'gquestion-label' }, q.label, q.required ? el('span', { class: 'ghint' }, ` · ${t('questions.required')}`) : null),
-            q.help ? el('p', { class: 'muted small' }, q.help) : null,
-            control(q),
-            !q.open ? el('p', { class: 'muted small' }, t('questions.closed')) : null))))
-        : el('p', { class: 'card gcard muted', id: 'questionsEmpty' }, t('questions.empty')),
-      items.length ? el('p', { class: 'muted small gautosave' }, icon('check', 14), ' ', t('data.autosave')) : null);
-  }).catch((error) => { if (alive) replace(main, failure(error)); });
-
-  return () => {
-    alive = false;
-    for (const [id, timer] of timers) { clearTimeout(timer); const area = main.querySelector<HTMLTextAreaElement>(`#q-${CSS.escape(id)}`); if (area) ctx.writer.enqueue({ kind: 'answer', questionId: id, value: area.value.trim() || null }); }
+      readOnly ? null : host,
+      el('h4', { class: 'gq-head' }, t('questions.yourAnswers')),
+      list)),
+    // Lo escrito sin pulsar «Aceptar» se guarda al salir (como antes, que se guardaba solo).
+    destroy() {
+      const input = host.querySelector<HTMLInputElement>('.ask-input');
+      const label = host.querySelector('.ask-question')?.textContent ?? '';
+      const q = items.find((x) => x.open && (label === x.label || label === `${x.label} · ${t('questions.required')}`));
+      const value = input?.value.trim();
+      if (q && input && value && value !== String(q.answer?.value ?? '')) save(q, q.type === 'number' ? Number(value) : value);
+    },
   };
 }

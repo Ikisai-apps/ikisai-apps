@@ -474,6 +474,33 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   «Dormir todos aquí» (una llamada por persona). Se conservan las preferencias que se guardan solas, «Pendiente de aprobar»,
   «Cerrada el…» y «sin habitaciones».
 
+**Parte B · Guía del retiro, Tus datos, Alimentación, Firma, Ayuda y Entrada:**
+- **Guía del retiro** (`ui/guide.ts`, MUELA-037): Información práctica, Materiales y Preguntas en una página; las rutas de
+  siempre (`…/info`, `…/materiales`, `…/preguntas`) la abren en su sección. Avisos «Te faltan N preguntas…» y «N
+  materiales nuevos», índice fijo (Llegar · Estancia · Materiales · Preguntas · Contacto) y el contacto arriba durante el
+  retiro. El plano del centro se abre dentro (`#infoPlan`, desplegable). «Nuevo» en lo que aún no se ha abierto: se recuerda
+  en el dispositivo (por persona) hasta que Organizers guarde «visto» en el servidor; en la vista previa no se marca.
+- **Preguntas** (`ui/questions.ts`): `createStepForm` del kit con lo abierto y sin responder («Ahora no» en las no
+  obligatorias de opción), y debajo la lista con lo respondido y «Cambiar» o «Cerrada». Solo tras el aviso de protección
+  de datos y nunca con la familia junta. Lo escrito sin «Aceptar» se guarda al salir.
+- **Tus datos** (`ui/data.ts`, MUELA-018): pregunta a pregunta la primera vez (solo lo que falta, en el orden del registro;
+  el país por su nombre o su código; teléfono o correo, basta con uno); al volver, «Antes de venir» con las tareas, su
+  estado en palabras y un botón por dato que falta; y **«Ver todos mis datos»** con «Cambiar» y quién puso cada dato, en
+  todos los modos. Se conservan «¿Por qué te lo pedimos?», el aviso de firma anulada y los conflictos.
+- **Alimentación** (`ui/diet.ts`): «¿Hay algo de comida que debamos saber?» («No, nada», dietas y «Una alergia, intolerancia
+  u otra cosa» con los cuatro tipos, a qué, la gravedad y la nota), lo indicado con «Quitar» y la marca del organizador, el
+  consentimiento aparte y el aviso de Central.
+- **Firma** (`ui/sign.ts`): «Comprueba tus respuestas» con todos los datos y «Cambiar» (abre la pregunta y vuelve), la
+  declaración de Central y la firma **solo con el dedo** (la escrita, cuando Booking confirme que vale).
+- **Ayuda** (`ui/help.ts`, MUELA-054 sin plano): «¿Urgente?» con el teléfono, y Tu retiro · Un sitio · La app en tarjetas;
+  el sitio en baldosas (con «Mi habitación» de entrada), las urgentes con «Si hay peligro, llama ya»; a quién llega; texto,
+  fotos y «Enviar» (id y `requestId` estables); y «Lo que me has enviado» con los estados de 071 («✕ No lo vamos a hacer»,
+  nunca en verde) y la respuesta escrita cuando llegue en `/feedback?mine`. El sitio sigue viajando como texto
+  («[Mi habitación] …») hasta que el aviso lleve `space_id`.
+- **Entrada** (`ui/entry.ts`, MUELA-060): bienvenida, qué ha pasado (con «Reintentar» sin red), «Encuentra tu enlace» paso a
+  paso (correo y WhatsApp) y siempre las salidas de Central (correo, teléfono y, con `contact.whatsapp`, WhatsApp). El paso
+  «con tu código» llegará con el reenvío del enlace sin sesión del núcleo.
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:
