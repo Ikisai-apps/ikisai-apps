@@ -509,7 +509,7 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   como siempre, `plato_casa`, con ese día y esa comida); «Otro día u otra comida» conserva plegado el formulario de siempre
   (cualquier día desde hoy y las seis comidas). «Nueva estancia», «Ikisai» y «Mis propuestas» (plegado). Sin red se ve todo
   y solo sugerir y pedir estancia se desactivan, con su motivo. La cabecera ya no repite la pestaña Outsider: solo el
-  selector de persona. Cuando Food publique el menú de casa (FD2), cada hueco enseñará lo que hay.
+  selector de persona. Cada hueco enseña lo que hay en el menú de casa (FD2, §9.15).
 - **«Ikisai»** (`ui/house.ts`, MUELA-066; ruta `#/outsider/info`): sustituye a la Información práctica del retiro para el
   outsider. Según el momento (`duringOf`, día de Madrid): «Ahora, en la casa» (hasta cuándo, llamar al equipo, tu cama,
   normas), «Antes de venir» («Llegas el martes, 20 (en 5 días)», cómo llegar, tu cama, aparcamiento) o «Cuando vengas»
@@ -527,6 +527,23 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   al pie.
 - Se borran `ui/retreats.ts` (la cabecera vieja de pestañas, sustituida por `frame.ts` en la parte A) y `ui/info.ts` (la
   Información práctica del outsider, sustituida por «Ikisai»).
+
+### 9.15 Menú de casa y Programa por persona (20-10-2026)
+
+- **Menú de casa en Outsider (FD2, Food §7.6):** `food.portal_house_menu {}` (desde hoy, 60 días; con copia en la caché
+  para verlo sin red). En «Tus días», cada hueco de comida y cena enseña su hora y sus platos, cada uno con la línea de
+  alérgenos de #597 (los declarados siempre; sin revisar, «sin revisar por cocina», también sin ninguno). Sin menú, «aún
+  no hay nada», como antes; «Sugerir aquí» sigue en cada hueco. Si la lectura falla, la pantalla sigue igual.
+- **Para quién es cada actividad (`audience`, Booking §23, MUELA-065):** `todos` (o sin el dato), `adultos`, `menores`
+  (por `is_minor` de cada persona) o `personas` (`audience_guest_ids`; Booking solo manda los del ámbito de quien lee, así
+  que nunca sale nada de otra familia). Funciones puras en `app/audience.ts` (`audienceOf`, `itemsFor`).
+  - **Una persona:** el Programa y el horario de Inicio solo enseñan lo suyo.
+  - **La familia junta:** lo de ahora arriba, como siempre, y el día **en una columna por persona** (`#programCols`, tabla
+    con sus papeles): lo común a todo el ancho, lo de alguien en su columna (borde naranja) y «Libre» en las demás; cada
+    celda se abre con su detalle («Para Leo», el plano, «Ver el menú», la nota). Los menores, con aro y «menor» en texto.
+    En Inicio, «Para Leo» en la línea de la actividad.
+- `resource_space_id` de cada actividad se lee pero aún no se usa: el plano de zonas llegará cuando el portal pueda leer
+  los dibujos (lo hace Core). Hasta entonces, el plano de Central.
 
 ## 10. Offline
 

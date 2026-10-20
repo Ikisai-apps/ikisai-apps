@@ -4,7 +4,9 @@
  *   «Quedan…» (sin hora de fin: «Hasta 19:00 · Meditación»), lo siguiente con su cuenta atrás, «Hoy, más tarde» plegado
  *   (cada actividad se despliega con el mismo detalle) y lo ya hecho tras «Ver lo ya hecho». Los otros días, al pie, con
  *   las pestañas del kit. Antes del retiro, «Empieza en N días». Cada lugar con «Ver en el plano» y cada comida con
- *   «Ver el menú». La familia junta ve el mismo programa con sus caras (sin `audience` no hay columnas por persona).
+ *   «Ver el menú». Cada persona ve solo lo suyo (`audience`, MUELA-065). La familia junta ve lo de ahora y, debajo, el
+ *   día **en una columna por persona**: lo común a todo el ancho, lo de alguien en su columna y «Libre» en las demás;
+ *   los menores, con aro y «menor» en texto.
  * - **Menú «La carta»** (MUELA-034, con la familia de 065 y la corrección de seguridad 078): la próxima comida abierta y
  *   las demás plegadas; filtros de dieta; la línea de cocina con «Cambiar». En cada plato, **siempre** sus alérgenos
  *   declarados (#597) y, **encima**, el cruce con lo que indicó cada persona que lo ve (`crossRestriction` de Food, G13),
@@ -14,6 +16,7 @@
 import { crossRestriction, type Allergen, type Recipe } from '@ikisai/domain-food';
 import { createDayTabs, el, icon, renderMedal, renderNow, replace, type NowBlock, type NowRow } from '@ikisai/ui-kit';
 import type { Restriction } from '../app/api.ts';
+import { audienceOf, itemsFor, type AudiencePerson } from '../app/audience.ts';
 import type { GuestContext } from '../app/context.ts';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { hhmm, restrictionLabel, severityLabel } from '../app/labels.ts';
@@ -93,8 +96,20 @@ export function mountProgram(main: HTMLElement, ctx: GuestContext, options: Prog
   replace(main, loading());
   void ctx.reads.program(ctx.grant.reservation_id).then((loaded) => {
     if (!alive) return;
-    const items = loaded?.value.items ?? [];
+    const family = options.family && options.family.length > 1 ? options.family : [ctx];
+    const people: Array<AudiencePerson & { name: string }> = family.map((c) => ({
+      guestId: c.grant.guest_id, minor: c.guest().fields.is_minor === true, name: String(c.guest().fields.first_name ?? '').trim() || t('menu.noName'),
+    }));
+    const together = people.length > 1;
+    // Solo lo que toca a alguien de quien mira (Booking ya no manda lo de otras familias).
+    const items = itemsFor(loaded?.value.items ?? [], people);
     const days = daysOf(items, (i) => i.day);
+    const names = (list: Array<{ name: string }>) => new Intl.ListFormat(localeTag(), { type: 'conjunction' }).format(list.map((x) => x.name));
+    /** Con la familia, a quién toca si no es a todos («Para Leo»). */
+    const forWhom = (i: ProgramItem) => {
+      const who = audienceOf(i, people);
+      return together && who.length < people.length ? el('p', { class: 'small gfor' }, icon('user', 14), ' ', t('program.onlyFor', { names: names(people.filter((p) => who.includes(p))) })) : null;
+    };
     const head = el('div', { class: 'pagehead' }, el('h2', null, t('program.title')));
     if (!days.length) { replace(main, head, el('p', { class: 'card gcard muted', id: 'programEmpty' }, t('program.empty'))); return; }
     const today = todayMadrid();
@@ -105,6 +120,7 @@ export function mountProgram(main: HTMLElement, ctx: GuestContext, options: Prog
       ? el('a', { class: 'glink-inline', href: `${options.retreatBase}/menu`, 'data-feedback-id': 'guests.programa.menu.abrir', 'data-feedback-label': 'Ver el menú' }, icon('chef', 16), t('program.seeMenu'))
       : null);
     const detail = (i: ProgramItem, when: boolean, planId?: string) => el('div', { class: 'gslot-detail' },
+      forWhom(i),
       when ? el('p', { class: 'small' }, i.ends_at ? range(i.starts_at, i.ends_at) : i.starts_at ? t('program.noEnd', { time: hhmm(i.starts_at)! }) : t('program.allDay')) : null,
       el('div', { class: 'glinks' }, plan(i, planId), menuLink(i)),
       i.public_note ? el('p', { class: 'small gtext' }, i.public_note) : null);
@@ -143,6 +159,12 @@ export function mountProgram(main: HTMLElement, ctx: GuestContext, options: Prog
         const done = isToday && Boolean(i.starts_at) && endOfItem(i, timed) <= now;
         return { id: i.id, time: range(i.starts_at, i.ends_at), title: i.title, medal: { name: i.title }, state: done ? 'done' : 'later', body: () => detail(i, false) };
       });
+      if (together) {
+        // La familia: lo de ahora arriba (si hoy hay algo) y el día entero en columnas, una por persona.
+        const top = hero || nextBlock ? renderNow({ now: hero, next: nextBlock, rest: [], feedbackId: 'guests.programa.ahora' }) : null;
+        replace(list, top, columns(dayItems, isToday ? { current, now, timed } : null));
+        return;
+      }
       const box = renderNow({ now: hero, next: nextBlock, rest, restTitle: isToday ? t('program.later') : formatDate(selected, { weekday: 'long', day: 'numeric', month: 'long' }),
         emptyText: t('program.emptyDay'), feedbackId: 'guests.programa.ahora' });
       // Lo que se toca de cada fila (abrir el detalle) lleva su clase por tipo, como antes.
@@ -151,6 +173,28 @@ export function mountProgram(main: HTMLElement, ctx: GuestContext, options: Prog
         if (item) row.closest('li')?.classList.add('gslot', `kind-${item.kind}`);
       }
       replace(list, box);
+    };
+    /** El día en una columna por persona (MUELA-065, alternativa 2): tabla con sus papeles para lectores de pantalla. */
+    const columns = (dayItems: ProgramItem[], live: { current: ProgramItem | null; now: string; timed: ProgramItem[] } | null) => {
+      const state = (i: ProgramItem) => (!live ? '' : i === live.current ? ' now' : i.starts_at && endOfItem(i, live.timed) <= live.now ? ' done' : '');
+      const cell = (i: ProgramItem, cls: string) => el('details', { class: `gcols-cell ${cls}${state(i)} kind-${i.kind}`, role: 'cell', dataset: { id: i.id } },
+        el('summary', null, el('strong', null, i.title), i.place ? el('span', { class: 'small' }, i.place) : null),
+        detail(i, false));
+      return el('div', { class: 'gcols', id: 'programCols', role: 'table', style: `--n:${people.length}`, 'aria-label': t('program.byPerson'),
+        'data-feedback-id': 'guests.programa.columnas', 'data-feedback-label': 'El día, persona a persona' },
+        el('div', { class: 'gcols-row gcols-head', role: 'row' },
+          el('span', { class: 'gcols-time', role: 'columnheader' }, t('program.time')),
+          ...people.map((p) => el('span', { class: `gcols-name${p.minor ? ' minor' : ''}`, role: 'columnheader', dataset: { guest: p.guestId } },
+            el('span', { class: 'gcols-face', 'aria-hidden': 'true' }, renderMedal({ name: p.name, size: 28 })),
+            el('span', null, p.name, p.minor ? el('span', { class: 'small' }, ` · ${t('program.minor')}`) : null)))),
+        ...(dayItems.length ? dayItems.map((i) => {
+          const who = audienceOf(i, people);
+          return el('div', { class: 'gcols-row', role: 'row', dataset: { item: i.id } },
+            el('span', { class: 'gcols-time', role: 'rowheader' }, i.starts_at ? range(i.starts_at, i.ends_at) : t('program.allDay')),
+            ...(who.length === people.length
+              ? [cell(i, 'all')]
+              : people.map((p) => (who.includes(p) ? cell(i, 'mine') : el('span', { class: 'gcols-cell free', role: 'cell' }, t('program.free'))))));
+        }) : [el('p', { class: 'hint gcols-empty' }, t('program.emptyDay'))]));
     };
     const tabs = days.length > 1 ? dayTabs(days, selected, (d) => { selected = d; paint(); }, 'programDays', 'programList', (d) => items.filter((i) => i.day === d).length) : null;
     if (tabs) fbMark(tabs, 'guests.programa.dias.elegir', 'Elegir día');
@@ -171,7 +215,7 @@ const allergenName = (code: string) => (t(`allergen.${code}`) === `allergen.${co
  * La línea de alérgenos de cada plato (#597, tanda 26): **siempre** los declarados; si cocina aún no revisó la receta,
  * se dice («sin revisar por cocina»), también cuando no declara ninguno: sin revisar no es «sin alérgenos».
  */
-function allergens(d: Dish): HTMLElement | null {
+export function allergens(d: Pick<Dish, 'allergens' | 'allergens_checked'>): HTMLElement | null {
   const list = (d.allergens ?? []).map(allergenName).join(', ');
   if (d.allergens_checked) return list ? el('span', { class: 'small gallergens' }, t('menu.allergens', { list })) : null;
   return el('span', { class: 'small gallergens', dataset: { checked: 'no' } }, list ? t('menu.allergensUnchecked', { list }) : t('menu.allergensUncheckedNone'));

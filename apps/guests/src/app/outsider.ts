@@ -18,6 +18,10 @@ export interface Stay {
 export interface MyStays { items: Stay[]; default_bed: { space_name: string; bed_label: string | null } | null }
 export interface StayNote { id: string; revision: number; at: string; text: string; mine: boolean; by: 'outsider' | 'staff' }
 export interface Range { from: string; to: string }
+/** Plato del menú de casa (Food §7.6): nombre público y los alérgenos declarados, siempre, con `allergens_checked` (#597). */
+export interface HouseDish { name: string; quick?: boolean; allergens: string[]; allergens_checked: boolean }
+/** El menú de casa (`food.portal_house_menu`, FD2): desde hoy y como mucho 60 días. */
+export interface HouseMenu { from: string; to: string; services: Array<{ date: string; type: string; time: string | null; dishes: HouseDish[] }> }
 /**
  * Retiro abierto a huéspedes (Booking §26.1): visible, vivo y sin precio. `joined`: ya tiene una entrada en él. `request`:
  * su «Apuntarme» una vez que el personal lo pasó al organizador (§26.3); lo pendiente con Ikisai es la propia sugerencia.
@@ -33,6 +37,8 @@ export function isOutsider(client: SyncClient): boolean {
 
 export interface OutsiderApi {
   stays(range?: Range): Promise<Loaded<MyStays>>;
+  /** El menú de casa de Food (FD2); con copia para verlo sin red. */
+  houseMenu(range?: Partial<Range>): Promise<Loaded<HouseMenu>>;
   presence(range: Range): Promise<Loaded<{ items: Array<{ date: string; present: boolean }> }>>;
   notes(range: Range): Promise<Loaded<{ items: StayNote[] }>>;
   saveStay(input: { id: string; from: string; to: string; expectedRevision?: number; persons?: StayPerson[] }): Promise<{ id: string; revision: number; clash: boolean }>;
@@ -65,6 +71,7 @@ export function createOutsiderApi(client: SyncClient): OutsiderApi {
   const invoke = <T>(name: string, args: Record<string, unknown>) => client.api<T>(`/invoke/${name}`, { method: 'POST', json: args });
   return {
     stays: (range) => read('booking.portal_my_stays', range ? { ...range } : {}),
+    houseMenu: (range) => read('food.portal_house_menu', range ? { ...range } : {}),
     presence: (range) => read('booking.portal_staff_presence', { ...range }),
     notes: (range) => read('booking.portal_stay_notes', { ...range }),
     saveStay: (input) => invoke('booking.portal_stay_save', { ...input }),

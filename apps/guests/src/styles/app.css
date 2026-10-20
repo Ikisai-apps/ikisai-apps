@@ -492,7 +492,7 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .gsub{margin:14px 0 2px}
 .goutdays{display:grid;gap:10px}
 .goutdays>p{margin:0}
-.goutday h4{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px;text-transform:capitalize}
+.goutday h4{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px}
 .goutday.today{border:2px solid var(--accent-deep)}
 .goutslot{padding:8px 0;border-top:1px solid var(--line)}
 .goutslot-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
@@ -532,3 +532,30 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .ghouse-card[open] .ghouse-cardtext .small{display:none}
 /* Sin plano en Central ni cama que señalar, la sección no se enseña (el plano llega después, si lo hay). */
 .ghouse-plan:has(> .gplan-host:empty){display:none}
+
+/* Programa de la familia (MUELA-065): una columna por persona; lo común a todo el ancho y «Libre» en las demás */
+:root{--gminor:#c2721f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--gminor:#f0a453}}
+:root[data-theme="dark"]{--gminor:#f0a453}
+.gcols{display:grid;gap:6px;margin-top:12px}
+.gcols-row{display:grid;grid-template-columns:56px repeat(var(--n),minmax(0,1fr));gap:6px;align-items:stretch}
+.gcols-head{position:sticky;top:var(--gtop,0);z-index:1;padding:6px 0;background:var(--bg,var(--paper))}
+.gcols-time{font-size:var(--text-xs,.75rem);font-weight:700;color:var(--gsoft);padding-top:8px}
+.gcols-name{display:flex;align-items:center;gap:6px;min-width:0;font-weight:700;overflow-wrap:anywhere}
+.gcols-name.minor .gcols-face{border-radius:999px;box-shadow:0 0 0 2px var(--gminor)}
+.gcols-face{flex:none;display:inline-flex}
+.gcols-cell{min-width:0;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--paper);overflow-wrap:anywhere}
+.gcols-cell.all{grid-column:2 / -1}
+.gcols-cell.mine{border:2px solid var(--gminor);background:color-mix(in srgb,var(--gminor) 10%,var(--paper))}
+.gcols-cell.free{border-style:dashed;color:var(--gsoft);font-size:var(--text-sm,.875rem);display:grid;place-items:center}
+.gcols-cell.now{box-shadow:0 0 0 3px var(--accent-deep)}
+.gcols-cell.done{opacity:.6}
+.gcols-cell>summary{display:flex;flex-direction:column;gap:2px;cursor:pointer;list-style:none;min-height:30px}
+.gcols-cell>summary::-webkit-details-marker{display:none}
+.gcols-cell[open]>summary{margin-bottom:6px}
+.gcols-empty{margin:0}
+.gfor{display:flex;align-items:center;gap:4px;margin:0 0 4px;font-weight:700}
+
+/* Outsider (FD2): lo que hay en cada hueco del menú de casa, con su línea de alérgenos (#597) */
+.goutdishes{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
+.goutdishes li{display:flex;flex-direction:column}
