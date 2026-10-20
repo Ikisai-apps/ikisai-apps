@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createApp } from '../../supabase/functions/_kit/handler.ts';
+import { taskRequestFor } from '../../supabase/functions/_kit/feedback.ts';
 
 const BOOKING = 'https://booking.ikisai.com';
 let app: TestApp;
@@ -133,6 +134,19 @@ test('feedback · portales: el huésped informa de su retiro (va al organizador)
   await app.t.db.query(`select core.feedback_task_status($1::jsonb)`, [JSON.stringify([{ externalRef: claim[0].externalRef, status: 'done' }])]);
   const after = await app.call(`/api/v1/feedback/${space.data.report.id}`, { token: app.tokens.editor });
   assert.equal(after.data.report.display, 'pending_verify', 'tarea hecha: pendiente de verificar');
+  // El estado real de la petición en Tasks manda (0091): descartada o borrada nunca es «Resuelto».
+  const displayFor = async (status: string) => {
+    await app.t.db.query(`select core.feedback_task_status($1::jsonb)`, [JSON.stringify([{ externalRef: claim[0].externalRef, status }])]);
+    return (await app.call(`/api/v1/feedback/${space.data.report.id}`, { token: app.tokens.editor })).data.report.display;
+  };
+  assert.equal(await displayFor('pending'), 'open');
+  assert.equal(await displayFor('open'), 'in_progress');
+  assert.equal(await displayFor('dismissed'), 'dismissed');
+  assert.equal(await displayFor('deleted'), 'dismissed');
+  const refs = (await app.t.db.query<{ r: string[] }>('select core.feedback_open_task_refs(200) r')).rows[0]!.r;
+  assert.equal(refs.includes(claim[0].externalRef), false, 'una petición borrada en Tasks ya no se sigue');
+  assert.equal(await displayFor('open'), 'in_progress', 'si Tasks la restaura, vuelve');
+  assert.equal(await displayFor('done'), 'pending_verify');
 });
 
 test('feedback · límite diario por persona', async () => {
@@ -215,4 +229,11 @@ test('planificador · una app programa su tick con sonda; la sonda vive en su sc
   const idle = await app.t.db.query<{ r: string | null }>(`select core.worker_tick_probe('booking', 'test/tick')::text r`);
   assert.equal(idle.rows[0]!.r, null, 'sin trabajo no despierta la Edge');
   await assert.rejects(app.t.db.query(`select core.schedule_tick('booking', 'otro/tick', '*/5 * * * *', 'tasks.algo')`));
+});
+
+test('feedback · la petición a Tasks lleva el espacio del reporte, y nada si no hay', () => {
+  const base = { subject: 'space', category: 'damage', message: 'Gotea', reporterKind: 'guest', code: 'FB_2026_999', externalRef: 'FB_2026_999:1' };
+  const SPACE = '00000000-0000-4000-8000-0000000000aa';
+  assert.equal(taskRequestFor({ ...base, scope: { space_id: SPACE } }).space_id, SPACE);
+  assert.equal('space_id' in taskRequestFor({ ...base, scope: {} }), false);
 });
