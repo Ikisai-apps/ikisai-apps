@@ -12,6 +12,7 @@ import { EQUIPMENT_STATUSES, EQUIPMENT_STATUS_LABELS, T, describeError, type Mir
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
+import { onlineBinder } from './online.ts';
 
 type Row = Mirror<Equipment>;
 /** Marca del selector de espacio; el kit pone las etiquetas de sus partes (`SPACE_PICKER_MARKS`). */
@@ -45,6 +46,7 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   };
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
   let sheet: Sheet | null = null;
+  const net = onlineBinder(client);
   // Avisos a Tasks (1104) y lo que piden los menús que vienen: el «!» va en la etapa si la máquina hace falta.
   let notices: Array<Mirror<EquipmentNotice>> = [];
   let needed = new Set<string>();
@@ -236,9 +238,11 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       footHidden: row !== null,
       initialFocus: name,
       beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
-      onClose: () => { guard.dirtyEditor = false; sheet = null; },
+      onClose: () => { guard.dirtyEditor = false; sheet = null; net.release(); },
     });
     refreshDirty();
+    // Avisar a Tasks necesita red (MUELA-086): sin ella, desactivado con el motivo.
+    form.querySelectorAll<HTMLElement>('#reportFault, #reportFaultTop').forEach((b) => net.bind(b, 'Avisar a Tasks necesita conexión.'));
   }
 
   /**

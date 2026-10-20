@@ -32,7 +32,8 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
     const recipes = new Map(data.recipes.map((r) => [r.id, r]));
     const used = Array.from(new Set(data.items.map((i) => i.recipe_id))).map((id) => recipes.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
     const unreviewed = used.filter((r) => !r.allergens_checked);
-    // Un ingrediente nombra un alérgeno que el plato no declara (decisión de Core del 20-10-2026): en rojo, como lo sin revisar.
+    // Los ingredientes o el texto del plato nombran un alérgeno que no declara (decisión de Core Sevilla, 20-10-2026;
+    // MUELA-086): en rojo, como lo sin revisar. El texto dice lo que se miró, sin prometer más.
     const context = crossContext({ recipe_ingredients: data.lines, ingredients: data.ingredients });
     const undeclared = used.filter((r) => undeclaredAllergens(r as unknown as Recipe, context).length > 0);
     const noPhoto = used.filter((r) => !r.photo_file_id);
@@ -45,7 +46,8 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
       { tone: 'alert', ok: !unreviewed.length, text: 'Alérgenos revisados',
         detail: unreviewed.length ? `los alérgenos de ${names(unreviewed)} están sin revisar` : null,
         action: unreviewed.length ? go('Revisar en el Recetario', `#/recetario?receta=${unreviewed[0]!.id}`, 'food.menu.organizador.comprobar.alergenos') : null },
-      { tone: 'alert', ok: !undeclared.length, text: 'Alérgenos declarados',
+      { tone: 'alert', ok: !undeclared.length,
+        text: undeclared.length ? 'Alérgenos posibles sin declarar' : 'Ningún ingrediente ni el nombre del plato nombran un alérgeno sin declarar',
         detail: undeclared.length ? `${undeclared.length === 1 ? '1 plato' : `${undeclared.length} platos`} con un alérgeno posible sin declarar: ${names(undeclared)}` : null,
         action: undeclared.length ? go('Revisar en el Recetario', `#/recetario?receta=${undeclared[0]!.id}`, 'food.menu.organizador.comprobar.sin_declarar') : null },
       { tone: 'alert', ok: status === 'validado' || status === 'cerrado', text: 'Menú validado',
@@ -63,6 +65,8 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
 
   async function spec(data: MenuData, event: FoodEvent | null): Promise<PrintPageSpec> {
     const recipes = new Map(data.recipes.map((r) => [r.id, r]));
+    const context = crossContext({ recipe_ingredients: data.lines, ingredients: data.ingredients });
+    const pending = new Set(data.recipes.filter((r) => undeclaredAllergens(r as unknown as Recipe, context).length > 0).map((r) => r.id));
     // Mismo orden que en el constructor: por día, y dentro del día el que se fijó a mano.
     const services = [...data.services].sort((a, b) => a.service_date.localeCompare(b.service_date) || Number(a.position) - Number(b.position) || (a.service_time ?? '99').localeCompare(b.service_time ?? '99'));
     const days = Array.from(new Set(services.map((s) => s.service_date)));
@@ -85,6 +89,8 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
               ...recipe.allergens.map((allergen) => ({ text: ALLERGEN_LABELS[allergen], kind: 'alert' as const })),
               // Tanda 27 (regla de VG): un plato sin revisar lo dice en la hoja, también si no declara nada.
               ...(recipe.allergens_checked ? [] : [{ text: 'Alérgenos sin revisar', kind: 'alert' as const }]),
+              // MUELA-086 (S2): el plato con un alérgeno posible sin declarar lleva su marca, aunque se compartiera igualmente.
+              ...(pending.has(recipe.id) ? [{ text: 'Alérgeno posible sin declarar', kind: 'alert' as const }] : []),
             ],
           });
         }
@@ -94,18 +100,18 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
     }
     const validated = data.menu?.status === 'validado' || data.menu?.status === 'cerrado';
     const unreviewed = data.items.some((i) => recipes.get(i.recipe_id) && !recipes.get(i.recipe_id)!.allergens_checked);
+    const doubtful = data.items.some((i) => pending.has(i.recipe_id));
     return {
       brand: { appName: 'Food', markIcon: 'chef', line: 'Menú del retiro' },
       title: event?.title ?? 'Menú',
       subtitle: event ? dateRange(event) : undefined,
       draft: !validated,
       sections,
-      notes: unreviewed
-        ? el('p', null, 'Las etiquetas en verde indican la dieta del plato; las de color teja, los alérgenos que declara. ',
-            'Los platos marcados «Alérgenos sin revisar» todavía no los ha revisado cocina: pueden llevar alguno más. Preguntadnos antes de confirmarlos. ',
-            'Si alguna persona del grupo tiene una alergia o intolerancia que no nos hayáis comunicado, avisadnos antes de la llegada.')
-        : el('p', null, 'Las etiquetas en verde indican la dieta del plato; las de color teja, los alérgenos que contiene. ',
-            'Si alguna persona del grupo tiene una alergia o intolerancia que no nos hayáis comunicado, avisadnos antes de la llegada.'),
+      // MUELA-086 (S2): siempre «los alérgenos que declara»: es la declaración de cocina, no una promesa de que no haya más.
+      notes: el('p', null, 'Las etiquetas en verde indican la dieta del plato; las de color teja, los alérgenos que declara. ',
+        unreviewed ? 'Los platos marcados «Alérgenos sin revisar» todavía no los ha revisado cocina: pueden llevar alguno más. Preguntadnos antes de confirmarlos. ' : '',
+        doubtful ? 'Los platos marcados «Alérgeno posible sin declarar» los está revisando cocina. Preguntadnos antes de confirmarlos. ' : '',
+        'Si alguna persona del grupo tiene una alergia o intolerancia que no nos hayáis comunicado, avisadnos antes de la llegada.'),
       columns: 2,
     };
   }

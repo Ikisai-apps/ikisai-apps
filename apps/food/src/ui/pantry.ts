@@ -46,6 +46,11 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
   const spaces = createSyncSpaceSource(r);
   const canWrite = () => ['editor', 'owner'].includes(client.bootstrap()?.membership.role ?? '');
   const host = el('div', { id: 'pantryHost' });
+  // Sin red (MUELA-086): la despensa sigue con lo de este dispositivo y lo dice; los movimientos se envían al volver.
+  const offlineNow = () => client.status().network === 'offline' || !navigator.onLine;
+  const offlineLine = el('div', { 'data-feedback-id': 'food.despensa.sin_red', 'data-feedback-label': 'Sin conexión', class: 'banner warn notice', id: 'pantryOffline', role: 'status', hidden: true },
+    el('div', null, el('strong', null, 'Sin conexión.'), ' Ves lo que hay en este dispositivo; lo que anotes se enviará al volver la red. «A la compra» necesita conexión si aún no hay lista.'));
+  const paintOffline = () => { offlineLine.hidden = !offlineNow(); };
   let catalog: ItemCatalog | null = null;
   let sheet: ItemSheet | null = null;
   let kitchenKey = '';
@@ -150,6 +155,7 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Despensa'),
       el('p', null, 'Lo que hay en la cocina, sus despensas y sus cámaras: dónde está, qué falta y qué caduca.')),
       el('button', { 'data-feedback-id': 'food.despensa.contar', 'data-feedback-label': 'Contar la despensa', class: 'ghost', type: 'button', id: 'countPantry', hidden: true, onclick: () => countPlace() }, 'Contar')),
+    offlineLine,
     host);
 
   /** Origen de un movimiento de Food, en palabras y con su enlace. */
@@ -232,13 +238,29 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
   }
 
   async function paint(): Promise<void> {
-    const rows = (await r.list(R.spaces)) as unknown as SpaceLike[];
+    paintOffline();
+    let rows: SpaceLike[];
+    try {
+      rows = (await r.list(R.spaces)) as unknown as SpaceLike[];
+    } catch {
+      // Sin el espejo de Recursos en este dispositivo: lo dice, en vez de quedarse en blanco (MUELA-086).
+      kitchenKey = ''; catalog?.destroy(); catalog = null;
+      replace(host, el('div', { class: 'empty', id: 'pantryUnavailable' }, el('strong', null, 'La despensa no se puede leer en este dispositivo'),
+        offlineNow() ? 'Sin conexión y sin una copia de Recursos aquí. Ábrela una vez con red y después funcionará también sin ella.' : 'Vuelve a intentarlo en un momento.'));
+      return;
+    }
     const kitchen = kitchenSpaceIds(rows);
     const key = [...kitchen].sort().join(',');
     if (key === kitchenKey && catalog) return;
     kitchenKey = key;
     catalog?.destroy();
     catalog = null;
+    if (!kitchen.size && offlineNow() && !rows.length) {
+      // Sin red y sin espacios en este dispositivo no se sabe si hay despensa: no se dice que no la hay.
+      replace(host, el('div', { class: 'empty', id: 'pantryUnavailable' }, el('strong', null, 'La despensa aún no está en este dispositivo'),
+        'Sin conexión. Ábrela una vez con red y después funcionará también sin ella.'));
+      return;
+    }
     if (!kitchen.size) {
       replace(host, el('div', { class: 'empty', id: 'pantryEmpty' }, el('strong', null, 'Todavía no se lleva la despensa'),
         'Para empezar, en Recursos tiene que estar la cocina y, dentro o al lado, sus despensas y cámaras (Central › Espacios). Food cuenta lo que hay en ellas.'));
@@ -276,10 +298,16 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
 
   void paint();
   const off = r.onTable(R.spaces, () => void paint());
+  const offNet = client.onStatus(paintOffline);
+  window.addEventListener('online', paintOffline);
+  window.addEventListener('offline', paintOffline);
   let tileTimer: ReturnType<typeof setTimeout> | null = null;
   const offTiles = [R.items, R.movements, R.lots].map((t) => r.onTable(t, () => { if (tileTimer) clearTimeout(tileTimer); tileTimer = setTimeout(() => { if (view === 'baldosas') void paintTiles(); }, 300); }));
   return () => {
     off();
+    offNet();
+    window.removeEventListener('online', paintOffline);
+    window.removeEventListener('offline', paintOffline);
     offTiles.forEach((stop) => stop());
     if (tileTimer) clearTimeout(tileTimer);
     if (own) catalog?.setFilter(own);

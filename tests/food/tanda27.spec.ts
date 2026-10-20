@@ -100,6 +100,15 @@ test('recetario · «Lleva X / Sin X» con lo no revisado marcado, y la línea s
 
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  // Sin red, lo que la necesita queda desactivado con el motivo (MUELA-086, `bindOnline`).
+  await page.evaluate((id) => { location.hash = `#/menus/${id}/preparacion`; }, menuId);
+  await expect(page.locator('#generatePreparation')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('.offline-why').first()).toContainText('necesita conexión');
+  // La Despensa sin red lo dice (aquí no hay espacios de cocina en el dispositivo: no afirma que no la haya).
+  await page.evaluate(() => { location.hash = '#/despensa'; });
+  await expect(page.locator('#pantryOffline')).toBeVisible();
+  await expect(page.locator('#pantryEmpty')).toHaveCount(0);
+  await page.evaluate(() => { location.hash = '#/recetario'; });
   await expect(page.locator('#recipesOffline')).toBeVisible();
   await expect(page.locator('#recipesOffline')).toContainText(/Sin conexión · datos de las \d\d:\d\d\. Lo que cambies se guardará al volver la conexión\./);
   await expect(page.locator('#recipesOffline')).toContainText('«Platos sugeridos» necesitan red');
@@ -115,8 +124,8 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
   const checks = page.locator('[data-feedback-id="food.menu.organizador.comprobaciones"]');
   await expect(checks.locator('.check-verdict')).toHaveText('!2 cosas por resolver · La primera: los alérgenos de Ensalada verde están sin revisar');
   await expect(checks.locator('.check-item')).toHaveCount(6);
-  // El curry lleva almendra molida y no declara frutos de cáscara: comprobación en rojo (decisión de Core del 20-10-2026).
-  const undeclared = checks.locator('.check-item', { hasText: 'Alérgenos declarados' });
+  // El curry lleva almendra molida y no declara frutos de cáscara: comprobación en rojo (decisión de Core Sevilla, 20-10-2026).
+  const undeclared = checks.locator('.check-item', { hasText: 'Alérgenos posibles sin declarar' });
   await expect(undeclared).toHaveAttribute('data-ok', 'false');
   await expect(undeclared).toHaveAttribute('data-tone', 'alert');
   await expect(undeclared).toContainText('1 plato con un alérgeno posible sin declarar: Curry de verduras');
@@ -133,12 +142,20 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
   await page.goto(`${baseURL}/#/menus/${menuId}`);
   await page.locator('#shareMenu').click();
   await expect(page.getByRole('alertdialog')).toContainText('Hay platos con los alérgenos sin revisar');
-  await expect(page.getByRole('alertdialog')).toContainText('Curry de verduras: un ingrediente nombra un alérgeno que el plato no declara.');
+  await expect(page.getByRole('alertdialog')).toContainText('Curry de verduras: un ingrediente o el texto del plato nombran un alérgeno que el plato no declara.');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Cancelar' }).click();
   expect(api.rows('food.menus').find((m) => m.id === menuId)?.organizer_shared).toBe(false);
   await page.locator('#shareMenu').click();
   await page.locator('#dialogConfirm').click();
   await expect.poll(() => api.rows('food.menus').find((m) => m.id === menuId)?.organizer_shared).toBe(true);
+
+  // MUELA-086 (S2): compartido igualmente, la hoja sigue diciendo «los alérgenos que declara» y marca el plato pendiente.
+  await page.goto(`${baseURL}/#/menus/${menuId}/organizador`);
+  const printed = page.locator('.print-page');
+  await expect(printed).toContainText('los alérgenos que declara');
+  await expect(printed).not.toContainText('los alérgenos que contiene');
+  await expect(printed).toContainText('Alérgeno posible sin declarar');
+  await expect(printed).toContainText('los está revisando cocina');
 
   await page.goto(`${baseURL}/#/menus/${menuId}/cierre`);
   const closing = page.locator('[data-feedback-id="food.menu.cierre.comprobaciones"]');

@@ -240,8 +240,9 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect(page.locator('.dish')).toHaveCount(2);
     await context.setOffline(true);
     await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
-    await page.locator('#reopenMenu').click();
-    await expect(page.getByText('Esta acción necesita conexión.')).toBeVisible();
+    // Tanda 30 (MUELA-086, `bindOnline`): sin red, cambiar de estado queda desactivado con el motivo escrito.
+    await expect(page.locator('#reopenMenu')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('#menuActions .offline-why').first()).toContainText('Necesita conexión');
     await expect(page.locator('#menuStatus')).toHaveText('Validado');
     await page.goto(`${baseURL}/#/eventos`);
     await expect(page.locator('#eventList .row', { hasText: 'Retiro Test' })).toContainText('Menú: validado');
@@ -280,6 +281,10 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect(page.locator('#menuComments')).toBeHidden();
     await expect(page.locator('#menuShare')).toContainText('El organizador lo verá en su portal como propuesta hasta que esté validado.');
     await page.locator('#shareMenu').click();
+    // MUELA-086: el cruce mira también el texto del plato; «leche de coco» en la descripción del curry nombra lácteos, que
+    // no declara. Ante la duda, avisa y pide confirmación antes de compartir.
+    await expect(page.getByRole('alertdialog')).toContainText('Curry de verduras: un ingrediente o el texto del plato nombran un alérgeno que el plato no declara.');
+    await page.locator('#dialogConfirm').click();
     await expect(page.locator('#menuShared')).toHaveText('Compartido con el organizador');
     await expect(page.locator('#unshareMenu')).toBeVisible();
     await expect.poll(() => menu().organizer_shared).toBe(true);

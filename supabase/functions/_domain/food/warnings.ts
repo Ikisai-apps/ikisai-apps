@@ -318,20 +318,41 @@ export function allergenPresence(recipe: Recipe, allergen: Allergen, context: Cr
   return recipe.allergens_checked ? 'no_declara' : 'sin_revisar';
 }
 
+/** Un alérgeno que nombran los ingredientes o el texto del plato y la receta no declara. */
+export interface UndeclaredAllergen {
+  allergen: Allergen;
+  /** El primer ingrediente que lo nombra («almendra molida»), o `null` si solo lo nombra el texto del plato. */
+  ingredient: string | null;
+  /** El nombre, el nombre público o la descripción del plato lo nombran. */
+  inText: boolean;
+}
+
 /**
- * Un ingrediente nombra un alérgeno que la receta no declara («almendra molida» y no declara frutos de cáscara).
- * Decisión de Core del 20-10-2026: aviso en la ficha de receta y comprobación en rojo del Organizador; la hoja impresa
- * sigue con lo declarado (es la declaración de cocina). Un aviso por alérgeno, con el primer ingrediente que lo nombra.
+ * Alérgenos que el plato nombra y la receta no declara: «almendra molida» entre los ingredientes, o «Tarta de almendra»
+ * en el nombre o la descripción. Decisión de Core Sevilla (20-10-2026), con MUELA-086 (tanda 30): aviso en la ficha de
+ * receta y comprobación en rojo del Organizador; la hoja impresa dice lo que **declara** y marca el plato.
+ * Sale de la única función de cruce, `crossRestriction`, con el nombre de cada alérgeno como restricción: mira lo mismo
+ * que el resto (ingredientes y texto del plato), y lo que no sabe mirar no lo afirma.
  */
-export function undeclaredAllergens(recipe: Pick<Recipe, 'id' | 'allergens'>, context: CrossContext): Array<{ allergen: Allergen; ingredient: string }> {
-  const out: Array<{ allergen: Allergen; ingredient: string }> = [];
-  for (const name of context.recipeIngredientNames.get(recipe.id) ?? []) {
-    for (const allergen of Object.keys(ALLERGEN_TERMS) as Allergen[]) {
-      if (recipe.allergens.includes(allergen) || out.some((o) => o.allergen === allergen)) continue;
-      if (ALLERGEN_TERMS[allergen].some((word) => name.includes(word))) out.push({ allergen, ingredient: name });
-    }
+export function undeclaredAllergens(recipe: Recipe, context: CrossContext): UndeclaredAllergen[] {
+  const out: UndeclaredAllergen[] = [];
+  for (const allergen of Object.keys(ALLERGEN_NAMES) as Allergen[]) {
+    if (recipe.allergens.includes(allergen)) continue;
+    const hit = crossRestriction(ALLERGEN_NAMES[allergen], recipe, context);
+    if (!hit || !(hit.ingredient || hit.ingredientAllergen || hit.text)) continue;
+    const words = ALLERGEN_TERMS[allergen];
+    const ingredient = (context.recipeIngredientNames.get(recipe.id) ?? []).find((name) => words.some((w) => name.includes(w))) ?? null;
+    out.push({ allergen, ingredient, inText: hit.text });
   }
   return out;
+}
+
+/** «El ingrediente «almendra molida» nombra frutos de cáscara…» / «El nombre o la descripción del plato nombran…». */
+export function undeclaredText(u: UndeclaredAllergen): string {
+  const what = ALLERGEN_NAMES[u.allergen];
+  return u.ingredient
+    ? `El ingrediente «${u.ingredient}» nombra ${what}, que la receta no declara: revisa los alérgenos.`
+    : `El nombre o la descripción del plato nombran ${what}, que la receta no declara: revisa los alérgenos.`;
 }
 
 /** Claves que hay que aceptar una a una para poder validar. */

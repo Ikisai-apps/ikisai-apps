@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  PREP_UNITS, allergenPresence, crossContext, undeclaredAllergens, type CrossContext, foodUnitFromBase, formatMethodSteps, fromItemBase, kitchenStock, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
+  PREP_UNITS, allergenPresence, crossContext, undeclaredAllergens, undeclaredText, type CrossContext, foodUnitFromBase, formatMethodSteps, fromItemBase, kitchenStock, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
@@ -305,10 +305,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
           })))) : null),
       block({ 'data-feedback-id': 'food.recetario.ficha.elaboracion', 'data-feedback-label': 'Elaboración' }, 'Elaboración', methodStepsView(recipe), para('Antelación', prepLabel(recipe.prep_minutes))),
       block({ 'data-feedback-id': 'food.recetario.ficha.seguridad', 'data-feedback-label': 'Seguridad' }, 'Seguridad',
-        // Un ingrediente nombra un alérgeno que la receta no declara (decisión de Core del 20-10-2026): aviso claro y a corregir.
+        // Los ingredientes o el texto del plato nombran un alérgeno que la receta no declara (decisión de Core Sevilla,
+        // 20-10-2026; MUELA-086): aviso claro y a corregir.
         ...undeclaredAllergens(recipe as unknown as Recipe, crossContext({ recipe_ingredients: lines.filter((l) => !l.deleted_at) as RecipeIngredient[], ingredients: ingredients as Ingredient[] }))
           .map((u) => el('div', { 'data-feedback-id': 'food.recetario.ficha.sin_declarar', 'data-feedback-label': 'Alérgeno posible sin declarar', class: 'banner warn notice fd-undeclared', role: 'status' },
-            el('div', null, `El ingrediente «${u.ingredient}» nombra ${ALLERGEN_LABELS[u.allergen].toLowerCase()}, que la receta no declara: revisa los alérgenos.`),
+            el('div', null, undeclaredText(u)),
             canWrite() ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.ficha.sin_declarar.revisar', 'data-feedback-label': 'Revisar los alérgenos', class: 'ghost', type: 'button', onclick: () => openEditor(recipe) }, 'Revisar los alérgenos')) : null)),
         el('p', null, el('strong', null, 'Alérgenos: '), recipe.allergens.length ? recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ') : 'ninguno declarado'),
         recipe.allergens_checked ? el('p', { class: 'muted' }, 'Alérgenos revisados.') : el('p', null, el('span', { class: 'chip alert' }, 'Alérgenos sin revisar'))),
