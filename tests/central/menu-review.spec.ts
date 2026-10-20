@@ -12,6 +12,7 @@ import { freePort } from '../food/helpers.ts';
 import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
 import { openMenu } from './menu-helpers.ts';
+import { heightOf } from './measure.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');
@@ -55,10 +56,17 @@ test('menú · secciones por rol, recientes, «Cerrar sesión» en el móvil y b
   // Abrir una ficha la apunta en «Recientes».
   await page.goto(`${baseURL}/#/cumplimiento/${requirementId}`);
   await expect(page.getByRole('heading', { name: 'Seguro del edificio' })).toBeAttached();
+  // «‹ Volver» con objetivo de 46 px (MUELA-086).
+  expect(await heightOf(page.locator('.backlink'))).toBeGreaterThanOrEqual(46);
   let drawer = await openMenu(page);
   await expect(drawer.locator('.appmenu-recientes')).toContainText('Seguro del edificio');
   const tiles = drawer.locator('.appmenu-tile');
   await expect(tiles.first()).toContainText('Cuentas y accesos');
+  // Con sus recuentos (MUELA-085 y 086): las cuentas de personas y las claves en uso.
+  await expect(tiles.first()).toContainText(/\d+ cuentas?/);
+  await tiles.first().click();
+  await expect(drawer.locator('.appmenu-panel a', { hasText: 'Agentes' })).toContainText(/\d+ claves? en uso|1 clave en uso/);
+  await tiles.first().click();
   await expect(drawer.locator('.appmenu-tile', { hasText: 'Obligaciones' })).toContainText('1 vencida');
   // Un azulejo despliega sus filas debajo; la de un tipo abre Obligaciones con ese tipo puesto.
   await drawer.locator('.appmenu-tile', { hasText: 'Obligaciones' }).click();
@@ -132,4 +140,40 @@ test('revisión · importar pantallas (upsert por app y nombre), tablero, lo que
   await expect(reader.locator('#rs-name')).toBeDisabled();
   await expect(reader.locator('#saveScreen')).toBeHidden();
   await other.close();
+});
+
+test('revisión · quien no administra comprueba sus arreglos; sin red, los botones dicen por qué', async ({ browser }) => {
+  const context = await browser.newContext();
+  const reader = await context.newPage();
+  // Sus reportes (`mine=true`), uno arreglado por comprobar; el núcleo le deja comprobarlo (`canVerify`).
+  const report = { id: crypto.randomUUID(), code: 'FB_2026_901', originApp: 'central', message: 'El botón de Entidad no respondía', display: 'pending_verify',
+    reviewStatus: 'approved', canVerify: true, node: { id: 'central.entidad', path: ['Entidad'] }, routeRaw: '#/entidad', createdAt: new Date().toISOString() };
+  const verified: string[] = [];
+  await reader.route(/\/api\/v1\/feedback\?.*mine=true/, (route) => route.fulfill({ json: { items: [report] } }));
+  await reader.route(/\/api\/v1\/feedback\/[0-9a-f-]{36}\/verify$/, (route) => { verified.push(route.request().url()); return route.fulfill({ json: { report: { ...report, display: 'verified' } } }); });
+  await login(reader, 'reader');
+  await reader.goto(`${baseURL}/#/revision`);
+  const card = reader.locator('.queue-card');
+  await expect(card).toContainText('Arreglo por comprobar');
+  await expect(card).toContainText('El botón de Entidad no respondía');
+  await expect(card.getByRole('button', { name: 'Funciona y siguiente' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Sigue fallando…' })).toBeVisible();
+  await expect(reader.getByRole('button', { name: 'Aprobar y siguiente' })).toHaveCount(0);
+
+  // Sin red: aria-disabled con el motivo escrito (bindOnline), no apagado sin decir nada.
+  await context.setOffline(true);
+  const main = card.getByRole('button', { name: 'Funciona y siguiente' });
+  await expect(main).toHaveAttribute('aria-disabled', 'true');
+  await expect(reader.locator('.ctl-rv-why .offline-why')).toBeVisible();
+  await expect(reader.locator('.ctl-rv-why')).toContainText('necesita conexión');
+  await main.click({ force: true });
+  expect(verified).toHaveLength(0);
+  await context.setOffline(false);
+  await reader.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(main).not.toHaveAttribute('aria-disabled', 'true');
+  await main.click();
+  await expect(reader.getByText('Verificado.')).toBeVisible();
+  expect(verified).toHaveLength(1);
+  await expect(reader.locator('.queue-done')).toContainText('Nada te espera');
+  await context.close();
 });

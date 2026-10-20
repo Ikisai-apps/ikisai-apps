@@ -88,10 +88,20 @@
   - **Revisión** (nueva, `#/revision`): lo que te toca (owner), cuánto se ha hecho, tablero de los diez pasos y hoja de ruta por app; «Importar pantallas» (JSON pegado o subido, upsert por app y nombre) y «Nueva pantalla», solo el owner.
   - **Oficios:** grupos por oficio principal con el resumen de lo peor y el árbol dentro.
   - Pruebas: `menu-review.spec.ts` y `pasada27.test.ts` nuevas; reescritas `compliance`, `decisions`, `entity`, `texts`, `feedback`, `dashboard` y `people`.
+- 2026-10-20 · **Tanda 30 · los siete defectos que midió La Muela sobre #630** (MUELA-086, revisados por Core):
+  - **Vencimientos, lector:** también tiene «Una cosa cada vez», con «Abrir y siguiente» y «Ver todo», sin acciones de escribir (069). En Inicio, igual.
+  - **Revisión:** quien no administra ve su parte de «Lo que te toca»: los arreglos de lo que comentó, por comprobar. Las acciones del owner siguen siendo suyas.
+  - **Revisión sin red:** «Aprobar», «Descartar», «Funciona» y «Sigue fallando» quedan `aria-disabled` con el motivo (`bindOnline`), no apagados sin decir nada. Al volver la red, los comentarios se leen solos.
+  - **Accesos sin red:** el aviso sustituye al vacío (085, C6): ni «Todavía no hay cuentas» ni «No hay claves» cuando no se han podido leer. Las fichas salen del espejo también sin red, y la lista guardada ya no marca «Sin ficha» en todas.
+  - **`app.css`:** `.note.warn` y `.chip.warn` con la tinta de aviso del kit (5,52:1 en claro y 7,76:1 en oscuro), `.backlink` a 46 px y fuera las compensaciones `color-mix(ink …)`: el `--muted` del kit da 4,56:1 sobre el fondo y más sobre el papel.
+  - **Menú:** recuentos en «Cuentas y accesos» (cuentas, por revisar y claves en uso); sin red, «se leen con red».
 
 ## Pendiente
 
-- Tanda 27 · lo que espera a los traspasos del Bloque 2 (pendientes del «ok» de VG): Personas (grupos con lo peor), ficha de persona (portada y foco), Equipos (baldosas), Agentes (grupos), Inventario (baldosas) y Alta de cuenta (pregunta a pregunta, con un solo envío al final). Hoy siguen como estaban.
+- Bloque 2 de Central, como tanda propia cuando Core lo pase (MUELA-076 y 085, con el «ok» de VG):
+  - MUELA-085, lo que eligió VG en Cuentas y accesos: Personas · Directorio de caras; Equipos · Tablero por equipo; Cuentas · Cuadrícula cuentas × apps; Alta · Persona primero; Agentes · Grupos por app; Registro · Por persona. Sin red, «Sin conexión» en lugar del vacío y «Alta» y «Dar de alta» con el motivo.
+  - MUELA-076: ficha de persona (portada y foco) e Inventario (baldosas, con `createItemCatalog({ layout: 'baldosas' })` del kit, tanda 29).
+  - Hoy siguen como estaban.
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
 - V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.

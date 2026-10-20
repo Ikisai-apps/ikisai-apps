@@ -55,3 +55,10 @@ export function isStaffAccount(account: Account, catalog: CatalogApp[]): boolean
   const internal = new Set(catalog.filter((a) => a.kind !== 'portal').map((a) => a.id));
   return account.memberships.some((m) => internal.has(m.app));
 }
+
+/** Lo que hay que arreglar en una cuenta del equipo (FB_2026_013): sin ficha, o con un nombre distinto del de su ficha. */
+export function accountIssue(account: Account, catalog: CatalogApp[], people: ReadonlyArray<{ user_id: string | null; display_name: string }>): 'sin_ficha' | 'nombre' | null {
+  if (!isStaffAccount(account, catalog)) return null;
+  const person = people.find((p) => p.user_id === account.userId) ?? null;
+  return !person ? 'sin_ficha' : person.display_name !== account.displayName ? 'nombre' : null;
+}

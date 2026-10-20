@@ -4,6 +4,8 @@ import {
   CLOSED_REQUIREMENT_STATUSES, DOCUMENT_KINDS, DOCUMENT_KIND_LABELS, REQUIREMENT_TYPES, REQUIREMENT_TYPE_LABELS, dueState, fold, reviewProgress,
   screensToAct, todayInMadrid,
 } from '@ikisai/domain-central';
+import { accountIssue } from '../app/account-names.ts';
+import type { Account, AgentKey, CatalogApp } from '../app/admin.ts';
 import { T } from '../app/client.ts';
 import { RECENT_KIND_LABELS, agoText, readRecents, type Recent } from '../app/recents.ts';
 import { dashboardSummary } from './dashboard.ts';
@@ -12,6 +14,8 @@ import { dashboardSummary } from './dashboard.ts';
  * Contenido del menú lateral común de Central (MUELA-013, con «Cuentas y accesos» arriba para quien administra, Bloque 2)
  * y de la búsqueda de la cabecera (Ctrl K). La cáscara (cajón, columna, perfil, sincronización, apps y ayuda) es del kit;
  * aquí, las secciones con sus recuentos, los recientes y lo que se puede buscar. Todo sale del espejo local: funciona sin red.
+ * Lo de «Cuentas y accesos» es lo único que no está en el espejo: sale de la última lectura de Core en esta sesión
+ * (`admin.cached`) y, sin red, el menú dice «se leen con red» en lugar de cifras (MUELA-085).
  */
 
 type Row = Record<string, unknown> & { id: string; deleted_at?: string | null };
@@ -24,10 +28,20 @@ export interface MenuData {
   liveDocuments: number;
   conflicts: number;
   review: { done: number; total: number; toAct: number };
+  /** Fichas vivas (para las cuentas «por revisar»). */
+  people: Array<{ user_id: string | null; display_name: string }>;
   index: PaletteItem[];
 }
 
-const EMPTY: MenuData = { requirements: [], documents: [], openRequirements: 0, liveDocuments: 0, conflicts: 0, review: { done: 0, total: 0, toAct: 0 }, index: [] };
+/** Lo que el menú sabe de las cuentas: la última lectura de Core (o nada) y si hay red. */
+export interface AccessData {
+  online: boolean;
+  accounts: Account[] | null;
+  agents: AgentKey[] | null;
+  catalog: CatalogApp[] | null;
+}
+
+export const EMPTY_MENU: MenuData = { requirements: [], documents: [], openRequirements: 0, liveDocuments: 0, conflicts: 0, review: { done: 0, total: 0, toAct: 0 }, people: [], index: [] };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -102,27 +116,49 @@ export async function loadMenuData(client: SyncClient, isAdmin: boolean, navigat
       liveDocuments: live(documents).filter((d) => d.status !== 'sustituido').length,
       conflicts: conflicts.length,
       review: { ...progress, toAct: isAdmin ? screensToAct(screens as never).length : 0 },
+      people: live(people).map((x) => ({ user_id: (x.user_id as string | null) ?? null, display_name: String(x.display_name ?? '') })),
       index,
     };
   } catch {
-    return EMPTY;
+    return EMPTY_MENU;
   }
 }
 
 /** Las secciones del menú (azulejos que despliegan sus filas). */
-export function menuSections(data: MenuData, isAdmin: boolean, userId: string | null): AppMenuSection[] {
+/** Recuentos de «Cuentas y accesos»: cuentas de personas, las que hay que revisar y las claves de agente en uso. */
+export function accessCounts(access: AccessData, people: MenuData['people'], now = Date.now()): { accounts: number; issues: number; agents: number | null } | null {
+  if (!access.accounts) return null;
+  const catalog = access.catalog ?? [];
+  return {
+    accounts: access.accounts.filter((a) => a.kind !== 'agent').length,
+    issues: catalog.length ? access.accounts.filter((a) => accountIssue(a, catalog, people) !== null).length : 0,
+    agents: access.agents ? access.agents.filter((k) => !k.revokedAt && (!k.expiresAt || Date.parse(k.expiresAt) > now)).length : null,
+  };
+}
+
+export function menuSections(data: MenuData, isAdmin: boolean, userId: string | null, access: AccessData = { online: true, accounts: null, agents: null, catalog: null }): AppMenuSection[] {
   const sum = (rows: TypeCount[]) => rows.reduce((acc, c) => ({ alert: acc.alert + c.alert, warn: acc.warn + c.warn }), { alert: 0, warn: 0 });
   const req = sum(data.requirements);
   const doc = sum(data.documents);
   const kpis = dashboardSummary(userId);
   const sections: AppMenuSection[] = [];
-  // Bloque 2 (VG): «Cuentas y accesos» arriba, solo para quien administra.
-  if (isAdmin) sections.push({ key: 'cuentas', label: 'Cuentas y accesos', icon: 'lock', summary: 'quién entra y con qué', rows: [
-    { label: 'Cuentas', sub: 'personas con acceso a las apps', icon: 'user', href: '#/accesos', feedbackId: 'central.menu.cuentas.cuentas' },
-    { label: 'Alta de cuenta', sub: 'dar acceso a una persona nueva', icon: 'plus', href: '#/accesos/alta', feedbackId: 'central.menu.cuentas.alta' },
-    { label: 'Agentes', sub: 'claves de los agentes de IA', icon: 'bot', href: '#/accesos/agentes', feedbackId: 'central.menu.cuentas.agentes' },
-    { label: 'Registro de accesos', sub: 'quién entró y cuándo', icon: 'eye', href: '#/accesos/registro', feedbackId: 'central.menu.cuentas.registro' },
-  ] });
+  // Bloque 2 (VG): «Cuentas y accesos» arriba, solo para quien administra, con sus recuentos (MUELA-085 y 086). Sin red,
+  // «se leen con red» en lugar de cifras: los accesos se leen en Core en el momento.
+  if (isAdmin) {
+    const off = !access.online;
+    const c = off ? null : accessCounts(access, data.people);
+    const issuesText = c?.issues ? `${c.issues} por revisar` : '';
+    sections.push({ key: 'cuentas', label: 'Cuentas y accesos', icon: 'lock',
+      summary: off ? 'se leen con red' : c ? [plural(c.accounts, 'cuenta', 'cuentas'), issuesText].filter(Boolean).join(' · ') : 'quién entra y con qué',
+      badge: c?.issues ? { text: String(c.issues), tone: 'warn' } : null, rows: [
+        { label: 'Cuentas', sub: off ? 'se leen con red' : issuesText ? `${issuesText}: sin ficha o con otro nombre` : 'personas con acceso a las apps', icon: 'user',
+          count: c ? { text: String(c.accounts), tone: c.issues ? 'warn' : null } : null, href: '#/accesos', feedbackId: 'central.menu.cuentas.cuentas' },
+        { label: 'Alta de cuenta', sub: off ? 'necesita conexión' : 'dar acceso a una persona nueva', icon: 'plus', href: '#/accesos/alta', feedbackId: 'central.menu.cuentas.alta' },
+        { label: 'Agentes', sub: off ? 'se leen con red' : c?.agents != null ? `${c.agents === 1 ? '1 clave en uso' : `${c.agents} claves en uso`}` : 'claves de los agentes de IA', icon: 'bot',
+          count: c?.agents != null ? { text: String(c.agents) } : null, href: '#/accesos/agentes', feedbackId: 'central.menu.cuentas.agentes' },
+        { label: 'Registro de accesos', sub: off ? 'se lee con red' : 'quién entró y cuándo', icon: 'eye', href: '#/accesos/registro', feedbackId: 'central.menu.cuentas.registro' },
+      ] });
+  }
   sections.push({ key: 'entidad', label: 'La entidad', icon: 'briefcase', summary: 'datos, textos y decisiones', badge: data.conflicts ? { text: String(data.conflicts), tone: 'alert' } : null, rows: [
     { label: 'Datos de la entidad', sub: 'razón social, NIF/CIF, IBAN y logotipo', icon: 'briefcase', href: '#/entidad', feedbackId: 'central.menu.entidad.datos' },
     { label: 'Textos y contacto', sub: 'avisos legales, declaraciones y mensajes', icon: 'edit', href: '#/textos', feedbackId: 'central.menu.entidad.textos' },

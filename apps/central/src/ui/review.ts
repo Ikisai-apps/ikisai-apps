@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import {
-  confirmDialog, createQueue, el, icon, listRow, openSheet, renderAreaTabs, renderGroups, renderMedal, renderSteps, replace, toast,
+  bindOnline, confirmDialog, createQueue, el, icon, listRow, openSheet, renderAreaTabs, renderGroups, renderMedal, renderSteps, replace, toast,
   type QueueItem, type Sheet,
 } from '@ikisai/ui-kit';
 import {
@@ -14,13 +14,14 @@ import type { ViewMount } from './shell.ts';
 /**
  * Revisión (MUELA-027 y 069; migración `1512`, API.md §2.14): el avance de cada pantalla de las apps en los diez pasos del
  * cuadro y su feedback, dentro de Central. De arriba abajo:
- * - «Lo que te toca» (solo quien administra), una cosa cada vez: pantallas por valorar o validar, reportes nuevos por
- *   aprobar y arreglos por comprobar.
+ * - «Lo que te toca», una cosa cada vez. Quien administra: pantallas por valorar o validar, reportes nuevos por aprobar y
+ *   arreglos por comprobar. Los demás, su parte (069, MUELA-086): los arreglos de lo que comentaron, por comprobar
+ *   («Funciona» o «Sigue fallando», que el núcleo deja a quien lo informó).
  * - «Cuánto se ha hecho», paso a paso: «33 de 92 pantallas pasadas a Sevilla» y lo siguiente de cada app.
  * - El tablero: los diez pasos con su cifra y las pantallas del paso elegido, con filtro por app.
  * - La hoja de ruta por app, con sus pantallas, su paso y sus reportes.
  * Las pantallas las escribe solo quien administra («Importar pantallas» o «Nueva pantalla»); los demás ven el avance y lo
- * que comentaron. El feedback necesita red; el avance sale del espejo.
+ * que comentaron. El feedback necesita red (sus botones, apagados con el motivo: `bindOnline`); el avance sale del espejo.
  */
 
 type Screen = Mirror<{
@@ -28,7 +29,7 @@ type Screen = Mirror<{
   feedback_prefix: string | null; handoff: string | null; note: string | null; position: number;
 }>;
 interface Report {
-  id: string; code: string; originApp: string; message: string; display: string; reviewStatus?: string; blocking?: boolean;
+  id: string; code: string; originApp: string; message: string; display: string; reviewStatus?: string; blocking?: boolean; canVerify?: boolean;
   node: { id: string; path: string[] } | null; routeRaw?: string | null; createdAt: string;
 }
 
@@ -47,6 +48,8 @@ const stepName = (step: string) => REVIEW_STEP_LABELS[step as ReviewStep] ?? ste
 const firstLine = (text: string) => text.split('\n')[0]!.slice(0, 140);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const appMedal = (app: string) => renderMedal({ name: appName(app), color: APP_COLORS[app] ?? '#56663f', size: 40 });
+
+const NEEDS_NETWORK = 'Aprobar, descartar y comprobar los reportes necesita conexión: el feedback se guarda en el momento.';
 
 export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
   let screens: Screen[] = [];
@@ -68,7 +71,11 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
       isAdmin ? el('div', { class: 'ctl-headtools' },
         el('button', { class: 'ghost', type: 'button', id: 'importScreens', 'data-feedback-id': 'central.revision.importar', 'data-feedback-label': 'Importar pantallas', onclick: () => openImport() }, icon('upload', 18), 'Importar pantallas'),
         el('button', { class: 'primary', type: 'button', id: 'newScreen', 'data-feedback-id': 'central.revision.nueva', 'data-feedback-label': 'Nueva pantalla', onclick: () => openScreen(null) }, icon('plus', 18), 'Nueva pantalla')) : null),
-    note, isAdmin ? queueHost : null, stepsHost, boardHost, roadHost);
+    note, queueHost, stepsHost, boardHost, roadHost);
+  // Los botones de la cola que necesitan red (se crean de nuevo con cada tarjeta): el motivo va en una sola línea.
+  const queueWhy = el('div', { class: 'ctl-rv-why' });
+  const queueWhyQuiet = el('div', { hidden: true });
+  let unbindQueue: Array<() => void> = [];
 
   const live = () => sortScreens(screens);
   const reportsOf = (s: Screen) => reports.filter((r) => screenOfReport({ originApp: r.originApp, node: r.node, sourceRoute: r.routeRaw ?? null }, [s, ...live().filter((x) => x.id !== s.id)])?.id === s.id);
@@ -79,6 +86,8 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
   // ---------------------------------------------------------------------------
   type Todo = { kind: 'screen'; screen: Screen } | { kind: 'review' | 'check'; report: Report };
   function todos(): Todo[] {
+    // Quien no administra: solo los arreglos de lo que comentó (los reportes que lee son los suyos, `mine=true`).
+    if (!isAdmin) return reports.filter((r) => r.display === 'pending_verify' && r.canVerify !== false).map((report) => ({ kind: 'check' as const, report }));
     const toReview = reports.filter((r) => r.reviewStatus === 'new');
     const toCheck = reports.filter((r) => r.reviewStatus !== 'new' && r.display === 'pending_verify');
     return [
@@ -125,32 +134,49 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
       return false;
     }
   }
+  /** Ata a la red los botones de la tarjeta de ahora que la necesitan (aprobar, descartar, comprobar). */
+  function bindQueue(): void {
+    unbindQueue.forEach((off) => off());
+    unbindQueue = [];
+    const now = queue?.current();
+    if (!now || todoById.get(now.id)?.kind === 'screen') return;
+    const main = queueHost.querySelector<HTMLElement>('.queue-card [data-feedback-id="central.revision.toca.cola.principal"]');
+    const minor = queueHost.querySelector<HTMLElement>('.queue-card [data-feedback-id="central.revision.toca.cola.secundaria"]');
+    if (main) unbindQueue.push(bindOnline(main, { client, reason: NEEDS_NETWORK, reasonHost: queueWhy }));
+    if (minor) unbindQueue.push(bindOnline(minor, { client, reason: NEEDS_NETWORK, reasonHost: queueWhyQuiet }));
+  }
   function paintQueue(): void {
-    if (!isAdmin) return;
+    // Quien no administra y no tiene nada suyo que comprobar no ve el bloque (sus reportes se leen con red).
+    if (!isAdmin && (reportsState !== 'ok' || !todos().length) && !queue) { replace(queueHost); queueHost.hidden = true; return; }
+    queueHost.hidden = false;
     const items = queueItems();
-    if (queue) { queue.setItems(items); return; }
+    if (queue) { queue.setItems(items); bindQueue(); return; }
     queue = createQueue({
       label: 'Lo que te toca', items, feedbackId: 'central.revision.toca.cola',
       primary: (item) => {
         const t = todoById.get(item.id);
         if (!t) return null;
         if (t.kind === 'screen') return { label: t.screen.url ? 'Abrir y siguiente' : 'Ver y siguiente', onClick: () => { if (t.screen.url) window.open(t.screen.url, '_blank', 'noopener'); else openScreen(t.screen); queue?.done(); } };
-        if (t.kind === 'review') return { label: 'Aprobar y siguiente', disabled: !navigator.onLine, onClick: async () => { if (await act(t.report, 'approve', {}, 'Aprobado: pasa al buzón del agente.')) queue?.done(); } };
-        return { label: 'Funciona y siguiente', disabled: !navigator.onLine, onClick: async () => { if (await act(t.report, 'verify', { build: null }, 'Verificado.')) queue?.done(); } };
+        if (t.kind === 'review') return { label: 'Aprobar y siguiente', onClick: async () => { if (await act(t.report, 'approve', {}, 'Aprobado: pasa al buzón del agente.')) queue?.done(); } };
+        return { label: 'Funciona y siguiente', onClick: async () => { if (await act(t.report, 'verify', { build: null }, 'Verificado.')) queue?.done(); } };
       },
       secondary: (item) => {
         const t = todoById.get(item.id);
         if (!t || t.kind === 'screen') return null;
         return t.kind === 'review'
-          ? { label: 'Descartar…', disabled: !navigator.onLine, onClick: () => askReason(t.report, 'dismiss') }
-          : { label: 'Sigue fallando…', disabled: !navigator.onLine, onClick: () => askReason(t.report, 'reopen') };
+          ? { label: 'Descartar…', onClick: () => askReason(t.report, 'dismiss') }
+          : { label: 'Sigue fallando…', onClick: () => askReason(t.report, 'reopen') };
       },
       onOpen: (item) => { const t = todoById.get(item.id); if (t?.kind === 'screen') openScreen(t.screen); else if (t) openReport(t.report); },
       onAll: () => { stepFilter = null; appFilter = null; paintBoard(); boardHost.scrollIntoView({ block: 'start' }); },
       doneTitle: 'Nada te espera',
-      doneText: 'Cuando una pantalla pase a «Prototipo hecho» o «Demo hecha», o llegue un reporte nuevo, saldrá aquí.',
+      doneText: isAdmin ? 'Cuando una pantalla pase a «Prototipo hecho» o «Demo hecha», o llegue un reporte nuevo, saldrá aquí.'
+        : 'Cuando arreglen algo que comentaste, saldrá aquí para que lo compruebes.',
     });
-    replace(queueHost, el('h3', { class: 'ctl-rv-h' }, 'Lo que te toca'), queue.element);
+    replace(queueHost, el('h3', { class: 'ctl-rv-h' }, 'Lo que te toca'), queue.element, queueWhy, queueWhyQuiet);
+    // La tarjeta se pinta de nuevo al pasar, saltar o deshacer: se vuelven a atar sus botones.
+    new MutationObserver(() => bindQueue()).observe(queue.element, { childList: true });
+    bindQueue();
   }
   function askReason(report: Report, path: 'dismiss' | 'reopen'): void {
     let sheet: Sheet | null = null;
@@ -161,7 +187,8 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
       const ok = await act(report, path, path === 'dismiss' ? { reason: reason.value.trim() } : (reason.value.trim() ? { message: reason.value.trim() } : {}), path === 'dismiss' ? 'Descartado.' : 'Reabierto.');
       if (ok) { await sheet?.close(true); queue?.done(); }
     } }, path === 'dismiss' ? 'Descartar' : 'Enviar: sigue fallando');
-    sheet = openSheet({ title: path === 'dismiss' ? 'Descartar el reporte' : 'Sigue fallando', meta: report.code,
+    const unbindSend = bindOnline(send, { client, reason: 'Necesita conexión: el feedback se guarda en el momento.' });
+    sheet = openSheet({ title: path === 'dismiss' ? 'Descartar el reporte' : 'Sigue fallando', meta: report.code, onClose: () => unbindSend(),
       panelAttrs: { 'data-feedback-id': 'central.revision.motivo', 'data-feedback-label': 'Motivo' },
       body: el('div', null, el('p', { class: 'hint' }, firstLine(report.message)),
         el('label', { class: 'field' }, el('span', null, path === 'dismiss' ? 'Motivo (lo verá quien lo informó)' : '¿Qué sigue pasando? (opcional)'), reason), error),
@@ -196,6 +223,8 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
         readyText: 'Todas las pantallas están pasadas a Sevilla.',
         items: [
           ...(isAdmin && toAct.length ? [{ id: 'mine', title: 'Valorar prototipos y validar demos', done: false, stateText: plural(toAct.length, 'pantalla te espera', 'pantallas te esperan'), action: 'Empezar', minutes: toAct.length * 3, icon: 'star',
+            onClick: () => queueHost.scrollIntoView({ block: 'start' }) }] : []),
+          ...(!isAdmin && todos().length ? [{ id: 'mine', title: 'Comprobar lo que comentaste', done: false, stateText: plural(todos().length, 'arreglo te espera', 'arreglos te esperan'), action: 'Empezar', minutes: todos().length, icon: 'star',
             onClick: () => queueHost.scrollIntoView({ block: 'start' }) }] : []),
           ...apps.map((a) => {
             const rows = all.filter((s) => s.app === a);
@@ -466,5 +495,6 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
   }
   void loadScreens().then(loadReports);
   const off = client.onTable(T.reviewScreens, () => void loadScreens());
-  return () => off();
+  const offStatus = client.onStatus((s) => { if (s.network !== 'offline' && reportsState === 'offline') void loadReports(); });
+  return () => { off(); offStatus(); unbindQueue.forEach((u) => u()); };
 };

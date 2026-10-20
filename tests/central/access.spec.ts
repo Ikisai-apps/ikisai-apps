@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
+import { openMenu } from './menu-helpers.ts';
+import { contrastOf } from './measure.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');
@@ -127,6 +129,35 @@ test('accesos · el owner administra cuentas, altas, agentes y registro', async 
   await expect(page.locator('#accessLog')).not.toContainText('Clave de agente revocada');
 });
 
+test('accesos · sin red y sin haberlas leído, el aviso sustituye al vacío y el menú dice «se leen con red»', async ({ page, context }) => {
+  // Core no responde a las cuentas ni a las claves: nada queda leído en la sesión.
+  await page.route(/\/api\/v1\/admin\/(accounts|agents)$/, (route) => route.abort());
+  await login(page, 'owner@example.invalid');
+  await expect(page.getByRole('heading', { name: /^Hola,/ })).toBeVisible();
+  await context.setOffline(true);
+  await page.evaluate(() => { location.hash = '#/accesos'; });
+  const offline = page.locator('[data-feedback-id="central.accesos.sin_conexion"]');
+  await expect(offline).toContainText('Sin conexión');
+  await expect(page.locator('#accountList li')).toHaveCount(0);
+  await expect(page.locator('#main')).not.toContainText('Todavía no hay cuentas');
+  // El aviso, con la tinta de aviso del kit (≥ 4,5:1; MUELA-086).
+  expect(await contrastOf(offline)).toBeGreaterThanOrEqual(4.5);
+  await page.evaluate(() => { location.hash = '#/accesos/agentes'; });
+  await expect(page.locator('[data-feedback-id="central.accesos.sin_conexion"]')).toBeVisible();
+  await expect(page.locator('#main')).not.toContainText('No hay claves');
+  const drawer = await openMenu(page);
+  const tile = drawer.locator('.appmenu-tile', { hasText: 'Cuentas y accesos' });
+  await expect(tile).toContainText('se leen con red');
+  await expect(tile).not.toContainText(/\d+ cuentas?/);
+  await page.keyboard.press('Escape');
+
+  // Al volver la red, el menú las lee y pone sus cifras.
+  await page.unroute(/\/api\/v1\/admin\/(accounts|agents)$/);
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect((await openMenu(page)).locator('.appmenu-tile', { hasText: 'Cuentas y accesos' })).toContainText(/\d+ cuentas?/);
+});
+
 test('accesos · un editor de Central no ve Accesos ni puede abrirlos por la dirección @smoke', async ({ page }) => {
   await api.app.t.db.query(`update core.memberships set scopes = null where app = 'central' and user_id = $1`, [api.app.users.editor]);
   await login(page, 'reader@example.invalid');
@@ -191,6 +222,8 @@ test('accesos · la ficha manda: alta desde la ficha, renombrar (también sin re
   await expect(page.locator('#accountIssues')).toContainText('sin ficha');
   const reader = page.locator('.accountrow', { hasText: 'Reader' });
   await expect(reader).toContainText('Sin ficha');
+  expect(await contrastOf(reader.locator('.chip.warn[data-issue="sin_ficha"]'))).toBeGreaterThanOrEqual(4.5);
+  expect(await contrastOf(page.locator('#accountIssues'))).toBeGreaterThanOrEqual(4.5);
   await reader.click();
   await page.locator('#linkPerson').selectOption('');
   await page.locator('#linkPersonSubmit').click();

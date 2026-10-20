@@ -418,7 +418,8 @@ Migración `1512`. Lectura `{reader, editor, owner}`: todos ven el avance. Escri
   - con el id del nodo del reporte, la pantalla de su app con el prefijo de feedback más largo que encaje;
   - si no hay, la de ruta más larga que encaje con la ruta desde donde se mandó (`#/` solo encaja con Inicio);
   - si no hay ninguna, «Sin pantalla» dentro de su app.
-- **Lectura de los reportes:** el owner los lee de todas las apps con `GET feedback?app=all`, la ruta del kit que ya usa el «Revisor de QA».
+- **Lectura de los reportes:** el owner los lee de todas las apps con `GET feedback?app=all`, la ruta del kit que ya usa el «Revisor de QA». Los demás, los suyos (`mine=true`).
+- **«Lo que te toca»** (tanda 30, MUELA-086): el owner, las pantallas por valorar o validar, los reportes nuevos y los arreglos por comprobar. Quien no administra, los arreglos de lo que comentó (`pending_verify`), con «Funciona» o «Sigue fallando»: el núcleo deja comprobar a quien lo informó (`canVerify`). Sin red, esos botones quedan `aria-disabled` con el motivo (`bindOnline`) y los comentarios se leen solos al volver la conexión.
 - **Reglas del cliente** (`_domain/central/review.ts`):
   - `REVIEW_STEPS` y `REVIEW_STEP_LABELS`;
   - `sortScreens`, `stepCounts` (los diez pasos, también a cero) y `reviewProgress` («33 de 92 pantallas pasadas a Sevilla»);
@@ -673,7 +674,7 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 
 ## 9. Pantallas y navegación
 
-Cuatro entradas en la barra, iguales para todos: Inicio, Cumplimiento, Personas e Inventario. Desde la tanda 27 (20-10-2026), la marca abre el **menú lateral común** del kit (MUELA-013): perfil y sincronización, recientes, secciones («Cuentas y accesos» arriba para el owner; La entidad, Obligaciones y Documentos por tipo, Dirección, Equipos y oficios, Revisión), apps, comentarios y ayuda, y «Cerrar sesión»; en el ordenador, además, una columna fija y la barra abajo. La búsqueda va en la cabecera (Ctrl K). Lo de abajo sigue valiendo. Con cinco entradas, los nombres se cortaban en el móvil («Cumplimi…»). Por eso:
+Cuatro entradas en la barra, iguales para todos: Inicio, Cumplimiento, Personas e Inventario. Desde la tanda 27 (20-10-2026), la marca abre el **menú lateral común** del kit (MUELA-013): perfil y sincronización, recientes, secciones («Cuentas y accesos» arriba para el owner, con sus recuentos desde la tanda 30: cuentas, las que hay que revisar y las claves de agente en uso, de la última lectura de Core en la sesión; sin red, «se leen con red» en lugar de cifras; La entidad, Obligaciones y Documentos por tipo, Dirección, Equipos y oficios, Revisión), apps, comentarios y ayuda, y «Cerrar sesión»; en el ordenador, además, una columna fija y la barra abajo. La búsqueda va en la cabecera (Ctrl K). Lo de abajo sigue valiendo. Con cinco entradas, los nombres se cortaban en el móvil («Cumplimi…»). Por eso:
 - **Entidad** se abre desde Inicio.
 - **Accesos** se abre desde Inicio desde el 18-10-2026 (decisión del usuario al llegar Inventario). Son las tarjetas del owner Cuentas, Agentes, Alta y Registro. Sigue siendo solo para el owner, y en Accesos la barra marca Inicio.
 
