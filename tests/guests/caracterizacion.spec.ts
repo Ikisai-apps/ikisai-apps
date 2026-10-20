@@ -12,6 +12,10 @@
  * O4a (14-10-2026) cambia a propósito, y solo eso: la barra («Calendario · Retiros · Más»), Programa, Menú y Alojamiento
  * como secciones de la pestaña del retiro (mismo número de toques) y el cambio de retiro con pestañas en lugar de la
  * lista «¿Qué quieres ver?». Cada cambio va marcado con «O4a».
+ *
+ * La tanda 31 (rediseño de La Muela, MUELA-071) cambia a propósito, y solo eso: el cambio de retiro con la portada que se
+ * pasa (puntos y flechas del kit) en lugar de las pestañas; el Menú con la próxima comida abierta y las demás plegadas
+ * («La carta»); y el Programa con «Ahora y lo siguiente» («Empieza en N días» antes del retiro). Marcado con «Tanda 31».
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -98,17 +102,18 @@ test('caracterización · cambio de retiro: la misma persona en dos retiros camb
   // El aviso legal se acepta por cada retiro (cada retiro es una ficha de Booking).
   await page.locator('#privacyOk').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de invierno');
-  // O4a: los dos retiros, en pestañas por fecha, siempre visibles dentro del retiro (antes no había control para cambiar).
-  await expect(page.locator('#retreatTabs a')).toHaveCount(2);
-  await expect(page.locator('#retreatTabs a').first()).toContainText('Retiro de primavera');
-  await expect(page.locator('#retreatTabs a').nth(1)).toContainText('Retiro de invierno');
-  await expect(page.locator('#retreatTabs a[aria-current="page"]')).toContainText('Retiro de invierno');
+  // Tanda 31: los dos retiros, por fecha, en la portada que se pasa (antes, pestañas; un toque igual que antes).
+  const dots = page.locator('#retreatTabs .cover-dot');
+  await expect(dots).toHaveCount(2);
+  await expect(dots.first()).toHaveAttribute('aria-label', /Retiro de primavera, Ya pasó/);
+  await expect(dots.nth(1)).toHaveAttribute('aria-label', /Retiro de invierno/);
+  await expect(page.locator('#retreatTabs .cover-dot[aria-current="true"]')).toHaveAttribute('aria-label', /Retiro de invierno/);
   await capture(page, 'cambio-de-retiro');
   // #/ vuelve al retiro de entrada.
   await page.goto(`${baseURL}/#/`);
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de invierno');
-  // Un toque en la pestaña cambia de retiro (antes: #/ y elegir la tarjeta).
-  await page.locator('#retreatTabs a', { hasText: 'Retiro de primavera' }).click();
+  // Un toque en su punto cambia de retiro (antes: #/ y elegir la tarjeta; con O4a, la pestaña).
+  await page.locator('#retreatTabs .cover-dot[aria-label^="Retiro de primavera"]').click();
   await page.locator('#privacyOk').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de primavera');
   // Un retiro pasado enseña «Gracias por venir».
@@ -148,8 +153,12 @@ test('caracterización · menú: un día por pestaña (el primero si el retiro n
   await page.locator('#sections a[data-section="menu"]').click(); // O4a: sección del retiro (antes, la barra)
   await expect(page.locator('#menuDays [role="tab"]')).toHaveCount(2);
   await expect(page.locator('#menuDays [role="tab"]').first()).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('#menuList .gservice h3')).toHaveText([/^Comida/, /^Cena/]);
-  await expect(page.locator('#menuList .gservice').nth(1).locator('.gdish strong')).toHaveText(['Sopa de verduras', 'Flan']);
+  // Tanda 31 («La carta»): la primera comida del día abierta y las siguientes plegadas, por hora; al tocarla, sus platos en su orden.
+  await expect(page.locator('#menuNext h3')).toHaveText(/^Comida/);
+  await expect(page.locator('#menuNext .gdish strong')).toHaveText(['Lentejas']);
+  await expect(page.locator('#menuList .gmeal-fold summary strong')).toHaveText([/^Cena/]);
+  await page.locator('#menuList .gmeal-fold summary').click();
+  await expect(page.locator('#menuList .gmeal-fold .gdish strong')).toHaveText(['Sopa de verduras', 'Flan']);
   await capture(page, 'menu');
   await page.locator('#menuDays [role="tab"]').nth(1).click();
   await expect(page.locator('#menuList')).toContainText('Tostadas');
@@ -169,7 +178,10 @@ test('caracterización · horario: días en pestañas, actividades por hora, «D
   await expect(page.locator('#today')).toHaveCount(0); // «Hoy en Ikisai» solo durante el retiro
   await page.locator('#sections a[data-section="programa"]').click(); // O4a: sección del retiro (antes, la barra)
   await expect(page.locator('#programDays [role="tab"]').first()).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('#programList .gslot-body strong')).toHaveText(['Llegadas', 'Bienvenida']);
+  // Tanda 31 («Ahora y lo siguiente»): antes del retiro, «Empieza en N días» con la primera actividad; el resto, por hora.
+  await expect(page.locator('#programList .now-hero')).toContainText('Empieza en 20 días');
+  await expect(page.locator('#programList .now-hero')).toContainText('Llegadas');
+  await expect(page.locator('#programList .now-slot')).toHaveText([/Bienvenida/]);
   await capture(page, 'horario');
   await page.locator('#programDays [role="tab"]').nth(1).click();
   await expect(page.locator('#programList')).toContainText('Durante el día');

@@ -83,6 +83,8 @@
 
 - 2026-10-20 · **G13 (seguridad alimentaria): el menú de la familia cruza a cada persona.** Antes, con «Todos», el Menú solo miraba lo registrado de la primera persona y no cruzaba los platos. Ahora cada plato se cruza con cada persona (`crossRestriction` de Food), con su nombre, y «Cocina tiene registrado…» va persona a persona. Prueba en `personas.spec.ts` (la alergia en la segunda persona).
 
+- 2026-10-20 · **Tanda 31, rediseño de La Muela, parte A** (API.md §9.14): menú lateral del kit, portada del retiro que se pasa y se pliega con el aviso de otro retiro, Resumen por momentos, Programa «Ahora y lo siguiente», Menú «La carta» con el cruce por persona encima de la línea de #597, y Alojamiento con la lista de habitaciones, camas por color con texto y la familia. Pruebas reescritas (no borradas) en `modules`, `personas`, `caracterizacion`, `portal` y `outsider`.
+
 ## Pendiente
 
 - El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.

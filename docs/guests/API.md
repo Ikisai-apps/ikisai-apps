@@ -431,6 +431,49 @@ Para quien tiene nivel de casa `outsider` (`bootstrap.profile.houseLevel`; en Gu
   - al aceptarla, la cuenta recibe la entrada y el retiro pasa a sus pestañas;
   - «Mis propuestas» de la pestaña Outsider junta los platos (Food) y los «Apuntarme» (Booking).
 
+### 9.14 Rediseño de La Muela, de una pasada (tanda 31, 20-10-2026)
+
+Consolidado MUELA-071 con sus traspasos (012, 018, 025, 028, 030, 034, 037, 054, 056, 059, 060, 065 y 066) y la corrección
+078, sobre el kit 0.48. Reglas de Core: lo que La Muela quitaba se conserva (`PERDIDAS_guests.md` §1), las reglas de ley,
+seguridad y dinero son obligatorias (§2) y lo que no se nombra se queda (§3). Sin planos de zonas, «Ver en el plano» enseña
+el sitio en texto y el plano del centro de Central (imagen o PDF).
+
+**Parte A · cáscara, Resumen, Programa, Menú y Alojamiento:**
+- **Menú lateral del kit** (`createAppShell({ menu })`, MUELA-013): la marca abre el cajón con «Este retiro» (sus secciones y
+  lo que antes iba en «Más»: Información práctica, Materiales, Preguntas, Tus datos, Alimentación, Firma y Ayuda), «Retiros»
+  (hasta seis y el calendario) y, con nivel outsider, la casa. La barra de abajo sigue con «Calendario · Retiros». «‹ Volver
+  a…» (K9) si se llega desde otra app.
+- **Cabecera del retiro** (`ui/frame.ts`, MUELA-059): portada del kit (`createCoverCarousel`) con la imagen del retiro (la
+  primera imagen publicada en materiales que no es el logotipo; sin ella, color e iniciales), estado en texto, fechas, caras
+  de la familia y, si el retiro no es de todos, a quién toca; flechas, puntos (`#retreatTabs .cover-dot`) y deslizar. Encima,
+  el selector de persona (`#persons`) y la casa de Outsider (`#outsiderTab`). Debajo, «tu retiro de un vistazo» (estado,
+  noches, cama y quién va) y las secciones con icono (`#sections`), fijas bajo la cabecera al bajar con la barra plegada.
+  Si hoy hay un retiro en curso y se ve otro, aviso fijo `#otherRetreat` con «Ir a mi retiro» (se minimiza, no se cierra).
+- **Resumen** (`ui/home.ts`, MUELA-012): cuadro del retiro (saludo, fechas con el momento y llegada y salida a la vista;
+  durante, «Necesito ayuda» y «Llamar»; después, «Cuéntanos qué tal» y el próximo retiro), paso a paso del kit
+  (`renderSteps`, `#task-<id>` en cada tarea; lo hecho en la línea «Hecho:», con su estado en el `title`), horario del retiro
+  (`#schedule`: pestañas de día y `renderHourAgenda` con las comidas, `#todayNow`, `#todayNext`, `#todayMeal`), mensaje del
+  organizador y «Tu estancia» (`#roomPlan` y cuadros `#retreatTiles`). Sin red, solo «Guarda tu acceso» se desactiva
+  (`bindOnline`); lo que se rellena se guarda en el móvil como siempre.
+- **Regla de «ahora»** (MUELA-012 y 025): una actividad sin hora de fin sigue «Ahora» hasta que empieza la siguiente del día
+  (`endOfItem` y `nowAndNext` en `ui/program.ts`).
+- **Programa «Ahora y lo siguiente»** (MUELA-025, `renderNow` del kit): lo de ahora con su barra y «Quedan…» (o «Hasta las
+  19:00 · Meditación»), lo siguiente con su cuenta atrás, «Hoy, más tarde» plegado con el mismo detalle, lo hecho tras «Ver lo
+  ya hecho» y los otros días al pie (`#programDays`). Antes del retiro, «Empieza en N días». Cada lugar con «Ver en el plano» y
+  cada comida con «Ver el menú». Con la familia, el mismo programa con sus caras (sin `audience` no hay columnas por persona).
+- **Menú «La carta»** (MUELA-034 y 065, con 078): la próxima comida abierta (`#menuNext`) y las demás plegadas, filtros de
+  dieta y «Sin lo que indicaste, según la receta revisada» (ningún plato sin revisar lo pasa), y la línea de cocina con
+  «Cambiar» (con la familia, cada persona, también «nada indicado»). En cada plato, **siempre** la línea de alérgenos de #597
+  y, **encima**, el aviso de cada persona (`crossRestriction`): «⚠ Lucía: lleva frutos de cáscara (alergia grave). Pregunta
+  en cocina.». Con la familia, «Lo que vigilar, persona a persona» (`#familyWatch`) si algo coincide ese día. Nunca «apto».
+- **Alojamiento** (MUELA-056 sin plano y 065): arriba «Tu cama» o la habitación que se propone (`#lodgingMine` o
+  `#lodgingNone`); filtros «Con baño» y «Poca gente»; «Cambiar habitación» despliega la lista por opciones del organizador
+  con su nota (lo que no cumple, con borde discontinuo y elegible igual); y la habitación que se ve (`#lodgingRoom`) con la
+  nota de suplemento y las camas por color **y con texto** (supletorias marcadas). Elegir y soltar (con confirmación)
+  necesitan red. Con la familia: cada persona arriba con su cama o «Falta por colocar», «Eligiendo para…» al tocarla y
+  «Dormir todos aquí» (una llamada por persona). Se conservan las preferencias que se guardan solas, «Pendiente de aprobar»,
+  «Cerrada el…» y «sin habitaciones».
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:

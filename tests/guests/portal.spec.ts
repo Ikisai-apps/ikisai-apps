@@ -122,7 +122,7 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
 
   // Inicio: datos completos; la firma ya se puede hacer.
   await page.locator('#back').click();
-  await expect(page.locator('#task-data')).toContainText('Completos');
+  await expect(page.locator('#task-data')).toHaveAttribute('title', /Completos/); // en la línea «Hecho:» (tanda 31)
   await expect(page.locator('#task-sign')).toContainText('Pendiente');
 
   // Alimentación: una alergia grave y el interruptor para compartirla.
@@ -139,7 +139,7 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
 
   // Firma: resumen, firma con el dedo y «Firmado».
   await page.locator('#back').click();
-  await expect(page.locator('#task-diet')).toContainText('Revisada');
+  await expect(page.locator('#task-diet')).toHaveAttribute('title', /Revisada/); // en la línea «Hecho:» (tanda 31)
   await page.locator('#task-sign').click();
   await expect(page.locator('#signSummary')).toContainText('XA123456');
   await expect(page.locator('#signerName')).toHaveValue('Ana Sintética');
@@ -152,7 +152,7 @@ test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentaci
   expect(signed.signed_by_name).toBe('Ana Sintética');
   expect(signed.signature_file_id).toBeTruthy();
   await page.locator('#back').click();
-  await expect(page.locator('#todo h3')).toHaveText('¡Todo listo!');
+  await expect(page.locator('#todo .step-readytitle')).toContainText('¡Todo listo!'); // paso a paso del kit (tanda 31)
 
   // Cambiar un dato del registro después de firmar invalida la firma (BG5) y se avisa.
   await page.locator('#task-data').click();
@@ -257,8 +257,8 @@ test('guests · una cuenta con dos personas: la familia junta por defecto, se el
   // O4a: «Todos» por defecto; un solo aviso legal para el retiro y lo que falta de cada persona, con su nombre.
   await acceptPrivacy(page);
   await expect(page).toHaveURL(new RegExp(`#/r/${reservation}$`));
-  await expect(page.locator('#persons button')).toHaveText(['Todos', 'Marta', 'Nico']);
-  await expect(page.locator('#persons button[aria-pressed="true"]')).toHaveText('Todos');
+  await expect(page.locator('#persons button > span:last-child')).toHaveText(['Todos', 'Marta', 'Nico']); // la cara va delante (tanda 31)
+  await expect(page.locator('#persons button[aria-pressed="true"] > span:last-child')).toHaveText('Todos');
   await expect(page.locator('#hello')).toHaveText('Hola, Marta y Nico');
   await expect(page.locator('#todoFamily .gperson')).toHaveCount(2);
   await expect(page.locator('body')).not.toContainText('Ajena');
