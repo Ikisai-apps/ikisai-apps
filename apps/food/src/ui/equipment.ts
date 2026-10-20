@@ -4,7 +4,7 @@ import {
   type Equipment, type EquipmentNotice, type EquipmentStage, type EquipmentStatus, type MenuItem, type MenuService, type MovementLike, type RecipeEquipment, type ResourceItem,
 } from '@ikisai/domain-food';
 import type { SyncedRow } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, listRow, openSheet, renderStages, replace, spaceFromRow, spacePath, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
+import { ancestorsOf, closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, indexSpaces, listRow, openSheet, renderStages, replace, spaceFromRow, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
 import { todayKey } from '../app/events.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { guard } from '../app/guard.ts';
@@ -39,11 +39,21 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   let spaces: SpaceRow[] = [];
   let movements: MovementLike[] = [];
   const articleOf = (row: Row) => (row.item_id ? articles.find((a) => a.id === row.item_id) : undefined);
-  /** «Altura 1 › Casa › Cocina › Office» si la máquina tiene sitio en Recursos; si no, la ubicación escrita. */
-  const placeOf = (row: Row) => {
-    const space = articleOf(row)?.default_space_id;
-    return (space && spacePath(spaces, space)) || row.location || '';
+  /**
+   * Bloque 2 (Maquinaria A, MUELA-077 §3): una sola línea de sitio. La ruta corta del espacio («Albergue › Almacén»,
+   * como la del selector del kit), si no el texto escrito, si no «Sin sitio»; nunca las dos cosas.
+   */
+  const shortPlace = (spaceId: string | null | undefined): string => {
+    if (!spaceId) return '';
+    const byId = indexSpaces(spaces);
+    const space = byId.get(spaceId);
+    if (!space) return '';
+    const parent = ancestorsOf(byId, spaceId).pop();
+    return parent && parent.kind !== 'altura' ? `${parent.name} › ${space.name}` : space.name;
   };
+  const placeOf = (row: Row) => shortPlace(articleOf(row)?.default_space_id) || row.location || 'Sin sitio';
+  /** Stock total del artículo en Recursos (lo que la ficha llama «Cantidad»). */
+  const stockOf = (itemId: string) => Math.round(movements.filter((m) => !m.deleted_at && m.item_id === itemId).reduce((sum, m) => sum + Number(m.quantity), 0) * 1000) / 1000;
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
   let sheet: Sheet | null = null;
   const net = onlineBinder(client);
@@ -166,10 +176,32 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     // Espacio de Recursos (R5): dónde está la máquina. Solo si ya tiene artículo y hay espacios.
     const article = row ? articleOf(row) : undefined;
     let spaceChanged = false;
+    // Un solo «Dónde está»: con artículo, el selector de espacio (una sola etiqueta) y el texto de antes en solo lectura
+    // hasta que se elija un espacio; sin artículo, el texto libre de siempre. No se borra ningún texto.
     const spacePicker = article && spaces.length && canWrite()
-      ? createSpacePicker({ label: 'Espacio', rows: spaces, value: article.default_space_id ?? null, recentKey: 'food.maquinaria', feedbackId: SPACE_MARK,
-          onChange: () => { spaceChanged = true; refreshDirty(); } })
+      ? createSpacePicker({ label: 'Dónde está', rows: spaces, value: article.default_space_id ?? null, recentKey: 'food.maquinaria', feedbackId: SPACE_MARK,
+          onChange: () => { spaceChanged = true; refreshDirty(); paintStock(); } })
       : null;
+    // El stock, antes de guardar: lo mismo que escribirá `machineStockMovement`, dicho antes.
+    const stockLine = el('p', { 'data-feedback-id': 'food.maquinaria.formulario.stock', 'data-feedback-label': 'Stock en Recursos', class: 'hint fd-machinestock', id: 'machineStock', 'aria-live': 'polite' });
+    function paintStock(): void {
+      if (!article || !spacePicker) { stockLine.hidden = true; return; }
+      const stock = stockOf(article.id);
+      const wanted = Number(quantity.value);
+      const spaceId = spacePicker.get()[0] ?? null;
+      const where = shortPlace(spaceId);
+      const delta = Math.round((wanted - stock) * 1000) / 1000;
+      const changedQty = row ? wanted !== row.quantity : false;
+      stockLine.hidden = false;
+      stockLine.classList.toggle('warnline', delta !== 0);
+      if (!Number.isInteger(wanted) || wanted < 0) { stockLine.textContent = ''; stockLine.hidden = true; return; }
+      if (delta === 0) { stockLine.textContent = `En Recursos hay ${stock}: cuadra con la ficha.`; return; }
+      if (!spaceId) { stockLine.textContent = `No cuadra: la ficha dice ${wanted} · en Recursos hay ${stock}. Elige dónde está para ajustarlo al guardar.`; return; }
+      const move = delta > 0 ? `entra ${delta} en ${where}` : `sale ${-delta} de ${where}`;
+      stockLine.textContent = changedQty || spaceChanged
+        ? `Al guardar, en Recursos pasa de ${stock} a ${wanted} (${move}).`
+        : `No cuadra: la ficha dice ${wanted} · en Recursos hay ${stock}. Al guardar, pasa a ${wanted} (${move}).`;
+    }
 
     const fields = (): Record<string, unknown> => ({
       name: name.value.trim(), category: text(category.value), quantity: Number(quantity.value), capacity: text(capacity.value),
@@ -214,9 +246,11 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       el('label', { class: 'field' }, el('span', null, 'Tipo'), category),
       el('label', { class: 'field' }, el('span', null, 'Cantidad'), quantity),
       el('label', { class: 'field' }, el('span', null, 'Capacidad'), capacity),
-      el('label', { class: 'field' }, el('span', null, 'Ubicación'), location),
-      spacePicker ? el('div', { class: 'field' }, el('span', null, 'Espacio'), spacePicker.element,
-        el('span', { class: 'hint' }, 'Dónde está en la casa (Recursos). Con espacio, «Cantidad» es su stock: cambiarla lo ajusta.')) : null,
+      spacePicker
+        ? el('div', { 'data-feedback-id': 'food.maquinaria.formulario.donde', 'data-feedback-label': 'Dónde está', class: 'field fd-where' }, spacePicker.element,
+            !article?.default_space_id && row?.location ? el('p', { class: 'hint', id: 'oldLocation' }, `Antes: “${row.location}” (se guarda tal cual; elige el espacio).`) : null,
+            el('span', { class: 'hint' }, 'Con espacio, «Cantidad» es su stock en Recursos: cambiarla lo ajusta.'), stockLine)
+        : el('label', { class: 'field' }, el('span', null, 'Ubicación'), location),
       el('label', { class: 'field' }, el('span', null, 'Estado'), status),
       el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
       error,
@@ -241,6 +275,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       onClose: () => { guard.dirtyEditor = false; sheet = null; net.release(); },
     });
     refreshDirty();
+    paintStock();
+    quantity.addEventListener('input', paintStock);
     // Avisar a Tasks necesita red (MUELA-086): sin ella, desactivado con el motivo.
     form.querySelectorAll<HTMLElement>('#reportFault, #reportFaultTop').forEach((b) => net.bind(b, 'Avisar a Tasks necesita conexión.'));
   }
@@ -270,7 +306,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     try {
       const out = await usage.run('food.maquinaria.avisar_averia', () => client.api<{ created: boolean; routed: string | null }>(`/equipment/${row.id}/fault`, {
         method: 'POST',
-        json: { name: row.name, status: row.status, location: row.location ?? '', note: note.trim() },
+        // El sitio que se manda es el espacio de Recursos (su ruta corta); sin espacio, el texto escrito.
+        json: { name: row.name, status: row.status, location: shortPlace(articleOf(row)?.default_space_id) || row.location || '', note: note.trim() },
       }));
       toast(!out.created ? 'Ya se había avisado hoy a Tasks de esta máquina.'
         : out.routed === 'pending' ? 'Aviso enviado a Tasks: queda en «Por clasificar».' : 'Aviso enviado a Tasks.');

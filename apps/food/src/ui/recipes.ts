@@ -1,9 +1,10 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  PREP_UNITS, allergenPresence, crossContext, undeclaredAllergens, undeclaredText, type CrossContext, foodUnitFromBase, formatMethodSteps, fromItemBase, kitchenStock, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
+  PREP_UNITS, allergenPresence, ingredientNeeds, needText, nextRecipeService, pendingConsumption, readableQuantity, serviceShares, stockText, weekdayLong,
+  type Consumption, type IngredientNeed, type Menu, type MenuGraph, type MenuItem, type MenuService, crossContext, undeclaredAllergens, undeclaredText, type CrossContext, foodUnitFromBase, formatMethodSteps, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createFocus, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -17,6 +18,7 @@ import { isBlobMarker, photoUrl, preparePhoto, showPhoto, stagePhoto, type Photo
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
 import { createStepsEditor, methodStepsView } from './method-steps.ts';
+import { SERVICE_LABELS } from './events.ts';
 import type { ViewMount } from './shell.ts';
 
 /** Par de atributos de «Sugerencias y QA» que los helpers de esta vista reciben ya escrito en literal. */
@@ -62,6 +64,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     return spacePath(inventory.spaces.filter((s) => !s.deleted_at).map((s) => ({ ...spaceFromRow(s as never) })), space).split(' › ').slice(-2).join(' › ') || null;
   };
   let needs: NeedRow[] = [];
+  // Bloque 2 (ficha B): los menús, para comparar con el próximo servicio de la receta, y el consumo sin descontar.
+  let planning: { menus: Array<Mirror<Menu>>; services: Array<Mirror<MenuService>>; items: Array<Mirror<MenuItem>>; consumptions: Array<Mirror<Consumption>> } = { menus: [], services: [], items: [], consumptions: [] };
   let sheet: Sheet | null = null;
   let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
   const filter: { query: string; category: string; diet: string; allergen: string; allergenMode: 'lleva' | 'sin'; status: string } = { query: '', category: '', diet: '', allergen: '', allergenMode: 'lleva', status: '' };
@@ -161,8 +165,14 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     // Ingredientes de Recursos que Food aún no usa (R5a): se sugieren para no duplicar artículos.
-    void loadInventory(client).then((next) => { inventory = next; }).catch(() => undefined);
+    const stock = loadInventory(client).then((next) => { inventory = next; }).catch(() => undefined);
     void (resourcesClient(client).list(R.items) as unknown as Promise<Array<Mirror<ResourceItem>>>).then((rows) => { resourceItems = rows.filter((i) => !i._pending); }).catch(() => undefined);
+    const plans = Promise.all([
+      client.list(T.menus) as Promise<Array<Mirror<Menu>>>, client.list(T.menuServices) as Promise<Array<Mirror<MenuService>>>,
+      client.list(T.menuItems) as Promise<Array<Mirror<MenuItem>>>, client.list(T.consumptions) as Promise<Array<Mirror<Consumption>>>,
+    ]).then(([menus, services, items, consumptions]) => { planning = { menus, services, items, consumptions }; }).catch(() => undefined);
+    // La ficha que se abre antes de que lleguen el inventario y los menús se repinta al llegar (no se queda sin cifras).
+    void Promise.all([stock, plans]).then(refreshCard);
     [recipes, ingredients, lines, equipment, needs] = await Promise.all([
       client.list(T.recipes, { includeDeleted: true }) as Promise<RecipeRow[]>,
       client.list(T.ingredients) as Promise<IngredientRow[]>,
@@ -181,6 +191,13 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     }
   }
   let openedFromLink = false;
+  /** La ficha en lectura abierta, para repintarla cuando cambian el stock o los menús. */
+  let shownCard: { recipe: RecipeRow; sheet: Sheet } | null = null;
+  function refreshCard(): void {
+    if (!shownCard || sheet !== shownCard.sheet || !shownCard.sheet.isOpen()) return;
+    const fresh = recipes.find((r) => r.id === shownCard!.recipe.id) ?? shownCard.recipe;
+    replace(shownCard.sheet.body, cardBody(fresh));
+  }
 
   const linesOf = (recipeId: string) => lines.filter((l) => l.recipe_id === recipeId && !l.deleted_at).sort((a, b) => Number(a.position) - Number(b.position));
   const needsOf = (recipeId: string) => needs.filter((n) => n.recipe_id === recipeId && !n.deleted_at);
@@ -238,34 +255,77 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
 
   // --- Ficha en lectura -----------------------------------------------------------------
   function openCard(recipe: RecipeRow): void {
+    const opened = openSheet({
+      title: recipe.name,
+      meta: `Revisión ${recipe.revision} · actualizada ${formatDate(recipe.updated_at)}`,
+      body: cardBody(recipe),
+      foot: canWrite()
+        ? [el('button', { 'data-feedback-id': 'food.recetario.ficha.cerrar', 'data-feedback-label': 'Cerrar ficha', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar'), el('button', { 'data-feedback-id': 'food.recetario.ficha.editar', 'data-feedback-label': 'Editar receta', class: 'primary', type: 'button', id: 'editRecipe', onclick: () => openEditor(recipe) }, 'Editar')]
+        : [el('button', { 'data-feedback-id': 'food.recetario.ficha.cerrar', 'data-feedback-label': 'Cerrar ficha', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar')],
+      onClose: () => { sheet = null; shownCard = null; },
+    });
+    sheet = opened;
+    shownCard = { recipe, sheet: opened };
+  }
+
+  /** El cuerpo de la ficha con los datos de ahora (se rehace cuando llegan el inventario y los menús). */
+  function cardBody(recipe: RecipeRow): HTMLElement {
     const names = new Map(ingredients.map((i) => [i.id, i.name]));
     const machines = new Map(equipment.map((e) => [e.id, e]));
     const block = (mark: Mark, title: string, ...content: Array<HTMLElement | null>) => (content.some(Boolean) ? el('section', { ...mark, class: 'ficha-block' }, el('h4', null, title), ...content) : null);
     const para = (label: string, value: string | null) => (value ? el('p', null, el('strong', null, `${label}: `), value) : null);
     const recipeLines = linesOf(recipe.id);
     const recipeNeeds = needsOf(recipe.id);
+    // Bloque 2 (ficha B «Portada y foco», MUELA-077 §2 con PERDIDAS §1 y §2): se compara con las raciones del próximo
+    // servicio en que sale la receta (solo esta receta); si no sale en ninguno, con las de la receta, y lo dice.
+    const now = new Date();
+    const next = nextRecipeService(recipe.id, planning, now);
+    const servings = next?.servings ?? Number(recipe.base_servings);
+    const tracked = !!inventory?.kitchen.size;
+    const graph: MenuGraph = { services: planning.services, items: planning.items, recipes: recipes as unknown as Recipe[], recipe_ingredients: lines.filter((l) => !l.deleted_at), ingredients };
+    const ingredientRows: IngredientNeed[] = ingredientNeeds({
+      lines: recipeLines, ingredients, baseServings: Number(recipe.base_servings), servings, today: todayKey(),
+      stock: tracked && inventory ? inventory : null,
+      shares: next ? serviceShares(next.service.id, recipe.id, graph) : undefined,
+      pending: tracked && inventory ? pendingConsumption(graph, planning.consumptions, inventory.movements, now) : undefined,
+    });
+    const followed = ingredientRows.filter((n) => n.state !== 'sin_seguimiento');
+    const short = followed.filter((n) => n.state === 'faltan' || n.state === 'no_hay');
+    const low = followed.filter((n) => n.low);
+    const forText = next ? `Para el ${weekdayLong(next.service.service_date)}, ${SERVICE_LABELS[next.service.service_type].toLowerCase()} · ${formatQuantity(servings)} raciones` : `${formatQuantity(servings)} raciones base`;
     // Tanda 27 (Bloque 2, B «Portada y foco»): la portada del kit con la foto, el estado y las cifras de la receta.
+    // Sin revisar, la portada lo dice (nunca «apto» ni «sin X»).
     const coverOf = (image: string | null) => renderCover({
       title: recipe.name, image, compact: true,
-      pill: RECIPE_STATUS_LABELS[recipe.status], pillTone: recipe.status === 'validada' ? 'ok' : recipe.status === 'archivada' ? null : 'warn',
-      stats: [`${formatQuantity(recipe.base_servings)} raciones base`, `${recipeLines.length} ${recipeLines.length === 1 ? 'ingrediente' : 'ingredientes'}`, prepLabel(recipe.prep_minutes)].filter(Boolean).join(' · '),
+      pill: recipe.allergens_checked ? RECIPE_STATUS_LABELS[recipe.status] : 'Alérgenos sin revisar',
+      pillTone: !recipe.allergens_checked ? 'alert' : recipe.status === 'validada' ? 'ok' : recipe.status === 'archivada' ? null : 'warn',
+      stats: [forText,
+        tracked && followed.length ? `${followed.length - short.length}/${followed.length} en casa` : `${recipeLines.length} ${recipeLines.length === 1 ? 'ingrediente' : 'ingredientes'}`,
+        tracked && followed.length ? `${short.length} ${short.length === 1 ? 'falta' : 'faltan'}` : null,
+        tracked && low.length ? `${low.length} bajo mínimo` : null,
+        tracked ? null : prepLabel(recipe.prep_minutes)].filter(Boolean).join(' · '),
     });
+    /** Ir a la ficha del artículo en la Despensa. */
+    const toPantry = (itemId: string) => { void sheet?.close(true); location.hash = `#/despensa?articulo=${itemId}`; };
+    // Foco: solo lo que falta o está bajo mínimo, de uno en uno.
+    const focusItems = ingredientRows.filter((n) => n.itemId && (n.state === 'faltan' || n.state === 'no_hay' || n.low)).map((n) => ({
+      id: n.itemId!, title: n.name,
+      kicker: n.state === 'no_hay' ? 'No hay en casa' : n.state === 'faltan' ? 'Falta' : 'Bajo mínimo',
+      tone: n.state === 'faltan' || n.state === 'no_hay' ? 'alert' as const : 'warn' as const,
+      note: needText(n),
+      meta: [`Hace falta ${readableQuantity(n.need, n.unit)}`, stockText(n) ? `en casa ${stockText(n)}` : null].filter((x): x is string => !!x),
+    }));
+    const focus = tracked && focusItems.length ? createFocus({
+      label: 'Lo que falta para esta receta', items: focusItems, feedbackId: 'food.recetario.ficha.foco',
+      onOpen: (item) => toPantry(item.id),
+    }) : null;
     const coverHost = el('div', { 'data-feedback-id': 'food.recetario.ficha.foto', 'data-feedback-label': 'Portada de la receta', class: 'ficha-photo fd-cover', 'data-photo': recipe.photo_file_id ? 'loading' : 'none' }, coverOf(null));
     if (recipe.photo_file_id) void photoUrl(client, recipe.photo_file_id).then((url) => {
       coverHost.dataset.photo = url ? 'ready' : 'missing';
       if (url) replace(coverHost, coverOf(url));
       else if (!navigator.onLine) coverHost.append(el('span', { class: 'fd-nophoto' }, 'Foto sin descargar'));
     });
-    // «En casa: 3 kg» (R5): el stock de cocina del artículo del ingrediente, si se lleva inventario.
-    const atHome = (ingredientId: string, unit: Unit): { text: string; itemId: string } | null => {
-      const article = inventory?.kitchen.size ? inventory.items.find((i) => i.id === ingredients.find((g) => g.id === ingredientId)?.item_id) : undefined;
-      if (!article || !inventory) return null;
-      const base = kitchenStock(article.id, inventory.movements, inventory.lots, inventory.kitchen, todayKey());
-      if (base === null) return null;
-      const inUnit = fromItemBase(base, article.base_unit, unit);
-      return { itemId: article.id, text: inUnit === null ? `En casa: ${formatQuantity(base)} ${article.base_unit}` : `En casa: ${formatQuantity(inUnit)} ${UNIT_LABELS[unit]}` };
-    };
-
+    const recipeServings = formatQuantity(recipe.base_servings);
     const body = el('div', { 'data-feedback-id': 'food.recetario.ficha', 'data-feedback-label': 'Ficha de receta', class: 'ficha' },
       quickPending(recipe) ? el('div', { 'data-feedback-id': 'food.recetario.ficha.rapida', 'data-feedback-label': 'Plato rápido por completar', class: 'banner warn notice', id: 'quickNotice', role: 'status' },
         el('div', null, el('strong', null, 'Plato rápido.'), ' Complétalo (alérgenos e ingredientes) para usarlo en un retiro.'),
@@ -279,17 +339,36 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       el('div', { class: 'chips' },
         el('span', { class: recipe.status === 'validada' ? 'chip ok' : 'chip' }, RECIPE_STATUS_LABELS[recipe.status]),
         recipe._pending ? el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar')) : null),
+      block({ 'data-feedback-id': 'food.recetario.ficha.seguridad', 'data-feedback-label': 'Seguridad' }, 'Seguridad',
+        // Los ingredientes o el texto del plato nombran un alérgeno que la receta no declara (decisión de Core Sevilla,
+        // 20-10-2026; MUELA-086): aviso claro y a corregir.
+        ...undeclaredAllergens(recipe as unknown as Recipe, crossContext({ recipe_ingredients: lines.filter((l) => !l.deleted_at) as RecipeIngredient[], ingredients: ingredients as Ingredient[] }))
+          .map((u) => el('div', { 'data-feedback-id': 'food.recetario.ficha.sin_declarar', 'data-feedback-label': 'Alérgeno posible sin declarar', class: 'banner warn notice fd-undeclared', role: 'status' },
+            el('div', null, undeclaredText(u)),
+            canWrite() ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.ficha.sin_declarar.revisar', 'data-feedback-label': 'Revisar los alérgenos', class: 'ghost', type: 'button', onclick: () => openEditor(recipe) }, 'Revisar los alérgenos')) : null)),
+        el('p', null, el('strong', null, 'Alérgenos: '), recipe.allergens.length ? recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ') : 'ninguno declarado'),
+        recipe.allergens_checked ? el('p', { class: 'muted' }, 'Alérgenos revisados.') : el('p', null, el('span', { class: 'chip alert' }, 'Alérgenos sin revisar'))),
+      focus ? el('section', { class: 'ficha-block fd-focus' }, el('h4', null, 'Lo que falta'), focus.element) : null,
       block({ 'data-feedback-id': 'food.recetario.ficha.ingredientes', 'data-feedback-label': 'Ingredientes' }, 'Ingredientes', recipeLines.length
         ? el('table', { class: 'ingredients' },
-          el('caption', { class: 'fd-caption' }, inventory?.kitchen.size ? 'Hace falta (a las raciones base) · Hay en casa, bajo cada ingrediente' : 'Hace falta, a las raciones base'),
-          el('tbody', null, ...recipeLines.map((l) => {
-            return el('tr', null,
-              el('td', null, names.get(l.ingredient_id) ?? '—', ((home) => home
-                // Lleva a su ficha en la Despensa.
-                ? el('a', { 'data-feedback-id': 'food.recetario.ficha.en_casa', 'data-feedback-label': 'Ver en la despensa', class: 'consumewhy athome', href: `#/despensa?articulo=${home.itemId}`,
-                    onclick: (e: Event) => { e.preventDefault(); void sheet?.close(true); location.hash = `#/despensa?articulo=${home.itemId}`; } }, home.text)
-                : null)(atHome(l.ingredient_id, l.unit))),
-              el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit]));
+          el('caption', { class: 'fd-caption' }, next
+            ? `Hace falta para ${formatQuantity(servings)} raciones (${weekdayLong(next.service.service_date)}) · debajo, lo que dice la receta${tracked ? ' · y lo que hay en casa' : ''}`
+            : `Hace falta, a las ${recipeServings} raciones de la receta: no sale en ningún menú que venga${tracked ? ' · y lo que hay en casa' : ''}`),
+          el('tbody', null, ...ingredientRows.map((n, index) => {
+            const line = recipeLines[index]!;
+            const stock = stockText(n);
+            const scaled = next && servings !== Number(recipe.base_servings);
+            // La fila entera lleva a su ficha en la Despensa (≥ 52 px); el enlace queda para el teclado y el lector.
+            return el('tr', { class: n.itemId ? 'fd-needrow' : '', 'data-state': tracked ? n.state : null, onclick: n.itemId ? (e: Event) => { if (!(e.target as HTMLElement).closest('a')) toPantry(n.itemId!); } : null },
+              el('td', null, names.get(line.ingredient_id) ?? '—',
+                n.itemId && n.state !== 'sin_seguimiento'
+                  ? el('a', { 'data-feedback-id': 'food.recetario.ficha.en_casa', 'data-feedback-label': 'Ver en la despensa', class: 'consumewhy athome', href: `#/despensa?articulo=${n.itemId}`,
+                      onclick: (e: Event) => { e.preventDefault(); toPantry(n.itemId!); } }, n.state === 'no_hay' || !stock ? 'Ver en la despensa' : `En casa: ${stock}`)
+                  : null,
+                tracked ? el('span', { class: `fd-needstate fd-need-${n.state}` }, needText(n)) : null),
+              el('td', { class: 'num fd-needqty' },
+                el('strong', null, readableQuantity(scaled ? n.need : Number(line.quantity), line.unit)),
+                scaled ? el('span', { class: 'fd-recipeqty' }, `Receta, ${recipeServings} raciones: ${formatQuantity(line.quantity)} ${UNIT_LABELS[line.unit]}`) : null));
           })))
         : el('p', { class: 'muted' }, 'Sin ingredientes todavía.'),
         recipeCostLine(recipe, recipeLines),
@@ -304,15 +383,6 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
                 cost === null ? 'sin precio' : `${euros(cost)}${price?.stale ? ' *' : ''}`));
           })))) : null),
       block({ 'data-feedback-id': 'food.recetario.ficha.elaboracion', 'data-feedback-label': 'Elaboración' }, 'Elaboración', methodStepsView(recipe), para('Antelación', prepLabel(recipe.prep_minutes))),
-      block({ 'data-feedback-id': 'food.recetario.ficha.seguridad', 'data-feedback-label': 'Seguridad' }, 'Seguridad',
-        // Los ingredientes o el texto del plato nombran un alérgeno que la receta no declara (decisión de Core Sevilla,
-        // 20-10-2026; MUELA-086): aviso claro y a corregir.
-        ...undeclaredAllergens(recipe as unknown as Recipe, crossContext({ recipe_ingredients: lines.filter((l) => !l.deleted_at) as RecipeIngredient[], ingredients: ingredients as Ingredient[] }))
-          .map((u) => el('div', { 'data-feedback-id': 'food.recetario.ficha.sin_declarar', 'data-feedback-label': 'Alérgeno posible sin declarar', class: 'banner warn notice fd-undeclared', role: 'status' },
-            el('div', null, undeclaredText(u)),
-            canWrite() ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.ficha.sin_declarar.revisar', 'data-feedback-label': 'Revisar los alérgenos', class: 'ghost', type: 'button', onclick: () => openEditor(recipe) }, 'Revisar los alérgenos')) : null)),
-        el('p', null, el('strong', null, 'Alérgenos: '), recipe.allergens.length ? recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ') : 'ninguno declarado'),
-        recipe.allergens_checked ? el('p', { class: 'muted' }, 'Alérgenos revisados.') : el('p', null, el('span', { class: 'chip alert' }, 'Alérgenos sin revisar'))),
       block({ 'data-feedback-id': 'food.recetario.ficha.maquinaria', 'data-feedback-label': 'Maquinaria' }, 'Maquinaria', recipeNeeds.length ? el('ul', { class: 'plainlist' }, ...recipeNeeds.map((n) => {
         const machine = machines.get(n.equipment_id);
         const short = machine && n.quantity_required > machine.quantity ? ` · hacen falta ${n.quantity_required} y hay ${machine.quantity}` : '';
@@ -322,15 +392,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       block({ 'data-feedback-id': 'food.recetario.ficha.conservacion', 'data-feedback-label': 'Conservación y servicio' }, 'Conservación y servicio', para('Conservación', recipe.conservation), recipe.freezable ? el('p', null, 'Se puede congelar.') : null, para('Regeneración', recipe.regeneration), para('Servicio', recipe.service_notes)),
     );
 
-    sheet = openSheet({
-      title: recipe.name,
-      meta: `Revisión ${recipe.revision} · actualizada ${formatDate(recipe.updated_at)}`,
-      body,
-      foot: canWrite()
-        ? [el('button', { 'data-feedback-id': 'food.recetario.ficha.cerrar', 'data-feedback-label': 'Cerrar ficha', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar'), el('button', { 'data-feedback-id': 'food.recetario.ficha.editar', 'data-feedback-label': 'Editar receta', class: 'primary', type: 'button', id: 'editRecipe', onclick: () => openEditor(recipe) }, 'Editar')]
-        : [el('button', { 'data-feedback-id': 'food.recetario.ficha.cerrar', 'data-feedback-label': 'Cerrar ficha', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar')],
-      onClose: () => { sheet = null; },
-    });
+    return body;
   }
 
   // --- Edición por bloques --------------------------------------------------------------
@@ -609,11 +671,29 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   paintOffline();
   void loadPurchases(client).then((next) => { purchases = next; });
   const offs = [T.recipes, T.ingredients, T.recipeIngredients, T.equipment, T.recipeEquipment].map((table) => client.onTable(table, () => void load()));
+  // El espejo de Recursos llega después que el de Food, y los menús cambian aparte: la ficha abierta se repinta.
+  let stockTimer: ReturnType<typeof setTimeout> | null = null;
+  const onStock = () => {
+    if (stockTimer) clearTimeout(stockTimer);
+    stockTimer = setTimeout(() => {
+      void Promise.all([
+        loadInventory(client).then((next) => { inventory = next; }).catch(() => undefined),
+        Promise.all([client.list(T.menus), client.list(T.menuServices), client.list(T.menuItems), client.list(T.consumptions)])
+          .then(([menus, services, items, consumptions]) => { planning = { menus, services, items, consumptions } as typeof planning; }).catch(() => undefined),
+      ]).then(refreshCard);
+    }, 300);
+  };
+  const offStock = [
+    ...[T.menus, T.menuServices, T.menuItems, T.consumptions].map((table) => client.onTable(table, onStock)),
+    ...(() => { try { const r = resourcesClient(client); return [R.spaces, R.items, R.movements, R.lots].map((t) => r.onTable(t, onStock)); } catch { return []; } })(),
+  ];
   const offStatus = client.onStatus(() => { paintOffline(); if (!sheet) void load(); });
   window.addEventListener('online', paintOffline);
   window.addEventListener('offline', paintOffline);
   return () => {
     offs.forEach((off) => off());
+    offStock.forEach((off) => off());
+    if (stockTimer) clearTimeout(stockTimer);
     offStatus();
     window.removeEventListener('online', paintOffline);
     window.removeEventListener('offline', paintOffline);

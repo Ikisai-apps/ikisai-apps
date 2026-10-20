@@ -379,16 +379,47 @@
 .fd-costfold{margin-top:8px}
 .fd-costfold>summary{min-height:var(--tap);display:flex;align-items:center;cursor:pointer;font-weight:700}
 .fd-costlines td{padding:4px 8px 4px 0}
-/* Tanda 27 · Despensa en baldosas */
+/* Bloque 2 · Despensa (baldosas del kit) y «Casa» */
 .fd-viewbar{margin:8px 0 12px}
 .fd-viewbar button{min-height:var(--tap)}
-.fd-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px}
-.fd-tiles[hidden]{display:none}
-.fd-tile{display:flex;flex-direction:column;gap:6px}
-.fd-tile-buy{min-height:var(--tap)}
+.fd-viewbar button[aria-pressed="true"],.fd-casatabs button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.fd-casatabs{display:flex;width:100%;margin:4px 0 14px}
+.fd-casatabs button{flex:1}
+/* Bloque 2 · Inicio: lo urgente abierto, el resto plegado */
+.fd-pantrynow h3{margin-bottom:6px}
+.fd-urgent{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}
+.fd-urgent-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:10px;background:var(--warn-soft);min-height:46px}
+.fd-urgent-row.fd-urgent-caducado{background:var(--alert-soft)}
+.fd-urgent-row.fd-urgent-caduca_semana{background:transparent;border:1px solid var(--line)}
+.fd-urgent-text{display:flex;flex-direction:column;min-width:0}
+.fd-urgent-text>span{font-size:var(--text-sm,.875rem)}
+.fd-urgent-caducado .fd-urgent-text>span{color:var(--alert);font-weight:700}
+.fd-urgent-acts{display:flex;gap:6px;flex-shrink:0}
+.fd-urgent-acts button{min-height:var(--tap)}
+.fd-pantrylinks dd a{display:inline-flex;align-items:center;justify-content:center;min-width:46px;min-height:46px;font-weight:800;font-size:1.1rem}
+.fd-machinesnow{margin-bottom:12px}
+.fd-fold{margin-top:14px}
+.fd-foldsummary{display:flex;align-items:center;gap:10px;min-height:var(--tap);cursor:pointer}
+.fd-foldalert{color:var(--alert);font-weight:800;text-transform:none;letter-spacing:0}
+/* Bloque 2 · Ficha de receta: hace falta y en casa */
+.fd-needrow{cursor:pointer}
+.fd-needrow td{padding-top:10px;padding-bottom:10px;min-height:52px}
+.fd-needrow:hover{background:rgba(31,42,34,.04)}
+.fd-needstate{display:block;font-size:var(--text-sm,.875rem);font-weight:700}
+.fd-need-bastante{color:var(--ok)}
+.fd-need-faltan,.fd-need-no_hay{color:var(--alert)}
+.fd-need-en_duda,.fd-need-sin_conversion{color:var(--warn-ink)}
+.fd-need-sin_seguimiento{color:var(--muted);font-weight:400}
+.fd-needqty strong{display:block;font-size:1.05rem}
+.fd-recipeqty{display:block;font-size:var(--text-xs,.75rem);color:var(--muted);white-space:normal}
+.fd-focus .focus-stack{margin-top:4px}
+/* Bloque 2 · Maquinaria: un solo «Dónde está» y el stock antes de guardar */
+.fd-machinestock{margin-top:6px}
+.fd-machinestock.warnline{color:var(--warn-ink);font-weight:700}
 /* Tanda 27 · Eventos: hoy en casa */
 #eventsToday{display:grid;gap:10px;margin:8px 0 14px}
 .fd-today-sum{margin:0;font-weight:700;font-size:1.05rem}
 .fd-group{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:var(--tap)}
 .fd-group-title{font-size:1.15rem}
 .fd-group-people{font-size:1.4rem;font-weight:800}
+.fd-needrow .athome{font-size:var(--text-sm,.875rem);color:var(--accent-deep)}

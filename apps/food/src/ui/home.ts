@@ -1,7 +1,7 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import {
-  HOUSE_MENU_ID, isMenuStale, kitchenStock, menuTotals, restrictionLines, serviceConsumption, servicePhases, stepDay, stepService, untilText,
-  type Equipment, type Menu, type MenuService, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem,
+  HOUSE_MENU_ID, isMenuStale, kitchenStock, menuTotals, pantryAlerts, restrictionLines, serviceConsumption, servicePhases, stepDay, stepService, untilText,
+  type Equipment, type Menu, type MenuItem, type MenuService, type PreparationItem, type Recipe, type RecipeEquipment, type ShoppingList, type ShoppingListItem,
 } from '@ikisai/domain-food';
 import { renderNow, type NowBlock } from '@ikisai/ui-kit';
 import { el, formatDate, replace } from './dom.ts';
@@ -15,6 +15,8 @@ import { loadAllMenuGraphs, loadMenuData } from '../app/menu-data.ts';
 import { kitchenMenus } from '../app/kitchen-data.ts';
 import { kitchenHash } from './kitchen.ts';
 import { loadPurchases } from '../app/purchases.ts';
+import { toShopping } from '../app/to-shopping.ts';
+import { EQUIPMENT_STATUS_LABELS } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -28,14 +30,22 @@ window.addEventListener('beforeinstallprompt', (event) => {
   deferredInstall = event as InstallPromptEvent;
 });
 
-/** Inicio: qué retiros vienen y qué les falta (canon §14), y debajo los accesos y el estado del dispositivo. */
+/**
+ * Inicio (Bloque 2, C «Lo de ahora abierto, el resto plegado», MUELA-077 §1 con `PERDIDAS_food_bloque2.md`): abierto, lo
+ * de ahora (cocina, casa, consumo), lo que falta en la despensa (lo caducado primero) y las máquinas que fallan y hacen
+ * falta; después los retiros que vienen. Recetario, Maquinaria, Sincronización, Instalar y Cuenta, plegados en «Cocina
+ * y este dispositivo», con «n máquinas fallan» en rojo a la vista.
+ */
 export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const recipeCount = el('dd', null, '…');
   const recipeTrial = el('dd', null, '…');
   const equipmentCount = el('dd', null, '…');
   const equipmentDown = el('dd', null, '…');
   // Despensa (R5): solo si se lleva inventario (sitios de cocina en Recursos).
-  const pantryHost = el('div', { id: 'pantryCard' });
+  const pantryHost = el('section', { id: 'pantryCard' });
+  // Máquinas que fallan y hacen falta en un menú que viene: también en lo de ahora (PERDIDAS §2).
+  const machinesHost = el('section', { id: 'machinesNow' });
+  const foldCount = el('span', { class: 'fd-foldalert', id: 'machinesDown', hidden: true });
   const network = el('dd');
   const pending = el('dd');
   const lastPull = el('dd');
@@ -69,7 +79,23 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     recipeCount.textContent = String(recipes.filter((r) => r.status !== 'archivada').length);
     recipeTrial.textContent = String(recipes.filter((r) => r.status === 'en_prueba').length);
     equipmentCount.textContent = String(equipment.length);
-    equipmentDown.textContent = String(equipment.filter((e) => e.status === 'averiado' || e.status === 'fuera_de_servicio').length);
+    const down = equipment.filter((e) => e.status === 'averiado' || e.status === 'fuera_de_servicio');
+    equipmentDown.textContent = String(down.length);
+    foldCount.hidden = !down.length;
+    foldCount.textContent = down.length === 1 ? '1 máquina falla' : `${down.length} máquinas fallan`;
+    // Las que hacen falta en un servicio que viene salen arriba, con su estado.
+    const today = todayKey();
+    const [services, items, uses] = await Promise.all([
+      client.list(T.menuServices) as Promise<Mirror<MenuService>[]>, client.list(T.menuItems) as Promise<Mirror<MenuItem>[]>, client.list(T.recipeEquipment) as Promise<Mirror<RecipeEquipment>[]>,
+    ]);
+    const coming = new Set(services.filter((sv) => !sv.deleted_at && sv.service_date >= today).map((sv) => sv.id));
+    const recipesComing = new Set(items.filter((i) => !i.deleted_at && coming.has(i.service_id)).map((i) => i.recipe_id));
+    const needed = new Set(uses.filter((u) => !u.deleted_at && recipesComing.has(u.recipe_id)).map((u) => u.equipment_id));
+    const urgent = down.filter((e) => needed.has(e.id) && !e.deleted_at);
+    replace(machinesHost, ...(urgent.length ? [el('div', { 'data-feedback-id': 'food.inicio.maquinas', 'data-feedback-label': 'Máquinas que fallan', class: 'banner warn notice fd-machinesnow', role: 'status' },
+      el('div', null, el('strong', null, urgent.length === 1 ? 'Falla una máquina que hace falta.' : `Fallan ${urgent.length} máquinas que hacen falta.`), ' ',
+        `${urgent.map((e) => `${e.name}: ${EQUIPMENT_STATUS_LABELS[e.status].toLowerCase()}`).join(' · ')}; se usa${urgent.length === 1 ? '' : 'n'} en un menú que viene.`),
+      el('div', { class: 'btnrow' }, go('food.inicio.maquinas.ver', 'Ver la maquinaria', '#/maquinaria', 'Ver la maquinaria')))] : []));
   }
 
   function paintUpcoming(): void {
@@ -175,7 +201,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const go = (id: string, label: string, hash: string, text: string) =>
     el('a', { 'data-feedback-id': id, 'data-feedback-label': label, href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, text);
 
-  /** Despensa: ingredientes bajo mínimo en la cocina y lotes que caducan en los próximos 7 días. */
+  /**
+   * «Lo que falta en la despensa»: hasta seis filas, lo urgente primero (lo ya caducado, lo que caduca en dos días, lo
+   * bajo mínimo y lo que caduca esa semana), con «Ver» y «A la compra»; debajo, las cifras con su enlace filtrado.
+   */
   async function loadPantry(): Promise<void> {
     const inventory = await loadInventory(client).catch(() => null);
     if (!inventory?.kitchen.size) { replace(pantryHost); return; }
@@ -185,10 +214,28 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       && (kitchenStock(i.id, inventory.movements, inventory.lots, inventory.kitchen, today) ?? 0) < Number(i.min_quantity));
     const soon = inventory.lots.filter((l) => l.expires_on && l.expires_on >= today && l.expires_on <= week
       && inventory.movements.filter((m) => !m.deleted_at && m.lot_id === l.id && inventory.kitchen.has(m.space_id)).reduce((sum, m) => sum + Number(m.quantity), 0) > 0);
-    replace(pantryHost, el('article', { 'data-feedback-id': 'food.inicio.despensa', 'data-feedback-label': 'Despensa', class: 'card', id: 'pantry' },
-      el('h3', null, 'Despensa'),
-      el('p', null, low.length ? `Bajo mínimo: ${low.map((i) => i.name).slice(0, 5).join(', ')}${low.length > 5 ? '…' : ''}.` : 'Stock de la cocina, sus despensas y cámaras.'),
-      el('dl', { class: 'kv' },
+    const alerts = pantryAlerts(inventory, today);
+    const role = client.bootstrap()?.membership.role;
+    const canBuy = role === 'editor' || role === 'owner';
+    const rows = alerts.slice(0, 6).map((a) => {
+      const item = inventory.items.find((i) => i.id === a.itemId);
+      return el('li', { class: `fd-urgent-row fd-urgent-${a.kind}`, 'data-item-id': a.itemId },
+        el('span', { class: 'fd-urgent-text' }, el('strong', null, a.name), el('span', null, a.text)),
+        el('span', { class: 'fd-urgent-acts' },
+          el('button', { 'data-feedback-id': 'food.inicio.despensa.ver', 'data-feedback-label': 'Ver en la despensa', class: 'ghost small', type: 'button', 'aria-label': `Ver ${a.name}`,
+            onclick: () => navigate(`#/despensa?articulo=${a.itemId}`) }, 'Ver'),
+          a.kind === 'bajo_minimo' && canBuy && item
+            ? el('button', { 'data-feedback-id': 'food.inicio.despensa.a_la_compra', 'data-feedback-label': 'A la compra', class: 'softbtn small', type: 'button', 'aria-label': `A la compra: ${a.name}`,
+                onclick: () => void toShopping(client, { id: item.id, name: item.name, baseUnit: item.base_unit, minQuantity: Number(item.min_quantity) || null, reorderQuantity: Number((item as { reorder_quantity?: number | null }).reorder_quantity) || null }) }, 'A la compra')
+            : null));
+    });
+    replace(pantryHost, el('article', { 'data-feedback-id': 'food.inicio.despensa', 'data-feedback-label': 'Despensa', class: 'card fd-pantrynow', id: 'pantry' },
+      el('h3', null, 'Lo que falta en la despensa'),
+      rows.length ? el('ul', { class: 'fd-urgent', 'aria-label': 'Lo urgente de la despensa' }, ...rows)
+        : el('p', null, 'Despensa al día: nada bajo mínimo ni a punto de caducar.'),
+      alerts.length > 6 ? el('p', { class: 'muted' }, `Y ${alerts.length - 6} más: ábrelos con las cifras de abajo.`) : null,
+      low.length ? el('p', null, `Bajo mínimo: ${low.map((i) => i.name).slice(0, 5).join(', ')}${low.length > 5 ? '…' : ''}.`) : null,
+      el('dl', { class: 'kv fd-pantrylinks' },
         el('dt', null, 'Bajo mínimo'), el('dd', null, go('food.inicio.despensa.bajo_minimo', 'Ver lo que está bajo mínimo', '#/despensa?filtro=bajo_minimo', String(low.length))),
         el('dt', null, 'Caducan en 7 días'), el('dd', null, go('food.inicio.despensa.caduca', 'Ver lo que caduca pronto', '#/despensa?filtro=caduca', String(soon.length)))),
       el('p', { style: 'margin-top:8px' }, go('food.inicio.despensa.abrir', 'Abrir la despensa', '#/despensa', 'Abrir la despensa'))));
@@ -227,16 +274,18 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', { 'data-feedback-ignore': '' }, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Qué retiros vienen y qué falta preparar.'))),
     kitchenHost,
+    machinesHost,
     houseHost,
     consumeHost,
+    pantryHost,
     upcoming,
-    el('div', { class: 'sectionlabel' }, 'Cocina'),
+    el('details', { 'data-feedback-id': 'food.inicio.plegado', 'data-feedback-label': 'Cocina y este dispositivo', class: 'fd-fold', id: 'homeMore' },
+      el('summary', { class: 'sectionlabel fd-foldsummary' }, el('span', null, 'Cocina y este dispositivo'), foldCount),
     el('div', { class: 'cardgrid' },
       link({ 'data-feedback-id': 'food.inicio.cocina.recetario', 'data-feedback-label': 'Ir al recetario' }, '#/recetario', 'Recetario', 'Recetas con foto, ingredientes, alérgenos y maquinaria.',
         el('dt', null, 'Recetas'), recipeCount, el('dt', null, 'En prueba'), recipeTrial),
       link({ 'data-feedback-id': 'food.inicio.cocina.maquinaria', 'data-feedback-label': 'Ir a maquinaria' }, '#/maquinaria', 'Maquinaria', 'Qué hay en la cocina y en qué estado está.',
         el('dt', null, 'Equipos'), equipmentCount, el('dt', null, 'Averiados o fuera de servicio'), equipmentDown),
-      pantryHost,
       el('article', { 'data-feedback-id': 'food.inicio.sincronizacion', 'data-feedback-label': 'Sincronización', class: 'card' },
         el('h3', null, 'Sincronización'),
         el('p', null, 'Estado del espejo local en este dispositivo.'),
@@ -254,7 +303,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('p', { 'data-feedback-ignore': '' }, name ? `Sesión iniciada como ${name}.` : 'Sesión iniciada.'),
         el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'food.inicio.cuenta.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', class: 'ghost', type: 'button', id: 'logoutHome', onclick: () => void logout() }, 'Cerrar sesión')),
       ),
-    ),
+    )),
   );
 
   paint(client.status());
@@ -288,11 +337,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const offMenus = () => offPlanning.forEach((off) => off());
   const offStatus = client.onStatus((status) => { paint(status); void refreshEvents(client); });
   const offRecipes = client.onTable(T.recipes, () => void count());
-  const offEquipment = client.onTable(T.equipment, () => void count());
+  const offEquipment = [T.equipment, T.menuServices, T.menuItems, T.recipeEquipment].map((table) => client.onTable(table, () => void count()));
   return () => {
     offStatus();
     offRecipes();
-    offEquipment();
+    offEquipment.forEach((off) => off());
     offEvents();
     offMenus();
     offHouse.forEach((off) => off());

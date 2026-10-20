@@ -10,6 +10,7 @@ export * from './resources.ts';
 export * from './consumption.ts';
 export * from './procedures.ts';
 export * from './steps.ts';
+export * from './stock-need.ts';
 export * from './units.ts';
 export * from './validate.ts';
 export * from './warnings.ts';
