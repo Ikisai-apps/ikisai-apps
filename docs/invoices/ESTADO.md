@@ -72,6 +72,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Fase 3, PR 3 de 3 (`invoices/fase3-app`): las plantillas en la app. «Leer PDF» usa la plantilla del proveedor (`extractWithTemplates`) y guarda el texto leído en el servidor; «Validar» aprende o actualiza la plantilla en el mismo lote; la ficha del proveedor muestra sus plantillas y el owner puede retirarlas. Fase 3 completa.
 
 - Compras de Tasks (ronda 34, migración 0208): destino `tasks` / `purchase_request` en la hoja de asignación y lecturas `invoices.allocations_by_target` e `invoices.supplier_options` para Tasks (API.md §7.4).
+- Tanda 41, para la Compra con envase de Food (migración 0243): se costea también la diferencia de H-C5 (todas las entradas de Food con la misma referencia), y `food_stock_projection` lleva `item_id` e `item_factor` (API.md §7.1 y §16.19): en PR.
 - ¿La compra de Tasks ya tiene factura? (migración 0242, pedido de VG del 20-10-2026): `invoices.purchase_request_invoiced(id)` para el `validate_batch` de Tasks, solo un booleano (API.md §7.4).
 
 - Fecha y objeto del documento frente a lo escrito al subir (ronda 35): discrepancia visible con «Usar la del documento»; preselección solo si la escrita era la de hoy por defecto (en hora local); la plantilla no cuenta como fallo un valor que no está en el documento.
@@ -149,7 +150,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
   - interfaz, parte 3 (Compras, Proveedores y Conflictos; API.md §16.21.3): hecho (#625);
   - tanda 30, defectos medidos por La Muela (API.md §16.21.4): hecho (#637);
   - tanda 31, la hoja «Inventario» de Inicio (MUELA-079; API.md §16.21.5): hecho (#641);
-  - tanda 31, las emitidas de una reserva una a una para «Movimientos» de Booking (`invoices.reservation_movements`, 0241; API.md §7.9): en PR.
+  - tanda 31, las emitidas de una reserva una a una para «Movimientos» de Booking (`invoices.reservation_movements`, 0241; API.md §7.9): hecho (#643).
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente
