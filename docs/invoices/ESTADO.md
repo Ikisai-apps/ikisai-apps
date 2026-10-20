@@ -93,6 +93,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Portal de organizadores, fase 3 (F1 y F2, migración 0220): dinero del retiro y documento de la factura, filtrados por ámbito y sin datos internos (API.md §7.7). Concepto del cobro (`purpose`, migración 0221): la factura de la señal queda marcada como «Señal» y F1 lo devuelve; lo contratado lo publica Booking y lo cobrado, Finance (ronda 52). Aplazada: firma de PDF guardados en la Edge del portal.
 - Lectura para Booking `invoices.reservation_collected` (migración 0222): facturado, cobrado y último cobro por reserva, la misma suma que F1 (API.md §7.8).
+- Lectura para Booking `invoices.reservation_movements` (migración 0241): las emitidas de la reserva una a una (número, fecha, concepto, propósito, tipo, importe y cobro), sin datos del destinatario (API.md §7.9).
 - Versiones nuevas con el kit 0.23 (`initAppUpdates`): al abrir la app, o al volver tras más de un minuto, la versión nueva se aplica sola si es seguro; si no, sale el banner «Nueva versión disponible». Se ha borrado la copia propia `src/updates.ts`.
 - Capa del kit 0.24 (`setKitLayer`): Finance carga el CSS del kit sin acotar a `.ikisai-kit`, así que lo flotante va a `document.body`, la capa por defecto, con sus estilos. No hace falta llamarla. La prueba de feedback en escritorio (1280×800) envía un reporte desde una hoja abierta y comprueba que el aviso «Enviado» es fijo y compacto.
 - QA FB_2026_016 (migración 0223): la fecha de una factura recibida es opcional al crearla. «Nueva factura» ya no la rellena con la de hoy; se lee del PDF o se escribe después en «Fiscal y pago». Sin fecha no se puede validar.
@@ -146,7 +147,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
   - interfaz, parte 2 (Emitidas y Gestoría; API.md §16.21.2): hecho (#624);
   - interfaz, parte 3 (Compras, Proveedores y Conflictos; API.md §16.21.3): hecho (#625);
   - tanda 30, defectos medidos por La Muela (API.md §16.21.4): hecho (#637);
-  - tanda 31, la hoja «Inventario» de Inicio (MUELA-079; API.md §16.21.5): en PR.
+  - tanda 31, la hoja «Inventario» de Inicio (MUELA-079; API.md §16.21.5): hecho (#641);
+  - tanda 31, las emitidas de una reserva una a una para «Movimientos» de Booking (`invoices.reservation_movements`, 0241; API.md §7.9): en PR.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente
