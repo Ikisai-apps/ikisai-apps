@@ -1,8 +1,19 @@
 /**
- * Central · medidas de accesibilidad en la página real (MUELA-086): contraste WCAG del texto de un elemento con el primer
- * fondo opaco de sus antepasados, y la altura del objetivo táctil.
+ * Central · ayudantes de las pruebas de interfaz:
+ * - medidas de accesibilidad en la página real (MUELA-086): contraste WCAG del texto de un elemento con el primer fondo
+ *   opaco de sus antepasados, y la altura del objetivo táctil;
+ * - abrir el cajón del menú lateral. Lo del feedback con el menú lo hace ya el kit (0.50, P11): `feedbackRoundTrip` y
+ *   `setMode` de `packages/ui-kit/testing/feedback-smoke.ts`.
  */
-import type { Locator } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
+
+/** Abre el cajón del menú con la marca. */
+export async function openMenu(page: Page): Promise<Locator> {
+  await page.locator('#appLauncher').click();
+  const drawer = page.locator('#appMenu');
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
 
 export async function contrastOf(target: Locator): Promise<number> {
   return target.evaluate((node: Element) => {

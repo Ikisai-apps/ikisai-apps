@@ -11,8 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
-import { openMenu } from './menu-helpers.ts';
-import { heightOf } from './measure.ts';
+import { heightOf, openMenu } from './ui-helpers.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');

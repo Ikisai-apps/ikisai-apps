@@ -844,7 +844,8 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P6 | Petición a **Booking**: usar `target_app = 'central'` (no `'encarna'`) en `staff_assignments.person_ref_app` y decir si quiere ya `central.booking_person_projection`. | Turnos con la persona de Central | — |
 | P7 | Llevar a los equipos el contrato de KPIs (§7.2) cuando se apruebe, para que cada uno publique su `central_kpi_projection` en su ronda. | Panel de dirección | Panel solo con KPIs de Central |
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
-| P11 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | Copia acotada en `tests/central/menu-helpers.ts` |
+| P11 ✅ 0.50 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | — |
+| P12 ✅ #640 | Núcleo: `admin/access-log?user=<uuid>` (lo que hizo esa cuenta, lo que la afecta y lo de sus claves de agente) y `only=grave`. | Registro por persona y «Lo grave» (§9.3) | — |
 | P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---

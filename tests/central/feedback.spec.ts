@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
-import { simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
-import { feedbackRoundTrip, openMenu, setSignal } from './menu-helpers.ts';
+import { feedbackRoundTrip, setMode, simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { openMenu } from './ui-helpers.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');
@@ -108,7 +108,7 @@ test('feedback · con una hoja abierta y el teclado en pantalla (móvil 484×100
   await page.setViewportSize({ width: 484, height: 1008 });
   await enterAsOwner(page);
   await page.goto(`${baseURL}/#/entidad`);
-  await setSignal(page, true);
+  await setMode(page, '#appLauncher', true);
   await page.locator('#editEntity').click();
   await expect(page.locator('#en-legal')).toBeVisible();
   const before = await reports();
