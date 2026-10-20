@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import {
-  HOUSE_MENU_ID, defaultPurchase, linePacks, linePerUnit, packUnitLabel, purchaseMovement, roundToPack, savePackOperations, usualPackSize, type FoodPurchase, type PackUnitRow,
+  HOUSE_MENU_ID, defaultPurchase, lastTicket, linePacks, linePerUnit, packUnitLabel, purchaseMovement, roundToPack, savePackOperations, usualPackSize, type FoodPurchase, type PackUnitRow,
 } from '../../supabase/functions/_domain/food/mod.ts';
 import { day } from './helpers.ts';
 
@@ -146,4 +146,24 @@ test('dominio · H-C5: cambiar lo comprado deja la Despensa con la diferencia, c
   const movements = [{ item_id: 'i', space_id: 's', lot_id: null, quantity: 2, source_ref: 'shopping_item:l', deleted_at: null }];
   assert.equal(purchaseMovement({ itemId: 'i', lineId: 'l', bought: true, quantityBase: 3, spaceId: 's', supplier: null, movements })?.quantity, 1);
   assert.equal(purchaseMovement({ itemId: 'i', lineId: 'l', bought: true, quantityBase: 1.5, spaceId: 's', supplier: null, movements })?.quantity, -0.5);
+});
+
+test('dominio · «Como en el último ticket»: la última línea enlazada con su envase (item_id e item_factor, 0243)', () => {
+  const p = (id: string, date: string, extra: Partial<FoodPurchase>): FoodPurchase => ({ allocation_id: id, target_kind: 'ingredient', target_id: 'g', invoice_date: date,
+    supplier_name: 'Mercadona', line_description: 'Harina', allocated_quantity: 4, unit: 'bolsa', allocated_amount: 3.2, item_id: 'i', item_factor: 250, ...extra });
+  const purchases = [
+    p('a', '2026-09-01', { unit: 'saco', item_factor: 5000, allocated_quantity: 1, allocated_amount: 9 }),
+    p('b', '2026-10-03', {}),
+    p('c', '2026-10-10', { item_id: 'otro' }), // de otro artículo
+    p('d', '2026-10-12', { unit: 'kg', item_factor: null }), // en la unidad base: no es un envase
+  ];
+  // Sin envase con ese tamaño en la ficha: «bolsa de 250 g», a 0,80 € la bolsa, en la unidad de la línea (kg).
+  assert.deepEqual(lastTicket({ itemId: 'i', base: 'g', unit: 'kg', rows: [], purchases }),
+    { label: 'bolsa de 250 g', size: 0.25, price: 0.8, supplier: 'Mercadona', date: '2026-10-03' });
+  // Con un envase de ese tamaño ya guardado, su nombre.
+  const rows: PackUnitRow[] = [{ id: 'u', item_id: 'i', unit: 'bolsita', factor: 250 }];
+  assert.equal(lastTicket({ itemId: 'i', base: 'g', unit: 'g', rows, purchases })?.label, 'bolsita');
+  // Sin líneas enlazadas, o de otra familia, no hay ticket.
+  assert.equal(lastTicket({ itemId: 'nada', base: 'g', unit: 'g', rows: [], purchases }), null);
+  assert.equal(lastTicket({ itemId: 'i', base: 'g', unit: 'unidad', rows: [], purchases }), null);
 });

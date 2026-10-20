@@ -224,7 +224,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     const usual = view.packs.find((p) => p.usual);
     // Sin habitual es «la primera vez»: la hoja propone, pero no da por elegido ningún envase que ya exista.
     const r0 = Envase.plan({ need: view.plan.need, unit: view.item.unit, formats: usual ? view.packs.map((p) => ({ label: p.label, size: p.size, price: p.price, usual: p.usual })) : [], perBase: view.perUnit });
-    const ticket = lastTicket({ ingredientId: view.item.ingredient_id, itemId: article.id, base: article.base_unit, unit: view.item.unit, rows: units, purchases: purchases.purchases });
+    const ticket = lastTicket({ itemId: article.id, base: article.base_unit, unit: view.item.unit, rows: units, purchases: purchases.purchases });
     usage.track('food.compra.envase');
     sheet = Envase.formatSheet({
       name: view.name, r: r0, ticket, feedbackId: 'food.menu.compra.envase',
