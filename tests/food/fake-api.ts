@@ -8,7 +8,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { HOUSE_MENU_ID, computeShopping, defaultPurchase, fromItemBase, foodUnitFromBase, kitchenSpaceIds, kitchenStock, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
+import { HOUSE_MENU_ID, computeShopping, defaultPurchase, usualPackSize, fromItemBase, foodUnitFromBase, kitchenSpaceIds, kitchenStock, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
 
 export interface FakeRow {
   id: string;
@@ -144,7 +144,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
     'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
-  'resources.item_units': ['item_id', 'unit', 'factor', 'supplier_id'],
+  'resources.item_units': ['item_id', 'unit', 'factor', 'supplier_id', 'usual', 'price'],
   'resources.lots': ['item_id', 'code', 'expires_on'],
   'resources.movements': ['item_id', 'space_id', 'lot_id', 'quantity', 'kind', 'reason', 'unit_cost', 'transfer_id', 'count_id', 'source_app', 'source_ref', 'note', 'at'],
   'resources.spaces': ['parent_id', 'kind', 'name', 'public_name', 'code', 'position', 'active', 'notes', 'attributes', 'source_refs'],
@@ -411,6 +411,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
               const it = articleOf(ingredientId);
               return it && it.min_quantity !== null && it.min_quantity !== undefined ? fromItemBase(Number(it.min_quantity), String(it.base_unit), unit) : null;
             };
+            // S5 (1108): el envase habitual redondea «Comprar» en las líneas pendientes.
+            const packOf = (ingredientId: string, unit: Unit) => {
+              const it = articleOf(ingredientId);
+              return it ? usualPackSize(String(it.id), String(it.base_unit), unit, committed('resources.item_units') as never) : null;
+            };
             const wanted = new Set<string>();
             for (const need of computeShopping(graph, period)) {
               wanted.add(need.ingredient_id);
@@ -420,7 +425,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
               if (!line) {
                 const supplier = graph.ingredients.find((g) => g.id === need.ingredient_id)?.preferred_supplier ?? null;
                 write('food.shopping_list_items', 'insert', fresh(), { shopping_list_id: list.id, ingredient_id: need.ingredient_id, required_quantity: need.required_quantity, unit: need.unit,
-                  purchase_quantity: defaultPurchase(need.required_quantity, stockNow, minNow), supplier, stock_quantity: stockNow, min_quantity: minNow });
+                  purchase_quantity: defaultPurchase(need.required_quantity, stockNow, minNow, packOf(need.ingredient_id, need.unit)), supplier, stock_quantity: stockNow, min_quantity: minNow });
                 counts.inserted += 1;
                 continue;
               }
@@ -428,11 +433,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
               const fields: Record<string, unknown> = {};
               if (line.unit !== need.unit) fields.unit = need.unit;
               if (Number(line.required_quantity) !== need.required_quantity) fields.required_quantity = need.required_quantity;
-              if (stockNow !== null && Number(line.stock_quantity) !== stockNow) { fields.stock_quantity = stockNow; line.stock_quantity = stockNow; }
+              const pending = line.status === 'pendiente';
+              if (pending && stockNow !== null && Number(line.stock_quantity) !== stockNow) { fields.stock_quantity = stockNow; line.stock_quantity = stockNow; }
               if ((line.min_quantity ?? null) !== minNow) fields.min_quantity = minNow;
               if (line.restock) fields.restock = false;
-              const purchase = defaultPurchase(need.required_quantity, line.stock_quantity === null ? null : Number(line.stock_quantity), minNow);
-              if (!line.manual_override && Number(line.purchase_quantity) !== purchase) fields.purchase_quantity = purchase;
+              const purchase = defaultPurchase(need.required_quantity, line.stock_quantity === null ? null : Number(line.stock_quantity), minNow, packOf(need.ingredient_id, need.unit));
+              if (pending && !line.manual_override && Number(line.purchase_quantity) !== purchase) fields.purchase_quantity = purchase;
               if (Object.keys(fields).length) { write('food.shopping_list_items', 'update', line, fields); counts.updated += 1; } else counts.kept += 1;
             }
             for (const g of graph.ingredients as unknown as FakeRow[]) {
@@ -445,15 +451,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
               const elsewhere = all('food.shopping_list_items').some((o) => o.ingredient_id === g.id && o.restock && !o.deleted_at && o.shopping_list_id !== list!.id
                 && all('food.shopping_lists').some((l) => l.id === o.shopping_list_id && !l.deleted_at && l.status !== 'cerrada'));
               if (elsewhere) continue;
-              const purchase = defaultPurchase(0, stockNow, min);
+              const purchase = defaultPurchase(0, stockNow, min, packOf(g.id, unit));
               const line = lines.find((i) => i.ingredient_id === g.id && i.restock);
               if (!line) { write('food.shopping_list_items', 'insert', fresh(), { shopping_list_id: list.id, ingredient_id: g.id, required_quantity: 0, unit, purchase_quantity: purchase, supplier: g.preferred_supplier ?? null, stock_quantity: stockNow, min_quantity: min, restock: true }); counts.inserted += 1; continue; }
               seen.add(line.id);
-              if (!line.manual_override && Number(line.purchase_quantity) !== purchase) { write('food.shopping_list_items', 'update', line, { purchase_quantity: purchase, stock_quantity: stockNow }); counts.updated += 1; } else counts.kept += 1;
+              if (line.status === 'pendiente' && !line.manual_override && Number(line.purchase_quantity) !== purchase) { write('food.shopping_list_items', 'update', line, { purchase_quantity: purchase, stock_quantity: stockNow }); counts.updated += 1; } else counts.kept += 1;
             }
             for (const line of lines.filter((i) => !seen.has(i.id))) {
               if (line.status === 'pendiente' && !line.manual_override) { write('food.shopping_list_items', 'delete', line); counts.deleted += 1; }
-              else if (Number(line.required_quantity) !== 0) { write('food.shopping_list_items', 'update', line, { required_quantity: 0, ...(line.manual_override ? {} : { purchase_quantity: 0 }) }); counts.updated += 1; }
+              else if (Number(line.required_quantity) !== 0) { write('food.shopping_list_items', 'update', line, { required_quantity: 0 }); counts.updated += 1; }
               else counts.kept += 1;
             }
             const status = list.status === 'revisada' ? 'borrador' : list.status;

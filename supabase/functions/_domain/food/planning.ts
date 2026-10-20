@@ -104,9 +104,18 @@ export function computeShopping(graph: MenuGraph, period?: Period | null): Shopp
     .sort((a, b) => a.ingredient_id.localeCompare(b.ingredient_id) || a.family.localeCompare(b.family));
 }
 
-/** Lo que se compra mientras nadie lo fije a mano: lo necesario más el mínimo del artículo, menos lo que ya hay en casa. */
-export function defaultPurchase(required: number, stock: number | null, min: number | null = null): number {
-  return round3(Math.max(required + (min ?? 0) - (stock ?? 0), 0));
+/**
+ * Lo que se compra mientras nadie lo fije a mano: lo necesario más el mínimo del artículo, menos lo que ya hay en casa;
+ * con envase habitual (`pack`, su tamaño en la unidad de la línea), en envases enteros (S5, como `food.round_pack`).
+ */
+export function defaultPurchase(required: number, stock: number | null, min: number | null = null, pack: number | null = null): number {
+  return roundToPack(round3(Math.max(required + (min ?? 0) - (stock ?? 0), 0)), pack);
+}
+
+/** Envases enteros del tamaño `pack` (en la misma unidad); sin envase o sin nada que comprar, igual. */
+export function roundToPack(quantity: number, pack: number | null | undefined): number {
+  if (!pack || pack <= 0 || quantity <= 0) return quantity;
+  return round3(Math.ceil(quantity / pack - 1e-9) * pack);
 }
 
 /** Ingredientes de un plato escalados a sus raciones, en la unidad de la receta (vista de cocinero). */

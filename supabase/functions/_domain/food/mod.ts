@@ -1,6 +1,7 @@
 /** Ikisai Food · código de dominio compartido entre la Edge `food-api` y el frontend (contrato §5.4). */
 export * from './catalog.ts';
 export * from './menus.ts';
+export * from './packs.ts';
 export * from './planning.ts';
 export * from './costing.ts';
 export * from './equipment.ts';
