@@ -48,4 +48,18 @@ test.describe('ui-kit v0.55 · mapa para Tasks', () => {
     await expect(host.locator('.map-list')).toBeVisible();
     await expect(host.locator('.map-row-name')).toHaveText(['Sala Roble', 'Sala Olivo', 'Sala multiusos']);
   });
+  test('@smoke `labelJoin`: el separador del nombre accesible lo elige la app («Baños: 2 tareas abiertas»)', async ({ page }) => {
+    await page.evaluate(() => {
+      const k = (window as any).ikisaiKit;
+      const map = k.createSpaceMap({
+        source: k.createMemorySpaceSource(k.demoSpaces()), mode: 'plan', labelJoin: ': ', label: 'Con dos puntos',
+        plans: [{ id: 'p', buildingId: 'albergue', floor: null, position: 1, fileId: null, width: 1000, height: 600 }],
+        shapes: { 'banos-alb': { planId: 'p', shape: { points: [[0.68, 0.07], [0.96, 0.07], [0.96, 0.57], [0.68, 0.57]] } } },
+        layer: (s: { id: string }) => (s.id === 'banos-alb' ? { short: '2', label: '2 tareas abiertas' } : null),
+      });
+      map.element.id = 'joinHost';
+      document.querySelector('#spacemap')!.prepend(map.element);
+    });
+    await expect(page.locator('#joinHost').getByRole('button', { name: 'Baños: 2 tareas abiertas', exact: true })).toBeVisible();
+  });
 });

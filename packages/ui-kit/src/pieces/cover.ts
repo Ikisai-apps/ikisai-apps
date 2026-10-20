@@ -100,6 +100,8 @@ export interface FocusItem {
   color?: string | null;
   /** Quién la lleva. */
   who?: (MedalOptions & { name: string }) | null;
+  /** Texto del botón de abrir solo para esta tarjeta («Confirmar consumo», «Ver comentarios»); manda sobre `openLabel` de la pieza. */
+  openLabel?: string | null;
 }
 
 export interface FocusOptions {
@@ -147,7 +149,7 @@ export function createFocus(options: FocusOptions): Focus {
     el('div', { class: 'focus-actions' },
       options.onDone ? el('button', { type: 'button', class: 'primary focus-btn', role: 'checkbox', 'aria-checked': 'false', 'aria-label': kt('Marcar hecha: {title}', { title: item.title }), ...mark('hecha', 'Marcar hecha'), onclick: () => options.onDone!(item) }, kt('✓ Hecha')) : null,
       options.action ? el('button', { type: 'button', class: `${options.onDone ? 'softbtn' : 'primary'} focus-btn`, ...(options.action.feedbackId ? { 'data-feedback-id': options.action.feedbackId, 'data-feedback-label': options.action.label } : mark('accion', options.action.label)), onclick: () => options.action!.onClick(item) }, options.action.label) : null,
-      options.onOpen ? el('button', { type: 'button', class: 'ghost focus-btn', ...mark('abrir', 'Abrir'), onclick: () => options.onOpen!(item) }, options.openLabel ?? kt('Abrir')) : null,
+      options.onOpen ? el('button', { type: 'button', class: 'ghost focus-btn', ...mark('abrir', 'Abrir'), onclick: () => options.onOpen!(item) }, item.openLabel ?? options.openLabel ?? kt('Abrir')) : null,
       items.length > 1 ? el('button', { type: 'button', class: 'ghost focus-btn focus-next', ...mark('siguiente', 'Siguiente'), onclick: () => api.next() }, kt('Siguiente ›')) : null));
   }
 

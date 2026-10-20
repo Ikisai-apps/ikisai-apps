@@ -114,4 +114,18 @@ test.describe('ui-kit v0.53 · ajustes de Central y Food', () => {
     expect(stored.b).toBe('{}');
     expect(stored.shown).toBeGreaterThan(0);
   });
+  test('@smoke `FocusItem.openLabel`: el texto de abrir por tarjeta, y si no, el de la pieza', async ({ page }) => {
+    await page.goto('/#pieces');
+    const texts = await page.evaluate(() => {
+      const k = (window as any).ikisaiKit;
+      const f = k.createFocus({ openLabel: 'Ver en la Despensa', onOpen: () => undefined,
+        items: [{ id: 'a', title: 'Lentejas', openLabel: 'Confirmar consumo' }, { id: 'b', title: 'Aceite' }] });
+      document.body.prepend(f.element);
+      const first = f.element.querySelector('.focus-actions button:not(.focus-next)')!.textContent;
+      f.next();
+      const second = f.element.querySelector('.focus-actions button:not(.focus-next)')!.textContent;
+      return [first, second];
+    });
+    expect(texts).toEqual(['Confirmar consumo', 'Ver en la Despensa']);
+  });
 });

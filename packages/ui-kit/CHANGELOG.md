@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.56.0 · 20 de octubre de 2026
+
+**Dos peticiones menores.** Opcionales: por defecto no cambia nada.
+
+- **`createSpaceMap({ labelJoin })`** (Tasks, MUELA-090): el separador entre el nombre y el estado en el nombre accesible («Hab 3: 2 tareas abiertas, 1 vencida»). Por defecto, « · ».
+- **`FocusItem.openLabel`** (Food): el texto del botón de abrir por tarjeta («Confirmar consumo», «Abrir en el Recetario»). Manda sobre el `openLabel` de la pieza; sin ninguno, «Abrir».
+- **Pruebas:** `v58` y `v60` (+1 cada una).
+
 ## 0.55.0 · 20 de octubre de 2026
 
 **Tres opciones de `createSpaceMap` para Tasks** (tanda 37, MUELA-090). Opcionales: por defecto el mapa no cambia.
