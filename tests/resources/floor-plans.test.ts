@@ -76,3 +76,15 @@ test('mapa · subidas del módulo: solo imágenes al bucket de planos', async ()
   assert.equal(svg.status, 200, JSON.stringify(svg.data));
   assert.equal((await app.call('/api/v1/resources/uploads', { token: app.tokens.reader, body: body('image/png') })).status, 403);
 });
+
+test('mapa · el portal de Guests lee dibujos y formas, sin datos internos; otra app, no', async () => {
+  const guest = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('guests', $1, 'editor')`, [guest]);
+  const out = await app.t.rpc('core_read', { p_app: 'guests', p_actor: guest, p_name: 'resources.portal_plans', p_args: {} }) as any;
+  assert.ok(out.plans.some((p: any) => p.floor === 'Planta baja' && p.width === 1200));
+  const placed = out.spaces.find((s: any) => s.name === 'Sala del mapa');
+  assert.ok(placed?.planShape?.points?.length === 4);
+  assert.equal(JSON.stringify(out).includes('con proyector'), false, 'sin notas');
+  assert.equal('notes' in placed, false);
+  await assert.rejects(app.t.rpc('core_read', { p_app: 'booking', p_actor: app.users.owner, p_name: 'resources.portal_plans', p_args: {} }));
+});

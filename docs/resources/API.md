@@ -111,6 +111,7 @@ En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futur
 - **El archivo:** se sube con `POST /api/v1/resources/uploads` (y `uploads/:id/verify`). Va al bucket privado `resources-plans`, solo SVG, PNG o JPG de hasta 10 MB. Se lee con `GET /api/v1/resources/files/:id`. El SVG se pinta siempre como imagen (`<image>`), así que no ejecuta nada; si se leen sus nombres para colocar solo, se limpia antes (DOMPurify, perfil SVG).
 - **`resources.spaces.plan_id` + `plan_shape`**: en qué dibujo está la estancia y su forma, `{"points": [[x, y], …]}` con 3 a 200 puntos entre 0 y 1, relativos a la imagen. Colocar es del owner (hook `resources.check_plans`); el editor sigue cambiando nombre, datos y orden. Un dibujo con estancias encima no se borra.
 - **Sin forma o sin dibujo,** la estancia sale en la lista equivalente (`createSpaceTree`). Las literas siguen siendo camas con su capacidad.
+- **Portales (0809):** `core.read('guests', actor, 'resources.portal_plans', {})` → `{ plans: [{ id, buildingId, floor, position, width, height, file: { id, bucket, path, mime, sha256, provider } | null }], spaces: [{ id, parentId, kind, name, planId, planShape, position }] }`. Solo da geometría y nombres públicos, nunca personas ni notas. El archivo lo firma la Edge de Guests con `createStorage(...).readUrl`. La ocupación de las camas la sigue dando Booking.
 
 ## 3. Inventario (fase R3, migración 0802)
 
