@@ -113,6 +113,24 @@ test('marcador {"$blob"}: se sustituye por el fileId tras subir y verificar, a c
   assert.equal(server.row(TABLE, id)?.photo_file_id, 'upl-2');
 });
 
+test('adjunto rechazado para siempre (422 al verificar): el lote va a rejected y la cola sigue', async () => {
+  const { server, client } = await ready();
+  server.rejectVerify = { status: 422, code: 'UNSUPPORTED_MEDIA' };
+  const svg = new Blob(['<svg onload="x()"/>'], { type: 'image/svg+xml' });
+  const sha = await client.stageBlob(svg, { filename: 'plano.svg', mime: 'image/svg+xml' });
+  const bad = crypto.randomUUID();
+  const good = crypto.randomUUID();
+  await client.commit([{ op: 'insert', table: TABLE, id: bad, fields: { name: 'Con SVG', photo_file_id: { $blob: sha } } }]);
+  await client.commit([{ op: 'insert', table: TABLE, id: good, fields: { name: 'Normal', notes: null } }]);
+  await client.sync();
+  assert.equal(client.status().pendingCommands, 0, 'la cola no se atasca');
+  assert.equal(client.status().rejected, 1);
+  const [rejected] = await client.rejected();
+  assert.equal(rejected?.error.code, 'UNSUPPORTED_MEDIA');
+  assert.equal(await client.get(TABLE, bad), null, 'la fila provisional se retira');
+  assert.equal(server.row(TABLE, good)?.name, 'Normal', 'el siguiente lote se envió');
+});
+
 test('marcador de un blob inexistente: el lote va a rejected con BLOB_MISSING y la cola sigue', async () => {
   const { server, client } = await ready();
   const bad = crypto.randomUUID();

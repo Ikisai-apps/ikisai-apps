@@ -92,6 +92,8 @@ export class FakeServer {
   unavailable = false;
   dropNextCommandResponse = false;
   failVerify = false;
+  /** Verificación rechazada para siempre (p. ej. 422 UNSUPPORTED_MEDIA de un SVG con contenido activo). */
+  rejectVerify: { status: number; code: string } | null = null;
   /** Todo lote cuyo `fields` contenga este valor recibe 422 CONSTRAINT_VIOLATION. */
   rejectValue: string | null = null;
   /** Todo lote recibe 403 FORBIDDEN (p. ej. ámbito retirado). */
@@ -409,6 +411,7 @@ export class FakeServer {
     const upload = this.uploads.get(id);
     if (!upload || !upload.bytes) return fail(404, 'NOT_FOUND', 'nada subido');
     if (this.failVerify) return fail(409, 'UPLOAD_MISMATCH', 'hash no coincide (simulado)');
+    if (this.rejectVerify) return fail(this.rejectVerify.status, this.rejectVerify.code, 'rechazo definitivo (simulado)');
     const sha = await sha256Hex(upload.bytes);
     if (sha !== upload.sha256 || upload.bytes.byteLength !== upload.size) return fail(409, 'UPLOAD_MISMATCH', 'hash o tamaño no coinciden');
     upload.verified = true;
