@@ -74,7 +74,8 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
   await test.step('login y las cinco entradas', async () => {
     await login(page);
     await expect(page.locator('#syncStatus')).toContainText('En línea');
-    for (const label of ['Inicio', 'Eventos', 'Menús', 'Recetario', 'Maquinaria']) {
+    // Bloque 2 (barra C): Despensa y Maquinaria, dentro de «Casa».
+    for (const label of ['Inicio', 'Eventos', 'Menús', 'Recetario', 'Casa']) {
       await expect(page.locator('.nav').getByText(label, { exact: true }).first()).toBeVisible();
     }
   });

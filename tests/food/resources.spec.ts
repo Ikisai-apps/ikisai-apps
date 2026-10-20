@@ -111,12 +111,16 @@ test('Recursos · enlace al abrir, ingrediente de Recursos sugerido y estado de 
     await dialog.locator('.space-search').fill('Office');
     await dialog.getByRole('option', { name: /Office/ }).click();
     await dialog.getByRole('spinbutton', { name: 'Cantidad', exact: true }).fill('3');
+    // Bloque 2 (Maquinaria A): lo que hará en Recursos, dicho antes de guardar.
+    await expect(dialog.locator('#machineStock')).toHaveText('Al guardar, en Recursos pasa de 0 a 3 (entra 3 en Cocina › Office).');
     await page.locator('#saveEquipment').click();
     await expect(dialog).toBeHidden();
     await expect.poll(() => item(equipmentRef(oven))?.default_space_id, { timeout: 15_000 }).toBe(office);
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.item_id === item(equipmentRef(oven))!.id).map((m) => [m.kind, Number(m.quantity), m.space_id]), { timeout: 15_000 })
       .toEqual([['entrada_manual', 3, office]]);
-    await expect(page.locator('#equipmentList .row', { hasText: 'Horno' })).toContainText('Casa › Cocina › Office');
+    // Una sola línea de sitio, la ruta corta (Bloque 2, Maquinaria A): ni la ruta entera ni el texto de antes.
+    await expect(page.locator('#equipmentList .row', { hasText: 'Horno' })).toContainText('Cocina › Office');
+    await expect(page.locator('#equipmentList .row', { hasText: 'Horno' })).not.toContainText('Casa › Cocina');
     await expect(page.locator('#equipmentList .row', { hasText: 'Horno' })).toContainText('3 unidades');
     // Bajar a 2 saca una del stock.
     await page.locator('#equipmentList .row', { hasText: 'Horno' }).getByRole('button', { name: 'Editar Horno' }).click();

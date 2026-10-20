@@ -1,6 +1,7 @@
 /**
- * Food · Despensa en el navegador (390 px; aprobada el 18-10-2026): pestaña propia, catálogo del kit acotado a la cocina,
- * filtro desde Inicio, ficha con el origen de los movimientos, «A la compra», «Gastar» y recuento a ciegas.
+ * Food · Despensa en el navegador (390 px; aprobada el 18-10-2026): catálogo del kit acotado a la cocina, filtro desde
+ * Inicio, ficha con el origen de los movimientos, «A la compra», «Gastar» y recuento a ciegas. Bloque 2 (MUELA-077,
+ * reescrita por el diseño): dentro de «Casa», en las baldosas del kit, y lo urgente en Inicio.
  *
  * Con `FOOD_CAPTURAS=<carpeta>` guarda capturas («después» de la tabla de Despensa).
  * Cómo correrlo:   npx playwright test tests/food/pantry.spec.ts      (desde la raíz del repo)
@@ -84,14 +85,30 @@ test('Despensa · pestaña, catálogo de cocina, filtro desde Inicio, ficha, «A
   test.setTimeout(150_000);
   await login(page);
 
-  await test.step('seis pestañas que se leen a 390 px, con Despensa entre Recetario y Maquinaria', async () => {
+  await test.step('cinco pestañas que se leen a 390 px: Despensa y Maquinaria, dentro de «Casa»', async () => {
     const labels = page.locator('.nav a');
-    await expect(labels).toHaveText(['Inicio', 'Eventos', 'Menús', 'Recetario', 'Despensa', 'Maquinaria']);
+    await expect(labels).toHaveText(['Inicio', 'Eventos', 'Menús', 'Recetario', 'Casa']);
     for (const label of await labels.all()) {
       const box = await label.boundingBox();
       expect(box!.width).toBeGreaterThanOrEqual(48); // objetivo táctil
       expect(await label.evaluate((a) => a.scrollWidth <= a.clientWidth + 1)).toBe(true); // el texto no se corta
     }
+  });
+
+  await test.step('Inicio: lo urgente de la despensa abierto, lo que caduca antes y lo bajo mínimo con «A la compra»', async () => {
+    const rows = page.locator('#pantry .fd-urgent-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toHaveAttribute('data-item-id', yogurt);
+    await expect(rows.nth(0)).toContainText('(en 2 días) · 6 unidades');
+    await expect(rows.nth(0).getByRole('button', { name: /^A la compra/ })).toHaveCount(0);
+    await expect(rows.nth(1)).toHaveAttribute('data-item-id', rice);
+    await expect(rows.nth(1)).toContainText('Bajo mínimo · quedan 3 kg (mínimo 5 kg)');
+    await expect(rows.nth(1).getByRole('button', { name: 'A la compra: Arroz' })).toBeVisible();
+    // Objetivos táctiles de las cifras con su enlace filtrado (antes, unos 20 px).
+    for (const link of await page.locator('#pantry dd a').all()) expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(46);
+    // Recetario, Maquinaria y el resto, plegados.
+    await expect(page.locator('#homeMore')).not.toHaveAttribute('open', '');
+    await capture(page, '29-inicio-despensa');
   });
 
   await test.step('Inicio → «Bajo mínimo»: Despensa con ese filtro', async () => {
@@ -103,15 +120,19 @@ test('Despensa · pestaña, catálogo de cocina, filtro desde Inicio, ficha, «A
   });
 
   await test.step('catálogo: solo la cocina, sus despensas y cámaras; ingredientes y bebidas', async () => {
-    // Desde la pestaña: sin el filtro que puso el enlace de Inicio.
+    // Desde la pestaña «Casa»: sin el filtro que puso el enlace de Inicio, en la última pestaña usada (la Despensa).
     await page.locator('.nav a', { hasText: 'Inicio' }).click();
-    await page.locator('.nav a', { hasText: 'Despensa' }).click();
-    // Tanda 27 (Bloque 2, B): por defecto, las baldosas; lo bajo mínimo primero y con «A la compra».
-    const tiles = page.locator('#pantryTiles .fd-tile');
-    await expect(tiles.first()).toHaveAttribute('data-item-id', rice);
-    await expect(tiles.first()).toContainText('bajo mínimo');
-    await expect(tiles.first().getByRole('button', { name: /^A la compra/ })).toBeVisible();
-    await expect(page.locator('#pantryTiles')).not.toContainText('Cemento');
+    await page.locator('.nav a', { hasText: 'Casa' }).click();
+    await expect(page).toHaveURL(/#\/casa$/);
+    await expect(page.locator('#casaTabs [aria-current="page"]')).toHaveText('Despensa');
+    await expect(page.locator('.nav a[aria-current="page"]')).toHaveText('Casa');
+    // Bloque 2 (B «Baldosas»): las baldosas del kit, con el nivel escrito y «A la compra» en lo que lleva mínimo.
+    const tile = (id: string) => page.locator(`#pantryCatalog .stk-tilecell[data-item-id="${id}"]`);
+    await expect(tile(rice)).toContainText('Bajo mínimo');
+    await expect(tile(rice).getByRole('button', { name: 'A la compra: Arroz' })).toBeVisible();
+    await expect(tile(yogurt)).toBeVisible();
+    await expect(tile(yogurt).getByRole('button', { name: /^A la compra/ })).toHaveCount(0);
+    await expect(page.locator('#pantryCatalog')).not.toContainText('Cemento');
     await capture(page, '30a-despensa-baldosas');
     // La lista de siempre, a un toque.
     await page.locator('.fd-viewbar button', { hasText: 'Lista' }).click();
@@ -119,6 +140,18 @@ test('Despensa · pestaña, catálogo de cocina, filtro desde Inicio, ficha, «A
     await expect(row(page, yogurt)).toBeVisible();
     await expect(page.locator('.stk-row', { hasText: 'Cemento' })).toHaveCount(0);
     await capture(page, '30-despensa');
+  });
+
+  await test.step('«Casa» › Maquinaria, y `#/casa` vuelve a la última pestaña', async () => {
+    await page.locator('#casaTabs button', { hasText: 'Maquinaria' }).click();
+    await expect(page).toHaveURL(/#\/maquinaria$/);
+    await expect(page.getByRole('heading', { name: 'Maquinaria' })).toBeVisible();
+    await page.goto(`${baseURL}/#/casa`);
+    await expect(page.locator('#casaTabs [aria-current="page"]')).toHaveText('Maquinaria');
+    await page.locator('#casaTabs button', { hasText: 'Despensa' }).click();
+    await expect(page).toHaveURL(/#\/despensa$/);
+    await page.locator('.fd-viewbar button', { hasText: 'Lista' }).click();
+    await expect(row(page, rice)).toBeVisible();
   });
 
   await test.step('ficha: el origen del arroz es la lista de la compra de esta semana', async () => {

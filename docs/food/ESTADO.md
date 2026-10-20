@@ -40,6 +40,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - Pruebas: `house.test.ts`, `house-planning.test.ts` y `house-suggestion.test.ts` (PGlite), y `house.spec.ts` y `house-suggestion.spec.ts` (Playwright, con capturas a 390 px si se pide `FOOD_CAPTURAS`).
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
 - Pruebas: 44 en PGlite y en `domain.test.ts` el cálculo de coste (`tests/food/*.test.ts`) y cuatro de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red) y `offline.spec.ts` (dos dispositivos: fusión automática en preparación, conflicto con decisión en compra y rechazo `MENU_LOCKED` sin bloquear la cola).
+- **Bloque 2** (MUELA-077, 20 de octubre de 2026; `docs/food/BLOQUE2_INTERFAZ.md`): barra con «Casa» (Despensa y Maquinaria en pestañas), Inicio con lo urgente abierto (lo caducado primero) y el resto plegado, ficha de receta comparada con el próximo servicio («Hay bastante» solo sin dudas), Despensa con las baldosas del kit 0.50 y Maquinaria con un solo «Dónde está».
 
 ## Aceptación del usuario (6 de octubre de 2026)
 

@@ -8,8 +8,7 @@ import { setUsage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
 import { mountHome } from './home.ts';
 import { mountRecipes } from './recipes.ts';
-import { mountEquipment } from './equipment.ts';
-import { mountPantry } from './pantry.ts';
+import { CASA_HASH, lastCasaTab, mountCasa } from './casa.ts';
 import { mountEvents } from './events.ts';
 import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
 import { HOUSE_SUGGESTIONS_HASH, mountHouseSuggestions } from './house-suggestions.ts';
@@ -36,8 +35,8 @@ const NAV: readonly NavItem[] = [
   { hash: '#/eventos', label: 'Eventos', icon: 'calendar' },
   { hash: '#/menus', label: 'Menús', icon: 'menu', matches: ['#/menus', HOUSE_SUGGESTIONS_HASH] },
   { hash: '#/recetario', label: 'Recetario', icon: 'chef' },
-  { hash: '#/despensa', label: 'Despensa', icon: 'grid' },
-  { hash: '#/maquinaria', label: 'Maquinaria', icon: 'settings' },
+  // Bloque 2 (barra C, MUELA-077 §4): Despensa y Maquinaria, dentro de «Casa»; sus rutas siguen vivas.
+  { hash: CASA_HASH, label: 'Casa', icon: 'grid', matches: [CASA_HASH, '#/despensa', '#/maquinaria'] },
 ];
 
 /** Cada ruta con su pantalla para «Sugerencias y QA»: `screen` es el `data-feedback-id` de `main` y el nodo por defecto. */
@@ -45,8 +44,8 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/': { title: 'Inicio', screen: 'food.inicio', mount: mountHome },
   [KITCHEN_HASH]: { title: 'Cocina', screen: 'food.cocina', mount: mountKitchen },
   '#/recetario': { title: 'Recetario', screen: 'food.recetario', mount: mountRecipes },
-  '#/maquinaria': { title: 'Maquinaria', screen: 'food.maquinaria', mount: mountEquipment },
-  '#/despensa': { title: 'Despensa', screen: 'food.despensa', mount: mountPantry },
+  '#/maquinaria': { title: 'Maquinaria', screen: 'food.maquinaria', mount: mountCasa('maquinaria') },
+  '#/despensa': { title: 'Despensa', screen: 'food.despensa', mount: mountCasa('despensa') },
   '#/conflictos': { title: 'Conflictos', screen: 'food.conflictos', mount: mountConflicts },
   '#/eventos': { title: 'Eventos', screen: 'food.eventos', mount: mountEvents },
   '#/menus': { title: 'Menús', screen: 'food.menus', mount: mountMenus },
@@ -58,8 +57,7 @@ const NAV_MARKS: Record<string, Record<'feedbackId' | 'feedbackLabel', string>> 
   '#/eventos': { feedbackId: 'food.navegacion.eventos', feedbackLabel: 'Eventos' },
   '#/menus': { feedbackId: 'food.navegacion.menus', feedbackLabel: 'Menús' },
   '#/recetario': { feedbackId: 'food.navegacion.recetario', feedbackLabel: 'Recetario' },
-  '#/despensa': { feedbackId: 'food.navegacion.despensa', feedbackLabel: 'Despensa' },
-  '#/maquinaria': { feedbackId: 'food.navegacion.maquinaria', feedbackLabel: 'Maquinaria' },
+  [CASA_HASH]: { feedbackId: 'food.navegacion.casa', feedbackLabel: 'Casa' },
 };
 
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Food. */
@@ -212,7 +210,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const [, menuId, menuTab] = hash.match(/^#\/menus\/([0-9a-f-]{36})(?:\/(compra|preparacion|organizador|cierre))?$/i) ?? [];
     // Las rutas fijas admiten parámetros tras «?» (p. ej. `#/recetario?receta=<id>` abre esa receta).
     const path = hash.split('?')[0]!;
-    const entry = menuId ? { title: 'Menú', screen: 'food.menu', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') } : ROUTES[path] ?? ROUTES['#/']!;
+    // `#/casa` abre la última pestaña que se usó (la Despensa o la Maquinaria), con su pantalla.
+    const casa = path === CASA_HASH ? ROUTES[lastCasaTab() === 'maquinaria' ? '#/maquinaria' : '#/despensa']! : null;
+    const entry = menuId ? { title: 'Menú', screen: 'food.menu', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') } : casa ?? ROUTES[path] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
     shell.setRoute(menuId ? '#/menus' : path);
