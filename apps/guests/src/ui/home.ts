@@ -260,7 +260,7 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
     const next = actions.nextRetreat;
     return el('section', { class: 'gpanel', id: 'panel', 'data-feedback-id': 'guests.inicio.estancia', 'data-feedback-label': 'Tu estancia' },
       el('h3', null, t('home2.panel')),
-      room ? verEnPlano({ place: room, match: { space: lodging?.mine?.space_name, bed: lodging?.mine?.bed_label }, label: t('home2.yourRoomPlan', { room }), id: 'roomPlan', reads: ctx.reads, mark: (n) => fbMark(n, 'guests.inicio.estancia.plano', 'Tu habitación en el plano') }) : null,
+      room ? verEnPlano({ place: room, spaceId: lodging?.mine?.resource_bed_id ?? lodging?.mine?.resource_space_id ?? null, match: { space: lodging?.mine?.space_name, bed: lodging?.mine?.bed_label }, label: t('home2.yourRoomPlan', { room }), id: 'roomPlan', reads: ctx.reads, mark: (n) => fbMark(n, 'guests.inicio.estancia.plano', 'Tu habitación en el plano') }) : null,
       el('div', { class: 'gtiles', id: 'retreatTiles' },
         mods?.menu ? tile({ id: 'openMenu', href: `${retreatBase}/menu`, icon: 'chef', title: t('nav.menu'), sub: meal ? `${t(`menu.${meal.type}`)}${meal.time ? ` · ${hhmm(meal.time)}` : ''}` : t('home2.menuSub') }, (n) => fbMark(n, 'guests.inicio.estancia.menu', 'Menú')) : null,
         mods?.lodging && moment !== 'before' ? tile({ id: 'myRoom', href: `${retreatBase}/alojamiento`, icon: 'bed', title: t('home2.yourRoom'), sub: room ?? t('home2.roomNone') }, (n) => fbMark(n, 'guests.inicio.estancia.habitacion', 'Tu habitación')) : null,

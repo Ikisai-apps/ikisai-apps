@@ -330,8 +330,12 @@ test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaci
   const square = (x: number, y: number, s = 0.3): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
   const { ids } = await api.floorPlan([
     { name: 'Habitación Olmo', kind: 'habitacion', points: square(0.05, 0.1) },
-    { name: 'Habitación Roble', kind: 'habitacion', points: square(0.5, 0.1) },
+    // Otro nombre en Recursos: solo casa por el id que da Booking (#680).
+    { name: 'Dormitorio grande', kind: 'habitacion', points: square(0.5, 0.1), refs: [`booking.space:${roble.spaceId}`] },
     { name: 'Comedor de abajo', kind: 'comedor', points: square(0.05, 0.6) },
+    // Camas dibujadas: una casada por id (otro nombre en Recursos) y otra por su nombre en la habitación.
+    { name: 'Cama de la ventana', kind: 'cama', parent: 'Dormitorio grande', points: square(0.52, 0.12, 0.1), refs: [`booking.bed:${roble.bedIds[0]}`] },
+    { name: 'Cama 2', kind: 'cama', parent: 'Dormitorio grande', points: square(0.66, 0.12, 0.1) },
   ]);
   await enter(page, await api.guestLink(reservation, eli, 'Eli'));
   await go(page, 'alojamiento');
@@ -343,11 +347,19 @@ test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaci
   await expect(olmoZone).toHaveAttribute('aria-label', /2 libres/);
   // «Poca gente»: la de cinco deja de cumplir, y lo dice en texto.
   await page.locator('#lodgingRooms .gfilters button', { hasText: 'Poca gente' }).click();
-  await expect(map.locator('.map-svg [role="button"][aria-label^="Habitación Roble"]')).toHaveAttribute('aria-label', /No cumple/);
+  await expect(map.locator('.map-svg [role="button"][aria-label^="Dormitorio grande"]')).toHaveAttribute('aria-label', /No cumple/);
   // Tocar una en el plano la enseña abajo, resaltada.
-  await map.locator('.map-svg [role="button"][aria-label^="Habitación Roble"]').click();
+  await map.locator('.map-svg [role="button"][aria-label^="Dormitorio grande"]').click();
   await expect(page.locator('#lodgingRoom')).toHaveAttribute('data-space', roble.spaceId);
-  await expect(map.locator('.map-svg [role="button"][aria-pressed="true"]')).toHaveAttribute('aria-label', /Habitación Roble/);
-  expect(ids['Habitación Roble']).toBeTruthy();
+  await expect(map.locator('.map-svg [role="button"][aria-pressed="true"]')).toHaveAttribute('aria-label', /Dormitorio grande/);
+  expect(ids['Dormitorio grande']).toBeTruthy();
+  // La elegida ampliada: sus camas sobre su dibujo, con el estado en texto; tocar una la elige como su botón.
+  const beds = page.locator('#lodgingBedsMap .map-svg [role="button"]');
+  await expect(beds).toHaveCount(2);
+  await expect(page.locator(`#lodgingBedsMap .map-svg [role="button"][aria-label*="Libre"]`)).toHaveCount(2);
   await capture(page, 'alojamiento-mapa');
+  await page.locator('#lodgingBedsMap .map-svg [role="button"]').first().click();
+  await page.getByRole('button', { name: 'Elegir esta cama' }).click();
+  await expect(page.locator('#lodgingMine')).toContainText('Cama 1');
+  await expect.poll(async () => (await api.booking.t.db.query<{ bed_id: string }>(`select bed_id from booking.room_assignments where guest_id = $1 and deleted_at is null`, [eli])).rows.map((r) => r.bed_id)).toEqual([roble.bedIds[0]]);
 });

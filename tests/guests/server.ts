@@ -37,7 +37,7 @@ export interface GuestsTestServer {
    */
   menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; allergensChecked?: boolean; diet?: string[] }> }>): Promise<void>;
   /** Mapa de zonas de Recursos (MUELA-024): un edificio con un dibujo (sin archivo: la capa sobre papel) y sus espacios con forma. */
-  floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points: Array<[number, number]> }>): Promise<{ planId: string; ids: Record<string, string> }>;
+  floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points: Array<[number, number]>; refs?: string[] }>): Promise<{ planId: string; ids: Record<string, string> }>;
   /** Servicios del menú de casa de Food (FD2, `food.portal_house_menu`). */
   houseMenu(services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; allergens?: string[]; allergensChecked?: boolean }> }>): Promise<void>;
   /** El lugar en Central: dirección del lugar (sin domicilio fiscal en los portales) y, si se pide, un plano verificado. */
@@ -198,8 +198,9 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       const planId = (await db.query<{ id: string }>(`insert into resources.floor_plans (building_id, floor, width, height) values ($1, 'Planta baja', 1000, 700) returning id`, [building])).rows[0]!.id;
       const ids: Record<string, string> = {};
       for (const [i, s] of spaces.entries()) {
-        ids[s.name] = (await db.query<{ id: string }>(`insert into resources.spaces (parent_id, kind, name, position, plan_id, plan_shape) values ($1, $2, $3, $4, $5, $6) returning id`,
-          [s.parent ? ids[s.parent] : building, s.kind ?? 'sala', s.name, i, planId, JSON.stringify({ points: s.points })])).rows[0]!.id;
+        // `refs` (`booking.space:<id>`, `booking.bed:<id>`): la pareja de Booking, que da `resource_space_id` en sus lecturas (#680).
+        ids[s.name] = (await db.query<{ id: string }>(`insert into resources.spaces (parent_id, kind, name, position, plan_id, plan_shape, source_refs) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+          [s.parent ? ids[s.parent] : building, s.kind ?? 'sala', s.name, i, planId, JSON.stringify({ points: s.points }), s.refs ?? []])).rows[0]!.id;
       }
       return { planId, ids };
     },

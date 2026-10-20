@@ -551,9 +551,9 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
 - **Lectura:** `GET plans` (§6.1) con copia en la caché para verla sin red, recordada un minuto en la pantalla. El dibujo
   se guarda en el dispositivo por su `sha256` (Cache Storage `ikisai-guests-plans`, se borra al salir) y no se vuelve a
   bajar si no cambia; si no se puede leer (CORS), la imagen firmada se pinta igual.
-- **«Ver en el plano»** (`ui/plan.ts`) busca el sitio en el mapa: por `resource_space_id` (Programa y horario de Inicio)
-  o, mientras Booking no dé los ids de Recursos en `portal_lodging` y `portal_my_stays`, por nombre (habitación y cama
-  dentro), solo si coincide con uno. Con el sitio: `createSpaceMap` del kit con el sitio resaltado y «Aquí» en texto, el
+- **«Ver en el plano»** (`ui/plan.ts`) busca el sitio en el mapa por su id de Recursos: `resource_space_id` en el
+  Programa, y `resource_space_id` y `resource_bed_id` en `portal_lodging` y `portal_my_stays` (Booking #680). Solo cuando
+  Booking no tiene pareja (`null`), por nombre (habitación y cama dentro), y solo si coincide con uno. Con el sitio: `createSpaceMap` del kit con el sitio resaltado y «Aquí» en texto, el
   conmutador Plano/Lista y, debajo y plegado, el plano del centro de Central como respaldo. Sin dibujo o sin forma, la
   pieza enseña la lista con la ruta. Sin el sitio en el mapa, como antes (el plano de Central).
 - **Pantallas:** Resumen (`#roomPlan` y lo de ahora), Programa, Información práctica y «Ikisai» (el mapa entero,
@@ -561,8 +561,11 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
 - **Alojamiento** (MUELA-056, `#lodgingMap`): con la elección abierta, el plano de las habitaciones abiertas encima de
   «Cambiar habitación» (casadas por nombre único mientras `portal_lodging` no dé el id de Recursos); las demás estancias,
   apagadas y sin tocar. Cada una con su estado en texto dentro («2 libres», «No cumple» con los filtros, «Llena»); tocarla
-  la enseña abajo, como la fila de la lista, y queda resaltada. Las camas siguen como botones de color con texto: el kit
-  aún no recorta el dibujo a la habitación elegida (petición al kit).
+  la enseña abajo, como la fila de la lista, y queda resaltada. **La elegida ampliada** (`focus` del kit 0.54,
+  `#lodgingBedsMap`): en la habitación de abajo, su dibujo recortado con las camas encima, cada una con su estado en texto
+  («Libre», «Ocupada», «Elegida» o la de quién de la familia; apagada si no se puede elegir); tocar una hace lo mismo que
+  su botón (confirmación incluida). Los botones de color con texto siguen debajo, como lista equivalente. Sin forma de la
+  habitación o sin camas dibujadas, solo los botones.
 - **Ayuda** (MUELA-054, `#helpPlan`): bajo las baldosas de «Un sitio», «Tócalo en el plano» (solo los sitios de huéspedes:
   habitaciones, salas, baños, comedor, exteriores, zonas de paso y otros). Tocar un sitio lo elige («Sitio: …»,
   `#helpPicked`) y el aviso lleva `scope.space_id` (Recursos) y su nombre en el texto, como siempre. Las baldosas siguen.

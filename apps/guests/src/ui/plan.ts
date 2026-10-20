@@ -62,6 +62,7 @@ export function toRows(spaces: PortalSpace[]): SpaceRow[] {
 /** El espacio del sitio: por id o, si no, por nombre (habitación y cama dentro), solo si la coincidencia es única. Pura. */
 export function findSpace(spaces: PortalSpace[], spaceId?: string | null, match?: { space?: string | null; bed?: string | null } | null): PortalSpace | null {
   if (spaceId) return spaces.find((s) => s.id === spaceId) ?? null;
+  // Sin id (Booking no tiene pareja en Recursos): por el nombre, solo si coincide con uno.
   const name = norm(match?.space);
   if (!name) return null;
   const rooms = spaces.filter((s) => norm(s.name) === name && s.kind !== 'cama');
