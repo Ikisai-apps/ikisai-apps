@@ -26,7 +26,7 @@ _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking'
   'guests': 'guests-documents', 'organizers': 'organizers-materials'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
-BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152, 'organizers-materials': 15728640}
+BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152, 'organizers-materials': 15728640, 'resources-plans': 10485760}
 DEFAULT_BUCKET_LIMIT = 15728640
 BUCKET_MIME_TYPES = {
   'ikisai-files': ['image/webp', 'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'text/csv', 'application/zip',
@@ -35,6 +35,7 @@ BUCKET_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'application/vnd.oasis.opendocument.text', 'application/vnd.oasis.opendocument.spreadsheet', 'application/vnd.oasis.opendocument.presentation'],
   'kitchen-media': ['image/webp', 'image/jpeg', 'image/png'],
+  'resources-plans': ['image/svg+xml', 'image/png', 'image/jpeg'],
   'purchase-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
   # Central: documentación de personas y cumplimiento (contratos, certificados, seguros): PDF e imágenes.
   'central-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
@@ -64,7 +65,7 @@ def _entry(name):
 # Se publica solo la app «publicable» (con su Edge y su PWA, ver release_matrix): registrar un portal antes es inocuo.
 APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central', 'organizers', 'guests')}
 APP_NAMES = tuple(APPS)
-SHARED_BUCKETS = ('feedback-media', 'guests-documents')
+SHARED_BUCKETS = ('feedback-media', 'guests-documents', 'resources-plans')
 BUCKETS = tuple(dict.fromkeys([app['bucket'] for app in APPS.values() if app['bucket']] + list(SHARED_BUCKETS)))
 
 

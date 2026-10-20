@@ -105,6 +105,13 @@ En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futur
 - **Hooks y vistas:** las migraciones de cualquier app pueden **leer** `resources.spaces` y `resources.space_kinds`, por ejemplo para validar un `space_id` (lo permite el lint). Nunca escriben en ellas.
 - **Referencias:** `space_id` es un uuid sin clave foránea entre schemas; lo valida el hook de la app (que esté vivo y activo).
 
+## 2.6 Mapa de zonas (migración 0808, MUELA-024)
+
+- **`resources.floor_plans`**: el dibujo de cada edificio y planta. Campos `building_id` (un espacio), `floor` (texto, p. ej. «Planta baja»; una por edificio), `position`, `file_id`, `width` y `height` (unidades de la imagen) y `notes`. Lo escribe el owner y lo leen todos los miembros.
+- **El archivo:** se sube con `POST /api/v1/resources/uploads` (y `uploads/:id/verify`). Va al bucket privado `resources-plans`, solo SVG, PNG o JPG de hasta 10 MB. Se lee con `GET /api/v1/resources/files/:id`. El SVG se pinta siempre como imagen (`<image>`), así que no ejecuta nada; si se leen sus nombres para colocar solo, se limpia antes (DOMPurify, perfil SVG).
+- **`resources.spaces.plan_id` + `plan_shape`**: en qué dibujo está la estancia y su forma, `{"points": [[x, y], …]}` con 3 a 200 puntos entre 0 y 1, relativos a la imagen. Colocar es del owner (hook `resources.check_plans`); el editor sigue cambiando nombre, datos y orden. Un dibujo con estancias encima no se borra.
+- **Sin forma o sin dibujo,** la estancia sale en la lista equivalente (`createSpaceTree`). Las literas siguen siendo camas con su capacidad.
+
 ## 3. Inventario (fase R3, migración 0802)
 
 Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de artículo, solo el owner. Huéspedes, organizadores y outsiders no lo ven.
