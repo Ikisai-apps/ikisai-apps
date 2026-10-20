@@ -1,5 +1,10 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.54.1 · 20 de octubre de 2026
+
+- **`createSpaceMap({ bedNumbers: false })`** (MUELA-056, Guests): las camas van solo por color, sin el número pintado en el plano ni en la lista. Quedan el nombre accesible («Cama 1, Hab 3 · Libre»), el estado en palabras y la leyenda. Por defecto, con número, como hasta ahora.
+- **Pruebas:** `v59`.
+
 ## 0.54.0 · 20 de octubre de 2026
 
 **«La elegida ampliada» en `createSpaceMap`** (MUELA-056, para Guests). Opcional: sin `focus`, el mapa sigue igual.
