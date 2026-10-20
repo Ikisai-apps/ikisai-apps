@@ -612,6 +612,27 @@ Migración `20261008_0191_food_portal_menu.sql`. Decisiones del usuario (8-10-20
 
 ---
 
+### 7.6 El menú de casa para Guests (FD2, 20-10-2026)
+
+`food.portal_house_menu {from?, to?}`, una lectura de función solo para `guests`, con los roles `outsider`, `editor` y `owner`. Migración `20261020_1107`.
+
+Respuesta:
+
+```json
+{ "from": "AAAA-MM-DD", "to": "AAAA-MM-DD",
+  "services": [{ "date": "…", "type": "comida", "time": "14:00:00",
+                 "dishes": [{ "name": "…", "quick": false, "allergens": ["huevos"], "allergens_checked": true }] }] }
+```
+
+- **Rango:** desde hoy (hora de Madrid) en adelante, como mucho 60 días.
+  - Sin `from`, desde hoy; sin `to`, hasta `from` + 60 días.
+  - Un `from` pasado empieza hoy, y un `to` lejano se recorta.
+  - Una fecha que no se entiende, o un `to` anterior a `from`, da `INVALID_FIELDS` 422.
+- **El nombre del plato:** el público, si lo tiene.
+- **Alérgenos (regla de #597):** van siempre los declarados, con `allergens_checked` para que Guests diga «sin revisar por cocina». Nunca son `null` por no estar revisados.
+- **No sale:** ni coste, ni raciones, ni ingredientes, ni elaboración, ni notas, ni el nombre interno de la receta, ni nombres de personas.
+- Prueba: `tests/food/portal-house-menu.test.ts`.
+
 ## 8. Archivos
 
 - Bucket `kitchen-media` (privado, ya creado). `uploads: { bucket: 'kitchen-media', maxBytes: 2 MB, allowedMime: ['image/webp', 'image/jpeg'] }`.
