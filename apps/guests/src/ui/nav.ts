@@ -50,7 +50,7 @@ export function barItems(retreats: { hash: string; matches: string[] } | null): 
 export function moreItems(ctx: GuestContext, base: string, mods: Modules, family = false): NavItem[] {
   const g = ctx.guest();
   return [
-    { hash: `${base}/info`, label: t('home.info'), icon: 'info' },
+    { hash: `${base}/info`, label: t('guide.title'), icon: 'info' },
     ...(mods.materials ? [{ hash: `${base}/materiales`, label: t('materials.title'), icon: 'attach' } as NavItem] : []),
     ...(mods.questions && !family ? [{ hash: `${base}/preguntas`, label: t('questions.title'), icon: 'help' } as NavItem] : []),
     ...(g.mode !== 'ninguno' && !family ? [{ hash: `${base}/datos`, label: t('home.data'), icon: 'user' } as NavItem] : []),

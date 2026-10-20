@@ -63,7 +63,7 @@ function show(): void {
   }
   const paintEntry = (permanentAccount?: boolean) => {
     unmount?.();
-    unmount = renderEntry(root!, { error: entryError, ...(permanentAccount ? { permanentAccount } : {}) });
+    unmount = renderEntry(root!, { error: entryError, retry: () => location.reload(), ...(permanentAccount ? { permanentAccount } : {}) });
   };
   paintEntry();
   // Contacto público y cuenta permanente: si llegan, se vuelve a pintar la entrada con ellos.

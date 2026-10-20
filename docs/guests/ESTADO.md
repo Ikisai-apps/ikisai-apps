@@ -85,6 +85,8 @@
 
 - 2026-10-20 · **Tanda 31, rediseño de La Muela, parte A** (API.md §9.14): menú lateral del kit, portada del retiro que se pasa y se pliega con el aviso de otro retiro, Resumen por momentos, Programa «Ahora y lo siguiente», Menú «La carta» con el cruce por persona encima de la línea de #597, y Alojamiento con la lista de habitaciones, camas por color con texto y la familia. Pruebas reescritas (no borradas) en `modules`, `personas`, `caracterizacion`, `portal` y `outsider`.
 
+- 2026-10-20 · **Tanda 31, parte B** (API.md §9.14): Guía del retiro (Información, Materiales y Preguntas en una página, con «Nuevo» y preguntas pregunta a pregunta), Tus datos pregunta a pregunta con «Antes de venir» y «Ver todos mis datos», Alimentación como pregunta, «Comprueba tus respuestas» en la firma (solo con el dedo), Ayuda en tarjetas con los estados de 071 y la Entrada con «Encuentra tu enlace» y las salidas.
+
 ## Pendiente
 
 - El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.

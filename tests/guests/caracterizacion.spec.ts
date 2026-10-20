@@ -84,7 +84,7 @@ test('caracterización · entrada: aviso, Inicio del retiro en #/p/<id>, recarga
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de otoño');
   await expect(page.locator('#privacy')).toHaveCount(0);
   // Los enlaces directos de cada sección funcionan (marcadores y enlaces compartidos): no se pueden romper con O4.
-  for (const [section, check] of [['programa', '#programEmpty'], ['menu', '#menuEmpty'], ['alojamiento', '#lodgingNone'], ['info', '#infoSections, #infoSoon'], ['datos', '#dataForm'], ['alimentacion', '#dietList']] as const) {
+  for (const [section, check] of [['programa', '#programEmpty'], ['menu', '#menuEmpty'], ['alojamiento', '#lodgingNone'], ['info', '#infoSections, #infoSoon'], ['datos', '.ask-box, #taskList'], ['alimentacion', '#dietList']] as const) { // Tanda 31: Tus datos, pregunta a pregunta o la lista
     await page.goto(`${baseURL}/#/p/${ana}/${section}`);
     await expect(page.locator(check).first()).toBeVisible();
   }

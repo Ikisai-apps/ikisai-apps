@@ -1,7 +1,15 @@
-/** Entrada sin sesión (API.md §9.1): enlace no válido o caducado, o nadie ha abierto todavía su enlace en este dispositivo. */
+/**
+ * Entrada sin sesión (API.md §9.1; MUELA-060, tanda 31): «bienvenida con salidas». Arriba, la bienvenida de Ikisai, la
+ * marca y el idioma; qué ha pasado (sin enlace, caducado el…, no válido o sin red, con «Reintentar»); el marco
+ * «Encuentra tu enlace» paso a paso (mira en tu correo, mira en WhatsApp); y siempre las salidas para hablar con Ikisai
+ * (correo, teléfono y, si Central lo tiene, WhatsApp), que salen de Central, nunca fijas en el código.
+ * El tercer paso («con tu código», reenviar el enlace sin sesión con el localizador de la reserva) llegará cuando el
+ * núcleo publique ese reenvío (petición de la tanda 31); hasta entonces no se ofrece. La cuenta permanente (Google y
+ * código por correo) solo sale cuando el núcleo la active; nunca un «pronto».
+ */
 import { el, icon, replace } from '@ikisai/ui-kit';
-import { describeError, errorCode } from '../app/client.ts';
-import { contactEmail, contactPhone } from '../app/common-texts.ts';
+import { describeError, errorCode, isNetworkError } from '../app/client.ts';
+import { commonText, contactEmail, contactPhone } from '../app/common-texts.ts';
 import { formatDate, t } from '../app/i18n.ts';
 import { languageSelect } from './language.ts';
 
@@ -10,11 +18,14 @@ export interface EntryOptions {
   error?: unknown;
   /** Muestra los accesos de la cuenta permanente (Google y código por correo) cuando el núcleo los active. */
   permanentAccount?: boolean;
+  /** Volver a intentar abrir el enlace (sin red). */
+  retry?: () => void;
 }
 
 export function renderEntry(root: HTMLElement, options: EntryOptions): () => void {
   const code = options.error ? errorCode(options.error) : '';
   const validUntil = (options.error as { details?: { validUntil?: string | null } } | undefined)?.details?.validUntil;
+  const offline = Boolean(options.error) && isNetworkError(options.error);
   let title = t('entry.title');
   let text = t('entry.text');
   if (code === 'LINK_EXPIRED') {
@@ -23,21 +34,44 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
   } else if (code === 'LINK_INVALID') {
     title = t('entry.invalidTitle');
     text = t('entry.invalidText');
+  } else if (offline) {
+    title = t('entry.failedTitle');
+    text = t('error.offline');
   } else if (options.error) {
     title = t('entry.failedTitle');
     text = describeError(options.error);
   }
+  const email = contactEmail();
+  const phone = contactPhone();
+  const whatsapp = commonText('contact.whatsapp')?.body?.replace(/[^\d]/g, '') ?? '';
+  const subject = encodeURIComponent(t('entry.newLinkSubject'));
+  const exit = (href: string, ic: 'edit' | 'help' | 'info', label: string, sub: string, id: string, extra: Record<string, string> = {}) =>
+    el('a', { class: 'gentry-exit', href, id, ...extra }, el('span', { class: 'gentry-exit-ico', 'aria-hidden': 'true' }, icon(ic, 20)),
+      el('span', { class: 'gentry-exit-text' }, el('strong', null, label), el('span', { class: 'small' }, sub)), icon('chevronRight', 16));
+  const step = (n: number, ic: 'edit' | 'info', head: string, body: string) => el('li', { class: 'gentry-step' },
+    el('span', { class: 'gentry-step-n', 'aria-hidden': 'true' }, String(n)),
+    el('div', null, el('p', { class: 'gentry-step-h' }, icon(ic, 18), ' ', head), el('p', { class: 'small' }, body)));
 
   replace(root, el('main', { class: 'login gentry', id: 'entry', 'data-feedback-id': 'guests.entrada', 'data-feedback-label': 'Entrada' },
-    el('div', { class: 'login-card' },
+    el('div', { class: 'login-card gentry-card' },
+      el('div', { class: 'gentry-hero', role: 'img', 'aria-label': t('entry.heroLabel') }, el('span', null, t('entry.hero'))),
       el('div', { class: 'gentry-top' },
         el('div', { class: 'login-brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('guest', 22)), el('h1', null, 'Ikisai Guests')),
         languageSelect()),
       el('h2', { id: 'entryTitle', 'data-feedback-id': 'guests.entrada.enlace.error', 'data-feedback-label': 'Mensaje de entrada' }, title),
       el('p', { id: 'entryText' }, text),
-      code || options.error ? el('p', { id: 'entryContact' }, t('entry.contact', { email: contactEmail(), phone: contactPhone() })) : null,
-      options.permanentAccount ? el('p', { class: 'muted small', id: 'permanentAccess' }, t('entry.permanentSoon')) : null,
-      el('p', { class: 'muted small gentry-foot' }, t('entry.foot')),
+      offline && options.retry ? el('button', { type: 'button', class: 'primary wide', id: 'entryRetry', 'data-feedback-id': 'guests.entrada.enlace.reintentar', 'data-feedback-label': 'Reintentar', onclick: () => options.retry!() }, icon('sync', 18), t('common.retry')) : null,
+      el('section', { class: 'gentry-frame', 'aria-labelledby': 'findTitle' },
+        el('p', { class: 'gentry-frame-h', id: 'findTitle' }, icon('search', 20), ' ', t('entry.findTitle')),
+        el('ol', { class: 'gentry-steps' },
+          step(1, 'edit', t('entry.step1'), t('entry.step1Text')),
+          step(2, 'info', t('entry.step2'), t('entry.step2Text')))),
+      email || phone || whatsapp ? el('p', { class: 'glabel gentry-exits' }, t('entry.exits')) : null,
+      el('div', { class: 'gentry-acts', id: 'entryContact' },
+        email ? exit(`mailto:${email}?subject=${subject}`, 'edit', t('entry.write'), email, 'entryMail', { 'data-feedback-id': 'guests.entrada.contacto.escribir', 'data-feedback-label': 'Escribir a Ikisai' }) : null,
+        phone ? exit(`tel:${phone.replace(/\s+/g, '')}`, 'help', t('entry.call'), phone, 'entryCall', { 'data-feedback-id': 'guests.entrada.contacto.llamar', 'data-feedback-label': 'Llamar a Ikisai' }) : null,
+        whatsapp ? exit(`https://wa.me/${whatsapp}?text=${subject}`, 'info', 'WhatsApp', t('entry.whatsapp'), 'entryWhatsapp', { target: '_blank', rel: 'noopener', 'data-feedback-id': 'guests.entrada.contacto.whatsapp', 'data-feedback-label': 'WhatsApp' }) : null),
+      el('p', { class: 'small gentry-foot' }, t('entry.foot')),
     )));
   return () => replace(root);
 }

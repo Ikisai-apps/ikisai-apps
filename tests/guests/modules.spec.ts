@@ -163,12 +163,16 @@ test('guests · preguntas del organizador: pendiente en Inicio, se responden sin
   await expect(page.locator('#task-questions')).toContainText('1 pregunta');
   await expect(page.locator('#sections')).toHaveCount(0); // sin Programa, Menú ni Alojamiento: solo el Resumen
 
+  // Tanda 31 (MUELA-037): las preguntas en la «Guía del retiro», pregunta a pregunta; las cerradas, solo en la lista.
   await page.locator('#task-questions').click();
+  await expect(page.locator('#guideTop')).toContainText('Te faltan 2 preguntas de tu organizador');
   await expect(page.locator('#questionsNotice')).toHaveText(' Tu organizador verá tus respuestas.');
-  await expect(page.locator(`[data-question="${q3}"] input[value="a"]`)).toBeDisabled();
-  await expect(page.locator(`[data-question="${q3}"]`)).toContainText('Ya no se pueden cambiar');
-  await page.locator(`#q-${q1}`).fill('Descansar y aprender a respirar');
-  await page.locator(`[data-question="${q2}"] input[value="true"]`).check();
+  await expect(page.locator(`.gq-list [data-question="${q3}"]`)).toContainText('Cerrada');
+  await expect(page.locator('.ask-meta')).toHaveText('Pregunta 1 de 2');
+  await page.locator('.ask-input').fill('Descansar y aprender a respirar');
+  await page.locator('.ask-input').press('Enter');
+  await page.locator('.ask-choice', { hasText: 'Sí' }).click();
+  await expect(page.locator(`.gq-list [data-question="${q2}"]`)).toContainText('Sí');
   const answers = async () => (await api.booking.t.db.query<{ question_id: string; value: unknown }>(`select question_id, value from organizers.answers where guest_id = $1 and deleted_at is null`, [eva])).rows;
   await expect.poll(async () => (await answers()).length).toBe(2);
   expect(await answers()).toEqual(expect.arrayContaining([{ question_id: q1, value: 'Descansar y aprender a respirar' }, { question_id: q2, value: true }]));
@@ -245,9 +249,10 @@ test('guests · información: el lugar de Central (dirección, mapa y plano en P
   await expect(page.locator('#infoAddress')).toContainText('Camino del Pinar 3, Segovia');
   await expect(page.locator('#infoPlace')).not.toContainText('Calle Fiscal'); // nunca el domicilio fiscal
   await expect(page.locator('#infoMap')).toHaveAttribute('href', /google\.com\/maps\/search/);
-  await expect(page.locator('#infoPlan')).toHaveText('Ver el plano del centro (PDF)');
+  // Tanda 31: el plano del centro se abre dentro («Ver en el plano»); si es un PDF, se abre desde ahí.
+  await page.locator('#infoPlan summary').click();
   const signed = page.waitForResponse((r) => /\/api\/v1\/portal-files\//.test(r.url()));
-  await page.locator('#infoPlan').click();
+  await page.locator('#infoPlan').getByRole('button', { name: 'Abrir el plano (PDF)' }).click();
   expect((await signed).status()).toBe(200);
 });
 
@@ -263,8 +268,8 @@ test('guests · vista previa del organizador (huésped de muestra): franja visib
   await expect(page.locator('#retreatTitle')).toBeVisible();
   expect((await api.row(muestra)).privacy_ack_version).toBeNull();
   await goMore(page, 'Tus datos');
-  await page.locator('#f-last_name_1').fill('Prueba');
-  await page.locator('#f-first_name').focus();
+  await page.locator('.ask-input').fill('Prueba');
+  await page.locator('.ask-input').press('Enter');
   await expect(page.getByText('Es una vista previa: no se guarda nada.').first()).toBeVisible();
   expect((await api.row(muestra)).last_name_1).toBeNull();
 });

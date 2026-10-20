@@ -33,10 +33,10 @@ import { momentOf, mountHome, todayMadrid } from './home.ts';
 import { mountInfo } from './info.ts';
 import { retreatFrame, retreatState, shortRange, type Frame } from './frame.ts';
 import { mountLodging } from './lodging.ts';
-import { clearOfflineMaterials, mountMaterials } from './materials.ts';
+import { clearOfflineMaterials } from './materials.ts';
+import { mountGuide } from './guide.ts';
 import { barItems, modulesOf, moreItems, sectionLabel, sectionsOf, type Modules, type Section } from './nav.ts';
 import { mountMenu, mountProgram } from './program.ts';
-import { mountQuestions } from './questions.ts';
 import { languageSelect } from './language.ts';
 import { mountOutsider } from './outsider.ts';
 import { needsPrivacy, renderPrivacy } from './privacy.ts';
@@ -477,10 +477,19 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const help = (start?: 'place' | 'event') => openHelp({ client, userId, grant: gctx.grant, ...(start ? { start } : {}) });
     const people = ctxs.map((c) => ({ ctx: c, base: `#/p/${c.grant.guest_id}` }));
     switch (page) {
-      case 'datos': unmountView = mountData(view, gctx, personBase); break;
+      case 'datos': unmountView = mountData(view, gctx, personBase, { navigate }); break;
       case 'alimentacion': unmountView = mountDiet(view, gctx, personBase); break;
       case 'firma': unmountView = mountSign(view, gctx, personBase); break;
-      case 'info': unmountView = mountInfo(view, personBase, during, gctx.reads); break;
+      case 'info':
+      case 'materiales':
+      case 'preguntas':
+        // «Guía del retiro» (MUELA-037): las tres rutas de siempre abren la misma página, en su sección.
+        unmountView = mountGuide(view, gctx, {
+          base: personBase, userId, during, modules: mods, family,
+          section: page === 'materiales' ? 'materiales' : page === 'preguntas' ? 'preguntas' : null,
+          privacyOk: !needsPrivacy(gctx), privacyHref: `${personBase}/preguntas`,
+        });
+        break;
       case 'programa': unmountView = mountProgram(view, gctx, { retreatBase: base, ...(family ? { family: ctxs } : {}) }); break;
       case 'menu': {
         const notice = commonText('guests.menu_notice');
@@ -488,8 +497,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         break;
       }
       case 'alojamiento': unmountView = mountLodging(view, family ? ctxs : gctx, { client }); break;
-      case 'materiales': unmountView = mountMaterials(view, gctx, userId); break;
-      case 'preguntas': unmountView = mountQuestions(view, gctx); break;
       default: unmountView = mountHome(view, gctx, {
         base: personBase,
         retreatBase: base,

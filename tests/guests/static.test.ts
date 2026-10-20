@@ -66,6 +66,8 @@ test('guests · toda clave que usa el código existe (también las de catálogo 
     'help.event': ['schedule', 'organization', 'activities', 'communication', 'food', 'other'],
     'help.place': ['habitacion', 'comedor', 'sala', 'banos', 'exterior', 'piscina', 'otro'],
     'help.kind': ['damage', 'cleaning', 'missing', 'utilities', 'safety', 'other'],
+    'help.kindShort': ['damage', 'cleaning', 'missing', 'utilities', 'safety', 'other'],
+    'fill.st': ['done', 'doing', 'todo', 'locked'],
     info: ['arrival', 'parking', 'facilities', 'rules', 'bring'],
   };
   assert.deepEqual([...prefixes].filter((p) => !(p in families)), [], 'familia sin lista en esta prueba');
