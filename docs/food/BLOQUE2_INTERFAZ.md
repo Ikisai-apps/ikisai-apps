@@ -38,7 +38,8 @@ El kit 0.50 trae `createItemCatalog({ layout: 'baldosas' })`.
 
 - La migración de los textos de «Ubicación» a espacios es de Sevilla y no va en esta PR.
 - **Etiqueta «Ubicación» del texto libre:** sigue llamándose así porque `caracterizacion-r5.spec.ts:109` la pide. Para llamarla «Dónde está» hay que cambiar esa prueba, y eso necesita permiso.
-- **Kit:**
-  - la ruta corta del sitio la calcula Food con la misma regla que el selector, porque el kit no la exporta;
-  - el foco del kit dice «Abrir»; el traspaso pedía «Ver en la Despensa»;
-  - `focusAction` y `setFilter(f, { persist: false })` no están en el kit 0.50, así que Food sigue devolviendo el filtro al salir.
+- **Kit 0.53 (#670), ya adoptado:**
+  - la ruta corta del sitio es `spaceShortPath` del kit;
+  - el foco dice «Ver en la Despensa» (`openLabel`);
+  - «A la compra» es `focusAction`: en las baldosas, en lo bajo mínimo; en la lista, en todo, como antes;
+  - el filtro que llega por enlace se pone con `setFilter(f, { persist: false })` y ya no se devuelve a mano al salir.

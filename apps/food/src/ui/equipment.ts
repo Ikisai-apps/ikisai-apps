@@ -4,7 +4,7 @@ import {
   type Equipment, type EquipmentNotice, type EquipmentStage, type EquipmentStatus, type MenuItem, type MenuService, type MovementLike, type RecipeEquipment, type ResourceItem,
 } from '@ikisai/domain-food';
 import type { SyncedRow } from '@ikisai/sync-client';
-import { ancestorsOf, closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, indexSpaces, listRow, openSheet, renderStages, replace, spaceFromRow, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, listRow, openSheet, renderStages, replace, spaceFromRow, spaceShortPath, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
 import { todayKey } from '../app/events.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { guard } from '../app/guard.ts';
@@ -41,16 +41,9 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   const articleOf = (row: Row) => (row.item_id ? articles.find((a) => a.id === row.item_id) : undefined);
   /**
    * Bloque 2 (Maquinaria A, MUELA-077 §3): una sola línea de sitio. La ruta corta del espacio («Albergue › Almacén»,
-   * como la del selector del kit), si no el texto escrito, si no «Sin sitio»; nunca las dos cosas.
+   * `spaceShortPath` del kit 0.53), si no el texto escrito, si no «Sin sitio»; nunca las dos cosas.
    */
-  const shortPlace = (spaceId: string | null | undefined): string => {
-    if (!spaceId) return '';
-    const byId = indexSpaces(spaces);
-    const space = byId.get(spaceId);
-    if (!space) return '';
-    const parent = ancestorsOf(byId, spaceId).pop();
-    return parent && parent.kind !== 'altura' ? `${parent.name} › ${space.name}` : space.name;
-  };
+  const shortPlace = (spaceId: string | null | undefined): string => (spaceId ? spaceShortPath(spaces, spaceId) : '');
   const placeOf = (row: Row) => shortPlace(articleOf(row)?.default_space_id) || row.location || 'Sin sitio';
   /** Stock total del artículo en Recursos (lo que la ficha llama «Cantidad»). */
   const stockOf = (itemId: string) => Math.round(movements.filter((m) => !m.deleted_at && m.item_id === itemId).reduce((sum, m) => sum + Number(m.quantity), 0) * 1000) / 1000;
