@@ -42,6 +42,8 @@ export interface WorkFacts {
   hasOriginal: boolean;
   /** Lo que falta para validar, en palabras (`MISSING_LABELS` de `missingOf`), solo si está por resolver. */
   missing: string[];
+  /** Lo mismo, con sus claves (`MissingKey`), para ir a ello en la ficha. */
+  missingKeys?: string[];
   /** Está en una entrega a la gestoría. */
   inExport: boolean;
   /** Trimestre de su fecha si se declara en uno posterior («3T»), o null. */
@@ -293,6 +295,41 @@ export function groupSummary(group: SupplierGroup<WorkRow>, money: (n: number) =
 // Inicio: una a una
 // ---------------------------------------------------------------------------
 /** La cola de Inicio: las por resolver, primero las listas para confirmar, después las que piden algo; las más antiguas antes. */
+/** La acción principal de Inicio, que cambia según el caso (tanda 30, MUELA-080). `focus` es lo que se abre en la ficha. */
+export interface HomeAction { kind: 'confirm' | 'open'; label: string; focus: string | null }
+
+const FOCUS_LABELS: Record<string, string> = {
+  invoice_date: 'Poner la fecha', expense_category: 'Elegir la categoría', original_file: 'Subir el documento', lines_or_taxes: 'Añadir los importes',
+  rectified_invoice: 'Enlazar la rectificada', rectification_sign: 'Revisar el signo', totals: 'Revisar los importes',
+};
+
+export function homeAction(row: { invoice: WorkInvoice; facts: WorkFacts; state: WorkState }): HomeAction {
+  if (row.state.ready) return { kind: 'confirm', label: 'Confirmar y siguiente', focus: null };
+  if (row.invoice.status === 'pendiente_datos') return row.facts.hasOriginal ? { kind: 'open', label: 'Leer el documento', focus: 'leer' } : { kind: 'open', label: 'Subir el documento', focus: 'original_file' };
+  if (row.invoice.review_reason === 'REVISAR IMPORTES') return { kind: 'open', label: 'Revisar los importes', focus: 'totals' };
+  const first = row.facts.missingKeys?.[0];
+  if (first) return { kind: 'open', label: FOCUS_LABELS[first] ?? 'Completar en la ficha', focus: first };
+  return { kind: 'open', label: 'Abrir la ficha', focus: null };
+}
+
+/** «He leído esto»: cada cosa leída con ✓ (está) o ! (falta o no cuadra). Solo de las leídas (por revisar). */
+export interface ReadCheck { key: string; label: string; ok: boolean; text: string }
+
+export function readChecks(row: { invoice: WorkInvoice; facts: WorkFacts }, supplierKnown: boolean, money: (n: number) => string): ReadCheck[] {
+  if (row.invoice.status !== 'pendiente_revision') return [];
+  const keys = new Set(row.facts.missingKeys ?? []);
+  const i = row.invoice;
+  const amountsBad = i.review_reason === 'REVISAR IMPORTES';
+  const amountsMissing = keys.has('lines_or_taxes') || keys.has('totals');
+  return [
+    { key: 'proveedor', label: 'Proveedor', ok: supplierKnown, text: supplierKnown ? 'identificado' : 'sin identificar' },
+    { key: 'fecha', label: 'Fecha', ok: !!i.invoice_date && !keys.has('invoice_date'), text: i.invoice_date ? dayMonth(i.invoice_date) : 'falta' },
+    { key: 'importes', label: 'Importes', ok: !amountsBad && !amountsMissing, text: amountsBad ? 'no cuadran' : amountsMissing ? 'faltan' : money(Number(i.calculated_total ?? 0)) },
+    { key: 'categoria', label: 'Categoría', ok: !keys.has('expense_category'), text: keys.has('expense_category') ? 'falta' : 'puesta' },
+    { key: 'documento', label: 'Documento', ok: row.facts.hasOriginal, text: row.facts.hasOriginal ? 'original' : 'falta' },
+  ];
+}
+
 export function homeQueue<R extends WorkRow>(rows: R[]): R[] {
   const order = (r: R) => (r.state.ready ? 0 : r.invoice.status === 'pendiente_revision' ? 1 : 2);
   return rows.filter((r) => r.invoice.status === 'pendiente_datos' || r.invoice.status === 'pendiente_revision')

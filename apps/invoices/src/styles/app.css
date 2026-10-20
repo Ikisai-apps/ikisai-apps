@@ -165,7 +165,8 @@ code{font-size:12.5px;word-break:break-all}
 .inv-ticket{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:12px 0 0;padding:12px;border:1px dashed var(--line);border-radius:12px;font-variant-numeric:tabular-nums}
 .inv-ticket dt{color:var(--muted)}
 .inv-ticket dd{margin:0;text-align:right;font-weight:600}
-.inv-folder-actions{margin:12px 0}
+.inv-folder-actions{position:sticky;bottom:calc(76px + env(safe-area-inset-bottom));z-index:2;margin:12px 0;padding:10px 12px;background:var(--paper);border:1px solid var(--edge);border-radius:var(--radius-md);box-shadow:0 -6px 18px rgba(0,0,0,.08)}
+@media (min-width:1024px){.inv-folder-actions{bottom:12px}}
 .inv-quarter>summary{min-height:var(--tap,46px)}
 
 /* Tanda 27 · Proveedores: medallón en la fila. */
@@ -180,3 +181,20 @@ code{font-size:12.5px;word-break:break-all}
 .inv-controls{display:grid;gap:10px}
 .inv-controls select,.inv-controls input:not([type=checkbox]){min-height:var(--tap,46px)}
 .inv-controls .check{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap,46px)}
+
+/* Tanda 30 · Inicio: «He leído esto» con la miniatura; «Artículo»: medallón y borde de lo peor */
+.inv-read{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.inv-read-text{min-width:0;flex:1;display:grid;gap:6px}
+.inv-read-title{margin:0;font-size:12.5px;font-weight:650;color:var(--muted)}
+.inv-thumb{flex:0 0 auto;width:64px;height:84px;border:1px solid var(--edge);border-radius:8px;background:var(--paper);display:grid;place-items:center;overflow:hidden;padding:0;cursor:pointer;color:var(--muted)}
+.inv-thumb img{width:100%;height:100%;object-fit:cover}
+.inv-thumb-none{cursor:default;opacity:.6}
+.inv-thumb-pdf{display:grid;justify-items:center;gap:2px;font-size:11px;font-weight:650}
+.inv-checks{list-style:none;margin:0;padding:0;display:grid;gap:2px;font-size:13.5px}
+.inv-checks li{display:flex;gap:6px;align-items:baseline;min-width:0;overflow-wrap:anywhere}
+.inv-check-mark{flex:0 0 1.1em;text-align:center;font-weight:700}
+.inv-checks li.ok .inv-check-mark{color:var(--ok)}
+.inv-checks li.bad .inv-check-mark{color:var(--alert)}
+.line-desc .medal-disc{vertical-align:middle;margin-right:8px}
+[data-feedback-id="invoices.facturas.ficha.articulos"][data-tone="warn"]{border-left:4px solid var(--warn)}
+[data-feedback-id="invoices.facturas.ficha.articulos"][data-tone="alert"]{border-left:4px solid var(--alert)}

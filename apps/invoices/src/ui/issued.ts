@@ -4,7 +4,7 @@
  * motivo y su número sigue ocupado; solo los borradores se borran.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createPrintView, el, icon, listRow, openSheet, renderGroups, renderList, renderStages, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { bindOnline, closeSheet, confirmDialog, createPrintView, el, icon, listRow, openSheet, renderGroups, renderList, renderStages, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
@@ -18,9 +18,10 @@ import {
   type LocalCustomer, type LocalIssuedAllocation, type LocalIssuedFile, type LocalIssuedInvoice, type LocalIssuedLine, type LocalIssuedSeries, type LocalIssuedTaxLine,
 } from '../app/client.ts';
 import { PAYMENT_METHOD_LABELS, eur, onAnyTable, parseAmount, shortDate, todayIso } from '../app/data.ts';
-import { ISSUED_BOXES, ISSUED_STAGES, MORE_ISSUED_BOXES, clientGroups, clientSummary, inIssuedBox, issuedState, type IssuedBox, type IssuedState } from '../app/issued-state.ts';
+import { ISSUED_BOXES, ISSUED_STAGES, MORE_ISSUED_BOXES, clientGroups, clientSummary, inIssuedBox, issuedState, receivable, type IssuedBox, type IssuedState } from '../app/issued-state.ts';
 import { PAYMENT_METHODS, reservationCollected } from '@ikisai/domain-invoices';
 import { commitWithUndo, pick } from './undo.ts';
+import { chipsWithMore, type ChipSpec } from './chips.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
 import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
@@ -140,14 +141,15 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   const summary = el('p', { class: 'hint inv-summary', id: 'issuedSummary', 'aria-live': 'polite', 'data-feedback-ignore': '' });
   const list = el('div', { 'data-feedback-id': 'invoices.emitidas.lista', 'data-feedback-label': 'Facturas emitidas', id: 'issuedList' });
   const issuerBanner = el('div', { 'data-feedback-id': 'invoices.emitidas.aviso_emisor', 'data-feedback-label': 'Emitidas sin emisor', id: 'issuersMissing', hidden: true });
-  const newButton = el('button', { 'data-feedback-id': 'invoices.emitidas.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newIssuedInvoice', hidden: !canEdit, onclick: () => data && openInvoiceDraft(ctx, data) }, icon('plus'), 'Nueva factura');
-  const registerButton = el('button', { 'data-feedback-id': 'invoices.emitidas.registrar', 'data-feedback-label': 'Registrar emitida', class: 'softbtn small', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus', 16), 'Registrar emitida');
-  const settingsButton = el('button', { 'data-feedback-id': 'invoices.emitidas.series', 'data-feedback-label': 'Series', class: 'softbtn small', type: 'button', id: 'issuingSettings', onclick: () => data && openIssuingSettings(ctx, data) }, icon('settings', 16), 'Series');
-  const importButton = el('button', { 'data-feedback-id': 'invoices.emitidas.importar_csv', 'data-feedback-label': 'Importar CSV', class: 'softbtn small', type: 'button', id: 'importIssuedCsv', hidden: !canEdit, onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
+  // El lector no tiene en el DOM los botones de escribir, ni ocultos, ni «Series» (tanda 30, MUELA-080)
+  const newButton = !canEdit ? null : el('button', { 'data-feedback-id': 'invoices.emitidas.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newIssuedInvoice', onclick: () => data && openInvoiceDraft(ctx, data) }, icon('plus'), 'Nueva factura');
+  const registerButton = !canEdit ? null : el('button', { 'data-feedback-id': 'invoices.emitidas.registrar', 'data-feedback-label': 'Registrar emitida', class: 'softbtn small', type: 'button', id: 'newIssued', onclick: () => data && openNewIssued(ctx, data) }, icon('plus', 16), 'Registrar emitida');
+  const settingsButton = !canEdit ? null : el('button', { 'data-feedback-id': 'invoices.emitidas.series', 'data-feedback-label': 'Series', class: 'softbtn small', type: 'button', id: 'issuingSettings', onclick: () => data && openIssuingSettings(ctx, data) }, icon('settings', 16), 'Series');
+  const importButton = !canEdit ? null : el('button', { 'data-feedback-id': 'invoices.emitidas.importar_csv', 'data-feedback-label': 'Importar CSV', class: 'softbtn small', type: 'button', id: 'importIssuedCsv', onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
   const element = el('div', { id: 'issuedPanel' },
     el('p', { class: 'hint' }, 'Las facturas que emites desde Finance y las que registras de otra herramienta: IVA repercutido, gestoría e ingreso por reserva.'),
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)), boxes,
-    el('div', { class: 'toolbar' }, settingsButton, registerButton, importButton), issuerBanner, summary, list, newButton);
+    canEdit ? el('div', { class: 'toolbar' }, settingsButton, registerButton, importButton) : null, issuerBanner, summary, list, newButton);
 
   /** Las del buzón; con búsqueda (número, cliente, NIF, concepto o código de la reserva), todas menos las anuladas. */
   function visible(i: LocalIssuedInvoice): boolean {
@@ -174,39 +176,35 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
 
   function paintBoxes(): void {
     const all = data!.invoices.filter((i) => !i.deleted_at);
+    const owed = receivable(all, todayIso());
     const button = (key: IssuedBox, label: string) => {
       const list = all.filter((i) => inIssuedBox(key, i));
-      const total = list.reduce((sum, i) => sum + Math.round(Number(i.total ?? 0) * 100), 0) / 100;
+      // «Por cobrar»: la misma cifra que Inicio y Booking (cuenta las que hay que cobrar; las rectificativas restan)
+      const count = key === 'por_cobrar' ? owed.count : list.length;
+      const total = key === 'por_cobrar' ? owed.amount : list.reduce((sum, i) => sum + Math.round(Number(i.total ?? 0) * 100), 0) / 100;
       return el('button', { type: 'button', class: 'inv-box', dataset: { box: key }, 'aria-pressed': String(box === key && !query), onclick: () => { box = key; if (MORE_ISSUED_BOXES.some((x) => x.key === key)) moreOpen = true; paint(); } },
-        el('span', null, label), el('strong', null, String(list.length)), list.length && key !== 'anulada' ? el('span', { class: 'inv-box-amount' }, eur(total)) : null);
+        el('span', null, label), el('strong', null, String(count)), list.length && key !== 'anulada' ? el('span', { class: 'inv-box-amount' }, eur(total)) : null);
     };
     replace(boxes, ...ISSUED_BOXES.map((x) => button(x.key, x.label)),
       el('button', { type: 'button', class: 'inv-box', id: 'moreIssuedBoxes', 'aria-expanded': String(moreOpen), onclick: () => { moreOpen = !moreOpen; paint(); } }, el('span', null, moreOpen ? 'Menos' : 'Más')),
       ...(moreOpen ? MORE_ISSUED_BOXES.map((x) => button(x.key, x.label)) : []));
   }
 
-  /** «Cobrada» en la fila: la fecha real (propone hoy) y el medio; después, «Deshacer». */
-  function openCollect(i: LocalIssuedInvoice): void {
-    const sheet = openSheet({ title: `Cobrada · ${numberOf(i)}`, meta: `${recipientOf(i)} · ${eur(i.total)}`, body: collectForm(i, async (fields) => {
-      const ok = await commitWithUndo(client, { table: ISSUED_INVOICES, id: i.id, revision: i.revision, fields, before: pick(i as unknown as Record<string, unknown>, ['payment_status', 'paid_at', 'payment_method']) },
-        `${numberOf(i)} cobrada.`, 'Vuelve a estar por cobrar.');
-      if (ok) await closeSheet(true);
-    }), panelAttrs: { 'data-feedback-id': 'invoices.emitidas.cobro.hoja', 'data-feedback-label': 'Marcar cobrada' } });
-    void sheet;
-  }
-
   function issuedRow(i: LocalIssuedInvoice): HTMLLIElement {
     const state = stateOf(i);
-    const chips = [el('span', { class: 'chip' }, i.invoice_type)];
-    if (i.status === 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Anulada'));
-    if (i.status === 'borrador') chips.push(el('span', { class: 'chip warn' }, 'Borrador'));
-    if (i.status === 'rectificada') chips.push(el('span', { class: 'chip' }, 'Rectificada'));
-    if (i.purpose && i.purpose !== 'general') chips.push(el('span', { class: 'chip' }, ISSUED_PURPOSE_LABELS[i.purpose]));
-    if (i.review_reason === 'REVISAR IMPORTES') chips.push(el('span', { class: 'chip alert' }, 'Revisar importes'));
-    if (i.payment_status === 'cobrada') chips.push(el('span', { class: 'chip ok' }, 'Cobrada'));
+    // Como mucho dos etiquetas a la vista, las más graves primero, y «+n» con las demás (tanda 30, MUELA-081)
+    const labels: ChipSpec[] = [];
+    if (i.status === 'anulada') labels.push({ text: 'Anulada', kind: 'alert' });
+    if (i.review_reason === 'REVISAR IMPORTES') labels.push({ text: 'Revisar importes', kind: 'alert' });
+    if (i.status === 'borrador') labels.push({ text: 'Borrador', kind: 'warn' });
+    if (i.payment_status === 'cobrada') labels.push({ text: 'Cobrada', kind: 'ok' });
+    if (i.status === 'rectificada') labels.push({ text: 'Rectificada' });
+    if (i.purpose && i.purpose !== 'general') labels.push({ text: ISSUED_PURPOSE_LABELS[i.purpose] });
+    labels.push({ text: i.invoice_type });
+    const chips = chipsWithMore(labels);
     const reservation = reservationOf(data!.allocationsBy.get(i.id) ?? []);
     const actions = canEdit && inIssuedBox('por_cobrar', i)
-      ? [el('button', { 'data-feedback-id': 'invoices.emitidas.lista.cobrada', 'data-feedback-label': 'Cobrada', class: 'softbtn small', type: 'button', onclick: () => openCollect(i) }, icon('check', 16), 'Cobrada')]
+      ? [el('button', { 'data-feedback-id': 'invoices.emitidas.lista.cobrada', 'data-feedback-label': 'Cobrada', class: 'softbtn small', type: 'button', onclick: () => openCollectSheet(client, i) }, icon('check', 16), 'Cobrada')]
       : [];
     const li = listRow({ id: i.id, // El cliente ya está en el grupo: en la fila va oculto a la vista (el texto sigue siendo «número · cliente»)
       title: el('span', null, `${numberOf(i)} `, el('span', { class: 'vh' }, `· ${recipientOf(i)}`)), meta: [i.description, shortDate(i.issue_date), eur(i.total)], chips, actions, pending: i._pending === true,
@@ -230,7 +228,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
       summary.textContent = '';
       const none = !data.invoices.some((i) => !i.deleted_at);
       replace(list, el('div', { class: 'empty' }, el('strong', null, none ? 'Todavía no hay facturas emitidas' : query ? 'Ninguna emitida coincide' : box === 'por_cobrar' ? 'Nada por cobrar' : 'Ninguna emitida en este buzón'),
-        none ? 'Crea una con «Nueva factura» o registra con «Registrar emitida» las que expides con otra herramienta.' : 'Cambia de buzón o la búsqueda.'));
+        none ? (canEdit ? 'Crea una con «Nueva factura» o registra con «Registrar emitida» las que expides con otra herramienta.' : 'Cuando el equipo emita o registre facturas, las verás aquí.') : 'Cambia de buzón o la búsqueda.'));
       return;
     }
     const groups = clientGroups(rows);
@@ -295,10 +293,22 @@ function reservationLine(allocations: LocalIssuedAllocation[], data: IssuedData)
 }
 
 /**
- * Fecha real del cobro (propone hoy, nunca la pone sola) y el medio. `onSave` recibe los campos; con `withButton`, lleva su
- * botón «Guardar» (en la hoja de la fila); sin él, lo envía el diálogo de la ficha.
+ * «Cobrada» en su hoja, desde la fila o desde la ficha (VG dio por buena la hoja, MUELA-082): la fecha real (propone hoy)
+ * y el medio; al guardar, «Deshacer». Desde la ficha, la hoja ocupa su sitio y al guardar vuelve a ella (`after`).
  */
-function collectForm(invoice: LocalIssuedInvoice, onSave: (fields: Record<string, unknown>) => Promise<void>, withButton = true): HTMLElement {
+function openCollectSheet(client: SyncClient, i: LocalIssuedInvoice, after?: () => void): void {
+  openSheet({ title: `Cobrada · ${numberOf(i)}`, meta: `${recipientOf(i)} · ${eur(i.total)}`, body: collectForm(i, async (fields) => {
+    const ok = await commitWithUndo(client, { table: ISSUED_INVOICES, id: i.id, revision: i.revision, fields, before: pick(i as unknown as Record<string, unknown>, ['payment_status', 'paid_at', 'payment_method']) },
+      `${numberOf(i)} cobrada.`, 'Vuelve a estar por cobrar.');
+    if (!ok) return;
+    if (after) after(); else await closeSheet(true);
+  }), panelAttrs: { 'data-feedback-id': 'invoices.emitidas.cobro.hoja', 'data-feedback-label': 'Marcar cobrada' } });
+}
+
+/**
+ * Fecha real del cobro (propone hoy, nunca la pone sola) y el medio, con su «Guardar». `onSave` recibe los campos.
+ */
+function collectForm(invoice: LocalIssuedInvoice, onSave: (fields: Record<string, unknown>) => Promise<void>): HTMLElement {
   const date = el('input', { 'data-feedback-id': 'invoices.emitidas.cobro.fecha', 'data-feedback-label': 'Fecha del cobro', type: 'date', id: 'collectedAt', value: invoice.paid_at ?? todayIso(), max: todayIso(), required: true }) as HTMLInputElement;
   const method = select('collectedMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, methodLabel(m)] as [string, string])], invoice.payment_method ?? null,
     { 'data-feedback-id': 'invoices.emitidas.cobro.medio', 'data-feedback-label': 'Medio del cobro' });
@@ -309,14 +319,20 @@ function collectForm(invoice: LocalIssuedInvoice, onSave: (fields: Record<string
     void onSave({ payment_status: 'cobrada', paid_at: date.value, payment_method: method.value || null });
   } },
   field('Cobrada el', date, 'La fecha en que entró el dinero, no la de hoy si fue otro día.'), field('Medio', method), error,
-  withButton ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.emitidas.cobro.guardar', 'data-feedback-label': 'Guardar cobro', class: 'primary', type: 'submit', id: 'saveCollected' }, 'Guardar')) : null);
+  el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.emitidas.cobro.guardar', 'data-feedback-label': 'Guardar cobro', class: 'primary', type: 'submit', id: 'saveCollected' }, 'Guardar')));
 }
 
 // ---------------------------------------------------------------------------
 // Ficha
 // ---------------------------------------------------------------------------
+/** Lo que necesita red en la ficha, con el motivo junto al botón (`bindOnline`); se suelta al volver a pintar la ficha. */
+let sheetOffline: Array<() => void> = [];
+
 function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData, reopen: (id: string) => void): HTMLElement {
   const { client } = ctx;
+  for (const off of sheetOffline) off();
+  sheetOffline = [];
+  const needsNetwork = <T extends HTMLElement>(button: T, reason: string): T => { sheetOffline.push(bindOnline(button, { client, reason })); return button; };
   const role = client.bootstrap()?.membership.role;
   const canEdit = role !== 'reader' && invoice.status !== 'anulada';
   const isDraft = invoice.status === 'borrador';
@@ -351,13 +367,8 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
     { table: ISSUED_INVOICES, id: invoice.id, revision: invoice.revision, fields, before: pick(invoice as unknown as Record<string, unknown>, Object.keys(fields)) }, message, undone);
   async function toggleCollected(): Promise<void> {
     if (invoice.payment_status === 'cobrada') { await undoable({ payment_status: 'pendiente', paid_at: null, payment_method: null }, 'Marcada sin cobrar.', 'Vuelve a estar cobrada.'); return; }
-    const form = collectForm(invoice, async () => undefined, false);
-    const ok = await confirmDialog({ title: 'Marcar como cobrada', text: form, confirmLabel: 'Marcar cobrada' });
-    if (!ok) return;
-    const date = form.querySelector<HTMLInputElement>('#collectedAt')!.value;
-    const method = form.querySelector<HTMLSelectElement>('#collectedMethod')!.value;
-    if (!date) { toast('Indica la fecha en que cobraste.'); return; }
-    await undoable({ payment_status: 'cobrada', paid_at: date, payment_method: method || null }, 'Marcada como cobrada.', 'Vuelve a estar por cobrar.');
+    // La hoja de cobro ocupa el sitio de la ficha (el kit abre una hoja cada vez) y, al guardar, vuelve a la ficha
+    openCollectSheet(client, invoice, () => reopen(invoice.id));
   }
   async function toggleSent(): Promise<void> {
     if (invoice.sent_at) { await undoable({ sent_at: null }, 'Marcada como no enviada.', 'Vuelve a estar enviada.'); return; }
@@ -435,7 +446,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
           canEdit ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.destino.quitar', 'data-feedback-label': 'Quitar asignación', class: 'x', type: 'button', 'aria-label': `Quitar ${a.target_label}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ISSUED_ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación quitada.') }, '×') : null)))
         : el('p', { class: 'hint' }, 'Sin reserva ni evento asignado.'),
       reservationLine(allocations, data),
-      canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.destino.asignar', 'data-feedback-label': 'Asignar a reserva o evento', class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento')) : null),
+      canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, needsNetwork(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.destino.asignar', 'data-feedback-label': 'Asignar a reserva o evento', class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento'), 'Buscar reservas y eventos necesita conexión.')) : null),
     fbBlock({ feedbackId: 'invoices.emitidas.ficha.verifactu', feedbackLabel: 'Verifactu' }, 'Verifactu', invoice.origin === 'app' ? (isDraft ? 'borrador' : invoice.vf_status === 'no_enviar' ? 'guardado, sin enviar' : (invoice.vf_status ?? 'pendiente')) : 'otra herramienta', false,
       el('p', { class: 'hint', id: 'issuedVerifactu' }, invoice.origin === 'app'
         ? verifactuSummary(invoice)

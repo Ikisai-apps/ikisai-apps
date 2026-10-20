@@ -612,7 +612,14 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await expect(page.locator('#homeNewInvoice')).toBeHidden();
     await nav(page, 'Facturas').click();
     await expect(page.locator('#invoiceList .row').first()).toBeVisible();
-    await expect(page.locator('#newInvoice')).toBeHidden();
+    // Tanda 30: los botones de escribir no están en el DOM, ni ocultos
+    for (const id of ['#newInvoice', '#extractPending', '#batchUpload']) await expect(page.locator(id)).toHaveCount(0);
+    await expect(page.locator('#invoiceList').getByRole('button', { name: 'Marcar pagada' })).toHaveCount(0);
+    await page.locator('#invoiceTabs [data-tab="emitidas"]').click();
+    await expect(page.locator('#issuedPanel')).toBeVisible();
+    for (const id of ['#newIssuedInvoice', '#newIssued', '#importIssuedCsv', '#issuingSettings']) await expect(page.locator(id)).toHaveCount(0);
+    await expect(page.locator('#issuedPanel')).not.toContainText('Crea una con');
+    await page.locator('#invoiceTabs [data-tab="recibidas"]').click();
     await page.locator('#invoiceList .row').first().click();
     await expect(ficha(page)).toBeVisible();
     for (const id of ['#validateInvoice', '#annulInvoice', '#togglePaid', '#confirmPaid', '#addLine', '#importInto']) await expect(ficha(page).locator(id)).toHaveCount(0);
@@ -809,10 +816,13 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     const sheet = page.locator('.sheet[role="dialog"]');
     await expect(sheet.locator('#issuedTotal')).toHaveText('170,50 €');
     await expect(sheet).toContainText('El registro Verifactu lo hace la herramienta que la expidió');
-    // Tanda 27: «Marcar cobrada» pide la fecha real (propone hoy) y el medio
+    // Tanda 30: «Marcar cobrada» abre la hoja con la fecha real (propone hoy) y el medio, sin diálogo; al guardar, vuelve a la ficha
     await sheet.locator('#toggleCollected').click();
-    await page.getByRole('alertdialog').locator('#collectedMethod').selectOption('transferencia');
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Marcar cobrada' }).click();
+    const collect = page.getByRole('dialog', { name: /^Cobrada · / });
+    await collect.locator('#collectedMethod').selectOption('transferencia');
+    await collect.locator('#saveCollected').click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' })).toBeVisible();
     await expect(sheet.locator('#issuedCollected')).toContainText('Transferencia', { timeout: 20_000 });
     await sheet.locator('#annulIssued').click();
     await page.locator('#annulIssuedReason').fill('Emitida por error');
@@ -2804,6 +2814,27 @@ test('Tanda 27 · Gestoría: carpeta con el recorrido de la entrega, «Descargar
     await expect(quarter).toContainText('ENT_2019_1T_1');
     await expect(quarter).toContainText('entregada: correo a la gestoría');
     await expect(quarter).toContainText(`hash ${'a'.repeat(12)}`);
+    // Tanda 30: una acción principal por entrega (la generada, «Marcar entregada»; la entregada, «Archivar periodo», del
+    // dueño) y ZIP, CSV y Manifest en «Más», con la huella; la barra fija, con «Descargar» en primario
+    const newerRow = quarter.locator('.row', { hasText: 'ENT_2019_1T_2' });
+    const olderRow = quarter.locator('.row', { hasText: 'ENT_2019_1T_1' });
+    await expect(newerRow.getByRole('button', { name: 'Marcar entregada' })).toBeVisible();
+    await expect(olderRow.getByRole('button', { name: 'Archivar periodo' })).toBeVisible();
+    await expect(quarter.getByRole('button', { name: /^(ZIP|CSV|Manifest)$/ })).toHaveCount(0);
+    await expect(page.locator('#downloadLatest')).toHaveClass(/primary/);
+    await expect(page.locator('#deliveryNext')).toBeHidden();
+    await expect(page.locator('#deliveryBar')).toHaveCSS('position', 'sticky');
+    await newerRow.getByRole('button', { name: 'Más de ENT_2019_1T_2' }).click();
+    const more = page.locator('#downloadSheet');
+    for (const name of ['ZIP con todo', 'CSV de recibidas', 'Manifest']) await expect(more.getByRole('button', { name })).toBeVisible();
+    await expect(more).toContainText(`Huella del manifest: ${'b'.repeat(64)}`);
+    await expect(more.getByRole('button', { name: 'Marcar entregada' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    // Sin red, «Descargar» se apaga y dice por qué
+    await context.setOffline(true);
+    await expect(page.locator('#downloadLatest')).toHaveAttribute('aria-disabled', 'true', { timeout: 20_000 });
+    await expect(page.locator('#deliveryBar')).toContainText('Descargar necesita conexión.');
+    await context.setOffline(false);
   } finally {
     for (const e of [older, newer]) if (api.rows('invoices.exports').some((x) => x.id === e)) api.serverUpdate('invoices.exports', e, { deleted_at: new Date().toISOString() });
     api.serverUpdate('invoices.invoices', invoice, { deleted_at: new Date().toISOString() });

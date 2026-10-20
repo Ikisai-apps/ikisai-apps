@@ -19,6 +19,8 @@ import { openBatchUpload } from './batch.ts';
 import { renderIssuedPanel } from './issued.ts';
 import type { ViewMount } from './shell.ts';
 import { commitWithUndo } from './undo.ts';
+import { chipsWithMore } from './chips.ts';
+import { openPaySheet } from './pay-sheet.ts';
 import { extractNext, onOpen, openImport, openInvoice, openNewInvoice, refreshOpenInvoice } from './invoices.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,8 +55,9 @@ export const mountInvoices: ViewMount = (ctx) => {
   const summary = el('p', { class: 'hint inv-summary', id: 'invoiceSummary', 'aria-live': 'polite', 'data-feedback-ignore': '' });
   const listHost = el('div', { 'data-feedback-id': 'invoices.facturas.lista', 'data-feedback-label': 'Facturas recibidas', id: 'invoiceList' });
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
-  const newButton = el('button', { 'data-feedback-id': 'invoices.facturas.nueva', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newInvoice', hidden: !canEdit, onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
-  const extractAll = el('button', { 'data-feedback-id': 'invoices.facturas.extraer_pendientes', 'data-feedback-label': 'Extraer pendientes', class: 'softbtn small', type: 'button', id: 'extractPending', hidden: true, onclick: () => void extractPending() }, icon('upload', 16), 'Extraer pendientes');
+  // El lector no tiene en el DOM los botones de escribir, ni ocultos (tanda 30, MUELA-080)
+  const newButton = !canEdit ? null : el('button', { 'data-feedback-id': 'invoices.facturas.nueva', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newInvoice', onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
+  const extractAll = !canEdit ? null : el('button', { 'data-feedback-id': 'invoices.facturas.extraer_pendientes', 'data-feedback-label': 'Extraer pendientes', class: 'softbtn small', type: 'button', id: 'extractPending', hidden: true, onclick: () => void extractPending() }, icon('upload', 16), 'Extraer pendientes');
   // Pestañas «Recibidas · Emitidas» (API.md §13.5): las emitidas registradas viven en su propio panel.
   const received = el('div', { id: 'receivedPanel' },
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
@@ -142,19 +145,20 @@ export const mountInvoices: ViewMount = (ctx) => {
     const m = mirror!;
     const invoice = row.invoice;
     const supplier = supplierName(m.supplierById.get(invoice.supplier_id), 'Proveedor');
-    const chip = (l: MirrorRow['labels'][number]) => el('span', { class: `chip${l.kind ? ` ${l.kind}` : ''}` }, l.text);
-    const rest = row.labels.slice(2);
-    const more = rest.length ? el('button', { type: 'button', class: 'chip inv-more', 'aria-label': `Ver ${rest.length} etiqueta${rest.length === 1 ? '' : 's'} más: ${rest.map((l) => l.text).join(', ')}`,
-      onclick: (e: Event) => { e.stopPropagation(); (e.currentTarget as HTMLElement).replaceWith(...rest.map(chip)); } }, `+${rest.length}`) : null;
-    const actions = canEdit && row.state.pay.kind === 'unconfirmed'
-      ? [el('button', { 'data-feedback-id': 'invoices.facturas.lista.confirmar_pago', 'data-feedback-label': 'Confirmar pago', class: 'softbtn small', type: 'button', onclick: () => void confirmFromRow(invoice) }, icon('check', 16), 'Confirmar pago')]
-      : [];
+    // En la fila, lo que pide el pago: «Confirmar pago» si está sin confirmar; «Marcar pagada» (en su hoja) si está pendiente
+    const unpaid = invoice.status !== 'anulada' && invoice.status !== 'pendiente_datos' && invoice.payment_status === 'pendiente';
+    const actions = !canEdit ? []
+      : row.state.pay.kind === 'unconfirmed'
+        ? [el('button', { 'data-feedback-id': 'invoices.facturas.lista.confirmar_pago', 'data-feedback-label': 'Confirmar pago', class: 'softbtn small', type: 'button', onclick: () => void confirmFromRow(invoice) }, icon('check', 16), 'Confirmar pago')]
+        : unpaid
+          ? [el('button', { 'data-feedback-id': 'invoices.facturas.lista.marcar_pagada', 'data-feedback-label': 'Marcar pagada', class: 'softbtn small', type: 'button', onclick: () => openPaySheet(client, invoice, `${supplier} · ${invoice.object}`) }, icon('euro', 16), 'Marcar pagada')]
+          : [];
     const li = listRow({
       id: invoice.id,
       // El proveedor ya está en el grupo: en la fila va oculto a la vista (lectores de pantalla y búsqueda en la página).
       title: el('span', null, el('span', { class: 'vh' }, `${supplier} · `), invoice.object),
       meta: [shortDate(invoice.invoice_date), invoice.code ?? 'código pendiente', eur(invoice.calculated_total)],
-      chips: [...row.labels.slice(0, 2).map(chip), ...(more ? [more] : [])],
+      chips: chipsWithMore(row.labels),
       actions,
       pending: invoice._pending === true,
       onClick: () => openInvoice(ctx, invoice.id),
@@ -172,9 +176,11 @@ export const mountInvoices: ViewMount = (ctx) => {
     if (!mirror) return;
     const m = mirror;
     const pendingDocs = extractable().length;
-    extractAll.hidden = !canEdit || pendingDocs === 0;
-    extractAll.textContent = '';
-    extractAll.append(icon('upload', 16), pendingDocs === 1 ? 'Extraer la factura pendiente' : `Extraer ${pendingDocs} pendientes`);
+    if (extractAll) {
+      extractAll.hidden = pendingDocs === 0;
+      extractAll.textContent = '';
+      extractAll.append(icon('upload', 16), pendingDocs === 1 ? 'Extraer la factura pendiente' : `Extraer ${pendingDocs} pendientes`);
+    }
     const all = mirrorRows(m, todayIso());
     paintBoxes(all);
     const visible = all.filter(inView);
@@ -183,7 +189,7 @@ export const mountInvoices: ViewMount = (ctx) => {
       const none = !m.invoices.some((i) => !i.deleted_at);
       replace(listHost, el('div', { class: 'empty' },
         el('strong', null, none ? 'Todavía no hay facturas' : query ? 'Ninguna factura coincide' : box === 'por_resolver' ? 'Nada por resolver' : 'Ninguna factura en este buzón'),
-        none ? 'Sube el documento con «Nueva factura» o importa el JSON de ChatGPT. Funciona también sin conexión.' : 'Cambia de buzón o la búsqueda.',
+        none ? (canEdit ? 'Sube el documento con «Nueva factura» o importa el JSON de ChatGPT. Funciona también sin conexión.' : 'Cuando el equipo suba facturas, las verás aquí.') : 'Cambia de buzón o la búsqueda.',
         !none && !query && box !== 'todas' ? el('p', null, el('button', { type: 'button', class: 'ghost small', id: 'showAllInvoices', onclick: () => setBox('todas') }, 'Ver todas')) : null));
       return;
     }
@@ -259,7 +265,12 @@ export const mountInvoices: ViewMount = (ctx) => {
     const target = wanted ? mailboxFromFilter(wanted[1]!) : null;
     if (target) { history.replaceState(null, '', '#/facturas'); setBox(target.box, target.pill); return; }
     if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
-    else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
+    else if (UUID.test(tail.split('?')[0]!)) {
+      // Desde Inicio: `?ir=<lo que falta>` abre la ficha en ello (tanda 30)
+      const focus = tail.match(/[?&]ir=([a-z_]+)/)?.[1] ?? null;
+      void openInvoice(ctx, tail.split('?')[0]!.toLowerCase(), focus);
+      history.replaceState(null, '', '#/facturas');
+    }
     else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {
       // Enlace por código desde otras apps (Reservas, Cocina): `#/facturas/FVR_2026_012`.
       const code = tail.toUpperCase();
