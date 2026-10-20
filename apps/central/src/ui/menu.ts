@@ -64,6 +64,7 @@ export function screenItems(isAdmin: boolean, navigate: (hash: string) => void):
     ['Oficios', '#/personas/oficios', 'capacidades personas'],
     ['Inventario', '#/inventario', 'recursos stock'],
     ['Datos de la entidad', '#/entidad', 'razon social nif iban logotipo'],
+    ['Planos del centro', '#/entidad/planos', 'mapa de zonas plano dibujo colocar estancias'],
     ['Textos y contacto', '#/textos', 'avisos legales declaraciones correos'],
     ['Registro de decisiones', '#/decisiones', 'votar decidir'],
     ['Conflictos', '#/conflictos', 'cambios rechazados'],
@@ -161,6 +162,7 @@ export function menuSections(data: MenuData, isAdmin: boolean, userId: string | 
   }
   sections.push({ key: 'entidad', label: 'La entidad', icon: 'briefcase', summary: 'datos, textos y decisiones', badge: data.conflicts ? { text: String(data.conflicts), tone: 'alert' } : null, rows: [
     { label: 'Datos de la entidad', sub: 'razón social, NIF/CIF, IBAN y logotipo', icon: 'briefcase', href: '#/entidad', feedbackId: 'central.menu.entidad.datos' },
+    { label: 'Planos del centro', sub: 'el mapa de zonas: dibujos y estancias', icon: 'grid', href: '#/entidad/planos', feedbackId: 'central.menu.entidad.planos' },
     { label: 'Textos y contacto', sub: 'avisos legales, declaraciones y mensajes', icon: 'edit', href: '#/textos', feedbackId: 'central.menu.entidad.textos' },
     { label: 'Registro de decisiones', sub: 'qué se decidió, por qué y cómo se aplica', icon: 'history', href: '#/decisiones', feedbackId: 'central.menu.entidad.decisiones' },
     { label: 'Conflictos', sub: data.conflicts ? `${plural(data.conflicts, 'conflicto', 'conflictos')} por resolver` : 'ninguno pendiente', icon: 'warn',

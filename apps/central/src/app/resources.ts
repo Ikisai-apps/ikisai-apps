@@ -2,7 +2,7 @@
  * Central · Recursos (pantalla Inventario; docs/resources/API.md §1).
  *
  * Segundo `sync-client`, contra `/api/v1/resources`, con la sesión de Central: artículos, unidades, tipos, movimientos,
- * lotes, costes y espacios en su propio espejo, también sin red. Arranca la primera vez que se abre Inventario; el espejo
+ * lotes, costes, espacios y dibujos de los planos en su propio espejo, también sin red. Arranca la primera vez que se abre Inventario; el espejo
  * queda en el dispositivo y se borra al cerrar sesión, con el principal.
  */
 import { createSyncClient, type SyncClient, type TableName } from '@ikisai/sync-client';
@@ -19,6 +19,8 @@ export const R = {
   countLines: 'resources.count_lines',
   spaces: 'resources.spaces',
   spaceKinds: 'resources.space_kinds',
+  /** Mapa de zonas (0808): el dibujo de cada edificio y planta (Planos del centro). */
+  floorPlans: 'resources.floor_plans',
 } as const satisfies Record<string, TableName>;
 
 let resources: SyncClient | null = null;

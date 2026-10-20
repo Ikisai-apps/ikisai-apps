@@ -48,7 +48,9 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
   replace(
     main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.entidad.cabecera', 'data-feedback-label': 'Cabecera de Entidad' }, el('div', null, el('h2', null, 'Entidad'),
-      el('p', null, 'Los datos legales de Ikisai que usan las propuestas de Booking y las facturas emitidas de Finance.'))),
+      el('p', null, 'Los datos legales de Ikisai que usan las propuestas de Booking y las facturas emitidas de Finance.')),
+      // El mapa de zonas (tanda 36): los dibujos por edificio y planta, con las estancias encima.
+      el('a', { class: 'ghost btnlike', href: '#/entidad/planos', id: 'entityPlans', 'data-feedback-id': 'central.entidad.planos', 'data-feedback-label': 'Planos del centro' }, icon('grid', 16), 'Planos del centro')),
     host,
   );
 

@@ -71,7 +71,8 @@ export async function startCentralServer(options: { consent?: boolean } = {}): P
       const response = await app.handler(request);
       let payload = Buffer.from(await response.arrayBuffer());
       const headersOut = Object.fromEntries(response.headers);
-      if (local.pathname === '/api/v1/uploads' && response.ok) {
+      // También las subidas del módulo Recursos (los dibujos de Planos, tanda 36).
+      if ((local.pathname === '/api/v1/uploads' || local.pathname === '/api/v1/resources/uploads') && response.ok) {
         const ticket = JSON.parse(payload.toString('utf8'));
         if (typeof ticket.path === 'string') ticket.uploadUrl = `/api/__upload?path=${encodeURIComponent(ticket.path)}`;
         payload = Buffer.from(JSON.stringify(ticket));
