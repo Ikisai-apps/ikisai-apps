@@ -1666,6 +1666,15 @@ Con las sugerencias del núcleo (contrato §3.10), no con una cola propia. Así 
   - **Ficha del espacio** (`#spaceCard`): se abre al tocar una estancia en el plano o su nombre en la lista. Tiene «Datos del espacio» plegado y «Monta el dormitorio» (`#dormitorio`).
   - **Editar la distribución:** solo el owner, con un borrador y «Guardar» en un solo lote (sin red, se envía al reconectar). Con los espacios en Recursos, aquí solo se colocan las camas; se añaden y se quitan en Recursos.
 
+### 27.1 Ids de Recursos en el alojamiento de los portales (migración 0478, petición de Guests)
+
+- **`resource_space_id` y `resource_bed_id`:** la pareja en Recursos, o `null` si no la hay. Sirven para casar habitaciones y camas con el mapa de zonas por id y no por nombre.
+- **Dónde salen:**
+  - `portal_lodging.mine`;
+  - cada habitación de `portal_lodging` (y del organizador), y cada una de sus camas;
+  - cada estancia de `portal_my_stays` y su `default_bed`.
+- **Nada más:** ningún dato de otros huéspedes.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
