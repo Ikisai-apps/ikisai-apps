@@ -104,3 +104,22 @@ test('priceCalendar · viernes por meses con su cifra de libres, el más barato 
   assert.ok(july.weekends.every((w) => w.high));
   assert.equal(priceCalendar({ ...CASE, from: '2026-07-01', months: 1, availability, ownId: 'r1' }).at(0)!.weekends[0]!.availability, 'libre', 'la propia reserva no cuenta');
 });
+
+test('price_calendar_source · el lector ve lo justo para el precio, sin motivos ni textos (tanda 30)', async () => {
+  // Se apoya en lo que sembró la primera prueba (año 2091): un bloqueo «Obras» y una opción de Ikisai.
+  await app.t.db.query(`insert into booking.rates (name, layer, unit, amount, active, position, includes) values ('Noche lector', 'por_persona', 'persona_noche', 40, true, 1, 'Sábanas'), ('Inactiva lector', 'por_persona', 'persona_noche', 99, false, 2, null)`);
+  await app.t.db.query(`insert into booking.conditions (name, is_default, vat_rate, text, minimum_total) values ('Condiciones lector', true, 10, 'Texto interno', 1500)`);
+  const res = await app.call('/api/v1/read/booking.price_calendar_source', { token: app.tokens.reader, body: {} });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const data = res.data as { rates: Array<Record<string, unknown>>; conditions: Record<string, unknown>; blocks: Array<Record<string, unknown>>; options: Array<Record<string, unknown>> };
+  assert.ok(data.rates.some((r) => r.name === 'Noche lector'));
+  assert.ok(!data.rates.some((r) => r.name === 'Inactiva lector'), 'solo las activas');
+  assert.equal(Number(data.conditions.minimum_total), 1500);
+  assert.ok(data.blocks.some((b) => String(b.start_date).startsWith('2091-06-22')));
+  assert.ok(data.options.some((o) => String(o.start_date).startsWith('2091-05-25')));
+  const text = JSON.stringify(data);
+  for (const hidden of ['Obras', 'Sábanas', 'Texto interno']) assert.ok(!text.includes(hidden), `sin «${hidden}»`);
+  // con ello, el precio en el dispositivo es el mismo que con las tablas
+  const price = priceFor({ ...CASE, rates: data.rates as never, conditions: data.conditions as never }, '2091-05-04');
+  assert.equal(price.total, applyMinimum(proposalTotals(suggestLines({ ...CASE.reservation, start_date: '2091-05-04', end_date: '2091-05-06' }, data.rates as never, { persons: 24 }), data.conditions as never).total, 1500).total);
+});
