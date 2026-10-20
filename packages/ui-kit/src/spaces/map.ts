@@ -22,6 +22,8 @@
  *   ocupada lleva rayado además del azul.
  * - Sin red se ve la última copia (lo que tenga la fuente y el dibujo que ya cargó) con un aviso; la app decide qué no
  *   deja hacer (`onPick` recibe `offline`).
+ * - **La elegida ampliada** (`focus`, MUELA-056): el mismo dibujo recortado a un espacio (la habitación elegida), con
+ *   su contorno y lo de dentro encima (las camas con su número y su color), y la lista de solo eso. Sin forma, la lista.
  * - «Colocar» (Central) irá sobre esta pieza: `onShape` y `setShape` dejan preparada la forma, sin pantalla todavía.
  * Prefijo de clases: `map-`.
  */
@@ -94,6 +96,11 @@ export interface SpaceMapOptions {
   nameOf?: (space: SpaceRow) => string;
   /** Espacio resaltado al empezar. */
   selected?: string | null;
+  /**
+   * La elegida ampliada (MUELA-056): solo este espacio y lo de dentro, con el dibujo recortado a su forma. Sin forma,
+   * la lista de lo mismo. `setFocus` lo cambia.
+   */
+  focus?: string | null;
   /** Nombre accesible de la pieza. */
   label?: string;
   /** Base de las marcas de feedback y uso (`SPACE_MAP_MARKS`). */
@@ -109,6 +116,8 @@ export interface SpaceMap {
   refresh(): Promise<void>;
   /** Resalta un espacio (y cambia de dibujo si hace falta); `null` quita el resalte. No llama a `onPick`. */
   select(id: string | null): void;
+  /** La elegida ampliada: recorta a este espacio; `null` vuelve al plano entero. */
+  setFocus(id: string | null): void;
   /** Repinta con la capa de nuevo (cuando cambian los datos de la app). */
   repaint(): void;
   setOffline(offline: boolean): void;
@@ -185,6 +194,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   let selected: string | null = options.selected ?? null;
   let planId: string | null = null;
   let follow = !!selected;
+  let focus: string | null = options.focus ?? null;
   /** Lo que eligió la persona; sin dibujo, se ve la lista igualmente (y al llegar el dibujo, vuelve a lo elegido). */
   let wanted: 'plan' | 'list' = mode === 'list' ? 'list' : 'plan';
   let view: 'plan' | 'list' = wanted;
@@ -277,13 +287,28 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     head.hidden = !toggle && !chooser;
   }
 
-  function paintPlan(plan: FloorPlan): void {
+  /** El espacio y lo de dentro (la elegida ampliada). */
+  const within = (root: SpaceRow, index: Map<string, SpaceRow>) => (s: SpaceRow) => s.id === root.id || ancestorsOf(index, s.id).some((a) => a.id === root.id);
+
+  function paintPlan(plan: FloorPlan, crop: SpaceRow | null = null): void {
     const w = plan.width > 0 ? plan.width : 1000;
     const h = plan.height > 0 ? plan.height : 700;
     const hatch = `${id}-hatch`;
-    const unit = Math.max(w, h);
+    // Recorte: la caja de la forma con un margen, sin salir de la imagen.
+    let box = { x: 0, y: 0, w, h };
+    if (crop) {
+      const pts = shapeOf(crop)!.shape.points;
+      const xs = pts.map((q) => q[0] * w);
+      const ys = pts.map((q) => q[1] * h);
+      const pad = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.06;
+      const x0 = Math.max(0, Math.min(...xs) - pad);
+      const y0 = Math.max(0, Math.min(...ys) - pad);
+      box = { x: x0, y: y0, w: Math.min(w, Math.max(...xs) + pad) - x0, h: Math.min(h, Math.max(...ys) + pad) - y0 };
+    }
+    const unit = Math.max(box.w, box.h);
     const px = (n: number) => (scale > 0 ? n / scale : 0);
-    const root = svg('svg', { class: 'map-svg', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': kt('Plano de {name}', { name: planName(plan) }) },
+    const name = crop ? kt('{name} en el plano', { name: nameOf(crop) }) : kt('Plano de {name}', { name: planName(plan) });
+    const root = svg('svg', { class: `map-svg${crop ? ' map-zoom' : ''}`, viewBox: [box.x, box.y, box.w, box.h].map((n) => +n.toFixed(1)).join(' '), preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': name },
       svg('defs', {}, svg('pattern', { id: hatch, patternUnits: 'userSpaceOnUse', width: unit / 90, height: unit / 90, patternTransform: 'rotate(45)' },
         svg('rect', { class: 'map-hatch-line', width: unit / 270, height: unit / 90 }))),
       svg('rect', { class: 'map-paper', width: w, height: h }));
@@ -301,7 +326,8 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     const ring = svg('g', { class: 'map-rings', 'aria-hidden': 'true' });
     // Primero las estancias y encima lo que va dentro (camas): por profundidad en el árbol.
     const index = indexSpaces(rows);
-    const here = rows.filter((s) => s.active && shapeOf(s)?.planId === plan.id)
+    const inCrop = crop ? within(crop, index) : () => true;
+    const here = rows.filter((s) => s.active && shapeOf(s)?.planId === plan.id && inCrop(s))
       .map((s) => ({ s, depth: ancestorsOf(index, s.id).length }))
       .sort((a, b) => a.depth - b.depth || a.s.position - b.s.position);
     for (const { s } of here) {
@@ -311,7 +337,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const layer = use ? layerOf(s) : {};
       const off = !use || !!layer.disabled;
       const bed = s.kind === 'cama';
-      const cls = ['map-shape', bed ? 'map-bed' : 'map-room', off ? 'map-off' : '', layer.tone ? `map-tone-${layer.tone}` : '', layer.state ? `map-st-${layer.state}` : '', selected === s.id ? 'map-on' : ''].filter(Boolean).join(' ');
+      const cls = ['map-shape', bed ? 'map-bed' : 'map-room', crop?.id === s.id ? 'map-focus' : '', off ? 'map-off' : '', layer.tone ? `map-tone-${layer.tone}` : '', layer.state ? `map-st-${layer.state}` : '', selected === s.id ? 'map-on' : ''].filter(Boolean).join(' ');
       const poly = svg('polygon', {
         class: cls, points, 'data-space-id': s.id,
         ...(off ? { 'aria-hidden': 'true' } : { role: 'button', tabindex: 0, 'aria-label': accessibleName(s, layer), 'aria-pressed': String(selected === s.id), ...mark('space') }),
@@ -328,7 +354,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const bw = c.w * w;
       const bh = c.h * h;
       if (bed) {
-        const size = Math.max(Math.min(bw * 0.62, bh * 0.62, unit * 0.034), unit * 0.008, px(11));
+        const size = Math.max(Math.min(bw * 0.5, bh * 0.5, unit * (crop ? 0.08 : 0.034)), unit * 0.008, px(crop ? 16 : 11));
         labels.append(svg('text', { class: `map-bed-txt${layer.state ? ` map-st-${layer.state}` : ''}`, x: c.x * w, y: c.y * h, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, bedNumber(s, rows)));
         continue;
       }
@@ -355,11 +381,11 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   /** Alturas y edificios (y exteriores con algo dentro) son títulos de la lista, no filas. */
   const container = (s: SpaceRow) => s.kind === 'altura' || s.kind === 'edificio' || (s.kind === 'exterior' && rows.some((r) => r.parentId === s.id && r.active));
 
-  function paintList(plan: FloorPlan | null): void {
+  function paintList(plan: FloorPlan | null, crop: SpaceRow | null = null): void {
     const hasPlan = !!plan;
     const index = indexSpaces(rows);
-    // Con dibujo, la lista es su equivalente: lo de ese edificio (con forma o sin ella).
-    const inside = (s: SpaceRow) => !plan || s.id === plan.buildingId || ancestorsOf(index, s.id).some((a) => a.id === plan.buildingId);
+    // Con dibujo, la lista es su equivalente: lo de ese edificio (con forma o sin ella); ampliada, lo de ese espacio.
+    const inside = crop ? within(crop, index) : (s: SpaceRow) => !plan || s.id === plan.buildingId || ancestorsOf(index, s.id).some((a) => a.id === plan.buildingId);
     const shown = rows.filter((s) => inUse(s) && !container(s) && inside(s));
     // En el orden del árbol: cada edificio (o la raíz más alta) con lo suyo debajo.
     const ordered: SpaceRow[] = [];
@@ -402,6 +428,26 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   }
 
   function paint(): void {
+    // La elegida ampliada: su dibujo recortado, o la lista si no tiene forma.
+    const crop = focus ? rows.find((r) => r.id === focus) ?? null : null;
+    if (focus) {
+      const at = crop ? shapeOf(crop) : null;
+      const plan = mode !== 'list' && at ? plans.find((p) => p.id === at.planId) ?? null : null;
+      view = plan ? wanted : 'list';
+      element.dataset.view = view;
+      element.dataset.focus = focus;
+      element.classList.toggle('map-noplan', !plan);
+      paintHead(!!plan, []);
+      if (plan && crop) paintPlan(plan, crop); else { replace(stage); replace(legend); }
+      planBox.hidden = !plan;
+      if (crop) paintList(plan, crop); else replace(list, el('p', { class: 'hint map-empty' }, kt('No hay espacios que enseñar.')));
+      if (!plan && crop && mode !== 'list') list.prepend(el('p', { class: 'hint map-why' }, kt('Sin sitio en el plano: lo de dentro, en lista.')));
+      notice.hidden = !offline;
+      replace(notice, offline ? kt('Sin red: ves la última copia guardada.') : '');
+      element.dataset.offline = String(offline);
+      return;
+    }
+    delete element.dataset.focus;
     const useful = mode === 'list' ? [] : usefulPlans();
     // Al empezar (o tras `select`), el dibujo de lo elegido; después manda el conmutador.
     if (follow && selected) {
@@ -450,6 +496,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     element,
     refresh,
     select(next) { selected = next; follow = !!next; paint(); },
+    setFocus(next) { focus = next; paint(); },
     repaint: paint,
     setOffline,
     setShape(spaceId, plan, shape) {

@@ -1963,6 +1963,9 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .map-hatch-line{fill:var(--bed-occ-line);opacity:.45}
 .map-shape:focus{outline:none}
 .map-shape:focus-visible{stroke:var(--accent-deep);stroke-width:4px}
+/* La elegida ampliada (`focus`): el contorno de la habitación marcado; las camas, grandes. */
+.map-room.map-focus{fill:transparent;stroke:var(--accent-deep);stroke-width:3px}
+.map-zoom{max-height:52vh}
 .map-ring{fill:none;stroke:var(--accent-deep);stroke-width:4px;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .map-labels text{pointer-events:none;font-family:var(--sans);text-anchor:middle;paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round}
 .map-room-txt{fill:var(--ink);font-weight:700}
