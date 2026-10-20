@@ -131,7 +131,9 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
 test('[20][21][23][25] orden de proyectos, vistas guardadas, importación de Keep y recarga sin red', async () => {
   await test.step('[20] ordenar proyectos por menú y por arrastre se sincroniza entre dispositivos', async () => {
     await a.locator('[data-nav="projects"]').click();
-    await a.locator(`[data-project-order="${ID.p2}"]`).click();
+    // «Ordenar» es un control oculto de 1 px para lectores de pantalla (`.ghostcontrol`): la portada lo tapa a la vista,
+    // así que se pulsa como lo haría un lector, sin buscar el punto en pantalla.
+    await a.locator(`[data-project-order="${ID.p2}"]`).dispatchEvent('click');
     await a.locator('#orderTarget').selectOption(ID.inbox!);
     await a.locator('#orderApply').click();
     await settled(a);

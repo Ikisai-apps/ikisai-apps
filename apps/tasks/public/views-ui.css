@@ -381,6 +381,9 @@ html{overflow-x:hidden}
 
 /* El desplegable de una faceta, por encima de la lista (FB_2026_037). */
 .facetbar{position:relative;z-index:35}
+/* Cerrada, la fila de facetas queda por debajo de la barra de abajo (z-nav 25): con la portada de la ficha de proyecto
+   (tanda 31) baja tanto que, al desplazar, tapaba «Inicio · Proyectos · Tareas». Abierta, su panel sigue por encima. */
+.facetbar:not(:has(.facet.open)){z-index:24}
 .facet.open{z-index:40}
 /* Hijas en el editor de la madre (FB_2026_044) y pasos en orden (FB_2026_041). */
 .childsection{margin:14px 0;display:grid;gap:8px}
