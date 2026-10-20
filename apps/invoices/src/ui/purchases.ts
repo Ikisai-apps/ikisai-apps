@@ -1,19 +1,33 @@
-/** Compras (API.md §6.3, §9.3): las líneas como artículos comprados, por categoría, destino, proveedor o lista; todo calculado en local. */
+/**
+ * Compras (API.md §6.3, §9.3): las líneas como artículos comprados, por categoría, destino, proveedor o lista; todo calculado en local.
+ * Tanda 27 (MUELA-070):
+ * - delante, «Por asignar» con su número: lo pendiente por el destino que se propone (`purchase-proposals.ts`), en
+ *   baldosas que dicen lo que hará el toque; el toque asigna solo si el destino sigue abierto en la fecha de la factura
+ *   (`targetOpenFor`) y, si no, abre la hoja de asignar (ya separada de la ficha); siempre con «Deshacer»; el lote
+ *   «Asignar los 2 a Cocina · 115,80 €»; en cada una, «Otro destino» y «Factura»;
+ * - el periodo y los filtros, en dos botones con su hoja (mismos controles e ids); el buscador sigue a la vista;
+ * - la franja de un enlace de otra app dice de dónde viene.
+ */
 import { linkedItem, linksEnabled } from '../app/resources.ts';
-import { el, icon, renderList, replace, type ListRowSpec } from '@ikisai/ui-kit';
+import { closeSheet, el, icon, openSheet, renderGroups as renderWorstGroups, renderList, renderTile, replace, type ListRowSpec } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { purchaseItems, type PurchaseFilters, type PurchaseGroup, type PurchaseItemsResult } from '@ikisai/domain-invoices';
-import { categoryLabel } from '../app/client.ts';
+import { ALLOCATIONS, categoryLabel, type LocalInvoice, type LocalInvoiceLine } from '../app/client.ts';
 import { currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, statusChipClass, statusText, type Mirror, type RangeKind } from '../app/data.ts';
 import { ITEM_TYPE_LABELS, lineName, supplierName } from '../app/data.ts';
-import { openInvoice } from './invoices.ts';
-import { FRESHNESS_LABELS, checkTargetFreshness } from '../app/targets.ts';
+import { openAllocation, openInvoice } from './invoices.ts';
+import { FRESHNESS_LABELS, checkTargetFreshness, recentTargets, resolveTarget, targetOpenFor, type TargetChoice } from '../app/targets.ts';
+import { batchLabel, lineKeyOf, proposeTarget, targetKeyOf, type PastAllocation, type ProposalTarget } from '../app/purchase-proposals.ts';
+import { offerUndoInsert } from './undo.ts';
+import { describeError } from '../app/client.ts';
+import { toast } from '@ikisai/ui-kit';
 import type { ViewMount } from './shell.ts';
 
-type Tab = 'category' | 'target' | 'supplier' | 'items';
+type Tab = 'pending' | 'category' | 'target' | 'supplier' | 'items';
 
 /** Pestañas de la vista: ids literales para el catálogo de «Uso». */
 const TAB_MARKS: Record<string, Record<string, string>> = {
+  pending: { 'data-feedback-id': 'invoices.compras.vista.por_asignar', 'data-feedback-label': 'Por asignar' },
   category: { 'data-feedback-id': 'invoices.compras.vista.categoria', 'data-feedback-label': 'Categoría' },
   target: { 'data-feedback-id': 'invoices.compras.vista.destino', 'data-feedback-label': 'Destino' },
   supplier: { 'data-feedback-id': 'invoices.compras.vista.proveedor', 'data-feedback-label': 'Proveedor' },
@@ -24,7 +38,11 @@ export const mountPurchases: ViewMount = (ctx) => {
   const { main, client } = ctx;
   let mirror: Mirror | null = null;
   let range = currentQuarter();
-  let tab: Tab = 'category';
+  let tab: Tab = 'pending';
+  /** De dónde viene un enlace de otra app (la franja lo dice). */
+  let linkOrigin: string | null = null;
+  /** Lo que se sabe de cada destino propuesto (archivado, último día), resuelto con red o de los recientes. */
+  const targetInfo = new Map<string, TargetChoice | null>();
   let validatedOnly = true;
   let query = '';
   let groupFilter: Partial<PurchaseFilters> = {};
@@ -46,8 +64,9 @@ export const mountPurchases: ViewMount = (ctx) => {
   const itemTypeSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.tipo_articulo', 'data-feedback-label': 'Filtrar por tipo de artículo', id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
     el('option', { value: '' }, 'Cualquier artículo'), ...Object.entries(ITEM_TYPE_LABELS).map(([v, l]) => el('option', { value: v }, l)));
   const unassignedToggle = el('label', { class: 'check' }, el('input', { 'data-feedback-id': 'invoices.compras.filtros.sin_asignar', 'data-feedback-label': 'Solo sin asignar', type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
-  const tabs = el('div', { 'data-feedback-id': 'invoices.compras.vista', 'data-feedback-label': 'Vista', class: 'segmented', role: 'tablist' }, ...([['category', 'Categoría'], ['target', 'Destino'], ['supplier', 'Proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
-    el('button', { ...TAB_MARKS[value], type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; paint(); } }, label)));
+  const pendingCount = el('span', { class: 'count', id: 'pendingCount' }, '0');
+  const tabs = el('div', { 'data-feedback-id': 'invoices.compras.vista', 'data-feedback-label': 'Vista', class: 'segmented inv-tabs-scroll', role: 'tablist' }, ...([['pending', 'Por asignar'], ['category', 'Categoría'], ['target', 'Destino'], ['supplier', 'Proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
+    el('button', { ...TAB_MARKS[value], type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; linkOrigin = null; paint(); } }, label, value === 'pending' ? [' ', pendingCount] : null)));
   const host = el('div', { id: 'purchases', 'data-feedback-id': 'invoices.compras.resultados', 'data-feedback-label': 'Resultados' });
   const footer = el('div', { 'data-feedback-id': 'invoices.compras.totales', 'data-feedback-label': 'Totales', 'data-feedback-ignore': '', class: 'totals-foot', id: 'purchaseTotals' });
 
@@ -66,12 +85,23 @@ export const mountPurchases: ViewMount = (ctx) => {
   }
   fillParts();
 
+  // El periodo y los filtros, cada uno en su hoja (los mismos controles: se mueven a la hoja al abrirla)
+  const periodButton = el('button', { 'data-feedback-id': 'invoices.compras.periodo', 'data-feedback-label': 'Periodo', class: 'softbtn small', type: 'button', id: 'purchasePeriod', onclick: () => openControls('Periodo', [el('div', { class: 'toolbar wrap' }, rangeKind, year, part), validatedToggle]) });
+  const filtersButton = el('button', { 'data-feedback-id': 'invoices.compras.filtros', 'data-feedback-label': 'Filtros', class: 'softbtn small', type: 'button', id: 'purchaseFilters', onclick: () => openControls('Filtros', [targetSelect, itemTypeSelect, itemSelect, unassignedToggle]) });
+  function openControls(title: string, controls: HTMLElement[]): void {
+    openSheet({ title, body: el('div', { class: 'inv-controls' }, ...controls), foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Hecho')] });
+  }
+  function paintControlButtons(): void {
+    replace(periodButton, icon('calendar', 16), `${rangeLabel(range)}${validatedOnly ? ' · solo validadas' : ''}`);
+    const n = [targetFilter, itemTypeFilter, linksEnabled() ? itemFilter : '', unassignedFilter ? 'x' : ''].filter(Boolean).length;
+    replace(filtersButton, icon('filter', 16), n ? `Filtros · ${n}` : 'Filtros');
+  }
+
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Compras'), el('p', null, 'Qué se ha comprado, para qué y qué falta por asignar.'))),
-    el('div', { class: 'toolbar wrap' }, rangeKind, year, part, validatedToggle),
+    el('div', { class: 'toolbar wrap' }, periodButton, filtersButton),
     tabs,
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
-    el('div', { class: 'toolbar wrap' }, targetSelect, itemTypeSelect, itemSelect, unassignedToggle),
     host,
     footer,
   );
@@ -88,14 +118,18 @@ export const mountPurchases: ViewMount = (ctx) => {
 
   function paint(): void {
     if (!mirror) return;
+    paintControlButtons();
     for (const b of Array.from(tabs.querySelectorAll('button'))) b.classList.toggle('on', b.dataset.tab === tab);
     paintItemOptions(mirror);
     const [targetApp, targetKind] = targetFilter ? targetFilter.split(':') : [undefined, undefined];
     const result = purchaseItems({ invoices: mirror.invoices, lines: mirror.lines, suppliers: mirror.suppliers, allocations: mirror.allocations },
       { range, validatedOnly, query, ...(targetApp ? { targetApp, targetKind } : {}), ...(itemTypeFilter ? { itemType: itemTypeFilter } : {}), ...(linksEnabled() && itemFilter ? { itemId: itemFilter } : {}), ...(unassignedFilter ? { unassignedOnly: true } : {}), ...groupFilter });
     replace(footer, el('span', null, rangeLabel(range)), el('strong', null, `Base ${eur(result.total_base)}`), el('span', null, `asignado ${eur(result.total_allocated)}`), el('span', { class: result.total_unallocated > 0 ? 'alert' : '' }, `sin asignar ${eur(result.total_unallocated)}`));
+    const pendingAll = purchaseItems({ invoices: mirror.invoices, lines: mirror.lines, suppliers: mirror.suppliers, allocations: mirror.allocations }, { unassignedOnly: true });
+    pendingCount.textContent = String(pendingAll.items.length);
+    if (tab === 'pending' && !Object.keys(groupFilter).length) { replace(host, renderPending(pendingAll, result.total_unallocated)); return; }
     if (Object.keys(groupFilter).length) {
-      replace(host, el('div', { class: 'banner info' }, el('span', null, 'Filtro aplicado desde la agrupación.'), el('button', { 'data-feedback-id': 'invoices.compras.filtros.quitar_agrupacion', 'data-feedback-label': 'Quitar filtro', class: 'linkbtn', type: 'button', onclick: () => { groupFilter = {}; paint(); } }, 'Quitar')), renderItems(result));
+      replace(host, el('div', { class: 'banner info', id: 'purchaseOrigin' }, el('span', null, linkOrigin ?? 'Filtro aplicado desde la agrupación.'), el('button', { 'data-feedback-id': 'invoices.compras.filtros.quitar_agrupacion', 'data-feedback-label': 'Quitar filtro', class: 'linkbtn', type: 'button', onclick: () => { groupFilter = {}; paint(); } }, 'Quitar')), renderItems(result));
       return;
     }
     if (tab === 'items') { replace(host, renderItems(result)); return; }
@@ -113,6 +147,92 @@ export const mountPurchases: ViewMount = (ctx) => {
       onClick: () => { groupFilter = filterFor(kind, g); tab = 'items'; paint(); },
       label: `Ver ${g.label}`,
     })) }), { feedbackId: 'invoices.compras.resultados.grupos', feedbackLabel: 'Agrupación' }, { feedbackId: 'invoices.compras.resultados.grupo', feedbackLabel: 'Grupo' });
+  }
+
+  /** Lo ya asignado, como historia para proponer (proveedor, nombre de la línea, fecha y destino). */
+  function pastAllocations(m: Mirror): PastAllocation[] {
+    const lineById = new Map(m.lines.map((l) => [l.id, l]));
+    const invoiceById = new Map(m.invoices.map((i) => [i.id, i]));
+    return m.allocations.filter((a) => !a.deleted_at && a.target_app !== 'general').flatMap((a) => {
+      const line = lineById.get(a.invoice_line_id); const invoice = line ? invoiceById.get(line.invoice_id) : null;
+      if (!line || !invoice || invoice.status === 'anulada') return [];
+      return [{ supplierId: invoice.supplier_id, lineKey: lineKeyOf(lineName(line)), date: invoice.invoice_date ?? '', target: { app: a.target_app, kind: a.target_kind, id: a.target_id, code: a.target_code ?? null, label: a.target_label, revision: a.target_revision ?? null } }];
+    });
+  }
+
+  /** ¿Sigue abierto? Con lo resuelto (con red) o lo de los recientes; si no se sabe, no se asigna de un toque. */
+  function openFor(target: ProposalTarget, invoice: LocalInvoice): boolean {
+    const info = targetInfo.get(targetKeyOf(target)) ?? recentTargets().find((r) => targetKeyOf(r) === targetKeyOf(target)) ?? null;
+    return !!info && targetOpenFor(info, invoice.invoice_date);
+  }
+  function resolveProposals(targets: ProposalTarget[]): void {
+    if (!navigator.onLine) return;
+    for (const t of targets) {
+      const key = targetKeyOf(t);
+      if (targetInfo.has(key) || !t.id) continue;
+      targetInfo.set(key, null);
+      void resolveTarget(client, t.app as TargetChoice['app'], t.kind, t.id).then((info) => { targetInfo.set(key, info); paint(); }).catch(() => undefined);
+    }
+  }
+
+  /** Asigna lo que falta de cada línea al destino, en un solo envío, y ofrece «Deshacer». */
+  async function assign(items: PurchaseItemsResult['items'], target: ProposalTarget): Promise<void> {
+    const info = targetInfo.get(targetKeyOf(target));
+    const ops = items.map((item) => ({ op: 'insert' as const, table: ALLOCATIONS, id: crypto.randomUUID(), fields: {
+      target_app: target.app, target_kind: target.kind, target_id: target.id, target_code: info?.code ?? target.code, target_label: target.label, target_revision: info?.revision ?? target.revision,
+      invoice_line_id: item.line.id, allocated_amount: Number(item.line.net_amount) < 0 ? -item.unallocated_amount : item.unallocated_amount, allocated_quantity: null } }));
+    try {
+      await client.commit(ops);
+      offerUndoInsert(client, ALLOCATIONS, ops.map((o) => o.id), items.length === 1 ? `Asignada a ${target.label}.` : `${items.length} asignadas a ${target.label}.`, 'Asignación deshecha.');
+    } catch (error) { toast(describeError(error)); }
+  }
+
+  /** La hoja de asignar de siempre, sin reabrir la factura; con «Deshacer» de lo que se asigne. */
+  function openSheetFor(item: PurchaseItemsResult['items'][number]): void {
+    openAllocation(ctx, mirror!, item.invoice as LocalInvoice, item.line as LocalInvoiceLine, (id) => { if (id) offerUndoInsert(client, ALLOCATIONS, [id], 'Asignación guardada.', 'Asignación deshecha.'); });
+  }
+
+  function renderPending(all: PurchaseItemsResult, inPeriod: number): HTMLElement {
+    const m = mirror!;
+    if (!all.items.length) return el('div', { class: 'empty', id: 'pendingEmpty' }, el('strong', null, 'Todo asignado'), 'No queda ninguna compra validada sin destino.');
+    const past = pastAllocations(m);
+    const q = query.trim().toLowerCase();
+    const items = all.items.filter((i) => !q || [lineName(i.line), supplierName(i.supplier), i.invoice.code ?? ''].join(' ').toLowerCase().includes(q));
+    const groups = new Map<string, { target: ProposalTarget | null; title: string; items: typeof items }>();
+    for (const item of items) {
+      const target = proposeTarget(item.invoice.supplier_id, lineName(item.line), past);
+      const key = target ? targetKeyOf(target) : `sin:${item.invoice.supplier_id}`;
+      if (!groups.has(key)) groups.set(key, { target, title: target ? `Para ${target.label}` : `Sin propuesta · ${supplierName(item.supplier)}`, items: [] });
+      groups.get(key)!.items.push(item);
+    }
+    resolveProposals([...groups.values()].map((g) => g.target).filter((t): t is ProposalTarget => !!t));
+    const canEdit = client.bootstrap()?.membership.role !== 'reader';
+    const view = renderWorstGroups<typeof items[number]>({
+      label: 'Por asignar', feedbackId: 'invoices.compras.por_asignar',
+      // Primero los que tienen destino propuesto (se asignan de un toque); después, sin propuesta
+      groups: [...groups.entries()].sort(([, a], [, b]) => Number(!a.target) - Number(!b.target) || a.title.localeCompare(b.title, 'es')).map(([key, g]) => {
+        const open = g.target ? g.items.filter((i) => openFor(g.target!, i.invoice as LocalInvoice)) : [];
+        const total = open.reduce((s, i) => s + Math.round(i.unallocated_amount * 100), 0) / 100;
+        return { key, title: g.title, items: g.items, open: true, summary: `${g.items.length} sin asignar · ${eur(g.items.reduce((s, i) => s + Math.round(i.unallocated_amount * 100), 0) / 100)}`,
+          actions: canEdit && g.target && open.length > 1 ? [el('button', { 'data-feedback-id': 'invoices.compras.por_asignar.lote', 'data-feedback-label': 'Asignar el lote', class: 'softbtn small inv-batch', type: 'button', onclick: (e: Event) => { e.preventDefault(); void assign(open, g.target!); } }, batchLabel(open.length, g.target, eur(total)))] : [] };
+      }),
+      row: (item) => {
+        const target = proposeTarget(item.invoice.supplier_id, lineName(item.line), past);
+        const ready = !!target && openFor(target, item.invoice as LocalInvoice);
+        const linked = linksEnabled() && item.line.item_id ? linkedItem(item.line.item_id) : null;
+        const tile = renderTile({ title: linked?.name ?? lineName(item.line), value: eur(item.unallocated_amount), icon: 'tag', feedbackId: 'invoices.compras.por_asignar.baldosa',
+          levelText: !canEdit ? `${supplierName(item.supplier)} · ${shortDate(item.invoice.invoice_date)}` : ready ? `Toca: a ${target!.label}` : target ? `${target.label} ya no está abierto: toca para elegir` : 'Toca para elegir destino',
+          onClick: canEdit ? () => { if (ready) void assign([item], target!); else openSheetFor(item); } : undefined });
+        return el('li', { class: 'inv-tile-row' }, tile,
+          el('p', { class: 'hint inv-tile-meta' }, `${supplierName(item.supplier)} · ${shortDate(item.invoice.invoice_date)}${item.invoice.code ? ` · ${item.invoice.code}` : ''}`),
+          el('div', { class: 'btnrow' },
+            canEdit ? el('button', { 'data-feedback-id': 'invoices.compras.por_asignar.otro_destino', 'data-feedback-label': 'Otro destino', class: 'linkbtn', type: 'button', onclick: () => openSheetFor(item) }, 'Otro destino') : null,
+            el('button', { 'data-feedback-id': 'invoices.compras.por_asignar.factura', 'data-feedback-label': 'Ver la factura', class: 'linkbtn', type: 'button', onclick: () => void openInvoice(ctx, item.invoice.id) }, icon('invoice', 16), 'Factura')));
+      },
+    });
+    return el('div', null,
+      el('p', { class: 'hint', id: 'pendingSummary', 'data-feedback-ignore': '' }, `Todo lo pendiente: ${eur(all.total_unallocated)} · de este periodo: ${eur(inPeriod)}`),
+      view.element);
   }
 
   function filterFor(kind: Tab, g: PurchaseGroup): Partial<PurchaseFilters> {
@@ -163,6 +283,9 @@ export const mountPurchases: ViewMount = (ctx) => {
     (validatedToggle.querySelector('input') as HTMLInputElement).checked = false;
     tab = 'items';
     groupFilter = { targetApp, targetKind, ...(targetId ? { targetId } : {}) };
+    const label = matching[0]?.target_label ?? null;
+    const from = ({ booking: 'Reservas', tasks: 'Tareas', food: 'Cocina' } as Record<string, string>)[targetApp] ?? targetApp;
+    linkOrigin = `Desde ${from}: solo lo asignado${label ? ` a «${label}»` : ''}, de cualquier fecha y también sin validar.`;
     history.replaceState(null, '', '#/compras');
     paint();
   }

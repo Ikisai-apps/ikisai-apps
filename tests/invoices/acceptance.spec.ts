@@ -103,6 +103,14 @@ function nav(page: Page, name: string) {
  * Gestoría abre el trimestre en el que se trabaja (en el primer mes de un trimestre, el anterior): las pruebas eligen
  * el de la fecha que necesitan para no depender del reloj.
  */
+/** Tanda 27: en Compras, el periodo y los filtros van en su hoja; se abre, se hace lo que toque y «Hecho». */
+async function purchaseControls(page: Page, which: 'period' | 'filters', run: () => Promise<unknown>): Promise<void> {
+  await page.locator(which === 'period' ? '#purchasePeriod' : '#purchaseFilters').click();
+  await run();
+  await page.locator('.sheet[role="dialog"] .sheet-foot').getByRole('button', { name: 'Hecho' }).click();
+  await expect(page.locator('.sheet[role="dialog"]')).toBeHidden();
+}
+
 async function gestoriaPeriod(page: Page, isoDate = new Date().toISOString().slice(0, 10)): Promise<void> {
   await page.getByLabel('Año', { exact: true }).fill(isoDate.slice(0, 4));
   await page.getByLabel('Año', { exact: true }).dispatchEvent('change');
@@ -316,7 +324,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await page.evaluate((id) => { location.hash = `#/compras?destino=food:ingredient:${id}`; }, INGREDIENT);
     await expect(page.locator('#purchases .row')).toHaveCount(1, { timeout: 20_000 });
     await expect(page.locator('#purchases')).toContainText('Tomate pera');
-    await expect(page.locator('#onlyValidated')).not.toBeChecked();
+    await expect(page.locator('#purchasePeriod')).not.toContainText('solo validadas');
     await expect(page).toHaveURL(/#\/compras$/);
     await nav(page, 'Facturas').click();
     // Tanda 27: Facturas abre en «Por resolver»; la validada está en «Todas»
@@ -361,7 +369,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(page.locator('#purchaseTotals')).toContainText('sin asignar 0,00 €');
     await page.getByRole('tab', { name: 'Artículos' }).click();
     await expect(page.locator('#purchases .row')).toHaveCount(1);
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     await expect(page.locator('#purchases .row')).toHaveCount(2);
   });
 
@@ -474,6 +482,11 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     // Kit 0.28.0: nombre legible (código · proveedor, nunca el id) y quién lo cambió
     await expect(page.locator('#conflictList')).toContainText('Sin Red SL');
     await expect(page.locator('#conflictIntro')).not.toHaveText('Nada se pierde hasta que decidas.');
+    // Tanda 27: la bandeja por áreas, con lo que choca escrito y «Lo mío» / «Lo del otro» al mismo nivel
+    await expect(page.locator('#conflictList .tray-row')).toHaveCount(1);
+    await expect(page.locator('#conflictList')).toContainText('Facturas');
+    await expect(page.locator('#conflictList')).toContainText('Notas: «nota desde el móvil» frente a «nota desde el PC»');
+    await expect(page.locator('#conflictList [data-choice="mine"]')).toHaveText('Lo mío');
     expect(api.rows('invoices.invoices').find((i) => i.id === inv.id)!.notes).toBe('nota desde el PC');
   });
 
@@ -506,6 +519,9 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     await page.locator('#toolSync').click();
     await page.getByRole('button', { name: 'Ver conflictos' }).click();
     await expect(page.locator('#rejectedList')).toContainText('ya no existe en Tareas');
+    // Tanda 27: «Corregir en Facturas» delante; «Reintentar», discreto
+    await expect(page.locator('#rejectedList [data-choice="fix"]')).toHaveText('Corregir en Facturas');
+    await expect(page.locator('#rejectedList [data-choice="retry"]')).toHaveClass(/linkbtn/);
   });
 
   await test.step('O6 · una subida que no verifica no envía el lote y se ve como rechazada', async () => {
@@ -529,12 +545,12 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await login(page);
     await synced(page);
     await nav(page, 'Compras').click();
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     // Esperar a que el espejo tenga también las asignaciones (el snapshot va por tablas) antes de cortar la red.
     await page.getByRole('tab', { name: 'Artículos' }).click();
-    await page.locator('#purchaseTarget').selectOption('food:ingredient');
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseTarget').selectOption('food:ingredient'));
     await expect(page.locator('#purchases .row')).toHaveCount(1, { timeout: 20_000 });
-    await page.locator('#purchaseTarget').selectOption('');
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseTarget').selectOption(''));
     await page.getByRole('tab', { name: 'Categoría' }).click();
     const totalsOnline = await page.locator('#purchaseTotals').innerText();
     expect(totalsOnline).toContain('Base');
@@ -546,7 +562,7 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
     await page.reload().catch(() => undefined);
     await nav(page, 'Compras').click();
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     const norm = (text: string) => text.replace(/\s+/g, ' ').trim();
     await expect.poll(async () => norm(await page.locator('#purchaseTotals').innerText())).toBe(norm(totalsOnline));
     await nav(page, 'Gestoría').click();
@@ -554,14 +570,14 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await expect.poll(async () => norm(await page.locator('#fiscalSummary').innerText())).toBe(norm(summaryOnline));
     // Filtros del handoff: por destino (ingrediente) y «solo sin asignar»
     await nav(page, 'Compras').click();
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     await page.getByRole('tab', { name: 'Artículos' }).click();
-    await page.locator('#purchaseTarget').selectOption('food:ingredient');
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseTarget').selectOption('food:ingredient'));
     await expect(page.locator('#purchases .row')).toHaveCount(1);
-    await page.locator('#purchaseTarget').selectOption('booking:event');
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseTarget').selectOption('booking:event'));
     await expect(page.locator('#purchases')).toContainText('Sin artículos');
-    await page.locator('#purchaseTarget').selectOption('');
-    await page.locator('#onlyUnassigned').check();
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseTarget').selectOption(''));
+    await purchaseControls(page, 'filters', () => page.locator('#onlyUnassigned').check());
     await expect(page.locator('#purchases .row').first()).toContainText('Sin asignar');
     await context.setOffline(false);
   });
@@ -609,7 +625,7 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await context.setOffline(true);
     await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
     await nav(page, 'Compras').click();
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     await expect(page.locator('#purchaseTotals')).toContainText('Base');
     await nav(page, 'Inicio').click();
     await page.getByRole('link', { name: /Proveedores/ }).click();
@@ -2504,13 +2520,13 @@ test('R4 · caracterización: «Mi nombre» recordado, tipo de artículo y desti
 
     // Compras › Artículos: el mismo nombre, el tipo y el destino; el filtro por ingrediente la incluye y deja fuera los portes
     await page.evaluate(() => { location.hash = '#/compras'; });
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     await page.getByRole('tab', { name: 'Artículos' }).click();
     const bought = page.locator('#purchases .row', { hasText: 'Harina de la casa' });
     await expect(bought).toBeVisible({ timeout: 20_000 });
     await expect(bought).toContainText('Ingrediente');
     await expect(bought).toContainText('Harina de trigo');
-    await page.locator('#purchaseTarget').selectOption('food:ingredient');
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseTarget').selectOption('food:ingredient'));
     await expect(page.locator('#purchases .row', { hasText: 'Harina de la casa' })).toBeVisible();
     await expect(page.locator('#purchases .row', { hasText: 'PORTES' })).toHaveCount(0);
   } finally {
@@ -2621,9 +2637,9 @@ test('R4 · PR 3: con el enlace encendido, «Artículo» enlaza la línea (conve
     // Compras: el nombre del artículo y el filtro «Artículo»
     await synced(page);
     await page.evaluate(() => { location.hash = '#/compras'; });
-    await page.locator('#onlyValidated').uncheck();
+    await purchaseControls(page, 'period', () => page.locator('#onlyValidated').uncheck());
     await page.getByRole('tab', { name: 'Artículos' }).click();
-    await page.locator('#purchaseItem').selectOption({ label: 'Harina de trigo R4' });
+    await purchaseControls(page, 'filters', () => page.locator('#purchaseItem').selectOption({ label: 'Harina de trigo R4' }));
     await expect(page.locator('#purchases .row')).toHaveCount(1, { timeout: 20_000 });
     await expect(page.locator('#purchases .row').first()).toContainText('Harina de trigo R4');
   } finally {
@@ -2791,6 +2807,90 @@ test('Tanda 27 · Gestoría: carpeta con el recorrido de la entrega, «Descargar
   } finally {
     for (const e of [older, newer]) if (api.rows('invoices.exports').some((x) => x.id === e)) api.serverUpdate('invoices.exports', e, { deleted_at: new Date().toISOString() });
     api.serverUpdate('invoices.invoices', invoice, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
+
+test('Tanda 27 · Proveedores: por categoría con «Le debes» (sin confirmar cuenta como pagado), extracto y «Ver sus facturas»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplier = randomUUID(); const a = randomUUID(); const b = randomUUID();
+  const year = new Date().toISOString().slice(0, 4);
+  api.seed('invoices.suppliers', [{ id: supplier, name: 'Extracto Ejemplo SL', slug: 'extracto_ejemplo_sl', aliases: [], default_is_investment: false, default_category: 'suministros' }]);
+  const base = { supplier_id: supplier, status: 'validada', expense_category: 'suministros', calculated_base: 100, calculated_vat: 21, currency: 'EUR', deductibility: 'pendiente_revision', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' };
+  api.seed('invoices.invoices', [
+    { ...base, id: a, code: 'FVR_EXT_1', object: 'luz', invoice_date: `${year}-01-10`, due_date: `${year}-01-20`, calculated_total: 899.37, source_total: 899.37, payment_status: 'pendiente' },
+    { ...base, id: b, code: 'FVR_EXT_2', object: 'agua', invoice_date: `${year}-01-12`, calculated_total: 121, source_total: 121, payment_status: 'pagada', payment_source: 'sin_confirmar', paid_at: `${year}-01-12` },
+  ]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/proveedores`);
+    const row = page.locator('#supplierList .row', { hasText: 'Extracto Ejemplo SL' });
+    await expect(row).toContainText('Le debes 899,37 € · 1 vencida · 1 por confirmar', { timeout: 20_000 });
+    await expect(page.locator('#supplierList')).toContainText('Suministros');
+    // Filtro «Con vencidas»
+    await page.locator('#supplierFilter [data-filter="vencidas"]').click();
+    await expect(row).toBeVisible();
+    // Tocar el proveedor abre su extracto
+    await row.click();
+    const sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#supplierStatement')).toContainText('899,37 €', { timeout: 20_000 });
+    await expect(sheet.locator('#supplierStatement')).toContainText('1 pago por confirmar');
+    await expect(sheet.locator('#supplierStatement')).toContainText(/FVR_\d{4}_\d+ · luzvencida hace/);
+    await expect(sheet.locator('#supplierStatement')).toContainText(/Pago de FVR_\d{4}_\d+/);
+    await sheet.locator('#supplierInvoices').click();
+    await expect(page.locator('#invoiceSearch')).toHaveValue('Extracto Ejemplo SL');
+    await expect(page.locator('#invoiceList .row')).toHaveCount(2, { timeout: 20_000 });
+  } finally {
+    for (const id of [a, b]) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
+
+test('Tanda 27 · Compras «Por asignar»: un toque asigna al destino propuesto si sigue abierto (con «Deshacer»); si no, abre la hoja', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplier = randomUUID(); const closedSupplier = randomUUID();
+  const project = { app: 'tasks' as const, kind: 'project', id: randomUUID(), label: 'Cocina T27', path: ['Casa'], revision: 3 };
+  const event = { app: 'booking' as const, kind: 'event', id: randomUUID(), label: 'Retiro pasado T27', path: ['Eventos'], revision: 1, ends_on: '2020-01-05' };
+  api.targets.push(project, event);
+  const base = { status: 'validada', expense_category: 'compras', calculated_base: 10, calculated_vat: 2.1, calculated_total: 12.1, source_total: 12.1, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pagada', payment_source: 'confirmado', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' };
+  const invoice = (id: string, supplierId: string, date: string) => ({ ...base, id, supplier_id: supplierId, invoice_date: date, paid_at: date, object: 'compra T27' });
+  const ids = { oldA: randomUUID(), newA: randomUUID(), oldB: randomUUID(), newB: randomUUID() };
+  const lines = { oldA: randomUUID(), newA: randomUUID(), oldB: randomUUID(), newB: randomUUID() };
+  api.seed('invoices.suppliers', [{ id: supplier, name: 'Asignar T27 SL', slug: 'asignar_t27_sl', aliases: [], default_is_investment: false }, { id: closedSupplier, name: 'Cerrado T27 SL', slug: 'cerrado_t27_sl', aliases: [], default_is_investment: false }]);
+  api.seed('invoices.invoices', [invoice(ids.oldA, supplier, '2026-09-01'), invoice(ids.newA, supplier, '2026-10-01'), invoice(ids.oldB, closedSupplier, '2020-01-02'), invoice(ids.newB, closedSupplier, '2026-10-02')]);
+  api.seed('invoices.invoice_lines', Object.entries(lines).map(([k, id]) => ({ id, invoice_id: ids[k as keyof typeof ids], position: 0, description: 'Lejía T27', net_amount: 10, vat_rate: 21, vat_amount: 2.1, discount_amount: 0 })));
+  api.seed('invoices.allocations', [
+    { id: randomUUID(), invoice_line_id: lines.oldA, target_app: 'tasks', target_kind: 'project', target_id: project.id, target_label: 'Casa › Cocina T27', target_revision: 3, allocated_amount: 10 },
+    { id: randomUUID(), invoice_line_id: lines.oldB, target_app: 'booking', target_kind: 'event', target_id: event.id, target_label: 'Eventos › Retiro pasado T27', target_revision: 1, allocated_amount: 10 },
+  ]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/compras`);
+    await expect(page.locator('#purchases')).toContainText('Para Casa › Cocina T27', { timeout: 20_000 });
+    const ready = page.getByRole('button', { name: /Toca: a Casa › Cocina T27/ });
+    await expect(ready).toBeVisible({ timeout: 20_000 });
+    await ready.click();
+    await expect.poll(() => api.rows('invoices.allocations').filter((a) => a.invoice_line_id === lines.newA && !a.deleted_at).length, { timeout: 20_000 }).toBe(1);
+    await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.allocations').filter((a) => a.invoice_line_id === lines.newA && !a.deleted_at).length, { timeout: 20_000 }).toBe(0);
+    // El retiro ya acabó antes de la factura: el toque no asigna, abre la hoja de asignar (sin reabrir la factura)
+    const closed = page.getByRole('button', { name: /Retiro pasado T27 ya no está abierto/ });
+    await expect(closed).toBeVisible({ timeout: 20_000 });
+    await closed.click();
+    await expect(page.getByRole('dialog', { name: /Asignar «Lejía T27»/ })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Volver' }).click();
+    await expect(page.locator('.sheet[role="dialog"]')).toBeHidden();
+    expect(api.rows('invoices.allocations').filter((a) => a.invoice_line_id === lines.newB && !a.deleted_at)).toHaveLength(0);
+  } finally {
+    api.targets.splice(api.targets.findIndex((t) => t.id === project.id), 1);
+    api.targets.splice(api.targets.findIndex((t) => t.id === event.id), 1);
+    for (const id of Object.values(ids)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
     await context.close();
   }
 });

@@ -45,6 +45,9 @@ export interface FakeTarget {
   label: string;
   path?: string[];
   revision: number;
+  /** Tanda 27: archivado y último día del evento (como la Edge real). */
+  archived?: boolean;
+  ends_on?: string | null;
 }
 
 export interface FakeUpload {
@@ -948,7 +951,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (targetOne && method === 'GET') {
         const t = targets.find((x) => x.app === targetOne[1] && x.kind === targetOne[2] && x.id === targetOne[3]);
         if (!t) throw new Fault(404, 'TARGET_NOT_FOUND', 'El destino ya no existe en Tareas.');
-        return json(res, 200, { ...t, code: null, archived: false, path: t.path ?? [] });
+        return json(res, 200, { ...t, code: null, archived: t.archived ?? false, path: t.path ?? [] });
       }
       throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
     } catch (error) {

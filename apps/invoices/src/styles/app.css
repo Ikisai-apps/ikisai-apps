@@ -167,3 +167,16 @@ code{font-size:12.5px;word-break:break-all}
 .inv-ticket dd{margin:0;text-align:right;font-weight:600}
 .inv-folder-actions{margin:12px 0}
 .inv-quarter>summary{min-height:var(--tap,46px)}
+
+/* Tanda 27 · Proveedores: medallón en la fila. */
+.inv-sup-title{display:inline-flex;align-items:center;gap:10px}
+
+/* Tanda 27 · Compras: «Por asignar» en baldosas, el lote y las hojas de periodo y filtros. */
+.inv-tabs-scroll{overflow-x:auto;max-width:100%}
+.inv-tile-row{list-style:none;padding:8px 0;border-bottom:1px solid var(--line)}
+.inv-tile-row:last-child{border-bottom:0}
+.inv-tile-meta{margin:4px 0 0}
+.inv-batch{min-height:var(--tap,46px);white-space:normal;text-align:left}
+.inv-controls{display:grid;gap:10px}
+.inv-controls select,.inv-controls input:not([type=checkbox]){min-height:var(--tap,46px)}
+.inv-controls .check{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap,46px)}

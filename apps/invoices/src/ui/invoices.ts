@@ -1373,8 +1373,13 @@ function promptPanel(): HTMLElement {
 // ---------------------------------------------------------------------------
 // Asignar una línea · API.md §6.2
 // ---------------------------------------------------------------------------
-export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, line: LocalInvoiceLine): void {
+/**
+ * La hoja de asignar una línea. Desde la ficha, al guardar o volver se reabre la factura; desde Compras (tanda 27) se
+ * pasa `onDone` y no se reabre nada: la asignación nueva llega a `onDone` para su «Deshacer».
+ */
+export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, line: LocalInvoiceLine, onDone: ((allocationId: string | null) => void) | null = null): void {
   const { client } = ctx;
+  const finish = async (allocationId: string | null) => { await closeSheet(true); if (onDone) onDone(allocationId); else void openInvoice(ctx, invoice.id); };
   const rest = unallocated(line, mirror);
   let app = 'general';
   let choice: TargetChoice | null = null;
@@ -1431,16 +1436,17 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
       rememberTarget(choice);
     }
     // En una rectificativa la línea es negativa: se escribe el importe en positivo y se guarda con su signo.
-    const ok = await commitSafely(client, [{ op: 'insert', table: ALLOCATIONS, id: crypto.randomUUID(), fields: { ...fields, invoice_line_id: line.id, allocated_amount: Number(line.net_amount) < 0 ? -a : a, allocated_quantity: q } }], 'Asignación guardada.');
+    const allocationId = crypto.randomUUID();
+    const ok = await commitSafely(client, [{ op: 'insert', table: ALLOCATIONS, id: allocationId, fields: { ...fields, invoice_line_id: line.id, allocated_amount: Number(line.net_amount) < 0 ? -a : a, allocated_quantity: q } }], 'Asignación guardada.');
     usage.track('invoices.facturas.asignar', ok ? 'success' : 'error');
-    if (ok) { await closeSheet(true); void openInvoice(ctx, invoice.id); }
+    if (ok) await finish(allocationId);
   } }, 'Asignar');
 
   openSheet({
     title: `Asignar «${lineName(line)}»`,
     meta: `${eur(rest)} sin asignar de ${eur(line.net_amount)}`,
     body: el('div', null, appButtons, appArea, el('div', { class: 'row2' }, field('Importe (base, sin IVA)', amount), field('Cantidad', quantity)), error),
-    foot: [el('button', { 'data-feedback-id': 'invoices.facturas.asignar.volver', 'data-feedback-label': 'Volver', class: 'ghost', type: 'button', onclick: async () => { await closeSheet(true); void openInvoice(ctx, invoice.id); } }, 'Volver'), save],
+    foot: [el('button', { 'data-feedback-id': 'invoices.facturas.asignar.volver', 'data-feedback-label': 'Volver', class: 'ghost', type: 'button', onclick: () => void finish(null) }, 'Volver'), save],
     initialFocus: amount,
   });
   paintApp();

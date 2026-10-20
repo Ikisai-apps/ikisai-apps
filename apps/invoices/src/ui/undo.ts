@@ -78,3 +78,21 @@ async function undo(client: SyncClient, change: Pick<UndoableChange, 'table' | '
     return false;
   }
 }
+
+/** «Deshacer» de filas recién creadas (p. ej. asignaciones desde Compras): las borra con la revisión del dispositivo. */
+export function offerUndoInsert(client: SyncClient, table: TableName, ids: string[], message: string, undoneMessage: string, onUndone?: () => void): void {
+  quietUntil = Date.now() + UNDO_MS + 4000;
+  toastWithAction(client.status().network === 'offline' ? `${message} Se sincronizará cuando haya red.` : message, {
+    label: 'Deshacer',
+    onClick: () => void (async () => {
+      quietUntil = Date.now() + 8000;
+      try {
+        const rows = (await Promise.all(ids.map((id) => client.get(table, id)))) as Array<{ id: string; revision: number } | null>;
+        const ops = rows.filter((r): r is { id: string; revision: number } => !!r).map((r) => ({ op: 'delete' as const, table, id: r.id, expectedRevision: r.revision }));
+        if (ops.length) await client.commit(ops);
+        toast(undoneMessage);
+        onUndone?.();
+      } catch (error) { toast(describeError(error)); }
+    })(),
+  }, UNDO_MS);
+}

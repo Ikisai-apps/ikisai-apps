@@ -246,6 +246,15 @@ export const mountInvoices: ViewMount = (ctx) => {
       return;
     }
     // Inicio, Gestoría y otras apps: `#/facturas?filtro=pendiente_datos|pendiente_revision|sin_pagar|drive|…`, a su buzón.
+    // «Ver sus facturas» desde Proveedores: `#/facturas?proveedor=<id>` busca por su nombre en «Todas»
+    const bySupplier = tail.match(/^\?proveedor=([0-9a-f-]{36})/i);
+    if (bySupplier && mirror) {
+      history.replaceState(null, '', '#/facturas');
+      const supplier = mirror.supplierById.get(bySupplier[1]!.toLowerCase());
+      if (supplier) { search.value = supplier.label || supplier.name; query = search.value.trim().toLowerCase(); }
+      setBox('todas');
+      return;
+    }
     const wanted = tail.match(/^\?filtro=([a-z_]+)/);
     const target = wanted ? mailboxFromFilter(wanted[1]!) : null;
     if (target) { history.replaceState(null, '', '#/facturas'); setBox(target.box, target.pill); return; }

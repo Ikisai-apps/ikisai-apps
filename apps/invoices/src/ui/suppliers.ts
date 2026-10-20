@@ -1,9 +1,11 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { supplierName } from '../app/data.ts';
-import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { eur, loadMirror, supplierName, todayIso, type Mirror } from '../app/data.ts';
+import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, renderGroups, renderMedal, renderMoneyBreakdown, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { movesOf, supplierDebt, upcomingOf, type SupplierDebt } from '../app/supplier-state.ts';
+import { linkedItem, linksEnabled } from '../app/resources.ts';
 import { fbRows } from './feedback.ts';
 import { guard } from '../app/guard.ts';
-import { CATEGORIES, CATEGORY_LABELS, SUPPLIERS, SUPPLIER_TEMPLATES, categoryLabel, describeError, type LocalSupplierTemplate, type SupplierRow } from '../app/client.ts';
+import { CATEGORIES, CATEGORY_LABELS, ITEM_LABELS, SUPPLIERS, SUPPLIER_TEMPLATES, categoryLabel, describeError, type LocalSupplierTemplate, type SupplierRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
 interface FormValues {
@@ -44,16 +46,30 @@ function toFields(values: FormValues): Record<string, unknown> {
   };
 }
 
-/** Vista Proveedores: lista en modo lectura, hoja de edición del kit, papelera y marca de pendiente por fila. */
-export const mountSuppliers: ViewMount = ({ main, client }) => {
+/** Filtros de la lista (tanda 27): Todos · Le debes · Con vencidas · Por resolver. */
+const FILTERS = [['todos', 'Todos'], ['debes', 'Le debes'], ['vencidas', 'Con vencidas'], ['resolver', 'Por resolver']] as const;
+type Filter = (typeof FILTERS)[number][0];
+
+/**
+ * Vista Proveedores: lista en modo lectura, hoja de edición del kit, papelera y marca de pendiente por fila.
+ * Tanda 27 (MUELA-070): grupos por categoría habitual con lo peor primero (y por nombre dentro); cada proveedor con su
+ * medallón y «Le debes … · 1 vencida» o «Al día» (lo pagado sin confirmar cuenta como pagado, con «n por confirmar»);
+ * chips Todos · Le debes · Con vencidas · Por resolver. Tocar un proveedor abre su extracto («Le debes», el año, lo
+ * próximo, los movimientos con lo que queda, «Artículos que recuerda», su plantilla, «Ver sus facturas» y «Editar datos»).
+ * «Editar» sigue también en la fila.
+ */
+export const mountSuppliers: ViewMount = ({ main, client, navigate }) => {
   let rows: SupplierRow[] = [];
   let templates: LocalSupplierTemplate[] = [];
   let query = '';
+  let filter: Filter = 'todos';
+  let mirror: Mirror | null = null;
   let sheet: Sheet | null = null;
 
   const search = el('input', { 'data-feedback-id': 'invoices.proveedores.buscar', 'data-feedback-label': 'Buscar proveedores', type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const list = el('ul', { class: 'list', id: 'supplierList', 'aria-label': 'Proveedores' });
+  const list = el('div', { id: 'supplierList', 'data-feedback-id': 'invoices.proveedores.lista', 'data-feedback-label': 'Proveedores' });
+  const chips = el('div', { class: 'inv-boxes', role: 'group', 'aria-label': 'Filtrar proveedores', id: 'supplierFilter', 'data-feedback-id': 'invoices.proveedores.filtro', 'data-feedback-label': 'Filtrar proveedores' });
   const activeLabel = el('div', { class: 'sectionlabel' }, 'Activos', el('span', { class: 'count', id: 'supplierCount' }, '0'));
   const trashLabel = el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', el('span', { class: 'count', id: 'trashCount' }, '0'));
   const trashList = el('ul', { class: 'list', 'aria-label': 'Proveedores en la papelera' });
@@ -68,6 +84,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Proveedores'), el('p', null, 'Quién te factura: nombre, NIF, categoría habitual y notas.'))),
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
+    chips,
     activeLabel,
     listHost,
     trash,
@@ -79,28 +96,60 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     return row.name.toLowerCase().includes(query) || (row.label ?? '').toLowerCase().includes(query) || (row.tax_id ?? '').toLowerCase().includes(query);
   }
 
-  function rowItem(row: SupplierRow, deleted: boolean): HTMLElement {
+  const today = todayIso();
+  const debtOf = (row: SupplierRow): SupplierDebt => supplierDebt(mirror?.invoices.filter((i) => i.supplier_id === row.id) ?? [], today, eur);
+
+  function rowItem(row: SupplierRow, deleted: boolean): HTMLLIElement {
     const edit = canEdit ? el('button', { 'data-feedback-id': 'invoices.proveedores.lista.fila.editar', 'data-feedback-label': 'Editar', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar') : null;
     const restore = el('button', { 'data-feedback-id': 'invoices.proveedores.papelera.restaurar', 'data-feedback-label': 'Restaurar', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void restoreRow(row) }, icon('restore', 18), 'Restaurar');
+    const debt = deleted ? null : debtOf(row);
     return listRow({
       id: row.id,
-      title: supplierName(row),
+      title: deleted ? supplierName(row) : el('span', { class: 'inv-sup-title' }, renderMedal({ name: supplierName(row), size: 40 }), supplierName(row)),
       meta: [row.label ? row.name : null, row.tax_id ? `NIF ${row.tax_id}` : 'Sin NIF', categoryLabel(row.default_category)].filter(Boolean) as string[],
+      chips: debt ? [el('span', { class: `chip${debt.tone === 'alert' ? ' alert' : debt.owed > 0.004 || debt.toResolve || debt.unconfirmed ? ' warn' : ' ok'}` }, debt.text)] : [],
       pending: row._pending === true,
       deleted,
       actions: [deleted ? restore : edit],
+      onClick: deleted ? undefined : () => openStatement(row),
+      label: deleted ? undefined : `Ver el extracto de ${supplierName(row)}`,
     });
+  }
+
+  function keep(row: SupplierRow): boolean {
+    if (filter === 'todos') return true;
+    const d = debtOf(row);
+    return filter === 'debes' ? d.owed > 0.004 : filter === 'vencidas' ? d.overdue > 0 : d.toResolve > 0;
+  }
+
+  function paintChips(active: SupplierRow[]): void {
+    const count = (f: Filter) => active.filter((r) => { const prev = filter; filter = f; const ok = keep(r); filter = prev; return ok; }).length;
+    replace(chips, ...FILTERS.map(([key, label]) => el('button', { type: 'button', class: 'inv-box small', dataset: { filter: key }, 'aria-pressed': String(filter === key), onclick: () => { filter = key; paint(); } },
+      el('span', null, label), el('strong', null, String(count(key))))));
   }
 
   function paint(): void {
     const sorted = [...rows].sort((a, b) => supplierName(a).localeCompare(supplierName(b), 'es'));
     const active = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
-    const visible = active.filter(matches);
+    const visible = active.filter(matches).filter(keep);
     activeLabel.querySelector('.count')!.textContent = String(active.length);
     trashLabel.querySelector('.count')!.textContent = String(deleted.length);
-    replace(list, ...visible.map((r) => rowItem(r, false)));
-    fbRows(list, { feedbackId: 'invoices.proveedores.lista', feedbackLabel: 'Proveedores' }, { feedbackId: 'invoices.proveedores.lista.fila', feedbackLabel: 'Proveedor' });
+    paintChips(active);
+    // Por categoría habitual; los grupos que piden algo, primero (renderGroups con worstFirst)
+    const byCategory = new Map<string, SupplierRow[]>();
+    for (const r of visible) byCategory.set(r.default_category ?? '', [...(byCategory.get(r.default_category ?? '') ?? []), r]);
+    const groups = [...byCategory.entries()].sort(([a], [b]) => (a ? categoryLabel(a) : 'zzz').localeCompare(b ? categoryLabel(b) : 'zzz', 'es')).map(([key, items]) => {
+      const debts = items.map(debtOf);
+      const overdue = debts.reduce((n, d) => n + d.overdue, 0);
+      const resolve = debts.reduce((n, d) => n + d.toResolve, 0);
+      const owed = debts.reduce((n, d) => n + Math.round(d.owed * 100), 0) / 100;
+      const summary = [overdue ? `${overdue} vencida${overdue === 1 ? '' : 's'}` : null, resolve ? `${resolve} por resolver` : null, owed > 0.004 ? `Le debes ${eur(owed)}` : null].filter(Boolean).join(' · ') || 'Al día';
+      return { key: key || 'sin_categoria', title: key ? categoryLabel(key) : 'Sin categoría habitual', items, summary, open: true };
+    });
+    replace(list, renderGroups<SupplierRow>({ label: 'Proveedores por categoría', groups, worstFirst: true, feedbackId: 'invoices.proveedores.lista.grupos',
+      toneOf: (r) => { const t = debtOf(r).tone; return t === 'ok' ? null : t; },
+      row: (r) => { const li = rowItem(r, false); li.setAttribute('data-feedback-id', 'invoices.proveedores.lista.fila'); li.setAttribute('data-feedback-label', 'Proveedor'); return li; } }).element);
     replace(listHost, active.length === 0 ? emptyActive : visible.length === 0 ? emptyFiltered : list);
     replace(trashList, ...deleted.filter(matches).map((r) => rowItem(r, true)));
     fbRows(trashList, { feedbackId: 'invoices.proveedores.papelera.lista', feedbackLabel: 'Proveedores en la papelera' }, { feedbackId: 'invoices.proveedores.papelera.fila', feedbackLabel: 'Proveedor' });
@@ -109,6 +158,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     rows = (await client.list(SUPPLIERS, { includeDeleted: true })) as SupplierRow[];
+    mirror = await loadMirror(client);
     templates = ((await client.list(SUPPLIER_TEMPLATES)) as LocalSupplierTemplate[]).filter((t) => !t.deleted_at);
     paint();
   }
@@ -128,6 +178,40 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
 
   async function restoreRow(row: SupplierRow): Promise<void> {
     await commitSafely([{ op: 'restore', table: SUPPLIERS, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurado.`);
+  }
+
+  /** El extracto del proveedor (MUELA-023): lo que le debes, el año, lo próximo, los movimientos y lo que recuerda. */
+  async function openStatement(row: SupplierRow): Promise<void> {
+    const invoices = mirror?.invoices.filter((i) => i.supplier_id === row.id) ?? [];
+    const debt = debtOf(row);
+    const labels = ((await client.list(ITEM_LABELS)) as unknown as Array<{ supplier_id: string; label: string | null; match_key: string; uses: number; item_id: string | null; deleted_at: string | null }>)
+      .filter((l) => !l.deleted_at && l.supplier_id === row.id).sort((a, b) => b.uses - a.uses);
+    const mine = templates.filter((t) => t.supplier_id === row.id && t.status !== 'retirada');
+    const open = (id: string) => { void closeSheet(true); navigate(`#/facturas/${id}`); };
+    const statement = renderMoneyBreakdown({
+      mode: 'statement', totalLabel: 'Le debes', total: debt.owed, format: (n: number) => eur(n), subtitle: `de ${eur(debt.yearTotal)} este año${debt.unconfirmed ? ` · ${debt.unconfirmed} pago${debt.unconfirmed === 1 ? '' : 's'} por confirmar` : ''}`,
+      upcoming: upcomingOf(invoices, today).map((m) => ({ ...m, onOpen: () => open(m.invoiceId) })),
+      moves: movesOf(invoices, today.slice(0, 4), eur).reverse().map((m) => ({ ...m, onOpen: () => open(m.invoiceId) })),
+    });
+    sheet = openSheet({
+      title: supplierName(row),
+      meta: [row.label ? row.name : null, row.tax_id ? `NIF ${row.tax_id}` : 'Sin NIF', categoryLabel(row.default_category)].filter(Boolean).join(' · '),
+      panelAttrs: { 'data-feedback-id': 'invoices.proveedores.extracto', 'data-feedback-label': 'Extracto del proveedor' },
+      body: el('div', { id: 'supplierStatement' },
+        statement,
+        el('div', { class: 'sectionlabel' }, 'Artículos que recuerda', el('span', { class: 'count' }, String(labels.length))),
+        labels.length
+          ? el('ul', { class: 'plain', id: 'supplierLabels', 'data-feedback-ignore': '' }, ...labels.slice(0, 20).map((l) => el('li', null, el('strong', null, l.label ?? linkedItem(l.item_id)?.name ?? l.match_key),
+            linksEnabled() && l.item_id ? ` → ${linkedItem(l.item_id)?.name ?? 'artículo del inventario'}` : '', el('span', { class: 'hint' }, ` · ${l.uses} vez${l.uses === 1 ? '' : 'es'}`))))
+          : el('p', { class: 'hint' }, 'Todavía no recuerda ningún artículo: se aprende al validar sus facturas. Si acabas de actualizar la app, se completa al sincronizar.'),
+        el('div', { class: 'sectionlabel' }, 'Plantilla de lectura'),
+        el('p', { class: 'hint', id: 'supplierTemplate' }, mine.length ? mine.map((t) => `v${t.version} · ${t.status}`).join(' · ') : 'Sin plantilla: la primera factura se lee con IA y, al validarla, aprende.'),
+      ),
+      foot: [
+        el('button', { 'data-feedback-id': 'invoices.proveedores.extracto.facturas', 'data-feedback-label': 'Ver sus facturas', class: 'ghost', type: 'button', id: 'supplierInvoices', onclick: () => { void closeSheet(true); navigate(`#/facturas?proveedor=${row.id}`); } }, 'Ver sus facturas'),
+        canEdit ? el('button', { 'data-feedback-id': 'invoices.proveedores.extracto.editar', 'data-feedback-label': 'Editar datos', class: 'primary', type: 'button', id: 'supplierEdit', onclick: () => { void closeSheet(true).then(() => openEditor(row)); } }, 'Editar datos') : null,
+      ],
+    });
   }
 
   // --- Hoja de edición (kit) ----------------------------------------------------
