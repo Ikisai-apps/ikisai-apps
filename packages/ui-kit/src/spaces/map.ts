@@ -114,6 +114,8 @@ export interface SpaceMapOptions {
    * accesible («Cama 1, Hab 3 · Libre») y el estado en palabras se quedan; la leyenda dice qué es cada color.
    */
   bedNumbers?: boolean;
+  /** Separador entre el nombre y el estado en el nombre accesible; por defecto « · » (Tasks: «: », «Hab 3: 2 tareas abiertas»). */
+  labelJoin?: string;
   /** Nombre accesible de la pieza. */
   label?: string;
   /** Base de las marcas de feedback y uso (`SPACE_MAP_MARKS`). */
@@ -251,7 +253,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     const text = stateText(s, layer);
     const name = s.kind === 'cama' ? kt('Cama {n}', { n: bedNumber(s, rows) }) : nameOf(s);
     const room = s.kind === 'cama' && s.parentId ? rows.find((r) => r.id === s.parentId) : null;
-    return [room ? `${name}, ${nameOf(room)}` : name, text].filter(Boolean).join(' · ');
+    return [room ? `${name}, ${nameOf(room)}` : name, text].filter(Boolean).join(options.labelJoin ?? ' · ');
   };
   /** Dibujos con alguna forma de este uso, en su orden. */
   const usefulPlans = () => plans.filter((p) => rows.some((s) => inUse(s) && shapeOf(s)?.planId === p.id)).sort((a, b) => a.position - b.position);
