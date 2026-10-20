@@ -25,11 +25,14 @@ const SPACES = 'resources.spaces' as TableName;
 const KINDS = 'resources.space_kinds' as TableName;
 const PLANS = 'resources.floor_plans' as TableName;
 
-/** Fila de `resources.floor_plans` → forma del kit (`createSpaceMap`). */
+/**
+ * Fila de `resources.floor_plans` → forma del kit (`createSpaceMap`). Un dibujo subido sin red lleva en `file_id` el
+ * marcador `{ "$blob": sha }` hasta que se sube: mientras, cuenta como sin archivo (la capa sobre papel).
+ */
 export function floorPlanFromRow(row: SyncedRow): FloorPlan {
   return {
     id: row.id, buildingId: String(row.building_id), floor: (row.floor as string | null) ?? null, position: Number(row.position ?? 0),
-    fileId: (row.file_id as string | null) ?? null, width: Number(row.width ?? 0), height: Number(row.height ?? 0), notes: (row.notes as string | null) ?? null,
+    fileId: typeof row.file_id === 'string' && row.file_id ? row.file_id : null, width: Number(row.width ?? 0), height: Number(row.height ?? 0), notes: (row.notes as string | null) ?? null,
   };
 }
 

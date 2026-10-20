@@ -1,5 +1,11 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.53.1 · 20 de octubre de 2026
+
+- **`floorPlanFromRow`** (tanda 35, punto 6): un dibujo subido sin red lleva en `file_id` el marcador `{ "$blob": sha }` hasta que se sube. Mientras, cuenta como sin archivo y el mapa pinta la capa sobre papel. Antes se usaba el marcador como id de archivo.
+- **Prueba `v39`** («deslizar con el dedo… mientras se eligen días»): fallaba la mitad de las veces en local. `scrollIntoViewIfNeeded` dejaba el día debajo de la cabecera fija de la demo, que en el móvil mide casi 400 px, y el gesto empezaba sobre ella. No dependía de la hora. Ahora la cabecera va sin `sticky` en esas pruebas: 8 de 8.
+- **Pruebas:** `v57` (marcador `$blob`).
+
 ## 0.53.0 · 20 de octubre de 2026
 
 **Ajustes que piden Central y Food** (tanda 35). Sin cambio de diseño; lo de hoy sigue igual salvo lo que se lee o se toca mejor.
