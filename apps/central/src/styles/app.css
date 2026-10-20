@@ -360,3 +360,9 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-personhead[data-ring="warn"] .ctl-ring{border-color:var(--warn)}
 .ctl-personhead[data-ring="ok"] .ctl-ring{border-color:var(--ok,var(--accent))}
 .ctl-coverstats{margin:4px 0 0;font-size:var(--text-sm,.875rem);color:var(--muted)}
+/* Oficios · barras de cobertura (Bloque 2, MUELA-076): Experto, Sabe y Aprende; la raya, el mínimo de dos capaces. */
+.ctl-covbar{position:relative;display:flex;width:100%;max-width:240px;height:8px;border-radius:999px;background:var(--paper-2);overflow:hidden}
+.ctl-cov.experto{background:var(--accent-deep,var(--accent))}
+.ctl-cov.sabe{background:var(--accent)}
+.ctl-cov.aprende{background:color-mix(in srgb,var(--accent) 40%,var(--paper-2))}
+.ctl-covmin{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
