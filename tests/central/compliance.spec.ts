@@ -120,6 +120,12 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   const reader = await other.newPage();
   await login(reader, 'reader@example.invalid', 'Reader');
   await reader.getByRole('link', { name: 'Cumplimiento', exact: true }).click();
+  // Vencimientos (069, MUELA-086): también «Una cosa cada vez», con «Abrir y siguiente» y «Ver todo», sin acciones que escriben.
+  await expect(reader.locator('.queue-card')).toContainText('Póliza 2026');
+  await expect(reader.locator('.queue-card').getByRole('button', { name: 'Abrir y siguiente' })).toBeVisible();
+  await expect(reader.getByRole('button', { name: 'Marcar cumplido y siguiente' })).toHaveCount(0);
+  await reader.locator('.queue-all').click();
+  await expect(reader.locator('#dueList')).toContainText('Póliza 2026');
   await reader.locator('#ctab-requisitos').click();
   // Al día: su grupo («Seguro») está plegado; se abre y se toca la fila.
   const group = reader.locator('.worst-group[data-group="seguro"]');

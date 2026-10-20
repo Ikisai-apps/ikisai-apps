@@ -126,7 +126,7 @@ function dueRow(ctx: Pick<ViewContext, 'client' | 'navigate'>, data: Data, i: Du
  * - en una obligación, «Marcar cumplido y siguiente» abre la hoja de siempre y, al guardar, pasa a la siguiente con
  *   «Deshacer» (vuelve a poner la obligación como estaba);
  * - en un documento o en la documentación de una persona, «Abrir y siguiente» (no se pueden «marcar cumplidos»).
- * Quien solo lee pasa y abre, sin acciones que escriben.
+ * Quien solo lee también tiene la cola (069, MUELA-086): «Abrir y siguiente» en todo y «Ver todo», sin acciones que escriben.
  */
 export interface DueQueue { element: HTMLElement; setDue(items: DueItem[]): void; pending(): string[] }
 
@@ -145,11 +145,10 @@ export function createDueQueue(ctx: Pick<ViewContext, 'client' | 'navigate' | 'u
   }); };
   const queue: Queue = createQueue({
     label: 'Lo que vence, una cosa cada vez', items: toItems(items), feedbackId: opts.where === 'inicio' ? 'central.inicio.vencimientos.cola' : 'central.cumplimiento.vencimientos.cola',
-    readOnlyText: 'Puedes consultarlo. Lo cambia quien edita en Central.',
-    primary: opts.canEdit ? (item) => {
+    primary: (item) => {
       const i = byId.get(item.id);
       if (!i) return null;
-      if (i.source === 'requirement') {
+      if (opts.canEdit && i.source === 'requirement') {
         const req = data().requirements.find((r) => r.id === i.id);
         if (!req) return null;
         return { label: 'Marcar cumplido y siguiente', onClick: () => openMarkDone(ctx.client, ctx.usage, req, {
@@ -162,7 +161,7 @@ export function createDueQueue(ctx: Pick<ViewContext, 'client' | 'navigate' | 'u
         }) };
       }
       return { label: 'Abrir y siguiente', onClick: () => { passed.add(i.id); queue.done(); opts.onChange?.(); openDue(ctx, data(), i); } };
-    } : undefined,
+    },
     onOpen: (item) => { const i = byId.get(item.id); if (i) openDue(ctx, data(), i); },
     onAll: opts.onAll,
     doneTitle: 'Has pasado por todo', doneText: 'Lo que vence sigue en la lista hasta que se renueve.',
@@ -195,8 +194,9 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
     const params = new URLSearchParams(location.hash.split('?')[1] ?? '');
     let data: Data | null = null;
     let typeFilter = params.get('tipo') ?? '';
-    // Vencimientos: «Una cosa cada vez» para quien edita; la lista de siempre para quien lee. No se recuerda (007).
-    let view: DueView = canEdit ? 'cola' : 'lista';
+    // Vencimientos: «Una cosa cada vez» para todos (quien lee, sin acciones que escriben); la lista de siempre, a un toque.
+    // No se recuerda (007).
+    let view: DueView = 'cola';
     let queue: DueQueue | null = null;
     const host = el('div', { id: `compliance-${tab}` });
     switch (tab) {
@@ -213,7 +213,7 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
     function viewSwitch(): HTMLElement {
       const b = (id: DueView, text: string) => el('button', { type: 'button', class: `softbtn${view === id ? ' active' : ''}`, 'aria-pressed': String(view === id), 'data-view': id, onclick: () => { view = id; paint(); } }, text);
       return el('div', { class: 'ctl-views', role: 'group', 'aria-label': 'Cómo verlo', 'data-feedback-id': 'central.cumplimiento.vencimientos.vistas', 'data-feedback-label': 'Cómo verlo' },
-        canEdit ? b('cola', 'Una cosa cada vez') : null, b('lista', 'Lista'), b('semanas', 'Por semanas'));
+        b('cola', 'Una cosa cada vez'), b('lista', 'Lista'), b('semanas', 'Por semanas'));
     }
 
     function paintDue(today: string): void {

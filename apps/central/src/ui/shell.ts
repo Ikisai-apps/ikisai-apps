@@ -14,7 +14,7 @@ import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
 import { mountDecision, mountDecisions } from './decisions.ts';
 import { mountReview } from './review.ts';
-import { loadMenuData, menuSections, recentRows, screenItems, type MenuData } from './menu.ts';
+import { EMPTY_MENU, loadMenuData, menuSections, recentRows, screenItems, type MenuData } from './menu.ts';
 import { mountPeople, mountPerson } from './people.ts';
 import { mountTeams } from './teams.ts';
 import { mountTrades } from './trades.ts';
@@ -178,7 +178,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       profile: { name: boot?.profile.displayName ?? 'Tu cuenta', role: ROLE_LABELS[(boot?.membership.role ?? 'reader') as keyof typeof ROLE_LABELS] ?? '' },
       theme: true,
       recents: () => recentRows(recents, 3),
-      sections: () => menuSections(menuData ?? { requirements: [], documents: [], openRequirements: 0, liveDocuments: 0, conflicts: client.status().conflicts, review: { done: 0, total: 0, toAct: 0 }, index: [] }, isAdmin, userId()),
+      sections: () => menuSections(menuData ?? { ...EMPTY_MENU, conflicts: client.status().conflicts }, isAdmin, userId(), {
+        online: client.status().network !== 'offline',
+        accounts: admin.cached.accounts?.items ?? null, agents: admin.cached.agents?.items ?? null, catalog: admin.cached.catalog ?? null,
+      }),
       launcher,
       signalHere: () => { void feedback.open({ id: screen.id, path: [screen.label], element: main, fallback: true }, main); },
       onResolveConflicts: () => navigate('#/conflictos'),
@@ -200,6 +203,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
   const offMenuTables = [T.requirements, T.keyDocuments, T.decisions, T.people, T.teams, T.reviewScreens].map((t) => client.onTable(t, refreshMenu));
   refreshMenu();
+  /** Recuentos de «Cuentas y accesos» (solo quien administra): se leen de Core una vez con red; Accesos los mantiene al día. */
+  async function loadAccessCounts(): Promise<void> {
+    if (!isAdmin || client.status().network === 'offline') return;
+    await Promise.all([admin.catalog(), admin.accounts(), admin.agents()]).catch(() => undefined);
+    shell.menu?.refresh();
+  }
+  void loadAccessCounts();
   function remember(entry: Omit<Recent, 'at'>): void {
     recents = rememberRecent(userId(), entry);
     shell.menu?.refresh();
@@ -234,10 +244,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   let lastConflicts = client.status().conflicts;
+  let lastOffline = client.status().network === 'offline';
   function paintStatus(status: SyncStatus): void {
     shell.setSubtitle(client.bootstrap()?.profile.displayName ?? '');
     paintBanners(status);
     if (status.conflicts !== lastConflicts) { lastConflicts = status.conflicts; refreshMenu(); }
+    if ((status.network === 'offline') !== lastOffline) {
+      lastOffline = status.network === 'offline';
+      if (!lastOffline && isAdmin && !admin.cached.accounts) void loadAccessCounts();
+      else shell.menu?.refresh();
+    }
     if (status.autoMerged > lastAutoMerged) {
       toast('Se incorporaron cambios de otra persona en una fila que editaste.');
     }
@@ -291,6 +307,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const entry = allowed ? found : ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
+    if (isAdmin) shell.menu?.refresh();
     shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : requirementId ? '#/cumplimiento' : itemId ? '#/inventario' : decisionId ? '#/decisiones' : hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin, usage, remember });

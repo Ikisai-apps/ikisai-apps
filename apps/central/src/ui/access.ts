@@ -4,7 +4,7 @@ import {
 } from '@ikisai/ui-kit';
 import type { SyncClient } from '@ikisai/sync-client';
 import { T, describeError } from '../app/client.ts';
-import { isStaffAccount, syncAccountName } from '../app/account-names.ts';
+import { accountIssue, isStaffAccount, syncAccountName } from '../app/account-names.ts';
 import { checkExistingAccount, mergePeople } from './account-conflict.ts';
 import { HOUSE_LEVELS, HOUSE_LEVEL_LABELS, relationForLevel, type HouseGrant, type HouseLevel } from '@ikisai/domain-central';
 import { describeScopes, EVENT_LABELS, grantFor, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
@@ -108,11 +108,9 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
   let onlyIssues = false;
   const personOf = (a: Account) => people.find((p) => p.user_id === a.userId) ?? null;
   /** Lo que hay que arreglar en una cuenta del equipo: sin ficha, o con un nombre distinto del de su ficha. */
-  const issueOf = (a: Account): 'sin_ficha' | 'nombre' | null => {
-    if (!isStaffAccount(a, catalog)) return null;
-    const p = personOf(a);
-    return !p ? 'sin_ficha' : p.display_name !== a.displayName ? 'nombre' : null;
-  };
+  const issueOf = (a: Account) => accountIssue(a, catalog, people);
+  /** Si la lista se ha leído alguna vez en esta sesión: sin leerla no se puede decir que no hay cuentas. */
+  let read = admin.cached.accounts !== undefined;
   const list = el('ul', { class: 'list accounts', id: 'accountList', 'aria-label': 'Cuentas', 'data-feedback-id': 'central.accesos.cuentas.lista', 'data-feedback-label': 'Lista de cuentas' });
   const note = el('div', { 'data-feedback-id': 'central.accesos.cuentas.aviso', 'data-feedback-label': 'Aviso de cuentas' });
   const issues = el('div', { 'data-feedback-id': 'central.accesos.cuentas.por_revisar', 'data-feedback-label': 'Cuentas por revisar' });
@@ -132,7 +130,9 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
       .filter((a) => !onlyIssues || issueOf(a) !== null)
       .filter((a) => !query || a.displayName.toLowerCase().includes(query) || (a.email ?? '').toLowerCase().includes(query));
     if (!visible.length) {
-      replace(list, el('li', { class: 'empty' }, accounts.length ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'));
+      // Sin leerla (sin red o con error), el aviso de arriba dice por qué: nada de «Todavía no hay cuentas».
+      if (!read) replace(list);
+      else replace(list, el('li', { class: 'empty' }, accounts.length ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'));
       return;
     }
     replace(list, ...visible.map((a) => {
@@ -166,9 +166,11 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
   }
 
   async function load(): Promise<void> {
+    // Las fichas salen del espejo, también sin red: sin ellas, la lista guardada marcaba «Sin ficha» en todas.
+    people = (await loadPeopleLite(client).catch(() => ({ people }))).people;
     try {
       [catalog, accounts, grants] = await Promise.all([admin.catalog(), admin.accounts(), admin.houseGrants().catch(() => grants)]);
-      people = (await loadPeopleLite(client)).people;
+      read = true;
       replace(note);
       paintIssues();
     } catch (error) {
@@ -515,7 +517,8 @@ async function mountAgents(body: HTMLElement, admin: AdminApi, state: { alive: b
       if (state.alive) paint(keys);
     } catch (e) {
       replace(note, navigator.onLine ? el('p', { class: 'formerror', 'data-feedback-id': 'central.accesos.agentes.error', 'data-feedback-label': 'Error de agentes' }, describeError(e)) : offlineNote(admin.cached.agents?.at));
-      if (state.alive) paint(admin.cached.agents?.items ?? []);
+      // Sin leerlas, el aviso dice por qué (MUELA-085, C6): nada de «No hay claves».
+      if (state.alive) { if (admin.cached.agents) paint(admin.cached.agents.items); else replace(list); }
     }
   }
   await load();
