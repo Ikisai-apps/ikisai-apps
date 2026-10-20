@@ -402,15 +402,42 @@ test('vistas guardadas con `_person` y texto legible con «Personas:»', async (
   expect(text).toMatch(/- \[ \] Pintar la pared\n(?: {2}.*\n)*? {2}Personas: Andrés Navarro, Marta Ruiz\n/);
 });
 
-test('pantalla «Personas»: las de Central por nivel, de solo lectura, con «Gestionar en Central»', async () => {
+test('pantalla «Personas» (MUELA-090): baldosas por nivel, con el nombre junto a la medalla, sin grados ni disponibilidad; tocar filtra Tareas con la vuelta', async () => {
   const item = await menuRow(page, 'tasks.menu.personas', 'work');
   await expect(item).toBeVisible();
   await item.click();
-  await expect(page.locator('.peoplelist')).toContainText('Valeria Gómez');
-  await expect(page.locator('.peoplelist .personnode')).toHaveCount(3);
-  await expect(page.locator('.people-screen a', { hasText: 'Gestionar en Central' })).toHaveAttribute('href', 'https://central.ikisai.com');
+  const screen = page.locator('.people-screen');
+  // Un grupo por nivel, en el orden de Central; «Sin nivel de casa» no sale (no hay nadie sin nivel).
+  await expect(screen.locator('.worst-group .worst-title strong')).toHaveText(['Dirección', 'Staff', 'Outsider']);
+  // Un nivel sin nadie lo sigue diciendo; los demás, «N personas · A abiertas · V vencidas».
+  await expect(screen.locator('.worst-group').nth(0).locator('.worst-summary')).toHaveText(/^Nadie con este nivel · \d+ abiertas? · \d+ vencidas?$/);
+  await expect(screen.locator('.worst-group').nth(1).locator('.worst-summary')).toHaveText(/^2 personas · \d+ abiertas? · \d+ vencidas?$/);
+  // Dentro, la baldosa del grupo y una por persona, con el nombre entero y la medalla de sus iniciales.
+  await expect(screen.locator('.worst-group').nth(1).locator('.tile-title')).toHaveText(['Todo el staff', 'Andrés Navarro', 'Valeria Gómez']);
+  await expect(screen.locator('.worst-group').nth(2).locator('.tile-title')).toHaveText(['Todos los outsiders', 'Marta Ruiz']);
+  await expect(screen.locator(`.tile-box[data-tko-person="${P_VG}"] .medal-initials`)).toHaveText('VG');
+  // La persona cuenta t.people, como hoy, con lo que hay en el dispositivo.
+  const mine = await page.evaluate((key) => {
+    let open = 0, done = 0;
+    for (const a of state.tabs) for (const p of a.projects) if (!p.deleted && p.status !== 'archived') for (const t of p.tasks) if (!t.deleted && (t.people || []).includes(key)) { if (t.done) done += 1; else open += 1; }
+    return { open, done };
+  }, P_VG);
+  await expect(screen.locator(`.tile-box[data-tko-person="${P_VG}"] .tile-value`)).toHaveText(new RegExp(`^${mine.open} abiertas?$`));
+  await expect(screen.locator(`.tile-box[data-tko-person="${P_VG}"] .tile-level`)).toHaveText(mine.open + mine.done ? new RegExp(`^${mine.done} de ${mine.open + mine.done} hechas · \\d+ vencidas?$`) : 'Sin tareas');
+  // Nunca grados de habilidad ni disponibilidad.
+  await expect(screen).not.toContainText(/Aprende|Sabe hacerlo|Experto|disponib/i);
+  await expect(screen.locator('a', { hasText: 'Gestionar en Central' })).toHaveCount(1);
+  const href = await screen.locator('a', { hasText: 'Gestionar en Central' }).getAttribute('href');
+  expect(href).toMatch(/^https:\/\/central\.ikisai\.com\/#\/personas\?desde=tasks&volver=.+&titulo=Tasks$/);
   await expect(page.locator('#peopleToLabels')).toBeVisible();
   await shot('29-personas-pantalla');
+  await page.screenshot({ path: '../coordinacion/tasks/t31-capturas/zona4-personas.png', fullPage: true }).catch(() => {});
+  // Tocar «Todo el staff»: Tareas filtrada por el grupo, con «‹ Volver a Personas».
+  await screen.locator('.tile-box[data-tko-person="level:staff"]').click();
+  await expect.poll(() => page.evaluate(() => [state.view, state.taskScope, JSON.stringify(state.filters)].join('|'))).toBe('tasks|all|{"_person":["level:staff"]}');
+  await expect(page.locator('#tkoBack')).toHaveText('‹ Volver a Personas');
+  await page.locator('#tkoBack').click();
+  await expect.poll(() => page.evaluate(() => [state.view, JSON.stringify(state.filters)].join('|'))).toBe('people|{}');
   await page.evaluate(() => navigateView('projects'));
 });
 

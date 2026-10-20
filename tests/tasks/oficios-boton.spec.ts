@@ -119,7 +119,12 @@ test('el botón solo lo ve la propietaria, en «Trabajo» tras «Etiquetas»; la
   await expect(sheet()).toContainText('ACS → Fontanería › ACS · 1 tarea');
   await expect(sheet()).toContainText('Por resolver (1)');
   await expect(sheet()).toContainText('Jardinería · sin oficio en Central · 1 tarea');
-  await expect(sheet()).toContainText('1 se queda sin oficio');
+  // Las cifras van en renderStats (MUELA-090 §3): «se queda sin oficio», en rojo si es más de 0; el botón bloqueado dice por qué.
+  await expect(sheet().locator('.zonecounts .stat-item[data-tone="alert"] .stat-label')).toHaveText('se queda sin oficio');
+  await expect(sheet().locator('.zonecounts .stat-item[data-tone="alert"] .stat-value')).toHaveText('1');
+  await expect(page.locator('#tradesApply')).toHaveAttribute('aria-describedby', 'tradesDoubtful tradesBlocked');
+  await expect(page.locator('#tradesDoubtful')).toHaveText('Por resolver (1)');
+  await expect(page.locator('#tradesBlocked')).toHaveText('Resuelve antes las que faltan.');
   await expect(page.locator('#tradesApply')).toBeDisabled();
   await shot('14-vista-previa-por-resolver');
   await page.locator(`[data-trade-remove="${JARDIN}"]`).check();
@@ -149,7 +154,8 @@ test('al pulsar, la app pasa sola a oficios; y «Volver a las acciones» la deja
   const trades = await menuRow(page, 'tasks.menu.oficios', 'work');
   await expect(trades).toBeVisible();
   await trades.click();
-  await expect(page.locator('.tradetree')).toContainText('Albañilería');
+  // Las baldosas de MUELA-090 (tanda 31, zona 4): un grupo por oficio principal.
+  await expect(page.locator('.trades-screen .tko-groups')).toContainText('Albañilería');
   await page.locator('#tradesToActions').click();
   await expect(sheet()).toContainText('Los oficios vuelven a ser etiquetas');
   await expect(sheet()).toContainText('Se perderían (1)');

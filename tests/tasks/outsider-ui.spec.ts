@@ -230,3 +230,23 @@ test('«Mi trabajo» (MUELA-083 §2): saludo, «Proponer algo», sus tareas (sin
   await expect.poll(() => outsider.evaluate(() => state.view)).toBe('myproposals');
   expect(errors).toEqual([]);
 });
+
+test('Oficios, Personas y Espacios (MUELA-090) siguen cerrados al outsider: ni por el estado guardado ni por la URL', async () => {
+  // Con las tres pantallas encendidas (oficios y personas de Central, espacios de Recursos), para que el cierre sea el del outsider.
+  await outsider.evaluate(() => { const w = window as any; w.__modes = [w.tradesMode, w.peopleMode, w.spacesMode]; w.tradesMode = () => true; w.peopleMode = () => true; w.spacesMode = () => true; });
+  for (const view of ['trades', 'people', 'spaces']) {
+    // Como si lo hubiera dejado guardado en el dispositivo.
+    await outsider.evaluate((v) => { state.view = v; render(); }, view);
+    await expect.poll(() => outsider.evaluate(() => state.view)).not.toBe(view);
+    await expect(outsider.locator('.trades-screen, .people-screen, .spaces-screen, .tko-groups, #tkoPlan, #tkoBack')).toHaveCount(0);
+    // Por la URL: `#/<vista>` (y los nombres en español) no abren nada que no le toque.
+    for (const hash of [`#/${view}`, `#/${({ trades: 'oficios', people: 'personas', spaces: 'espacios' } as Record<string, string>)[view]}`]) {
+      await outsider.evaluate((h) => { location.hash = h; }, hash);
+      await outsider.waitForTimeout(150);
+      await expect(outsider.locator('.trades-screen, .people-screen, .spaces-screen, .tko-groups, #tkoPlan')).toHaveCount(0);
+      expect(await outsider.evaluate(() => state.view)).not.toBe(view);
+    }
+  }
+  await outsider.evaluate(() => { const w = window as any; [w.tradesMode, w.peopleMode, w.spacesMode] = w.__modes; history.replaceState(null, '', location.pathname + location.search); state.view = 'home'; render(); });
+  expect(errors).toEqual([]);
+});

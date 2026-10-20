@@ -139,12 +139,16 @@ test('el botón solo lo ve la propietaria, en «Trabajo» tras «Etiquetas»; la
   await expect(page.locator(`[data-person-map="${JARDINERO}"]`)).toHaveValue('');
   await expect(sheet().locator(`[data-person-row="${JARDINERO}"]`)).toContainText('Por confirmar');
   await expect(sheet().locator('.zonecounts')).toContainText('proyectos recibirán su persona');
-  const without = async () => Number((await sheet().locator('.zonecounts').textContent())?.match(/(\d+) se queda/)?.[1] ?? 0);
+  // Las cifras van en renderStats (MUELA-090 §3): la de «se queda(n) sin persona», en rojo si es más de 0.
+  // Todas las de la línea de hoy: tareas, proyectos, responsables, reglas de Entrada, vistas guardadas y sin persona.
+  await expect(sheet().locator('.zonecounts .stat-item')).toHaveCount(6);
+  const without = async () => Number(await sheet().locator('.zonecounts .stat-item').filter({ hasText: 'sin persona' }).locator('.stat-value').textContent() ?? 0);
   const lost = await without();
   // Las opciones: las personas por nivel, los grupos y «Quitar».
   expect(await page.locator(`[data-person-map="${JARDINERO}"] optgroup`).evaluateAll((g) => g.map((x: any) => x.label))).toEqual(['Dirección', 'Staff', 'Outsider']);
   expect(await page.locator(`[data-person-map="${JARDINERO}"] option`).allTextContents()).toEqual(['Elige…', 'Toda la dirección', 'Todo el staff', 'Luis Pardo · LP', 'Valeria Gómez · VG', 'Todos los outsiders', 'Rosa Vidal · RV', 'Quitar']);
   await expect(page.locator('#peopleApply')).toBeDisabled();
+  await expect(page.locator('#peopleApply')).toHaveAttribute('aria-describedby', 'peopleMissing');
   await expect(sheet()).toContainText('Falta elegir 1 etiqueta');
   await shot('32-personas-vista-previa-por-confirmar');
   // Cada cambio va al borrador del dispositivo y la vista previa se vuelve a pedir con él.
@@ -183,7 +187,8 @@ test('al pulsar, la app pasa sola a Central; y «Volver a las etiquetas de perso
   const people = await menuRow(page, 'tasks.menu.personas', 'work');
   await expect(people).toBeVisible();
   await people.click();
-  await expect(page.locator('.peoplelist')).toContainText('Rosa Vidal');
+  // Las baldosas de MUELA-090 (tanda 31, zona 4): un grupo por nivel de casa.
+  await expect(page.locator('.people-screen .tko-groups')).toContainText('Rosa Vidal');
   await page.locator('#peopleToLabels').click();
   await expect(sheet()).toContainText('Las personas vuelven a ser etiquetas de persona');
   await expect(sheet()).toContainText('Se perderían (1)');

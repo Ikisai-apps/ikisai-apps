@@ -308,12 +308,47 @@ test('vistas guardadas con `_trade` y texto legible con «Oficio:»', async () =
   expect(text).toMatch(/- \[ \] Comprar material\n(?: {2}.*\n)*? {2}Oficio: Fontanería › ACS, Electricidad › Cuadro\n/);
 });
 
-test('pantalla «Oficios»: el árbol de Central, de solo lectura, con «Gestionar en Central»', async () => {
+/** Tareas abiertas (y vencidas) que llevan alguno de estos oficios, contadas aparte con lo que hay en el dispositivo. */
+const openWith = (trades: string[]) => page.evaluate((ids) => {
+  let open = 0, overdue = 0;
+  const today = new Date(); const pad = (n: number) => String(n).padStart(2, '0');
+  const iso = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  for (const a of state.tabs) for (const p of a.projects) if (!p.deleted && p.status !== 'archived') for (const t of p.tasks) {
+    if (t.deleted || t.done || !(t.trades || []).some((x: string) => ids.includes(x))) continue;
+    open += 1; if (t.due && t.due < iso) overdue += 1;
+  }
+  return { open, overdue };
+}, trades);
+const tradeTile = (trade: string) => page.locator(`.trades-screen .tile-box[data-tko-trade="${trade}"]`);
+const openText = (n: number) => new RegExp(`^${n} abiertas?$`);
+
+test('pantalla «Oficios» (MUELA-090): baldosas por oficio principal, que cuentan lo de dentro, y «Gestionar en Central» con la vuelta', async () => {
   await page.evaluate(() => navigateView('trades'));
-  await expect(page.locator('.tradetree')).toContainText('Fontanería');
-  await expect(page.locator('.tradetree .tradenode')).toHaveCount(6);
-  await expect(page.locator('.trades-screen a', { hasText: 'Gestionar en Central' })).toHaveAttribute('href', 'https://central.ikisai.com');
+  // Un grupo por oficio principal, en el orden de Central, con su medallón y el resumen «N abiertas · M vencidas».
+  await expect(page.locator('.trades-screen .worst-group .worst-title strong')).toHaveText(['Fontanería', 'Electricidad', 'Pintura']);
+  await expect(page.locator('.trades-screen .worst-group').first().locator('.worst-summary')).toHaveText(/^\d+ abiertas? · \d+ vencidas?$/);
+  // Dentro, «Fontanería · todo» y cada oficio de dentro; los seis oficios salen.
+  await expect(page.locator('.trades-screen .worst-group').first().locator('.tile-title')).toHaveText(['Fontanería · todo', 'ACS', 'Agua fría']);
+  await expect(page.locator('.trades-screen .tile-box')).toHaveCount(6);
+  await expect(tradeTile(TR_PINT).locator('.tile-title')).toHaveText('Pintura');
+  // «Fontanería · todo» suma ACS y Agua fría (dentro = Sí: lo mismo que la faceta).
+  const all = await openWith([TR_FONT, TR_ACS, TR_FRIA]);
+  expect(all.open).toBeGreaterThanOrEqual(2);
+  await expect(tradeTile(TR_FONT).locator('.tile-value')).toHaveText(openText(all.open));
+  await expect(tradeTile(TR_ACS).locator('.tile-value')).toHaveText(openText((await openWith([TR_ACS])).open));
+  await expect(tradeTile(TR_FONT).locator('.tile-level')).toHaveText(/^(\d+ de \d+ hechas · \d+ vencidas?|Sin tareas)$/);
+  // Las baldosas son botones de 46 px o más.
+  expect((await tradeTile(TR_FONT).boundingBox())!.height).toBeGreaterThanOrEqual(46);
+  // «Gestionar en Central» lleva desde, volver y título.
+  const href = await page.locator('.trades-screen a', { hasText: 'Gestionar en Central' }).getAttribute('href');
+  const url = new URL(href!);
+  expect(url.origin).toBe('https://central.ikisai.com');
+  const params = new URLSearchParams(url.hash.split('?')[1]);
+  expect(url.hash.split('?')[0]).toBe('#/personas/oficios');
+  expect([params.get('desde'), params.get('titulo')]).toEqual(['tasks', 'Tasks']);
+  expect(params.get('volver')).toContain(new URL(page.url()).origin);
   await shot('11-pantalla-oficios');
+  await page.screenshot({ path: '../coordinacion/tasks/t31-capturas/zona4-oficios.png', fullPage: true }).catch(() => {});
   await page.evaluate(() => navigateView('projects'));
 });
 
@@ -333,5 +368,47 @@ test('sin red: los nombres de los oficios salen de lo guardado en el dispositivo
   await context.setOffline(false);
   await page.evaluate(() => (window as any).eval('syncNow()'));
   await settled(page);
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('Oficios (MUELA-090): el oficio de tercer nivel sale con su ruta; tocar una baldosa filtra Tareas con «‹ Volver a Oficios», que vuelve y quita el filtro', async () => {
+  // Central admite tres niveles: «Calderas» dentro de ACS, con una tarea vencida.
+  const TR_CALD = id(), T_CALD = id();
+  await server.app.t.db.query(`insert into central.trades (id, parent_id, name, position) values ($1, $2, 'Calderas', 1)`, [TR_CALD, TR_ACS]);
+  const ok = async (operations: any[]) => { const res = await server.commit(operations); expect(res.status, JSON.stringify(res.data)).toBe(200); };
+  await ok([{ op: 'insert', table: 'tasks.tasks', id: T_CALD, fields: { tab_id: MANT, project_id: PINTURA, title: 'Purgar la caldera', position: 9216, due: '2024-01-15' } }]);
+  await ok([{ op: 'insert', table: 'tasks.task_trades', id: id(), fields: { tab_id: MANT, project_id: PINTURA, task_id: T_CALD, trade_id: TR_CALD } }]);
+  await page.evaluate(() => (window as any).eval('Sync.core.refreshTrades().then(() => syncNow())'));
+  await settled(page);
+  await expect.poll(() => page.evaluate(() => (window as any).eval('Sync.core.trades.length'))).toBe(7);
+  await page.evaluate(() => navigateView('trades'));
+  await expect(page.locator('.trades-screen .worst-group').first().locator('.tile-title')).toHaveText(['Fontanería · todo', 'ACS', 'ACS › Calderas', 'Agua fría']);
+  // El nieto cuenta en ACS y en «Fontanería · todo»; la vencida pone la baldosa en rojo y lo dice con palabras.
+  await expect(tradeTile(TR_CALD).locator('.tile-value')).toHaveText('1 abierta');
+  await expect(tradeTile(TR_CALD).locator('.tile-level')).toHaveText('0 de 1 hechas · 1 vencida');
+  await expect(tradeTile(TR_CALD)).toHaveAttribute('data-tone', 'alert');
+  const acs = await openWith([TR_ACS, TR_CALD]);
+  expect(acs.overdue).toBe(1);
+  await expect(tradeTile(TR_ACS).locator('.tile-value')).toHaveText(openText(acs.open));
+  await expect(tradeTile(TR_FONT).locator('.tile-value')).toHaveText(openText((await openWith([TR_FONT, TR_ACS, TR_FRIA, TR_CALD])).open));
+  // Tocar «ACS»: Tareas de todo, filtrada por ACS (con lo de dentro), con la vuelta arriba.
+  await tradeTile(TR_ACS).click();
+  await expect.poll(() => page.evaluate(() => [state.view, state.taskScope, state.groupBy, JSON.stringify(state.filters)].join('|'))).toBe(`tasks|all|project|{"_trade":["${TR_ACS}"]}`);
+  const back = page.locator('#tkoBack');
+  await expect(back).toHaveText('‹ Volver a Oficios');
+  await expect(page.locator('main')).toContainText('Purgar la caldera');
+  await expect(page.locator('main')).toContainText('Cambiar el grifo del ACS');
+  await expect(page.locator('main')).not.toContainText('Pintar la pared');
+  await page.screenshot({ path: '../coordinacion/tasks/t31-capturas/zona4-oficios-tareas.png' }).catch(() => {});
+  // «‹ Volver a Oficios» vuelve a la pantalla y quita el filtro.
+  await back.click();
+  await expect.poll(() => page.evaluate(() => [state.view, JSON.stringify(state.filters)].join('|'))).toBe('trades|{}');
+  await expect(page.locator('#tkoBack')).toHaveCount(0);
+  // Si se cambia el filtro, la vuelta desaparece.
+  await tradeTile(TR_CALD).click();
+  await expect(page.locator('#tkoBack')).toBeVisible();
+  await page.evaluate((t) => { state.filters = { _trade: [t] }; render(); }, TR_FONT);
+  await expect(page.locator('#tkoBack')).toHaveCount(0);
+  await page.evaluate(() => navigateView('projects'));
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

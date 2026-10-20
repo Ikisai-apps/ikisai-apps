@@ -1,0 +1,31 @@
+/* Oficios, Personas y Espacios (MUELA-090, tanda 31, zona 4; oficios-espacios-ui.js). Las piezas son del kit (renderGroups,
+   renderTile, renderMedal, renderStats, createSpaceMap y .return-link); aquí solo el sitio de cada una. Colores del kit, sin
+   compensaciones (--muted y --alert ya no los pisa taller.css). Prefijo: tko-. */
+.tko-wrap{margin-top:12px}
+.tko-groups .worst-items{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:10px}
+.tko-groups .worst-items > li{list-style:none;display:grid}
+.tko-groups .tile-box{min-height:120px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.tko-groups .tile-box .tile-level{color:var(--muted)}
+.tko-groups .tile-box[data-tone="alert"] .tile-level{color:var(--alert)}
+.tko-back{margin:0 0 4px}
+.tko-back .return-link{margin-inline:0}
+/* Espacios: «Plano | Lista» (46 px), la leyenda de la capa y el plano del kit sin su propio conmutador ni su lista (la lista es el árbol). */
+.tko-viewswitch{margin:4px 0 10px}
+.tko-viewswitch .segmented button{min-height:46px;min-width:88px}
+.tko-plan[hidden],#spacesTree[hidden]{display:none!important}
+.tko-legend{margin:0 0 8px;font-size:.9rem;line-height:1.5;color:var(--muted)}
+.tko-legend strong{color:var(--ink)}
+.tko-key{display:inline-block;vertical-align:-2px;margin-inline:0 6px;width:14px;height:14px;border-radius:4px;background:var(--accent-soft,#e4ead9);border:2px solid var(--accent-deep,var(--accent))}
+.tko-key-alert{background:var(--alert-soft,#f6ded7);border-color:var(--alert)}
+.tko-map .map-view,.tko-map .map-list{display:none!important}
+.tko-map .map-body{display:block}
+.tko-offplan{margin-top:16px}
+.tko-offlist{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.tko-offrow,.tko-sheettask{width:100%;min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border:1px solid var(--line);border-left:4px solid var(--accent-deep,var(--accent));border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.tko-offrow.tko-alert,.tko-sheettask.tko-alert{border-left-color:var(--alert)}
+.tko-offmain{display:flex;flex-direction:column;min-width:0}
+.tko-offpath,.tko-sheetwhere{font-size:.85rem;color:var(--muted)}
+.tko-offstate{flex:none;font-size:.9rem;font-weight:700}
+.tko-offrow.tko-alert .tko-offstate{color:var(--alert)}
+.tko-sheetlist{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:8px}
+.tko-sheettask{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}

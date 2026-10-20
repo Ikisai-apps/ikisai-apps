@@ -322,7 +322,8 @@ export class TasksCore {
         this.resources = createSyncClient({
           app: 'resources', apiBase: `${this.options.apiBase ?? '/api/v1'}/resources`, sessionFrom: this.client, clearOnLogout: true,
           // Espacios (R2) e inventario común (R6): lo que leen `createSyncSpaceSource` y `createSyncItemSource` del kit.
-          tables: ['resources.spaces', 'resources.space_kinds', ...RESOURCE_INVENTORY_TABLES] as TableName[],
+          // Los dibujos del plano (`resources.floor_plans`, MUELA-090): los lee `createSpaceMap` en «Espacios» (solo lectura).
+          tables: ['resources.spaces', 'resources.space_kinds', 'resources.floor_plans', ...RESOURCE_INVENTORY_TABLES] as TableName[],
           pullIntervalMs: this.options.pullIntervalMs ?? 20000,
         });
         this.resources.onTable('resources.spaces' as TableName, () => void this.readSpaces());
