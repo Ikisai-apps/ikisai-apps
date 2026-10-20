@@ -167,3 +167,43 @@ test('el outsider ve la respuesta en el hilo, solo edita lo suyo y el contador s
   await expect(outsider.locator(`article[data-row="${T_SETO}"] .commentcount`)).toHaveText('💬 2');
   expect(errors).toEqual([]);
 });
+
+test('«Mi trabajo» (MUELA-083 §2): saludo, «Proponer algo», sus tareas (sin ficha, donde es responsable) con «Hecha» y «Deshacer», sus propuestas y lo demás que ve', async () => {
+  // Sin ficha de Central: valen las tareas donde es responsable (la etiqueta de la familia Persona con su nombre).
+  const family = (await server.app.t.db.query<{ id: string }>(`select id from tasks.families where tab_id = $1 and system_key = 'person'`, [CASA])).rows[0]!.id;
+  const LUA = id();
+  const ok = async (operations: any[]) => { const res = await server.commit(operations); expect(res.status, JSON.stringify(res.data)).toBe(200); };
+  await ok([{ op: 'insert', table: 'tasks.labels', id: LUA, fields: { tab_id: CASA, family_id: family, name: 'Voluntaria Lúa' } }]);
+  const seto = await serverRow('tasks.tasks', T_SETO);
+  await ok([{ op: 'update', table: 'tasks.tasks', id: T_SETO, expectedRevision: seto.revision, fields: { owner_label_id: LUA, due: '2030-01-15' } }]);
+  await outsider.evaluate(() => syncNow());
+  await settled(outsider);
+  await outsider.evaluate(() => { state.view = 'home'; render(); });
+  const main = outsider.locator('main.inicio-outsider');
+  await expect(main.locator('.homehead .title')).toHaveText('Hola, Voluntaria');
+  await expect(outsider.locator('#homePropose')).toBeVisible();
+  // Sin carga ni actividad del staff, ni cifras.
+  await expect(outsider.locator('.homepeople, .homeactivity, #homeStats, #homeLead')).toHaveCount(0);
+  const mine = main.locator('.inicio-mine');
+  await expect(mine).toHaveCount(1);
+  await expect(mine).toContainText('Podar el seto');
+  await expect(mine).toContainText('💬 2');
+  // «Hecha» a un toque y «Deshacer».
+  await mine.locator('[data-out-done]').click();
+  await expect(main.locator('.inicio-mine')).toHaveCount(0);
+  await outsider.locator('.ikisai-toast button', { hasText: 'Deshacer' }).last().click();
+  await expect(main.locator('.inicio-mine')).toHaveCount(1);
+  await settled(outsider);
+  expect((await serverRow('tasks.tasks', T_SETO)).done).toBe(false);
+  // Sus propuestas: «Ver todas» (46 px) lleva a «Mis propuestas».
+  const all = outsider.locator('#homeProposalsAll');
+  expect((await all.boundingBox())!.height).toBeGreaterThanOrEqual(46);
+  await expect(outsider.locator('#homeProposals')).not.toContainText('Cargando');
+  // Lo demás que ve: el proyecto abierto, no el reservado.
+  await expect(main).toContainText('Jardín');
+  await expect(main).not.toContainText('Cuentas reservadas');
+  await shot(outsider, '07-outsider-mi-trabajo');
+  await all.click();
+  await expect.poll(() => outsider.evaluate(() => state.view)).toBe('myproposals');
+  expect(errors).toEqual([]);
+});

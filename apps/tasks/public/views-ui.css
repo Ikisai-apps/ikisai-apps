@@ -408,3 +408,25 @@ html{overflow-x:hidden}
 .facettools .batchtoggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .task.longpress{background:var(--paper-2)}
 
+/* Inicio (MUELA-055, tanda 31): filtros por área y persona, cifras y «Lo primero» del kit, «Mover a…» y «Mi trabajo». Prefijo inicio-. */
+.inicio-filters{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
+.inicio-filter{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted)}
+.inicio-filter select{min-height:46px;max-width:100%;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;font-weight:600}
+.inicio-stats,.inicio-lead{display:block;margin:12px 0}
+.inicio-days{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.inicio-days button{min-height:46px}
+.inicio-days button.on{outline:2px solid var(--accent);outline-offset:1px}
+.inicio-propose{display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin:12px 0;font-size:17px;border-radius:16px}
+.inicio-minelist,.inicio-proposals{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.inicio-mine{display:flex;align-items:center;gap:10px;padding:6px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.inicio-done{flex:none;min-height:46px;min-width:46px;font-weight:800}
+.inicio-minetext{flex:1;min-width:0;min-height:46px;display:grid;gap:2px;text-align:left;border:0;background:transparent;color:inherit;padding:4px 2px}
+.inicio-minetext strong{overflow-wrap:anywhere}
+.inicio-proposals li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)}
+.inicio-state{flex:none;font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--paper-2);color:var(--ink)}
+.inicio-state.approved{background:color-mix(in srgb,#2e7d4f 16%,var(--paper));color:#1d5235}
+.inicio-state.rejected{background:color-mix(in srgb,#b23b2e 14%,var(--paper));color:#7d2a20}
+html.dark .inicio-state.approved{color:#a9dcbc}
+html.dark .inicio-state.rejected{color:#f1b4a9}
+.inicio-all{min-height:46px;margin-top:10px}
+.homeweek .weekdot{min-width:14px;min-height:14px}
