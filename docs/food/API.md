@@ -423,6 +423,10 @@ borrador ⇄ revisar ──validate_menu──▶ validado ⇄ cerrado
    - **Reponer** (`restock = true`): cada ingrediente activo con artículo bajo mínimo en la cocina que ningún menú de la lista pide, salvo si ya lo lleva otra lista abierta. `required_quantity = 0` y comprar = mínimo − en casa. Si un menú pasa a pedirlo, la línea vuelve a ser normal; si deja de estar bajo mínimo, se retira como cualquier línea que ya no hace falta.
    - **«Comprado»** (en la app): marcar una línea como comprada o recibida da entrada al stock en ese momento, sin coste: un `entrada_manual` con `source_app = 'food'` y `source_ref = 'shopping_item:<id>'`, en el sitio habitual del artículo o en la despensa de la cocina. Volver a «pendiente» la saca (`salida_manual`, motivo `otro`). Finance (R4) añade después el coste a esa entrada con `resources.movement_costs`, sin contarla dos veces. Sin sitios de cocina en Recursos no se anota nada.
 7. Línea calculada que ya no hace falta: se borra si está `pendiente` y sin `manual_override`; si no, se conserva con `required_quantity = 0` para no perder que ya se compró.
+6c. **Lo comprado y el envase (tanda 40, migración `20261020_1108_food_shopping_packs.sql`; MUELA-093):**
+   - En una línea que no está `pendiente`, regenerar **no toca `stock_quantity` ni `purchase_quantity`** (solo `required_quantity`, `unit` con su conversión, `min_quantity` y `restock`). Si ya no hace falta, se queda con su compra y `required_quantity = 0`.
+   - **S5:** en las líneas pendientes sin `manual_override`, `purchase_quantity` son envases enteros del habitual del artículo (`resources.item_units.usual`, de la misma familia que la unidad de la línea): `food.round_pack(cantidad, food.usual_pack(...))`, igual que `roundToPack` y `defaultPurchase(required, stock, min, pack)` del dominio, que usan «En casa» y «Recalcular» en la app.
+   - **H-C5 (en la app):** cambiar «En casa» o «Comprar» en una línea ya comprada vuelve a llamar a `purchaseMovement`: entra o sale la diferencia, con la misma `source_ref`.
 8. Las líneas `manual = true` no se tocan.
 9. Actualiza la lista: `generated_at`, `source_revisions` y, si estaba `revisada`, vuelve a `borrador`.
 

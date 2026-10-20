@@ -97,10 +97,17 @@ test('compra con stock · «en casa» del inventario, mínimo, «Reponer» y «c
 
   await test.step('«comprado» entra al stock (sin coste, para que Finance le añada el coste); desmarcar lo saca', async () => {
     const line = api.rows('food.shopping_list_items').find((i) => i.restock)!;
-    await page.getByRole('checkbox', { name: 'Sal comprado' }).check();
+    // El carrito de la baldosa (tanda 40) hace lo que hacía la casilla «Comprado».
+    await page.getByRole('button', { name: 'Marcar comprado: Sal', exact: true }).click();
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(line.id as string)).map((m) => [m.kind, Number(m.quantity), m.space_id, m.source_app, m.unit_cost ?? null]), { timeout: 15_000 })
       .toEqual([['entrada_manual', 400, pantry, 'food', null]]);
-    await page.getByRole('checkbox', { name: 'Sal comprado' }).uncheck();
+    await expect(page.locator('#restockList .buyrow', { hasText: 'Sal' })).toContainText('En el carro');
+    // H-C5: cambiar «Comprar» en una línea ya comprada corrige la Despensa con la diferencia, con la misma referencia.
+    await page.getByLabel('Comprar de Sal', { exact: true }).fill('500');
+    await page.getByLabel('Comprar de Sal', { exact: true }).blur();
+    await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(line.id as string)).map((m) => [m.kind, Number(m.quantity)]), { timeout: 15_000 })
+      .toEqual([['entrada_manual', 400], ['entrada_manual', 100]]);
+    await page.getByRole('button', { name: 'Quitar del carro: Sal', exact: true }).click();
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(line.id as string)).reduce((sum, m) => sum + Number(m.quantity), 0), { timeout: 15_000 }).toBe(0);
     expect(api.rows('resources.movements').filter((m) => m.item_id === saltItem && m.kind === 'salida_manual').map((m) => m.reason)).toEqual(['otro']);
   });

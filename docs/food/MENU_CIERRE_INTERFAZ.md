@@ -21,4 +21,4 @@ migraciones ni piezas nuevas del kit: `renderCover`, `createFocus`, `renderCheck
 
 - M2 (preferencia «sin cilantro») y M3 (bebidas vegetales como lácteos) no entran: M3 avisa de más, que es el lado seguro.
 - H-C5 (Compra) no es de estas pantallas.
-- El foco del kit solo admite un texto para «abrir»: va «Resolver», y cada tarjeta dice dónde se arregla.
+- Desde la tanda 40 (kit 0.56), cada tarjeta del foco lleva su botón: «Confirmar consumo», «Abrir en el Recetario», «Ver comentarios» o «Ir a la Compra».

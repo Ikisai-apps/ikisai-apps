@@ -1096,25 +1096,25 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const hasAllergy = (event()?.dietary_restrictions ?? []).some((r) => r.type === 'alergia' || r.type === 'intolerancia');
       for (const service of sortServices(services)) {
         if (consumptionOf(service)?.state !== 'por_confirmar') continue;
-        out.push({ id: `consumo:${service.id}`, kicker: 'Consumo por confirmar', tone: 'alert',
+        out.push({ id: `consumo:${service.id}`, kicker: 'Consumo por confirmar', tone: 'alert', openLabel: 'Confirmar consumo',
           title: `${SERVICE_LABELS[service.service_type]} del ${longDay(service.service_date)}`, note: 'Si nadie lo confirma, se descuenta solo a las 24 h.' });
       }
       const dishes = [...new Map(items.map((i) => [i.recipe_id, recipeOf(i)])).values()].filter((r): r is RecipeRow => !!r);
       const context = crossContext({ recipe_ingredients: recipeLines, ingredients });
       for (const recipe of dishes.filter((r) => !r.allergens_checked)) {
-        out.push({ id: `receta:${recipe.id}`, kicker: 'Alérgenos sin revisar', tone: hasAllergy ? 'alert' : 'warn', title: recipe.name,
+        out.push({ id: `receta:${recipe.id}`, kicker: 'Alérgenos sin revisar', tone: hasAllergy ? 'alert' : 'warn', title: recipe.name, openLabel: 'Abrir en el Recetario',
           note: hasAllergy ? 'Hay alergias o intolerancias en el grupo: revísalos en el Recetario antes del servicio.' : 'Revísalos en el Recetario.' });
       }
       for (const recipe of dishes) {
         for (const u of undeclaredAllergens(recipe as unknown as Recipe, context)) {
-          out.push({ id: `receta:${recipe.id}:${u.allergen}`, kicker: 'Alérgeno posible sin declarar', tone: 'alert', title: recipe.name, note: undeclaredText(u) });
+          out.push({ id: `receta:${recipe.id}:${u.allergen}`, kicker: 'Alérgeno posible sin declarar', tone: 'alert', title: recipe.name, openLabel: 'Abrir en el Recetario', note: undeclaredText(u) });
         }
       }
       const open = comments.filter((c) => c.status !== 'resuelto');
       const fresh = open.filter((c) => c.status === 'nuevo').length;
-      if (open.length) out.push({ id: 'comentarios', kicker: 'Comentarios del organizador', tone: fresh ? 'alert' : 'warn',
+      if (open.length) out.push({ id: 'comentarios', kicker: 'Comentarios del organizador', tone: fresh ? 'alert' : 'warn', openLabel: 'Ver comentarios',
         title: fresh ? newCommentsText(fresh) : plural(open.length, 'comentario sin resolver', 'comentarios sin resolver'), note: 'Contéstalos aquí; el organizador verá la respuesta en su portal.' });
-      if (shopping?.status !== 'cerrada') out.push({ id: 'compra', kicker: 'Compra', tone: 'warn',
+      if (shopping?.status !== 'cerrada') out.push({ id: 'compra', kicker: 'Compra', tone: 'warn', openLabel: 'Ir a la Compra',
         title: shopping ? 'La lista de compra sigue abierta' : 'Sin lista de compra todavía', note: 'Se hace en la pestaña Compra.' });
       return out;
     }
