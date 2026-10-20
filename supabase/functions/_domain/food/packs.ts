@@ -135,15 +135,38 @@ export function linePerUnit(args: { ingredientId: string; unit: Unit; itemId?: s
   return null;
 }
 
-/** «Como en el último ticket»: la última compra, si su unidad es un envase del artículo (su nombre, tamaño y precio). */
-export function lastTicket(args: { ingredientId: string; itemId: string; base: string; unit: Unit; rows: PackUnitRow[]; purchases: FoodPurchase[] }): { label: string; size: number; price: number | null; supplier: string | null; date: string | null } | null {
-  const last = lastPurchase(args.ingredientId, args.purchases);
-  if (!last?.unit) return null;
-  const pack = linePacks(args.itemId, args.base, args.unit, args.rows).find((p) => sameName(p.label, String(last.unit)));
-  if (!pack) return null;
+/**
+ * «Como en el último ticket»: la última línea de factura enlazada con el artículo (`item_id` e `item_factor` de
+ * `invoices.food_stock_projection`, 0243) cuya unidad es un envase (`item_factor` no nulo y de la misma familia que la
+ * línea). Su nombre es el del envase con ese tamaño que ya tenga el artículo, o «<unidad> de <tamaño>»; el precio, el
+ * importe entre la cantidad; con el proveedor y la fecha.
+ */
+export function lastTicket(args: { itemId: string; base: string; unit: Unit; rows: PackUnitRow[]; purchases: FoodPurchase[] }): { label: string; size: number; price: number | null; supplier: string | null; date: string | null } | null {
+  const last = args.purchases
+    .filter((p) => p.item_id === args.itemId && num(p.item_factor) !== null && Number(p.item_factor) > 0 && p.unit?.trim())
+    .sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? '') || String(b.allocation_id).localeCompare(String(a.allocation_id)))[0];
+  if (!last) return null;
+  const factor = Number(last.item_factor);
+  const size = fromItemBase(factor, args.base, args.unit);
+  if (!size || size <= 0) return null;
+  const known = live(args.rows, args.itemId).find((r) => Math.abs(Number(r.factor) - factor) < 1e-6 * Math.max(1, factor) && (!r.supplier_id || sameName(r.unit, String(last.unit))));
+  const unitName = String(last.unit).trim().toLowerCase();
+  const label = known?.unit.trim() ?? (/\d/.test(unitName) ? unitName : `${unitName} de ${amountText(factor, args.base)}`);
   const quantity = Number(last.allocated_quantity);
-  const price = quantity > 0 ? Math.round((Number(last.allocated_amount) / quantity) * 100) / 100 : null;
-  return { label: pack.label, size: pack.size, price, supplier: last.supplier_name, date: last.invoice_date };
+  const amount = Number(last.allocated_amount);
+  const price = quantity > 0 && amount >= 0 ? Math.round((amount / quantity) * 100) / 100 : null;
+  return { label, size, price, supplier: last.supplier_name, date: last.invoice_date };
+}
+
+/** «200 g», «1 kg», «1,5 l», «12 ud»: el tamaño en la unidad base, en corto. */
+function amountText(quantity: number, base: string): string {
+  const b = base.trim().toLowerCase();
+  const n = (v: number) => String(Math.round(v * 1000) / 1000).replace('.', ',');
+  if (b === 'g' && quantity >= 1000) return `${n(quantity / 1000)} kg`;
+  if (b === 'ml' && quantity >= 1000) return `${n(quantity / 1000)} l`;
+  if (b === 'kg' && quantity < 1) return `${n(quantity * 1000)} g`;
+  if (b === 'l' && quantity < 1) return `${n(quantity * 1000)} ml`;
+  return `${n(quantity)} ${b === 'unidad' || b === 'uds' ? 'ud' : b}`;
 }
 
 /** Color de la tienda (S4), derivado de su nombre: siempre el mismo para el mismo nombre. */

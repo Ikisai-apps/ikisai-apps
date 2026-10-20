@@ -24,6 +24,9 @@ export interface FoodPurchase {
   unit_normalized?: string | null;
   /** Cantidad asignada en `unit_normalized`. */
   quantity_normalized?: number | string | null;
+  /** Artículo de Recursos de la línea de factura y su factor hacia la unidad base (0243); null = sin enlazar o ya en la base. */
+  item_id?: string | null;
+  item_factor?: number | string | null;
 }
 
 const NORMALIZED: Record<string, Unit> = { kg: 'kg', l: 'l', ud: 'unidad' };
