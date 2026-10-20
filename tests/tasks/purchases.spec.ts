@@ -128,6 +128,39 @@ test('solo el responsable aprueba; el plan agrupa por proveedor y se reordena', 
   await editor.evaluate(() => (window as any).closeSheet());
 });
 
+test('«No se compró» tras terminar el plan por error, con «Deshacer», y «Reabrir el plan» (0337, VG)', async () => {
+  const bombillas = async () => (await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Bombillas LED');
+  await go(editor, 'plans');
+  await editor.locator('[data-plan]').first().click();
+  await editor.locator('[data-stop]', { hasText: 'Ferretería Centro' }).locator('[data-route-item]').check();
+  await editor.locator('#planDone').click();
+  await settled(editor);
+  const stop = (await bombillas()).plan_stop_id;
+  expect([(await bombillas()).status, stop]).toEqual(['purchased', expect.any(String)]);
+  // En la ficha, «No se compró»: vuelve a aprobada y sale del plan terminado; «Deshacer» la deja como estaba.
+  await go(editor, 'purchases');
+  await editor.locator('[data-purchase]', { hasText: 'Bombillas LED' }).click();
+  await expect(editor.locator('#prInvoiced')).toHaveCount(0);
+  await editor.locator('#prUndoPurchase').click();
+  await editor.getByRole('button', { name: 'Deshacer' }).click();
+  await settled(editor);
+  await expect.poll(async () => { const r = await bombillas(); return [r.status, r.plan_stop_id]; }).toEqual(['purchased', stop]);
+  await editor.locator('[data-purchase]', { hasText: 'Bombillas LED' }).click();
+  await editor.locator('#prUndoPurchase').click();
+  await settled(editor);
+  await expect.poll(async () => { const r = await bombillas(); return [r.status, r.plan_stop_id, r.purchased_at]; }).toEqual(['approved', null, null]);
+  await expect(editor.locator('[data-purchase]', { hasText: 'Bombillas LED' })).toContainText('Aprobada');
+  // El plan terminado se reabre: vuelve a «De compras» y su casilla se puede desmarcar.
+  await go(editor, 'plans');
+  await editor.locator('[data-plan]').first().click();
+  await expect(editor.locator('[data-route-item]').first()).toBeDisabled();
+  await editor.locator('#planReopen').click();
+  await settled(editor);
+  expect((await server.rows('tasks.purchase_plans'))[0].status).toBe('shopping');
+  await expect(editor.locator('[data-stop]', { hasText: 'Piscinas Norte' }).locator('[data-route-item]')).toBeEnabled();
+  await editor.evaluate(() => (window as any).closeSheet());
+});
+
 test('recibir suma al almacén y quita el aviso', async () => {
   await go(editor, 'purchases');
   await editor.locator('[data-purchase]', { hasText: 'Cloro granulado' }).click();
