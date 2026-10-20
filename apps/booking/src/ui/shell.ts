@@ -5,6 +5,7 @@ import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } fro
 import { clearCostCache } from '../app/costs.ts';
 import { forgetHousePeople } from '../app/stays.ts';
 import { forgetLogos } from '../app/logos.ts';
+import { forgetMovements } from '../app/collected.ts';
 import { forgetReaderPrices } from './calendar.ts';
 import { RESERVATIONS, SES_SETTINGS, STAYS, RATES, canRead, canWrite, dateRange, type ReservationRow } from '../app/client.ts';
 import { mountHome } from './home.ts';
@@ -269,6 +270,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       forgetHousePeople();
       forgetLogos();
       forgetReaderPrices();
+      forgetMovements();
       recents.length = 0;
       ctx.onLogout();
     }

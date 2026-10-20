@@ -172,6 +172,8 @@ export interface FakeApi {
   url: string;
   /** Fija las filas de `GET /read/invoices.booking_cost_projection` (se filtran por `where[target_id]`). */
   setCostRows(rows: FakeCostRow[]): void;
+  /** Emitidas de Finance por reserva (`POST /read/invoices.reservation_movements`, #643); `reservation_collected` las suma. */
+  setMovements(rows: Array<Record<string, unknown>>): void;
   /** Hace que esa lectura responda con el estado HTTP indicado (`null` la restablece). */
   failCosts(status: number | null): void;
   /** Fija lo que devolverá `GET /calendar/status`. */
@@ -539,6 +541,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const suggestionDecisions: Array<{ id: string; decision: string; operations: unknown; comment: string | null }> = [];
   const calendarRetries: string[] = [];
   let costRows: FakeCostRow[] = [];
+  let movementRows: Array<Record<string, unknown>> = [];
   let costFailure: number | null = null;
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
@@ -656,6 +659,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         s.status = decided[2] === 'approve' ? 'approved' : 'rejected';
         suggestionDecisions.push({ id: s.id, decision: decided[2]!, operations: body?.operations ?? null, comment: body?.comment ?? null });
         return json(res, 200, s);
+      }
+      if ((path === 'read/invoices.reservation_movements' || path === 'read/invoices.reservation_collected') && method === 'POST') {
+        const ids: string[] = (await readJson(req))?.reservation_ids ?? [];
+        const rows = movementRows.filter((r) => ids.includes(String(r.reservation_id)));
+        if (path.endsWith('movements')) return json(res, 200, rows);
+        return json(res, 200, ids.filter((id) => rows.some((r) => r.reservation_id === id)).map((id) => {
+          const mine = rows.filter((r) => r.reservation_id === id);
+          return { reservation_id: id, invoiced: mine.reduce((t, r) => t + Number(r.total), 0), collected: mine.filter((r) => r.collected).reduce((t, r) => t + Number(r.total), 0), last_collected_at: null };
+        }));
       }
       if (path === 'read/invoices.booking_cost_projection' && method === 'GET') {
         if (costFailure !== null) throw new Fault(costFailure, costFailure === 403 ? 'FORBIDDEN' : 'VALIDATION', 'Lectura no permitida.', {});
@@ -877,6 +889,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     setSuggestions: (items) => { suggestions = items.map((s) => ({ status: 'pending', ...s })); },
     suggestionDecisions: () => [...suggestionDecisions],
     setCostRows: (rows) => { costRows = rows; },
+    setMovements: (rows) => { movementRows = rows; },
     failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
@@ -917,7 +930,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     },
     serverInsert(table, fields) {
       const stamp = nowIso();
-      const row: FakeRow = { id: randomUUID(), revision: 1, created_at: stamp, updated_at: stamp, updated_by: null, deleted_at: null };
+      const row: FakeRow = { id: typeof fields.id === 'string' ? fields.id : randomUUID(), revision: 1, created_at: stamp, updated_at: stamp, updated_by: null, deleted_at: null };
       for (const column of tables[table] ?? []) row[column] = fields[column] ?? COLUMN_DEFAULTS[table]?.[column] ?? null;
       data.get(table)!.set(row.id, row);
       cursor += 1;
