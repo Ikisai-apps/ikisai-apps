@@ -16,6 +16,8 @@ import {
   taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, consumeCall, confirmConsumptionOps, materialRef,
   type TradeKitOption, taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost, type CostEntry, type MovementCost,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
+  dayPlanFor, dayPlanItems, previousDayPlan, saveDayPlanOps, planWithTask, planWithTasks, planWithText, planWithout, planWithoutTask, planWithTextDone,
+  planInOrder, linkPlanItem, unlinkPlanItem, DAY_PLAN_MAX_ITEMS, DAY_PLAN_TEXT_MAX, type DayPlanItem, type DayPlanRow,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
 import { availabilityOptionsFrom, capabilityOptionsFrom, hasApprentices, whoKnows, type AvailabilityOption, type CapabilityOption } from './who-knows.ts';
@@ -579,6 +581,27 @@ export class TasksCore {
   }
   api<T = unknown>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> { return this.client.api<T>(path, init); }
 
+  /** «Plan de hoy» (0339): el plan propio de un día (`AAAA-MM-DD`) y el anterior más reciente («De ayer quedaron…»). */
+  dayPlan(day: string): DayPlanRow | null {
+    const actor = this.client.bootstrap()?.profile.userId;
+    return actor ? dayPlanFor(this.data, actor, day) : null;
+  }
+  previousDayPlan(day: string): DayPlanRow | null {
+    const actor = this.client.bootstrap()?.profile.userId;
+    return actor ? previousDayPlan(this.data, actor, day) : null;
+  }
+  /**
+   * Operaciones que dejan el plan propio de `day` con estos elementos, ya validadas como lo hará el servidor (con el rol
+   * real: quien solo lee también tiene plan, solo con texto). Solo escriben el plan, nunca la tarea. Sin red, van a la cola.
+   */
+  dayPlanOps(day: string, items: DayPlanItem[], options: { reviewed?: boolean } = {}): Operation[] {
+    const boot = this.client.bootstrap(), actor = boot?.profile.userId;
+    if (!boot || !actor) throw new DomainError(401, 'UNAUTHORIZED', 'Inicia sesión primero.');
+    const ops = saveDayPlanOps(this.data, actor, day, items, options);
+    if (ops.length) validateOperations(ops, { role: boot.membership.role as Role, scopes: this.scopes() ?? '*' });
+    return ops;
+  }
+
   /**
    * Propuestas del outsider (O1, paso 3; docs/tasks/API.md §31): el lote de una sugerencia, desde la copia en memoria.
    * 'tarea': tarea nueva en un proyecto (con lo que hereda y la foto); 'step': un paso de una tarea; 'note': una línea más
@@ -664,6 +687,11 @@ const api = {
   labelNames: { key: labelNameKey, clash: labelNameClash, message: labelClashMessage, mergeProblem: generalMergeProblem },
   /** Materiales y equipos de una tarea, kit del oficio y «Confirmar consumo» (R6 PR 3, §36; `public/materials-ui.js`). */
   materials: { taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, confirmConsumptionOps, materialRef },
+  /** «Plan de hoy» (MUELA-095, §38; `public/hoy-ui.js`): operaciones puras sobre los elementos del plan. */
+  dayPlans: {
+    dayPlanItems, planWithTask, planWithTasks, planWithText, planWithout, planWithoutTask, planWithTextDone, planInOrder, linkPlanItem, unlinkPlanItem,
+    MAX_ITEMS: DAY_PLAN_MAX_ITEMS, TEXT_MAX: DAY_PLAN_TEXT_MAX,
+  },
   /** Costes de tarea y proyecto (R6 PR 4, §37; `public/costs-ui.js`). */
   costs: { taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost },
   /** «Quién sabe hacerlo» (§34): quién sabe los oficios de una ficha (`public/who-knows-ui.js`). */

@@ -109,6 +109,36 @@ const ownerPeople = { owner_person_id: nullable(uuid('INVALID_OWNER')), owner_ho
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
 
+/** Lo que cabe en un plan de hoy (0339): hasta 100 elementos, cada uno una tarea o un texto «solo hoy». */
+export const DAY_PLAN_MAX_ITEMS = 100;
+export const DAY_PLAN_TEXT_MAX = 300;
+const PLAN_KEYS = ['id', 'task_id', 'text', 'tab_id', 'position', 'done'];
+const planItems: Check = (v, field) => {
+  const bad = (reason: string): never => reject(422, 'INVALID_PLAN', 'El plan de hoy no es válido.', { field, reason });
+  if (!Array.isArray(v)) bad('items must be a list');
+  const list = v as unknown[];
+  if (list.length > DAY_PLAN_MAX_ITEMS) reject(422, 'INVALID_PLAN', `En el plan de hoy caben ${DAY_PLAN_MAX_ITEMS} cosas.`, { field, max: DAY_PLAN_MAX_ITEMS });
+  const ids = new Set<string>(), tasks = new Set<string>();
+  for (const item of list) {
+    if (!isObject(item)) bad('each item is an object');
+    const it = item as Record<string, unknown>;
+    if (Object.keys(it).some((k) => !PLAN_KEYS.includes(k))) bad('unknown key');
+    if (typeof it.id !== 'string' || !UUID.test(it.id) || ids.has(it.id)) bad('id');
+    ids.add(it.id as string);
+    if (('task_id' in it) === ('text' in it)) bad('a task or a text');
+    if ('task_id' in it) {
+      if (typeof it.task_id !== 'string' || !UUID.test(it.task_id) || tasks.has(it.task_id)) bad('task_id');
+      tasks.add(it.task_id as string);
+      if ('done' in it) bad('done is only for text');
+    } else if (typeof it.text !== 'string' || !it.text.trim() || it.text.length > DAY_PLAN_TEXT_MAX) {
+      reject(422, 'INVALID_PLAN', `Escribe qué vas a hacer (hasta ${DAY_PLAN_TEXT_MAX} caracteres).`, { field, max: DAY_PLAN_TEXT_MAX });
+    }
+    if ('done' in it && typeof it.done !== 'boolean') bad('done');
+    if ('tab_id' in it && it.tab_id !== null && (typeof it.tab_id !== 'string' || !UUID.test(it.tab_id))) bad('tab_id');
+    if (typeof it.position !== 'number' || !Number.isFinite(it.position)) bad('position');
+  }
+};
+
 const KIND = /^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/;
 const URL_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ikisai\.com(\/|$)/;
 const requestKind = (v: unknown, f: string) => { if (typeof v !== 'string' || v.length > 100 || !KIND.test(v)) reject(422, 'INVALID_FIELDS', 'El tipo va como <app>.<nombre>, en minúsculas.', { field: f }); };
@@ -276,6 +306,11 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: [],
   },
+  // «Plan de hoy» (0339): de quien lo escribe (lo comprueba el hook SQL); el lector solo con texto (abajo).
+  'tasks.day_plans': {
+    fields: { actor_id: uuid(), day: date, items: planItems, reviewed: flag('INVALID_FLAG') },
+    required: ['actor_id', 'day', 'items'],
+  },
 };
 
 export interface ValidationContext {
@@ -330,7 +365,13 @@ function precheckOutsider(op: Operation, index: number): void {
 
 /** Valida un lote completo. Lanza `DomainError` con el primer problema. */
 export function validateOperations(operations: readonly Operation[], ctx: ValidationContext): void {
-  if (ctx.role === 'reader') forbidden('Tu acceso es de solo lectura.');
+  // Quien solo lee escribe su plan de hoy (decisión de VG, MUELA-095) y nada más; solo con texto «solo hoy».
+  if (ctx.role === 'reader') {
+    if (operations.some((op) => op.op === 'call' || op.table !== 'tasks.day_plans')) forbidden('Tu acceso es de solo lectura.');
+    if (operations.some((op) => Array.isArray(op.fields?.items) && (op.fields!.items as unknown[]).some((it) => isObject(it) && 'task_id' in it))) {
+      forbidden('Con acceso de solo lectura, tu plan de hoy lleva solo lo que apuntas.');
+    }
+  }
   if (ctx.role === 'outsider') operations.forEach(precheckOutsider);
   const seen = new Set<string>();
   operations.forEach((op, index) => {

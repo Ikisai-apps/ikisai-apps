@@ -23,7 +23,8 @@ test('registro: todas las tablas con las columnas escribibles del dominio, hook,
     const row = rows.find((r) => `tasks.${r.table_name}` === table)!;
     assert.deepEqual([...row.writable_columns].sort(), [...WRITABLE[table]].sort(), table);
     // O1, paso 2: el outsider escribe en tareas (solo `done`) y en comentarios; lo limita tasks.validate_comments.
-    const roles = ['tasks.tabs', 'tasks.request_routes', 'tasks.settings'].includes(table) ? ['owner'] : ['tasks.tasks', 'tasks.task_comments'].includes(table) ? ['editor', 'owner', 'outsider'] : ['editor', 'owner'];
+    // El plan de hoy (0339): cada cual el suyo, también quien solo lee (lo limita tasks.validate_batch).
+    const roles = ['tasks.tabs', 'tasks.request_routes', 'tasks.settings'].includes(table) ? ['owner'] : ['tasks.tasks', 'tasks.task_comments'].includes(table) ? ['editor', 'owner', 'outsider'] : table === 'tasks.day_plans' ? ['reader', 'editor', 'owner'] : ['editor', 'owner'];
     assert.deepEqual(row.writable_roles, roles, table);
   }
   const count = async (sql: string) => Number((await db.t.db.query<{ n: number }>(sql)).rows[0]!.n);

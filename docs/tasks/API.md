@@ -1928,3 +1928,29 @@ Sustituye el almacén de §18.2 (`tasks.supply_items` y `tasks.supply_movements`
   - Un fallo no deshace la recepción: la app lo anota en la consola y sigue.
   - Prueba: `tests/tasks/receipts.test.ts`.
 - **Copia portable y CSV:** no llevan los materiales ni los costes a mano, porque son del inventario de la casa (Recursos). Lo dicen la hoja de importar y el aviso al descargar.
+
+## 38. Plan de hoy (MUELA-095; RESPUESTAS de Core del 20-10-2026, ok de VG)
+
+Pantalla nueva «Hoy» y el sol (☀) en cada tarea. VG: «lo que quiero es que sea fácil añadir tareas al plan de hoy». Poner, quitar, ordenar o traer de ayer **no cambia nada de la tarea** (ni fecha, ni responsable, ni etiquetas, ni revisión).
+
+- **Tabla `tasks.day_plans` (migración `0339`):** un plan por persona y día.
+  - Columnas: `actor_id` (de quién es), `day` (`date`, el día en la hora local de quien lo hace), `items` (`jsonb`) y `reviewed` («De ayer quedaron…» ya se resolvió ese día). `actor_id` y `day` no cambian una vez creado (`tasks.guard_immutable`).
+  - `items`: hasta 100, en el orden de quien lo hace. Cada uno lleva `id` (uuid), **o** `task_id` (una tarea) **o** `text` (algo «solo hoy», de 1 a 300 caracteres), `tab_id` (el área, o nulo), `position` (número) y, solo los de texto, `done`. Una tarea no se repite en el mismo plan. Otra clave, o lo que no cuadre, es `INVALID_PLAN` (422).
+  - Registro (`core.register_table`): leen y escriben `reader`, `editor` y `owner`. El `outsider` no tiene plan: ni lo lee ni lo escribe, y no tiene la pantalla (tampoco pidiéndola).
+- **Privado:** solo lo ve su dueño. El hook `visible` de `tasks-api` (`visibleDayPlan`, `_domain/tasks/scopes.ts`) deja pasar una fila de `tasks.day_plans` solo si `actor_id` es quien pide y no es outsider. Vale para `snapshot`, `changes` e `history` (el kit filtra las tres con el mismo hook). `visibleRow` no lo deja pasar nunca: por eso no sale en la copia portable, el CSV ni el ZIP.
+- **Escritura (`tasks.validate_batch`, apartado k):**
+  - Cada cual escribe solo el suyo: `actor_id` (antes y después) tiene que ser quien escribe; si no, `FORBIDDEN` (403). Vale para crear, cambiar, borrar y restaurar.
+  - Quien solo lee apunta solo texto: con un `task_id`, `FORBIDDEN` (403). En el dominio (`validateOperations`), el lector solo puede escribir en `tasks.day_plans`, y sin `task_id`.
+  - Una tarea que entra en el plan (la que no estaba antes en ese plan) tiene que estar viva y dentro de los ámbitos de quien escribe (`tasks.scope_project`); si no, `TASK_UNAVAILABLE` (422), sin decir si existe.
+  - Uno por persona y día entre los vivos: otro, `DUPLICATE_PLAN` (422).
+  - En los ámbitos (apartado a), el plan no es de ningún área: lo valida el apartado k.
+- **Dominio (`_domain/tasks/dayplans.ts`, expuesto en `IkisaiTasks.dayPlans`):** `dayPlanFor`, `dayPlanItems`, `previousDayPlan`, `planWithTask(s)`, `planWithText`, `planWithout(Task)`, `planWithTextDone`, `planInOrder`, `linkPlanItem` y `unlinkPlanItem` (elementos puros) y `saveDayPlanOps` (el `insert` o el `update` del plan; sin cambios, nada). El núcleo (`TasksCore.dayPlanOps`) los valida con el rol real; sin red, el lote va a la cola como cualquier otro.
+- **`updated_by` en la interfaz:** `compose` pasa `updated_by` a la tarea como `updatedBy` (`decompose` lo ignora) y el historial (`legacyRecord`, `sync.js`) lo lleva fuera de los campos. Lo usan «Lo último que tocaste» y «Juan, ayer». Lo que se toca en el dispositivo cuenta como tocado por quien lo toca (`touch`).
+- **La interfaz (`public/hoy-ui.js`, `hoy-ui.css`; prefijo `tkh-`):**
+  - El sol (46 × 46 px, `aria-pressed`): en cada fila de tarea (delante de ⋮), en la ficha (encima de la portada) y en «Lo primero» de Inicio («☀ Para hoy», o «☀ En tu plan», que lleva al plan). Solo si la tarea no está hecha y se puede editar. Cada toque saca un aviso con «Deshacer». El foco se queda en el mismo sol.
+  - La barra de abajo: «Hoy» va después de Inicio, con la cifra de lo que queda. Con seis pestañas, a 360 px «Proyectos» y «Etiquetas» se cortaban (54 y 51 px de texto en 50 px de hueco). Por eso «Etiquetas» pasa al menú, en Trabajo; sigue a un toque. El outsider conserva su barra.
+  - La pantalla: el arco del día, una línea para buscar o apuntar (`role=search`; solo la cifra va en vivo), «De ayer quedaron…» («Traer a hoy» o «Dejarlo»), el plan en su orden (`createSortableList`) y «Para coger». En «Para coger» salen lo último que tocaste, lo que está en marcha («2 de 4 pasos», «Juan, ayer»), lo que tiene fecha y, plegado, todo por proyecto. Nunca salen lo hecho, lo bloqueado, las madres ni lo que ya está en el plan.
+  - «Llevar a…» (solo lo «solo hoy»): área → proyecto → tarea madre, con «Ponerla aquí». Crea la tarea con la forma de `createInlineTask` y la fila pasa a apuntarla. «Deshacer» la manda a la papelera y la fila vuelve a ser texto.
+  - Quien solo lee: el arco, su plan y «Apunta aquí lo tuyo». No tiene sol, ni buscar, ni «Para coger», ni «Llevar a…».
+  - Un aviso cada vez: `hideToast()` antes de cada «Deshacer» de Tasks (`offerLocalUndo`, `undoToast`, «Por clasificar» y el reporte). Compras se rehará en su PR.
+- **Pruebas:** `tests/tasks/dayplans.test.ts` (privacidad por snapshot, changes e history; nadie escribe el de otro; la lectora solo con texto; una tarea que no se ve; el outsider; uno por día; elementos) y `tests/tasks/hoy.spec.ts` (las PRUEBAS del traspaso 095, sin red y la lectora).

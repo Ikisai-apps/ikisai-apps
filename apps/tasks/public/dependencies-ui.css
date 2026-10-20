@@ -6,4 +6,6 @@
 .dependency-option span{overflow-wrap:anywhere}
 .dependency-field summary{cursor:pointer;padding:10px 0}
 .dependency-blocked{display:block;font-size:12px;line-height:1.4;color:#8c542e;margin-top:6px;overflow-wrap:anywhere}
+/* En oscuro, «Bloqueada · …» a 4,5:1 o más (estaba a 2,59:1; hallazgo 2 de MUELA-095): unos 7:1 sobre el papel oscuro. */
+html.dark .dependency-blocked{color:#e6a77c}
 .task.context .check:disabled:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){opacity:.3;cursor:default}

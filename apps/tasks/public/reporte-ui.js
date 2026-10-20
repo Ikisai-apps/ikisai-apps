@@ -76,12 +76,12 @@ function tkrUnroute(request,task,to){if(!tkrCanRequest())return toast('Eso lo ha
   if(task.parent_id)return toast('Esa tarea ya es parte de otra: quítala desde allí.');
   const prev={project_id:task.project_id,owner_label_id:task.owner_label_id??null,owner_person_id:task.owner_person_id??null,owner_house_level:task.owner_house_level??null};
   if(!purchaseRun(data=>R().unrouteRequestOps(data,request.id,to),null))return;usage.track(to==='pending'?'tasks.reporte.a_recibido':'tasks.reporte.descartar');
-  IkisaiKit.toastWithAction(to==='pending'?'Vuelve a «Recibido»: espera en «Por clasificar».':'No lo vamos a hacer. La app que lo pidió lo verá.',{label:'Deshacer',onClick:()=>{
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction(to==='pending'?'Vuelve a «Recibido»: espera en «Por clasificar».':'No lo vamos a hacer. La app que lo pidió lo verá.',{label:'Deshacer',onClick:()=>{
     if(to==='dismissed'&&!purchaseRun(data=>R().reopenRequestOps(data,request.id),null))return;tkrClassifyBack(request.id,prev)}},UNDO_MS)}
 function tkrDismissPending(request){if(!purchaseRun(data=>R().dismissRequestOps(data,request.id),null))return;usage.track('tasks.reporte.descartar');
-  IkisaiKit.toastWithAction('No lo vamos a hacer. La app que lo pidió lo verá.',{label:'Deshacer',onClick:()=>purchaseRun(data=>R().reopenRequestOps(data,request.id),null)},UNDO_MS)}
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction('No lo vamos a hacer. La app que lo pidió lo verá.',{label:'Deshacer',onClick:()=>purchaseRun(data=>R().reopenRequestOps(data,request.id),null)},UNDO_MS)}
 function tkrRecover(request){if(!purchaseRun(data=>R().reopenRequestOps(data,request.id),null))return;usage.track('tasks.reporte.recuperar');
-  IkisaiKit.toastWithAction('Recuperado: vuelve a «Recibido».',{label:'Deshacer',onClick:()=>purchaseRun(data=>R().dismissRequestOps(data,request.id),null)},UNDO_MS)}
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction('Recuperado: vuelve a «Recibido».',{label:'Deshacer',onClick:()=>purchaseRun(data=>R().dismissRequestOps(data,request.id),null)},UNDO_MS)}
 const TKR_WHY={
   'pending>done':'Primero tiene que pasar a «En marcha»: toca «En marcha» para elegir adónde va.',
   'done>pending':'Para devolverlo a «Recibido», primero ponlo otra vez «En marcha».',
@@ -98,7 +98,7 @@ function tkrCopy(){const url=`${location.origin}/#/feedback/${state.feedbackCode
   try{navigator.clipboard?navigator.clipboard.writeText(url).then(done,fail):fail()}catch{fail()}}
 function tkrSetDue(task,value){const before=task.due||'';if((value||'')===before)return;
   withArea(task.tab_id,()=>{const loc=taskLocation(task.id);if(!loc)return;loc.t.due=value||'';touch(loc.t);save()});render();
-  IkisaiKit.toastWithAction(value?`Para el ${fmtDate(value)}`:'Sin fecha',{label:'Deshacer',onClick:()=>{withArea(task.tab_id,()=>{const loc=taskLocation(task.id);if(!loc)return;loc.t.due=before;touch(loc.t);save()});render()}},UNDO_MS)}
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction(value?`Para el ${fmtDate(value)}`:'Sin fecha',{label:'Deshacer',onClick:()=>{withArea(task.tab_id,()=>{const loc=taskLocation(task.id);if(!loc)return;loc.t.due=before;touch(loc.t);save()});render()}},UNDO_MS)}
 const bindBeforeReporte=bind;
 bind=function(){bindBeforeReporte();if(state.view!=='feedback')return;const {request,task}=tkrFind(state.feedbackCode||'');
   document.querySelectorAll('.tkr-stages button.stage-step').forEach(b=>b.onclick=()=>tkrPick(b.closest('[data-stage]')?.dataset.stage));

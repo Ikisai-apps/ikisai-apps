@@ -94,7 +94,8 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
   });
 
   await test.step('[5] renombrar, archivar y reactivar una etiqueta conserva su id y sus referencias', async () => {
-    await a.locator('[data-nav="labels"]').click();
+    // Etiquetas, desde el menú (MUELA-095: la barra de abajo lleva «Hoy»).
+    await (await menuRow(a, 'tasks.menu.etiquetas', 'work')).click();
     await openLabelCatalog(a);
     await a.locator(`[data-edit-label="${shared.label}"]`).click();
     await a.locator('#nlText').fill('Etiqueta renombrada');
@@ -462,9 +463,10 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     expect(await a.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(wasDark);
     await a.evaluate(() => setTheme('system'));
     expect(await a.evaluate(() => localStorage.getItem('ikisai-theme'))).toBeNull();
-    // Sin «Organización»; Etiquetas va en la barra de abajo.
+    // Sin «Organización»; Etiquetas va en el menú, en Trabajo (MUELA-095), y en la barra de abajo está «Hoy».
     await expect(drawer.locator('.appmenu-tile[data-feedback-id="tasks.menu.secciones.organize"]')).toHaveCount(0);
-    await expect(a.locator('#shellBottom [data-nav="labels"]')).toHaveCount(1);
+    await expect(a.locator('#shellBottom [data-nav="labels"]')).toHaveCount(0);
+    await expect(a.locator('#shellBottom [data-nav="today"]')).toHaveCount(1);
     expect(await drawer.locator('.appmenu-body').innerText()).not.toContain('Tu espacio');
     await a.evaluate(() => closeNavigation());
     await expect(drawer).toBeHidden();
@@ -1098,7 +1100,7 @@ test('[27][28][30][34] invitar a una persona a un solo proyecto: lo que ve, lo q
     expect(hidden).toBe(404);
     const forbidden = await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t5, expectedRevision: (await serverRow('tasks.tasks', ID.t5!)).revision, fields: { note: 'intrusa' } }], server.app.supabase.tokenFor(guestId));
     expect(forbidden.status).toBe(403);
-    await guest.locator('[data-nav="labels"]').click();
+    await (await menuRow(guest, 'tasks.menu.etiquetas', 'work')).click();
     // Etiquetas en fichas (MUELA-061): la lectora consulta sin mandos de edición en el DOM; el catálogo, con ellos apagados.
     await expect(guest.locator('[data-edit-label]')).toHaveCount(0);
     await guest.locator('#labelsCatalog', { hasText: 'Ver el catálogo completo' }).click();

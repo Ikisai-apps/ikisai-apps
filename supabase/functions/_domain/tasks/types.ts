@@ -121,6 +121,13 @@ export interface RequestRouteRow extends BaseRow {
   owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
 }
 
+/**
+ * «Plan de hoy» (MUELA-095, migración 0339): un plan por persona y día, privado. Cada elemento es una tarea (`task_id`) o
+ * un texto «solo hoy» (`text`, con su `done`), en el orden de quien lo hace.
+ */
+export interface DayPlanItem { id: Uuid; task_id?: Uuid; text?: string; tab_id?: Uuid | null; position: number; done?: boolean }
+export interface DayPlanRow extends BaseRow { actor_id: Uuid; day: string; items: DayPlanItem[]; reviewed: boolean }
+
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
@@ -128,7 +135,7 @@ export const TABLES = [
   'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
   'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials',
   'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests',
-  'tasks.request_routes', 'tasks.requests', 'tasks.settings',
+  'tasks.request_routes', 'tasks.requests', 'tasks.settings', 'tasks.day_plans',
 ] as const;
 export type TableName = (typeof TABLES)[number];
 
@@ -141,6 +148,7 @@ export interface RowTypes {
   'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow; 'tasks.task_materials': TaskMaterialRow;
   'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow; 'tasks.purchase_requests': PurchaseRequestRow;
   'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
+  'tasks.day_plans': DayPlanRow;
 }
 
 /** Filas de todas las tablas, tal y como salen de `snapshot` o del espejo local (incluidas las borradas). */
@@ -176,6 +184,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of', 'space_id'],
   'tasks.settings': ['key', 'value'],
+  'tasks.day_plans': ['actor_id', 'day', 'items', 'reviewed'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
@@ -207,6 +216,8 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by', 'on_behalf_of', 'space_id'],
   // Los ajustes solo los cambian los procedimientos de la app (lo comprueba el hook).
   'tasks.settings': ['key'],
+  // El plan es de una persona y un día (trigger `tasks.guard_immutable` de 0339).
+  'tasks.day_plans': ['actor_id', 'day'],
 };
 
 /** Familias que el cliente crea con cada área nueva. */

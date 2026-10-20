@@ -72,11 +72,11 @@ function tkcClassify(ids){const plan=[];
     return ops},null);
   if(!ok)return;usage.track(plan.length===1?'tasks.por_clasificar.clasificar':'tasks.por_clasificar.clasificar_todas');
   const names=[...new Set(plan.map(x=>x.d.name))];
-  IkisaiKit.toastWithAction(plan.length===1?`Tarea creada en ${names[0]}`:`${plan.length} tareas creadas${names.length===1?` en ${names[0]}`:''}`,{label:'Deshacer',onClick:()=>{
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction(plan.length===1?`Tarea creada en ${names[0]}`:`${plan.length} tareas creadas${names.length===1?` en ${names[0]}`:''}`,{label:'Deshacer',onClick:()=>{
     purchaseRun(data=>plan.flatMap(({id})=>{try{return R().unrouteRequestOps(data,id,'pending')}catch{return []}}),plan.length===1?'Vuelve a «Por clasificar».':'Vuelven a «Por clasificar».')}},UNDO_MS)}
 function tkcDismiss(id){const r=inboxRows('tasks.requests').find(x=>x.id===id);
   if(!purchaseRun(data=>R().dismissRequestOps(data,id),null))return;usage.track('tasks.por_clasificar.descartar');
-  IkisaiKit.toastWithAction(`Descartada${r?`: «${r.title}»`:''}. La app que la pidió lo verá.`,{label:'Deshacer',onClick:()=>purchaseRun(data=>R().reopenRequestOps(data,id),'Vuelve a «Por clasificar».')},UNDO_MS)}
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction(`Descartada${r?`: «${r.title}»`:''}. La app que la pidió lo verá.`,{label:'Deshacer',onClick:()=>purchaseRun(data=>R().reopenRequestOps(data,id),'Vuelve a «Por clasificar».')},UNDO_MS)}
 const bindBeforeClasificar=bind;
 bind=function(){bindBeforeClasificar();if(state.view!=='triage')return;
   document.querySelectorAll('[data-request-classify]').forEach(b=>b.onclick=()=>tkcClassify([b.dataset.requestClassify]));

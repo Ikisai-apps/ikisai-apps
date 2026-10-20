@@ -12,7 +12,7 @@
    Menú común (createAppMenu del kit): la marca (#appLauncher) lo abre; ya no hay ☰ (#moreBtn) ni menú propio (#kebab).
    - Perfil (alias o nombre y rol; tocarlo abre «¿Quién eres?»), tema, línea de sincronización, recientes (las tres últimas
      tareas o proyectos abiertos), secciones = navigationGroups() sin «Organización» y sin lo que ya va en la barra de abajo
-     (Inicio, Proyectos, Tareas, Etiquetas y Filtros), la pista «Área actual», las apps de Ikisai y «Sugerencias y QA» del
+     (Inicio, Hoy, Proyectos, Tareas y Filtros; Etiquetas va en el menú desde MUELA-095), la pista «Área actual», las apps de Ikisai y «Sugerencias y QA» del
      lanzador, y «Cerrar sesión». Cada fila hace lo mismo que su botón de antes (navigateView o handleTopAction).
    - En el ordenador (≥ 1024 px), además, la columna fija de 316 px a la izquierda; la barra de pestañas va abajo también.
    - Se cierra con Escape, el fondo, «atrás» (el kit lo apila en la historia) y al navegar (closeNavigation).
@@ -52,7 +52,9 @@ function shellHint(){const K=IkisaiKit;return state.taskScope==='all'?K.el('span
 
 /* --- Menú común ------------------------------------------------------------------------------------------------------ */
 /* Lo que ya está en la barra de pestañas de abajo no se repite en el menú. */
-const TASKS_TABBAR=new Set(['home','projects','tasks','labels','filters']);
+/* «Hoy» (MUELA-095) entra después de Inicio. Con seis pestañas, a 360 px «Proyectos» y «Etiquetas» se cortaban (54 y 51 px de
+   texto en 50 px de hueco): «Etiquetas» pasa al menú, en Trabajo, donde sigue a un toque. El outsider sigue con su barra. */
+const TASKS_TABBAR=new Set(['home','today','projects','tasks','filters']);
 /* Iconos del menú de Tasks → iconos del kit (los que no tienen equivalente van sin icono). */
 const MENU_KIT_ICONS={tasks:'tasks',grid:'grid',filter:'filter',view:'eye',archive:'list',trash:'trash',tag:'tag',areas:'grid',data:'download',upload:'upload',download:'download',file:'list',copy:'copy',people:'people',key:'lock',agent:'bot',settings:'settings',sync:'sync',history:'history',help:'help',user:'user',cart:'cart',space:'pin',trade:'briefcase',home:'home',proposal:'edit',triage:'list',box:'list',route:'list'};
 function shellRowMark(id){return (typeof MENU_MARKS!=='undefined'&&MENU_MARKS[id]?.feedbackId)||'tasks.menu.fila'}
@@ -109,7 +111,9 @@ function shellMount(){
   const menu=shellMenu();menu.attach(bar.querySelector('#appLauncher'));
   shellMenuStamp=shellMenuKey();menu.refresh();
   const v=state.view,item=(id,label,icon)=>({label,icon,active:v===id||id==='projects'&&v==='project',attrs:{'data-nav':id}});
-  const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),item('labels','Etiquetas','tag'),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
+  /* «Hoy» (MUELA-095, hoy-ui.js), después de Inicio; el outsider no tiene plan y conserva su barra de siempre. */
+  const outsider=!!Sync.actor?.outsider;
+  const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),...(outsider?[]:[item('today','Hoy','sun')]),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),...(outsider?[item('labels','Etiquetas','tag')]:[]),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
   app.replaceChildren(
     K.el('div',{class:'ikisai-kit shellkit',id:'shellTop',style:'display:contents'},shellWide.matches?menu.column:null,bar,shellReturnLink()),
     K.el('div',{id:'view',style:'display:contents'}),

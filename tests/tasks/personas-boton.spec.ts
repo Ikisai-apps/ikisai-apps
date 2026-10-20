@@ -96,9 +96,11 @@ test('el botón solo lo ve la propietaria, en «Trabajo» tras «Etiquetas»; la
   const editorContext = await page.context().browser()!.newContext({ viewport: { width: 390, height: 844 } });
   const editor = await openApp(editorContext, server, { user: EDITOR, aliases: ID });
   expect(await menuItems(editor)).not.toContain('peopleToCentral');
-  // Etiquetas está en la barra de abajo (el menú común no la repite) y el botón no sale en el menú.
-  await expect(editor.locator('#shellBottom [data-nav="labels"]')).toBeVisible();
-  expect(await workItems(editor)).not.toContain('tasks.menu.personas_a_central');
+  // Etiquetas está en el menú, en Trabajo (MUELA-095: la barra de abajo lleva «Hoy»), y el botón no sale en el menú.
+  await expect(editor.locator('#shellBottom [data-nav="labels"]')).toHaveCount(0);
+  const editorWork = await workItems(editor);
+  expect(editorWork).toContain('tasks.menu.etiquetas');
+  expect(editorWork).not.toContain('tasks.menu.personas_a_central');
   await editorContext.close();
 
   // Escritorio: a la vista desde el menú real.
