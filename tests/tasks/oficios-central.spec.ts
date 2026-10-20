@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const Sync: any, state: any, render: any, filteredTasks: any, project: any, openTaskEditor: any, openProjectEditor: any, navigateView: any, startInlineNew: any, savedViewsSheet: any, readableExport: any;
@@ -141,7 +141,8 @@ test('chips: «Fontanería › ACS» donde iba la acción (antes que la persona)
   await shot('10-tablero');
   await page.locator('[data-board-mode="list"]').click();
   await page.evaluate((t) => { state.activeTab = t; state.view = 'projects'; render(); }, MANT);
-  await expect(page.locator(`.project:has([data-open-project="${PINTURA}"]) .chip`)).toHaveText(['Fontanería › ACS', 'Electricidad › Cuadro', 'Pintura', 'Staff', 'Outsiders', 'Repaso']);
+  // Proyectos con portada (MUELA-041, tanda 31): la tarjeta lleva una fila de chips de espacio y oficio (decisión de Core hasta la n.º 7).
+  await expect(page.locator(`.project:has([data-open-project="${PINTURA}"]) .chip`)).toHaveText(['Fontanería › ACS', 'Electricidad › Cuadro', 'Pintura']);
   await shot('2-tarjeta-de-proyecto');
 });
 
@@ -191,6 +192,7 @@ test('agrupar por oficio: cada tarea una sola vez, en lo más hondo', async () =
 test('ficha: el oficio se marca de un toque (los más usados) y se guarda', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await expect(page.locator('#sheet [data-feedback-id="tasks.editor_tarea.oficio"]')).toBeVisible();
   await shot('7-ficha-cerrada');
   await quick('ACS').click();
@@ -205,6 +207,7 @@ test('ficha: el oficio se marca de un toque (los más usados) y se guarda', asyn
 test('ficha: la búsqueda por ruta encuentra la hija por el nombre de la madre', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_GRIFO);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await page.locator('#sheet .tradefield .space-search').fill('fontaneria agua');
   await expect(page.locator('#sheet .tradefield .space-result:not(.empty)')).toHaveCount(1);
   await expect(page.locator('#sheet .tradefield .space-result-name')).toHaveText('Agua fría');
@@ -233,6 +236,8 @@ test('arrastre: reordenar con el asa no toca oficios, personas ni responsable', 
   await openProject(MANT, PINTURA);
   const before = await taskTrades(T_CUADRO);
   expect(before).toEqual([TR_CUADRO]);
+  // Con la portada y «Lo que toca ahora» arriba (tanda 31), la lista empieza más abajo: se lleva a la vista antes de arrastrar.
+  await page.locator(`.task:has([data-toggle-task="${T_GRIFO}"])`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`.task:has([data-toggle-task="${T_CUADRO}"]) [data-drag]`).boundingBox())!;
   const to = (await page.locator(`.task:has([data-toggle-task="${T_GRIFO}"])`).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);

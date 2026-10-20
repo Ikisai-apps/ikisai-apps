@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const Sync: any, openTaskEditor: any, toggleTask: any, taskLocation: any;
 
@@ -29,6 +29,8 @@ const materials = async (task: string) => (await server.rows('tasks.task_materia
 const shot = async (name: string) => { await owner.waitForTimeout(450); await owner.screenshot({ path: `../coordinacion/tasks/r6-despues/${name}.png` }).catch(() => {}); };
 const close = (page: Page) => page.evaluate(() => (window as any).closeSheet());
 async function addMaterial(page: Page, search: string, name: RegExp, quantity?: string) {
+  // Ficha «Portada y foco» (tanda 31): los materiales están en la baldosa «Material y coste».
+  await fichaBloque(page, 'material');
   const box = page.locator('#taskMaterials');
   await box.locator('input[placeholder="Busca o escribe uno nuevo"]').fill(search);
   await box.getByRole('option', { name }).first().click();
@@ -135,6 +137,7 @@ test('«Ahora no» y confirmar después desde la ficha con «No se usó»: no se
   await owner.locator('#consumeLater').click();
   await settled(owner);
   await owner.evaluate((id) => openTaskEditor(id), ID.t2);
+  await fichaBloque(owner, 'material');
   await owner.locator('#materialConsume').click();
   await owner.locator('[data-consume-none]').check();
   await expect(owner.locator('[data-consume-qty]')).toBeDisabled();

@@ -1,0 +1,45 @@
+/* Proyectos con portada (MUELA-041; tanda 31, zona 2). La portada, las cifras y los medallones son del kit; aquí, la
+   tarjeta, las caras, las dos tareas y la banda de arriba. Prefijo `tkp-`. */
+main.tkp-gallery .project-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:640px){main.tkp-gallery .project-grid{grid-template-columns:1fr 1fr}}
+@media (min-width:1180px){main.tkp-gallery .project-grid{grid-template-columns:repeat(3,1fr)}}
+.tkp-band{display:block;margin:8px 0 12px}
+.tkp-band .stat-item[aria-pressed="true"]{outline:3px solid var(--ink);outline-offset:-3px}
+.tkp-card{position:relative;display:grid;align-content:start;gap:10px;padding:0 0 12px;border:1px solid var(--line);border-radius:22px;background:var(--paper);overflow:hidden;min-width:0}
+.tkp-card .cover-box{border-radius:0;min-height:128px;box-shadow:none}
+.tkp-card .cover-tools{left:6px;right:6px;top:6px}
+.tkp-card .cover-tools .draghandle,.tkp-card .cover-tools .pinbtn{background:rgba(255,255,255,.92);color:#263129;border:0;border-radius:50%;display:inline-grid;place-items:center;min-width:44px;min-height:44px}
+.tkp-card .cover-tools .pinbtn.pinned{background:#263129;color:#fff}
+.tkp-toolgap{flex:1;min-width:0!important;pointer-events:none}
+.tkp-card .cover-title .star{filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+.tkp-card .stat-row{margin:0 12px}
+.tkp-card.paused{filter:saturate(.6)}
+.tkp-people{display:flex;align-items:center;gap:8px;margin:0 14px;font-size:13px;font-weight:650;color:var(--muted)}
+.tkp-faces{display:inline-flex;align-items:center}
+.tkp-face+.tkp-face{margin-left:-8px}
+.tkp-face .medal-disc{box-shadow:0 0 0 2px var(--paper)}
+.tkp-face.tkp-lead .medal-disc{box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--item-color,var(--olive))}
+.tkp-tasks{list-style:none;margin:0 8px;padding:0;border-top:1px solid var(--line)}
+.tkp-task{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.tkp-check{flex:none;position:relative;width:46px;min-width:46px;min-height:46px;margin:0;border:0;background:transparent;cursor:pointer}
+.tkp-check::before{content:"";position:absolute;left:13px;top:13px;width:19px;height:19px;border-radius:6px;border:1.6px solid #6d6a5c;background:var(--paper)}
+.tkp-check:focus-visible{outline:2px solid var(--olive);outline-offset:-4px}
+.tkp-task.ro .tkp-tasktext{padding-left:12px}
+.tkp-tasktext{flex:1;min-width:0;min-height:46px;display:grid;align-content:center;padding:8px 6px 8px 0;border:0;background:transparent;text-align:left;color:var(--ink);font:inherit;font-size:14px;font-weight:650;cursor:pointer}
+.tkp-tasktext span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tkp-tasktext small{font-size:12px;font-weight:700;color:var(--muted)}
+.tkp-task.late small{color:#9c3a24}
+html.dark .tkp-task.late small{color:#f0a08c}
+.tkp-alldone{margin:0 16px;color:var(--muted);font-size:13px}
+.tkp-chips{display:flex;flex-wrap:nowrap;gap:6px;margin:0 14px;overflow:hidden}
+.tkp-chips .chip{flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tkp-card .money{margin:0 14px}
+.tkp-card.system .cover-box{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 22%,var(--paper)) 0 10px,color-mix(in srgb,var(--muted) 14%,var(--paper)) 10px 20px);color:var(--ink)}
+.tkp-card.system .cover-box::after{display:none}
+.tkp-card.system .cover-title{text-shadow:none}
+/* Las tres cifras en una fila también a 390 px; la fila de chips no salta de línea. */
+.tkp-card .stat-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.tkp-card .stat-row .stat-item{padding:8px 10px}
+.tkp-card .stat-row .stat-label{overflow-wrap:anywhere}
+.tkp-card.system .stat-row{grid-template-columns:1fr}
+.tkp-card .chips.tkp-chips{flex-wrap:nowrap!important}

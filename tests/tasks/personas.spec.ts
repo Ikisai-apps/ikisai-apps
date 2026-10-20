@@ -10,7 +10,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, filteredTasks: any, project: any, openTaskEditor: any;
@@ -121,7 +121,8 @@ test('chips: «Staff: VG» y «Fontanería: ACS», sin madres sueltas y en el or
   await shot('1-tarjetas-de-tarea');
   await page.evaluate((t) => { state.activeTab = t; state.view = 'projects'; render(); }, MANT);
   // La tarjeta junta las etiquetas del proyecto y las de sus tareas, compactadas por madre.
-  await expect(page.locator(`.project:has([data-open-project="${PINTURA}"]) .chip`)).toHaveText(['Fontanería: ACS', 'Electricidad', 'Pintura', 'Staff', 'Outsiders', 'Repaso']);
+  // Proyectos con portada (MUELA-041, tanda 31): la tarjeta lleva una fila de chips de espacio y oficio (decisión de Core hasta la n.º 7).
+  await expect(page.locator(`.project:has([data-open-project="${PINTURA}"]) .chip`)).toHaveText(['Fontanería: ACS', 'Electricidad', 'Pintura']);
   await shot('2-tarjeta-de-proyecto');
 });
 
@@ -177,16 +178,19 @@ test('agrupar por persona y por acción: cada tarea una sola vez, en el grupo de
 test('ficha: la acción se marca con la familia plegada; el «Responsable principal» lista las etiquetas Persona del área', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   // El responsable: una lista plana con todas las etiquetas Persona del área, madres incluidas («Staff» se puede elegir
   // como responsable), sin las de otras áreas y sin agrupar por madre (el orden sigue la posición y no es estable).
   const owners = await page.locator('#teOwner option').allTextContents();
   expect(owners[0]).toBe('Sin asignar');
   expect(owners.slice(1).sort()).toEqual(['AN', 'Marta', 'Outsiders', 'Staff', 'VG']);
   await shot('7-ficha-cerrada');
+  await fichaBloque(page, 'etiquetas');
   const chip = page.locator(`#sheet [data-inline-label="${ACS}"]`);
   if (!(await chip.isVisible())) await page.locator('#sheet details:has([data-inline-label="' + ACS + '"]) > summary').click();
   await chip.click();
   await expect(chip).toHaveClass(/on/);
+  await fichaBloque(page, 'quien');
   await page.locator('#teOwner').selectOption(MARTA);
   await shot('8-ficha-accion-y-responsable');
   await page.locator('#saveTaskBtn').click();
@@ -219,6 +223,8 @@ test('selección múltiple: «Etiquetas» › persona › Aplicar, a varias tare
 test('arrastre: reordenar con el asa no toca personas, acciones ni responsable', async () => {
   await openProject(MANT, PINTURA);
   const before = await serverLabels(T_CUADRO);
+  // Con la portada y «Lo que toca ahora» arriba (tanda 31), la lista empieza más abajo: se lleva a la vista antes de arrastrar.
+  await page.locator(`.task:has([data-toggle-task="${T_GRIFO}"])`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`.task:has([data-toggle-task="${T_CUADRO}"]) [data-drag]`).boundingBox())!;
   const to = (await page.locator(`.task:has([data-toggle-task="${T_GRIFO}"])`).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
@@ -237,6 +243,7 @@ test('General frente a un área: la acción es una sola en todas las áreas; la 
   await openProject(RET, OTONO);
   await expect(chipsOf(T_RET)).toHaveText(['Fontanería: Agua fría', 'VG']);
   await page.evaluate((t) => openTaskEditor(t), T_RET);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   // En Retiros, el responsable solo ofrece su propia copia de VG.
   expect(await page.locator('#teOwner option').allTextContents()).toEqual(['Sin asignar', 'VG']);
   await page.evaluate(() => (window as any).closeSheet?.());

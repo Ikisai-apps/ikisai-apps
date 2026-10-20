@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, quietUsageNotice, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, quietUsageNotice, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -54,6 +54,7 @@ test('actualización del service worker: borradores y colas vetan la activación
 
   await test.step('[1] un editor abierto conserva su borrador y bloquea la actualización', async () => {
     await first.evaluate(() => { state.currentProject = (window as any).ID.p1; openTaskEditor((window as any).ID.t2); });
+    await fichaBloque(first, 'nota');
     await first.locator('#teNote').fill('Borrador sin guardar');
     server.swGeneration = 2;
     await first.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); await r!.update(); });
@@ -101,6 +102,7 @@ test('actualización del service worker: borradores y colas vetan la activación
 
   await test.step('[3] otra pestaña con un editor abierto veta la activación coordinada', async () => {
     await second.evaluate(() => { state.currentProject = (window as any).ID.p1; openTaskEditor((window as any).ID.t2); });
+    await fichaBloque(second, 'nota');
     await expect(second.locator('#teNote')).toBeVisible();
     await first.locator('#appUpdate').click();
     await first.waitForFunction(() => !Sync.updateLocked);

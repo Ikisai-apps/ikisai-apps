@@ -56,7 +56,10 @@ test.afterAll(async () => { await context?.close(); await server?.close(); });
 test('FB_2026_036/040 y 038: en Proyectos y en Tareas, «Staff: VG» sin «Staff» suelta, y por orden de familias', async () => {
   await page.evaluate((id) => { state.taskScope = 'area'; state.activeTab = id; state.search = ''; state.filters = {}; state.view = 'projects'; render(); }, TAB);
   const card = page.locator(`.project:has([data-open-project="${P}"])`).first();
-  await expect(card.locator('.chip')).toHaveText(['Staff: VG', 'Poda']);
+  // Proyectos con portada (MUELA-041, tanda 31): la tarjeta solo lleva la fila de espacio y oficio (hasta la n.º 7); la persona
+  // va en las caras. En Tareas, las chips de siempre.
+  await expect(card.locator('.chip')).toHaveCount(0);
+  await expect(card.locator('.tkp-people .medal-initials')).toHaveText(['VG']);
   await page.evaluate((p) => { state.view = 'project'; state.currentProject = p; render(); }, P);
   await expect(page.locator(`.task:has([data-toggle-task="${T}"]) .taskchips .chip`)).toHaveText(['Staff: VG', 'Poda']);
 });

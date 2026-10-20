@@ -63,6 +63,8 @@ test('entrar en selección, marcar dos tareas y completarlas', async () => {
 test('la pulsación larga sobre una tarea entra en selección con ella marcada (no con «Señalar para comentar»)', async () => {
   await page.evaluate(() => { (window as any).eval('batchMode=false;batchSelection.clear()'); render(); });
   const row = page.locator(`.task[data-row="${T3}"] .tasktext`).first();
+  // Con la portada y «Lo que toca ahora» arriba (tanda 31), la lista empieza más abajo.
+  await row.scrollIntoViewIfNeeded();
   const box = (await row.boundingBox())!;
   await page.mouse.move(box.x + 10, box.y + box.height / 2);
   await page.mouse.down();

@@ -13,7 +13,7 @@ import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-ser
 import { menuRows, openApp, openMenu, routeStorage, settled } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
-declare const Sync: any, state: any, render: any, openProjectEditor: any, syncNow: any, navigateView: any, handleTopAction: any;
+declare const Sync: any, state: any, render: any, openProjectEditor: any, syncNow: any, navigateView: any, handleTopAction: any, closeSheet: any;
 
 let server: E2EServer;
 let outsiderContext: BrowserContext, ownerContext: BrowserContext;
@@ -177,7 +177,13 @@ test('la propietaria abre «Huerto» con «Abrir a…» y el outsider lo ve', as
   await owner.evaluate((p) => openProjectEditor(p), HUERTO);
   const box = owner.locator(`#openToField [data-open-to="${server.app.users.reader}"]`);
   await expect(box).not.toBeChecked();
+  // MUELA-083 §3 (tanda 31): «Abrir a…» arriba, detrás del nombre y la nota, con el medallón y «Lo ve» / «No lo ve».
+  expect(await owner.evaluate(() => { const f = document.getElementById('openToField')!; return !!f.previousElementSibling?.querySelector('#peNote') && !!(f.compareDocumentPosition(document.getElementById('saveProjectBtn')!) & Node.DOCUMENT_POSITION_FOLLOWING); })).toBe(true);
+  const row = owner.locator('#openToField label.checkline', { has: owner.locator(`[data-open-to="${server.app.users.reader}"]`) });
+  await expect(row.locator('.medal-disc')).toHaveCount(1);
+  await expect(row.locator('.tkf-sees')).toHaveText('No lo ve');
   await box.check();
+  await expect(row.locator('.tkf-sees')).toHaveText('Lo ve');
   await shot(owner, '14-propietaria-abrir-a', '#openToField');
   await owner.locator('#saveProjectBtn').click();
   await expect.poll(async () => (await server.app.t.db.query<any>(`select role, scopes from core.memberships where app = 'tasks' and user_id = $1`, [server.app.users.reader])).rows[0])
@@ -193,5 +199,16 @@ test('la propietaria abre «Huerto» con «Abrir a…» y el outsider lo ve', as
   await expect(owner.locator('#userAll')).toHaveCount(0);
   await expect(owner.locator(`[data-outsider-project="${CASA}|${HUERTO}"]`)).toBeChecked();
   await expect(owner.locator(`[data-outsider-project="${CASA}|${CUENTAS}"]`)).not.toBeChecked();
+  await owner.evaluate(() => closeSheet());
+  // Cerrar la hoja con «Abrir a…» cambiado y sin guardar avisa, y «Aplicar» lo guarda.
+  await owner.evaluate((p) => openProjectEditor(p), HUERTO);
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  await owner.evaluate(() => closeSheet());
+  const notice = owner.locator('.ikisai-toast span', { hasText: '“Abrir a…” sin guardar' });
+  await expect(notice).toBeVisible();
+  await notice.locator('xpath=following-sibling::button').click();
+  await expect.poll(async () => (await server.app.t.db.query<any>(`select scopes from core.memberships where app = 'tasks' and user_id = $1`, [server.app.users.reader])).rows[0].scopes)
+    .toEqual({ tabs: [], projects: { [CASA]: [JARDIN] } });
   expect(errors).toEqual([]);
 });

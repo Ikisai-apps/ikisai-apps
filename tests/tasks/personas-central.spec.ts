@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { menuRow, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, menuRow, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const Sync: any, state: any, render: any, filteredTasks: any, project: any, openTaskEditor: any, openProjectEditor: any, navigateView: any, startInlineNew: any, savedViewsSheet: any, readableExport: any, handleTopAction: any, routeSheet: any;
@@ -159,7 +159,8 @@ test('chips: las iniciales (o el nombre de pila) y «Todo el staff», donde iba 
   await page.locator('[data-board-mode="list"]').click();
   await page.evaluate((t) => { state.activeTab = t; state.view = 'projects'; render(); }, MANT);
   // Una chip por persona o grupo, sin compactar: el grupo delante de sus personas, por nivel y por nombre.
-  await expect(page.locator(`.project:has([data-open-project="${PINTURA}"]) .chip`)).toHaveText(['Fontanería: ACS', 'Electricidad', 'Pintura', 'Todo el staff', 'AN', 'VG', 'Marta', 'Repaso']);
+  // Proyectos con portada (MUELA-041, tanda 31): la tarjeta lleva una fila de chips de espacio y oficio (decisión de Core hasta la n.º 7).
+  await expect(page.locator(`.project:has([data-open-project="${PINTURA}"]) .chip`)).toHaveText(['Fontanería: ACS', 'Electricidad', 'Pintura']);
   await shot('22-personas-tarjeta-de-proyecto');
 });
 
@@ -227,6 +228,7 @@ test('agrupar por persona: cada tarea una sola vez, en lo más hondo', async () 
 test('ficha: «Personas» con «Más usados» a un toque y el «Responsable principal» agrupado por nivel', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await expect(page.locator('#sheet [data-feedback-id="tasks.editor_tarea.personas"]')).toBeVisible();
   // El responsable: por nivel (Dirección, Staff, Outsider), el grupo delante y las personas por nombre; siempre igual.
   expect(await page.locator('#teOwner optgroup').evaluateAll((g) => g.map((x: any) => x.label))).toEqual(['Dirección', 'Staff', 'Outsider']);
@@ -244,6 +246,7 @@ test('ficha: «Personas» con «Más usados» a un toque y el «Responsable prin
   await expect(chipsOf(T_NADA)).toHaveText(['AN']);
   // Al volver a abrirla, el responsable sigue elegido.
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await expect(page.locator('#teOwner')).toHaveValue('level:staff');
   await page.locator('#teOwner').selectOption(P_VG);
   await page.locator('#saveTaskBtn').click();
@@ -255,6 +258,7 @@ test('ficha: «Personas» con «Más usados» a un toque y el «Responsable prin
 test('ficha: la búsqueda encuentra por iniciales y por nombre', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_GRIFO);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await page.locator('#sheet .personfield .space-search').fill('an');
   await expect(page.locator('#sheet .personfield .space-result-name').first()).toHaveText('Andrés Navarro');
   await page.locator('#sheet .personfield .space-search').fill('zzz');
@@ -283,6 +287,8 @@ test('arrastre: reordenar con el asa no toca personas ni responsable', async () 
   await openProject(MANT, PINTURA);
   const before = await taskPeople(T_CUADRO);
   expect(before).toEqual([P_MARTA]);
+  // Con la portada y «Lo que toca ahora» arriba (tanda 31), la lista empieza más abajo: se lleva a la vista antes de arrastrar.
+  await page.locator(`.task:has([data-toggle-task="${T_GRIFO}"])`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`.task:has([data-toggle-task="${T_CUADRO}"]) [data-drag]`).boundingBox())!;
   const to = (await page.locator(`.task:has([data-toggle-task="${T_GRIFO}"])`).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
@@ -362,6 +368,7 @@ test('General frente a un área: la persona es una sola en todas las áreas y la
   await openProject(RET, OTONO);
   await expect(chipsOf(T_RET)).toHaveText(['Fontanería: Agua fría', 'VG']);
   await page.evaluate((t) => openTaskEditor(t), T_RET);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   // En Retiros, el responsable ofrece las mismas personas de Central que en cualquier área.
   expect(await page.locator('#teOwner option').allTextContents()).toEqual(['Sin asignar', 'Toda la dirección', 'Todo el staff', 'Andrés Navarro', 'Valeria Gómez', 'Todos los outsiders', 'Marta Ruiz']);
   await expect(page.locator('#teOwner')).toHaveValue(P_VG);

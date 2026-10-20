@@ -179,3 +179,33 @@ export async function feedbackRoundTrip(page: Page, options: { target: string; t
   if (!(await page.locator('.sheetback.show, .dialogback').count())) await setSignal(page, false);
   return { code };
 }
+
+/**
+ * Ficha de tarea «Portada y foco» (MUELA-083 §1, tanda 31): cada bloque (`quien`, `nota`, `comentarios`, `pasos`, `material`,
+ * `etiquetas`, `depende`, `adjuntos`, `mas`) se abre en foco desde su baldosa, con «‹ Portada» para volver. Abre el bloque
+ * pedido (volviendo antes a la portada si hay otro abierto) y devuelve la zona del foco.
+ */
+export async function fichaBloque(page: Page, key: string): Promise<Locator> {
+  const stage = page.locator('#sheet .tkf-stage');
+  const tile = page.locator(`#sheet [data-tkf-tile="${key}"]`);
+  if (await stage.isVisible().catch(() => false)) {
+    if ((await stage.getAttribute('data-tkf-open')) === key) return stage;
+    await stage.locator('.tkf-back').click();
+  }
+  await tile.click();
+  await expect(stage).toBeVisible();
+  return stage;
+}
+/** Vuelve de un bloque a la portada de la ficha. */
+export async function fichaPortada(page: Page): Promise<void> {
+  const stage = page.locator('#sheet .tkf-stage');
+  if (await stage.isVisible().catch(() => false)) await stage.locator('.tkf-back').click();
+  await expect(page.locator('#sheet .tkf-portada')).toBeVisible();
+}
+/** El lápiz de la portada enseña el campo del título (#teText) en el sitio. */
+export async function fichaTitulo(page: Page): Promise<Locator> {
+  await fichaPortada(page);
+  if (!(await page.locator('#teText').isVisible())) await page.locator('#tkfTitleEdit').click();
+  await expect(page.locator('#teText')).toBeVisible();
+  return page.locator('#teText');
+}

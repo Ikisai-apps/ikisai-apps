@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, EDITOR, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const Sync: any, openTaskEditor: any, state: any, render: any, manageTab: any;
 
@@ -52,10 +52,13 @@ test.afterAll(async () => { await contextA?.close(); await contextB?.close(); aw
 test('la propietaria ve el coste: materiales × coste medio y un coste a mano; el proyecto lo suma', async () => {
   await refresh(owner);
   await owner.evaluate((id) => openTaskEditor(id), ID.t1);
+  // Ficha «Portada y foco» (tanda 31): un solo «Coste», en la baldosa «Material y coste»; el campo suelto ya no se ve.
+  await expect(owner.locator('[data-tkf-tile="material"]')).toContainText('Material y coste');
+  await fichaBloque(owner, 'material');
   const box = owner.locator('#taskCosts');
   await expect(box.locator('.costline', { hasText: 'Lejía' })).toContainText('1,5 l × 2 €');
   await expect(box.locator('.costline', { hasText: 'Lejía' })).toContainText('3 €');
-  await expect(owner.locator('#sheet .costfield')).toBeVisible();
+  await expect(owner.locator('#sheet .costfield')).toBeHidden();
   await box.locator('#costDesc').fill('Alquiler de andamio');
   await box.locator('#costAmount').fill('120');
   await box.locator('#costAdd').click();
@@ -74,6 +77,10 @@ test('la propietaria ve el coste: materiales × coste medio y un coste a mano; e
 test('un editor (sin ser responsable de compras) ve los materiales, pero no los importes', async () => {
   await refresh(editor);
   await editor.evaluate((id) => openTaskEditor(id), ID.t1);
+  // Sin importes, la baldosa se llama «Material» y no lleva euros.
+  await expect(editor.locator('[data-tkf-tile="material"] .tkf-tname')).toHaveText(/^Material(\s|$)/);
+  await expect(editor.locator('[data-tkf-tile="material"]')).not.toContainText('€');
+  await fichaBloque(editor, 'material');
   await expect(editor.locator('#taskMaterials .materialrow')).toContainText('Lejía');
   await expect(editor.locator('#taskCosts')).toHaveCount(0);
   await expect(editor.locator('#sheet .costfield')).toBeHidden();
@@ -99,5 +106,43 @@ test('al nombrarlo responsable de compras del área, ve los importes', async () 
   await close(editor);
   await openProject(editor);
   await expect(editor.locator('main .money')).toContainText('123 €');
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('el «Coste (€)» de antes sigue tras guardar, sale en «Coste» y se corrige con el lápiz o se quita con «×»', async () => {
+  // Un valor del campo antiguo, como lo dejaba la ficha de antes.
+  await refresh(owner);
+  await owner.evaluate((id) => { const loc = (window as any).taskLocation(id); loc.t.cost = 40; (window as any).touch(loc.t); (window as any).record('edit', [id]); (window as any).save(); }, ID.t1);
+  await settled(owner);
+  const row = async () => (await server.rows('tasks.tasks')).find((t) => t.id === ID.t1)!;
+  expect(Number((await row()).cost)).toBe(40);
+  await owner.evaluate((id) => openTaskEditor(id), ID.t1);
+  // Guardar otra cosa de la ficha no lo toca: el campo oculto lo sigue guardando.
+  await fichaBloque(owner, 'nota');
+  await owner.locator('#teNote').fill('Con coste antiguo');
+  await owner.locator('#saveTaskBtn').click();
+  await settled(owner);
+  expect(Number((await row()).cost)).toBe(40);
+  await owner.evaluate((id) => openTaskEditor(id), ID.t1);
+  const box = await fichaBloque(owner, 'material');
+  const line = box.locator('#taskCosts [data-cost-legacy]');
+  await expect(line).toContainText('Coste (€) de la tarea');
+  await expect(line).toContainText('40 €');
+  await line.locator('[data-cost-legacy-edit]').click();
+  await owner.locator('#costLegacyInput').fill('45');
+  await owner.locator('#costLegacyInput').press('Enter');
+  await settled(owner);
+  await expect.poll(async () => Number((await row()).cost)).toBe(45);
+  await expect(owner.locator('#taskCosts [data-cost-legacy]')).toContainText('45 €');
+  await expect(owner.locator('#teCost')).toHaveValue('45');
+  await owner.locator('#taskCosts [data-cost-legacy-remove]').click();
+  await settled(owner);
+  await expect.poll(async () => (await row()).cost ?? null).toBeNull();
+  await expect(owner.locator('#taskCosts [data-cost-legacy]')).toHaveCount(0);
+  // «Deshacer» lo devuelve.
+  await owner.locator('.ikisai-toast span', { hasText: 'Coste (€) de la tarea quitado' }).locator('xpath=following-sibling::button').click();
+  await settled(owner);
+  await expect.poll(async () => Number((await row()).cost)).toBe(45);
+  await close(owner);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

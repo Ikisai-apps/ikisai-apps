@@ -7,7 +7,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, filteredTasks: any, project: any, openTaskEditor: any;
@@ -145,6 +145,8 @@ test('agrupar por zona: cada tarea una sola vez, en el grupo de su hija', async 
 test('ficha: la zona se marca de un toque; elegir la hija marca también su madre', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  // Ficha «Portada y foco» (tanda 31): las etiquetas están en su baldosa.
+  await fichaBloque(page, 'etiquetas');
   const chip = page.locator(`#sheet [data-inline-label="${HAB3}"]`);
   await shot('5-ficha-cerrada');
   // Hoy la familia está plegada en la ficha: un toque para abrirla y otro en la zona.
@@ -180,6 +182,8 @@ test('selección múltiple: «Etiquetas» › zona › Aplicar, a varias tareas 
 test('arrastre: reordenar con el asa no toca las zonas de la tarea', async () => {
   await openProject(MANT, PINTURA);
   const before = await serverLabels(T_ROBLE);
+  // Con la portada y «Lo que toca ahora» arriba (tanda 31), la lista empieza más abajo: se lleva a la vista antes de arrastrar.
+  await page.locator(`.task:has([data-toggle-task="${T_HAB}"])`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`.task:has([data-toggle-task="${T_ROBLE}"]) [data-drag]`).boundingBox())!;
   const to = (await page.locator(`.task:has([data-toggle-task="${T_HAB}"])`).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
