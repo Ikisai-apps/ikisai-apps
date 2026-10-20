@@ -81,6 +81,9 @@ const line = (name: string) => {
   const ingredient = api.rows('food.ingredients').find((i) => i.name === name)!;
   return api.rows('food.shopping_list_items').find((i) => i.ingredient_id === ingredient.id && !i.deleted_at)!;
 };
+// Tanda 40: «En casa» y «Comprar» van en la hoja del «⋯» de cada baldosa.
+const openMore = (page: Page, name: string) => page.getByRole('button', { name: `Más de ${name}`, exact: true }).click();
+const closeMore = (page: Page) => page.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).last().click();
 async function setQuantity(page: Page, label: string, value: string): Promise<void> {
   const input = page.getByLabel(label, { exact: true });
   await input.fill(value);
@@ -145,16 +148,22 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     // (2 kg + 500 g) × 22 ÷ 20 = 2,75 kg de tomate; 1 kg × 22 ÷ 10 = 2,2 kg de arroz.
     await expect(buyRow(page, 'Tomate')).toContainText('Necesario: 2,75 kg · Frutería');
     await expect(buyRow(page, 'Arroz')).toContainText('Necesario: 2,2 kg');
+    await openMore(page, 'Tomate');
     await expect(page.getByLabel('Comprar de Tomate', { exact: true })).toHaveValue('2,75');
+    await closeMore(page);
     await expect(page.locator('#shoppingStatus')).toHaveText('Borrador');
     expect(api.rows('food.shopping_list_items')).toHaveLength(2);
   });
 
   await test.step('«en casa» recalcula «comprar»; fijar «comprar» a mano lo deja fijo', async () => {
+    await openMore(page, 'Arroz');
     await setQuantity(page, 'En casa de Arroz', '0,5');
     await expect(page.getByLabel('Comprar de Arroz', { exact: true })).toHaveValue('1,7');
+    await closeMore(page);
     await expect.poll(() => line('Arroz')).toMatchObject({ stock_quantity: 0.5, purchase_quantity: 1.7, manual_override: false });
+    await openMore(page, 'Tomate');
     await setQuantity(page, 'Comprar de Tomate', '3');
+    await closeMore(page);
     await expect(buyRow(page, 'Tomate')).toContainText('Compra fijada');
     await expect.poll(() => line('Tomate')).toMatchObject({ purchase_quantity: 3, manual_override: true });
   });
@@ -198,13 +207,15 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(page.locator('#shoppingStale')).toHaveCount(0);
     // 2,5 kg × 30 ÷ 20 = 3,75 kg necesarios; «comprar» sigue en los 3 fijados; el arroz sigue comprado y con su «en casa».
     await expect(buyRow(page, 'Tomate')).toContainText('Necesario: 3,75 kg');
+    await openMore(page, 'Tomate');
     await expect(page.getByLabel('Comprar de Tomate', { exact: true })).toHaveValue('3');
     expect(line('Arroz')).toMatchObject({ status: 'comprado', stock_quantity: 0.5, purchase_quantity: 1.7 });
-    await expect(buyRow(page, 'Servilletas')).toBeVisible();
+    await expect(buyRow(page, 'Servilletas')).toBeAttached();
     // «Recalcular» (en el «⋯» de la baldosa desde la tanda 40) devuelve la compra a lo necesario menos lo que hay en casa.
-    await buyRow(page, 'Tomate').getByRole('button', { name: 'Más de Tomate', exact: true }).click();
     await page.getByRole('dialog', { name: 'Tomate' }).getByRole('button', { name: 'Volver a calcular la compra de Tomate' }).click();
+    await openMore(page, 'Tomate');
     await expect(page.getByLabel('Comprar de Tomate', { exact: true })).toHaveValue('3,75');
+    await closeMore(page);
   });
 
   await test.step('revisar y cerrar la lista: cerrada no se edita', async () => {
@@ -212,7 +223,8 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(page.locator('#shoppingStatus')).toHaveText('Revisada');
     await page.locator('#listClose').click();
     await expect(page.locator('#shoppingStatus')).toHaveText('Cerrada');
-    await expect(page.getByLabel('Comprar de Tomate', { exact: true })).toBeDisabled();
+    // Cerrada, la baldosa no ofrece el «⋯» ni el carrito: nada se edita.
+    await expect(page.getByRole('button', { name: 'Más de Tomate', exact: true })).toHaveCount(0);
     await expect(page.locator('#addManual')).toHaveCount(0);
     await expect.poll(() => api.rows('food.shopping_lists')[0]!.status).toBe('cerrada');
   });

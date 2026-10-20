@@ -108,11 +108,14 @@ test('sin red con dos dispositivos: fusión automática, conflicto y rechazo por
 
   await test.step('compra · el mismo campo tocado en dos sitios pide una decisión', async () => {
     await page.goto(`${baseURL}/#/menus/${MENU_ID}/compra`);
+    // Tanda 40: «Comprar» va en la hoja del «⋯» de la baldosa.
+    await page.getByRole('button', { name: 'Más de Tomate', exact: true }).click();
     const purchase = page.getByLabel('Comprar de Tomate', { exact: true });
     await expect(purchase).toHaveValue('2,75');
     await offline(page, context);
     await purchase.fill('3');
     await purchase.blur();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).last().click();
     await expect(page.locator('.buyrow')).toHaveAttribute('data-pending', 'true');
     // Otra persona regenera la lista: la necesidad sube y «comprar» se recalcula en el servidor.
     api.serverUpdate('food.shopping_list_items', buy.id, { required_quantity: 3.75, purchase_quantity: 3.75 });

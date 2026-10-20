@@ -27,6 +27,10 @@ let baseURL: string;
 let pantry: string;
 let saltItem: string;
 
+// Tanda 40: «En casa» y «Comprar» van en la hoja del «⋯» de cada baldosa.
+const openMore = (page: Page, name: string) => page.getByRole('button', { name: `Más de ${name}`, exact: true }).click();
+const closeMore = (page: Page) => page.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).last().click();
+
 test.beforeAll(async () => {
   api = await startFakeApi({ users: [USER] });
   const house = api.seed('resources.spaces', { kind: 'edificio', name: 'Casa' }).id;
@@ -81,15 +85,19 @@ test('compra con stock · «en casa» del inventario, mínimo, «Reponer» y «c
     const rice = page.locator('#shoppingList .buyrow', { hasText: 'Arroz' });
     // 1 kg × 22 ÷ 10 = 2,2 kg; en casa 3 kg (despensa); mínimo 1 kg → comprar 0,2 kg.
     await expect(rice).toContainText('Necesario: 2,2 kg · Mínimo 1 kg');
+    await openMore(page, 'Arroz');
     await expect(page.getByLabel('En casa de Arroz', { exact: true })).toHaveValue('3');
     await expect(page.getByLabel('Comprar de Arroz', { exact: true })).toHaveValue('0,2');
+    await closeMore(page);
   });
 
   await test.step('«Reponer»: la sal, bajo mínimo y sin menú que la pida, aparte', async () => {
     const salt = page.locator('#restockList .buyrow', { hasText: 'Sal' });
     await expect(salt).toContainText('Bajo mínimo: 500 g · Mercado');
+    await openMore(page, 'Sal');
     await expect(page.getByLabel('En casa de Sal', { exact: true })).toHaveValue('100');
     await expect(page.getByLabel('Comprar de Sal', { exact: true })).toHaveValue('400');
+    await closeMore(page);
     await expect(page.locator('#shoppingList .buyrow', { hasText: 'Sal' })).toHaveCount(0);
     await expect(page.locator('.toast.show')).toHaveCount(0, { timeout: 10_000 });
     await capture(page, '10-compra-con-stock');
@@ -103,10 +111,12 @@ test('compra con stock · «en casa» del inventario, mínimo, «Reponer» y «c
       .toEqual([['entrada_manual', 400, pantry, 'food', null]]);
     await expect(page.locator('#restockList .buyrow', { hasText: 'Sal' })).toContainText('En el carro');
     // H-C5: cambiar «Comprar» en una línea ya comprada corrige la Despensa con la diferencia, con la misma referencia.
+    await openMore(page, 'Sal');
     await page.getByLabel('Comprar de Sal', { exact: true }).fill('500');
     await page.getByLabel('Comprar de Sal', { exact: true }).blur();
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(line.id as string)).map((m) => [m.kind, Number(m.quantity)]), { timeout: 15_000 })
       .toEqual([['entrada_manual', 400], ['entrada_manual', 100]]);
+    await closeMore(page);
     await page.getByRole('button', { name: 'Quitar del carro: Sal', exact: true }).click();
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(line.id as string)).reduce((sum, m) => sum + Number(m.quantity), 0), { timeout: 15_000 }).toBe(0);
     expect(api.rows('resources.movements').filter((m) => m.item_id === saltItem && m.kind === 'salida_manual').map((m) => m.reason)).toEqual(['otro']);

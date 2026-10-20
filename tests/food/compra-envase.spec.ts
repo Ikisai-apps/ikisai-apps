@@ -82,6 +82,8 @@ async function login(page: Page): Promise<void> {
 async function capture(page: Page, name: string): Promise<void> {
   if (!CAPTURES) return;
   await page.screenshot({ path: path.join(CAPTURES, `${name}-390.png`), fullPage: true });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.screenshot({ path: path.join(CAPTURES, `${name}-360.png`), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: path.join(CAPTURES, `${name}-1440.png`), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -153,9 +155,15 @@ test('la Compra «Estantería»: tiendas, envase, dinero, carrito y lote', async
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(String(line('Harina').id))).reduce((s, m) => s + Number(m.quantity), 0)).toBe(0);
   });
 
-  await test.step('el «⋯»: el estado de siempre en su hoja', async () => {
+  await test.step('el «⋯»: «En casa», «Comprar» y el estado de siempre en su hoja', async () => {
     await tileOf(page, 'Sal').getByRole('button', { name: 'Más de Sal', exact: true }).click();
     const sheet = page.getByRole('dialog', { name: 'Sal' });
+    await expect(sheet.getByLabel('Comprar de Sal', { exact: true })).toHaveValue('44');
+    await sheet.getByLabel('En casa de Sal', { exact: true }).fill('10');
+    await sheet.getByLabel('En casa de Sal', { exact: true }).blur();
+    await expect(sheet.getByLabel('Comprar de Sal', { exact: true })).toHaveValue('34');
+    await expect(tileOf(page, 'Sal')).toContainText('En casa 10 g');
+    await capture(page, '43-mas');
     await expect(sheet.getByLabel('Estado de Sal')).toHaveValue('pendiente');
     await sheet.getByLabel('Estado de Sal').selectOption('recibido');
     await expect(sheet).toBeHidden();

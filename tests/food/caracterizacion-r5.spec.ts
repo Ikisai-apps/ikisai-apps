@@ -192,6 +192,7 @@ test('caracterización R5 · Inicio, Maquinaria, ficha y formulario de receta, y
     await page.locator('#generateShopping').click();
     const row = page.locator('#shoppingList .buyrow', { hasText: 'Pistachos tostados' });
     await expect(row).toContainText('Necesario: 400 g');
+    await row.getByRole('button', { name: 'Más de Pistachos tostados', exact: true }).click(); // tanda 40: las cifras van en el «⋯» (autorizado por Core)
     await page.getByLabel('En casa de Pistachos tostados', { exact: true }).fill('150');
     await page.getByLabel('En casa de Pistachos tostados', { exact: true }).blur();
     await expect(page.getByLabel('Comprar de Pistachos tostados', { exact: true })).toHaveValue('250');
