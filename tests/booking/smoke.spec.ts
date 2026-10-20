@@ -671,6 +671,14 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(block.locator('#sesCancel')).toBeVisible();
     await expect(block.locator('#sesChanged')).toHaveCount(0);
 
+    // Se desactiva SES después de comunicarla: la ficha avisa igual que la bandeja, sin «vuelve a comunicar».
+    api.serverUpdate(RESERVATIONS, reservationId, { ses_enabled: false, ses_disabled_reason: 'uso_privado' });
+    await sync();
+    await expect(block.locator('#sesChanged')).toHaveText(/SES se desactivó después de comunicarla: anula la comunicación/);
+    api.serverUpdate(RESERVATIONS, reservationId, { ses_enabled: true });
+    await sync();
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+
     // Cambian las fechas: aviso destacado y anulación con confirmación.
     api.serverUpdate(RESERVATIONS, reservationId, { end_date: inDays(13) });
     await sync();
