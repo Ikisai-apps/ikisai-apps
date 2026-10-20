@@ -68,7 +68,7 @@ test('O4b · un huésped sin nivel outsider no ve la pestaña Outsider ni las es
   await api.guestLink(b.id, gb, 'Sol', 'sol@example.invalid');
   await page.goto(`${baseURL}/i/${await api.guestLink(a.id, ga, 'Sol', 'sol@example.invalid')}`);
   await page.locator('#privacyOk').click();
-  await expect(page.locator('#retreatTabs a')).toHaveCount(2);
+  await expect(page.locator('#retreatTabs .cover-dot')).toHaveCount(2);
   await expect(page.locator('#outsiderTab')).toHaveCount(0);
   await bar(page, 'Calendario').click();
   await expect(page.locator('#calendarNewStay')).toHaveCount(0);
@@ -90,7 +90,10 @@ test('O4b · outsider y huésped: pestaña Outsider entre retiros, estancia con 
   await api.outsiderBed(account, room.bedIds[0]!);
   await page.reload();
   // El enlace manda mientras la app sigue abierta; al recargar, la pestaña del próximo retiro, con la Outsider delante.
-  await expect(page.locator('#retreatTabs a')).toHaveText([/Retiro de verano/, /Outsider/, /Retiro de invierno/]);
+  // Tanda 31 (MUELA-059): los retiros en la portada que se pasa y Outsider aparte, como el botón de la casa.
+  await expect(page.locator('#retreatTabs .cover-dot')).toHaveCount(2);
+  await expect(page.locator('#retreatTabs .cover-dot').first()).toHaveAttribute('aria-label', /Retiro de verano/);
+  await expect(page.locator('#outsiderTab')).toBeVisible();
   await page.locator('#outsiderTab').click();
   await expect(page).toHaveURL(/#\/outsider$/);
   await expect(page.locator('#outsiderTitle')).toBeVisible();
@@ -280,7 +283,7 @@ test('O4b · «Apuntarme»: sugerencia a Booking con la persona y su mensaje; el
   expect(approved.status, JSON.stringify(approved.data)).toBe(200);
   await page.goto(`${baseURL}/#/`);
   await page.reload();
-  await expect(page.locator('#retreatTabs a', { hasText: 'Silencio y bosque' })).toHaveCount(1);
+  await expect(page.locator('#retreatTabs .cover-dot[aria-label^="Silencio y bosque"]')).toHaveCount(1);
   await bar(page, 'Calendario').click();
   await page.locator('#calendar button[aria-label="Siguiente"]').click();
   await expect(page.locator(`#calendar .cal-event[data-event-id="abierto:${abierto.id}"]`)).toHaveCount(0);

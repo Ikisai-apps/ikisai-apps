@@ -12,7 +12,7 @@
  * En la vista previa del organizador, franja de solo lectura.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, createUsage, el, icon, openSheet, replace, toast, type LauncherCatalog } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createUsage, el, icon, openSheet, replace, toast, type AppMenuSection, type LauncherCatalog } from '@ikisai/ui-kit';
 import { createGuestApi, type Grant } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { describeError } from '../app/client.ts';
@@ -31,15 +31,16 @@ import { mountDiet } from './diet.ts';
 import { openHelp } from './help.ts';
 import { momentOf, mountHome, todayMadrid } from './home.ts';
 import { mountInfo } from './info.ts';
-import { mountFamilyLodging, mountLodging } from './lodging.ts';
+import { retreatFrame, retreatState, shortRange, type Frame } from './frame.ts';
+import { mountLodging } from './lodging.ts';
 import { clearOfflineMaterials, mountMaterials } from './materials.ts';
-import { barItems, modulesOf, moreItems, sectionsOf, type Modules, type Section } from './nav.ts';
+import { barItems, modulesOf, moreItems, sectionLabel, sectionsOf, type Modules, type Section } from './nav.ts';
 import { mountMenu, mountProgram } from './program.ts';
 import { mountQuestions } from './questions.ts';
 import { languageSelect } from './language.ts';
 import { mountOutsider } from './outsider.ts';
 import { needsPrivacy, renderPrivacy } from './privacy.ts';
-import { personSelector, retreatTabs, sectionLinks } from './retreats.ts';
+import { personSelector, retreatTabs } from './retreats.ts';
 import { mountSign } from './sign.ts';
 
 export interface ShellContext {
@@ -106,17 +107,32 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   });
   const logoutButton = el('button', { type: 'button', class: 'iconbtn', id: 'logout', 'aria-label': t('shell.logout'), title: t('shell.logout'),
     'data-feedback-id': 'guests.cuenta.dispositivo.salir', 'data-feedback-label': 'Salir de este dispositivo', onclick: () => void logout() }, icon('logout', 18));
+  /** Lo que va en el menú lateral (MUELA-013): este retiro, tus retiros y la casa de Outsider. Se rehace en cada ruta. */
+  let menuSections: AppMenuSection[] = [];
   const shell = createAppShell(root, {
     appName: 'Guests',
     markIcon: 'guest',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
-    // Barra del kit 0.21: «Calendario · Retiros · Más» (O4a).
+    // Barra del kit 0.21: «Calendario · Retiros»; lo que iba en «Más» pasa al menú lateral (tanda 31).
     maxNav: 5,
     navigate,
-    launcher,
     tools: [languageSelect(), logoutButton],
+    menu: {
+      label: t('menu.drawer'),
+      profile: { name: client.bootstrap()?.profile.displayName ?? '', role: t('menu.role') },
+      sections: () => menuSections,
+      launcher,
+      feedbackId: 'guests.navegacion.menu',
+    },
+    returnTo: { feedbackId: 'guests.cabecera.volver_app' },
   });
+  // «Cerrar sesión» del kit en la cabecera solo se ve en escritorio: se queda el de Guests, de 46 px y también en el móvil.
+  shell.header.querySelector('#logoutButton.desktop-only')?.remove();
+  // Las secciones del retiro se quedan fijas justo bajo la cabecera (MUELA-059): su alto, en `--gtop`.
+  const headerSize = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => document.documentElement.style.setProperty('--gtop', `${shell.header.offsetHeight}px`)) : null;
+  headerSize?.observe(shell.header);
   const { main } = shell;
   shell.header.setAttribute('data-feedback-id', 'guests.cabecera');
   shell.header.setAttribute('data-feedback-label', 'Cabecera');
@@ -127,6 +143,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   ctx.setBusy(busy);
 
   let unmountView: (() => void) | null = null;
+  let frame: Frame | null = null;
 
   async function logout(): Promise<void> {
     const ok = await confirmDialog({
@@ -252,8 +269,47 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const moreCtx = current?.ctx ?? (lastRetreat && !onOutsider ? opened.get(primary?.grant.guest_id ?? '') ?? null : null);
     const more = onOutsider ? outsiderMore()
       : moreCtx ? moreItems(moreCtx, current?.base ?? lastRetreat!.base, current?.mods ?? modulesOf(moreCtx), current?.family ?? lastRetreat!.family) : [];
-    shell.setNav(barItems(retreats), more);
+    shell.setNav(barItems(retreats), []);
     shell.setRoute(route);
+    // Menú lateral: lo del retiro que se ve (lo que antes iba en «Más»), tus retiros y la casa de Outsider.
+    const today = todayMadrid();
+    const visible = r.retreats.filter((x) => entriesFor(x, selection).length);
+    menuSections = [
+      ...(more.length ? [{
+        key: 'retiro', label: onOutsider ? t('outsider.tab') : t('menu.thisRetreat'), icon: (onOutsider ? 'home' : 'calendar') as 'home' | 'calendar',
+        head: current?.ctx.guest().reservation.title ?? null,
+        rows: [
+          ...(current ? current.sections.map((s) => ({ label: sectionLabel(s), href: s === 'inicio' ? current.hash : `${current.hash}/${s}`, feedbackId: 'guests.navegacion.menu.seccion' })) : []),
+          ...more.map((m) => ({ label: m.label, icon: m.icon, href: m.hash, feedbackId: 'guests.navegacion.menu.mas' })),
+          { label: t('home.help'), icon: 'help' as const, onClick: () => openHelp({ client, userId, grant: primary?.grant ?? null }), feedbackId: 'guests.navegacion.menu.ayuda' },
+        ],
+      }] : []),
+      { key: 'retiros', label: t('nav.retreats'), icon: 'home', rows: [
+        ...visible.slice(0, 6).map((x) => ({ label: x.title ?? t('picker.unknown'), sub: [shortRange(x.start, x.end), retreatState(x, today).text].filter(Boolean).join(' · '), href: hrefFor(x), feedbackId: 'guests.navegacion.menu.retiro' })),
+        { label: t('nav.calendar'), icon: 'calendar' as const, href: CALENDAR, feedbackId: 'guests.navegacion.menu.calendario' },
+      ] },
+      ...(outsider ? [{ key: 'outsider', label: t('outsider.tab'), icon: 'home' as const, rows: [
+        { label: t('outsider.title'), href: OUTSIDER, feedbackId: 'guests.navegacion.menu.outsider' },
+        { label: t('outsider.howToGet'), icon: 'pin' as const, href: OUTSIDER_INFO, feedbackId: 'guests.navegacion.menu.outsider_info' },
+      ] }] : []),
+    ];
+    shell.menu?.refresh();
+  }
+
+  /** Portada de un retiro: la primera imagen publicada en materiales que no es el logotipo (como el cartel de Organizers). */
+  async function coverOf(c: GuestContext, x: Retreat): Promise<string | null> {
+    if (x.reservation_id !== c.grant.reservation_id || !modulesOf(c).materials) return null;
+    const items = (await c.reads.materials(x.reservation_id).catch(() => null))?.value.items ?? [];
+    const image = items.find((m) => m.kind === 'file' && m.file && /^image\//.test(m.file.mime));
+    return image?.file ? (await c.reads.fileUrl(image.file.id).catch(() => null))?.url ?? null : null;
+  }
+
+  /** El siguiente retiro de la cuenta tras este (para «Tu próximo retiro»). */
+  function nextAfter(r: Roster, retreat: Retreat): { title: string | null; start: string | null; end: string | null; href: string } | null {
+    const today = todayMadrid();
+    const next = r.retreats.filter((x) => x.reservation_id !== retreat.reservation_id && x.start && x.start > today && entriesFor(x, selection).length)
+      .sort((a, b) => a.start!.localeCompare(b.start!))[0];
+    return next ? { title: next.title, start: next.start, end: next.end, href: hrefFor(next) } : null;
   }
 
   /** Pestaña Outsider en la tira de retiros (solo con nivel de casa `outsider`). */
@@ -304,6 +360,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   async function route(): Promise<void> {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     unmountView?.();
+    frame?.destroy();
+    frame = null;
     unmountView = null;
     const grants = api.grants();
     if (!grants.length && !outsider) {
@@ -392,19 +450,28 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     }
     paintNav(routeHash, current);
 
-    // Cabecera de «Retiros» solo en el Resumen y en las secciones; las demás pantallas tienen su «Volver».
+    // Cabecera del retiro (MUELA-059) solo en el Resumen y en las secciones; las demás pantallas tienen su «Volver».
     const inTab = (sections as Page[]).includes(page);
-    const frame = inTab ? el('div', { class: 'gframe', id: 'retreatFrame' },
-      personSelector(r.persons, selection, (next) => pickPerson(next, { retreat, section: page as Section })),
-      retreatTabs({
-        retreats: r.retreats.filter((x) => entriesFor(x, selection).length),
-        current: retreat.reservation_id,
-        href: (x) => hrefFor(x, page as Section),
-        who,
-        outsider: outsiderTabOf(false),
-      }),
-      sectionLinks(sections, page as Section, (s) => (s === 'inicio' ? base : `${base}/${s}`))) : null;
-    replace(main, frame && frame.childElementCount ? frame : null, view);
+    if (inTab) {
+      const visible = r.retreats.filter((x) => entriesFor(x, selection).length);
+      frame = retreatFrame({
+        retreats: visible.length ? visible : [retreat], current: retreat, persons: r.persons, selection, today, sections, section: page as Section,
+        sectionHref: (s) => (s === 'inicio' ? base : `${base}/${s}`),
+        retreatHref: (x) => hrefFor(x, page as Section),
+        navigate,
+        onPerson: (next) => pickPerson(next, { retreat, section: page as Section }),
+        outsiderHref: outsider ? OUTSIDER : null,
+        who: (x) => (r.persons.length > 1 && selection === 'all' ? x.entries.map((e) => r.persons.find((p) => p.key === e.person)?.name ?? '').filter(Boolean) : []),
+        cover: (x) => coverOf(gctx, x),
+        bed: async () => {
+          if (!mods.lodging) return null;
+          const mine = (await gctx.reads.lodging(gctx.grant.guest_id).catch(() => null))?.value.mine;
+          return mine ? [mine.space_name, mine.bed_label].filter(Boolean).join(' · ') : null;
+        },
+        placeName: async () => (await reads.place().catch(() => null))?.value.name ?? null,
+      });
+    }
+    replace(main, frame?.element ?? null, view, frame?.away ?? null);
 
     const during = momentOf(gctx.guest()) === 'during';
     const help = (start?: 'place' | 'event') => openHelp({ client, userId, grant: gctx.grant, ...(start ? { start } : {}) });
@@ -414,17 +481,20 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       case 'alimentacion': unmountView = mountDiet(view, gctx, personBase); break;
       case 'firma': unmountView = mountSign(view, gctx, personBase); break;
       case 'info': unmountView = mountInfo(view, personBase, during, gctx.reads); break;
-      case 'programa': unmountView = mountProgram(view, gctx); break;
+      case 'programa': unmountView = mountProgram(view, gctx, { retreatBase: base, ...(family ? { family: ctxs } : {}) }); break;
       case 'menu': {
         const notice = commonText('guests.menu_notice');
-        unmountView = mountMenu(view, ctxs, notice ? centralText(notice.body, notice.spanishOnly, { id: 'menuNotice', class: 'gtext muted small' }) : null);
+        unmountView = mountMenu(view, ctxs, notice ? centralText(notice.body, notice.spanishOnly, { id: 'menuNotice', class: 'gtext muted small' }) : null, people.map((p) => p.base));
         break;
       }
-      case 'alojamiento': unmountView = family ? mountFamilyLodging(view, people) : mountLodging(view, gctx); break;
+      case 'alojamiento': unmountView = mountLodging(view, family ? ctxs : gctx, { client }); break;
       case 'materiales': unmountView = mountMaterials(view, gctx, userId); break;
       case 'preguntas': unmountView = mountQuestions(view, gctx); break;
       default: unmountView = mountHome(view, gctx, {
         base: personBase,
+        retreatBase: base,
+        client,
+        nextRetreat: nextAfter(r, retreat),
         modules: mods,
         ...(family ? { family: people } : {}),
         openHelp: help,
@@ -443,6 +513,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   void route();
 
   return () => {
+    headerSize?.disconnect();
+    frame?.destroy();
     offStatus();
     offSessionEnd();
     usage.destroy();

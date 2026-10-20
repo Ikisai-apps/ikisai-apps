@@ -169,3 +169,185 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 #whoList legend{font-weight:700;margin-bottom:6px}
 .gjoin{display:grid;gap:6px;justify-items:start;margin-top:6px}
 .gjoin p{margin:0}
+
+/* ===================================================================================================================
+   Tanda 31 · rediseño de La Muela (MUELA-071 y sus traspasos). Solo tokens del kit; prefijo `g` de Guests.
+   Textos secundarios a ≥ 4,5:1 (color de texto al 82 %) y objetivos de 46 px.
+   =================================================================================================================== */
+:root{--gsoft:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.glabel{margin:0 0 4px;font-size:var(--text-xs,.75rem);font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--gsoft)}
+.gview .small,.gview .muted,.gview .pagehead p{color:var(--gsoft)}
+.goffline{display:flex;align-items:center;gap:4px;margin:4px 0 10px;color:var(--warn-ink,var(--ink));font-weight:600}
+.glink-inline{display:inline-flex;align-items:center;gap:6px;min-height:46px;color:var(--accent-deep,var(--ink));font-weight:700;text-decoration:none}
+.glinks{display:flex;flex-wrap:wrap;align-items:center;gap:0 16px}
+
+/* Cabecera del retiro (MUELA-059): portada, personas, Outsider, datos, secciones fijas y aviso de otro retiro */
+.gframe{gap:10px}
+.ghero .cover-slide{min-height:220px;border-radius:20px}
+.ghero-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.gpersons{background:var(--paper);border-radius:999px;padding:3px}
+.gpersons button{display:inline-flex;align-items:center;gap:6px;min-height:46px;padding:0 12px 0 6px;border-radius:999px;color:var(--gsoft)}
+.gpersons button.on{color:var(--accent-deep,var(--ink));font-weight:800}
+.gface{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep)}
+.goutsider-pill{display:inline-flex;align-items:center;gap:6px;min-height:46px;padding:0 14px;border-radius:999px;background:var(--paper);color:var(--ink);font-weight:700;text-decoration:none;box-shadow:var(--shadow-1)}
+.gfacts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:0;list-style:none}
+@media (min-width:700px){.gfacts{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.gfacts li{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 10px;border-radius:14px;background:var(--paper);border:1px solid var(--line)}
+.gfacts li[hidden]{display:none}
+.gfact-ico{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--accent-soft);color:var(--accent-deep)}
+.gfacts li.on .gfact-ico{background:var(--accent-deep);color:var(--accent-ink,#fff)}
+.gfact-text{display:flex;flex-direction:column;min-width:0}
+.gfact-text strong,.gfact-text small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gfact-text small{color:var(--gsoft)}
+.gsticky{position:sticky;top:var(--gtop,60px);z-index:5;display:grid;gap:6px;padding:6px 0;background:var(--bg)}
+.gbar{display:none;align-items:center;gap:10px}
+.gfolded .gbar{display:flex}
+.gfolded .gsticky{box-shadow:0 6px 8px -8px color-mix(in srgb,var(--ink) 30%,transparent)}
+.gbar-text{display:flex;flex-direction:column;min-width:0}
+.gbar-text strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbar-text small{color:var(--gsoft)}
+.gsections a{flex-direction:column;gap:2px;min-height:52px;padding:4px 6px;font-size:var(--text-xs,.75rem);color:var(--gsoft)}
+.gaway{position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:30;max-width:560px;margin:0 auto;display:grid;gap:8px;padding:10px 12px;border-radius:16px;background:var(--warn-soft);border:2px solid var(--warn);color:var(--ink);box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 22%,transparent)}
+.gaway.min{left:auto;display:flex;align-items:center;padding:6px}
+.gaway-text{margin:0;font-weight:600}
+.gaway-btns{display:flex;gap:8px;align-items:center}
+.gaway-go{flex:1;min-height:46px}
+.gaway.min .gaway-go{flex:none}
+.gaway-pill,.gaway-min{min-height:46px;min-width:46px;display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:0 12px;border:1px solid var(--warn);background:var(--paper);color:var(--ink);font-weight:700}
+.gview:has(+ .gaway){padding-bottom:150px}
+@media (min-width:1024px){.gaway{bottom:24px}}
+
+/* «Ver en el plano» desplegable (pieza común de Guests) */
+.gplace{display:inline-flex;align-items:center;gap:4px}
+.gplan-host{display:block;flex-basis:100%}
+.gplan>summary{display:flex;align-items:center;gap:6px;min-height:46px;font-weight:600;color:var(--accent-deep,var(--ink));list-style:none;cursor:pointer}
+.gplan>summary::-webkit-details-marker{display:none}
+.gplan-label{min-width:0}
+.gplan-hint{margin-left:auto;padding:2px 10px;border-radius:999px;border:1px solid currentColor;font-size:var(--text-xs,.75rem);white-space:nowrap}
+.gplan[open] .gplan-hint{font-weight:800}
+.gplan-box{margin:6px 0 4px;padding:8px;border-radius:12px;background:var(--paper);border:1px solid var(--line);color:var(--ink)}
+.gplan-where{display:flex;align-items:center;gap:4px;margin:0 0 6px}
+.gplan-img{display:block;width:100%;height:auto;border-radius:8px;background:#fffdf8}
+
+/* Resumen (MUELA-012): cuadro del retiro, paso a paso, horario y «Tu estancia» */
+.gpass{margin:0 0 12px;padding:18px 16px;border-radius:var(--radius,16px);background:var(--accent);color:var(--accent-ink,#fff);box-shadow:var(--shadow-2)}
+.gpass h2{margin:2px 0 4px;color:inherit}
+.gpass p{margin:0 0 4px}
+.gpass-hello,.gpass-times{opacity:.92}
+.gpass-times{display:flex;align-items:center;gap:4px;font-size:var(--text-sm,.875rem)}
+.gpass-chip{margin-left:8px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:inherit}
+.gpass-help{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.gpass-help>*{min-height:var(--tap,46px);flex:1 1 auto;white-space:nowrap}
+.gpass .primary{background:var(--paper);color:var(--accent-deep);box-shadow:none}
+.gpass .ghost{color:#fff;border-color:rgba(255,255,255,.7)}
+.gpass-after h3{margin:14px 0 4px;font-size:1.2rem;color:inherit}
+.gpass-next{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 12px;min-height:var(--tap,46px);border-radius:var(--radius-sm,10px);background:color-mix(in srgb,var(--accent-ink,#fff) 14%,transparent);color:inherit;text-decoration:none}
+.gpass-next>span{display:flex;flex-direction:column;flex:1}
+.gpass-next .glabel{color:inherit}
+.gsteps{margin:0 0 12px}
+.gsteps .gperson+.gperson{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.gperson-ready{display:flex;align-items:center;gap:4px;margin:0}
+.gschedule{margin:0 0 12px}
+.gschedule .daytabs{margin:0 0 8px}
+.gsched-day{display:grid;gap:8px}
+.gsched-title{margin:4px 0 0;font-size:1rem}
+.gpanel{margin:0 0 12px}
+.gpanel>h3{margin:4px 0 8px;font-size:1.05rem}
+.gtiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}
+@media (min-width:700px){.gtiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.gtile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:112px;padding:14px;border-radius:var(--radius-md,14px);background:var(--paper);border:1px solid var(--edge,var(--line));box-shadow:var(--shadow-1);color:var(--ink);text-decoration:none;text-align:left;font:inherit;cursor:pointer}
+.gtile-ico{display:grid;place-items:center;width:38px;height:38px;border-radius:999px;background:var(--paper-2);color:var(--accent-deep)}
+.gtile.done .gtile-ico{background:var(--ok-soft,var(--paper-2));color:var(--ok,var(--ink))}
+
+/* Programa (MUELA-025) y Menú (MUELA-034) */
+.gfamily{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-weight:600}
+.gfaces{display:inline-flex}
+.gfaces>*+*{margin-left:-6px}
+.gslot-detail{display:grid;gap:4px}
+.gslot-detail p{margin:0}
+.gotherdays{margin-top:18px}
+.gkitchen{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.gkitchen ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px;width:100%}
+.gkitchen li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gkitchen-title{display:flex;align-items:center;gap:4px;margin:0;font-weight:700}
+.gchange{margin-left:auto}
+.gfilters{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.gfilters button{min-height:46px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-weight:600}
+.gfilters button[aria-pressed="true"]{background:var(--accent-soft);border:2px solid var(--accent-deep);font-weight:800;box-shadow:inset 0 0 0 1px var(--accent-deep)}
+.gmenu-count{margin:0 0 8px}
+.gmeal-open{border:2px solid var(--accent-deep)}
+.gmeal-open .glabel{color:var(--accent-deep)}
+.gmeal-fold>summary{display:flex;flex-direction:column;gap:2px;min-height:52px;padding:6px 30px 6px 0;position:relative;list-style:none;cursor:pointer}
+.gmeal-fold>summary::-webkit-details-marker{display:none}
+.gmeal-fold>summary::after{content:'';position:absolute;right:6px;top:20px;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-3px)}
+.gmeal-fold[open]>summary::after{top:24px;transform:rotate(-135deg)}
+.gmeal-fold[open]>summary .gmeal-names{display:none}
+.gmeal-head{display:flex;align-items:center;gap:8px}
+.gmeal-past>summary{opacity:.88}
+.gmeal-unchecked{color:var(--warn-ink,var(--ink));font-weight:600}
+.gallall{margin-top:8px;border-top:1px solid var(--line);padding-top:4px}
+.gallall>summary{min-height:46px;display:flex;align-items:center;font-weight:600;font-size:var(--text-sm,.875rem);cursor:pointer}
+.gallall ul{margin:0 0 6px;padding-left:18px}
+.gdish.gdish-flag{background:color-mix(in srgb,var(--alert-soft) 60%,transparent);border-radius:10px;padding:8px;margin:2px -8px}
+.gcross.warn{color:var(--alert,var(--warn-ink))}
+.gallergens{color:var(--ink)}
+.gwatch ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.gwatch-person{display:flex;gap:12px;padding:10px;border:2px solid var(--warn);border-radius:16px}
+.gwatch-list{display:grid;gap:4px;margin-top:4px}
+
+/* Alojamiento (MUELA-056 sin plano y la familia de 065): camas por color, siempre con texto */
+:root{--gfull:#c9c5bd;--gfull-l:#8b867c;--gfree:#c4e8b2;--gfree-l:#5c9a40;--gmine:#2f62d0;--gmine-l:#183f92}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--gfull:#5a5750;--gfree:#d6f2c8;--gfree-l:#8cc46c;--gmine:#5b8cff;--gmine-l:#c9d8ff}}
+:root[data-theme="dark"]{--gfull:#5a5750;--gfree:#d6f2c8;--gfree-l:#8cc46c;--gmine:#5b8cff;--gmine-l:#c9d8ff}
+.gstay{display:flex;gap:14px;align-items:flex-start;margin:0 0 12px}
+.gstay-text{display:grid;gap:2px;min-width:0}
+.gstay-title{margin:0;font-family:var(--font-display,inherit);font-size:1.6rem;line-height:1.1}
+.gstay-sub{margin:0}
+.gstay .glabel{color:var(--accent-deep)}
+.gfam{display:grid;gap:8px;margin:0 0 12px}
+.gfam-people{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin:0;padding:0;list-style:none}
+.gfam-person{display:flex;align-items:center;gap:10px;width:100%;min-height:58px;padding:6px 10px;border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--ink);text-align:left;font:inherit}
+.gfam-person>span{display:flex;flex-direction:column;min-width:0}
+.gfam-person.miss{border-style:dashed}
+.gfam-person.on{border:2px solid var(--gmine-l);background:color-mix(in srgb,var(--gmine) 10%,var(--paper))}
+.gfam-miss,.gfam-ok,.gfam-hint{display:flex;align-items:center;gap:4px;margin:0}
+.gfam-miss{color:var(--warn-ink,var(--ink));font-weight:600}
+.gfam-moving{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;border:2px solid var(--gmine-l);background:color-mix(in srgb,var(--gmine) 10%,var(--paper))}
+.gfam-moving p{display:flex;flex-direction:column;flex:1;margin:0}
+.grooms{margin:0 0 12px}
+.grooms h3{margin:0 0 6px}
+.gchange-room{display:inline-flex;align-items:center;gap:6px;min-height:46px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-weight:700}
+.gchange-room[aria-expanded="true"]{border:2px solid var(--accent-deep)}
+.groom-list ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.groom-row{display:flex;align-items:center;gap:10px;width:100%;min-height:58px;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-align:left;font:inherit}
+.groom-row.on{border:2px solid var(--gmine-l)}
+.groom-row.nofit{border-style:dashed}
+.groom-text{display:flex;flex-direction:column;flex:1;min-width:0}
+.groom-nofit{display:flex;align-items:center;gap:4px;color:var(--warn-ink,var(--ink));font-weight:600}
+.groom{display:grid;gap:10px;margin:0 0 16px;padding-bottom:12px;border:2px solid var(--gmine-l);border-radius:18px;overflow:hidden;scroll-margin-top:var(--gtop,60px)}
+.groom>*:not(.groom-head){margin-inline:12px}
+.groom-head{display:grid;gap:2px;padding:12px;background:#262b27;color:#fff}
+.groom-head h3{margin:0;color:#fff}
+.groom-head p{margin:0;color:#fff}
+.groom-head .small{color:rgba(255,255,255,.9)}
+.groom-hint{margin:0;font-weight:700}
+.gbeds{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.gbed{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-align:left;font:inherit}
+.gbed-in{flex:none;width:22px;height:34px;border-radius:7px;border:3px solid}
+.gbed-text{display:flex;flex-direction:column;min-width:0}
+.gbed.st-free .gbed-in,.gsw.st-free{background:var(--gfree);border-color:var(--gfree-l)}
+.gbed.st-full .gbed-in,.gsw.st-full{background-color:var(--gfull);border-color:var(--gfull-l);background-image:repeating-linear-gradient(45deg,color-mix(in srgb,var(--gfull-l) 45%,transparent) 0 3px,transparent 3px 9px)}
+.gbed.st-mine .gbed-in,.gbed.st-ours .gbed-in,.gsw.st-mine{background:var(--gmine);border-color:var(--gmine-l)}
+.gbed.st-mine{border:2px solid var(--gmine-l)}
+.gbed[aria-disabled="true"]{cursor:default}
+.gbed:focus-visible,.groom-row:focus-visible,.gfam-person:focus-visible{outline:3px solid var(--ink);outline-offset:-2px}
+.glegend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;padding:0;list-style:none;font-size:var(--text-sm,.875rem)}
+.glegend li{display:flex;align-items:center;gap:6px}
+.gsw{display:inline-block;width:18px;height:18px;border-radius:5px;border:2px solid}
+.gkitchen li{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.gwatch-list li{display:flex;align-items:flex-start;gap:6px}
+.gwatch-list li>svg{flex:none;margin-top:3px;color:var(--alert,var(--warn-ink))}
+.gmeal-unchecked,.gmeal-fold .gcross{display:flex;align-items:center;gap:4px}
+.gview .now-hero .small,.gview .now-hero .muted,.gview .now-hero .gplace,.gview .now-has-image .small{color:inherit;opacity:.95}
+.now-hero .gplan>summary{color:inherit}
+.gfam-person .small{overflow-wrap:anywhere}

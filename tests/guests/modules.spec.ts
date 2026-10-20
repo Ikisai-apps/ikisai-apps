@@ -57,9 +57,12 @@ async function enter(page: Page, token: string): Promise<void> {
 const navMain = (page: Page) => page.locator('nav.nav > a.navbtn:not(.navextra)');
 const sections = (page: Page) => page.locator('#sections a');
 const go = (page: Page, section: 'inicio' | 'programa' | 'menu' | 'alojamiento') => page.locator(`#sections a[data-section="${section}"]`).click();
+/** Lo que iba en «Más» está en el menú lateral (tanda 31): la marca abre el cajón y «Este retiro» despliega sus filas. */
 async function goMore(page: Page, label: string): Promise<void> {
-  await page.locator('nav.nav button.navmore').click();
-  await page.locator('.navmore-item', { hasText: label }).click();
+  await page.locator('#appLauncher').click();
+  const tile = page.locator('.appmenu-drawer .appmenu-tile', { hasText: 'Este retiro' });
+  if ((await tile.getAttribute('aria-expanded')) !== 'true') await tile.click();
+  await page.locator('.appmenu-drawer .appmenu-panel a.appmenu-row', { hasText: label }).click();
 }
 
 const ALL_MODULES = {
@@ -105,12 +108,19 @@ test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitac
   await expect(page.locator('#organizerMessage')).toContainText('Traed esterilla');
   await expect(sections(page)).toHaveText(['Resumen', 'Programa', 'Menú', 'Alojamiento']);
   await expect(navMain(page)).toHaveText(['Calendario', 'Retiros']);
-  await expect(page.locator('nav.nav button.navmore')).toBeVisible();
+  await expect(page.locator('nav.nav button.navmore')).toHaveCount(0); // «Más» pasa al menú lateral (tanda 31)
+  // Horario del retiro: hoy, con lo de ahora y lo siguiente marcados, y la próxima comida.
+  await expect(page.locator('#today')).toContainText('Hoy en Ikisai');
   await expect(page.locator('#todayNow')).toContainText('Yoga suave');
   await expect(page.locator('#todayNext')).toContainText('Paseo al pinar');
   await expect(page.locator('#todayMeal')).toContainText('Crema de calabaza');
 
   await go(page, 'programa');
+  // «Ahora y lo siguiente» (MUELA-025): lo de ahora con lo que queda, y lo siguiente con su cuenta atrás.
+  await expect(page.locator('#programList .now-hero')).toContainText('Yoga suave');
+  await expect(page.locator('#programList .now-hero')).toContainText('Quedan 1 h 30 min');
+  await expect(page.locator('#programList .now-next')).toContainText('Paseo al pinar');
+  await expect(page.locator('#programList .now-next')).toContainText('sin hora de fin');
   await expect(page.locator('#programList')).toContainText('Yoga suave');
   await expect(page.locator('#programList')).not.toContainText('nota interna');
   await page.locator('#programDays [role="tab"]').nth(1).click();
@@ -175,9 +185,15 @@ test('guests · elegir habitación: atómica, sin nombres ajenos; si otra person
   await enter(page, await api.guestLink(reservation, iris, 'Iris'));
   await expect(page.locator('#task-room')).toContainText('Hasta el');
   await go(page, 'alojamiento');
-  await expect(page.locator('[data-option="bano"]')).toContainText('+40 € por persona, a pagar a tu organizador');
+  // La habitación que se propone, con la nota de suplemento a la vista antes de elegir (PERDIDAS §2).
+  await expect(page.locator('#lodgingNone')).toContainText('Te guardamos esta habitación');
+  await expect(page.locator('#lodgingRoom')).toContainText('+40 € por persona, a pagar a tu organizador');
   await expect(page.locator('#lodgingRooms')).toContainText('Con baño');
   await expect(page.locator('#lodgingRooms')).toContainText('2 de 2 camas libres');
+  // «Cambiar habitación» despliega la lista, con la opción del organizador y su nota.
+  await page.locator('.gchange-room').click();
+  await expect(page.locator('[data-option="bano"]')).toContainText('+40 € por persona, a pagar a tu organizador');
+  await page.locator('.gchange-room').click();
 
   // Otra persona coge la cama 1 justo antes (Booking real): Iris la ve aún libre y recibe BED_TAKEN.
   await api.guestInvoke(reservation, otra, 'booking.portal_choose_bed', { bed_id: room.bedIds[0] });
@@ -193,7 +209,7 @@ test('guests · elegir habitación: atómica, sin nombres ajenos; si otra person
   const rows = await api.booking.t.db.query<{ guest_id: string; source: string; status: string }>(`select guest_id, source, status from booking.room_assignments where bed_id = $1 and deleted_at is null`, [room.bedIds[1]]);
   expect(rows.rows).toEqual([{ guest_id: iris, source: 'guest', status: 'confirmed' }]);
   await go(page, 'inicio');
-  await expect(page.locator('#task-room')).toContainText('Elegida');
+  await expect(page.locator('#task-room')).toHaveAttribute('title', /Elegida/); // en la línea «Hecho:», con su estado
 });
 
 test('guests · supletorias activadas (BG13): se eligen marcadas como «Supletoria», con su recuento aparte; las no activadas no salen', async ({ page }) => {
@@ -206,10 +222,11 @@ test('guests · supletorias activadas (BG13): se eligen marcadas como «Supletor
   await api.experience(reservation, { lodging_visible: true, lodging_capability: 'choose' });
   await enter(page, await api.guestLink(reservation, ines, 'Inés'));
   await go(page, 'alojamiento');
-  const card = page.locator(`[data-space="${room.spaceId}"]`);
+  const card = page.locator('#lodgingRoom');
+  await expect(card).toHaveAttribute('data-space', room.spaceId);
   await expect(card).toContainText('2 de 2 camas libres · 1 de 1 supletorias libres');
-  await expect(card.locator('.glodging-beds button')).toHaveCount(3);
-  const extra = card.locator('.glodging-beds button', { hasText: 'Supletoria' });
+  await expect(card.locator('.gbeds button')).toHaveCount(3);
+  const extra = card.locator('.gbeds button', { hasText: 'Supletoria' });
   await expect(extra).toHaveCount(1);
   await expect(extra.locator('.gextra')).toHaveText('Supletoria');
   await extra.click();

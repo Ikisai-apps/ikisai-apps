@@ -9,6 +9,13 @@ export function fbIgnore<T extends Element>(node: T): T {
   return node;
 }
 
+/** Marca de feedback puesta desde fuera (el catálogo de la publicación la recoge si el id y la etiqueta son literales). */
+export function fbMark<T extends Element>(node: T, id: string, label: string): T {
+  node.setAttribute('data-feedback-id', id);
+  node.setAttribute('data-feedback-label', label);
+  return node;
+}
+
 /** Aviso de datos guardados en el dispositivo cuando no hay red. */
 export function staleNote(at: string): HTMLElement {
   return el('p', { class: 'banner warn', role: 'status', id: 'staleNote' }, icon('offline', 18), ' ', t('common.stale', { time: timeLabel(at) }));

@@ -63,12 +63,21 @@ test('O4a · entrada por el retiro del enlace y, sin enlace, en el que está en 
   await page.locator('#privacyOk').click();
   await expect(page).toHaveURL(new RegExp(`#/p/${b}$`));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro próximo');
+  // Tanda 31 (MUELA-059, añadido de VG): hay un retiro en curso y se ve otro: aviso fijo que se minimiza pero no se cierra.
+  const away = page.locator('#otherRetreat');
+  await expect(away).toContainText('Estás viendo «Retiro próximo», no el retiro en el que estás ahora (Retiro en curso).');
+  await away.getByRole('button', { name: 'Minimizar el aviso' }).click();
+  await expect(away).toHaveClass(/min/);
+  await expect(away.getByRole('button', { name: 'Ir a mi retiro' })).toBeVisible();
+  await away.getByRole('button', { name: 'Estás en otro retiro. Mostrar el aviso' }).click();
+  await expect(away).toContainText('Estás viendo «Retiro próximo»');
   // Sin enlace (la sesión guardada al volver a abrir la app), el que está en curso.
   await page.goto(`${baseURL}/`);
   await page.locator('#privacyOk').click();
   await expect(page).toHaveURL(new RegExp(`#/p/${a}$`));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro en curso');
-  await expect(page.locator('#today')).toBeVisible();
+  // Tanda 31: durante el retiro, «Necesito ayuda» en el cuadro del retiro (el horario sale solo con programa o menú).
+  await expect(page.locator('#urgentHelp')).toBeVisible();
   await expect(navMain(page)).toHaveText(['Calendario', 'Retiros']);
   await expect(bar(page, 'Retiros')).toHaveAttribute('aria-current', 'page');
   // Una sola persona: sin selector.
@@ -129,7 +138,8 @@ test('O4a · las pestañas de retiros conservan la sección: Programa en uno →
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro uno');
   await page.locator('#sections a[data-section="programa"]').click();
   await expect(page.locator('#programList')).toContainText('Yoga de uno');
-  await page.locator('#retreatTabs a', { hasText: 'Retiro dos' }).click();
+  // Tanda 31: se pasa de retiro con la portada (punto, flecha o deslizando) y se queda en la misma sección.
+  await page.locator('#retreatTabs .cover-dot[aria-label^="Retiro dos"]').click();
   await expect(page).toHaveURL(new RegExp(`#/p/${b}/programa$`));
   await expect(page.locator('#programList')).toContainText('Yoga de dos');
   await expect(page.locator('#sections a[aria-current="page"]')).toHaveText('Programa');
@@ -157,24 +167,27 @@ test('G13 · el menú de la familia cruza a cada persona: la alergia de la segun
 
   const dishOf = (name: string) => page.locator('#menuList .gdish').filter({ has: page.locator('strong', { hasText: name }) });
   // Lo que tiene registrado cocina, persona a persona.
-  await expect(page.locator(`#menuKitchen [data-guest="${lucia}"]`)).toHaveText('Cocina tiene registrado lo que indicó Lucía: frutos secos.');
+  await expect(page.locator(`#menuKitchen [data-guest="${lucia}"]`)).toContainText('Cocina tiene registrado lo que indicó Lucía: frutos secos.');
   await expect(page.locator(`#menuKitchen [data-guest="${ana}"]`)).toContainText('Cocina tiene registrado lo que indicó Ana: cilantro.');
   // Declarado aunque sin revisar: avisa con el nombre de Lucía, y la línea de #597 sigue.
-  await expect(dishOf('Bizcocho').locator('.gcross')).toHaveText('⚠ Lucía: lleva frutos de cáscara.');
+  await expect(dishOf('Bizcocho').locator('.gcross')).toHaveText('⚠ Lucía: lleva frutos de cáscara (alergia grave). Pregunta en cocina.');
   await expect(dishOf('Bizcocho').locator('.gallergens')).toHaveText('Alérgenos declarados: frutos de cáscara, gluten (sin revisar por cocina).');
   // Sin declarar, pero el nombre del plato lo dice (la regla común de Food).
-  await expect(dishOf('Tarta de almendra').locator('.gcross')).toHaveText('⚠ Lucía: lleva frutos secos.');
+  await expect(dishOf('Tarta de almendra').locator('.gcross')).toHaveText('⚠ Lucía: lleva frutos secos (alergia grave). Pregunta en cocina.');
   // La preferencia de Ana, como información.
   await expect(dishOf('Crema con cilantro').locator('.gcross')).toHaveText('Ana: lleva cilantro (preferencia).');
   // Sin coincidencias, nada: nunca «apto».
   await expect(dishOf('Arroz blanco').locator('.gcross')).toHaveCount(0);
   await expect(page.locator('#menuList')).not.toContainText(/apto/i);
+  // «Lo que vigilar, persona a persona» (065): solo quien tiene algo que vigilar ese día; la preferencia no cuenta.
+  await expect(page.locator(`#familyWatch [data-guest="${lucia}"]`)).toContainText('Bizcocho');
+  await expect(page.locator('#familyWatch')).toContainText('Nada que vigilar este día: Ana.');
   await capture(page, 'g13-menu-familia');
 
   // Solo Lucía: su aviso, sin nombre.
   await page.locator('#persons button', { hasText: 'Lucía' }).click();
   await expect(page).toHaveURL(new RegExp(`#/p/${lucia}/menu$`));
-  await expect(dishOf('Bizcocho').locator('.gcross')).toHaveText('⚠ Lleva frutos de cáscara, que nos indicaste.');
+  await expect(dishOf('Bizcocho').locator('.gcross')).toHaveText('⚠ Lleva frutos de cáscara, que nos indicaste (alergia grave). Pregunta en cocina.');
   await expect(dishOf('Crema con cilantro').locator('.gcross')).toHaveCount(0);
 
   // Lo personal nunca se abre con la familia junta (serían los datos de la primera persona): la ruta de familia no lo admite.
@@ -200,25 +213,33 @@ test('O4a · la familia junta: retiros de todos con a quién toca, la cama de ca
   // Próximo retiro, con la familia junta: un aviso legal para las dos fichas de ese retiro.
   await page.locator('#privacyOk').click();
   await expect(page).toHaveURL(new RegExp(`#/r/${juntos.id}$`));
-  await expect(page.locator('#persons button')).toHaveText(['Todos', 'Marta', 'Nico']);
-  await expect(page.locator('#retreatTabs a')).toHaveCount(2);
-  // El retiro que no es de todos lleva el nombre de a quién toca.
-  await expect(page.locator('#retreatTabs a', { hasText: 'Retiro de Marta' })).toContainText('Marta');
+  await expect(page.locator('#persons button > span:last-child')).toHaveText(['Todos', 'Marta', 'Nico']); // la cara va delante (tanda 31)
+  // Tanda 31: los dos retiros en la portada que se pasa, con las caras de quien va.
+  await expect(page.locator('#retreatTabs .cover-dot')).toHaveCount(2);
+  await expect(page.locator('#retreatHero .cover-faces .medal-disc')).toHaveCount(2);
   await expect(page.locator('#todoFamily .gperson')).toHaveText([/^Marta/, /^Nico/]);
   await capture(page, 'familia-resumen');
 
-  // Alojamiento con «Todos»: la cama de cada uno, y un toque lleva a la de esa persona.
+  // Alojamiento con «Todos» (065): la cama de cada uno arriba; tocar a alguien enseña la suya, en la misma página.
   await page.locator('#sections a[data-section="alojamiento"]').click();
   await expect(page.locator(`#lodgingFamily [data-guest="${marta}"]`)).toContainText('Cama 1');
   await expect(page.locator(`#lodgingFamily [data-guest="${nico}"]`)).toContainText('Cama 2');
+  await expect(page.locator('#lodgingFamily')).toContainText('Toda la familia, en la misma habitación.');
   await capture(page, 'familia-alojamiento');
   await page.locator(`#lodgingFamily [data-guest="${nico}"]`).click();
-  await expect(page).toHaveURL(new RegExp(`#/p/${nico}/alojamiento$`));
+  await expect(page.locator(`#lodgingFamily [data-guest="${nico}"]`)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#lodgingMine')).toContainText('Cama 2');
 
-  // Solo Nico: solo su retiro (sin pestañas) y su Resumen, como antes.
+  // El retiro que no es de todos dice a quién toca, en texto (y con su cara).
+  await page.locator('#retreatTabs .cover-dot[aria-label^="Retiro de Marta"]').click();
+  await page.locator('#privacyOk').click();
+  await expect(page.locator('#retreatHero .cover-stats')).toContainText('Marta');
+  await page.locator('#retreatTabs .cover-dot[aria-label^="Retiro en familia"]').click();
+
+  // Solo Nico: solo su retiro (sin portada que pasar) y su Resumen, como antes.
+  await page.locator('#persons button', { hasText: 'Nico' }).click();
   await page.locator('#sections a[data-section="inicio"]').click();
-  await expect(page.locator('#persons button[aria-pressed="true"]')).toHaveText('Nico');
+  await expect(page.locator('#persons button[aria-pressed="true"] > span:last-child')).toHaveText('Nico');
   await expect(page.locator('#retreatTabs')).toHaveCount(0);
   await expect(page.locator('#hello')).toHaveText('Hola, Nico');
 
