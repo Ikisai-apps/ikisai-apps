@@ -690,16 +690,38 @@ Desde R7:
 - **Series en una tarjeta** (aprobado el 18-10-2026). Un indicador con varios periodos (ocupación de Booking, gasto e ingresos de Finance) sale en una sola tarjeta (`collapseSeries` de `_domain/central/kpis.ts`):
   - **Qué periodo enseña:** el periodo en curso, en hora de Madrid. Si no está, el último anterior; si todos son futuros, el primero. Al lado, su objetivo y su estado.
   - **Barras:** las de la serie, con el periodo de la tarjeta resaltado.
-  - **Alertas de otros periodos:** «Otros periodos: N críticos · N en atención», si alguno lo está.
+  - **Alertas de otros periodos:** desde el Bloque 2, «Meses pasados: …» y «Previsión: …» por separado (antes, «Otros periodos»), si alguno está en crítico o en atención.
   - **«Ver N meses»:** abre una hoja con cada periodo, su valor y su estado.
   - El resumen de la cabecera del grupo cuenta lo que enseñan las tarjetas.
   - Las claves de un solo periodo no cambian.
 
  Debajo, «Vence pronto», el enlace a Entidad y, para el owner, el resumen de accesos. Bloque «Vence pronto» (los 5 primeros de `central.due_items`). Móvil: una columna, tarjetas plegables por app.
 
+**Bloque 2 (MUELA-004, 076 y 089; aprobado por VG el 20-10-2026):**
+- **«Lo que urge», una sola cola, una cosa cada vez** (`centralAttention`, `_domain/central/attention.ts`, función pura con `tests/central/attention.test.ts`):
+  - entran las obligaciones, los documentos clave, la documentación de personas (solo quien ve datos reservados) y los indicadores del panel en crítico o en atención (la última lectura, también sin red);
+  - orden del 004 sin cambios: lo que bloquea la operación, lo crítico, lo vencido, lo que pide atención y lo que vence pronto;
+  - desempates (decisión de Core Sevilla, Bloque 2): los vencimientos por fecha y título; los indicadores por el orden de apps del panel y la etiqueta; sin duplicados por clave;
+  - botones: la obligación, «Resolver y siguiente» (quien edita; con «Deshacer»); el indicador, «Abrir {app}», y sigue en la cola hasta que se resuelve allí; lo demás, «Ver»; y siempre «Siguiente»;
+  - debajo, las siguientes con su fecha o su estado; «Ver todo» enseña la lista entera en el mismo orden, y tocar una la sube a la tarjeta. El resumen escrito va en la cabecera.
+- **Panel:**
+  - chips «N críticos» y «N en atención» que filtran las tarjetas;
+  - **regla de ceros:** solo se pliega un indicador a cero que está en objetivo o no tiene objetivo; un cero en crítico o en atención se ve siempre. La cabecera dice «· k a cero» y el grupo, «Ver k a cero ›»;
+  - **«Ajustar objetivos»** (owner): la lista de indicadores por app, cada uno con su «Objetivo». El «Objetivo» de cada tarjeta se conserva;
+  - el orden de los grupos y los temas no cambian (089: «lo demás de Inicio no cambia»).
+
 ### 9.2 Personas
 
-Lista con buscador y filtros (relación, función, activo), orden manual. Ficha:
+Lista con buscador y filtros (relación, función, activo), orden manual. **Bloque 2 (MUELA-085 «Directorio de caras» y 076; §1 y §2 de `PERDIDAS_central_bloque2.md`):**
+- **Directorio:** una cara por persona (medallón de 72 con sus iniciales), con nombre, «área · nivel» y sus chips de siempre (equipos, hasta tres oficios con estrella, outsider y sus apps o «Sin cuenta», inactiva, puesto comprometido y «Pendiente de sincronizar»).
+- **Datos reservados (§2):** solo quien los ve tiene el anillo de color (lo peor de su documentación) y, arriba, «Requiere atención», con quien tiene algo caducado o por caducar. Los demás, borde neutro y nada de eso; la app ni descarga la documentación.
+- **Filtros:** buscador en su fila, fija arriba; chips de nivel de casa (y «Sin nivel» para dirección); en «Filtros», oficio, **equipo** y relación (antes de aplicar el nivel) e inactivas.
+- **«Ordenar»** abre la lista reordenable (el orden manual se conserva). La papelera, a 46 px.
+- **Equipos · Tablero por equipo:** una columna por equipo con sus personas; quien gestiona añade con «Añadir a {equipo}» y quita con la ✕, con «Deshacer» (borra el vínculo y lo restaura). «Lo que les falta» (documentación por revisar), solo con datos reservados. «Ordenar», «Nuevo equipo», editar, papelera y «Crear los habituales», como siempre; el lector, sin botones.
+- **Ficha · portada y foco:** el medallón (con anillo solo con permiso) y una línea de cifras escritas (documentación, oficios, próximo vencimiento y disponibilidad); para quien ve datos reservados, el foco con lo que caduca, de uno en uno («Abrir» abre su registro), y la documentación primero cuando algo caduca. Debajo, todos los bloques de siempre.
+- **Oficios:** buscador, barras de cobertura (Experto, Sabe y Aprende, con la raya del mínimo de dos capaces) y chips «En riesgo» (`?riesgo`, como siempre), «Sin experto» (`?sinexperto`) y «Solo outsiders» (`?outsiders`).
+
+Ficha:
 
 - **Básico** (todos): nombre, relación, función, cobertura, disponibilidad, puesto comprometido.
 - **Contacto y vinculación** (plegable; solo quien ve datos reservados).
@@ -738,6 +760,20 @@ Pestañas **Vencimientos** (C09 `vencimientos` + documentación de personas, por
 - **Agentes:** claves de todas las apps, último uso, caducidad, revocar.
 - **Registro:** registro de accesos de todas las apps, filtrable por app, paginado.
 
+**Bloque 2 (MUELA-085, con las reglas de §2 de `PERDIDAS_central_bloque2.md`; código en `ui/access-*.ts`):**
+- **Cuentas · cuadrícula cuentas × apps:** una fila por cuenta (primera columna fija; con más apps, se desliza dentro de su caja, no la página) y una casilla por app con P, E, L u O.
+  - La cabecera marca la app con un solo propietario («1») o ninguno («!») y una nota lo dice; la casilla y la ficha lo avisan antes de que el núcleo devuelva `LAST_OWNER`.
+  - Chips: Nunca han entrado, Desactivadas, Por revisar y por rol. «Nunca ha entrado» frente a «Desactivada» (texto, icono y borde; el nombre, tachado).
+  - «Por revisar» con el arreglo en la fila: «Usar «nombre de la ficha»» o «Enlazar».
+  - **Hoja de la casilla:** Propietario, Editor, Lector y «Sin acceso». Outsider solo se enseña; lo que da el nivel de casa va bloqueado («se cambia en Personas», con enlace); a un agente, ni Propietario ni Central; tu propia casilla de Central, bloqueada. «Quitar acceso» y «Hacer propietario» confirman. **Cada cambio, con «Deshacer»**, que devuelve el rol y los ámbitos de antes.
+  - **Ficha de la cuenta:** solo las apps donde entra y «Añadir app (…)»; lo demás, como siempre (contraseña temporal, desactivar, «Ve datos reservados», ficha de Personas, ámbitos con «Editar en la app»).
+- **Alta · persona primero:** las caras de las fichas activas sin cuenta y «Persona nueva»; al elegir, nombre (el de la ficha manda), correo, nivel de casa de la ficha nueva y un rol por app con botones.
+  - **«Como {compañero} ({equipo})»** copia solo Editor y Lector; Propietario se copia como Editor y el resumen lo dice («Propietario no se copia: dalo a mano»); nunca lo que da el nivel de casa ni «Ve datos reservados»; los agentes no salen como modelo.
+  - El resumen, y **un solo envío** al núcleo con «Dar de alta» (con el motivo sin red, `bindOnline`): antes, la comprobación de correo repetido; nada se escribe hasta pulsar.
+- **Agentes · grupos por app:** un grupo por app, lo peor primero, con su resumen («1 vence: quedan 5 días · 1 sin usar») y la caducidad con `deadlineText`. Cada clave va **en un solo grupo**: el de su app, o «Varias apps» con las apps escritas (el núcleo no guarda la app que la emitió). Revocar confirma que la corta en todas. Las revocadas, plegadas al final.
+- **Registro · por persona:** arriba, «Lo grave» (`only=grave`, P12); debajo, un grupo por cuenta con su línea de tiempo (una entrada sale en el de quien lo hizo y en el de a quien afecta), abierto si tiene algo grave. «Por fecha», la de antes, a un toque. Chips de tipo, filtro por app y selector de persona (`user`, P12, filtra en el núcleo). Cada línea, con día y hora («lun 19 oct, 10:42») y «hace…» al lado. «Cargar más» en las dos vistas.
+- **Una sola condición** para todo Accesos (menú, búsqueda, recuentos, tarjetas de Inicio y rutas): el owner humano de Central (`shell.ts`). Los recuentos, solo en memoria.
+
 Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexión se muestra la última lista leída **en esta sesión** con su hora (solo en memoria: lleva correos y no se guarda en el dispositivo) y los cambios fallan con «Esta acción necesita conexión». Central edita el único ámbito propio (`people`) en la ficha de la cuenta; los de las demás apps se ven en solo lectura con enlace a la app.
 
 ### 9.5 «Sugerencias y QA» y uso semántico (fase 4 del feedback)
@@ -771,6 +807,11 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
   - «Gastar» es una salida con el motivo «uso» ya elegido;
   - el recuento es a ciegas, línea a línea, y «Cerrar y ajustar» se aplica al sincronizar.
 - **Sin red:** todo sale del espejo. Movimientos y líneas de recuento se guardan en el dispositivo y suben al volver.
+- **Bloque 2 (MUELA-076, kit 0.50):**
+  - **Baldosas** por defecto (`createItemCatalog({ layout: 'baldosas' })`): cifra, relleno hasta el mínimo y el nivel en palabras. **«Lista»**, la de antes, a un toque; la vista se recuerda en el dispositivo (`ikisai-central-inventario-vista`).
+  - En cada artículo, Gastar, Entrada, **Contar (solo ese artículo)** y **Trasladar**; «Recuento» de todo, en la barra.
+  - **Chips de sitio:** los espacios (nivel 3) donde hay algo, de más a menos artículos, como mucho seis.
+  - **Ficha · portada y foco:** stock, mínimo, sitios y caducidad escritos; el foco con lo que pide ahora (reponer, gastar antes o juntar), con su acción para editor y owner. Debajo, la ficha de siempre.
 
 ---
 
@@ -845,7 +886,7 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P7 | Llevar a los equipos el contrato de KPIs (§7.2) cuando se apruebe, para que cada uno publique su `central_kpi_projection` en su ronda. | Panel de dirección | Panel solo con KPIs de Central |
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
 | P11 ✅ 0.50 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | — |
-| P12 ✅ #640 | Núcleo: `admin/access-log?user=<uuid>` (lo que hizo esa cuenta, lo que la afecta y lo de sus claves de agente) y `only=grave`. | Registro por persona y «Lo grave» (§9.3) | — |
+| P12 ✅ #640 | Núcleo: `admin/access-log?user=<uuid>` (lo que hizo esa cuenta, lo que la afecta y lo de sus claves de agente) y `only=grave`. | Registro por persona y «Lo grave» (§9.4) | — |
 | P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---

@@ -97,12 +97,16 @@
   - **Menú:** recuentos en «Cuentas y accesos» (cuentas, por revisar y claves en uso); sin red, «se leen con red».
 - 2026-10-20 · **Privacidad · capacidades fuera del alcance del outsider de Tasks** (`1513`, revisión de Tasks): `central.capability_options` queda para lector, editor y owner de Tasks, como la disponibilidad. Los grados de habilidad del personal son datos internos de personas. El outsider sigue viendo quién hace sus tareas y su oficio (`people_options` y `trade_options`).
 
-## Pendiente
+- 2026-10-20 · **Bloque 2, de una pasada** (MUELA-076, 085 y 089, con `PERDIDAS_central_bloque2.md` aprobado por VG; kit 0.50 y P12 del núcleo):
+  - **Cuentas y accesos (085):** cuadrícula cuentas × apps con hoja por casilla y «Deshacer», propietario único avisado, «Nunca ha entrado» y «Desactivada», arreglos en la fila; alta persona primero con «Como {compañero}» y un solo envío; agentes por app con las revocadas plegadas; registro por persona con «Lo grave», día y hora en cada línea, y «Por fecha» a un toque.
+  - **Personas (085):** directorio de caras; anillo y «Requiere atención» solo con datos reservados; chips de nivel; equipo y relación en «Filtros»; «Ordenar». **Equipos:** tablero con «Añadir a…» y quitar con «Deshacer».
+  - **Ficha de persona (076):** portada con cifras y foco con lo que caduca, solo con datos reservados.
+  - **Oficios (076):** buscador, barras de cobertura y chips En riesgo, Sin experto y Solo outsiders.
+  - **Inventario (076):** baldosas con «Lista» a un toque, Trasladar, Contar de uno y chips de sitio; ficha con portada y foco.
+  - **Inicio (004 y 089):** una sola cola de lo que urge en el orden de `centralAttention` (función pura con pruebas); en el panel, regla de ceros, chips de estado, «Ajustar objetivos», «Meses pasados» y «Previsión».
+  - Pruebas: `attention.test.ts` nueva; ampliadas `access`, `inventory`, `people`, `teams`, `trades` y `dashboard`; ajustadas las que usaban los selectores de antes. Fuera `tests/central/menu-helpers.ts` (P11 hecha en el kit 0.50).
 
-- Bloque 2 de Central, como tanda propia cuando Core lo pase (MUELA-076 y 085, con el «ok» de VG):
-  - MUELA-085, lo que eligió VG en Cuentas y accesos: Personas · Directorio de caras; Equipos · Tablero por equipo; Cuentas · Cuadrícula cuentas × apps; Alta · Persona primero; Agentes · Grupos por app; Registro · Por persona. Sin red, «Sin conexión» en lugar del vacío y «Alta» y «Dar de alta» con el motivo.
-  - MUELA-076: ficha de persona (portada y foco) e Inventario (baldosas, con `createItemCatalog({ layout: 'baldosas' })` del kit, tanda 29).
-  - Hoy siguen como estaban.
+## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
 - V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.
