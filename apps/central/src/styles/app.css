@@ -366,3 +366,5 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-cov.sabe{background:var(--accent)}
 .ctl-cov.aprende{background:color-mix(in srgb,var(--accent) 40%,var(--paper-2))}
 .ctl-covmin{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+/* Inicio · lo que urge: las siguientes se tocan para subirlas a la tarjeta (089). */
+.ctl-raise{min-height:var(--tap,46px);text-align:left}

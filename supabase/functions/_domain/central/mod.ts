@@ -8,3 +8,4 @@ export * from './people.ts';
 export * from './validate.ts';
 export * from './trades.ts';
 export * from './review.ts';
+export * from './attention.ts';

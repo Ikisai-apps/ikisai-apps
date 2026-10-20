@@ -99,8 +99,8 @@ function tabsNav(tab: ComplianceTab): HTMLElement {
   return nav;
 }
 
-const sourceLabel = (i: DueItem) => (i.source === 'requirement' ? 'Obligación' : i.source === 'key_document' ? 'Documento' : 'Persona');
-const dueText = (i: DueItem) => plazo(i.dueOn, i.source === 'requirement' ? ['Vence el', 'Venció el'] : ['Caduca el', 'Caducó el']);
+export const sourceLabel = (i: DueItem) => (i.source === 'requirement' ? 'Obligación' : i.source === 'key_document' ? 'Documento' : 'Persona');
+export const dueText = (i: DueItem) => plazo(i.dueOn, i.source === 'requirement' ? ['Vence el', 'Venció el'] : ['Caduca el', 'Caducó el']);
 
 /** Abre lo que corresponde a un vencimiento: la ficha de la obligación, la persona, la obligación del documento o su hoja. */
 export function openDue(ctx: Pick<ViewContext, 'client' | 'navigate'>, data: Data, i: DueItem): void {
@@ -565,7 +565,7 @@ export function openMarkDone(client: SyncClient, usage: Usage, req: Requirement,
 }
 
 /** «Deshacer» de «Marcar cumplido»: vuelve a poner el estado y las fechas de antes (sobre la revisión que haya ahora). */
-async function undoMarkDone(client: SyncClient, id: string, before: Before): Promise<boolean> {
+export async function undoMarkDone(client: SyncClient, id: string, before: Before): Promise<boolean> {
   const now = ((await client.list(T.requirements)) as unknown as Requirement[]).find((r) => r.id === id);
   if (!now) return false;
   return commitSafely(client, [{ op: 'update', table: T.requirements, id, expectedRevision: now.revision, fields: { ...before } }], 'Deshecho: la obligación vuelve a estar como antes.');

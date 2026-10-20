@@ -94,9 +94,12 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   await expect(page.locator('#compliance-vencimientos .worst-group')).toContainText('Póliza de responsabilidad civil');
   await page.getByRole('link', { name: 'Inicio', exact: true }).click();
   await expect(page.locator('#homeDocs')).toContainText('Póliza de responsabilidad civil');
+  // Inicio (089): la obligación lleva «Resolver y siguiente»; «Ver» la abre y el resumen dice cuánto urge.
+  await expect(page.locator('#homeDocs .queue-card').getByRole('button', { name: 'Resolver y siguiente' })).toBeVisible();
+  await expect(page.locator('#homeAttentionSummary')).not.toBeEmpty();
 
   // Documento clave con PDF, enlazado a la obligación (la ficha, desde la tarjeta de Inicio).
-  await page.locator('#homeDocs').getByRole('button', { name: 'Abrir la ficha' }).click();
+  await page.locator('#homeDocs').getByRole('button', { name: 'Ver', exact: true }).click();
   await page.locator('#addDocument').click();
   await page.locator('#d-name').fill('Póliza 2026');
   await page.locator('#d-expires').fill(due);

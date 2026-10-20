@@ -105,7 +105,14 @@ test('dirección · R7: grupos plegables con su resumen, Central por temas y Rec
   // Recursos: espacios e inventario; el owner ve también el valor del inventario. Sin alertas, la cabecera dice cuántos hay.
   const resources = page.locator('.kpigroup[data-app="resources"]');
   await expect(resources.locator('.kpisection')).toHaveText(['Espacios', 'Inventario']);
-  await expect(resources.locator('.kpicard[data-kpi="resources.stock_value"]')).toBeVisible();
+  // Regla de ceros (Bloque 2): lo que está a cero sin objetivo (o en objetivo) se pliega, y la cabecera lo cuenta.
+  const stock = resources.locator('.kpicard[data-kpi="resources.stock_value"]');
+  if (await stock.locator('.kpivalue').textContent().then((t) => /^0/.test(t ?? ''))) {
+    await expect(stock).toBeHidden();
+    await expect(resources.locator('.kpizerocount')).toContainText('a cero');
+    await resources.locator('.kpizeros').click();
+  }
+  await expect(stock).toBeVisible();
   await expect(resources.locator('.kpisummary')).toHaveText('12 indicadores');
   // Series: antes, una tarjeta por mes (16 de ocupación); ahora una, con el mes en curso y «Ver 16 meses».
   if (labels.includes('Booking')) {
@@ -129,11 +136,39 @@ test('dirección · R7: grupos plegables con su resumen, Central por temas y Rec
   await expect(page.locator('.kpigroup[data-app="resources"] .kpigrouphead')).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('.kpigroup[data-app="resources"] .kpigroupbody')).toBeHidden();
   await page.locator('.kpigroup[data-app="resources"] .kpigrouphead').click();
-  await expect(page.locator('.kpigroup[data-app="resources"] .kpicard').first()).toBeVisible();
+  await expect(page.locator('.kpigroup[data-app="resources"] .kpigroupbody')).toBeVisible();
 
-  // La tarjeta de oficios en riesgo lleva a Oficios.
-  await page.locator('.kpicard[data-kpi="central.trades_at_risk"] .kpilabel').click();
+  // La tarjeta de oficios en riesgo lleva a Oficios (si está a cero, primero «Ver k a cero»).
+  const risk = page.locator('.kpicard[data-kpi="central.trades_at_risk"]');
+  if (await risk.isHidden()) await page.locator('.kpigroup[data-app="central"] .kpizeros').click();
+  await risk.locator('.kpilabel').click();
   await expect(page.getByRole('heading', { name: 'Oficios' })).toBeVisible();
+});
+
+test('dirección · un cero en atención no se pliega; chips «N críticos» filtran; «Ajustar objetivos» abre cada objetivo', async ({ page }) => {
+  // Personas con documentación caducada (a cero en esta base): con objetivo «más es mejor» y atención por debajo de 1, el
+  // cero está en atención y se ve siempre (§2 del Bloque 2).
+  const seeded = await api.app.call('/api/v1/commands', { body: { requestId: 'zero-target', operations: [
+    { op: 'insert', table: 'central.kpi_targets', id: crypto.randomUUID(), fields: { kpi: 'central.people_active', target: 5, warn_at: 1, direction: 'up' } },
+  ] } });
+  expect(seeded.status).toBe(200);
+  await login(page);
+  const active = page.locator('.kpicard[data-kpi="central.people_active"]');
+  await expect(active).toContainText('Atención');
+  await expect(active).toBeVisible();
+  // Chip «N en atención»: solo quedan los que están en atención.
+  await page.locator('#kpiChips [data-state="atencion"]').click();
+  await expect(active).toBeVisible();
+  await expect(page.locator('.kpicard.state-ok:not([hidden])')).toHaveCount(0);
+  await page.locator('#kpiChips [data-state="atencion"]').click();
+  // Y entra en la cola de Inicio como aviso, con «Abrir» su app.
+  await expect(page.locator('#homeDocs')).toContainText('Personas activas');
+  // «Ajustar objetivos»: la lista entera; cada uno abre su objetivo. El de la tarjeta sigue.
+  await page.locator('#adjustTargets').click();
+  await page.locator('#targetsList li[data-kpi="central.people_active"]').getByRole('button', { name: /Objetivo/ }).click();
+  await expect(page.locator('#k-target')).toHaveValue('5');
+  await page.keyboard.press('Escape');
+  await expect(active.locator('.kpitarget')).toBeVisible();
 });
 
 test('dirección · series: si otro mes está en atención, la tarjeta lo dice; la hoja da el estado de cada mes', async ({ page }) => {
@@ -147,7 +182,8 @@ test('dirección · series: si otro mes está en atención, la tarjeta lo dice; 
   test.skip(!(await expenses.count()), 'Finance no publica en esta base');
   await expect(expenses).toHaveCount(1);
   await expect(expenses).toContainText('Atención');
-  await expect(expenses.locator('.kpiothers')).toHaveText('Otros periodos: 12 en atención');
+  // «Meses pasados» y «Previsión» por separado (Bloque 2, 076): aquí, los doce meses de antes.
+  await expect(expenses.locator('.kpiothers')).toHaveText('Meses pasados: 12 en atención');
   await expenses.locator('.kpiseries').click();
   await expect(page.locator('.kpiseriesrow')).toHaveCount(13);
   await expect(page.locator('.kpiseriesrow .kpistate.warn')).toHaveCount(13);
