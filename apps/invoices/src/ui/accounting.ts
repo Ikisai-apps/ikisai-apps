@@ -10,8 +10,14 @@
  *   desfasada; el resto de las cifras, plegado en «Todo el detalle»;
  * - las entregas del año por trimestre: cada uno despliega todas sus entregas, con su descarga y su huella.
  * El lector no tiene «Preparar», «Marcar entregada» ni «Archivar» en el DOM.
+ * Tanda 30 (MUELA-081 y 042):
+ * - la barra fija lleva la acción que toca según el recorrido (Resolver · Preparar · Descargar · Archivar); «Preparar» y
+ *   «Descargar» siguen ahí para el editor;
+ * - cada entrega tiene una acción principal («Marcar entregada», «Archivar periodo» o «Descargar») y el resto (ZIP, CSV,
+ *   Manifest, la huella y la otra acción) en «Más»;
+ * - sin red, lo que la necesita (preparar y descargar) se apaga con su motivo junto al botón (`bindOnline`).
  */
-import { confirmDialog, closeSheet, el, icon, openSheet, renderList, renderStages, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
+import { bindOnline, confirmDialog, closeSheet, el, icon, openSheet, renderList, renderStages, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
 import { INCOME_CATEGORY_LABELS, fiscalSummary, issuedSummary, periodOfDate, type FiscalSummary } from '@ikisai/domain-invoices';
 import { categoryLabel as categoryName, describeError, type LocalExport } from '../app/client.ts';
 import { DEDUCTIBILITY_LABELS, TAX_TYPE_LABELS, workingQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, type Mirror, type RangeKind } from '../app/data.ts';
@@ -54,9 +60,15 @@ export const mountAccounting: ViewMount = (ctx) => {
   const changedHost = el('div', { id: 'deliveryChanges', 'data-feedback-id': 'invoices.gestoria.que_cambio', 'data-feedback-label': 'Qué cambió' });
   const summaryHost = el('div', { 'data-feedback-id': 'invoices.gestoria.resumen', 'data-feedback-label': 'Resumen del periodo', id: 'fiscalSummary' });
   const exportsHost = el('div', { 'data-feedback-id': 'invoices.gestoria.entregas', 'data-feedback-label': 'Entregas', id: 'exportsList' });
+  const offline: Array<() => void> = [];
+  const needsNetwork = <T extends HTMLElement | null>(button: T, reason: string): T => { if (button) offline.push(bindOnline(button, { client, reason })); return button; };
   const prepare = canEdit ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.preparar', 'data-feedback-label': 'Preparar entrega', class: 'primary', type: 'button', id: 'prepareExport', onclick: () => void prepareExport() }, icon('download', 18), 'Preparar entrega') : null;
   const downloadLatest = el('button', { 'data-feedback-id': 'invoices.gestoria.descargar', 'data-feedback-label': 'Descargar', class: 'softbtn', type: 'button', id: 'downloadLatest', hidden: true }, icon('download', 18), 'Descargar');
-  const actionBar = el('div', { class: 'btnrow inv-folder-actions' }, prepare, downloadLatest);
+  // La acción que toca cuando no es preparar ni descargar: resolver las pendientes o archivar el periodo
+  const nextAction = el('button', { 'data-feedback-id': 'invoices.gestoria.siguiente', 'data-feedback-label': 'Lo que toca', class: 'primary', type: 'button', id: 'deliveryNext', hidden: true });
+  needsNetwork(prepare, 'Preparar una entrega necesita conexión.');
+  needsNetwork(downloadLatest, 'Descargar necesita conexión.');
+  const actionBar = el('div', { class: 'btnrow inv-folder-actions', id: 'deliveryBar', role: 'group', 'aria-label': 'Lo que toca con la entrega' }, nextAction, prepare, downloadLatest);
 
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Gestoría'), el('p', null, 'Resumen documental del periodo y entregas con originales, CSV y manifest con hashes. El ZIP no cierra registros.'))),
@@ -162,10 +174,15 @@ export const mountAccounting: ViewMount = (ctx) => {
     // --- Qué cambió (desfasada) ---------------------------------------------------------------------------------------
     replace(changedHost, ...(latest && stale ? [el('div', { class: 'sectionlabel' }, 'Qué cambió desde la entrega'), el('ul', { class: 'plain', 'data-feedback-ignore': '' }, ...staleReasons(latest, m).map((r) => el('li', null, r)))] : []));
 
-    // --- Barra: preparar siempre (editor); descargar la última ----------------------------------------------------------
-    if (prepare) prepare.className = state.stage === 'preparar' || state.stage === 'validar' ? 'primary' : 'softbtn';
+    // --- Barra fija: la acción que toca, una sola en primario; preparar (editor) y descargar la última, siempre ----------
+    const next = nextStep(state.stage, latest, s.alerts.pending_invoices.length);
+    if (prepare) prepare.className = next === 'preparar' ? 'primary' : 'softbtn';
     downloadLatest.hidden = !latest;
+    downloadLatest.className = next === 'descargar' ? 'primary' : 'softbtn';
     downloadLatest.onclick = latest ? () => openDownloads(latest) : null;
+    nextAction.hidden = next !== 'resolver' && next !== 'archivar';
+    replace(nextAction, ...(next === 'resolver' ? [icon('check', 18), 'Resolver las pendientes'] : next === 'archivar' ? [icon('briefcase', 18), 'Archivar periodo'] : []));
+    nextAction.onclick = next === 'resolver' ? () => navigate('#/facturas?filtro=por_resolver') : next === 'archivar' && latest ? () => void archivePeriod(latest) : null;
 
     // --- Todo el detalle --------------------------------------------------------------------------------------------
     replace(summaryHost,
@@ -184,8 +201,28 @@ export const mountAccounting: ViewMount = (ctx) => {
     paintTimeline(m);
   }
 
+  /**
+   * Lo que toca con el periodo, para la barra: resolver si hay pendientes y nada validado que entregar; preparar (editor);
+   * descargar la preparada para enviarla; archivar la entregada (solo el dueño).
+   */
+  function nextStep(stage: DeliveryStage, latest: LocalExport | null, pending: number): 'resolver' | 'preparar' | 'descargar' | 'archivar' | null {
+    if (stage === 'validar') return pending && canEdit ? 'resolver' : null;
+    if (stage === 'preparar') return canEdit ? 'preparar' : latest ? 'descargar' : null;
+    if (stage === 'enviar') return 'descargar';
+    if (stage === 'entregada') return isOwner ? 'archivar' : null;
+    return null;
+  }
+
+  /** La acción principal de una entrega: la que toca según su estado; el resto, en «Más». */
+  function mainOf(e: LocalExport, m: Mirror): 'entregar' | 'archivar' | 'descargar' {
+    if (canEdit && e.status !== 'entregada') return 'entregar';
+    if (isOwner && e.status === 'entregada' && !archivedExport(e, m)) return 'archivar';
+    return 'descargar';
+  }
+
   function exportRow(e: LocalExport, m: Mirror): ListRowSpec {
     const stale = isStale(e, m);
+    const primary = mainOf(e, m);
     return {
       id: e.id,
       title: `${e.code} · ${e.folder_name}`,
@@ -193,11 +230,11 @@ export const mountAccounting: ViewMount = (ctx) => {
       chips: [el('span', { class: e.status === 'entregada' ? 'chip ok' : 'chip' }, e.status === 'entregada' ? 'Entregada' : 'Generada'), stale ? el('span', { class: 'chip alert' }, 'Desfasada') : null, archivedExport(e, m) ? el('span', { class: 'chip' }, 'Archivada') : null],
       pending: e._pending === true,
       actions: [
-        el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.zip', 'data-feedback-label': 'ZIP', class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/download`, `${e.folder_name}.zip`) }, icon('download', 16), 'ZIP'),
-        el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.manifest', 'data-feedback-label': 'Manifest', class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/manifest.json`, `${e.folder_name}_manifest.json`) }, 'Manifest'),
-        el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.csv', 'data-feedback-label': 'CSV', class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/facturas_recibidas.csv`, `${e.folder_name}_facturas_recibidas.csv`) }, 'CSV'),
-        canEdit && e.status !== 'entregada' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.marcar_entregada', 'data-feedback-label': 'Marcar entregada', class: 'linkbtn', type: 'button', onclick: () => void markDelivered(e) }, 'Marcar entregada') : null,
-        isOwner && e.status === 'entregada' && !archivedExport(e, m) ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.archivar', 'data-feedback-label': 'Archivar periodo', class: 'linkbtn', type: 'button', onclick: () => void archivePeriod(e) }, 'Archivar periodo') : null,
+        primary === 'entregar' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.marcar_entregada', 'data-feedback-label': 'Marcar entregada', class: 'softbtn small', type: 'button', onclick: () => void markDelivered(e) }, icon('check', 16), 'Marcar entregada')
+          : primary === 'archivar' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.archivar', 'data-feedback-label': 'Archivar periodo', class: 'softbtn small', type: 'button', onclick: () => void archivePeriod(e) }, icon('briefcase', 16), 'Archivar periodo')
+            : el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.descargar', 'data-feedback-label': 'Descargar', class: 'softbtn small', type: 'button', onclick: () => openDownloads(e) }, icon('download', 16), 'Descargar'),
+        // ZIP, CSV, Manifest y la huella (y, para el dueño, archivar si no es la principal), en «Más»
+        primary !== 'descargar' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.mas', 'data-feedback-label': 'Más', class: 'linkbtn', type: 'button', 'aria-label': `Más de ${e.code}`, onclick: () => openDownloads(e) }, 'Más') : null,
       ],
     };
   }
@@ -238,16 +275,33 @@ export const mountAccounting: ViewMount = (ctx) => {
     await archivePeriod(latest);
   }
 
-  /** «Descargar»: una hoja con el ZIP, el CSV y el manifest, y la huella. */
+  /** «Descargar» y «Más»: una hoja con el ZIP, el CSV y el manifest, la huella y las otras acciones de la entrega. */
   function openDownloads(e: LocalExport): void {
-    const button = (label: string, path: string, file: string) => el('button', { class: 'softbtn', type: 'button', onclick: () => void download(path, file) }, icon('download', 18), label);
+    const m = mirror;
+    const sheetOffline: Array<() => void> = [];
+    const button = (mark: [string, string], label: string, path: string, file: string) => {
+      const b = el('button', { 'data-feedback-id': mark[0], 'data-feedback-label': mark[1], class: 'softbtn', type: 'button', onclick: () => void download(path, file) }, icon('download', 18), label);
+      sheetOffline.push(bindOnline(b, { client, reason: 'Descargar necesita conexión.' }));
+      return b;
+    };
+    const primary = m ? mainOf(e, m) : 'descargar';
+    // Lo que no es la acción principal de la fila: marcar entregada (editor) y archivar (solo el dueño, con su diálogo)
+    const others = [
+      canEdit && e.status !== 'entregada' && primary !== 'entregar' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.mas.marcar_entregada', 'data-feedback-label': 'Marcar entregada', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); void markDelivered(e); } }, 'Marcar entregada') : null,
+      m && isOwner && e.status === 'entregada' && !archivedExport(e, m) && primary !== 'archivar' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.mas.archivar', 'data-feedback-label': 'Archivar periodo', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); void archivePeriod(e); } }, 'Archivar periodo') : null,
+    ].filter(Boolean);
     openSheet({
       title: `Descargar ${e.folder_name}`,
       meta: `${e.code} · ${e.invoice_count} factura${e.invoice_count === 1 ? '' : 's'} · ${e.status === 'entregada' ? 'entregada' : 'generada'} el ${shortDate(e.created_at)}`,
       body: el('div', { id: 'downloadSheet' },
-        el('p', { class: 'btnrow' }, button('ZIP con todo', `/exports/${e.id}/download`, `${e.folder_name}.zip`), button('CSV de recibidas', `/exports/${e.id}/facturas_recibidas.csv`, `${e.folder_name}_facturas_recibidas.csv`), button('Manifest', `/exports/${e.id}/manifest.json`, `${e.folder_name}_manifest.json`)),
-        el('p', { class: 'hint', 'data-feedback-ignore': '' }, `Huella del manifest: ${e.manifest_sha256}`)),
+        el('p', { class: 'btnrow' },
+          button(['invoices.gestoria.entregas.zip', 'ZIP'], 'ZIP con todo', `/exports/${e.id}/download`, `${e.folder_name}.zip`),
+          button(['invoices.gestoria.entregas.csv', 'CSV'], 'CSV de recibidas', `/exports/${e.id}/facturas_recibidas.csv`, `${e.folder_name}_facturas_recibidas.csv`),
+          button(['invoices.gestoria.entregas.manifest', 'Manifest'], 'Manifest', `/exports/${e.id}/manifest.json`, `${e.folder_name}_manifest.json`)),
+        el('p', { class: 'hint', 'data-feedback-ignore': '' }, `Huella del manifest: ${e.manifest_sha256}`),
+        others.length ? el('p', { class: 'btnrow' }, ...others) : null),
       foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')],
+      onClose: () => { for (const off of sheetOffline) off(); },
     });
   }
 
@@ -317,5 +371,5 @@ export const mountAccounting: ViewMount = (ctx) => {
   async function load(): Promise<void> { [mirror, issued] = await Promise.all([loadMirror(client), loadIssued(client)]); paint(); }
   const off = onAnyTable(client, () => void load());
   void load();
-  return () => off();
+  return () => { off(); for (const o of offline) o(); };
 };

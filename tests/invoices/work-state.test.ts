@@ -110,3 +110,21 @@ test('cola de Inicio: primero las listas para confirmar, las más antiguas antes
   const e = row(inv());
   assert.deepEqual(homeQueue([a, b, c, d, e]).map((r) => r.invoice.id), [d, c, b, a].map((r) => r.invoice.id));
 });
+
+test('Inicio (tanda 30): la acción cambia según el caso y «He leído esto» marca cada cosa con ✓ o !', async () => {
+  const { homeAction, readChecks } = await import('../../apps/invoices/src/app/work-state.ts');
+  const money = (v: number) => `${v.toFixed(2).replace('.', ',')} €`;
+  const row = (invoice: Record<string, unknown>, facts: Record<string, unknown>, state: Record<string, unknown> = { ready: false }) =>
+    ({ invoice: { id: 'x', supplier_id: 's', status: 'pendiente_revision', review_reason: null, payment_status: 'pendiente', paid_at: null, due_date: null, invoice_date: '2026-10-01', calculated_total: 121, ...invoice },
+      facts: { hasOriginal: true, missing: [], missingKeys: [], inExport: false, late: null, ...facts }, state }) as never;
+  assert.deepEqual(homeAction(row({}, {}, { ready: true })), { kind: 'confirm', label: 'Confirmar y siguiente', focus: null });
+  assert.equal(homeAction(row({ status: 'pendiente_datos' }, {})).label, 'Leer el documento');
+  assert.deepEqual(homeAction(row({ status: 'pendiente_datos' }, { hasOriginal: false })), { kind: 'open', label: 'Subir el documento', focus: 'original_file' });
+  assert.deepEqual(homeAction(row({ review_reason: 'REVISAR IMPORTES' }, {})), { kind: 'open', label: 'Revisar los importes', focus: 'totals' });
+  assert.deepEqual(homeAction(row({}, { missingKeys: ['expense_category'] })), { kind: 'open', label: 'Elegir la categoría', focus: 'expense_category' });
+  const checks = readChecks(row({ review_reason: 'REVISAR IMPORTES' }, { missingKeys: ['expense_category'] }), true, money);
+  assert.deepEqual(checks.map((c) => [c.key, c.ok, c.text]), [['proveedor', true, 'identificado'], ['fecha', true, '1 oct'], ['importes', false, 'no cuadran'], ['categoria', false, 'falta'], ['documento', true, 'original']]);
+  assert.deepEqual(readChecks(row({}, {}), false, money).filter((c) => !c.ok).map((c) => c.key), ['proveedor']);
+  // Sin leer (llega) no hay «He leído esto»
+  assert.deepEqual(readChecks(row({ status: 'pendiente_datos' }, {}), true, money), []);
+});

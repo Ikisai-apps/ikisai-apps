@@ -6,10 +6,13 @@ import { fb } from './feedback.ts';
 import { commitSafely } from './common.ts';
 import { fiscalSummary, purchaseItems } from '@ikisai/domain-invoices';
 import { workingQuarter, eur, loadMirror, onAnyTable, rangeLabel, shortDate, supplierName, todayIso, type Mirror } from '../app/data.ts';
-import { homeQueue, daysBetween } from '../app/work-state.ts';
+import { homeAction, homeQueue, readChecks } from '../app/work-state.ts';
+import { openFile } from '../app/files.ts';
+import { OLD_DAYS, receivable, type IssuedWork } from '../app/issued-state.ts';
 import { mirrorRows, type MirrorRow } from '../app/work-mirror.ts';
 import { validateNow } from '../app/validate.ts';
 import { quietOwnMerges } from './undo.ts';
+import { chipsWithMore } from './chips.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -42,8 +45,6 @@ window.addEventListener('beforeinstallprompt', (event) => {
 });
 
 const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
-/** Una emitida pasa de 30 días sin cobrar (desde el envío o, si no se envió, desde la emisión). */
-const OLD_DAYS = 30;
 
 /**
  * Inicio (API.md §9.1; tanda 27, MUELA-032 y 070):
@@ -172,8 +173,39 @@ export const mountHome: ViewMount = (ctx) => {
       value: eur(row.invoice.calculated_total),
       // El pago ya va en la etiqueta («Pagada (sin confirmar)», «Vencida…») si pide algo
       facts: [row.invoice.object, row.invoice.invoice_date ? shortDate(row.invoice.invoice_date) : 'Sin fecha', row.invoice.code ?? 'código pendiente', row.state.pay.kind === 'unconfirmed' || row.state.pay.kind === 'overdue' ? '' : row.state.pay.text].filter(Boolean),
-      body: row.labels.length ? el('div', { class: 'chips' }, ...row.labels.slice(0, 3).map((l) => el('span', { class: `chip${l.kind ? ` ${l.kind}` : ''}` }, l.text))) : undefined,
+      body: readBody(row, m),
     };
+  }
+
+  /**
+   * «He leído esto» (tanda 30, MUELA-080): la miniatura del documento (se toca para verlo) y lo leído, cada cosa con ✓ o
+   * !. Sin leer todavía, lo dice. Las etiquetas siguen debajo (como mucho dos y «+n»).
+   */
+  function readBody(row: MirrorRow, m: Mirror): HTMLElement {
+    const supplier = m.supplierById.get(row.invoice.supplier_id);
+    const checks = readChecks(row, !!supplier && supplier.slug !== 'sin_identificar', eur);
+    const original = (m.filesByInvoice.get(row.invoice.id) ?? []).filter((f) => f.kind === 'original' && !f.deleted_at).sort((a, b) => a.page_order - b.page_order)[0] ?? null;
+    return el('div', { class: 'inv-read' },
+      original ? thumbnail(original) : el('div', { class: 'inv-thumb inv-thumb-none', 'aria-hidden': 'true' }, icon('invoice', 22)),
+      el('div', { class: 'inv-read-text' },
+        checks.length
+          ? el('div', null, el('p', { class: 'inv-read-title' }, 'He leído esto'),
+            el('ul', { class: 'inv-checks', 'data-feedback-ignore': '' }, ...checks.map((c) => el('li', { class: c.ok ? 'ok' : 'bad', dataset: { check: c.key } },
+              el('span', { class: 'inv-check-mark', 'aria-hidden': 'true' }, c.ok ? '✓' : '!'), el('span', null, `${c.label}: ${c.text}`), el('span', { class: 'vh' }, c.ok ? ' (bien)' : ' (revísalo)')))))
+          : el('p', { class: 'hint' }, row.invoice.status === 'pendiente_datos' ? (original ? 'Sin leer todavía: léela o rellénala.' : 'Sin leer y sin documento.') : ''),
+        row.labels.length ? el('div', { class: 'chips' }, ...chipsWithMore(row.labels)) : null));
+  }
+
+  /** La miniatura: la imagen (con red) o el icono del PDF; al tocarla, se abre el documento. */
+  function thumbnail(file: { file_id: string; mime_type: string | null; normalized_filename?: string | null }): HTMLElement {
+    const isImage = (file.mime_type ?? '').startsWith('image/');
+    const button = el('button', { 'data-feedback-id': 'invoices.inicio.cola.documento', 'data-feedback-label': 'Ver el documento', class: 'inv-thumb', type: 'button', 'aria-label': 'Ver el documento',
+      onclick: () => void openFile(client, file.file_id).catch((e) => toast(describeError(e))) },
+    isImage ? null : el('span', { class: 'inv-thumb-pdf' }, icon('invoice', 22), 'PDF'));
+    if (isImage && navigator.onLine) {
+      void client.fileUrl(file.file_id).then((url) => { button.append(el('img', { src: url, alt: '', loading: 'lazy' })); }).catch(() => button.append(el('span', { class: 'inv-thumb-pdf' }, icon('invoice', 22))));
+    } else if (isImage) button.append(el('span', { class: 'inv-thumb-pdf' }, icon('invoice', 22)));
+    return button;
   }
 
   function paintWork(m: Mirror, rows: MirrorRow[]): void {
@@ -200,9 +232,11 @@ export const mountHome: ViewMount = (ctx) => {
       primary: canEdit ? (item) => {
         const row = byIdNow(item.id);
         if (!row) return null;
-        return row.state.ready
-          ? { label: 'Confirmar y siguiente', onClick: () => void confirmNext(row) }
-          : { label: 'Completar en la ficha', onClick: () => navigate(`#/facturas/${item.id}`) };
+        // La acción cambia según el caso: confirmar, leer, subir el documento, revisar importes, la categoría…
+        const action = homeAction(row);
+        return action.kind === 'confirm'
+          ? { label: action.label, onClick: () => void confirmNext(row) }
+          : { label: action.label, onClick: () => navigate(`#/facturas/${item.id}${action.focus ? `?ir=${action.focus}` : ''}`) };
       } : undefined,
       onOpen: (item) => navigate(`#/facturas/${item.id}`),
       onAll: () => navigate('#/facturas?filtro=por_resolver'),
@@ -233,18 +267,14 @@ export const mountHome: ViewMount = (ctx) => {
     const unconfirmed = live.filter((r) => r.state.pay.kind === 'unconfirmed').length;
     const items = purchaseItems({ invoices: m.invoices, lines: m.lines, suppliers: m.suppliers, allocations: m.allocations }, { unassignedOnly: true });
     const q = fiscalSummary({ invoices: m.invoices, taxLines: m.taxes }, workingQuarter());
-    // Por cobrar: emitidas registradas sin cobrar (sin borradores ni anuladas; las rectificativas restan), como Booking
-    const issued = (await client.list(ISSUED_INVOICES)).filter((i) => !i.deleted_at && i.status !== 'borrador' && i.status !== 'anulada' && i.payment_status !== 'cobrada') as Array<Record<string, any>>;
-    const receivable = issued.reduce((sum, i) => sum + cents(i.total), 0) / 100;
-    const toCollect = issued.filter((i) => cents(i.total) > 0);
-    const old = toCollect.filter((i) => daysBetween(String(i.sent_at ?? i.issue_date), today) > OLD_DAYS).length;
-    const unsent = toCollect.filter((i) => !i.sent_at).length;
+    // Por cobrar: la misma función que el buzón de Emitidas y la cifra de Booking (las rectificativas restan)
+    const { count: toCollect, amount: owed, old, unsent } = receivable(await client.list(ISSUED_INVOICES) as unknown as IssuedWork[], today);
     const sum = (list: MirrorRow[]) => eur(list.reduce((s, r) => s + cents(r.invoice.calculated_total), 0) / 100);
     replace(stagesHost, el('h3', { class: 'sectionlabel' }, 'Recorrido'), renderStats([
       { value: arrived.length, label: 'Llegan', hint: arrived.length ? 'sin datos: léelas' : 'ninguna sin leer', tone: arrived.length ? 'warn' : null, onClick: () => navigate('#/facturas?filtro=pendiente_datos'), feedbackId: 'invoices.inicio.pendientes_datos' },
       { value: review.length, label: 'Por resolver', hint: revisar ? `${revisar} con importes por revisar` : review.length ? sum(review) : 'nada por revisar', tone: revisar ? 'alert' : review.length ? 'warn' : null, onClick: () => navigate('#/facturas?filtro=pendiente_revision'), feedbackId: 'invoices.inicio.pendientes_revision' },
       { value: due.length, label: 'Por pagar', hint: [overdue ? `${overdue} vencida${overdue === 1 ? '' : 's'}` : null, unconfirmed ? `${unconfirmed} pago${unconfirmed === 1 ? '' : 's'} por confirmar` : null].filter(Boolean).join(' · ') || sum(due), tone: overdue ? 'alert' : unconfirmed ? 'warn' : null, onClick: () => navigate('#/facturas?filtro=sin_pagar'), feedbackId: 'invoices.inicio.sin_pagar' },
-      { value: toCollect.length, label: 'Por cobrar', hint: [receivable > 0 ? eur(receivable) : null, old ? `${old} de más de ${OLD_DAYS} días` : null, unsent ? `${unsent} sin enviar` : null].filter(Boolean).join(' · ') || 'nada por cobrar', tone: old ? 'alert' : unsent ? 'warn' : null, onClick: () => navigate('#/facturas?vista=emitidas'), feedbackId: 'invoices.inicio.por_cobrar' },
+      { value: toCollect, label: 'Por cobrar', hint: [owed > 0 ? eur(owed) : null, old ? `${old} de más de ${OLD_DAYS} días` : null, unsent ? `${unsent} sin enviar` : null].filter(Boolean).join(' · ') || 'nada por cobrar', tone: old ? 'alert' : unsent ? 'warn' : null, onClick: () => navigate('#/facturas?vista=emitidas'), feedbackId: 'invoices.inicio.por_cobrar' },
       { value: items.items.length, label: 'Por repartir', hint: items.items.length ? eur(items.total_unallocated) : 'todo asignado', tone: items.items.length ? 'warn' : null, onClick: () => navigate('#/compras'), feedbackId: 'invoices.inicio.sin_asignar' },
       { value: q.invoices.validada + q.invoices.archivada, label: 'Gestoría', hint: `${rangeLabel(workingQuarter())}: validadas`, onClick: () => navigate('#/gestoria'), feedbackId: 'invoices.inicio.trimestre' },
     ], { label: 'Recorrido de tus facturas' }));

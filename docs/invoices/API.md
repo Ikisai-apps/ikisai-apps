@@ -1790,3 +1790,25 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
   - **El «Validar» aparcado,** aparte, con «Validar igualmente» y «Revisarla primero».
   - **Rechazados:** con «Corregir en Facturas» (`[data-choice="fix"]`) y «Reintentar» discreto.
   - **Al acabar,** vuelve atrás.
+
+#### 16.21.4 Tanda 30: defectos medidos por La Muela (MUELA-080 y 081)
+- **El lector** no tiene en el DOM los botones de escribir, ni ocultos:
+  - `#newInvoice`, `#extractPending`, `#newIssuedInvoice`, `#newIssued`, `#importIssuedCsv` y «Series» (`#issuingSettings`);
+  - el vacío no le dice «Crea una…».
+- **«Por cobrar», una sola función** (`receivable` en `app/issued-state.ts`) para Inicio, el buzón de Emitidas y la cifra de Booking:
+  - lo emitido sin cobrar, con las rectificativas restando (facturado menos cobrado de `reservation_collected`);
+  - una prueba comprueba que da lo mismo que la regla del dominio.
+- **«Enviada» solo con `sent_at`:** una cobrada sin fecha de envío lleva «!» en «Enviada» y lo dice.
+- **Etiquetas:** como mucho dos por fila y «+n», también en Emitidas (`ui/chips.ts`).
+- **Gestoría:**
+  - una acción principal por entrega («Marcar entregada», «Archivar periodo» del dueño o «Descargar»);
+  - ZIP, CSV, Manifest y la huella, en «Más»;
+  - la barra fija (`#deliveryBar`) lleva la acción que toca (`#deliveryNext`, `#prepareExport` o `#downloadLatest` en primario);
+  - sin red, preparar y descargar se apagan con su motivo (`bindOnline`). En Emitidas, «Asignar a reserva o evento».
+- **Ficha de emitida:** «Marcar cobrada» abre la hoja (fecha y medio), sin diálogo; al guardar vuelve a la ficha con «Deshacer».
+- **Inicio:**
+  - la acción principal cambia según el caso (`homeAction`): confirmar, leer, subir el documento, revisar los importes, la categoría…;
+  - abre la ficha en ello (`#/facturas/<id>?ir=<clave>`);
+  - «He leído esto» (`readChecks`) con ✓/! por proveedor, fecha, importes, categoría y documento, y la miniatura del original.
+- **Facturas:** «Marcar pagada» en la fila de las pendientes de pago, en su hoja (`ui/pay-sheet.ts`), con «Deshacer».
+- **«Artículo»:** la línea enlazada lleva el medallón de su artículo; el bloque, el borde de lo peor (sin artículo, o sin entrar al inventario).

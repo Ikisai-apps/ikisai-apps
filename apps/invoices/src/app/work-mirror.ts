@@ -31,9 +31,11 @@ export function mirrorRows(mirror: Mirror, today: string, invoices: LocalInvoice
   const exported = exportedIds(mirror);
   return invoices.map((invoice) => {
     const pending = invoice.status === 'pendiente_datos' || invoice.status === 'pendiente_revision';
+    const missing = pending ? missingOf(mirror, invoice) : [];
     const facts: WorkFacts = {
       hasOriginal: hasOriginal(mirror, invoice.id),
-      missing: pending ? missingOf(mirror, invoice).map((m) => MISSING_LABELS[m]) : [],
+      missing: missing.map((m) => MISSING_LABELS[m]),
+      missingKeys: missing,
       inExport: exported.has(invoice.id),
       late: lateQuarter(invoice),
     };

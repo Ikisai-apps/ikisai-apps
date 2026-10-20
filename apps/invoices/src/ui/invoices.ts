@@ -3,7 +3,7 @@
  * alta con documento, importación del JSON `ikisai.invoice.v1`, validar, anular, archivar.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
@@ -93,7 +93,7 @@ export function refreshOpenInvoice(ctx: ViewContext, id: string, mirror: Mirror)
 // ---------------------------------------------------------------------------
 // Ficha
 // ---------------------------------------------------------------------------
-export async function openInvoice(ctx: ViewContext, id: string): Promise<void> {
+export async function openInvoice(ctx: ViewContext, id: string, focus: string | null = null): Promise<void> {
   const mirror = await loadMirror(ctx.client);
   const invoice = mirror.invoices.find((i) => i.id === id);
   if (!invoice) { toast('La factura no está en este dispositivo.'); return; }
@@ -108,6 +108,26 @@ export async function openInvoice(ctx: ViewContext, id: string): Promise<void> {
     onClose: () => { guard.dirtyEditor = false; if (openInvoiceId === id) { setOpen(null); openSheetRef = null; } },
   });
   setOpen(id);
+  if (focus) goToFocus(body, focus);
+}
+
+/**
+ * Inicio abre la ficha en lo que toca (tanda 30): lo que falta (su enlace «Ir a lo que falta»), los importes o leer el
+ * documento. Si no está a la vista, la ficha se queda abierta sin más.
+ */
+function goToFocus(body: HTMLElement, focus: string): void {
+  const target = focus === 'leer'
+    ? body.querySelector<HTMLElement>('[data-feedback-id="invoices.facturas.ficha.extraer"], [data-feedback-id="invoices.facturas.ficha.leer_ia"], #chatgptInvoice')
+    : focus === 'totals' && !body.querySelector(`[data-missing="totals"]`)
+      ? body.querySelector<HTMLElement>('#invSourceTotal, #manualTotal')
+      : body.querySelector<HTMLElement>(`[data-missing="${focus}"]`);
+  if (!target) return;
+  requestAnimationFrame(() => {
+    if (target.matches('[data-missing]')) { target.click(); return; }
+    target.closest('details')?.setAttribute('open', '');
+    target.scrollIntoView({ block: 'center' });
+    target.focus({ preventScroll: true });
+  });
 }
 
 /**
@@ -315,8 +335,10 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
   const canLink = canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada';
   const openArticle = (l: LocalInvoiceLine) => openArticleSheet(ctx, invoice, l, mirror);
-  const lineRow = (l: LocalInvoiceLine) => el('div', { class: `line-row${linksEnabled() && !l.item_id ? ' inv-line-free' : ''}`, 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
-    el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' }, lineName(l)),
+  // Tanda 30 (MUELA-080): la línea enlazada lleva el medallón de su artículo, y el bloque, el borde de lo peor
+  const lineRow = (l: LocalInvoiceLine) => el('div', { class: `line-row${linksEnabled() && !l.item_id ? ' inv-line-free' : ''}`, 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id, tone: linksEnabled() ? lineTone(l) ?? 'none' : 'none' } },
+    el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' },
+      linksEnabled() && l.item_id ? renderMedal({ size: 28, name: linkedItem(l.item_id)?.name ?? lineName(l) }) : null, lineName(l)),
       (linksEnabled() && l.item_id ? l.item_source : l.label_source) === 'recordado' ? el('span', { class: 'chip', title: 'Puesto solo: lo recordaba de otra factura de este proveedor' }, 'recordado') : null,
       l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null,
       // La descripción de la factura (la que vale fiscalmente) sigue a la vista bajo «Mi nombre».
@@ -355,6 +377,8 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     linesView,
     editable ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.anadir', 'data-feedback-label': 'Añadir artículo', class: 'softbtn', type: 'button', id: 'addLine', onclick: () => replace(lineEditor, lineForm(null)) }, icon('plus', 18), 'Añadir artículo')) : null,
   );
+  const worstLine = linksEnabled() ? lines.filter((l) => !l.deleted_at).some((l) => lineTone(l)) ? 'warn' : null : null;
+  if (worstLine) linesBlock.dataset.tone = worstLine;
   const lineEditor = el('div', { class: 'inv-editor' });
   linesBlock.appendChild(lineEditor);
 
@@ -642,6 +666,17 @@ function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalIn
 
 /** «Mi nombre» de una línea, en una sola casilla (también en facturas validadas: no las devuelve a revisión). */
 /** R4: cómo entra una línea enlazada al inventario: «2 saco = 50 kg → Despensa», «Ya entró desde la compra de Food». */
+/**
+ * Lo que pide una línea con el enlace encendido (tanda 30): sin artículo, o enlazada sin entrar al inventario (sin cantidad
+ * o sin espacio), es «warn»; con algo devuelto que no cuadra no se marca aquí (lo dice su etiqueta).
+ */
+function lineTone(l: LocalInvoiceLine): 'warn' | null {
+  if (l.deleted_at) return null;
+  if (!l.item_id) return 'warn';
+  if (l.entered_movement_id) return null;
+  return l.quantity === null || !spaceName(l.space_id ?? linkedItem(l.item_id)?.defaultSpaceId ?? null) ? 'warn' : null;
+}
+
 /** «3 artículos · 2 entran al inventario · 1 sin artículo» (tanda 27). */
 function articlesSummary(lines: LocalInvoiceLine[]): string {
   const live = lines.filter((l) => !l.deleted_at);

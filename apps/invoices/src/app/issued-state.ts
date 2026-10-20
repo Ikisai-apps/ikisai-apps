@@ -8,6 +8,9 @@
  * - Buzones: Por cobrar · Cobradas · Borradores · Todas (sin anuladas) · Más (Anuladas, Revisar importes).
  * - Lo que debe cada cliente, con la regla de `reservationCollected` (0222): sin borradores ni anuladas, las rectificativas
  *   restan.
+ * - Tanda 30 (MUELA-081): «Por cobrar» sale de una sola función, `receivable`, para Inicio, el buzón de Emitidas y la cifra
+ *   de Booking (`reservation_collected`: facturado menos cobrado). Una rectificativa sin cobrar está en el buzón y resta.
+ *   «Enviada» solo con `sent_at`: una cobrada sin fecha de envío no se da por enviada.
  */
 import { daysBetween, dayMonth, worse, type Tone } from './work-state.ts';
 
@@ -46,13 +49,13 @@ export function issuedState(invoice: IssuedWork, inExport: boolean, today: strin
   if (invoice.status === 'borrador') return { stage: null, bad: [], caption: 'Borrador sin número: se numera al emitir.', tone: 'warn', old: false, unsent: false, owed: 0 };
   if (invoice.status === 'anulada') return { stage: null, bad: [], caption: 'Anulada: fuera de los resúmenes.', tone: null, old: false, unsent: false, owed: 0 };
   const total = num(invoice.total);
+  const sent = invoice.sent_at ?? null;
   if (invoice.payment_status === 'cobrada') {
-    const parts = [invoice.paid_at ? `cobrada el ${dayMonth(invoice.paid_at)}` : 'cobrada', invoice.payment_method ? methodLabel(invoice.payment_method) : null].filter(Boolean);
-    return { stage: inExport ? 'gestoria' : 'cobrada', bad: [], caption: `${inExport ? 'En gestoría · ' : ''}${cap(parts.join(' · '))}`, tone: 'ok', old: false, unsent: false, owed: 0 };
+    const parts = [invoice.paid_at ? `cobrada el ${dayMonth(invoice.paid_at)}` : 'cobrada', invoice.payment_method ? methodLabel(invoice.payment_method) : null, sent ? null : 'sin fecha de envío'].filter(Boolean);
+    return { stage: inExport ? 'gestoria' : 'cobrada', bad: sent ? [] : ['enviada'], caption: `${inExport ? 'En gestoría · ' : ''}${cap(parts.join(' · '))}`, tone: 'ok', old: false, unsent: !sent, owed: 0 };
   }
   // Una rectificativa que resta no se cobra: se descuenta de lo que debe el cliente
-  if (total <= 0) return { stage: inExport ? 'gestoria' : 'cobrada', bad: [], caption: `Rectificativa: resta de lo que te deben${inExport ? ' · en gestoría' : ''}`, tone: 'ok', old: false, unsent: false, owed: total };
-  const sent = invoice.sent_at ?? null;
+  if (total <= 0) return { stage: inExport ? 'gestoria' : 'cobrada', bad: sent ? [] : ['enviada'], caption: `Rectificativa: resta de lo que te deben${sent ? '' : ' · sin enviar'}${inExport ? ' · en gestoría' : ''}`, tone: 'ok', old: false, unsent: !sent, owed: total };
   const age = daysBetween(sent ?? invoice.issue_date, today);
   const old = age > OLD_DAYS;
   const bad: IssuedStage[] = [];
@@ -77,7 +80,7 @@ export type IssuedBox = (typeof ISSUED_BOXES)[number]['key'] | (typeof MORE_ISSU
 
 export function inIssuedBox(box: IssuedBox, i: IssuedWork): boolean {
   switch (box) {
-    case 'por_cobrar': return live(i) && i.payment_status !== 'cobrada' && num(i.total) > 0;
+    case 'por_cobrar': return owing(i);
     case 'cobradas': return live(i) && i.payment_status === 'cobrada';
     case 'borradores': return i.status === 'borrador';
     case 'todas': return i.status !== 'anulada';
@@ -85,6 +88,29 @@ export function inIssuedBox(box: IssuedBox, i: IssuedWork): boolean {
     case 'revisar': return live(i) && i.review_reason === 'REVISAR IMPORTES';
   }
 }
+/** Lo que cuenta en «Por cobrar»: emitida (ni borrador ni anulada), sin cobrar. Una rectificativa sin cobrar, también: resta. */
+export function owing(i: IssuedWork & { deleted_at?: string | null }): boolean {
+  return !i.deleted_at && live(i) && i.payment_status !== 'cobrada';
+}
+
+export interface Receivable { count: number; amount: number; old: number; unsent: number }
+
+/**
+ * «Por cobrar», la misma cifra en Inicio, en Emitidas y en Booking: lo emitido sin cobrar, con las rectificativas restando
+ * (facturado menos cobrado de `reservation_collected`). `count` cuenta las que hay que cobrar (las de importe positivo);
+ * `old` y `unsent`, de esas.
+ */
+export function receivable(invoices: ReadonlyArray<IssuedWork & { deleted_at?: string | null }>, today: string): Receivable {
+  const list = invoices.filter(owing);
+  const toCollect = list.filter((i) => num(i.total) > 0);
+  return {
+    count: toCollect.length,
+    amount: list.reduce((s, i) => s + Math.round(num(i.total) * 100), 0) / 100,
+    old: toCollect.filter((i) => daysBetween(i.sent_at ?? i.issue_date, today) > OLD_DAYS).length,
+    unsent: toCollect.filter((i) => !i.sent_at).length,
+  };
+}
+
 /** El filtro de antes (`#issuedFilter`) y su buzón. */
 export function issuedBoxFromFilter(filter: string): IssuedBox | null {
   return ({ activas: 'todas', borradores: 'borradores', anulada: 'anulada', pendientes: 'por_cobrar', revisar: 'revisar', por_cobrar: 'por_cobrar', cobradas: 'cobradas', todas: 'todas' } as Record<string, IssuedBox>)[filter] ?? null;

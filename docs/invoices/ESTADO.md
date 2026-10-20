@@ -143,8 +143,9 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - **Tanda 27 · rediseño de una pasada** (aprobado por VG el 19-10-2026, `coordinacion/ampliacion/revision-muela/`):
   - hecho: datos y servidor (0240, API.md §16.21): fecha de envío y medio del cobro de las emitidas, «Por cobrar» con la lectura de Booking (y su regla local sin red), `item_labels` en el dispositivo y el último día de los eventos para asignar de un toque;
   - interfaz, parte 1 (Facturas, ficha e Inicio; API.md §16.21.1): hecho (#621);
-  - interfaz, parte 2 (Emitidas y Gestoría; API.md §16.21.2): en PR;
-  - interfaz, parte 3 (Compras, Proveedores y Conflictos; API.md §16.21.3): en PR.
+  - interfaz, parte 2 (Emitidas y Gestoría; API.md §16.21.2): hecho (#624);
+  - interfaz, parte 3 (Compras, Proveedores y Conflictos; API.md §16.21.3): hecho (#625);
+  - tanda 30, defectos medidos por La Muela (API.md §16.21.4): en PR.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente

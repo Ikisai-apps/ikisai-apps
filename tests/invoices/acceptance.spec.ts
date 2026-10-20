@@ -612,7 +612,14 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await expect(page.locator('#homeNewInvoice')).toBeHidden();
     await nav(page, 'Facturas').click();
     await expect(page.locator('#invoiceList .row').first()).toBeVisible();
-    await expect(page.locator('#newInvoice')).toBeHidden();
+    // Tanda 30: los botones de escribir no están en el DOM, ni ocultos
+    for (const id of ['#newInvoice', '#extractPending', '#batchUpload']) await expect(page.locator(id)).toHaveCount(0);
+    await expect(page.locator('#invoiceList').getByRole('button', { name: 'Marcar pagada' })).toHaveCount(0);
+    await page.locator('#invoiceTabs [data-tab="emitidas"]').click();
+    await expect(page.locator('#issuedPanel')).toBeVisible();
+    for (const id of ['#newIssuedInvoice', '#newIssued', '#importIssuedCsv', '#issuingSettings']) await expect(page.locator(id)).toHaveCount(0);
+    await expect(page.locator('#issuedPanel')).not.toContainText('Crea una con');
+    await page.locator('#invoiceTabs [data-tab="recibidas"]').click();
     await page.locator('#invoiceList .row').first().click();
     await expect(ficha(page)).toBeVisible();
     for (const id of ['#validateInvoice', '#annulInvoice', '#togglePaid', '#confirmPaid', '#addLine', '#importInto']) await expect(ficha(page).locator(id)).toHaveCount(0);
@@ -809,10 +816,13 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     const sheet = page.locator('.sheet[role="dialog"]');
     await expect(sheet.locator('#issuedTotal')).toHaveText('170,50 €');
     await expect(sheet).toContainText('El registro Verifactu lo hace la herramienta que la expidió');
-    // Tanda 27: «Marcar cobrada» pide la fecha real (propone hoy) y el medio
+    // Tanda 30: «Marcar cobrada» abre la hoja con la fecha real (propone hoy) y el medio, sin diálogo; al guardar, vuelve a la ficha
     await sheet.locator('#toggleCollected').click();
-    await page.getByRole('alertdialog').locator('#collectedMethod').selectOption('transferencia');
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Marcar cobrada' }).click();
+    const collect = page.getByRole('dialog', { name: /^Cobrada · / });
+    await collect.locator('#collectedMethod').selectOption('transferencia');
+    await collect.locator('#saveCollected').click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' })).toBeVisible();
     await expect(sheet.locator('#issuedCollected')).toContainText('Transferencia', { timeout: 20_000 });
     await sheet.locator('#annulIssued').click();
     await page.locator('#annulIssuedReason').fill('Emitida por error');
@@ -1446,6 +1456,8 @@ const FB_PATTERN = /^invoices(\.[a-z0-9_]+){1,4}$/;
 
 /** Pulsación larga con el ratón sobre el centro del elemento (el gesto del kit son 600 ms). */
 async function hold(page: Page, selector: string, ms = 900): Promise<void> {
+  // A la vista antes de medir: la tarjeta de Inicio (tanda 30) puede dejar lo de abajo fuera de la pantalla
+  await page.locator(selector).first().scrollIntoViewIfNeeded();
   const box = await page.locator(selector).first().boundingBox();
   if (!box) throw new Error(`Sin caja para ${selector}`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -2707,6 +2719,10 @@ test('Tanda 27 · Inicio una a una: «Confirmar y siguiente» valida al momento 
     const work = page.locator('#homeWork');
     await expect(work).toContainText('Cola Primera SL', { timeout: 20_000 });
     await expect(work).toContainText('Lista para confirmar');
+    // Tanda 30: «He leído esto» con ✓/! y la miniatura del original (un PDF)
+    await expect(work.locator('.inv-checks')).toContainText('Categoría: puesta');
+    await expect(work.locator('.inv-checks li.bad')).toHaveCount(0);
+    await expect(work.getByRole('button', { name: 'Ver el documento' })).toContainText('PDF');
     await work.getByRole('button', { name: 'Confirmar y siguiente' }).click();
     await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === a)?.status, { timeout: 20_000 }).toBe('validada');
     await expect(work).toContainText('Cola Segunda SL', { timeout: 20_000 });
@@ -2804,6 +2820,27 @@ test('Tanda 27 · Gestoría: carpeta con el recorrido de la entrega, «Descargar
     await expect(quarter).toContainText('ENT_2019_1T_1');
     await expect(quarter).toContainText('entregada: correo a la gestoría');
     await expect(quarter).toContainText(`hash ${'a'.repeat(12)}`);
+    // Tanda 30: una acción principal por entrega (la generada, «Marcar entregada»; la entregada, «Archivar periodo», del
+    // dueño) y ZIP, CSV y Manifest en «Más», con la huella; la barra fija, con «Descargar» en primario
+    const newerRow = quarter.locator('.row', { hasText: 'ENT_2019_1T_2' });
+    const olderRow = quarter.locator('.row', { hasText: 'ENT_2019_1T_1' });
+    await expect(newerRow.getByRole('button', { name: 'Marcar entregada' })).toBeVisible();
+    await expect(olderRow.getByRole('button', { name: 'Archivar periodo' })).toBeVisible();
+    await expect(quarter.getByRole('button', { name: /^(ZIP|CSV|Manifest)$/ })).toHaveCount(0);
+    await expect(page.locator('#downloadLatest')).toHaveClass(/primary/);
+    await expect(page.locator('#deliveryNext')).toBeHidden();
+    await expect(page.locator('#deliveryBar')).toHaveCSS('position', 'sticky');
+    await newerRow.getByRole('button', { name: 'Más de ENT_2019_1T_2' }).click();
+    const more = page.locator('#downloadSheet');
+    for (const name of ['ZIP con todo', 'CSV de recibidas', 'Manifest']) await expect(more.getByRole('button', { name })).toBeVisible();
+    await expect(more).toContainText(`Huella del manifest: ${'b'.repeat(64)}`);
+    await expect(more.getByRole('button', { name: 'Marcar entregada' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    // Sin red, «Descargar» se apaga y dice por qué
+    await context.setOffline(true);
+    await expect(page.locator('#downloadLatest')).toHaveAttribute('aria-disabled', 'true', { timeout: 20_000 });
+    await expect(page.locator('#deliveryBar')).toContainText('Descargar necesita conexión.');
+    await context.setOffline(false);
   } finally {
     for (const e of [older, newer]) if (api.rows('invoices.exports').some((x) => x.id === e)) api.serverUpdate('invoices.exports', e, { deleted_at: new Date().toISOString() });
     api.serverUpdate('invoices.invoices', invoice, { deleted_at: new Date().toISOString() });
@@ -2891,6 +2928,35 @@ test('Tanda 27 · Compras «Por asignar»: un toque asigna al destino propuesto 
     api.targets.splice(api.targets.findIndex((t) => t.id === project.id), 1);
     api.targets.splice(api.targets.findIndex((t) => t.id === event.id), 1);
     for (const id of Object.values(ids)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
+
+test('Tanda 30 · Facturas: «Marcar pagada» en la fila, en su hoja con la fecha y el medio, y «Deshacer»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplier = randomUUID(); const id = randomUUID();
+  api.seed('invoices.suppliers', [{ id: supplier, name: 'Pago En Fila SL', slug: 'pago_en_fila_sl', aliases: [], default_is_investment: false, default_category: 'compras' }]);
+  api.seed('invoices.invoices', [{ id, code: 'FVR_2020_930', supplier_id: supplier, invoice_date: '2020-02-03', object: 'material de fila', status: 'validada', expense_category: 'compras', source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'deducible', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas?filtro=sin_pagar`);
+    await page.locator('#invoiceSearch').fill('Pago En Fila');
+    const row = page.locator('#invoiceList .row', { hasText: 'material de fila' });
+    await row.getByRole('button', { name: 'Marcar pagada' }).click();
+    const sheet = page.getByRole('dialog', { name: /^Pagada · / });
+    // La fecha nunca es la del clic: propone la de la factura
+    await expect(sheet.locator('#rowPaidAt')).toHaveValue('2020-02-03');
+    await sheet.locator('#rowPaidAt').fill('2020-02-10');
+    await sheet.locator('#rowPaidMethod').selectOption('transferencia');
+    await sheet.locator('#savePaid').click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === id), { timeout: 20_000 }).toMatchObject({ payment_status: 'pagada', paid_at: '2020-02-10', payment_method: 'transferencia', payment_source: 'confirmado' });
+    await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === id), { timeout: 20_000 }).toMatchObject({ payment_status: 'pendiente', paid_at: null, payment_method: null });
+  } finally {
+    if (api.rows('invoices.invoices').some((i) => i.id === id)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
     await context.close();
   }
 });
