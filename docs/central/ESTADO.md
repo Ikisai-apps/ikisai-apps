@@ -106,6 +106,8 @@
   - **Inicio (004 y 089):** una sola cola de lo que urge en el orden de `centralAttention` (función pura con pruebas); en el panel, regla de ceros, chips de estado, «Ajustar objetivos», «Meses pasados» y «Previsión».
   - Pruebas: `attention.test.ts` nueva; ampliadas `access`, `inventory`, `people`, `teams`, `trades` y `dashboard`; ajustadas las que usaban los selectores de antes. Fuera `tests/central/menu-helpers.ts` (P11 hecha en el kit 0.50).
 
+- 2026-10-20 · **Tanda 36 · Planos del centro y «Colocar»** (MUELA-024 con sus adendas; núcleo #655 y kit 0.52): pantalla `#/entidad/planos` con el mapa de zonas para todos y, para el owner en el ordenador, subir, sustituir y quitar dibujos, colocar solo con un SVG con nombres (DOMPurify, perfil SVG, sin meterlo en la página), colocar a mano con ratón y teclado, y «Por revisar». El plano en imagen o PDF de la Entidad sigue igual para los portales. Prueba nueva `plans.spec.ts`; el servidor de pruebas reescribe también las subidas de Recursos.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.

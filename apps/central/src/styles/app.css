@@ -368,3 +368,20 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-covmin{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
 /* Inicio · lo que urge: las siguientes se tocan para subirlas a la tarjeta (089). */
 .ctl-raise{min-height:var(--tap,46px);text-align:left}
+/* Planos del centro · «Colocar» (tanda 36, MUELA-024): el dibujo con las estancias encima y, al lado, lo que falta. */
+.ctl-planrow{align-items:flex-start}
+.ctl-planactions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.ctl-planactions button{min-height:var(--tap,46px)}
+.ctl-place{display:grid;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);gap:14px;align-items:start;margin:0 0 16px}
+.ctl-placestage{border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden}
+.ctl-placesvg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
+.ctl-placepaper{fill:var(--paper-2)}
+.ctl-placeshape{fill:color-mix(in srgb,var(--accent) 22%,transparent);stroke:var(--accent-deep,var(--accent));stroke-width:2;vector-effect:non-scaling-stroke;cursor:move}
+.ctl-placeshape.bed{fill:color-mix(in srgb,var(--ok,var(--accent)) 30%,transparent)}
+.ctl-placeshape.on{fill:color-mix(in srgb,var(--warn) 30%,transparent);stroke:var(--warn-ink);stroke-width:3}
+.ctl-placeshape:focus-visible{outline:none;stroke:var(--ink);stroke-width:4}
+.ctl-placelabel{fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none;font-weight:700}
+.ctl-placehandle{fill:var(--paper);stroke:var(--ink);stroke-width:2;vector-effect:non-scaling-stroke;cursor:nwse-resize}
+.ctl-placeside .agentrow button{min-height:var(--tap,46px)}
+.ctl-placeside .linkbtn{min-height:var(--tap,46px)}
+.ctl-placeside .linkbtn.on{font-weight:800}

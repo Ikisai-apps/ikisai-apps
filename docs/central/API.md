@@ -813,6 +813,17 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
   - **Chips de sitio:** los espacios (nivel 3) donde hay algo, de más a menos artículos, como mucho seis.
   - **Ficha · portada y foco:** stock, mínimo, sitios y caducidad escritos; el foco con lo que pide ahora (reponer, gastar antes o juntar), con su acción para editor y owner. Debajo, la ficha de siempre.
 
+### 9.7 Planos del centro y «Colocar» (tanda 36, MUELA-024 con sus adendas; núcleo #655, kit 0.52)
+
+- **`#/entidad/planos`**, desde la cabecera de la Entidad, el menú («La entidad» › Planos del centro) y la búsqueda. El plano en imagen o PDF de la Entidad (`site_plan_file_id`) no cambia: lo siguen usando los portales.
+- **Todos** ven el mapa de zonas con la pieza del kit (`createSpaceMap`) y su lista equivalente. Los datos son de Recursos: `resources.floor_plans` (un dibujo por edificio y planta) y `resources.spaces.plan_id` + `plan_shape` (puntos 0..1 relativos a la imagen). Central los lee con su cliente de Recursos (`app/resources.ts`, ahora también con `floor_plans`).
+- **«Colocar», solo el owner (rol `owner` en Recursos; el núcleo lo exige con `resources.check_plans`) y en el ordenador** (desde 900 px; en el móvil, una nota y solo ver):
+  - **Dibujos:** subir uno por edificio y planta (SVG, PNG o JPG, hasta 10 MB; `POST /api/v1/resources/uploads`), con su ancho y alto (el `viewBox` del SVG o los píxeles de la imagen); sustituirlo (las formas se conservan, porque son relativas); quitarlo, solo sin estancias encima (el botón lo dice y el núcleo lo impide). Recién subido, se ve desde el dispositivo mientras sube.
+  - **Colocar solo:** si el SVG trae los nombres de las estancias, se colocan solas al subirlo (al sustituirlo, solo las que no tenían forma) y con «Colocar solo». `app/svg-plan.ts` limpia el SVG con **DOMPurify (perfil SVG)** y lo lee con `DOMParser` en un documento aparte: **nunca se mete en la página** (el dibujo se pinta como `<image>`). Nombres: `id`, `data-name`, `inkscape:label`, `aria-label` o `<title>`, sin tildes, mayúsculas ni signos, contra el nombre, el nombre público o el código. Formas: `rect`, `polygon`, `polyline`, `circle`, `ellipse`, `path` y grupos con nombre (su rectángulo), con `translate`, `scale` y `matrix`.
+  - **A mano:** arrastrar para mover y las esquinas para estirar; con el teclado, Tab hasta la estancia, las flechas mueven y, con Mayúsculas, estiran (Alt, paso fino). Se guarda solo: la forma pasa por `setShape` de la pieza y se guarda en su `onShape`.
+  - **«Por revisar»:** las estancias del edificio sin forma en ese dibujo, con «Poner» (al centro; una cama, dentro de su habitación si ya está). «Quitar del plano» la devuelve a la lista.
+- Dependencia nueva de Central: `dompurify` 3.4.17 (fija).
+
 ---
 
 ## 10. Offline

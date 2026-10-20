@@ -10,6 +10,7 @@ import { clearRecents, readRecents, rememberRecent, type Recent } from '../app/r
 import { ROLE_LABELS } from '../app/admin.ts';
 import { mountHome } from './home.ts';
 import { mountAccess } from './access.ts';
+import { mountPlans } from './plans.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
 import { mountDecision, mountDecisions } from './decisions.ts';
@@ -66,6 +67,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/conflictos': { title: 'Conflictos', slug: 'conflictos', mount: mountConflicts },
   '#/textos': { title: 'Textos y contacto', slug: 'textos', mount: mountTexts },
   '#/entidad': { title: 'Entidad', slug: 'entidad', mount: mountEntity },
+  '#/entidad/planos': { title: 'Planos del centro', slug: 'planos', mount: mountPlans },
   '#/decisiones': { title: 'Decisiones', slug: 'decisiones', mount: mountDecisions },
   '#/revision': { title: 'Revisión', slug: 'revision', mount: mountReview },
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
@@ -87,6 +89,7 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'inicio': fbMark(main, 'central.inicio', 'Inicio'); break;
     case 'conflictos': fbMark(main, 'central.conflictos', 'Conflictos'); break;
     case 'entidad': fbMark(main, 'central.entidad', 'Entidad'); break;
+    case 'planos': fbMark(main, 'central.planos', 'Planos del centro'); break;
     case 'textos': fbMark(main, 'central.textos', 'Textos y contacto'); break;
     case 'decisiones': fbMark(main, 'central.decisiones', 'Decisiones'); break;
     case 'decision': fbMark(main, 'central.decision', 'Decisión'); break;
