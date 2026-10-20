@@ -1176,8 +1176,15 @@ spaceMap.element.id = 'spaceMapHost';
 const spaceMapBare = createSpaceMap({ source: createMemorySpaceSource(demoSpaces()), plans: [], label: 'Salas sin plano', filter: (s) => s.kind === 'sala' });
 spaceMapBare.element.id = 'spaceMapBare';
 (window as unknown as { spaceMap: typeof spaceMap }).spaceMap = spaceMap;
+// La elegida ampliada (MUELA-056): la Hab 3 recortada, con sus camas; misma capa y mismos datos que el plano.
+const spaceMapZoom = createSpaceMap({ source: mapSource, plans: mapPlans, planUrl: (fileId) => PLAN_FILES[fileId] ?? '', label: 'Tu habitación', focus: 'hab-3',
+  layer: (s) => (s.kind === 'cama' ? { state: bedStates[s.id] ?? 'free' } : null),
+  onPick: (s) => { mapPicked.textContent = `${s.id} · ampliada`; } });
+spaceMapZoom.element.id = 'spaceMapZoom';
+(window as unknown as { spaceMapZoom: typeof spaceMapZoom }).spaceMapZoom = spaceMapZoom;
 const spaceMapSection = section('spacemap', 'Mapa de zonas (MUELA-024)', 'createSpaceMap: el dibujo de cada edificio y planta como imagen, entero y sin zoom, con la capa de estancias encima (contorno al tocar), camas por colores con su número (gris no se puede, azul con rayado ocupada, verde claro libre, verde intenso elegida) y la lista equivalente con la ruta: conmutador Plano/Lista en el móvil y lado a lado en el ordenador. Sin formas, solo la lista; sin red, la última copia con aviso.',
   el('div', { class: 'card' }, spaceMap.element, el('p', null, 'Tocado: ', mapPicked)),
+  el('div', { class: 'card', style: 'margin-top:12px' }, el('h3', null, 'La elegida ampliada'), spaceMapZoom.element),
   el('div', { class: 'card', style: 'margin-top:12px' }, spaceMapBare.element),
 );
 // --- Artículos del inventario (R3) ------------------------------------------------------------------------

@@ -1,5 +1,17 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.54.0 · 20 de octubre de 2026
+
+**«La elegida ampliada» en `createSpaceMap`** (MUELA-056, para Guests). Opcional: sin `focus`, el mapa sigue igual.
+
+- **`focus: spaceId`** (y `setFocus(id | null)`):
+  - el mismo dibujo, recortado a la forma de ese espacio con un poco de margen;
+  - encima, su contorno marcado y lo de dentro con los mismos datos y la misma capa del plano: las camas con su número, su color y su estado, tocables y con nombre accesible;
+  - el plano se llama «Hab 3 en el plano»;
+  - ampliada, cada cama mide más de 46 px en el móvil, y el número no baja de 16 px.
+- **La lista equivalente** es la de ese espacio y lo de dentro. Sin forma, solo esa lista, con «Sin sitio en el plano: lo de dentro, en lista.»
+- **Pruebas:** `v59`.
+
 ## 0.53.1 · 20 de octubre de 2026
 
 - **`floorPlanFromRow`** (tanda 35, punto 6): un dibujo subido sin red lleva en `file_id` el marcador `{ "$blob": sha }` hasta que se sube. Mientras, cuenta como sin archivo y el mapa pinta la capa sobre papel. Antes se usaba el marcador como id de archivo.

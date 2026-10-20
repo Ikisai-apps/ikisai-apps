@@ -833,4 +833,6 @@ export const KIT_EN: Dictionary = {
   'Sin sitio en el plano': 'Not on the plan',
   'Sin plano todavía: la misma información en lista, con la ruta de cada espacio.': 'No plan yet: the same information as a list, with the path to each space.',
   'Sin red: ves la última copia guardada.': 'Offline: you are seeing the last saved copy.',
+  '{name} en el plano': '{name} on the plan',
+  'Sin sitio en el plano: lo de dentro, en lista.': 'Not on the plan: what is inside, as a list.',
 };
