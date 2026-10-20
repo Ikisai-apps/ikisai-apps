@@ -746,6 +746,18 @@ Lectura de app, no de portal: `core.allow_read('booking', 'invoices.reservation_
 - `collected` suma las cobradas y `last_collected_at` es la fecha del último cobro (`null` si no hay ninguno).
 - Una reserva sin facturas sale con ceros.
 - Como mucho 500 ids por llamada. Si `reservation_ids` no es una lista o lleva un id inválido: `INVALID_OPERATION` (422).
+
+### 7.9 Las emitidas de una reserva, una a una, para Booking (migración 0241, tanda 31)
+
+Lectura de app, no de portal: `core.allow_read('booking', 'invoices.reservation_movements', 'function')`, con los roles por defecto de Booking. Es para «Movimientos» del extracto de la reserva.
+
+**`invoices.reservation_movements {reservation_ids: [uuid]}`** devuelve `[{ reservation_id, issued_invoice_id, full_number, issue_date, concept, purpose, kind, total, collected, paid_at }]`, ordenadas por reserva, fecha y número.
+- Son las mismas facturas que §7.8: las asignadas a la reserva y sus rectificativas, sin borradores ni anuladas. La suma de `total` es `invoiced`, y la de las que tienen `collected: true` es `collected`.
+- `concept` es la descripción de la factura; `purpose` es `senal`, `saldo`, `extras`, `general` o `null`.
+- `kind` es `factura` o `rectificativa`; una rectificativa lleva `total` negativo.
+- `paid_at` solo si está cobrada.
+- No lleva nada del destinatario (nombre, NIF, país ni otros destinatarios) ni las notas internas.
+- Una reserva sin facturas no sale. Como mucho 500 ids por llamada; si `reservation_ids` no es una lista o lleva un id inválido: `INVALID_OPERATION` (422).
 - Solo importes y fecha: ni clientes, ni números de factura, ni datos internos.
 
 ## 8. Archivos
