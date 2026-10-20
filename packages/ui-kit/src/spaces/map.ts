@@ -101,6 +101,11 @@ export interface SpaceMapOptions {
    * la lista de lo mismo. `setFocus` lo cambia.
    */
   focus?: string | null;
+  /**
+   * `false` (Guests, MUELA-056): camas solo por color, sin el número pintado en el plano ni en la lista. El nombre
+   * accesible («Cama 1, Hab 3 · Libre») y el estado en palabras se quedan; la leyenda dice qué es cada color.
+   */
+  bedNumbers?: boolean;
   /** Nombre accesible de la pieza. */
   label?: string;
   /** Base de las marcas de feedback y uso (`SPACE_MAP_MARKS`). */
@@ -355,7 +360,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const bh = c.h * h;
       if (bed) {
         const size = Math.max(Math.min(bw * 0.5, bh * 0.5, unit * (crop ? 0.08 : 0.034)), unit * 0.008, px(crop ? 16 : 11));
-        labels.append(svg('text', { class: `map-bed-txt${layer.state ? ` map-st-${layer.state}` : ''}`, x: c.x * w, y: c.y * h, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, bedNumber(s, rows)));
+        if (options.bedNumbers !== false) labels.append(svg('text', { class: `map-bed-txt${layer.state ? ` map-st-${layer.state}` : ''}`, x: c.x * w, y: c.y * h, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, bedNumber(s, rows)));
         continue;
       }
       if (off && !use) continue;
@@ -416,7 +421,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
           'aria-current': selected === s.id ? 'true' : null, disabled: layer.disabled ? true : null, 'aria-label': `${accessibleName(s, layer)}${parent ? ` · ${parent}` : ''}`, ...mark('row'),
           onclick: () => pick(s, 'list'),
         },
-        bed ? el('span', { class: 'map-seat', dataset: { state: layer.state ?? 'none' }, 'aria-hidden': 'true' }, bedNumber(s, rows)) : null,
+        bed ? el('span', { class: 'map-seat', dataset: { state: layer.state ?? 'none' }, 'aria-hidden': 'true' }, options.bedNumbers === false ? null : bedNumber(s, rows)) : null,
         el('span', { class: 'map-row-main' },
           el('strong', { class: 'map-row-name' }, bed ? kt('Cama {n}', { n: bedNumber(s, rows) }) : nameOf(s)),
           el('span', { class: 'map-row-path' }, [parent, unplaced ? kt('Sin sitio en el plano') : null].filter(Boolean).join(' · '))),

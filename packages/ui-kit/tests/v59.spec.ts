@@ -45,4 +45,26 @@ test.describe('ui-kit v0.54 · la elegida ampliada', () => {
     await expect(zoom.getByRole('group', { name: 'Plano de Albergue · Planta baja' })).toBeVisible();
     await expect(zoom.getByRole('group', { name: 'Plano de Albergue · Planta baja' })).toHaveAttribute('viewBox', '0 0 1000 600');
   });
+  test('@smoke `bedNumbers: false`: camas solo por color, con el nombre accesible y el estado en palabras', async ({ page }) => {
+    await page.evaluate(() => {
+      const k = (window as any).ikisaiKit;
+      const sq = (x0: number, y0: number, x1: number, y1: number) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      const map = k.createSpaceMap({
+        source: k.createMemorySpaceSource(k.demoSpaces()), focus: 'hab-3', bedNumbers: false, mode: 'both', label: 'Sin números',
+        plans: [{ id: 'p', buildingId: 'albergue', floor: null, position: 1, fileId: null, width: 1000, height: 600 }],
+        shapes: { 'hab-3': { planId: 'p', shape: { points: sq(0.36, 0.067, 0.68, 0.567) } }, 'hab-3-c1': { planId: 'p', shape: { points: sq(0.4, 0.12, 0.48, 0.3) } }, 'hab-3-c2': { planId: 'p', shape: { points: sq(0.52, 0.12, 0.6, 0.3) } } },
+        layer: (s: { kind: string; id: string }) => (s.kind === 'cama' ? { state: s.id === 'hab-3-c1' ? 'free' : 'occupied' } : null),
+      });
+      map.element.id = 'noNumbers';
+      document.querySelector('#spacemap')!.prepend(map.element);
+    });
+    const host = page.locator('#noNumbers');
+    await expect(host.locator('.map-bed')).toHaveCount(2);
+    await expect(host.locator('.map-bed-txt')).toHaveCount(0);
+    await expect(host.getByRole('button', { name: 'Cama 1, Hab 3 · Libre', exact: true })).toHaveClass(/map-st-free/);
+    await expect(host.locator('.map-hatch')).toHaveCount(1);
+    await expect(host.locator('.map-legend li')).toHaveText(['Libre', 'Ocupada']);
+    await expect(host.locator('.map-list .map-seat')).toHaveText(['', '']);
+    await expect(host.locator('.map-list .map-row-state')).toContainText(['Libre', 'Ocupada']);
+  });
 });
