@@ -366,6 +366,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     }
     const placed = placedOn(plan);
     const labels: SVGTextElement[] = [];
+    const handles: SVGRectElement[] = [];
     for (const s of placed) {
       const shape = s.planShape as PlanShape;
       const poly = document.createElementNS(NS, 'polygon');
@@ -400,12 +401,13 @@ export const mountPlans: ViewMount = ({ main, client }) => {
           handle.setAttribute('width', String(size)); handle.setAttribute('height', String(size)); handle.setAttribute('class', 'ctl-placehandle');
           handle.setAttribute('aria-hidden', 'true');
           handle.addEventListener('pointerdown', (e) => startDrag(e, s, [ax, ay], plan, svg));
-          svg.append(handle);
+          handles.push(handle);
         }
       }
     }
-    // Los rótulos, encima de todas las formas: así el de una habitación no queda bajo sus camas.
-    svg.append(...labels);
+    // Los rótulos, encima de todas las formas (el de una habitación no queda bajo sus camas), y las esquinas para estirar,
+    // encima de todo: si no, la estancia de al lado las tapaba.
+    svg.append(...labels, ...handles);
     const review = toReview(plan);
     const current = selected ? rows.find((s) => s.id === selected) ?? null : null;
     const unknown = unmatchedOf.get(plan.id) ?? [];
