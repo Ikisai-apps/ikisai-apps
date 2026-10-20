@@ -660,7 +660,7 @@ En el mismo lote que `call invoices.validate`, el cliente añade la operación s
 Registradas con `core.allow_read('booking', …)` / `core.allow_read('food', …)` por la migración de Invoices:
 
 - `invoices.booking_cost_projection` (`allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, expense_category, is_investment, allocated_amount, allocation_revision`): coste asignado por reserva o evento, para «coste real por retiro».
-- `invoices.food_stock_projection` (`allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, line_description, match_name, allocated_quantity, unit, allocated_amount, allocation_revision, unit_normalized, quantity_normalized`; las dos últimas desde la migración 0203: `unit_normalized` es `kg`, `l` o `ud` según `invoices.normalize_unit(unit)` —g, ml y cl se convierten— y `quantity_normalized` la cantidad asignada en esa unidad, ambas null si la unidad del documento no se reconoce): entradas de stock (ingrediente, cantidad, unidad, fecha, coste, proveedor) para Food.
+- `invoices.food_stock_projection` (`allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, line_description, match_name, allocated_quantity, unit, allocated_amount, allocation_revision, unit_normalized, quantity_normalized`; las dos últimas desde la migración 0203: `unit_normalized` es `kg`, `l` o `ud` según `invoices.normalize_unit(unit)` —g, ml y cl se convierten— y `quantity_normalized` la cantidad asignada en esa unidad, ambas null si la unidad del documento no se reconoce; y, desde la 0243, `item_id` e `item_factor` de la línea: el artículo de Recursos y cuántas unidades base trae una unidad de la factura, para «Como en el último ticket» de Food): entradas de stock (ingrediente, cantidad, unidad, fecha, coste, proveedor) para Food.
 
 Sin datos personales ni notas. Solo asignaciones vivas de facturas no anuladas.
 
@@ -1701,6 +1701,12 @@ Todo esto solo con el interruptor `resources_links` encendido. Apagado, la app s
   - esa línea no pide entrada propia;
   - al validar, `resource_entries` devuelve en `costs` el coste por unidad base para esa entrada, y la Edge lo añade en el mismo lote de Recursos con `resources.movement_costs` (id estable, así que repetir no duplica);
   - un coste solo se añade: anular la factura después no lo quita.
+- **H-C5 de Food (0243, tanda 41):** Food puede apuntar más movimientos con la misma referencia (`shopping_item:<id>`) al cambiar la cantidad de una línea ya comprada: otra `entrada_manual` o una `salida_manual` de corrección.
+  - Al cuadrar, se costean **todas** las entradas vivas de esa referencia, no solo la enlazada.
+  - El importe de la línea se reparte entre lo que entró, con las salidas restando: la primera vez, cada entrada sale a importe ÷ (entradas − salidas).
+  - Las ya costeadas no se tocan. A las nuevas les toca lo que falta para que el coste medio dé el importe entre lo que queda dentro, nunca menos de 0. Lo que entra después de costear ya estaba pagado por la factura y sale a 0.
+  - Cuadrar otra vez no duplica (un coste por entrada, con id estable).
+  - La diferencia se costea en el siguiente cuadre de esa factura: al validarla, al editarla o al encender el interruptor.
 - **Compras › Artículos:** filtro «Artículo» (`#purchaseItem`, `itemId` en `purchaseItems`) con los artículos enlazados en alguna línea, de cualquier proveedor.
 
 ### 16.20 R4 · encender el enlace y no duplicar las compras recibidas en Tasks (0238, PR 5; aprobado por el usuario, 19-10-2026)

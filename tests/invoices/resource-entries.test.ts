@@ -165,3 +165,40 @@ test('«Ya entró desde la compra de Food»: la línea no crea entrada y su cost
   await ok([update('invoices.invoice_lines', again.id, again.revision, { label: 'Harina de la casa' })]);
   assert.equal((await costs()).length, 1);
 });
+
+test('H-C5 (0243): la diferencia de Food con la misma referencia también se costea; la salida de corrección resta y cuadrar otra vez no duplica', async () => {
+  const ref = `shopping_item:${uuid()}`;
+  const foodMove = async (quantity: number) => (await app.t.db.query<{ id: string }>(quantity > 0
+    ? `insert into resources.movements (item_id, space_id, quantity, kind, source_app, source_ref, at) values ($1, $2, $3, 'entrada_manual', 'food', $4, now()) returning id`
+    : `insert into resources.movements (item_id, space_id, quantity, kind, reason, source_app, source_ref, at) values ($1, $2, $3, 'salida_manual', 'otro', 'food', $4, now()) returning id`,
+  [salt, pantry, quantity, ref])).rows[0]!.id;
+  const costOf = async (id: string) => (await app.t.db.query<{ unit_cost: string }>(`select unit_cost::text from resources.movement_costs where movement_id = $1 and deleted_at is null`, [id])).rows.map((c) => Number(c.unit_cost));
+  // Food compró 20 kg, luego cambió a 28 (+8) y quitó 3 (salida de corrección): dentro quedan 25
+  const first = await foodMove(20);
+  const more = await foodMove(8);
+  await foodMove(-3);
+  const inv = await invoiceWith([['SAL SACO 25KG', 20, { quantity: 1, unit: 'saco', item_id: salt, item_factor: 25 }]]);
+  const l = await line(inv.lineIds[0]!);
+  await ok([update('invoices.invoice_lines', l.id, l.revision, { entered_movement_id: first })]);
+  await validate(inv.id);
+  // 20 € entre los 25 kg que entraron: 0,8 €/kg en las dos entradas
+  assert.deepEqual([await costOf(first), await costOf(more)], [[0.8], [0.8]]);
+  // Cuadrar otra vez no duplica
+  const again = await line(l.id);
+  await ok([update('invoices.invoice_lines', again.id, again.revision, { label: 'Sal de la casa' })]);
+  assert.deepEqual([await costOf(first), await costOf(more)], [[0.8], [0.8]]);
+  // Lo que entra después ya está pagado por la factura: se costea a lo que falta (nada), sin tocar lo costeado
+  const late = await foodMove(5);
+  const third = await line(l.id);
+  await ok([update('invoices.invoice_lines', third.id, third.revision, { label: 'Sal' })]);
+  assert.deepEqual([await costOf(first), await costOf(more), await costOf(late)], [[0.8], [0.8], [0]]);
+  assert.deepEqual(await movements(inv.lineIds[0]!), [], 'la línea sigue sin entrada propia');
+});
+
+test('food_stock_projection (0243) lleva el artículo y su factor de la línea, para «Como en el último ticket»', async () => {
+  const inv = await invoiceWith([['HARINA SACO 25KG', 20, { quantity: 2, unit: 'saco', item_id: flour, item_factor: 25 }]]);
+  await app.t.db.query(`insert into invoices.allocations (invoice_line_id, target_app, target_kind, target_id, target_label, allocated_quantity, allocated_amount) values ($1, 'food', 'ingredient', 'harina', 'Harina', 2, 20)`, [inv.lineIds[0]]);
+  const row = (await app.t.db.query<{ item_id: string; item_factor: string; supplier_name: string }>(
+    `select item_id, item_factor::text, supplier_name from invoices.food_stock_projection where invoice_code = (select code from invoices.invoices where id = $1)`, [inv.id])).rows;
+  assert.deepEqual(row.map((r) => [r.item_id, Number(r.item_factor)]), [[flour, 25]]);
+});
