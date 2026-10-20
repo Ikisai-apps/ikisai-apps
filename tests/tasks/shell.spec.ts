@@ -5,9 +5,9 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, menuRows, openApp, openMenu, openMenuSection, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
-declare const syncNow: any, render: any, newAreaSheet: any;
+declare const syncNow: any, render: any, newAreaSheet: any, closeSheet: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -29,33 +29,77 @@ test.beforeAll(async ({ browser }) => {
 });
 test.afterAll(async () => { await contextA?.close(); await contextB?.close(); await server?.close(); });
 
-test('el menú abierto y sus grupos plegados sobreviven a una sincronización y a un repintado', async () => {
+test('el menú común abierto y su sección desplegada sobreviven a una sincronización y a un repintado', async () => {
   await settled(a);
-  // La cáscara es la misma antes y después: se marca un nodo y se comprueba que sigue ahí.
-  await a.evaluate(() => { (document.getElementById('kebab') as any).__marca = 'cáscara'; });
-  await a.locator('#moreBtn').click();
-  await expect(a.locator('#kebab')).toHaveClass(/show/);
-  await expect(a.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'true');
-  // Se abre un grupo que estaba plegado y se pliega uno abierto.
-  await a.locator('[data-menu-group="transfer"] > summary').click();
-  await a.locator('[data-menu-group="work"] > summary').click();
-  const groups = () => a.evaluate(() => [...document.querySelectorAll<HTMLDetailsElement>('#kebab details[data-menu-group]')].map((d) => `${d.dataset.menuGroup}:${d.open ? 'abierto' : 'plegado'}`));
-  const before = await groups();
-  expect(before).toContain('transfer:abierto');
-  expect(before).toContain('work:plegado');
+  // Sin ☰ ni menú propio: la marca abre el menú común del kit.
+  await expect(a.locator('#moreBtn, #kebab')).toHaveCount(0);
+  const mark = a.locator('#appLauncher');
+  await expect(mark).toHaveAttribute('aria-haspopup', 'dialog');
+  const drawer = await openMenu(a);
+  await expect(mark).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer).toHaveAttribute('aria-label', 'Menú de Tasks');
+  // El cajón es el mismo antes y después: se marca el nodo y se comprueba que sigue ahí.
+  await a.evaluate(() => { (document.querySelector('.appmenu-drawer') as any).__marca = 'menú'; });
+  await openMenuSection(a, 'transfer');
   await a.evaluate(() => syncNow());
   await settled(a);
   await a.evaluate(() => render());
-  await expect(a.locator('#kebab')).toHaveClass(/show/);
-  await expect(a.locator('#menuBackdrop')).toHaveClass(/show/);
-  await expect(a.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'true');
-  expect(await groups()).toEqual(before);
-  expect(await a.evaluate(() => (document.getElementById('kebab') as any).__marca)).toBe('cáscara');
-  // Navegar sigue cerrando el menú en móvil.
-  await a.locator('[data-menu-group="work"] > summary').click();
-  await a.locator('#kebab [data-menu-view="tasks"]').click();
-  await expect(a.locator('#kebab')).not.toHaveClass(/show/);
-  await expect(a.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator('.appmenu-tile[data-feedback-id="tasks.menu.secciones.transfer"]')).toHaveAttribute('aria-expanded', 'true');
+  expect(await a.evaluate(() => (document.querySelector('.appmenu-drawer') as any).__marca)).toBe('menú');
+  // Escape cierra y devuelve el foco a la marca.
+  await a.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  await expect(mark).toHaveAttribute('aria-expanded', 'false');
+  expect(await a.evaluate(() => document.activeElement?.id)).toBe('appLauncher');
+  // Cada fila hace lo de su botón de antes y cierra el menú: «Archivados» abre su hoja.
+  await (await menuRow(a, 'tasks.menu.archivados', 'work')).click();
+  await expect(a.locator('.appmenu-drawer')).toBeHidden();
+  await expect(a.locator('#sheet')).toBeVisible();
+  await a.evaluate(() => closeSheet());
+});
+
+test('el menú común conserva las filas de hoy, sin repetir la barra de abajo, con la pista del área, y el foco atrapado', async () => {
+  const work = await menuRows(a, 'work');
+  // Lo que ya está en la barra de pestañas no se repite.
+  for (const gone of ['tasks.menu.inicio', 'tasks.menu.proyectos', 'tasks.menu.tareas', 'tasks.menu.etiquetas', 'tasks.menu.filtros']) expect(work).not.toContain(gone);
+  for (const kept of ['tasks.menu.mis_tareas', 'tasks.menu.vistas', 'tasks.menu.archivados', 'tasks.menu.papelera', 'tasks.menu.areas']) expect(work).toContain(kept);
+  expect(await menuRows(a, 'transfer')).toEqual(expect.arrayContaining(['tasks.menu.importar_keep', 'tasks.menu.exportar_json', 'tasks.menu.exportar_csv', 'tasks.menu.exportar_texto']));
+  expect(await menuRows(a, 'system')).toEqual(expect.arrayContaining(['tasks.menu.sugerencias', 'tasks.menu.sincronizacion', 'tasks.menu.historial']));
+  expect(await menuRows(a, 'people')).toContain('tasks.menu.mi_cuenta');
+  expect(await menuRows(a, 'purchases')).toEqual(['tasks.menu.compras', 'tasks.menu.suministros', 'tasks.menu.planes']);
+  const drawer = await openMenu(a);
+  await expect(drawer.locator('.appmenu-tile[data-feedback-id="tasks.menu.secciones.organize"]')).toHaveCount(0);
+  await expect(drawer.locator('.tasks-menuhint')).toContainText(/Área actual|General/);
+  await expect(drawer.locator('.appmenu-profile')).toBeVisible();
+  await expect(drawer.locator('.appmenu-sync')).toBeVisible();
+  // Tab no se escapa del cajón.
+  for (let i = 0; i < 40; i++) await a.keyboard.press('Tab');
+  expect(await a.evaluate(() => !!document.activeElement?.closest('.appmenu-drawer'))).toBe(true);
+  await a.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+});
+
+test('en el ordenador: columna del menú de 316 px a la izquierda y la barra de pestañas abajo', async () => {
+  await b.setViewportSize({ width: 1440, height: 1000 });
+  await settled(b);
+  const column = b.locator('#shellTop .appmenu-column');
+  await expect(column).toBeVisible();
+  const box = (await column.boundingBox())!;
+  expect(box.x).toBe(0);
+  expect(Math.round(box.width)).toBe(316);
+  const bar = b.locator('#shellBottom .bottomnav');
+  await expect(bar).toBeVisible();
+  const barBox = (await bar.boundingBox())!;
+  expect(barBox.x).toBeGreaterThanOrEqual(316);
+  expect(barBox.y + barBox.height).toBeGreaterThan(990);
+  const content = (await b.locator('#view .screen').first().boundingBox())!;
+  expect(content.x).toBeGreaterThanOrEqual(316);
+  expect(await b.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  // Las filas de la columna hacen lo mismo que las del cajón.
+  await (await menuRow(b, 'tasks.menu.papelera', 'work', 'column')).click();
+  await expect(b.locator('#sheet')).toBeVisible();
+  await b.evaluate(() => closeSheet());
 });
 
 test('un área creada en otro dispositivo aparece en la tira sin recargar @smoke', async () => {
@@ -76,19 +120,18 @@ test('un área creada en otro dispositivo aparece en la tira sin recargar @smoke
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 
-test('la marca de la cabecera abre el lanzador de apps con Tasks marcada como «Aquí» @smoke', async () => {
+test('la marca de la cabecera abre el menú común con las apps de Ikisai y «Comentarios y ayuda» dentro @smoke', async () => {
   await a.locator('#appLauncher').click();
-  const sheet = a.getByRole('dialog', { name: 'Apps de Ikisai' });
-  await expect(sheet).toBeVisible();
-  await expect(sheet).toBeInViewport();
-  await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toBeVisible();
-  await expect(sheet.getByRole('switch', { name: /Señalar para comentar/ })).toBeVisible();
-  await expect(sheet.getByText('Sugerencias y QA')).toBeVisible();
+  const menu = a.getByRole('dialog', { name: 'Menú de Tasks' });
+  await expect(menu).toBeVisible();
+  await expect(menu).toBeInViewport();
+  // Las apps (sin Tasks: es la de aquí) y los interruptores de feedback.
+  await expect(menu.getByRole('region', { name: 'Apps de Ikisai' })).toBeVisible();
+  await expect(menu.getByRole('switch', { name: /Señalar para comentar/ })).toBeVisible();
+  await expect(menu.getByText('Sugerencias y QA').first()).toBeVisible();
   // La marca lleva el icono de Tasks del kit, no el glifo genérico.
   expect(await a.locator('#appLauncher').textContent()).not.toContain('•||•');
-  await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toHaveCount(1);
-  await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toContainText(/Tasks/);
   await a.keyboard.press('Escape');
-  await expect(a.locator('.launcher-text')).toHaveCount(0);
+  await expect(menu).toBeHidden();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

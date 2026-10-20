@@ -10,7 +10,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, routeStorage, settled } from './e2e-helpers.ts';
+import { menuRows, openApp, openMenu, routeStorage, settled } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const Sync: any, state: any, render: any, openProjectEditor: any, syncNow: any, navigateView: any, handleTopAction: any;
@@ -62,14 +62,15 @@ const suggestions = async () => (await server.app.t.db.query<any>(`select * from
 const tasksNamed = async (title: string) => (await server.rows('tasks.tasks')).filter((r: any) => r.title === title && !r.deleted_at);
 
 test('el menú del outsider está reducido y las pantallas prohibidas no se abren ni por hash', async () => {
-  await outsider.locator('#moreBtn').click();
-  const views = await outsider.locator('#kebab [data-menu-view]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.menuView));
-  const actions = await outsider.locator('#kebab [data-action]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.action));
-  expect(views).toEqual(['home', 'projects', 'tasks', 'myproposals']);
-  expect(actions).toEqual(['sessions']);
-  for (const text of ['Compras', 'Etiquetas', 'Importar', 'Exportar', 'Papelera', 'Archivados', 'Historial', 'Accesos', 'Pasar las']) await expect(outsider.locator('#kebab')).not.toContainText(text);
+  // Menú corto: Inicio, Proyectos y Tareas van en la barra de abajo; en el menú, «Mis propuestas» y «Mi cuenta».
+  const drawer = await openMenu(outsider);
+  await expect(drawer.locator('.appmenu-tile')).toHaveCount(2);
+  expect(await menuRows(outsider, 'work')).toEqual(['tasks.menu.mis_propuestas']);
+  expect(await menuRows(outsider, 'people')).toEqual(['tasks.menu.mi_cuenta']);
+  for (const text of ['Compras', 'Etiquetas', 'Importar', 'Exportar', 'Papelera', 'Archivados', 'Historial', 'Accesos', 'Pasar las']) await expect(drawer.locator('.appmenu-body')).not.toContainText(text);
   await shot(outsider, '07-outsider-menu');
-  await outsider.locator('#closeMenu').click();
+  await drawer.locator('.appmenu-close').click();
+  await expect(drawer).toBeHidden();
   await expect(outsider.locator('[data-nav="labels"]')).toBeHidden();
   for (const view of ['purchases', 'triage', 'supplies']) {
     await outsider.evaluate((v) => { location.hash = '#/' + v; }, view);

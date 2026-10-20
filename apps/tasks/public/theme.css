@@ -218,8 +218,6 @@ html.dark .batchbar .ghost.small{color:#46513b;border-color:rgba(0,0,0,.2)}
 html.dark .batchtoggle.on{background:#363c33;color:#d9e0c3}
 html.dark .aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--paper);border-color:var(--line);color:#d9e0c3}
 
-html.dark .undotoast{background:#e8e3d6;color:#1b1e19}
-html.dark .undotoast button{background:rgba(0,0,0,.08);color:#1b1e19}
 html.dark .moneybar{background:#363b33}
 html.dark .taskbody .cost{background:#3b4634;color:#d9e0c3}
 html.dark .homehead,html.dark .homecard{background:var(--paper);border-color:var(--line)}

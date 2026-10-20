@@ -8,7 +8,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, EDITOR, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, menuRows, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, navigationGroups: any, handleTopAction: any, syncNow: any;
@@ -60,7 +60,7 @@ const source = () => page.evaluate(() => (window as any).eval('Sync.core.peopleS
 const shot = async (name: string) => { await page.waitForTimeout(450); await page.screenshot({ path: `../coordinacion/tasks/p2-despues/${name}.png` }).catch(() => {}); };
 const openProject = () => page.evaluate(([t, p]) => { state.taskScope = 'area'; state.activeTab = t; state.view = 'project'; state.currentProject = p; state.filters = {}; state.search = ''; render(); }, [MANT, PUESTA]);
 const menuItems = (p: Page) => p.evaluate(() => navigationGroups().flatMap((g: any) => g.items.map((i: any) => i[0])));
-const workItems = (p: Page) => p.evaluate(() => [...document.querySelectorAll('#kebab [data-menu-group="work"] [data-menu-view], #kebab [data-menu-group="work"] [data-action]')].map((n: any) => n.dataset.menuView || n.dataset.action));
+const workItems = (p: Page, host: 'drawer' | 'column' = 'drawer') => menuRows(p, 'work', host);
 const sheet = () => page.locator('#sheet');
 const sql = (text: string, params: unknown[] = []) => server.app.t.db.query(text, params);
 const person = (pid: string, name: string, level: string, initials: string | null) =>
@@ -96,31 +96,33 @@ test('el botón solo lo ve la propietaria, en «Trabajo» tras «Etiquetas»; la
   const editorContext = await page.context().browser()!.newContext({ viewport: { width: 390, height: 844 } });
   const editor = await openApp(editorContext, server, { user: EDITOR, aliases: ID });
   expect(await menuItems(editor)).not.toContain('peopleToCentral');
-  await editor.locator('#moreBtn').click();
-  await expect(editor.locator('#kebab [data-menu-group="work"] [data-menu-view="labels"]')).toBeVisible();
-  await expect(editor.locator('#kebab [data-action="peopleToCentral"]')).toHaveCount(0);
+  // Etiquetas está en la barra de abajo (el menú común no la repite) y el botón no sale en el menú.
+  await expect(editor.locator('#shellBottom [data-nav="labels"]')).toBeVisible();
+  expect(await workItems(editor)).not.toContain('tasks.menu.personas_a_central');
   await editorContext.close();
 
   // Escritorio: a la vista desde el menú real.
   const desktopContext = await page.context().browser()!.newContext({ viewport: { width: 1280, height: 900 } });
   const desktop = await openApp(desktopContext, server, { aliases: ID });
-  const deskItem = desktop.locator('#kebab [data-menu-group="work"] [data-action="peopleToCentral"]');
+  // En la columna del menú, en «Trabajo», donde iba Etiquetas (antes de «Mis tareas»).
+  const deskWork = await workItems(desktop, 'column');
+  expect(deskWork).toContain('tasks.menu.personas_a_central');
+  expect(deskWork.indexOf('tasks.menu.personas_a_central')).toBeLessThan(deskWork.indexOf('tasks.menu.mis_tareas'));
+  const deskItem = await menuRow(desktop, 'tasks.menu.personas_a_central', 'work', 'column');
   await expect(deskItem).toBeVisible();
-  const deskWork = await workItems(desktop);
-  expect(deskWork.slice(deskWork.indexOf('labels'), deskWork.indexOf('labels') + 2)).toEqual(['labels', 'peopleToCentral']);
   await deskItem.click();
   await expect(desktop.locator(`#sheet [data-person-map="${VG}"]`)).toHaveValue(P_VG);
   await desktopContext.close();
 
   // Móvil, desde el menú real.
-  await page.locator('#moreBtn').click();
-  const item = page.locator('#kebab [data-menu-group="work"] [data-action="peopleToCentral"]');
-  await expect(item).toBeVisible();
   const work = await workItems(page);
-  expect(work.slice(work.indexOf('labels'), work.indexOf('labels') + 2)).toEqual(['labels', 'peopleToCentral']);
+  expect(work.indexOf('tasks.menu.personas_a_central')).toBeGreaterThanOrEqual(0);
+  expect(work.indexOf('tasks.menu.personas_a_central')).toBeLessThan(work.indexOf('tasks.menu.mis_tareas'));
+  const item = await menuRow(page, 'tasks.menu.personas_a_central', 'work');
+  await expect(item).toBeVisible();
   await shot('31-personas-menu-trabajo');
   await item.click();
-  await expect(page.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#appLauncher')).toHaveAttribute('aria-expanded', 'false');
   // Las propuestas, ya puestas: la madre «Staff» como grupo y «VG» por sus iniciales.
   await expect(page.locator(`[data-person-map="${STAFF}"]`)).toHaveValue('level:staff');
   await expect(page.locator(`[data-person-map="${VG}"]`)).toHaveValue(P_VG);
@@ -178,8 +180,7 @@ test('al pulsar, la app pasa sola a Central; y «Volver a las etiquetas de perso
   await expect(chipsOf(T_STAFF)).toHaveText(['Todo el staff', 'RV']);
 
   // «Personas», a la vista en «Trabajo», tras «Etiquetas».
-  await page.locator('#moreBtn').click();
-  const people = page.locator('#kebab [data-menu-group="work"] [data-menu-view="people"]');
+  const people = await menuRow(page, 'tasks.menu.personas', 'work');
   await expect(people).toBeVisible();
   await people.click();
   await expect(page.locator('.peoplelist')).toContainText('Rosa Vidal');

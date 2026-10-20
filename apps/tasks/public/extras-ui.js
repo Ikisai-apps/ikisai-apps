@@ -20,20 +20,58 @@ const actionBeforeExtras=handleTopAction;
 handleTopAction=function(action){if(action==='mine')return showMyTasks();if(action==='alias'){closeNavigation();return aliasSheet()}return actionBeforeExtras(action)};
 // ---- Cabecera del menú, tira de vistas y pestañas con pendientes ---------------------------------
 function areaPending(area){return area.projects.filter(p=>!p.deleted&&p.status!=='archived').reduce((n,p)=>n+pending(p),0)}
-// ---- Deshacer rápido ---------------------------------------------------------------------------
-let undoTimer=null;
-function undoToast(label,cursor){let el=document.getElementById('undoToast');if(!el){el=document.createElement('div');el.id='undoToast';el.className='undotoast';document.body.appendChild(el)}el.innerHTML=`<span>${esc(label)}</span><button type="button" id="undoNow" data-feedback-id="tasks.aviso_deshacer.deshacer" data-feedback-label="Deshacer">${menuIcon('undo')}Deshacer</button>`;el.classList.add('show');document.getElementById('undoNow').onclick=()=>{el.classList.remove('show');undoSheet(cursor)};clearTimeout(undoTimer);undoTimer=setTimeout(()=>el.classList.remove('show'),7000)}
-async function offerUndo(label){if(typeof undoSheet!=='function'||!Sync.record||!Sync.actor)return;
-  // Un aviso de la acción anterior desharía otro lote: se retira en cuanto empieza la nueva (el suyo sale al confirmarse).
-  clearTimeout(undoTimer);document.getElementById('undoToast')?.classList.remove('show');const start=Date.now();while(Date.now()-start<6000){if(Sync.mode==='online'&&!Sync.busy&&Sync.record.queue.length===0)break;await new Promise(r=>setTimeout(r,200))}if(Sync.record.queue.length||Sync.mode!=='online')return;try{const data=await api('history'),mine=(data.events||[]).filter(e=>e.actor===Sync.actor.id&&!e.undoOf);if(!mine.length)return;const latest=mine.reduce((a,b)=>b.cursor>a.cursor?b:a);if(Date.now()-new Date(latest.at).getTime()>20000)return;undoToast(label,latest.cursor)}catch(e){}}
+// ---- «Deshacer» con el aviso del kit (MUELA-073 «Tareas (Deshacer)»; PERDIDAS §2 y §4) -------------
+/* Completar o reabrir, enviar a la papelera y enviar varias a la papelera se hacen al momento y ofrecen «Deshacer» local: la
+   operación inversa sobre el modelo (lo hecho y lo no hecho de antes; restaurar por `deleteBatch`), que se guarda como
+   cualquier cambio, también sin red. Mover y los demás lotes conservan el «Deshacer» del historial del servidor (offerUndo),
+   con el mismo aviso del kit. Los avisos con acción se apilan: otro aviso no les quita el botón (kit 0.41). */
+const UNDO_MS=6000;
+/* Lo que espera a que se vaya un aviso con «Deshacer» (la hoja «Confirmar consumo», materials-ui.js): si se deshace, no sale. */
+const undoWaits=new Map();
+function offerLocalUndo(message,undo,key=null){
+  const entry={done:false,after:[],timer:null};if(key)undoWaits.set(key,entry);
+  const settle=()=>{entry.done=true;clearTimeout(entry.timer);if(key&&undoWaits.get(key)===entry)undoWaits.delete(key)};
+  entry.timer=setTimeout(()=>{if(entry.done)return;settle();for(const fn of entry.after){try{fn()}catch(e){console.error(e)}}},UNDO_MS+50);
+  IkisaiKit.toastWithAction(message,{label:'Deshacer',onClick:()=>{if(entry.done)return;settle();undo()}},UNDO_MS);
+  return entry}
+function afterUndoWindow(key,fn){const entry=undoWaits.get(key);if(entry&&!entry.done)entry.after.push(fn);else fn()}
+/* La operación inversa en su área, con un solo pintado al final (como un lote). */
+function undoQuietly(area,fn){const renderReal=render;render=()=>{};try{withArea(area,fn)}finally{render=renderReal}render()}
+function taskFamily(p,t){const out=[t];for(let i=0;i<out.length;i++)out.push(...children(p,out[i].id));return out}
+/* Lo hecho de una tarea y de sus hijas antes del cambio, para volver justo a ese estado. */
+function doneSnapshot(id){const loc=taskLocation(id);return loc?taskFamily(loc.p,loc.t).map(x=>[x.id,!!x.done]):[]}
+function restoreDone(snapshot,wasDone){const loc=taskLocation(snapshot[0]?.[0]);if(!loc||loc.t.deleted)return toast('La tarea ya no está.');
+  for(const [id,done] of snapshot){const x=loc.p.tasks.find(t=>t.id===id);if(x&&!x.deleted&&!!x.done!==done){x.done=done;touch(x)}}
+  syncAll(loc.p);record(wasDone?'complete':'reopen',[loc.t.id]);save()}
+/* Restaura cada tarea con las hijas que se fueron con ella. El lote se reconoce por `deleteBatch`, que tras sincronizar pasa a
+   ser la hora del borrado (la misma para la madre y sus hijas): se compara con el de ahora y con el de entonces. */
+function restoreTrashed(items){const touched=new Set();
+  for(const it of items){const p=tab().projects.find(x=>x.id===it.pid),t=p?.tasks.find(x=>x.id===it.id);if(!p||!t)continue;
+    const under=new Set([t.id]);for(let grew=true;grew;){grew=false;for(const x of p.tasks)if(x.parentId&&under.has(x.parentId)&&!under.has(x.id)){under.add(x.id);grew=true}}
+    const same=x=>x===t||[t.deleteBatch,it.batch].some(b=>b&&x.deleteBatch===b)||!!t.deletedAt&&x.deletedAt===t.deletedAt;
+    for(const x of p.tasks)if(under.has(x.id)&&x.deleted&&same(x)){x.deleted=false;delete x.deleteBatch;delete x.deletedAt;touch(x);touched.add(p)}
+    record('restore',[it.id])}
+  for(const p of touched)syncAll(p);if(touched.size)save()}
+// Para la casilla «Hecha» del outsider (comments-ui.js), que sigue al estado de la tarea.
+function syncOutsiderDone(){const box=document.getElementById('outsiderDone'),id=document.getElementById('taskComments')?.dataset.task,loc=id?taskLocation(id):null;if(box&&loc)box.checked=status(loc.p,loc.t)==='done'}
 const toggleBeforeUndo=toggleTask;
-toggleTask=function(id){const loc=taskLocation(id),wasDone=loc?status(loc.p,loc.t)==='done':false;toggleBeforeUndo(id);if(loc&&!batchMode)offerUndo(wasDone?'Tarea reabierta':'Tarea completada')};
+toggleTask=function(id){const area=state.activeTab,loc=taskLocation(id),wasDone=loc?status(loc.p,loc.t)==='done':false,snapshot=doneSnapshot(id);toggleBeforeUndo(id);
+  if(!loc||batchMode)return;const now=taskLocation(id);if(!now||(status(now.p,now.t)==='done')===wasDone)return;
+  offerLocalUndo(wasDone?'Tarea reabierta':'Tarea completada',()=>{undoQuietly(area,()=>restoreDone(snapshot,wasDone));syncOutsiderDone()},'toggle:'+id)};
 const deleteBeforeUndo=deleteTask;
-deleteTask=function(id){deleteBeforeUndo(id);if(!batchMode)offerUndo('Enviada a papelera')};
+deleteTask=function(id){const area=state.activeTab;deleteBeforeUndo(id);if(batchMode)return;const loc=taskLocation(id);if(!loc||!loc.t.deleted)return;
+  const item={pid:loc.p.id,id,batch:loc.t.deleteBatch};offerLocalUndo('Enviada a la papelera',()=>undoQuietly(area,()=>restoreTrashed([item])))};
+// ---- «Deshacer» del historial (mover y los lotes de prioridad, etiquetas, mover…): necesita red ---------------
+
+function undoToast(label,cursor){IkisaiKit.toastWithAction(label,{label:'Deshacer',onClick:()=>undoSheet(cursor)},7000)}
+async function offerUndo(label){if(typeof undoSheet!=='function'||!Sync.record||!Sync.actor)return;
+  const start=Date.now();while(Date.now()-start<6000){if(Sync.mode==='online'&&!Sync.busy&&Sync.record.queue.length===0)break;await new Promise(r=>setTimeout(r,200))}if(Sync.record.queue.length||Sync.mode!=='online')return;try{const data=await api('history'),mine=(data.events||[]).filter(e=>e.actor===Sync.actor.id&&!e.undoOf);if(!mine.length)return;const latest=mine.reduce((a,b)=>b.cursor>a.cursor?b:a);if(Date.now()-new Date(latest.at).getTime()>20000)return;undoToast(label,latest.cursor)}catch(e){}}
 const moveBeforeUndo=moveTask;
 moveTask=function(id,destId,parentId=null,beforeId=null){const ok=moveBeforeUndo(id,destId,parentId,beforeId);if(ok&&!batchMode)offerUndo('Tarea movida');return ok};
+/* Lotes: el aviso sale una sola vez, al final. Completar, reabrir y papelera llevan su «Deshacer» local (batch-ui.js); los
+   demás, el del historial con el mismo texto del lote. */
 const batchBeforeUndo=batchRun;
-batchRun=function(label,fn){batchBeforeUndo(label,fn);offerUndo('Lote aplicado')};
+batchRun=function(label,fn,options={}){const n=batchSelection.size,ok=batchBeforeUndo(label,fn,options);if(ok&&!options.undo)offerUndo(label.replace('%n',n));return ok};
 // ---- Atajos de teclado --------------------------------------------------------------------------
 document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;const t=e.target;if(t&&t.matches&&t.matches('input,textarea,select,[contenteditable]'))return;if(document.getElementById('sheetBack')?.classList.contains('show'))return;
   if(e.key==='/'){const s=document.getElementById('searchInput');if(s){e.preventDefault();s.focus();s.select()}}

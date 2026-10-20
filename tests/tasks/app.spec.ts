@@ -185,7 +185,7 @@ const HELPERS = `const reforma = ${reforma.toString()}; const allTasks = ${allTa
 const editWith = (page: Page, fn: (s: typeof S) => void) => page.evaluate(`(() => { const S = ${JSON.stringify(S)}; ${HELPERS} (${fn.toString()})(S); if (!save()) throw new Error('save() devolvió false: ' + document.getElementById('toast').textContent); render(); })()`);
 /** Como `editWith`, pero devuelve si `save()` aceptó el cambio y el aviso mostrado. */
 const tryWith = (page: Page, fn: (s: typeof S) => void): Promise<{ saved: boolean; toast: string }> =>
-  page.evaluate(`(() => { const S = ${JSON.stringify(S)}; ${HELPERS} (${fn.toString()})(S); const saved = save(); render(); return { saved, toast: document.getElementById('toast').textContent }; })()`);
+  page.evaluate(`(() => { const S = ${JSON.stringify(S)}; ${HELPERS} (${fn.toString()})(S); const saved = save(); render(); return { saved, toast: document.querySelector('.ikisai-toast')?.textContent ?? '' }; })()`);
 
 test('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({ browser }) => {
   test.setTimeout(240_000);
@@ -433,11 +433,10 @@ test.describe('gestos reales', () => {
     await a.locator(`[data-toggle-task="${G.single}"]`).click();
     await settled(a);
     expect((await serverTask(G.single)).done).toBe(true);
-    await a.locator('#undoNow').click({ timeout: 15_000 });
-    await a.locator('#confirmUndo').click();
+    // «Deshacer» local en el aviso del kit (MUELA-073): sin confirmar ni pasar por el historial.
+    await a.locator('.ikisai-toast button', { hasText: 'Deshacer' }).last().click();
     await settled(a);
     expect((await serverTask(G.single)).done).toBe(false);
-    await a.evaluate(() => (window as any).closeSheet());
   });
 
   test('[14] enviar a la papelera un padre con su hija y restaurarlo desde la papelera', async () => {

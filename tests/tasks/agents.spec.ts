@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRows, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const Sync: any;
 declare let state: any;
@@ -35,7 +35,9 @@ const asAgent = (token: string, path: string, body?: unknown) => server.app.call
 test('[29][37] agentes: clave desde la interfaz, borrado con revisión humana aplicado tal cual, registro y revocación', async () => {
   test.setTimeout(120_000);
   // El menú de escritorio ya ofrece las tres pantallas a la propietaria con acceso completo.
-  for (const action of ['accesses', 'proposals', 'accessLog']) await expect(a.locator(`[data-action="${action}"]`)).toHaveCount(1);
+  expect(await menuRows(a, 'people')).toEqual(expect.arrayContaining(['tasks.menu.accesos', 'tasks.menu.propuestas']));
+  expect(await menuRows(a, 'system')).toContain('tasks.menu.registro_accesos');
+  await a.keyboard.press('Escape');
 
   let token = '';
   await test.step('la propietaria crea un agente editor y ve la clave una sola vez', async () => {

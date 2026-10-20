@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const Sync: any, state: any, render: any, filteredTasks: any, project: any, openTaskEditor: any, openProjectEditor: any, navigateView: any, startInlineNew: any, savedViewsSheet: any, readableExport: any, handleTopAction: any, routeSheet: any;
@@ -396,8 +396,7 @@ test('vistas guardadas con `_person` y texto legible con «Personas:»', async (
 });
 
 test('pantalla «Personas»: las de Central por nivel, de solo lectura, con «Gestionar en Central»', async () => {
-  await page.locator('#moreBtn').click();
-  const item = page.locator('#kebab [data-menu-group="work"] [data-menu-view="people"]');
+  const item = await menuRow(page, 'tasks.menu.personas', 'work');
   await expect(item).toBeVisible();
   await item.click();
   await expect(page.locator('.peoplelist')).toContainText('Valeria Gómez');

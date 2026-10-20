@@ -5,7 +5,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, E2E_WORKER_KEY, EDITOR, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
@@ -239,7 +239,8 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   await expect.poll(() => owner.evaluate(() => Sync.core.data['tasks.requests'].length)).toBeGreaterThan(0);
   await owner.evaluate(() => (window as any).render());
   // El menú lleva la entrada con su contador (en el móvil, dentro del menú; puede estar en un grupo plegado).
-  await expect(owner.locator('[data-menu-view="triage"]').first()).toContainText('Por clasificar · 1');
+  await expect(await menuRow(owner, 'tasks.menu.por_clasificar', 'work')).toContainText('Por clasificar · 1');
+  await owner.evaluate(() => (window as any).closeNavigation());
   await owner.evaluate(() => (window as any).navigateView('triage'));
   await expect(owner.locator('.inboxgroup h2')).toContainText('Vencimientos');
   await expect(owner.locator('[data-request-row] a')).toHaveAttribute('href', 'https://central.ikisai.com/#/cumplimiento/VTO_1');
@@ -344,7 +345,8 @@ test('«Por clasificar» siempre a mano para la propietaria, y aviso del área d
   if (pending) await owner.evaluate(() => { for (const r of IkisaiTasks.requests.pendingRequests(Sync.core.data)) purchaseRun((d: any) => IkisaiTasks.requests.dismissRequestOps(d, r.id)); });
   await settled(owner);
   await owner.evaluate(() => (window as any).render());
-  await expect(owner.locator('[data-menu-view="triage"]').first()).toHaveText(/^\s*Por clasificar\s*$/);
+  await expect(await menuRow(owner, 'tasks.menu.por_clasificar', 'work')).toHaveText(/^\s*Por clasificar\s*$/);
+  await owner.evaluate(() => (window as any).closeNavigation());
   await owner.evaluate(() => (window as any).navigateView('triage'));
   await expect(owner.locator('#retreatRouteMissing')).toContainText('Falta elegir el área de los proyectos de retiro');
   await owner.locator('#retreatRouteMissing [data-route-new="booking.retreat_project"]').click();

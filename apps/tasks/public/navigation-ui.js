@@ -24,7 +24,6 @@ const menuPaths={
   close:'M5 5l14 14 M19 5L5 19'
 };
 function menuIcon(name){return `<svg class="menuicon" viewBox="0 0 24 24" aria-hidden="true"><path d="${menuPaths[name]||menuPaths.file}"/></svg>`}
-const expandedMenuGroups=new Set(['work']);
 function canManageCatalog(){const area=tab();return canEdit()&&!!area&&!area.restricted}
 function canManageArea(scope=tab()){return Sync.actor?.role==='owner'&&!Sync.secondary&&!scope.restricted}
 function navigationGroups(){return [
@@ -38,20 +37,18 @@ function navigationGroups(){return [
     ['users','Cuentas de personas','people','action',isAdministrator()],['accesses','Accesos y permisos','key','action',isAdministrator()],['proposals','Propuestas de agentes','agent'],['sessions','Mi cuenta y sesiones','key','action',!!Sync.actor?.session]]},
   {id:'system',name:'Sistema',icon:'settings',items:[['sync','Sincronización','sync'],['history','Historial de cambios','history'],['accessLog','Registro de accesos','key','action',isAdministrator()]]}
 ]}
-function closeNavigation(){document.getElementById('kebab')?.classList.remove('show');document.getElementById('menuBackdrop')?.classList.remove('show');document.getElementById('moreBtn')?.setAttribute('aria-expanded','false')}
+/* El menú común del kit (shell-ui.js) se cierra al navegar o al abrir una hoja desde él. */
+function closeNavigation(){if(typeof closeShellMenu==='function')closeShellMenu()}
 function navigateView(view){closeNavigation();closeSheet();state.view=view;state.currentProject=null;state.search='';state.filters={};persistUI();render()}
 const actionBeforeNavigation=handleTopAction;
 handleTopAction=function(action){closeNavigation();if(action==='areas')return areasSheet();if(action==='filters')return openFilters();if(action==='newtab')return newAreaSheet();if(action==='managetab')return manageTab();return actionBeforeNavigation(action)};
 const bindBeforeNavigation=bind;
 bind=function(){bindBeforeNavigation();
-  const more=document.getElementById('moreBtn');if(more)more.onclick=()=>{const open=document.getElementById('kebab').classList.toggle('show');document.getElementById('menuBackdrop').classList.toggle('show',open);more.setAttribute('aria-expanded',String(open));if(open)document.getElementById('closeMenu')?.focus()};
-  // La cáscara se conserva entre pintados: onclick (no addEventListener) para no acumular manejadores.
-  const closeMenu=document.getElementById('closeMenu');if(closeMenu)closeMenu.onclick=()=>{closeNavigation();more?.focus()};const backdrop=document.getElementById('menuBackdrop');if(backdrop)backdrop.onclick=closeNavigation;
-  document.querySelectorAll('[data-menu-group]').forEach(d=>d.ontoggle=()=>{if(!d.isConnected)return;d.open?expandedMenuGroups.add(d.dataset.menuGroup):expandedMenuGroups.delete(d.dataset.menuGroup)});
   document.querySelectorAll('[data-menu-view]').forEach(b=>b.onclick=()=>navigateView(b.dataset.menuView));
   document.querySelectorAll('[data-edit-label]').forEach(b=>{b.disabled=!canManageCatalog();b.onclick=()=>openLabelEditor(label(b.dataset.editLabel).family,b.dataset.editLabel)});
 };
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(document.getElementById('sheetBack').classList.contains('show'))closeSheet();else {closeNavigation();document.getElementById('moreBtn')?.focus()}}});
+// Escape: cierra la hoja abierta; el menú común lo cierra el kit (y devuelve el foco a la marca).
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(document.getElementById('sheetBack').classList.contains('show'))closeSheet();else closeNavigation()}});
 
 /* Lo archivado no se mezcla con lo vivo (aceptación V1, 8): familias y etiquetas archivadas se ocultan y se ven con
    «Ver archivadas», al final del catálogo, donde se pueden restaurar. */

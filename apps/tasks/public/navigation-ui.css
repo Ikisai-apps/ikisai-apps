@@ -29,9 +29,19 @@
 .area-card .actions button{font-size:13px}
 
 .sheettitle{padding-right:36px}
+/* Menú común del kit (MUELA-083 §4): en el móvil, solo el cajón que abre la marca; la pista «Área actual» al final. */
+.tasks-menuhint{margin:4px 18px 10px;color:var(--muted);font-size:12.5px;line-height:1.5}
 @media(min-width:1024px){
-  :root{--sidebar-width:264px}
-  #app{max-width:none;margin:0 0 0 var(--sidebar-width);padding-bottom:44px}
+  /* Columna fija del menú de 316 px a la izquierda (sustituye al menú lateral de 264 px) y la barra de pestañas abajo (K12). */
+  :root{--sidebar-width:316px}
+  #app{max-width:none;margin:0 0 0 var(--sidebar-width);padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  #shellTop>.appmenu-column{display:flex;flex-direction:column;position:fixed;z-index:30;top:0;bottom:0;left:0;width:var(--sidebar-width);height:100dvh;overflow:hidden;background:var(--bg);border-right:1px solid var(--edge)}
+  #shellTop>.appmenu-column .appmenu-head{padding-top:14px}
+  #shellTop>.appmenu-column .appmenu-tile{min-height:76px}
+  #shellTop>.appmenu-column .appmenu-tilemark{width:34px;height:34px}
+  #shellTop>.appmenu-column .appmenu-tiletext{font-size:11.5px}
+  #shellBottom>.tabbar.bottomnav{display:grid;left:calc(var(--sidebar-width) + (100% - var(--sidebar-width))/2);width:min(760px,calc(100% - var(--sidebar-width)))}
+
   /* La pantalla de entrada no tiene menú lateral: ocupa todo el ancho y queda centrada en la ventana. */
   #app:has(>.ikisai-kit>.login){margin-left:0;padding-bottom:0}
   
@@ -42,7 +52,7 @@
   .label-manager>.screenhead,.label-manager>.notice,.label-manager>.catalog-actions{grid-column:1/-1}
   .label-manager .family-card{margin:0}
   
-  .fab{right:32px;bottom:30px}
+
   
   
   

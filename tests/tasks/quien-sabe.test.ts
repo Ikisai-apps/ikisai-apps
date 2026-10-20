@@ -124,3 +124,25 @@ test('refreshCapabilities: lee las dos, guarda en el dispositivo, sin red se que
   const fresh = new TasksCore({ readOnly: true });
   assert.deepEqual([fresh.capabilities, fresh.availability], [[], []]);
 });
+
+test('refreshCapabilities: el outsider que ya las tenía en caché, tras un 403 (central #645) se queda sin capacidades y sin copia', async () => {
+  store.clear();
+  const CAPS = [cap('ana', 'acs', 2)];
+  const core = new TasksCore({ readOnly: true });
+  const client = core.client as any;
+  client.session = () => ({ userId: 'u1' });
+  client.api = async (path: string) => (path.endsWith('capability_options') ? { rows: CAPS } : { rows: [] });
+  assert.equal(await core.refreshCapabilities(), true);
+  assert.deepEqual(new TasksCore({ readOnly: true }).capabilities, CAPS);
+  // Ahora Central se las niega.
+  client.api = async () => { throw Object.assign(new Error('FORBIDDEN'), { status: 403 }); };
+  assert.equal(await core.refreshCapabilities(), false);
+  assert.deepEqual(core.capabilities, []);
+  assert.deepEqual(new TasksCore({ readOnly: true }).capabilities, []);
+  // Sin red (sin estado) se conserva lo último: vuelve a haber copia y un fallo de red no la borra.
+  client.api = async (path: string) => (path.endsWith('capability_options') ? { rows: CAPS } : { rows: [] });
+  await core.refreshCapabilities();
+  client.api = async () => { throw new Error('sin red'); };
+  assert.equal(await core.refreshCapabilities(), false);
+  assert.deepEqual(core.capabilities, CAPS);
+});

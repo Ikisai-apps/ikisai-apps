@@ -7,7 +7,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, EDITOR, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, menuRows, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, navigationGroups: any, handleTopAction: any, syncNow: any;
@@ -89,33 +89,33 @@ test('el botón solo lo ve la propietaria, en «Trabajo» tras «Etiquetas»; la
   const editorContext = await page.context().browser()!.newContext({ viewport: { width: 390, height: 844 } });
   const editor = await openApp(editorContext, server, { user: EDITOR, aliases: ID });
   expect(await menuItems(editor)).not.toContain('actionsToTrades');
-  await editor.locator('#moreBtn').click();
-  await expect(editor.locator('#kebab [data-menu-group="work"] [data-menu-view="labels"]')).toBeVisible();
-  await expect(editor.locator('#kebab [data-action="actionsToTrades"]')).toHaveCount(0);
+  // Etiquetas está en la barra de abajo (el menú común no la repite) y el botón no sale en el menú.
+  await expect(editor.locator('#shellBottom [data-nav="labels"]')).toBeVisible();
+  expect(await menuRows(editor, 'work')).not.toContain('tasks.menu.acciones_a_oficios');
   await editorContext.close();
 
   // Escritorio: a la vista desde el menú real.
   const desktopContext = await page.context().browser()!.newContext({ viewport: { width: 1280, height: 900 } });
   const desktop = await openApp(desktopContext, server, { aliases: ID });
-  const deskItem = desktop.locator('#kebab [data-menu-group="work"] [data-action="actionsToTrades"]');
+  // En la columna del menú, en «Trabajo», donde iba Etiquetas (antes de «Mis tareas»).
+  const deskWork = await menuRows(desktop, 'work', 'column');
+  expect(deskWork).toContain('tasks.menu.acciones_a_oficios');
+  expect(deskWork.indexOf('tasks.menu.acciones_a_oficios')).toBeLessThan(deskWork.indexOf('tasks.menu.mis_tareas'));
+  const deskItem = await menuRow(desktop, 'tasks.menu.acciones_a_oficios', 'work', 'column');
   await expect(deskItem).toBeVisible();
-  const deskWork = await desktop.evaluate(() => [...document.querySelectorAll('#kebab [data-menu-group="work"] [data-menu-view], #kebab [data-menu-group="work"] [data-action]')]
-    .map((n: any) => n.dataset.menuView || n.dataset.action));
-  expect(deskWork.slice(deskWork.indexOf('labels'), deskWork.indexOf('labels') + 2)).toEqual(['labels', 'actionsToTrades']);
   await deskItem.click();
   await expect(desktop.locator('#sheet')).toContainText('ACS → Fontanería › ACS · 1 tarea');
   await desktopContext.close();
 
   // Móvil.
-  await page.locator('#moreBtn').click();
-  const item = page.locator('#kebab [data-menu-group="work"] [data-action="actionsToTrades"]');
+  const work = await menuRows(page, 'work');
+  expect(work.indexOf('tasks.menu.acciones_a_oficios')).toBeGreaterThanOrEqual(0);
+  expect(work.indexOf('tasks.menu.acciones_a_oficios')).toBeLessThan(work.indexOf('tasks.menu.mis_tareas'));
+  const item = await menuRow(page, 'tasks.menu.acciones_a_oficios', 'work');
   await expect(item).toBeVisible();
-  const work = await page.evaluate(() => [...document.querySelectorAll('#kebab [data-menu-group="work"] [data-menu-view], #kebab [data-menu-group="work"] [data-action]')]
-    .map((n: any) => n.dataset.menuView || n.dataset.action));
-  expect(work.slice(work.indexOf('labels'), work.indexOf('labels') + 2)).toEqual(['labels', 'actionsToTrades']);
   await shot('13-menu-trabajo');
   await item.click();
-  await expect(page.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#appLauncher')).toHaveAttribute('aria-expanded', 'false');
   await expect(sheet()).toContainText('ACS → Fontanería › ACS · 1 tarea');
   await expect(sheet()).toContainText('Por resolver (1)');
   await expect(sheet()).toContainText('Jardinería · sin oficio en Central · 1 tarea');
@@ -146,8 +146,7 @@ test('al pulsar, la app pasa sola a oficios; y «Volver a las acciones» la deja
   await expect(chipsOf(T_JARD)).toHaveText(['Albañilería']);
 
   // «Oficios», a la vista en «Trabajo», tras «Etiquetas».
-  await page.locator('#moreBtn').click();
-  const trades = page.locator('#kebab [data-menu-group="work"] [data-menu-view="trades"]');
+  const trades = await menuRow(page, 'tasks.menu.oficios', 'work');
   await expect(trades).toBeVisible();
   await trades.click();
   await expect(page.locator('.tradetree')).toContainText('Albañilería');

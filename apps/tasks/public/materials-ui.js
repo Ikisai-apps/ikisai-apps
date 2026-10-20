@@ -72,11 +72,20 @@ function consumptionSheet(taskIds){const pending=taskIds.flatMap(id=>M().pending
     try{await Sync.core.recordConsumption(lines)}catch(e){save.disabled=false;return toast(e.message||'No se pudo apuntar en el inventario.')}
     if(purchaseRun(d=>M().confirmConsumptionOps(d,lines),'Consumo apuntado.')){usage.track('tasks.consumo.confirmar');closeSheet()}else save.disabled=false}}
 
-/* Completar una tarea (o un padre con sus hijas) con materiales pendientes: pregunta el consumo. */
+/* Completar una tarea (o un padre con sus hijas) con materiales pendientes: pregunta el consumo. La hoja sale cuando se va el
+   aviso «Tarea completada · Deshacer», nunca antes; si se deshace, no sale (PERDIDAS §2: lo descontado no vuelve). Reabrir una
+   tarea con el consumo ya apuntado avisa de que lo gastado no vuelve al inventario. */
+function consumedAlready(ids){try{const data=purchasesData();return ids.some(t=>M().taskMaterials(data,t).some(m=>Number(m.consumed)>0))}catch{return false}}
 const toggleTaskBeforeMaterials=toggleTask;
-toggleTask=function(id){const before=taskLocation(id),wasDone=before?status(before.p,before.t)==='done':true;toggleTaskBeforeMaterials(id);
-  if(wasDone||!canEditMaterials()||(typeof batchMode!=='undefined'&&batchMode))return;const after=taskLocation(id);if(!after||status(after.p,after.t)!=='done')return;
-  const ids=[id,...children(after.p,id).map(c=>c.id)];if(ids.some(t=>M().pendingConsumption(purchasesData(),t,isConsumable).length))consumptionSheet(ids)};
+toggleTask=function(id){const before=taskLocation(id),wasDone=before?status(before.p,before.t)==='done':true,area=state.activeTab;toggleTaskBeforeMaterials(id);
+  if(typeof batchMode!=='undefined'&&batchMode)return;const after=taskLocation(id);if(!after)return;
+  const ids=[id,...children(after.p,id).map(c=>c.id)];
+  if(wasDone){if(status(after.p,after.t)!=='done'&&consumedAlready(ids))toast('Lo gastado no vuelve al inventario.');return}
+  if(!canEditMaterials()||status(after.p,after.t)!=='done')return;
+  if(!ids.some(t=>M().pendingConsumption(purchasesData(),t,isConsumable).length))return;
+  const ask=()=>withArea(area,()=>{const now=taskLocation(id);if(!now||now.t.deleted||status(now.p,now.t)!=='done')return;
+    const live=[id,...children(now.p,id).map(c=>c.id)];if(live.some(t=>M().pendingConsumption(purchasesData(),t,isConsumable).length))consumptionSheet(live)});
+  if(typeof afterUndoWindow==='function')afterUndoWindow('toggle:'+id,ask);else ask()};
 
 /* La ficha de la tarea: la sección antes de los comentarios (o de los botones). */
 const openTaskEditorBeforeMaterials=openTaskEditor;
