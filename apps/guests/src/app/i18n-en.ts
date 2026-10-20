@@ -755,4 +755,7 @@ export const EN: Dictionary = {
   'program.time': 'Time',
   'program.minor': 'minor',
   'program.free': 'Free',
+  'plan.here': 'Here',
+  'plan.house': 'The house plan',
+  'plan.centerBackup': 'The centre plan (image or PDF)',
 };

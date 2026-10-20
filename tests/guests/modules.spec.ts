@@ -285,3 +285,37 @@ test('guests · vista previa del organizador (huésped de muestra): franja visib
   await expect(page.getByText('Es una vista previa: no se guarda nada.').first()).toBeVisible();
   expect((await api.row(muestra)).last_name_1).toBeNull();
 });
+
+test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala resaltada con «Aquí» y tu cama en el Resumen', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con mapa', start: day(0), end: day(2) });
+  const ona = await api.guest(event, { first_name: 'Ona' });
+  await page.clock.setFixedTime(new Date(`${day(0)}T10:00:00Z`));
+  await api.experience(reservation, ALL_MODULES);
+  await api.organizerInvoke(reservation, 'booking.portal_program_save', { item: { id: crypto.randomUUID(), day: day(0), starts_at: '09:00', ends_at: '15:00', title: 'Yoga en el jardín', place_text: 'Sala del jardín', kind: 'actividad' } });
+  const room = await api.room(event, { name: 'Habitación del mapa', enSuite: false, beds: ['Cama 1', 'Cama 2'] });
+  await api.assign(event, room.spaceId, room.bedIds[1]!, ona);
+  const square = (x: number, y: number, s = 0.2): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  const { ids } = await api.floorPlan([
+    { name: 'Sala del jardín', points: square(0.05, 0.05, 0.3) },
+    { name: 'Comedor', points: square(0.4, 0.05, 0.3) },
+    { name: 'Habitación del mapa', kind: 'habitacion', points: square(0.05, 0.5, 0.4) },
+    { name: 'Cama 2', kind: 'cama', parent: 'Habitación del mapa', points: square(0.1, 0.55, 0.1) },
+  ]);
+  await enter(page, await api.guestLink(reservation, ona, 'Ona'));
+
+  // Resumen: «Tu habitación en el plano» señala su cama (por nombre: Booking aún no da el id de Recursos).
+  await expect(page.locator('#roomPlan')).toHaveAttribute('data-space', ids['Cama 2']!);
+  await go(page, 'programa');
+  const plan = page.locator('#nowPlan');
+  await expect(plan).toHaveAttribute('data-space', ids['Sala del jardín']!);
+  await plan.locator('summary').click();
+  const here = plan.locator('.map-svg [role="button"][aria-pressed="true"]');
+  await expect(here).toHaveCount(1);
+  await expect(here).toHaveAttribute('aria-label', /Sala del jardín/);
+  await expect(here).toHaveAttribute('aria-label', /Aquí/);
+  await expect(plan.locator('.map-svg [role="button"]')).toHaveCount(4);
+  // El plano del centro de Central (si otra prueba lo sembró), debajo y plegado: nunca en lugar del mapa.
+  for (const backup of await plan.locator('.gplan-backup').all()) await expect(backup).not.toHaveAttribute('open', /.*/);
+  await plan.scrollIntoViewIfNeeded();
+  await capture(page, 'plano-mapa');
+});

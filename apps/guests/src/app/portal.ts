@@ -10,13 +10,15 @@ import type { Loaded } from './api.ts';
 import { normalizeExperience, normalizeMaterial, normalizeQuestion } from './normalize.ts';
 
 export * from './portal-types.ts';
-import type { Experience, Lodging, Material, Menu, Place, ProgramItem, Question, Window } from './portal-types.ts';
+import type { Experience, Lodging, Material, Menu, Place, PortalPlans, ProgramItem, Question, Window } from './portal-types.ts';
 
 export interface PortalReads {
   experience(reservationId: string): Promise<Loaded<Experience> | null>;
   program(reservationId: string): Promise<Loaded<{ items: ProgramItem[] }> | null>;
   menu(reservationId: string, guestId: string): Promise<Loaded<Menu> | null>;
   place(): Promise<Loaded<Place> | null>;
+  /** El mapa de zonas (`GET plans` de la Edge de Guests, MUELA-024), con copia sin red; null si no hay o no se puede. */
+  plans(): Promise<Loaded<PortalPlans> | null>;
   materials(reservationId: string): Promise<Loaded<{ items: Material[] }> | null>;
   questions(reservationId: string, guestId: string): Promise<Loaded<{ items: Question[] }> | null>;
   lodging(guestId: string): Promise<Loaded<Lodging> | null>;
@@ -73,6 +75,21 @@ export function createPortalReads(client: SyncClient): PortalReads {
       } catch (error) {
         if (isNetworkError(error)) {
           const copy = await cache.read<Place>(user, 'central.portal_place_projection', {});
+          return copy ? { value: copy.value, at: copy.at, stale: true } : null;
+        }
+        return null;
+      }
+    },
+    plans: async () => {
+      const user = userId();
+      try {
+        const value = await client.api<PortalPlans>('/plans');
+        const clean = { plans: value.plans ?? [], spaces: value.spaces ?? [] };
+        void cache.saveRead(user, 'guests.plans', {}, clean);
+        return { value: clean, at: new Date().toISOString(), stale: false };
+      } catch (error) {
+        if (isNetworkError(error)) {
+          const copy = await cache.read<PortalPlans>(user, 'guests.plans', {});
           return copy ? { value: copy.value, at: copy.at, stale: true } : null;
         }
         return null;

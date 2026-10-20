@@ -91,10 +91,12 @@
 
 - 2026-10-20 · **FD2 y `audience`** (API.md §9.15): el outsider ve el menú de casa en cada hueco de «Tus días», con la línea de alérgenos de #597; el Programa enseña a cada persona solo lo suyo y, con la familia junta, el día en una columna por persona («Libre» en las demás; los menores con aro). Pruebas en `outsider.spec.ts` y `personas.spec.ts`.
 
+- 2026-10-20 · **Mapa de zonas** (API.md §9.16): ruta `GET plans` en la Edge (dibujos firmados) y «Ver en el plano» con `createSpaceMap` y el sitio resaltado; el plano de Central, de respaldo. Pruebas en `api.test.ts` y `modules.spec.ts`.
+
 ## Pendiente
 
 - «Mis tareas» (TK1), cuando Tasks lo publique.
-- El plano de zonas en «Ver en el plano», cuando el portal pueda leer los dibujos (Core).
+- El mapa en Alojamiento (camas por estado) y en Ayuda (elegir el sitio): la segunda PR del mapa.
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 

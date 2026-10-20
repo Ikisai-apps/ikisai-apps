@@ -73,7 +73,7 @@ createApp({
 })
 ```
 
-**Sin rutas propias en la fase 1:** todo lo que necesita lo monta el kit. Sin `portalIssuer`, porque un huésped no emite enlaces, y sin `workerKey`, porque no tiene trabajos programados.
+**Una ruta propia, `GET plans`** (20-10-2026, MUELA-024): el mapa de zonas de Recursos (`resources.portal_plans`) con cada dibujo firmado aquí con `createStorage(...).readUrl` (10 minutos), su `fileId`, `mime` y `sha256`; nunca bucket ni ruta, ni personas. Lo demás lo monta el kit. Sin `portalIssuer`, porque un huésped no emite enlaces, y sin `workerKey`, porque no tiene trabajos programados.
 
 **Archivos solo de quien los subió.** En los portales, el kit solo deja leer (`GET files/:id`) y verificar (`uploads/:id/verify`) un archivo a quien lo subió: la firma de un huésped no la ve otro aunque conozca el id (C7, #288). Guests no vuelve a leer sus archivos.
 
@@ -91,6 +91,7 @@ createApp({
 | `POST uploads` · `uploads/:id/verify` | imagen de la firma al bucket privado `guests-documents` |
 | `POST feedback`, `feedback/uploads` (+ `verify`), `GET feedback?mine=true` | «Ayuda y sugerencias» |
 | `POST usage/batch` | uso sin persona (`createUsage({ notice: false })`) |
+| `GET plans` | el mapa de zonas: `{plans: [{id, buildingId, floor, position, width, height, fileId, mime, sha256, url}], spaces: [{id, parentId, kind, name, planId, planShape, position}]}` (§9.16) |
 
 ### 6.2 Lecturas y acciones de Booking (lo que ya existe en `main`)
 
@@ -544,6 +545,19 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
     En Inicio, «Para Leo» en la línea de la actividad.
 - `resource_space_id` de cada actividad se lee pero aún no se usa: el plano de zonas llegará cuando el portal pueda leer
   los dibujos (lo hace Core). Hasta entonces, el plano de Central.
+
+### 9.16 El mapa de zonas en «Ver en el plano» (MUELA-024, 20-10-2026)
+
+- **Lectura:** `GET plans` (§6.1) con copia en la caché para verla sin red, recordada un minuto en la pantalla. El dibujo
+  se guarda en el dispositivo por su `sha256` (Cache Storage `ikisai-guests-plans`, se borra al salir) y no se vuelve a
+  bajar si no cambia; si no se puede leer (CORS), la imagen firmada se pinta igual.
+- **«Ver en el plano»** (`ui/plan.ts`) busca el sitio en el mapa: por `resource_space_id` (Programa y horario de Inicio)
+  o, mientras Booking no dé los ids de Recursos en `portal_lodging` y `portal_my_stays`, por nombre (habitación y cama
+  dentro), solo si coincide con uno. Con el sitio: `createSpaceMap` del kit con el sitio resaltado y «Aquí» en texto, el
+  conmutador Plano/Lista y, debajo y plegado, el plano del centro de Central como respaldo. Sin dibujo o sin forma, la
+  pieza enseña la lista con la ruta. Sin el sitio en el mapa, como antes (el plano de Central).
+- **Pantallas:** Resumen (`#roomPlan` y lo de ahora), Programa, Información práctica y «Ikisai» (el mapa entero,
+  `whole`), y la estancia de Outsider.
 
 ## 10. Offline
 

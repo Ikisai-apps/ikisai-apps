@@ -72,7 +72,7 @@ export function placeCard(ctx: Pick<GuestContext, 'reads'>): HTMLElement {
       el('h3', null, p.name ?? 'Ikisai'),
       p.address ? el('p', { id: 'infoAddress' }, icon('pin', 16), ' ', p.address) : null,
       map ? el('div', { class: 'btnrow' }, el('a', { class: 'primary', href: map, target: '_blank', rel: 'noopener', id: 'infoMap', 'data-feedback-id': 'guests.info.mapa.abrir', 'data-feedback-label': 'Ver en el mapa' }, icon('pin', 16), t('info.map'))) : null,
-      p.site_plan_file_id ? verEnPlano({ place: null, label: t('plan.center'), id: 'infoPlan', reads: ctx.reads, mark: (n) => fbMark(n, 'guests.info.plano.ver', 'Ver el plano del centro') }) : null));
+      verEnPlano({ place: null, whole: true, label: t('plan.center'), id: 'infoPlan', reads: ctx.reads, mark: (n) => fbMark(n, 'guests.info.plano.ver', 'Ver el plano del centro') })));
   }).catch(() => undefined);
   return host;
 }
