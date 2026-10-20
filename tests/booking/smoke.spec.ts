@@ -591,6 +591,9 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.getByRole('heading', { name: 'SES.HOSPEDAJES', level: 2 })).toBeVisible();
     // La bandeja, con su veredicto; los ajustes, plegados en «Ajustes del servicio» (tanda 27).
     await expect(page.locator('#sesVerdict')).toBeVisible();
+    // El veredicto cuenta lo mismo que comprueba: una línea por área con problema, también partes y retenidas.
+    await expect(page.locator('#sesVerdict')).toContainText(/Partes de viajeros/);
+    await expect(page.locator('#sesVerdict')).toContainText(/retenida/i);
     await expect(page.locator('#sesTestBand')).toContainText('Entorno de pruebas');
     await page.locator('#sesSettingsFold > summary').click();
     await expect(page.locator('#sesEnvironment')).toHaveValue('pre');

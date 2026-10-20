@@ -19,12 +19,19 @@ const AREA_LABELS: Record<SesArea, string> = {
   anulacion: 'Anulación en curso', esperando_pago: 'Esperando el pago', comunicadas: 'Comunicadas', sin_ses: 'Sin SES',
 };
 const FOLDED: readonly SesArea[] = ['comunicadas', 'sin_ses'];
+/** Cada comprobación en verde, con su frase. */
+const CLEAR_TEXT: Partial<Record<SesArea, string>> = {
+  corregir: 'Nada que corregir', cambio: 'Ninguna cambió tras comunicarse', listas: 'Ninguna esperando a comunicarse', retenidas: 'Ninguna retenida',
+  reintentando: 'Ningún error reintentándose', partes: 'Partes de viajeros al día', antes_de_llegar: 'Huéspedes listos antes de llegar',
+};
 
 export interface SesTrayOptions {
   client: SyncClient;
   navigate(hash: string): void;
   /** Editor u owner: acciones de un toque. */
   writable: boolean;
+  /** Solo el propietario: abre «Ajustes del servicio» (retenidas sin credenciales). */
+  openSettings?: () => void;
 }
 
 /** Pinta la bandeja en `host`; devuelve `refresh`. */
@@ -33,6 +40,9 @@ export function createSesTray(host: HTMLElement, o: SesTrayOptions) {
   let busy = false;
   const boot = o.client.bootstrap();
   const seesGuests = boot ? canSeeGuests(boot.membership) : false;
+  // «Antes de llegar» y «Partes» llevan datos de huéspedes (recuentos y el texto de SES, que puede nombrarlos).
+  const GUEST_AREAS: readonly SesArea[] = ['antes_de_llegar', 'partes'];
+  const shown = (a: SesArea) => seesGuests || !GUEST_AREAS.includes(a);
 
   const open = (row: SesRow, block = 'blockSes') => o.navigate(`#/reservas/${row.item.reservation.id}${block === 'huespedes' && row.item.reservation.event_id ? '' : ''}`);
   const guestsOf = (row: SesRow) => (row.item.reservation.event_id ? `#/huespedes/${row.item.reservation.event_id}` : null);
@@ -74,7 +84,7 @@ export function createSesTray(host: HTMLElement, o: SesTrayOptions) {
     if (row.target) what.push(`SES dice: ${comm?.error_text ?? comm?.error_code ?? 'error'}`);
     if (row.area === 'retenidas') what.push(comm?.error_code === 'NOT_CONFIGURED' ? 'Faltan las credenciales de SES' : 'Envíos en pausa: el plazo sigue corriendo');
     if (row.area === 'reintentando') what.push(`Se reintentará automáticamente${comm?.attempts ? ` · ${comm.attempts} intentos` : ''}`);
-    if (row.area === 'cambio') what.push('La reserva cambió desde que se comunicó: anula y vuelve a comunicar');
+    if (row.area === 'cambio') what.push(r.ses_enabled ? 'La reserva cambió desde que se comunicó: anula y vuelve a comunicar' : 'SES se desactivó después de comunicarla: anula la comunicación');
     if (row.area === 'esperando_pago') what.push('Se podrá comunicar cuando se registre el pago');
     if (row.area === 'sin_ses') what.push(r.ses_disabled_reason ? `Sin SES: ${r.ses_disabled_note || r.ses_disabled_reason}` : 'Sin SES');
     if ((row.area === 'antes_de_llegar' || row.area === 'partes') && row.item.guests) {
@@ -86,6 +96,7 @@ export function createSesTray(host: HTMLElement, o: SesTrayOptions) {
     if (o.writable) {
       if (row.action === 'comunicar') actions.push({ label: 'Comunicar', primary: true, attrs: { 'data-feedback-id': 'booking.ses.reserva.comunicar', 'data-feedback-label': 'Comunicar' }, onClick: () => void communicate(row).then((done) => { if (done) { toast('Reserva enviada a SES.'); void refresh(); } }) });
       if (row.action === 'anular' || row.action === 'corregir') actions.push({ label: row.target?.label ?? (row.action === 'anular' ? 'Anular en la ficha' : 'Revisar la reserva'), primary: true, attrs: { 'data-feedback-id': 'booking.ses.reserva.corregir', 'data-feedback-label': 'Corregir' }, onClick: () => open(row) });
+      if (row.area === 'retenidas' && comm?.error_code === 'NOT_CONFIGURED' && o.openSettings) actions.push({ label: 'Ajustes del servicio', primary: true, attrs: { 'data-feedback-id': 'booking.ses.reserva.ajustes', 'data-feedback-label': 'Ajustes del servicio' }, onClick: () => o.openSettings!() });
       if (row.action === 'huespedes' && guestsOf(row)) actions.push({ label: 'Corregir en Huéspedes', primary: true, attrs: { 'data-feedback-id': 'booking.ses.reserva.huespedes', 'data-feedback-label': 'Corregir en Huéspedes' }, onClick: () => o.navigate(guestsOf(row)!) });
     }
     actions.push({ label: 'Abrir', attrs: { 'data-feedback-id': 'booking.ses.reserva.abrir', 'data-feedback-label': 'Abrir' }, onClick: () => open(row) });
@@ -104,17 +115,17 @@ export function createSesTray(host: HTMLElement, o: SesTrayOptions) {
   }
 
   function paint(view: SesOverview): void {
-    // Lo de antes de llegar lleva datos de huéspedes (recuentos): solo con permiso de huéspedes.
-    const areas = SES_AREAS.filter((a) => a !== 'antes_de_llegar' || seesGuests);
-    const problems = view.rows.filter((r) => SES_PROBLEM_AREAS.includes(r.area) && (r.area !== 'antes_de_llegar' || seesGuests));
+    // Lo de huéspedes, solo con permiso de huéspedes; el veredicto cuenta lo mismo que las comprobaciones.
+    const areas = SES_AREAS.filter(shown);
+    const checked = SES_PROBLEM_AREAS.filter(shown);
+    const problems = view.rows.filter((r) => checked.includes(r.area));
     const first = problems.sort((a, b) => (a.deadline ? Date.parse(a.deadline.dueAt) : Infinity) - (b.deadline ? Date.parse(b.deadline.dueAt) : Infinity))[0] ?? null;
     const firstText = first ? `${first.item.reservation.title ?? 'Reserva'}${first.deadline ? ` · ${deadlineText(first.deadline.dueAt, { prefix: 'vence el' })}` : ` · ${AREA_LABELS[first.area].toLowerCase()}`}` : '';
     const verdict = renderChecks({
       label: 'Cómo vamos con SES',
       verdict: problems.length ? `${problems.length} ${problems.length === 1 ? 'cosa por resolver' : 'cosas por resolver'} · La primera: ${firstText}` : 'Todo en regla',
       items: [
-        { ok: view.byArea.corregir.length === 0, text: view.byArea.corregir.length ? `Corregir: ${view.byArea.corregir.length}` : 'Nada que corregir' },
-        { ok: view.byArea.listas.length === 0, text: view.byArea.listas.length ? `Listas para comunicar: ${view.byArea.listas.length}` : 'Ninguna esperando a comunicarse' },
+        ...checked.map((a) => ({ ok: view.byArea[a].length === 0, text: view.byArea[a].length ? `${AREA_LABELS[a]}: ${view.byArea[a].length}` : CLEAR_TEXT[a] ?? AREA_LABELS[a] })),
         { ok: view.settings?.environment === 'prod' && !view.settings?.paused, text: !view.settings ? 'El servicio, sin ajustes' : `El servicio: ${view.settings.environment === 'prod' ? 'real' : 'pruebas'}${view.settings.paused ? ', en pausa' : ''}` },
       ],
     });

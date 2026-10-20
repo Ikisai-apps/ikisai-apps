@@ -207,7 +207,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       return el('section', { class: 'bk-col', id: `stage-${s}`, 'aria-label': commercialStageLabel(s, seesMoney) },
         el('h4', null, commercialStageLabel(s, seesMoney), el('span', { class: 'count' }, String(list.length)), people ? el('span', { class: 'hint' }, ` · ${plural(people, 'persona', 'personas')}`) : null),
         s === 'confirmada'
-          ? el('p', { class: 'hint' }, list.length ? `${list.slice(0, 5).map((v) => v.reservation.title).join(', ')}${list.length > 5 ? ` y ${list.length - 5} más` : ''}. Viven arriba, en Preparación.` : 'Ninguna todavía.')
+          ? el('p', { class: 'hint' }, list.length ? `${list.slice(0, 5).map((v) => v.reservation.title).join(', ')}${list.length > 5 ? ` y ${list.length - 5} más` : ''}. Viven arriba, en ${livesIn(list)}.` : 'Ninguna todavía.')
           : list.length ? el('ul', { class: 'list' }, list.map((v) => {
               const node = row(v);
               const n = COMMERCIAL_STAGES.indexOf(s) + 1;
@@ -405,3 +405,9 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     guard.dirtyEditor = false;
   };
 };
+
+/** Dónde viven las confirmadas en la lista por fases: «Preparación», «Preparación y En curso»… */
+function livesIn(list: ReservationView[]): string {
+  const labels = PHASES.filter((p) => list.some((v) => v.x.phase === p)).map((p) => PHASE_LABELS[p]);
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} y ${labels.at(-1)}` : labels[0] ?? PHASE_LABELS.preparacion;
+}
