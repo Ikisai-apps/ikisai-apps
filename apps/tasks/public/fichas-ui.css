@@ -39,6 +39,9 @@ div.tkf-tile{cursor:default;padding-right:12px}
 #sheet.tkf .tkf-stage{margin:0 0 12px}
 #sheet.tkf .tkf-back{min-height:46px;padding:0 14px 0 4px;border:0;background:none;color:var(--olive-dark);font:inherit;font-weight:800;cursor:pointer}
 html.dark #sheet.tkf .tkf-back{color:var(--ink)}
+/* «· a un toque, con «Deshacer»» a 4,5:1 o más (estaba a 4,24:1; hallazgo 1 de MUELA-095): 6,6:1 en claro y 8,7:1 en oscuro. */
+#sheet.tkf .tkf-donehint{color:#5c5a52}
+html.dark #sheet.tkf .tkf-donehint{color:#c9c2b4}
 #sheet.tkf .tkf-ftitle{font-family:Georgia,serif;font-size:21px;margin:2px 0 12px}
 #sheet.tkf .tkf-ftitle:focus{outline:none}
 #sheet.tkf .tkf-costedit{width:110px;height:40px}

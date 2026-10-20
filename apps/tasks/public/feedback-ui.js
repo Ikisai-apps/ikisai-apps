@@ -78,7 +78,7 @@ const MENU_MARKS={
   myproposals:{feedbackId:'tasks.menu.mis_propuestas',label:'Mis propuestas'},
 };
 const NAV_MARKS={home:{feedbackId:'tasks.navegacion.inicio',label:'Inicio'},projects:{feedbackId:'tasks.navegacion.proyectos',label:'Proyectos'},
-  tasks:{feedbackId:'tasks.navegacion.tareas',label:'Tareas'},labels:{feedbackId:'tasks.navegacion.etiquetas',label:'Etiquetas'}};
+  today:{feedbackId:'tasks.navegacion.hoy',label:'Hoy'},tasks:{feedbackId:'tasks.navegacion.tareas',label:'Tareas'},labels:{feedbackId:'tasks.navegacion.etiquetas',label:'Etiquetas'}};
 const SHELL_MARKS=[
   ['#shellTop .topbar',{feedbackId:'tasks.cabecera',label:'Cabecera'}],['#appLauncher',{feedbackId:'tasks.cabecera.menu',label:'Menú'}],
   ['#syncBadge',{feedbackId:'tasks.cabecera.estado',label:'Estado de sincronización'}],

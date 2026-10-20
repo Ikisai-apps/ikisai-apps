@@ -159,7 +159,17 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
   }
 }
 
+/**
+ * El plan de hoy (0339) es privado: solo lo ve su dueño, en snapshot, changes e history. El outsider no tiene plan.
+ * No depende de los ámbitos: por eso no está en `visibleRow` (que no sabe quién pide y lo deja fuera de todo lo demás,
+ * exportaciones incluidas).
+ */
+export function visibleDayPlan(row: Record<string, unknown>, ctx: { user?: { id?: string } | null; membership: { role?: string } }): boolean {
+  return ctx.membership.role !== 'outsider' && !!ctx.user?.id && row.actor_id === ctx.user.id;
+}
+
 /** Hook `visible` de `tasks-api`. */
-export function visible(table: string, row: Record<string, unknown>, ctx: { membership: { role?: string; scopes: Scopes } }): boolean {
+export function visible(table: string, row: Record<string, unknown>, ctx: { user?: { id?: string } | null; membership: { role?: string; scopes: Scopes } }): boolean {
+  if (table === 'tasks.day_plans') return visibleDayPlan(row, ctx);
   return visibleRow(table, row, effectiveScopes(ctx.membership));
 }

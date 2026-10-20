@@ -32,7 +32,8 @@ function offerLocalUndo(message,undo,key=null){
   const entry={done:false,after:[],timer:null};if(key)undoWaits.set(key,entry);
   const settle=()=>{entry.done=true;clearTimeout(entry.timer);if(key&&undoWaits.get(key)===entry)undoWaits.delete(key)};
   entry.timer=setTimeout(()=>{if(entry.done)return;settle();for(const fn of entry.after){try{fn()}catch(e){console.error(e)}}},UNDO_MS+50);
-  IkisaiKit.toastWithAction(message,{label:'Deshacer',onClick:()=>{if(entry.done)return;settle();undo()}},UNDO_MS);
+  // Un aviso cada vez (MUELA-095 §3): el «Deshacer» nuevo sustituye al anterior, que ya no haría lo que dice.
+  IkisaiKit.hideToast();IkisaiKit.toastWithAction(message,{label:'Deshacer',onClick:()=>{if(entry.done)return;settle();undo()}},UNDO_MS);
   return entry}
 function afterUndoWindow(key,fn){const entry=undoWaits.get(key);if(entry&&!entry.done)entry.after.push(fn);else fn()}
 /* La operación inversa en su área, con un solo pintado al final (como un lote). */
@@ -63,7 +64,7 @@ deleteTask=function(id){const area=state.activeTab;deleteBeforeUndo(id);if(batch
   const item={pid:loc.p.id,id,batch:loc.t.deleteBatch};offerLocalUndo('Enviada a la papelera',()=>undoQuietly(area,()=>restoreTrashed([item])))};
 // ---- «Deshacer» del historial (mover y los lotes de prioridad, etiquetas, mover…): necesita red ---------------
 
-function undoToast(label,cursor){IkisaiKit.toastWithAction(label,{label:'Deshacer',onClick:()=>undoSheet(cursor)},7000)}
+function undoToast(label,cursor){IkisaiKit.hideToast();IkisaiKit.toastWithAction(label,{label:'Deshacer',onClick:()=>undoSheet(cursor)},7000)}
 async function offerUndo(label){if(typeof undoSheet!=='function'||!Sync.record||!Sync.actor)return;
   const start=Date.now();while(Date.now()-start<6000){if(Sync.mode==='online'&&!Sync.busy&&Sync.record.queue.length===0)break;await new Promise(r=>setTimeout(r,200))}if(Sync.record.queue.length||Sync.mode!=='online')return;try{const data=await api('history'),mine=(data.events||[]).filter(e=>e.actor===Sync.actor.id&&!e.undoOf);if(!mine.length)return;const latest=mine.reduce((a,b)=>b.cursor>a.cursor?b:a);if(Date.now()-new Date(latest.at).getTime()>20000)return;undoToast(label,latest.cursor)}catch(e){}}
 const moveBeforeUndo=moveTask;

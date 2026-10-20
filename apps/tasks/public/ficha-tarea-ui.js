@@ -139,7 +139,7 @@ function fichaBindTitle(s,id){const field=s._tkfParts?.text,input=document.getEl
 function fichaDoneControl(s,id){const row=s._tkfParts?.when;if(!row)return;
   const own=s.querySelector('.outsiderdone');if(own){row.after(own);return}
   if(!canEdit())return;const loc=taskLocation(id);if(!loc)return;
-  row.insertAdjacentHTML('afterend',`<label class="checkline outsiderdone tkf-done"><input type="checkbox" id="tkfDone" ${status(loc.p,loc.t)==='done'?'checked':''} data-feedback-id="tasks.editor_tarea.hecha" data-feedback-label="Marcar hecha"><span><strong>Hecha</strong> <span class="small muted">· a un toque, con «Deshacer»</span></span></label>`);
+  row.insertAdjacentHTML('afterend',`<label class="checkline outsiderdone tkf-done"><input type="checkbox" id="tkfDone" ${status(loc.p,loc.t)==='done'?'checked':''} data-feedback-id="tasks.editor_tarea.hecha" data-feedback-label="Marcar hecha"><span><strong>Hecha</strong> <span class="small tkf-donehint">· a un toque, con «Deshacer»</span></span></label>`);
   const box=document.getElementById('tkfDone');box.onchange=()=>{const now=taskLocation(id);if(!now){box.checked=!box.checked;return}
     if((status(now.p,now.t)==='done')!==box.checked)toggleTask(id);const after=taskLocation(id);box.checked=after?status(after.p,after.t)==='done':false;if(typeof refreshChildSection==='function')refreshChildSection(id);fichaPaintHead(s,id)}}
 const syncOutsiderDoneBeforeFicha=syncOutsiderDone;

@@ -62,8 +62,10 @@ test('el menú común abierto y su sección desplegada sobreviven a una sincroni
 test('el menú común conserva las filas de hoy, sin repetir la barra de abajo, con la pista del área, y el foco atrapado', async () => {
   const work = await menuRows(a, 'work');
   // Lo que ya está en la barra de pestañas no se repite.
-  for (const gone of ['tasks.menu.inicio', 'tasks.menu.proyectos', 'tasks.menu.tareas', 'tasks.menu.etiquetas', 'tasks.menu.filtros']) expect(work).not.toContain(gone);
-  for (const kept of ['tasks.menu.mis_tareas', 'tasks.menu.vistas', 'tasks.menu.archivados', 'tasks.menu.papelera', 'tasks.menu.areas']) expect(work).toContain(kept);
+  for (const gone of ['tasks.menu.inicio', 'tasks.menu.proyectos', 'tasks.menu.tareas', 'tasks.menu.filtros']) expect(work).not.toContain(gone);
+  // «Etiquetas» va en el menú desde que «Hoy» entró en la barra (MUELA-095: con seis pestañas no cabía a 360 px).
+  for (const kept of ['tasks.menu.mis_tareas', 'tasks.menu.etiquetas', 'tasks.menu.vistas', 'tasks.menu.archivados', 'tasks.menu.papelera', 'tasks.menu.areas']) expect(work).toContain(kept);
+  expect(await a.locator('#shellBottom .navbtn').allInnerTexts()).toEqual(['Inicio', 'Hoy', 'Proyectos', 'Tareas', 'Filtros']);
   expect(await menuRows(a, 'transfer')).toEqual(expect.arrayContaining(['tasks.menu.importar_keep', 'tasks.menu.exportar_json', 'tasks.menu.exportar_csv', 'tasks.menu.exportar_texto']));
   expect(await menuRows(a, 'system')).toEqual(expect.arrayContaining(['tasks.menu.sugerencias', 'tasks.menu.sincronizacion', 'tasks.menu.historial']));
   expect(await menuRows(a, 'people')).toContain('tasks.menu.mi_cuenta');

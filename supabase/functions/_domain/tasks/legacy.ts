@@ -30,6 +30,8 @@ export interface LegacyTask {
   ownerPerson?: string | null;
   order: number; attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; deleteBatch: string | null; dependsOn: Uuid[]; cost: number | null;
   version: number; updatedAt: string;
+  /** Quién la tocó la última vez (`updated_by`; «Lo último que tocaste» y «Juan, ayer» del plan de hoy). `decompose` lo ignora. */
+  updatedBy?: Uuid | null;
   /** Calculados al componer; `decompose` los ignora. */
   blocked?: boolean; blockedBy?: Uuid[]; hiddenBlockers?: number;
 }
@@ -140,7 +142,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           dependsOn: (dependencies.get(t.id) ?? []).sort(byPosition).map((d) => d.depends_on_id),
           attachments: (taskFiles.get(t.id) ?? []).sort(byPosition).map(attachment),
           order: t.position, deleted: !!t.deleted_at, deletedAt: t.deleted_at, deleteBatch: t.deleted_at, cost: t.cost,
-          version: t.revision, updatedAt: t.updated_at,
+          version: t.revision, updatedAt: t.updated_at, updatedBy: t.updated_by ?? null,
           blocked: !status.done && visibleBlockers.length + hidden > 0, blockedBy: status.done ? [] : visibleBlockers, hiddenBlockers: status.done ? 0 : hidden,
         };
       }),
