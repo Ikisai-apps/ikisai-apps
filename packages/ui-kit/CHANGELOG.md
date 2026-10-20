@@ -1,5 +1,23 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.50.0 · 20 de octubre de 2026
+
+**Lo que falta de la tanda 29 y la tanda 30** (Central, Tasks y MUELA-080). Lo de hoy queda igual por defecto, salvo `.segmented`, que se ve más.
+
+1. **`createItemCatalog({ layout: 'baldosas' })`** (punto 8; Inventario de Central y Despensa de Food):
+   - cada artículo es una baldosa con su cifra y el relleno hasta el mínimo (la mitad de la barra es el mínimo);
+   - el nivel va en palabras: «Bajo mínimo», la caducidad, «Va justo», «Bien» o dónde está;
+   - la baldosa abre la ficha; «Pedir» y las demás acciones van debajo, con 46 px y nombre propio («Pedir: Harina de espelta»).
+   Por defecto, `list`, como siempre.
+2. **Ayudantes de feedback con el menú lateral** (punto 9, P11 de Central): `setMode` y `portalHelpRoundTrip` buscan los interruptores dentro de lo abierto (el cajón del menú o la hoja), no en la columna que los repite.
+3. **`createProposalList`** (punto 10, Tasks):
+   - `confirm: false`: aprobar y descartar sin diálogo; el comentario opcional se escribe en la tarjeta (en escritorio, en el detalle);
+   - `undoMs`: la decisión espera ese rato con «Deshacer» en el aviso y en la tarjeta, y entonces llama a `onApprove` u `onReject`. Si falla, la propuesta vuelve a pendientes con su comentario. Al destruir la lista se guarda lo que esperaba.
+   Por defecto, siguen el diálogo y el guardado al momento.
+4. **`.segmented`** (tanda 30, MUELA-080 n.º 5): el botón no elegido va en `--ink` (de 4,01:1 a más de 4,5:1 sobre crema y papel-2) y mide 46 px (`var(--tap)`); al pasar el ratón cambia el fondo.
+
+- **Pruebas:** `v55`.
+
 ## 0.49.0 · 19 de octubre de 2026
 
 **Ajustes que piden las pasadas** (Organizers, #623; tanda 29). No hay cambios de diseño y lo de hoy queda igual por defecto.
