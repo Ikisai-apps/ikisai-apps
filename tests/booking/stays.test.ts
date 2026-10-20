@@ -88,6 +88,16 @@ test('estancia de outsider: cama por defecto, choque con un retiro como aviso y 
   assert.equal(mine.items[0].clash, true);
   assert.equal(mine.items[0].bed_label, 'Cama 1');
   assert.equal(mine.default_bed.bed_label, 'Cama 1');
+  // ids de Recursos (0478): sin pareja, null; con ella, en la estancia y en la cama por defecto
+  assert.deepEqual([mine.items[0].resource_space_id, mine.items[0].resource_bed_id, mine.default_bed.resource_bed_id], [null, null, null]);
+  const [rSpace, rBed] = [uuid(), uuid()];
+  await q(`update booking.spaces set resource_id = $2 where id = $1`, [space, rSpace]);
+  await q(`update booking.beds set resource_id = $2 where id = $1`, [bed, rBed]);
+  const linked = await read('guests', marta, 'booking.portal_my_stays', { from: '2031-02-01', to: '2031-03-01' });
+  assert.deepEqual([linked.items[0].resource_space_id, linked.items[0].resource_bed_id], [rSpace, rBed]);
+  assert.deepEqual([linked.default_bed.resource_space_id, linked.default_bed.resource_bed_id], [rSpace, rBed]);
+  await q(`update booking.spaces set resource_id = null where id = $1`, [space]);
+  await q(`update booking.beds set resource_id = null where id = $1`, [bed]);
   assert.equal(JSON.stringify(mine).includes('Retiro que choca'), false, 'el outsider no ve de qué retiro es');
 
   const clashing = await read('booking', await member('booking', null), 'booking.stays_clashing', { from: '2031-02-01', to: '2031-03-01' });

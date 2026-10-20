@@ -85,6 +85,17 @@ test('alojamiento · abrir habitaciones con baño, elegir cama atómica, pedir y
   assert.equal(c1.status, 'confirmed');
   await invoke('guests', gAna, 'booking.portal_choose_bed', { guest_id: ana, bed_id: b2 });
   assert.deepEqual(await assignments(ana), [{ bed_id: b2, status: 'confirmed', source: 'guest' }]);
+  // ids de Recursos (0478): la pareja de la habitación y de cada cama, para casarlas con el mapa; sin pareja, null
+  const [rSuite, rB2] = [uuid(), uuid()];
+  await app.t.db.query(`update booking.spaces set resource_id = $2 where id = $1`, [suite, rSuite]);
+  await app.t.db.query(`update booking.beds set resource_id = $2 where id = $1`, [b2, rB2]);
+  const linked = await read('guests', gAna, 'booking.portal_lodging', { guest_id: ana });
+  assert.deepEqual([linked.mine.resource_space_id, linked.mine.resource_bed_id], [rSuite, rB2]);
+  assert.equal(linked.rooms[0].resource_space_id, rSuite);
+  assert.deepEqual(linked.rooms[0].beds.map((b: any) => [b.label, b.resource_bed_id]), [['Cama 1', null], ['Cama 2', rB2], ['Cama 3', null]]);
+  // ids inventados: se quitan para que las escrituras siguientes no busquen esa pareja en Recursos
+  await app.t.db.query(`update booking.spaces set resource_id = null where id = $1`, [suite]);
+  await app.t.db.query(`update booking.beds set resource_id = null where id = $1`, [b2]);
 
   // dos a la vez a la misma cama: uno la consigue y el otro recibe BED_TAKEN (la fila de la cama se bloquea)
   const race = await Promise.allSettled([
