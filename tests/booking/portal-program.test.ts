@@ -78,6 +78,10 @@ test('programa · el organizador lo edita, el huésped lo lee sin notas internas
   const forGuest = await read('guests', guest, 'booking.portal_program', { reservation_id: res });
   assert.equal(forGuest.items.length, 2);
   assert.ok(!JSON.stringify(forGuest).includes('Pedir cojines') && forGuest.spaces === undefined);
+  // el espacio de Recursos de cada actividad (0476), para enlazarla con su plano; vacío si no hay pareja
+  const meditation = forGuest.items.find((i: any) => i.id === a);
+  assert.ok('resource_space_id' in meditation);
+  assert.equal(meditation.resource_space_id, (await app.t.db.query<{ r: string | null }>(`select resource_space_id r from booking.program_items where id = $1`, [a])).rows[0]!.r);
   assert.equal(forGuest.revision, forOrganizer.revision);
   const otherGuest = await member('guests', [{ reservation_id: uuid(), guest_id: uuid() }]);
   await fails(read('guests', otherGuest, 'booking.portal_program', { reservation_id: res }), 'OUT_OF_SCOPE');
