@@ -113,4 +113,12 @@ test.describe('ui-kit v0.52 · mapa de zonas', () => {
     const t = await page.locator('#spaceMapHost .map-shape').first().evaluate((n) => getComputedStyle(n).transitionDuration);
     expect(t).toBe('0s');
   });
+  test('@smoke `floorPlanFromRow`: un dibujo subido sin red (`{ $blob }`) cuenta como sin archivo hasta que se sube', async ({ page }) => {
+    const out = await page.evaluate(() => {
+      const k = (window as any).ikisaiKit;
+      const row = { id: 'p1', building_id: 'albergue', floor: 'Planta baja', position: 1, width: 1000, height: 600, revision: 1 };
+      return [k.floorPlanFromRow({ ...row, file_id: { $blob: 'abc123' } }).fileId, k.floorPlanFromRow({ ...row, file_id: 'f-9' }).fileId, k.floorPlanFromRow({ ...row, file_id: null }).fileId];
+    });
+    expect(out).toEqual([null, 'f-9', null]);
+  });
 });

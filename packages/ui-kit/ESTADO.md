@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.53.1: `floorPlanFromRow` con `$blob` = sin archivo; `v39` estable (cabecera de la demo).
 - v0.53.0: ajustes de Central y Food: iniciales legibles sobre cualquier color, `.filterchip` de 46 px, azulejos sin partir palabras, cola plegada en grupos, ruta corta, foco con su texto y su acción, `focusAction` y `setFilter` sin guardar.
 - v0.52.0: `createSpaceMap`, el mapa de zonas (MUELA-024): dibujo de fondo, capa de estancias y camas por colores, lista equivalente, sin formas y sin red.
 - v0.51.0: `veil: 'full'` en `renderMedal({ cover: true })`, con 4,5:1 en toda la foto.

@@ -171,7 +171,12 @@ test('@smoke U6: en inglés, la cabecera y las etiquetas del calendario no salen
 });
 
 test.describe('ui-kit v0.35 · elegir días en Android', () => {
-  test.beforeEach(({}, info) => { test.skip(info.project.name !== 'movil', 'pantalla táctil'); });
+  test.beforeEach(async ({ page }, info) => {
+    test.skip(info.project.name !== 'movil', 'pantalla táctil');
+    // La cabecera fija de la demo mide casi 400 px en el móvil: `scrollIntoViewIfNeeded` podía dejar el día debajo y el
+    // gesto empezaba sobre ella (fallaba según dónde quedara la página, sin relación con la hora).
+    await page.addInitScript(() => { addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '.demo-head{position:static!important}'; document.head.append(s); }); });
+  });
 
   test('@smoke «Nueva estancia» trae el calendario a la vista y la pista es de toque, no de teclado', async ({ page }) => {
     await page.goto('/#personcal');
