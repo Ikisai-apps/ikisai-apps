@@ -144,6 +144,8 @@ KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
 // Mantener al día con `SPACE_TREE_MARKS` (src/spaces/tree.ts) y `SPACE_PICKER_MARKS` (src/spaces/picker.ts).
 KIT_CHILDREN.createSpaceTree = [['buscar', 'Buscar espacio', 'input'], ['nueva_altura', 'Nueva altura', 'button'], ['ver_archivados', 'Ver archivados', 'input'], ['fila', 'Espacio', 'button'], ['desplegar', 'Desplegar o plegar', 'button'], ['mover', 'Arrastrar para mover', 'button'], ['anadir', 'Añadir dentro', 'button'], ['editar', 'Editar espacio', 'button'], ['subir', 'Subir', 'button'], ['bajar', 'Bajar', 'button'], ['guardar', 'Guardar espacio', 'button'], ['duplicar', 'Duplicar', 'button'], ['archivar', 'Archivar', 'button'], ['recuperar', 'Recuperar', 'button']];
 KIT_CHILDREN.createSpacePicker = [['rapido', 'Espacio más usado', 'button'], ['buscar', 'Buscar espacio', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['quitar', 'Quitar espacio', 'button']];
+// `SPACE_MAP_MARKS` (src/spaces/map.ts).
+KIT_CHILDREN.createSpaceMap = [['vista', 'Plano o lista', 'button'], ['dibujo', 'Elegir dibujo', 'button'], ['espacio', 'Espacio en el plano', 'button'], ['fila', 'Espacio en la lista', 'button']];
 // `CALENDAR_MARKS` (src/calendar/calendar.ts) y `PROPOSAL_LIST_MARKS` (src/proposals/list.ts).
 KIT_CHILDREN.createCalendar = [['capa', 'Capa del calendario', 'button'], ['dia', 'Día del calendario', 'button'], ['guardar_dias', 'Guardar días elegidos', 'button'], ['cancelar_dias', 'Cancelar la elección de días', 'button']];
 // `ITEM_PICKER_MARKS` (src/items/picker.ts); con `space`, su `createSpacePicker` cuelga de `.sitio`.
@@ -207,7 +209,7 @@ export function extractFeatures(text, file = '') {
     const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
     const children = call ? KIT_CHILDREN[call] : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }

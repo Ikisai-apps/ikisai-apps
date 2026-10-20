@@ -15,6 +15,8 @@ import {
   createLevelStar,
   createSpaceTree,
   createSpacePicker,
+  createSpaceMap,
+  type SpaceMapBedState,
   createMemorySpaceSource,
   demoSpaces,
   renderLevelStar,
@@ -1132,6 +1134,49 @@ tradePicker.element.id = 'tradePicker';
 const spaceSection = section('spaces', 'Espacios (R1)', 'createSpaceTree: Altura › Edificio o Exterior › Espacio › Subespacio; buscar, desplegar, ficha, «+» dentro, asa de 44×44 para arrastrar (encima o debajo = al lado, centro = dentro; lo no válido se marca con su motivo), subir y bajar, «Mover a…», «Duplicar», «Archivar con todo lo de dentro» y «Sin altura». createSpacePicker: más usados a un toque, búsqueda con la ruta y filtro por tipos o reservables.',
   el('div', { class: 'cardgrid' }, el('div', { class: 'card' }, spaceTree.element), el('div', { class: 'card', style: 'display:grid;gap:16px;align-content:start' }, spacePickerMany.element, el('p', null, 'Elegidos: ', pickedOut), spacePickerBookable.element, tradePicker.element)),
 );
+// --- Mapa de zonas (MUELA-024, tanda 34) -------------------------------------------------------------------
+// Dibujos de fondo de la demo: solo muros y puertas, sin nombres (como un plano subido en Central).
+const planSvg = (body: string, w: number, h: number) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#fbf8f2"/><g fill="none" stroke="#3b3a36" stroke-width="8" stroke-linejoin="round">${body}</g></svg>`)}`;
+const PLAN_FILES: Record<string, string> = {
+  'f-albergue': planSvg('<rect x="40" y="40" width="920" height="520"/><path d="M360 40v300M680 40v300M40 340h920"/><path d="M180 340h60M500 340h60M800 340h60" stroke="#fbf8f2" stroke-width="10"/>', 1000, 600),
+  'f-salas': planSvg('<rect x="40" y="40" width="720" height="420"/><path d="M420 40v420"/><path d="M420 200v60" stroke="#fbf8f2" stroke-width="10"/>', 800, 500),
+};
+const sq = (x0: number, y0: number, x1: number, y1: number): Array<[number, number]> => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+const MAP_SHAPES: Record<string, { planId: string; points: Array<[number, number]> }> = {
+  'hab-1': { planId: 'p-albergue', points: sq(0.04, 0.067, 0.36, 0.567) },
+  'hab-1-c1': { planId: 'p-albergue', points: sq(0.08, 0.12, 0.2, 0.32) },
+  'hab-3': { planId: 'p-albergue', points: sq(0.36, 0.067, 0.68, 0.567) },
+  'hab-3-c1': { planId: 'p-albergue', points: sq(0.4, 0.12, 0.48, 0.3) },
+  'hab-3-c2': { planId: 'p-albergue', points: sq(0.52, 0.12, 0.6, 0.3) },
+  'banos-alb': { planId: 'p-albergue', points: sq(0.68, 0.067, 0.96, 0.567) },
+  'sala-roble': { planId: 'p-salas', points: sq(0.05, 0.08, 0.525, 0.92) },
+  'sala-olivo': { planId: 'p-salas', points: sq(0.525, 0.08, 0.95, 0.92) },
+};
+const mapSource = createMemorySpaceSource(demoSpaces().map((r) => (MAP_SHAPES[r.id] ? { ...r, planId: MAP_SHAPES[r.id]!.planId, planShape: { points: MAP_SHAPES[r.id]!.points } } : r)));
+const mapPlans = [
+  { id: 'p-albergue', buildingId: 'albergue', floor: 'Planta baja', position: 1, fileId: 'f-albergue', width: 1000, height: 600 },
+  { id: 'p-salas', buildingId: 'ed-salas', floor: null, position: 2, fileId: 'f-salas', width: 800, height: 500 },
+];
+const bedStates: Record<string, SpaceMapBedState> = { 'hab-1-c1': 'occupied', 'hab-3-c1': 'free', 'hab-3-c2': 'off' };
+const mapPicked = el('output', { id: 'spaceMapPicked' }, '—');
+const spaceMap: ReturnType<typeof createSpaceMap> = createSpaceMap({
+  source: mapSource, plans: mapPlans, planUrl: (fileId) => PLAN_FILES[fileId] ?? '', label: 'Mapa de la casa', feedbackId: 'demo.mapa',
+  layer: (s) => (s.kind === 'cama' ? { state: bedStates[s.id] ?? 'free' } : s.id === 'banos-alb' ? { tone: 'warn', label: 'Tareas abiertas: 1' } : null),
+  // Como en Alojamiento: tocar una cama libre la elige (verde intenso); otra vez, la suelta.
+  onPick: (s, ctx) => {
+    mapPicked.textContent = `${s.id}${ctx.offline ? ' (sin red)' : ''} · ${ctx.from}`;
+    if (s.kind === 'cama' && !ctx.offline && (bedStates[s.id] === 'free' || bedStates[s.id] === 'picked')) { bedStates[s.id] = bedStates[s.id] === 'free' ? 'picked' : 'free'; spaceMap.repaint(); }
+  },
+});
+spaceMap.element.id = 'spaceMapHost';
+// Sin formas: solo la lista, con la ruta.
+const spaceMapBare = createSpaceMap({ source: createMemorySpaceSource(demoSpaces()), plans: [], label: 'Salas sin plano', filter: (s) => s.kind === 'sala' });
+spaceMapBare.element.id = 'spaceMapBare';
+(window as unknown as { spaceMap: typeof spaceMap }).spaceMap = spaceMap;
+const spaceMapSection = section('spacemap', 'Mapa de zonas (MUELA-024)', 'createSpaceMap: el dibujo de cada edificio y planta como imagen, entero y sin zoom, con la capa de estancias encima (contorno al tocar), camas por colores con su número (gris no se puede, azul con rayado ocupada, verde claro libre, verde intenso elegida) y la lista equivalente con la ruta: conmutador Plano/Lista en el móvil y lado a lado en el ordenador. Sin formas, solo la lista; sin red, la última copia con aviso.',
+  el('div', { class: 'card' }, spaceMap.element, el('p', null, 'Tocado: ', mapPicked)),
+  el('div', { class: 'card', style: 'margin-top:12px' }, spaceMapBare.element),
+);
 // --- Artículos del inventario (R3) ------------------------------------------------------------------------
 const demoItem = (id: string, name: string, kind: string, baseUnit: string, extra: Partial<ItemRow> = {}): ItemRow => ({
   id, name, kind, baseUnit, category: null, minQuantity: null, reorderQuantity: null, defaultSpaceId: null, defaultSupplierId: null,
@@ -1770,5 +1815,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

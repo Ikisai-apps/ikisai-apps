@@ -19,9 +19,19 @@ import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/syn
 import { kt } from '../i18n/i18n.ts';
 import { toast } from '../toast.ts';
 import type { SpaceAttribute, SpaceKind, SpaceRow, SpaceSource } from './model.ts';
+import type { FloorPlan, FloorPlanSource } from './map.ts';
 
 const SPACES = 'resources.spaces' as TableName;
 const KINDS = 'resources.space_kinds' as TableName;
+const PLANS = 'resources.floor_plans' as TableName;
+
+/** Fila de `resources.floor_plans` → forma del kit (`createSpaceMap`). */
+export function floorPlanFromRow(row: SyncedRow): FloorPlan {
+  return {
+    id: row.id, buildingId: String(row.building_id), floor: (row.floor as string | null) ?? null, position: Number(row.position ?? 0),
+    fileId: (row.file_id as string | null) ?? null, width: Number(row.width ?? 0), height: Number(row.height ?? 0), notes: (row.notes as string | null) ?? null,
+  };
+}
 
 /** Cómo se edita cada clave de `attributes` (docs/resources/API.md §2.3). */
 const ATTRIBUTES: Record<string, SpaceAttribute> = {
@@ -47,13 +57,15 @@ export function spaceFromRow(row: SyncedRow): SpaceRow {
     active: row.active !== false,
     notes: (row.notes as string | null) ?? null,
     attributes: (row.attributes as Record<string, unknown> | null) ?? {},
+    planId: (row.plan_id as string | null) ?? null,
+    planShape: (row.plan_shape as SpaceRow['planShape']) ?? null,
     pending: row._pending === true,
   };
 }
 
 /** Campos del kit → columnas de `resources.spaces` (solo los que vienen). */
 export function spaceToFields(fields: Partial<SpaceRow>): Record<string, unknown> {
-  const map: Record<string, string> = { parentId: 'parent_id', kind: 'kind', name: 'name', publicName: 'public_name', code: 'code', position: 'position', active: 'active', notes: 'notes', attributes: 'attributes' };
+  const map: Record<string, string> = { parentId: 'parent_id', kind: 'kind', name: 'name', publicName: 'public_name', code: 'code', position: 'position', active: 'active', notes: 'notes', attributes: 'attributes', planId: 'plan_id', planShape: 'plan_shape' };
   const out: Record<string, unknown> = {};
   for (const [key, column] of Object.entries(map)) if (key in fields) out[column] = (fields as Record<string, unknown>)[key];
   return out;
@@ -78,6 +90,8 @@ export interface SyncSpaceSourceOptions {
 export function createSyncSpaceSource(client: SyncClient, options: SyncSpaceSourceOptions = {}): SpaceSource & {
   listKinds(): Promise<SpaceKind[]>;
   subscribeKinds(listener: (kinds: SpaceKind[]) => void): () => void;
+  /** Dibujos de `resources.floor_plans`, para `createSpaceMap({ plans })`. */
+  plans: FloorPlanSource;
   destroy(): void;
 } {
   /** Última fila vista de cada espacio (para `expectedRevision`). */
@@ -127,6 +141,10 @@ export function createSyncSpaceSource(client: SyncClient, options: SyncSpaceSour
     async listKinds() { return (await client.list(KINDS)).filter((r) => r.active !== false).sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0)).map(kindFromRow); },
     subscribeKinds(listener) {
       return client.onTable(KINDS, (rows) => listener(rows.filter((r) => !r.deleted_at && r.active !== false).sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0)).map(kindFromRow)));
+    },
+    plans: {
+      list: async () => (await client.list(PLANS)).filter((r) => !r.deleted_at).map(floorPlanFromRow),
+      subscribe: (listener) => client.onTable(PLANS, (rows) => listener(rows.filter((r) => !r.deleted_at).map(floorPlanFromRow))),
     },
     destroy() { offStatus(); },
   };

@@ -18,6 +18,9 @@ export interface SpaceRow {
   active: boolean;
   notes: string | null;
   attributes: Record<string, unknown>;
+  /** Dibujo en el que está (`resources.floor_plans`) y su forma en él (`createSpaceMap`). */
+  planId?: string | null;
+  planShape?: { points: Array<[number, number]> } | null;
   /** Cambio local aún sin confirmar por el servidor (lo marca la fuente). */
   pending?: boolean;
 }
