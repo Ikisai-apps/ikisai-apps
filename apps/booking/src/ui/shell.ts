@@ -161,8 +161,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     returnTo: { feedbackId: 'booking.cabecera.volver_app' },
     search: { onOpen: () => palette.open(), label: 'Buscar en Booking…', feedbackId: 'booking.cabecera.buscar' },
     menu: {
-      // Solo cajón: con la columna fija, la ayuda común de feedback del kit encuentra la copia oculta (petición a Core en SALIDA).
-      column: false, theme: true, launcher, feedbackId: 'booking.menu',
+      // En el ordenador, columna fija de 316 px (y la navegación abajo); en el móvil, el cajón. Desde el kit 0.50 (P11) la
+      // ayuda de feedback busca dentro del menú abierto, no en la copia de la columna.
+      column: true, theme: true, launcher, feedbackId: 'booking.menu',
       profile: { name: client.bootstrap()?.profile.displayName ?? '', role: ROLE_TEXT[client.bootstrap()?.membership.role ?? ''] ?? '' },
       recents: () => recents.map((r) => ({ label: r.title, sub: r.sub, href: `#/reservas/${r.id}`, feedbackId: 'booking.menu.reciente' })),
       sections,
