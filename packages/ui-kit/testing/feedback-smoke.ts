@@ -70,12 +70,28 @@ export async function simulateKeyboard(page: Page, visible: number | null): Prom
  */
 export async function setMode(page: Page, launcher: string, on: boolean): Promise<void> {
   await page.locator(launcher).first().click();
-  const toggle = page.locator('.launcher-signal input');
+  const scope = await openedScope(page);
+  const toggle = scope.locator('.launcher-signal input');
   await expect(toggle).toBeVisible();
-  if ((await toggle.isChecked()) !== on) await page.locator('.launcher-signal').click();
+  if ((await toggle.isChecked()) !== on) await scope.locator('.launcher-signal').click();
   await expect(toggle).toBeChecked({ checked: on });
   await page.keyboard.press('Escape');
   await expect(page.locator('.sheetback.show')).toHaveCount(0);
+  await expect(page.locator(MENU)).toHaveCount(0);
+}
+
+/** El cajón del menú lateral (`createAppShell({ menu })`): con `menu.column`, sus bloques salen también en la columna. */
+const MENU = '#appMenu, .appmenu-drawer';
+
+/**
+ * Dónde buscar los interruptores tras pulsar la marca: el cajón del menú si se abrió (P11 de Central: con la columna,
+ * `.launcher-signal` sale dos veces y el modo estricto de Playwright fallaba), o la hoja del lanzador.
+ */
+async function openedScope(page: Page): Promise<Locator> {
+  const menu = page.locator(MENU).first();
+  const sheet = page.locator('.sheetback.show').first();
+  await expect(menu.or(sheet)).toBeVisible();
+  return (await menu.isVisible()) ? menu : sheet;
 }
 
 /** Pulsación mantenida de 800 ms sobre el elemento. */
@@ -173,7 +189,7 @@ export async function portalHelpRoundTrip(page: Page, options: PortalHelpRoundTr
   if (options.open) await options.open(page);
   else {
     await page.locator('#appLauncher').first().click();
-    await page.locator('.launcher-center').click();
+    await (await openedScope(page)).locator('.launcher-center').click();
   }
   const form = page.locator('.sheetback.show .fb-progressive');
   await expect(form).toBeVisible();

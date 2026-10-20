@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.50.0: inventario en baldosas, ayudantes de feedback con el menú lateral, cola de propuestas sin diálogo y con «Deshacer», `.segmented` a 4,5:1 y 46 px.
 - v0.49.0: ajustes de Organizers: portada con encabezado, salir traducible y en el móvil, Intro en acciones de fila, acción de comprobación de 46 px, ids literales en grupos y pasos, línea sin red compartida y hueco en el extracto.
 - v0.48.0: «‹ Volver a…» entre apps (K9) opcional, con «atrás» que vuelve a la app de origen sin preguntar.
 - v0.47.0: cáscara con menú lateral común opcional (`menu`, `search`, `navLayout: 'bar'`), `keepOrder` y «atrás» en la paleta, señalar con un toque, marca de 46 px.

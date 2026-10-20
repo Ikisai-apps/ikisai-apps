@@ -11,8 +11,11 @@
  * });
  * ```
  *
- * - Aprobar, descartar y retirar **confirman siempre** con un diálogo; al aprobar o descartar, con un comentario
- *   opcional que verá quien lo propuso. No hay «Deshacer»: un aprobado se deshace desde el historial de la app.
+ * - Por defecto, aprobar, descartar y retirar **confirman** con un diálogo; al aprobar o descartar, con un comentario
+ *   opcional que verá quien lo propuso. Un aprobado se deshace desde el historial de la app.
+ * - Con `confirm: false` (Tasks, tanda 29) se decide al momento: el comentario opcional va en la propia tarjeta y, con
+ *   `undoMs`, la decisión espera ese rato con «Deshacer» en el aviso y en la tarjeta antes de llamar a `onApprove` u
+ *   `onReject`. Retirar sigue confirmando.
  * - Escritorio (≥ 900 px): lista a la izquierda y detalle a la derecha; ↑ y ↓ cambian de propuesta y, al decidir, pasa
  *   sola a la siguiente pendiente. Móvil: los botones en la tarjeta y el detalle en una hoja.
  * - Con `source`, vuelve a leer al enfocar la ventana y tras cada decisión (o con `subscribe`, si lo da).
@@ -21,7 +24,7 @@
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { kt } from '../i18n/i18n.ts';
-import { toast } from '../toast.ts';
+import { toast, toastWithAction } from '../toast.ts';
 import { confirmDialog } from '../overlay/dialog.ts';
 import { openSheet } from '../overlay/sheet.ts';
 import { relativeTime } from '../agents/agents.ts';
@@ -106,6 +109,16 @@ export interface ProposalListOptions {
   /** Marca de feedback y uso (`PROPOSAL_LIST_MARKS` para sus partes). */
   feedbackId?: string;
   now?: () => Date;
+  /**
+   * `false`: aprobar y descartar sin diálogo; el comentario se escribe en la tarjeta (o en el detalle). Por defecto
+   * `true`, como siempre.
+   */
+  confirm?: boolean;
+  /**
+   * Con `confirm: false`: cuánto se espera (ms) antes de guardar, con «Deshacer» mientras tanto. Si se destruye la
+   * lista en ese rato, se guarda al momento. Por defecto 0 (al momento, sin «Deshacer»).
+   */
+  undoMs?: number;
 }
 
 export interface ProposalList {
@@ -124,6 +137,8 @@ export const PROPOSAL_LIST_MARKS = {
   reject: ['descartar', 'Descartar propuesta'],
   withdraw: ['retirar', 'Retirar propuesta'],
   create: ['proponer', 'Proponer'],
+  comment: ['comentario', 'Comentario para quien lo propuso'],
+  undo: ['deshacer', 'Deshacer la decisión'],
 } as const;
 
 const STATUS_TEXT: Record<SuggestionStatus, string> = { pending: 'Pendiente', approved: 'Aprobada', rejected: 'Descartada', withdrawn: 'Retirada' };
@@ -148,6 +163,11 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   let kindFilter: string | null = null;
   let selected: string | null = null;
   const busy = new Set<string>();
+  const ask = options.confirm !== false;
+  /** Comentarios escritos en la tarjeta (con `confirm: false`), por propuesta; sobreviven a repintar. */
+  const drafts = new Map<string, string>();
+  /** Decisiones a la espera de «Deshacer»: la propuesta tal como estaba y el guardado pendiente. */
+  const waiting = new Map<string, { before: ProposalItem; timer: ReturnType<typeof setTimeout>; save: () => void }>();
 
   const kindLabel = (kind: string) => kt(options.kinds?.[kind]?.label ?? items.find((i) => i.kind === kind && i.label)?.label ?? kind);
   const appLabel = (app?: string | null) => (app ? options.apps?.[app] ?? app : null);
@@ -166,10 +186,16 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   // --- Datos -------------------------------------------------------------------------------------------------
   async function refresh(): Promise<void> {
     if (!options.source) { paint(); return; }
-    try { items = (await options.source.list()).map(normalizeProposal); } catch (error) { toast(kt('No se han podido cargar las propuestas: {message}', { message: (error as Error)?.message ?? '' })); }
+    try { items = keepWaiting((await options.source.list()).map(normalizeProposal)); } catch (error) { toast(kt('No se han podido cargar las propuestas: {message}', { message: (error as Error)?.message ?? '' })); }
     paint();
   }
-  const offSource = options.source?.subscribe?.((next) => { items = next.map(normalizeProposal); paint(); });
+  /** Lo que aún espera «Deshacer» se ve decidido aunque el servidor todavía lo tenga pendiente. */
+  function keepWaiting(next: ProposalItem[]): ProposalItem[] {
+    if (!waiting.size) return next;
+    const local = new Map(items.filter((i) => waiting.has(i.id)).map((i) => [i.id, i]));
+    return next.map((i) => local.get(i.id) ?? i);
+  }
+  const offSource = options.source?.subscribe?.((next) => { items = keepWaiting(next.map(normalizeProposal)); paint(); });
   const onFocus = () => { void refresh(); };
   if (options.source && !options.source.subscribe) window.addEventListener('focus', onFocus);
 
@@ -177,33 +203,42 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   const visible = () => forTab().filter((i) => !kindFilter || i.kind === kindFilter).sort((a, b) => (tab === 'pending' ? a.createdAt.localeCompare(b.createdAt) : (b.decidedAt ?? b.createdAt).localeCompare(a.decidedAt ?? a.createdAt)));
 
   // --- Decidir -----------------------------------------------------------------------------------------------
+  /** En escritorio, tras decidir, pasa sola a la siguiente pendiente. */
+  function moveOn(id: string, order: string[]): void {
+    const at = order.indexOf(id);
+    const rest = visible().map((i) => i.id).filter((x) => x !== id);
+    selected = rest.find((x) => order.indexOf(x) > at) ?? rest[rest.length - 1] ?? null;
+  }
+  const decided = (item: ProposalItem, approve: boolean, text: string | null): ProposalItem => ({ ...item, status: approve ? 'approved' : 'rejected', comment: text, decidedAt: now().toISOString() });
+
   async function decide(item: ProposalItem, approve: boolean): Promise<void> {
     const run = approve ? options.onApprove : options.onReject;
-    if (!run || busy.has(item.id)) return;
-    const comment = el('textarea', { id: 'proposalComment', rows: '3', placeholder: kt('Lo verá quien lo propuso') }) as HTMLTextAreaElement;
-    const ok = await confirmDialog({
-      title: approve ? kt('¿Aprobar esta propuesta?') : kt('¿Descartar esta propuesta?'),
-      text: item.summary,
-      body: el('label', { class: 'field' }, el('span', null, kt('Comentario (opcional)')), comment),
-      confirmLabel: approve ? kt('Aprobar') : kt('Descartar'),
-      danger: !approve,
-    });
-    if (!ok) return;
-    const text = comment.value.trim() || null;
+    if (!run || busy.has(item.id) || waiting.has(item.id)) return;
+    let text: string | null;
+    if (ask) {
+      const comment = el('textarea', { id: 'proposalComment', rows: '3', placeholder: kt('Lo verá quien lo propuso') }) as HTMLTextAreaElement;
+      const ok = await confirmDialog({
+        title: approve ? kt('¿Aprobar esta propuesta?') : kt('¿Descartar esta propuesta?'),
+        text: item.summary,
+        body: el('label', { class: 'field' }, el('span', null, kt('Comentario (opcional)')), comment),
+        confirmLabel: approve ? kt('Aprobar') : kt('Descartar'),
+        danger: !approve,
+      });
+      if (!ok) return;
+      text = comment.value.trim() || null;
+    } else text = drafts.get(item.id)?.trim() || null;
     const order = visible().map((i) => i.id);
     const wasSelected = selected === item.id;
+    const ms = ask ? 0 : options.undoMs ?? 0;
+    if (ms > 0) { later(item, approve, text, run, ms, wasSelected ? order : null); return; }
     busy.add(item.id);
     paint();
     try {
       await run(item, text);
-      items = items.map((i) => (i.id === item.id ? { ...i, status: approve ? 'approved' : 'rejected', comment: text, decidedAt: now().toISOString() } : i));
+      drafts.delete(item.id);
+      items = items.map((i) => (i.id === item.id ? decided(i, approve, text) : i));
       toast(approve ? kt('Propuesta aprobada.') : kt('Propuesta descartada.'));
-      // En escritorio, pasa sola a la siguiente pendiente.
-      if (wasSelected) {
-        const at = order.indexOf(item.id);
-        const rest = visible().map((i) => i.id).filter((id) => id !== item.id);
-        selected = rest.find((id) => order.indexOf(id) > at) ?? rest[rest.length - 1] ?? null;
-      }
+      if (wasSelected) moveOn(item.id, order);
     } catch (error) {
       toast(kt('No se ha guardado: {message}', { message: (error as Error)?.message ?? '' }));
     } finally {
@@ -213,6 +248,45 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
     if (options.source) void refresh();
     if (selected && wide()) list.querySelector<HTMLElement>(`[data-id="${CSS.escape(selected)}"] .pl-open`)?.focus();
   }
+
+  /** Decisión con «Deshacer»: se ve ya decidida y se guarda al acabar el plazo; deshacer la devuelve a pendientes. */
+  function later(item: ProposalItem, approve: boolean, text: string | null, run: NonNullable<ProposalListOptions['onApprove']>, ms: number, order: string[] | null): void {
+    const save = () => {
+      const w = waiting.get(item.id);
+      if (!w) return;
+      clearTimeout(w.timer);
+      waiting.delete(item.id);
+      drafts.delete(item.id);
+      undos.delete(item.id);
+      if (element.isConnected) paint();
+      void Promise.resolve().then(() => run(item, text)).then(() => { if (options.source) void refresh(); }, (error: unknown) => {
+        items = items.map((i) => (i.id === item.id ? w.before : i));
+        drafts.set(item.id, text ?? '');
+        toast(kt('No se ha guardado: {message}', { message: (error as Error)?.message ?? '' }));
+        paint();
+      });
+    };
+    const undo = () => {
+      const w = waiting.get(item.id);
+      if (!w) return;
+      clearTimeout(w.timer);
+      waiting.delete(item.id);
+      undos.delete(item.id);
+      items = items.map((i) => (i.id === item.id ? w.before : i));
+      selected = item.id;
+      paint();
+      toast(kt('Decisión deshecha.'));
+      list.querySelector<HTMLElement>(`[data-id="${CSS.escape(item.id)}"] .pl-open`)?.focus();
+    };
+    waiting.set(item.id, { before: item, timer: setTimeout(save, ms), save });
+    items = items.map((i) => (i.id === item.id ? decided(i, approve, text) : i));
+    if (order) moveOn(item.id, order);
+    paint();
+    toastWithAction(approve ? kt('Propuesta aprobada.') : kt('Propuesta descartada.'), { label: kt('Deshacer'), onClick: undo }, ms);
+    undos.set(item.id, undo);
+  }
+  /** «Deshacer» de cada decisión a la espera (también en su tarjeta, en Aprobadas o Descartadas). */
+  const undos = new Map<string, () => void>();
 
   async function withdraw(item: ProposalItem): Promise<void> {
     if (!options.onWithdraw || busy.has(item.id)) return;
@@ -237,11 +311,23 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   const decisionButtons = (item: ProposalItem): HTMLElement | null => {
     if (mode !== 'review' || item.status !== 'pending' || !canDecide) return null;
     const disabled = busy.has(item.id) ? true : null;
-    return el('div', { class: 'pl-actions' },
+    const note = ask ? null : el('label', { class: 'field pl-comment' }, el('span', null, kt('Comentario (opcional)')),
+      el('textarea', {
+        rows: '2', placeholder: kt('Lo verá quien lo propuso'), disabled, ...mark('comment'), 'aria-label': `${kt('Comentario (opcional)')}: ${item.summary}`,
+        oninput: (e: Event) => { drafts.set(item.id, (e.target as HTMLTextAreaElement).value); },
+      }, drafts.get(item.id) ?? ''));
+    const buttons = el('div', { class: 'pl-actions' },
       options.onReject ? el('button', { type: 'button', class: 'ghost danger-text', disabled, ...mark('reject'), 'aria-label': `${kt('Descartar')}: ${item.summary}`, onclick: () => void decide(item, false) }, kt('Descartar')) : null,
       options.onApprove ? el('button', { type: 'button', class: 'primary', disabled, ...mark('approve'), 'aria-label': `${kt('Aprobar')}: ${item.summary}`, onclick: () => void decide(item, true) }, kt('Aprobar')) : null,
     );
+    return note ? el('div', { class: 'pl-decide' }, note, buttons) : buttons;
   };
+
+  /** Mientras la decisión espera, la tarjeta dice que aún se puede deshacer. */
+  const undoLine = (item: ProposalItem): HTMLElement | null => (waiting.has(item.id)
+    ? el('p', { class: 'pl-undo', role: 'status' }, kt('Aún se puede deshacer.'), ' ',
+      el('button', { type: 'button', class: 'linkbtn', ...mark('undo'), 'aria-label': `${kt('Deshacer')}: ${item.summary}`, onclick: () => undos.get(item.id)?.() }, kt('Deshacer')))
+    : null);
 
   const quote = (item: ProposalItem): HTMLElement | null => (item.comment
     ? el('p', { class: 'pl-quote' }, `«${item.comment}»`, item.decidedBy?.name ? el('span', { class: 'pl-quote-by' }, ` · ${item.decidedBy.name}`) : null)
@@ -261,6 +347,7 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
         onclick: () => open(item), onkeydown: (e: Event) => step(e as KeyboardEvent, item),
       }, el('strong', { class: 'pl-summary' }, item.summary), el('span', { class: 'pl-meta' }, meta(item))),
       quote(item),
+      undoLine(item),
       link ? el('a', { class: 'linkbtn pl-link', href: link.href }, link.label, icon('chevronRight', 16)) : null,
       decisionButtons(item),
       own,
@@ -270,8 +357,12 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   function open(item: ProposalItem): void {
     if (mode === 'review' && wide()) { selected = item.id; paint(); list.querySelector<HTMLElement>(`[data-id="${CSS.escape(item.id)}"] .pl-open`)?.focus(); return; }
     if (!options.renderDetail) return;
-    const actions = decisionButtons(item);
-    const sheet = openSheet({ title: kindLabel(item.kind), body: detailBody(item, false), ...(actions ? { foot: Array.from(actions.childNodes) } : {}) });
+    const decision = decisionButtons(item);
+    const actions = decision?.classList.contains('pl-actions') ? decision : decision?.querySelector('.pl-actions') ?? null;
+    const note = decision?.querySelector('.pl-comment') ?? null;
+    const body = detailBody(item, false);
+    if (note) body.append(note);
+    const sheet = openSheet({ title: kindLabel(item.kind), body, ...(actions ? { foot: Array.from(actions.childNodes) } : {}) });
     // Al decidir desde la hoja, se cierra.
     sheet.foot?.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { void sheet.close(true); }, { capture: true }));
   }
@@ -359,6 +450,10 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
     element,
     setItems(next) { items = next.map(normalizeProposal); paint(); },
     refresh,
-    destroy() { offSource?.(); window.removeEventListener('focus', onFocus); element.remove(); },
+    destroy() {
+      // Lo que esperaba «Deshacer» se guarda ya: cerrar la vista no deshace.
+      for (const w of [...waiting.values()]) w.save();
+      offSource?.(); window.removeEventListener('focus', onFocus); element.remove();
+    },
   };
 }
