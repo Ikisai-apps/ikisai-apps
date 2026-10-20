@@ -2717,6 +2717,10 @@ test('Tanda 27 · Inicio una a una: «Confirmar y siguiente» valida al momento 
     const work = page.locator('#homeWork');
     await expect(work).toContainText('Cola Primera SL', { timeout: 20_000 });
     await expect(work).toContainText('Lista para confirmar');
+    // Tanda 30: «He leído esto» con ✓/! y la miniatura del original (un PDF)
+    await expect(work.locator('.inv-checks')).toContainText('Categoría: puesta');
+    await expect(work.locator('.inv-checks li.bad')).toHaveCount(0);
+    await expect(work.getByRole('button', { name: 'Ver el documento' })).toContainText('PDF');
     await work.getByRole('button', { name: 'Confirmar y siguiente' }).click();
     await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === a)?.status, { timeout: 20_000 }).toBe('validada');
     await expect(work).toContainText('Cola Segunda SL', { timeout: 20_000 });
@@ -2922,6 +2926,35 @@ test('Tanda 27 · Compras «Por asignar»: un toque asigna al destino propuesto 
     api.targets.splice(api.targets.findIndex((t) => t.id === project.id), 1);
     api.targets.splice(api.targets.findIndex((t) => t.id === event.id), 1);
     for (const id of Object.values(ids)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
+
+test('Tanda 30 · Facturas: «Marcar pagada» en la fila, en su hoja con la fecha y el medio, y «Deshacer»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplier = randomUUID(); const id = randomUUID();
+  api.seed('invoices.suppliers', [{ id: supplier, name: 'Pago En Fila SL', slug: 'pago_en_fila_sl', aliases: [], default_is_investment: false, default_category: 'compras' }]);
+  api.seed('invoices.invoices', [{ id, code: 'FVR_2020_930', supplier_id: supplier, invoice_date: '2020-02-03', object: 'material de fila', status: 'validada', expense_category: 'compras', source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'deducible', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas?filtro=sin_pagar`);
+    await page.locator('#invoiceSearch').fill('Pago En Fila');
+    const row = page.locator('#invoiceList .row', { hasText: 'material de fila' });
+    await row.getByRole('button', { name: 'Marcar pagada' }).click();
+    const sheet = page.getByRole('dialog', { name: /^Pagada · / });
+    // La fecha nunca es la del clic: propone la de la factura
+    await expect(sheet.locator('#rowPaidAt')).toHaveValue('2020-02-03');
+    await sheet.locator('#rowPaidAt').fill('2020-02-10');
+    await sheet.locator('#rowPaidMethod').selectOption('transferencia');
+    await sheet.locator('#savePaid').click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === id), { timeout: 20_000 }).toMatchObject({ payment_status: 'pagada', paid_at: '2020-02-10', payment_method: 'transferencia', payment_source: 'confirmado' });
+    await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === id), { timeout: 20_000 }).toMatchObject({ payment_status: 'pendiente', paid_at: null, payment_method: null });
+  } finally {
+    if (api.rows('invoices.invoices').some((i) => i.id === id)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
     await context.close();
   }
 });
