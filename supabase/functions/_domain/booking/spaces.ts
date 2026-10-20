@@ -21,15 +21,18 @@ const live = <T extends { deleted_at?: string | null }>(rows: readonly T[]): T[]
 
 export const isExtraBed = (bed: Pick<BedLike, 'kind'>): boolean => bed.kind === 'supletoria';
 
-/** Plazas base de un espacio: suma de camas activas no supletorias en habitaciones; `capacity` en salas y zonas. */
+/** ¿Duerme gente aquí? Las habitaciones y, desde la tanda 36 (MUELA-049), cualquier estancia con camas. */
+export const sleepsHere = (space: SpaceLike, beds: readonly BedLike[]): boolean =>
+  space.kind === 'habitacion' || live(beds).some((b) => b.space_id === space.id);
+
+/** Plazas base de un espacio: suma de camas activas no supletorias donde se duerme; `capacity` en salas y zonas sin camas. */
 export function spaceCapacity(space: SpaceLike, beds: readonly BedLike[]): number {
-  if (space.kind !== 'habitacion') return space.capacity ?? 0;
+  if (!sleepsHere(space, beds)) return space.capacity ?? 0;
   return live(beds).filter((b) => b.space_id === space.id && b.active && !isExtraBed(b)).reduce((sum, b) => sum + b.capacity, 0);
 }
 
-/** Plazas en camas supletorias activas de una habitación (no cuentan en la capacidad base). */
+/** Plazas en camas supletorias activas de un espacio (no cuentan en la capacidad base). */
 export function extraCapacity(space: SpaceLike, beds: readonly BedLike[]): number {
-  if (space.kind !== 'habitacion') return 0;
   return live(beds).filter((b) => b.space_id === space.id && b.active && isExtraBed(b)).reduce((sum, b) => sum + b.capacity, 0);
 }
 

@@ -9,6 +9,7 @@ import {
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
 } from './catalog.ts';
 import { missingForSes } from './guests.ts';
+import { validCell, validGrid } from './dormLayout.ts';
 import { dayNumber, isValidDate } from './rules.ts';
 
 /** Incluye `outsider` (núcleo, migración 0092): en Booking no se concede; las reglas miran `owner` y `editor`. */
@@ -46,6 +47,8 @@ type Spec =
   | { kind: 'country' }
   | { kind: 'uuid'; nullable?: boolean }
   | { kind: 'uuidList'; max: number }
+  | { kind: 'grid' }
+  | { kind: 'cell' }
   | { kind: 'file' };
 
 const text = (max: number, nullable = true): Spec => ({ kind: 'text', max, nullable });
@@ -189,6 +192,7 @@ FIELDS[TABLES.spaces] = {
   notes: text(LONG),
   public_name: text(120),
   en_suite: { kind: 'bool' },
+  layout: { kind: 'grid' },
 };
 FIELDS[TABLES.beds] = {
   space_id: { kind: 'uuid' },
@@ -197,6 +201,7 @@ FIELDS[TABLES.beds] = {
   capacity: { kind: 'int', nullable: false, min: 1 },
   active: { kind: 'bool' },
   position: { kind: 'number' },
+  cell: { kind: 'cell' },
 };
 FIELDS[TABLES.roomAssignments] = {
   event_id: { kind: 'uuid' },
@@ -507,6 +512,10 @@ export function checkValue(spec: Spec, value: unknown): string | null {
       return typeof value === 'string' && COUNTRY.test(value) ? null : 'debe ser un código de país de tres letras (ESP, FRA…)';
     case 'uuid':
       return typeof value === 'string' && UUID.test(value) ? null : 'debe ser un identificador uuid';
+    case 'grid':
+      return value === null || validGrid(value) ? null : 'debe ser {cols, rows}: de 2 a 16 cuadrantes de ancho y de 2 a 40 de fondo';
+    case 'cell':
+      return value === null || (validCell(value) && value.x <= 15 && value.y <= 39) ? null : 'debe ser {x, y, rot}: un cuadrante y 0 o 90';
     case 'uuidList':
       return Array.isArray(value) && value.length <= spec.max && value.every((v) => typeof v === 'string' && UUID.test(v)) && new Set(value).size === value.length
         ? null : `debe ser una lista de identificadores (como mucho ${spec.max}, sin repetir)`;

@@ -1648,6 +1648,24 @@ Con las sugerencias del núcleo (contrato §3.10), no con una cola propia. Así 
   - al sugerir, `booking.join_on_submit` deja un aviso `apuntarme` en `portal_notices`, y el tick del portal lo lleva a Tasks como `booking.proposal_comment` con la etiqueta «Huésped · Quiere apuntarse» (ref. `RES<código>-APUNTARME-<n>`);
   - nunca falla: si la reserva no existe, no avisa, pero la sugerencia se crea. Llamado desde un lote, no hace nada.
 
+## 27. Tanda 36 · Espacios y camas con plano y «Monta el dormitorio» (MUELA-049, migración 0477)
+
+- **Columnas nuevas (opcionales; no cambian nada por sí solas):**
+  - `spaces.layout = {cols, rows}`: la estancia en cuadrantes, de 2 a 16 de ancho y de 2 a 40 de fondo.
+  - `beds.cell = {x, y, rot}`: dónde está la cama. Ocupa dos cuadrantes, a lo ancho (`rot` 0) o a lo largo (90).
+  - Las comprueban `booking.valid_space_layout` y `booking.valid_bed_cell`, y también el validador del dominio (`grid` y `cell`).
+  - Que una cama no se salga ni se monte sobre otra lo comprueba la pantalla (`_domain/booking/dormLayout.ts`), porque depende del tamaño.
+- **Litera:** sigue siendo una sola cama de 2 plazas. Sus dos plazas comparten celda y se asignan por separado, como hasta ahora.
+- **Cualquier estancia con camas cuenta sus plazas:**
+  - `spaceCapacity` y `extraCapacity` (con `sleepsHere`) en el dominio;
+  - las plazas base de `booking.central_kpi_projection` (`occupancy_rate`), sin `kind = 'habitacion'`;
+  - `booking.event_rooms`: habitaciones del retiro para los portales, que ya incluyen una sala con camas asignada.
+  Una sala sin camas sigue usando su `capacity`.
+- **Pantalla `#/espacios`:**
+  - **Plano** (`createSpaceMap` del kit): sale si algún espacio enlazado con Recursos (`resource_id`) tiene forma, o si los espacios están en Recursos. Lleva la capa de camas de esta noche (libre, ocupada, no se puede).
+  - **Ficha del espacio** (`#spaceCard`): se abre al tocar una estancia en el plano o su nombre en la lista. Tiene «Datos del espacio» plegado y «Monta el dormitorio» (`#dormitorio`).
+  - **Editar la distribución:** solo el owner, con un borrador y «Guardar» en un solo lote (sin red, se envía al reconectar). Con los espacios en Recursos, aquí solo se colocan las camas; se añaden y se quitan en Recursos.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

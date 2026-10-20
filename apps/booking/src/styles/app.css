@@ -309,3 +309,36 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .bk-ficha .bk-focus { margin: 12px 0; display: grid; gap: 8px; }
 .bk-ficha .bk-focus #phaseAction { justify-self: start; min-height: var(--tap); }
 #reservationTabs { margin: 12px 0 4px; }
+
+/* Tanda 36 (MUELA-049): plano, ficha del espacio y «Monta el dormitorio». Colores de cama del kit (--bed-*). */
+.bk-space-top { display: grid; gap: 16px; margin-bottom: 16px; }
+@media (min-width: 1024px) { .bk-space-top:has(.bk-space-map:not(:empty)) { grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); align-items: start; } }
+.bk-space-card .bk-space-head { display: flex; gap: 12px; align-items: flex-start; }
+.bk-space-card .bk-space-head > div { flex: 1; min-width: 0; }
+.bk-space-card h3 { margin: 0; }
+.bk-space-card .hint { margin: 2px 0; }
+.bk-space-open { padding: 0; min-height: var(--tap-sm); text-align: left; }
+.bk-dorm { --bk-dorm-cell: 44px; display: grid; gap: 10px; }
+.bk-dorm-summary { margin: 0; font-weight: 600; }
+.bk-dorm-board { display: grid; gap: 3px; padding: 6px; border-radius: var(--radius-sm); background: var(--paper-2); border: 1px solid var(--line); max-width: 100%; overflow: hidden; }
+.bk-dorm-cell { border: 1px dashed var(--line); border-radius: 6px; min-width: 0; }
+.bk-dorm-board.editing .bk-dorm-cell { border-style: solid; }
+.bk-dorm-bed { z-index: 1; min-width: 0; min-height: var(--bk-dorm-cell); display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 6px; border-radius: 8px; border: 2px solid var(--bed-free-line); background: var(--bed-free); color: var(--ink); font: inherit; font-size: var(--text-xs); text-align: left; overflow: hidden; cursor: default; }
+.bk-dorm-bed[data-rot='90'] { writing-mode: vertical-rl; text-orientation: mixed; }
+.bk-dorm-bed.occupied { border-color: var(--bed-occ-line); background: repeating-linear-gradient(135deg, var(--bed-occ) 0 6px, color-mix(in srgb, var(--bed-occ) 70%, var(--paper)) 6px 12px); }
+.bk-dorm-bed.extra { border-style: dashed; }
+.bk-dorm-board.editing .bk-dorm-bed { cursor: grab; touch-action: none; }
+.bk-dorm-bed.picked { border-color: var(--bed-pick-line); background: var(--bed-pick); color: var(--bed-pick-ink); border-width: 3px; }
+.bk-dorm-bed:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.bk-dorm-bed-name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-dorm-bed-kind { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-dorm-tools { display: grid; gap: 8px; }
+.bk-dorm-size { display: flex; flex-wrap: wrap; gap: 12px; }
+.bk-dorm-sizer { display: inline-flex; align-items: center; gap: 6px; }
+.bk-dorm-sizer button, .bk-dorm-arrow, .bk-dorm-tools .btnrow button { min-width: var(--tap); min-height: var(--tap); }
+.bk-dorm-bar { align-items: center; }
+.bk-dorm-msg:empty { display: none; }
+/* Los colores de cama del plano del kit (están en .map-box): los mismos aquí, en claro y en oscuro. */
+.bk-dorm { --bed-free: #d7ecc9; --bed-free-line: #4f8a33; --bed-occ: #d3e2f6; --bed-occ-line: #2f62a3; --bed-pick: #2f7d22; --bed-pick-line: #1d5214; --bed-pick-ink: #fff; }
+:root[data-theme='dark'] .bk-dorm { --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .bk-dorm { --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; } }
