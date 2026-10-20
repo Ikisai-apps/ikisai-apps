@@ -90,7 +90,10 @@ test('el botón solo lo ve la propietaria; la vista previa bloquea hasta resolve
   await expect(sheet).toContainText('Hab 3 → Albergue › Hab 3');
   await expect(sheet).toContainText('Por resolver (1)');
   await expect(sheet).toContainText('Trastero viejo · sin espacio · 1 tarea');
-  await expect(sheet).toContainText('1 se queda sin espacio');
+  // Las cifras van en renderStats (MUELA-090 §3): «se queda sin espacio», en rojo si es más de 0; el botón bloqueado dice por qué.
+  await expect(sheet.locator('.zonecounts .stat-item[data-tone="alert"] .stat-label')).toHaveText('se queda sin espacio');
+  await expect(sheet.locator('.zonecounts .stat-item[data-tone="alert"] .stat-value')).toHaveText('1');
+  await expect(page.locator('#zonesApply')).toHaveAttribute('aria-describedby', 'zonesDoubtful zonesBlocked');
   await expect(page.locator('#zonesApply')).toBeDisabled();
   await shot('9-vista-previa-por-resolver');
   await page.locator(`[data-zone-remove="${TRASTERO}"]`).check();

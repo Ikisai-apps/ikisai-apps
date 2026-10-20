@@ -256,3 +256,109 @@ test('pantalla «Espacios»: el árbol común, desde el menú', async () => {
   await page.evaluate(() => navigateView('projects'));
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+/** Tareas abiertas que llevan alguno de estos espacios, contadas aparte con lo que hay en el dispositivo. */
+const openIn = (spaces: string[]) => page.evaluate((ids) => {
+  let open = 0;
+  for (const a of state.tabs) for (const p of a.projects) if (!p.deleted && p.status !== 'archived') for (const t of p.tasks) if (!t.deleted && !t.done && (t.spaces || []).some((x: string) => ids.includes(x))) open += 1;
+  return open;
+}, spaces);
+const t31 = async (name: string, fullPage = false) => { await page.waitForTimeout(450); await page.screenshot({ path: `../coordinacion/tasks/t31-capturas/${name}.png`, fullPage }).catch(() => {}); };
+
+test('Espacios (MUELA-090): «Plano | Lista»; el plano del kit con la capa «Tareas abiertas», sin gestos de edición; cada estancia se toca y con el teclado; lo que no tiene dibujo, en filas; la hoja y «Ver en Tareas»; y se recuerda la vista', async () => {
+  // El dibujo del Albergue (sin imagen: la capa va sobre papel) con Hab 3 y Baño Hombres colocados, como lo deja Central.
+  const PLAN = id();
+  const resources = async (operations: unknown[]) => {
+    const res = await server.app.call('/api/v1/resources/commands', { body: { requestId: `r-${++seq}`, operations } });
+    expect(res.status, JSON.stringify(res.data)).toBe(200);
+  };
+  const rev = async (sid: string) => Number((await server.app.t.db.query<{ revision: string }>(`select revision from resources.spaces where id = $1`, [sid])).rows[0]!.revision);
+  await resources([{ op: 'insert', table: 'resources.floor_plans', id: PLAN, fields: { building_id: S_ALB, floor: 'Planta baja', position: 0, width: 1000, height: 700 } }]);
+  await resources([
+    { op: 'update', table: 'resources.spaces', id: S_HAB3, expectedRevision: await rev(S_HAB3), fields: { plan_id: PLAN, plan_shape: { points: [[0.05, 0.08], [0.45, 0.08], [0.45, 0.9], [0.05, 0.9]] } } },
+    { op: 'update', table: 'resources.spaces', id: S_BANO, expectedRevision: await rev(S_BANO), fields: { plan_id: PLAN, plan_shape: { points: [[0.55, 0.08], [0.95, 0.08], [0.95, 0.9], [0.55, 0.9]] } } },
+  ]);
+  // Una tarea que solo dice «Albergue» (las de antes ya pueden haber pasado a una estancia en las pruebas de arriba).
+  const T_ALB2 = id();
+  const ok = async (operations: any[]) => { const res = await server.commit(operations); expect(res.status, JSON.stringify(res.data)).toBe(200); };
+  await ok([{ op: 'insert', table: 'tasks.tasks', id: T_ALB2, fields: { tab_id: MANT, project_id: PINTURA, title: 'Revisar el tejado del albergue', position: 9216 } }]);
+  await ok([{ op: 'insert', table: 'tasks.task_spaces', id: id(), fields: { tab_id: MANT, project_id: PINTURA, task_id: T_ALB2, space_id: S_ALB } }]);
+  await page.evaluate(() => (window as any).eval('Promise.all([Sync.core.resources.sync(), syncNow()])'));
+  await settled(page);
+  await page.evaluate(() => { localStorage.removeItem('ikisai-tasks-spaces-view'); navigateView('spaces'); });
+
+  // «Plano» por defecto (hay dibujo); dos chips de 46 px con aria-pressed; el árbol, oculto.
+  const plan = page.locator('[data-tko-view="plan"]'), list = page.locator('[data-tko-view="list"]');
+  await expect(page.locator('[data-tko-view]')).toHaveText(['Plano', 'Lista']);
+  await expect(plan).toHaveAttribute('aria-pressed', 'true');
+  for (const chip of [plan, list]) expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(46);
+  await expect(page.locator('#spacesTree')).toBeHidden();
+  await expect(page.locator('#tkoLegend')).toContainText('tareas abiertas');
+  // La pieza del kit, sin su conmutador ni su lista (la lista es el árbol): no salen dos listas.
+  await expect(page.locator('#tkoSpacesMap .map-view')).toBeHidden();
+  await expect(page.locator('#tkoSpacesMap .map-list')).toBeHidden();
+
+  // Cada estancia es un botón con la capa en su nombre accesible.
+  const hab = page.locator(`#tkoSpacesMap polygon.map-shape[data-space-id="${S_HAB3}"]`);
+  const habOpen = await openIn([S_HAB3]);
+  expect(habOpen).toBeGreaterThan(0);
+  await expect(hab).toHaveAttribute('role', 'button');
+  await expect(hab).toHaveAttribute('aria-label', new RegExp(`^Hab 3 · ${habOpen} abiertas?`));
+  // Sin ningún gesto de edición: ni «Colocar» ni nada que se arrastre.
+  await expect(page.locator('#tkoPlan')).not.toContainText('Colocar');
+  await expect(page.locator('#tkoPlan [draggable="true"], #tkoPlan .map-handle')).toHaveCount(0);
+
+  // Lo que tiene tareas y no sale en ningún dibujo, en filas: el Albergue (con lo de dentro) y la Sala Roble.
+  const albOpen = await openIn([S_ALB, S_HAB3, S_BANO]);
+  const albRow = page.locator(`.tko-offplan [data-tko-space="${S_ALB}"]`);
+  await expect(page.locator('#tkoOffPlanTitle')).toHaveText('Sin dibujo en el plano');
+  await expect(albRow).toHaveAttribute('aria-label', new RegExp(`^Albergue: ${albOpen} abiertas?`));
+  await expect(page.locator(`.tko-offplan [data-tko-space="${S_ROBLE}"]`)).toContainText('Sala Roble');
+  await expect(page.locator(`.tko-offplan [data-tko-space="${S_HAB3}"]`)).toHaveCount(0);
+  await t31('zona4-espacios-plano', true);
+
+  // Tocar la estancia abre su hoja: nombre, ruta y tipo; sus tareas abiertas; «Ver en Tareas (N)».
+  await hab.click();
+  await expect(page.locator('#sheet .sheettitle')).toHaveText('Hab 3');
+  await expect(page.locator('#sheet .subtitle')).toHaveText(/^Albergue › Hab 3 · /);
+  await expect(page.locator('#sheet [data-tko-task]')).toHaveCount(habOpen);
+  await expect(page.locator('#tkoSpaceTasks')).toHaveText(`Ver en Tareas (${habOpen})`);
+  await expect(page.locator('#sheet')).not.toContainText(/Aprende|Sabe hacerlo|Experto|disponib/i);
+  await t31('zona4-espacios-hoja');
+  await page.locator('#tkoSpaceClose').click();
+  // Con el teclado: Intro sobre la estancia.
+  await hab.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#sheet .sheettitle')).toHaveText('Hab 3');
+  // Cada tarea de la hoja abre su ficha.
+  await page.locator('#sheet [data-tko-task]').first().click();
+  await expect(page.locator('#saveTaskBtn')).toBeVisible();
+  await page.evaluate(() => (window as any).eval('closeSheet()'));
+
+  // La fila del Albergue: «Ver en Tareas» filtra por el espacio (con lo de dentro) y «‹ Volver a Espacios» vuelve.
+  await albRow.click();
+  await expect(page.locator('#sheet [data-tko-task]')).toHaveCount(albOpen);
+  await page.locator('#tkoSpaceTasks').click();
+  await expect.poll(() => page.evaluate(() => [state.view, state.taskScope, JSON.stringify(state.filters)].join('|'))).toBe(`tasks|all|{"_space":["${S_ALB}"]}`);
+  await expect(page.locator('#tkoBack')).toHaveText('‹ Volver a Espacios');
+  await expect(page.locator('main')).toContainText('Pintar Hab 3');
+  await page.locator('#tkoBack').click();
+  await expect.poll(() => page.evaluate(() => [state.view, JSON.stringify(state.filters)].join('|'))).toBe('spaces|{}');
+
+  // «Lista» oculta el plano y enseña el árbol de hoy; se recuerda en el dispositivo.
+  await list.click();
+  await expect(list).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#tkoPlan')).toBeHidden();
+  await expect(page.locator('#spacesTree')).toBeVisible();
+  await expect(page.locator('#spacesTree')).toContainText('Albergue');
+  await t31('zona4-espacios-lista');
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-tasks-spaces-view'))).toBe('list');
+  await page.evaluate(() => { navigateView('projects'); navigateView('spaces'); });
+  await expect(page.locator('[data-tko-view="list"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#spacesTree')).toBeVisible();
+  await page.locator('[data-tko-view="plan"]').click();
+  await expect(page.locator('#tkoPlan')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-tasks-spaces-view'))).toBe('plan');
+  await page.evaluate(() => navigateView('projects'));
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
