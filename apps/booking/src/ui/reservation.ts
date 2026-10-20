@@ -13,7 +13,7 @@ import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
 import { PROGRAM, loadProgram, renderProgram } from './program.ts';
-import { balanceState, cachedCollected, fetchCollected } from '../app/collected.ts';
+import { balanceState, cachedCollected, cachedMovements, collectedFromMovements, fetchCollected, fetchMovements, type Movement } from '../app/collected.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
 import { fetchCosts, invoiceUrl, issueInvoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
@@ -162,6 +162,7 @@ export function mountReservation(id: string): ViewMount {
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let collectedTried = false;
     let extractTried = false;
+    let movesTried = false;
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
     let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
     const rowSig = (rows: Row[]) => rows.map((r) => `${r.id}:${r.revision}:${r.status}:${r.label}:${r._pending === true}`).join('|');
@@ -539,27 +540,36 @@ export function mountReservation(id: string): ViewMount {
 
       // Extracto (arriba de Dinero, solo con permiso de importes): lo que queda por cobrar de lo contratado, lo próximo
       // y sus facturas en Finance. Lo cobrado sale de Finance (`reservation_collected`), para que las tres apps digan lo
-      // mismo; sin red ni copia, lo dice. Sin «Movimientos» hasta que Finance dé las facturas una a una.
+      // mismo; sin red ni copia, lo dice. «Movimientos» (Finance #643): sus facturas una a una por meses, las rectificativas
+      // restando; sin red, la última copia del dispositivo (y lo cobrado sale de ella).
       const contractedTotal = Number(accepted?.total ?? finance?.final_amount ?? 0);
       const collectedNow = seesFinance ? cachedCollected(id) : null;
       if (seesFinance && !collectedNow && !extractTried && contractedTotal > 0) {
         extractTried = true;
         void fetchCollected(client, id).then((value) => { if (value) void paint(); });
       }
+      const movesNow = seesFinance && contractedTotal > 0 ? cachedMovements(id) : null;
+      if (seesFinance && contractedTotal > 0 && !movesNow?.fresh && !movesTried && navigator.onLine) {
+        movesTried = true;
+        void fetchMovements(client, id).then((value) => { if (value) void paint(); });
+      }
+      const collectedAmount = collectedNow?.collected ?? (movesNow ? collectedFromMovements(movesNow.value) : null);
       const depositLeft = Math.max(0, Number(finance?.deposit_required ?? 0) - Number(finance?.deposit_paid ?? 0));
-      const left = collectedNow ? Math.max(0, Math.round((contractedTotal - collectedNow.collected) * 100) / 100) : null;
+      const left = collectedAmount !== null ? Math.max(0, Math.round((contractedTotal - collectedAmount) * 100) / 100) : null;
       const owesDeposit = depositLeft > 0 && ['pendiente', 'parcial'].includes(depositStatus(finance as any));
       const extract = !seesFinance || contractedTotal <= 0 ? null : el('article', { class: 'card', id: 'financeExtract', 'data-feedback-id': 'booking.reserva.extracto', 'data-feedback-label': 'Extracto' },
         el('div', { class: 'cardhead' }, el('h3', null, 'Extracto')),
         left === null
           ? el('p', { class: 'hint', id: 'financeExtractUnknown' }, navigator.onLine ? `Contratado: ${money(contractedTotal)}. Lo cobrado lo registra Finance; cargando…` : `Contratado: ${money(contractedTotal)}. Lo cobrado se verá al reconectar.`)
           : renderMoneyBreakdown({
-              mode: 'statement', totalLabel: 'Te queda por cobrar', total: left, subtitle: `de ${money(contractedTotal)} contratados · cobrado ${money(collectedNow!.collected)}`,
+              mode: 'statement', totalLabel: 'Te queda por cobrar', total: left,
+              subtitle: `de ${money(contractedTotal)} contratados · cobrado ${money(collectedAmount!)}${!collectedNow && movesNow ? ` · copia del ${fullDay(movesNow.value.at.slice(0, 10))}` : ''}`,
               upcomingLabel: 'Lo próximo',
               upcoming: left <= 0 ? [] : [owesDeposit
                 ? { id: 'senal', label: 'Señal', amount: Math.min(depositLeft, left), kind: 'due' as const, chip: { text: 'Pendiente', tone: 'warn' as const } }
                 : { id: 'saldo', label: 'Saldo', amount: left, kind: 'due' as const, meta: deadline ? `plazo interno: ${deadline.toLocaleString('es-ES', { day: 'numeric', month: 'short' })}` : null, chip: { text: deadlinePassed ? 'Plazo vencido' : 'Pendiente', tone: deadlinePassed ? 'alert' as const : 'warn' as const } }],
-              moves: [],
+              moves: movesNow ? movesNow.value.items.slice().sort((a, b) => String(b.issueDate ?? '').localeCompare(String(a.issueDate ?? ''))).map(moveOf) : [],
+              emptyText: movesNow ? 'Aún no hay facturas emitidas para esta reserva.' : navigator.onLine ? 'Cargando las facturas…' : 'Sin conexión: las facturas se verán al reconectar.',
             }),
         el('p', null, el('a', { class: 'linkbtn', id: 'openIssuedInvoices', href: issueInvoiceUrl(id), target: '_self', rel: 'noopener', 'data-feedback-id': 'booking.reserva.extracto.facturas', 'data-feedback-label': 'Sus facturas en Finance' }, 'Sus facturas en Finance ›')));
 
@@ -677,5 +687,18 @@ export function mountReservation(id: string): ViewMount {
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, PORTAL_REQUESTS, EXTRA_REQUESTS, RATES]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
     offs.push(onLogos(() => void paint()), onSesPending(() => void paint()));
     return () => { layout.destroy(); offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
+  };
+}
+
+const PURPOSE_TEXT: Record<string, string> = { senal: 'Señal', saldo: 'Saldo', extras: 'Extras', general: 'Factura' };
+
+/** Una emitida en «Movimientos»: lo que es, su número, cuándo se cobró y su importe (la rectificativa, en negativo). */
+function moveOf(m: Movement) {
+  const what = m.kind === 'rectificativa' ? 'Rectificativa' : PURPOSE_TEXT[m.purpose ?? ''] ?? 'Factura';
+  return {
+    id: m.id, date: m.issueDate, amount: m.total, kind: 'doc' as const,
+    label: `${what}${m.number ? ` · ${m.number}` : ''}`,
+    meta: [m.concept, m.collected && m.paidAt ? `cobrada el ${fullDay(m.paidAt.slice(0, 10))}` : null].filter(Boolean).join(' · ') || null,
+    chip: m.kind === 'rectificativa' ? { text: 'Resta', tone: null } : m.collected ? { text: 'Cobrada', tone: 'ok' as const } : { text: 'Pendiente', tone: 'warn' as const },
   };
 }
