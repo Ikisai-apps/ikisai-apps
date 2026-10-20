@@ -266,7 +266,16 @@ export function createApp(config: AppConfig): AppHandler {
   // `/api/v1/<módulo>/…` con su propia sincronización. La pertenencia la deriva el núcleo de las apps de origen.
   const modules = new Map<string, { sync: ReturnType<typeof createSync>; routes: Array<{ method: string; pattern: string; handler: (req: RouteRequest) => Promise<unknown>; matcher: (path: string) => Record<string, string> | null }> }>(MODULES.map((name) => {
     const moduleSync = createSync(supabase, name, {});
+    // Recursos: los dibujos del mapa de zonas (resources.floor_plans), solo imágenes; los sube el owner (escritura de la tabla).
+    const moduleUploads = name === 'resources'
+      ? createUploads(supabase, name, { bucket: 'resources-plans', maxBytes: 10 * 1024 * 1024, allowedMime: ['image/svg+xml', 'image/png', 'image/jpeg'] }, storage)
+      : null;
     const moduleRoutes: Array<{ method: string; pattern: string; handler: (req: RouteRequest) => Promise<unknown> }> = [
+      ...(moduleUploads ? [
+        { method: 'POST', pattern: 'uploads', handler: async ({ ctx, json }: RouteRequest) => moduleUploads.create(ctx, await json()) },
+        { method: 'POST', pattern: 'uploads/:id/verify', handler: ({ ctx, params }: RouteRequest) => moduleUploads.verify(ctx, params.id ?? '') },
+        { method: 'GET', pattern: 'files/:id', handler: ({ ctx, params }: RouteRequest) => moduleUploads.readUrl(ctx, params.id ?? '') },
+      ] : []),
       { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
       { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => moduleSync.snapshot(ctx, url.searchParams) },
       { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => moduleSync.changes(ctx, url.searchParams) },
