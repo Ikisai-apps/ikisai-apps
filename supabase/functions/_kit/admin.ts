@@ -76,7 +76,11 @@ export function createAdmin(supabase: Supabase) {
     if (app !== null && !APP_ID.test(app)) fail(422, 'INVALID_FILTER', 'App inválida.');
     const before = params.get('before'); const limit = params.get('limit');
     if ((before !== null && !/^\d+$/.test(before)) || (limit !== null && !/^\d+$/.test(limit))) fail(422, 'INVALID_FILTER', 'Parámetros inválidos.');
-    return supabase.rpc('core_admin_access_log', { p_actor: ctx.user.id, p_app: app, p_before: before === null ? null : Number(before), p_limit: limit === null ? null : Number(limit) });
+    // P12 (Central, Bloque 2): `user` = lo de esa cuenta (hecho por ella, sobre ella o por una clave suya); `only=grave`.
+    const user = params.get('user'); const only = params.get('only');
+    if (user !== null && !UUID.test(user)) fail(422, 'INVALID_FILTER', 'Cuenta inválida.');
+    if (only !== null && only !== 'grave') fail(422, 'INVALID_FILTER', 'Filtro inválido.');
+    return supabase.rpc('core_admin_access_log', { p_actor: ctx.user.id, p_app: app, p_before: before === null ? null : Number(before), p_limit: limit === null ? null : Number(limit), p_user: user, p_only: only });
   }
 
   async function agents(ctx: RequestContext) {

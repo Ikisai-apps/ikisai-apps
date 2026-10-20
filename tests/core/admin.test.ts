@@ -112,3 +112,25 @@ test('admin · el nombre visible de una cuenta lo cambia el owner de Central (FB
   await app.t.db.query(`insert into core.profiles (user_id, display_name, kind, service_name) values ($1, 'Feedback (sistema)', 'service', 'feedback') on conflict (user_id) do update set kind = 'service', service_name = 'feedback'`, [svc]);
   assert.equal((await app.call(`/api/v1/admin/accounts/${svc}/name`, { body: { displayName: 'Otro' } })).status, 422);
 });
+
+test('admin · registro filtrado por cuenta y «lo grave» (P12)', async () => {
+  const all = (await app.call('/api/v1/admin/access-log?limit=500')).data.items;
+  const target = app.users.editor;
+  const byUser = await app.call(`/api/v1/admin/access-log?user=${target}&limit=500`);
+  assert.equal(byUser.status, 200, JSON.stringify(byUser.data));
+  const keysOf = new Set((await app.t.db.query<{ id: string }>('select id from core.agent_keys where user_id = $1', [target])).rows.map((r) => r.id));
+  const mine = (e: any) => e.actorId === target || e.meta?.userId === target || (e.keyId && keysOf.has(e.keyId));
+  assert.ok(byUser.data.items.length > 0);
+  assert.ok(byUser.data.items.every(mine), 'solo lo de esa cuenta');
+  assert.equal(byUser.data.items.length, all.filter(mine).length, 'y todo lo de esa cuenta');
+
+  const grave = await app.call('/api/v1/admin/access-log?only=grave&limit=500');
+  assert.equal(grave.status, 200);
+  const isGrave = (e: any) => e.event === 'key_revoked' || (e.event === 'member_changed' && (e.meta?.event === 'account_disabled' || e.meta?.removed === true));
+  assert.ok(grave.data.items.some((e: any) => e.event === 'key_revoked'));
+  assert.ok(grave.data.items.every(isGrave));
+  assert.equal(grave.data.items.length, all.filter(isGrave).length);
+
+  assert.equal((await app.call('/api/v1/admin/access-log?only=todo')).status, 422);
+  assert.equal((await app.call('/api/v1/admin/access-log?user=nadie')).status, 422);
+});
