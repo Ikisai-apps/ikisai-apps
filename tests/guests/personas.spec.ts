@@ -257,3 +257,50 @@ test('O4a · la familia junta: retiros de todos con a quién toca, la cama de ca
   await page.locator('#persons button', { hasText: 'Nico' }).click();
   await expect(page.locator('#calendarList a')).toHaveCount(1);
 });
+
+test('065 · el programa de la familia en una columna por persona: lo común a todo el ancho, lo de cada uno en la suya y nada de otra familia', async ({ page }) => {
+  const r = await api.reservation({ title: 'Retiro con taller', start: day(15), end: day(17) });
+  const ana = await api.guest(r.event, { first_name: 'Ana', last_name_1: 'Sol' });
+  const leo = await api.guest(r.event, { first_name: 'Leo', last_name_1: 'Sol', is_minor: true });
+  const lola = await api.guest(r.event, { first_name: 'Lola', last_name_1: 'Mar' }); // otra familia del mismo retiro
+  await api.experience(r.id, { program_visible: true });
+  const item = (title: string, starts_at: string, audience: string, ids: string[] = []) => api.organizerInvoke(r.id, 'booking.portal_program_save', {
+    item: { id: crypto.randomUUID(), day: day(15), starts_at, ends_at: null, title, place_text: 'Sala', kind: 'actividad', audience, audience_guest_ids: ids } });
+  await item('Yoga para todos', '09:00', 'todos');
+  await item('Charla de adultos', '11:00', 'adultos');
+  await item('Taller de barro', '17:00', 'personas', [leo]);
+  await item('Cuentacuentos', '18:00', 'menores');
+  await item('Masaje de Lola', '19:00', 'personas', [lola]);
+  await api.guestLink(r.id, leo, 'Leo', 'sol@example.invalid');
+  await page.goto(`${baseURL}/i/${await api.guestLink(r.id, ana, 'Ana', 'sol@example.invalid')}`);
+  await page.locator('#privacyOk').click();
+  await page.locator('#sections a[data-section="programa"]').click();
+
+  // «Todos»: una columna por persona, Leo con «menor» en texto.
+  const cols = page.locator('#programCols');
+  await expect(cols.locator('[role="columnheader"]')).toHaveCount(3);
+  await expect(cols.locator('.gcols-name > span:last-child')).toHaveText(['Ana', 'Leo · menor']); // la cara va delante
+  await expect(cols.locator('.gcols-name.minor')).toHaveAttribute('data-guest', leo);
+  const row = (title: string) => cols.locator('.gcols-row', { hasText: title });
+  await expect(row('Yoga para todos').locator('.gcols-cell')).toHaveCount(1);
+  await expect(row('Yoga para todos').locator('.gcols-cell.all')).toHaveCount(1);
+  // Lo de uno, en su columna; «Libre» en la del otro.
+  await expect(row('Charla de adultos').locator('[role="cell"]')).toHaveText([/Charla de adultos/, 'Libre']);
+  await expect(row('Taller de barro').locator('[role="cell"]')).toHaveText(['Libre', /Taller de barro/]);
+  await expect(row('Cuentacuentos').locator('[role="cell"]')).toHaveText(['Libre', /Cuentacuentos/]);
+  // Nunca lo de otra familia.
+  await expect(cols).not.toContainText('Masaje de Lola');
+  await row('Taller de barro').locator('summary').click();
+  await expect(row('Taller de barro')).toContainText('Para Leo');
+  await capture(page, 'familia-programa');
+
+  // Solo Ana: lo suyo, sin columnas.
+  await page.locator('#persons button', { hasText: 'Ana' }).click();
+  await page.locator('#sections a[data-section="programa"]').click();
+  await expect(page.locator('#programCols')).toHaveCount(0);
+  await expect(page.locator('#programList')).toContainText('Charla de adultos');
+  await expect(page.locator('#programList')).toContainText('Yoga para todos');
+  await expect(page.locator('#programList')).not.toContainText('Taller de barro');
+  await expect(page.locator('#programList')).not.toContainText('Cuentacuentos');
+  await expect(page.locator('#programList')).not.toContainText('Masaje de Lola');
+});

@@ -764,4 +764,9 @@ export const ES: Dictionary = {
   'house.arriving': 'Al llegar',
   'house.plan': 'El plano de la casa',
   'house.planWhere': 'Dónde está cada cosa y tu cama',
+  'program.onlyFor': 'Para {names}',
+  'program.byPerson': 'El día, persona a persona',
+  'program.time': 'Hora',
+  'program.minor': 'menor',
+  'program.free': 'Libre',
 };

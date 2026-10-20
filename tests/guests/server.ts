@@ -8,6 +8,7 @@ import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { createGuestsApp, GUESTS_ORIGINS } from '../../supabase/functions/guests-api/app.ts';
 import { TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
+import { HOUSE_MENU_ID } from '../../supabase/functions/_domain/food/mod.ts';
 
 export interface GuestsTestServer {
   url: string;
@@ -35,6 +36,8 @@ export interface GuestsTestServer {
    * Sin `allergensChecked`, la receta cuenta como revisada si trae `allergens`.
    */
   menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; allergensChecked?: boolean; diet?: string[] }> }>): Promise<void>;
+  /** Servicios del menú de casa de Food (FD2, `food.portal_house_menu`). */
+  houseMenu(services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; allergens?: string[]; allergensChecked?: boolean }> }>): Promise<void>;
   /** El lugar en Central: dirección del lugar (sin domicilio fiscal en los portales) y, si se pide, un plano verificado. */
   place(options: { venue: string; plan?: 'image/png' | 'application/pdf' }): Promise<void>;
   /** El personal asigna una cama a un huésped. */
@@ -186,6 +189,20 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
         }
       }
       await db.query(`update food.menus set status = 'validado', validated_at = now() where id = $1`, [menuId]);
+    },
+    async houseMenu(services) {
+      const db = booking.t.db;
+      await db.query(`insert into food.menus (id, kind, house_servings) values ($1, 'casa', 12) on conflict (id) do nothing`, [HOUSE_MENU_ID]);
+      for (const [i, s] of services.entries()) {
+        const serviceId = uuid();
+        await db.query(`insert into food.menu_services (id, menu_id, service_date, service_type, service_time, position) values ($1, $2, $3, $4, $5, $6)`, [serviceId, HOUSE_MENU_ID, s.date, s.type, s.time, i]);
+        for (const [j, d] of s.dishes.entries()) {
+          const recipeId = uuid();
+          await db.query(`insert into food.recipes (id, name, category, base_servings, allergens, allergens_checked) values ($1, $2, 'principal', 10, $3, $4)`,
+            [recipeId, d.name, d.allergens ?? [], d.allergensChecked ?? Boolean(d.allergens)]);
+          await db.query(`insert into food.menu_items (id, service_id, recipe_id, servings, position) values ($1, $2, $3, 12, $4)`, [uuid(), serviceId, recipeId, j]);
+        }
+      }
     },
     async place({ venue, plan }) {
       const db = booking.t.db;

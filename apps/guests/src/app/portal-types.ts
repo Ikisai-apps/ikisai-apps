@@ -20,7 +20,15 @@ export interface Experience {
 }
 
 /** Programa del retiro (`booking.portal_program`, Booking §23). */
-export interface ProgramItem { id: string; day: string; starts_at: string | null; ends_at: string | null; title: string; place: string | null; public_note: string | null; kind: string; position?: number }
+/**
+ * Actividad del programa (`booking.portal_program`, Booking §23). `audience` y `audience_guest_ids` (MUELA-065): para quién
+ * es (`todos` por defecto); con `personas`, solo los huéspedes del ámbito de quien lee. `resource_space_id`: el espacio de
+ * Recursos, para el plano cuando el portal pueda leer los dibujos.
+ */
+export interface ProgramItem {
+  id: string; day: string; starts_at: string | null; ends_at: string | null; title: string; place: string | null; public_note: string | null; kind: string; position?: number;
+  audience?: 'todos' | 'adultos' | 'menores' | 'personas' | null; audience_guest_ids?: string[] | null; resource_space_id?: string | null;
+}
 
 /** Plato publicado (`food.portal_menu`, Food §7.5): nombre y descripción públicos; los alérgenos, solo si cocina los revisó. */
 export interface Dish { menu_item_id?: string; photo_thumb_file_id?: string | null; name: string; description?: string | null; category?: string | null; diet_tags?: string[] | null; allergens?: string[] | null; allergens_checked?: boolean }

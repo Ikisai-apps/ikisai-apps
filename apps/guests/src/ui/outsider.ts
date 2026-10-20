@@ -16,11 +16,13 @@ import { bindOnline, createProposalList, createSuggestionSource, el, icon, repla
 import { SERVICE_TYPES, type ServiceType } from '@ikisai/domain-food';
 import { describeError, isNetworkError, online } from '../app/client.ts';
 import { formatDate, t } from '../app/i18n.ts';
+import { hhmm } from '../app/labels.ts';
 import type { PortalReads } from '../app/portal.ts';
-import type { MyStays, OutsiderApi, Stay } from '../app/outsider.ts';
+import type { HouseMenu, MyStays, OutsiderApi, Stay } from '../app/outsider.ts';
 import { failure, fbIgnore, fbMark, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
 import { verEnPlano } from './plan.ts';
+import { allergens } from './program.ts';
 
 export interface OutsiderActions {
   api: OutsiderApi;
@@ -42,12 +44,16 @@ export function stayText(stay: Pick<Stay, 'space_name' | 'zone' | 'bed_label'>):
 }
 
 const DAY = 86_400_000;
+/** «Martes, 20 de octubre»: solo la primera letra en mayúscula (no «De Octubre»). */
+const upperFirst = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const plus = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const SLOTS = ['comida', 'cena'] as const satisfies readonly ServiceType[];
 
 export function mountOutsider(main: HTMLElement, header: HTMLElement | null, actions: OutsiderActions): () => void {
   let alive = true;
   let data: MyStays | null = null;
+  /** El menú de casa (FD2): lo que hay en cada hueco de «Tus días». */
+  let house: HouseMenu | null = null;
   let staleAt: string | null = null;
   /** Hueco con el formulario abierto («<día>:<servicio>»). */
   let openSlot: string | null = null;
@@ -113,7 +119,22 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
     paintDays(stay);
   }
 
-  /** Un día por tarjeta, con la comida y la cena y «Sugerir aquí» desde hoy. */
+  /** Los servicios del menú de casa de ese día y esa comida. */
+  const servicesOf = (day: string, service: string) => (house?.services ?? []).filter((s) => s.date === day && s.type === service && s.dishes.length);
+  /** Junto al nombre de la comida: su hora, o «aún no hay nada». */
+  function slotNote(day: string, service: string): HTMLElement {
+    const found = servicesOf(day, service);
+    const time = found.map((s) => hhmm(s.time)).find(Boolean);
+    return el('span', { class: 'small' }, found.length ? (time ?? '') : t('outsider.nothingYet'));
+  }
+  /** Los platos del hueco, cada uno con su línea de alérgenos de #597 (también «sin revisar por cocina»). */
+  function slotDishes(day: string, service: string): HTMLElement | null {
+    const dishes = servicesOf(day, service).flatMap((s) => s.dishes);
+    if (!dishes.length) return null;
+    return el('ul', { class: 'goutdishes' }, ...dishes.map((d) => el('li', null, el('span', null, d.name), allergens(d))));
+  }
+
+  /** Un día por tarjeta, con la comida y la cena (lo que hay, del menú de casa) y «Sugerir aquí» desde hoy. */
   function paintDays(stay: Stay | null): void {
     for (const off of dayUnbinds.splice(0)) off();
     const today = todayMadrid();
@@ -124,7 +145,7 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
       el('h3', { class: 'gsub' }, stay ? t('outsider.yourDays') : t('outsider.nextDays')),
       el('p', { class: 'small' }, t('outsider.dishIntro')),
       ...list.map((d) => el('article', { class: `card gcard goutday${d === today ? ' today' : ''}`, dataset: { day: d } },
-        el('h4', null, formatDate(d, { weekday: 'long', day: 'numeric', month: 'long' }), d === today ? el('span', { class: 'chip small' }, t('outsider.today')) : null),
+        el('h4', null, upperFirst(formatDate(d, { weekday: 'long', day: 'numeric', month: 'long' })), d === today ? el('span', { class: 'chip small' }, t('outsider.today')) : null),
         ...SLOTS.map((service) => {
           const key = `${d}:${service}`;
           const isOpen = openSlot === key;
@@ -132,9 +153,10 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
           const input = el('input', { type: 'text', id: `dish-${key}`, maxlength: '160', autocomplete: 'off', 'aria-label': t('outsider.dishFor', { service: t(`menu.${service}`).toLowerCase(), day: formatDate(d, { weekday: 'long', day: 'numeric' }) }) }) as HTMLInputElement;
           const send = el('button', { type: 'submit', class: 'primary small', 'data-feedback-id': 'guests.outsider.plato.sugerir', 'data-feedback-label': 'Sugerir un plato' }, t('outsider.dishSend')) as HTMLButtonElement;
           return el('div', { class: 'goutslot', dataset: { service } },
-            el('div', { class: 'goutslot-head' }, el('strong', null, t(`menu.${service}`)), el('span', { class: 'small' }, t('outsider.nothingYet')),
+            el('div', { class: 'goutslot-head' }, el('strong', null, t(`menu.${service}`)), slotNote(d, service),
               canSuggest ? needsNet(el('button', { type: 'button', class: 'ghost small', 'aria-expanded': String(isOpen), 'data-feedback-id': 'guests.outsider.plato.hueco', 'data-feedback-label': 'Sugerir aquí',
                 onclick: () => { openSlot = isOpen ? null : key; paintStay(); if (!isOpen) (main.querySelector(`#dish-${CSS.escape(key)}`) as HTMLElement | null)?.focus(); } }, isOpen ? t('outsider.cancel') : t('outsider.suggestHere')), dayUnbinds) : null),
+            slotDishes(d, service),
             isOpen ? el('form', { class: 'goutinline', onsubmit: (e: Event) => { e.preventDefault(); void suggest(input.value, d, service, send).then((ok) => { if (ok) { openSlot = null; paintStay(); } }); } }, input, send) : null);
         }))),
       otherForm());
@@ -158,6 +180,16 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
         el('div', { class: 'gfield' }, el('label', { for: 'dishDate' }, t('outsider.dishDate')), date),
         el('div', { class: 'gfield' }, el('label', { for: 'dishService' }, t('outsider.dishService')), service)),
       send));
+  }
+
+  /** El menú de casa: si falla, los huecos siguen con «aún no hay nada» y se puede sugerir igual. */
+  async function loadHouse(): Promise<void> {
+    try {
+      const loaded = await actions.api.houseMenu();
+      if (!alive) return;
+      house = loaded.value;
+      paintDays(data ? currentStay(data.items) : null);
+    } catch { /* sin menú de casa: lo de siempre */ }
   }
 
   async function loadStay(): Promise<void> {
@@ -187,6 +219,7 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
       el('summary', null, t('outsider.mine')), proposals.element));
   paintDays(null);
   void loadStay();
+  void loadHouse();
   // La línea de sin red se repinta solo al cambiar la red (los botones los lleva `bindOnline`).
   let network = actions.client.status().network;
   const offStatus = actions.client.onStatus((st) => { if (alive && data && st.network !== network) { network = st.network; paintStay(); } });

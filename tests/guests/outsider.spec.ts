@@ -155,6 +155,11 @@ test('O4b · outsider sin retiros: entra en la pestaña Outsider; «hay alguien�
   const account = await api.makeOutsider(g, { noRetreats: true });
   await api.staffStay(day(1), day(3));
   await api.staffNote(account, `${day(2)}T16:30:00Z`, 'Te dejamos las llaves en recepción');
+  // FD2: el menú de casa de Food (un plato revisado y otro sin revisar).
+  await api.houseMenu([{ date: day(1), type: 'comida', time: '14:00', dishes: [
+    { name: 'Lentejas estofadas', allergens: ['apio'], allergensChecked: true },
+    { name: 'Pan del día', allergens: ['gluten'], allergensChecked: false },
+  ] }]);
   await page.goto(`${baseURL}/`);
   await expect(page).toHaveURL(/#\/outsider$/);
   await expect(page.locator('#retreatTabs')).toHaveCount(0); // sin retiros, sin pestañas
@@ -163,6 +168,14 @@ test('O4b · outsider sin retiros: entra en la pestaña Outsider; «hay alguien�
   // Tanda 31 (MUELA-028): sin estancia, los próximos tres días con sus comidas; el formulario de siempre, plegado.
   await expect(page.locator('#outsiderMeals .goutday')).toHaveCount(3);
   await expect(page.locator(`#outsiderMeals .goutday[data-day="${day(0)}"]`)).toContainText('Hoy');
+  // FD2: lo que hay en cada hueco, con la línea de alérgenos de #597 (también «sin revisar por cocina»).
+  const lunch = page.locator(`#outsiderMeals .goutday[data-day="${day(1)}"] .goutslot[data-service="comida"]`);
+  await expect(lunch.locator('.goutslot-head')).toContainText('14:00');
+  await expect(lunch.locator('.goutdishes li')).toHaveCount(2);
+  await expect(lunch.locator('.goutdishes li').first()).toContainText('Lentejas estofadas');
+  await expect(lunch.locator('.goutdishes li').first().locator('.gallergens')).toContainText('Alérgenos declarados por cocina');
+  await expect(lunch.locator('.goutdishes li').nth(1).locator('.gallergens')).toContainText('sin revisar por cocina');
+  await expect(page.locator(`#outsiderMeals .goutday[data-day="${day(1)}"] .goutslot[data-service="cena"]`)).toContainText('aún no hay nada');
   // «Sugerir un plato»: una sugerencia `plato_casa` de Food, pendiente, en «Mis propuestas».
   await page.locator('#outsiderOtherDay > summary').click();
   await page.locator('#dishName').fill('Lentejas de la abuela');

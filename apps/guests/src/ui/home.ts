@@ -17,6 +17,7 @@ import { bindOnline, createDayTabs, el, icon, renderHourAgenda, renderSteps, rep
 import { signsOwnEntry } from '@ikisai/domain-booking';
 import type { MyGuest } from '../app/api.ts';
 import { contactPhone } from '../app/common-texts.ts';
+import { audienceOf, itemsFor } from '../app/audience.ts';
 import type { GuestContext } from '../app/context.ts';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { dateRange, hhmm, missingText } from '../app/labels.ts';
@@ -103,7 +104,8 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
       }),
     ]);
     if (!alive) return;
-    program = prog?.value.items ?? [];
+    // Solo lo que toca a alguien de quien mira (`audience`, MUELA-065).
+    program = itemsFor(prog?.value.items ?? [], audiencePeople());
     menu = men?.value ?? null;
     lodging = lod?.value ?? null;
     materials = mats?.value.items.length ?? 0;
@@ -164,6 +166,17 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
     return box;
   }
 
+  function audiencePeople() {
+    return people.map(({ ctx: c }) => ({ guestId: c.grant.guest_id, minor: c.guest().fields.is_minor === true, name: String(c.guest().fields.first_name ?? '').trim() }));
+  }
+  /** Con la familia, «Para Leo» si la actividad no es de todos. */
+  function forWhom(i: ProgramItem): string | null {
+    if (!family) return null;
+    const all = audiencePeople();
+    const who = audienceOf(i, all);
+    return who.length < all.length ? t('program.onlyFor', { names: new Intl.ListFormat(localeTag(), { type: 'conjunction' }).format(who.map((p) => p.name)) }) : null;
+  }
+
   /** Lo del día: actividades y comidas, ordenadas por hora, con su estado si el día es hoy. */
   function dayItems(day: string, today: string, now: string, moment: Moment): HourItem[] {
     const isToday = day === today && moment === 'during';
@@ -173,7 +186,7 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
     const rows: Row[] = [
       ...acts.map((i) => ({ at: hhmm(i.starts_at)!, end: endOfItem(i, acts), item: {
         id: `act-${i.id}`, time: hhmm(i.starts_at)!, end: hhmm(i.ends_at), title: i.title,
-        sub: [i.place, i.public_note].filter(Boolean).join(' · ') || null, kind: i.kind, state: 'later' as HourItem['state'],
+        sub: [forWhom(i), i.place, i.public_note].filter(Boolean).join(' · ') || null, kind: i.kind, state: 'later' as HourItem['state'],
       } })),
       ...meals.map((s) => ({ at: hhmm(s.time)!, end: '', item: {
         id: `meal-${s.service_id ?? `${s.date}-${s.type}`}`, time: hhmm(s.time)!, title: t(`menu.${s.type}`),
