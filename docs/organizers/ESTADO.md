@@ -93,6 +93,7 @@
   - ids literales en los grupos de Asistentes y en los pasos del Resumen;
   - sin `color-mix` en la hoja de estilos.
   - El velo de las portadas de Mis retiros se queda: el del kit es claro en la franja media, y ahí va el texto.
+- 2026-10-20 · Portadas de Mis retiros con el velo completo del kit (`veil: 'full'`, 0.51); fuera el refuerzo propio.
 
 ## Pendiente
 

@@ -33,11 +33,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgretreat-top>:not(.medal-disc):not(.medal-cover){grid-column:2;min-width:0}
 .orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem;overflow-wrap:anywhere}
 .orgretreat-when{font-size:var(--text-sm,.875rem)}
-/* Con foto: texto blanco sobre un velo que da al menos 4,5:1 en toda la foto, y el chip sólido. Se queda aunque el kit
-   0.49 refuerce el suyo: el del kit es claro en la franja media (.15), y aquí el texto ocupa casi toda la tarjeta. */
+/* Con foto: texto blanco sobre el velo completo del kit (`veil: 'full'`, 0.51: 4,5:1 en toda la foto) y el chip sólido. */
 .orgretreat-photo{grid-template-columns:minmax(0,1fr);align-content:end;min-height:140px;margin:-14px -16px 0;padding:16px;color:#fff;isolation:isolate}
 .orgretreat-photo>:not(.medal-cover){grid-column:1;position:relative;z-index:1}
-.orgretreat-photo .medal-cover::after{background:linear-gradient(180deg,rgba(16,22,18,.58),rgba(16,22,18,.82))}
 .orgretreat-photo .orgretreat-title{text-shadow:0 1px 2px rgba(0,0,0,.35)}
 .orgretreat-photo .chip{background:rgba(255,253,248,.94);color:#1f2a22}
 .orgretreat-off .medal-cover{filter:grayscale(1)}
