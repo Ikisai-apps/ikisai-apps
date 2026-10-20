@@ -2,11 +2,12 @@
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
 import { confirmDialog, createSortableList, el, icon, plural, positionBetween, renumber, replace, toast, type Sortable } from '@ikisai/ui-kit';
 import { extraCapacity, spaceCapacity } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, SPACES, canRead, canWrite, describeError } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, RESERVATIONS, SPACES, canRead, canWrite, describeError } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import type { ViewMount } from './shell.ts';
 import { MODULE_SETTINGS, mountResourcesSpaces, resourcesCard, spacesSource } from './spacesResources.ts';
+import { createSpaceCard, occupiedTonight } from './spaceCard.ts';
 
 type Row = SyncedRow & Record<string, any>;
 
@@ -62,6 +63,8 @@ const quickBeds = (beds: number, extras: number) => [
   ...Array.from({ length: extras }, (_, i) => ({ label: `Supletoria ${i + 1}`, kind: 'supletoria', capacity: 1 })),
 ];
 
+/** Hoy en el calendario del dispositivo (AAAA-MM-DD). */
+const localToday = (): string => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const del = (table: TableName, row: Row): RowOperation => ({ op: 'delete', table, id: row.id, expectedRevision: row.revision });
 const byPosition = (a: Row, b: Row) => Number(a.position) - Number(b.position) || String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id);
 
@@ -239,10 +242,12 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
   function spaceItem(space: Row): HTMLElement {
     const own = beds.filter((b) => b.space_id === space.id && b.deleted_at === null).sort(byPosition);
     const places = spaceCapacity(space as any, own as any), extra = extraCapacity(space as any, own as any);
-    const isRoom = space.kind === 'habitacion';
+    // Tanda 36: cualquier estancia con camas enseña sus camas (las que no tienen todavía se montan desde su ficha).
+    const isRoom = space.kind === 'habitacion' || (space.kind !== 'zona_exterior' && own.length > 0);
     return el('div', { class: 'space-item', dataset: { pending: String(space._pending === true), kind: space.kind }, 'data-feedback-id': 'booking.espacios.espacio_fila', 'data-feedback-label': 'Espacio' },
       el('div', { class: 'space-main' },
-        el('div', { class: 'row-title' }, el('span', { class: 'name' }, space.name), el('span', { class: 'chip' }, label(space.kind)),
+        // Tanda 36: el nombre abre la ficha del espacio (con «Monta el dormitorio»).
+        el('div', { class: 'row-title' }, el('button', { type: 'button', class: 'linkbtn bk-space-open', 'aria-label': `Abrir la ficha de ${space.name}`, 'data-feedback-id': 'booking.espacios.espacio_fila.ficha', 'data-feedback-label': 'Abrir la ficha', onclick: () => spaceCard.pick(space.id) }, el('span', { class: 'name' }, space.name)), el('span', { class: 'chip' }, label(space.kind)),
           space.accessible ? el('span', { class: 'chip' }, 'Accesible') : null, space.active ? null : el('span', { class: 'chip' }, 'Inactivo'),
           space.bookable === false ? el('span', { class: 'chip' }, 'No reservable') : null),
         el('div', { class: 'row-meta', dataset: { role: 'places' } }, plural(places, 'plaza', 'plazas'), extra > 0 ? ` + ${plural(extra, 'supletoria', 'supletorias')}` : '', space.notes ? ` · ${space.notes}` : ''),
@@ -263,15 +268,19 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     fromResources = (await spacesSource(client)) === 'resources';
     if (destroyed) return;
     fab.hidden = !owner || fromResources;
+    spaces = ((await client.list(SPACES)) as Row[]).filter((s) => s.deleted_at === null).sort(byPosition);
+    beds = ((await client.list(BEDS)) as Row[]).filter((b) => b.deleted_at === null);
+    assignments = seesAssignments ? ((await client.list(ASSIGNMENTS)) as Row[]).filter((a) => a.deleted_at === null) : [];
+    const events = seesAssignments && canRead(client, EVENTS) ? (await client.list(EVENTS)) as Row[] : [];
+    const reservations = seesAssignments && canRead(client, RESERVATIONS) ? (await client.list(RESERVATIONS)) as Row[] : [];
+    if (destroyed) return;
+    // El plano y la ficha (tanda 36), con las camas de esta noche. Con los espacios en Recursos, también: Booking tiene su espejo.
+    spaceCard.update({ spaces, beds: beds.slice().sort(byPosition), assignments, occupied: occupiedTonight(assignments, events, reservations, localToday()) });
     if (fromResources) {
       if (!resourcesView) resourcesView = mountResourcesSpaces(host, client);
       return;
     }
     if (resourcesView) { resourcesView(); resourcesView = null; }
-    spaces = ((await client.list(SPACES)) as Row[]).filter((s) => s.deleted_at === null).sort(byPosition);
-    beds = ((await client.list(BEDS)) as Row[]).filter((b) => b.deleted_at === null);
-    assignments = seesAssignments ? ((await client.list(ASSIGNMENTS)) as Row[]).filter((a) => a.deleted_at === null) : [];
-    if (destroyed) return;
 
     // El asa con el foco (teclado) se recupera tras repintar: la lista se reutiliza y se saca del DOM.
     const active = document.activeElement as HTMLElement | null;
@@ -305,12 +314,15 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     }
   }
 
+  const spaceCard = createSpaceCard({ client, owner, writable, fromResources: () => fromResources, edit: (space) => openSpace(space) });
   const fab = el('button', { class: 'fab', type: 'button', id: 'newSpace', hidden: !owner, 'data-feedback-id': 'booking.espacios.nuevo_espacio', 'data-feedback-label': 'Nuevo espacio', onclick: () => openSpace(null) }, icon('plus'), 'Nuevo espacio');
   replace(
     main,
     el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToHome', 'data-feedback-id': 'booking.espacios.cabecera.volver', 'data-feedback-label': 'Volver a Inicio', onclick: () => navigate('#/') }, '← Inicio')),
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Espacios y camas'), el('p', null, 'Habitaciones con sus camas, salas y zonas exteriores. Se asignan desde la ficha de cada reserva.'))),
     resourcesCard(client, () => void paint()),
+    spaceCard.element,
+    el('h3', { class: 'sectionlabel', id: 'allSpacesTitle' }, 'Todos los espacios'),
     host,
     owner ? el('div', { class: 'fab-gap', 'aria-hidden': 'true' }) : null,
     fab,
@@ -320,6 +332,7 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
   const offs = [SPACES, BEDS, MODULE_SETTINGS, ...(seesAssignments ? [ASSIGNMENTS] : [])].map((table) => client.onTable(table, () => void paint()));
   return () => {
     destroyed = true;
+    spaceCard.destroy();
     resourcesView?.();
     offs.forEach((off) => off());
     lists.forEach(({ sortable }) => sortable.destroy());

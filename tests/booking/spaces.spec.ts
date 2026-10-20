@@ -73,3 +73,60 @@ test('zona con lo que ya existe: nueva, parecida con «Usar», y nombre de espac
   await expect(sheet.locator('#f-zone')).toHaveValue('Edificio norte');
   await expect(sheet.locator('#f-zone-suggest')).toBeEmpty();
 });
+
+// Tanda 36 (MUELA-049): la ficha del espacio con «Monta el dormitorio». Una sala recibe camas y cuenta sus plazas.
+test('ficha y «Monta el dormitorio»: añadir, girar, mover sin montarse, guardar en un lote y las plazas de la sala', async ({ page }) => {
+  const api = harness.api;
+  const salon = api.serverInsert(SPACES, { name: 'Salón del albergue', kind: 'sala', zone: 'Albergue', capacity: 30, position: 9000 });
+  await login(page, harness.baseURL);
+  await page.goto(`${harness.baseURL}/#/espacios`);
+
+  // Sin plano (ningún espacio enlazado con Recursos), la ficha se abre desde el nombre en la lista.
+  await expect(page.locator('#spacePlan')).toBeEmpty();
+  await page.getByRole('button', { name: 'Abrir la ficha de Salón del albergue' }).click();
+  const card = page.locator('#spaceCard');
+  await expect(card.locator('#spaceCardTitle')).toHaveText('Salón del albergue');
+  await expect(card.locator('#spaceCardPlaces')).toHaveText('Capacidad: 30 personas');
+  await expect(card.locator('#spaceCardData')).not.toHaveAttribute('open', '');
+  await expect(card.locator('#dormEmpty')).toHaveText('Sin camas: añade la primera para usarla como dormitorio.');
+
+  // Editar: dos camas en el primer hueco; girar la individual con R y no dejar que se monte sobre la litera.
+  await card.locator('#dormEdit').click();
+  await card.locator('#dormAdd-litera').click();
+  await card.locator('#dormAdd-individual').click();
+  const litera = card.getByRole('button', { name: /^Litera 1, Litera, 2 plazas/ });
+  const single = card.getByRole('button', { name: /^Individual 1, Individual, 1 plaza/ });
+  await expect(litera).toBeVisible();
+  await single.click();
+  await expect(card.locator('#dormBar')).toContainText('Individual 1');
+  await single.press('r');
+  await expect(single).toHaveAttribute('data-rot', '90');
+  await single.press('ArrowLeft');
+  await expect(card.locator('#dormMessage')).toHaveText('No cabe ahí: se montaría sobre Litera 1.');
+  // Abajo no cabe (2 de fondo): se dice; con un cuadrante más de fondo, sí.
+  await card.getByRole('button', { name: 'Mover hacia abajo: Individual 1' }).click();
+  await expect(card.locator('#dormMessage')).toHaveText('No cabe ahí: se saldría de la estancia.');
+  await card.getByRole('button', { name: 'Fondo: más' }).click();
+  await expect(card.locator('#dormSize-rows strong')).toHaveText('3');
+  await card.getByRole('button', { name: 'Mover hacia abajo: Individual 1' }).click();
+  await expect(card.locator('#dormMessage')).toHaveText('Individual 1: x 3, y 2.');
+  // Encoger el fondo dejaría fuera la individual.
+  await card.getByRole('button', { name: 'Fondo: menos' }).click();
+  await expect(card.locator('#dormMessage')).toHaveText('No se puede encoger: alguna cama se quedaría fuera. Muévela antes.');
+
+  const before = new Set(api.changeLog().map((c) => c.requestId));
+  await card.locator('#dormSave').click();
+  await expect.poll(() => api.rows(BEDS).filter((b) => b.space_id === salon.id).length).toBe(2);
+  const beds = api.rows(BEDS).filter((b) => b.space_id === salon.id);
+  expect(beds.find((b) => b.kind === 'litera')).toMatchObject({ capacity: 2, cell: { x: 0, y: 0, rot: 0 } });
+  expect(beds.find((b) => b.kind === 'individual')).toMatchObject({ capacity: 1, cell: { x: 2, y: 1, rot: 90 } });
+  await expect.poll(() => api.rows(SPACES).find((s) => s.id === salon.id)?.layout).toEqual({ cols: 4, rows: 3 });
+  // Un solo lote: el espacio y las dos camas.
+  expect(new Set(api.changeLog().map((c) => c.requestId).filter((r) => !before.has(r))).size).toBe(1);
+
+  // La sala cuenta las plazas de sus camas, en la ficha y en la lista, y enseña sus camas.
+  await expect(card.locator('#spaceCardPlaces')).toHaveText('3 plazas · 2 camas libres esta noche');
+  const row = page.locator('.space-item[data-kind="sala"]').filter({ hasText: 'Salón del albergue' }).first();
+  await expect(row.locator('[data-role="places"]').first()).toContainText('3 plazas');
+  await expect(card.locator('#dormEdit')).toBeVisible();
+});
