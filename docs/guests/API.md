@@ -558,6 +558,14 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   pieza enseña la lista con la ruta. Sin el sitio en el mapa, como antes (el plano de Central).
 - **Pantallas:** Resumen (`#roomPlan` y lo de ahora), Programa, Información práctica y «Ikisai» (el mapa entero,
   `whole`), y la estancia de Outsider.
+- **Alojamiento** (MUELA-056, `#lodgingMap`): con la elección abierta, el plano de las habitaciones abiertas encima de
+  «Cambiar habitación» (casadas por nombre único mientras `portal_lodging` no dé el id de Recursos); las demás estancias,
+  apagadas y sin tocar. Cada una con su estado en texto dentro («2 libres», «No cumple» con los filtros, «Llena»); tocarla
+  la enseña abajo, como la fila de la lista, y queda resaltada. Las camas siguen como botones de color con texto: el kit
+  aún no recorta el dibujo a la habitación elegida (petición al kit).
+- **Ayuda** (MUELA-054, `#helpPlan`): bajo las baldosas de «Un sitio», «Tócalo en el plano» (solo los sitios de huéspedes:
+  habitaciones, salas, baños, comedor, exteriores, zonas de paso y otros). Tocar un sitio lo elige («Sitio: …»,
+  `#helpPicked`) y el aviso lleva `scope.space_id` (Recursos) y su nombre en el texto, como siempre. Las baldosas siguen.
 
 ## 10. Offline
 

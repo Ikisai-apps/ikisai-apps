@@ -101,7 +101,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const launcher = createAppLauncher({
     current: 'guests',
     fetchApps: async () => client.api<LauncherCatalog>('/apps'),
-    center: () => openHelp({ client, userId, grant: primary?.grant ?? null }),
+    center: () => openHelp({ client, userId, grant: primary?.grant ?? null, reads: primary?.reads ?? null }),
     centerLabel: t('home.help'),
     centerText: t('help.centerText'),
   });
@@ -281,7 +281,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         rows: [
           ...(current ? current.sections.map((s) => ({ label: sectionLabel(s), href: s === 'inicio' ? current.hash : `${current.hash}/${s}`, feedbackId: 'guests.navegacion.menu.seccion' })) : []),
           ...more.map((m) => ({ label: m.label, icon: m.icon, href: m.hash, feedbackId: 'guests.navegacion.menu.mas' })),
-          { label: t('home.help'), icon: 'help' as const, onClick: () => openHelp({ client, userId, grant: primary?.grant ?? null }), feedbackId: 'guests.navegacion.menu.ayuda' },
+          { label: t('home.help'), icon: 'help' as const, onClick: () => openHelp({ client, userId, grant: primary?.grant ?? null, reads: primary?.reads ?? null }), feedbackId: 'guests.navegacion.menu.ayuda' },
         ],
       }] : []),
       { key: 'retiros', label: t('nav.retreats'), icon: 'home', rows: [
@@ -474,7 +474,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     replace(main, frame?.element ?? null, view, frame?.away ?? null);
 
     const during = momentOf(gctx.guest()) === 'during';
-    const help = (start?: 'place' | 'event') => openHelp({ client, userId, grant: gctx.grant, ...(start ? { start } : {}) });
+    const help = (start?: 'place' | 'event') => openHelp({ client, userId, grant: gctx.grant, reads: gctx.reads, ...(start ? { start } : {}) });
     const people = ctxs.map((c) => ({ ctx: c, base: `#/p/${c.grant.guest_id}` }));
     switch (page) {
       case 'datos': unmountView = mountData(view, gctx, personBase, { navigate }); break;

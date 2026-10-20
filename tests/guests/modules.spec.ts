@@ -319,3 +319,35 @@ test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala re
   await plan.scrollIntoViewIfNeeded();
   await capture(page, 'plano-mapa');
 });
+
+test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaciones abiertas en el plano, con su estado en texto; tocar una la enseña abajo', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con plano de habitaciones' });
+  const eli = await api.guest(event, { first_name: 'Eli' });
+  const olmo = await api.room(event, { name: 'Habitación Olmo', enSuite: true, beds: ['Cama 1', 'Cama 2'] });
+  const roble = await api.room(event, { name: 'Habitación Roble', enSuite: true, beds: ['Cama 1', 'Cama 2', 'Cama 3', 'Cama 4', 'Cama 5'] });
+  await api.organizerInvoke(reservation, 'booking.portal_room_settings', { choice: 'choose', choose_until: day(10), rooms: [{ space_id: olmo.spaceId }, { space_id: roble.spaceId }] });
+  await api.experience(reservation, { lodging_visible: true, lodging_capability: 'choose' });
+  const square = (x: number, y: number, s = 0.3): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  const { ids } = await api.floorPlan([
+    { name: 'Habitación Olmo', kind: 'habitacion', points: square(0.05, 0.1) },
+    { name: 'Habitación Roble', kind: 'habitacion', points: square(0.5, 0.1) },
+    { name: 'Comedor de abajo', kind: 'comedor', points: square(0.05, 0.6) },
+  ]);
+  await enter(page, await api.guestLink(reservation, eli, 'Eli'));
+  await go(page, 'alojamiento');
+
+  const map = page.locator('#lodgingMap');
+  // Solo las habitaciones abiertas se tocan (el comedor sale apagado y sin tocar).
+  await expect(map.locator('.map-svg [role="button"]')).toHaveCount(2);
+  const olmoZone = map.locator('.map-svg [role="button"][aria-label^="Habitación Olmo"]');
+  await expect(olmoZone).toHaveAttribute('aria-label', /2 libres/);
+  // «Poca gente»: la de cinco deja de cumplir, y lo dice en texto.
+  await page.locator('#lodgingRooms .gfilters button', { hasText: 'Poca gente' }).click();
+  await expect(map.locator('.map-svg [role="button"][aria-label^="Habitación Roble"]')).toHaveAttribute('aria-label', /No cumple/);
+  // Tocar una en el plano la enseña abajo, resaltada.
+  await map.locator('.map-svg [role="button"][aria-label^="Habitación Roble"]').click();
+  await expect(page.locator('#lodgingRoom')).toHaveAttribute('data-space', roble.spaceId);
+  await expect(map.locator('.map-svg [role="button"][aria-pressed="true"]')).toHaveAttribute('aria-label', /Habitación Roble/);
+  expect(ids['Habitación Roble']).toBeTruthy();
+  await capture(page, 'alojamiento-mapa');
+});
