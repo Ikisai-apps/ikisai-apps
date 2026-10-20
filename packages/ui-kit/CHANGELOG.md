@@ -1,5 +1,18 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.55.0 · 20 de octubre de 2026
+
+**Tres opciones de `createSpaceMap` para Tasks** (tanda 37, MUELA-090). Opcionales: por defecto el mapa no cambia.
+
+1. **`layout: 'all'`:** todos los dibujos a la vez, cada uno con su título, en lugar del selector: dos por fila en el ordenador y uno en el móvil. La lista es la de todos.
+2. **`mode: 'plan'` (solo plano):** sin lista ni conmutador propios, para la app que ya enseña su lista equivalente (Tasks, su árbol).
+   - **La app tiene que poner esa lista.**
+   - Sin dibujo, la pieza enseña su lista igualmente: nunca se queda sin ella.
+3. **`layer(space) → { short }`:** la cifra corta que se pinta en el dibujo («2»), destacada. `label` es la frase que dicen la lista y el lector de pantalla («2 tareas abiertas, 1 vencida»).
+
+- **Además:** una cama que el filtro deja fuera se ve apagada y sin número.
+- **Pruebas:** `v60`.
+
 ## 0.54.1 · 20 de octubre de 2026
 
 - **`createSpaceMap({ bedNumbers: false })`** (MUELA-056, Guests): las camas van solo por color, sin el número pintado en el plano ni en la lista. Quedan el nombre accesible («Cama 1, Hab 3 · Libre»), el estado en palabras y la leyenda. Por defecto, con número, como hasta ahora.
