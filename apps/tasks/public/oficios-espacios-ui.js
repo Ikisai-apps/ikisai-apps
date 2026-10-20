@@ -6,9 +6,9 @@
      cuenta también lo de dentro (expandTrades, como la faceta), también el de tercer nivel («ACS › Calderas»).
    - Tocar una baldosa abre «Tareas» filtrada (como «Mis tareas») con «‹ Volver a Oficios» (o Personas, Espacios) arriba
      mientras siga ese filtro. Volver quita el filtro.
-   - Espacios: «Plano | Lista». El plano es createSpaceMap del kit, en modo `map`, de solo lectura (sin `onShape` ni
+   - Espacios: «Plano | Lista». El plano es createSpaceMap del kit, en modo «solo plano» (`plan`), de solo lectura (sin `onShape` ni
      «Colocar», que es de Central), con la capa «Tareas abiertas»; la lista es el árbol de hoy (createSpaceTree). Lo que
-     tiene tareas y no sale en ningún dibujo va debajo, en filas. Tocar una estancia o una fila abre su hoja.
+     tiene tareas y no sale en ningún dibujo va debajo, en filas. Kit 0.55: `mode:'plan'`, `layout:'all'` y `short` en la capa. Tocar una estancia o una fila abre su hoja.
    - Todo se cuenta con lo que esta cuenta ya tiene en el dispositivo (state.tabs): ninguna lectura del servidor que sume
      tareas que no ve. Nada de grados de habilidad ni de disponibilidad. La persona de fuera no llega a estas pantallas
      (OUTSIDER_VIEWS de proposals-ui.js, que va dentro de esta capa).
@@ -22,6 +22,8 @@ function tkoOverdue(t){return !t.done&&!!t.due&&homeDayOf(t.due)<0}
 function tkoStats(rows,match){const s={total:0,done:0,open:0,overdue:0};for(const r of rows){if(!match(r.t))continue;s.total+=1;if(r.t.done)s.done+=1;else{s.open+=1;if(tkoOverdue(r.t))s.overdue+=1}}return s}
 const tkoN=(n,one,many)=>`${n} ${n===1?one:many}`;
 function tkoLevelText(s){return s.total?`${s.done} de ${s.total} hechas · ${tkoN(s.overdue,'vencida','vencidas')}`:'Sin tareas'}
+/* La frase de la capa (lista y lector de pantalla): «2 tareas abiertas, 1 vencida». En el dibujo, solo la cifra (`short`). */
+function tkoLongText(s){return `${tkoN(s.open,'tarea abierta','tareas abiertas')}${s.overdue?`, ${tkoN(s.overdue,'vencida','vencidas')}`:''}`}
 function tkoOpenText(s){return `${tkoN(s.open,'abierta','abiertas')}${s.overdue?` · ${tkoN(s.overdue,'vencida','vencidas')}`:''}`}
 function tkoTile(item){const s=item.stats;
   const tile=IkisaiKit.renderTile({title:item.title,value:s.open,levelText:tkoLevelText(s),level:{pct:s.total?Math.round(s.done/s.total*100):0,tone:s.overdue?'alert':s.total&&!s.open?'ok':null},medal:item.medal||null,onClick:()=>{},feedbackId:item.feedbackId});
@@ -80,10 +82,11 @@ function tkoSpaceStats(){if(tkoSpaceCache)return tkoSpaceCache;spaceRows();const
   for(const r of tkoRows()){const ids=new Set();for(const id of r.t.spaces||[]){if(!spaceById(id))continue;ids.add(id);for(const a of IkisaiKit.ancestorsOf(spaceCache.byId,id))ids.add(a.id)}
     for(const id of ids){let s=out.get(id);if(!s){s={total:0,done:0,open:0,overdue:0,tasks:[]};out.set(id,s)}s.total+=1;if(r.t.done)s.done+=1;else{s.open+=1;if(tkoOverdue(r.t))s.overdue+=1;s.tasks.push(r)}}}
   return tkoSpaceCache=out}
-function tkoLayer(space){const s=tkoSpaceStats().get(space.id);if(!s||!s.open)return null;return {tone:s.overdue?'alert':'accent',label:tkoOpenText(s)}}
+function tkoLayer(space){const s=tkoSpaceStats().get(space.id);if(!s||!s.open)return null;return {tone:s.overdue?'alert':'accent',short:String(s.open),label:tkoLongText(s)}}
 function tkoMapFor(){const source=spacesSource();if(!source)return null;
   // Solo lectura: sin onShape ni «Colocar» (es de Central). El dibujo se baja con la sesión de Recursos, como en Central.
-  if(!tkoMap)tkoMap=IkisaiKit.createSpaceMap({source,plans:source.plans,mode:'map',label:'Plano de los espacios',feedbackId:'tasks.espacios.plano',
+  // Kit 0.55: solo el plano (la lista es el árbol de Tasks) y todos los dibujos a la vez, dos por fila en el ordenador.
+  if(!tkoMap)tkoMap=IkisaiKit.createSpaceMap({source,plans:source.plans,mode:'plan',layout:'all',label:'Plano de los espacios',feedbackId:'tasks.espacios.plano',
     planUrl:fileId=>Sync.core.resources.fileUrl(fileId),layer:tkoLayer,onPick:space=>tkoSpaceSheet(space.id)});
   return tkoMap}
 /* Lo que tiene tareas abiertas y no sale en ningún dibujo (ni él ni lo que lo contiene), en el orden del árbol. */
@@ -94,7 +97,7 @@ function tkoOffPlan(){const stats=tkoSpaceStats(),direct=new Set(),rows=spaceRow
   return out}
 function tkoOffPlanHtml(){const items=tkoOffPlan();if(!items.length)return '';const stats=tkoSpaceStats();
   return `<section class="tko-offplan" aria-labelledby="tkoOffPlanTitle"><h2 class="sectionlabel" id="tkoOffPlanTitle">Sin dibujo en el plano</h2><ul class="tko-offlist">${items.map(r=>{const s=stats.get(r.id),up=r.parentId?IkisaiKit.spacePath(spaceCache.byId,r.parentId):'';
-    return `<li><button type="button" class="tko-offrow${s.overdue?' tko-alert':''}" data-tko-space="${esc(r.id)}" aria-label="${esc(`${r.name}: ${tkoOpenText(s)}${up?` · ${up}`:''}`)}" data-feedback-id="tasks.espacios.sin_dibujo" data-feedback-label="Espacio sin dibujo"><span class="tko-offmain"><strong>${esc(r.name)}</strong>${up?`<span class="tko-offpath">${esc(up)}</span>`:''}</span><span class="tko-offstate">${esc(tkoOpenText(s))}</span></button></li>`}).join('')}</ul></section>`}
+    return `<li><button type="button" class="tko-offrow${s.overdue?' tko-alert':''}" data-tko-space="${esc(r.id)}" aria-label="${esc(`${r.name}: ${tkoLongText(s)}${up?` · ${up}`:''}`)}" data-feedback-id="tasks.espacios.sin_dibujo" data-feedback-label="Espacio sin dibujo"><span class="tko-offmain"><strong>${esc(r.name)}</strong>${up?`<span class="tko-offpath">${esc(up)}</span>`:''}</span><span class="tko-offstate">${esc(tkoOpenText(s))}</span></button></li>`}).join('')}</ul></section>`}
 function tkoPlanHtml(view){
   const toggle=`<div class="ikisai-kit tko-viewswitch"><div class="segmented" role="group" aria-label="Ver los espacios como">${[['plan','Plano'],['list','Lista']].map(([v,t])=>`<button type="button" class="${view===v?'on':''}" aria-pressed="${view===v}" data-tko-view="${v}" data-feedback-id="tasks.espacios.vista" data-feedback-label="Plano o lista">${t}</button>`).join('')}</div></div>`;
   const legend=`<p class="tko-legend" id="tkoLegend"><span class="tko-key" aria-hidden="true"></span>Capa: <strong>tareas abiertas</strong> de cada estancia, con lo de dentro. <span class="tko-key tko-key-alert" aria-hidden="true"></span>En rojo, si alguna está vencida.</p>`;

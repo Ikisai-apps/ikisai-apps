@@ -294,16 +294,20 @@ test('Espacios (MUELA-090): «Plano | Lista»; el plano del kit con la capa «Ta
   for (const chip of [plan, list]) expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(46);
   await expect(page.locator('#spacesTree')).toBeHidden();
   await expect(page.locator('#tkoLegend')).toContainText('tareas abiertas');
-  // La pieza del kit, sin su conmutador ni su lista (la lista es el árbol): no salen dos listas.
-  await expect(page.locator('#tkoSpacesMap .map-view')).toBeHidden();
+  // La pieza del kit en «solo plano» (kit 0.55): sin conmutador ni lista propios (la lista es el árbol), y todos los dibujos a la vez.
+  await expect(page.locator('#tkoSpacesMap .map-view, #tkoSpacesMap .map-plans')).toHaveCount(0);
   await expect(page.locator('#tkoSpacesMap .map-list')).toBeHidden();
+  await expect(page.locator('#tkoSpacesMap .map-figcap')).toHaveText(['Albergue · Planta baja']);
 
   // Cada estancia es un botón con la capa en su nombre accesible.
   const hab = page.locator(`#tkoSpacesMap polygon.map-shape[data-space-id="${S_HAB3}"]`);
   const habOpen = await openIn([S_HAB3]);
   expect(habOpen).toBeGreaterThan(0);
   await expect(hab).toHaveAttribute('role', 'button');
-  await expect(hab).toHaveAttribute('aria-label', new RegExp(`^Hab 3 · ${habOpen} abiertas?`));
+  // El nombre accesible lleva la frase de la capa; en el dibujo, solo la cifra (`short`).
+  await expect(hab).toHaveAttribute('aria-label', new RegExp(`^Hab 3 · ${habOpen} tareas? abiertas?(, \\d+ vencidas?)?$`));
+  await expect(page.locator('#tkoSpacesMap .map-room-short')).toContainText([String(habOpen)]);
+  await expect(page.locator('#tkoSpacesMap .map-labels')).not.toContainText('abierta');
   // Sin ningún gesto de edición: ni «Colocar» ni nada que se arrastre.
   await expect(page.locator('#tkoPlan')).not.toContainText('Colocar');
   await expect(page.locator('#tkoPlan [draggable="true"], #tkoPlan .map-handle')).toHaveCount(0);
@@ -312,7 +316,7 @@ test('Espacios (MUELA-090): «Plano | Lista»; el plano del kit con la capa «Ta
   const albOpen = await openIn([S_ALB, S_HAB3, S_BANO]);
   const albRow = page.locator(`.tko-offplan [data-tko-space="${S_ALB}"]`);
   await expect(page.locator('#tkoOffPlanTitle')).toHaveText('Sin dibujo en el plano');
-  await expect(albRow).toHaveAttribute('aria-label', new RegExp(`^Albergue: ${albOpen} abiertas?`));
+  await expect(albRow).toHaveAttribute('aria-label', new RegExp(`^Albergue: ${albOpen} tareas? abiertas?`));
   await expect(page.locator(`.tko-offplan [data-tko-space="${S_ROBLE}"]`)).toContainText('Sala Roble');
   await expect(page.locator(`.tko-offplan [data-tko-space="${S_HAB3}"]`)).toHaveCount(0);
   await t31('zona4-espacios-plano', true);
