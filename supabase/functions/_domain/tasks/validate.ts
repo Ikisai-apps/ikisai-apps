@@ -264,6 +264,7 @@ const RULES: Record<TableName, TableRules> = {
       status: oneOf(['pending', 'routed', 'dismissed'], 'INVALID_STATUS', 'Estado de la petición desconocido.'),
       routed_by: nullable(oneOf(['rule', 'hint', 'manual'], 'INVALID_STATUS', 'Origen del enrutado desconocido.')),
       on_behalf_of: (_v, f) => reject(422, 'INVALID_REQUEST', 'Las peticiones solo llegan por requests/task.', { field: f }),
+      space_id: (_v, f) => reject(422, 'INVALID_REQUEST', 'Las peticiones solo llegan por requests/task.', { field: f }),
     },
     required: [],
   },

@@ -64,7 +64,9 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       if (externalUrl !== undefined && !ORIGIN_URL.test(externalUrl)) invalid('external_url', 'external_url debe ser https en ikisai.com.');
       // Dónde, solo como sugerencia: manda la regla del usuario; sin regla ni sugerencia válida, «Por clasificar».
       const projectId = text('project_id', 36), tabId = text('tab_id', 36);
-      for (const [field, value] of [['project_id', projectId], ['tab_id', tabId]] as const) if (value !== undefined && !UUID.test(value)) invalid(field, `${field} debe ser un uuid.`);
+      // De qué espacio de Recursos se avisa (0336): opcional; si no existe o está archivado, la petición entra sin él.
+      const spaceId = text('space_id', 36);
+      for (const [field, value] of [['project_id', projectId], ['tab_id', tabId], ['space_id', spaceId]] as const) if (value !== undefined && !UUID.test(value)) invalid(field, `${field} debe ser un uuid.`);
 
       const externalRef = `${source}:${reference}`;
       const id = await requestTaskId(externalRef);
@@ -79,7 +81,7 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       try {
         const result = await internal.commit(ctx, {
           requestId: `request-task-${crypto.randomUUID()}`,
-          operations: [{ op: 'call', procedure: 'tasks.request_task', args: { id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, projectId: projectId?.toLowerCase(), tabId: tabId?.toLowerCase() } }],
+          operations: [{ op: 'call', procedure: 'tasks.request_task', args: { id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, projectId: projectId?.toLowerCase(), tabId: tabId?.toLowerCase(), spaceId: spaceId?.toLowerCase() } }],
         });
         const outcome = (result.results[0] as { result?: { created?: boolean; routed?: string } })?.result;
         created = !!outcome?.created;
@@ -169,7 +171,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         return (value as string).trim();
       };
       // Solo los campos del contrato: el destino lo deciden las reglas del usuario, nunca quien pide.
-      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority', 'project_ref'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
+      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority', 'project_ref', 'space_id'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
       const sourceName = String(body?.source ?? '');
       const source = Object.hasOwn(SYSTEM_SOURCES, sourceName) ? SYSTEM_SOURCES[sourceName]! : invalid('source', `source debe ser ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`);
       const kind = text('kind', 100, true)!;
@@ -201,6 +203,10 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         invalid('project_ref', 'project_ref solo vale para booking.retreat_extra y feedback.event.*, y es una referencia de reserva.');
       }
 
+      // De qué espacio de Recursos se avisa (0336; Feedback, el sitio del reporte): opcional, como en `requests/task`.
+      const spaceId = text('space_id', 36);
+      if (spaceId !== undefined && !UUID.test(spaceId)) invalid('space_id', 'space_id debe ser un uuid.');
+
       const externalRef = `${sourceName}:${reference}`;
       const id = await requestTaskId(externalRef);
       const status = async () => ((await invoke('tasks.requests_status', { externalRefs: [externalRef] })) as { items: Array<{ status: string; taskId: string | null }> }).items[0]!;
@@ -222,7 +228,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const send = (toProject: boolean) => internal.commit(ctx, {
         requestId: `${sourceName}-${crypto.randomUUID()}`,
         operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
-          id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(toProject && projectRef ? { projectRef: `booking:${projectRef}` } : {}), ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
+          id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(spaceId ? { spaceId: spaceId.toLowerCase() } : {}), ...(toProject && projectRef ? { projectRef: `booking:${projectRef}` } : {}), ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
         } }],
       });
       try {

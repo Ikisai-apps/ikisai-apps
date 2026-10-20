@@ -628,7 +628,7 @@ test('[61][62] barra de facetas en escritorio y acciones en lote', async () => {
 });
 
 declare const cachedAttachment: any;
-declare const aliasSheet: any, touch: any, save: any, leaves: any, boardDay: any, duplicateProject: any;
+declare const aliasSheet: any, touch: any, save: any, leaves: any, boardDay: any, duplicateProject: any, isoDay: any;
 const cursor = async () => (await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor as number;
 
 test('[63][64] duplicar proyectos, plantillas entre áreas, alias y «Mis tareas»', async () => {
@@ -781,6 +781,8 @@ test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y c
     expect(await a.locator('.homeproject').count()).toBeGreaterThan(0);
     expect(await a.locator('.hometask[data-home-task]').count()).toBeGreaterThan(0);
     expect(await a.locator('.weekday').count()).toBeGreaterThanOrEqual(8);
+    // Los días de la semana, en hora local (MUELA-055): con toISOString, en Madrid salían con un día de retraso.
+    expect(await a.evaluate(() => [isoDay(0), isoDay(1)])).toEqual(await a.evaluate(() => [boardDay(0), boardDay(1)]));
     expect(await a.locator('.personrow').count()).toBeGreaterThan(0);
     expect(await a.locator('.heat').count()).toBeGreaterThan(0);
     await a.waitForFunction(() => document.querySelector('#homeActivity .activityrow'));
