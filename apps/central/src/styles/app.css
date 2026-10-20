@@ -380,7 +380,8 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-placeshape.bed{fill:color-mix(in srgb,var(--ok,var(--accent)) 30%,transparent)}
 .ctl-placeshape.on{fill:color-mix(in srgb,var(--warn) 30%,transparent);stroke:var(--warn-ink);stroke-width:3}
 .ctl-placeshape:focus-visible{outline:none;stroke:var(--ink);stroke-width:4}
-.ctl-placelabel{fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none;font-weight:700}
+.ctl-placelabel{fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none;font-weight:700;paint-order:stroke;stroke:var(--paper);stroke-linejoin:round}
+.ctl-placewhy{display:block;color:var(--warn-ink)}
 .ctl-placehandle{fill:var(--paper);stroke:var(--ink);stroke-width:2;vector-effect:non-scaling-stroke;cursor:nwse-resize}
 .ctl-placeside .agentrow button{min-height:var(--tap,46px)}
 .ctl-placeside .linkbtn{min-height:var(--tap,46px)}
