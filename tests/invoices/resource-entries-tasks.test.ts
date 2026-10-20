@@ -191,3 +191,36 @@ test('orden inverso (0239): Tasks lee el cuadre de sus solicitudes y solo ve las
   assert.deepEqual(reg.rows[0]?.roles, ['editor', 'owner']);
 });
 
+
+test('invoices.purchase_request_invoiced (0242): solo con una asignación viva en una factura no borrada ni anulada', async () => {
+  const invoiced = async (id: string | null) => (await app.t.db.query<{ b: boolean }>(`select invoices.purchase_request_invoiced($1) b`, [id])).rows[0]!.b;
+  const request = uuid();
+  assert.equal(await invoiced(request), false, 'sin asignación');
+  assert.equal(await invoiced(null), false);
+  assert.equal(await invoiced('no-es-un-id'), false);
+  // Asignada en una factura sin validar: ya cuenta
+  const inv = await invoiceWith([['GUANTES', 12]]);
+  await allocate(inv.lineIds[0]!, request, 12);
+  assert.equal(await invoiced(request), true, 'con factura pendiente');
+  // Otra compra u otro destino con el mismo id no cuentan
+  assert.equal(await invoiced(uuid()), false);
+  // Asignación borrada: ya no
+  await app.t.db.query(`update invoices.allocations set deleted_at = now() where target_id = $1`, [request]);
+  assert.equal(await invoiced(request), false, 'asignación borrada');
+  // Factura anulada: ya no
+  const other = uuid();
+  const annulled = await invoiceWith([['BOLSAS', 8]]);
+  await allocate(annulled.lineIds[0]!, other, 8);
+  await validate(annulled.id);
+  assert.equal(await invoiced(other), true, 'con factura validada');
+  await ok([call('invoices.annul', { invoice_id: annulled.id, reason: 'duplicada' })]);
+  assert.equal(await invoiced(other), false, 'factura anulada');
+  // Factura borrada
+  const third = uuid();
+  const removed = await invoiceWith([['CINTA', 4]]);
+  await allocate(removed.lineIds[0]!, third, 4);
+  assert.equal(await invoiced(third), true);
+  // La app no borra facturas (se anulan); si una queda borrada por debajo, tampoco cuenta
+  await app.t.db.exec(`begin; set local session_replication_role = replica; update invoices.invoices set deleted_at = now() where id = '${removed.id}'; commit;`);
+  assert.equal(await invoiced(third), false, 'factura borrada');
+});
