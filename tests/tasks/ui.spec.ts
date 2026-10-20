@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { fichaBloque, fichaTitulo, menuRow, openApp, openMenu, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, fichaTitulo, menuRow, openApp, openLabelCatalog, openMenu, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -95,6 +95,7 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
 
   await test.step('[5] renombrar, archivar y reactivar una etiqueta conserva su id y sus referencias', async () => {
     await a.locator('[data-nav="labels"]').click();
+    await openLabelCatalog(a);
     await a.locator(`[data-edit-label="${shared.label}"]`).click();
     await a.locator('#nlText').fill('Etiqueta renombrada');
     await a.locator('#saveNewLabel').click();
@@ -1098,6 +1099,9 @@ test('[27][28][30][34] invitar a una persona a un solo proyecto: lo que ve, lo q
     const forbidden = await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t5, expectedRevision: (await serverRow('tasks.tasks', ID.t5!)).revision, fields: { note: 'intrusa' } }], server.app.supabase.tokenFor(guestId));
     expect(forbidden.status).toBe(403);
     await guest.locator('[data-nav="labels"]').click();
+    // Etiquetas en fichas (MUELA-061): la lectora consulta sin mandos de edición en el DOM; el catálogo, con ellos apagados.
+    await expect(guest.locator('[data-edit-label]')).toHaveCount(0);
+    await guest.locator('#labelsCatalog', { hasText: 'Ver el catálogo completo' }).click();
     await expect(guest.locator('#newFamily')).toBeDisabled();
     await expect(guest.locator('[data-edit-label]').first()).toBeDisabled();
     await (await menuRow(guest, 'tasks.menu.areas', 'work')).click();

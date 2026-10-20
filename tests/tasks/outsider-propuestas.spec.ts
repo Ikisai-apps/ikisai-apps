@@ -132,26 +132,43 @@ test('la propietaria aprueba en «Por clasificar» y descarta con comentario', a
   await go(owner, 'triage');
   const review = owner.locator('#proposalReview');
   await expect(review.locator('.pl-card[data-status="pending"]')).toHaveCount(2);
-  await expect(owner.locator('#proposalReviewTitle')).toHaveText('Propuestas (2)');
+  // MUELA-083 §3 (tanda 31, zona 3): la banda «De fuera · Propuestas», y se decide sin diálogo, con «Deshacer».
+  await expect(owner.locator('#proposalReviewTitle')).toHaveText('De fuera · Propuestas (2)');
   await shot(owner, '11-propietaria-por-clasificar');
-  // Aprobar la tarea (desde la hoja de detalle, con el destino a la vista).
+  const added = review.locator('.pl-card[data-kind="anadido"]');
+  // «Deshacer» no envía nada: la propuesta vuelve a pendientes y sigue pendiente en el servidor.
+  await added.locator('button', { hasText: 'Descartar' }).click();
+  await expect(owner.locator('#dialogConfirm')).toHaveCount(0);
+  await owner.locator('.ikisai-toast button', { hasText: 'Deshacer' }).click();
+  await expect(review.locator('.pl-card[data-status="pending"]')).toHaveCount(2);
+  await owner.waitForTimeout(6500);
+  expect((await suggestions()).map((s) => s.status)).toEqual(['pending', 'pending']);
+  // Sin red, el motivo sale al momento y no se decide nada.
+  await ownerContext.setOffline(true);
+  await added.locator('button', { hasText: 'Aprobar' }).click();
+  await expect(owner.locator('.ikisai-toast')).toContainText('Sin conexión: las propuestas necesitan red.');
+  await expect(review.locator('.pl-card[data-status="pending"]')).toHaveCount(2);
+  await ownerContext.setOffline(false);
+  // Aprobar la tarea (desde la hoja de detalle, con el destino a la vista y el comentario allí mismo).
   await review.locator('.pl-card[data-kind="tarea"] .pl-open').click();
   const sheet = owner.getByRole('dialog', { name: 'Tarea nueva' });
   await expect(sheet.locator('[data-proposal-target]')).toHaveValue(JARDIN);
   await expect(sheet.locator('.proposalphoto')).toHaveAttribute('src', /.+/);
   await shot(owner, '12-propietaria-detalle-destino');
+  await sheet.locator('.pl-comment textarea').fill('¡Bien visto, Lúa!');
   await sheet.locator('button.primary', { hasText: 'Aprobar' }).click();
-  await owner.locator('#proposalComment').fill('¡Bien visto, Lúa!');
-  await owner.locator('#dialogConfirm').click();
-  await expect.poll(async () => (await tasksNamed('Limpiar el estanque')).length).toBe(1);
+  await expect(owner.locator('#dialogConfirm')).toHaveCount(0);
+  // La operación se aplica al irse el aviso, no antes.
+  expect((await suggestions())[0].status).toBe('pending');
+  await expect.poll(async () => (await tasksNamed('Limpiar el estanque')).length, { timeout: 20_000 }).toBe(1);
   const [task] = await tasksNamed('Limpiar el estanque');
   expect([task.project_id, task.note, task.updated_by]).toEqual([JARDIN, 'Tiene muchas hojas desde la tormenta.', server.app.users.owner]);
   expect((await server.rows('tasks.attachments')).filter((a: any) => a.task_id === task.id)).toHaveLength(1);
-  // Descartar el añadido, con un comentario.
-  await review.locator('.pl-card[data-kind="anadido"] button', { hasText: 'Descartar' }).click();
-  await owner.locator('#proposalComment').fill('El nido ya se fue.');
-  await owner.locator('#dialogConfirm').click();
-  await expect.poll(async () => (await suggestions()).map((s) => s.status)).toEqual(['approved', 'rejected']);
+  // Descartar el añadido, con un comentario escrito en su tarjeta.
+  await added.locator('.pl-comment textarea').fill('El nido ya se fue.');
+  await added.locator('button', { hasText: 'Descartar' }).click();
+  await expect.poll(async () => (await suggestions()).map((s) => s.status), { timeout: 20_000 }).toEqual(['approved', 'rejected']);
+  expect((await suggestions()).map((s) => s.comment)).toEqual(['¡Bien visto, Lúa!', 'El nido ya se fue.']);
   expect((await server.rows('tasks.tasks')).find((r: any) => r.id === T_SETO).note).toBe('El de la entrada.');
   await settled(owner);
   await openProject(owner);
@@ -167,6 +184,11 @@ test('el outsider ve «Aprobada» con el comentario, «Descartada», y la tarea 
   await expect(list.locator('.pl-card[data-status="approved"]')).toContainText('¡Bien visto, Lúa!');
   await expect(list.locator('.pl-card[data-status="rejected"]')).toContainText('El nido ya se fue.');
   await shot(outsider, '13-outsider-aprobada');
+  // «Ver la tarea» (MUELA-083 §3, `link` del kit) abre la tarea creada.
+  const [task] = await tasksNamed('Limpiar el estanque');
+  await list.locator('.pl-card[data-status="approved"] .pl-link', { hasText: 'Ver la tarea' }).click();
+  await expect.poll(() => outsider.evaluate(() => document.getElementById('taskComments')?.dataset.task)).toBe(task.id);
+  await outsider.evaluate(() => closeSheet());
   await openProject(outsider);
   await expect(outsider.locator('article.task[data-row]', { hasText: 'Limpiar el estanque' })).toHaveCount(1);
 });

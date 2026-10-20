@@ -3,8 +3,9 @@
      · el outsider no crea: el «+» (FAB, «+ Añadir tarea», «Con detalles…») abre «Proponer tarea» (título, nota, proyecto
        entre los abiertos y una foto opcional); en la ficha de una tarea, «Proponer un cambio» (un paso nuevo o una línea en
        la nota). Lo sigue en «Mis propuestas» (createProposalList del kit, modo `mine`): estado, comentario y «Retirar».
-     · decide staff o dirección (editor u owner humano) en «Por clasificar», arriba, «Propuestas (n)» (modo `review`):
-       aprobar con el proyecto de destino editable (tarea nueva) o descartar con un comentario. Al aprobar se sincroniza.
+     · decide staff o dirección (editor u owner humano) en «Por clasificar», arriba, la banda «De fuera · Propuestas (n)»
+       (modo `review`): aprobar con el proyecto de destino editable (tarea nueva) o descartar, al momento y con «Deshacer», con
+       un comentario opcional en la tarjeta. Al aprobar se sincroniza; «Ver la tarea» la abre.
      · el lote lo construye el dominio (IkisaiTasks/Sync.core.suggestionOps) y el servidor lo comprueba al proponer
        (tasks.suggestion_check: solo en lo abierto) y al aprobar (commit de quien aprueba).
    - Interfaz del outsider: menú reducido (Inicio, Proyectos, Todas las tareas, Mis propuestas y su cuenta), sin la pestaña
@@ -109,7 +110,7 @@ function proposeChangeSheet(taskId){
 /* --- «Mis propuestas» (outsider) -------------------------------------------------------------------------------- */
 let mineProposals=null;
 function mineProposalList(){if(mineProposals||!proposalClient())return mineProposals;const K=IkisaiKit,kitSource=K.createSuggestionSource(proposalClient(),{scope:'mine'}),source={...kitSource,list:async()=>(await kitSource.list()).map(withoutApp)};
-  mineProposals=K.createProposalList({mode:'mine',source,kinds:PROPOSAL_KINDS,onWithdraw:kitSource.withdraw,onCreate:()=>proposeTaskSheet(),feedbackId:'tasks.mis_propuestas',emptyText:'Aún no has propuesto nada. Con el «+» propones una tarea; en la ficha de una tarea, un cambio.'});
+  mineProposals=K.createProposalList({mode:'mine',source,kinds:PROPOSAL_KINDS,onWithdraw:kitSource.withdraw,link:item=>proposalLink(item),onCreate:()=>proposeTaskSheet(),feedbackId:'tasks.mis_propuestas',emptyText:'Aún no has propuesto nada. Con el «+» propones una tarea; en la ficha de una tarea, un cambio.'});
   return mineProposals}
 function myProposalsView(){return `<main class="screen myproposals"><div class="screenhead"><div><h1 class="title">Mis propuestas</h1><p class="subtitle">Lo que has propuesto y cómo va. Staff o dirección deciden.</p></div></div>${navigator.onLine?'':`<div class="notice">${PROPOSAL_NETWORK}</div>`}<div class="ikisai-kit" id="myProposalsMount"></div></main>`}
 
@@ -152,10 +153,24 @@ function proposalDetail(item){const K=IkisaiKit,d=item.detail||{},rows=Sync.core
   }else box.append(K.el('p',{class:'hint'},item.summary));
   return box}
 
+/* MUELA-083 §3 (tanda 31, zona 3): «Aprobar» y «Descartar» deciden al momento, sin diálogo (kit 0.50: `confirm: false`), con el
+   comentario en la tarjeta y 6 s de «Deshacer» (`undoMs`) antes de llamar a approveProposal / rejectProposal; si se deshace,
+   no se envía nada. Sin red, el motivo sale al momento (no al cabo de 6 s). «Ver la tarea» (`link`) abre la tarea creada o
+   cambiada, también en «Mis propuestas». Lo que espera «Deshacer» se envía al cerrar u ocultar la página. */
+function proposalTaskId(item){const d=item.detail||{};if(d.taskId)return d.taskId;
+  const done=Array.isArray(item.result)?item.result.find(x=>x&&x.table==='tasks.tasks'&&x.id):null;if(done)return done.id;
+  return (reviewItems.get(item.id)?.operations||[]).find(o=>o.table==='tasks.tasks'&&o.op==='insert')?.id||null}
+function proposalLink(item){const id=proposalTaskId(item);return id?{label:'Ver la tarea',href:'#/tarea/'+id}:null}
 function reviewProposalList(){if(reviewProposals||!proposalClient()||!canDecideProposals())return reviewProposals;
-  reviewProposals=IkisaiKit.createProposalList({mode:'review',source:reviewSource(),kinds:PROPOSAL_KINDS,canDecide:true,onApprove:approveProposal,onReject:rejectProposal,renderDetail:proposalDetail,feedbackId:'tasks.por_clasificar.propuestas',label:'Propuestas',emptyText:'No hay propuestas pendientes.'});
+  reviewProposals=IkisaiKit.createProposalList({mode:'review',source:reviewSource(),kinds:PROPOSAL_KINDS,canDecide:true,confirm:false,undoMs:UNDO_MS,link:proposalLink,onApprove:approveProposal,onReject:rejectProposal,renderDetail:proposalDetail,feedbackId:'tasks.por_clasificar.propuestas',label:'Propuestas',emptyText:'No hay propuestas pendientes.'});
   return reviewProposals}
-function setProposalPending(n){n=Number(n)||0;if(n===proposalPending)return;proposalPending=n;const title=document.getElementById('proposalReviewTitle');if(title)title.textContent=`Propuestas (${n})`;if(Sync.actor&&state.tabs.length)render()}
+const PROPOSAL_DECIDE_IDS=['tasks.por_clasificar.propuestas.aprobar','tasks.por_clasificar.propuestas.descartar'];
+document.addEventListener('click',e=>{if(navigator.onLine)return;const b=e.target.closest?.('button[data-feedback-id]');if(!b||!PROPOSAL_DECIDE_IDS.includes(b.dataset.feedbackId))return;
+  e.preventDefault();e.stopPropagation();toast(PROPOSAL_NETWORK)},true);
+function flushProposalDecisions(){if(!reviewProposals)return;reviewProposals.destroy();reviewProposals=null}
+window.addEventListener('pagehide',flushProposalDecisions);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushProposalDecisions();else if(state.view==='triage'&&Sync.actor&&state.tabs.length)render()});
+function setProposalPending(n){n=Number(n)||0;if(n===proposalPending)return;proposalPending=n;const title=document.getElementById('proposalReviewTitle');if(title)title.textContent=`De fuera · Propuestas (${n})`;if(Sync.actor&&state.tabs.length)render()}
 let proposalCountAt=0;
 async function refreshProposalCount(force=false){if(!canDecideProposals()||!proposalClient()||!navigator.onLine)return;if(!force&&Date.now()-proposalCountAt<30000)return;proposalCountAt=Date.now();
   try{const res=await proposalClient().suggestions({scope:'pending',limit:1});setProposalPending(res.pendingCount??res.items.length)}catch{}}
@@ -208,8 +223,10 @@ function proposalViewChanged(view){const changed=view!==proposalLastView;proposa
 /* Sin propuestas pendientes no se pinta nada (ni «Propuestas (0)»): la lista se sigue refrescando para enterarse. */
 function mountReview(){const list=reviewProposalList();if(!list)return;const main=document.querySelector('#view main.screen');if(!main)return;
   if(!proposalPending){if(proposalViewChanged('triage'))list.refresh();return}
-  const section=document.createElement('section');section.className='proposalreview';section.id='proposalReview';section.dataset.feedbackId='tasks.por_clasificar.propuestas';section.dataset.feedbackLabel='Propuestas';
-  section.innerHTML=`<h2 class="sectionlabel" id="proposalReviewTitle">Propuestas (${proposalPending})</h2><div class="ikisai-kit" id="proposalReviewMount"></div>`;
+  // Una banda más de «Por clasificar» (MUELA-083 §3, familia «bandas por origen»): «De fuera · Propuestas (n)».
+  const section=document.createElement('section');section.className='proposalreview tkc-proposals';section.id='proposalReview';section.dataset.feedbackId='tasks.por_clasificar.propuestas';section.dataset.feedbackLabel='Propuestas';
+  section.innerHTML=`<div class="tkc-proposalhead"><span class="ikisai-kit tkc-proposalmedal"></span><h2 class="sectionlabel" id="proposalReviewTitle">De fuera · Propuestas (${proposalPending})</h2></div><p class="small muted tkc-proposalhint">Lo que proponen las personas de fuera. «Aprobar» y «Descartar» deciden al momento, con «Deshacer».</p><div class="ikisai-kit" id="proposalReviewMount"></div>`;
+  section.querySelector('.tkc-proposalmedal').append(IkisaiKit.renderMedal({name:'De fuera',size:40}));
   const head=main.querySelector(':scope > .screenhead')||main.querySelector(':scope > h1');if(head)head.after(section);else main.prepend(section);
   section.querySelector('#proposalReviewMount').append(list.element);
   if(proposalViewChanged('triage'))list.refresh()}

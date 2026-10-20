@@ -5,7 +5,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { openApp, openLabelCatalog, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, tab: any, label: any, save: any;
@@ -39,6 +39,7 @@ test.beforeAll(async ({ browser }) => {
   context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   page = await openApp(context, server, { aliases: ID, errors });
   await page.evaluate((id) => { state.activeTab = id; state.view = 'labels'; render(); }, A);
+  await openLabelCatalog(page);
 });
 test.afterAll(async () => { await context?.close(); await server?.close(); });
 
@@ -78,6 +79,7 @@ test('después, la app guarda con lo General: renombrarla desde un área la camb
 
 test('«Etiquetas»: General arriba y «Solo de <área>» debajo; crear General y solo del área; el selector junta la familia', async () => {
   await page.evaluate((id) => { state.activeTab = id; state.view = 'labels'; render(); }, A);
+  await openLabelCatalog(page);
   const generalSection = page.locator('.generalfamily');
   await expect(page.locator('#catalogGeneral')).toBeVisible();
   await expect(page.locator('#catalogOwn')).toContainText('Solo de Casa');

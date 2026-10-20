@@ -8,7 +8,7 @@
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 import { buildTasksApp, EDITOR, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { quietUsageNotice } from './e2e-helpers.ts';
+import { openLabelCatalog, quietUsageNotice } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (ligaduras léxicas de sus scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -462,6 +462,7 @@ test.describe('gestos reales', () => {
 
   test('archivar una familia desde Etiquetas archiva sus etiquetas, y reactivarla las devuelve', async () => {
     await a.evaluate(() => { state.view = 'labels'; render(); });
+    await openLabelCatalog(a);
     await a.locator(`[data-toggle-family="${families.phase}"]`).click();
     await settled(a);
     let label = (await server.rows('tasks.labels')).find((r) => r.id === G.label);

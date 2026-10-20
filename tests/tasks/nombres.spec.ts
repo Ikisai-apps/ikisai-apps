@@ -5,7 +5,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled } from './e2e-helpers.ts';
+import { openApp, openLabelCatalog, seedDemo, settled } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, openLabelEditor: any, failureText: any, generalMergeGroups: any, generalMerge: any, closeSheet: any;
@@ -50,6 +50,7 @@ test.beforeAll(async ({ browser }) => {
   context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   page = await openApp(context, server, { aliases, errors });
   await page.evaluate((id) => { state.activeTab = id; state.view = 'labels'; render(); }, TAB);
+  await openLabelCatalog(page);
 });
 test.afterAll(async () => { await context?.close(); await server?.close(); });
 
@@ -107,6 +108,7 @@ async function onlyGroup(key: string) {
 
 test('«Repetidas → General» anticipa el DUPLICATE_LABEL: aviso en el grupo, casilla desactivada y se ofrece incluirla', async () => {
   await page.evaluate((id) => { closeSheet(); state.activeTab = id; state.view = 'labels'; render(); }, TAB);
+  await openLabelCatalog(page);
   await page.locator('#generalMergeOpen').click();
   const ana = page.locator('[data-general-box="persona||ana"]');
   await expect(ana).toContainText('en 2 áreas');
@@ -138,6 +140,7 @@ test('«Repetidas → General» anticipa el DUPLICATE_LABEL: aviso en el grupo, 
 
 test('«Repetidas → General» junta lo que solo cambia en tildes: «se quedará como «Jardín»» y el servidor lo acepta', async () => {
   await page.evaluate((id) => { closeSheet(); state.activeTab = id; state.view = 'labels'; render(); }, TAB);
+  await openLabelCatalog(page);
   await page.locator('#generalMergeOpen').click();
   const jardin = page.locator('[data-general-box="lugares||jardin"]');
   await expect(jardin).toContainText('en 2 áreas');

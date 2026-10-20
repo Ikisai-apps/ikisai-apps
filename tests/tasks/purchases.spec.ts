@@ -347,8 +347,13 @@ test('enlace de un reporte de Feedback (§22.4): #/feedback/<código> enseña el
   expect(asked.status, JSON.stringify(asked.data)).toBe(200);
   await owner.goto(server.url + '/#/feedback/FB_2026_0042');
   await settled(owner);
-  await expect(owner.locator('main h1')).toHaveText('Reporte FB_2026_0042');
-  await owner.locator('[data-feedback-task]').click();
+  // MUELA-064 (tanda 31): el resguardo lleva el título y el estado; el código no se ve (va en el enlace que se copia).
+  await owner.evaluate(() => (window as any).syncNow?.());
+  await settled(owner);
+  await expect(owner.locator('main h1')).toHaveText('Persiana rota en la sala 2');
+  await expect(owner.locator('#tkrState')).toHaveText('En marcha');
+  await expect(owner.locator('main')).not.toContainText('FB_2026_0042');
+  await owner.locator('[data-tkr-open]').click();
   await expect(owner.locator('#taskOrigin')).toContainText('FB_2026_0042');
   await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);

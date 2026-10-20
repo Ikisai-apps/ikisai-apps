@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { openApp, openLabelCatalog, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, openLabelEditor: any;
@@ -53,6 +53,7 @@ test.beforeAll(async ({ browser }) => {
   context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   page = await openApp(context, server, { aliases: ID, errors });
   await page.evaluate((id) => { state.activeTab = id; state.view = 'labels'; render(); }, tab.Apps);
+  await openLabelCatalog(page);
 });
 test.afterAll(async () => { await context?.close(); await server?.close(); });
 
@@ -89,6 +90,7 @@ test('la vista previa ofrece VG (madre distinta, a la raíz), las zonas (marcas 
 
 test('«Hacer General» en una etiqueta, y «+ Nueva familia General»', async () => {
   await page.evaluate((id) => { state.activeTab = id; state.view = 'labels'; render(); }, tab.Personales);
+  await openLabelCatalog(page);
   await page.evaluate(([fid, id]) => openLabelEditor(fid, id), [person.Personales, solo]);
   await page.locator('[data-general-label]').click();
   await expect(page.locator('#sheet')).toContainText('Solo mía');
