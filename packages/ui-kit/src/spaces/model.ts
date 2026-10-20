@@ -210,6 +210,18 @@ export function nextAltura(rows: readonly SpaceRow[]): number | null {
   return null;
 }
 
+/**
+ * Ruta corta de un sitio: su padre y él («Albergue › Almacén»), o solo él si cuelga de una altura o de la raíz. La que
+ * enseñan el selector de espacios y las filas de máquinas y artículos.
+ */
+export function spaceShortPath(rows: readonly SpaceRow[] | Map<string, SpaceRow>, id: string): string {
+  const byId = rows instanceof Map ? rows : indexSpaces(rows);
+  const row = byId.get(id);
+  if (!row) return '';
+  const parent = ancestorsOf(byId, id).pop();
+  return parent && parent.kind !== 'altura' ? `${parent.name} › ${row.name}` : row.name;
+}
+
 /** Coincide con la búsqueda (nombre, nombre público, código o ruta), sin mayúsculas ni tildes. */
 export function spaceMatches(rows: Map<string, SpaceRow>, row: SpaceRow, query: string): boolean {
   const words = normalizeName(query).split(' ').filter(Boolean);

@@ -7,7 +7,7 @@
  */
 import { el } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
-import { itemColorStyle } from '../theme.ts';
+import { readableColor } from '../theme.ts';
 
 export interface MedalOptions {
   /** URL de la imagen (o miniatura). Si no carga, salen las iniciales o el icono. */
@@ -57,7 +57,9 @@ export function renderMedal(options: MedalOptions): HTMLElement {
     : options.icon
       ? (typeof options.icon === 'string' ? icon(options.icon as IconName, Math.round(size * 0.5)) : options.icon)
       : el('span', { class: 'medal-initials' }, '·'));
-  const style = [`--medal-size:${size}px`, options.color ? itemColorStyle(options.color) : ''].filter(Boolean).join(';');
+  // Las iniciales llegan a 4,5:1 sobre cualquier color de equipo (tanda 35): el fondo se oscurece si hace falta.
+  const readable = options.color ? readableColor(options.color) : null;
+  const style = [`--medal-size:${size}px`, readable ? `--item-color:${readable.color};--item-ink:${readable.ink}` : ''].filter(Boolean).join(';');
   const box = el('span', { class: `medal-disc${options.color ? ' medal-colored' : ''}`, style, ...a11y });
   if (options.image) {
     const img = el('img', { src: options.image, alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }) as HTMLImageElement;

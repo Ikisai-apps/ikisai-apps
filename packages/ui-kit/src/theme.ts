@@ -55,6 +55,35 @@ export function inkOn(color: string): '#1f2a22' | '#ffffff' {
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.4 ? '#1f2a22' : '#ffffff';
 }
 
+const lum = (hex: string): number | null => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  if (!m) return null;
+  const [r, g, b] = [m[1]!, m[2]!, m[3]!].map((x) => parseInt(x, 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+};
+const ratio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const INK = '#1f2a22';
+
+/**
+ * Fondo y tinta con al menos 4,5:1 para texto pequeño sobre un color propio (iniciales de un medallón). Elige blanco o
+ * tinta, la que contraste más; si ninguna llega (naranjas y ocres medios, como #c4712f), oscurece el fondo lo justo para
+ * que el blanco llegue. Un color que no sea `#rrggbb` se devuelve tal cual, con la tinta de `inkOn`.
+ */
+export function readableColor(color: string): { color: string; ink: string } {
+  const l = lum(color);
+  if (l === null) return { color, ink: inkOn(color) };
+  const inkL = lum(INK)!;
+  const best = ratio(l, 1) >= ratio(l, inkL) ? '#ffffff' : INK;
+  if (Math.max(ratio(l, 1), ratio(l, inkL)) >= 4.5) return { color, ink: best };
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color.trim())!;
+  const rgb = [m[1]!, m[2]!, m[3]!].map((x) => parseInt(x, 16));
+  for (let k = 0.95; k > 0; k -= 0.05) {
+    const hex = `#${rgb.map((c) => Math.round(c * k).toString(16).padStart(2, '0')).join('')}`;
+    if (ratio(lum(hex)!, 1) >= 4.5) return { color: hex, ink: '#ffffff' };
+  }
+  return { color: '#000000', ink: '#ffffff' };
+}
+
 /** Estilo en línea para un elemento con color propio (tarjeta, pastilla): `--item-color` y su tinta. */
 export function itemColorStyle(color: string | null | undefined): string {
   if (!color) return '';

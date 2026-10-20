@@ -56,6 +56,11 @@ export interface ItemCatalogOptions {
   actions?: ItemCatalogAction[];
   onAction?: (action: ItemCatalogAction, item: ItemRow) => void;
   rowActions?: (item: ItemRow) => ItemCatalogRowAction[];
+  /**
+   * La acción de lo que pide atención («A la compra»): botón destacado, el primero, en las filas y baldosas que lo
+   * piden. Por defecto, en lo que está bajo mínimo (`when` cambia la regla).
+   */
+  focusAction?: ItemCatalogRowAction & { when?: (item: ItemRow, state: { low: boolean; expiring: boolean }) => boolean };
   /** Abrir la ficha (por defecto no hace nada: la app monta `createItemSheet` donde quiera). */
   onOpen?: (item: ItemRow) => void;
   /** «+ Artículo»: alta rápida (la del selector) y después `onOpen` con el nuevo. */
@@ -75,7 +80,8 @@ export interface ItemCatalogOptions {
 
 export interface ItemCatalog {
   element: HTMLElement;
-  setFilter(filter: ItemCatalogFilter): void;
+  /** Con `persist: false` (filtros que llegan por enlace), no se guarda en `storageKey`: al volver, el de la persona. */
+  setFilter(filter: ItemCatalogFilter, options?: { persist?: boolean }): void;
   getFilter(): ItemCatalogFilter;
   /** Vuelve a pintar con los datos de ahora sin tocar el filtro: para cuando cambia algo de la app que el catálogo no ve (lo que dan `rowActions` o `filter`, como el «Pedido» de Tasks). */
   refresh(): void;
@@ -128,6 +134,12 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
   const within = (ids: readonly string[]) => [...new Set(ids.flatMap((id) => [id, ...spaceDescendants(spaceRows, id, true)]))];
   const scopeIds = () => (options.scope ? within(options.scope) : null);
   const spaceName = (id: string) => spaceIndex.get(id)?.name ?? kt('Sin sitio');
+  /** «A la compra» y similares: primero y destacado en lo que pide atención. */
+  const focusButton = (l: { item: ItemRow; low: boolean; expiry: string | null }): HTMLElement | null => {
+    const f = options.focusAction;
+    if (!f || !l.item.active || !(f.when ? f.when(l.item, { low: l.low, expiring: !!l.expiry }) : l.low)) return null;
+    return el('button', { type: 'button', class: 'softbtn small stk-focus', 'aria-label': `${f.label}: ${l.item.name}`, ...(f.feedbackId ? { 'data-feedback-id': f.feedbackId, 'data-feedback-label': f.label } : mark('action')), onclick: () => f.onClick(l.item) }, f.label);
+  };
 
   // --- Estructura ------------------------------------------------------------------------------------------
   const input = el('input', { type: 'search', class: 'space-search stk-search', placeholder: kt('Buscar artículo…'), 'aria-label': kt('Buscar en el inventario'), autocomplete: 'off', ...mark('search'),
@@ -209,6 +221,7 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
     const it = l.item;
     const unit = it.baseUnit;
     const actions = [
+      ...[focusButton(l)].filter((b): b is HTMLElement => !!b),
       ...(options.onAction && it.active ? (options.actions ?? []).map((a) => el('button', { type: 'button', class: 'ghost small', ...mark('action'), onclick: () => options.onAction!(a, it) }, kt(ACTION_LABELS[a]))) : []),
       ...(options.rowActions?.(it) ?? []).map((a) => el('button', { type: 'button', class: a.primary ? 'softbtn small' : 'ghost small', ...(a.feedbackId ? { 'data-feedback-id': a.feedbackId, 'data-feedback-label': a.label } : mark('action')), onclick: () => a.onClick(it) }, a.label)),
     ];
@@ -237,6 +250,7 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
           : tone === 'ok' ? kt('Bien')
             : where(l);
     const actions = [
+      ...[focusButton(l)].filter((b): b is HTMLElement => !!b),
       ...(options.onAction && it.active ? (options.actions ?? []).map((a) => el('button', { type: 'button', class: 'ghost small', ...mark('action'), 'aria-label': `${kt(ACTION_LABELS[a])}: ${it.name}`, onclick: () => options.onAction!(a, it) }, kt(ACTION_LABELS[a]))) : []),
       ...(options.rowActions?.(it) ?? []).map((a) => el('button', { type: 'button', class: a.primary ? 'softbtn small' : 'ghost small', 'aria-label': `${a.label}: ${it.name}`, ...(a.feedbackId ? { 'data-feedback-id': a.feedbackId, 'data-feedback-label': a.label } : mark('action')), onclick: () => a.onClick(it) }, a.label)),
     ];
@@ -310,7 +324,7 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
 
   return {
     element,
-    setFilter(next) { filter = { ...next }; writeFilter(options.storageKey, filter); paint(); },
+    setFilter(next, how) { filter = { ...next }; if (how?.persist !== false) writeFilter(options.storageKey, filter); paint(); },
     getFilter: () => ({ ...filter }),
     refresh: paint,
     destroy() { offSource?.(); offSpaces?.(); element.remove(); },

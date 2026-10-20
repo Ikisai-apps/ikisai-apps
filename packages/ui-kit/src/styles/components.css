@@ -523,7 +523,7 @@ button.cal-agenda-item:hover{background:var(--hover)}
 .lp-head .count{background:var(--accent-soft);color:var(--accent-deep);border-radius:999px;padding:1px 7px;font-size:11px}
 .lp-total{font-size:11px;font-weight:600}
 .lp-chips{display:flex;flex-wrap:wrap;gap:6px;padding:4px 4px 8px}
-.filterchip{border:1px solid var(--line);background:var(--paper);padding:7px 11px;border-radius:999px;font:inherit;font-size:13px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:5px;min-height:36px;cursor:pointer}
+.filterchip{border:1px solid var(--line);background:var(--paper);padding:7px 11px;border-radius:999px;font:inherit;font-size:13px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:5px;min-height:var(--tap);cursor:pointer}
 .filterchip:hover{background:var(--paper-2)}
 .filterchip.on{box-shadow:inset 0 0 0 2px currentColor,var(--shadow-1);font-weight:800}
 .filterchip:disabled{opacity:.45;cursor:default}
@@ -1194,7 +1194,7 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .item-create-title{margin:0;font-weight:800}
 .item-create-kind{display:grid;gap:6px}
 .item-kinds{display:flex;flex-wrap:wrap;gap:6px}
-.item-kinds .filterchip{min-height:40px}
+.item-kinds .filterchip{min-height:var(--tap)}
 .item-kinds .filterchip[aria-checked="true"]{background:var(--accent-soft);border-color:var(--accent)}
 .hint.suggest.warn{color:var(--warn);font-weight:700}
 .item-offline{display:flex;gap:8px;align-items:center;margin:0;font-size:13px;color:var(--muted)}
@@ -1415,6 +1415,13 @@ details[open] > .worst-head::after{transform:rotate(180deg)}
 .worst-summary.worst-ok{color:var(--ok)}
 .worst-items{margin:0;border-top:1px solid var(--line)}
 .worst-empty{margin:0;padding:10px 14px}
+/* Cola plegada (`tail`): lo revocado o archivado, al final del grupo. */
+.worst-tail{border-top:1px solid var(--line)}
+.worst-tailhead{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;min-height:var(--tap);padding:6px 14px;font-size:var(--text-sm);font-weight:700;color:var(--muted)}
+.worst-tailhead::-webkit-details-marker{display:none}
+.worst-tailhead::after{content:"▾";margin-left:auto;transition:transform .15s}
+.worst-tail[open] > .worst-tailhead::after{transform:rotate(180deg)}
+.worst-tailhead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 /* Cifras de color: la etiqueta siempre junto a la cifra. */
 .stat-row{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}
@@ -1866,7 +1873,7 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .appmenu-tile.open{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
 .appmenu-tilemark{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--paper-2);color:var(--accent-deep)}
 .appmenu-tile.open .appmenu-tilemark{background:var(--accent);color:var(--accent-ink)}
-.appmenu-tiletext{font-size:12.5px;font-weight:800;line-height:1.15;overflow-wrap:anywhere}
+.appmenu-tiletext{max-width:100%;font-size:clamp(11px,3.1vw,12.5px);font-weight:800;line-height:1.15;letter-spacing:-.01em;overflow-wrap:normal;word-break:normal;hyphens:manual}
 .appmenu-tile small{font-size:11px;color:var(--muted);line-height:1.2}
 .appmenu-tile .appmenu-count{position:absolute;top:6px;right:6px}
 .appmenu-panel{display:grid;gap:2px;padding:6px;border-radius:14px;background:var(--paper);box-shadow:inset 0 0 0 1px var(--line)}

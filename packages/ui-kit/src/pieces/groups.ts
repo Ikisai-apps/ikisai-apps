@@ -34,6 +34,11 @@ export interface Group<T> {
   actions?: Child[];
   /** Id literal de feedback de la cabecera de este grupo (entra en el catálogo); sin él, `${feedbackId}.grupo`. */
   feedbackId?: string;
+  /**
+   * Cola plegada al final del grupo (lo revocado o archivado): «Revocados (2)». No cuenta para el recuento, el tono ni el
+   * resumen del grupo. Con `feedbackId`, su cabecera lleva `${feedbackId}.cola`.
+   */
+  tail?: { label: string; items: T[]; open?: boolean } | null;
 }
 
 export interface GroupsOptions<T> {
@@ -78,6 +83,7 @@ export function renderGroups<T>(options: GroupsOptions<T>): GroupsView {
   });
   const ordered = options.worstFirst ? [...info].sort((a, b) => (b.worst ? RANK[b.worst] : 0) - (a.worst ? RANK[a.worst] : 0) || a.i - b.i) : info;
   let filter: Tone | null = null;
+  const rowOf = (item: T): HTMLElement => { const r = options.row(item); return r instanceof HTMLLIElement ? r : el('li', null, r); };
 
   const list = el('ul', { class: 'worst-groups', 'aria-label': options.label, ...(base ? { 'data-feedback-id': base, 'data-feedback-label': options.label } : {}) },
     ...ordered.map(({ g, tones, worst }) => {
@@ -91,8 +97,13 @@ export function renderGroups<T>(options: GroupsOptions<T>): GroupsView {
           el('span', { class: `worst-summary${worst ? ` worst-${worst}` : ''}` }, summary),
           ...(g.actions ?? [])),
         g.items.length
-          ? el('ul', { class: 'list worst-items' }, ...g.items.map((item) => { const r = options.row(item); return r instanceof HTMLLIElement ? r : el('li', null, r); }))
-          : el('p', { class: 'hint worst-empty' }, options.emptyText ?? kt('Nada en este grupo.'))));
+          ? el('ul', { class: 'list worst-items' }, ...g.items.map(rowOf))
+          : el('p', { class: 'hint worst-empty' }, options.emptyText ?? kt('Nada en este grupo.')),
+        g.tail?.items.length
+          ? el('details', { class: 'worst-tail', open: g.tail.open ? true : null },
+            el('summary', { class: 'worst-tailhead', ...mark('cola', g.tail.label) }, el('span', null, g.tail.label), el('span', { class: 'worst-count' }, String(g.tail.items.length))),
+            el('ul', { class: 'list worst-items' }, ...g.tail.items.map(rowOf)))
+          : null));
     }));
 
   const counts = (tone: Tone) => info.filter((x) => x.worst === tone).length;
