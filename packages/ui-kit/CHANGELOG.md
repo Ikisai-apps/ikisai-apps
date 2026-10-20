@@ -1,5 +1,35 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.52.0 · 20 de octubre de 2026
+
+**Mapa de zonas: `createSpaceMap`** (tanda 34, MUELA-024). Pieza nueva; lo de hoy no cambia.
+
+1. **El dibujo:** cada edificio y planta (`resources.floor_plans`) se pinta como `<image>` dentro de un SVG con `viewBox` = `width` × `height`. Se ve entero, sin zoom ni arrastre, y pequeño en el móvil. El SVG subido nunca se mete en la página.
+2. **La capa:** cada estancia con forma (`plan_id` + `plan_shape`, puntos 0..1) es un botón con su nombre y su estado (`layer(space)` → `tone`, `label`, `state`).
+   - Tocar, o Intro o Espacio, resalta el contorno exacto y llama a `onPick(space, { from, offline })`; la app abre su ficha.
+   - **Camas** con su número y por colores: gris si no se puede, azul con rayado si está ocupada, verde claro si está libre y verde intenso si está elegida. La leyenda solo lleva los estados que hay.
+   - Una habitación con camas dice «N libres» o «Completa» si la app no da otro texto. Sin camas, nada (adenda 1).
+   - Los rótulos no bajan de 11 px en pantalla; con camas dibujadas, el nombre de la habitación va abajo.
+3. **Lista equivalente siempre**, con la ruta (`spacePath`): lo del edificio del dibujo, con «Sin sitio en el plano» si falta la forma; filas de 52 px.
+   - Conmutador Plano/Lista (46 px) en el móvil; lado a lado en el ordenador (`mode: 'both'`, por defecto).
+   - `mode: 'map'` deja el conmutador en todos los anchos; `mode: 'list'`, solo la lista.
+   - Sin dibujo o sin formas, solo la lista, con su motivo.
+4. **Varios dibujos:** conmutador por edificio y planta.
+5. **Sin red:** se ve la última copia con aviso, y la app sabe que no hay red en `onPick`. Si el dibujo no carga, las estancias siguen en su sitio.
+6. **Preparado para «Colocar»** (Central), sin pantalla: `setShape(id, planId, shape)` y `onShape`.
+7. **Datos:**
+   - `SpaceRow` lleva `planId` y `planShape`, y `spaceFromRow` y `spaceToFields` los leen y escriben.
+   - `createSyncSpaceSource(...).plans` lee `resources.floor_plans` (`floorPlanFromRow`).
+8. **Accesibilidad:**
+   - el plano tiene nombre («Plano de Albergue · Planta baja»);
+   - el estado va siempre en palabras, en el plano, en la lista y en el nombre accesible;
+   - contraste ≥ 4,5:1;
+   - con movimiento reducido, sin transiciones;
+   - prefijo `map-`.
+
+- **Todavía no:** «Colocar» con pantalla y elegir plaza de litera (las literas siguen siendo camas).
+- **Pruebas:** `v57`.
+
 ## 0.51.0 · 20 de octubre de 2026
 
 **Velo completo para portadas con texto** (punto 11, Organizers) **y `feedbackRoundTrip` dentro del cajón** (punto 12, Tasks y Booking).

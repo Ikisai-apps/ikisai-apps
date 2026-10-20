@@ -76,8 +76,12 @@ export {
   type SpaceRow, type SpaceKind, type SpaceAttribute, type SpaceSource, type Placement,
 } from './spaces/model.ts';
 export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions, type SpaceRowAction } from './spaces/tree.ts';
-export { createSyncSpaceSource, spaceFromRow, spaceToFields, kindFromRow, type SyncSpaceSourceOptions } from './spaces/sync-source.ts';
+export { createSyncSpaceSource, spaceFromRow, spaceToFields, kindFromRow, floorPlanFromRow, type SyncSpaceSourceOptions } from './spaces/sync-source.ts';
 export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions, type SpacePickerTexts } from './spaces/picker.ts';
+export {
+  createSpaceMap, SPACE_MAP_MARKS, validShape, shapeCenter,
+  type SpaceMap, type SpaceMapOptions, type SpaceMapLayer, type SpaceMapTone, type SpaceMapBedState, type SpaceMapPickContext, type FloorPlan, type FloorPlanSource, type PlanShape,
+} from './spaces/map.ts';
 export {
   DEFAULT_ITEM_KINDS, BASE_UNITS, itemKey, kindLabelOf, sameNameItem, similarItems, searchItems, unitsFor, baseQuantity, stockFromMovements, stockBySpace, stockSummary,
   itemFromRow, itemUnitFromRow, itemKindFromRow, newItemId, createMemoryItemSource,
