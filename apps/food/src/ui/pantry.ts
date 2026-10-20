@@ -20,7 +20,7 @@ import {
 } from '@ikisai/domain-food';
 import {
   createCountSession, createItemCatalog, createItemSheet, createMovementForm, createSyncItemSource, createSyncSpaceSource, el, openSheet, replace,
-  type ItemCatalog, type ItemCatalogFilter, type ItemRow, type ItemSheet, type Sheet,
+  type ItemCatalog, type ItemRow, type ItemSheet, type Sheet,
 } from '@ikisai/ui-kit';
 import { T, type Mirror } from '../app/client.ts';
 import { longDay } from '../app/events.ts';
@@ -52,7 +52,6 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
   let catalog: ItemCatalog | null = null;
   let sheet: ItemSheet | null = null;
   let kitchenKey = '';
-  let own: ItemCatalogFilter | null = null;
   let chips: string[] = [];
   let kitchenSet = new Set<string>();
   let names = new Map<string, string>();
@@ -80,7 +79,8 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
     const filter = catalog?.getFilter() ?? null;
     catalog?.destroy();
     catalog = build(next === 'baldosas' ? 'baldosas' : 'list');
-    if (filter) catalog.setFilter(filter);
+    // Al cambiar de vista se conserva el filtro de ahora sin guardarlo: si llegó por un enlace, no es el de la persona.
+    if (filter) catalog.setFilter(filter, { persist: false });
     catalogHost.dataset.view = next;
     replace(catalogHost, catalog.element);
   }
@@ -209,7 +209,10 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
       ...(canWrite() ? { actions: ['spend', 'entry', 'count'] as Array<'spend' | 'entry' | 'count'>, onAction: (action: 'spend' | 'entry' | 'count', item: ItemRow) => void act(action, item) } : {}),
       onOpen: (item) => void openItem(item),
       // En las baldosas, «A la compra» solo en lo que lleva mínimo (lo demás, desde la ficha o la lista).
-      rowActions: (item) => (canWrite() && (layout === 'list' || !!item.minQuantity) ? [{ label: 'A la compra', feedbackId: TO_SHOPPING_MARK, primary: !!item.minQuantity, onClick: () => void toShopping(client, item) }] : []),
+      // Kit 0.53: «A la compra» es la acción de lo que pide atención, la primera y destacada. En las baldosas, en lo que
+      // está bajo mínimo; en la lista, en todo (como siempre), para poder pedir cualquier artículo.
+      ...(canWrite() ? { focusAction: { label: 'A la compra', feedbackId: TO_SHOPPING_MARK, onClick: (item: ItemRow) => void toShopping(client, item),
+        when: (_item: ItemRow, state: { low: boolean }) => layout === 'list' || state.low } } : {}),
     });
     replace(host, viewBar, catalogHost);
     setView(view);
@@ -217,11 +220,8 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
     if (!live) return;
     const params = new URLSearchParams(location.hash.split('?')[1] ?? '');
     const filter = params.get('filtro');
-    // El filtro que llega por un enlace (Inicio) vale para esta visita: al salir vuelve el que tenía la persona.
-    if (filter === 'bajo_minimo' || filter === 'caduca') {
-      own ??= live.getFilter();
-      live.setFilter({ ...own, low: filter === 'bajo_minimo', expiring: filter === 'caduca' });
-    }
+    // El filtro que llega por un enlace (Inicio) vale para esta visita: no se guarda, y al volver está el de la persona.
+    if (filter === 'bajo_minimo' || filter === 'caduca') live.setFilter({ ...live.getFilter(), low: filter === 'bajo_minimo', expiring: filter === 'caduca' }, { persist: false });
     const wanted = params.get('articulo');
     if (wanted) {
       const snap = await items.list();
@@ -240,7 +240,6 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
     offNet();
     window.removeEventListener('online', paintOffline);
     window.removeEventListener('offline', paintOffline);
-    if (own) catalog?.setFilter(own);
     catalog?.destroy();
     sheet?.destroy();
     tool?.destroy();

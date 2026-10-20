@@ -137,6 +137,7 @@ test('ficha de receta · el próximo servicio, la cantidad de la receta debajo y
   // El foco: solo lo que falta o está bajo mínimo, de uno en uno.
   await expect(ficha.locator('.focus-count')).toHaveText('1 de 2 por hacer');
   await expect(ficha.locator('.focus-title')).toHaveText('Aceite de oliva');
+  await expect(ficha.locator('.focus-btn', { hasText: 'Ver en la Despensa' })).toBeVisible();
   await capture(page, 'b2-02-ficha');
   // La fila entera lleva a la Despensa.
   await row('Calabaza').locator('td').first().click({ position: { x: 4, y: 4 } });

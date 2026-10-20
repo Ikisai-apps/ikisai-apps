@@ -317,7 +317,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     }));
     const focus = tracked && focusItems.length ? createFocus({
       label: 'Lo que falta para esta receta', items: focusItems, feedbackId: 'food.recetario.ficha.foco',
-      onOpen: (item) => toPantry(item.id),
+      onOpen: (item) => toPantry(item.id), openLabel: 'Ver en la Despensa',
     }) : null;
     const coverHost = el('div', { 'data-feedback-id': 'food.recetario.ficha.foto', 'data-feedback-label': 'Portada de la receta', class: 'ficha-photo fd-cover', 'data-photo': recipe.photo_file_id ? 'loading' : 'none' }, coverOf(null));
     if (recipe.photo_file_id) void photoUrl(client, recipe.photo_file_id).then((url) => {
