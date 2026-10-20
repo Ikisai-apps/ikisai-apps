@@ -30,8 +30,8 @@ import { mountData } from './data.ts';
 import { mountDiet } from './diet.ts';
 import { openHelp } from './help.ts';
 import { momentOf, mountHome, todayMadrid } from './home.ts';
-import { mountInfo } from './info.ts';
-import { retreatFrame, retreatState, shortRange, type Frame } from './frame.ts';
+import { mountHouse } from './house.ts';
+import { personSelector, retreatFrame, retreatState, shortRange, type Frame } from './frame.ts';
 import { mountLodging } from './lodging.ts';
 import { clearOfflineMaterials } from './materials.ts';
 import { mountGuide } from './guide.ts';
@@ -40,7 +40,6 @@ import { mountMenu, mountProgram } from './program.ts';
 import { languageSelect } from './language.ts';
 import { mountOutsider } from './outsider.ts';
 import { needsPrivacy, renderPrivacy } from './privacy.ts';
-import { personSelector, retreatTabs } from './retreats.ts';
 import { mountSign } from './sign.ts';
 
 export interface ShellContext {
@@ -312,8 +311,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     return next ? { title: next.title, start: next.start, end: next.end, href: hrefFor(next) } : null;
   }
 
-  /** Pestaña Outsider en la tira de retiros (solo con nivel de casa `outsider`). */
-  const outsiderTabOf = (on: boolean) => (outsider ? { href: OUTSIDER, on, today: todayMadrid() } : undefined);
 
   function showOutsider(view: HTMLElement, info: boolean): void {
     const r = roster!;
@@ -324,15 +321,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       setPageMarks('info');
       paintNav(OUTSIDER_INFO, null);
       replace(main, view);
-      unmountView = mountInfo(view, OUTSIDER, false, reads);
+      // «Ikisai», la información de la casa (MUELA-066).
+      unmountView = mountHouse(view, { api: outsider!, reads, client, back: OUTSIDER, newStay: () => navigate(NEW_STAY) });
       return;
     }
     setPageMarks('outsider');
     paintNav(OUTSIDER, null);
-    const tabs = retreatTabs({ retreats: r.retreats.filter((x) => entriesFor(x, selection).length), current: null, href: (x) => hrefFor(x), who, outsider: outsiderTabOf(true) });
-    const header = el('div', { class: 'gframe', id: 'retreatFrame' }, personSelector(r.persons, selection, (next) => pickPerson(next, null)), tabs);
+    // Los retiros se cambian desde la barra («Retiros») o el menú; aquí, solo a quién se ve (MUELA-059: Outsider va aparte).
+    const persons = personSelector(r.persons, selection, (next) => pickPerson(next, null));
+    const header = persons ? el('div', { class: 'gframe', id: 'retreatFrame' }, persons) : null;
     replace(main, view);
-    unmountView = mountOutsider(view, header.childElementCount ? header : null, { api: outsider!, client, newStay: () => navigate(NEW_STAY), infoHash: OUTSIDER_INFO });
+    unmountView = mountOutsider(view, header, { api: outsider!, client, reads, newStay: () => navigate(NEW_STAY), infoHash: OUTSIDER_INFO });
   }
 
   async function showCalendar(view: HTMLElement): Promise<void> {

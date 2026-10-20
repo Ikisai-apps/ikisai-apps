@@ -87,6 +87,8 @@
 
 - 2026-10-20 · **Tanda 31, parte B** (API.md §9.14): Guía del retiro (Información, Materiales y Preguntas en una página, con «Nuevo» y preguntas pregunta a pregunta), Tus datos pregunta a pregunta con «Antes de venir» y «Ver todos mis datos», Alimentación como pregunta, «Comprueba tus respuestas» en la firma (solo con el dedo), Ayuda en tarjetas con los estados de 071 y la Entrada con «Encuentra tu enlace» y las salidas.
 
+- 2026-10-20 · **Tanda 31, parte C** (API.md §9.14): Outsider con «Tu estancia» y tus días en la casa con «Sugerir aquí» en cada comida (el formulario de siempre, plegado), «Ikisai» según el momento con la guía en tarjetas y el plano, y Calendario con «Tu próximo retiro», «Tu año», nueva estancia con llegada y salida, invitaciones en tarjetas y el mes plegado con todo lo de antes. Capturas a 390 px en `docs/guests/capturas/t31/`.
+
 ## Pendiente
 
 - El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.
