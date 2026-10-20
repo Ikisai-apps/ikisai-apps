@@ -81,6 +81,8 @@
 
 - 2026-10-19 · **Tanda 26: alérgenos siempre visibles.** El menú muestra siempre los alérgenos declarados; si cocina no revisó la receta, añade «sin revisar por cocina» (también sin ninguno declarado). Antes, una receta sin revisar no enseñaba ninguno. Prueba en `modules.spec.ts`.
 
+- 2026-10-20 · **G13 (seguridad alimentaria): el menú de la familia cruza a cada persona.** Antes, con «Todos», el Menú solo miraba lo registrado de la primera persona y no cruzaba los platos. Ahora cada plato se cruza con cada persona (`crossRestriction` de Food), con su nombre, y «Cocina tiene registrado…» va persona a persona. Prueba en `personas.spec.ts` (la alergia en la segunda persona).
+
 ## Pendiente
 
 - El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.

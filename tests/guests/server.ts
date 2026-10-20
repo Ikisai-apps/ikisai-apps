@@ -16,6 +16,8 @@ export interface GuestsTestServer {
   reservation(options: { title: string; start?: string; end?: string; ses?: boolean; arrival?: string }): Promise<{ id: string; event: string }>;
   /** Huésped dado de alta por el personal (procedencia «staff»). */
   guest(event: string, fields: Record<string, unknown>): Promise<string>;
+  /** Alergia, intolerancia o preferencia de un huésped, como la registra el personal en Booking. */
+  restriction(event: string, guestId: string, item: { type: string; subject?: string; severity?: string }): Promise<void>;
   /** El organizador escribe datos del huésped desde Organizers (procedencia «organizer»). */
   organizerWrites(reservationId: string, guestId: string, fields: Record<string, unknown>): Promise<void>;
   /** Enlace del huésped emitido por el personal de Booking; devuelve el token de `/i/<token>`. */
@@ -126,6 +128,11 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       const id = uuid();
       await commit([{ op: 'insert', table: TABLES.guests, id, fields: { event_id: event, ...fields } }]);
       return id;
+    },
+    async restriction(event, guestId, item) {
+      await commit([{ op: 'insert', table: TABLES.restrictions, id: uuid(), fields: {
+        event_id: event, guest_id: guestId, restriction_type: item.type, subject: item.subject ?? null, severity: item.severity ?? null,
+      } }]);
     },
     async organizerWrites(reservationId, guestId, fields) {
       const user = await booking.t.createUser();
