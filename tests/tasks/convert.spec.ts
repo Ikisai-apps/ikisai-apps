@@ -75,6 +75,7 @@ test('vista previa con recuentos y líneas de Finance; al confirmar, las tareas 
   expect([project.title, project.tab_id]).toEqual(['Jardinería', MANT]);
   await settled(owner);
   await expect.poll(() => owner.evaluate(() => [state.activeTab, state.view, state.currentProject]), { timeout: 10_000 }).toEqual([MANT, 'project', project.id]);
-  await expect(owner.getByText('Revisar goteros')).toBeVisible();
+  // La tarea sale en la lista del proyecto (y, como es la que toca, también en «Lo que toca ahora», tanda 31).
+  await expect(owner.locator('.task .tasktext', { hasText: 'Revisar goteros' })).toBeVisible();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

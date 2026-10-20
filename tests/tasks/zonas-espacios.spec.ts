@@ -7,7 +7,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, filteredTasks: any, project: any, openTaskEditor: any, navigateView: any, startInlineNew: any;
@@ -169,6 +169,8 @@ test('agrupar por espacio: cada tarea una sola vez, en el grupo de su espacio', 
 test('ficha: el espacio se marca de un toque (los más usados)', async () => {
   await openProject(MANT, PINTURA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  // Ficha «Portada y foco» (tanda 31): el Espacio va en la baldosa «Etiquetas».
+  await fichaBloque(page, 'etiquetas');
   await shot('5-ficha-cerrada');
   await quick('Hab 3').click();
   await expect(quick('Hab 3')).toHaveClass(/on/);
@@ -200,6 +202,8 @@ test('arrastre: reordenar con el asa no toca los espacios de la tarea', async ()
   await openProject(MANT, PINTURA);
   const before = await serverSpaces(T_ROBLE);
   expect(before).toEqual([S_ROBLE]);
+  // Con la portada y «Lo que toca ahora» arriba (tanda 31), la lista empieza más abajo: se lleva a la vista antes de arrastrar.
+  await page.locator(`.task:has([data-toggle-task="${T_HAB}"])`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`.task:has([data-toggle-task="${T_ROBLE}"]) [data-drag]`).boundingBox())!;
   const to = (await page.locator(`.task:has([data-toggle-task="${T_HAB}"])`).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);

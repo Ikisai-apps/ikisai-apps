@@ -7,7 +7,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, routeStorage, settled } from './e2e-helpers.ts';
+import { fichaBloque, openApp, routeStorage, settled } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const Sync: any, state: any, render: any, openTaskEditor: any, syncNow: any;
@@ -91,15 +91,30 @@ test('marca hecha con la casilla de siempre y se guarda en el servidor; también
 
 test('la ficha es de solo lectura salvo el hilo y la casilla de hecha', async () => {
   await outsider.locator(`[data-edit-task="${T_SETO}"]`).click();
-  await expect(outsider.locator('#taskComments')).toBeVisible();
+  // Ficha «Portada y foco» (MUELA-083 §1, tanda 31): el motivo a la vista, sin lápiz en la portada, «Hecha» arriba junto a
+  // prioridad y fecha, y ningún control activo que no se guarde (O5). «Quién» sin «Quién sabe hacerlo».
+  await expect(outsider.locator('#tkfReadOnly')).toHaveText('Puedes marcarla hecha, comentar y proponer cambios. Lo demás lo cambian staff o dirección.');
+  await expect(outsider.locator('#tkfTitleEdit')).toHaveCount(0);
+  await expect(outsider.locator('.tkf-portada #outsiderDone')).toBeEnabled();
+  await expect(outsider.locator('#priorityStar')).toBeDisabled();
+  await expect(outsider.locator('#teDue')).toBeDisabled();
   await expect(outsider.locator('#teText')).toBeDisabled();
   await expect(outsider.locator('#teNote')).toBeDisabled();
   await expect(outsider.locator('#saveTaskBtn')).toHaveCount(0);
-  await expect(outsider.locator('#commentText')).toBeEnabled();
-  await expect(outsider.locator('#commentSend')).toBeEnabled();
-  await expect(outsider.locator('#outsiderDone')).toBeEnabled();
-  await expect(outsider.locator('#taskComments')).toContainText('Sin comentarios todavía.');
-  // La casilla de la ficha marca y desmarca de verdad.
+  await expect(outsider.locator('#whoKnows')).toHaveCount(0);
+  const active = await outsider.evaluate(() => [...document.querySelectorAll('#sheet .tkf-portada :is(button,input,select,textarea), #sheet .tkf-store :is(button,input,select,textarea)')]
+    .filter((c: any) => !c.disabled && !c.closest('#taskComments') && c.id !== 'outsiderDone' && !c.matches('[data-child-toggle], [data-child-open], .tkf-tile'))
+    .map((c: any) => c.id || c.getAttribute('data-feedback-id') || c.className));
+  expect(active, 'controles activos que no guardan').toEqual([]);
+  // «Hecha» con «Deshacer»: la casilla marca de verdad y el aviso la reabre.
+  await outsider.locator('#outsiderDone').check();
+  await settled(outsider);
+  await expect.poll(async () => (await serverRow('tasks.tasks', T_SETO))?.done).toBe(true);
+  await outsider.locator('.ikisai-toast span', { hasText: 'Tarea completada' }).locator('xpath=following-sibling::button').click();
+  await settled(outsider);
+  await expect.poll(async () => (await serverRow('tasks.tasks', T_SETO))?.done).toBe(false);
+  await expect(outsider.locator('#outsiderDone')).not.toBeChecked();
+  // La casilla también desmarca.
   await outsider.locator('#outsiderDone').check();
   await settled(outsider);
   await expect.poll(async () => (await serverRow('tasks.tasks', T_SETO))?.done).toBe(true);
@@ -107,6 +122,12 @@ test('la ficha es de solo lectura salvo el hilo y la casilla de hecha', async ()
   await settled(outsider);
   await expect.poll(async () => (await serverRow('tasks.tasks', T_SETO))?.done).toBe(false);
   expect((await serverRow('tasks.tasks', T_SETO)).title).toBe('Podar el seto');
+  // El hilo, en su baldosa.
+  await fichaBloque(outsider, 'comentarios');
+  await expect(outsider.locator('#taskComments')).toBeVisible();
+  await expect(outsider.locator('#commentText')).toBeEnabled();
+  await expect(outsider.locator('#commentSend')).toBeEnabled();
+  await expect(outsider.locator('#taskComments')).toContainText('Sin comentarios todavía.');
 });
 
 test('comenta y adjunta una foto pequeña; la propietaria ve el comentario y la foto y responde', async () => {
@@ -133,6 +154,8 @@ test('comenta y adjunta una foto pequeña; la propietaria ve el comentario y la 
   await expect(owner.locator(`article[data-row="${T_SETO}"] .commentcount`)).toHaveText('💬 1');
   await shot(owner, '04-propietaria-contador');
   await owner.locator(`[data-edit-task="${T_SETO}"]`).click();
+  await expect(owner.locator('[data-tkf-tile="comentarios"]')).toContainText('Voluntaria Lúa');
+  await fichaBloque(owner, 'comentarios');
   const thread = owner.locator('#taskComments');
   await expect(thread.locator('.comment')).toHaveCount(1);
   await expect(thread.locator('.comment .commentauthor')).toHaveText('Voluntaria Lúa');

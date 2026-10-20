@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { menuRow, openApp, openMenu, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, fichaTitulo, menuRow, openApp, openMenu, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -73,8 +73,11 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
 
   await test.step('[4] crear una etiqueta desde el selector conserva el borrador y sincroniza etiqueta y tarea', async () => {
     await a.locator(`[data-edit-task="${shared.task}"]`).click();
-    await a.locator('#teText').fill('Integración online');
+    // Ficha «Portada y foco» (tanda 31): el lápiz de la portada edita el título; la nota y las etiquetas, en sus baldosas.
+    await (await fichaTitulo(a)).fill('Integración online');
+    await fichaBloque(a, 'nota');
     await a.locator('#teNote').fill('Borrador conservado al crear etiqueta');
+    await fichaBloque(a, 'etiquetas');
     await a.locator('#editLabelsBtn').click();
     await a.locator(`[data-picker-new-label="${ID.trade}"]`).click();
     await a.locator('#nlText').fill('Etiqueta nueva de prueba');
@@ -128,18 +131,24 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
 test('[20][21][23][25] orden de proyectos, vistas guardadas, importación de Keep y recarga sin red', async () => {
   await test.step('[20] ordenar proyectos por menú y por arrastre se sincroniza entre dispositivos', async () => {
     await a.locator('[data-nav="projects"]').click();
-    await a.locator(`[data-project-order="${ID.p2}"]`).click();
+    // «Ordenar» es un control oculto de 1 px para lectores de pantalla (`.ghostcontrol`): la portada lo tapa a la vista,
+    // así que se pulsa como lo haría un lector, sin buscar el punto en pantalla.
+    await a.locator(`[data-project-order="${ID.p2}"]`).dispatchEvent('click');
     await a.locator('#orderTarget').selectOption(ID.inbox!);
     await a.locator('#orderApply').click();
     await settled(a);
-    await expect(a.locator('[data-drop-project]').first()).toHaveAttribute('data-drop-project', ID.p2!);
+    // Proyectos con portada (MUELA-041, tanda 31): la Entrada va primero y después el fijado (el primero del orden de siempre).
+    await expect(a.locator('.project:not(.system)[data-drop-project]').first()).toHaveAttribute('data-drop-project', ID.p2!);
+    // Las portadas son altas: con la pantalla alta, el asa y el destino caben a la vez.
+    await a.setViewportSize({ width: 390, height: 2400 });
     const from = (await a.locator(`[data-project-drag="${ID.p1}"]`).boundingBox())!, to = (await a.locator(`[data-drop-project="${ID.p2}"]`).boundingBox())!;
     await a.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await a.mouse.down();
     await a.mouse.move(to.x + 30, to.y + 8, { steps: 10 });
     await a.mouse.up();
     await settled(a);
-    await expect(a.locator('[data-drop-project]').first()).toHaveAttribute('data-drop-project', ID.p1!);
+    await expect(a.locator('.project:not(.system)[data-drop-project]').first()).toHaveAttribute('data-drop-project', ID.p1!);
+    await a.setViewportSize({ width: 390, height: 844 });
     await sync(b);
     await b.waitForFunction((id) => filteredProjects()[0].id === id, ID.p1, { timeout: 20_000 });
   });
@@ -251,6 +260,7 @@ test('[38][39][40][41][42] escritorio, cambio a móvil y borradores frente a cam
 
   await test.step('[41] una edición remota del mismo campo mantiene el borrador abierto y no pisa el dato canónico', async () => {
     await b.evaluate(() => openTaskEditor((window as any).ID.t1));
+    await fichaBloque(b, 'nota');
     await b.locator('#teNote').fill('Mi borrador todavía abierto');
     const row = await serverRow('tasks.tasks', ID.t1!);
     expect((await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t1, expectedRevision: row.revision, fields: { note: 'Nota concurrente del servidor' } }], server.app.tokens.editor)).status).toBe(200);
@@ -265,6 +275,7 @@ test('[38][39][40][41][42] escritorio, cambio a móvil y borradores frente a cam
 
   await test.step('[42] el editor abierto guarda solo lo cambiado y conserva una edición remota de otro campo', async () => {
     await b.evaluate(() => openTaskEditor((window as any).ID.t1));
+    await fichaBloque(b, 'nota');
     await b.locator('#teNote').fill('Nota combinada desde editor abierto');
     const row = await serverRow('tasks.tasks', ID.t1!);
     expect((await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t1, expectedRevision: row.revision, fields: { priority: 'critical' } }], server.app.tokens.editor)).status).toBe(200);
@@ -309,7 +320,9 @@ test('[43][46][47][48][51] dependencias en los editores: bloqueo, herencia, disp
 
   await test.step('[46] la selección de dependencias sobrevive al selector de etiquetas', async () => {
     await b.evaluate((t) => openTaskEditor(t), shared.paint!);
+    await fichaBloque(b, 'nota');
     await b.locator('#teNote').fill('Dependencia y borrador conservados');
+    await fichaBloque(b, 'etiquetas');
     await b.locator('#editLabelsBtn').click();
     await b.locator('#labelsDone').click();
     await expect(b.locator(`[data-dependency="${shared.plaster}"]`)).toBeChecked();
@@ -331,6 +344,7 @@ test('[43][46][47][48][51] dependencias en los editores: bloqueo, herencia, disp
   await test.step('[48] las condiciones del padre se heredan y se explican en el editor de las hijas', async () => {
     await b.evaluate(() => { state.filters = {}; render(); });
     await b.evaluate((t) => openTaskEditor(t), shared.group!);
+    await fichaBloque(b, 'depende');
     await b.locator('#dependencyPicker').evaluate((el: HTMLDetailsElement) => { el.open = true; });
     await b.locator(`[data-dependency="${shared.plaster}"]`).check();
     await b.locator('#saveTaskBtn').click();
@@ -500,7 +514,10 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     await expect(a.locator(`[data-project-drag="${ID.inbox}"]`)).toHaveCount(0);
     // El botón de la fila abre directamente el editor, con mover e historial dentro (aceptación V1, 6).
     await a.locator(`[data-task-menu="${ID.t1}"]`).click();
-    await expect(a.locator('#teText')).toBeVisible();
+    // Ficha «Portada y foco» (tanda 31): mover, historial y nivel, en la baldosa «Más».
+    await expect(a.locator('#sheet .tkf-cover .cover-box')).toBeVisible();
+    await expect(a.locator('#teText')).toHaveCount(1);
+    await fichaBloque(a, 'mas');
     await expect(a.locator('#taskMoreActions #menuMove')).toBeVisible();
     await expect(a.locator('#taskMoreActions #menuHistory')).toBeVisible();
     await a.evaluate(() => closeSheet());
@@ -519,7 +536,9 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     await expect(a.locator('#teParent')).toBeHidden();
     await a.locator('#priorityStar').click();
     await expect(a.locator('#tePriority')).toHaveValue('critical');
+    await fichaBloque(a, 'nota');
     await a.locator('#teNote').fill('Nota conservada');
+    await fichaBloque(a, 'etiquetas');
     expect(await a.locator('.inlinepicker [data-inline-label]').count()).toBeGreaterThan(0);
     // Las familias sin etiquetas elegidas aparecen plegadas: se abre la de Oficio, como haría la persona.
     await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).evaluate((el) => { const family = el.closest('details'); if (family) family.open = true; el.scrollIntoView({ block: 'center' }); });
@@ -702,9 +721,16 @@ test('[63][64] duplicar proyectos, plantillas entre áreas, alias y «Mis tareas
 test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciado y deshacer rápido', async () => {
   await test.step('[65] coste de tarea y presupuesto de proyecto se guardan en el servidor y se ven en filas, tarjetas y página', async () => {
     await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    // El campo «Coste (€)» ya no se ve (MUELA-083 §1, tanda 31): el valor de antes llega del servidor, se conserva y sale en «Coste».
+    const before = await serverRow('tasks.tasks', ID.t2!);
+    expect((await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t2, expectedRevision: before.revision, fields: { cost: 150 } }], server.app.tokens.editor)).status).toBe(200);
+    await a.evaluate(() => syncNow());
+    await a.waitForFunction(() => !Sync.busy && taskLocation((window as any).ID.t2).t.cost === 150);
     await a.evaluate(() => openTaskEditor((window as any).ID.t2));
-    await a.locator('#teCost').fill('150');
-    await a.locator('#saveTaskBtn').click();
+    await expect(a.locator('#sheet .costfield')).toBeHidden();
+    await fichaBloque(a, 'material');
+    await expect(a.locator('#taskCosts [data-cost-legacy]')).toContainText('150');
+    await a.locator('#closeDialog').click();
     await settled(a);
     expect(await a.evaluate(() => taskLocation((window as any).ID.t2).t.cost)).toBe(150);
     expect((await serverRow('tasks.tasks', ID.t2!)).cost).toBe(150);
@@ -738,9 +764,13 @@ test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciad
     expect([row.color, row.budget, row.note]).toEqual(['#3f6d8e', 1200, 'Atomic visual save']);
   });
 
-  await test.step('[67] el coste vaciado sobrevive al selector, y una edición concurrente del coste mantiene el borrador sin pisar el dato remoto', async () => {
+  await test.step('[67] el coste quitado con «×» sobrevive al selector y al guardar, y el lápiz lo corrige', async () => {
     await a.evaluate(() => openTaskEditor((window as any).ID.t2));
-    await a.locator('#teCost').fill('');
+    await fichaBloque(a, 'material');
+    await a.locator('#taskCosts [data-cost-legacy-remove]').click();
+    await settled(a);
+    expect((await serverRow('tasks.tasks', ID.t2!)).cost).toBeNull();
+    await fichaBloque(a, 'etiquetas');
     await a.locator('#editLabelsBtn').click();
     await a.locator('#labelsDone').click();
     await expect(a.locator('#teCost')).toHaveValue('');
@@ -748,18 +778,23 @@ test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciad
     await settled(a);
     expect(await a.evaluate(() => taskLocation((window as any).ID.t2).t.cost)).toBeNull();
     expect((await serverRow('tasks.tasks', ID.t2!)).cost).toBeNull();
-    await a.evaluate(() => openTaskEditor((window as any).ID.t2));
-    await a.locator('#teCost').fill('30');
+    // Con un valor remoto, el lápiz lo corrige al momento.
     const row = await serverRow('tasks.tasks', ID.t2!);
     expect((await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t2, expectedRevision: row.revision, fields: { cost: 40 } }], server.app.tokens.editor)).status).toBe(200);
     await a.evaluate(() => syncNow());
     await a.waitForFunction(() => !Sync.busy && taskLocation((window as any).ID.t2).t.cost === 40);
-    await a.locator('#saveTaskBtn').click();
+    await a.evaluate(() => openTaskEditor((window as any).ID.t2));
+    await fichaBloque(a, 'material');
+    await a.locator('#taskCosts [data-cost-legacy-edit]').click();
+    await a.locator('#costLegacyInput').fill('30');
+    await a.locator('#costLegacyInput').press('Enter');
+    await settled(a);
+    expect((await serverRow('tasks.tasks', ID.t2!)).cost).toBe(30);
     await expect(a.locator('#teCost')).toHaveValue('30');
-    expect(await a.evaluate(() => taskLocation((window as any).ID.t2).t.cost)).toBe(40);
     expect(await a.evaluate(() => Sync.record.queue.length)).toBe(0);
     await a.locator('#closeDialog').click();
   });
+
 
   await test.step('[68] completar ofrece Deshacer, y los atajos de teclado llegan a la búsqueda y a la fila de alta', async () => {
     await a.evaluate(() => { state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
@@ -833,7 +868,9 @@ test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y c
     await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; tab().color = '#3f6d8e'; tab().projects.find((x: any) => x.id === (window as any).ID.p1).color = '#6f5a8f'; save(); navigateView('projects'); });
     await settled(a);
     expect(await a.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#3f6d8e');
-    expect(await a.locator('.project:not(.system) .cardring svg').count()).toBeGreaterThan(0);
+    // Proyectos con portada (tanda 31): la portada del kit y las tres cifras en lugar del anillo.
+    expect(await a.locator('.project:not(.system) .cover-box').count()).toBeGreaterThan(0);
+    expect(await a.locator('.project:not(.system) .stat-row .stat-item').count()).toBeGreaterThan(0);
     expect(await a.evaluate(() => document.querySelectorAll('.chip').length - document.querySelectorAll('.chip[data-pastel]').length)).toBe(0);
     await a.evaluate(() => { state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
     expect(await a.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#6f5a8f');

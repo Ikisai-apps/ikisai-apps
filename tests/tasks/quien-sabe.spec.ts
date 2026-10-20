@@ -9,7 +9,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const Sync: any, state: any, render: any, openTaskEditor: any, openProjectEditor: any;
@@ -117,6 +117,7 @@ const rows = async (table: string, key: string, owner: string, col: string) => (
 test('sin oficio no sale nada; al poner ACS salen las personas capaces, en orden, y nada se asigna solo', async () => {
   await openProject(MANT, OBRA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await expect(page.locator('#sheet .tradefield')).toBeVisible();
   await expect(who()).toBeHidden();
   await pickTrade('acs', 'ACS');
@@ -147,6 +148,7 @@ test('sin oficio no sale nada; al poner ACS salen las personas capaces, en orden
 test('al tocar una chip, la persona entra en «Personas» (un toque) y se guarda; la que ya estaba sale marcada', async () => {
   await openProject(MANT, OBRA);
   await page.evaluate((t) => openTaskEditor(t), T_GRIFO);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await expect(picked()).toHaveText(['Valeria Gómez']);
   await pickTrade('acs', 'ACS');
   await expect(whoNames()).toHaveText(['VG', 'LP', 'AN']);
@@ -169,6 +171,7 @@ test('al tocar una chip, la persona entra en «Personas» (un toque) y se guarda
 test('varios oficios: se juntan sin repetir, con el mejor grado; sin nadie capaz, el aviso con el enlace a Central', async () => {
   await openProject(MANT, OBRA);
   await page.evaluate((t) => openTaskEditor(t), T_LUZ);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await pickTrade('acs', 'ACS');
   await pickTrade('electr', 'Electricidad');
   // VG (2, media), NV (2, según calendario), LP (2, baja), AN (1 en los dos: una sola vez).
@@ -188,7 +191,10 @@ test('varios oficios: se juntan sin repetir, con el mejor grado; sin nadie capaz
 
 test('ficha de proyecto: también sale debajo de «Oficio del proyecto» y la chip va a «Personas del proyecto»', async () => {
   await openProject(MANT, OBRA);
-  await page.evaluate((p) => openProjectEditor(p), OBRA);
+  // Ficha de proyecto «Portada y foco» (MUELA-073, tanda 31): la baldosa «Quién» lleva al editor, en Oficio y Personas.
+  await page.locator(`[data-project-quien="${OBRA}"]`).click();
+  await expect(page.locator('#sheet .tradefield')).toBeVisible();
+  await expect(page.locator('#sheet .personfield')).toBeAttached();
   await expect(who()).toBeHidden();
   await pickTrade('electr', 'Electricidad');
   await expect(whoNames()).toHaveText(['NV', 'AN']);
@@ -198,6 +204,9 @@ test('ficha de proyecto: también sale debajo de «Oficio del proyecto» y la ch
   await page.locator('#saveProjectBtn').click();
   await settled(page);
   expect(await rows('tasks.project_people', 'project_id', OBRA, 'person_id')).toEqual([P_NV]);
+  // La baldosa dice ya el oficio y nombra a la persona (con las de sus tareas).
+  await expect(page.locator(`[data-project-quien="${OBRA}"]`)).toContainText('Electricidad');
+  await expect(page.locator(`[data-project-quien="${OBRA}"] .tkf-vh`)).toContainText('Nora Vidal');
 });
 
 test('con las personas en etiquetas no sale (aunque los oficios sigan en Central)', async () => {
@@ -208,6 +217,7 @@ test('con las personas en etiquetas no sale (aunque los oficios sigan en Central
   await expect.poll(() => page.evaluate(() => (window as any).eval('Sync.core.tradeSource()+":"+Sync.core.peopleSource()'))).toBe('central:labels');
   await openProject(MANT, OBRA);
   await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien'); // Ficha «Portada y foco» (tanda 31): responsable, oficio y personas en «Quién».
   await expect(page.locator('#sheet .tradefield')).toBeVisible();
   await expect(page.locator('#sheet .tradefield .space-chip')).toContainText(['ACS']);
   await expect(who()).toHaveCount(0);

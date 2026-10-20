@@ -8,14 +8,17 @@ function boardColumns(){
   const cols=[{id:'overdue',name:'Vencidas',drop:null},{id:'today',name:'Hoy',drop:today},{id:'tomorrow',name:'Mañana',drop:tomorrow},{id:'week',name:'Esta semana',drop:sunday},{id:'later',name:'Más adelante',drop:nextMonday},{id:'none',name:'Sin fecha',drop:''},{id:'done',name:'Hechas',drop:'done'}];
   const seen=new Set();return cols.filter(c=>{if(c.drop===null||c.drop===''||c.drop==='done')return true;if(seen.has(c.drop))return false;seen.add(c.drop);return true});
 }
+/* La fecha que cuenta es la de la cuenta única (project-stats.js, hallazgo 8 de MUELA-041): una hija sin fecha toma la de su
+   madre, así que las hijas de una madre vencida salen en «Vencidas», como en la ficha y en Proyectos. */
 function boardColumnOf(p,t,cols){
   if(status(p,t)==='done')return 'done';
-  if(!t.due)return 'none';
+  const due=typeof psDueOf==='function'?psDueOf(p,t):t.due;
+  if(!due)return 'none';
   const today=boardDay(0),ids=cols.map(c=>c.id);
-  if(t.due<today)return 'overdue';
-  if(t.due===today)return 'today';
-  if(ids.includes('tomorrow')&&t.due===boardDay(1))return 'tomorrow';
-  const week=cols.find(c=>c.id==='week');if(week&&t.due<=week.drop)return 'week';
+  if(due<today)return 'overdue';
+  if(due===today)return 'today';
+  if(ids.includes('tomorrow')&&due===boardDay(1))return 'tomorrow';
+  const week=cols.find(c=>c.id==='week');if(week&&due<=week.drop)return 'week';
   return 'later';
 }
 function boardCard(p,t){

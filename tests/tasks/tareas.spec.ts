@@ -4,7 +4,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const state: any, render: any, openTaskEditor: any, navigateView: any;
@@ -62,6 +62,9 @@ test('FB_2026_039: en la vista General también se reordenan los proyectos arras
 test('FB_2026_044: al editar la madre, sus hijas y «+ Nueva hija»', async () => {
   await page.evaluate(([t, p]) => { state.activeTab = t; state.view = 'project'; state.currentProject = p; render(); }, [TAB, P1]);
   await page.evaluate((id) => openTaskEditor(id), MADRE);
+  // Ficha «Portada y foco» (tanda 31): las hijas y «Pasos en orden», en la baldosa «Pasos».
+  await expect(page.locator('[data-tkf-tile="pasos"]')).toContainText('0 de 2 hechos');
+  await fichaBloque(page, 'pasos');
   const section = page.locator('#taskChildren');
   await expect(section.locator('.childtext')).toHaveText(['Quitar azulejos', 'Nivelar']);
   await page.locator('#newChildText').fill('Poner azulejos');
@@ -83,6 +86,7 @@ test('FB_2026_041: «Pasos en orden» bloquea cada hija por la de arriba; soltar
   expect(await page.evaluate((b) => (window as any).dependencyBlockers((window as any).taskLocation(b).t, (window as any).project()), B)).toEqual([A]);
   // En el editor de la hija: paso anterior y «Soltar de la cadena».
   await page.evaluate((id) => openTaskEditor(id), B);
+  await fichaBloque(page, 'pasos');
   await expect(page.locator('#stepInfo')).toContainText('Paso anterior: Quitar azulejos');
   await page.locator('#stepFreeToggle').click();
   await settled(page);

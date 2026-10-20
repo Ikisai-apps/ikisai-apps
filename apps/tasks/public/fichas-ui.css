@@ -1,0 +1,64 @@
+/* Fichas de tarea y de proyecto · «Portada y foco» (MUELA-083 §1 y MUELA-048; tanda 31, zona 2). Solo colocación: la portada,
+   el foco, las baldosas del kit y los grises son del kit. Prefijo `tkf-`. */
+.tkf-hide{display:none!important}
+.tkf-vh{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* --- Ficha de tarea --------------------------------------------------------------------------------------------------- */
+#sheet.tkf>.sheettitle{font-family:inherit;font-size:13px;line-height:1.3;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+#sheet.tkf .tkf-cover{display:block;margin:0 0 10px}
+#sheet.tkf .tkf-cover .cover-box{min-height:150px}
+#sheet.tkf .tkf-toolgap,.tkf-pcover .tkf-toolgap{flex:1;min-width:0!important;pointer-events:none}
+#sheet.tkf .tkf-pencil,.tkf-pcover .tkf-pencil{background:rgba(255,255,255,.92);color:#263129;border-radius:50%;border:0;display:inline-grid;place-items:center}
+#sheet.tkf .tkf-titlefield{margin:0 0 10px}
+#sheet.tkf .tkf-state{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+#sheet.tkf .tkf-state b{color:var(--ink)}
+#sheet.tkf .tkf-medal{display:inline-flex;flex:none}
+#sheet.tkf .tkf-medal .medal-disc{border-radius:30%}
+#sheet.tkf .tkf-st{font-weight:750;color:var(--ink)}
+#sheet.tkf .tkf-st.ok{color:var(--olive-dark)}
+#sheet.tkf .tkf-st.alert{color:#9c3a24}
+html.dark #sheet.tkf .tkf-st.alert{color:#f0a08c}
+#sheet.tkf #taskOrigin{margin:0 0 8px}
+#sheet.tkf .tkf-ro{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink)}
+#sheet.tkf .outsiderdone{min-height:48px;margin:6px 0 4px;padding:8px 12px;border-radius:14px;background:color-mix(in srgb,var(--olive) 12%,var(--paper));display:flex;align-items:center;gap:10px}
+#sheet.tkf [aria-disabled="true"]:disabled{opacity:.55;cursor:not-allowed}
+.tkf-tiles,.tkf-ptiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 14px}
+.tkf-tile{position:relative;display:grid;align-content:start;gap:4px;min-width:0;min-height:84px;padding:12px 28px 12px 12px;border:1px solid var(--line);border-radius:16px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer;box-shadow:0 1px 2px rgba(31,42,34,.06)}
+div.tkf-tile{cursor:default;padding-right:12px}
+.tkf-tile.wide{grid-column:1/-1}
+.tkf-tile:focus-visible{outline:3px solid var(--olive);outline-offset:2px}
+.tkf-tname{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.tkf-n{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--ink);color:var(--paper);font-size:11px;text-align:center;letter-spacing:0}
+.tkf-tline{display:flex;align-items:center;gap:10px;font-size:15px;line-height:1.35;overflow-wrap:anywhere;min-width:0}
+.tkf-tline>span{min-width:0}
+.tkf-none{color:var(--muted)}
+.tkf-go{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:22px;color:var(--muted)}
+.tkf-faces{display:inline-flex;flex:none}
+.tkf-faces .medal-disc+.medal-disc{margin-left:-12px}
+.tkf-faces .medal-disc{box-shadow:0 0 0 2px var(--paper)}
+.tkf-trade{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent);font-size:13px}
+#sheet.tkf .tkf-stage{margin:0 0 12px}
+#sheet.tkf .tkf-back{min-height:46px;padding:0 14px 0 4px;border:0;background:none;color:var(--olive-dark);font:inherit;font-weight:800;cursor:pointer}
+html.dark #sheet.tkf .tkf-back{color:var(--ink)}
+#sheet.tkf .tkf-ftitle{font-family:Georgia,serif;font-size:21px;margin:2px 0 12px}
+#sheet.tkf .tkf-ftitle:focus{outline:none}
+#sheet.tkf .tkf-costedit{width:110px;height:40px}
+#sheet .costline[data-cost-legacy]{align-items:center}
+#sheet .costline [data-cost-legacy-edit],#sheet .costline [data-cost-legacy-remove]{min-width:40px;min-height:40px}
+@media (min-width:700px){.tkf-tiles{grid-template-columns:repeat(3,1fr)}#sheet.tkf .tkf-tile[data-tkf-tile="comentarios"]{grid-column:span 2}}
+/* --- Ficha de proyecto ------------------------------------------------------------------------------------------------ */
+main.tkf-project .tkf-projhead:not(:has(input)){position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+main.tkf-project .tkf-pcover{display:block;margin:2px 0 10px}
+main.tkf-project .tkf-pcover .cover-tools .back,main.tkf-project .tkf-pcover .cover-tools [data-edit-project]{background:rgba(255,255,255,.92);color:#263129;border:0;border-radius:50%;padding:0;display:inline-grid;place-items:center;font-size:22px}
+main.tkf-project .projectnote{margin:0 0 10px}
+main.tkf-project .tkf-ptiles{margin:4px 0 12px}
+main.tkf-project .tkf-ptiles .tkf-quien{min-height:72px}
+main.tkf-project .tkf-costtile{display:block;margin:0;font-size:inherit;color:inherit}
+main.tkf-project .tkf-costtile .tile-box{width:100%;height:100%}
+main.tkf-project .tkf-pfocus{display:block;margin:6px 0 16px}
+@media (min-width:1100px){main.tkf-project .tkf-pfocus{max-width:640px}}
+/* --- «Abrir a…» arriba del editor del proyecto -------------------------------------------------------------------------- */
+#openToField .checkline{display:flex;align-items:center;gap:10px;min-height:48px}
+#openToField .tkf-openmedal{display:inline-flex;flex:none}
+#openToField .tkf-sees{margin-left:auto;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:800;background:color-mix(in srgb,var(--ink) 7%,transparent);color:var(--ink);white-space:nowrap}
+#openToField .tkf-sees.on{background:color-mix(in srgb,var(--olive) 18%,var(--paper));color:var(--olive-dark)}
+html.dark #openToField .tkf-sees.on{color:var(--ink)}
