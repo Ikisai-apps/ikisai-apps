@@ -97,8 +97,9 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
     el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'booking.calendario.capas.estancias', 'data-feedback-label': 'Abrir Estancias', onclick: () => navigate('#/estancias') }, 'Estancias')) : null;
 
   // «Fines de semana libres» (tanda 27, MUELA-067 §7): el más barato de los próximos meses para un retiro de 2 noches,
-  // y la hoja con todos, con la regla de disponibilidad de siempre. Calcula en el dispositivo (también sin red). Sin
-  // tarifas legibles (el lector), no se enseña: no ve precios.
+  // y la hoja con todos, con la regla de disponibilidad de siempre. Calcula en el dispositivo (también sin red). El lector
+  // también ve los precios (tanda 30, MUELA-086 §3): como no lee tarifas ni bloqueos, los pide a
+  // `booking.price_calendar_source` (lo justo para el precio, sin motivos ni textos) y los guarda en memoria esta sesión.
   const weekendsHost = el('div', { 'data-feedback-id': 'booking.calendario.fines', 'data-feedback-label': 'Fines de semana libres' });
   const seesRates = canRead(client, RATES) && canRead(client, CONDITIONS);
   const PERSONS_KEY = 'booking:calendario:personas';
@@ -106,15 +107,22 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   let weekendSheet: Sheet | null = null;
   async function weekendMonths() {
     const list = async (table: Parameters<typeof client.list>[0]) => (canRead(client, table) ? ((await client.list(table)) as Array<Record<string, any>>).filter((r) => !r.deleted_at) : []);
-    const conditions = await list(CONDITIONS);
     const c = { persons, start: today(), nights: 2, eventType: 'retiro', conditionsId: null };
+    const reservations = (await list(RESERVATIONS)) as never;
+    if (!seesRates) {
+      const source = await readerSource(client);
+      if (!source) return null;
+      return priceCalendar({ reservation: caseReservation(c), persons, nights: 2, rates: source.rates as never, conditions: source.conditions as never,
+        from: today(), months: 6, availability: { reservations, options: source.options as never, blocks: source.blocks as never } });
+    }
+    const conditions = await list(CONDITIONS);
     return priceCalendar({ reservation: caseReservation(c), persons, nights: 2, rates: (await list(RATES)).filter((r) => r.active) as never,
       conditions: (conditions.find((x) => x.is_default && x.active !== false) ?? conditions.find((x) => x.active !== false) ?? null) as never,
-      from: today(), months: 6, availability: { reservations: (await list(RESERVATIONS)) as never, options: (await list(DATE_OPTIONS)) as never, blocks: (await list(DATE_BLOCKS)) as never } });
+      from: today(), months: 6, availability: { reservations, options: (await list(DATE_OPTIONS)) as never, blocks: (await list(DATE_BLOCKS)) as never } });
   }
   async function paintWeekends(): Promise<void> {
-    if (!seesRates) return;
     const months = await weekendMonths();
+    if (!months) return void replace(weekendsHost);
     const best = months.flatMap((m) => m.weekends).find((w) => w.cheapest) ?? null;
     replace(weekendsHost, el('button', { type: 'button', class: 'bk-casedates', id: 'freeWeekends', 'data-feedback-id': 'booking.calendario.fines.abrir', 'data-feedback-label': 'Fines de semana libres', onclick: () => void openWeekends() },
       el('span', { class: 'hint' }, 'Fines de semana libres'),
@@ -123,6 +131,7 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   }
   async function openWeekends(): Promise<void> {
     const months = await weekendMonths();
+    if (!months) return;
     void weekendSheet?.close(true);
     weekendSheet = openPriceSheet({
       title: 'Fines de semana libres', months, persons, feedbackId: 'booking.calendario.fines.hoja',
@@ -233,7 +242,10 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const offBlocks = showBlocks ? client.onTable(DATE_BLOCKS, () => void calendar.refresh().then(paintBlocks)) : () => undefined;
   void paintBlocks();
   void paintWeekends();
-  const offWeekends = seesRates ? [RESERVATIONS, DATE_BLOCKS, DATE_OPTIONS, RATES, CONDITIONS].filter((t) => canRead(client, t)).map((t) => client.onTable(t, () => void paintWeekends())) : [];
+  const offWeekends = [RESERVATIONS, DATE_BLOCKS, DATE_OPTIONS, RATES, CONDITIONS].filter((t) => canRead(client, t)).map((t) => client.onTable(t, () => void paintWeekends()));
+  const onOnlineWeekends = () => { if (!seesRates) void paintWeekends(); };
+  window.addEventListener('online', onOnlineWeekends);
+  offWeekends.push(() => window.removeEventListener('online', onOnlineWeekends));
   void loadStatus();
   return () => {
     offWeekends.forEach((o) => o());
@@ -245,3 +257,22 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
     calendar.destroy();
   };
 };
+
+interface PriceSource { rates: unknown[]; conditions: unknown; blocks: unknown[]; options: unknown[] }
+let readerCache: { at: number; value: PriceSource } | null = null;
+
+/** Lo justo para el precio, para quien no lee tarifas (el lector). Sin red, la última copia de esta sesión; sin copia, nada. */
+async function readerSource(client: Parameters<ViewMount>[0]['client']): Promise<PriceSource | null> {
+  if (readerCache && (Date.now() - readerCache.at < 5 * 60_000 || !navigator.onLine)) return readerCache.value;
+  if (!navigator.onLine) return null;
+  try {
+    const value = await client.api<PriceSource>('/read/booking.price_calendar_source', { method: 'POST', json: {} });
+    readerCache = { at: Date.now(), value };
+    return value;
+  } catch {
+    return readerCache?.value ?? null;
+  }
+}
+
+/** Las tarifas no se quedan al cerrar sesión (como `RATES` en `clearOnLogout`). */
+export function forgetReaderPrices(): void { readerCache = null; }

@@ -1348,7 +1348,13 @@ Sin ruta nueva: se calcula en el dispositivo con lo sincronizado (tarifas, condi
 - **`priceFor` y `priceCalendar`:** llegadas en viernes, por meses, con el precio del caso (`suggestLines` → `proposalTotals` → `applyMinimum`).
 - **`high`:** la temporada alta es un ajuste del tarifario que sube el precio. No hay columna nueva.
 - **`cheapest`:** el más barato de los libres.
-- **El lector** no ve precios (decisión de VG).
+- **El lector** ve los precios del Calendario (tanda 30, MUELA-086 §3: son tarifas, no costes). Como no lee tarifas, condiciones ni bloqueos, los pide a `booking.price_calendar_source` (migración 0474; `POST /api/v1/read/booking.price_calendar_source`, reader, editor y owner). Devuelve lo justo para calcular en el dispositivo:
+  - `rates`: las activas, sin «incluye», «no incluye» ni datos del portal;
+  - `conditions`: las por defecto, con señal, IVA y mínimo y sin el texto;
+  - `blocks`: las fechas de los bloqueos, sin el motivo;
+  - `options`: las fechas que Ikisai ofrece a reservas abiertas.
+
+  El cliente la guarda en memoria esta sesión y la borra al cerrar sesión. Sin escrituras.
 
 ### 17.5 Preguntas para Core
 
