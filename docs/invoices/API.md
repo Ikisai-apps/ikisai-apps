@@ -1688,7 +1688,7 @@ Todo esto solo con el interruptor `resources_links` encendido. Apagado, la app s
 - **Compras › Artículos:** filtro «Artículo» (`#purchaseItem`, `itemId` en `purchaseItems`) con los artículos enlazados en alguna línea, de cualquier proveedor.
 
 ### 16.20 R4 · encender el enlace y no duplicar las compras recibidas en Tasks (0238, PR 5; aprobado por el usuario, 19-10-2026)
-- **Interruptor (Inicio › «Inventario (Recursos)», solo el owner):** «Enlace: Apagado / Encendido» y el botón «Encender» o «Apagar» (`#resourceLinksSwitch`), siempre con confirmación. Escribe `invoices.settings.resources_links`.
+- **Interruptor (Inicio › «Inventario (Recursos)», solo el owner):** «Encendido» o «Apagado» (`#resourceLinksState`, con su medallón desde la tanda 31, §16.21.5) y el botón «Encender» o «Apagar» (`#resourceLinksSwitch`), siempre con confirmación. Escribe `invoices.settings.resources_links`.
   - **Al encenderlo,** la Edge cuadra todas las facturas enlazadas: lo ya validado entra con la fecha de cada factura (las retroactivas, §16.18). Conviene aplicar antes la vista previa.
   - **Al apagarlo,** las facturas que se validen dejan de entrar y la app vuelve a verse como antes. Lo que ya entró se queda.
   - **Se entrega apagado:** lo enciende el usuario.
@@ -1812,3 +1812,15 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
   - «He leído esto» (`readChecks`) con ✓/! por proveedor, fecha, importes, categoría y documento, y la miniatura del original.
 - **Facturas:** «Marcar pagada» en la fila de las pendientes de pago, en su hoja (`ui/pay-sheet.ts`), con «Deshacer».
 - **«Artículo»:** la línea enlazada lleva el medallón de su artículo; el bloque, el borde de lo peor (sin artículo, o sin entrar al inventario).
+
+#### 16.21.5 Tanda 31: la hoja «Inventario» de Inicio (MUELA-079)
+- **Estado con su medallón** (`renderMedal`, icono `cart`). `#resourceLinksState` dice exactamente «Encendido» o «Apagado», y `#resourceLinksMeaning` explica lo que supone:
+  - encendido: «Las líneas con artículo y sitio de lo que validas entran en el inventario común con la fecha de la factura.»;
+  - apagado: «Las facturas no entran en el inventario.».
+- **Las cuatro cifras** de la vista previa (`#resourceLinksFigures`, `renderStats`): se enlazan, se crean (con la pista «m artículos nuevos»), por decidir (en ámbar, «en la ficha») y no son stock.
+  - «Se enlazan», «se crean» y «no son stock» abren la vista previa de siempre (`#resourceLinksCounts` sigue siendo la lista de dentro).
+  - «Por decidir» abre sus líneas (`#resourceLinksUndecided`): las de factura llevan a `#/facturas/<código>`; las de la memoria no tienen factura y dicen «memoria».
+  - Sin red no hay cifras, porque salen del servidor.
+- **La vista previa entera se guarda** (`counts` y `rows`, no solo la cifra de «por decidir»). Se vuelve a pedir al recuperar la red, tras «Aplicar» y al cambiar el interruptor, aquí o en otro dispositivo.
+- **«Apagar»:** diálogo de peligro, sin «Deshacer», con el texto completo: «Las facturas que valides dejan de entrar en el inventario y la app vuelve a verse como antes. Mientras esté apagado, ni las compras que se reciban en Tasks ni las facturas que anules o rectifiques se cuadran con el inventario, y una compra puede contarse dos veces. Al volver a encenderlo, todo se cuadra. Lo que ya entró se queda.»
+- **No cambia:** la vista previa, «Aplicar» (que no enciende el interruptor), el sitio habitual, «Encender», lo que pasa sin red, los ids y que solo la vea el owner.

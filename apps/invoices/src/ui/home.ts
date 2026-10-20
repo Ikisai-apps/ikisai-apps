@@ -1,5 +1,5 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { bindOnline, closeSheet, confirmDialog, createQueue, el, formatDate, icon, openSheet, renderStats, replace, toast, toastWithAction, type QueueItem } from '@ikisai/ui-kit';
+import { bindOnline, closeSheet, confirmDialog, createQueue, el, formatDate, icon, openSheet, renderMedal, renderStats, replace, toast, toastWithAction, type QueueItem } from '@ikisai/ui-kit';
 import { INVOICES, ISSUED_INVOICES, SETTINGS, describeError } from '../app/client.ts';
 import { linksEnabled } from '../app/resources.ts';
 import { fb } from './feedback.ts';
@@ -73,7 +73,10 @@ export const mountHome: ViewMount = (ctx) => {
   // --- Herramientas: lo de cada hoja se crea una vez y se pinta siempre (mismos ids) ------------------------------------
   const fromDrive = el('dd', { id: 'statFromDrive' }, '…');
   const driveState = el('p', { class: 'hint', id: 'driveState' });
-  const linksState = el('dd', { id: 'resourceLinksState' }, '…');
+  // Tanda 31 (MUELA-079): el estado con su medallón y lo que supone, y las cuatro cifras de la vista previa
+  const linksState = el('strong', { id: 'resourceLinksState' }, '…');
+  const linksMeaning = el('span', { class: 'hint', id: 'resourceLinksMeaning' });
+  const linksFigures = el('div', { id: 'resourceLinksFigures', 'data-feedback-ignore': '' });
   const linksSwitch = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.interruptor', 'data-feedback-label': 'Encender o apagar el enlace', class: 'ghost', type: 'button', id: 'resourceLinksSwitch', onclick: () => void switchResourceLinks() }, '…') as HTMLButtonElement;
   const linksPreviewButton = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa');
   const supplierCount = el('span', { id: 'statSuppliers' }, '…');
@@ -113,8 +116,8 @@ export const mountHome: ViewMount = (ctx) => {
       el('p', null, connectButton)), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' })] : []),
     // R4: el inventario es un ajuste de toda la casa: estado, vista previa y el interruptor con su diálogo (solo el owner)
     ...(isOwner ? [tool('inventory', 'toolInventory', 'Inventario', 'cart', () => el('div', null,
-      el('p', null, 'Enlaza los artículos de las facturas ya validadas con el inventario común. Primero ves qué se enlaza, qué se crea y qué queda por decidir.'),
-      el('dl', { class: 'kv' }, el('dt', null, 'Enlace'), linksState),
+      el('div', { class: 'inv-stocklink-state' }, renderMedal({ icon: 'cart', size: 40 }), el('div', null, linksState, linksMeaning)),
+      linksFigures,
       el('p', { class: 'btnrow' }, linksPreviewButton, linksSwitch)), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' })] : []),
     // La única entrada a Proveedores (no está en el menú)
     fb(el('a', { class: 'inv-tool', id: 'toolSuppliers', href: '#/proveedores', onclick: (e: Event) => { e.preventDefault(); navigate('#/proveedores'); } },
@@ -247,10 +250,53 @@ export const mountHome: ViewMount = (ctx) => {
     function byIdNow(id: string): MirrorRow | undefined { return currentRows.get(id) ?? byId.get(id); }
   }
   let currentRows = new Map<string, MirrorRow>();
-  // «Encendido · 2 por decidir»: lo dice la vista previa del servidor (con red, una vez, solo el owner)
-  let undecided = 0;
-  if (isOwner && navigator.onLine) {
-    void client.api<ResourceLinksPreview>('/resource-links/preview').then((p) => { undecided = p.counts.dudoso ?? 0; void paintCounts(); }).catch(() => undefined);
+  // «Encendido · 2 por decidir» y las cuatro cifras: la vista previa entera del servidor (solo el owner y con red). Se vuelve
+  // a pedir al recuperar la red, tras «Aplicar» y al cambiar el interruptor, para que la pista y las cifras no se queden viejas.
+  let linksPreview: ResourceLinksPreview | null = null;
+  let linksOnSeen: boolean | null = null;
+  function refreshLinksPreview(): void {
+    if (!isOwner || !navigator.onLine) return;
+    void client.api<ResourceLinksPreview>('/resource-links/preview').then((p) => { linksPreview = p; paintLinks(); }).catch(() => undefined);
+  }
+  const onBackOnline = () => refreshLinksPreview();
+  window.addEventListener('online', onBackOnline);
+  window.addEventListener('offline', paintLinks);
+  refreshLinksPreview();
+
+  function paintLinks(): void {
+    const on = linksEnabled();
+    linksState.textContent = on ? 'Encendido' : 'Apagado';
+    linksMeaning.textContent = on
+      ? 'Las líneas con artículo y sitio de lo que validas entran en el inventario común con la fecha de la factura.'
+      : 'Las facturas no entran en el inventario.';
+    linksSwitch.textContent = on ? 'Apagar' : 'Encender';
+    const undecided = linksPreview?.counts.dudoso ?? 0;
+    if (toolHint.inventory) toolHint.inventory.textContent = on ? `Encendido${undecided ? ` · ${undecided} por decidir` : ''}` : 'Apagado';
+    // Sin red no hay cifras: salen del servidor
+    const c = navigator.onLine ? linksPreview?.counts : null;
+    if (!c) { replace(linksFigures); return; }
+    const preview = () => void openResourceLinks(linksPreviewButton);
+    replace(linksFigures, renderStats([
+      { value: c.enlazar, label: 'se enlazan', onClick: preview, feedbackId: 'invoices.inicio.inventario.cifra' },
+      { value: c.crear, label: 'se crean', hint: `${c.new_items} artículo${c.new_items === 1 ? '' : 's'} nuevo${c.new_items === 1 ? '' : 's'}`, onClick: preview, feedbackId: 'invoices.inicio.inventario.cifra_crear' },
+      { value: c.dudoso, label: 'por decidir', hint: 'en la ficha', tone: c.dudoso ? 'warn' : null, onClick: openUndecided, feedbackId: 'invoices.inicio.inventario.por_decidir' },
+      { value: c.omitir, label: 'no son stock', onClick: preview, feedbackId: 'invoices.inicio.inventario.cifra_omitir' },
+    ], { label: 'Vista previa del inventario' }));
+  }
+  /** «Por decidir»: sus líneas, cada una a la ficha de su factura (por código); las de la memoria no tienen factura. */
+  function openUndecided(): void {
+    const rows = (linksPreview?.rows ?? []).filter((r) => r.action === 'dudoso');
+    openSheet({
+      title: 'Por decidir en la ficha',
+      meta: 'Elige el artículo en la ficha de cada factura, o usa el texto sin artículo.',
+      body: rows.length
+        ? el('ul', { class: 'plain inv-undecided', id: 'resourceLinksUndecided' }, ...rows.map((r) => el('li', null, r.source === 'line' && r.invoice_code
+          ? el('a', { href: `#/facturas/${r.invoice_code}`, 'data-feedback-id': 'invoices.inicio.inventario.por_decidir.ficha', 'data-feedback-label': 'Abrir la ficha', onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/facturas/${r.invoice_code}`); } },
+            el('strong', null, r.name), ` · ${r.invoice_code} · ${resourceLinkDetail(r)}`)
+          : el('span', null, el('strong', null, r.name), ` · memoria · ${resourceLinkDetail(r)}`))))
+        : el('p', null, 'No queda nada por decidir.'),
+      foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')],
+    });
   }
 
   async function paintCounts(): Promise<void> {
@@ -289,10 +335,11 @@ export const mountHome: ViewMount = (ctx) => {
     fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((r) => r.invoice.status === 'pendiente_datos').length} sin leer)` : '0';
     if (toolHint.drive) toolHint.drive.textContent = drive.length ? `${drive.length} por revisar` : 'Al día';
     supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
+    // El interruptor ha cambiado (aquí o en otro dispositivo): la vista previa se vuelve a pedir
     const on = linksEnabled();
-    linksState.textContent = on ? 'Encendido' : 'Apagado';
-    linksSwitch.textContent = on ? 'Apagar' : 'Encender';
-    if (toolHint.inventory) toolHint.inventory.textContent = on ? `Encendido${undecided ? ` · ${undecided} por decidir` : ''}` : 'Apagado';
+    if (linksOnSeen !== null && linksOnSeen !== on) refreshLinksPreview();
+    linksOnSeen = on;
+    paintLinks();
     paintWork(m, rows);
   }
 
@@ -373,6 +420,7 @@ export const mountHome: ViewMount = (ctx) => {
       const spaces = await client.api<{ tables: Array<{ rows: Array<{ id: string; name: string; kind: string; deleted_at: string | null; active: boolean }> }> }>('/resources/snapshot?tables=resources.spaces')
         .then((r) => (r.tables[0]?.rows ?? []).filter((x) => !x.deleted_at && x.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'es')))
         .catch(() => []);
+      linksPreview = preview; paintLinks();
       const c = preview.counts;
       const space = el('select', { 'data-feedback-id': 'invoices.inicio.inventario.sitio', 'data-feedback-label': 'Sitio habitual', id: 'resourceLinksSpace' },
         el('option', { value: '' }, 'Sin sitio (no entran al inventario)'), ...spaces.map((x) => el('option', { value: x.id }, x.name)));
@@ -390,6 +438,7 @@ export const mountHome: ViewMount = (ctx) => {
           const r = await client.api<{ created: number; linked: number; memory: number }>('/resource-links/apply', { json: { digest: preview.digest, space_id: space.value || null } });
           await closeSheet();
           toast(`Recursos: ${r.created} artículo${r.created === 1 ? '' : 's'} nuevo${r.created === 1 ? '' : 's'}, ${r.linked} línea${r.linked === 1 ? '' : 's'} y ${r.memory} nombre${r.memory === 1 ? '' : 's'} de la memoria enlazados.`);
+          refreshLinksPreview();
           void client.sync().catch(() => undefined);
         } catch (error) { toast(describeError(error)); apply.disabled = false; }
       });
@@ -419,7 +468,7 @@ export const mountHome: ViewMount = (ctx) => {
       ? { title: 'Encender el enlace con el inventario', confirmLabel: 'Encender',
           text: 'Las líneas enlazadas de las facturas validadas entran en el inventario con la fecha de cada factura. Lo que ya entró desde la compra de Food o al recibir una compra en Tasks no se cuenta dos veces. Antes conviene aplicar la vista previa.' }
       : { title: 'Apagar el enlace con el inventario', confirmLabel: 'Apagar', danger: true,
-          text: 'Las facturas que valides dejan de entrar en el inventario y la app vuelve a verse como antes. Lo que ya entró se queda.' });
+          text: 'Las facturas que valides dejan de entrar en el inventario y la app vuelve a verse como antes. Mientras esté apagado, ni las compras que se reciban en Tasks ni las facturas que anules o rectifiques se cuadran con el inventario, y una compra puede contarse dos veces. Al volver a encenderlo, todo se cuadra. Lo que ya entró se queda.' });
     if (!ok) return;
     const current = (await client.list(SETTINGS)).find((x) => !x.deleted_at && x.key === 'resources_links');
     linksSwitch.disabled = true;
@@ -428,6 +477,7 @@ export const mountHome: ViewMount = (ctx) => {
       : { op: 'insert', table: SETTINGS, id: crypto.randomUUID(), fields: { key: 'resources_links', value: on } }],
     on ? 'Enlace con el inventario encendido.' : 'Enlace con el inventario apagado.');
     linksSwitch.disabled = false;
+    refreshLinksPreview();
   }
 
   async function runDrive(button: HTMLButtonElement): Promise<void> {
@@ -451,5 +501,5 @@ export const mountHome: ViewMount = (ctx) => {
   void paintDrive();
   const offStatus = client.onStatus(paintStatus);
   const offTables = onAnyTable(client, () => void paintCounts());
-  return () => { offStatus(); offTables(); offline.forEach((off) => off()); };
+  return () => { offStatus(); offTables(); offline.forEach((off) => off()); window.removeEventListener('online', onBackOnline); window.removeEventListener('offline', paintLinks); };
 };

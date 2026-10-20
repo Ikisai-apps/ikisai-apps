@@ -2567,7 +2567,33 @@ test('R4 · PR 4: el owner ve la vista previa del enlace con Recursos (se enlaza
     await synced(page);
     // Tanda 27: el inventario es la herramienta «Inventario» de Inicio, con su hoja
     await page.locator('#toolInventory').click();
-    await page.locator('#resourceLinksPreview').click();
+    // Tanda 31 (MUELA-079): el estado con lo que supone y las cuatro cifras de la vista previa, sin otra llamada
+    await expect(page.locator('#resourceLinksState')).toHaveText('Apagado');
+    await expect(page.locator('#resourceLinksMeaning')).toHaveText('Las facturas no entran en el inventario.');
+    const figures = page.locator('#resourceLinksFigures .stat-item');
+    await expect(figures).toHaveCount(4, { timeout: 20_000 });
+    await expect(figures.nth(0)).toContainText('1se enlazan');
+    await expect(figures.nth(1)).toContainText('2se crean1 artículo nuevo');
+    await expect(figures.nth(2)).toContainText('1por decidiren la ficha');
+    await expect(figures.nth(3)).toContainText('1no son stock');
+    // «Por decidir» enseña sus líneas y cada una lleva a la ficha de su factura
+    await figures.nth(2).click();
+    const undecided = page.getByRole('dialog', { name: 'Por decidir en la ficha' });
+    await expect(undecided.locator('#resourceLinksUndecided li')).toHaveCount(1);
+    await expect(undecided.getByRole('link', { name: /Tornillos · FVR_2026_002 · sin tipo de artículo/ })).toHaveAttribute('href', '#/facturas/FVR_2026_002');
+    await undecided.locator('button.primary', { hasText: 'Cerrar' }).click();
+    // Sin red no hay cifras (salen del servidor) y la vista previa queda apagada con su motivo
+    await context.setOffline(true);
+    await page.locator('#toolInventory').click();
+    await expect(page.locator('#resourceLinksFigures .stat-item')).toHaveCount(0);
+    await expect(page.locator('#resourceLinksPreview')).toHaveAttribute('aria-disabled', 'true');
+    await page.getByRole('dialog').locator('button.primary', { hasText: 'Cerrar' }).click();
+    await context.setOffline(false);
+    // «Se enlazan» abre la vista previa de siempre (el botón sigue igual)
+    await page.locator('#toolInventory').click();
+    await expect(page.locator('#resourceLinksFigures .stat-item')).toHaveCount(4, { timeout: 20_000 });
+    await expect(page.locator('#resourceLinksPreview')).toBeVisible();
+    await page.locator('#resourceLinksFigures .stat-item').nth(0).click();
     const sheet = page.locator('.sheet[role="dialog"]').last();
     await expect(sheet.locator('#resourceLinksCounts')).toContainText('Artículos nuevos1 (para 2)', { timeout: 20_000 });
     await expect(sheet.locator('#resourceLinks-enlazar')).toContainText('Sal · FVR_2026_001 · con «Sal»');
@@ -2683,8 +2709,10 @@ test('R4 · PR 5: el owner enciende y apaga el enlace con el inventario desde In
     await page.getByRole('alertdialog').getByRole('button', { name: 'Encender' }).click();
     await expect.poll(value, { timeout: 20_000 }).toBe(true);
     await expect(page.locator('#resourceLinksState')).toHaveText('Encendido', { timeout: 20_000 });
-    // Apagar
+    await expect(page.locator('#resourceLinksMeaning')).toHaveText('Las líneas con artículo y sitio de lo que validas entran en el inventario común con la fecha de la factura.');
+    // Apagar: diálogo de peligro que avisa de lo que deja de cuadrarse (tanda 31)
     await page.locator('#resourceLinksSwitch').click();
+    await expect(page.getByRole('alertdialog')).toContainText('Mientras esté apagado, ni las compras que se reciban en Tasks ni las facturas que anules o rectifiques se cuadran con el inventario, y una compra puede contarse dos veces. Al volver a encenderlo, todo se cuadra. Lo que ya entró se queda.');
     await page.getByRole('alertdialog').getByRole('button', { name: 'Apagar' }).click();
     await expect.poll(value, { timeout: 20_000 }).toBe(false);
     await expect(page.locator('#resourceLinksState')).toHaveText('Apagado', { timeout: 20_000 });
