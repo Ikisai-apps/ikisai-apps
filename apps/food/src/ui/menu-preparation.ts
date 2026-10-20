@@ -12,6 +12,7 @@ import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
 import { housePeriod, periodBar, periodLabel } from './house-period.ts';
 import { SERVICE_LABELS } from './events.ts';
+import { onlineBinder } from './online.ts';
 import { dayChoiceLabel, daySelector, openMoveSheet, prepStatsView, purposeText, stepRow, type PrepRow } from './prep-row.ts';
 
 interface RegenerateResult { inserted: number; updated: number; deleted: number; kept: number }
@@ -208,7 +209,12 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
     return out;
   }
 
+  // Generar y regenerar necesitan red (MUELA-086): sin ella, desactivados con el motivo.
+  const net = onlineBinder(client);
+  const bindNet = () => host.querySelectorAll<HTMLElement>('#generatePreparation, #regeneratePreparation').forEach((b) => net.bind(b, 'Generar la propuesta necesita conexión; añadir y marcar pasos, no.'));
+
   function paint(): void {
+    net.release();
     if (!data?.menu) { dropLists(); replace(host); return; }
     const writable = canWrite();
     const menu = data.menu;
@@ -224,6 +230,7 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
           el('button', { 'data-feedback-id': 'food.menu.preparacion.generar', 'data-feedback-label': 'Generar propuesta', class: 'primary', type: 'button', id: 'generatePreparation', disabled: busy, onclick: () => void regenerate() }, 'Generar propuesta'), ' ',
           el('button', { 'data-feedback-id': 'food.menu.preparacion.anadir_paso', 'data-feedback-label': 'Añadir paso', class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, 'Añadir paso')) : null,
         el('span', { class: 'hint' }, 'Generar necesita conexión; añadir pasos, no.')));
+      bindNet();
       return;
     }
     const now = new Date();
@@ -256,6 +263,7 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
       choices.length > 1 || noDay.length ? daySelector(choices, day, (key) => { chosenDay.set(menuId, key); paint(); }) : null,
     );
     if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }
+    bindNet();
 
     // Estructura (día, bloques y qué pasos hay en cada uno). Si no cambia, solo se actualizan las filas de cada lista.
     const parts = blocks(ofDay);
@@ -305,6 +313,7 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
   void load();
   const offs = [...MENU_TABLES, T.preparation].map((table) => client.onTable(table, () => { if (!sheet && !busy) void load(); }));
   return () => {
+    net.release();
     offs.forEach((off) => off());
     dropLists();
     void sheet?.close(true);

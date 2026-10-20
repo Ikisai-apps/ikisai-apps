@@ -27,6 +27,7 @@ import { MENU_STATUS_LABELS, SERVICE_LABELS, menuChip } from './events.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 import { usage } from '../app/usage.ts';
 import { fb, fbRows, type FbMark } from './feedback.ts';
+import { onlineBinder } from './online.ts';
 
 type MenuRow = Mirror<Menu>;
 type ServiceRow = Mirror<MenuService>;
@@ -407,7 +408,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     async function setShared(value: boolean): Promise<void> {
       if (!menu) return;
       // Tanda 27 (regla de VG): compartir un menú con alérgenos sin revisar pide confirmación.
-      // Y lo mismo si un ingrediente nombra un alérgeno que el plato no declara (decisión de Core del 20-10-2026).
+      // Y lo mismo si un ingrediente nombra un alérgeno que el plato no declara (decisión de Core Sevilla, 20-10-2026).
       const dishes = Array.from(new Set(items.map((i) => recipes.find((r) => r.id === i.recipe_id)).filter((r): r is RecipeRow => !!r)));
       const unreviewed = value ? dishes.filter((r) => !r.allergens_checked).map((r) => r.name) : [];
       const context = crossContext({ recipe_ingredients: recipeLines, ingredients });
@@ -415,7 +416,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if ((unreviewed.length || undeclared.length) && !(await confirmDialog({
         title: unreviewed.length ? 'Hay platos con los alérgenos sin revisar' : 'Hay platos con un alérgeno posible sin declarar',
         text: [unreviewed.length ? `${unreviewed.join(', ')}: el organizador los verá marcados «sin revisar por cocina».` : '',
-          undeclared.length ? `${undeclared.join(', ')}: un ingrediente nombra un alérgeno que el plato no declara.` : '', '¿Compartir igualmente?'].filter(Boolean).join(' '),
+          undeclared.length ? `${undeclared.join(', ')}: un ingrediente o el texto del plato nombran un alérgeno que el plato no declara.` : '', '¿Compartir igualmente?'].filter(Boolean).join(' '),
         confirmLabel: 'Compartir igualmente',
       }))) return;
       const ok = await commitSafely([{ op: 'update', table: T.menus, id: menu.id, expectedRevision: menu.revision, fields: { organizer_shared: value } }]);
@@ -510,7 +511,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const setStatus = (status: Menu['status'], okMessage: string) =>
       call(FOOD_PROCEDURES.setMenuStatus, { menu_id: menu!.id, expectedRevision: menu!.revision, status }, okMessage);
 
+    // Validar y cambiar de estado necesitan red (MUELA-086): sin ella, desactivados con el motivo.
+    const net = onlineBinder(client);
     function paintActions(): void {
+      net.release();
       if (!menu || !canWrite() || house()) { replace(actions); return; }
       const button = (id: string, label: string, kind: 'primary' | 'ghost', onclick: () => void, mark: FbMark) => fb(el('button', { class: kind, type: 'button', id, disabled: busy, onclick }, label), mark);
       const validateButton = button('validateMenu', 'Validar', 'primary', () => void validate(), { feedbackId: 'food.menu.estado.validar', feedbackLabel: 'Validar' });
@@ -524,6 +528,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       replace(actions, ...byStatus[menu.status],
         menu.status === 'borrador' || menu.status === 'revisar' ? el('button', { 'data-feedback-id': 'food.menu.estado.borrar', 'data-feedback-label': 'Borrar menú', class: 'linkbtn', type: 'button', id: 'deleteMenu', disabled: busy, onclick: () => void deleteMenu() }, 'Borrar menú') : null,
         el('span', { class: 'hint' }, 'Validar y cambiar de estado necesitan conexión.'));
+      actions.querySelectorAll<HTMLElement>('button').forEach((b) => net.bind(b, 'Necesita conexión: el resto del menú se puede seguir editando.'));
     }
 
     /** Validar: con los datos del evento recién leídos y aceptando uno a uno los avisos que lo exigen. */
@@ -962,6 +967,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments, T.consumptions].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
     const offStatus = client.onStatus(() => void refreshEvents(client));
     return () => {
+      net.release();
       offEvents();
       offs.forEach((off) => off());
       offStatus();

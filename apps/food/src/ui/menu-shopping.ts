@@ -11,6 +11,7 @@ import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
 import { fb, type FbMark } from './feedback.ts';
 import { housePeriod, periodBar, periodLabel, samePeriod, setHousePeriod } from './house-period.ts';
+import { onlineBinder } from './online.ts';
 
 type ListRow = Mirror<ShoppingList>;
 type ItemRow = Mirror<ShoppingListItem>;
@@ -200,7 +201,15 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     });
   }
 
+  // Generar y regenerar la lista necesitan red (MUELA-086): sin ella, desactivados con el motivo.
+  const net = onlineBinder(client);
   function paint(): void {
+    net.release();
+    paintList();
+    host.querySelectorAll<HTMLElement>('#generateShopping, #regenerateShopping').forEach((b) => net.bind(b, 'Generar la lista necesita conexión; marcar lo comprado, no.'));
+  }
+
+  function paintList(): void {
     if (!data?.menu) { replace(host); return; }
     const writable = canWrite();
     const generate = (label: string, id: string) => el('button', { 'data-feedback-id': 'food.menu.compra.generar', 'data-feedback-label': 'Generar lista de compra', class: 'primary', type: 'button', id, disabled: busy, onclick: () => void regenerate() }, label);
@@ -277,6 +286,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
   void load();
   const offs = [...MENU_TABLES, T.shoppingLists, T.shoppingItems].map((table) => client.onTable(table, () => { if (!sheet && !busy) void load(); }));
   return () => {
+    net.release();
     offs.forEach((off) => off());
     void sheet?.close(true);
   };

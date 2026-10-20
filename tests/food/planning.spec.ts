@@ -165,8 +165,9 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await page.getByLabel('Arroz comprado', { exact: true }).check();
     await expect(buyRow(page, 'Arroz')).toHaveAttribute('data-pending', 'true');
     expect(line('Arroz').status).toBe('pendiente');
-    await page.locator('#regenerateShopping').click();
-    await expect(page.getByText('Esta acción necesita conexión.')).toBeVisible();
+    // Tanda 30 (MUELA-086, `bindOnline`): sin red, Regenerar queda desactivado con el motivo escrito, en vez de fallar al pulsar.
+    await expect(page.locator('#regenerateShopping')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('#menuTab .offline-why').first()).toContainText('Generar la lista necesita conexión');
     await context.setOffline(false);
     await page.waitForFunction(() => navigator.onLine);
     await page.getByRole('button', { name: 'Sincronizar ahora' }).click();
