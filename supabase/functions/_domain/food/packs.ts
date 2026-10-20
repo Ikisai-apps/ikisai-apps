@@ -147,8 +147,9 @@ export function lastTicket(args: { ingredientId: string; itemId: string; base: s
 }
 
 /** Color de la tienda (S4), derivado de su nombre: siempre el mismo para el mismo nombre. */
+const SHOP_HUES = [8, 32, 88, 140, 178, 205, 232, 262, 298, 332];
 export function shopColor(name: string): string {
-  let h = 0;
-  for (const ch of name.trim().toLowerCase()) h = (h * 31 + ch.codePointAt(0)!) % 360;
-  return `hsl(${h} 55% 38%)`;
+  let h = 2166136261;
+  for (const ch of name.trim().toLowerCase()) h = Math.imul(h ^ ch.codePointAt(0)!, 16777619) >>> 0;
+  return `hsl(${SHOP_HUES[h % SHOP_HUES.length]} 55% 36%)`;
 }

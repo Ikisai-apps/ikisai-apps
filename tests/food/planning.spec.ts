@@ -162,7 +162,8 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
   await test.step('sin red: marcar comprado queda pendiente y se sincroniza al volver', async () => {
     await context.setOffline(true);
     await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
-    await page.getByLabel('Arroz comprado', { exact: true }).check();
+    // El carrito de la baldosa (tanda 40), antes la casilla «Comprado».
+    await page.getByRole('button', { name: 'Marcar comprado: Arroz', exact: true }).click();
     await expect(buyRow(page, 'Arroz')).toHaveAttribute('data-pending', 'true');
     expect(line('Arroz').status).toBe('pendiente');
     // Tanda 30 (MUELA-086, `bindOnline`): sin red, Regenerar queda desactivado con el motivo escrito, en vez de fallar al pulsar.
@@ -200,8 +201,9 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(page.getByLabel('Comprar de Tomate', { exact: true })).toHaveValue('3');
     expect(line('Arroz')).toMatchObject({ status: 'comprado', stock_quantity: 0.5, purchase_quantity: 1.7 });
     await expect(buyRow(page, 'Servilletas')).toBeVisible();
-    // «Recalcular» devuelve la compra a lo necesario menos lo que hay en casa.
-    await buyRow(page, 'Tomate').getByRole('button', { name: 'Volver a calcular la compra de Tomate' }).click();
+    // «Recalcular» (en el «⋯» de la baldosa desde la tanda 40) devuelve la compra a lo necesario menos lo que hay en casa.
+    await buyRow(page, 'Tomate').getByRole('button', { name: 'Más de Tomate', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Tomate' }).getByRole('button', { name: 'Volver a calcular la compra de Tomate' }).click();
     await expect(page.getByLabel('Comprar de Tomate', { exact: true })).toHaveValue('3,75');
   });
 
