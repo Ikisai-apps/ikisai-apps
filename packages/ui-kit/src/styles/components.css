@@ -477,7 +477,7 @@ button.cal-agenda-item:hover{background:var(--hover)}
 /* ---------- Lista reordenable ---------- */
 .sortable-wrap{position:relative}
 .sortable .sortable-row{grid-template-columns:auto 1fr auto;gap:8px;align-items:center;position:relative;padding:8px 10px 8px 4px}
-.sortable-handle{border:0;background:transparent;width:36px;height:44px;border-radius:10px;display:grid;place-items:center;color:var(--muted);cursor:grab;touch-action:none;padding:0;flex:none}
+.sortable-handle{border:0;background:transparent;width:var(--tap);height:var(--tap);border-radius:10px;display:grid;place-items:center;color:var(--muted);cursor:grab;touch-action:none;padding:0;flex:none}
 .sortable-handle:hover{background:var(--hover);color:var(--accent-deep)}
 .sortable-handle:disabled{opacity:.35;cursor:default}
 .dragging .sortable-handle{cursor:grabbing}
@@ -1463,6 +1463,82 @@ button.tile-box:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .tile-level{font-size:var(--text-xs);font-weight:650}
 .tile-box[data-tone="warn"] .tile-level{color:var(--warn-ink)}
 .tile-box[data-tone="alert"] .tile-level{color:var(--alert)}
+/* Baldosa con varios mandos (0.57): botones hermanos; tocar la baldosa (`.tile-main`) queda por debajo de los demás. */
+.tile-multi{-webkit-touch-callout:none;user-select:none;padding:10px 10px 12px}
+.tile-multi .tile-value{font-size:var(--text-xl);line-height:1.1;text-wrap:balance}
+.tile-multi > :not(.tile-main):not(.tile-fill):not(.tile-min){position:relative;z-index:1}
+.tile-multi > :not(button):not(.tile-fill):not(.tile-min){pointer-events:none}
+.tile-multi button,.tile-multi .tile-tools{pointer-events:auto}
+.tile-main{position:absolute;inset:0;z-index:0;width:100%;height:100%;border:0;border-radius:inherit;background:transparent;cursor:pointer}
+.tile-main:focus-visible,.tile-media:focus-visible,.tile-more:focus-visible,.tile-corner:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* El nombre va bajo la fila del medallón: así caben el medallón, el «⋯» y la esquina en una baldosa estrecha. */
+.tile-multi .tile-top{flex-wrap:wrap;row-gap:4px}
+.tile-multi .tile-title{order:3;flex:1 0 100%;min-width:0}
+/* El «⋯» y la esquina, 46 px, en la fila del medallón y arriba a la derecha, fuera del flujo: la fila no crece y caben
+   en baldosas estrechas (360 px); lo que queda debajo de su hueco es el medallón, que no es un mando. */
+.tile-tools{position:absolute;top:-3px;right:-6px;display:flex;align-items:center;gap:0}
+.tile-more,.tile-corner{display:inline-grid;place-items:center;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:50%;background:transparent;color:var(--ink);cursor:pointer}
+.tile-corner{background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.tile-corner[aria-pressed="true"]{background:var(--ok);color:var(--paper);box-shadow:none}
+.tile-more:disabled,.tile-corner:disabled{opacity:.5;cursor:not-allowed}
+.tile-media{display:flex;justify-content:center;align-items:flex-end;min-height:72px;padding:4px;border:0;border-radius:var(--radius-xs);background:transparent;color:var(--ink);font:inherit}
+button.tile-media{cursor:pointer}
+.tile-media .ev{max-width:100%;height:auto}
+
+/* Estantería (K22): filas de baldosas con arrastre entre filas. */
+.shelf-list{display:grid;gap:14px}
+@media(min-width:1100px){.shelf-list{grid-template-columns:repeat(2,1fr);align-items:start}}
+.shelf-row{border-radius:var(--radius);background:var(--paper);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-1);overflow:hidden;transition:box-shadow var(--dur) var(--ease)}
+.shelf-head{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;background:var(--paper-2);border-bottom:4px solid var(--line)}
+.shelf-title{flex:1;min-width:0;display:grid}
+.shelf-title h3{margin:0;font:500 var(--text-lg)/1.15 var(--serif)}
+.shelf-title small{font-size:var(--text-xs);font-weight:700;color:var(--muted)}
+.shelf-add{flex:none;width:var(--tap);height:var(--tap);border-radius:var(--radius-sm);border:1px dashed var(--line);background:transparent;color:var(--ink);font-size:22px;font-weight:700;cursor:pointer}
+.shelf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px}
+@media(min-width:420px){.shelf-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+.shelf-cell{min-width:0;touch-action:pan-y}
+.shelf-cell[data-shelf-drag="1"]{cursor:grab}
+.shelf-cell > .tile-box{height:100%}
+.shelf-empty{grid-column:1/-1;margin:0;padding:14px;border-radius:var(--radius-sm);border:1px dashed var(--line);font-size:var(--text-sm);color:var(--muted);text-align:center}
+.shelf-over{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+.shelf-lifted{opacity:.35}
+.shelf-ghost{position:fixed;z-index:2147483000;pointer-events:none;margin:0;transform:rotate(-3deg) scale(1.04);box-shadow:var(--shadow-3);border-radius:var(--radius)}
+.shelf-dragging,.shelf-dragging *{cursor:grabbing!important;user-select:none}
+.shelf-menu{display:grid;gap:8px}
+.shelf-target{min-height:var(--tap);justify-content:flex-start;text-align:left}
+
+/* El envase (MUELA-093): macizo lo que se usa; rayado lo que sobra (ámbar si caduca pronto); contorno en tinta. */
+.ev{display:block;overflow:visible}
+.ev-used{fill:var(--accent)}
+.ev-out{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round}
+.ev-hbg{fill:var(--paper)}
+.ev-hline{fill:color-mix(in srgb,var(--accent) 55%,var(--paper))}
+.ev-hline.warn{fill:var(--warn)}
+.ev-tray{fill:var(--paper-2);stroke:var(--ink);stroke-width:1.4}
+.ev-free{stroke:var(--ink);stroke-width:1}
+.ev-dash{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-dasharray:4 3}
+.ev-q{font:800 22px var(--sans);fill:var(--ink)}
+.ev-more{font:800 16px var(--sans);fill:var(--ink)}
+.ev-tube{width:100%;height:24px}
+.ev-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:2px 0 10px;font-size:var(--text-sm);color:var(--ink)}
+.ev-legend span{display:inline-flex;align-items:center;gap:6px}
+.ev-legend svg rect{stroke:var(--ink);stroke-width:1}
+/* La hoja del envase. */
+.fs{display:grid;gap:12px}
+.fs-lead{margin:0;color:var(--ink)}
+.fs-preview{display:grid;justify-items:center;gap:6px;padding:12px;border-radius:var(--radius-md);background:var(--paper-2);text-align:center}
+.fs-preview p{margin:0;color:var(--ink)}
+.fs-preview .ev{max-width:100%;height:auto}
+.fs-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.fs-chip{display:grid;gap:2px;justify-items:start;min-height:52px;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.fs-chip small{font-size:var(--text-xs);font-weight:600}
+.fs-chip.main{grid-column:1 / -1;border:2px dashed var(--accent)}
+.fs-chip[aria-pressed="true"]{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--paper))}
+.fs-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fs-other>summary{min-height:var(--tap);display:flex;align-items:center;font-weight:700;cursor:pointer}
+.fs-otherrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.fs-otherrow select,.fs-otherrow input{min-height:var(--tap)}
+.fs-otherrow input{width:90px}
 
 /* Desactivado con el motivo (sin red). */
 .offline-off{opacity:.55;cursor:not-allowed}
