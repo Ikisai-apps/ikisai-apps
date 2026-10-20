@@ -357,6 +357,7 @@ test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaci
   const beds = page.locator('#lodgingBedsMap .map-svg [role="button"]');
   await expect(beds).toHaveCount(2);
   await expect(page.locator(`#lodgingBedsMap .map-svg [role="button"][aria-label*="Libre"]`)).toHaveCount(2);
+  await expect(page.locator('#lodgingBedsMap .map-bed-txt')).toHaveCount(0); // sin números en las camas
   await capture(page, 'alojamiento-mapa');
   await page.locator('#lodgingBedsMap .map-svg [role="button"]').first().click();
   await page.getByRole('button', { name: 'Elegir esta cama' }).click();
