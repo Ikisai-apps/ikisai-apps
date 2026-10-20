@@ -156,6 +156,9 @@ export function collectBlobMarkers(operations: RowOperation[]): string[] {
   return Array.from(found);
 }
 
+/** Errores de subida que no se arreglan reintentando: el lote que los provoca pasa a `rejected`. */
+const DEFINITIVE_UPLOAD_ERRORS = new Set(['BLOB_MISSING', 'UNSUPPORTED_MEDIA', 'PAYLOAD_TOO_LARGE', 'INVALID_OPERATION', 'FORBIDDEN', 'FILE_MISMATCH']);
+
 /** Copia de las operaciones con cada marcador sustituido por su `fileId`. Lanza BLOB_MISSING si falta alguno. */
 export function substituteBlobMarkers(operations: RowOperation[], fileIds: ReadonlyMap<string, string>): RowOperation[] {
   const resolve = (sha: string): string => {
@@ -1285,7 +1288,9 @@ export class SyncClientImpl implements SyncClient {
           ...(shas.length > 0 ? { blobs: shas } : {}),
         };
       } catch (error) {
-        if (isApiError(error) && error.code === 'BLOB_MISSING') {
+        // Un adjunto que el servidor no aceptará nunca (no está en local, tipo o tamaño no admitidos, SVG con contenido
+        // activo, sin permiso, hash que no cuadra) rechaza su lote y la cola sigue; lo demás (red, 5xx…) espera.
+        if (isApiError(error) && DEFINITIVE_UPLOAD_ERRORS.has(error.code)) {
           await this.reject(entry, error);
           continue;
         }

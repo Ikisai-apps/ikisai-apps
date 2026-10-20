@@ -1,5 +1,9 @@
 # Cambios de @ikisai/sync-client
 
+## 0.7.3 · 20 de octubre de 2026
+
+- **Un adjunto que el servidor no aceptará nunca ya no atasca la cola:** con `UNSUPPORTED_MEDIA` (p. ej. un SVG con contenido activo, #694), `PAYLOAD_TOO_LARGE`, `INVALID_OPERATION`, `FORBIDDEN` o `FILE_MISMATCH` al subir o verificar, su lote pasa a `rejected`, como con `BLOB_MISSING`, y la cola sigue. La red y los 5xx siguen esperando. Aviso de Central (tanda 37).
+
 ## 0.7.2 · 19 de octubre de 2026
 
 - **Tabla nueva en un dispositivo ya sincronizado:** al arrancar con red, el espejo pide el snapshot solo de las tablas que nunca lo recibieron (una versión nueva de la app añade una tabla), sin rehacer el resto ni tocar el cursor. Se recuerdan en `meta.seededTables`. En dispositivos de antes, cuenta como nueva la tabla vacía, una sola vez. Petición de Finance (`invoices.item_labels`, tanda 27).
