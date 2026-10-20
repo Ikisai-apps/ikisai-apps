@@ -1503,6 +1503,10 @@ const piecesSection = section('pieces', 'Piezas comunes (lote A)', 'MUELA-075: m
     renderMedal({ name: 'Ana López' }), renderMedal({ name: 'Casa de la Muela', color: '#3f6d8e' }), renderMedal({ icon: 'chef', size: 40 }),
     renderMedal({ image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 10 10%22%3E%3Crect width=%2210%22 height=%2210%22 fill=%22%23c9a26b%22/%3E%3C/svg%3E', name: 'Foto', size: 72, label: 'Foto de la casa' }),
     renderMedal({ image: '/no-existe.png', name: 'Luis Pérez' })),
+  // `veil: 'full'` sobre una foto blanca: el texto se lee de arriba abajo.
+  el('div', { id: 'medalVeilFull', style: 'position:relative;min-height:180px;border-radius:12px;padding:14px;margin-top:12px;color:#fff;display:grid;align-content:space-between' },
+    renderMedal({ cover: true, veil: 'full', image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 10 10%22%3E%3Crect width=%2210%22 height=%2210%22 fill=%22%23fff%22/%3E%3C/svg%3E' }),
+    el('strong', { style: 'position:relative' }, 'Arriba'), el('span', { style: 'position:relative' }, 'En medio'), el('span', { style: 'position:relative' }, 'Abajo')),
   el('h3', null, 'Recorrido'), stagesHost,
   el('h3', null, 'Grupos con lo peor'), groupsView.element,
   el('h3', null, 'Cifras de color'), statsHost,

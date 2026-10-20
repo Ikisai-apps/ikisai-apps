@@ -1367,6 +1367,8 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .medal-cover{position:absolute;inset:0;z-index:0;background:var(--paper-2) center/cover no-repeat;border-radius:inherit;pointer-events:none}
 /* El velo da contraste abajo (título) y también arriba (píldoras, herramientas). */
 .medal-cover::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(to top,rgba(20,24,20,.72),rgba(20,24,20,.15) 55%,rgba(20,24,20,.15) 75%,rgba(20,24,20,.55))}
+/* `veil: 'full'`: texto en toda la foto. Con .62 en el punto más claro, el blanco da 4,5:1 hasta sobre una foto blanca. */
+.medal-cover.medal-veil-full::after{background:linear-gradient(to top,rgba(20,24,20,.78),rgba(20,24,20,.62) 45%,rgba(20,24,20,.62))}
 
 /* Recorrido: etapas en fila, la actual marcada, ✓ las hechas, «!» con aviso. */
 .stage-box{margin:12px 0 4px}
