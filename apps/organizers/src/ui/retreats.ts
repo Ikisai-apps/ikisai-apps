@@ -54,7 +54,7 @@ function setCover(card: HTMLElement, title: string, url: string | null): void {
   top.querySelector('.medal-cover')?.remove();
   if (url) {
     top.querySelector('.medal-disc')?.remove();
-    top.prepend(renderMedal({ image: url, cover: true }));
+    top.prepend(renderMedal({ image: url, cover: true, veil: 'full' }));
     top.classList.add('orgretreat-photo');
   } else if (!top.querySelector('.medal-disc')) {
     top.classList.remove('orgretreat-photo');
