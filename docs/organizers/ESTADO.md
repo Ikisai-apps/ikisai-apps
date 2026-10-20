@@ -94,6 +94,7 @@
   - sin `color-mix` en la hoja de estilos.
   - El velo de las portadas de Mis retiros se queda: el del kit es claro en la franja media, y ahí va el texto.
 - 2026-10-20 · Portadas de Mis retiros con el velo completo del kit (`veil: 'full'`, 0.51); fuera el refuerzo propio.
+- 2026-10-20 · «Para quién» en Experiencia › Programa (MUELA-065, Booking #664): todos, solo adultos, solo menores o algunas personas, con la etiqueta en la lista del día (API.md §18.3).
 
 ## Pendiente
 
