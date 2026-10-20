@@ -112,7 +112,33 @@ test('compras · «No se compró» (0337): terminar por error y deshacer, reabri
   assert.throws(() => undoPurchaseOps(data, buy), /aún no se ha recibido/);
 });
 
-test('compras · «No se compró» con factura ligada: el servidor también lo rechaza', { todo: 'espera la comprobación publicada por Finance (pedida a Core en SALIDA del 20-10)' }, () => {});
+test('compras · «No se compró» con factura ligada: el servidor también lo rechaza (0338)', async () => {
+  const { tab, inbox } = await db.area('Compra con factura');
+  const editor = await db.member('editor', { tabs: [tab], projects: {} });
+  const req = newId();
+  await db.commit([request(tab, req, { project_id: inbox, title: 'Pintura', status: 'approved' })]);
+  await db.commit([update('tasks.purchase_requests', req, 1, { status: 'purchased' })], editor);
+  const supplier = newId(), invoice = newId(), line = newId();
+  await db.t.db.query(`insert into invoices.suppliers (id, name, slug) values ($1, 'Pinturas Sur', 'pinturas_sur_0338')`, [supplier]);
+  await db.t.db.query(`insert into invoices.invoices (id, supplier_id, invoice_date, object, code) values ($1, $2, '2026-10-20', 'Pintura', 'F-2026-0338')`, [invoice, supplier]);
+  await db.t.db.query(`insert into invoices.invoice_lines (id, invoice_id, position, description, net_amount) values ($1, $2, 0, 'Pintura', 30)`, [line, invoice]);
+  await db.t.db.query(`insert into invoices.allocations (id, invoice_line_id, invoice_id, target_app, target_kind, target_id, target_label, allocated_amount) values ($1, $2, $3, 'tasks', 'purchase_request', $4, 'Pintura', 30)`, [newId(), line, invoice, req]);
+  // Ni el editor ni la propietaria, aunque la pantalla no lo ofrezca: el servidor lo para.
+  await rejects(db.commit([update('tasks.purchase_requests', req, 2, { status: 'approved' })], editor), 'PURCHASE_INVOICED');
+  await rejects(db.commit([update('tasks.purchase_requests', req, 2, { status: 'approved' })]), 'PURCHASE_INVOICED');
+  // Recibirla sí se puede.
+  await db.commit([update('tasks.purchase_requests', req, 2, { status: 'received' })], editor);
+  // Con la factura anulada (procedimiento de Finance; aquí solo el estado), otra compra ya se puede deshacer.
+  const other = newId();
+  await db.commit([request(tab, other, { project_id: inbox, title: 'Rodillos', status: 'approved' })]);
+  await db.commit([update('tasks.purchase_requests', other, 1, { status: 'purchased' })], editor);
+  await db.t.db.query(`update invoices.allocations set target_id = $1 where invoice_id = $2`, [other, invoice]);
+  await rejects(db.commit([update('tasks.purchase_requests', other, 2, { status: 'approved' })], editor), 'PURCHASE_INVOICED');
+  await db.t.db.exec(`set session_replication_role = replica`);
+  await db.t.db.query(`update invoices.invoices set status = 'anulada', annulled_reason = 'Duplicada' where id = $1`, [invoice]);
+  await db.t.db.exec(`set session_replication_role = origin`);
+  await db.commit([update('tasks.purchase_requests', other, 2, { status: 'approved' })], editor);
+});
 
 test('compras · ámbitos y visibilidad: los planes son del área entera; las solicitudes, de su proyecto', async () => {
   const { tab, inbox } = await db.area('Ámbitos');
