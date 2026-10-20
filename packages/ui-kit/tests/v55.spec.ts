@@ -36,4 +36,27 @@ test.describe('ui-kit v0.50 · baldosas del inventario y ayudantes con menú', (
     expect(await page.evaluate(() => (window as any).menuLog)).toContain('signal:true');
     await expect(page.locator('.appmenu-drawer')).toHaveCount(0);
   });
+  test('@smoke tanda 30: el no elegido de `.segmented` llega a 4,5:1 sobre crema y papel-2 y el botón mide 46 px', async ({ page }) => {
+    await page.goto('/#proposals');
+    const off = page.locator('#showMine');
+    expect((await off.boundingBox())!.height).toBeGreaterThanOrEqual(46);
+    const ratios = await off.evaluate((b) => {
+      const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+      const lum = ([r, g, bb]: number[]) => [r, g, bb].map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const mix = (fg: number[], bg: number[]) => { const a = fg[3] ?? 1; return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a)); };
+      const ink = rgb(getComputedStyle(b).color);
+      const group = rgb(getComputedStyle(b.parentElement!).backgroundColor);
+      const css = getComputedStyle(document.documentElement);
+      const tmp = document.createElement('i'); document.body.append(tmp);
+      const out = ['--paper', '--paper-2', '--bg'].filter((v) => css.getPropertyValue(v).trim()).map((v) => {
+        tmp.style.color = `var(${v})`; const base = rgb(getComputedStyle(tmp).color);
+        const bg = mix(group, base); const [l1, l2] = [lum(ink), lum(bg)].sort((x, y) => y - x);
+        return (l1 + 0.05) / (l2 + 0.05);
+      });
+      tmp.remove();
+      return out;
+    });
+    expect(ratios.length).toBeGreaterThan(0);
+    for (const r of ratios) expect(r).toBeGreaterThanOrEqual(4.5);
+  });
 });
