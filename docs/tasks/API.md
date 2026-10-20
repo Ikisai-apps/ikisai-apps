@@ -1179,11 +1179,23 @@ Una PR por paso.
   - quien tiene acceso completo ve también las pendientes y descartadas, con sus datos (`pending`, `request`);
   - quien las pidió recibe `{kind: 'task', id, visible: false, request: 'pending' | 'created' | 'dismissed'}`;
   - las tareas traen `externalKind`, `externalUrl`, `visible` y, si vienen de una petición, `request: 'created'`.
-- **Dominio** (`_domain/tasks/requests.ts`): `pendingRequests`, `requestGroups`, `routeFor`, `routeTarget`, `classifyRequestOps`, `dismissRequestOps`, `reopenRequestOps`, `saveRouteOps`, `deleteRouteOps` y `routeWaitingOps`.
+- **Dominio** (`_domain/tasks/requests.ts`): `pendingRequests`, `requestGroups`, `routeFor`, `routeTarget`, `classifyRequestOps`, `dismissRequestOps`, `reopenRequestOps`, `unrouteRequestOps` (§20.10), `saveRouteOps`, `deleteRouteOps` y `routeWaitingOps`.
 - **Ruta:** campos `kind` (por defecto `<source>.general`), `kind_label` y `external_url`. `project_id | tab_id` son opcionales. La respuesta incluye `routed: 'rule' | 'hint' | 'pending'`.
 - **Purga:** no hay purga automática de las peticiones enrutadas o descartadas. Son pocas, y la app que pidió necesita seguir leyendo su estado.
 
 **Paso 2:** la interfaz («Por clasificar», «Gestionar entradas» y el origen en el editor).
+
+### 20.10 Espacio de la petición y «Deshacer» de la clasificación (tanda 31, MUELA-057, 064 y 073; 20-10-2026)
+
+- **`space_id`** (migración `0336`): `requests/task` y `worker/requests/task` aceptan `space_id` opcional, el espacio de Recursos del que se avisa. Feedback mandará el sitio del reporte.
+  - Se guarda en `tasks.requests.space_id` solo si el espacio existe, está vivo y activo. Si no, la petición entra sin él, no se rechaza.
+  - Como el resto de la petición, no cambia después del alta.
+  - Al enrutarla (regla, sugerencia o «Mover a…»), la tarea lo lleva en `tasks.task_spaces` junto a los espacios que hereda de su proyecto, sin repetirlo.
+- **`unrouteRequestOps(data, id, to = 'pending' | 'dismissed')`:** deshace una clasificación. En el mismo lote, la petición vuelve a «Por clasificar» (o pasa a descartada) y su tarea va a la papelera con sus hijas, como exige el hook.
+  - Sirve para el «Deshacer» del ✓ que clasifica y para pasar una tarea a Pendiente o Descartado desde el reporte.
+  - Si después se vuelve a clasificar, `classifyRequestOps` trae la tarea de la papelera al proyecto nuevo (de la misma área), con sus filas, en lugar de crear otra.
+  - Una tarea de petición que ya es hija de otra no se quita así.
+- **Lector:** con acceso a toda la app, recibe `tasks.requests` como los demás (comprobado). Con ámbitos no las recibe, porque las peticiones no tienen área.
 
 ## 21. Indicadores para el panel de Dirección de Central (contrato `docs/central/API.md` §7.2)
 

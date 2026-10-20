@@ -15,7 +15,7 @@ import {
   receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, KITCHEN_KINDS, type ResourceItem, type ResourceMovement,
   taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, consumeCall, confirmConsumptionOps, materialRef,
   type TradeKitOption, taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost, type CostEntry, type MovementCost,
-  pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
+  pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
 import { availabilityOptionsFrom, capabilityOptionsFrom, hasApprentices, whoKnows, type AvailabilityOption, type CapabilityOption } from './who-knows.ts';
@@ -662,7 +662,7 @@ const api = {
   whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
   requests: {
-    pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
+    pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   },
 };
 

@@ -110,6 +110,8 @@ export interface RequestRow extends BaseRow {
   title: string; note: string; due: string | null; priority: Priority; suggested_tab_id: Uuid | null; suggested_project_id: Uuid | null;
   requested_by: Uuid | null; status: 'pending' | 'routed' | 'dismissed'; routed_by: 'rule' | 'hint' | 'manual' | null;
   on_behalf_of?: { kind: 'internal' | 'organizer' | 'guest'; report_code: string } | null;
+  /** De qué espacio de Recursos se avisa (0336), si quien pide lo dijo. */
+  space_id?: Uuid | null;
 }
 /** Regla de entrada (§20): un tipo de petición va a un área, un proyecto (si no, su Entrada) y un responsable. */
 export interface RequestRouteRow extends BaseRow {
@@ -172,7 +174,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
-  'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of'],
+  'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of', 'space_id'],
   'tasks.settings': ['key', 'value'],
 };
 
@@ -202,7 +204,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_requests': ['tab_id'],
   'tasks.request_routes': [],
   // Una petición solo la da de alta `tasks.request_task`; después solo cambia su estado (lo comprueba el hook).
-  'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by', 'on_behalf_of'],
+  'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by', 'on_behalf_of', 'space_id'],
   // Los ajustes solo los cambian los procedimientos de la app (lo comprueba el hook).
   'tasks.settings': ['key'],
 };

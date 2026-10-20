@@ -2,7 +2,8 @@
 const HOME_DAYS=['dom','lun','mar','mié','jue','vie','sáb'];
 function homeToday(){const d=new Date();d.setHours(0,0,0,0);return d}
 function homeDayOf(due){const d=new Date(due+'T00:00:00');if(isNaN(d))return null;return Math.round((d-homeToday())/86400000)}
-function isoDay(offset){const d=homeToday();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)}
+/* El día en hora local (no con toISOString, que en España lo daba en UTC: el de antes de medianoche). */
+function isoDay(offset){const d=homeToday();d.setDate(d.getDate()+offset);const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
 function homeTasks(){const rows=[];for(const area of areasForTasks())withArea(area.id,()=>{for(const p of tab().projects.filter(p=>!p.deleted&&p.status!=='archived'))for(const t of p.tasks.filter(t=>!t.deleted))rows.push({area,p,t,done:status(p,t)==='done',leaf:!children(p,t.id).length,blocked:dependencyBlockers(t,p),prio:effectivePriority(p,t)})});return rows}
 function ringSvg(pct,size,label){return `<svg class="ring" viewBox="0 0 36 36" style="width:${size}px;height:${size}px" role="img" aria-label="${esc(label||pct+' por ciento')}"><circle class="track" cx="18" cy="18" r="15.9"></circle><circle class="value" cx="18" cy="18" r="15.9" stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="25"></circle><text x="18" y="21.5" text-anchor="middle">${pct}%</text></svg>`}
 function hexRgb(hex){const m=/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex||'');return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)].join(','):'104,112,74'}
