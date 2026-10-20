@@ -200,6 +200,8 @@ export function taskRequestFor(item: any) {
     note: (WHO[item.reporterKind] ?? 'Reporte') + ' · ' + item.code + (item.blocking ? ' · urgente' : '') + '\n\n' + message.slice(0, 800),
     external_url: 'https://tasks.ikisai.com/#/feedback/' + item.code,
     on_behalf_of: { kind: item.reporterKind, report_code: item.code },
+    // El espacio del reporte, si lo hay: Tasks lo guarda en la petición y lo pone en la tarea (0336).
+    ...(typeof item.scope?.space_id === 'string' ? { space_id: item.scope.space_id } : {}),
   };
 }
 
