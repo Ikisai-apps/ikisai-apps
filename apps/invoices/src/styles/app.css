@@ -152,8 +152,11 @@ code{font-size:12.5px;word-break:break-all}
 /* Tanda 31: hoja «Inventario», el estado con su medallón y las líneas «por decidir» */
 .inv-stocklink-state{display:flex;align-items:center;gap:12px;margin:0 0 12px}
 .inv-stocklink-state strong{display:block;font-size:16px}
-.inv-undecided li a{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:var(--tap,46px);color:var(--ink)}
-.inv-undecided li span{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:var(--tap,46px)}
+.inv-undecided{list-style:none;margin:0;padding:0}
+.inv-undecided li+li{border-top:1px solid var(--line)}
+.inv-undecided li>a,.inv-undecided li>span{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:var(--tap,46px);padding:6px 0;color:var(--ink);text-decoration:none}
+.inv-undecided li>a::after{content:'›';margin-left:auto;padding-left:8px;font-size:20px;color:var(--muted)}
+.inv-reason:empty{display:none}
 @media (max-width:520px){.row:has(.inv-row-stages) .row-actions{grid-column:1;grid-row:auto}}
 
 /* Tanda 27 · Emitidas: la reserva de Booking en la fila y en la ficha. */
