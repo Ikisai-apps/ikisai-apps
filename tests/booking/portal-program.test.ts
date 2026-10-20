@@ -96,6 +96,64 @@ test('programa · el organizador lo edita, el huésped lo lee sin notas internas
   assert.equal((await read('guests', guest, 'booking.portal_program', { reservation_id: res })).items.length, 2);
 });
 
+test('programa · audience (065): para quién es cada actividad, sin enseñar lo de otra familia', async () => {
+  const { res, event } = await confirmedReservation('Retiro familias');
+  const organizer = await member('organizers', [{ reservation_id: res }]);
+  const [ana, leo, eva] = [uuid(), uuid(), uuid()];
+  for (const [id, name] of [[ana, 'Ana'], [leo, 'Leo'], [eva, 'Eva']] as const) {
+    await invoke('organizers', organizer, 'booking.portal_add_guest', { reservation_id: res, guest_id: id, declaration: true, fields: { first_name: name } });
+  }
+  const other = await confirmedReservation('Otro retiro');
+  const otherOrganizer = await member('organizers', [{ reservation_id: other.res }]);
+  const foreign = uuid();
+  await invoke('organizers', otherOrganizer, 'booking.portal_add_guest', { reservation_id: other.res, guest_id: foreign, declaration: true, fields: { first_name: 'Ajena' } });
+
+  const [common, kids, leoOnly, evaOnly] = [uuid(), uuid(), uuid(), uuid()];
+  const save = (item: Record<string, unknown>) => invoke('organizers', organizer, 'booking.portal_program_save', { reservation_id: res, item: { day: '2028-05-02', ...item } });
+  await save({ id: common, title: 'Comida', kind: 'comida' });
+  await save({ id: kids, title: 'Juegos', audience: 'menores' });
+  await save({ id: leoOnly, title: 'Taller de Leo', audience: 'personas', audience_guest_ids: [leo] });
+  await save({ id: evaOnly, title: 'Masaje de Eva', audience: 'personas', audience_guest_ids: [eva] });
+  // por defecto, «todos»; 'personas' pide a alguien y solo huéspedes de este retiro; otro público no lleva lista
+  assert.equal((await app.t.db.query<{ a: string }>(`select audience a from booking.program_items where id = $1`, [common])).rows[0]!.a, 'todos');
+  await fails(save({ id: uuid(), title: 'Nadie', audience: 'personas' }), 'program_items_audience_guests');
+  await fails(save({ id: uuid(), title: 'Ajena', audience: 'personas', audience_guest_ids: [foreign] }), 'INVALID_FIELDS');
+  await fails(save({ id: uuid(), title: 'Raro', audience: 'quien' }), 'audience');
+  await fails(commit([{ op: 'insert', table: TABLES.programItems, id: uuid(), fields: { event_id: event, day: '2028-05-02', title: 'Mezcla', audience: 'adultos', audience_guest_ids: [ana] } }]).then((r) => { if (r.status !== 200) throw r; }), 'audience');
+
+  // el personal también lo fija con la sincronización normal
+  const staffItem = uuid();
+  await ok([{ op: 'insert', table: TABLES.programItems, id: staffItem, fields: { event_id: event, day: '2028-05-03', title: 'Paseo de Ana', audience: 'personas', audience_guest_ids: [ana] } }]);
+  assert.deepEqual((await app.t.db.query<{ ids: string[] }>(`select audience_guest_ids ids from booking.program_items where id = $1`, [staffItem])).rows[0]!.ids, [ana]);
+  await ok([{ op: 'delete', table: TABLES.programItems, id: staffItem, expectedRevision: 1 }]);
+
+  // el organizador lo ve todo, con la lista
+  const forOrganizer = await read('organizers', organizer, 'booking.portal_program', { reservation_id: res });
+  const byId = (items: any[]) => Object.fromEntries(items.map((i: any) => [i.id, [i.audience, i.audience_guest_ids]]));
+  assert.deepEqual(byId(forOrganizer.items), { [common]: ['todos', []], [kids]: ['menores', []], [leoOnly]: ['personas', [leo]], [evaOnly]: ['personas', [eva]] });
+
+  // la familia de Ana y Leo: lo común, lo de los menores y lo de Leo; nunca lo de Eva, que es de otra familia
+  const family = await member('guests', [{ reservation_id: res, guest_id: ana }, { reservation_id: res, guest_id: leo }]);
+  const forFamily = await read('guests', family, 'booking.portal_program', { reservation_id: res });
+  assert.deepEqual(byId(forFamily.items), { [common]: ['todos', []], [kids]: ['menores', []], [leoOnly]: ['personas', [leo]] });
+  assert.ok(!JSON.stringify(forFamily).includes(eva) && !JSON.stringify(forFamily).includes('Masaje'));
+  // una actividad de Leo y Eva: Eva ve la actividad, pero solo con ella en la lista
+  await save({ id: leoOnly, audience_guest_ids: [leo, eva] });
+  const evaGuest = await member('guests', [{ reservation_id: res, guest_id: eva }]);
+  assert.deepEqual(byId((await read('guests', evaGuest, 'booking.portal_program', { reservation_id: res })).items)[leoOnly], ['personas', [eva]]);
+
+  // volver a «todos» vacía la lista; un huésped borrado deja de salir sin bloquear la edición
+  const back = await save({ id: kids, audience: 'todos' });
+  assert.ok(back.revision);
+  assert.deepEqual(byId((await read('organizers', organizer, 'booking.portal_program', { reservation_id: res })).items)[kids], ['todos', []]);
+  const evaRev = Number((await app.t.db.query<{ revision: string }>(`select revision from booking.guests where id = $1`, [eva])).rows[0]!.revision);
+  await ok([{ op: 'delete', table: TABLES.guests, id: eva, expectedRevision: evaRev }]);
+  await save({ id: leoOnly, title: 'Taller de Leo (nuevo)' });
+  const later = byId((await read('organizers', organizer, 'booking.portal_program', { reservation_id: res })).items);
+  assert.deepEqual(later[leoOnly], ['personas', [leo]]);
+  assert.deepEqual(later[evaOnly], ['personas', []]);
+});
+
 test('huésped de muestra · único, no cuenta, no se escribe como huésped y no llega a cocina ni a SES', async () => {
   const { res, event } = await confirmedReservation('Retiro muestra');
   const organizer = await member('organizers', [{ reservation_id: res }]);

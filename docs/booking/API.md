@@ -1448,6 +1448,12 @@ Peticiones B16 (Organizers) y BG9, BG11 y BG12 (Guests). Migración 0459.
   - `booking.portal_program_save({reservation_id, item: {id, day?, starts_at?, ends_at?, title?, space_id?, place_text?, public_note?, internal_note?, kind?, position?}, expectedRevision?})` → `{id, revision}`. El `id` lo genera el cliente: si no existe se crea; si existe, se cambian solo los campos enviados (`""` deja el campo vacío). Errores: `PROGRAM_DAY_OUT_OF_RANGE`, `VERSION_CONFLICT`, `OUT_OF_SCOPE`, `INVALID_FIELDS`.
   - `booking.portal_program_remove({reservation_id, id, expectedRevision?})`.
   - `booking.portal_program_reorder({reservation_id, ids})`: posiciones 1..n en ese orden (como mucho 200).
+- **Para quién es cada actividad (MUELA-065, migración 0475):**
+  - **Columnas:** `program_items.audience` con los valores `todos` (por defecto), `adultos`, `menores` o `personas`, y `audience_guest_ids` (uuid[]).
+  - **Reglas:** con `personas`, de 1 a 100 huéspedes vivos de ese retiro; con los demás valores, la lista va vacía. Si no, `INVALID_FIELDS`.
+  - **Escritura:** las admite `portal_program_save` (`item.audience`, `item.audience_guest_ids`), y también la sincronización del personal. Al cambiar a un público que no es `personas`, la lista se vacía sola.
+  - **Lectura (`portal_program`):** cada actividad lleva `audience` y `audience_guest_ids`. No salen los huéspedes borrados.
+  - **Para `guests` (regla de la 065):** una actividad de `personas` solo sale si alguno de esos huéspedes es del ámbito de quien lee, y la lista lleva solo los suyos. Nunca deja ver lo de otra familia. `adultos` y `menores` salen siempre: la app decide por `is_minor` de cada persona.
 - **Huésped de muestra (BG11):** `booking.portal_preview_guest({reservation_id})` (organizador, reserva confirmada) crea o devuelve `{guest_id, created}`: uno por evento (`guests.preview`). El enlace de Guests para abrirlo lo emite el núcleo (C9). No sale en `portal_guests` ni cuenta en `portal_reservations`, `guest_summary` ni en las listas del personal; sus restricciones no llegan a `food_event_projection`; no se puede marcar su llegada (`check`), así que nunca entra en un parte de SES; ninguna escritura como huésped (`portal_guest_update`, `portal_set_restrictions`, firma…) se acepta: `403 PREVIEW_READ_ONLY`. Solo esa acción lo crea, y `preview` no se cambia después.
 - **BG12:** ya estaba: `reservation_id` es la última columna de `booking.food_event_projection` (0404).
 - **Nombre público de los espacios:** `spaces.public_name` (opcional), editable por el personal.

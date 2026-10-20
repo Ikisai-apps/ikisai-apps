@@ -3,7 +3,7 @@
  * Es pura: no conoce `_kit` ni el navegador. Los campos desconocidos no se juzgan aquí; los rechaza el núcleo.
  */
 import {
-  BED_KINDS, PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, PROGRAM_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
+  BED_KINDS, PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, PROGRAM_KINDS, PROGRAM_AUDIENCES, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
   PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
   RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, STAY_KINDS, TABLES, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
@@ -45,6 +45,7 @@ type Spec =
   | { kind: 'email' }
   | { kind: 'country' }
   | { kind: 'uuid'; nullable?: boolean }
+  | { kind: 'uuidList'; max: number }
   | { kind: 'file' };
 
 const text = (max: number, nullable = true): Spec => ({ kind: 'text', max, nullable });
@@ -345,6 +346,8 @@ FIELDS[TABLES.programItems] = {
   kind: choice(PROGRAM_KINDS, false),
   optional: { kind: 'bool' },
   position: { kind: 'number' },
+  audience: choice(PROGRAM_AUDIENCES, false),
+  audience_guest_ids: { kind: 'uuidList', max: 100 },
 };
 FIELDS[TABLES.lodgingSettings] = {
   event_id: { kind: 'uuid' },
@@ -504,6 +507,9 @@ export function checkValue(spec: Spec, value: unknown): string | null {
       return typeof value === 'string' && COUNTRY.test(value) ? null : 'debe ser un código de país de tres letras (ESP, FRA…)';
     case 'uuid':
       return typeof value === 'string' && UUID.test(value) ? null : 'debe ser un identificador uuid';
+    case 'uuidList':
+      return Array.isArray(value) && value.length <= spec.max && value.every((v) => typeof v === 'string' && UUID.test(v)) && new Set(value).size === value.length
+        ? null : `debe ser una lista de identificadores (como mucho ${spec.max}, sin repetir)`;
     case 'file': {
       // id de `core.files`, o el marcador `{"$blob": "<sha256>"}` que `sync-client` sustituye al subir el adjunto
       if (typeof value === 'string') return UUID.test(value) ? null : 'debe ser un identificador de archivo';
