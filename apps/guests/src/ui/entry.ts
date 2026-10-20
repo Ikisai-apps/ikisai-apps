@@ -2,14 +2,14 @@
  * Entrada sin sesión (API.md §9.1; MUELA-060, tanda 31): «bienvenida con salidas». Arriba, la bienvenida de Ikisai, la
  * marca y el idioma; qué ha pasado (sin enlace, caducado el…, no válido o sin red, con «Reintentar»); el marco
  * «Encuentra tu enlace» paso a paso (mira en tu correo, mira en WhatsApp); y siempre las salidas para hablar con Ikisai
- * (correo, teléfono y, si Central lo tiene, WhatsApp), que salen de Central, nunca fijas en el código.
+ * (correo y teléfono; WhatsApp cuando Central publique `contact.whatsapp`), que salen de Central, nunca fijas en el código.
  * El tercer paso («con tu código», reenviar el enlace sin sesión con el localizador de la reserva) llegará cuando el
  * núcleo publique ese reenvío (petición de la tanda 31); hasta entonces no se ofrece. La cuenta permanente (Google y
  * código por correo) solo sale cuando el núcleo la active; nunca un «pronto».
  */
 import { el, icon, replace } from '@ikisai/ui-kit';
 import { describeError, errorCode, isNetworkError } from '../app/client.ts';
-import { commonText, contactEmail, contactPhone } from '../app/common-texts.ts';
+import { contactEmail, contactPhone } from '../app/common-texts.ts';
 import { formatDate, t } from '../app/i18n.ts';
 import { languageSelect } from './language.ts';
 
@@ -43,7 +43,6 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
   }
   const email = contactEmail();
   const phone = contactPhone();
-  const whatsapp = commonText('contact.whatsapp')?.body?.replace(/[^\d]/g, '') ?? '';
   const subject = encodeURIComponent(t('entry.newLinkSubject'));
   const exit = (href: string, ic: 'edit' | 'help' | 'info', label: string, sub: string, id: string, extra: Record<string, string> = {}) =>
     el('a', { class: 'gentry-exit', href, id, ...extra }, el('span', { class: 'gentry-exit-ico', 'aria-hidden': 'true' }, icon(ic, 20)),
@@ -66,11 +65,10 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
         el('ol', { class: 'gentry-steps' },
           step(1, 'edit', t('entry.step1'), t('entry.step1Text')),
           step(2, 'info', t('entry.step2'), t('entry.step2Text')))),
-      email || phone || whatsapp ? el('p', { class: 'glabel gentry-exits' }, t('entry.exits')) : null,
+      email || phone ? el('p', { class: 'glabel gentry-exits' }, t('entry.exits')) : null,
       el('div', { class: 'gentry-acts', id: 'entryContact' },
         email ? exit(`mailto:${email}?subject=${subject}`, 'edit', t('entry.write'), email, 'entryMail', { 'data-feedback-id': 'guests.entrada.contacto.escribir', 'data-feedback-label': 'Escribir a Ikisai' }) : null,
-        phone ? exit(`tel:${phone.replace(/\s+/g, '')}`, 'help', t('entry.call'), phone, 'entryCall', { 'data-feedback-id': 'guests.entrada.contacto.llamar', 'data-feedback-label': 'Llamar a Ikisai' }) : null,
-        whatsapp ? exit(`https://wa.me/${whatsapp}?text=${subject}`, 'info', 'WhatsApp', t('entry.whatsapp'), 'entryWhatsapp', { target: '_blank', rel: 'noopener', 'data-feedback-id': 'guests.entrada.contacto.whatsapp', 'data-feedback-label': 'WhatsApp' }) : null),
+        phone ? exit(`tel:${phone.replace(/\s+/g, '')}`, 'help', t('entry.call'), phone, 'entryCall', { 'data-feedback-id': 'guests.entrada.contacto.llamar', 'data-feedback-label': 'Llamar a Ikisai' }) : null),
       el('p', { class: 'small gentry-foot' }, t('entry.foot')),
     )));
   return () => replace(root);

@@ -16,7 +16,7 @@ export interface CommonText {
 export interface ShownText extends CommonText { spanishOnly: boolean }
 
 export const INFO_KEYS = ['info.arrival', 'info.parking', 'info.facilities', 'info.rules', 'info.bring'] as const;
-const KEYS = ['portal.privacy', 'contact.email', 'contact.guests.email', 'contact.phone', 'contact.whatsapp', 'guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', 'guests.menu_notice', 'info.map_link', ...INFO_KEYS] as const;
+const KEYS = ['portal.privacy', 'contact.email', 'contact.guests.email', 'contact.phone', 'guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', 'guests.menu_notice', 'info.map_link', ...INFO_KEYS] as const;
 export type TextKey = (typeof KEYS)[number];
 const STORE = 'ikisai-guests-texts';
 
@@ -87,7 +87,7 @@ export async function loadPublicContact(): Promise<void> {
     const rows: CommonText[] = out.items ?? out.rows ?? Object.entries(out)
       .filter(([, v]) => typeof v === 'string' || (v && typeof (v as CommonText).body === 'string'))
       .map(([key, v]) => (typeof v === 'string' ? { key, body: v, title: null, version: null, kind: 'contact' } : { ...(v as CommonText), key }));
-    store(rows.filter((r) => r.key === 'contact.email' || r.key === 'contact.guests.email' || r.key === 'contact.phone' || r.key === 'contact.whatsapp'));
+    store(rows.filter((r) => r.key === 'contact.email' || r.key === 'contact.guests.email' || r.key === 'contact.phone'));
   } catch {
     /* sin red: copia guardada o reserva */
   }
