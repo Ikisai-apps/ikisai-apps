@@ -2587,6 +2587,8 @@ test('R4 · PR 4: el owner ve la vista previa del enlace con Recursos (se enlaza
     await page.locator('#toolInventory').click();
     await expect(page.locator('#resourceLinksFigures .stat-item')).toHaveCount(0);
     await expect(page.locator('#resourceLinksPreview')).toHaveAttribute('aria-disabled', 'true');
+    // El motivo se ve aunque la red se fuera con la hoja cerrada
+    await expect(page.getByRole('dialog')).toContainText('La vista previa la calcula el servidor: necesita conexión.');
     await page.getByRole('dialog').locator('button.primary', { hasText: 'Cerrar' }).click();
     await context.setOffline(false);
     // «Se enlazan» abre la vista previa de siempre (el botón sigue igual)

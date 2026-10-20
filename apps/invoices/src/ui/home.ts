@@ -85,11 +85,15 @@ export const mountHome: ViewMount = (ctx) => {
   const driveReread = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.releer', 'data-feedback-label': 'Volver a leer las pendientes', class: 'ghost', type: 'button', id: 'driveReread', onclick: (e: Event) => void rereadDrive(e.currentTarget as HTMLButtonElement) }, 'Volver a leer las pendientes') : null;
   const connectButton = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.claude.conectar', 'data-feedback-label': 'Conectar Claude', class: 'ghost', type: 'button', id: 'connectClaude', onclick: () => void connectClaude() }, 'Conectar Claude') : null;
   const offline: Array<() => void> = [];
-  const needsNetwork = (button: HTMLElement | null, reason: string) => { if (button) offline.push(bindOnline(button, { client, reason })); };
-  needsNetwork(driveRun, 'Buscar en Drive necesita conexión.');
-  needsNetwork(driveReread, 'Volver a leer necesita conexión.');
-  needsNetwork(connectButton, 'Conectar Claude necesita conexión.');
-  needsNetwork(linksPreviewButton, 'La vista previa la calcula el servidor: necesita conexión.');
+  // El motivo va en un sitio fijo de la hoja: si la red cambia con la hoja cerrada, al abrirla se sigue viendo (tanda 31)
+  const needsNetwork = (button: HTMLElement | null, reason: string, host: HTMLElement) => { if (button) offline.push(bindOnline(button, { client, reason, reasonHost: host })); };
+  const driveReason = el('div', { class: 'inv-reason' });
+  const claudeReason = el('div', { class: 'inv-reason' });
+  const linksReason = el('div', { class: 'inv-reason' });
+  needsNetwork(driveRun, 'Buscar en Drive necesita conexión.', driveReason);
+  needsNetwork(driveReread, 'Volver a leer necesita conexión.', driveReason);
+  needsNetwork(connectButton, 'Conectar Claude necesita conexión.', claudeReason);
+  needsNetwork(linksPreviewButton, 'La vista previa la calcula el servidor: necesita conexión.', linksReason);
 
   const toolHint: Record<string, HTMLElement> = {};
   const toolsRow = el('div', { class: 'inv-tools', role: 'group', 'aria-label': 'Herramientas', 'data-feedback-id': 'invoices.inicio.herramientas', 'data-feedback-label': 'Herramientas' });
@@ -110,15 +114,16 @@ export const mountHome: ViewMount = (ctx) => {
       el('p', { class: 'btnrow' },
         el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/facturas?filtro=drive'); } }, 'Ver las de Drive'),
         driveRun, driveReread),
+      driveReason,
       isOwner ? driveState : null), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
     ...(isOwner ? [tool('claude', 'toolClaude', 'Leer con Claude', 'bot', () => el('div', null,
       el('p', null, 'Una sesión de Claude Code completa las facturas que llegan sin leer (escaneadas o con datos que faltan). Tú las revisas y validas.'),
-      el('p', null, connectButton)), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' })] : []),
+      el('p', null, connectButton), claudeReason), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' })] : []),
     // R4: el inventario es un ajuste de toda la casa: estado, vista previa y el interruptor con su diálogo (solo el owner)
     ...(isOwner ? [tool('inventory', 'toolInventory', 'Inventario', 'cart', () => el('div', null,
       el('div', { class: 'inv-stocklink-state' }, renderMedal({ icon: 'cart', size: 40 }), el('div', null, linksState, linksMeaning)),
       linksFigures,
-      el('p', { class: 'btnrow' }, linksPreviewButton, linksSwitch)), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' })] : []),
+      el('p', { class: 'btnrow' }, linksPreviewButton, linksSwitch), linksReason), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' })] : []),
     // La única entrada a Proveedores (no está en el menú)
     fb(el('a', { class: 'inv-tool', id: 'toolSuppliers', href: '#/proveedores', onclick: (e: Event) => { e.preventDefault(); navigate('#/proveedores'); } },
       icon('people', 20), el('span', { class: 'inv-tool-label' }, 'Proveedores'), el('span', { class: 'inv-tool-hint' }, supplierCount)), { feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }),
