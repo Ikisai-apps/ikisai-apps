@@ -336,3 +336,21 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 /* Papelera de Personas a 46 px (MUELA-085, tres cambios de app.css). */
 .ctl-trashhead{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer}
 .ctl-trashrow .linkbtn{min-height:var(--tap,46px)}
+/* Equipos · Tablero por equipo (Bloque 2, MUELA-085): una columna por equipo; en el móvil, una debajo de otra. */
+.ctl-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;align-items:start}
+.ctl-teamcol{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-top:4px solid var(--team,var(--line));border-radius:12px;background:var(--paper)}
+.ctl-teamhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctl-teamhead .linkbtn{margin-left:auto;min-height:var(--tap,46px)}
+.ctl-members{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.ctl-member{display:flex;align-items:center;gap:6px}
+.ctl-member.inactive .medal-disc{opacity:.6}
+.ctl-memberlink{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:var(--tap,46px);color:var(--ink);text-decoration:none}
+.ctl-memberlink > span{display:flex;flex-direction:column;min-width:0}
+.ctl-membername{font-weight:600;overflow-wrap:anywhere}
+.ctl-lack{font-size:var(--text-sm,.875rem);color:var(--warn-ink)}
+.ctl-lack.alert{color:var(--alert)}
+.ctl-remove{flex:none;width:var(--tap,46px);height:var(--tap,46px);display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:none;color:var(--muted);cursor:pointer}
+.ctl-remove:hover,.ctl-remove:focus-visible{background:var(--paper-2);color:var(--ink)}
+.ctl-addto{min-height:var(--tap,46px);justify-content:flex-start}
+.ctl-addlist{margin:0;padding:0}
+.ctl-addrow{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap,46px);padding:6px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}

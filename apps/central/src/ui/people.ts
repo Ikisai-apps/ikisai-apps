@@ -121,8 +121,8 @@ function statusChips(records: PersonRecord[], personId: string, today: string): 
 // Lista de personas · Directorio de caras (Bloque 2, MUELA-085; §1 y §2 de PERDIDAS_central_bloque2)
 // ---------------------------------------------------------------------------
 /** Lo peor de la documentación de una persona (solo para quien ve los datos reservados): anillo y «Requiere atención». */
-type DocTone = 'alert' | 'warn' | 'ok' | null;
-function docTone(records: PersonRecord[], personId: string, today: string): { tone: DocTone; text: string | null } {
+export type DocTone = 'alert' | 'warn' | 'ok' | null;
+export function docTone(records: PersonRecord[], personId: string, today: string): { tone: DocTone; text: string | null } {
   const mine = records.filter((r) => r.person_id === personId && !r.deleted_at);
   if (!mine.length) return { tone: null, text: null };
   const s = personStatus(mine, today);
