@@ -25,6 +25,11 @@ export interface MedalOptions {
   label?: string | null;
   /** Imagen de fondo para una tarjeta grande (ocupa su contenedor, que debe tener `position: relative`). */
   cover?: boolean;
+  /**
+   * Velo de `cover`. `edges` (por defecto): oscurece abajo (título) y arriba (píldoras), y deja ver la foto en medio.
+   * `full`: para tarjetas con texto en toda la foto; da 4,5:1 al texto blanco de arriba abajo, también con fotos claras.
+   */
+  veil?: 'edges' | 'full';
 }
 
 const PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'y', 'e', 'da', 'do', 'dos', 'van', 'von', 'di']);
@@ -42,7 +47,7 @@ export function initialsOf(name: string | null | undefined): string {
 
 export function renderMedal(options: MedalOptions): HTMLElement {
   if (options.cover) {
-    return el('span', { class: 'medal-cover', 'aria-hidden': 'true', style: options.image ? `background-image:url("${String(options.image).replace(/["\\]/g, '')}")` : null });
+    return el('span', { class: `medal-cover${options.veil === 'full' ? ' medal-veil-full' : ''}`, 'aria-hidden': 'true', style: options.image ? `background-image:url("${String(options.image).replace(/["\\]/g, '')}")` : null });
   }
   const size = options.size ?? 44;
   const a11y = options.label ? { role: 'img', 'aria-label': options.label } : { 'aria-hidden': 'true' };

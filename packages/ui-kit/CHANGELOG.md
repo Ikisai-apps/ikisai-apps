@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.51.0 · 20 de octubre de 2026
+
+**Velo completo para portadas con texto** (punto 11, Organizers).
+
+- `renderMedal({ cover: true, veil: 'full' })`: el velo cubre toda la foto y el texto blanco da 4,5:1 de arriba abajo, también sobre una foto blanca (antes, en la franja media, el velo era de 0,15). Organizers puede quitar su refuerzo.
+- Sin `veil` (o con `veil: 'edges'`), el de siempre: oscurece abajo y arriba y deja ver la foto en medio.
+- **Pruebas:** `v56`.
+
 ## 0.50.0 · 20 de octubre de 2026
 
 **Lo que falta de la tanda 29 y la tanda 30** (Central, Tasks y MUELA-080). Lo de hoy queda igual por defecto, salvo `.segmented`, que se ve más.
