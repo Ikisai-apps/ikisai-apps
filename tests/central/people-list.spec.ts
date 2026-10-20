@@ -68,7 +68,8 @@ test('personas (caracterización) · lista: Relación, Equipo e Inactivas; «Fun
   await expect(rowOf(page, 'Ana Ficticia')).toContainText('Cocina'); // chip del equipo
   await expect(rowOf(page, 'Ciro Ficticio')).toHaveCount(0);
 
-  // Filtro por relación.
+  // Filtro por relación, dentro de «Filtros».
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await expect(page.locator('#peopleRelation option')).toHaveText(['Todas las relaciones', 'Equipo', 'Colaborador', 'Voluntariado', 'Prácticas', 'Otra']);
   await page.locator('#peopleRelation').selectOption('voluntario');
   await expect(page.locator('.personrow')).toHaveCount(1);

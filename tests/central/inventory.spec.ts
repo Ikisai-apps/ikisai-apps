@@ -2,7 +2,8 @@
  * Central · Inventario (kit 0.37): el catálogo del kit sin ámbito y la ficha en página propia, sobre el segundo cliente de
  * Recursos (`/api/v1/resources`, la Edge real sobre PGlite). Filtros, búsqueda, enlace con filtro, alta rápida, ficha con
  * movimientos (origen «Finance» y quién, por su ficha de Personas), guardar datos, lector solo mirando y lectura sin red.
- * Datos ficticios.
+ * Bloque 2 (MUELA-076): baldosas por defecto y «Lista» a un toque (las pruebas de antes van sobre la lista), «Trasladar»
+ * y «Contar» de un solo artículo, chips de sitio y la portada con foco de la ficha. Datos ficticios.
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -70,8 +71,12 @@ async function login(page: Page, who = 'owner'): Promise<void> {
 }
 const rows = (page: Page) => page.locator('.stk-row');
 const row = (page: Page, id: string) => page.locator(`.stk-row[data-item-id="${id}"]`);
+const tile = (page: Page, id: string) => page.locator(`.stk-tilecell[data-item-id="${id}"]`);
+/** Las pruebas de antes miran la lista: la vista elegida en el dispositivo es «Lista». */
+const useList = (page: Page) => page.addInitScript(() => { try { localStorage.setItem('ikisai-central-inventario-vista', 'lista'); } catch { /* */ } });
 
 test('inventario · catálogo sin ámbito, filtros, enlace con filtro, alta rápida y ficha con movimientos', async ({ page }) => {
+  await useList(page);
   await login(page);
   // Barra de cuatro entradas para todos; Accesos, desde Inicio (decisión del usuario, 18-10-2026).
   await expect(page.locator('a.navbtn')).toHaveText(['Inicio', 'Cumplimiento', 'Personas', 'Inventario']);
@@ -139,6 +144,7 @@ test('inventario · catálogo sin ámbito, filtros, enlace con filtro, alta ráp
 });
 
 test('inventario · el lector solo mira, y sin red se lee el espejo', async ({ page, context }) => {
+  await useList(page);
   await login(page, 'reader');
   await page.locator('a.navbtn[data-hash="#/inventario"]').click();
   await expect(rows(page).first()).toBeVisible();
@@ -158,9 +164,67 @@ test('inventario · el lector solo mira, y sin red se lee el espejo', async ({ p
   await context.setOffline(false);
 });
 
+test('inventario · baldosas por defecto, «Lista» a un toque, Trasladar y Contar de uno, y la ficha con portada y foco (Bloque 2)', async ({ page }) => {
+  const dialog = page.getByRole('dialog');
+  await login(page);
+  await page.locator('a.navbtn[data-hash="#/inventario"]').click();
+  await expect(page.locator('#inventoryView button[aria-pressed="true"]')).toHaveText('Baldosas');
+  // Cada artículo, una baldosa con su cifra y el nivel en palabras.
+  await expect(tile(page, ids.harina)).toContainText('Bajo mínimo');
+  await expect(tile(page, ids.aceite)).toContainText('ml');
+  await expect(page.locator('.stk-row')).toHaveCount(0);
+  // Chip del sitio donde hay algo (la despensa, con el aceite).
+  await expect(page.locator('.stk-chips').getByRole('button', { name: 'Despensa', exact: true })).toBeVisible();
+  // Gastar, Entrada, Contar y Trasladar en cada artículo, con su nombre.
+  for (const name of ['Gastar', 'Entrada', 'Contar', 'Trasladar']) await expect(tile(page, ids.aceite).getByRole('button', { name: `${name}: Aceite de oliva` })).toBeVisible();
+  // Contar abre el recuento solo de ese artículo (no el de todo).
+  await tile(page, ids.aceite).getByRole('button', { name: 'Contar: Aceite de oliva' }).click();
+  await expect(dialog.locator('.stk-count-line')).toHaveCount(1);
+  await expect(dialog.locator(`.stk-count-line[data-item-id="${ids.aceite}"]`)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await tile(page, ids.aceite).getByRole('button', { name: 'Trasladar: Aceite de oliva' }).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // «Lista» a un toque, y se recuerda.
+  await page.locator('#inventoryView').getByRole('button', { name: 'Lista' }).click();
+  await expect(row(page, ids.harina)).toBeVisible();
+  await expect(row(page, ids.aceite).getByRole('button', { name: 'Trasladar' })).toBeVisible();
+  await page.reload();
+  await expect(row(page, ids.harina)).toBeVisible();
+  await page.locator('#inventoryView').getByRole('button', { name: 'Baldosas' }).click();
+  await expect(tile(page, ids.harina)).toBeVisible();
+
+  // Ficha de la harina: portada con sus cifras y el foco «Reponer» con su acción.
+  await tile(page, ids.harina).locator('.tile-box').click();
+  await expect(page).toHaveURL(new RegExp(`#/inventario/${ids.harina}$`));
+  const cover = page.locator('#inventoryOverview .cover-box');
+  await expect(cover).toContainText('Bajo mínimo');
+  await expect(cover).toContainText('mínimo 5000 g');
+  const reponer = page.locator('.ctl-itemfocus-card[data-focus="reponer"]');
+  await expect(reponer).toContainText('el mínimo es 5000 g');
+  await reponer.getByRole('button', { name: 'Registrar entrada: Harina' }).click();
+  await expect(dialog.getByLabel('Cuánto entra', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // Debajo, la ficha de siempre.
+  await expect(page.locator('.stk-sheet-title')).toHaveText('Harina');
+});
+
+test('inventario · el lector ve las baldosas y el foco, sin acciones', async ({ page }) => {
+  await login(page, 'reader');
+  await page.locator('a.navbtn[data-hash="#/inventario"]').click();
+  await expect(tile(page, ids.harina)).toContainText('Bajo mínimo');
+  await expect(tile(page, ids.harina).getByRole('button', { name: /^(Gastar|Entrada|Contar|Trasladar):/ })).toHaveCount(0);
+  await tile(page, ids.harina).locator('.tile-box').click();
+  await expect(page.locator('.ctl-itemfocus-card[data-focus="reponer"]')).toBeVisible();
+  await expect(page.locator('.ctl-itemfocus button')).toHaveCount(0);
+});
+
 test('inventario · Gastar, Entrada y Recuento (kit 0.38) llegan a Recursos', async ({ page }) => {
   const stock = async (item: string) => Number((await api.app.t.db.query<{ q: string }>(`select coalesce(sum(quantity), 0) as q from resources.movements where item_id = $1 and deleted_at is null`, [item])).rows[0]!.q);
   const dialog = page.getByRole('dialog');
+  await useList(page);
   await login(page);
   await page.locator('a.navbtn[data-hash="#/inventario"]').click();
   const before = await stock(ids.aceite);

@@ -28,8 +28,8 @@
 
 /* Cuentas */
 .accounts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.accountrow{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
-.accountrow:hover,.accountrow:focus-visible{border-color:var(--accent)}
+button.accountrow{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+button.accountrow:hover,button.accountrow:focus-visible{border-color:var(--accent)}
 .accountname{font-weight:600;overflow-wrap:anywhere}
 .accountmeta{font-size:var(--text-sm,.875rem);overflow-wrap:anywhere}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -255,3 +255,116 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-rv-sheet{display:grid;gap:10px}
 .ctl-rv-where{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0}
 .ctl-rv-go{width:max-content;max-width:100%;min-height:var(--tap,46px);justify-content:center}
+/* Ficha de artículo · foco (Bloque 2, MUELA-048 y 076): reponer, gastar antes o juntar, cada uno con su acción. */
+.ctl-itemfocus{display:grid;gap:10px;margin:12px 0}
+@media (min-width:760px){.ctl-itemfocus{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}}
+.ctl-itemfocus-card{display:grid;gap:6px;align-content:start;border-left:4px solid var(--line)}
+.ctl-itemfocus-card.alert{border-left-color:var(--alert)}
+.ctl-itemfocus-card.warn{border-left-color:var(--warn)}
+.ctl-itemfocus-card h3{margin:0;font-size:var(--text-md,1rem)}
+.ctl-itemfocus-card p{margin:0}
+.ctl-itemfocus-card button{justify-self:start;min-height:var(--tap,46px)}
+
+/* Accesos · Cuentas en cuadrícula (Bloque 2, MUELA-085): primera columna fija y casillas de 46 px; con más apps, desliza dentro de su caja. */
+.ctl-gridbox{overflow-x:auto;margin:0 0 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.ctl-grid{border-collapse:separate;border-spacing:0;width:100%;font-size:var(--text-sm,.875rem)}
+.ctl-grid th,.ctl-grid td{padding:4px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
+.ctl-grid tbody tr:last-child > *{border-bottom:0}
+.ctl-grid thead th{font-weight:700;color:var(--muted);white-space:nowrap;padding:8px 4px}
+.ctl-grid .ctl-acname{position:sticky;left:0;z-index:1;background:var(--paper);text-align:left;min-width:132px;max-width:46vw;padding:6px 8px;font-weight:400}
+.ctl-apphead.lone{color:var(--warn-ink)}
+.ctl-appwarn{font-weight:800}
+.ctl-acbtn{display:block;width:100%;min-height:var(--tap,46px);padding:4px 0;border:0;background:none;color:var(--ink);font:inherit;font-weight:700;text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.ctl-acbtn.off .accountname{text-decoration:line-through}
+.ctl-acmeta{display:block;overflow-wrap:anywhere}
+.ctl-acname .chips{margin-top:4px}
+.ctl-state{gap:4px}
+.ctl-never{border-style:dashed}
+.ctl-cell{min-width:var(--tap,46px);min-height:var(--tap,46px);border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:2px}
+.ctl-cell.none{color:var(--muted);font-weight:400}
+.ctl-cell.role-owner{background:var(--accent-soft,var(--paper-2));border-color:var(--accent)}
+.ctl-cell.derived{border-style:dashed}
+.ctl-cell.lone{box-shadow:inset 0 0 0 2px var(--warn)}
+.ctl-cell:focus-visible,.ctl-cell:hover{border-color:var(--accent)}
+.ctl-cellmark{font-weight:400}
+.ctl-legend{margin:6px 8px 8px}
+.ctl-roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin:10px 0}
+.ctl-rolebtn{min-height:var(--tap,46px);border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.ctl-rolebtn.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ctl-rolebtn:disabled{opacity:.55;cursor:not-allowed}
+/* Alta · persona primero: caras de las fichas sin cuenta. */
+.ctl-faces{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;margin:12px 0}
+.ctl-face{display:flex;flex-direction:column;align-items:center;gap:6px;min-height:var(--tap,46px);padding:8px 4px;border:1px solid transparent;border-radius:12px;background:none;color:var(--ink);font:inherit;cursor:pointer}
+.ctl-face[aria-pressed="true"]{border-color:var(--accent);background:var(--paper)}
+.ctl-face-name{font-size:var(--text-sm,.875rem);text-align:center;overflow-wrap:anywhere}
+.ctl-face-new{display:inline-flex;align-items:center;justify-content:center;width:var(--medal-size);height:var(--medal-size);border-radius:50%;border:1px dashed var(--line);color:var(--muted)}
+.ctl-invroles{flex-wrap:wrap}
+.ctl-downgraded{font-weight:600}
+/* Agentes · revocadas plegadas al final. */
+.ctl-revoked{margin:12px 0}
+.ctl-revoked summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--muted)}
+.agentrow.alert{border-left:4px solid var(--alert);padding-left:8px}
+.agentrow.warn{border-left:4px solid var(--warn);padding-left:8px}
+/* Registro · «Lo grave» arriba y la línea de tiempo por persona, con día y hora en cada línea. */
+.ctl-grave{margin:0 0 12px}
+.ctl-grave:empty{display:none}
+.ctl-loglines{margin:0;padding:0}
+.ctl-logline{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--line)}
+.ctl-logline.alert .ctl-logwhat{color:var(--alert);font-weight:700}
+.ctl-logmeta{font-size:var(--text-sm,.875rem);color:var(--muted)}
+
+/* Personas · Directorio de caras (Bloque 2, MUELA-085). El anillo, solo con permiso de datos reservados (si no, borde neutro). */
+.ctl-searchrow{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;padding:8px 0;background:var(--bg)}
+.ctl-searchrow input[type=search]{flex:1;min-width:0;min-height:var(--tap,46px)}
+.ctl-searchrow .ghost{min-height:var(--tap,46px);flex:none}
+.ctl-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.ctl-filters select{min-height:var(--tap,46px)}
+.ctl-directory{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.ctl-directory > li{display:flex}
+.personrow.ctl-personface{align-items:center;text-align:center;gap:6px;height:100%}
+.ctl-personface .chips{justify-content:center}
+.ctl-personface.inactive .medal-disc{opacity:.6}
+.ctl-ring{display:inline-flex;border-radius:50%;padding:3px;border:3px solid var(--line)}
+.ctl-personface[data-ring="alert"] .ctl-ring{border-color:var(--alert)}
+.ctl-personface[data-ring="warn"] .ctl-ring{border-color:var(--warn)}
+.ctl-personface[data-ring="ok"] .ctl-ring{border-color:var(--ok,var(--accent))}
+.ctl-attention{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;padding:0;list-style:none}
+.ctl-attrow{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap,46px);padding:6px 10px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.ctl-attrow.alert{border-left-color:var(--alert)}
+.ctl-attrow > span{display:flex;flex-direction:column;min-width:0}
+.ctl-attwhy{font-size:var(--text-sm,.875rem);color:var(--muted)}
+/* Papelera de Personas a 46 px (MUELA-085, tres cambios de app.css). */
+.ctl-trashhead{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer}
+.ctl-trashrow .linkbtn{min-height:var(--tap,46px)}
+/* Equipos · Tablero por equipo (Bloque 2, MUELA-085): una columna por equipo; en el móvil, una debajo de otra. */
+.ctl-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;align-items:start}
+.ctl-teamcol{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-top:4px solid var(--team,var(--line));border-radius:12px;background:var(--paper)}
+.ctl-teamhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctl-teamhead .linkbtn{margin-left:auto;min-height:var(--tap,46px)}
+.ctl-members{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.ctl-member{display:flex;align-items:center;gap:6px}
+.ctl-member.inactive .medal-disc{opacity:.6}
+.ctl-memberlink{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:var(--tap,46px);color:var(--ink);text-decoration:none}
+.ctl-memberlink > span{display:flex;flex-direction:column;min-width:0}
+.ctl-membername{font-weight:600;overflow-wrap:anywhere}
+.ctl-lack{font-size:var(--text-sm,.875rem);color:var(--warn-ink)}
+.ctl-lack.alert{color:var(--alert)}
+.ctl-remove{flex:none;width:var(--tap,46px);height:var(--tap,46px);display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:none;color:var(--muted);cursor:pointer}
+.ctl-remove:hover,.ctl-remove:focus-visible{background:var(--paper-2);color:var(--ink)}
+.ctl-addto{min-height:var(--tap,46px);justify-content:flex-start}
+.ctl-addlist{margin:0;padding:0}
+.ctl-addrow{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap,46px);padding:6px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+/* Ficha de persona · portada (Bloque 2, MUELA-076): medallón con anillo (solo con datos reservados) y la línea de cifras. */
+.ctl-personhead{display:flex;align-items:center;gap:14px}
+.ctl-personhead[data-ring="alert"] .ctl-ring{border-color:var(--alert)}
+.ctl-personhead[data-ring="warn"] .ctl-ring{border-color:var(--warn)}
+.ctl-personhead[data-ring="ok"] .ctl-ring{border-color:var(--ok,var(--accent))}
+.ctl-coverstats{margin:4px 0 0;font-size:var(--text-sm,.875rem);color:var(--muted)}
+/* Oficios · barras de cobertura (Bloque 2, MUELA-076): Experto, Sabe y Aprende; la raya, el mínimo de dos capaces. */
+.ctl-covbar{position:relative;display:flex;width:100%;max-width:240px;height:8px;border-radius:999px;background:var(--paper-2);overflow:hidden}
+.ctl-cov.experto{background:var(--accent-deep,var(--accent))}
+.ctl-cov.sabe{background:var(--accent)}
+.ctl-cov.aprende{background:color-mix(in srgb,var(--accent) 40%,var(--paper-2))}
+.ctl-covmin{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+/* Inicio · lo que urge: las siguientes se tocan para subirlas a la tarjeta (089). */
+.ctl-raise{min-height:var(--tap,46px);text-align:left}

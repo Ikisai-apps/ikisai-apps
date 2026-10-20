@@ -89,6 +89,7 @@ export const EVENT_LABELS: Record<string, string> = {
   password_reset: 'Contraseña temporal nueva',
   account_disabled: 'Cuenta desactivada',
   account_enabled: 'Cuenta reactivada',
+  display_name_changed: 'Nombre de la cuenta cambiado',
 };
 
 export function createAdminApi(client: SyncClient) {
@@ -133,9 +134,12 @@ export function createAdminApi(client: SyncClient) {
       return out.items;
     },
     revokeAgent: (keyId: string) => call<{ keyId: string; revoked: boolean; proposalsRevoked: number }>(`/admin/agents/${keyId}`, { method: 'DELETE' }),
-    accessLog: (params: { app?: string; before?: number; limit?: number }) => {
+    /** Registro de accesos (P12, #640): `user` = lo que hizo esa cuenta, lo que la afecta y lo de sus claves; `grave` = solo lo grave. */
+    accessLog: (params: { app?: string; user?: string; grave?: boolean; before?: number; limit?: number }) => {
       const q = new URLSearchParams();
       if (params.app) q.set('app', params.app);
+      if (params.user) q.set('user', params.user);
+      if (params.grave) q.set('only', 'grave');
       if (params.before) q.set('before', String(params.before));
       q.set('limit', String(params.limit ?? 50));
       return call<{ items: AccessEvent[]; hasMore: boolean; nextBefore: number | null }>(`/admin/access-log?${q}`);

@@ -1,7 +1,10 @@
-import { el, icon, plural, replace } from '@ikisai/ui-kit';
-import { canSeeReserved, recentDecisions, todayInMadrid, type DueItem } from '@ikisai/domain-central';
-import { computeDue, createDueQueue, plazo, type Data, type DueQueue } from './compliance.ts';
-import { mountDashboard } from './dashboard.ts';
+import { createQueue, deadlineInfo, el, icon, plural, replace, toastWithAction, type Queue, type QueueItem } from '@ikisai/ui-kit';
+import {
+  ATTENTION_RANK_LABELS, attentionSummary, canSeeReserved, centralAttention, formatKpi, formatPeriod, recentDecisions, todayInMadrid,
+  type AttentionItem, type AttentionKpi, type DueItem,
+} from '@ikisai/domain-central';
+import { computeDue, dueText, openDue, openMarkDone, plazo, sourceLabel, undoMarkDone, type Data } from './compliance.ts';
+import { APP_NAMES, mountDashboard } from './dashboard.ts';
 import { T } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
@@ -12,12 +15,17 @@ const ROLE_TEXT: Record<string, string> = {
   reader: 'Puedes consultar Central.',
 };
 
-const dueHref = (x: DueItem) => (x.source === 'person_record' ? `#/personas/${x.parentId}` : x.source === 'requirement' ? `#/cumplimiento/${x.id}` : x.parentId ? `#/cumplimiento/${x.parentId}` : '#/cumplimiento/documentos');
+const appName = (app: string) => APP_NAMES[app] ?? app;
 
 /**
- * Inicio (MUELA-004 y 069, con las recomendaciones aprobadas por VG):
- * - Lo que vence, una cosa cada vez (orden de `computeDue`), y debajo las 4 siguientes con su fecha; «Ver todo» lleva a
- *   Vencimientos. La documentación de personas solo para quien ve datos reservados.
+ * Inicio (MUELA-004 y 069; orden confirmado por VG en la 089):
+ * - **Lo que urge**, una sola cola, una cosa cada vez: obligaciones, documentos clave, documentación de personas (solo para
+ *   quien ve datos reservados) y los avisos de las otras apps (indicadores del panel en crítico o en atención). El orden es
+ *   `centralAttention` del 004: lo que bloquea, lo crítico, lo vencido, lo que pide atención y lo que vence pronto.
+ *   - La obligación lleva «Resolver y siguiente» (quien edita), con «Deshacer». El indicador, «Abrir» su app: sigue en la
+ *     cola hasta que se resuelve allí. Lo demás, «Ver». Y siempre «Siguiente».
+ *   - Debajo, las siguientes con su fecha o su estado, y «Ver todo» con la lista entera en el mismo orden; tocar una la sube
+ *     a la tarjeta.
  * - Para quien administra, las 4 tarjetas de Accesos (con red).
  * - Las tres últimas decisiones y los enlaces de siempre (Decisiones, Textos y Entidad; también están en el menú).
  * - El panel de Dirección; sin red dice de cuándo son sus indicadores, sin rojo (el rojo de «Sin conexión» va en el menú).
@@ -27,7 +35,7 @@ export const mountHome: ViewMount = (ctx) => {
   const boot = client.bootstrap();
   const canEdit = boot?.membership.role !== 'reader';
   const summary = el('div', { class: 'homecards', id: 'homeSummary', 'data-feedback-id': 'central.inicio.resumen', 'data-feedback-label': 'Resumen de cuentas' });
-  const docs = el('section', { id: 'homeDocs', class: 'ctl-block', 'data-feedback-id': 'central.inicio.vencimientos', 'data-feedback-label': 'Vencimientos' });
+  const docs = el('section', { id: 'homeDocs', class: 'ctl-block', 'data-feedback-id': 'central.inicio.vencimientos', 'data-feedback-label': 'Lo que urge' });
   const decisions = el('section', { id: 'homeDecisionsBlock', class: 'ctl-block', 'data-feedback-id': 'central.inicio.decisiones', 'data-feedback-label': 'Últimas decisiones' });
   const dashboardHost = el('div', { 'data-feedback-id': 'central.inicio.direccion', 'data-feedback-label': 'Panel de dirección' });
   replace(
@@ -45,35 +53,116 @@ export const mountHome: ViewMount = (ctx) => {
     dashboardHost,
   );
 
-  // Lo que vence (obligaciones, documentos clave y, para quien la ve, documentación de personas), calculado en el dispositivo.
+  // --- Lo que urge ------------------------------------------------------------------------------------------------
   let data: Data | null = null;
   let due: DueItem[] = [];
-  let queue: DueQueue | null = null;
-  const next = el('ul', { class: 'ctl-next', 'data-feedback-id': 'central.inicio.vencimientos.siguientes', 'data-feedback-label': 'Las siguientes' });
+  let kpis: AttentionKpi[] = [];
+  let order: AttentionItem[] = [];
+  /** Lo que ya se ha resuelto aquí (obligaciones marcadas): sale de la cola hasta que vuelva a vencer. */
+  const passed = new Set<string>();
+  let queue: Queue | null = null;
+  let showAll = false;
+  const byKey = new Map<string, AttentionItem>();
+  const queueHost = el('div');
+  const head = el('div', { class: 'blockhead' });
+  const next = el('ul', { class: 'ctl-next', id: 'homeNext', 'data-feedback-id': 'central.inicio.vencimientos.siguientes', 'data-feedback-label': 'Las siguientes' });
+
+  function openKpi(k: AttentionKpi): void {
+    if (!k.link) return;
+    if (k.link.startsWith('https://central.ikisai.com/')) { const hash = k.link.slice('https://central.ikisai.com/'.length); navigate(hash.startsWith('#') ? hash : `#${hash}`); return; }
+    window.open(k.link, '_blank', 'noopener');
+  }
+
+  function toItem(a: AttentionItem): QueueItem {
+    if (a.kind === 'kpi') {
+      const k = a.kpi;
+      return { id: a.key, title: k.label, tone: k.state === 'critico' ? 'alert' : 'warn', toneText: `${ATTENTION_RANK_LABELS[a.rank]} · ${appName(k.app)}`,
+        value: formatKpi(k.value, k.unit), facts: [`Indicador de ${appName(k.app)}`, formatPeriod(k.period), 'Se resuelve en su app'] };
+    }
+    const i = a.due;
+    const info = deadlineInfo(i.dueOn);
+    return {
+      id: a.key, title: i.title, tone: i.state === 'vencido' || i.blocksOperation ? 'alert' : 'warn',
+      toneText: [i.blocksOperation ? 'Bloquea la operación' : '', i.state === 'vencido' ? 'Vencido' : 'Vence pronto'].filter(Boolean).join(' · '),
+      value: info.left.charAt(0).toUpperCase() + info.left.slice(1),
+      facts: [sourceLabel(i), dueText(i), ...(i.code ? [i.code] : [])],
+    };
+  }
+
+  function buildQueue(list: AttentionItem[]): Queue {
+    return createQueue({
+      label: 'Lo que urge, una cosa cada vez', items: list.map(toItem), feedbackId: 'central.inicio.vencimientos.cola',
+      primary: (item) => {
+        const a = byKey.get(item.id);
+        if (!a || a.kind !== 'due' || !canEdit || a.due.source !== 'requirement') return null;
+        const req = data?.requirements.find((r) => r.id === a.due.id);
+        if (!req) return null;
+        return { label: 'Resolver y siguiente', onClick: () => openMarkDone(client, usage, req, {
+          onSaved: (before) => {
+            passed.add(a.key);
+            queue?.done();
+            paintNext();
+            toastWithAction('Obligación marcada como cumplida.', { label: 'Deshacer', onClick: () => void undoMarkDone(client, req.id, before).then((ok) => { if (ok) { passed.delete(a.key); queue?.undo(); paintNext(); } }) });
+          },
+        }) };
+      },
+      secondary: (item) => {
+        const a = byKey.get(item.id);
+        if (!a) return null;
+        if (a.kind === 'kpi') return a.kpi.link ? { label: `Abrir ${appName(a.kpi.app)}`, onClick: () => { openKpi(a.kpi); queue?.skip(); } } : null;
+        return { label: 'Ver', onClick: () => { if (data) openDue(ctx, data, a.due); } };
+      },
+      onAll: () => { showAll = !showAll; paintNext(); },
+      doneTitle: 'Has pasado por todo', doneText: 'Lo que urge sigue aquí hasta que se resuelva.',
+    });
+  }
+
+  /** La lista de debajo: las cuatro siguientes o, con «Ver todo», todas, en el mismo orden. Tocar una la sube a la tarjeta. */
   function paintNext(): void {
-    if (!queue) return;
-    const ids = queue.pending().slice(1, 5);
-    const rows = ids.map((id) => due.find((x) => x.id === id)).filter((x): x is DueItem => !!x);
-    replace(next, ...rows.map((x) => el('li', null,
-      el('a', { href: dueHref(x), 'data-feedback-id': 'central.inicio.vencimientos.enlace', 'data-feedback-label': 'Vencimiento' }, el('span', { 'data-feedback-ignore': '' }, x.title)),
-      el('span', { class: `ctl-nextwhen${x.state === 'vencido' ? ' alert' : ''}` }, plazo(x.dueOn, x.source === 'requirement' ? ['Vence el', 'Venció el'] : ['Caduca el', 'Caducó el'])))));
+    const left = order.filter((a) => !passed.has(a.key));
+    const now = queue?.current()?.id ?? null;
+    const rest = left.filter((a) => a.key !== now);
+    const rows = showAll ? rest : rest.slice(0, 4);
+    replace(next, ...rows.map((a) => el('li', null,
+      el('button', { type: 'button', class: 'linkbtn ctl-raise', dataset: { key: a.key }, 'data-feedback-id': 'central.inicio.vencimientos.enlace', 'data-feedback-label': 'Subir a la tarjeta', onclick: () => raise(a.key) },
+        el('span', { 'data-feedback-ignore': '' }, a.kind === 'kpi' ? a.kpi.label : a.due.title)),
+      el('span', { class: `ctl-nextwhen${a.rank <= 3 ? ' alert' : ''}` }, a.kind === 'kpi'
+        ? `${ATTENTION_RANK_LABELS[a.rank]} · ${appName(a.kpi.app)}`
+        : plazo(a.due.dueOn, a.due.source === 'requirement' ? ['Vence el', 'Venció el'] : ['Caduca el', 'Caducó el'])))));
     next.hidden = rows.length === 0;
   }
+
+  function raise(key: string): void {
+    const left = order.filter((a) => !passed.has(a.key));
+    const chosen = left.find((a) => a.key === key);
+    if (!chosen) return;
+    queue = buildQueue([chosen, ...left.filter((a) => a.key !== key)]);
+    replace(queueHost, queue.element);
+    paintNext();
+    queue.element.querySelector<HTMLElement>('.queue-main, .queue-minor button')?.focus({ preventScroll: true });
+  }
+
+  function paintAttention(): void {
+    order = centralAttention(due, kpis);
+    byKey.clear();
+    for (const a of order) byKey.set(a.key, a);
+    for (const k of [...passed]) if (!byKey.has(k)) passed.delete(k);
+    const left = order.filter((a) => !passed.has(a.key));
+    if (!order.length) { queue = null; replace(docs); return; }
+    if (queue) queue.setItems(left.map(toItem));
+    else { queue = buildQueue(left); replace(queueHost, queue.element); }
+    replace(head, el('h3', null, 'Lo que urge'), el('span', { class: 'hint', id: 'homeAttentionSummary' }, attentionSummary(left)));
+    if (!docs.contains(queueHost)) replace(docs, head, queueHost, next);
+    paintNext();
+  }
+
   async function paintDocs(): Promise<void> {
     const [requirements, documents, people, records] = await Promise.all([
       client.list(T.requirements), client.list(T.keyDocuments), client.list(T.people), canSeeReserved(boot?.membership) ? client.list(T.personRecords) : Promise.resolve([]),
     ]);
     data = { requirements, documents, links: [], people, records } as unknown as Data;
     due = computeDue(data, todayInMadrid());
-    if (!due.length) { queue = null; replace(docs); return; }
-    const expired = due.filter((x) => x.state === 'vencido').length;
-    if (queue) queue.setDue(due);
-    else queue = createDueQueue(ctx, () => data!, due, { canEdit, onAll: () => navigate('#/cumplimiento'), where: 'inicio', onChange: paintNext });
-    replace(docs,
-      el('div', { class: 'blockhead' }, el('h3', null, 'Lo que vence'),
-        el('span', { class: 'hint' }, [expired ? plural(expired, 'vencido', 'vencidos') : '', due.length - expired ? plural(due.length - expired, 'vence pronto', 'vencen pronto') : ''].filter(Boolean).join(' · '))),
-      queue.element, next);
-    paintNext();
+    paintAttention();
   }
   void paintDocs();
   const offs = [T.requirements, T.keyDocuments, T.personRecords, T.people].map((t) => client.onTable(t, () => void paintDocs()));
@@ -89,9 +178,11 @@ export const mountHome: ViewMount = (ctx) => {
   void paintDecisions();
   offs.push(client.onTable(T.decisions, () => void paintDecisions()));
 
-  // `#/?direccion=<app>` (desde el menú): abre ese grupo del panel y baja hasta él.
+  // `#/?direccion=<app>` (desde el menú): abre ese grupo del panel y baja hasta él. Sus indicadores en crítico o en
+  // atención entran en la cola (los de la última lectura, también sin red).
   const focusApp = new URLSearchParams(location.hash.split('?')[1] ?? '').get('direccion');
-  const unmountDashboard = mountDashboard(dashboardHost, client, isAdmin, usage, focusApp ?? (location.hash.includes('direccion') ? '' : null));
+  const unmountDashboard = mountDashboard(dashboardHost, client, isAdmin, usage, focusApp ?? (location.hash.includes('direccion') ? '' : null),
+    (items) => { kpis = items; paintAttention(); });
 
   const cleanup = () => { offs.forEach((off) => off()); unmountDashboard(); };
   if (!isAdmin) return cleanup;

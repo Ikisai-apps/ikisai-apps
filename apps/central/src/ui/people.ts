@@ -1,6 +1,6 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  compressImage, confirmDialog, createSortableList, el, icon, openSheet, positionBetween, replace, toast, type Sheet,
+  compressImage, confirmDialog, createFocus, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, type Sheet,
 } from '@ikisai/ui-kit';
 import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
@@ -118,12 +118,27 @@ function statusChips(records: PersonRecord[], personId: string, today: string): 
 }
 
 // ---------------------------------------------------------------------------
-// Lista de personas
+// Lista de personas · Directorio de caras (Bloque 2, MUELA-085; §1 y §2 de PERDIDAS_central_bloque2)
 // ---------------------------------------------------------------------------
+/** Lo peor de la documentación de una persona (solo para quien ve los datos reservados): anillo y «Requiere atención». */
+export type DocTone = 'alert' | 'warn' | 'ok' | null;
+export function docTone(records: PersonRecord[], personId: string, today: string): { tone: DocTone; text: string | null } {
+  const mine = records.filter((r) => r.person_id === personId && !r.deleted_at);
+  if (!mine.length) return { tone: null, text: null };
+  const s = personStatus(mine, today);
+  if (s.documents === 'caducado' || s.training === 'caducado') return { tone: 'alert', text: 'Documentación caducada' };
+  const soon = mine.filter((r) => dueState(r.expires_on, today, 30, r.status === 'no_aplica') === 'por_vencer').sort((a, b) => (a.expires_on ?? '').localeCompare(b.expires_on ?? ''));
+  if (soon.length) return { tone: 'warn', text: `Caduca el ${day(soon[0]!.expires_on)}: ${soon[0]!.title || RECORD_TYPE_LABELS[soon[0]!.record_type as keyof typeof RECORD_TYPE_LABELS] || soon[0]!.record_type}` };
+  if (s.documents === 'pendiente' || s.training === 'pendiente') return { tone: null, text: 'Documentación pendiente' };
+  return { tone: 'ok', text: null };
+}
+
 export const mountPeople: ViewMount = (ctx) => {
   const { main, client, navigate } = ctx;
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
+  // Datos reservados (§2): quien no los ve no tiene anillos ni «Requiere atención»; la app ni los descarga.
+  const reserved = canSeeReserved(client.bootstrap()?.membership);
   let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [], trades: [], capabilities: [] };
   let query = '';
   let relation = '';
@@ -131,39 +146,50 @@ export const mountPeople: ViewMount = (ctx) => {
   let trade = '';
   let team = '';
   let showInactive = false;
+  let filtersOpen = false;
   // Fase O4: lo que el nivel de casa ha dado a cada cuenta (solo dirección y con red), para las chips de los outsiders.
   let grants: HouseGrant[] = ctx.isAdmin ? ctx.admin.cached.grants ?? [] : [];
   const appName = (id: string) => ctx.admin.cached.catalog?.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id;
 
-  const host = el('div', { id: 'peopleList', 'data-feedback-id': 'central.personas.lista', 'data-feedback-label': 'Lista de personas' });
+  const host = el('div', { id: 'peopleList', 'data-feedback-id': 'central.personas.lista', 'data-feedback-label': 'Directorio de personas' });
+  const attention = el('section', { id: 'peopleAttention', 'aria-label': 'Requiere atención', 'data-feedback-id': 'central.personas.atencion', 'data-feedback-label': 'Requiere atención' });
   const trashList = el('ul', { class: 'list', 'aria-label': 'Personas en la papelera', 'data-feedback-id': 'central.personas.papelera.lista', 'data-feedback-label': 'Personas en la papelera' });
-  const trashLabel = el('summary', { class: 'sectionlabel', style: 'cursor:pointer', 'data-feedback-id': 'central.personas.papelera.cabecera', 'data-feedback-label': 'Papelera de personas' }, 'Papelera ', el('span', { class: 'count' }, '0'));
+  const trashLabel = el('summary', { class: 'sectionlabel ctl-trashhead', 'data-feedback-id': 'central.personas.papelera.cabecera', 'data-feedback-label': 'Papelera de personas' }, 'Papelera ', el('span', { class: 'count' }, '0'));
   const trash = el('details', { id: 'peopleTrash', 'data-feedback-id': 'central.personas.papelera', 'data-feedback-label': 'Papelera', hidden: true }, trashLabel, trashList);
   const search = el('input', { type: 'search', id: 'peopleSearch', 'data-feedback-id': 'central.personas.buscar', 'data-feedback-label': 'Buscar persona', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar persona',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const relationFilter = el('select', { id: 'peopleRelation', 'aria-label': 'Relación', 'data-feedback-id': 'central.personas.filtro_relacion', 'data-feedback-label': 'Filtro por relación', onchange: (e: Event) => { relation = (e.target as HTMLSelectElement).value; paint(); } },
     ...options(RELATIONS, RELATION_LABELS, '', 'Todas las relaciones'));
-  const levelFilter = el('select', { id: 'peopleLevel', 'aria-label': 'Nivel de casa', hidden: true, 'data-feedback-id': 'central.personas.filtro_nivel', 'data-feedback-label': 'Filtro por nivel de casa', onchange: (e: Event) => { level = (e.target as HTMLSelectElement).value; paint(); } },
-    ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, '', 'Todos los niveles'),
-    ...(ctx.isAdmin ? [el('option', { value: 'sin_nivel' }, 'Sin nivel')] : [])) as HTMLSelectElement;
+  // Nivel de casa en chips (085); «Sin nivel», solo para dirección.
+  const levelChips = el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Nivel de casa', id: 'peopleLevels', hidden: true });
   // Oficio (P1): filtra por un oficio y todo lo que cuelga de él. Sin oficios, no se ve (la pantalla queda como antes).
   const tradeFilter = el('select', { id: 'peopleTrade', 'aria-label': 'Oficio', hidden: true, 'data-feedback-id': 'central.personas.filtro_oficio', 'data-feedback-label': 'Filtro por oficio', onchange: (e: Event) => { trade = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los oficios')) as HTMLSelectElement;
   // Solo antes de aplicar el nivel por primera vez: la vista previa para dirección.
   const levelsNote = el('div', { 'data-feedback-id': 'central.personas.aviso_nivel', 'data-feedback-label': 'Aviso del nivel de casa' });
+  // Equipo, dentro de «Filtros» (se conserva: cruza equipo con oficio y nivel, que el tablero no hace).
   const teamFilter = el('select', { id: 'peopleTeam', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los equipos')) as HTMLSelectElement;
   const fabLabel = el('span', null, 'Nueva persona');
   const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
+  const filtersPanel = el('div', { class: 'ctl-filters', id: 'peopleFilters', hidden: true, 'data-feedback-id': 'central.personas.filtros', 'data-feedback-label': 'Filtros' }, relationFilter, tradeFilter, teamFilter, inactive);
+  const filtersToggle = el('button', { type: 'button', class: 'ghost', id: 'peopleFiltersToggle', 'aria-expanded': 'false', 'aria-controls': 'peopleFilters', 'data-feedback-id': 'central.personas.filtros_abrir', 'data-feedback-label': 'Abrir los filtros',
+    onclick: () => { filtersOpen = !filtersOpen; filtersPanel.hidden = !filtersOpen; filtersToggle.setAttribute('aria-expanded', String(filtersOpen)); } }, icon('filter', 16), el('span', { class: 'ctl-filtercount' }, 'Filtros'));
+  const orderBtn = canEdit ? el('button', { type: 'button', class: 'ghost', id: 'peopleOrder', 'data-feedback-id': 'central.personas.ordenar', 'data-feedback-label': 'Ordenar personas', onclick: () => openOrder() }, icon('grip', 16), 'Ordenar') : null;
 
   replace(
     main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.personas.cabecera', 'data-feedback-label': 'Cabecera de Personas' }, el('div', null, el('h2', null, 'Personas'),
       el('p', null, 'Quién trabaja o colabora con Ikisai, tenga o no cuenta en las apps.'))),
-    el('div', { class: 'toolbar', 'data-feedback-id': 'central.personas.barra', 'data-feedback-label': 'Búsqueda y filtros' }, search, relationFilter, levelFilter, tradeFilter, teamFilter, inactive,
+    el('div', { class: 'ctl-searchrow', 'data-feedback-id': 'central.personas.barra', 'data-feedback-label': 'Búsqueda y filtros' }, search, filtersToggle),
+    levelChips,
+    filtersPanel,
+    el('div', { class: 'toolbar' },
       el('a', { class: 'ghost btnlike', href: '#/personas/equipos', id: 'manageTeams', 'data-feedback-id': 'central.personas.equipos', 'data-feedback-label': 'Equipos' }, icon('people', 16), 'Equipos'),
-      el('a', { class: 'ghost btnlike', href: '#/personas/oficios', id: 'manageTrades', 'data-feedback-id': 'central.personas.oficios', 'data-feedback-label': 'Oficios' }, icon('tag', 16), 'Oficios')),
+      el('a', { class: 'ghost btnlike', href: '#/personas/oficios', id: 'manageTrades', 'data-feedback-id': 'central.personas.oficios', 'data-feedback-label': 'Oficios' }, icon('tag', 16), 'Oficios'),
+      orderBtn),
     levelsNote,
+    attention,
     host,
     trash,
     canEdit ? el('button', { class: 'fab', type: 'button', id: 'newPerson', 'data-feedback-id': 'central.personas.nueva', 'data-feedback-label': 'Nueva persona',
@@ -187,8 +213,10 @@ export const mountPeople: ViewMount = (ctx) => {
       `${appName(g.app)} · ${ROLE_LABELS[g.role as Role] ?? g.role}`));
   }
 
+  /** La cara de una persona: medallón de 72 (anillo según la documentación, solo con permiso), nombre, área y nivel, y sus chips. */
   function row(p: Person): HTMLElement {
     const today = todayInMadrid();
+    const doc = reserved ? docTone(data.records, p.id, today) : { tone: null, text: null };
     const chips = [
       ...outsiderChips(p),
       ...(p.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]),
@@ -198,12 +226,30 @@ export const mountPeople: ViewMount = (ctx) => {
       ...statusChips(data.records, p.id, today),
       ...(p._pending ? [el('span', { class: 'chip pending' }, 'Pendiente de sincronizar')] : []),
     ];
-    return el('button', { class: 'personrow', type: 'button', 'data-person': p.id, 'data-feedback-id': 'central.personas.lista.fila', 'data-feedback-label': 'Persona', onclick: () => navigate(`#/personas/${p.id}`) },
+    return el('button', { class: `personrow ctl-personface${p.active ? '' : ' inactive'}`, type: 'button', 'data-person': p.id, dataset: { ring: doc.tone ?? 'none' }, 'data-feedback-id': 'central.personas.lista.fila', 'data-feedback-label': 'Persona', onclick: () => navigate(`#/personas/${p.id}`) },
+      el('span', { class: 'ctl-ring' }, renderMedal({ name: p.display_name, initials: p.initials ?? null, size: 72 })),
       el('span', { class: 'accountname', 'data-feedback-ignore': '' }, p.display_name, p.user_id ? el('span', { class: 'muted', title: 'Tiene cuenta' }, ' ', icon('user', 14)) : null),
       el('span', { class: 'muted accountmeta', 'data-feedback-id': 'central.personas.lista.funcion', 'data-feedback-label': 'Función y relación' }, houseLevelsOn
         ? `${areaLabel(p.base_role)} · ${levelLabel(p.house_level)}`
         : `${BASE_ROLE_LABELS[p.base_role as keyof typeof BASE_ROLE_LABELS] ?? p.base_role} · ${RELATION_LABELS[p.relation as keyof typeof RELATION_LABELS] ?? p.relation}`),
+      !p.user_id && !(houseLevelsOn && p.house_level === 'outsider') ? el('span', { class: 'muted small' }, 'Sin cuenta') : null,
       chips.length ? el('span', { class: 'chips', 'data-feedback-id': 'central.personas.lista.etiquetas', 'data-feedback-label': 'Estado de la persona' }, ...chips) : null);
+  }
+
+  /** «Requiere atención»: quien tiene algo caducado o por caducar, lo peor primero. Solo con permiso de datos reservados. */
+  function paintAttention(alive: Person[]): void {
+    if (!reserved) { replace(attention); return; }
+    const today = todayInMadrid();
+    const list = alive.filter((p) => p.active).map((p) => ({ p, doc: docTone(data.records, p.id, today) }))
+      .filter((x) => x.doc.tone === 'alert' || x.doc.tone === 'warn')
+      .sort((a, b) => (a.doc.tone === b.doc.tone ? a.p.display_name.localeCompare(b.p.display_name, 'es') : a.doc.tone === 'alert' ? -1 : 1));
+    replace(attention, list.length ? [
+      el('h3', { class: 'sectionlabel' }, `Requiere atención · ${list.length}`),
+      el('ul', { class: 'list ctl-attention' }, ...list.map(({ p, doc }) => el('li', null,
+        el('button', { type: 'button', class: `ctl-attrow ${doc.tone}`, 'data-person': p.id, 'data-feedback-id': 'central.personas.atencion.fila', 'data-feedback-label': 'Persona que requiere atención', onclick: () => navigate(`#/personas/${p.id}`) },
+          renderMedal({ name: p.display_name, initials: p.initials ?? null, size: 40 }),
+          el('span', null, el('strong', { 'data-feedback-ignore': '' }, p.display_name), el('span', { class: 'ctl-attwhy' }, doc.text)))))),
+    ] : []);
   }
 
   /** Aviso para dirección, solo hasta aplicar el nivel por primera vez: «N personas sin nivel de casa · Revisar propuesta». */
@@ -245,11 +291,43 @@ export const mountPeople: ViewMount = (ctx) => {
     });
   }
 
+  /** «Ordenar» (se conserva el orden manual): la lista reordenable del kit, con todas las personas vivas. */
+  function openOrder(): void {
+    const alive = data.people.filter((p) => !p.deleted_at).sort((a, b) => (a.position - b.position) || a.display_name.localeCompare(b.display_name, 'es'));
+    const sortable = createSortableList<Person>({
+      items: alive, key: (p) => p.id, render: (p) => el('span', { 'data-feedback-ignore': '' }, p.display_name), name: (p) => p.display_name, label: 'Personas', id: 'peopleSortable',
+      onReorder: async (items, move) => {
+        const prev = items[move.to - 1]?.position ?? null;
+        const next = items[move.to + 1]?.position ?? null;
+        const position = positionBetween(prev, next);
+        await commitSafely(client, [{ op: 'update', table: T.people, id: move.item.id, expectedRevision: move.item.revision, fields: { position } }], 'Orden guardado.');
+        await load();
+      },
+    });
+    openSheet({
+      title: 'Ordenar personas',
+      body: el('div', null, el('p', { class: 'muted small' }, 'Arrastra o usa las flechas para ordenar.'), fbMark(sortable.element, 'central.personas.lista.ordenable', 'Personas ordenables')),
+      panelAttrs: { 'data-feedback-id': 'central.personas.orden', 'data-feedback-label': 'Ordenar personas' },
+      closeAttrs: { 'data-feedback-id': 'central.personas.orden.cerrar', 'data-feedback-label': 'Cerrar' },
+    });
+  }
+
+  function paintLevels(alive: Person[]): void {
+    levelChips.hidden = !houseLevelsOn;
+    if (!houseLevelsOn) { replace(levelChips); return; }
+    const chip = (value: string, label: string, n: number) => el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(level === value), dataset: { level: value || 'todos' }, 'data-feedback-id': 'central.personas.filtro_nivel', 'data-feedback-label': 'Filtro por nivel de casa',
+      onclick: () => { level = level === value ? '' : value; paint(); } }, `${label} (${n})`);
+    const shown = alive.filter((p) => showInactive || p.active);
+    replace(levelChips,
+      chip('', 'Todos', shown.filter((p) => !!p.house_level).length),
+      ...HOUSE_LEVELS.map((l) => chip(l, HOUSE_LEVEL_LABELS[l], shown.filter((p) => p.house_level === l).length)),
+      ...(ctx.isAdmin ? [chip('sin_nivel', 'Sin nivel', shown.filter((p) => !p.house_level).length)] : []));
+  }
+
   function paint(): void {
     const alive = data.people.filter((p) => !p.deleted_at).sort((a, b) => (a.position - b.position) || a.display_name.localeCompare(b.display_name, 'es'));
     const inTeam = team ? new Set(data.personTeams.filter((x) => x.team_id === team && !x.deleted_at).map((x) => x.person_id)) : null;
     relationFilter.hidden = houseLevelsOn;
-    levelFilter.hidden = !houseLevelsOn;
     fabLabel.textContent = houseLevelsOn && level === 'outsider' ? 'Nuevo outsider' : 'Nueva persona';
     // Con el nivel activo, el directorio es de quien tiene nivel; «Sin nivel», solo para dirección.
     const byLevel = (p: Person) => !houseLevelsOn ? (!relation || p.relation === relation)
@@ -264,34 +342,25 @@ export const mountPeople: ViewMount = (ctx) => {
       ...[...effectiveLevels(data.trades, data.capabilities)].filter(([, m]) => m.has(trade)).map(([p]) => p)]) : null;
     const filtered = alive.filter((p) => (showInactive || p.active) && byLevel(p) && (!knows || knows.has(p.id)) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
     paintLevelsNote(alive);
+    paintLevels(alive);
+    paintAttention(alive);
     if (teamFilter.options.length !== data.teams.length + 1) {
       replace(teamFilter, el('option', { value: '' }, 'Todos los equipos'), ...data.teams.map((t) => el('option', { value: t.id, selected: t.id === team }, t.name)));
     }
+    // Cuántos filtros de «Filtros» hay puestos, en su botón.
+    const active = [relation && !houseLevelsOn, trade, team, showInactive].filter(Boolean).length;
+    filtersToggle.querySelector('.ctl-filtercount')!.textContent = active ? `Filtros (${active})` : 'Filtros';
     if (!filtered.length) {
       replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.personas.vacio', 'data-feedback-label': 'Sin personas' },
         el('strong', null, alive.length ? 'Ninguna persona coincide' : 'Todavía no hay personas'),
         alive.length ? 'Cambia el filtro o la búsqueda.' : canEdit ? 'Añade a quien trabaja o colabora con Ikisai: con o sin cuenta.' : ''));
-    } else if (canEdit && !query && !relation && !level && !trade && !team && showInactive) {
-      // Orden manual (decisión del usuario): solo con la lista completa, para que la posición tenga sentido.
-      const sortable = createSortableList<Person>({
-        items: filtered, key: (p) => p.id, render: (p) => row(p), name: (p) => p.display_name, label: 'Personas', id: 'peopleSortable',
-        onReorder: async (items, move) => {
-          const prev = items[move.to - 1]?.position ?? null;
-          const next = items[move.to + 1]?.position ?? null;
-          const position = positionBetween(prev, next);
-          await commitSafely(client, [{ op: 'update', table: T.people, id: move.item.id, expectedRevision: move.item.revision, fields: { position } }], 'Orden guardado.');
-          await load();
-        },
-      });
-      replace(host, el('p', { class: 'muted small' }, 'Arrastra o usa las flechas para ordenar.'), fbMark(sortable.element, 'central.personas.lista.ordenable', 'Personas ordenables'));
     } else {
-      replace(host, el('ul', { class: 'accounts', 'aria-label': 'Personas', 'data-feedback-id': 'central.personas.lista.filas', 'data-feedback-label': 'Personas' }, ...filtered.map((p) => el('li', null, row(p)))),
-        canEdit && alive.length > 1 ? el('p', { class: 'muted small' }, 'Para ordenar a mano, marca «Mostrar inactivas» y deja la búsqueda y el filtro vacíos.') : null);
+      replace(host, el('ul', { class: 'ctl-directory', 'aria-label': 'Personas', 'data-feedback-id': 'central.personas.lista.filas', 'data-feedback-label': 'Personas' }, ...filtered.map((p) => el('li', null, row(p)))));
     }
     const deleted = data.people.filter((p) => p.deleted_at);
     trash.hidden = deleted.length === 0 || !canEdit;
     trashLabel.querySelector('.count')!.textContent = String(deleted.length);
-    replace(trashList, ...deleted.map((p) => el('li', { class: 'agentrow', 'data-feedback-id': 'central.personas.papelera.fila', 'data-feedback-label': 'Persona en la papelera' }, el('span', { 'data-feedback-ignore': '' }, p.display_name),
+    replace(trashList, ...deleted.map((p) => el('li', { class: 'agentrow ctl-trashrow', 'data-feedback-id': 'central.personas.papelera.fila', 'data-feedback-label': 'Persona en la papelera' }, el('span', { 'data-feedback-ignore': '' }, p.display_name),
       el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.personas.papelera.restaurar', 'data-feedback-label': 'Restaurar', onclick: () => void restorePerson(client, data, p).then(load) }, icon('restore', 18), 'Restaurar'))));
   }
 
@@ -458,11 +527,35 @@ export function mountPerson(personId: string): ViewMount {
       const priv = data.privates.find((x) => x.person_id === personId && !x.deleted_at) ?? null;
       const records = data.records.filter((r) => r.person_id === personId && !r.deleted_at).sort((a, b) => (a.position - b.position) || a.record_type.localeCompare(b.record_type));
 
-      const head = el('div', { class: 'pagehead', 'data-feedback-id': 'central.persona.cabecera', 'data-feedback-label': 'Cabecera de la persona' }, el('div', null,
+      // Portada (Bloque 2, MUELA-076): medallón y una línea de cifras escritas. Lo de la documentación, solo con permiso (§2).
+      const doc = reserved ? docTone(data.records, personId, today) : { tone: null, text: null };
+      const due = reserved ? records.filter((r) => dueState(r.expires_on, today, 30, r.status === 'no_aplica') !== 'al_dia').sort((a, b) => (a.expires_on ?? '').localeCompare(b.expires_on ?? '')) : [];
+      const capCount = data.capabilities.filter((c) => c.person_id === personId && data.trades.some((t) => t.id === c.trade_id && !t.deleted_at && t.active)).length;
+      const nextDue = reserved ? records.filter((r) => r.expires_on && r.status !== 'no_aplica' && r.expires_on >= today).sort((a, b) => a.expires_on!.localeCompare(b.expires_on!))[0] ?? null : null;
+      const stats = [
+        reserved ? (doc.tone === 'alert' ? 'documentación caducada' : doc.tone === 'warn' ? 'documentación por renovar' : records.length ? 'documentos al día' : 'sin documentación') : null,
+        capCount ? `${capCount} ${capCount === 1 ? 'oficio' : 'oficios'}` : 'sin oficios',
+        nextDue ? `próximo vencimiento: ${day(nextDue.expires_on)}` : null,
+        `disponibilidad ${(AVAILABILITY_LABELS[person.availability as keyof typeof AVAILABILITY_LABELS] ?? person.availability).toLowerCase()}`,
+      ].filter(Boolean).join(' · ');
+      const head = el('div', { class: 'pagehead ctl-personhead', 'data-feedback-id': 'central.persona.cabecera', 'data-feedback-label': 'Cabecera de la persona', dataset: { ring: doc.tone ?? 'none' } },
+        el('span', { class: 'ctl-ring' }, renderMedal({ name: person.display_name, initials: person.initials ?? null, size: 72 })), el('div', null,
         el('h2', { 'data-feedback-ignore': '' }, person.display_name),
         el('p', { 'data-feedback-ignore': '' }, (houseLevelsOn ? [person.code, areaLabel(person.base_role), levelLabel(person.house_level)]
           : [person.code, BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS], RELATION_LABELS[person.relation as keyof typeof RELATION_LABELS]]).filter(Boolean).join(' · ')),
+        el('p', { class: 'ctl-coverstats', id: 'personStats' }, stats),
         el('span', { class: 'chips', 'data-feedback-id': 'central.persona.cabecera.estado', 'data-feedback-label': 'Estado de la persona' }, ...(person.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]), ...(person.deleted_at ? [el('span', { class: 'chip alert' }, 'En la papelera')] : []), ...statusChips(data.records, personId, today))));
+      // Foco: lo que caduca o ya caducó, de uno en uno; abre su registro para renovarlo. Solo con datos reservados.
+      const focus = reserved && due.length && !person.deleted_at ? fbMark(createFocus({
+        label: 'Lo que caduca',
+        items: due.map((r) => {
+          const vencido = dueState(r.expires_on, today, 30, false) === 'vencido';
+          return { id: r.id, title: r.title && FREE_RECORD_TYPES.includes(r.record_type) ? r.title : RECORD_TYPE_LABELS[r.record_type] ?? r.record_type,
+            kicker: vencido ? 'Caducado · toca renovarlo' : 'Caduca pronto', tone: vencido ? 'alert' as const : 'warn' as const,
+            meta: [r.kind === 'formacion' ? 'Formación' : 'Documento', r.expires_on ? `${vencido ? 'caducó' : 'caduca'} el ${day(r.expires_on)}` : ''].filter(Boolean) };
+        }),
+        onOpen: (item) => { const r = records.find((x) => x.id === item.id); if (r) openRecordEditor(person, r); },
+      }).element, 'central.persona.foco', 'Lo que caduca') : null;
 
       const basic = block('Ficha', 'blockBasic', [el('dl', { class: 'kvlist', 'data-feedback-id': 'central.persona.ficha.datos', 'data-feedback-label': 'Datos básicos' },
         ...(houseLevelsOn ? [
@@ -526,7 +619,8 @@ export function mountPerson(personId: string): ViewMount {
           person.active ? 'Marcar inactiva' : 'Marcar activa'),
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', 'data-feedback-id': 'central.persona.acciones.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
-      replace(host, head, basic, tradesBlock, teamsBlock, privateBlock, recordsBlock, accountBlock, danger);
+      // Documentación primero cuando algo caduca (076); si no, el orden de siempre.
+      replace(host, head, focus, ...(due.length ? [recordsBlock, basic] : [basic]), tradesBlock, teamsBlock, privateBlock, ...(due.length ? [] : [recordsBlock]), accountBlock, danger);
       fbMark(host.querySelector('#blockTrades'), 'central.persona.oficios', 'Oficios');
       fbMark(host.querySelector('#blockBasic'), 'central.persona.ficha', 'Ficha');
       fbMark(host.querySelector('#blockTeams'), 'central.persona.equipos', 'Equipos');

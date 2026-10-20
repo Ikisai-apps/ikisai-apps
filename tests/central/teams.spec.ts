@@ -67,6 +67,7 @@ test('equipos · semilla, persona en dos equipos, filtro, papelera y lector', as
   // Lista: chips y filtro por equipo.
   await page.locator('.backlink').click();
   await expect(page.locator('.personrow', { hasText: 'Marga' })).toContainText('Recepción');
+  await page.locator('#peopleFiltersToggle').click(); // «Filtros» (Bloque 2): relación, oficio, equipo e inactivas
   await page.locator('#peopleTeam').selectOption({ label: 'Limpieza' });
   await expect(page.getByText('Ninguna persona coincide')).toBeVisible();
   await page.locator('#peopleTeam').selectOption({ label: 'Cocina' });
@@ -85,8 +86,29 @@ test('equipos · semilla, persona en dos equipos, filtro, papelera y lector', as
   await expect(reader.locator('#newTeam')).toHaveCount(0);
   await other.close();
 
+  // Tablero (Bloque 2): quitar con la ✕ y «Deshacer»; «Añadir a…» al pie de la columna.
+  await page.goto(`${baseURL}/#/personas/equipos`);
+  const cocina = page.locator('.ctl-teamcol', { has: page.locator('.teamchip', { hasText: 'Cocina' }) });
+  await expect(cocina).toContainText('Marga');
+  await cocina.getByRole('button', { name: 'Quitar a Marga de Cocina' }).click();
+  await expect(page.getByText('Marga ya no está en Cocina.')).toBeVisible();
+  await expect(cocina).not.toContainText('Marga');
+  await page.locator('.toast').getByRole('button', { name: 'Deshacer' }).click();
+  await expect(cocina).toContainText('Marga');
+  const limpieza = page.locator('.ctl-teamcol', { has: page.locator('.teamchip', { hasText: 'Limpieza' }) });
+  await limpieza.getByRole('button', { name: 'Añadir a Limpieza' }).click();
+  await page.getByRole('dialog').locator('.ctl-addrow', { hasText: 'Marga' }).click();
+  await expect(limpieza).toContainText('Marga');
+  await limpieza.getByRole('button', { name: 'Quitar a Marga de Limpieza' }).click();
+  await expect(limpieza).not.toContainText('Marga');
+  await expect.poll(async () => (await api.app.t.db.query(`select count(*)::int as n from central.person_teams where deleted_at is null`)).rows[0]).toEqual({ n: 2 });
+  // «Ordenar» abre la lista reordenable.
+  await page.locator('#orderTeams').click();
+  await expect(page.locator('#teamsSortable')).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+
   // Papelera de la persona: se lleva sus equipos en el mismo lote; restaurar los devuelve.
-  await page.locator('#peopleTeam').selectOption('');
+  await page.goto(`${baseURL}/#/personas`);
   await page.locator('.personrow', { hasText: 'Marga' }).click();
   await page.locator('#deletePerson').click();
   await page.getByRole('button', { name: 'Enviar a papelera' }).last().click();

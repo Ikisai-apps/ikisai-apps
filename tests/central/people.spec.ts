@@ -92,6 +92,13 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await synced(page);
   await expect.poll(async () => (await api.app.t.db.query(`select file_id is not null as ok from central.person_records`)).rows[0]).toEqual({ ok: true });
   await expect(record.getByRole('button', { name: 'Archivo' })).toBeVisible();
+  // Portada y foco (Bloque 2): la cifra de la documentación, el foco con lo que caduca y la documentación primero.
+  await expect(page.locator('#personStats')).toContainText('documentación por renovar');
+  await expect(page.locator('#personStats')).toContainText('próximo vencimiento');
+  const focus = page.locator('[data-feedback-id="central.persona.foco"] .focus-card');
+  await expect(focus).toContainText('Manipulador de alimentos');
+  await expect(focus).toContainText('Caduca pronto');
+  await expect(page.locator('#personView > section.personblock').first()).toHaveAttribute('id', 'blockRecords');
 
   // Dar cuenta: el correo sale del contacto reservado.
   await page.locator('#giveAccount').click();
@@ -109,15 +116,31 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await page.getByRole('link', { name: 'Inicio', exact: true }).click();
   await expect(page.locator('#homeDocs')).toContainText('Marga');
 
-  // Un lector ve el directorio, no los datos reservados ni la documentación.
+  // Directorio de caras (Bloque 2): con permiso de reservados, el anillo dice cómo va su documentación y «Requiere atención».
+  await page.getByRole('link', { name: 'Personas', exact: true }).click();
+  await expect(page.locator('.personrow', { hasText: 'Marga' })).toHaveAttribute('data-ring', 'warn');
+  await expect(page.locator('#peopleAttention')).toContainText('Requiere atención · 1');
+  await expect(page.locator('#peopleAttention .ctl-attrow', { hasText: 'Marga' })).toContainText('Caduca el');
+  // «Ordenar» abre la lista reordenable (se conserva el orden manual).
+  await page.locator('#peopleOrder').click();
+  await expect(page.locator('#peopleSortable')).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+
+  // Un lector ve el directorio, no los datos reservados ni la documentación: ni anillo ni «Requiere atención» (§2).
   const other = await browser.newContext();
   const reader = await other.newPage();
   await login(reader, 'reader@example.invalid', 'Reader');
   await reader.getByRole('link', { name: 'Personas', exact: true }).click();
+  await expect(reader.locator('.personrow', { hasText: 'Marga' })).toHaveAttribute('data-ring', 'none');
+  await expect(reader.locator('#peopleAttention .ctl-attrow')).toHaveCount(0);
+  await expect(reader.locator('#peopleOrder')).toHaveCount(0);
   await reader.locator('.personrow', { hasText: 'Marga' }).click();
   await expect(reader.locator('#blockBasic')).toContainText('Cocina');
   await expect(reader.locator('#personView')).not.toContainText('600 000 000');
   await expect(reader.locator('#blockRecords')).toHaveCount(0);
+  await expect(reader.locator('#personStats')).not.toContainText('documenta');
+  await expect(reader.locator('#personStats')).not.toContainText('vencimiento');
+  await expect(reader.locator('[data-feedback-id="central.persona.foco"]')).toHaveCount(0);
   await expect(reader.locator('#editPerson')).toHaveCount(0);
   await expect(reader.locator('#homeDocs')).toHaveCount(0);
   await other.close();

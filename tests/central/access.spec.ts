@@ -12,8 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
-import { openMenu } from './menu-helpers.ts';
-import { contrastOf } from './measure.ts';
+import { contrastOf, openMenu } from './ui-helpers.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');
@@ -54,51 +53,92 @@ async function login(page: Page, email: string): Promise<void> {
   await page.getByRole('button', { name: 'Entrar' }).click();
 }
 
+const row = (page: Page, userId: string) => page.locator(`.accountrow[data-user="${userId}"]`);
+const cell = (page: Page, userId: string, app: string) => row(page, userId).locator(`.ctl-cell[data-app="${app}"]`);
+const face = (page: Page, name: string) => page.locator('#invitePeople .ctl-face', { hasText: name });
+
 test('accesos · el owner administra cuentas, altas, agentes y registro', async ({ page }) => {
+  const { owner, reader: readerId } = api.app.users;
   await login(page, 'owner@example.invalid');
   await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
   await expect(page.locator('#homeAccounts strong')).toHaveText('3');
 
-  // Cuentas: el lector tiene Central (lector) y Tasks (editor).
+  // Cuentas, en cuadrícula (MUELA-085): el lector tiene Central (L) y Tasks (E).
   await page.locator('#homeAccounts').click();
-  await expect(page.locator('#accountList')).toBeVisible();
-  const reader = page.locator('.accountrow', { hasText: 'Reader' });
-  await expect(reader).toContainText('Central · Lector');
-  await expect(reader).toContainText('Tasks · Editor');
+  await expect(page.locator('#accountList table')).toBeVisible();
+  await expect(cell(page, readerId, 'central')).toHaveText('L');
+  await expect(cell(page, readerId, 'tasks')).toHaveText('E');
+  await expect(cell(page, readerId, 'booking')).toHaveText('·');
+  // A 390 px la página no se desliza de lado: la cuadrícula lo hace dentro de su caja, con la primera columna fija.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // La app con un solo propietario se avisa en la cabecera y en una nota.
+  await expect(page.locator('#ownerNote')).toContainText('Tasks tiene un solo propietario (Owner)');
 
-  // Dar acceso de editor a Booking y quitar Tasks.
-  await reader.click();
-  await page.locator('#role-booking').selectOption('editor');
+  // Casilla: Editor en Booking, con «Deshacer», y otra vez.
+  await cell(page, readerId, 'booking').click();
+  const sheet = page.getByRole('dialog');
+  await sheet.locator('.ctl-roles').getByRole('button', { name: 'Editor', exact: true }).click();
   await expect(page.getByText('Acceso a Ikisai Booking: Editor.')).toBeVisible();
-  await page.locator('#role-tasks').selectOption('');
+  await expect(cell(page, readerId, 'booking')).toHaveText('E');
+  await page.locator('.toast').getByRole('button', { name: 'Deshacer' }).click();
+  await expect(page.getByText('Deshecho: sin acceso en Ikisai Booking.')).toBeVisible();
+  await expect(cell(page, readerId, 'booking')).toHaveText('·');
+  await cell(page, readerId, 'booking').click();
+  await sheet.locator('.ctl-roles').getByRole('button', { name: 'Editor', exact: true }).click();
+  await expect(cell(page, readerId, 'booking')).toHaveText('E');
+  // Quitar Tasks confirma.
+  await cell(page, readerId, 'tasks').click();
+  await sheet.locator('.ctl-roles').getByRole('button', { name: 'Sin acceso', exact: true }).click();
   await page.getByRole('button', { name: 'Quitar acceso' }).click();
   await expect(page.getByText('Acceso a Ikisai Tasks quitado.')).toBeVisible();
-  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
-  await expect(reader).toContainText('Booking · Editor');
-  await expect(reader).not.toContainText('Tasks ·');
+  await expect(cell(page, readerId, 'tasks')).toHaveText('·');
 
-  // El owner no puede quitarse Central: su selector está desactivado.
-  await page.locator('.accountrow', { hasText: '(tú)' }).click();
+  // Tu propia casilla de Central va bloqueada; el único propietario de Tasks no se puede bajar.
+  await cell(page, owner, 'central').click();
+  await expect(sheet.locator('[data-locked]')).toContainText('Es tu acceso a Central');
+  await expect(sheet.locator('.ctl-roles')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await cell(page, owner, 'tasks').click();
+  await expect(sheet.locator('[data-lone]')).toContainText('Es el único propietario de Ikisai Tasks');
+  await expect(sheet.locator('.ctl-roles').getByRole('button', { name: 'Editor', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+
+  // Ficha de la cuenta: solo sus apps y «Añadir app (…)». El owner no puede quitarse Central.
+  await row(page, owner).locator('.ctl-acbtn').click();
   await expect(page.locator('#role-central')).toBeDisabled();
   await expect(page.locator('#toggleDisabled')).toHaveCount(0);
+  await expect(page.locator('[data-lone="tasks"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await row(page, readerId).locator('.ctl-acbtn').click();
+  await expect(page.locator('#role-food')).toHaveCount(0);
+  await page.locator('#addApp').click();
+  await expect(page.locator('#role-food')).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
 
-  // Editor de Central con ámbito de datos reservados.
-  await page.locator('.accountrow', { hasText: 'Editor' }).first().click();
+  // Editor de Central con ámbito de datos reservados. Desactivar: «Desactivada» en la fila y su chip.
+  await page.locator('.accountrow', { hasText: 'Editor' }).first().locator('.ctl-acbtn').click();
   await page.locator('#scope-people').check();
   await expect(page.getByText('Ahora ve los datos reservados de personas.')).toBeVisible();
-  // Desactivar y reactivar.
   await page.locator('#toggleDisabled').click();
   await page.getByRole('button', { name: 'Desactivar', exact: true }).click();
   await expect(page.getByText('Cuenta desactivada.')).toBeVisible();
   await expect(page.locator('#toggleDisabled')).toHaveText('Reactivar cuenta');
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(page.locator('.accountrow', { hasText: 'Editor' }).first()).toContainText('Desactivada');
+  await page.locator('#accountChips').getByRole('button', { name: 'Desactivadas (1)' }).click();
+  await expect(page.locator('#accountList tr.accountrow')).toHaveCount(1);
+  await page.locator('#accountChips').getByRole('button', { name: /^Todas/ }).click();
 
-  // Alta con contraseña temporal mostrada una vez.
+  // Alta, persona primero: «Persona nueva», «Como Owner» copia sin Propietario, y una contraseña temporal una vez.
   await page.locator('#tab-alta').click();
+  await face(page, 'Persona nueva').click();
   await page.locator('#inviteEmail').fill('nueva@example.invalid');
   await page.locator('#inviteName').fill('Nueva');
-  await page.locator('#invite-tasks').selectOption('editor');
+  await page.locator('#inviteLike').selectOption({ label: 'Como Owner' });
+  await expect(page.locator('#invite-tasks button[data-role="editor"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#inviteSummary')).toContainText('Propietario no se copia');
+  await page.locator('#invite-central button[data-role="none"]').click();
+  await expect(page.locator('#inviteSummary')).toContainText('Nueva entrará en Tasks · Editor.');
   await page.locator('#inviteSubmit').click();
   await expect(page.getByRole('heading', { name: 'Contraseña temporal' })).toBeVisible();
   await expect(page.locator('textarea.so-value')).not.toHaveValue('');
@@ -107,23 +147,38 @@ test('accesos · el owner administra cuentas, altas, agentes y registro', async 
   await page.getByLabel('La he guardado en un lugar seguro').check();
   await page.getByRole('button', { name: 'Hecho' }).click();
   await expect(page.getByRole('heading', { name: 'Contraseña temporal' })).toHaveCount(0);
-  await expect(page.locator('.accountrow', { hasText: 'Nueva' })).toContainText('Tasks · Editor');
+  const nueva = page.locator('.accountrow', { hasText: 'Nueva' });
+  await expect(nueva.locator('.ctl-cell[data-app="tasks"]')).toHaveText('E');
+  await expect(nueva.locator('.ctl-cell[data-app="central"]')).toHaveText('·');
+  await expect(nueva).toContainText('Nunca ha entrado');
   // Caracterización (P1): la ficha que crea el alta nace con relación «equipo».
   expect((await api.app.t.db.query<{ r: string }>(`select relation as r from central.people where display_name = 'Nueva' and deleted_at is null`)).rows[0]?.r).toBe('equipo');
 
-  // Agentes: revocar la clave.
+  // Agentes, por app: la clave en el grupo de Tasks, con su resumen; revocar confirma y la pliega al final.
   await page.goto(`${baseURL}/#/accesos/agentes`);
+  const group = page.locator('.worst-group[data-group="tasks"]');
+  await expect(group).toContainText('1 sin usar');
   const key = page.locator('.agentrow', { hasText: 'Asistente de obra' });
-  await expect(key).toContainText('tasks (Editor)');
-  await key.getByRole('button', { name: 'Revocar' }).click();
+  await expect(key).toContainText('Tasks (Editor)');
+  await key.getByRole('button', { name: 'Revocar: Asistente de obra' }).click();
   await page.getByRole('button', { name: 'Revocar', exact: true }).last().click();
   await expect(page.getByText('Clave revocada.')).toBeVisible();
   await expect(page.locator('#agentList')).toContainText('No hay claves de agentes activas.');
+  await expect(page.locator('#agentList .ctl-revoked summary')).toHaveText('Revocadas (1)');
 
-  // Registro: aparecen los cambios hechos, con quién los hizo.
+  // Registro por persona: «Lo grave» arriba, cada línea con día y hora, selector de persona y «Por fecha» a un toque.
   await page.locator('#tab-registro').click();
+  await expect(page.locator('#logGrave')).toContainText('Clave de agente revocada');
+  await expect(page.locator('#logGrave')).toContainText('Cuenta desactivada');
   await expect(page.locator('#accessLog')).toContainText('Clave de agente revocada');
-  await expect(page.locator('#accessLog')).toContainText('Cuenta desactivada');
+  await expect(page.locator('#accessLog .ctl-logmeta').first()).toContainText(/, \d{2}:\d{2}/);
+  await page.locator('#logPerson').selectOption(readerId);
+  await expect(page.locator('#accessLog .worst-group')).toHaveCount(1);
+  await expect(page.locator('#accessLog')).toContainText('Acceso cambiado');
+  await expect(page.locator('#accessLog')).not.toContainText('Clave de agente revocada');
+  await page.locator('#logPerson').selectOption('');
+  await page.locator('#logView').getByRole('button', { name: 'Por fecha' }).click();
+  await expect(page.locator('#accessLog .accesslog')).toBeVisible();
   await page.locator('#logApp').selectOption('booking');
   await expect(page.locator('#accessLog')).toContainText('Acceso cambiado · Editor');
   await expect(page.locator('#accessLog')).not.toContainText('Clave de agente revocada');
@@ -138,7 +193,7 @@ test('accesos · sin red y sin haberlas leído, el aviso sustituye al vacío y e
   await page.evaluate(() => { location.hash = '#/accesos'; });
   const offline = page.locator('[data-feedback-id="central.accesos.sin_conexion"]');
   await expect(offline).toContainText('Sin conexión');
-  await expect(page.locator('#accountList li')).toHaveCount(0);
+  await expect(page.locator('#accountList tr')).toHaveCount(0);
   await expect(page.locator('#main')).not.toContainText('Todavía no hay cuentas');
   // El aviso, con la tinta de aviso del kit (≥ 4,5:1; MUELA-086).
   expect(await contrastOf(offline)).toBeGreaterThanOrEqual(4.5);
@@ -183,11 +238,11 @@ test('accesos · la ficha manda: alta desde la ficha, renombrar (también sin re
 
   // 1. Alta desde la ficha: el nombre y el correo salen de ella y la cuenta queda enlazada.
   await page.goto(`${baseURL}/#/accesos/alta`);
-  await page.locator('#invitePerson').selectOption({ label: 'Marta Ruiz' });
+  await face(page, 'Marta Ruiz').click();
   await expect(page.locator('#inviteName')).toHaveValue('Marta Ruiz');
   await expect(page.locator('#inviteName')).toHaveAttribute('readonly', '');
   await expect(page.locator('#inviteEmail')).toHaveValue('marta@example.invalid');
-  await page.locator('#invite-tasks').selectOption('editor');
+  await page.locator('#invite-tasks button[data-role="editor"]').click();
   await page.locator('#inviteSubmit').click();
   await expect(page.getByRole('heading', { name: 'Contraseña temporal' })).toBeVisible();
   await page.getByRole('button', { name: 'Hecho' }).click();
@@ -224,7 +279,7 @@ test('accesos · la ficha manda: alta desde la ficha, renombrar (también sin re
   await expect(reader).toContainText('Sin ficha');
   expect(await contrastOf(reader.locator('.chip.warn[data-issue="sin_ficha"]'))).toBeGreaterThanOrEqual(4.5);
   expect(await contrastOf(page.locator('#accountIssues'))).toBeGreaterThanOrEqual(4.5);
-  await reader.click();
+  await reader.getByRole('button', { name: 'Enlazar' }).click();
   await page.locator('#linkPerson').selectOption('');
   await page.locator('#linkPersonSubmit').click();
   await expect(page.getByText('Ficha creada y enlazada.')).toBeVisible();
@@ -237,8 +292,8 @@ test('accesos · la ficha manda: alta desde la ficha, renombrar (también sin re
   await page.reload();
   const renamed = page.locator('.accountrow', { hasText: 'Lector antiguo' });
   await expect(renamed).toContainText('Nombre distinto de la ficha');
-  await renamed.click();
-  await page.locator('#useFichaName').click();
+  // El arreglo, en la propia fila (MUELA-085, C5).
+  await renamed.getByRole('button', { name: 'Usar «Reader»' }).click();
   await expect(page.getByText('La cuenta usa ya el nombre de la ficha.')).toBeVisible();
   expect(await profileName(api.app.users.reader)).toBe('Reader');
 });
@@ -260,9 +315,9 @@ test('accesos · alta con un correo que ya tiene cuenta: enlazar, fusionar ficha
   await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
   const startInvite = async (personName: string, email: string) => {
     await page.goto(`${baseURL}/#/accesos/alta`);
-    await page.locator('#invitePerson').selectOption({ label: personName });
+    await face(page, personName).click();
     await page.locator('#inviteEmail').fill(email);
-    await page.locator('#invite-booking').selectOption('reader');
+    await page.locator('#invite-booking button[data-role="reader"]').click();
     await page.locator('#inviteSubmit').click();
     await expect(page.locator('#existingAccount')).toBeVisible();
   };
@@ -300,10 +355,10 @@ test('accesos · alta con un correo que ya tiene cuenta: enlazar, fusionar ficha
   await page.route('**/api/v1/admin/invite', (route) => route.fulfill({ status: 422, contentType: 'application/json',
     body: JSON.stringify({ error: { code: 'AUTH_ADMIN_FAILED', message: 'No se pudo completar la operación de cuentas.', details: { authCode: 'email_address_invalid', authMessage: 'Email address is invalid' } } }) }));
   await page.reload();
-  await page.locator('#invitePerson').selectOption('');
+  await face(page, 'Persona nueva').click();
   await page.locator('#inviteName').fill('Persona sin correo válido');
   await page.locator('#inviteEmail').fill('nadie@example.invalid');
-  await page.locator('#invite-booking').selectOption('reader');
+  await page.locator('#invite-booking button[data-role="reader"]').click();
   await page.locator('#inviteSubmit').click();
   await expect(page.locator('.formerror')).toContainText('No se pudo completar la operación de cuentas: Email address is invalid');
   await page.unroute('**/api/v1/admin/invite');
