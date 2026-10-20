@@ -11,7 +11,7 @@ import { el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import type { Row } from '../app/own.ts';
-import { failure, fbIgnore, loading, needsNet, section, staleNote } from './common.ts';
+import { failure, fbIgnore, loading, needsNet, offlineReason, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
 interface Bed { bed_id: string; label: string; kind: string; free: boolean; assignment_id?: string; guest_id?: string | null; group_label?: string | null; status?: string; source?: string }
@@ -196,8 +196,11 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
         el('button', { type: 'button', class: 'primary small', 'data-action': 'approve', onclick: () => void act(() => ctx.usage.run('organizers.alojamiento.aprobar', () => ctx.api.invokeAny('booking.portal_approve_bed', { reservation_id: reservationId, assignment_id: p.assignment_id, approve: true }))) }, t('Aprobar')));
     });
 
+    const offlineLine = offlineReason(ctx, t('Sin conexión: para cambiar el alojamiento necesitas red.'));
+    offlineLine.id = 'lodgingOffline';
     replace(host,
       staleAt ? staleNote(staleAt) : null,
+      offlineLine,
       section(t('Qué pueden hacer tus asistentes'), { id: 'lodgingSettings' },
         el('label', { class: 'field' }, el('span', null, t('Qué pueden hacer')), capabilitySel),
         choosing ? el('label', { class: 'field' }, el('span', null, t('Pueden elegir hasta el')), untilInput) : null,
@@ -218,7 +221,7 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
       d.preferences.length ? section(t('Preferencias de tus asistentes'), { id: 'lodgingPreferences' },
         fbIgnore(el('ul', { class: 'plainlist' }, ...d.preferences.map((p) => el('li', null, el('strong', null, nameOf(p.guest_id)),
           p.text ? ` · ${p.text}` : '', p.ground_floor ? ` · ${t('Necesita planta baja o accesible')}` : ''))))) : null);
-    for (const b of host.querySelectorAll<HTMLElement>('[data-action="approve"], [data-action="reject"], [data-action="extra-minus"], [data-action="extra-plus"], #lodgingOpen [data-room] input[type="checkbox"]')) bound.push(needsNet(ctx, b));
+    for (const b of host.querySelectorAll<HTMLElement>('[data-action="approve"], [data-action="reject"], [data-action="extra-minus"], [data-action="extra-plus"], #lodgingOpen [data-room] input[type="checkbox"]')) bound.push(needsNet(ctx, b, undefined, offlineLine));
   }
 
   function assign(room: Room, bed: Bed): void {

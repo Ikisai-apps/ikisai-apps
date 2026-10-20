@@ -9,7 +9,7 @@ import type { Coorganizer, GuestList, KitchenSummary, Loaded, PortalDates, Porta
 import { organizersLine } from '../app/texts.ts';
 import { contactLine } from '../app/common-texts.ts';
 import { dateRange, dayLabel, hourLabel, isCancelled, mealPlanLabel, menuStyleLabel, restrictionText, statusLabel, STATUS_TONE } from '../app/labels.ts';
-import { countdownText, DESIGN_STATUSES, DRAFT_STATUSES, phaseOf, showsCountdown, stageKeyOf, summarySteps, todayMadrid, type SummaryExtra } from '../app/journey.ts';
+import { countdownText, DESIGN_STATUSES, DRAFT_STATUSES, phaseOf, showsCountdown, stageKeyOf, summarySteps, todayMadrid, type SummaryExtra, type SummaryStepId } from '../app/journey.ts';
 import { createCoverLoader } from '../app/covers.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import { renderGuestList } from './guests.ts';
@@ -108,10 +108,9 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     const cover = renderCover({
       title: d.title, image: coverUrl, pill: statusLabel(d.status), pillTone: tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : null,
       stats: `${dateRange(d.start_date, d.end_date)}${hours ? ` · ${hours}` : ''}`, compact: true,
+      headingLevel: 2, titleId: 'retreatTitle',
     });
-    // La pieza no trae encabezado: el título hace de h2 de la ficha y la píldora conserva los ids de siempre.
-    const title = cover.querySelector<HTMLElement>('.cover-title');
-    if (title) { title.id = 'retreatTitle'; title.setAttribute('role', 'heading'); title.setAttribute('aria-level', '2'); }
+    // La píldora conserva su id de siempre.
     cover.querySelector<HTMLElement>('.cover-pill')?.setAttribute('id', 'retreatStatus');
     const line = organizersLine(organizers);
     const countdown = showsCountdown(phase) && d.start_date ? el('span', { class: 'chip', id: 'retreatCountdown' }, countdownText(d.start_date, d.end_date, today, t)) : null;
@@ -193,18 +192,23 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
   return () => { alive = false; destroySub?.(); covers.destroy(); };
 };
 
-/** Los pasos del kit llevan `organizers.retiro.resumen.{id}`: aquí se repasan con su id literal (catálogo) y su id del DOM. */
+/** Id literal de feedback de cada paso del Resumen (kit 0.49: así entran en el catálogo). */
+const STEP_MARKS: Record<SummaryStepId, Record<'feedbackId' | 'feedbackLabel', string>> = {
+  ver_solicitudes: { feedbackId: 'organizers.retiro.resumen.ver_solicitudes', feedbackLabel: 'Ver solicitudes' },
+  ver_fechas: { feedbackId: 'organizers.retiro.resumen.ver_fechas', feedbackLabel: 'Ver fechas' },
+  ver_diseno: { feedbackId: 'organizers.retiro.resumen.ver_diseno', feedbackLabel: 'Diseñar' },
+  paso_propuesta: { feedbackId: 'organizers.retiro.resumen.paso_propuesta', feedbackLabel: 'Paso de la propuesta' },
+  paso_pagos: { feedbackId: 'organizers.retiro.resumen.paso_pagos', feedbackLabel: 'Paso de los pagos' },
+  paso_asistentes: { feedbackId: 'organizers.retiro.resumen.paso_asistentes', feedbackLabel: 'Paso de los asistentes' },
+};
+/** Id del DOM de los accesos de siempre (los buscan las pruebas y los enlaces de ayuda), por su id de feedback. */
+const STEP_DOM_IDS: Readonly<Record<string, string>> = {
+  'organizers.retiro.resumen.ver_solicitudes': 'goJoins', 'organizers.retiro.resumen.ver_fechas': 'goDates', 'organizers.retiro.resumen.ver_diseno': 'goDesign',
+};
 function markSteps(box: HTMLElement): void {
   for (const node of box.querySelectorAll<HTMLElement>('[data-feedback-id]')) {
-    switch (node.getAttribute('data-feedback-id')) {
-      case 'organizers.retiro.resumen.ver_solicitudes': fbMark(node, 'organizers.retiro.resumen.ver_solicitudes', 'Ver solicitudes'); node.id = 'goJoins'; break;
-      case 'organizers.retiro.resumen.ver_fechas': fbMark(node, 'organizers.retiro.resumen.ver_fechas', 'Ver fechas'); node.id = 'goDates'; break;
-      case 'organizers.retiro.resumen.ver_diseno': fbMark(node, 'organizers.retiro.resumen.ver_diseno', 'Diseñar'); node.id = 'goDesign'; break;
-      case 'organizers.retiro.resumen.paso_propuesta': fbMark(node, 'organizers.retiro.resumen.paso_propuesta', 'Paso de la propuesta'); break;
-      case 'organizers.retiro.resumen.paso_pagos': fbMark(node, 'organizers.retiro.resumen.paso_pagos', 'Paso de los pagos'); break;
-      case 'organizers.retiro.resumen.paso_asistentes': fbMark(node, 'organizers.retiro.resumen.paso_asistentes', 'Paso de los asistentes'); break;
-      default: break;
-    }
+    const id = STEP_DOM_IDS[node.getAttribute('data-feedback-id') ?? ''];
+    if (id) node.id = id;
   }
 }
 
@@ -232,7 +236,7 @@ function renderSummary(ctx: ViewContext, reservationId: string, data: RetreatDat
       joins: { requests: joins.length, persons: joins.reduce((n, j) => n + j.persons.length, 0) },
     }, extra, today, { t, money: (n) => i18n.formatMoney(n), day, range: dateRange });
     const box = renderSteps({
-      items: steps.map((s) => ({ id: s.id, title: s.title, done: s.done, stateText: s.stateText, action: s.action, onClick: go(s.tab) })),
+      items: steps.map((s) => ({ id: s.id, title: s.title, done: s.done, stateText: s.stateText, action: s.action, onClick: go(s.tab), ...STEP_MARKS[s.id] })),
       readyText: t('Nada pendiente por tu parte. Si algo cambia, lo verás aquí.'),
       feedbackId: 'organizers.retiro.resumen',
     });

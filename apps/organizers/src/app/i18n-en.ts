@@ -839,7 +839,6 @@ export const EN: Dictionary = {
   'raciones con requisitos especiales': 'servings with special requirements',
   'Así va tu retiro': 'How your retreat is going',
   'Detalles del retiro': 'Retreat details',
-  'Cerrar sesión': 'Log out',
   'Tienes 1 cambio sin enviar. Se queda en este dispositivo y se enviará cuando vuelvas a entrar.': 'You have 1 change not yet sent. It stays on this device and will be sent when you log in again.',
   'Tienes {n} cambios sin enviar. Se quedan en este dispositivo y se enviarán cuando vuelvas a entrar.': 'You have {n} changes not yet sent. They stay on this device and will be sent when you log in again.',
   // Pasada única, zona 3: Asistentes, ficha, Cocina, Experiencia y Ofertas
@@ -999,5 +998,9 @@ export const EN: Dictionary = {
   'Ir a Propuesta': 'Go to Proposal',
   'Siguiente': 'Next',
   'Cómo vas': 'How you are doing',
+  // Tanda 29 del kit: apaños fuera (guest.ts, guests.ts, lodging.ts)
+  'Rellenar: {dato}': 'Fill in: {dato}',
+  'Sin conexión: para enviar enlaces necesitas red.': 'Offline: you need a connection to send links.',
+  'Sin conexión: para cambiar el alojamiento necesitas red.': 'Offline: you need a connection to change the accommodation.',
   'Tus fechas': 'Your dates',
 };

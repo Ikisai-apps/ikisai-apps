@@ -84,6 +84,15 @@
   - **Diseño y Fechas:** vuelven al veredicto con «Siguiente: …» de la MUELA-072, con lo que falta debajo (API.md §18.2).
   - **Señal:** «hasta el {fecha}» en lugar de «antes del {fecha}» (Booking): el mismo día del plazo, «antes del» ya parecía tarde.
   - **Comentarios del código:** lo que no decidió VG pone «decisión de Core Sevilla (19-10)».
+- 2026-10-20 · Apaños fuera con el kit 0.49 y 0.50:
+  - «Cerrar sesión» del kit en la cabecera, también en el móvil;
+  - título de la portada como `h2` (`headingLevel`);
+  - Intro en las filas de Asistentes y los 46 px de `renderChecks`, del kit; «Rellenar» con nombre propio;
+  - una sola línea «sin red» en Asistentes y Alojamiento;
+  - «Cómo pagar» entre «Próximamente» y «Movimientos» (`afterUpcoming`);
+  - ids literales en los grupos de Asistentes y en los pasos del Resumen;
+  - sin `color-mix` en la hoja de estilos.
+  - El velo de las portadas de Mis retiros se queda: el del kit es claro en la franja media, y ahí va el texto.
 
 ## Pendiente
 

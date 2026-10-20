@@ -225,7 +225,10 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await expect(page.locator('#guestRows')).toContainText('Rosa');
   // Rosa aún no tiene enlace: «Enviar su enlace» necesita red y lo dice; «Recordar» y las herramientas siguen.
   await expect(page.locator('#guestRows [data-act="sinenlace"]')).toBeDisabled();
-  await expect(page.locator('#guestRows').getByText('Necesita conexión.')).toBeVisible();
+  // Una sola línea con el motivo para toda la lista (kit 0.49), no una por fila.
+  await expect(page.locator('#guestRowsOffline')).toBeVisible();
+  await expect(page.locator('#guestRowsOffline')).toContainText('para enviar enlaces necesitas red');
+  await expect(page.locator('#guestRows .offline-why')).toHaveCount(1);
   await expect(page.locator('#addGuest')).toBeEnabled();
   await expect(page.locator('#guestSeats button')).toHaveCount(1);
   // Mis retiros sin red: la última copia, con «Reintentar».
@@ -290,7 +293,7 @@ test('organizers · en inglés: navegador en inglés, selector ES | EN y textos 
   // ICU escribe el rango con o sin espacios finos según la plataforma (Windows «12–15», Linux «12 – 15»).
   await expect(page.locator('#retreatHead')).toContainText(/12\s?–\s?15 March 2027/);
   await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
-  await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Log out');
+  await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Sign out');
 
   // Cambio manual a español: se repinta y se recuerda en el dispositivo.
   await page.locator('#langSelect [data-locale="es"]').click();
@@ -518,10 +521,11 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   await expect(page.locator('#moneyPending')).toHaveText(/700,00/);
   await expect(page.locator('#moneyTotals')).toContainText('Según la propuesta aceptada (versión 1)');
 
-  // «Cómo pagar», abierto bajo el extracto porque queda algo por pagar.
+  // «Cómo pagar», abierto entre «Próximamente» y «Movimientos» (afterUpcoming, kit 0.49) porque queda algo por pagar.
   const how = page.locator('#paymentInstructions');
   await expect(how).toContainText('Por transferencia');
   expect(await how.evaluate((node) => node.tagName)).toBe('SECTION');
+  expect(await how.evaluate((node) => [node.previousElementSibling?.getAttribute('aria-label'), node.nextElementSibling?.getAttribute('aria-label')])).toEqual(['Próximamente', 'Movimientos']);
   expect(await how.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('#moneyTotals')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
 
   // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
@@ -1087,7 +1091,7 @@ test('organizers · menú lateral: la marca abre el cajón con «Este retiro», 
   await expect(drawer.locator('.appmenu-logout button')).toContainText('Cerrar sesión');
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
-  // En la cabecera sigue un solo «Cerrar sesión», el de Organizers.
+  // En la cabecera sigue un solo «Cerrar sesión», el del kit (0.49), con el id de feedback de Organizers.
   await expect(page.locator('#logoutButton')).toHaveCount(1);
   await expect(page.locator('#logoutButton')).toHaveAttribute('data-feedback-id', 'organizers.cabecera.cerrar_sesion');
 

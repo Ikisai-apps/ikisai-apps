@@ -33,7 +33,8 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgretreat-top>:not(.medal-disc):not(.medal-cover){grid-column:2;min-width:0}
 .orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem;overflow-wrap:anywhere}
 .orgretreat-when{font-size:var(--text-sm,.875rem)}
-/* Con foto: texto blanco sobre un velo que da al menos 4,5:1 en toda la foto, y el chip sólido. */
+/* Con foto: texto blanco sobre un velo que da al menos 4,5:1 en toda la foto, y el chip sólido. Se queda aunque el kit
+   0.49 refuerce el suyo: el del kit es claro en la franja media (.15), y aquí el texto ocupa casi toda la tarjeta. */
 .orgretreat-photo{grid-template-columns:minmax(0,1fr);align-content:end;min-height:140px;margin:-14px -16px 0;padding:16px;color:#fff;isolation:isolate}
 .orgretreat-photo>:not(.medal-cover){grid-column:1;position:relative;z-index:1}
 .orgretreat-photo .medal-cover::after{background:linear-gradient(180deg,rgba(16,22,18,.58),rgba(16,22,18,.82))}
@@ -259,7 +260,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgseats{margin:0 0 12px}
 .orgseat-legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 8px;padding:0;font-size:var(--text-sm,.875rem);color:var(--ink)}
 .orgseat-key{display:inline-flex;align-items:center;gap:6px}
-.orgseat-swatch{width:12px;height:12px;border-radius:50%;background:var(--seat,var(--line));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 20%,transparent)}
+.orgseat-swatch{width:12px;height:12px;border-radius:50%;background:var(--seat,var(--line));box-shadow:inset 0 0 0 1px rgba(31,42,34,.2)}
 .orgseat-sinenlace{--seat:var(--alert)}
 .orgseat-sinabrir,.orgseat-faltan,.orgseat-sinfirma{--seat:var(--warn)}
 .orgseat-completo{--seat:var(--ok)}
@@ -267,7 +268,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgseat-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:6px;margin:0;padding:0}
 .orgseat,.orgseat-grid .orgseat-free{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;min-height:var(--tap,46px);padding:6px 2px;border:0;border-radius:12px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
 .orgseat:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.orgseat-ring{--p:0;display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:conic-gradient(var(--seat,var(--accent)) calc(var(--p) * 1%),color-mix(in srgb,var(--line) 80%,transparent) 0)}
+.orgseat-ring{--p:0;display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:conic-gradient(var(--seat,var(--accent)) calc(var(--p) * 1%),var(--line) 0)}
 .orgseat-ring .medal-disc{box-shadow:0 0 0 3px var(--paper)}
 .orgseat-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
 .orgseat-food{position:absolute;top:2px;right:8px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1)}
@@ -283,7 +284,6 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 /* Ficha: lo que le falta y los campos que faltan */
 .orgmissing h3{margin:0 0 8px}
 .orgmissing .check-box{margin:0 0 6px}
-.orgmissing .check-action{height:auto;min-height:var(--tap,46px);padding:0 16px}
 .orgfield-missing>span:first-child em{font-style:normal;font-weight:700;color:var(--warn-ink,#7a5414)}
 .orgfield-missing input,.orgfield-missing select{border-color:var(--warn,#c58b2a)}
 

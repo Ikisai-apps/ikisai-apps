@@ -597,7 +597,7 @@ Privacidad y dispositivo:
 - La calculadora de Diseño (con colaboradores y %) y la de Ofertas solo viven en el borrador local. Nunca cambian `expected_guests`.
 - Las portadas de Mis retiros y las imágenes del cartel van en la caché local (almacén `images` de IndexedDB, versión 2) y se borran al cerrar sesión.
 - Las plazas de Asistentes, «Lo que le falta» y los nombres de Cocina quedan fuera de las capturas de feedback.
-- **Sin red:** los botones que necesitan red (enviar enlace, decidir solicitudes, avisar a Ikisai, escribir en Booking o Food) quedan desactivados con el motivo (`needsNet`, sobre `bindOnline`). Lo que va por la cola de sincronización no se ata.
+- **Sin red:** los botones que necesitan red (enviar enlace, decidir solicitudes, avisar a Ikisai, escribir en Booking o Food) quedan desactivados con el motivo (`needsNet`, sobre `bindOnline`). En las listas (Asistentes, Alojamiento), todos comparten una sola línea (`offlineReason`, kit 0.49). Lo que va por la cola de sincronización no se ata.
 
 ### 18.1 Menú lateral y «‹ Volver a…» (19-10-2026)
 
@@ -609,9 +609,7 @@ Privacidad y dispositivo:
 - **Sincronización:** la línea sale de `status: { client }`.
 - **Ids de feedback** literales: `organizers.menu.retiro.pestana`, `organizers.menu.retiros.abrir` y `organizers.menu.retiros.todos`.
 - **`returnTo`** (0.48): con `?volver=…&titulo=…` sale «‹ Volver a {titulo}» (`organizers.cabecera.volver_app`).
-- **«Cerrar sesión»:**
-  - en el cajón, el del kit;
-  - en la cabecera, el propio (`#logoutButton`), mientras el del kit no se vea en el móvil ni se traduzca.
+- **«Cerrar sesión»:** el del kit, en el cajón y en la cabecera (`logoutOnMobile`, kit 0.49), con el id de feedback `organizers.cabecera.cerrar_sesion`.
 
 ### 18.2 Veredicto de Diseño y Fechas (tanda 30, 20-10-2026)
 

@@ -1,4 +1,4 @@
-import { bindOnline, el, icon, toast, type Child } from '@ikisai/ui-kit';
+import { bindOnline, el, icon, renderOfflineReason, toast, type Child } from '@ikisai/ui-kit';
 import { t } from '../app/i18n.ts';
 import { timeLabel } from '../app/labels.ts';
 import { describeError } from '../app/client.ts';
@@ -46,8 +46,16 @@ export function staleNote(at: string, retry?: () => void): HTMLElement {
  * va por la cola de sincronización («Quiero confirmar», decidir solicitudes, «Enviar su enlace», abrir una factura…).
  * Devuelve la función que lo suelta; la vista la llama al desmontarse.
  */
-export function needsNet(ctx: Pick<ViewContext, 'client'>, button: HTMLElement, reason?: string): () => void {
-  return bindOnline(button, { client: ctx.client, reason, retry: () => void ctx.client.sync().catch(() => undefined) });
+export function needsNet(ctx: Pick<ViewContext, 'client'>, button: HTMLElement, reason?: string, line?: HTMLElement): () => void {
+  return bindOnline(button, { client: ctx.client, reason, retry: () => void ctx.client.sync().catch(() => undefined), ...(line ? { line } : {}) });
+}
+
+/**
+ * Una sola línea de motivo para varios botones que necesitan red (kit 0.49, `renderOfflineReason`): la vista la coloca
+ * donde quiera y la pasa a `needsNet(…, line)`. Empieza oculta.
+ */
+export function offlineReason(ctx: Pick<ViewContext, 'client'>, reason: string): HTMLElement {
+  return renderOfflineReason({ reason, retry: () => void ctx.client.sync().catch(() => undefined) });
 }
 
 export function loading(text = t('Cargando…')): HTMLElement {
