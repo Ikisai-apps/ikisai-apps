@@ -324,7 +324,7 @@ La implementa `_kit`; cada app monta sus rutas de lectura, exportación e integr
 | `GET history?before=&limit=` | lotes de cambios para la vista de historial |
 | `POST history/{cursor}/undo-plan` / `undo` | previsualizar y ejecutar el deshacer de §4.4 |
 | `POST uploads` | `{filename, mime, size, sha256}` → `{id, path, uploadUrl, method:'PUT', headers, expiresAt, duplicateOf}`; el cliente hace `PUT uploadUrl` directo al bucket |
-| `POST uploads/{id}/verify` | comprueba existencia, tamaño y hash (hasta 25 MB); → `{id, sha256, size, verified, hashVerified}` |
+| `POST uploads/{id}/verify` | comprueba existencia, tamaño y hash (hasta 25 MB); → `{id, sha256, size, verified, hashVerified}`; un SVG con contenido activo (scripts, `foreignObject`, incrustados, manejadores `on…`, enlaces `javascript:` o entidades) → 422 `UNSUPPORTED_MEDIA` y queda `missing`: el cliente lo sube limpio (MUELA-092) |
 | `GET files/{id}` | → `{id, url, expiresAt, filename, mime, size}` con URL firmada de 10 minutos, tras comprobar pertenencia |
 | `POST trash/purge` | `{requestId, tables?}` → `{purged, cursor}`; solo `owner`; respeta `never_purge` |
 | `GET members` / `POST members` | lista de pertenencias; alta o cambio `{userId, role, scopes?, displayName?}` solo `owner` |
