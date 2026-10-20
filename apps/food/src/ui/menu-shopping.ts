@@ -308,14 +308,6 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     const required = Number(item.required_quantity);
     const stock = item.stock_quantity === null ? null : Number(item.stock_quantity);
     const min = item.min_quantity === null || item.min_quantity === undefined ? null : Number(item.min_quantity);
-    const packSize = view.packs.find((p) => p.usual)?.size ?? null;
-    const stockInput = quantityInput(item, stock, `En casa de ${name}`, (value) => {
-      // «Comprar» sigue a «en casa» mientras nadie lo haya fijado a mano (en envases enteros del habitual).
-      void updateQuantities(item, item.manual_override || item.manual ? { stock_quantity: value } : { stock_quantity: value, purchase_quantity: defaultPurchase(required, value, min, view.bought ? null : packSize) });
-    }, disabled, { feedbackId: 'food.menu.compra.linea.en_casa', feedbackLabel: 'En casa' });
-    const purchaseInput = quantityInput(item, Number(item.purchase_quantity), `Comprar de ${name}`, (value) => {
-      void updateQuantities(item, item.manual ? { purchase_quantity: value ?? 0 } : { purchase_quantity: value ?? 0, manual_override: true });
-    }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' });
     const chips = [
       item.manual ? el('span', { class: 'chip' }, 'A mano') : null,
       !item.manual && item.manual_override ? el('span', { class: 'chip' }, 'Compra fijada') : null,
@@ -349,16 +341,18 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
         item.manual ? 'Añadido a mano' : item.restock ? `Bajo mínimo: ${formatQuantity(min)} ${UNIT_LABELS[item.unit]}` : `Necesario: ${formatQuantity(required)} ${UNIT_LABELS[item.unit]}`,
         item.supplier ? ` · ${item.supplier}` : '',
         !item.restock && min ? ` · Mínimo ${formatQuantity(min)} ${UNIT_LABELS[item.unit]}` : '',
+        stock !== null ? ` · En casa ${formatQuantity(stock)} ${UNIT_LABELS[item.unit]}` : '',
         ` · ${cost === null ? 'sin precio' : `≈ ${euros(cost)}`}`),
       chips.length ? el('span', { class: 'chips' }, ...chips) : '',
-      el('div', { class: 'fd-buyfigs' },
-        el('label', { class: 'buyfield' }, el('span', null, 'En casa'), stockInput),
-        el('label', { class: 'buyfield' }, el('span', null, `Comprar (${UNIT_LABELS[item.unit]})`), purchaseInput)),
     );
     return node;
   }
 
-  /** El «⋯» de la baldosa: el estado de siempre, «Recalcular» y «Quitar» (en las añadidas a mano). */
+  /**
+   * El «⋯» de la baldosa (como en el diseño que eligió VG): «En casa», «Comprar», el estado de siempre, «Recalcular» y
+   * «Quitar» (en las añadidas a mano). Las cifras se pueden cambiar varias veces sin cerrar la hoja: cada cambio parte de
+   * la línea ya guardada, y en una comprada corrige la Despensa (H-C5).
+   */
   function openLine(view: LineView, closed: boolean): void {
     if (sheet) return;
     const { item, name } = view;
@@ -369,26 +363,41 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     const stock = item.stock_quantity === null ? null : Number(item.stock_quantity);
     const min = item.min_quantity === null || item.min_quantity === undefined ? null : Number(item.min_quantity);
     const packSize = view.packs.find((p) => p.usual)?.size ?? null;
+    const cur = () => fresh(item) ?? item;
+    const stockInput = quantityInput(item, stock, `En casa de ${name}`, (value) => void (async () => {
+      const line = cur();
+      // «Comprar» sigue a «en casa» mientras nadie lo haya fijado a mano (en envases enteros del habitual).
+      await updateQuantities(line, line.manual_override || line.manual ? { stock_quantity: value }
+        : { stock_quantity: value, purchase_quantity: defaultPurchase(Number(line.required_quantity), value, min, line.status !== 'pendiente' ? null : packSize) });
+      purchaseInput.value = formatQuantity(Number(cur().purchase_quantity));
+    })(), disabled, { feedbackId: 'food.menu.compra.linea.en_casa', feedbackLabel: 'En casa' });
+    const purchaseInput = quantityInput(item, Number(item.purchase_quantity), `Comprar de ${name}`, (value) => {
+      const line = cur();
+      void updateQuantities(line, line.manual ? { purchase_quantity: value ?? 0 } : { purchase_quantity: value ?? 0, manual_override: true });
+    }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' });
     sheet = openSheet({
       title: name,
       body: el('div', { 'data-feedback-id': 'food.menu.compra.linea.hoja', 'data-feedback-label': 'Producto de la compra', class: 'fd-linesheet' },
         el('p', { class: 'muted' }, Envase.words(view.plan)),
-        view.bought && view.plan.kind === 'envase' ? el('p', { class: 'hint' }, 'Ya está comprado: el envase se cambia con la línea pendiente. «En casa» y «Comprar» siguen en la baldosa y corrigen la Despensa.') : null,
+        view.bought ? el('p', { class: 'hint' }, 'Ya está comprado: cambiar «En casa» o «Comprar» corrige la Despensa; el envase se cambia con la línea pendiente.') : null,
+        el('div', { class: 'fd-buyfigs' },
+          el('label', { class: 'buyfield' }, el('span', null, 'En casa'), stockInput),
+          el('label', { class: 'buyfield' }, el('span', null, `Comprar (${UNIT_LABELS[item.unit]})`), purchaseInput)),
         el('label', { class: 'field' }, el('span', null, 'Estado'), status),
         el('div', { class: 'btnrow' },
           !disabled && !item.manual && item.manual_override
             ? el('button', { 'data-feedback-id': 'food.menu.compra.linea.recalcular', 'data-feedback-label': 'Recalcular', class: 'ghost', type: 'button', 'aria-label': `Volver a calcular la compra de ${name}`,
-                onclick: () => void done(updateQuantities(item, { manual_override: false, purchase_quantity: defaultPurchase(Number(item.required_quantity), stock, min, view.bought ? null : packSize) })) }, 'Recalcular')
+                onclick: () => { const line = cur(); void done(updateQuantities(line, { manual_override: false, purchase_quantity: defaultPurchase(Number(line.required_quantity), line.stock_quantity === null ? null : Number(line.stock_quantity), min, line.status !== 'pendiente' ? null : packSize) })); } }, 'Recalcular')
             : null,
           !disabled && item.manual
             ? el('button', { 'data-feedback-id': 'food.menu.compra.linea.quitar', 'data-feedback-label': 'Quitar producto', class: 'ghost', type: 'button', 'aria-label': `Quitar ${name}`,
-                onclick: () => void done(commitSafely([{ op: 'delete', table: T.shoppingItems, id: item.id, expectedRevision: item.revision }])) }, icon('close', 18), 'Quitar')
+                onclick: () => void done(commitSafely([{ op: 'delete', table: T.shoppingItems, id: item.id, expectedRevision: cur().revision }])) }, icon('close', 18), 'Quitar')
             : null)),
       foot: [el('button', { 'data-feedback-id': 'food.menu.compra.linea.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar')],
-      initialFocus: status,
+      initialFocus: disabled ? status : stockInput,
       onClose: () => { sheet = null; void load(); },
     });
-    status.addEventListener('change', () => void done(setStatuses([item], status.value as ShoppingItemStatus)));
+    status.addEventListener('change', () => void done(setStatuses([cur()], status.value as ShoppingItemStatus)));
   }
 
   function addManual(): void {
