@@ -19,6 +19,8 @@ import {
   type SpaceMapBedState,
   createMemorySpaceSource,
   demoSpaces,
+  spaceShortPath,
+  readableColor,
   renderLevelStar,
   initAppUpdates,
   setKitLayer,
@@ -1331,8 +1333,12 @@ const invCatalog = createItemCatalog({
 invCatalog.element.id = 'invCatalog';
 // La misma pieza en baldosas (Inventario de Central, Despensa de Food).
 const invTiles = createItemCatalog({ source: invSource, spaces: spaceSource, label: 'Despensa', layout: 'baldosas', feedbackId: 'demo.despensa', onOpen: openInvSheet, today: invToday,
+  storageKey: 'demo-despensa',
+  // Tanda 35: la acción de lo que pide atención, destacada y la primera (Food: «A la compra»).
+  focusAction: { label: 'A la compra', feedbackId: 'demo.despensa.a_la_compra', onClick: (it) => toast(`A la compra: ${it.name}`) },
   rowActions: (it) => (it.minQuantity && it.id === 'harina-espelta' ? [{ label: 'Pedir', primary: true, onClick: () => toast('Pedido a Tasks') }] : []) });
 invTiles.element.id = 'invTiles';
+(window as unknown as { invTiles: typeof invTiles }).invTiles = invTiles;
 const inventorySection = section('inventory', 'Inventario (R3)', 'createItemCatalog: buscar, filtros a un toque (bajo mínimo, caduca pronto, sitios, tipos, archivados), agrupado por sitio, acciones del kit y de la app («Pedir»), y filas que se alinean en columnas con ancho. createItemSheet: stock por sitio y lote con coste medio, datos (máquinas con marca, serie y estado), unidades y movimientos con su origen.',
   el('div', { class: 'demo-row' },
     el('button', { type: 'button', class: 'ghost', id: 'invMove', onclick: () => openInvMovement('exit') }, 'Movimiento a mano'),
@@ -1804,7 +1810,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

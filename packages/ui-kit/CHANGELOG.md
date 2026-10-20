@@ -1,5 +1,24 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.53.0 · 20 de octubre de 2026
+
+**Ajustes que piden Central y Food** (tanda 35). Sin cambio de diseño; lo de hoy sigue igual salvo lo que se lee o se toca mejor.
+
+1. **`renderMedal` con color:** las iniciales llegan a 4,5:1 sobre cualquier color de equipo. Se elige blanco o tinta, la que contraste más; si ninguna llega (#c4712f, #b7791f), el fondo se oscurece lo justo. La función es `readableColor`, exportada. Un color que ya llega no cambia.
+2. **`.filterchip`** mide 46 px (antes 36; también en los tipos de artículo, antes 40).
+3. **Azulejos del menú:** no parten palabras («Obligaciones» en una línea); el texto se ajusta entre 11 y 12,5 px.
+4. **`renderGroups`:** `tail` por grupo, una cola plegada al final («Revocados (1)») que no cuenta para el recuento, el tono ni el resumen. Lleva la marca `${feedbackId}.cola`.
+5. **Food y Central:**
+   - **`spaceShortPath`:** la ruta corta del sitio («Cocina › Despensa»), la misma que enseña el selector.
+   - **`createFocus`:**
+     - `openLabel`, para que el botón de abrir diga lo que hace («Ver en la Despensa»);
+     - `action`, una acción destacada más («A la compra»).
+   - **`createItemCatalog`:**
+     - `focusAction`: la acción de lo que pide atención, primera y destacada, en filas y baldosas. Por defecto aparece en lo que está bajo mínimo; `when` cambia la regla;
+     - `setFilter(f, { persist: false })`: el filtro que llega por enlace no pisa el guardado.
+
+- **Pruebas:** `v58`.
+
 ## 0.52.0 · 20 de octubre de 2026
 
 **Mapa de zonas: `createSpaceMap`** (tanda 34, MUELA-024). Pieza nueva; lo de hoy no cambia.

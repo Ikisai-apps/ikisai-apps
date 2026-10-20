@@ -11,7 +11,7 @@ import { el, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { kt } from '../i18n/i18n.ts';
 import { normalizeName } from '../fields/suggest.ts';
-import { DEFAULT_SPACE_KINDS, ancestorsOf, indexSpaces, kindLabel, spaceMatches, spacePath, type SpaceKind, type SpaceRow, type SpaceSource } from './model.ts';
+import { DEFAULT_SPACE_KINDS, ancestorsOf, indexSpaces, kindLabel, spaceMatches, spacePath, spaceShortPath, type SpaceKind, type SpaceRow, type SpaceSource } from './model.ts';
 
 export interface SpacePickerOptions {
   label: string;
@@ -94,7 +94,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
   let active = -1;
 
   const selectable = (r: SpaceRow) => r.active && (!options.kindFilter || options.kindFilter.includes(r.kind)) && (!options.filter || options.filter(r));
-  const shortPath = (rid: string) => { const r = byId.get(rid); if (!r) return ''; const parent = ancestorsOf(byId, rid).pop(); return parent && parent.kind !== 'altura' ? `${parent.name} › ${r.name}` : r.name; };
+  const shortPath = (rid: string) => spaceShortPath(byId, rid);
 
   const chips = el('div', { class: 'space-picked', 'aria-live': 'polite' });
   const quickHost = el('div', { class: 'space-quick' });

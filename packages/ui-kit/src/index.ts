@@ -5,7 +5,7 @@
  */
 export { el, append, clear, replace, formatDate, plural, type Attrs, type Child } from './dom.ts';
 export { icon, registerIcons, hasIcon, type IconName } from './icons.ts';
-export { applyTheme, setTheme, toggleTheme, themePreference, effectiveTheme, inkOn, itemColorStyle, applyAccent, type ThemePreference } from './theme.ts';
+export { applyTheme, setTheme, toggleTheme, themePreference, effectiveTheme, inkOn, readableColor, itemColorStyle, applyAccent, type ThemePreference } from './theme.ts';
 export { toast, toastWithAction, hideToast, type ToastAction } from './toast.ts';
 export {
   createStatusBar,
@@ -71,7 +71,7 @@ export { initAppUpdates, shouldAutoApply, type AppUpdates, type AppUpdatesOption
 export { installKeyboardInsets } from './overlay/keyboard.ts';
 export { createDayTabs, type DayTabs, type DayTabsOptions } from './calendar/day-tabs.ts';
 export {
-  DEFAULT_SPACE_KINDS, canPlace, kindsFor, kindOf, kindLabel, spacePath, spaceDescendants, ancestorsOf, childrenOf, indexSpaces, spaceMatches,
+  DEFAULT_SPACE_KINDS, canPlace, kindsFor, kindOf, kindLabel, spacePath, spaceShortPath, spaceDescendants, ancestorsOf, childrenOf, indexSpaces, spaceMatches,
   nextAltura, newSpaceId, createMemorySpaceSource, demoSpaces, spaceSeats, seatsLabel,
   type SpaceRow, type SpaceKind, type SpaceAttribute, type SpaceSource, type Placement,
 } from './spaces/model.ts';

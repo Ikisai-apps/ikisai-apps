@@ -108,6 +108,10 @@ export interface FocusOptions {
   /** «✓ Hecha». Sin esto (solo lectura), no hay botón. */
   onDone?: (item: FocusItem) => void;
   onOpen?: (item: FocusItem) => void;
+  /** Texto del botón de `onOpen` («Ver en la Despensa»); por defecto «Abrir». */
+  openLabel?: string;
+  /** Una acción más de la tarjeta, destacada («A la compra»). */
+  action?: { label: string; onClick: (item: FocusItem) => void; feedbackId?: string } | null;
   emptyTitle?: string;
   emptyText?: string;
   feedbackId?: string;
@@ -142,7 +146,8 @@ export function createFocus(options: FocusOptions): Focus {
     item.meta?.length ? el('p', { class: 'focus-meta' }, item.meta.join(' · ')) : null,
     el('div', { class: 'focus-actions' },
       options.onDone ? el('button', { type: 'button', class: 'primary focus-btn', role: 'checkbox', 'aria-checked': 'false', 'aria-label': kt('Marcar hecha: {title}', { title: item.title }), ...mark('hecha', 'Marcar hecha'), onclick: () => options.onDone!(item) }, kt('✓ Hecha')) : null,
-      options.onOpen ? el('button', { type: 'button', class: 'ghost focus-btn', ...mark('abrir', 'Abrir'), onclick: () => options.onOpen!(item) }, kt('Abrir')) : null,
+      options.action ? el('button', { type: 'button', class: `${options.onDone ? 'softbtn' : 'primary'} focus-btn`, ...(options.action.feedbackId ? { 'data-feedback-id': options.action.feedbackId, 'data-feedback-label': options.action.label } : mark('accion', options.action.label)), onclick: () => options.action!.onClick(item) }, options.action.label) : null,
+      options.onOpen ? el('button', { type: 'button', class: 'ghost focus-btn', ...mark('abrir', 'Abrir'), onclick: () => options.onOpen!(item) }, options.openLabel ?? kt('Abrir')) : null,
       items.length > 1 ? el('button', { type: 'button', class: 'ghost focus-btn focus-next', ...mark('siguiente', 'Siguiente'), onclick: () => api.next() }, kt('Siguiente ›')) : null));
   }
 
