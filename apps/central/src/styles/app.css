@@ -354,3 +354,9 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-addto{min-height:var(--tap,46px);justify-content:flex-start}
 .ctl-addlist{margin:0;padding:0}
 .ctl-addrow{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap,46px);padding:6px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+/* Ficha de persona · portada (Bloque 2, MUELA-076): medallón con anillo (solo con datos reservados) y la línea de cifras. */
+.ctl-personhead{display:flex;align-items:center;gap:14px}
+.ctl-personhead[data-ring="alert"] .ctl-ring{border-color:var(--alert)}
+.ctl-personhead[data-ring="warn"] .ctl-ring{border-color:var(--warn)}
+.ctl-personhead[data-ring="ok"] .ctl-ring{border-color:var(--ok,var(--accent))}
+.ctl-coverstats{margin:4px 0 0;font-size:var(--text-sm,.875rem);color:var(--muted)}

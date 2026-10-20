@@ -92,6 +92,13 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await synced(page);
   await expect.poll(async () => (await api.app.t.db.query(`select file_id is not null as ok from central.person_records`)).rows[0]).toEqual({ ok: true });
   await expect(record.getByRole('button', { name: 'Archivo' })).toBeVisible();
+  // Portada y foco (Bloque 2): la cifra de la documentación, el foco con lo que caduca y la documentación primero.
+  await expect(page.locator('#personStats')).toContainText('documentación por renovar');
+  await expect(page.locator('#personStats')).toContainText('próximo vencimiento');
+  const focus = page.locator('[data-feedback-id="central.persona.foco"] .focus-card');
+  await expect(focus).toContainText('Manipulador de alimentos');
+  await expect(focus).toContainText('Caduca pronto');
+  await expect(page.locator('#personView > section.personblock').first()).toHaveAttribute('id', 'blockRecords');
 
   // Dar cuenta: el correo sale del contacto reservado.
   await page.locator('#giveAccount').click();
@@ -131,6 +138,9 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await expect(reader.locator('#blockBasic')).toContainText('Cocina');
   await expect(reader.locator('#personView')).not.toContainText('600 000 000');
   await expect(reader.locator('#blockRecords')).toHaveCount(0);
+  await expect(reader.locator('#personStats')).not.toContainText('documenta');
+  await expect(reader.locator('#personStats')).not.toContainText('vencimiento');
+  await expect(reader.locator('[data-feedback-id="central.persona.foco"]')).toHaveCount(0);
   await expect(reader.locator('#editPerson')).toHaveCount(0);
   await expect(reader.locator('#homeDocs')).toHaveCount(0);
   await other.close();

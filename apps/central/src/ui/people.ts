@@ -1,6 +1,6 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  compressImage, confirmDialog, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, type Sheet,
+  compressImage, confirmDialog, createFocus, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, type Sheet,
 } from '@ikisai/ui-kit';
 import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
@@ -527,11 +527,35 @@ export function mountPerson(personId: string): ViewMount {
       const priv = data.privates.find((x) => x.person_id === personId && !x.deleted_at) ?? null;
       const records = data.records.filter((r) => r.person_id === personId && !r.deleted_at).sort((a, b) => (a.position - b.position) || a.record_type.localeCompare(b.record_type));
 
-      const head = el('div', { class: 'pagehead', 'data-feedback-id': 'central.persona.cabecera', 'data-feedback-label': 'Cabecera de la persona' }, el('div', null,
+      // Portada (Bloque 2, MUELA-076): medallón y una línea de cifras escritas. Lo de la documentación, solo con permiso (§2).
+      const doc = reserved ? docTone(data.records, personId, today) : { tone: null, text: null };
+      const due = reserved ? records.filter((r) => dueState(r.expires_on, today, 30, r.status === 'no_aplica') !== 'al_dia').sort((a, b) => (a.expires_on ?? '').localeCompare(b.expires_on ?? '')) : [];
+      const capCount = data.capabilities.filter((c) => c.person_id === personId && data.trades.some((t) => t.id === c.trade_id && !t.deleted_at && t.active)).length;
+      const nextDue = reserved ? records.filter((r) => r.expires_on && r.status !== 'no_aplica' && r.expires_on >= today).sort((a, b) => a.expires_on!.localeCompare(b.expires_on!))[0] ?? null : null;
+      const stats = [
+        reserved ? (doc.tone === 'alert' ? 'documentación caducada' : doc.tone === 'warn' ? 'documentación por renovar' : records.length ? 'documentos al día' : 'sin documentación') : null,
+        capCount ? `${capCount} ${capCount === 1 ? 'oficio' : 'oficios'}` : 'sin oficios',
+        nextDue ? `próximo vencimiento: ${day(nextDue.expires_on)}` : null,
+        `disponibilidad ${(AVAILABILITY_LABELS[person.availability as keyof typeof AVAILABILITY_LABELS] ?? person.availability).toLowerCase()}`,
+      ].filter(Boolean).join(' · ');
+      const head = el('div', { class: 'pagehead ctl-personhead', 'data-feedback-id': 'central.persona.cabecera', 'data-feedback-label': 'Cabecera de la persona', dataset: { ring: doc.tone ?? 'none' } },
+        el('span', { class: 'ctl-ring' }, renderMedal({ name: person.display_name, initials: person.initials ?? null, size: 72 })), el('div', null,
         el('h2', { 'data-feedback-ignore': '' }, person.display_name),
         el('p', { 'data-feedback-ignore': '' }, (houseLevelsOn ? [person.code, areaLabel(person.base_role), levelLabel(person.house_level)]
           : [person.code, BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS], RELATION_LABELS[person.relation as keyof typeof RELATION_LABELS]]).filter(Boolean).join(' · ')),
+        el('p', { class: 'ctl-coverstats', id: 'personStats' }, stats),
         el('span', { class: 'chips', 'data-feedback-id': 'central.persona.cabecera.estado', 'data-feedback-label': 'Estado de la persona' }, ...(person.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]), ...(person.deleted_at ? [el('span', { class: 'chip alert' }, 'En la papelera')] : []), ...statusChips(data.records, personId, today))));
+      // Foco: lo que caduca o ya caducó, de uno en uno; abre su registro para renovarlo. Solo con datos reservados.
+      const focus = reserved && due.length && !person.deleted_at ? fbMark(createFocus({
+        label: 'Lo que caduca',
+        items: due.map((r) => {
+          const vencido = dueState(r.expires_on, today, 30, false) === 'vencido';
+          return { id: r.id, title: r.title && FREE_RECORD_TYPES.includes(r.record_type) ? r.title : RECORD_TYPE_LABELS[r.record_type] ?? r.record_type,
+            kicker: vencido ? 'Caducado · toca renovarlo' : 'Caduca pronto', tone: vencido ? 'alert' as const : 'warn' as const,
+            meta: [r.kind === 'formacion' ? 'Formación' : 'Documento', r.expires_on ? `${vencido ? 'caducó' : 'caduca'} el ${day(r.expires_on)}` : ''].filter(Boolean) };
+        }),
+        onOpen: (item) => { const r = records.find((x) => x.id === item.id); if (r) openRecordEditor(person, r); },
+      }).element, 'central.persona.foco', 'Lo que caduca') : null;
 
       const basic = block('Ficha', 'blockBasic', [el('dl', { class: 'kvlist', 'data-feedback-id': 'central.persona.ficha.datos', 'data-feedback-label': 'Datos básicos' },
         ...(houseLevelsOn ? [
@@ -595,7 +619,8 @@ export function mountPerson(personId: string): ViewMount {
           person.active ? 'Marcar inactiva' : 'Marcar activa'),
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', 'data-feedback-id': 'central.persona.acciones.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
-      replace(host, head, basic, tradesBlock, teamsBlock, privateBlock, recordsBlock, accountBlock, danger);
+      // Documentación primero cuando algo caduca (076); si no, el orden de siempre.
+      replace(host, head, focus, ...(due.length ? [recordsBlock, basic] : [basic]), tradesBlock, teamsBlock, privateBlock, ...(due.length ? [] : [recordsBlock]), accountBlock, danger);
       fbMark(host.querySelector('#blockTrades'), 'central.persona.oficios', 'Oficios');
       fbMark(host.querySelector('#blockBasic'), 'central.persona.ficha', 'Ficha');
       fbMark(host.querySelector('#blockTeams'), 'central.persona.equipos', 'Equipos');
