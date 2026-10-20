@@ -7,8 +7,7 @@
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import path from 'node:path';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
-import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { feedbackRoundTrip, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 let server: E2EServer;
 let ID: Aliases;
@@ -41,11 +40,12 @@ test('cabecera del kit en móvil: marca de Tasks visible y la hoja «Apps de Iki
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(shots, 'cabecera-tasks-movil.png'), clip: { x: 0, y: 0, width: 390, height: 170 } });
 
+  // La marca abre el menú común (MUELA-083 §4): las apps y «Comentarios y ayuda» van dentro.
   await mark.tap();
-  const sheet = page.getByRole('dialog', { name: 'Apps de Ikisai' });
+  const sheet = page.getByRole('dialog', { name: 'Menú de Tasks' });
   await expect(sheet).toBeVisible();
   await expect(sheet).toBeInViewport();
-  await expect(sheet.getByText('Sugerencias y QA')).toBeVisible();
+  await expect(sheet.getByText('Sugerencias y QA').first()).toBeVisible();
   const signal = sheet.getByRole('switch', { name: /Señalar para comentar/ });
   await expect(signal).toBeVisible();
   await expect(sheet.getByRole('switch', { name: /Revisor de QA/ })).toBeVisible();

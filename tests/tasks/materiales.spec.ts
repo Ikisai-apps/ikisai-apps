@@ -8,7 +8,7 @@ import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
-declare const Sync: any, openTaskEditor: any, toggleTask: any;
+declare const Sync: any, openTaskEditor: any, toggleTask: any, taskLocation: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -90,6 +90,38 @@ test('materiales y equipos en la ficha; al completar, «Confirmar consumo» gast
   await expect(owner.locator('#taskMaterials .materialrow', { hasText: 'Lejía' })).toContainText('Gastado: 1,5 l');
   await expect(owner.locator('#materialConsume')).toHaveCount(0);
   await close(owner);
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('«Confirmar consumo» sale cuando se va el aviso de «Hecha», nunca antes; con «Deshacer» no sale; reabrir lo gastado avisa', async () => {
+  // t1 ya tiene lo gastado apuntado: reabrirla avisa de que no vuelve al inventario (y el stock no cambia).
+  await owner.evaluate((id) => toggleTask(id), ID.t1);
+  await expect(owner.locator('.ikisai-toast')).toContainText('Lo gastado no vuelve al inventario');
+  await settled(owner);
+  expect(await stock(LEJIA)).toBe(8.5);
+  // Otra tarea abierta y sin hijas del mismo proyecto, con lejía prevista.
+  const target: string = await owner.evaluate(([t1, t2]) => { const loc = taskLocation(t1); const x = loc.p.tasks.find((t: any) => t.id !== t1 && t.id !== t2 && !t.deleted && !t.done && !t.parentId && !loc.p.tasks.some((c: any) => !c.deleted && c.parentId === t.id)); return x.id; }, [ID.t1, ID.t2]);
+  await owner.evaluate((id) => openTaskEditor(id), target);
+  await addMaterial(owner, 'Lej', /Lejía/, '1');
+  await expect(owner.locator('#taskMaterials .materialrow')).toHaveCount(1);
+  await close(owner);
+  await settled(owner);
+  const undo = () => owner.locator('.ikisai-toast span', { hasText: 'Tarea completada' }).locator('xpath=following-sibling::button');
+  // Con «Deshacer»: la hoja no sale nunca.
+  await owner.evaluate((id) => toggleTask(id), target);
+  await owner.waitForTimeout(1500);
+  await expect(owner.locator('.consumeline')).toHaveCount(0);
+  await undo().click();
+  await owner.waitForTimeout(7000);
+  await expect(owner.locator('.consumeline')).toHaveCount(0);
+  // Sin deshacer: no sale mientras está el aviso, y sale al irse.
+  await owner.evaluate((id) => toggleTask(id), target);
+  await owner.waitForTimeout(1500);
+  await expect(owner.locator('.consumeline')).toHaveCount(0);
+  await expect(owner.locator('.consumeline')).toHaveCount(1, { timeout: 10_000 });
+  await owner.locator('#consumeLater').click();
+  await settled(owner);
+  expect(await stock(LEJIA)).toBe(8.5);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 

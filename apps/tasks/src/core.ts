@@ -283,7 +283,7 @@ export class TasksCore {
 
   /**
    * «Quién sabe hacerlo» (P2, PR 4): vuelve a leer las capacidades y la disponibilidad de Central y las guarda en el
-   * dispositivo. Sin red, se queda lo último leído. La disponibilidad es aparte: si se niega (403, el outsider), se vacía y se
+   * dispositivo. Sin red, se queda lo último leído; si se niegan (403 o 404), se vacían y se borra la copia. La disponibilidad es aparte: si se niega (403, el outsider), se vacía y se
    * ordena solo por grado; si falla por otra cosa, se queda la última. Devuelve si se pudieron leer las capacidades.
    */
   async refreshCapabilities(): Promise<boolean> {
@@ -293,7 +293,14 @@ export class TasksCore {
       this.capabilities = capabilityOptionsFrom(await this.readAll('central.capability_options'));
       try { localStorage.setItem(CAPABILITIES_KEY, JSON.stringify(this.capabilities)); } catch { /* sin almacenamiento */ }
       ok = true;
-    } catch { /* sin red o sin permiso: lo último leído */ }
+    } catch (error) {
+      // Sin permiso (403; el outsider, desde central #645) o sin la lectura (404): nada, y sin copia guardada. Sin red: lo último.
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 403 || status === 404) {
+        this.capabilities = [];
+        try { localStorage.removeItem(CAPABILITIES_KEY); } catch { /* sin almacenamiento */ }
+      }
+    }
     try {
       this.availability = availabilityOptionsFrom(await this.readAll('central.availability_options'));
       try { localStorage.setItem(AVAILABILITY_KEY, JSON.stringify(this.availability)); } catch { /* sin almacenamiento */ }

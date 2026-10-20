@@ -49,11 +49,11 @@ test('«atrás» cierra la hoja abierta y no cambia de pantalla', async () => {
   await expect.poll(view).toBe('home');
 });
 
-test('«atrás» cierra el menú lateral', async () => {
-  await page.locator('#moreBtn').click();
-  await expect(page.locator('#kebab')).toHaveClass(/\bshow\b/);
+test('«atrás» cierra el menú común', async () => {
+  await page.locator('#appLauncher').click();
+  await expect(page.locator('.appmenu-drawer')).toBeVisible();
   await back();
-  await expect(page.locator('#kebab')).not.toHaveClass(/\bshow\b/);
+  await expect(page.locator('.appmenu-drawer')).toHaveCount(0);
   expect(await view()).toBe('home');
 });
 

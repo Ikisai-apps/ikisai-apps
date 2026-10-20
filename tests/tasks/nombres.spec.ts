@@ -91,7 +91,7 @@ test('restaurar una archivada que choca, no; el editor lo dice', async () => {
   await page.evaluate(([fid, id]) => openLabelEditor(fid, id), [FAM, VIEJA]);
   await expect(page.locator('#nlClash')).toContainText('Ya hay una «Salas» en «Lugares». Está archivada');
   await page.locator('#archiveLabel').click();
-  await expect(page.locator('#toast')).toContainText('Cámbiale el nombre antes de restaurarla');
+  await expect(page.locator('.ikisai-toast')).toContainText('Cámbiale el nombre antes de restaurarla');
   expect((await server.rows('tasks.labels')).find((l) => l.id === VIEJA).archived).toBe(true);
 });
 

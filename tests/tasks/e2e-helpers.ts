@@ -5,9 +5,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { BrowserContext, Page } from 'playwright/test';
+import { expect, type BrowserContext, type Locator, type Page } from 'playwright/test';
 import { decompose, emptyDataset, chunkOperations, type LegacyTab } from '../../packages/domain-tasks/src/index.ts';
 import { OWNER, type E2EServer } from './e2e-server.ts';
+import { acceptUsageNotice, longPress, simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 // Globales de la interfaz heredada, visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -102,4 +103,79 @@ export async function routeStorage(context: BrowserContext, server: E2EServer): 
     server.app.supabase.storage.set(objectPath, new Uint8Array(request.postDataBuffer() ?? Buffer.alloc(0)));
     await route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ Key: objectPath }) });
   });
+}
+
+/**
+ * Menú común del kit (MUELA-083 §4, tanda 31): la marca (#appLauncher) abre el cajón; en el ordenador, además, la columna fija.
+ * Las secciones son azulejos que despliegan sus filas debajo, y cada fila lleva su marca de feedback (`MENU_MARKS`).
+ */
+export type MenuHost = 'drawer' | 'column';
+export async function openMenu(page: Page): Promise<Locator> {
+  const drawer = page.locator('.appmenu-drawer');
+  if (!(await drawer.isVisible().catch(() => false))) await page.locator('#appLauncher').click();
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
+/** Despliega la sección `key` (id del grupo: `work`, `transfer`, `people`, `system`, `purchases`…) y devuelve su panel. */
+export async function openMenuSection(page: Page, key: string, host: MenuHost = 'drawer'): Promise<Locator> {
+  const box = host === 'drawer' ? await openMenu(page) : page.locator('#shellTop .appmenu-column');
+  const tile = box.locator(`.appmenu-tile[data-feedback-id="tasks.menu.secciones.${key}"]`);
+  if ((await tile.getAttribute('aria-expanded')) !== 'true') await tile.click();
+  const panel = box.locator('.appmenu-panel');
+  await expect(panel).toBeVisible();
+  return panel;
+}
+/** Las marcas de las filas de una sección, en su orden. */
+export async function menuRows(page: Page, key: string, host: MenuHost = 'drawer'): Promise<string[]> {
+  const panel = await openMenuSection(page, key, host);
+  return panel.locator('.appmenu-row').evaluateAll((els) => els.map((e) => e.getAttribute('data-feedback-id') ?? ''));
+}
+/** Una fila del menú por su marca (`tasks.menu.oficios`), dentro de la sección `key` ya desplegada si se da. */
+export async function menuRow(page: Page, feedbackId: string, key?: string, host: MenuHost = 'drawer'): Promise<Locator> {
+  const box = key ? await openMenuSection(page, key, host) : host === 'drawer' ? await openMenu(page) : page.locator('#shellTop .appmenu-column');
+  return box.locator(`.appmenu-row[data-feedback-id="${feedbackId}"]`);
+}
+
+/**
+ * «Señalar para comentar» desde el cajón del menú común. Con la columna del ordenador, los bloques del lanzador están dos
+ * veces en la página (columna y cajón): se mira solo el cajón, como hace Central (tests/central/menu-helpers.ts, P11).
+ */
+export async function setSignal(page: Page, on: boolean): Promise<void> {
+  const drawer = await openMenu(page);
+  const toggle = drawer.locator('.launcher-signal input');
+  await expect(toggle).toBeVisible();
+  if ((await toggle.isChecked()) !== on) await drawer.locator('.launcher-signal').click();
+  await expect(toggle).toBeChecked({ checked: on });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.appmenu-drawer')).toHaveCount(0);
+}
+/** `feedbackRoundTrip` del kit con el interruptor del cajón del menú común (la única diferencia). */
+export async function feedbackRoundTrip(page: Page, options: { target: string; text?: string; keyboard?: number; timeout?: number }): Promise<{ code: string }> {
+  const timeout = options.timeout ?? 8000;
+  await acceptUsageNotice(page);
+  await setSignal(page, true);
+  await longPress(page, page.locator(options.target).first());
+  const composer = page.locator('.fb-composer');
+  await expect(composer).toBeVisible();
+  await composer.locator('.fb-message').fill(options.text ?? 'Prueba de humo del feedback');
+  if (options.keyboard) await simulateKeyboard(page, options.keyboard);
+  await composer.locator('.fb-send').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter').catch(() => undefined);
+  await expect(composer).toHaveCount(0, { timeout });
+  const toast = page.locator('.toast.show').filter({ hasText: /Enviado · FB_/ });
+  await expect(toast).toBeVisible({ timeout });
+  const fit = await toast.evaluate((node) => {
+    const r = node.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    return { h: r.height, inside: r.top >= top && r.bottom <= bottom && r.left >= 0 && r.right <= innerWidth };
+  });
+  expect(fit.inside, 'el aviso tiene que verse dentro de la pantalla').toBe(true);
+  expect(fit.h, 'el aviso no puede estirarse en columna').toBeLessThan(90);
+  const code = /FB_\d{4}_\d+/.exec((await toast.textContent()) ?? '')?.[0] ?? '';
+  if (options.keyboard) await simulateKeyboard(page, null);
+  if (!(await page.locator('.sheetback.show, .dialogback').count())) await setSignal(page, false);
+  return { code };
 }

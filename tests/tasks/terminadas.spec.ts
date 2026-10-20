@@ -71,10 +71,9 @@ test('marcar una tarea la lleva al plegable y sube el contador; «Deshacer» la 
   await expect(pendingRow(A)).toHaveCount(0);
   await settled(page);
   expect((await server.rows('tasks.tasks')).find((t) => t.id === A).done).toBe(true);
-  await page.locator('#undoNow').click({ timeout: 15_000 });
-  await page.locator('#confirmUndo').click();
+  // «Deshacer» local en el aviso del kit (MUELA-073).
+  await page.locator('.ikisai-toast button', { hasText: 'Deshacer' }).last().click();
   await settled(page);
-  await page.evaluate(() => (window as any).closeSheet?.());
   await expect(pendingRow(A)).toBeVisible();
   await expect(fold().locator('summary')).toHaveText('1 tarea terminada');
   expect((await server.rows('tasks.tasks')).find((t) => t.id === A).done).toBe(false);

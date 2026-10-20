@@ -14,6 +14,8 @@ function toggleTheme(){setTheme(isDarkTheme()?'light':'dark')}
 function drawThemeToggle(button){const dark=isDarkTheme();button.innerHTML=menuIcon(dark?'sun':'moon');button.setAttribute('aria-label',dark?'Cambiar a tema claro':'Cambiar a tema oscuro');button.dataset.tip=dark?'Tema claro':'Tema oscuro';button.classList.toggle('dark',dark)}
 function themeToggleButton(){const dark=isDarkTheme();return `<button type="button" class="iconbtn themetoggle ${dark?'dark':''}" id="themeToggle" data-feedback-id="tasks.tema.alternar" data-feedback-label="Cambiar tema claro u oscuro" aria-label="${dark?'Cambiar a tema claro':'Cambiar a tema oscuro'}" data-tip="${dark?'Tema claro':'Tema oscuro'}">${menuIcon(dark?'sun':'moon')}</button>`}
 themeMedia.addEventListener('change',applyTheme);applyTheme();
+// El botón de tema del menú común (kit) guarda la misma preferencia (ikisai-theme): después, Tasks aplica la suya.
+document.addEventListener('click',e=>{if(e.target.closest?.('.appmenu-theme'))applyTheme()});
 const groupsBeforeTheme=navigationGroups;
 navigationGroups=function(){const groups=groupsBeforeTheme(),work=groups.find(g=>g.id==='work'),organize=groups.find(g=>g.id==='organize');if(organize)organize.items=organize.items.filter(i=>i[0]!=='areas');if(work){const at=work.items.findIndex(i=>i[0]==='tasks');work.items.splice(at+1,0,['labels','Etiquetas','tag','view']);work.items.push(['areas','Áreas de trabajo','areas'])}return groups};
 const bindBeforeTheme=bind;

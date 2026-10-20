@@ -1,20 +1,25 @@
-/* Cáscara con el kit común, con estado (docs/tasks/UI_KIT.md §6 y ciclo de pintado acordado en la ronda 19).
-   La cáscara (barra con áreas y vistas guardadas, menú agrupado y navegación inferior) se monta UNA vez dentro de #app y
+/* Cáscara con el kit común, con estado (docs/tasks/UI_KIT.md §6 y ciclo de pintado acordado en la ronda 19), con el menú
+   común del kit (MUELA-083 §4, tanda 31).
+   La cáscara (barra con áreas y vistas guardadas, menú común y navegación inferior) se monta UNA vez dentro de #app y
    render() solo repinta #view (main() + fab()). shellUpdate(), llamada al principio de cada render():
    - monta la cáscara si no existe (#app lo sustituyen el arranque de boot(), «Primera área», la de «sin áreas compartidas» de
      enterSession y la entrada al cerrar sesión);
    - reconcilia la tira de áreas (crear, renombrar, recolorear, borrar o restaurar llega por refreshModel() → render()) y la de
      vistas guardadas, conservando su desplazamiento horizontal;
-   - reconstruye los grupos del menú solo si cambian navigationGroups(), el actor o sus permisos (cambio de rol en caliente,
-     también los elementos de agentes que dependen de isAdministrator()); si no, solo marca el elemento activo y la nota.
-     El menú abierto, los grupos plegados (expandedMenuGroups), #syncBadge y #appUpdate en .brandrow se conservan;
+   - vuelve a pintar el menú solo si cambian navigationGroups(), el actor, sus permisos, el alias, el tema o el área (la pista
+     «Área actual»); si no, lo deja como está (abierto, con su sección desplegada y su desplazamiento);
    - marca la vista activa en la navegación inferior.
-   navigateView() sigue cerrando el menú al navegar (closeNavigation); en escritorio el menú lateral siempre está visible.
-   Ganchos conservados del paso 1: .brandrow con .spacer, #moreBtn (aria-controls="kebab", aria-expanded), .tabstrip con
-   button.tabpill[data-tab] (.active, .colored), [data-general-area], [data-areas-tool], .tabcount, .viewstrip con #savedViews,
-   [data-quick-view], [data-quick-mine] (.viewpill.mine), nav#kebab (.show), #menuBackdrop (.show), #closeMenu, .menuheader con
-   #aliasBtn y #themeToggle, details.menugroup[data-menu-group], button.menuitem[data-menu-view|data-action] con .menuicon,
-   nav.bottomnav(.five) con button.navbtn[data-nav] y #filterNav. «Organización» se pinta oculto (hidden), como antes.
+   Menú común (createAppMenu del kit): la marca (#appLauncher) lo abre; ya no hay ☰ (#moreBtn) ni menú propio (#kebab).
+   - Perfil (alias o nombre y rol; tocarlo abre «¿Quién eres?»), tema, línea de sincronización, recientes (las tres últimas
+     tareas o proyectos abiertos), secciones = navigationGroups() sin «Organización» y sin lo que ya va en la barra de abajo
+     (Inicio, Proyectos, Tareas, Etiquetas y Filtros), la pista «Área actual», las apps de Ikisai y «Sugerencias y QA» del
+     lanzador, y «Cerrar sesión». Cada fila hace lo mismo que su botón de antes (navigateView o handleTopAction).
+   - En el ordenador (≥ 1024 px), además, la columna fija de 316 px a la izquierda; la barra de pestañas va abajo también.
+   - Se cierra con Escape, el fondo, «atrás» (el kit lo apila en la historia) y al navegar (closeNavigation).
+   «‹ Volver a…» (K9): si se llegó desde otra app con ?volver=…, el enlace sale arriba del contenido.
+   Ganchos conservados: .brandrow con .spacer (#syncBadge y #appUpdate se colocan ahí), .tabstrip con button.tabpill[data-tab]
+   (.active, .colored), [data-general-area], .tabcount, .viewstrip con [data-quick-view], [data-quick-mine] (.viewpill.mine),
+   nav.bottomnav(.five) con button.navbtn[data-nav] y #filterNav.
    Los manejadores siguen en bind() de cada módulo: los de la cáscara se asignan con onclick, así que repetir bind() no los
    acumula sobre los elementos que se conservan. */
 function shellIcon(name){const t=document.createElement('template');t.innerHTML=menuIcon(name).trim();return t.content.firstElementChild}
@@ -25,7 +30,7 @@ function shellItemActive(id,type){return type==='view'&&(state.view===id||id==='
 
 function shellTabs(){
   const K=IkisaiKit,general=state.taskScope==='all';
-  /* Sin el lápiz de «Áreas de trabajo» (FB_2026_020): está en el menú lateral, en Trabajo. */
+  /* Sin el lápiz de «Áreas de trabajo» (FB_2026_020): está en el menú, en Trabajo. */
   const strip=K.renderAreaTabs({label:'Áreas de trabajo',
     items:[
       {label:'General',general:true,active:general,attrs:{'data-general-area':'',title:'Todas las áreas a la vez'}},
@@ -39,42 +44,81 @@ function shellTabs(){
 function shellViews(){
   if(!tab())return null;
   const K=IkisaiKit,mine=myTaskFilters()?[{label:'Mis tareas',icon:shellIcon('user'),className:'mine',active:isMyTasksView(),attrs:{'data-quick-mine':'',title:'Tareas con mi etiqueta en todas las áreas'}}]:[];
-  /* Sin el ojo de «Guardar o abrir vistas» (FB_2026_020): «Vistas guardadas» está en el menú lateral, en Trabajo. */
+  /* Sin el ojo de «Guardar o abrir vistas» (FB_2026_020): «Vistas guardadas» está en el menú, en Trabajo. */
   const items=[...mine,...(tab().views||[]).filter(v=>!v.deleted).map(v=>({label:v.name,active:shellViewMatches(v),attrs:{'data-quick-view':v.id,title:'Aplicar la vista guardada'}}))];
   return items.length?K.renderQuickViews({label:'Vistas guardadas',items}):null;
 }
-function shellMenuParts(){
-  const K=IkisaiKit,alias=myAlias();
-  const aliasBtn=K.el('button',{type:'button',class:'softbtn small aliasbtn',id:'aliasBtn','data-tip':alias?'Yo: '+alias:'¿Quién eres?','aria-label':alias?'Alias: '+alias:'Elegir quién eres'},shellIcon('user'),K.el('span',null,alias||'Yo'));
-  const theme=shellNode(themeToggleButton());theme.className=`tabtool themetoggle${isDarkTheme()?' dark':''}`;
-  return K.renderNavMenu({label:'Navegación principal',headerClass:'menuheader',groupClass:'menugroup',itemClass:'menuitem',closeAttrs:{id:'closeMenu'},
-    header:[aliasBtn,theme],
-    groups:shellGroups().map(g=>({label:g.name,icon:shellIcon(g.icon),open:expandedMenuGroups.has(g.id),attrs:{'data-menu-group':g.id,hidden:g.id==='organize'},
-      items:g.items.map(([id,name,icon,type])=>({label:name,icon:shellIcon(icon),active:shellItemActive(id,type),attrs:type==='view'?{'data-menu-view':id}:{'data-action':id}}))})),
-    hint:shellHint()});
-}
 function shellHint(){const K=IkisaiKit;return state.taskScope==='all'?K.el('span',null,'Vista ',K.el('strong',null,'General'),' · todas las áreas'):K.el('span',null,'Área actual: ',K.el('strong',null,tab()?.name||''))}
-/* Lo que obliga a reconstruir el menú: sus grupos y elementos, quién es el actor y con qué permisos, el alias y el tema. */
-function shellMenuKey(){return JSON.stringify([shellGroups().map(g=>[g.id,g.name,g.items.map(i=>[i[0],i[1],i[3]])]),Sync.actor?.id,Sync.actor?.role,Sync.actor?.scopes,typeof isAdministrator==='function'&&isAdministrator(),tab()?.restricted,myAlias(),isDarkTheme()])}
 
-let shellMenuStamp='';
+/* --- Menú común ------------------------------------------------------------------------------------------------------ */
+/* Lo que ya está en la barra de pestañas de abajo no se repite en el menú. */
+const TASKS_TABBAR=new Set(['home','projects','tasks','labels','filters']);
+/* Iconos del menú de Tasks → iconos del kit (los que no tienen equivalente van sin icono). */
+const MENU_KIT_ICONS={tasks:'tasks',grid:'grid',filter:'filter',view:'eye',archive:'list',trash:'trash',tag:'tag',areas:'grid',data:'download',upload:'upload',download:'download',file:'list',copy:'copy',people:'people',key:'lock',agent:'bot',settings:'settings',sync:'sync',history:'history',help:'help',user:'user',cart:'cart',space:'pin',trade:'briefcase',home:'home',proposal:'edit',triage:'list',box:'list',route:'list'};
+function shellRowMark(id){return (typeof MENU_MARKS!=='undefined'&&MENU_MARKS[id]?.feedbackId)||'tasks.menu.fila'}
+function shellMenuAct(id,type){if(type==='view')return navigateView(id);return handleTopAction(id)}
+function shellMenuSections(){
+  return shellGroups().filter(g=>g.id!=='organize').map(g=>({key:g.id,label:g.name,icon:MENU_KIT_ICONS[g.icon]||null,
+    rows:g.items.filter(i=>!TASKS_TABBAR.has(i[0])).map(([id,name,icon,type])=>({label:name,icon:MENU_KIT_ICONS[icon]||null,feedbackId:shellRowMark(id),onClick:()=>shellMenuAct(id,type)}))}))
+    .filter(s=>s.rows.length)}
+function shellRole(){const a=Sync.actor;if(!a)return '';if(a.outsider)return 'Acceso de fuera';if(a.kind==='agent')return 'Agente';return a.role==='owner'?(a.scopes==='*'?'Propietaria':'Propietaria de lo suyo'):a.role==='editor'?'Edición':'Solo lectura'}
+/* Recientes: las tareas y proyectos abiertos en este dispositivo, los tres últimos que se siguen viendo. */
+const RECENTS_KEY='ikisai-tasks-recientes';
+function shellRecentList(){try{const v=JSON.parse(localStorage.getItem(RECENTS_KEY)||'[]');return Array.isArray(v)?v:[]}catch{return []}}
+function rememberRecent(kind,id,area){if(!id||!area)return;const list=shellRecentList().filter(r=>!(r.kind===kind&&r.id===id));list.unshift({kind,id,area});try{localStorage.setItem(RECENTS_KEY,JSON.stringify(list.slice(0,8)))}catch{}}
+function shellRecents(){const out=[];
+  for(const r of shellRecentList()){if(out.length>=3)break;const area=state.tabs.find(t=>t.id===r.area&&!t.deleted);if(!area)continue;
+    if(r.kind==='task'){const hit=withArea(area.id,()=>taskLocation(r.id));if(!hit||hit.t.deleted||hit.p.deleted)continue;
+      out.push({label:hit.t.text,sub:`${hit.p.title} · ${area.name}`,icon:'tasks',feedbackId:'tasks.menu.recientes.tarea',onClick:()=>{state.activeTab=area.id;state.currentProject=hit.p.id;openTaskEditor(r.id)}})}
+    else{const p=area.projects.find(x=>x.id===r.id&&!x.deleted&&x.status!=='archived');if(!p)continue;
+      out.push({label:p.title,sub:area.name,icon:'grid',feedbackId:'tasks.menu.recientes.proyecto',onClick:()=>{closeSheet();state.activeTab=area.id;state.taskScope='area';state.view='project';state.currentProject=p.id;persistUI();render()}})}}
+  return out}
+/* Lo que obliga a volver a pintar el menú: sus secciones y filas, quién es el actor y con qué permisos, el alias, el tema y
+   el área (la pista). */
+function shellMenuKey(){return JSON.stringify([shellGroups().map(g=>[g.id,g.name,g.items.map(i=>[i[0],i[1],i[3]])]),Sync.actor?.id,Sync.actor?.role,Sync.actor?.scopes,typeof isAdministrator==='function'&&isAdministrator(),tab()?.restricted,myAlias(),isDarkTheme(),state.taskScope,tab()?.id,tab()?.name])}
+let tasksMenu=null,shellMenuStamp='';
+/* Las apps y «Sugerencias y QA» del lanzador real (feedback-ui.js), creado cuando ya hay núcleo. */
+const shellLauncherInMenu={open:()=>tasksRealLauncher().open(),mount:(host,options)=>tasksRealLauncher().mount(host,options),attach(){}};
+function shellMenu(){
+  if(tasksMenu)return tasksMenu;
+  const K=IkisaiKit;
+  tasksMenu=K.createAppMenu({label:'Menú de Tasks',theme:true,column:true,feedbackId:'tasks.menu',
+    // El kit lee el perfil en cada pintado: alias o nombre y rol del actor de ese momento.
+    get profile(){return Sync.actor?shellProfile():null},recents:shellRecents,sections:shellMenuSections,
+    blocks:()=>[K.el('p',{class:'hint tasks-menuhint'},shellHint())],
+    launcher:shellLauncherInMenu,
+    onSyncLine:()=>handleTopAction('sync')},
+    {appName:'Tasks',navigate:hash=>{location.hash=hash},onSync:()=>syncNow(),onLogout:()=>logoutAccount()});
+  return tasksMenu}
+/* El perfil depende del actor y del alias: se recalcula en cada pintado del menú (las opciones son del objeto que guarda el kit). */
+function shellProfile(){const name=myAlias()||Sync.actor?.name||'Yo';return {name,role:shellRole(),href:'#quien',onOpen:()=>aliasSheet()}}
+function shellMenuRefresh(){shellMenuStamp=shellMenuKey();shellMenu().refresh()}
+function closeShellMenu(){tasksMenu?.close()}
+
+function shellReturnLink(){
+  const K=IkisaiKit,origin=K.readReturnTo?.();if(!origin)return null;
+  return K.el('a',{class:'return-link',href:origin.url,'data-feedback-id':'tasks.cabecera.volver','data-feedback-label':'Volver a la otra app',onclick:()=>K.clearReturnTo()},
+    K.icon('chevronLeft',18),K.el('span',null,`Volver a ${origin.title||origin.from||'la app anterior'}`))}
+
 let tasksLauncher=null;
 function shellLauncher(){return tasksLauncher||=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:()=>Sync.core.api('/apps')})}
 function shellMount(){
   const K=IkisaiKit,app=document.getElementById('app');
-  const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
-  // La marca lleva el icono de Tasks del kit, como el resto de apps (Booking la cama, Central la cuadrícula…).
-  const bar=K.renderWorkspaceBar({name:'Ikisai Tasks',rowClass:'brandrow',markButton:true,markIcon:'tasks',tools:[more],rows:[shellTabs(),shellViews()]});
-  // La marca abre el lanzador común: las apps de Ikisai a las que tiene acceso esta cuenta.
-  shellLauncher().attach(bar.querySelector('#appLauncher'));
-  const menu=shellMenuParts();menu.id='kebab';shellMenuStamp=shellMenuKey();
+  // La marca lleva el icono de Tasks del kit, como el resto de apps (Booking la cama, Central la cuadrícula…), y abre el menú.
+  const bar=K.renderWorkspaceBar({name:'Ikisai Tasks',rowClass:'brandrow',markButton:true,markIcon:'tasks',tools:[],rows:[shellTabs(),shellViews()]});
+  const menu=shellMenu();menu.attach(bar.querySelector('#appLauncher'));
+  shellMenuStamp=shellMenuKey();menu.refresh();
   const v=state.view,item=(id,label,icon)=>({label,icon,active:v===id||id==='projects'&&v==='project',attrs:{'data-nav':id}});
   const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),item('labels','Etiquetas','tag'),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
   app.replaceChildren(
-    K.el('div',{class:'ikisai-kit shellkit',id:'shellTop',style:'display:contents'},bar,K.renderNavBackdrop({id:'menuBackdrop'}),menu),
+    K.el('div',{class:'ikisai-kit shellkit',id:'shellTop',style:'display:contents'},shellWide.matches?menu.column:null,bar,shellReturnLink()),
     K.el('div',{id:'view',style:'display:contents'}),
     K.el('div',{class:'ikisai-kit shellkit',id:'shellBottom',style:'display:contents'},nav));
 }
+/* La columna del menú solo está en la página en el ordenador: en el móvil, el cajón es el único menú (sin filas repetidas). */
+const shellWide=matchMedia('(min-width:1024px)');
+shellWide.addEventListener('change',()=>{const top=document.getElementById('shellTop'),column=tasksMenu?.column;if(!top||!column)return;
+  if(shellWide.matches){top.prepend(column);tasksMenu.refresh()}else column.remove()});
 function shellSwap(selector,next){
   const old=document.querySelector(`#shellTop ${selector}`);
   if(!next){old?.remove();return}
@@ -85,19 +129,23 @@ function shellUpdate(){
   if(!document.getElementById('shellTop')||!document.getElementById('view')){shellMount();return}
   shellSwap('.tabstrip',shellTabs());
   shellSwap('.viewstrip',shellViews());
-  const menu=document.getElementById('kebab'),key=shellMenuKey();
-  if(menu&&key!==shellMenuStamp){
-    // Mismo nav#kebab (conserva .show y el desplazamiento): solo cambia su contenido.
-    const scroll=menu.scrollTop;menu.replaceChildren(...shellMenuParts().childNodes);menu.scrollTop=scroll;shellMenuStamp=key;
-  }else if(menu){
-    menu.querySelectorAll('.menuitem').forEach(b=>{const id=b.dataset.menuView;const on=!!id&&shellItemActive(id,'view');b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
-    menu.querySelector('.navmenu-hint')?.replaceChildren(shellHint());
-  }
+  if(shellMenuKey()!==shellMenuStamp)shellMenuRefresh();
   const v=state.view;
   document.querySelectorAll('#shellBottom .navbtn[data-nav]').forEach(b=>{const id=b.dataset.nav,on=v===id||id==='projects'&&v==='project';b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
 }
+/* La línea de sincronización del menú sigue al estado de siempre (la insignia #syncBadge). */
+const setModeBeforeShell=setMode;
+setMode=function(...args){const out=setModeBeforeShell(...args);try{if(tasksMenu&&Sync.core)tasksMenu.setStatus(Sync.core.status())}catch{}return out};
+/* Recientes: cada tarea o proyecto que se abre. */
+const openTaskEditorBeforeShell=openTaskEditor;
+openTaskEditor=function(id,...rest){const out=openTaskEditorBeforeShell(id,...rest);if(id&&taskLocation(id))rememberRecent('task',id,state.activeTab);return out};
+let shellLastProject='';
 /* Sin sesión o sin ningún área no hay cáscara que pintar: render() no hace nada y deja intactas la entrada y las pantallas que
    sustituyen #app (arranque, «Primera área», «sin áreas compartidas»). Antes ocurría lo mismo de rebote (topbar() fallaba sin
    áreas y abortaba el render()); ahora es explícito. */
 const renderBeforeShell=render;
-render=function(){if(!Sync.actor||!state.tabs?.some(t=>!t.deleted))return;return renderBeforeShell()};
+render=function(){if(!Sync.actor||!state.tabs?.some(t=>!t.deleted))return;
+  const out=renderBeforeShell();
+  const key=state.view==='project'?`${state.activeTab}|${state.currentProject}`:'';
+  if(key&&key!==shellLastProject)rememberRecent('project',state.currentProject,state.activeTab);shellLastProject=key;
+  return out};

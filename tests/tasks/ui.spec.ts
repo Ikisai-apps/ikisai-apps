@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, openApp, openMenu, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -113,12 +113,13 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
     await a.locator('#toggleArchivedCatalog').click();
   });
 
-  await test.step('[6] el menú móvil tiene seis grupos (con Compras) e icono en cada acción', async () => {
-    await a.locator('#moreBtn').click();
-    await expect(a.locator('.menugroup')).toHaveCount(6);
-    expect(await a.locator('.menuitem').count()).toBe(await a.locator('.menuitem .menuicon').count());
-    await a.locator('#closeMenu').click();
-    await expect(a.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');
+  await test.step('[6] el menú común tiene sus secciones (con Compras) e icono en cada una', async () => {
+    const drawer = await openMenu(a);
+    await expect(drawer.locator('.appmenu-tile')).toHaveCount(5);
+    await expect(drawer.locator('.appmenu-tile[data-feedback-id="tasks.menu.secciones.purchases"]')).toHaveCount(1);
+    expect(await drawer.locator('.appmenu-tile').count()).toBe(await drawer.locator('.appmenu-tile .appmenu-tilemark svg').count());
+    await drawer.locator('.appmenu-close').click();
+    await expect(a.locator('#appLauncher')).toHaveAttribute('aria-expanded', 'false');
     await a.locator('[data-nav="projects"]').click();
     await a.locator(`[data-open-project="${ID.p1}"]`).click();
   });
@@ -199,17 +200,17 @@ test('[20][21][23][25] orden de proyectos, vistas guardadas, importación de Kee
 });
 
 test('[38][39][40][41][42] escritorio, cambio a móvil y borradores frente a cambios remotos', async () => {
-  await test.step('[38] escritorio: barra lateral visible, contenido a todo el ancho y diálogos arriba al centro', async () => {
+  await test.step('[38] escritorio: columna del menú visible, barra de pestañas abajo, contenido a todo el ancho y diálogos arriba al centro', async () => {
     await b.setViewportSize({ width: 1440, height: 1000 });
     await b.evaluate(() => closeSheet());
     await b.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.filters = {}; navigateView('projects'); });
-    await expect(b.locator('#kebab')).toBeVisible();
-    await expect(b.locator('#moreBtn')).toBeHidden();
-    await expect(b.locator('.bottomnav')).toBeHidden();
-    const sidebar = (await b.locator('#kebab').boundingBox())!, content = (await b.locator('.screen').boundingBox())!;
+    await expect(b.locator('#shellTop .appmenu-column')).toBeVisible();
+    await expect(b.locator('#moreBtn')).toHaveCount(0);
+    await expect(b.locator('.bottomnav')).toBeVisible();
+    const sidebar = (await b.locator('#shellTop .appmenu-column').boundingBox())!, content = (await b.locator('.screen').boundingBox())!;
     expect(content.width).toBeGreaterThan(1000);
     expect(content.x).toBeGreaterThanOrEqual(sidebar.x + sidebar.width);
-    await b.locator('[data-menu-view="tasks"]').click();
+    await b.locator('[data-nav="tasks"]').click();
     await expect(b.locator('#groupBy')).toHaveCount(1);
     await b.locator(`[data-edit-task="${ID.t1}"]`).first().click();
     const popup = (await b.locator('#sheet').boundingBox())!;
@@ -221,7 +222,7 @@ test('[38][39][40][41][42] escritorio, cambio a móvil y borradores frente a cam
 
   await test.step('[39] al estrechar vuelven la navegación inferior y las hojas inferiores', async () => {
     await b.setViewportSize({ width: 390, height: 844 });
-    await expect(b.locator('#kebab')).toBeHidden();
+    await expect(b.locator('#shellTop .appmenu-column')).toHaveCount(0);
     await expect(b.locator('.bottomnav')).toBeVisible();
     await b.locator(`[data-edit-task="${ID.t1}"]`).first().click();
     const popup = (await b.locator('#sheet').boundingBox())!;
@@ -435,20 +436,23 @@ test('[54][55] filtros con recuento en vivo y «Todas las tareas» entre áreas'
 test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el sitio, fijar y colores', async () => {
   await test.step('[56] un botón alterna el tema; Etiquetas vive en Trabajo y Organización desaparece', async () => {
     await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
-    await a.locator('#moreBtn').click();
     await a.evaluate(() => setTheme('system'));
+    const drawer = await openMenu(a);
     const wasDark = await a.evaluate(() => document.documentElement.classList.contains('dark'));
-    await a.locator('#themeToggle').click();
+    // El botón de tema del menú común guarda la misma preferencia y Tasks aplica la suya (applyTheme).
+    await drawer.locator('.appmenu-theme').click();
     expect(await a.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(!wasDark);
     expect(await a.evaluate(() => localStorage.getItem('ikisai-theme'))).toBe(wasDark ? 'light' : 'dark');
-    await a.locator('#themeToggle').click();
+    await drawer.locator('.appmenu-theme').click();
     expect(await a.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(wasDark);
     await a.evaluate(() => setTheme('system'));
     expect(await a.evaluate(() => localStorage.getItem('ikisai-theme'))).toBeNull();
-    await expect(a.locator('[data-menu-group="organize"]')).toBeHidden();
-    await expect(a.locator('[data-menu-group="work"] [data-menu-view="labels"]')).toHaveCount(1);
+    // Sin «Organización»; Etiquetas va en la barra de abajo.
+    await expect(drawer.locator('.appmenu-tile[data-feedback-id="tasks.menu.secciones.organize"]')).toHaveCount(0);
+    await expect(a.locator('#shellBottom [data-nav="labels"]')).toHaveCount(1);
+    expect(await drawer.locator('.appmenu-body').innerText()).not.toContain('Tu espacio');
     await a.evaluate(() => closeNavigation());
-    expect(await a.locator('#kebab').innerText()).not.toContain('Tu espacio');
+    await expect(drawer).toBeHidden();
     await expect(a.locator('.screen > .notice:visible')).toHaveCount(0);
   });
 
@@ -684,9 +688,13 @@ test('[63][64] duplicar proyectos, plantillas entre áreas, alias y «Mis tareas
     expect(await a.evaluate(() => Object.values(state.filters).flat().some((l: any) => tab().labels.find((x: any) => x.id === l)?.text === 'Juan'))).toBe(true);
     expect(await a.locator('.task[data-row]:not(.context)').count()).toBeGreaterThan(0);
     await expect(a.locator('.viewpill.mine.active')).toHaveCount(1);
-    await expect(a.locator('#aliasBtn')).toHaveCount(1);
-    await expect(a.locator('#themeToggle')).toHaveCount(1);
-    expect(await a.evaluate(() => document.getElementById('aliasBtn')!.textContent!.trim())).toBe('Juan');
+    // El perfil del menú común lleva el alias (tocarlo abre «¿Quién eres?») y el botón de tema.
+    const drawer = await openMenu(a);
+    await expect(drawer.locator('.appmenu-profile')).toContainText('Juan');
+    await expect(drawer.locator('.appmenu-theme')).toHaveCount(1);
+    await drawer.locator('.appmenu-profile').click();
+    await expect(a.locator('#sheet')).toContainText('¿Quién eres?');
+    await a.evaluate(() => closeSheet());
     expect(await a.locator(`.tabpill[data-tab="${ID.ikisai}"] .tabcount`).count()).toBeGreaterThan(0);
   });
 });
@@ -758,11 +766,11 @@ test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciad
     const target = await a.evaluate(() => project().tasks.find((t: any) => !t.deleted && !t.done && !t.parentId && !project().tasks.some((c: any) => !c.deleted && c.parentId === t.id) && !dependencyBlockers(t, project()).length)?.id);
     expect(target).toBeTruthy();
     await a.locator(`[data-toggle-task="${target}"]`).click();
-    await a.locator('#undoToast.show #undoNow').click({ timeout: 15_000 });
-    await a.locator('#confirmUndo').click();
+    // «Deshacer» local en el aviso del kit (MUELA-073): al momento, sin confirmar y sin esperar al historial.
+    await a.locator('.ikisai-toast button', { hasText: 'Deshacer' }).last().click();
     await a.waitForFunction((t) => taskLocation(t).t.done === false && Sync.mode === 'online' && !Sync.busy, target, { timeout: 20_000 });
+    await settled(a);
     expect((await serverRow('tasks.tasks', target)).done).toBe(false);
-    await a.evaluate(() => closeSheet());
     await a.keyboard.press('/');
     expect(await a.evaluate(() => document.activeElement?.id)).toBe('searchInput');
     await a.keyboard.press('Escape');
@@ -1031,8 +1039,7 @@ test('[27][28][30][34] invitar a una persona a un solo proyecto: lo que ve, lo q
     await guest.locator('[data-nav="labels"]').click();
     await expect(guest.locator('#newFamily')).toBeDisabled();
     await expect(guest.locator('[data-edit-label]').first()).toBeDisabled();
-    await guest.locator('#moreBtn').click();
-    await guest.locator('[data-action="areas"]').click();
+    await (await menuRow(guest, 'tasks.menu.areas', 'work')).click();
     await expect(guest.locator('#newArea')).toHaveCount(0);
     await expect(guest.locator('[data-edit-area]')).toHaveCount(0);
     await guest.locator('#closeDialog').click();
@@ -1227,7 +1234,7 @@ test('importación portable: si se pierde la respuesta final, reintentar desde l
   await a.locator('#portableFile').setInputFiles(portablePath);
   await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement).disabled);
   await a.locator('#portableApply').click();
-  await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement)?.disabled && document.getElementById('toast')!.classList.contains('show'), null, { timeout: 20_000 });
+  await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement)?.disabled && !!document.querySelector('.ikisai-toast.show'), null, { timeout: 20_000 });
   expect((await server.rows('tasks.tabs')).length, 'el servidor ya había importado').toBe(serverBefore * 2);
   await a.locator('#portableApply').click();
   await a.waitForFunction((n) => state.tabs.length === n * 2 && Sync.mode === 'online' && !Sync.busy, countBefore, { timeout: 30_000 });

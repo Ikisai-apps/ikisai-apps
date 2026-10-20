@@ -5,7 +5,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { menuRow, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const areasSheet: any, routeSheet: any, state: any;
 
@@ -38,10 +38,10 @@ test('FB_2026_019 y 020: cabecera sin los iconos de áreas y vistas; «General»
   await general.click();
   await expect.poll(() => owner.evaluate(() => state.taskScope)).toBe('all');
   // Siguen en el menú lateral, en Trabajo.
-  await owner.locator('#moreBtn').click();
-  await expect(owner.locator('[data-action="areas"]')).toBeVisible();
-  await expect(owner.locator('[data-action="views"]')).toBeVisible();
+  await expect(await menuRow(owner, 'tasks.menu.areas', 'work')).toBeVisible();
+  await expect(await menuRow(owner, 'tasks.menu.vistas', 'work')).toBeVisible();
   await owner.evaluate(() => (window as any).closeNavigation());
+  await expect(owner.locator('.appmenu-drawer')).toBeHidden();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 

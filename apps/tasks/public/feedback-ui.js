@@ -39,6 +39,7 @@ function tasksRealLauncher(){
     ...(p?{feedback:p.feedback.mode,review:{get:()=>p.review.mode.get(),set:on=>p.review.mode.set(on),available:()=>p.review.available()},center:openTasksFeedbackCenter}:{})});
   if(p)tasksLauncher=launcher;return launcher}
 shellLauncher=function(){return {attach(trigger){if(!trigger)return;trigger.setAttribute('aria-haspopup','dialog');trigger.onclick=()=>{void tasksRealLauncher().open()}}}};
+/* Con el menú común (shell-ui.js), el lanzador va dentro del menú: «Apps de Ikisai» y «Comentarios y ayuda». */
 
 /* «Sugerencias y QA» en el menú. */
 Object.assign(menuPaths,{help:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14 M12 17.5v.01'});
@@ -74,17 +75,16 @@ const MENU_MARKS={
   proposals:{feedbackId:'tasks.menu.propuestas',label:'Propuestas de agentes'},sessions:{feedbackId:'tasks.menu.mi_cuenta',label:'Mi cuenta'},sync:{feedbackId:'tasks.menu.sincronizacion',label:'Sincronización'},
   history:{feedbackId:'tasks.menu.historial',label:'Historial de cambios'},accessLog:{feedbackId:'tasks.menu.registro_accesos',label:'Registro de accesos'},
   feedbackCenter:{feedbackId:'tasks.menu.sugerencias',label:'Sugerencias y QA'},
+  myproposals:{feedbackId:'tasks.menu.mis_propuestas',label:'Mis propuestas'},
 };
 const NAV_MARKS={home:{feedbackId:'tasks.navegacion.inicio',label:'Inicio'},projects:{feedbackId:'tasks.navegacion.proyectos',label:'Proyectos'},
   tasks:{feedbackId:'tasks.navegacion.tareas',label:'Tareas'},labels:{feedbackId:'tasks.navegacion.etiquetas',label:'Etiquetas'}};
 const SHELL_MARKS=[
-  ['#shellTop .topbar',{feedbackId:'tasks.cabecera',label:'Cabecera'}],['#appLauncher',{feedbackId:'tasks.cabecera.lanzador',label:'Lanzador de apps'}],
-  ['#moreBtn',{feedbackId:'tasks.cabecera.menu',label:'Menú'}],['#syncBadge',{feedbackId:'tasks.cabecera.estado',label:'Estado de sincronización'}],
+  ['#shellTop .topbar',{feedbackId:'tasks.cabecera',label:'Cabecera'}],['#appLauncher',{feedbackId:'tasks.cabecera.menu',label:'Menú'}],
+  ['#syncBadge',{feedbackId:'tasks.cabecera.estado',label:'Estado de sincronización'}],
   ['#appUpdate',{feedbackId:'tasks.cabecera.actualizar',label:'Actualizar la app'}],
   ['[data-general-area]',{feedbackId:'tasks.cabecera.areas.general',label:'General'}],['[data-areas-tool]',{feedbackId:'tasks.cabecera.areas.gestionar',label:'Áreas de trabajo'}],
   ['#shellTop #savedViews',{feedbackId:'tasks.cabecera.vistas.guardar',label:'Guardar vista'}],['[data-quick-mine]',{feedbackId:'tasks.cabecera.vistas.mis_tareas',label:'Mis tareas'}],
-  ['#kebab',{feedbackId:'tasks.menu',label:'Menú'}],['#closeMenu',{feedbackId:'tasks.menu.cerrar',label:'Cerrar el menú'}],
-  ['#aliasBtn',{feedbackId:'tasks.menu.alias',label:'Mi alias'}],['#themeToggle',{feedbackId:'tasks.menu.tema',label:'Tema claro u oscuro'}],
   ['#shellBottom .bottomnav',{feedbackId:'tasks.navegacion',label:'Navegación'}],['#filterNav',{feedbackId:'tasks.navegacion.filtros',label:'Filtros'}],
   ['.fab',{feedbackId:'tasks.nueva',label:'Añadir'}],
 ];
@@ -93,8 +93,7 @@ function markShell(){
   // Áreas y vistas guardadas: una marca por clase de elemento, nunca con su id.
   document.querySelectorAll('#shellTop [data-tab]').forEach(n=>fbMark(n,{feedbackId:'tasks.cabecera.areas.area',label:'Área'}));
   document.querySelectorAll('#shellTop [data-quick-view]').forEach(n=>fbMark(n,{feedbackId:'tasks.cabecera.vistas.vista',label:'Vista guardada'}));
-  document.querySelectorAll('#kebab [data-menu-view],#kebab [data-action]').forEach(n=>fbMark(n,MENU_MARKS[n.dataset.menuView||n.dataset.action]));
-  document.querySelectorAll('#kebab details.menugroup > summary').forEach(n=>fbMark(n,{feedbackId:'tasks.menu.grupo',label:'Grupo del menú'}));
+  // Las filas del menú común llevan su marca desde shell-ui.js (MENU_MARKS); el kit marca el cajón, la columna y los azulejos.
   document.querySelectorAll('#shellBottom [data-nav]').forEach(n=>fbMark(n,NAV_MARKS[n.dataset.nav]));
   const main=document.querySelector('#view main');if(main)fbMark(main,screenMark());
 }
@@ -116,18 +115,15 @@ portableExport=function(...args){return usage.run('tasks.datos.exportar_portable
 const backupBeforeUsage=downloadServerBackup;
 downloadServerBackup=function(...args){return usage.run('tasks.datos.respaldo',()=>backupBeforeUsage(...args))};
 
-/* «Atrás» (FB_2026_025, kit 0.26): el kit apila en la historia sus hojas, diálogos y el composer, y «atrás» los cierra;
-   desde el inicio pregunta «¿Cerrar la app?». Tasks no lleva sus pantallas en la URL, así que registra dos cosas más:
-   salir del Inicio (y «atrás» vuelve a él) y el menú lateral abierto (y «atrás» lo cierra). */
-IkisaiKit.installBackNavigation({home:'#/'});
-let backView=null,backMenu=null;
+/* «Atrás» (FB_2026_025, kit 0.26): el kit apila en la historia sus hojas, diálogos, el composer y el menú común, y «atrás»
+   los cierra; desde el inicio pregunta «¿Cerrar la app?» o, si se llegó desde otra app con «volver», vuelve a ella (K9).
+   Tasks no lleva sus pantallas en la URL, así que registra una cosa más: salir del Inicio (y «atrás» vuelve a él). */
+IkisaiKit.installBackNavigation({home:'#/',returnTo:true});
+let backView=null;
 function syncBackStack(){
-  const menuOpen=!!document.getElementById('kebab')?.classList.contains('show');
-  if(!menuOpen&&backMenu){const h=backMenu;backMenu=null;if(h.active())h.release()}
   const away=!!state.view&&state.view!=='home';
   if(away&&!backView)backView=IkisaiKit.trackOverlay(()=>{backView=null;navigateView('home')});
   else if(!away&&backView){const h=backView;backView=null;if(h.active())h.release()}
-  if(menuOpen&&!backMenu)backMenu=IkisaiKit.trackOverlay(()=>{backMenu=null;closeNavigation()});
 }
 const renderBeforeBack=render;
 render=function(...args){const out=renderBeforeBack(...args);syncBackStack();return out};

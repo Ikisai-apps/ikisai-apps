@@ -16,4 +16,3 @@
 .consumeline .checkline{margin:0 0 0 auto;font-size:13px}
 /* Con una hoja abierta (p. ej. «Confirmar consumo» justo al completar), el aviso de «Deshacer» sube arriba para no tapar
    sus campos; sigue a mano. */
-body:has(#sheetBack.show) .undotoast{top:calc(12px + env(safe-area-inset-top));bottom:auto}

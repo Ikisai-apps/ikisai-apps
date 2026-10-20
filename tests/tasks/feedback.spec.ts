@@ -5,8 +5,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
-import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { feedbackRoundTrip, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 let server: E2EServer;
 let ID: Aliases;
@@ -51,7 +50,7 @@ test('recorrido de feedback en Tasks: interruptor, pulsación larga, envío, «S
   await settled(page);
   await test.step('la pantalla y la cáscara llevan sus marcas', async () => {
     await expect(page.locator('#view main[data-feedback-id]')).toHaveCount(1);
-    await expect(page.locator('[data-feedback-id="tasks.cabecera.lanzador"]')).toHaveCount(1);
+    await expect(page.locator('[data-feedback-id="tasks.cabecera.menu"]')).toHaveCount(1);
   });
 
   await test.step('el lanzador ofrece «Señalar para comentar», apagado; sin él, la pulsación larga no hace nada', async () => {
