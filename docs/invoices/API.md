@@ -683,7 +683,11 @@ Sin flags. La UI compara `target_revision` con la revisión actual del destino a
 
 ### 7.4 Compras de Tasks (hecho en la ronda 34, migración 0208)
 
-Construido: el par `tasks` / `purchase_request` (lista y resolución por `tasks.targets` con el token del usuario; etiqueta «Compras › título») y las lecturas `invoices.allocations_by_target {targetApp, targetKind, ids}` → `{rows: [{target_id, invoice_id, invoice_code, status, invoice_date, allocated_amount, allocated_quantity}]}` (sin anuladas ni borradas) e `invoices.supplier_options {q, limit ≤ 50}` → `{items: [{id, name, slug}]}`, registradas para `tasks` (y para `invoices`). Las dos devuelven vacío a quien no es miembro de Invoices. Lo que sigue es el texto original del pedido.
+Construido: el par `tasks` / `purchase_request` (lista y resolución por `tasks.targets` con el token del usuario; etiqueta «Compras › título») y las lecturas `invoices.allocations_by_target {targetApp, targetKind, ids}` → `{rows: [{target_id, invoice_id, invoice_code, status, invoice_date, allocated_amount, allocated_quantity}]}` (sin anuladas ni borradas) e `invoices.supplier_options {q, limit ≤ 50}` → `{items: [{id, name, slug}]}`, registradas para `tasks` (y para `invoices`). Las dos devuelven vacío a quien no es miembro de Invoices.
+
+**¿La compra ya tiene factura? (migración 0242, pedido de VG del 20-10-2026).** `invoices.purchase_request_invoiced(p_id text) returns boolean`, como `central.person_alive`: es una comprobación para el hook de Tasks, no una lectura. Da verdadero si hay una asignación viva `tasks` / `purchase_request` a ese id en una factura no borrada ni anulada, también si aún no está validada. Tasks la usa en su `validate_batch` para no dejar deshacer una compra ligada a una factura. Solo devuelve el booleano.
+
+Lo que sigue es el texto original del pedido.
 
 #### Pedido de Tasks (ronda 22, para cuando Tasks amplíe `tasks.targets`)
 

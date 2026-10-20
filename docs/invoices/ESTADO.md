@@ -72,6 +72,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Fase 3, PR 3 de 3 (`invoices/fase3-app`): las plantillas en la app. «Leer PDF» usa la plantilla del proveedor (`extractWithTemplates`) y guarda el texto leído en el servidor; «Validar» aprende o actualiza la plantilla en el mismo lote; la ficha del proveedor muestra sus plantillas y el owner puede retirarlas. Fase 3 completa.
 
 - Compras de Tasks (ronda 34, migración 0208): destino `tasks` / `purchase_request` en la hoja de asignación y lecturas `invoices.allocations_by_target` e `invoices.supplier_options` para Tasks (API.md §7.4).
+- ¿La compra de Tasks ya tiene factura? (migración 0242, pedido de VG del 20-10-2026): `invoices.purchase_request_invoiced(id)` para el `validate_batch` de Tasks, solo un booleano (API.md §7.4).
 
 - Fecha y objeto del documento frente a lo escrito al subir (ronda 35): discrepancia visible con «Usar la del documento»; preselección solo si la escrita era la de hoy por defecto (en hora local); la plantilla no cuenta como fallo un valor que no está en el documento.
 
