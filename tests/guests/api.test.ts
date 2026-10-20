@@ -251,3 +251,36 @@ test('guests · fase 1 de Booking (BG1–BG5): procedencia, revisión encadenada
   assert.equal(kin.status, 200, JSON.stringify(kin.data));
   assert.equal((await myGuest(token, id)).data.fields.kinship, 'PM');
 });
+
+test('guests · el mapa de zonas (GET plans): dibujos firmados aquí y formas con nombres públicos; nunca bucket, ruta ni personas', async () => {
+  const r = await reservation('Retiro con plano');
+  const g = await guest(r.event, { first_name: 'Iris' });
+  const token = await guestSession(r.id, g, 'Iris');
+  const empty = await call('/api/v1/plans', { token });
+  assert.equal(empty.status, 200, JSON.stringify(empty.data));
+
+  const db = booking.t.db;
+  const building = (await db.query<{ id: string }>(`insert into resources.spaces (kind, name) values ('edificio', 'Casa del plano') returning id`)).rows[0]!.id;
+  const file = (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status) values ('resources', 'resources-files', $1, 'plano.png', 'image/png', 10, $2, 'verified') returning id`,
+    [`resources/${uuid()}`, 'd'.repeat(64)])).rows[0]!.id;
+  const plan = (await db.query<{ id: string }>(`insert into resources.floor_plans (building_id, floor, file_id, width, height) values ($1, 'Planta baja', $2, 800, 600) returning id`, [building, file])).rows[0]!.id;
+  await db.query(`insert into resources.spaces (parent_id, kind, name, public_name, notes, plan_id, plan_shape) values ($1, 'sala', 'Sala interna', 'Sala del jardín', 'nota interna', $2, $3)`,
+    [building, plan, JSON.stringify({ points: [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]] })]);
+
+  const res = await call('/api/v1/plans', { token });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const mine = res.data.plans.find((p: any) => p.id === plan);
+  assert.ok(mine);
+  assert.equal(mine.fileId, file);
+  assert.equal(mine.sha256, 'd'.repeat(64));
+  assert.equal(mine.mime, 'image/png');
+  assert.match(mine.url, /\/storage\/v1\/object\/sign\/resources-files\/resources\//);
+  assert.ok(!('file' in mine) && !('bucket' in mine) && !('path' in mine));
+  const sala = res.data.spaces.find((s: any) => s.planId === plan);
+  assert.equal(sala.name, 'Sala del jardín'); // el nombre público
+  assert.deepEqual(sala.planShape.points[0], [0.1, 0.1]);
+  const text = JSON.stringify(res.data);
+  for (const word of ['nota interna', 'Sala interna', 'resources-files/resources/']) assert.ok(!text.includes(`"${word}`), word);
+  // Sin sesión, nada.
+  assert.equal((await call('/api/v1/plans')).status, 401);
+});

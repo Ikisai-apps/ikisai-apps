@@ -769,4 +769,7 @@ export const ES: Dictionary = {
   'program.time': 'Hora',
   'program.minor': 'menor',
   'program.free': 'Libre',
+  'plan.here': 'Aquí',
+  'plan.house': 'El plano de la casa',
+  'plan.centerBackup': 'El plano del centro (imagen o PDF)',
 };

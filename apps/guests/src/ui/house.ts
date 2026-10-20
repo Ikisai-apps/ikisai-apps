@@ -61,6 +61,7 @@ export function mountHouse(main: HTMLElement, options: HouseOptions): () => void
     const items = data?.items ?? [];
     const now = duringOf(items, today);
     const next = now ? null : [...items].filter((s) => s.from > today).sort((a, b) => a.from.localeCompare(b.from))[0] ?? null;
+    const bedStay = now ?? next;
     const bedText = now ? stayText(now) : next ? stayText(next) : data?.default_bed ? [data.default_bed.space_name, data.default_bed.bed_label].filter(Boolean).join(' · ') : '';
     const phone = contactPhone();
     const day = (d: string) => formatDate(d, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -111,7 +112,7 @@ export function mountHouse(main: HTMLElement, options: HouseOptions): () => void
         : el('p', { class: 'card gcard muted', id: 'infoSoon' }, t('info.soon')),
       el('section', { class: 'gsec ghouse-plan', id: 'o-plano', 'aria-labelledby': 'o-planoH' },
         el('h3', { class: 'gsec-head', id: 'o-planoH' }, t('house.plan')),
-        verEnPlano({ place: bedText || null, label: t('house.planWhere'), id: 'oiPlan', reads: options.reads, mark: (n) => fbMark(n, 'guests.outsider.casa.plano', 'El plano de la casa') })),
+        verEnPlano({ place: bedText || null, whole: true, match: bedStay ? { space: bedStay.space_name, bed: bedStay.bed_label } : data?.default_bed ? { space: data.default_bed.space_name, bed: data.default_bed.bed_label } : null, label: t('house.planWhere'), id: 'oiPlan', reads: options.reads, mark: (n) => fbMark(n, 'guests.outsider.casa.plano', 'El plano de la casa') })),
       placeCard({ reads: options.reads }),
       contactCard(Boolean(now)));
   }

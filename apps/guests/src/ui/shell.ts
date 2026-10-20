@@ -34,6 +34,7 @@ import { mountHouse } from './house.ts';
 import { personSelector, retreatFrame, retreatState, shortRange, type Frame } from './frame.ts';
 import { mountLodging } from './lodging.ts';
 import { clearOfflineMaterials } from './materials.ts';
+import { clearPlanImages } from './plan.ts';
 import { mountGuide } from './guide.ts';
 import { barItems, modulesOf, moreItems, sectionLabel, sectionsOf, type Modules, type Section } from './nav.ts';
 import { mountMenu, mountProgram } from './program.ts';
@@ -81,7 +82,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const apiCall = client.api.bind(client);
   // Uso sin persona en los portales (contrato §3.8): sin aviso.
   const usage = createUsage({ app: 'guests', api: apiCall, userId: () => userId, notice: false });
-  const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); void clearOfflineMaterials(id); });
+  const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); void clearOfflineMaterials(id); void clearPlanImages(); });
   const texts = loadCommonTexts(client);
   /** Nivel de casa `outsider` (O4b): pestaña Outsider, estancias, «hay alguien» y notas en el calendario. */
   const outsider = isOutsider(client) ? createOutsiderApi(client) : null;

@@ -115,7 +115,7 @@ export function mountProgram(main: HTMLElement, ctx: GuestContext, options: Prog
     const today = todayMadrid();
     let selected = days.includes(today) ? today : days[0]!;
     const list = el('div', { id: 'programList', role: 'tabpanel' });
-    const plan = (i: ProgramItem, id?: string) => verEnPlano({ place: i.place, reads: ctx.reads, ...(id ? { id } : {}), mark: (n) => fbMark(n, 'guests.programa.plano.abrir', 'Ver en el plano') });
+    const plan = (i: ProgramItem, id?: string) => verEnPlano({ place: i.place, spaceId: i.resource_space_id ?? null, reads: ctx.reads, ...(id ? { id } : {}), mark: (n) => fbMark(n, 'guests.programa.plano.abrir', 'Ver en el plano') });
     const menuLink = (i: ProgramItem) => (i.kind === 'comida'
       ? el('a', { class: 'glink-inline', href: `${options.retreatBase}/menu`, 'data-feedback-id': 'guests.programa.menu.abrir', 'data-feedback-label': 'Ver el menú' }, icon('chef', 16), t('program.seeMenu'))
       : null);

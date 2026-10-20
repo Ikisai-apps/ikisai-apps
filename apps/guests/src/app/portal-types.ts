@@ -39,6 +39,15 @@ export interface Menu {
   services: Array<{ service_id?: string; date: string; type: string; time: string | null; dishes: Dish[] }>;
 }
 
+/** Un dibujo del mapa de zonas (`GET plans`, Recursos §2): el archivo ya firmado por la Edge de Guests (10 minutos). */
+export interface PortalPlan {
+  id: string; buildingId: string; floor: string | null; position: number; width: number; height: number;
+  fileId: string | null; mime: string | null; sha256: string | null; url: string | null;
+}
+/** Un espacio con su forma en el dibujo (solo nombres públicos y geometría; las camas, sin ocupación). */
+export interface PortalSpace { id: string; parentId: string | null; kind: string; name: string; planId: string | null; planShape: { points: Array<[number, number]> } | null; position: number }
+export interface PortalPlans { plans: PortalPlan[]; spaces: PortalSpace[] }
+
 /** El lugar de Ikisai (`central.portal_place_projection`, Central §2.9): nombre, dirección del lugar, mapa y plano. */
 export interface Place { name: string | null; address: string | null; map_url: string | null; site_plan_file_id: string | null; site_plan_mime: string | null; site_plan_size: number | null }
 
