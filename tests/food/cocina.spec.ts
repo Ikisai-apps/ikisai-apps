@@ -171,6 +171,34 @@ test('cocina · Inicio → Cocina: alergias a la vista, platos con su aviso, pas
     await expect(pass).toHaveCount(0);
   });
 
+  await test.step('ficha del menú (tanda 38): lo ya servido, plegado; lo siguiente, con sus platos y su ⚠', async () => {
+    await page.goto(`${baseURL}/#/menus/${menuId}`);
+    const today = page.locator(`.menuday[data-day="${day(0)}"]`);
+    const served = today.locator('.fd-served');
+    await expect(served).not.toHaveAttribute('open', '');
+    await expect(served.locator('summary')).toContainText('Ya servido');
+    await expect(served.locator('summary')).toContainText('Desayuno 09:00');
+    await expect(today.locator(':scope > .service h4')).toHaveText(['Comida', 'Cena']);
+    const next = page.locator('#menuNext');
+    await expect(next).toContainText('Hoy · comida 14:00 · 2 platos');
+    await expect(next.locator('.fd-nextdish')).toHaveText(['Curry de verduras · 22 rac.', 'Ensalada verde · 22 rac.']);
+    await expect(today.locator('.dish', { hasText: 'Ensalada verde' }).first().locator('.fd-safety')).toContainText('Alérgenos sin revisar');
+    await expect(page.locator('main')).not.toContainText(/apto|✓ sin|no contiene/i);
+    await capture(page, '23-ficha-menu');
+  });
+
+  await test.step('M1: si Booking ya nombra el alérgeno, no se repite («frutos de cáscara (pistacho)»)', async () => {
+    api.updateEvent(EVENT, { dietary_restrictions: [{ type: 'alergia', subject: 'frutos de cáscara (pistacho)', severity: 'grave', servings: 1, kitchen_notes: null }] });
+    await page.goto(`${baseURL}/#/cocina?menu=${menuId}&dia=${day(0)}`);
+    await page.reload();
+    await expect(page.locator('.fd-dish', { hasText: 'Tarta de pistacho' }).locator('.fd-safety')).toHaveText('⚠ lleva frutos de cáscara (pistacho) · 1 persona · alergia grave');
+    api.updateEvent(EVENT, { dietary_restrictions: [
+      { type: 'intolerancia', subject: 'lactosa', severity: 'leve', servings: 2, kitchen_notes: null },
+      { type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1, kitchen_notes: null },
+      { type: 'preferencia', subject: 'cilantro', severity: null, servings: 1, kitchen_notes: null },
+    ] });
+  });
+
   await test.step('desde la ficha del menú, «Cocina» abre ese menú en Cocina', async () => {
     await page.goto(`${baseURL}/#/menus/${menuId}`);
     await page.locator('#openKitchen').click();

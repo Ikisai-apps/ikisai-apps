@@ -21,7 +21,7 @@ const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'o
  * Piezas del kit que solo admiten el id y sacan la etiqueta de su propio texto (tanda 27): las filas y la base del menú
  * lateral, «‹ Volver a…», los bloques de «Lo de ahora» y el mazo de votos. No cuentan como marcas sin etiqueta.
  */
-const KIT_ONLY_ID = /feedbackId: 'food\.(menu_lateral(\.[a-z_]+)?|cabecera\.volver|inicio\.cocina_ahora\.dia|menus\.sugeridos\.mazo|recetario\.ficha\.foco)'/g;
+const KIT_ONLY_ID = /feedbackId: 'food\.(menu_lateral(\.[a-z_]+)?|cabecera\.volver|inicio\.cocina_ahora\.dia|menus\.sugeridos\.mazo|recetario\.ficha\.foco|menu\.foco)'/g;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

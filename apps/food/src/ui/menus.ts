@@ -1,10 +1,10 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, HOUSE_MENU_ID, crossContext, undeclaredAllergens, type Recipe, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
+  FOOD_PROCEDURES, HOUSE_MENU_ID, crossContext, undeclaredAllergens, undeclaredText, dishNotes, isSevere, verifiableSubject, type DishNotes, type ShoppingList, type Recipe, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type PreparationItem, type RecipeIngredient,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, createSortableList, el, formatDate, icon, listRow, openSheet, plural, renderMoneyBreakdown, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createFocus, createSortableList, el, formatDate, icon, listRow, openSheet, plural, renderCover, renderMoneyBreakdown, replace, toast, type Focus, type FocusItem, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
@@ -13,7 +13,7 @@ import {
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
 import { loadInventory, type InventoryData } from '../app/consumption.ts';
 import { openConsumptionSheet } from './consumption-sheet.ts';
-import { kitchenHash } from './kitchen.ts';
+import { dishMedal, dishSafety, kitchenHash } from './kitchen.ts';
 import { HOUSE_SUGGESTIONS_HASH, houseSuggestionsSummary, pendingDishesText } from './house-suggestions.ts';
 import { loadAllMenuGraphs, loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
@@ -223,6 +223,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     // Consumo al acabar el servicio (R5c): solo con inventario, es decir, con sitios de cocina en Recursos.
     let inventory: InventoryData | null = null;
     let consumptions: Array<Mirror<Consumption>> = [];
+    let shopping: Mirror<ShoppingList> | null = null; // la lista de compra del menú, para el foco
     const consumptionOf = (service: ServiceRow) => (inventory?.kitchen.size ? serviceConsumption(service, menuGraph, consumptions, inventory.movements, new Date()) : null);
     let sheet: Sheet | null = null;
     let busy = false;
@@ -247,13 +248,23 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     let suggested: { pending: number } | null = null;
     if (menuId === HOUSE_MENU_ID) void houseSuggestionsSummary(client).then((s) => { suggested = s; if (house()) paintHouseHead(); });
     const banner = el('div', { id: 'menuStale' });
-    const restrictionsHost = el('section', { 'data-feedback-id': 'food.menu.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions card', id: 'menuRestrictions' });
+    // Tanda 38 (MUELA-091 con el ajuste de VG): una sola línea plegada en la cabecera común, encima de las pestañas, y
+    // el detalle de siempre al abrirla. Se abre sola solo en la pestaña Menú, en borrador o en revisar y con avisos por aceptar.
+    const restrictionsHost = el('details', { 'data-feedback-id': 'food.menu.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions card fd-restr', id: 'menuRestrictions' });
+    const restrictionsLine = el('summary', { class: 'fd-restrline' });
+    const restrictionsBody = el('div', { class: 'fd-restrbody' });
+    restrictionsHost.append(restrictionsLine, restrictionsBody);
+    let restrictionsChoice: boolean | null = null; // lo que eligió la persona al abrirla o cerrarla
+    let restrictionsSet: boolean | null = null; // lo último que hizo la pintura (su `toggle` no cuenta como elección)
+    restrictionsHost.addEventListener('toggle', () => { if (restrictionsHost.open !== restrictionsSet) restrictionsChoice = restrictionsHost.open; restrictionsSet = null; });
     const builder = el('div', { 'data-feedback-id': 'food.menu.constructor', 'data-feedback-label': 'Constructor del menú', class: 'menubuilder', id: 'menuBuilder' });
     const costHost = el('section', { 'data-feedback-id': 'food.menu.coste', 'data-feedback-label': 'Coste estimado', class: 'card menucost', id: 'menuCost', hidden: true });
     let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
     const actions = el('div', { 'data-feedback-id': 'food.menu.estado', 'data-feedback-label': 'Estado del menú', class: 'btnrow menuactions', id: 'menuActions' });
     const cookToggle = el('button', { 'data-feedback-id': 'food.menu.vista_cocinero', 'data-feedback-label': 'Vista de cocinero', class: 'linkbtn', type: 'button', id: 'cookView', 'aria-pressed': 'false',
-      onclick: () => { cook = !cook; cookToggle.setAttribute('aria-pressed', String(cook)); cookToggle.textContent = cook ? 'Volver al constructor' : 'Vista de cocinero'; paintBuilder(); } }, 'Vista de cocinero');
+      onclick: () => { cook = !cook; cookToggle.setAttribute('aria-pressed', String(cook)); cookToggle.textContent = cook ? 'Volver al constructor' : 'Vista de cocinero'; paintBuilder();
+        // En la ficha del retiro el enlace va debajo de los plegados: se sube al menú para ver el cambio.
+        if (cook && layout === 'evento') builder.scrollIntoView({ block: 'start' }); } }, 'Vista de cocinero');
     const tabs = el('nav', { 'data-feedback-id': 'food.menu.pestanas', 'data-feedback-label': 'Secciones del menú', class: 'segmented menutabs', 'aria-label': 'Secciones del menú' }, ...TABS.map(([value, label]) => {
       const hash = `#/menus/${menuId}${value === 'menu' ? '' : `/${value}`}`;
       return fb(el('a', { href: hash, 'data-tab': value, 'aria-current': value === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, label), TAB_MARKS[value]);
@@ -262,8 +273,39 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const commentsNotice = el('div', { id: 'menuCommentsNotice' });
     const shareHost = el('section', { 'data-feedback-id': 'food.menu.organizador_portal', 'data-feedback-label': 'Compartir con el organizador', class: 'card menushare', id: 'menuShare' });
     const commentsHost = el('section', { 'data-feedback-id': 'food.menu.comentarios', 'data-feedback-label': 'Comentarios del organizador', class: 'card menucomments', id: 'menuComments', hidden: true, tabindex: '-1' });
-    replace(main, head, banner, commentsNotice, restrictionsHost, tabs,
-      tab === 'menu' ? el('div', null, actions, shareHost, commentsHost, el('div', { class: 'btnrow' }, cookToggle), costHost, builder) : tabHost);
+    // Tanda 38 (MUELA-091, Ficha A «Portada y foco»): portada, lo siguiente, el foco y el menú por días; debajo, plegados,
+    // el estado, el portal, los comentarios y el coste, con todo lo de dentro en el DOM. El menú de casa sigue como estaba.
+    const coverHost = el('div', { 'data-feedback-id': 'food.menu.portada', 'data-feedback-label': 'Portada del menú', class: 'fd-cover fd-menucover', id: 'menuCover' });
+    const nextHost = el('section', { 'data-feedback-id': 'food.menu.siguiente', 'data-feedback-label': 'Lo siguiente', class: 'fd-next', id: 'menuNext' });
+    const focusHost = el('section', { class: 'fd-menufocus', id: 'menuFocus' });
+    let focus: Focus | null = null;
+    const fold = (id: string, title: string) => {
+      const sub = el('span', { class: 'fd-mfolds' });
+      const body = el('div', { class: 'fd-mfoldbody' });
+      return { node: el('details', { class: 'fd-mfold', id }, el('summary', null, el('span', { class: 'fd-mfoldt' }, title), sub), body), sub, body };
+    };
+    const stateFold = fold('menuStateFold', 'Estado del menú');
+    const shareFold = fold('menuShareFold', 'Portal del organizador');
+    const commentsFold = fold('menuCommentsFold', 'Comentarios del organizador');
+    const costFold = fold('menuCostFold', 'Coste estimado');
+    const costEmpty = el('p', { class: 'muted' }, 'Sin datos de compras de Invoices en este dispositivo todavía.');
+    let commentsOpened = 0; // comentarios nuevos con los que ya se abrió solo
+    const menuBody = el('div', { id: 'menuBody' });
+    let layout: 'casa' | 'evento' | null = null;
+    function placeBody(): void {
+      const want = house() ? 'casa' : 'evento';
+      if (layout === want) return;
+      layout = want;
+      if (want === 'casa') { replace(menuBody, actions, shareHost, commentsHost, el('div', { class: 'btnrow' }, cookToggle), costHost, builder); return; }
+      stateFold.body.append(actions);
+      shareFold.body.append(shareHost);
+      commentsFold.body.append(commentsHost);
+      costFold.body.append(costHost, costEmpty);
+      replace(menuBody, coverHost, nextHost, focusHost, el('h3', { class: 'sectionlabel' }, 'El menú'), builder,
+        el('div', { class: 'fd-mfolds-list' }, stateFold.node, shareFold.node, commentsFold.node, costFold.node),
+        el('div', { class: 'btnrow' }, cookToggle));
+    }
+    replace(main, head, banner, commentsNotice, restrictionsHost, tabs, tab === 'menu' ? menuBody : tabHost);
 
     const graph = (): MenuGraph => menuGraph;
     const warnings = (): MenuWarning[] => { const e = event(); return e ? menuWarnings(e, graph()) : []; };
@@ -372,20 +414,42 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       ));
     }
 
+    /**
+     * La línea de restricciones (tanda 38 con el ajuste de VG, «sin saturar»): plegada, solo la alergia grave (si la hay)
+     * y el recuento («+3 · 8 avisos»), sin fondo rojo. Abierta, todo lo de antes: cada restricción, cada aviso una vez y,
+     * junto a la alergia que no se sabe cruzar, «no se puede comprobar, revisar a mano». Sin restricciones ni avisos, nada.
+     */
     function paintRestrictions(): void {
-      restrictionsHost.hidden = house();
-      if (house()) { replace(restrictionsHost); return; }
       const e = event();
       const list = sortedRestrictions(e?.dietary_restrictions);
       // El mismo texto dos veces (el mismo plato en dos servicios) se lee una sola; cada aviso se acepta igual al validar.
       const found = [...new Map(warnings().map((w) => [w.text, w])).values()];
-      replace(restrictionsHost,
-        el('h3', null, icon('warn', 18), ' Restricciones'),
-        list.length ? el('ul', { class: 'plainlist' }, ...list.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r))))
+      restrictionsHost.hidden = house() || (!list.length && !found.length);
+      if (restrictionsHost.hidden) { replace(restrictionsLine); replace(restrictionsBody); return; }
+      const context = crossContext(graph());
+      const isAllergy = (r: (typeof list)[number]) => r.type === 'alergia' || r.type === 'intolerancia';
+      const unverifiable = (r: (typeof list)[number]) => isAllergy(r) && !verifiableSubject((r.subject ?? '').trim(), context);
+      const severe = list.filter((r) => isAllergy(r) && isSevere(r.severity));
+      const shown = severe.slice(0, 1);
+      const rest = list.length - shown.length;
+      const required = found.filter((w) => w.requiresAck).length;
+      const toReview = tab === 'menu' && !!menu && (menu.status === 'borrador' || menu.status === 'revisar') && required > 0;
+      const count = [rest ? `+${rest}` : null, found.length ? plural(found.length, 'aviso', 'avisos') : null].filter(Boolean).join(' · ');
+      replace(restrictionsLine, icon('warn', 16),
+        shown.length ? el('strong', null, restrictionLabel(shown[0]!), unverifiable(shown[0]!) ? ' · no se puede comprobar, revisar a mano' : '') : el('strong', null, 'Restricciones'),
+        count ? el('span', { class: 'fd-restrcount' }, shown.length ? ` · ${count}` : ` ${count}`) : null,
+        toReview ? el('span', { class: 'fd-restralert' }, `${plural(required, 'aviso', 'avisos')} por revisar antes de validar`) : null);
+      replace(restrictionsBody,
+        list.length ? el('ul', { class: 'plainlist' }, ...list.map((r) => el('li', { class: isAllergy(r) ? 'warnline' : '' }, restrictionLabel(r),
+          unverifiable(r) ? el('span', { class: 'fd-unverifiable' }, ' · no se puede comprobar, revisar a mano') : null)))
           : el('p', { class: 'muted' }, e ? 'Ninguna comunicada.' : '—'),
         found.length ? el('ul', { class: 'warninglist', id: 'menuWarnings' }, ...found.map((w) =>
           el('li', { class: w.requiresAck ? 'warnline' : 'muted' }, w.text))) : null,
       );
+      // Se abre sola en un único caso (pestaña Menú, borrador o revisar, avisos por aceptar); si la persona la abrió o
+      // la cerró, se respeta.
+      const open = restrictionsChoice ?? toReview;
+      if (restrictionsHost.open !== open) { restrictionsSet = open; restrictionsHost.open = open; }
     }
 
     // --- Portal del organizador: compartir y comentarios ------------------------------------
@@ -393,6 +457,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     function goToComments(): void {
       if (tab !== 'menu') { scrollToComments = true; navigate(`#/menus/${menuId}`); return; }
+      (commentsFold.node as HTMLDetailsElement).open = true;
       commentsHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
       commentsHost.focus({ preventScroll: true });
     }
@@ -718,14 +783,6 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const dishes = dishesOf(service);
       const time = el('input', { 'data-feedback-id': 'food.menu.servicios.hora', 'data-feedback-label': 'Hora del servicio', type: 'time', class: 'compact', value: shortTime(service.service_time), 'aria-label': `Hora de ${label}`, disabled: !canEdit,
         onchange: () => void commitSafely([{ op: 'update', table: T.menuServices, id: service.id, expectedRevision: service.revision, fields: { service_time: time.value || null } }]) });
-      const consumption = consumptionOf(service);
-      const consumeBar = !consumption ? null
-        : consumption.state === 'automatico' ? el('div', { class: 'chips consumebar' }, el('span', { class: 'chip' }, 'Se está descontando solo'))
-        : consumption.state === 'por_confirmar' && canWrite()
-          ? el('div', { class: 'consumebar' },
-              el('button', { 'data-feedback-id': 'food.menu.servicios.confirmar_consumo', 'data-feedback-label': 'Confirmar consumo', class: 'ghost consumebtn', type: 'button', 'aria-label': `Confirmar consumo de ${label}`, onclick: () => openConsumption(service) }, icon('check', 18), 'Confirmar consumo'),
-              el('span', { class: 'hint' }, 'Si nadie lo confirma, se descuenta solo a las 24 h.'))
-          : consumption.state === 'hecho' ? el('div', { class: 'chips consumebar' }, el('span', { class: 'chip ok' }, 'Consumo anotado')) : null;
       return el('section', { 'data-feedback-id': 'food.menu.servicios.servicio', 'data-feedback-label': 'Servicio', class: 'service', 'data-id': service.id, 'data-type': service.service_type },
         el('header', null, el('h4', null, label), time,
           canEdit ? el('button', { 'data-feedback-id': 'food.menu.servicios.quitar', 'data-feedback-label': 'Quitar servicio', class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${label}`,
@@ -733,10 +790,80 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
               if (dishes.length && !(await confirmDialog({ title: `¿Quitar ${label.toLowerCase()}?`, text: `Se quitan también sus ${dishes.length} platos.`, confirmLabel: 'Quitar', danger: true }))) return;
               await commitSafely([...dishes.map((d) => removeOp(T.menuItems, d)), removeOp(T.menuServices, service)]);
             } }, icon('trash', 18)) : null),
-        consumeBar,
+        consumeBar(service),
         dishes.length ? dishList(service, dishes) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
         canEdit ? el('button', { 'data-feedback-id': 'food.menu.platos.anadir', 'data-feedback-label': 'Añadir plato', class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, Math.max(0, ...dishesOf(service).map((d) => Number(d.position)))) }, icon('plus', 18), 'Añadir plato') : null,
       );
+    }
+
+    /** El consumo del servicio con las palabras de siempre; «Confirmar consumo» también con el menú cerrado. */
+    function consumeBar(service: ServiceRow): HTMLElement | null {
+      const label = SERVICE_LABELS[service.service_type];
+      const consumption = consumptionOf(service);
+      return !consumption ? null
+        : consumption.state === 'automatico' ? el('div', { class: 'chips consumebar' }, el('span', { class: 'chip warn' }, 'Se está descontando solo'))
+        : consumption.state === 'por_confirmar' && canWrite()
+          ? el('div', { class: 'consumebar' },
+              el('button', { 'data-feedback-id': 'food.menu.servicios.confirmar_consumo', 'data-feedback-label': 'Confirmar consumo', class: 'ghost consumebtn', type: 'button', 'aria-label': `Confirmar consumo de ${label}`, onclick: () => openConsumption(service) }, icon('check', 18), 'Confirmar consumo'),
+              el('span', { class: 'hint' }, 'Si nadie lo confirma, se descuenta solo a las 24 h.'))
+          : consumption.state === 'hecho' ? el('div', { class: 'chips consumebar' }, el('span', { class: 'chip ok' }, 'Consumo anotado')) : null;
+    }
+
+    /** «2026-10-20T14:00»: el servicio ya pasó si su hora (o, sin hora, el final del día) quedó atrás. */
+    const nowStamp = () => { const d = new Date(); return `${todayKey()}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    const serviceAt = (s: ServiceRow) => `${s.service_date}T${shortTime(s.service_time) || '23:59'}`;
+    const served = (s: ServiceRow) => serviceAt(s) < nowStamp();
+    const notesByItem = (): Map<string, DishNotes> => { const e = event(); return new Map(e ? dishNotes(e, graph()).map((n) => [n.itemId, n]) : []); };
+
+    /** Un plato en lectura (validado o cerrado): medallón, raciones en texto y el ⚠ del cruce, como en Cocina. */
+    function readDish(item: ItemRow, notes: Map<string, DishNotes>): HTMLElement {
+      const recipe = recipeOf(item);
+      return el('div', { 'data-feedback-id': 'food.menu.platos.plato', 'data-feedback-label': 'Plato', class: 'dish fd-readdish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
+        dishMedal(client, recipe, 40),
+        el('span', { class: 'dishname' }, el('strong', null, recipe?.name ?? 'Receta retirada'),
+          el('span', { class: 'recipemeta fd-servings' }, [`${formatQuantity(item.servings)} raciones`, ...(recipe ? [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])] : [])].join(' · ')),
+          recipe && isQuickPending(recipe, recipeLines) ? el('span', { class: 'chips' }, el('span', { class: 'chip warn quickchip' }, 'Rápida · por completar')) : null,
+          dishSafety(notes.get(item.id))));
+    }
+
+    function readService(service: ServiceRow, notes: Map<string, DishNotes>): HTMLElement {
+      const dishes = dishesOf(service);
+      return el('section', { 'data-feedback-id': 'food.menu.servicios.servicio', 'data-feedback-label': 'Servicio', class: 'service fd-readservice', 'data-id': service.id, 'data-type': service.service_type },
+        el('header', null, el('h4', null, SERVICE_LABELS[service.service_type]), el('span', { class: 'fd-svctime' }, service.service_time ? shortTime(service.service_time) : 'sin hora')),
+        consumeBar(service),
+        dishes.length ? el('ul', { 'data-feedback-id': 'food.menu.platos.lista', 'data-feedback-label': 'Platos del servicio', class: 'dishes' }, ...dishes.map((d) => el('li', null, readDish(d, notes))))
+          : el('p', { class: 'muted' }, 'Sin platos todavía.'));
+    }
+
+    /** «Ya servido», plegado, con el estado del consumo de cada servicio en su palabra de siempre. ✓ solo si está anotado. */
+    function servedFold(past: ServiceRow[], notes: Map<string, DishNotes>): HTMLElement {
+      const states = past.map((s) => ({ s, state: consumptionOf(s)?.state ?? null }));
+      const word = (state: string | null) => state === 'hecho' ? el('span', { class: 'chip ok' }, '✓ Consumo anotado')
+        : state === 'automatico' ? el('span', { class: 'chip warn' }, 'Se está descontando solo')
+        : state === 'por_confirmar' ? el('span', { class: 'chip alert' }, 'Consumo por confirmar') : null;
+      return el('details', { class: 'fd-served', open: states.some((x) => x.state === 'por_confirmar') || null },
+        el('summary', null, el('span', { class: 'fd-mfoldt' }, 'Ya servido'),
+          ...states.map(({ s, state }) => el('span', { class: 'fd-servedsvc' }, `${SERVICE_LABELS[s.service_type]}${s.service_time ? ` ${shortTime(s.service_time)}` : ''}`, word(state)))),
+        ...past.map((s) => readService(s, notes)));
+    }
+
+    /** El menú por días en lectura: lo que viene, a la vista; lo ya servido de cada día, plegado. */
+    function paintReadMenu(): void {
+      dropLists();
+      builderShape = '';
+      const e = event();
+      const sorted = sortServices(services);
+      const days = Array.from(new Set([...(e ? eventDays(e) : []), ...sorted.map((s) => s.service_date)])).sort();
+      const notes = notesByItem();
+      replace(builder, ...days.map((day) => {
+        const ofDay = sorted.filter((s) => s.service_date === day);
+        const past = ofDay.filter(served);
+        return el('section', { 'data-feedback-id': 'food.menu.dia', 'data-feedback-label': 'Día', class: 'menuday', 'data-day': day },
+          el('h3', null, longDay(day)),
+          ofDay.length ? null : el('p', { class: 'muted' }, 'Sin servicios este día.'),
+          past.length ? servedFold(past, notes) : null,
+          ...ofDay.filter((s) => !served(s)).map((s) => readService(s, notes)));
+      }));
     }
 
     /** «Confirmar consumo» (R5c): la hoja compartida con Cocina (`consumption-sheet.ts`). */
@@ -767,6 +894,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     function paintBuilder(): void {
+      // Validado, cerrado o para quien solo lee: el menú en lectura (tanda 38). Editable y vista de cocinero, como siempre.
+      if (!house() && locked() && !cook) { paintReadMenu(); return; }
       const e = event();
       const canEdit = editable();
       const sorted = sortServices(services);
@@ -912,17 +1041,134 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       });
     }
 
+    // --- Ficha A «Portada y foco» (tanda 38) ------------------------------------------------
+    /**
+     * El coste en una línea, para la portada y el título del plegado: nunca 0 € sin decir por qué. Sin datos de Invoices,
+     * «sin datos de compras»; si falta algún precio o hay precios viejos, lo dice.
+     */
+    function costSummary(withTotal: boolean): string | null {
+      if (!items.length) return null;
+      if (!purchases.fetchedAt) return 'sin datos de compras';
+      const costs = serviceCosts(graph(), purchases.prices);
+      const total = costs.reduce((sum, c) => sum + c.amount, 0);
+      const missing = new Set(costs.flatMap((c) => c.missing));
+      const stale = new Set(costs.flatMap((c) => c.stale));
+      const people = event()?.guest_count ?? 0;
+      return [total > 0 && withTotal ? euros(total) : null, total > 0 && people > 0 ? `${euros(total / people)} por persona` : total > 0 && !withTotal ? euros(total) : null,
+        missing.size ? `faltan precios de ${plural(missing.size, 'ingrediente', 'ingredientes')}` : null,
+        stale.size ? 'precios antiguos' : null].filter(Boolean).join(' · ') || null;
+    }
+
+    function paintCover(): void {
+      const e = event();
+      if (!menu || !e) { replace(coverHost); return; }
+      const flagged = dishNotes(e, graph()).filter((n) => n.allergies.length || n.unreviewed).length;
+      replace(coverHost, renderCover({
+        title: e.title, compact: true,
+        pill: MENU_STATUS_LABELS[menu.status],
+        pillTone: menu.status === 'validado' || menu.status === 'cerrado' ? 'ok' : menu.status === 'revisar' ? 'warn' : null,
+        // Fechas, personas y régimen ya están en la cabecera: aquí, las cifras del menú y el coste por persona.
+        stats: [plural(services.length, 'servicio', 'servicios'), plural(items.length, 'plato', 'platos'), flagged ? plural(flagged, 'plato con aviso', 'platos con aviso') : null, costSummary(false)].filter(Boolean).join(' · '),
+      }));
+    }
+
+    /** Lo siguiente: el próximo servicio con sus platos. El ⚠ va en el plato, en el menú de debajo (VG: sin repetirlo). */
+    function paintNext(): void {
+      const next = sortServices(services).filter((s) => !served(s)).sort((a, b) => serviceAt(a).localeCompare(serviceAt(b)))[0];
+      if (!next) { replace(nextHost); return; }
+      const today = todayKey();
+      const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      const when = next.service_date === today ? 'Hoy' : next.service_date === tomorrow ? 'Mañana' : longDay(next.service_date);
+      const dishes = dishesOf(next);
+      replace(nextHost, el('h3', { class: 'sectionlabel' }, 'Lo siguiente'),
+        el('div', { class: 'card fd-nextcard' },
+          el('p', { class: 'fd-nextwhen' }, el('strong', null, `${when} · ${SERVICE_LABELS[next.service_type].toLowerCase()}`), next.service_time ? ` ${shortTime(next.service_time)}` : ' · sin hora', ` · ${plural(dishes.length, 'plato', 'platos')}`),
+          dishes.length ? el('ul', { class: 'plainlist fd-nextdishes' }, ...dishes.map((item) => el('li', { class: 'fd-nextdish' },
+            el('span', null, recipeOf(item)?.name ?? 'Receta retirada', el('span', { class: 'muted' }, ` · ${formatQuantity(item.servings)} rac.`))))) : null));
+    }
+
+    /**
+     * El foco: lo que falta, de uno en uno, con su arreglo. El consumo por confirmar (con el aviso de las 24 h), los
+     * alérgenos sin revisar, los posibles sin declarar, los comentarios sin resolver y la compra sin cerrar.
+     */
+    function focusItems(): FocusItem[] {
+      const out: FocusItem[] = [];
+      const hasAllergy = (event()?.dietary_restrictions ?? []).some((r) => r.type === 'alergia' || r.type === 'intolerancia');
+      for (const service of sortServices(services)) {
+        if (consumptionOf(service)?.state !== 'por_confirmar') continue;
+        out.push({ id: `consumo:${service.id}`, kicker: 'Consumo por confirmar', tone: 'alert',
+          title: `${SERVICE_LABELS[service.service_type]} del ${longDay(service.service_date)}`, note: 'Si nadie lo confirma, se descuenta solo a las 24 h.' });
+      }
+      const dishes = [...new Map(items.map((i) => [i.recipe_id, recipeOf(i)])).values()].filter((r): r is RecipeRow => !!r);
+      const context = crossContext({ recipe_ingredients: recipeLines, ingredients });
+      for (const recipe of dishes.filter((r) => !r.allergens_checked)) {
+        out.push({ id: `receta:${recipe.id}`, kicker: 'Alérgenos sin revisar', tone: hasAllergy ? 'alert' : 'warn', title: recipe.name,
+          note: hasAllergy ? 'Hay alergias o intolerancias en el grupo: revísalos en el Recetario antes del servicio.' : 'Revísalos en el Recetario.' });
+      }
+      for (const recipe of dishes) {
+        for (const u of undeclaredAllergens(recipe as unknown as Recipe, context)) {
+          out.push({ id: `receta:${recipe.id}:${u.allergen}`, kicker: 'Alérgeno posible sin declarar', tone: 'alert', title: recipe.name, note: undeclaredText(u) });
+        }
+      }
+      const open = comments.filter((c) => c.status !== 'resuelto');
+      const fresh = open.filter((c) => c.status === 'nuevo').length;
+      if (open.length) out.push({ id: 'comentarios', kicker: 'Comentarios del organizador', tone: fresh ? 'alert' : 'warn',
+        title: fresh ? newCommentsText(fresh) : plural(open.length, 'comentario sin resolver', 'comentarios sin resolver'), note: 'Contéstalos aquí; el organizador verá la respuesta en su portal.' });
+      if (shopping?.status !== 'cerrada') out.push({ id: 'compra', kicker: 'Compra', tone: 'warn',
+        title: shopping ? 'La lista de compra sigue abierta' : 'Sin lista de compra todavía', note: 'Se hace en la pestaña Compra.' });
+      return out;
+    }
+
+    function resolveFocus(item: FocusItem): void {
+      const [kind, id] = item.id.split(':');
+      if (kind === 'consumo') {
+        const service = services.find((s) => s.id === id);
+        if (!canWrite()) { toast('Solo quien edita el menú confirma el consumo.'); return; }
+        if (service) openConsumption(service);
+      } else if (kind === 'receta') navigate(`#/recetario?receta=${id}`);
+      else if (kind === 'comentarios') goToComments();
+      else navigate(`#/menus/${menuId}/compra`);
+    }
+
+    function paintFocus(): void {
+      const list = focusItems();
+      if (focus) { focus.setItems(list); return; }
+      // El kit solo admite un texto para el botón de abrir: «Resolver», y cada tarjeta dice dónde se arregla.
+      focus = createFocus({ label: 'Lo que falta', items: list, feedbackId: 'food.menu.foco', openLabel: 'Resolver', onOpen: resolveFocus,
+        emptyTitle: 'Nada pendiente', emptyText: 'Ni consumos por confirmar, ni alérgenos por revisar, ni comentarios ni compra abiertos.' });
+      replace(focusHost, el('h3', { class: 'sectionlabel' }, 'Lo que falta'), focus.element);
+    }
+
+    /** Los títulos de lo plegado dicen lo que hay dentro: el estado, si está compartido, los comentarios y el coste. */
+    function paintFolds(): void {
+      if (!menu) return;
+      replace(stateFold.sub, MENU_STATUS_LABELS[menu.status]);
+      replace(shareFold.sub, shared() ? 'Compartido con el organizador' : 'Sin compartir');
+      commentsFold.node.hidden = commentsHost.hidden;
+      const fresh = comments.filter((c) => c.status === 'nuevo').length;
+      const open = comments.filter((c) => c.status !== 'resuelto').length;
+      replace(commentsFold.sub, fresh ? plural(fresh, 'nuevo', 'nuevos') : open ? `${open} sin resolver` : plural(comments.length, 'comentario', 'comentarios'));
+      // Se abre sola si llegan comentarios nuevos (una vez por cada recuento mayor).
+      if (fresh > commentsOpened) (commentsFold.node as HTMLDetailsElement).open = true;
+      commentsOpened = fresh;
+      costFold.node.hidden = !items.length;
+      costEmpty.hidden = !!purchases.fetchedAt;
+      replace(costFold.sub, costSummary(true) ?? '');
+    }
+
     function paintActionsAndRest(): void {
       // En casa: Menú, Compra y Preparación (O3b); sin Organizador ni Cierre.
       for (const link of tabs.querySelectorAll<HTMLAnchorElement>('a[data-tab="organizador"], a[data-tab="cierre"]')) link.hidden = house();
       paintHead(); paintBanner(); paintCommentsNotice(); paintRestrictions();
       if (tab === 'menu') {
+        placeBody();
         paintActions(); paintShare(); paintComments(); paintBuilder(); paintCost();
+        if (!house()) { paintCover(); paintNext(); paintFocus(); paintFolds(); }
         if (scrollToComments && !commentsHost.hidden) { scrollToComments = false; goToComments(); }
         return;
       }
       if (!unmountTab) {
-        const context = { client, menuId, host: tabHost, canWrite, house: house(), navigate };
+        const context = { client, menuId, host: tabHost, canWrite, house: house(), navigate, goToComments };
         unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : tab === 'organizador' ? mountOrganizer(context) : mountClosing(context);
       }
     }
@@ -957,6 +1203,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       recipeLines = data.lines;
       menuGraph = data.graph;
       consumptions = (await client.list(T.consumptions)) as Array<Mirror<Consumption>>;
+      shopping = ((await client.list(T.shoppingLists)) as Array<Mirror<ShoppingList>>).find((l) => l.menu_id === menuId && !l.deleted_at) ?? null;
       inventory = await loadInventory(client).catch(() => null);
       if (tab === 'menu') void loadPurchases(client).then((next) => { const changed = next.fetchedAt !== purchases.fetchedAt; purchases = next; if (changed) { builderShape = ''; paintActionsAndRest(); } });
       paintActionsAndRest();
@@ -964,7 +1211,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     void load();
     const offEvents = watchEvents(client, (next) => { snapshot = next; if (menu) paintActionsAndRest(); });
-    const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments, T.consumptions].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
+    const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments, T.consumptions, T.shoppingLists].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
     const offStatus = client.onStatus(() => void refreshEvents(client));
     return () => {
       net.release();

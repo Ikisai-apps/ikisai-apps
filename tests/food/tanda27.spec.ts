@@ -140,6 +140,28 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
 
   // Compartir con alérgenos sin revisar pide confirmación; cancelar no comparte.
   await page.goto(`${baseURL}/#/menus/${menuId}`);
+  // Tanda 38 (MUELA-091, Ficha A con el ajuste de VG): validado, la línea de restricciones va plegada y es corta; la
+  // portada dice estado, personas y coste; el foco, lo que falta; el plato lleva su ⚠; lo demás, plegado.
+  const restrictions = page.locator('#menuRestrictions');
+  await expect(restrictions).not.toHaveAttribute('open', '');
+  await expect(restrictions.locator('summary')).toContainText('1 alergia a frutos secos (grave)');
+  await expect(restrictions.locator('summary')).toContainText('avisos');
+  await expect(restrictions.locator('.fd-restralert')).toHaveCount(0);
+  await expect(page.locator('#menuCover')).toContainText('Validado');
+  await expect(page.locator('#menuCover')).toContainText('1 servicio · 3 platos · 3 platos con aviso');
+  await expect(page.locator('#menuCover')).not.toContainText('0,00 €');
+  const focus = page.locator('[data-feedback-id="food.menu.foco"]');
+  await expect(focus.locator('.focus-kicker')).toHaveText('Alérgenos sin revisar');
+  await expect(focus.locator('.focus-title')).toHaveText('Ensalada verde');
+  await expect(focus.locator('.focus-count')).toHaveText('1 de 3 por hacer');
+  await expect(page.locator('#menuNext')).toContainText('Tarta de pistacho');
+  // Sin saturar (VG): el ⚠ va solo en el plato del menú, no también en «Lo siguiente».
+  await expect(page.locator('#menuNext .fd-safety')).toHaveCount(0);
+  await expect(page.locator('.dish', { hasText: 'Tarta de pistacho' }).locator('.fd-safety')).toContainText('⚠ lleva frutos de cáscara (frutos secos) · 1 persona · alergia grave');
+  await expect(page.locator('.dish', { hasText: 'Ensalada verde' }).locator('.fd-safety')).toContainText('Alérgenos sin revisar');
+  await expect(page.locator('main')).not.toContainText(/apto|✓ sin/i);
+  await capture(page, '30-ficha-menu');
+  await page.locator('#menuShareFold summary').click();
   await page.locator('#shareMenu').click();
   await expect(page.getByRole('alertdialog')).toContainText('Hay platos con los alérgenos sin revisar');
   await expect(page.getByRole('alertdialog')).toContainText('Curry de verduras: un ingrediente o el texto del plato nombran un alérgeno que el plato no declara.');
@@ -161,7 +183,33 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
   const closing = page.locator('[data-feedback-id="food.menu.cierre.comprobaciones"]');
   await expect(closing.locator('.check-item', { hasText: 'Menú cerrado' })).toHaveAttribute('data-ok', 'false');
   await expect(closing.locator('.check-item', { hasText: 'Preparación hecha' })).toContainText('no hay plan de preparación');
-  await expect(closing.locator('.check-verdict')).toContainText('1 cosa por resolver');
+  // Tanda 38: dos comprobaciones más (comentarios y alérgenos, esta en rojo) y «Cerrar menú» también aquí.
+  await expect(closing.locator('.check-item')).toHaveCount(6);
+  await expect(closing.locator('.check-item', { hasText: 'Comentarios del organizador resueltos' })).toHaveAttribute('data-ok', 'true');
+  const allergens = closing.locator('.check-item', { hasText: 'Alérgenos revisados' });
+  await expect(allergens).toHaveAttribute('data-tone', 'alert');
+  await expect(allergens).toContainText('sin revisar: Ensalada verde · posibles sin declarar: Curry de verduras (frutos de cáscara)');
+  await expect(allergens.getByRole('button', { name: 'Abrir en el Recetario' })).toBeVisible();
+  await expect(closing.locator('.check-item', { hasText: 'Menú cerrado' })).toContainText('con «Cerrar menú», aquí debajo o en la pestaña Menú');
+  await expect(closing.locator('.check-verdict')).toContainText('2 cosas por resolver');
   await expect(page.locator('#closingNotes')).toBeVisible();
+  // Con algo pendiente, solo avisa (decisión de VG): gris, con la frase, y cierra sin pedir confirmación.
+  const close = page.locator('#closeMenuHere');
+  await expect(close).toHaveClass(/ghost/);
+  await expect(page.locator('#closeBar')).toContainText('Puedes cerrarlo igualmente; el Cierre seguirá diciendo lo que falta.');
   await capture(page, '28-cierre');
+  // Las notas sin guardar se guardan antes de cerrar.
+  await page.locator('#closingNotes').fill('Sobró tarta.');
+  await close.click();
+  await expect(page.locator('#closeBar')).toContainText('Menú cerrado.');
+  await expect.poll(() => api.rows('food.menus').find((m) => m.id === menuId)).toMatchObject({ status: 'cerrado', closing_notes: 'Sobró tarta.' });
+  await expect(closing.locator('.check-item', { hasText: 'Menú cerrado' })).toHaveAttribute('data-ok', 'true');
+  await capture(page, '31-cierre-cerrado');
+  // Las otras pestañas: la misma línea plegada arriba, nada más (VG: sin saturar).
+  for (const [tab, name] of [['', '32-menu-cerrado'], ['compra', '33-compra'], ['preparacion', '34-preparacion'], ['organizador', '35-organizador']] as const) {
+    await page.goto(`${baseURL}/#/menus/${menuId}${tab ? `/${tab}` : ''}`);
+    await expect(page.locator('#menuRestrictions')).not.toHaveAttribute('open', '');
+    await expect(page.locator('.fd-restr')).toHaveCount(1);
+    await capture(page, name);
+  }
 });
