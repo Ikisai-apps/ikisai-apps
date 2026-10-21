@@ -6,8 +6,12 @@
  * editor y propietaria, 0239) con las solicitudes y, si trae algo, se manda en un lote de Recursos como hace la Edge de
  * Finance (`reconcileResourceEntries`): `resources.reconcile_entries` y los costes de las entradas (`movement_costs`, con el
  * mismo id estable que usa Finance). Repetirlo no duplica nada (requestId y digest estables, cuadre idempotente).
- * - `POST purchases/reconcile {requestIds}`: hasta 100 solicitudes. Devuelve `{movements, costs}`.
- * Un fallo aquí no deshace la recepción: la app lo registra y sigue.
+ * - `POST purchases/reconcile {requestIds}`: hasta 100 solicitudes. Devuelve `{movements, costs, results}`: en `results`,
+ *   una fila por solicitud (MUELA-094 §4) con `state` — `ok` (cuadrada: lo facturado es lo previsto o no hay previsto),
+ *   `diff` (con diferencia), `none` (sin factura en Finance todavía, o sin acceso a Finance) o `error` (el cuadre no se
+ *   pudo hacer) —, `invoiced` (lo asignado en Finance), `estimated`, `diff` y `codes`. Si falla el lote de Recursos, las
+ *   que tenían factura vuelven con `error` (200): la app las apunta en su cola y las reintenta.
+ * Un fallo aquí no deshace la recepción: la app lo enseña y lo reintenta.
  */
 import { fail, sha256Hex, stable, type AppRoute, type CommitResult, type RequestContext, type Supabase } from '../_kit/mod.ts';
 
@@ -22,7 +26,55 @@ async function stableUuid(seed: string): Promise<string> {
 
 interface EntriesRead { source_app: string; entries: unknown[]; refs: string[]; skipped?: unknown[]; costs?: Array<{ movement_id: string; unit_cost: number; source_ref: string }> }
 
-export async function reconcileReceipts(supabase: Supabase, ctx: RequestContext, requestIds: string[]): Promise<{ movements: number; costs: number }> {
+export type ReconcileState = 'ok' | 'diff' | 'none' | 'error';
+export interface ReconcileResult { id: string; state: ReconcileState; invoiced: number | null; estimated: number | null; diff: number | null; codes: string[] }
+interface AllocationRow { target_id: string; invoice_code?: string | null; allocated_amount?: number | string | null }
+
+/**
+ * El resultado de cada solicitud frente a sus facturas (pura, para probarla sin servidor): sin filas, `none`; con ellas, lo
+ * asignado frente al importe estimado de la solicitud (diferencia de medio céntimo o menos, `ok`).
+ */
+export function reconcileResults(ids: readonly string[], rows: readonly AllocationRow[], estimated: ReadonlyMap<string, number | null>, failed = false): ReconcileResult[] {
+  return ids.map((id) => {
+    const mine = rows.filter((r) => r.target_id === id);
+    const est = estimated.get(id) ?? null;
+    if (!mine.length) return { id, state: 'none', invoiced: null, estimated: est, diff: null, codes: [] };
+    const invoiced = Math.round(mine.reduce((n, r) => n + Number(r.allocated_amount ?? 0), 0) * 100) / 100;
+    const diff = est == null ? null : Math.round((invoiced - est) * 100) / 100;
+    const codes = [...new Set(mine.map((r) => r.invoice_code).filter((c): c is string => !!c))];
+    return { id, state: failed ? 'error' : diff != null && Math.abs(diff) > 0.005 ? 'diff' : 'ok', invoiced, estimated: est, diff, codes };
+  });
+}
+
+/** Importe estimado de cada solicitud pedida (lo previsto). */
+async function estimatesOf(supabase: Supabase, ctx: RequestContext, ids: readonly string[]): Promise<Map<string, number | null>> {
+  const want = new Set(ids);
+  const out = new Map<string, number | null>();
+  for (let offset = 0; ; offset += 2000) {
+    const page = await supabase.rpc<{ rows: Array<{ id: string; estimated_amount: number | string | null }> }>('core_snapshot_table', {
+      p_app: 'tasks', p_role: ctx.membership.role, p_table: 'tasks.purchase_requests', p_include_deleted: false, p_limit: 2000, p_offset: offset,
+    });
+    for (const r of page.rows) if (want.has(r.id)) out.set(r.id, r.estimated_amount == null ? null : Number(r.estimated_amount));
+    if (page.rows.length < 2000 || out.size === want.size) return out;
+  }
+}
+
+export async function reconcileReceipts(supabase: Supabase, ctx: RequestContext, requestIds: string[]): Promise<{ movements: number; costs: number; results: ReconcileResult[] }> {
+  const [allocations, estimated] = await Promise.all([
+    supabase.rpc<{ rows?: AllocationRow[] }>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'invoices.allocations_by_target', p_args: { targetApp: 'tasks', targetKind: 'purchase_request', ids: requestIds } })
+      .then((r) => r?.rows ?? []).catch(() => [] as AllocationRow[]),
+    estimatesOf(supabase, ctx, requestIds),
+  ]);
+  try {
+    const done = await commitReconcile(supabase, ctx, requestIds);
+    return { ...done, results: reconcileResults(requestIds, allocations, estimated) };
+  } catch (error) {
+    console.warn('tasks-api · cuadre con Finance', error);
+    return { movements: 0, costs: 0, results: reconcileResults(requestIds, allocations, estimated, true) };
+  }
+}
+
+async function commitReconcile(supabase: Supabase, ctx: RequestContext, requestIds: string[]): Promise<{ movements: number; costs: number }> {
   const read = await supabase.rpc<EntriesRead>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'invoices.tasks_resource_entries', p_args: { request_ids: requestIds } });
   const known = new Set<string>();
   const costs = read.costs ?? [];

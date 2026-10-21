@@ -13,6 +13,7 @@ import {
   approvalOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
   itemStock, isSupplyKind, lowStock, openRequestFor, receiptEntryOperation, requestPurchaseOps, reorderItemOps, setPurchaseStatusOps,
   undoPurchaseOps, receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, KITCHEN_KINDS, type ResourceItem, type ResourceMovement,
+  receiptPlan, toBaseQuantity, createdRequestIds, planOf, addToPlanOps, removeFromPlanOps, moveToSupplierOps, type ItemUnitRow,
   taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, consumeCall, confirmConsumptionOps, materialRef,
   type TradeKitOption, taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost, type CostEntry, type MovementCost,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
@@ -338,14 +339,15 @@ export class TasksCore {
   }
 
   /** Artículos y movimientos del espejo de Recursos, para el aviso «Queda poco» de Inicio (síncrono en la interfaz). */
-  inventory: { items: ResourceItem[]; movements: ResourceMovement[]; movementCosts: MovementCost[]; costEntries: CostEntry[] } = { items: [], movements: [], movementCosts: [], costEntries: [] };
+  inventory: { items: ResourceItem[]; movements: ResourceMovement[]; movementCosts: MovementCost[]; costEntries: CostEntry[]; units: ItemUnitRow[] } = { items: [], movements: [], movementCosts: [], costEntries: [], units: [] };
 
   private async readInventory(): Promise<void> {
     if (!this.resources) return;
-    const [items, movements, movementCosts, costEntries] = await Promise.all(['resources.items', 'resources.movements', 'resources.movement_costs', 'resources.cost_entries']
+    const [items, movements, movementCosts, costEntries, units] = await Promise.all(['resources.items', 'resources.movements', 'resources.movement_costs', 'resources.cost_entries', 'resources.item_units']
       .map((table) => this.resources!.list(table as TableName)));
     this.inventory = { items: items as unknown as ResourceItem[], movements: movements as unknown as ResourceMovement[],
-      movementCosts: movementCosts as unknown as MovementCost[], costEntries: costEntries as unknown as CostEntry[] };
+      movementCosts: movementCosts as unknown as MovementCost[], costEntries: costEntries as unknown as CostEntry[],
+      units: (units as unknown as ItemUnitRow[]).filter((u) => !u.deleted_at) };
     this.emit('data');
   }
 
@@ -362,7 +364,12 @@ export class TasksCore {
     if (!spaceId) throw new DomainError(422, 'SPACE_REQUIRED', 'Elige dónde se guarda lo recibido.');
     const id = await stableUuid(`tasks-receipt:${request.id}`);
     if ((await this.resources.list('resources.movements' as TableName)).some((m) => (m as { id?: string }).id === id)) return false;
-    await this.resources.commit([receiptEntryOperation(request, { id, spaceId }) as RowOperation], { requestId: `tasks-receipt-${request.id}` });
+    // Entra lo comprado (envases enteros), en la unidad base del artículo (MUELA-094 §4): lo calcula el dominio.
+    const item = (await this.resources.list('resources.items' as TableName)).find((i) => (i as { id?: string }).id === request.item_id) as { base_unit: string } | undefined;
+    const units = (await this.resources.list('resources.item_units' as TableName)) as unknown as ItemUnitRow[];
+    const op = receiptEntryOperation(request, { id, spaceId, item: item ?? null, units });
+    if (!op) return false;
+    await this.resources.commit([op as RowOperation], { requestId: `tasks-receipt-${request.id}` });
     return true;
   }
 
@@ -681,6 +688,8 @@ const api = {
   purchases: {
     itemStock, isSupplyKind, lowStock, openRequestFor, requestPurchaseOps, reorderItemOps, setPurchaseStatusOps,
     undoPurchaseOps, receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations, KITCHEN_KINDS,
+    // Compras R6 «Estantería» (MUELA-094, §18.10): el envase entero al recibir, añadir y sacar del plan, cambiar de tienda.
+    receiptPlan, toBaseQuantity, createdRequestIds, planOf, addToPlanOps, removeFromPlanOps, moveToSupplierOps,
   },
   /** Regla de nombres de etiquetas (FB_2026_033, §27.2): el aviso inmediato del editor (`public/navigation-ui.js`) y,
    *  con `mergeProblem`, lo que la vista previa de «Repetidas → General» anticipa del servidor (`public/general-ui.js`). */

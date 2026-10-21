@@ -270,7 +270,7 @@ const RULES: Record<TableName, TableRules> = {
   'tasks.purchase_requests': {
     fields: {
       tab_id: uuid(), project_id: nullable(uuid()), task_id: nullable(uuid()), item_id: nullable(uuid()), plan_stop_id: nullable(uuid()),
-      title: text(1, 300, 'REQUIRED_TEXT', 'Escribe qué hay que comprar.'), note, quantity: nullable(quantity), unit: nullable(shortText(20)),
+      title: text(1, 300, 'REQUIRED_TEXT', 'Escribe qué hay que comprar.'), note, quantity: nullable(quantity), unit: nullable(shortText(20)), need_quantity: nullable(quantity),
       estimated_amount: nullable(amount), priority, status: oneOf(['requested', 'approved', 'purchased', 'received', 'rejected'], 'INVALID_STATUS', 'Estado de la solicitud desconocido.'),
       needs_invoice: flag('INVALID_FLAG'), repeat_days: nullable(repeatDays), due: nullable(date),
       supplier_id: nullable(supplierId), supplier_name: nullable(shortText(200)), position,
