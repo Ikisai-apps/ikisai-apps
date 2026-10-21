@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  addToPlanOps, createdRequestIds, moveToSupplierOps, receiptEntryOperation, receiptPlan, removeFromPlanOps, toBaseQuantity,
   deletePlanOps, dueRecurring, nextRecurringOps, preparePlanOps, receivePurchaseOps, requestPurchaseOps, setPurchaseStatusOps, undoPurchaseOps, validateOperations, visibleRow,
 } from '../../packages/domain-tasks/src/index.ts';
 import { createTasksDb, insert, newId, rejects, remove, update, type TasksDb } from './db.ts';
@@ -253,4 +254,90 @@ test('compras · lecturas: tasks.targets con solicitudes de compra (por id y lis
   const guestList = await db.read('tasks.targets', { kind: 'purchase_request', tabId: tab }, guest);
   assert.deepEqual(guestList.items.map((x: any) => x.id), [own], 'un acceso por proyecto solo ve las de su proyecto');
   await rejects(db.read('tasks.targets', { kind: 'purchase_request', id: general }, guest), 'NOT_FOUND');
+});
+
+// --- Compras R6 «Estantería» (MUELA-094, tanda 40) ---------------------------------------------------------------------
+
+const unit = (item: string, u: string, factor: number, extra: Record<string, unknown> = {}) => ({ item_id: item, unit: u, factor, ...extra });
+const req = (extra: Record<string, unknown>) => ({ id: newId(), tab_id: newId(), title: 'Compra', item_id: newId(), quantity: null, unit: null, need_quantity: null, estimated_amount: null, ...extra }) as any;
+
+test('compras · envase entero al recibir: la lejía pide 19 l y entran 20; el butano entra tal cual; los guantes, 2 cajas de 100', () => {
+  const lejia = req({ title: 'Lejía', quantity: 19, unit: 'l', need_quantity: 19 });
+  const units = [unit(lejia.item_id, 'botella de 1 l', 1, { price: 2.1 }), unit(lejia.item_id, 'garrafa de 5 l', 5, { usual: true, price: 9.7 })];
+  const p = receiptPlan(lejia, { base_unit: 'l' }, units)!;
+  assert.deepEqual([p.need, p.bought, p.extra, p.packs, p.pack?.unit, p.amount, p.unitCost], [19, 20, 1, 4, 'garrafa de 5 l', 38.8, 1.94]);
+  const op = receiptEntryOperation(lejia, { id: 'm1', spaceId: 's1', item: { base_unit: 'l' }, units })!;
+  assert.deepEqual([op.fields!.quantity, op.fields!.unit_cost, op.fields!.kind], [20, 1.94, 'entrada_manual'], 'entra lo comprado y el coste es sobre eso');
+  // El butano, sin envase en la ficha: entra lo pedido.
+  const butano = req({ title: 'Butano', quantity: 2, unit: 'ud', estimated_amount: 38.8 });
+  assert.deepEqual(receiptEntryOperation(butano, { id: 'm2', spaceId: 's1', item: { base_unit: 'ud' }, units: [] })!.fields!.quantity, 2);
+  // Los guantes: 165 unidades → 2 cajas de 100; sobran 35.
+  const guantes = req({ title: 'Guantes', quantity: 165, unit: 'ud' });
+  const g = receiptPlan(guantes, { base_unit: 'ud' }, [unit(guantes.item_id, 'caja de 100', 100)])!;
+  assert.deepEqual([g.bought, g.extra, g.packs, g.amount], [200, 35, 2, null], 'sin precio, el importe es null, nunca 0');
+  // Pedido ya en envases: 2 garrafas de 5 l son 10 l.
+  assert.equal(receiptPlan({ ...lejia, quantity: 2, unit: 'Garrafa de 5 l', need_quantity: null }, { base_unit: 'l' }, units)!.bought, 10);
+});
+
+test('compras · la entrada se pasa a la unidad base del artículo; una unidad que no se sabe pasar se rechaza', () => {
+  const cloro = req({ title: 'Cloro', quantity: 2.5, unit: 'kg' });
+  assert.equal(receiptPlan(cloro, { base_unit: 'g' }, [])!.bought, 2500);
+  assert.equal(toBaseQuantity(500, 'ml', 'l'), 0.5);
+  assert.equal(toBaseQuantity(3, '', 'l'), 3);
+  assert.equal(toBaseQuantity(3, 'sacos', 'kg'), null);
+  assert.throws(() => receiptPlan({ ...cloro, unit: 'sacos' }, { base_unit: 'kg' }, []), (e: any) => e.code === 'INVALID_UNIT');
+  // Sin artículo, o sin cantidad, no hay entrada (como antes).
+  assert.equal(receiptPlan({ ...cloro, item_id: null }, { base_unit: 'kg' }, []), null);
+  assert.equal(receiptEntryOperation({ ...cloro, quantity: null }, { id: 'x', spaceId: 's' }), null);
+});
+
+test('compras · R6: «Preparando» al crear, sin lo quitado; añadir y sacar; «Deshacer» borra las recurrentes; no se cambia de tienda en un plan', async () => {
+  const { tab } = await db.area('Estantería');
+  let data = await db.data();
+  const a = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Masilla', supplier_name: 'Ferretería', status: 'approved', need_quantity: 2, quantity: 2, unit: 'ud' }));
+  data = await db.data();
+  assert.equal(Number((await row('tasks.purchase_requests', a[0]!.id!)).need_quantity), 2, 'need_quantity se guarda');
+  const b = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Lejía', supplier_name: 'Droguería', status: 'approved' }));
+  data = await db.data();
+  const recur = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Butano', supplier_name: 'Gasolinera', repeat_days: 30, status: 'approved' }));
+  await db.t.db.exec(`set session_replication_role = replica`);
+  await db.t.db.query(`update tasks.purchase_requests set status = 'received', received_at = now() - interval '40 days' where id = $1`, [recur[0]!.id]);
+  await db.t.db.exec(`set session_replication_role = origin`);
+  data = await db.data();
+  const today = new Date().toISOString().slice(0, 10);
+  // La lejía se quita de la vista previa: no entra.
+  const ops = preparePlanOps(data, { tab_id: tab, title: 'Compra del martes', today, exclude: [b[0]!.id!] });
+  assert.equal(ops[0]!.fields!.status, 'draft', 'hallazgo 1: sin «undefined»');
+  await run(ops);
+  data = await db.data();
+  const planId = ops[0]!.id!;
+  assert.equal((await row('tasks.purchase_plans', planId)).status, 'draft');
+  assert.equal((await row('tasks.purchase_requests', b[0]!.id!)).plan_stop_id, null, 'lo quitado no entra');
+  const created = createdRequestIds(ops);
+  assert.equal(created.length, 1, 'la recurrente que toca se crea al preparar');
+  // No se cambia de tienda una compra que está en un plan.
+  assert.throws(() => moveToSupplierOps(data, a[0]!.id!, { supplier_name: 'Bazar' }), /Está en el plan «Compra del martes»/);
+  assert.deepEqual(moveToSupplierOps(data, b[0]!.id!, { supplier_name: 'Bazar' }).map((o) => o.fields), [{ supplier_name: 'Bazar', supplier_id: null }]);
+  // Añadir la lejía: parada nueva al final (Droguería no estaba); sacarla.
+  const add = addToPlanOps(data, planId, b[0]!.id!);
+  assert.deepEqual(add.map((o) => `${o.op}:${o.table}`), ['insert:tasks.purchase_plan_stops', 'update:tasks.purchase_requests']);
+  await run(add);
+  data = await db.data();
+  assert.throws(() => addToPlanOps(data, planId, b[0]!.id!), /Ya está en un plan/);
+  await run(removeFromPlanOps(data, b[0]!.id!));
+  data = await db.data();
+  assert.equal((await row('tasks.purchase_requests', b[0]!.id!)).plan_stop_id, null);
+  // Comprada no se saca del plan.
+  await run(setPurchaseStatusOps(data, a[0]!.id!, 'purchased'));
+  data = await db.data();
+  assert.throws(() => removeFromPlanOps(data, a[0]!.id!), /Ya está comprada/);
+  assert.throws(() => moveToSupplierOps(data, a[0]!.id!, { supplier_name: 'Bazar' }), /Ya está comprada/);
+  await run(setPurchaseStatusOps(data, a[0]!.id!, 'approved'));
+  data = await db.data();
+  // «Deshacer» de crear el plan: la recurrente que creó va a la papelera; lo demás vuelve a estar sin plan.
+  await run(deletePlanOps(data, planId, { created }));
+  data = await db.data();
+  assert.ok((await row('tasks.purchase_requests', created[0]!)).deleted_at, 'la recurrente creada se borra');
+  assert.equal((await row('tasks.purchase_requests', a[0]!.id!)).plan_stop_id, null);
+  assert.deepEqual(dueRecurring(data, tab, today).map((r) => r.id), [recur[0]!.id], 'vuelve a tocar en el próximo plan');
 });

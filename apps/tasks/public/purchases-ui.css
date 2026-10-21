@@ -29,3 +29,8 @@ html.dark .pstock.alert{color:#f0b58e}
 html.dark .pinvoice{color:#d9e0c3}
 .pcard .pmeta a,#taskOrigin a{color:var(--olive-dark);font-weight:700}
 html.dark .pcard .pmeta a,html.dark #taskOrigin a{color:#d9e0c3}
+/* MUELA-094, hallazgo 6 (medidas): el enlace de cada factura, «Papelera» y «Llegará factura» a 46 px. */
+.pinvoice{display:flex;align-items:center;min-height:46px;box-sizing:border-box}
+#prDelete,#prUndoPurchase{min-height:46px}
+label.checkline:has(#prInvoice){display:flex;align-items:center;gap:10px;min-height:46px}
+#prInvoice{width:24px;height:24px}

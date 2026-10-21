@@ -100,7 +100,7 @@ export interface PurchasePlanRow extends BaseRow { tab_id: Uuid; title: string; 
 export interface PurchasePlanStopRow extends BaseRow { tab_id: Uuid; plan_id: Uuid; supplier_id: string | null; supplier_name: string; position: number; note: string }
 export interface PurchaseRequestRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid | null; task_id: Uuid | null; item_id: Uuid | null; plan_stop_id: Uuid | null;
-  title: string; note: string; quantity: number | null; unit: string | null; estimated_amount: number | null; priority: Priority;
+  title: string; note: string; quantity: number | null; unit: string | null; need_quantity?: number | null; estimated_amount: number | null; priority: Priority;
   status: PurchaseStatus; needs_invoice: boolean; repeat_days: number | null; due: string | null;
   supplier_id: string | null; supplier_name: string | null; approved_at: string | null; purchased_at: string | null; received_at: string | null; position: number;
 }
@@ -180,7 +180,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.task_materials': ['tab_id', 'project_id', 'task_id', 'item_id', 'quantity', 'note', 'consumed', 'position'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
-  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
+  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'need_quantity', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of', 'space_id'],
   'tasks.settings': ['key', 'value'],

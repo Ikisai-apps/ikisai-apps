@@ -943,6 +943,43 @@ Invoices ya asigna líneas a destinos de Tasks (`target_app = 'tasks'`, `target_
 4. Integración con Invoices cuando existan sus tres piezas: destino `purchase_request`, `invoices.allocations_by_target` e `invoices.supplier_options`.
 
 
+### 18.10 Compras R6 «Estantería» (MUELA-094, tanda 40, migración `0340`)
+
+Rediseño de Solicitudes, Suministros y Planes aprobado por VG, con el envase de Recursos (`resources.item_units.usual` y `price`, #695). Interfaz: `public/compras-r6-ui.js` (capa sobre `purchases-ui.js`; quitarla devuelve las pantallas de antes).
+
+**Datos.** `tasks.purchase_requests.need_quantity` (numérico, ≥ 0, opcional): lo que hacía falta, en la unidad base del artículo, aparte de lo que se pide (`quantity` y `unit`). Lo ponen «Pedir lo que falta» (Suministros), «Queda poco: pedir», «Pedir …» de la ficha de la tarea y la siguiente de una recurrente.
+
+**Recibir: entra el envase entero** (`receiptPlan`, `receiptEntryOperation`):
+- la cantidad pedida se pasa a la unidad base del artículo: la base tal cual (o sin unidad), un envase del artículo (× su factor) o una unidad de la misma familia (g/kg, ml/l, ud); si no se sabe pasar, `INVALID_UNIT` y no entra nada;
+- con envase, se compran envases enteros del habitual (`usual`; si no, el primero) y entra eso: la lejía pide 19 l y entran 20 (4 garrafas de 5 l); si la solicitud ya se pide en envases, entran esos;
+- lo que sobra (`bought − need`) se queda en el almacén;
+- importe: el estimado de la solicitud o, sin él, envases × precio del envase; sin precio, `null` (nunca 0); el coste por unidad (`unit_cost`) es el importe ÷ lo que entra;
+- sin `item` (llamadas de antes), entra lo pedido tal cual.
+
+**Planes.**
+- `preparePlanOps` crea el plan con `status: 'draft'` («Preparando» al momento) y acepta `exclude` (ids que no entran: las aprobadas por su id y las recurrentes por el de la recibida).
+- `createdRequestIds(ops)`: las recurrentes que creó ese lote; `deletePlanOps(data, planId, { created })` las manda a la papelera (el «Deshacer» de crear el plan).
+- `addToPlanOps(data, planId, requestId)`: una aprobada sin plan entra en la parada de su tienda o en una nueva al final; un plan terminado no admite nada.
+- `removeFromPlanOps(data, requestId)`: sale del plan; comprada o recibida, no (también lo rechaza el servidor).
+- `planOf(data, request)`: su parada y plan vivos.
+
+**Otra tienda.** `moveToSupplierOps(data, requestId, { supplier_name, supplier_id })`: no se cambia de tienda una compra comprada ni una que está en un plan («Está en el plan «…»: sácala del plan para cambiar de tienda»).
+
+**Cuadre con Finance.** `POST purchases/reconcile` devuelve además `results`: una fila por solicitud con `state` (`ok` cuadrada, `diff` con diferencia, `none` sin factura o sin acceso a Finance, `error` no se pudo), `invoiced`, `estimated`, `diff` y `codes`. Si falla el lote de Recursos, las que tenían factura vuelven con `error` (200). La app:
+- enseña el cuadre en la baldosa («Llegará factura», «Factura F-…»), en «En casa», en el aviso al recibir y arriba en la hoja de la solicitud; las cifras solo con la lectura de Finance;
+- si falla o no hay red, apunta los ids en una cola del dispositivo (`localStorage`, `tasks.compras.cuadre_pendiente`) y los reintenta al volver la red o al abrir Compras (como mucho cada 30 s); «Reintentar» lo hace a mano y devuelve el foco al bloque del cuadre.
+
+**PURCHASE_INVOICED sin red.** Si el servidor rechaza «No se compró» o la casilla de una compra con factura que el dispositivo no conocía, la app descarta ese lote (la compra vuelve a «comprada») y dice «Ya está ligada a una factura: corrígelo en Finance».
+
+**Pantallas** (decisiones de VG y de Sevilla del 20-10):
+- Solicitudes: una estantería por tienda (`createShelves`); el conmutador «Por estado / Por proveedor» se quita.
+  - Tocar la baldosa hace lo siguiente: aprobar y comprar con «Deshacer» (sin «Deshacer» si ya se sabe la factura); «ha llegado» abre una confirmación corta («Entran 4 garrafas de 5 l (20 l) en Almacén») con «Recibida» y «¿Dónde se guarda?» si hace falta.
+  - «Aprobar las N» es un solo lote con un solo «Deshacer».
+  - «⋯» o la pulsación larga: lo siguiente, Rechazar, el envase, «Mover a otra tienda» y Detalles (la hoja de siempre).
+- Suministros: una estantería por sitio con el nivel. Tocar = −1, y su «Deshacer» apunta el movimiento contrario (con lotes, el formulario de gastar). Otro sitio cambia `default_space_id` y abre el traslado del kit (por sitio y lote). El catálogo de siempre sigue al pie. El lector no tiene mandos.
+- Planes: «Lo que entrará al preparar», con las recurrentes que tocan y × para quitar. Cada plan es plegable, con paradas, casillas de 46 px, × para sacar y «+ Añadir al plan». «Ordenar, imprimir o terminar» abre la hoja de siempre.
+- Fichas: cada material dice si está en casa y dónde, o «En casa 3 l: faltan 15 l» con «Pedir 1 bote de 15 l» (sin precio). En «Confirmar consumo», − y + suman a lo escrito. El coste lleva arriba las cifras del kit (solo quien ve importes).
+
 ## 19. Trabajo pedido desde otras apps (petición P5 de Central; visto bueno de Core en la ronda 36, construido el 7 de octubre de 2026)
 
 Central quiere crear tareas en Tasks desde su módulo de cumplimiento, sin duplicarlas al reintentar, y leer el estado de varias a la vez. Lo hace con el token de la persona, como Invoices con `tasks.targets`.
@@ -1925,7 +1962,7 @@ Sustituye el almacén de §18.2 (`tasks.supply_items` y `tasks.supply_movements`
   - La ruta lee `invoices.tasks_resource_entries` (Finance, 0239) y manda en un lote de Recursos `resources.reconcile_entries` (`source_app 'invoices'`) y los costes de las entradas (`movement_costs`), con el mismo id estable que usa Finance. Es lo mismo que hace su Edge (`reconcileResourceEntries`).
   - Resultado: la entrada de la factura se queda en lo que no entró ya, y su coste pasa a la entrada de Tasks.
   - Repetirlo no cambia nada: un coste ya apuntado no se vuelve a insertar.
-  - Un fallo no deshace la recepción: la app lo anota en la consola y sigue.
+  - Un fallo no deshace la recepción. Desde la tanda 40 (§18.10) la ruta devuelve el resultado por solicitud, y la app lo enseña, lo apunta en su cola y lo reintenta (antes solo quedaba en la consola).
   - Prueba: `tests/tasks/receipts.test.ts`.
 - **Copia portable y CSV:** no llevan los materiales ni los costes a mano, porque son del inventario de la casa (Recursos). Lo dicen la hoja de importar y el aviso al descargar.
 

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
+import { reconcileResults } from '../../supabase/functions/tasks-api/receipts.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
@@ -56,6 +57,9 @@ test('orden inverso: validada antes de recibir; al recibir y cuadrar, el stock s
   assert.equal(await stock(), 8, 'antes de cuadrar, entraría dos veces');
   const out = await reconcile([REQUEST]);
   assert.equal(out.status, 200, JSON.stringify(out.data));
+  // MUELA-094: una fila por solicitud, nunca «error» si el cuadre se hizo.
+  assert.deepEqual(out.data.results.map((r: any) => r.id), [REQUEST]);
+  assert.notEqual(out.data.results[0].state, 'error');
   assert.equal(await stock(), 4, 'la factura se queda en lo que no entró ya');
   const costs = (await sql(`select unit_cost::text c, source_ref from resources.movement_costs where movement_id = $1 and deleted_at is null`, [tasksEntry])).rows;
   assert.deepEqual(costs.map((c: any) => [Number(c.c), c.source_ref]), [[1.5, `invoice_line:${LINE}`]], 'el coste de la factura pasa a la entrada de Tasks');
@@ -70,8 +74,23 @@ test('orden inverso: validada antes de recibir; al recibir y cuadrar, el stock s
 
 test('orden inverso: sin factura asignada no hay nada que cuadrar; ids inválidos y lector, rechazados', async () => {
   const out = await reconcile([OTHER_REQUEST]);
-  assert.deepEqual([out.status, out.data], [200, { movements: 0, costs: 0 }]);
+  // MUELA-094: además, el resultado por solicitud; sin factura, «none».
+  assert.deepEqual([out.status, out.data], [200, { movements: 0, costs: 0, results: [{ id: OTHER_REQUEST, state: 'none', invoiced: null, estimated: null, diff: null, codes: [] }] }]);
   assert.equal((await reconcile(['no-es-un-id'])).status, 422);
   assert.equal((await reconcile([])).status, 422);
   assert.equal((await reconcile([REQUEST], app.tokens.reader)).status, 403);
+});
+
+test('MUELA-094 · el resultado del cuadre por solicitud: cuadrada, con diferencia, sin factura y error', () => {
+  const rows = [
+    { target_id: 'a', invoice_code: 'F-2026-0412', allocated_amount: 38.8 },
+    { target_id: 'b', invoice_code: 'F-2026-0377', allocated_amount: 4 }, { target_id: 'b', invoice_code: 'F-2026-0377', allocated_amount: '3.40' },
+  ];
+  const est = new Map<string, number | null>([['a', 38.8], ['b', 6.9], ['c', 10]]);
+  assert.deepEqual(reconcileResults(['a', 'b', 'c'], rows, est).map((r) => [r.id, r.state, r.invoiced, r.diff, r.codes]), [
+    ['a', 'ok', 38.8, 0, ['F-2026-0412']], ['b', 'diff', 7.4, 0.5, ['F-2026-0377']], ['c', 'none', null, null, []],
+  ]);
+  // Sin previsto, lo facturado cuadra; si el lote falla, las que tenían factura salen con «error» y las demás, «none».
+  assert.equal(reconcileResults(['a'], rows, new Map())[0]!.state, 'ok');
+  assert.deepEqual(reconcileResults(['a', 'c'], rows, est, true).map((r) => r.state), ['error', 'none']);
 });
