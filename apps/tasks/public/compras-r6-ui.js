@@ -117,6 +117,7 @@ async function tcrReceiveConfirm(r){let it=tcrItem(r.item_id);const entry=!!r.it
   if(entry&&!it&&Sync.core?.resources&&navigator.onLine){try{await Sync.core.resources.sync();it=(await Sync.core.resources.list('resources.items')).find(i=>i.id===r.item_id)}catch{}}
   const needSpace=entry&&!it?.default_space_id,rows=needSpace&&typeof spaceRows==='function'?spaceRows().filter(s=>s.active!==false):[];
   let problem='';try{if(entry&&it)tcrP().receiptPlan(r,it,tcrFormats(r.item_id))}catch(e){problem=e.message}
+  IkisaiKit.hideToast();
   openSheet(`<h2 class="sheettitle">¿Ha llegado «${esc(r.title)}»?</h2><p class="tcr-entry" id="tcrEntryText">${esc(problem||(needSpace?tcrEntryText(r,null).replace(' en el almacén','').replace(/\.$/,'')+'.':tcrEntryText(r,null)))}</p>
     ${needSpace?`<div class="field"><label for="receiptSpace">¿Dónde se guarda?</label><select id="receiptSpace" data-feedback-id="tasks.compras.recibir.sitio" data-feedback-label="Dónde se guarda"><option value="">Elige un sitio…</option>${rows.map(s=>`<option value="${esc(s.id)}">${esc(spaceShort(s.id)||s.name)}</option>`).join('')}</select></div>`:''}
     <div class="actions"><button class="primary" id="tcrReceiveOk" type="button" ${problem?'disabled':''} data-feedback-id="tasks.compras.recibir.confirmar" data-feedback-label="Recibida">Recibida</button><button class="ghost" id="tcrReceiveCancel" type="button" data-feedback-id="tasks.compras.recibir.cancelar" data-feedback-label="Cancelar">Cancelar</button></div>`);
@@ -206,7 +207,7 @@ function tcrMountPurchases(){const host=document.getElementById('tcrPurchases');
   const all=tcrRequests().sort((a,b)=>(a.position||0)-(b.position||0)),open=all.filter(r=>['requested','approved','purchased'].includes(r.status)),by=s=>open.filter(r=>r.status===s);
   const req=by('requested'),app=by('approved'),pur=by('purchased'),done=all.filter(r=>r.status==='received').sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||'')).slice(0,20),rej=all.filter(r=>r.status==='rejected');
   const keep=open.filter(r=>{const p=tcrPack(r);return p.rp&&p.rp.extra>0}).length;
-  const hint=list=>{const s=tcrSum(list);return s==null?null:tcrEuro(s)};
+  const hint=list=>{const s=tcrSum(list);return s?tcrEuro(s):null};
   const stats=tcrKit().renderStats([{value:req.length,label:'por aprobar',hint:hint(req),tone:req.length?'warn':null},{value:app.length,label:'por comprar',hint:hint(app)},{value:pur.length,label:'por recibir',hint:hint(pur)},{value:keep,label:'dejan sobra',hint:TCR_KEEP}],{label:'Compras abiertas'});
   const ORDER={requested:0,approved:1,purchased:2};
   const sups=[...new Set(open.map(tcrSupplierOf))].sort((a,b)=>(a==='Sin tienda')-(b==='Sin tienda')||open.filter(r=>tcrSupplierOf(r)===b).length-open.filter(r=>tcrSupplierOf(r)===a).length||a.localeCompare(b,'es'));
@@ -360,7 +361,7 @@ function tcrMountPlans(){const host=document.getElementById('tcrPlans');if(!host
   const ids=new Set([...loose,...due].map(r=>r.id));for(const id of [...tcrSkip])if(!ids.has(id))tcrSkip.delete(id);
   const pick=[...loose,...due].filter(r=>!tcrSkip.has(r.id)),money=tcrMoney(),edit=canApprovePurchases()&&canEdit();
   const plans=liveRows('tasks.purchase_plans').filter(p=>p.tab_id===tab().id).sort((a,b)=>({shopping:0,draft:1,done:2}[a.status||'draft']-{shopping:0,draft:1,done:2}[b.status||'draft'])||(b.created_at||'').localeCompare(a.created_at||''));
-  const sum=list=>money?' · '+tcrEuro(list.reduce((n,r)=>n+(tcrAmount(r)||0),0)):'';
+  const sum=list=>{if(!money)return '';const t=list.reduce((n,r)=>n+(tcrAmount(r)||0),0);return t?' · '+tcrEuro(t):''};
   const pill=(r,rec)=>`<li><span class="tcr-pill ${tcrSkip.has(r.id)?'is-off':''}">${esc(r.title)} · ${esc(tcrSupplierOf(r))}${rec?' · recurrente':''}<button type="button" class="iconbtn" data-tcr-skip="${r.id}" aria-pressed="${tcrSkip.has(r.id)}" aria-label="${tcrSkip.has(r.id)?'Volver a meter':'Quitar'}: ${esc(r.title)}" data-feedback-id="tasks.planes.preparar.quitar" data-feedback-label="Quitar de lo que entrará">${tcrSkip.has(r.id)?'+':'×'}</button></span></li>`;
   const card=(p,i)=>{const stops=tcrPlanStops(p.id),items=stops.flatMap(x=>x.items),got=items.filter(r=>['purchased','received'].includes(r.status)).length,editable=p.status!=='done'&&canEdit();
     const shops=stops.filter(x=>x.s.supplier_name!=='Sin proveedor').length,open=tcrOpenPlans.has(p.id)||(!tcrOpenPlans.size&&p.status!=='done'&&(i===0||p.status==='shopping'));
