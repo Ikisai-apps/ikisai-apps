@@ -45,6 +45,15 @@ const go = (page: Page, view: string) => page.evaluate((v) => navigateView(v), v
 const sync = async (page: Page) => { await settled(page); await page.evaluate(() => (window as any).syncNow?.()); await settled(page); };
 const close = (page: Page) => page.evaluate(() => (window as any).closeSheet());
 const request = (page: Page, title: string) => page.locator('[data-purchase]', { hasText: title });
+// Compras R6 «Estantería» (MUELA-094): tocar la baldosa hace lo siguiente; la hoja de siempre está en «⋯ › Detalles».
+// En «En casa» y «Ver rechazadas», tocar la abre directamente.
+const openRequest = async (page: Page, title: string, has?: string) => {
+  let el = page.locator('[data-purchase]', { hasText: title });
+  if (has) el = el.filter({ hasText: has });
+  el = el.first();
+  if (await el.locator('.tile-more').count()) { await el.locator('.tile-more').click(); await page.locator('#tcrDetails').click(); } else await el.click();
+  await expect(page.locator('#prTitle')).toBeVisible();
+};
 const shot = async (name: string) => { await owner.waitForTimeout(450); await owner.screenshot({ path: `../coordinacion/tasks/r6-despues/${name}.png` }).catch(() => {}); };
 const serverRequest = async (title: string) => (await server.rows('tasks.purchase_requests')).filter((r) => r.title === title && !r.deleted_at);
 const LEJIA = crypto.randomUUID(), BOMBILLAS = crypto.randomUUID(), ALMACEN = crypto.randomUUID();
@@ -131,21 +140,24 @@ test('solicitud: pedir con proyecto y repetición, aprobar, marcar comprada, rec
   const projectTitle = await owner.evaluate((id) => (window as any).tab().projects.find((p: any) => p.id === id).title, project);
   await ask(owner, { title: 'Pastillas de cloro', quantity: '5', unit: 'kg', supplier: 'Piscinas Norte', project, repeat: '30' });
   await expect(request(owner, 'Pastillas de cloro')).toContainText('Pedida');
-  await expect(request(owner, 'Pastillas de cloro').locator('.pmeta')).toHaveText(`5 kg · Piscinas Norte · ${projectTitle} · cada 30 días`);
+  // R6: la tienda es la estantería; en la baldosa, lo que se compra, el proyecto y la repetición.
+  await expect(owner.locator('.shelf-row[data-shelf-row="Piscinas Norte"]').locator('[data-purchase]', { hasText: 'Pastillas de cloro' })).toHaveCount(1);
+  await expect(request(owner, 'Pastillas de cloro').locator('.tile-value')).toHaveText('5 kg');
+  await expect(request(owner, 'Pastillas de cloro').locator('.tcr-meta')).toHaveText(`${projectTitle} · cada 30 días`);
   await expect(owner.locator('main.purchases .subtitle')).toContainText('1 abiertas · aprueba la propietaria');
   await shot('4-solicitudes');
 
   // Sin responsable de compras, aprueba la propietaria.
-  await request(owner, 'Pastillas de cloro').click();
+  await openRequest(owner, 'Pastillas de cloro');
   await shot('5-hoja-solicitud');
   await owner.locator('#prApprove').click();
   await expect(request(owner, 'Pastillas de cloro')).toContainText('Aprobada');
-  await request(owner, 'Pastillas de cloro').click();
+  await openRequest(owner, 'Pastillas de cloro');
   await expect(owner.locator('#prSave')).toHaveCount(1);
   await owner.locator('#prPurchased').click();
   await expect(request(owner, 'Pastillas de cloro')).toContainText('Comprada');
   // Comprada: ya no se edita.
-  await request(owner, 'Pastillas de cloro').click();
+  await openRequest(owner, 'Pastillas de cloro');
   await expect(owner.locator('#prSave')).toHaveCount(0);
   await expect(owner.locator('#prTitle')).toBeDisabled();
   await expect(owner.locator('#prDelete')).toHaveCount(0);
@@ -162,9 +174,11 @@ test('solicitud: pedir con proyecto y repetición, aprobar, marcar comprada, rec
   const days = (Date.parse(String(next.due).slice(0, 10)) - Date.parse(new Date().toISOString().slice(0, 10))) / 86_400_000;
   expect(days).toBeGreaterThanOrEqual(29);
   expect(days).toBeLessThanOrEqual(31);
-  await expect(owner.locator('main.purchases .sectionlabel', { hasText: 'Recibidas' })).toHaveCount(1);
+  // R6: las recibidas van a «En casa», plegado.
+  await expect(owner.locator('.tcr-done summary')).toHaveText('En casa · 1');
+  await owner.locator('.tcr-done summary').click();
   // Desde la recibida también se puede pedir la siguiente.
-  await owner.locator('[data-purchase]', { hasText: 'Pastillas de cloro' }).filter({ hasText: 'Recibida' }).click();
+  await openRequest(owner, 'Pastillas de cloro', 'Recibida');
   await expect(owner.locator('#prNext')).toHaveCount(1);
   await close(owner);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
@@ -172,7 +186,7 @@ test('solicitud: pedir con proyecto y repetición, aprobar, marcar comprada, rec
 
 test('solicitud: rechazar la esconde tras «Ver rechazadas»; la papelera la quita', async () => {
   await ask(owner, { title: 'Sombrillas nuevas' });
-  await request(owner, 'Sombrillas nuevas').click();
+  await openRequest(owner, 'Sombrillas nuevas');
   await owner.locator('#prReject').click();
   await expect(request(owner, 'Sombrillas nuevas')).toHaveCount(0);
   await expect(owner.locator('#toggleRejectedPurchases')).toHaveText('Ver rechazadas (1)');
@@ -182,7 +196,7 @@ test('solicitud: rechazar la esconde tras «Ver rechazadas»; la papelera la qui
   await expect(owner.locator('#toggleRejectedPurchases')).toHaveText('Ver rechazadas (1)');
 
   await ask(owner, { title: 'Pedido por error' });
-  await request(owner, 'Pedido por error').click();
+  await openRequest(owner, 'Pedido por error');
   await owner.locator('#prDelete').click();
   await expect(request(owner, 'Pedido por error')).toHaveCount(0);
   await settled(owner);
@@ -194,15 +208,16 @@ test('planes: preparar, salir de compras y terminar; quitar un plan devuelve sus
   for (const title of ['Pastillas de cloro', 'Cinta americana']) {
     if (title === 'Cinta americana') await ask(owner, { title, quantity: '3', supplier: 'Ferretería Centro' });
     await go(owner, 'purchases');
-    await request(owner, title).filter({ hasText: 'Pedida' }).click();
+    await openRequest(owner, title, 'Pedida');
     await owner.locator('#prApprove').click();
   }
   await go(owner, 'plans');
   await expect(owner.locator('main.plans .subtitle')).toContainText('2 aprobadas sin plan');
   await owner.locator('#preparePlan').click();
   await expect(owner.locator('[data-plan]')).toHaveCount(1);
-  await expect(owner.locator('[data-plan]')).toContainText('Preparando');
-  await expect(owner.locator('[data-plan] .pmeta')).toContainText('2 proveedores');
+  // R6: cada plan es plegable; «Preparando» al momento y «2 tiendas» (hallazgos 1 y 2 de la 094).
+  await expect(owner.locator('[data-plan-card]')).toContainText('Preparando');
+  await expect(owner.locator('[data-plan-card] summary')).toContainText('2 tiendas');
   await expect(owner.locator('main.plans .subtitle')).toContainText('0 aprobadas sin plan');
   await shot('6-planes');
   await owner.locator('[data-plan]').click();
@@ -213,7 +228,7 @@ test('planes: preparar, salir de compras y terminar; quitar un plan devuelve sus
   // Con algo comprado ya no se quita: se termina.
   await owner.locator('[data-stop]', { hasText: 'Ferretería Centro' }).locator('[data-route-item]').check();
   await owner.locator('#planDone').click();
-  await expect(owner.locator('[data-plan]')).toContainText('Terminado');
+  await expect(owner.locator('[data-plan-card]')).toContainText('Terminado');
   await owner.locator('[data-plan]').click();
   await expect(owner.locator('#planDone')).toHaveCount(0);
   await expect(owner.locator('[data-route-item]').first()).toBeDisabled();
@@ -223,13 +238,13 @@ test('planes: preparar, salir de compras y terminar; quitar un plan devuelve sus
 
   // Un plan sin nada comprado se quita y lo suyo vuelve a «aprobadas sin plan».
   await ask(owner, { title: 'Guantes', supplier: 'Ferretería Centro' });
-  await request(owner, 'Guantes').click();
+  await openRequest(owner, 'Guantes');
   await owner.locator('#prApprove').click();
   await go(owner, 'plans');
   await expect(owner.locator('main.plans .subtitle')).toContainText('1 aprobadas sin plan');
   await owner.locator('#preparePlan').click();
   await expect(owner.locator('[data-plan]')).toHaveCount(2);
-  await owner.locator('[data-plan]', { hasText: 'Preparando' }).click();
+  await owner.locator('[data-plan-card][data-status="draft"] [data-plan]').click();
   await owner.locator('#planDelete').click();
   await expect(owner.locator('[data-plan]')).toHaveCount(1);
   await expect(owner.locator('main.plans .subtitle')).toContainText('1 aprobadas sin plan');
@@ -251,7 +266,7 @@ test('lectura: ve el almacén, las solicitudes y los planes, sin botones para ca
   await expect(reader.locator('.stk-row button', { hasText: /^(Gastar|Entrada|Contar|Queda poco: pedir)$/ })).toHaveCount(0);
   await go(reader, 'purchases');
   await expect(reader.locator('#newPurchase')).toHaveCount(0);
-  await request(reader, 'Guantes').click();
+  await openRequest(reader, 'Guantes');
   await expect(reader.locator('#prTitle')).toBeDisabled();
   await expect(reader.locator('#prSave, #prApprove, #prReject, #prPurchased, #prDelete')).toHaveCount(0);
   await close(reader);

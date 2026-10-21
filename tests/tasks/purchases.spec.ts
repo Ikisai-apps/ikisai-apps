@@ -32,6 +32,15 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => { await contextA?.close(); await contextB?.close(); await server?.close(); });
 
 const go = (page: Page, view: string) => page.evaluate((v) => navigateView(v), view);
+// Compras R6 «Estantería» (MUELA-094): tocar la baldosa hace lo siguiente; la hoja de siempre está en «⋯ › Detalles».
+// En «En casa» y «Ver rechazadas», tocar la abre directamente.
+const openRequest = async (page: Page, title: string, has?: string) => {
+  let el = page.locator('[data-purchase]', { hasText: title });
+  if (has) el = el.filter({ hasText: has });
+  el = el.first();
+  if (await el.locator('.tile-more').count()) { await el.locator('.tile-more').click(); await page.locator('#tcrDetails').click(); } else await el.click();
+  await expect(page.locator('#prTitle')).toBeVisible();
+};
 const syncBoth = async () => { await settled(owner); await editor.evaluate(() => (window as any).syncNow?.()); await settled(editor); };
 // R6: el almacén es el inventario común de Recursos (piezas del kit). Conductor: el artículo nace en Recursos por la API (como
 // si lo diera de alta otra app o la ficha del kit), el segundo cliente se pone al día a mano y los movimientos van por el kit.
@@ -95,7 +104,7 @@ test('solo el responsable aprueba; el plan agrupa por proveedor y se reordena', 
   await owner.locator('#prQuantity').fill('6');
   await owner.locator('#prSupplier').fill('Ferretería Centro');
   await owner.locator('#prSave').click();
-  await owner.locator('[data-purchase]', { hasText: 'Bombillas LED' }).click();
+  await openRequest(owner, 'Bombillas LED');
   await expect(owner.locator('#prApprove')).toHaveCount(0);
   await owner.evaluate(() => (window as any).closeSheet());
   await go(owner, 'plans');
@@ -104,7 +113,7 @@ test('solo el responsable aprueba; el plan agrupa por proveedor y se reordena', 
 
   await go(editor, 'purchases');
   for (const title of ['Cloro granulado', 'Bombillas LED']) {
-    await editor.locator('[data-purchase]', { hasText: title }).click();
+    await openRequest(editor, title);
     await editor.locator('#prApprove').click();
     await expect(editor.locator('[data-purchase]', { hasText: title })).toContainText('Aprobada');
   }
@@ -139,13 +148,13 @@ test('«No se compró» tras terminar el plan por error, con «Deshacer», y «R
   expect([(await bombillas()).status, stop]).toEqual(['purchased', expect.any(String)]);
   // En la ficha, «No se compró»: vuelve a aprobada y sale del plan terminado; «Deshacer» la deja como estaba.
   await go(editor, 'purchases');
-  await editor.locator('[data-purchase]', { hasText: 'Bombillas LED' }).click();
+  await openRequest(editor, 'Bombillas LED');
   await expect(editor.locator('#prInvoiced')).toHaveCount(0);
   await editor.locator('#prUndoPurchase').click();
   await editor.getByRole('button', { name: 'Deshacer' }).click();
   await settled(editor);
   await expect.poll(async () => { const r = await bombillas(); return [r.status, r.plan_stop_id]; }).toEqual(['purchased', stop]);
-  await editor.locator('[data-purchase]', { hasText: 'Bombillas LED' }).click();
+  await openRequest(editor, 'Bombillas LED');
   await editor.locator('#prUndoPurchase').click();
   await settled(editor);
   await expect.poll(async () => { const r = await bombillas(); return [r.status, r.plan_stop_id, r.purchased_at]; }).toEqual(['approved', null, null]);
@@ -163,7 +172,7 @@ test('«No se compró» tras terminar el plan por error, con «Deshacer», y «R
 
 test('recibir suma al almacén y quita el aviso', async () => {
   await go(editor, 'purchases');
-  await editor.locator('[data-purchase]', { hasText: 'Cloro granulado' }).click();
+  await openRequest(editor, 'Cloro granulado');
   await editor.locator('#prReceive').click();
   // La entrada va a Recursos, en el sitio habitual del artículo, una sola vez.
   await expect.poll(() => stock(CLORO)).toBe(13);
@@ -215,8 +224,10 @@ test('Finance: factura asignada en la solicitud y proveedor del catálogo (con n
     await route.fulfill({ json: { items: all.filter((x) => !q || x.name.toLowerCase().includes(q)) } });
   });
   await go(owner, 'purchases');
-  await expect(owner.locator('[data-purchase]', { hasText: 'Cloro granulado' })).toContainText('Factura F-2026-0042');
-  await owner.locator('[data-purchase]', { hasText: 'Cloro granulado' }).click();
+  // R6: la recibida está en «En casa», con su cuadre (antes, «Factura F-…» en la fila).
+  await owner.locator('.tcr-done summary').click();
+  await expect(owner.locator('[data-purchase]', { hasText: 'Cloro granulado' })).toContainText('Cuadrada con F-2026-0042');
+  await openRequest(owner, 'Cloro granulado');
   const link = owner.locator('.pinvoice');
   await expect(link).toContainText('F-2026-0042');
   await expect(link).toHaveAttribute('href', 'https://finance.ikisai.com/#/facturas/F-2026-0042');
@@ -398,17 +409,14 @@ test('«Por clasificar» siempre a mano para la propietaria, y aviso del área d
 });
 
 test('compras por proveedor (8-10-2026): lo pendiente de cada proveedor, esté o no en un plan', async () => {
+  // R6 (MUELA-094, decisión de VG): el conmutador «Por estado / Por proveedor» se quita; siempre una estantería por tienda.
   await go(owner, 'purchases');
-  await owner.locator('[data-purchase-grouping="supplier"]').click();
-  await expect(owner.locator('[data-purchase-grouping="supplier"]')).toHaveAttribute('aria-pressed', 'true');
-  const labels = await owner.locator('main.purchases .sectionlabel').allTextContents();
+  await expect(owner.locator('[data-purchase-grouping]')).toHaveCount(0);
+  const labels = await owner.locator('main.purchases .shelf-row h3').allTextContents();
   expect(labels.some((l) => /Ferretería Centro/.test(l)), labels.join(' | ')).toBe(true);
   expect(labels.every((l) => !/^\s*(Pedidas|Aprobadas|Compradas)\b/.test(l)), 'sin las secciones por estado').toBe(true);
-  // Se recuerda en el dispositivo.
-  await go(owner, 'home');
-  await go(owner, 'purchases');
-  await expect(owner.locator('[data-purchase-grouping="supplier"]')).toHaveAttribute('aria-pressed', 'true');
-  await owner.locator('[data-purchase-grouping="status"]').click();
+  // Lo pendiente de cada tienda, en su estantería.
+  await expect(owner.locator('.shelf-row[data-shelf-row="Ferretería Centro"] [data-purchase]', { hasText: 'Bombillas LED' })).toHaveCount(1);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 

@@ -8,3 +8,6 @@
 .costadd{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .costadd input:first-child{flex:1 1 180px}
 .costadd input[type=number]{width:96px}
+/* MUELA-094, hallazgo 6 (medidas): la × de cada línea, los campos y «Añadir coste» a 46 px. */
+.costline .iconbtn{min-width:46px;min-height:46px}
+.costadd input,.costadd button{min-height:46px;box-sizing:border-box}
