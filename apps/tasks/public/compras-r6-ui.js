@@ -56,9 +56,12 @@ async function tcrReconcile(ids){ids=[...new Set(ids)].filter(Boolean);if(!ids.l
   try{await Sync.core.resources?.sync()}catch{}
   return results}
 /* Al volver la red (o al abrir Compras con algo en la cola), se reintenta solo. */
-function tcrFlush(){const q=tcrQueue();if(!q.length||!navigator.onLine||!Sync.core||!Sync.ready||tcrInFlight)return;
-  tcrInFlight=tcrReconcile(q).finally(()=>{tcrInFlight=null;if(PURCHASE_VIEWS.includes(state.view)&&!document.getElementById('sheetBack')?.classList.contains('show'))render()})}
-window.addEventListener('online',()=>setTimeout(tcrFlush,800));
+/* Como mucho un intento cada 30 s al abrir Compras (si el servicio falla, no se insiste en bucle); al volver la red, ya. */
+let tcrLastFlush=0;
+function tcrFlush(force=false){const q=tcrQueue();if(!q.length||!navigator.onLine||!Sync.core||!Sync.ready||tcrInFlight)return;
+  if(!force&&Date.now()-tcrLastFlush<30000)return;tcrLastFlush=Date.now();
+  tcrInFlight=tcrReconcile(q).then(res=>{if(res.some(r=>r.state!=='error')&&PURCHASE_VIEWS.includes(state.view)&&!document.getElementById('sheetBack')?.classList.contains('show'))render()}).finally(()=>{tcrInFlight=null})}
+window.addEventListener('online',()=>setTimeout(()=>tcrFlush(true),800));
 reconcileReceipt=async function(id){return tcrReconcile([id])};
 
 /* Lo que dice el cuadre de una solicitud. Las cifras solo salen con la lectura de Finance (facturas o resultado del cuadre). */
@@ -208,7 +211,7 @@ function tcrMountPurchases(){const host=document.getElementById('tcrPurchases');
   const ORDER={requested:0,approved:1,purchased:2};
   const sups=[...new Set(open.map(tcrSupplierOf))].sort((a,b)=>(a==='Sin tienda')-(b==='Sin tienda')||open.filter(r=>tcrSupplierOf(r)===b).length-open.filter(r=>tcrSupplierOf(r)===a).length||a.localeCompare(b,'es'));
   const rows=sups.map(s=>{const list=open.filter(r=>tcrSupplierOf(r)===s).sort((a,b)=>ORDER[a.status]-ORDER[b.status]),n=list.filter(r=>r.status==='requested').length,sum=tcrSum(list);
-    return {key:s,label:s,medal:s==='Sin tienda'?{icon:'cart'}:{},sub:`${tcrPlural(list.length,'cosa','cosas')}${sum!=null?' · '+tcrEuro(sum):''}${n?` · ${n} por aprobar`:''}`,items:list}});
+    return {key:s,label:s,medal:s==='Sin tienda'?{icon:'cart'}:{},sub:`${tcrPlural(list.length,'cosa','cosas')}${sum?' · '+tcrEuro(sum):''}${n?` · ${n} por aprobar`:''}`,items:list}});
   host.innerHTML=`<div class="tcr-top"></div>
     ${canApprovePurchases()&&canEdit()&&req.length?`<div class="tcr-banner" role="region" aria-label="Te toca aprobar"><span><b>Te toca aprobar · ${req.length}</b>${hint(req)?' · '+esc(hint(req)):''}</span><button class="primary" type="button" id="tcrApproveAll" data-feedback-id="tasks.compras.aprobar_todas" data-feedback-label="Aprobar todas">✓ Aprobar ${req.length===1?'la 1':'las '+req.length}</button></div>`:''}
     ${!canApprovePurchases()&&canEdit()&&req.length?`<p class="tcr-howto">Aprueba ${esc(approverName(tab().id))}.</p>`:''}
@@ -312,7 +315,7 @@ async function tcrSupplyMove(itemId,fromKey,row){const it=tcrItem(itemId),res=Sy
   usage.track('tasks.suministros.otro_sitio');
   offerLocalUndo(`${it.name} se guarda ahora en ${row.label}.`,async()=>{const now=(await res.list('resources.items')).find(i=>i.id===itemId);if(now)res.commit([{op:'update',table:'resources.items',id:itemId,expectedRevision:now.revision??0,fields:{default_space_id:before}}]).catch(e=>toast(e.message))});
   const left=fromKey?tcrStockBySpace(itemId).get(fromKey)||0:0;
-  if(left>0&&to)inventorySheet(`Trasladar · ${it.name}`,done=>IkisaiKit.createMovementForm({source:src.items,spaces:src.spaces,itemId,spaceId:fromKey,mode:'transfer',modes:['transfer'],sourceApp:'tasks',feedbackId:'tasks.suministros.traslado',onDone:done,onCancel:done}))}
+  if(left>0&&to)inventorySheet(`Trasladar · ${it.name}`,done=>IkisaiKit.createMovementForm({source:src.items,spaces:src.spaces,itemId,spaceId:fromKey,mode:'transfer',modes:['transfer'],quickSpaces:[to],sourceApp:'tasks',feedbackId:'tasks.suministros.traslado',onDone:done,onCancel:done}))}
 /* Pedir lo que falta: una solicitud por artículo con lo que hace falta (el envase lo redondea al recibir), con «Deshacer». */
 function tcrOrder(list){const made=[];
   for(const x of list){if(!x?.need||x.open)continue;const id=crypto.randomUUID(),it=x.item;
@@ -321,6 +324,7 @@ function tcrOrder(list){const made=[];
   offerLocalUndo(made.length===1?`Pedido: ${list.find(x=>x.need&&!x.open)?.item.name}.`:`Pedidas ${made.length} cosas.`,()=>{const rows=liveRows('tasks.purchase_requests').filter(r=>made.includes(r.id)&&r.status==='requested');
     purchaseCommit(rows.map(r=>({op:'delete',table:'tasks.purchase_requests',id:r.id,expectedRevision:r.revision})),'Pedido deshecho.')})}
 function tcrSupplyMore(itemId){const it=tcrItem(itemId);if(!it)return;const x=tcrSupplyInfo(it),kitItem=IkisaiKit.itemFromRow(it);
+  const shelved=tcrSupplyShelves?.getRows().flatMap(r=>r.items).find(y=>y.item.id===itemId)||null,canMove=!!shelved&&(tcrSupplyShelves.moveTargets(shelved).length>0);
   openSheet(`<h2 class="sheettitle">${esc(it.name)}</h2><p class="small">Quedan ${esc(tcrNum(x.stock))} ${esc(it.base_unit||'')}${x.min?` · mín. ${esc(tcrNum(x.min))}`:''}</p>
     <div class="menulist tcr-menu"><button type="button" data-tcr-supply="plus" data-feedback-id="tasks.suministros.mas.mas1" data-feedback-label="+1">+1</button>
     <button type="button" data-tcr-supply="spend" data-feedback-id="tasks.suministros.mas.gastar" data-feedback-label="Gastar">Gastar…</button>
@@ -328,6 +332,7 @@ function tcrSupplyMore(itemId){const it=tcrItem(itemId);if(!it)return;const x=tc
     <button type="button" data-tcr-supply="transfer" data-feedback-id="tasks.suministros.mas.trasladar" data-feedback-label="Trasladar">Trasladar…</button>
     <button type="button" data-tcr-supply="count" data-feedback-id="tasks.suministros.mas.contar" data-feedback-label="Contar">Contar</button>
     ${x.need&&!x.open?`<button type="button" data-tcr-supply="order" data-feedback-id="tasks.suministros.mas.pedir" data-feedback-label="Pedir">Pedir ${esc(tcrEnv().buyText(x.plan))}</button>`:x.open?`<button type="button" data-tcr-supply="request" data-feedback-id="tasks.suministros.mas.pedido" data-feedback-label="Pedido">Pedido · ${esc((PURCHASE_STATUS[x.open.status]||[''])[0].toLowerCase())}</button>`:''}
+    ${canMove?'<button type="button" data-tcr-supply="move" data-feedback-id="tasks.suministros.mas.otro_sitio" data-feedback-label="Guardar en otro sitio">Guardar en otro sitio</button>':''}
     <button type="button" data-tcr-supply="format" data-feedback-id="tasks.suministros.mas.envase" data-feedback-label="Envase">Envase</button>
     <button type="button" data-tcr-supply="sheet" data-feedback-id="tasks.suministros.mas.ficha" data-feedback-label="Ficha">Ficha</button></div>`);
   document.querySelectorAll('[data-tcr-supply]').forEach(b=>b.onclick=()=>{const a=b.dataset.tcrSupply;closeSheet();
@@ -335,6 +340,7 @@ function tcrSupplyMore(itemId){const it=tcrItem(itemId);if(!it)return;const x=tc
     if(['spend','entry','transfer','count'].includes(a))return supplyAct(a,kitItem);
     if(a==='order')return tcrOrder([x]);
     if(a==='request')return purchaseSheet(x.open.id);
+    if(a==='move')return tcrSupplyShelves?.moveSheet(shelved);
     if(a==='format')return tcrFormatSheet(itemId,x.need||x.min);
     if(a==='sheet')return openSupply(kitItem)})}
 
