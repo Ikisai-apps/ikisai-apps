@@ -69,6 +69,7 @@ test('admin · agentes de todas las apps, revocación y registro de accesos tran
   assert.equal(noCentral.data.error.code, 'INVALID_ROLE');
   const agents = await app.call('/api/v1/admin/agents');
   assert.equal(agents.data.items.length, 1); assert.deepEqual(agents.data.items[0].memberships.map((m: any) => m.app), ['booking']);
+  assert.equal(agents.data.items[0].issuedApp, 'booking', 'la app que emitió la clave (P13)');
   const revoked = await app.call(`/api/v1/admin/agents/${agents.data.items[0].keyId}`, { method: 'DELETE' });
   assert.equal(revoked.status, 200); assert.equal(revoked.data.revoked, true);
   const log = await app.call('/api/v1/admin/access-log?limit=50');
