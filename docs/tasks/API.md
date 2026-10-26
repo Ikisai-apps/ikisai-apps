@@ -2037,10 +2037,10 @@ Authorization: Bearer <token de la persona>
 | `priority`, `due` | no | `normal`, `high` o `critical`; `AAAA-MM-DD`. |
 
 - Es la operación de siempre (`insert` en `tasks.purchase_requests` por `core.commit`, con el hook): nace **«pedida»**, con «Llegará factura», al final de la lista del área, y la aprueba quien aprueba compras en esa área. En la estantería sale en su tienda (sin tienda: «Sin tienda»).
-- **Una vez por referencia:** id derivado de `ikisai-tasks-purchase:flow:<ref>`. Repetir, también a la vez, devuelve la misma (`created: false`) sin cambiarla.
+- **Una vez por referencia:** id derivado de `ikisai-tasks-purchase:flow:<ref>`. Repetir, también a la vez y **para el mismo proyecto**, devuelve la misma (`created: false`) sin cambiarla. Si esa referencia ya está en otro proyecto, `409 EXTERNAL_REF_IN_USE` sin datos: una referencia no sirve para leer ni para adoptar una solicitud ajena. Como en §19, `source` es un espacio de nombres, no una credencial (decisión de Core): lo que protege es el permiso de quien llama y el proyecto. Flow usa como referencia el uuid de la unidad, que no se adivina.
 - **Procedencia:** la nota empieza por «Pedida desde flow · <referencia>» (sin columna nueva).
 - **Respuesta:** `{created, purchase: {kind: 'purchase_request', id, tabId, projectId, title, status, quantity, unit, revision, deleted, externalRef}}`.
-- **Errores:** `403 FORBIDDEN` (lector o sin rol), `404 NOT_FOUND` (el proyecto no existe o no lo ve), `422 INVALID_INPUT` (con `field`), `422 PROJECT_ARCHIVED`, `409 EXTERNAL_REF_IN_USE` (la referencia es de una solicitud de un área que no ve).
+- **Errores:** `403 FORBIDDEN` (lector o sin rol), `404 NOT_FOUND` (el proyecto no existe o no lo ve), `422 INVALID_INPUT` (con `field`), `422 PROJECT_ARCHIVED`, `409 EXTERNAL_REF_IN_USE` (la referencia ya es de una solicitud de otro proyecto).
 - **Pruebas:** `tests/tasks/requests-purchase.test.ts` (crear y repetir, a la vez, alcance, archivado, lector, entrada mala, la tarea con `source: 'flow'` y la lista de proyectos abiertos).
 
 ### 39.4 Lo que no hace (V1)

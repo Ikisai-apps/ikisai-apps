@@ -154,10 +154,12 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
         kind: 'purchase_request', id: r.id, tabId: r.tab_id, projectId: r.project_id, title: r.title, status: r.status,
         quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
       });
-      // La referencia es de quien pide: si la solicitud es de un área que no ve, no se dice nada de ella.
+      // Lo que ya hay con esa referencia solo se devuelve si es del mismo proyecto que se pide (ya comprobado como visible
+      // para quien llama). De otro proyecto, aunque sea de su área, no se dice nada: ni datos ni dónde está. Así una
+      // referencia no sirve para leer solicitudes ajenas, y una ya usada en otro sitio no se «adopta».
       const visibleRow = async (row: Record<string, unknown>) => {
-        if (row.tab_id === tabId || (await target('tab', row.tab_id))?.id) return row;
-        return fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa una solicitud que no puedes ver.');
+        if (row.project_id === projectId && row.tab_id === tabId) return row;
+        return fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa otra solicitud.');
       };
       const all = await rows();
       const existing = all.find((r) => r.id === id);

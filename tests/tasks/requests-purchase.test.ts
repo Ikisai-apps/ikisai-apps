@@ -66,6 +66,18 @@ test('dos peticiones a la vez con la misma referencia dejan una sola solicitud',
   assert.equal((await rows('tasks.purchase_requests')).filter((r) => r.id === a.data.purchase.id).length, 1);
 });
 
+test('una referencia ya usada en otro proyecto no se devuelve: 409 sin datos', async () => {
+  // La propietaria la crea en «Privado»; pedir la misma referencia para la barra no la «adopta» ni dice nada de ella.
+  const there = await ask({ source: 'flow', external_ref: 'unit-999', title: 'Algo privado', project_id: PRIVADO });
+  assert.equal(there.status, 200, JSON.stringify(there.data));
+  for (const token of [undefined, app.tokens.editor]) {
+    const res = await ask({ source: 'flow', external_ref: 'unit-999', title: 'Otra cosa', project_id: BARRA }, token);
+    assert.equal(res.status, 409, JSON.stringify(res.data));
+    assert.equal(res.data.error.code, 'EXTERNAL_REF_IN_USE');
+    assert.equal(JSON.stringify(res.data).includes('Algo privado'), false);
+  }
+});
+
 test('alcance, archivo, roles y entrada: lo que no vale no entra', async () => {
   const base = { source: 'flow', title: 'Servilletas' };
   // Un proyecto que el editor no ve: como si no existiera.
