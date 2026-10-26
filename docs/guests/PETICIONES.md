@@ -45,3 +45,6 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | U6 | UI | textos del calendario en el idioma del kit: «Hoy», «Anterior», «Siguiente» y «Vista» salen siempre en español | abierta |
 | FD2 | Food | lectura de portal del menú de casa para el outsider: `food.portal_house_menu({from?, to?})` → `{services: [{date, type, time, dishes: [{name, quick, allergens_checked}]}]}` (preparación de O4 §3) | abierta |
 | TK1 | Tasks | resumen de tareas del outsider para Guests: `tasks.portal_my_summary` → `{assigned}` (preparación de O4 §3), cuando Tasks tenga el rol outsider | abierta |
+| BG14 | Booking | `portal_role` en el primer nivel de `portal_my_guest` y en cada item de `portal_my_retreats` (API.md §9.17 d) | hecha (#725), en uso |
+| BG15 | Booking | accesos de su §29: `validUntil = 'infinity'`, `portal_open_retreats` con `direction`, `status` y `joinable`, `portal_join_direction` y `portal_lodging.team` (API.md §9.17) | hecha (#725), en uso |
+| Gu1 | Organizers → Guests | ruta para abrir un retiro concreto | respondida: `#/r/<reservation_id>`, ya en `main`; con dirección sin ficha, la vista de dirección (§9.17) |

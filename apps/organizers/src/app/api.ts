@@ -13,6 +13,13 @@ export type ReservationStatus = 'en_estudio' | 'negociacion' | 'pre_reservada' |
 export interface PortalReservation {
   id: string; code: string | null; title: string; start_date: string | null; end_date: string | null;
   expected_guests: number | null; status: ReservationStatus; confirmed: boolean; mode: GuestMode; guests: number; complete: number;
+  /**
+   * Booking B20 y B21 (26-10-2026): `coorganizer` si la reserva se ve por el ámbito «todos» de dirección y no por un permiso
+   * propio; `as_guest_id`, la ficha de huésped de quien organiza en ese retiro (para «Verlo como huésped»). Opcionales hasta
+   * que Booking los publique: sin ellos, `organizer` y sin botón.
+   */
+  as?: 'organizer' | 'coorganizer';
+  as_guest_id?: string | null;
 }
 
 export interface ReservationDetail extends Omit<PortalReservation, 'guests' | 'complete'> {

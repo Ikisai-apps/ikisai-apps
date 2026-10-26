@@ -1,5 +1,8 @@
-import { el, icon, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, openSheet, toast } from '@ikisai/ui-kit';
 import { formatEuros, TABLES } from '@ikisai/domain-flow';
+import { isOnline } from '../app/actions.ts';
+import { loadProjects } from '../app/data.ts';
+import { pickMenu, planSync, readFoodMenus, type CartaMenu } from '../app/food-sync.ts';
 import { describeError } from '../app/client.ts';
 import { byPaySeq, customerNumber, orderTotal, pendingOf, watchData, type FlowData, type Order } from '../app/data.ts';
 import { openDeliverySheet } from './delivery-sheet.ts';
@@ -29,8 +32,13 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     const found = el('p', { class: 'muted small', role: 'status' });
     const listEl = el('div', { class: 'fqueue', role: 'list' });
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true });
+    const isOwner = client.bootstrap()?.membership.role === 'owner';
+    const ownerTools = kind === 'order' && isOwner ? [el('div', { class: 'orders-owner' },
+      el('button', { type: 'button', class: 'ghost', onclick: () => void syncFromFood() }, 'Actualizar carta desde Food'),
+      el('a', { class: 'ghost button-link', href: `#/p/${ctx.projectId}/cierre` }, 'Cierre del día'))] : [];
     main.append(
       el('h1', { class: 'col-title' }, kind === 'order' ? 'Pedido y cobro' : 'Servicio y entrega'),
+      ...ownerTools,
       el('div', { class: 'orders-tools' }, searchInput, ...(kind === 'order' && canEdit ? [newButton] : [])),
       found, listEl, empty,
     );
@@ -79,6 +87,35 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       else openOrderSheet(client, id);
     }
 
+    /** «Actualizar carta desde Food»: lee su carta, enseña qué cambia y, si se confirma, lo aplica (food-sync.ts). */
+    async function syncFromFood(): Promise<void> {
+      if (!isOnline(client)) { toast('Actualizar la carta necesita conexión.'); return; }
+      try {
+        const project = (await loadProjects(client)).find((p) => p.id === ctx.projectId);
+        if (!project || !data) return;
+        const menus = await readFoodMenus(client);
+        if (!menus.length) { toast('Food aún no tiene ninguna carta.'); return; }
+        const menu = pickMenu(menus, project) ?? await chooseMenu(menus);
+        if (!menu) return;
+        const plan = planSync(project, menu, [...data.products.values()]);
+        if (!plan.operations.length) { toast('La carta ya está al día con Food.'); return; }
+        const ok = await confirmDialog({ title: `Carta de Food: ${menu.name}`, confirmLabel: 'Actualizar',
+          text: [`${plan.created} nuevos`, `${plan.changed} con cambios${plan.priced ? ` (${plan.priced} de precio)` : ''}`, `${plan.deactivated} se retiran`].join(' · ')
+            + '. Lo ya cobrado no cambia de precio.' });
+        if (!ok) return;
+        await client.commit(plan.operations as any);
+        toast('Carta actualizada desde Food.');
+      } catch (error) { toast(describeError(error)); }
+    }
+
+    function chooseMenu(menus: CartaMenu[]): Promise<CartaMenu | null> {
+      return new Promise((resolve) => {
+        let chosen: CartaMenu | null = null;
+        const sheet = openSheet({ title: 'Elige la carta de Food', onClose: () => resolve(chosen),
+          body: el('div', { class: 'flow-actions' }, ...menus.map((m) => el('button', { type: 'button', class: 'secondary', onclick: () => { chosen = m; sheet.close(); } }, `${m.name} (${m.lines.length})`))) });
+      });
+    }
+
     async function newOrder(): Promise<void> {
       if (!data?.project) return;
       const id = crypto.randomUUID();
@@ -96,7 +133,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       empty.textContent = kind === 'order' ? 'Aún no hay pedidos.' : 'Aún no hay pedidos cobrados.';
     }
 
-    const offData = watchData(client, (d) => { data = d; paint(); });
+    const offData = watchData(client, (d) => { data = d; paint(); }, ctx.projectId);
     return () => offData();
   };
 }

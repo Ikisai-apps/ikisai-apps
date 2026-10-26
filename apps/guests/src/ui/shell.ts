@@ -4,16 +4,19 @@
  * Más»; en «Retiros», el selector de persona, las pestañas de retiros y las secciones de cada uno. Rutas:
  * - `#/`: el retiro de entrada (el del enlace con el que se entró, el que está en curso o el próximo) o, si no hay, el calendario;
  * - `#/calendario`: el calendario de la persona con sus retiros;
+ * - `#/retiros`: «Mis retiros» (§9.17), pasados, en curso y próximos; con dirección, también «Todos los retiros»;
  * - `#/p/<guestId>[/datos|/alimentacion|/firma|/info|/programa|/menu|/alojamiento|/materiales|/preguntas]`: una persona
  *   en un retiro, como antes (los enlaces directos siguen valiendo);
- * - `#/r/<reservationId>[/programa|/menu|/alojamiento]`: la familia junta en un retiro con varias personas de la cuenta;
+ * - `#/r/<reservationId>[/programa|/menu|/alojamiento]`: la familia junta en un retiro con varias personas de la cuenta (con
+ *   una, lleva a su `#/p/`; con dirección y sin ficha, la vista de dirección de §9.17);
  * - `#/outsider[/info]`: la pestaña Outsider (O4b), con nivel de casa `outsider`; `#/calendario/nueva` abre el calendario
  *   eligiendo los días de una estancia nueva.
  * En la vista previa del organizador, franja de solo lectura.
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import { confirmDialog, createAppLauncher, createAppShell, createUsage, el, icon, openSheet, replace, toast, type AppMenuSection, type LauncherCatalog } from '@ikisai/ui-kit';
-import { createGuestApi, type Grant } from '../app/api.ts';
+import { cancelled, createGuestApi, type Grant } from '../app/api.ts';
+import { allRetreats, joinDirection } from '../app/direction.ts';
 import { cache } from '../app/cache.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, loadCommonTexts } from '../app/common-texts.ts';
@@ -40,6 +43,7 @@ import { barItems, modulesOf, moreItems, sectionLabel, sectionsOf, type Modules,
 import { mountMenu, mountProgram } from './program.ts';
 import { languageSelect } from './language.ts';
 import { mountOutsider } from './outsider.ts';
+import { mountDirectionRetreat, mountRetreats, roleText } from './retreats.ts';
 import { needsPrivacy, renderPrivacy } from './privacy.ts';
 import { mountSign } from './sign.ts';
 
@@ -56,17 +60,18 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const PERSON = new RegExp(`^#/p/(${UUID})(?:/(datos|alimentacion|firma|info|programa|menu|alojamiento|materiales|preguntas))?$`, 'i');
 const FAMILY = new RegExp(`^#/r/(${UUID})(?:/(programa|menu|alojamiento))?$`, 'i');
 const CALENDAR = '#/calendario';
+const RETREATS = '#/retiros';
 const NEW_STAY = '#/calendario/nueva';
 const OUTSIDER = '#/outsider';
 const OUTSIDER_INFO = '#/outsider/info';
-type Page = 'inicio' | 'datos' | 'alimentacion' | 'firma' | 'info' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas' | 'calendario' | 'outsider';
+type Page = 'inicio' | 'datos' | 'alimentacion' | 'firma' | 'info' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas' | 'calendario' | 'outsider' | 'retiros';
 /** Ids literales de cada pantalla (el catálogo de la publicación los recoge del código). */
 const PAGE_IDS: Record<Page, [string, string]> = {
   inicio: ['guests.inicio', 'Inicio'], datos: ['guests.datos', 'Mis datos'], alimentacion: ['guests.alimentacion', 'Alimentación'],
   firma: ['guests.firma', 'Firma'], info: ['guests.info', 'Información práctica'], programa: ['guests.programa', 'Programa'],
   menu: ['guests.menu', 'Menú'], alojamiento: ['guests.alojamiento', 'Alojamiento'], materiales: ['guests.materiales', 'Materiales'],
   preguntas: ['guests.preguntas', 'Preguntas del organizador'], calendario: ['guests.calendario', 'Calendario'],
-  outsider: ['guests.outsider', 'Outsider'],
+  outsider: ['guests.outsider', 'Outsider'], retiros: ['guests.retiros', 'Mis retiros'],
 };
 /** Páginas de un módulo del organizador: solo existen si está activo (si no, se vuelve al Resumen). */
 const MODULE_OF: Partial<Record<Page, keyof Modules>> = { programa: 'program', menu: 'menu', alojamiento: 'lodging', materiales: 'materials', preguntas: 'questions' };
@@ -86,6 +91,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const texts = loadCommonTexts(client);
   /** Nivel de casa `outsider` (O4b): pestaña Outsider, estancias, «hay alguien» y notas en el calendario. */
   const outsider = isOutsider(client) ? createOutsiderApi(client) : null;
+  /** Dirección («todos», §9.17 c): ve todos los retiros; sin ficha, entra por «Mis retiros». */
+  const direction = api.direction();
+  let directionList: ReturnType<typeof allRetreats> | null = null;
+  const listAll = () => (directionList ??= allRetreats(client).then((x) => { if (!x || x.stale) directionList = null; return x; }));
   /** Fichas abiertas (una persona en un retiro); con la familia junta, varias a la vez. */
   const open = new Map<string, Promise<GuestContext>>();
   const opened = new Map<string, GuestContext>();
@@ -265,7 +274,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       ? { hash: current.hash, matches: current.sections.map((s) => (s === 'inicio' ? current.hash : `${current.hash}/${s}`)) }
       : onOutsider ? { hash: OUTSIDER, matches: [OUTSIDER] }
       : lastRetreat ? { hash: lastRetreat.hash, matches: [] } : fallback ? { hash: hrefFor(fallback), matches: [] }
-      : outsider ? { hash: OUTSIDER, matches: [] } : null;
+      : outsider ? { hash: OUTSIDER, matches: [] } : direction ? { hash: RETREATS, matches: [RETREATS] } : null;
     const moreCtx = current?.ctx ?? (lastRetreat && !onOutsider ? opened.get(primary?.grant.guest_id ?? '') ?? null : null);
     const more = onOutsider ? outsiderMore()
       : moreCtx ? moreItems(moreCtx, current?.base ?? lastRetreat!.base, current?.mods ?? modulesOf(moreCtx), current?.family ?? lastRetreat!.family) : [];
@@ -286,6 +295,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       }] : []),
       { key: 'retiros', label: t('nav.retreats'), icon: 'home', rows: [
         ...visible.slice(0, 6).map((x) => ({ label: x.title ?? t('picker.unknown'), sub: [shortRange(x.start, x.end), retreatState(x, today).text].filter(Boolean).join(' · '), href: hrefFor(x), feedbackId: 'guests.navegacion.menu.retiro' })),
+        { label: t('retreats.seeAll'), icon: 'home' as const, href: RETREATS, feedbackId: 'guests.navegacion.menu.retiros' },
         { label: t('nav.calendar'), icon: 'calendar' as const, href: CALENDAR, feedbackId: 'guests.navegacion.menu.calendario' },
       ] },
       ...(outsider ? [{ key: 'outsider', label: t('outsider.tab'), icon: 'home' as const, rows: [
@@ -357,6 +367,39 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     }, personSelector(r.persons, selection, (next) => pickPerson(next, null)));
   }
 
+  function showRetreats(view: HTMLElement): void {
+    const r = roster!;
+    primary = null;
+    previewBand.hidden = true;
+    setPageMarks('retiros');
+    paintNav(RETREATS, null);
+    replace(main, view);
+    unmountView = mountRetreats(view, r, selection, todayMadrid(), {
+      href: (retreat) => hrefFor(retreat), who, requests: () => joinSuggestions(client),
+      direction: direction ? { list: listAll, href: (id) => `#/r/${id}` } : null,
+    }, personSelector(r.persons, selection, (next) => pickPerson(next, null)));
+  }
+
+  /** Un retiro sin ficha visto por dirección (§9.17 c): programa y «Apuntarme»; al apuntarse, su ficha. */
+  function showDirectionRetreat(view: HTMLElement, reservationId: string): void {
+    primary = null;
+    previewBand.hidden = true;
+    setPageMarks('programa');
+    paintNav(location.hash, null);
+    replace(main, view);
+    unmountView = mountDirectionRetreat(view, {
+      reservationId, today: todayMadrid(), list: listAll, back: RETREATS,
+      program: (id) => reads.program(id),
+      persons: (roster?.persons ?? []).map((p) => ({ name: p.name, personKey: p.personKey, guestIds: p.guestIds })),
+      join: async (retreat, people) => {
+        await joinDirection(client, retreat.reservation_id, people ?? undefined);
+        await client.refreshBootstrap();
+        roster = null; rosterLoad = null; directionList = null;
+        navigate(`#/r/${retreat.reservation_id}`, true);
+      },
+    });
+  }
+
   async function route(): Promise<void> {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     unmountView?.();
@@ -364,7 +407,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     frame = null;
     unmountView = null;
     const grants = api.grants();
-    if (!grants.length && !outsider) {
+    if (!grants.length && !outsider && !direction) {
       shell.setNav([], []);
       replace(main, el('p', { class: 'card gcard', id: 'noAccess' }, t('error.noAccess')));
       return;
@@ -388,6 +431,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       return;
     }
 
+    if (hash.toLowerCase() === RETREATS) {
+      showRetreats(view);
+      main.focus({ preventScroll: true });
+      window.scrollTo({ top: 0 });
+      return;
+    }
+
     if (hash.toLowerCase() === CALENDAR || (outsider && hash === NEW_STAY)) {
       replace(main, view);
       await showCalendar(view);
@@ -403,9 +453,15 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     if (!grant && !(familyRetreat && familyRetreat.entries.length > 1)) {
       // `#/` o una ruta que ya no vale: el retiro de entrada o, si no hay, el calendario.
       if (familyRetreat) { navigate(hrefFor(familyRetreat, (fm![2]?.toLowerCase() ?? 'inicio') as Section, 'all'), true); return; }
+      if (fm && direction) {
+        showDirectionRetreat(view, fm[1]!.toLowerCase());
+        main.focus({ preventScroll: true });
+        window.scrollTo({ top: 0 });
+        return;
+      }
       // Sin retiro del enlace, en curso ni próximo: la pestaña Outsider (O4b) o el calendario.
       const target = entryRetreat(r, selection, today, ctx.linkedGuestId);
-      navigate(target ? hrefFor(target) : outsider ? OUTSIDER : CALENDAR, true);
+      navigate(target ? hrefFor(target) : outsider ? OUTSIDER : direction ? RETREATS : CALENDAR, true);
       return;
     }
 
@@ -434,8 +490,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const mods = modulesOf(gctx);
     const moduleKey = MODULE_OF[page];
     if (moduleKey && !mods[moduleKey]) page = 'inicio';
+    // Fichas de equipo (G-B2): sin datos de registro ni firma; los enlaces directos vuelven al Resumen.
+    if ((page === 'datos' || page === 'firma') && gctx.guest().portal_role) page = 'inicio';
     previewBand.hidden = !gctx.readOnly();
-    previewBand.textContent = gctx.readOnly() ? t('preview.band') : '';
+    previewBand.textContent = !gctx.readOnly() ? '' : cancelled(gctx.guest().reservation.status) ? t('cancelled.band') : t('preview.band');
     setPageMarks(page);
     const sections = sectionsOf(mods);
     lastRetreat = { reservation_id: retreat.reservation_id, hash: base, base: personBase, family };
@@ -469,6 +527,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
           return mine ? [mine.space_name, mine.bed_label].filter(Boolean).join(' · ') : null;
         },
         placeName: async () => (await reads.place().catch(() => null))?.value.name ?? null,
+        role: family ? null : roleText(gctx.guest().portal_role) || null,
       });
     }
     replace(main, frame?.element ?? null, view, frame?.away ?? null);

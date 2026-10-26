@@ -87,6 +87,7 @@ export function mountCarta(root: HTMLElement): () => void {
       el('div', { class: 'carta-text' },
         el('h3', null, product.name),
         product.description ? el('p', { class: 'muted' }, product.description) : null,
+        product.allergens?.length ? el('p', { class: 'carta-allergens' }, `Alérgenos: ${product.allergens.join(', ')}${product.allergensChecked ? '' : ' (sin confirmar con la etiqueta: pregunta en barra)'}`) : null,
         el('strong', { class: 'carta-price' }, formatEuros(product.priceCents)),
       ),
       el('div', { class: 'carta-qty' }, field.element),

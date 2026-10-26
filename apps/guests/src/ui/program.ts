@@ -222,7 +222,8 @@ export function allergens(d: Pick<Dish, 'allergens' | 'allergens_checked'>): HTM
 }
 
 /** Quien come: su nombre (solo con la familia junta) y lo que indicó en su alimentación. */
-interface Eater { guestId: string; name: string | null; base: string; restrictions: Restriction[] }
+/** `team`: ficha de equipo (Booking §29.4): sus restricciones no llegan a cocina (G-B1). */
+interface Eater { guestId: string; name: string | null; base: string; restrictions: Restriction[]; team: boolean }
 
 /** Dietas: se ven en las etiquetas del plato; el cruce plato a plato es para alergias, intolerancias y preferencias. */
 const DIETS = new Set(['vegetariano', 'vegano', 'sin_gluten', 'sin_lactosa']);
@@ -300,7 +301,7 @@ export function mountMenu(main: HTMLElement, ctxs: GuestContext[], notice: HTMLE
     const menu = loaded?.value ?? { status: null, services: [] };
     const named = ctxs.length > 1;
     const eaters: Eater[] = ctxs.map((c, i) => ({ guestId: c.grant.guest_id, name: named ? String(c.guest().fields.first_name ?? '').trim() || null : null,
-      base: bases?.[i] ?? `#/p/${c.grant.guest_id}`, restrictions: c.guest().restrictions }));
+      base: bases?.[i] ?? `#/p/${c.grant.guest_id}`, restrictions: c.guest().restrictions, team: Boolean(c.guest().portal_role) }));
     const head = el('div', { class: 'pagehead' }, el('h2', null, t('menu.title')),
       menu.status === 'provisional' ? el('p', { class: 'chip small', id: 'menuProvisional' }, t('menu.provisional')) : null);
     const days = daysOf(menu.services, (s) => s.date);
@@ -310,11 +311,15 @@ export function mountMenu(main: HTMLElement, ctxs: GuestContext[], notice: HTMLE
     const listOf = (rs: Restriction[]) => rs.map((r) => r.subject ?? restrictionLabel(r.restriction_type).toLowerCase()).join(', ');
     const change = (base: string) => el('a', { class: 'glink-inline gchange', href: `${base}/alimentacion`, 'data-feedback-id': 'guests.menu.cocina.cambiar', 'data-feedback-label': 'Cambiar lo que indicaste' }, t('menu.change'));
     const had = eaters.filter((p) => p.restrictions.length);
+    // G-B1 (Core, 26-10-2026): a una ficha de equipo nunca «Cocina tiene registrado…»; el cruce plato a plato sigue.
+    const said = (p: Eater) => (p.team ? t('menu.kitchenTeamOf', { name: p.name || t('menu.noName') })
+      : p.restrictions.length ? t('menu.kitchenHasOf', { name: p.name || t('menu.noName'), list: listOf(p.restrictions) }) : t('menu.kitchenNothing', { name: p.name || t('menu.noName') }));
     const kitchen = named
       ? fbIgnore(el('div', { class: 'banner gkitchen', id: 'menuKitchen' }, el('p', { class: 'gkitchen-title' }, icon('chef', 18), ' ', t('menu.kitchenFamily')),
         el('ul', null, ...eaters.map((p) => el('li', { dataset: { guest: p.guestId } }, renderMedal({ name: p.name ?? '·', size: 28 }),
-          el('span', null, p.restrictions.length ? t('menu.kitchenHasOf', { name: p.name || t('menu.noName'), list: listOf(p.restrictions) }) : t('menu.kitchenNothing', { name: p.name || t('menu.noName') })),
+          el('span', null, said(p)),
           change(p.base))))))
+      : eaters[0]!.team ? fbIgnore(el('p', { class: 'banner gkitchen', id: 'menuKitchen', dataset: { team: '' } }, icon('chef', 18), ' ', el('span', { dataset: { guest: eaters[0]!.guestId } }, t('menu.kitchenTeam')), change(eaters[0]!.base)))
       : had.length ? fbIgnore(el('p', { class: 'banner gkitchen', id: 'menuKitchen' }, icon('chef', 18), ' ', el('span', { dataset: { guest: eaters[0]!.guestId } }, t('menu.kitchenHas', { list: listOf(eaters[0]!.restrictions) })), change(eaters[0]!.base)))
         : null;
 

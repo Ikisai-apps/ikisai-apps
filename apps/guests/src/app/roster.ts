@@ -23,6 +23,8 @@ export interface Retreat {
   title: string | null;
   start: string | null;
   end: string | null;
+  /** Estado de la reserva (`booking.reservations.status`), para «Mis retiros». */
+  status: string | null;
   /** Una por persona de la cuenta en este retiro, en el orden de las personas. */
   entries: RosterEntry[];
 }
@@ -73,8 +75,8 @@ export function buildRoster(loaded: Array<{ grant: Grant; guest: MyGuest | null;
   for (const entry of entries) {
     const r = entry.guest?.reservation;
     const retreat = byReservation.get(entry.grant.reservation_id)
-      ?? { reservation_id: entry.grant.reservation_id, title: r?.title ?? null, start: r?.start_date ?? null, end: r?.end_date ?? r?.start_date ?? null, entries: [] };
-    if (!retreat.title && r) Object.assign(retreat, { title: r.title, start: r.start_date, end: r.end_date ?? r.start_date });
+      ?? { reservation_id: entry.grant.reservation_id, title: r?.title ?? null, start: r?.start_date ?? null, end: r?.end_date ?? r?.start_date ?? null, status: r?.status ?? null, entries: [] };
+    if (!retreat.title && r) Object.assign(retreat, { title: r.title, start: r.start_date, end: r.end_date ?? r.start_date, status: r.status });
     retreat.entries.push(entry);
     byReservation.set(entry.grant.reservation_id, retreat);
   }

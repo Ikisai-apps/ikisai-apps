@@ -1,53 +1,98 @@
-import { el, icon, openSheet, replace } from '@ikisai/ui-kit';
+import { createCoverCarousel, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { TABLES } from '@ikisai/domain-flow';
+import { describeError } from '../app/client.ts';
+import { loadProjects, projectDates, projectState, type Project } from '../app/data.ts';
+import { projectDocuments, type ProjectDocument } from '../app/documents.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
- * Inicio (canon V1 §2.2): la pestaña de la casa, sin ocupar sitio encima de las colas. Carrusel con las cuatro guías
- * internas, con miniaturas para ir directo a una y «Ampliar» para verla entera. Las miniaturas se precargan; la guía a
- * tamaño completo solo se descarga al ampliarla (FLOW-DIR-001 §6). Estas guías nunca salen en la carta pública (§15.3).
+ * Inicio de un flujo (canon V1 §2.2; navegación de VG del 26-10):
+ * - Arriba, el carrusel de flujos (como lo ven los huéspedes): deslizar cambia de flujo.
+ * - Para el owner, el modo pruebas del flujo (VG 26-10: se cobra y se cuenta igual, pero no se envían ingresos a Finance).
+ * - Debajo, los documentos del flujo (guías) con miniaturas para ir directo a uno y «Ampliar» para verlo entero. Las
+ *   miniaturas se precargan; el tamaño completo solo se descarga al ampliar (FLOW-DIR-001 §6). Nunca salen en la carta
+ *   pública (§15.3). Hoy vienen del código (`projectDocuments`); después del sábado, de los archivos del proyecto.
  */
-export const GUIDES = [
-  { slug: 'montaditos', title: 'Montaditos · montaje y estaciones' },
-  { slug: 'barra', title: 'Barra · bebidas y extras' },
-  { slug: 'frigorifico', title: 'Frigorífico · almacenamiento y frío' },
-  { slug: 'mesa', title: 'Mesa de trabajo · disposición y orden' },
-] as const;
-
-export const mountHome: ViewMount = ({ main }) => {
+export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
+  const isOwner = client.bootstrap()?.membership.role === 'owner';
+  let docs: ProjectDocument[] = [];
   let current = 0;
+  const carouselHost = el('div', { class: 'flow-carousel' });
+  const testHost = el('div', { class: 'flow-testmode' });
+  const docsHost = el('section', { class: 'flow-docs', 'data-feedback-id': 'flow.inicio.guias', 'data-feedback-label': 'Guías' });
+  main.append(carouselHost, testHost, docsHost);
+
+  void loadProjects(client).then((projects) => {
+    if (!projects.length) return;
+    const index = Math.max(0, projects.findIndex((p) => p.id === projectId));
+    const carousel = createCoverCarousel({
+      label: 'Tus flujos',
+      index,
+      slides: projects.map((p) => ({ id: p.id, title: p.name, image: p.cover_image, state: projectState(p) + (p.test_mode ? ' · modo pruebas' : ''), meta: projectDates(p) || null })),
+      onChange: (slide) => { if (slide.id !== projectId) navigate(`#/p/${slide.id}`); },
+      feedbackId: 'flow.inicio.flujos',
+    });
+    replace(carouselHost, carousel.element);
+    paintTestMode(projects.find((p) => p.id === projectId) ?? null);
+  });
+
+  function paintTestMode(project: Project | null): void {
+    if (!project) { replace(testHost); return; }
+    if (!isOwner) {
+      replace(testHost, ...(project.test_mode ? [el('p', { class: 'flow-testmode-pill' }, 'Modo pruebas: el cierre no envía ingresos a Finance')] : []));
+      return;
+    }
+    const input = el('input', { type: 'checkbox', checked: project.test_mode, onchange: async () => {
+      input.disabled = true;
+      try {
+        await client.commit([{ op: 'update', table: TABLES.projects, id: project.id, expectedRevision: project.revision, fields: { test_mode: input.checked } }]);
+        toast(input.checked ? 'Modo pruebas activado: el cierre no enviará ingresos a Finance.' : 'Modo pruebas desactivado.');
+      } catch (error) { input.checked = !input.checked; toast(describeError(error)); }
+      finally { input.disabled = false; }
+    } });
+    replace(testHost, el('label', { class: 'flow-testmode-switch' }, input,
+      el('span', null, el('strong', null, 'Modo pruebas'), el('small', { class: 'muted' }, ' · se cobra y se cuenta igual, pero el cierre no envía ingresos a Finance'))));
+  }
+
   const figure = el('figure', { class: 'guide-figure' });
-  const thumbs = el('div', { class: 'guide-thumbs', role: 'tablist', 'aria-label': 'Guías' },
-    ...GUIDES.map((g, i) => el('button', { type: 'button', class: 'guide-thumb', role: 'tab', 'aria-label': g.title, onclick: () => show(i) },
-      el('img', { src: `/guias/${g.slug}-mini.webp`, alt: '', loading: 'lazy', decoding: 'async' }))));
+  const thumbs = el('div', { class: 'guide-thumbs', role: 'tablist', 'aria-label': 'Guías' });
 
   function show(i: number): void {
-    current = (i + GUIDES.length) % GUIDES.length;
-    const g = GUIDES[current]!;
+    if (!docs.length) return;
+    current = (i + docs.length) % docs.length;
+    const d = docs[current]!;
     replace(figure,
-      el('button', { type: 'button', class: 'guide-open', 'aria-label': `Ampliar: ${g.title}`, onclick: () => enlarge(current) },
-        el('img', { src: `/guias/${g.slug}-mini.webp`, alt: g.title, decoding: 'async' })),
-      el('figcaption', null, el('span', null, g.title), el('span', { class: 'muted small' }, `${current + 1} de ${GUIDES.length}`)));
+      el('button', { type: 'button', class: 'guide-open', 'aria-label': `Ampliar: ${d.title}`, onclick: () => enlarge(current) },
+        el('img', { src: d.thumb, alt: d.title, decoding: 'async' })),
+      el('figcaption', null, el('span', null, d.title), el('span', { class: 'muted small' }, `${current + 1} de ${docs.length}`)));
     thumbs.querySelectorAll('.guide-thumb').forEach((b, j) => b.setAttribute('aria-selected', String(j === current)));
   }
 
   function enlarge(i: number): void {
-    const g = GUIDES[i]!;
+    const d = docs[i]!;
     openSheet({
-      title: g.title,
+      title: d.title,
       body: el('div', { class: 'guide-zoom' },
-        el('img', { src: `/guias/${g.slug}.webp`, alt: g.title, decoding: 'async' }),
-        el('a', { href: `/guias/${g.slug}.webp`, target: '_blank', rel: 'noopener' }, 'Abrir a pantalla completa')),
+        el('img', { src: d.full, alt: d.title, decoding: 'async' }),
+        el('a', { href: d.full, target: '_blank', rel: 'noopener' }, 'Abrir a pantalla completa')),
     });
   }
 
-  main.append(
-    el('h1', { class: 'col-title' }, 'Guías de la barra'),
-    el('div', { class: 'guide-carousel', 'data-feedback-id': 'flow.inicio.guias', 'data-feedback-label': 'Guías' },
-      el('button', { type: 'button', class: 'iconbtn guide-prev', 'aria-label': 'Guía anterior', onclick: () => show(current - 1) }, icon('chevronLeft', 22)),
-      figure,
-      el('button', { type: 'button', class: 'iconbtn guide-next', 'aria-label': 'Guía siguiente', onclick: () => show(current + 1) }, icon('chevronRight', 22))),
-    thumbs,
-  );
-  show(0);
-  return () => undefined;
+  void projectDocuments(projectId).then((list) => {
+    docs = list;
+    if (!docs.length) { replace(docsHost, el('p', { class: 'muted' }, 'Este flujo aún no tiene guías.')); return; }
+    replace(thumbs, ...docs.map((d, i) => el('button', { type: 'button', class: 'guide-thumb', role: 'tab', 'aria-label': d.title, onclick: () => show(i) },
+      el('img', { src: d.thumb, alt: '', loading: 'lazy', decoding: 'async' }))));
+    replace(docsHost,
+      el('h2', { class: 'col-title' }, 'Guías'),
+      el('div', { class: 'guide-carousel' },
+        el('button', { type: 'button', class: 'iconbtn guide-prev', 'aria-label': 'Guía anterior', onclick: () => show(current - 1) }, icon('chevronLeft', 22)),
+        figure,
+        el('button', { type: 'button', class: 'iconbtn guide-next', 'aria-label': 'Guía siguiente', onclick: () => show(current + 1) }, icon('chevronRight', 22))),
+      thumbs);
+    show(0);
+  });
+
+  const off = client.onTable(TABLES.projects, () => { void loadProjects(client).then((ps) => paintTestMode(ps.find((p) => p.id === projectId) ?? null)); });
+  return off;
 };
