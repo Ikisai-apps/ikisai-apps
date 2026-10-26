@@ -308,6 +308,7 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
   - `allergens` y `allergens_checked`: los de la receta y si están revisados. Un artículo sale con `'{}'` y sin revisar;
   - `image_key`, `cost_cents` y `position`;
   - `line_revision` y `menu_revision`.
+- **`food.booking_carta_projection`** (para Booking, 26-10): una fila por carta viva, con `carta_id`, `name`, `active` (alguna línea activa), `items_count`, `event_id` y `carta_revision`. En «jornadas abiertas», la reserva elige sus cartas y guarda los ids en Booking (`food_carta_ids`), que Food lee de `booking.food_event_projection`.
 - **Semilla** (`food.seed_carta_octubre`, una sola vez): la carta «Barra · Evento de octubre» del §8 del documento de Flow.
   - Los 8 montaditos son recetas «en prueba»:
     - con pan y sus componentes;

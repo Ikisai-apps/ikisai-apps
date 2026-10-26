@@ -414,6 +414,25 @@ create view food.carta_projection as select * from food.carta_rows();
 select core.allow_read('flow', 'food.carta_projection', 'view', '{reader,editor,owner}');
 select core.allow_read('food', 'food.carta_projection', 'view', '{reader,editor,owner}');
 
+-- Las cartas para Booking (pedido de Booking del 26-10: en «jornadas abiertas» la reserva elige entre las cartas de
+-- Food y guarda sus ids). Una fila por carta viva: activa si tiene alguna línea activa; `event_id`, el de Food si la
+-- carta se copió para un evento.
+create or replace function food.booking_carta_rows()
+returns table (carta_id uuid, name text, active boolean, items_count integer, event_id uuid, carta_revision bigint)
+language plpgsql stable as $$
+begin
+  return query
+  select m.id, m.name,
+         exists (select 1 from food.carta_lines l where l.menu_id = m.id and l.deleted_at is null and l.active),
+         (select count(*)::int from food.carta_lines l where l.menu_id = m.id and l.deleted_at is null and l.active),
+         m.event_id, m.revision
+    from food.menus m
+   where m.kind = 'carta' and m.deleted_at is null;
+end $$;
+
+create view food.booking_carta_projection as select * from food.booking_carta_rows();
+select core.allow_read('booking', 'food.booking_carta_projection', 'view', '{reader,editor,owner}');
+
 -- ---------------------------------------------------------------------------
 -- 6. Semilla: «Barra · Evento de octubre» (§8 del documento de Flow de VG, 26-10-2026)
 -- ---------------------------------------------------------------------------

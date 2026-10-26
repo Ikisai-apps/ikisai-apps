@@ -116,6 +116,10 @@ test('proyección · la lee Flow, con coste desde el inventario, alérgenos sin 
   const res = await app.call(`/api/v1/read/food.carta_projection?where[menu_id]=${CARTA}`, { method: 'GET' });
   assert.equal(res.status, 200, JSON.stringify(res.data));
   assert.equal(res.data.rows.length, 13);
+  // Booking lee las cartas (una fila por carta) para elegirlas en la reserva.
+  assert.deepEqual(await q(`select app from core.allowed_reads where name = 'food.booking_carta_projection'`), [{ app: 'booking' }]);
+  assert.deepEqual(await q(`select name, active, items_count, event_id from food.booking_carta_projection where carta_id = $1`, [CARTA]),
+    [{ name: 'Barra · Evento de octubre', active: true, items_count: 13, event_id: null }]);
   assert.deepEqual(cartaMargin(250, 65), { cents: 185, ratio: 0.74 });
   assert.equal(cartaMargin(250, null), null);
 });
