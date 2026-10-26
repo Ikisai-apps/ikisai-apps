@@ -19,6 +19,8 @@ export const TABLES = {
   units: 'flow.units',
   events: 'flow.events',
   dayClosures: 'flow.day_closures',
+  buffers: 'flow.buffers',
+  consumptionRules: 'flow.consumption_rules',
 } as const satisfies Record<string, `flow.${string}`>;
 
 /** Procedimientos `call` permitidos (API.md §3). */
@@ -33,6 +35,8 @@ export const PROCEDURES = {
   confirmRefund: 'flow.confirm_refund',
   closeDay: 'flow.close_day',
   markClosureSent: 'flow.mark_closure_sent',
+  unitSetQty: 'flow.unit_set_qty',
+  generateIngredientTasks: 'flow.generate_ingredient_tasks',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -41,13 +45,14 @@ export const PULL_INTERVAL_MS = 3_000;
 export type ColumnKey = 'order' | 'prep' | 'service' | 'logistics';
 export type ColumnBehavior = 'inspect_confirm' | 'quick_steps' | 'free_task';
 export type OrderStatus = 'open' | 'paid' | 'delivered';
-export type UnitStatus = 'pending' | 'in_progress' | 'done' | 'cancelled';
+export type UnitStatus = 'proposed' | 'pending' | 'in_progress' | 'done' | 'cancelled';
 export type PayMethod = 'cash' | 'bizum';
 export type DeliveryIdent = 'number' | 'qr' | 'presence' | 'skipped';
 
 /** Siguiente estado de un toque (§5, §7). Una unidad cancelada no avanza. */
 export function nextUnitStatus(status: UnitStatus): UnitStatus | null {
   switch (status) {
+    case 'proposed': return 'pending';
     case 'pending': return 'in_progress';
     case 'in_progress': return 'done';
     case 'done': return 'pending';
@@ -55,7 +60,7 @@ export function nextUnitStatus(status: UnitStatus): UnitStatus | null {
   }
 }
 
-export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = { pending: 'Pendiente', in_progress: 'En curso', done: 'Terminado', cancelled: 'Cancelado' };
+export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = { proposed: 'Propuesta', pending: 'Pendiente', in_progress: 'En curso', done: 'Terminado', cancelled: 'Cancelado' };
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = { open: 'Pendiente de cobro', paid: 'Cobrado', delivered: 'Entregado' };
 export const PAY_METHOD_LABELS: Record<PayMethod, string> = { cash: 'Efectivo', bizum: 'Bizum' };
 
