@@ -151,6 +151,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       house_servings: { kind: 'number', min: 0, exclusiveMin: true, max: SERVINGS_MAX, nullable: true },
       name: { kind: 'text', max: 120, required: true, nullable: true },
       prep_split: { kind: 'json', nullable: true },
+      expected_attendance: { kind: 'number', min: 0, max: 100_000, integer: true, nullable: true },
     },
   },
   // Línea de una carta (1109): una receta o un artículo de Recursos, que no cambian después.
@@ -170,6 +171,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       position: { kind: 'number', min: -1e9, max: 1e9 },
       image_key: { kind: 'text', max: 120, nullable: true },
       expected_units: { kind: 'number', min: 0, max: 1_000_000, integer: true, nullable: true },
+      per_person: { kind: 'number', min: 0, max: 1000, nullable: true },
     },
   },
   // Ventas de la carta: solo las escribe food.record_carta_sales.

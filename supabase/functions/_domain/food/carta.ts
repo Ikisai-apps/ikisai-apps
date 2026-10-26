@@ -34,6 +34,8 @@ export interface CartaLine extends SyncedColumns {
   image_key: string | null;
   /** Unidades que se esperan vender (previsión, 1110); null sin previsión. */
   expected_units?: number | null;
+  /** Consumo por persona (1110): con los asistentes, da `expected_units`. */
+  per_person?: number | string | null;
 }
 
 export interface CartaSale extends SyncedColumns {
@@ -129,6 +131,7 @@ export function copyCartaOperations(args: {
       // Lo que viene de la base puede llegar como texto (numeric): se pasa a número.
       name: l.name, description: l.description, sale_price_cents: Number(l.sale_price_cents), active: l.active, position: Number(l.position), image_key: l.image_key,
       ...(l.expected_units !== undefined && l.expected_units !== null ? { expected_units: Number(l.expected_units) } : {}),
+      ...(l.per_person !== undefined && l.per_person !== null ? { per_person: Number(l.per_person) } : {}),
     } });
   }
   return ops;
@@ -180,3 +183,18 @@ export interface CartaPrepTotal {
 }
 
 export const STATION_LABELS: Record<number, string> = { 1: 'Untar', 2: 'Colocar', 3: 'Dosificar', 4: 'Acabados' };
+/**
+ * Unidades a cubrir y consumo por persona (ajuste de VG, 27-10): total = por persona × asistentes. La previsión trabaja
+ * con máximos a cubrir, así que el total se redondea hacia arriba; el «por persona» que sale de un total, a 3 decimales.
+ */
+export function unitsFromPerPerson(perPerson: number, attendance: number): number {
+  return Math.max(0, Math.ceil(perPerson * attendance - 1e-9));
+}
+export function perPersonFromUnits(units: number, attendance: number): number | null {
+  return attendance > 0 ? Math.round((units / attendance) * 1000) / 1000 : null;
+}
+/** Asistentes de una carta: los suyos o, si no, las personas de su evento. */
+export function cartaAttendance(menu: { expected_attendance?: number | null } | null, eventGuests: number | null | undefined): number | null {
+  if (menu?.expected_attendance !== null && menu?.expected_attendance !== undefined) return menu.expected_attendance;
+  return eventGuests ?? null;
+}

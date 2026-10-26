@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
-import { prepSplitOf, prepSplitProblem, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
+import { cartaAttendance, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
 
 const CARTA = 'f00dca7a-0000-4000-8000-000000000001';
 const LINE = (n: number) => `f00dca7a-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;
@@ -48,10 +48,10 @@ test('estaciones · la semilla las pasa de la nota a la columna', async () => {
 
 test('previsión · unidades esperadas y reparto: la lectura por línea y la de totales para Flow', async () => {
   await ok('commands', [
-    update('food.carta_lines', SERRANO, await rev('food.carta_lines', SERRANO), { expected_units: 100 }),
+    update('food.carta_lines', SERRANO, await rev('food.carta_lines', SERRANO), { expected_units: 100, per_person: 0.5 }),
     update('food.carta_lines', CAPRESE, await rev('food.carta_lines', CAPRESE), { expected_units: 50 }),
     update('food.carta_lines', AGUA, await rev('food.carta_lines', AGUA), { expected_units: 60 }),
-    update('food.menus', CARTA, await rev('food.menus', CARTA), { prep_split: { mesa: 30, nevera: 20, fresco: 50 } }),
+    update('food.menus', CARTA, await rev('food.menus', CARTA), { prep_split: { mesa: 30, nevera: 20, fresco: 50 }, expected_attendance: 200 }),
   ]);
   assert.deepEqual((await q(`select app from core.allowed_reads where name in ('food.carta_prep_projection', 'food.carta_prep_totals_projection') order by name, app`)).map((r) => r.app),
     ['flow', 'food', 'flow', 'food']);
@@ -117,4 +117,13 @@ test('dominio · el reparto', () => {
   assert.equal(validateOperation({ op: 'update', table: 'food.menus', fields: { prep_split: { mesa: 50, nevera: 50, fresco: 50 } } })?.details.field, 'prep_split');
   assert.equal(validateOperation({ op: 'update', table: 'food.carta_lines', fields: { expected_units: -1 } })?.details.field, 'expected_units');
   assert.equal(validateOperation({ op: 'update', table: 'food.recipe_ingredients', fields: { station: 5 } })?.details.field, 'station');
+  assert.equal(validateOperation({ op: 'update', table: 'food.carta_lines', fields: { per_person: -0.5 } })?.details.field, 'per_person');
+  assert.equal(validateOperation({ op: 'update', table: 'food.menus', fields: { expected_attendance: 1.5 } })?.details.field, 'expected_attendance');
+  // Máximos a cubrir: hacia arriba.
+  assert.equal(unitsFromPerPerson(0.5, 199), 100);
+  assert.equal(unitsFromPerPerson(0.3, 10), 3);
+  assert.equal(perPersonFromUnits(100, 300), 0.333);
+  assert.equal(perPersonFromUnits(100, 0), null);
+  assert.equal(cartaAttendance({ expected_attendance: 250 }, 180), 250);
+  assert.equal(cartaAttendance({ expected_attendance: null }, 180), 180);
 });

@@ -1,7 +1,10 @@
 -- Food · previsión de la carta (encargo de VG del 26-10-2026, por Core; docs/food/API.md §2.11). Toca solo el schema
 -- food; lee resources y registra dos lecturas para Flow (nombres acordados con Flow el 26-10).
 --
--- - `carta_lines.expected_units`: unidades que se esperan vender de cada línea (100 serranos, 60 aguas…).
+-- - `carta_lines.expected_units`: unidades a cubrir de cada línea (100 serranos, 60 aguas…): un máximo, no una media.
+-- - `carta_lines.per_person` y `menus.expected_attendance` (ajuste de VG): consumo por persona y asistentes esperados de la
+--   carta (si no, las personas del evento). total = por persona × asistentes; la app guarda los dos al editar uno, y las
+--   cuentas de aquí usan siempre `expected_units`.
 -- - `menus.prep_split`: el reparto de lo que se prepara, por carta: `{mesa, nevera, fresco}` en %, suma 100; sin él,
 --   30/20/50. «Mesa» y «nevera», cortado en bandeja; «fresco», sin cortar.
 -- - `recipe_ingredients.station`: la estación del montadito (1 Untar · 2 Colocar · 3 Dosificar · 4 Acabados). Las recetas
@@ -18,8 +21,9 @@
 -- 1. Columnas
 -- ---------------------------------------------------------------------------
 alter table food.carta_lines add column expected_units integer check (expected_units is null or expected_units between 0 and 1000000);
+alter table food.carta_lines add column per_person numeric(10,3) check (per_person is null or per_person between 0 and 1000);
 select core.register_table('food', 'food', 'carta_lines', array[
-  'menu_id','recipe_id','item_id','scope','code','name','description','sale_price_cents','active','position','image_key','expected_units']);
+  'menu_id','recipe_id','item_id','scope','code','name','description','sale_price_cents','active','position','image_key','expected_units','per_person']);
 
 alter table food.menus add column prep_split jsonb check (prep_split is null or (
   jsonb_typeof(prep_split) = 'object'
@@ -27,9 +31,11 @@ alter table food.menus add column prep_split jsonb check (prep_split is null or 
   and (prep_split->>'mesa')::numeric >= 0 and (prep_split->>'nevera')::numeric >= 0 and (prep_split->>'fresco')::numeric >= 0
   and (prep_split->>'mesa')::numeric + (prep_split->>'nevera')::numeric + (prep_split->>'fresco')::numeric = 100));
 alter table food.menus add constraint menus_prep_split_carta check (prep_split is null or kind = 'carta');
+alter table food.menus add column expected_attendance integer check (expected_attendance is null or expected_attendance between 0 and 100000);
+alter table food.menus add constraint menus_attendance_carta check (expected_attendance is null or kind = 'carta');
 select core.register_table('food', 'food', 'menus', array[
   'kind','event_id','source_event_revision','source_event_snapshot','status','validated_at','validated_by','validated_warnings',
-  'preparation_generated_at','preparation_source_revisions','notes','closing_notes','organizer_shared','house_servings','name','prep_split']);
+  'preparation_generated_at','preparation_source_revisions','notes','closing_notes','organizer_shared','house_servings','name','prep_split','expected_attendance']);
 
 alter table food.recipe_ingredients add column station smallint check (station is null or station between 1 and 4);
 select core.register_table('food', 'food', 'recipe_ingredients', array['recipe_id','ingredient_id','quantity','unit','position','notes','station']);

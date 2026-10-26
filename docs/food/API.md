@@ -327,6 +327,7 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
 
 - **Datos:**
   - `carta_lines.expected_units`: unidades que se esperan vender; null si no hay previsión.
+  - `carta_lines.per_person` y `menus.expected_attendance` (ajuste de VG del 27-10): consumo por persona y asistentes esperados de la carta (si faltan, las personas del evento). Total = por persona × asistentes, redondeado hacia arriba porque son máximos a cubrir. La app guarda los dos y, al editar uno, recalcula el otro. Las cuentas del servidor usan siempre `expected_units`.
   - `menus.prep_split` (solo cartas): `{mesa, nevera, fresco}` en %, que suman 100. Sin él, 30/20/50.
   - `recipe_ingredients.station`: estación del 1 al 4. La de las recetas de la semilla se pasa de la nota a la columna (`food.backfill_carta_stations`).
 - **Conversiones, sin inventar nada** (`food.to_item_base`): de la cantidad de la receta a la unidad base del artículo, por la misma familia de unidad o por una conversión del artículo sin proveedor.
