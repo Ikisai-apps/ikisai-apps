@@ -109,8 +109,9 @@ begin
             and coalesce((flow.column_config(new.project_id, new.column_key)->>'manual')::boolean, false)) then
       perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.units'));
     end if;
-    -- Lo creado a mano no trae movimientos de existencias: solo texto y cantidad.
-    new.payload := new.payload - 'moves' - 'applied';
+    -- Lo creado a mano no trae movimientos ni marcas de lo generado: solo los campos para enseñar la tarea.
+    new.payload := (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(coalesce(new.payload, '{}'::jsonb)) as e(k, v)
+                     where k in ('item_key','name','unit','qty','to','from'));
     return new;
   end if;
   if old.kind <> 'task' or flow.changed(to_jsonb(old), to_jsonb(new), array['project_id','column_key','kind','order_id','line_id','product_id','idx','pay_seq','status','assigned_to','done_at','done_by','payload','source_ref']) then
@@ -162,12 +163,13 @@ begin
       'moves', jsonb_build_array(jsonb_build_object('buffer', v_b.key, 'delta', v_qty))
         || case when v_from = 'nevera' then jsonb_build_array(jsonb_build_object('buffer', v_b.item_key || ':nevera', 'delta', -v_qty)) else '[]'::jsonb end);
     v_label := 'Reponer ' || v_b.name || ' a ' || v_b.location || ' desde ' || v_from;
+    -- Solo cuenta lo generado por aquí: su source_ref (que una tarea a mano nunca lleva) empieza por la clave de la reposición.
     select * into v_open from flow.units
-     where project_id = v_b.project_id and deleted_at is null and payload->>'restock' = v_ref and status in ('proposed','pending','in_progress')
+     where project_id = v_b.project_id and deleted_at is null and source_ref like v_ref || ':%' and status in ('proposed','pending','in_progress')
      order by created_at desc limit 1 for update;
     if v_open.id is null then
       perform flow.ins(p, 'flow.units', jsonb_build_object('project_id', v_b.project_id, 'column_key', v_col, 'kind', 'task', 'label', v_label,
-        'status', 'proposed', 'payload', v_payload));
+        'status', 'proposed', 'payload', v_payload, 'source_ref', v_ref || ':' || gen_random_uuid()));
     elsif v_open.status = 'proposed' and (v_open.payload->>'qty')::numeric is distinct from v_qty then
       perform flow.upd(p, 'flow.units', v_open.id, v_open.revision, jsonb_build_object('payload', v_payload));
     end if;

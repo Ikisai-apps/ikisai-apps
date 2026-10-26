@@ -107,9 +107,10 @@ test('ingredientes · cada montadito hecho descuenta de la mesa; bajo el 25 % se
 
 test('ingredientes · a mano nace confirmada y sin movimientos; el cliente no toca nivel ni reglas; el cierre lleva el consumo', async () => {
   const id = uuid();
-  await ok([{ op: 'insert', table: TABLES.units, id, fields: { project_id: PROJECT, column_key: 'ingredients', kind: 'task', label: 'Cortar más tomate', payload: { qty: 1, unit: 'kg', moves: [{ buffer: `${JAMON}:mesa`, delta: 99 }] } } }]);
+  await ok([{ op: 'insert', table: TABLES.units, id, fields: { project_id: PROJECT, column_key: 'ingredients', kind: 'task', label: 'Cortar más tomate',
+    payload: { qty: 1, unit: 'kg', moves: [{ buffer: `${JAMON}:mesa`, delta: 99 }], restock: `restock:${JAMON}:mesa:nevera` } } }]);
   const u = await row(TABLES.units, id);
-  assert.equal(u.status, 'pending'); assert.equal(u.payload.moves, undefined);
+  assert.equal(u.status, 'pending'); assert.equal(u.payload.moves, undefined); assert.equal(u.payload.restock, undefined); assert.equal(u.payload.qty, 1);
   const b = await buffer(`${JAMON}:mesa`);
   assert.equal((await commit([{ op: 'update', table: TABLES.buffers, id: b.id, expectedRevision: b.revision, fields: { level: 5 } }], app.tokens.owner)).data.error.code, 'PROCEDURE_ONLY');
   await ok([{ op: 'update', table: TABLES.buffers, id: b.id, expectedRevision: b.revision, fields: { threshold_pct: 30 } }], app.tokens.owner);
