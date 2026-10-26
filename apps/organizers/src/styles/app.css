@@ -41,6 +41,11 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgretreat-off .medal-cover{filter:grayscale(1)}
 .orgretreat .stage-box{margin:0}
 .orgretreat .stage-caption,.orgretreat .stage-stop{font-size:var(--text-sm,.875rem);font-weight:600;color:var(--ink)}
+/* Mis retiros con «todos» (dirección como coorganizadora): buscador y marca «Coorganizas» */
+.orgsearch{display:grid;gap:4px;margin:0 0 12px}
+.orgsearch input{width:100%;min-height:var(--tap,46px)}
+.orgsearch .hint:empty{display:none}
+.orgretreat[hidden]{display:none}
 .orgfold{margin-top:14px}
 .orgfold>summary{display:flex;align-items:center;min-height:var(--tap,46px);font-weight:700;cursor:pointer;list-style:none}
 .orgfold>summary::-webkit-details-marker{display:none}

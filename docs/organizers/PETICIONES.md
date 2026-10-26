@@ -101,15 +101,24 @@ Reglas de VG:
 | K9 | Core | **El pase común sigue vivo mientras se use una app.** Que `auth/refresh` alargue el pase del dispositivo (o emita uno si no lo hay), igual que `auth/sso`. Así, «Verlo como huésped» abre Guests con la misma cuenta aunque el organizador lleve más de 30 días usando solo Organizers | alta |
 | Gu1 | Guests | **Entrar en un retiro concreto.** Formato del enlace para abrir Guests en la ficha de un retiro cuando la cuenta tiene varios (propuesta: `https://guests.ikisai.com/#/r/<reservation_id>`, o el `guest_id`). Es el equivalente, para la sesión común, del «por enlace, ese retiro» de C10. Sin sesión en Guests, la entrada por pase (`auth/sso`) tiene que respetar esa ruta | alta |
 
-**Lo que hace Organizers (en este territorio, sin esperar a que se respondan las peticiones):**
-1. Entrada y textos. El error de enlace caducado deja de decir «si tu retiro sigue en marcha»: con B19 solo caduca un enlace revocado o un retiro borrado.
-2. Ámbito «todos» en lo propio:
-   - `grantedReservations`, `visibleRow` y `validateOperations` en `_domain/organizers`;
-   - el gancho de ámbito de la base de datos (`organizers.*`, de la migración 0700), con una migración nueva 07xx.
+**Lo que hace Organizers (en este territorio y en la PR #718):**
+1. Entrada y textos. El error de enlace caducado deja de decir «si tu retiro sigue en marcha»: con B19 solo deja de valer un enlace revocado o el de un retiro borrado. Ahora dice «Este enlace ya no está activo» y que con uno nuevo se vuelven a ver todos los retiros, también los pasados.
+2. Ámbito «todos» en lo propio: `hasAllReservations` e `inReservationScope` en `_domain/organizers`, que usan `visibleRow` y `validateOperations` (prueba en `tests/organizers/scope.test.ts`). El gancho de la base de datos (`organizers.validate_batch`, 0700) ya pregunta a `core.portal_in_scope('organizers', …)`: con K8 queda cubierto, sin migración propia. Un coorganizador con «todos» lee y escribe la experiencia y las ofertas de cualquier retiro.
+3. Mis retiros con «todos»:
+   - la lista completa, con un buscador por título o código (sin acentos ni mayúsculas) y la marca «Coorganizas» cuando `as = 'coorganizer'`;
+   - con «todos» no se abre sola la ficha;
+   - las portadas de esos retiros se piden al buscar o al abrir su grupo.
 
-   Un coorganizador con «todos» lee y escribe la experiencia y las ofertas de cualquier retiro.
-3. Mis retiros con «todos»: la lista completa, con un buscador y la marca «Como coorganizadora» cuando `as = 'coorganizer'`. En la ficha, la misma ficha con una línea que lo dice.
-4. «Verlo como huésped» en la ficha y en el menú lateral, solo con `as_guest_id` y si el catálogo de apps (`GET apps`) incluye `guests`. Abre Guests en otra pestaña con la ruta de Gu1, sin otro inicio de sesión.
+   La ficha es la misma, con la línea «Lo ves desde dirección de Ikisai: coorganizas todos los retiros.»
+4. «Verlo como huésped» en la cabecera de la ficha (`#viewAsGuest`), solo con `as_guest_id` y si el catálogo de apps (`GET apps`) incluye `guests`. Abre Guests en otra pestaña con la ruta de Gu1 (de momento la propuesta `#/r/<reservation_id>`, en un solo sitio: `app/guest-view.ts`), sin otro inicio de sesión.
+
+**Respuesta de Booking (26-10):**
+- Le encajan `as` (`'organizer' | 'coorganizer'`), `as_guest_id` y «todos» como `{"all": true}` en `scopes.grants`. El `{"all": true}` lo concede Core por el nivel de dirección, y Booking lo acepta en sus comprobaciones.
+- B19 se hace como se pidió y vale también para Guests (regla 1 de VG).
+- B21: la ficha de huésped del organizador lleva `booking.guests.portal_role = 'organizer'`. La crea la conciliación `booking.portal_access_sync` después de cada permiso de Organizers.
+- Todo va en la migración 0481, en una PR aparte.
+
+**Respuesta de Core (26-10):** K8 y K9 van en la migración 0095 y en el `_kit`. Hasta que VG conteste, las dos preguntas se resuelven con las recomendaciones: dirección escribe como coorganizadora y los cancelados se quedan.
 
 Preguntas para VG (por Core):
 - Con «todos», ¿la dirección puede **escribir** en la experiencia y las ofertas de cualquier retiro, o solo verlas? Recomiendo verlo y escribirlo igual que un coorganizador (la regla dice «aparece como coorganizador»). Si es solo lectura, se marca en el ámbito.

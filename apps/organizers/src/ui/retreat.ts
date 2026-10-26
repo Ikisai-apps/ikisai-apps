@@ -9,8 +9,9 @@ import type { Coorganizer, GuestList, KitchenSummary, Loaded, PortalDates, Porta
 import { organizersLine } from '../app/texts.ts';
 import { contactLine } from '../app/common-texts.ts';
 import { dateRange, dayLabel, hourLabel, isCancelled, mealPlanLabel, menuStyleLabel, restrictionText, statusLabel, STATUS_TONE } from '../app/labels.ts';
-import { countdownText, DESIGN_STATUSES, DRAFT_STATUSES, phaseOf, showsCountdown, stageKeyOf, summarySteps, todayMadrid, type SummaryExtra, type SummaryStepId } from '../app/journey.ts';
+import { countdownText, DESIGN_STATUSES, DRAFT_STATUSES, isCoorganizer, phaseOf, showsCountdown, stageKeyOf, summarySteps, todayMadrid, type SummaryExtra, type SummaryStepId } from '../app/journey.ts';
 import { createCoverLoader } from '../app/covers.ts';
+import { guestViewUrl, loadCatalog } from '../app/guest-view.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import { renderGuestList } from './guests.ts';
 import { renderDates } from './dates.ts';
@@ -39,6 +40,26 @@ export interface RetreatData {
   dates: PortalDates | null;
   /** Solicitudes para apuntarse que Ikisai pasa al organizador (Booking §26.3); si la lectura falla, ninguna. */
   joinRequests: JoinRequest[];
+  /** Cómo se ve este retiro: por permiso propio o como coorganizadora desde dirección, y «Verlo como huésped». */
+  access: RetreatAccess;
+}
+
+export interface RetreatAccess {
+  coorganizer: boolean;
+  /** Ficha de este retiro en Guests con la misma cuenta, o null si no hay botón. */
+  guestUrl: string | null;
+}
+
+/**
+ * Lo que dice la lista de Mis retiros sobre este retiro (Booking B20 y B21) y el catálogo de apps. Si algo falla (sin red,
+ * sin copia), se pinta como siempre: sin la línea de coorganización y sin botón.
+ */
+async function loadAccess(ctx: ViewContext, reservationId: string): Promise<RetreatAccess> {
+  const [entry, catalog] = await Promise.all([
+    ctx.api.reservations().then((x) => x.value.items.find((r) => r.id === reservationId) ?? null).catch(() => null),
+    loadCatalog(ctx.client),
+  ]);
+  return { coorganizer: !!entry && isCoorganizer(entry), guestUrl: guestViewUrl(catalog, reservationId, entry?.as_guest_id) };
 }
 
 /** Completo: sin datos que falten y, con registro de viajeros, firmado. */
@@ -65,10 +86,10 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
   /** Pestañas con estado propio (fechas, diseño, propuesta): se sueltan al salir o repintar. */
   let destroySub: (() => void) | null = null;
   let coverUrl: string | null = null;
-  let lastDetail: { d: ReservationDetail; organizers: Coorganizer[] } | null = null;
+  let lastDetail: { d: ReservationDetail; organizers: Coorganizer[]; access: RetreatAccess } | null = null;
   const covers = createCoverLoader({ client: ctx.client, userId: ctx.userId }, (_id, url) => {
     coverUrl = url;
-    if (lastDetail) paintHead(lastDetail.d, lastDetail.organizers);
+    if (lastDetail) paintHead(lastDetail.d, lastDetail.organizers, lastDetail.access);
   });
   const head = el('div', { id: 'retreatHead', 'data-feedback-id': 'organizers.retiro.cabecera', 'data-feedback-label': 'Cabecera del retiro' });
   const tabs = el('div', { id: 'retreatTabs', class: 'orgtabs-fade' });
@@ -79,10 +100,11 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
 
   async function load(): Promise<void> {
     try {
-      const [detail, guests, kitchen, organizers, joinRequests] = await Promise.all([
+      const [detail, guests, kitchen, organizers, joinRequests, access] = await Promise.all([
         api.detail(reservationId), api.guests(reservationId), api.kitchen(reservationId),
         api.organizers(reservationId).then((x) => x.value.items).catch(() => [] as Coorganizer[]),
         api.readAny<{ items: JoinRequest[] }>('booking.portal_join_requests', { reservation_id: reservationId }).then((x) => x.value.items).catch(() => [] as JoinRequest[]),
+        loadAccess(ctx, reservationId),
       ]);
       // Los enlaces de huésped solo hacen falta en la pestaña Asistentes; si fallan, la lista sigue sin su estado.
       const links = tab === 'asistentes' && guests.value.confirmed ? await api.links(reservationId).catch(() => null) : null;
@@ -93,14 +115,14 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
         tab === 'resumen' ? loadExtra(ctx, reservationId, d) : Promise.resolve({} as SummaryExtra),
       ]);
       if (!alive) return;
-      paint({ detail, guests, kitchen, links, organizers, dates, joinRequests }, extra);
+      paint({ detail, guests, kitchen, links, organizers, dates, joinRequests, access }, extra);
       covers.request(reservationId);
     } catch (error) {
       if (alive) replace(body, failure(error, () => void load()));
     }
   }
 
-  function paintHead(d: ReservationDetail, organizers: Coorganizer[]): void {
+  function paintHead(d: ReservationDetail, organizers: Coorganizer[], access: RetreatAccess): void {
     const today = todayMadrid();
     const phase = phaseOf(d, today);
     const hours = [hourLabel(d.arrival_time) && t('llegada a las {hora}', { hora: hourLabel(d.arrival_time) }), hourLabel(d.departure_time) && t('salida a las {hora}', { hora: hourLabel(d.departure_time) })].filter(Boolean).join(' · ');
@@ -115,9 +137,21 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     const line = organizersLine(organizers);
     const countdown = showsCountdown(phase) && d.start_date ? el('span', { class: 'chip', id: 'retreatCountdown' }, countdownText(d.start_date, d.end_date, today, t)) : null;
     const code = d.code ? el('span', { class: 'small', title: t('Código de tu reserva, para hablar con Ikisai') }, t('Reserva {codigo}', { codigo: d.code })) : null;
+    // Coorganizadora desde dirección (ámbito «todos», B20): la misma ficha, con una línea que lo dice.
+    const coorganizer = access.coorganizer
+      ? el('p', { class: 'muted small orghead-meta', id: 'retreatCoorganizer' }, t('Lo ves desde dirección de Ikisai: coorganizas todos los retiros.'))
+      : null;
+    // «Verlo como huésped» (B21): Guests en otra pestaña con la misma cuenta, sin otro inicio de sesión.
+    const asGuest = access.guestUrl
+      ? el('p', { class: 'orghead-meta' }, el('a', {
+        class: 'btn', id: 'viewAsGuest', href: access.guestUrl, target: '_blank', rel: 'noopener',
+        'data-feedback-id': 'organizers.retiro.cabecera.ver_como_huesped', 'data-feedback-label': 'Verlo como huésped',
+      }, icon('guest', 16), t('Verlo como huésped')))
+      : null;
     replace(head, cover,
       countdown || code ? el('p', { class: 'orghead-meta chips' }, countdown, code) : null,
-      line ? el('p', { class: 'muted small orghead-meta', id: 'retreatOrganizers', 'data-feedback-ignore': '' }, line) : null);
+      line ? el('p', { class: 'muted small orghead-meta', id: 'retreatOrganizers', 'data-feedback-ignore': '' }, line) : null,
+      coorganizer, asGuest);
   }
 
   /** Pista de que la tira de pestañas sigue a la derecha: se quita al llegar al final. */
@@ -131,8 +165,8 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
   function paint(data: RetreatData, extra: SummaryExtra): void {
     const d = data.detail.value;
     document.title = `${d.title} · Ikisai Organizers`;
-    lastDetail = { d, organizers: data.organizers };
-    paintHead(d, data.organizers);
+    lastDetail = { d, organizers: data.organizers, access: data.access };
+    paintHead(d, data.organizers, data.access);
 
     const joinsPending = pendingJoins(data.joinRequests).length;
     // Con solicitudes para apuntarse, Asistentes se ve aunque el retiro no recoja datos de huéspedes.

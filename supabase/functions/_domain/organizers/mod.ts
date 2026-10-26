@@ -43,6 +43,20 @@ export function grantedReservations(membership: { scopes?: unknown } | null | un
   return new Set((Array.isArray(grants) ? grants : []).map((g) => String(g?.reservation_id ?? '')).filter(Boolean));
 }
 
+/**
+ * Ámbito «todos»: dirección figura como coorganizadora de cualquier retiro (decisión de VG del 26-10-2026). La forma de la
+ * entrada la fija Booking (petición B20); aquí, en un solo sitio. El núcleo la admite en `core.portal_in_scope` (K8).
+ */
+export function hasAllReservations(membership: { scopes?: unknown } | null | undefined): boolean {
+  const grants = (membership?.scopes as { grants?: Array<{ all?: unknown }> } | null | undefined)?.grants;
+  return Array.isArray(grants) && grants.some((g) => g?.all === true);
+}
+
+/** ¿Esta reserva está en el ámbito del organizador? Por su permiso propio o por «todos». */
+export function inReservationScope(membership: { scopes?: unknown } | null | undefined, reservationId: unknown): boolean {
+  return hasAllReservations(membership) || grantedReservations(membership).has(String(reservationId ?? ''));
+}
+
 /** Tablas con biblioteca del organizador: sus materiales y preguntas le acompañan a sus próximos retiros. */
 export const OWNED_TABLES: readonly string[] = [TABLES.materials, TABLES.questions];
 
@@ -53,7 +67,7 @@ export const OWNED_TABLES: readonly string[] = [TABLES.materials, TABLES.questio
 export function visibleRow(table: string, row: Record<string, unknown>, membership: { scopes?: unknown } | null | undefined, userId?: string | null): boolean {
   if (!table.startsWith('organizers.')) return true;
   if (userId && OWNED_TABLES.includes(table) && row.owner_id === userId) return true;
-  return grantedReservations(membership).has(String(row.reservation_id ?? ''));
+  return inReservationScope(membership, row.reservation_id);
 }
 
 type Spec =
@@ -164,7 +178,6 @@ export function validateOperations(
   current: (table: string, id: string) => Record<string, unknown> | undefined = () => undefined,
   userId?: string | null,
 ): Issue | null {
-  const granted = grantedReservations(membership);
   for (const op of operations) {
     if (op.op === 'call') return { code: 'FORBIDDEN', message: 'Organizers no admite procedimientos en sus lotes.', details: {} };
     const table = op.table ?? '';
@@ -181,7 +194,7 @@ export function validateOperations(
     }
     if (op.op === 'insert') {
       for (const key of spec.required) if (fields[key] === undefined || fields[key] === null) return { code: 'INVALID_FIELDS', message: `Campo ${key} es obligatorio.`, details: { table, field: key } };
-      if (!granted.has(String(fields.reservation_id))) return { code: 'OUT_OF_SCOPE', message: 'Ese retiro no es tuyo.', details: { reservation_id: fields.reservation_id } };
+      if (!inReservationScope(membership, fields.reservation_id)) return { code: 'OUT_OF_SCOPE', message: 'Ese retiro no es tuyo.', details: { reservation_id: fields.reservation_id } };
       if (userId && OWNED_TABLES.includes(table) && fields.owner_id !== userId) return { code: 'INVALID_FIELDS', message: 'Campo owner_id debe ser quien lo crea.', details: { table, field: 'owner_id' } };
     } else {
       for (const key of ['reservation_id', 'owner_id']) {

@@ -96,6 +96,14 @@
 - 2026-10-20 · Portadas de Mis retiros con el velo completo del kit (`veil: 'full'`, 0.51); fuera el refuerzo propio.
 - 2026-10-20 · «Para quién» en Experiencia › Programa (MUELA-065, Booking #664): todos, solo adultos, solo menores o algunas personas, con la etiqueta en la lista del día (API.md §18.3).
 
+- 2026-10-26 · **Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped»** (encargo de VG; PR #718, en borrador hasta que estén Booking 0481, Core 0095 y Guests Gu1):
+  - **Entrada:** «Este enlace ya no está activo» en lugar de «si tu retiro sigue en marcha».
+  - **Ámbito «todos»** (`{"all": true}`) en `_domain/organizers` (`hasAllReservations` e `inReservationScope`). El gancho de la base de datos lo cubre K8.
+  - **Mis retiros:** buscador, «Coorganizas» y portadas diferidas con «todos».
+  - **Ficha:** la línea de coorganización y «Verlo como huésped».
+
+  Pruebas en `scope.test.ts`.
+
 ## Pendiente
 
 - **Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped»** (encargo de VG, 26-10; plazo: jueves 29). Peticiones B19–B21, K8, K9 y Gu1, y lo que hace Organizers, en `PETICIONES.md`.

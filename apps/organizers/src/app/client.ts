@@ -20,7 +20,7 @@ export function describeError(error: unknown, name?: string): string {
   const who = name || t('Esta persona');
   switch (code) {
     case 'LINK_INVALID': return t('Este enlace no es válido o ya no está activo. Pide uno nuevo a Ikisai.');
-    case 'LINK_EXPIRED': return t('Este enlace ha caducado. Si tu retiro sigue en marcha, pide uno nuevo a Ikisai.');
+    case 'LINK_EXPIRED': return t('Este enlace ya no está activo. Pide uno nuevo a Ikisai.');
     case 'RESERVATION_NOT_CONFIRMED': return t('Podrás añadir a tus asistentes cuando la reserva esté confirmada.');
     case 'GUEST_DATA_OFF': return t('En este retiro no hace falta la lista de asistentes.');
     case 'DECLARATION_REQUIRED': return t('Antes de guardar, marca la casilla de conformidad.');
