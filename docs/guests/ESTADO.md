@@ -99,6 +99,8 @@
 
 ## Pendiente
 
+- **Encargo de VG del 26-10 (plazo 29-10), API.md §9.17:** «Mis retiros», acceso que no caduca, dirección («todos») y etiqueta de equipo. Modelo de pantallas en la PR en borrador; el código, en la misma PR, depende de la #725 de Booking. Preguntas G-B1 y G-B2 para VG.
+
 - «Mis tareas» (TK1), cuando Tasks lo publique.
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.

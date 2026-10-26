@@ -571,6 +571,66 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   habitaciones, salas, baños, comedor, exteriores, zonas de paso y otros). Tocar un sitio lo elige («Sitio: …»,
   `#helpPicked`) y el aviso lleva `scope.space_id` (Recursos) y su nombre en el texto, como siempre. Las baldosas siguen.
 
+### 9.17 Acceso que no caduca, «Mis retiros», dirección y fichas de equipo (encargo de VG del 26-10-2026, plazo 29-10)
+
+Reglas (VG, por Core): quien entró una vez sigue entrando; organizador, staff y dirección aparecen en el retiro como huéspedes; dirección ve todos los retiros. Los datos los pone Booking (`docs/booking/API.md` §29, #725, migraciones 0481 y 0483); Guests solo enseña. Este apartado es el **modelo de pantallas** de la PR en borrador; el código va en la misma PR.
+
+#### a) «Mis retiros» (`#/retiros`, nueva)
+
+- **Dónde:** en el menú lateral, la sección «Tus retiros» enseña los seis más cercanos y «Ver todos» lleva a `#/retiros`; en el Calendario, «Todos tus retiros» enlaza también aquí. La barra («Calendario · Retiros») no cambia: «Retiros» sigue abriendo el retiro que se ve.
+- **Grupos, por fecha:** «En curso» · «Próximos» (el más cercano primero) · «Pasados» (el más reciente primero). Sin fechas (sin red), al final.
+- **Cada fila** (una tarjeta, toda ella enlace a su retiro):
+  - título, fechas cortas y el momento de siempre (`retreatState`: «En 12 días», «Hasta el domingo 9», «Terminado»);
+  - **estado de la reserva** en texto, desde `reservation.status` (`portal_my_guest`) y `status` (`portal_my_retreats`): `pre_reservada` → «Pendiente de confirmar» · `confirmada` → «Confirmado» · `en_ejecucion` → «En curso» · `cerrada` → «Terminado» · `cancelada` y `perdida` → «Cancelado · solo lectura»;
+  - con la familia y «Todos», a quién toca (las caras, como en el calendario);
+  - la etiqueta de equipo si la hay (d).
+- **Pedidos de «Apuntarme» pendientes** (O4b, `joinSuggestions`): en «Próximos», con «Pedido · con el organizador» y «Retirar», como en el Calendario.
+- **Cancelados:** se abren en solo lectura con la franja «Este retiro se canceló. Lo ves en solo lectura.» (la misma pieza que la vista previa: `readOnly()` pasa a ser `preview` **o** reserva `cancelada`/`perdida`). Nada se guarda ni se encola.
+- **Sin red:** de la caché (`my_guest` y `portal_my_retreats`), con la hora de los datos.
+
+#### b) La sesión no se cierra ni se borra al terminar el retiro
+
+Revisado en `main` (830df42):
+
+| Qué | Cuándo se limpia hoy |
+|---|---|
+| Sesión (token y renovación, `sync-client`) | al salir del dispositivo, si `auth/refresh` responde 400/401/403, o si entra otra persona |
+| Caché por persona (IndexedDB `ikisai-guests`: lecturas, borradores y cola) | con el fin de sesión (`onSessionEnd`) |
+| Materiales guardados sin red y «Nuevo» visto (`localStorage`) | con el fin de sesión |
+| Dibujos del plano (Cache Storage `ikisai-guests-plans`) | con el fin de sesión |
+| Shell del service worker | al activar una versión nueva (solo las cachés de shell viejas); el SW no toca `/api/` |
+| Textos comunes (`localStorage`) | nunca (no son de la persona) |
+
+**Nada depende de la fecha del retiro**: Guests no filtra los `grants` por fechas ni borra nada al terminar. Lo que cortaba el acceso era el servidor (el enlace caducaba y el `grant` desaparecía con la conservación); eso lo quita Booking (§29.1, `validUntil = 'infinity'`). En Guests:
+- `validUntil` `'infinity'` (`Date.parse` da `NaN`) se trata como «sin caducidad»: la entrada nunca dice «Caducó el …» con una fecha inválida.
+- Un retiro pasado se abre en el momento «después», como siempre. La ficha anonimizada sale con el nombre «Huésped anonimizado»; en ella Guests no ofrece «Tus datos» ni la firma.
+- Prueba: una cuenta con un retiro pasado y otro futuro se abre, ve los dos en «Mis retiros» y no ve «No tienes acceso».
+
+#### c) Dirección («todos»)
+
+- **Cómo se sabe:** `membership.scopes.grants` contiene `{all: true}` (núcleo 0095; Booking lo confirma). `api.grants()` sigue devolviendo solo los pares reserva + huésped; `api.direction()` dice si está «todos».
+- **Sin ninguna ficha:** ya no es «No tienes acceso»: la entrada lleva a `#/retiros`.
+- **«Mis retiros»** añade, debajo, **«Todos los retiros»** (`portal_open_retreats`, que con dirección devuelve `direction: true` y todos, pasados y futuros): buscador por título y los mismos grupos por fecha; cada fila con su estado y, si ya tiene ficha, «Ya estás dentro».
+- **Recorrer sin estar apuntada:** `#/r/<reservationId>` de un retiro sin ficha abre la **vista de dirección**: cabecera del retiro (título, fechas, estado) y **Programa** (`portal_program` lo permite con `portal_scope_reservation`). Menú, Alojamiento, Guía, datos y firma llevan `guest_id` y necesitan ficha: no salen. Franja: «Lo ves como dirección. Aún no te has apuntado.».
+- **Apuntarse:** en los vivos (`joinable`), «Apuntarme» en la fila y en la franja → confirmación («Te apuntas a … ¿Con quién?», el mismo «para quién» de O4b) → `booking.portal_join_direction({reservation_id, persons?})`, sin aprobación. Después se relee el `bootstrap` (el `grant` nuevo) y se abre su ficha. Errores en texto: `RESERVATION_NOT_OPEN` «Este retiro ya no admite apuntarse» y `RESERVATION_NOT_CONFIRMED` «Este retiro aún no está confirmado».
+- **«Todos» nunca vale por un huésped:** Guests no pide nada con el `guest_id` de otro.
+
+#### d) Organizador, staff y dirección en el retiro
+
+- **Etiqueta** (`portal_role` de `portal_my_guest` y `portal_my_retreats`, BG14): «Organizas» (`organizer`) · «Equipo» (`staff`) · «Dirección» (`direccion`). Una píldora en la cabecera del retiro junto al nombre, en su fila de «Mis retiros» y en su tarjeta de la familia. Nada más cambia de sitio.
+- **Cama** (`portal_lodging.team: true`): con `choice: 'off'`, «La cama te la asigna el equipo» en lugar de la elección; con `choice: 'choose'` (camas de equipo marcadas, 0483), la elección de siempre entre las habitaciones que da Booking, sin plazo y confirmada al momento. `NOT_OFFERED` con `reason: 'team'` dice lo mismo que `'off'`.
+- **Menú:** como un huésped (VG). Ver la pregunta G-B1 sobre «Cocina tiene registrado…».
+- **Outsider que viene como huésped:** ficha normal. Guests no enlaza a Tasks desde el portal (hoy no lo hace; TK1 sigue sin construir).
+
+#### Enlace directo para Organizers (Gu1)
+
+`https://guests.ikisai.com/#/r/<reservation_id>` (ya en `main`): con varias personas de la cuenta en ese retiro, la familia junta; con una, redirige a `#/p/<guest_id>`; con dirección y sin ficha, la vista de dirección (c). Sobrevive al pase común: `auth/sso` es un `fetch` dentro de `client.start()`, sin redirección.
+
+#### Preguntas para VG (por Core)
+
+- **G-B1 · Menú de una ficha de equipo.** Sus restricciones no llegan a cocina (§29.4 de Booking), pero hoy el Menú dice «Cocina tiene registrado…». Opciones: (1) quitar esa línea y decir «Tu ficha de equipo no llega a cocina: si comes aquí, avisa tú en cocina»; (2) quitar también Alimentación de su ficha; (3) dejarlo igual. **Recomiendo (1):** el cruce con sus alergias le sigue avisando y nadie cree que cocina lo sabe.
+- **G-B2 · Datos y firma de una ficha de equipo.** No van a SES. Opciones: (1) ocultar los datos de registro y la firma en sus fichas (quedan nombre y alimentación); (2) dejarlos opcionales; (3) igual que un huésped. **Recomiendo (1):** no pedir datos que no se usan.
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:
