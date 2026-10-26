@@ -1,32 +1,40 @@
 # Flow · estado
 
-App interna nueva (`flow.ikisai.com`, Pages `ikisai-flow`, Edge `flow-api`, schema `flow` con migraciones en 0900–0999). Alta en el registro común: PR compartida de Core (`core/alta-flow`, migración `0093_core_flow_app`).
+App interna `flow` (`flow.ikisai.com`, Pages `ikisai-flow`, Edge `flow-api`, schema `flow`, migraciones 0900–0999). Publicada con la release v0.1.0-flow.2 (dominio enlazado; VG es owner). Referencia funcional: canon V1 de VG (26-10), FLOW-DIR-001 y las decisiones posteriores de VG por Core. Modelo y contratos: `docs/flow/API.md`.
 
-## Hecho
+## Qué está (en `main` o en PR)
 
-- 2026-10-26 · **Arranque (primer incremento, sin modelo de datos)**, para validar el despliegue:
-  - `flow-api` sobre el `_kit` (`createApp`), sin tablas, rutas propias ni subidas. Orígenes `https://flow.ikisai.com` y `https://ikisai-flow.pages.dev`.
-  - `_domain/flow` (`APP`, `TABLES` vacío) y `packages/domain-flow`, que lo reexporta.
-  - `apps/flow` (PWA): login del kit, cáscara común con el menú lateral (MUELA-013) y el lanzador de apps dentro, «Sugerencias y QA» y revisor, «‹ Volver a…» (`returnTo`, K9), barra de estado, Inicio «en preparación», service worker con actualización coordinada y `_worker.js` hacia `flow-api`. El icono es provisional.
-  - Pruebas: `tests/flow/conformance.test.ts` (`runConformance` sin tabla, con la opción que añade Core), `tests/flow/api.test.ts` (health, bootstrap sin tablas, nada que escribir, sin subidas) y `tests/flow/shell.spec.ts` (Playwright contra la `flow-api` real sobre PGlite: login erróneo, Inicio, menú, cierre de sesión y «Volver a…»).
+| Pieza | Dónde |
+|---|---|
+| Carta pública en `/`: Clásicos, Gourmet y Barra; «− n +»; total; «Ver carta solo» con la carta general; imágenes de producto; alérgenos («sin confirmar» si falta la etiqueta) | #707, #714, #727, #735 |
+| Número de cliente («Soy el N», guardado en el navegador): enviar pedido y ver los propios (por cobrar, preparando, entregados) | #714 |
+| Personal en `/equipo` (login del kit, PWA): lista de flujos por evento, Inicio del flujo con carrusel, guías y modo pruebas, y barra de columnas desde los datos | #727 |
+| Pedido y cobro: búsqueda por número, pedido manual, cobro explícito (efectivo o Bizum) con número de cobro, corrección (bajar → devolución pendiente; añadir → ampliación con su cobro, al final de la cola), anulación (owner o quien cobró) | #714 |
+| Preparación y Logística: cola estable, toques con «pendiente de confirmar», una transición en vuelo por tarjeta, aviso si otra persona se adelantó, últimas 10 hechas y las anteriores desplegables, «Ir al siguiente pendiente» | #714 |
+| Servicio y entrega: misma ficha desde Caja; cantidad entregada por línea; «Menú entregado» con excepción confirmada y registrada; reabrir sin tocar el dinero | #714 |
+| Modo servicio: pantalla encendida (Wake Lock) con indicador; sonido y vibración opcionales | #714 |
+| Acceso por proyecto (ámbitos del núcleo); outsiders: solo toques de unidades y tareas | #727 |
+| Food: «Actualizar carta desde Food» (reflejo manual, congelado durante el servicio) | #735 |
+| Cierre del día (owner): resumen, envío a Food y a Finance (no en modo pruebas), proyección que lee Booking | #735 |
+| Ingredientes: propuestas, existencias de mesa y nevera, consumo por montadito, reposición bajo el 25 %, generación desde la previsión de Food, consumo en el cierre | #745 |
+| Pruebas: 40 en PGlite (conformidad, criterios §15, públicos, acceso, integraciones, ingredientes) y Playwright de la cáscara y del recorrido completo | #707–#745 |
 
-- 2026-10-26 · **Modelo y carta** (#707, publicada en `main`): migración `0900` (9 tablas, guarda, 6 procedimientos, semilla del §8), `GET public/menu` y la carta pública. Conformidad completa sobre `flow.projects`, y pruebas de los criterios §15.6–12, 14 y 18–21.
-- 2026-10-26 · **FLOW-DIR-001** (rama `flow/caja`): migración `0901` (número de cliente, ampliaciones, entrega por cantidad, devoluciones pendientes, P-2, `image_key`); carta en `/` con «Enviar a barra» y «Soy el N»; personal en `/equipo` con Caja, Preparación, Servicio y Logística; fichas de pedido y de entrega compartidas; Inicio con las 4 guías; imágenes del Serrano.
+## Qué falta para el jueves
 
-## Pendiente
+1. **Elegir el evento de Booking** del flujo (owner): leer `booking.event_projection` y guardar `booking_event_id` y las fechas. Sin esto, Booking no ve el resumen del servicio. La reserva del fin de semana (RSV_2026_007, «Carrera de orientación») sigue pre-reservada sin evento hasta que VG la confirme.
+2. **«Pedir a Tasks»** desde una tarea de Logística (contrato de Tasks, #717): `projects.tasks_project_id`, elegir el proyecto de Tasks y crear la tarea o la compra con la sesión de la persona.
+3. **Ensayo con varios móviles** (§15.13 y §15.16): concurrencia y red variable. Solo se puede hacer a mano, en el entorno real.
+4. **Previsión de Food** para Ingredientes: depende de la #741 de Food. Sin ella, la columna funciona con tareas a mano.
+5. **Altas de las 6 personas**: las da VG desde Central (jueves o viernes), como editoras y con el ámbito del proyecto de la barra.
 
-- Conectar `applyPublicOperations` cuando Core fusione la 0094 (#713). Hasta entonces, «Enviar a barra» responde que se enseñe el pedido en barra, y `tests/flow` no migra (la 0901 usa `core.allow_public_write` y `core.is_public_batch`).
-- Playwright de la carta (envío y número), de caja→preparación→entrega y de varias sesiones a la vez (§15.13–16), con turno de Core.
-- Modo servicio (FLOW-DIR-001 §7): Wake Lock con indicador, sonido o vibración opcionales.
-- Imágenes del resto de productos cuando VG las tenga (`node apps/flow/scripts/assets.mjs <carpeta>` y una migración con sus `image_key`).
-- Primera release y dominio (`release_cloud.py --app flow --bind-domain`) y propietario inicial (`initialize_app_owner.py`). Los hace Core.
-- Con la primera tabla sincronizable, `runConformance` completo (`table`, `fieldA`, `fieldB` y `required`).
-- Icono de la app (hoy, uno provisional de tres corrientes; el logo de Ikisai está en `public/guias/logo.webp`).
+## Riesgos
+
+- **Ingredientes** es la pieza con más lógica nueva. Con la regla de congelación, si el jueves a las 20:00 no está sólida, entra solo con tareas a mano: la generación automática y la reposición se pueden dejar sin usar sin tocar el resto.
+- **Envíos reales a Food y Finance:** probados contra el contrato, no contra las apps desplegadas (la #720 de Finance aún no está en `main`). Hay que probarlos en el ensayo, con una persona que sea miembro de Food y de Finance.
+- **Refresco entre móviles:** pull cada 3 s (sin Realtime). Hay que medirlo en el ensayo con 4 a 6 móviles.
+- **Límite conocido del cierre:** una anulación al día siguiente de su cobro llega a Finance con importe negativo y sin detalle por producto. Se cierra la semana que viene.
+- **Plan B:** las comandas de papel siguen siendo el respaldo. Ante cualquier duda entre cobrado y no cobrado, se para el cobro digital (canon V1 §17).
 
 ## Preguntas abiertas
 
-El documento funcional V1 de VG ya está (canon V1, fuera del repo). Las preguntas de modelo, roles, imágenes y refresco entre móviles están en `docs/flow/API.md` §13 (P-1 a P-5), pendientes de la revisión de Core.
-
-## Bloqueos
-
-- Ninguno para este incremento. Lo demás espera al documento funcional (preguntas de arriba).
+Ninguna de producto pendiente en Flow. Las decisiones de VG están recogidas en `API.md` (§13–18).
