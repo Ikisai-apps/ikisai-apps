@@ -104,10 +104,22 @@ test('carta · en Menús, su vista con precio y disponibilidad, y «Nueva carta�
 
   await test.step('Previsión: unidades esperadas, reparto y plan de bandejas', async () => {
     await page.locator('nav.menutabs a[data-tab="prevision"]').click();
+    // Por persona × asistentes = total (hacia arriba), y al revés; los dos se guardan.
+    await page.locator('#cartaAttendance').fill('199');
+    await page.locator('#cartaAttendance').press('Tab');
+    await expect.poll(() => api.rows('food.menus').find((m) => m.id === carta)?.expected_attendance).toBe(199);
+    const perPerson = page.getByLabel('Por persona de Serrano');
+    await perPerson.fill('0.5');
+    await perPerson.press('Tab');
+    await expect.poll(() => [line(serrano).per_person, line(serrano).expected_units]).toEqual([0.5, 100]);
     const units = page.getByLabel('Unidades esperadas de Serrano');
-    await units.fill('100');
+    await units.fill('60');
     await units.press('Tab');
-    await expect.poll(() => line(serrano).expected_units).toBe(100);
+    await expect.poll(() => [line(serrano).expected_units, line(serrano).per_person]).toEqual([60, 0.302]);
+    // Al cambiar los asistentes, el total sale otra vez del «por persona».
+    await page.locator('#cartaAttendance').fill('300');
+    await page.locator('#cartaAttendance').press('Tab');
+    await expect.poll(() => line(serrano).expected_units).toBe(91);
     await page.locator('#split-mesa').fill('40');
     await page.locator('#split-fresco').fill('40');
     await expect(page.locator('#splitSum')).toHaveText('Suma: 100 %');

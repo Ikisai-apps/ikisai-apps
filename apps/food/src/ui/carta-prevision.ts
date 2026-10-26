@@ -10,13 +10,14 @@
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  CARTA_SCOPE_LABELS, STATION_LABELS, cartaLinesInOrder, formatAmount, prepSplitOf, prepSplitProblem, validateOperations,
+  CARTA_SCOPE_LABELS, STATION_LABELS, cartaAttendance, cartaLinesInOrder, formatAmount, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperations,
   type CartaLine, type CartaPrepTotal, type Menu, type Recipe, type ResourceItem,
 } from '@ikisai/domain-food';
 import { el, replace, toast } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
+import { watchEvents } from '../app/events.ts';
 
 interface PrevisionContext { client: SyncClient; menuId: string; host: HTMLElement; canWrite: boolean; navigate(hash: string): void }
 
@@ -34,6 +35,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
   let items = new Map<string, ResourceItem>();
   let totals: CartaPrepTotal[] | null = null;
   let totalsError = false;
+  let eventGuests: number | null = null; // personas del evento de la carta (Booking), si lo tiene
 
   const splitHost = el('section', { 'data-feedback-id': 'food.carta.prevision.reparto', 'data-feedback-label': 'Reparto', class: 'card formblock', id: 'prepSplit' });
   const unitsHost = el('section', { 'data-feedback-id': 'food.carta.prevision.unidades', 'data-feedback-label': 'Unidades esperadas', class: 'card formblock', id: 'expectedUnits' });
@@ -80,25 +82,67 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       el('p', { class: 'btnrow' }, sum, canWrite ? save : null));
   }
 
+  /** Asistentes de la carta: los suyos o, si no, las personas del evento (puente entre «por persona» y «total»). */
+  const attendance = () => cartaAttendance(menu, eventGuests);
+
   function paintUnits(): void {
     if (!menu) return;
-    const live = cartaLinesInOrder(lines, menu.id).filter((l) => l.active);
+    const current = menu;
+    const live = cartaLinesInOrder(lines, current.id).filter((l) => l.active);
     const total = live.reduce((n, l) => n + (l.expected_units ?? 0), 0);
+    const people = attendance();
+    // Asistentes: al cambiarlos, las líneas con «por persona» recalculan su total (en el mismo lote).
+    const guests = el('input', { 'data-feedback-id': 'food.carta.prevision.asistentes', 'data-feedback-label': 'Asistentes esperados', id: 'cartaAttendance', type: 'number',
+      inputmode: 'numeric', min: '0', step: '1', disabled: !canWrite, class: 'carta-units', 'aria-label': 'Asistentes esperados',
+      value: current.expected_attendance === null || current.expected_attendance === undefined ? '' : String(current.expected_attendance),
+      placeholder: eventGuests ? String(eventGuests) : '',
+      onchange: async () => {
+        const value = guests.value.trim() === '' ? null : Number(guests.value);
+        if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de personas.'); return; }
+        if (value === (current.expected_attendance ?? null)) return;
+        const next = value ?? eventGuests ?? null;
+        const ops: RowOperation[] = [{ op: 'update', table: T.menus, id: current.id, expectedRevision: current.revision, fields: { expected_attendance: value } }];
+        if (next !== null) {
+          for (const line of live) {
+            if (line.per_person === null || line.per_person === undefined) continue;
+            const units = unitsFromPerPerson(Number(line.per_person), next);
+            if (units !== line.expected_units) ops.push({ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { expected_units: units } });
+          }
+        }
+        await usage.run('food.carta.prevision.asistentes', () => commit(client, ops));
+      } }) as HTMLInputElement;
     const row = (line: Mirror<CartaLine>) => {
-      const input = el('input', { 'data-feedback-id': 'food.carta.prevision.unidades_linea', 'data-feedback-label': 'Unidades esperadas de la línea', type: 'number', inputmode: 'numeric',
+      const save = (fields: Record<string, unknown>) => usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields }]));
+      const perPerson = el('input', { 'data-feedback-id': 'food.carta.prevision.por_persona', 'data-feedback-label': 'Consumo por persona', type: 'number', inputmode: 'decimal',
+        min: '0', step: '0.01', disabled: !canWrite, id: `perperson-${line.id}`, 'aria-label': `Por persona de ${nameOf(line)}`, class: 'carta-units',
+        value: line.per_person === null || line.per_person === undefined ? '' : String(Number(line.per_person)),
+        onchange: async () => {
+          const value = perPerson.value.trim() === '' ? null : Number(perPerson.value.replace(',', '.'));
+          if (value !== null && (!Number.isFinite(value) || value < 0)) { toast('Escribe cuántas por persona, como 0,5.'); return; }
+          const people = attendance();
+          // Con asistentes, el total sale de ahí (hacia arriba: máximos a cubrir); sin ellos, solo se guarda el «por persona».
+          await save(value !== null && people !== null ? { per_person: value, expected_units: unitsFromPerPerson(value, people) } : { per_person: value });
+        } }) as HTMLInputElement;
+      const units = el('input', { 'data-feedback-id': 'food.carta.prevision.unidades_linea', 'data-feedback-label': 'Unidades a cubrir de la línea', type: 'number', inputmode: 'numeric',
         min: '0', step: '1', value: line.expected_units === null || line.expected_units === undefined ? '' : String(line.expected_units), disabled: !canWrite,
         id: `expected-${line.id}`, 'aria-label': `Unidades esperadas de ${nameOf(line)}`, class: 'carta-units',
         onchange: async () => {
-          const value = input.value.trim() === '' ? null : Number(input.value);
+          const value = units.value.trim() === '' ? null : Number(units.value);
           if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de unidades.'); return; }
           if (value === (line.expected_units ?? null)) return;
-          await usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { expected_units: value } }]));
+          const people = attendance();
+          await save(value !== null && people ? { expected_units: value, per_person: perPersonFromUnits(value, people) } : { expected_units: value });
         } }) as HTMLInputElement;
-      return el('li', { class: 'carta-unitrow' }, el('span', { class: 'carta-code' }, line.code), el('label', { for: input.id, class: 'carta-unitname' }, nameOf(line)), input);
+      return el('li', { class: 'carta-unitrow' }, el('span', { class: 'carta-code' }, line.code), el('span', { class: 'carta-unitname' }, nameOf(line)),
+        el('label', { class: 'field' }, el('span', null, 'Por persona'), perPerson), el('label', { class: 'field' }, el('span', null, 'Total'), units));
     };
     replace(unitsHost,
-      el('h3', null, 'Unidades esperadas'),
-      el('p', { class: 'muted' }, `En total, ${total.toLocaleString('es-ES')} unidades. Con ellas sale la lista de la compra y el plan de bandejas.`),
+      el('h3', null, 'Unidades a cubrir'),
+      el('label', { class: 'field' }, el('span', null, 'Asistentes esperados'), guests,
+        el('span', { class: 'hint', id: 'attendanceHint' }, current.expected_attendance === null || current.expected_attendance === undefined
+          ? (eventGuests ? `Sin tocar, las del evento: ${eventGuests}.` : 'Sin asistentes no se puede pasar de «por persona» a «total».')
+          : 'Al cambiarlos, cada línea con «por persona» recalcula su total.')),
+      el('p', { class: 'muted' }, `En total, ${total.toLocaleString('es-ES')} unidades${people ? ` para ${people.toLocaleString('es-ES')} personas` : ''}. Son máximos a cubrir, no medias: con ellos salen la lista de la compra y el plan de bandejas.`),
       ...(['clasico', 'gourmet', 'barra'] as const).map((scope) => {
         const own = live.filter((l) => l.scope === scope);
         return own.length ? el('div', null, el('div', { class: 'sectionlabel' }, CARTA_SCOPE_LABELS[scope]), el('ul', { class: 'plainlist carta-units-list' }, ...own.map(row))) : null;
@@ -171,7 +215,11 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
   }
 
   void load().then(loadTotals);
+  const offEvents = watchEvents(client, (next) => {
+    const guests = menu?.event_id ? next.events.find((e) => e.event_id === menu!.event_id)?.guest_count ?? null : null;
+    if (guests !== eventGuests) { eventGuests = guests; paintUnits(); }
+  });
   // Tras guardar (o sincronizar) unidades o reparto, el plan se vuelve a pedir al servidor.
   const offs = [T.menus, T.cartaLines, T.recipeIngredients].map((table) => client.onTable(table, () => void load().then(loadTotals)));
-  return () => { offs.forEach((off) => off()); document.body.classList.remove('print-trays'); };
+  return () => { offEvents(); offs.forEach((off) => off()); document.body.classList.remove('print-trays'); };
 }
