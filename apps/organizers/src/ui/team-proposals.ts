@@ -9,7 +9,7 @@
  *
  * Enviar, aceptar y descartar necesitan red. Si las sugerencias no se pueden leer, la tarjeta no sale.
  */
-import { el, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, replace, toast } from '@ikisai/ui-kit';
 import type { RowOperation, Suggestion } from '@ikisai/sync-client';
 import { t } from '../app/i18n.ts';
 import { describeError } from '../app/client.ts';
@@ -81,6 +81,13 @@ export function renderTeamDraft(ctx: ViewContext, reservationId: string, title: 
     }
   }
 
+  /** Descartar el borrador pierde lo que no se ha enviado: se pregunta antes. */
+  async function drop(): Promise<void> {
+    const n = draftOf(reservationId)?.operations.length ?? 0;
+    if (!n || !(await confirmDialog({ title: t('¿Descartar los cambios sin enviar?'), text: t('Se pierden {cambios}. El retiro no cambia.', { cambios: count(n) }), confirmLabel: t('Descartar cambios'), danger: true }))) return;
+    clearDraft(reservationId);
+  }
+
   async function withdraw(id: string): Promise<void> {
     try {
       await ctx.client.withdrawSuggestion(id);
@@ -98,7 +105,7 @@ export function renderTeamDraft(ctx: ViewContext, reservationId: string, title: 
     const rows = await knownRows(ctx);
     if (!alive) return;
     const sendButton = el('button', { type: 'button', class: 'primary', id: 'teamProposalSend', 'data-feedback-id': 'organizers.retiro.propuesta_equipo.enviar', 'data-feedback-label': 'Enviar propuesta', onclick: () => void send() }, t('Enviar a quien organiza'));
-    const dropButton = el('button', { type: 'button', class: 'ghost', id: 'teamProposalDrop', 'data-feedback-id': 'organizers.retiro.propuesta_equipo.descartar', 'data-feedback-label': 'Descartar cambios', onclick: () => clearDraft(reservationId) }, t('Descartar cambios'));
+    const dropButton = el('button', { type: 'button', class: 'ghost', id: 'teamProposalDrop', 'data-feedback-id': 'organizers.retiro.propuesta_equipo.descartar', 'data-feedback-label': 'Descartar cambios', onclick: () => void drop() }, t('Descartar cambios'));
     if (draft) releases.push(needsNet(ctx, sendButton, t('Enviar la propuesta necesita conexión.')));
     replace(box,
       el('h3', null, t('Propuesta para quien organiza')),

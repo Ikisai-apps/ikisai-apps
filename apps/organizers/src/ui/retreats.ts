@@ -13,6 +13,7 @@ import { install } from '../app/install.ts';
 import { dateRange, isCancelled, statusLabel, STATUS_TONE } from '../app/labels.ts';
 import { countdownText, groupRetreats, isCoorganizer, matchesRetreat, phaseOf, showsCountdown, STAGES, stageKeyOf, toDoOf, todayMadrid } from '../app/journey.ts';
 import { createCoverLoader } from '../app/covers.ts';
+import { proposalReservation } from '../../../../supabase/functions/_domain/organizers/mod.ts';
 import { failure, loading, staleNote } from './common.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -128,6 +129,25 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
     return box;
   }
 
+  /**
+   * Propuestas del equipo de Ikisai pendientes (0703): quien organiza las ve en la tarjeta de su retiro, después de pintar
+   * la lista para no retrasarla. Necesita red; sin ella (o si la lectura falla), sin marca.
+   */
+  async function markProposals(): Promise<void> {
+    const pending = await client.suggestions({ scope: 'pending' }).then((out) => out.items).catch(() => []);
+    if (!alive) return;
+    const counts = new Map<string, number>();
+    for (const s of pending) {
+      const id = proposalReservation(s);
+      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    for (const [id, n] of counts) {
+      const chips = cards.get(id)?.node.querySelector('.chips');
+      chips?.querySelector('.orgteam')?.remove();
+      chips?.append(el('span', { class: 'chip warn orgteam' }, n === 1 ? t('1 propuesta del equipo') : t('{n} propuestas del equipo', { n })));
+    }
+  }
+
   async function load(): Promise<void> {
     replace(host, loading());
     try {
@@ -158,6 +178,7 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
           ...(groups.main.length ? cardsFor(groups.main, today, true) : [el('p', { class: 'muted' }, t('No tienes retiros en marcha.'))])),
         fold('past', groups.past, today),
         fold('cancelled', groups.cancelled, today));
+      void markProposals();
     } catch (error) {
       if (alive) replace(host, failure(error, () => void load()));
     }

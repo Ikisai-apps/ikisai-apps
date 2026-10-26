@@ -101,7 +101,7 @@
   - **Ámbito «todos»** (`{"all": true}`) en `_domain/organizers` (`hasAllReservations` e `inReservationScope`). El gancho de la base de datos lo cubre K8.
   - **Mis retiros:** buscador, «Coorganizas» y portadas diferidas con «todos».
   - **Ficha:** la línea de coorganización y «Verlo como huésped».
-  - **Propuestas del equipo de Ikisai** (respuesta de VG, migración 0703): dirección sin permiso propio propone en lugar de escribir, y quien organiza acepta o descarta desde su ficha (PETICIONES, respuestas de VG).
+  - **Propuestas del equipo de Ikisai** (respuesta de VG, migración 0703): dirección sin permiso propio propone en lugar de escribir, y quien organiza acepta o descarta desde su ficha (PETICIONES, respuestas de VG). En Mis retiros, «N propuestas del equipo» en la tarjeta. Detalle en API.md §19.
 
   Pruebas en `scope.test.ts`, `proposal-draft.test.ts` y `team-proposals.test.ts` (PGlite).
 
