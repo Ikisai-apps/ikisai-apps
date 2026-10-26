@@ -14,7 +14,7 @@ import sys
 from cloud_management import SupabaseManagement, sql_literal
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-APP_DIRS = {'invoices': 'invoices', 'tasks': 'tasks', 'booking': 'booking', 'food': 'food', 'central': 'central', 'organizers': 'organizers', 'guests': 'guests'}
+APP_DIRS = {'invoices': 'invoices', 'tasks': 'tasks', 'booking': 'booking', 'food': 'food', 'central': 'central', 'organizers': 'organizers', 'guests': 'guests', 'flow': 'flow'}
 DISPLAY = {'open': 'Abierto', 'in_progress': 'En trabajo', 'pending_verify': 'Pendiente de verificar'}
 
 

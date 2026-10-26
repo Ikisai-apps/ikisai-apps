@@ -38,7 +38,7 @@ jobs:
           #  · App tocada (su código, su API, su dominio, sus pruebas o sus migraciones): su suite completa.
           #  · Algo compartido (kit, sync-client, test-kit, _kit, CI, scripts, dependencias): solo las pruebas @smoke de
           #    cada app (la app que aún no tiene ninguna, completa). La suite entera de todas corre de noche.
-          apps="invoices booking food tasks central organizers guests"
+          apps="invoices booking food tasks central organizers guests flow"
           full=""; smoke=false; uikit=false; prefijos=false; code=true
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")

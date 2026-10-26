@@ -18,3 +18,7 @@
 /apps/invoices/                     @VGCif
 /apps/booking/                      @VGCif
 /apps/food/                         @VGCif
+/apps/central/                      @VGCif
+/apps/organizers/                   @VGCif
+/apps/guests/                       @VGCif
+/apps/flow/                         @VGCif

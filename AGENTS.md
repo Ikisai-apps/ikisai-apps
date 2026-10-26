@@ -4,7 +4,11 @@ Lee antes de tocar nada: `docs/core/PLAN.md` y `docs/core/CONTRATO_SINCRONIZACIO
 
 ## Qué es este repo
 
-Un único repositorio para las cuatro apps de Ikisai (Tasks, Invoices, Booking, Food) sobre un proyecto Supabase compartido (`ctytaorylbninfyupfsn`) y un núcleo común de sincronización offline (`core`). Cada app tiene su propio dominio, su propia Edge Function y su propio proyecto de Cloudflare Pages.
+Un único repositorio para las apps de Ikisai (Tasks, Finance —`invoices`—, Booking, Food, Central, Organizers, Guests y Flow) sobre un proyecto Supabase compartido (`ctytaorylbninfyupfsn`) y un núcleo común de sincronización offline (`core`). Cada app tiene su propio dominio, su propia Edge Function y su propio proyecto de Cloudflare Pages.
+
+## Quién integra y publica
+
+Desde el 26-10-2026 (RELEVO-001, decisión del usuario), **Core Producción · La Muela** es el rol de Core: núcleo, integración, CI, revisión y fusión de PR, y publicación. **Core Exploración · Sevilla** investiga, revisa y propone por PR o traspaso; no fusiona ni publica. Fusionar en `main` publica (`release.yml`). La guía para arrancar Core en otro ordenador está en `docs/core/ARRANQUE_CORE.md`.
 
 ## Propiedad por directorio
 
@@ -20,7 +24,7 @@ Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: an
 
 1. **Un schema, un dueño.** `tasks.*`, `invoices.*`, `booking.*`, `food.*`. Las lecturas cruzadas van por vistas `*_projection` del dueño o por la API del dueño con el token del usuario. Nunca se escribe en tablas ajenas.
 2. **Toda tabla sincronizable** sigue §2 del contrato: `id`, `revision`, `created_at`, `updated_at`, `updated_by`, `deleted_at`, y queda registrada en `core.synced_tables` en la misma migración que la crea.
-3. **Migraciones:** una sola secuencia `YYYYMMDD_NNNN_<schema>_<tema>.sql`. Rangos de `NNNN` por schema: core 0000–0099, food 0100–0199, invoices 0200–0299, tasks 0300–0399, booking 0400–0499, central 0500–0599, guests 0600–0699, organizers 0700–0799, resources 0800–0899. Cuando un schema agota su rango, sigue en el **segundo bloque, mil más arriba** (core 1000–1099, food 1100–1199, invoices 1200–1299, tasks 1300–1399, booking 1400–1499, central 1500–1599, guests 1600–1699, organizers 1700–1799, resources 1800–1899); no se reutilizan huecos del primero. Cada archivo toca un único schema (la CI lo comprueba). Una migración fusionada en `main` es inmutable. Solo el workflow de release aplica migraciones al proyecto Supabase.
+3. **Migraciones:** una sola secuencia `YYYYMMDD_NNNN_<schema>_<tema>.sql`. Rangos de `NNNN` por schema: core 0000–0099, food 0100–0199, invoices 0200–0299, tasks 0300–0399, booking 0400–0499, central 0500–0599, guests 0600–0699, organizers 0700–0799, resources 0800–0899, flow 0900–0999. Cuando un schema agota su rango, sigue en el **segundo bloque, mil más arriba** (core 1000–1099, food 1100–1199, invoices 1200–1299, tasks 1300–1399, booking 1400–1499, central 1500–1599, guests 1600–1699, organizers 1700–1799, resources 1800–1899, flow 1900–1999); no se reutilizan huecos del primero. Cada archivo toca un único schema (la CI lo comprueba). Una migración fusionada en `main` es inmutable. Solo el workflow de release aplica migraciones al proyecto Supabase.
 4. **Escrituras solo vía `core.commit`.** Con `requestId`, `expectedRevision` y recibos. Un 409 nunca se resuelve sobrescribiendo.
 5. **Permisos:** RLS activado y todo revocado a `anon`/`authenticated`; solo las Edge con service key. Pertenencia releída en cada petición. `reader` no escribe.
 6. **Sin secretos ni datos personales** en Git, fixtures o capturas. Usa `private/` (ignorado).
