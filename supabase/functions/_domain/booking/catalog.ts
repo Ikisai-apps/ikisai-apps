@@ -48,6 +48,9 @@ export const READS = {
   foodEventProjection: 'booking.food_event_projection',
   tasksSpaceProjection: 'booking.tasks_space_projection',
   invoicesStaffHoursProjection: 'booking.invoices_staff_hours_projection',
+  /** Para Flow (0480): el evento, y su personal con nombre corto. */
+  eventProjection: 'booking.event_projection',
+  eventStaffProjection: 'booking.event_staff_projection',
 } as const;
 
 export const PROCEDURES = {

@@ -1699,3 +1699,30 @@ Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en f
 | C04 | `cierre_operativo_realizado`, `fecha_cierre_operativo` | `closed_at` |
 | C04 | `ID_feedback_principal` | C10 fuera de alcance |
 | C04 | `huespedes_raw_=>`, `_raw_control_c04`, formularios | mecanismo de Sheets |
+
+## 28. Flow: el evento, su personal y el servicio de barra (migración 0480; encargo de VG del 26-10-2026)
+
+Primer caso: la barra del evento del 30-10 al 1-11-2026. Flow liga su proyecto a un evento de Booking (`flow.projects.booking_event_id`, enlace tipado del contrato §8). Ninguna app escribe en el schema de la otra.
+
+### 28.1 `booking.event_projection` (Flow: reader, editor y owner; Booking)
+
+Una fila por evento vivo cuya reserva no está cancelada ni perdida. Sin importes, sin organizador y sin huéspedes.
+
+| Columna | Origen |
+|---|---|
+| `event_id`, `event_code` | `booking.events` |
+| `name` | título de la reserva |
+| `kind` | `event_type` de la reserva |
+| `status` | estado de la reserva |
+| `starts_on`, `ends_on` | fechas de la reserva (`ends_on` es el día de salida) |
+| `expected_attendance` | `final_guests` del evento si está; si no, `expected_guests` |
+| `event_revision` | revisión del evento |
+
+### 28.2 `booking.event_staff_projection` (Flow: editor y owner)
+
+Una fila por turno no cancelado de un evento de `event_projection`: `event_id`, `user_id` (`member_user_id`, la cuenta Ikisai si la tiene), `central_person_id` (`person_ref_id` si el enlace es a Central), `display_name` (nombre corto, `booking.short_person_name`: «Marta Ruiz» → «Marta R.»), `role` (la función de C05) y `day` (`work_date`; null si es para todo el evento). Sin horas, notas ni nombre completo.
+
+### 28.3 Servicio de barra (decisión de Core del 26-10-2026)
+
+Flow guarda sus cierres del día en su schema y publica `flow.booking_service_projection`, abierta a Booking con `core.allow_read`. Booking la lee y la ficha del evento la enseña en «Servicio de barra». No hay tabla ni procedimiento en `booking.*` para esto.
+
