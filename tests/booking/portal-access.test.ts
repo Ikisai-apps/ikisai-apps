@@ -71,6 +71,8 @@ test('organizador: con acceso a Organizers queda como huésped de la reserva en 
   assert.deepEqual([mine.as, mine.as_guest_id], ['organizer', rows[0]!.id]);
   const retreats = await read('guests', org, 'booking.portal_my_retreats', {});
   assert.ok(retreats.items.some((i: any) => i.reservation_id === res && i.guest_id === rows[0]!.id));
+  assert.equal(retreats.items.find((i: any) => i.guest_id === rows[0]!.id).portal_role, 'organizer');
+  assert.equal((await read('guests', org, 'booking.portal_my_guest', { guest_id: rows[0]!.id })).portal_role, 'organizer');
 
   // No cuenta: sus restricciones no llegan a cocina, ni sale en los recuentos; no va a SES ni marca llegada; no elige cama
   await ok([{ op: 'insert', table: TABLES.restrictions, id: uuid(), fields: { event_id: event, guest_id: rows[0]!.id, restriction_type: 'intolerancia', subject: 'lactosa' } }]);

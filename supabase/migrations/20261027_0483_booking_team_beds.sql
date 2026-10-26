@@ -188,5 +188,45 @@ begin
   return jsonb_build_object('assignment_id', v_id, 'revision', (select revision from booking.room_assignments where id = v_id), 'status', v_status, 'cursor', v_out->'cursor');
 end $$;
 
+
+-- Bk1 de Guests: `portal_role` en la ficha propia y en «Mis retiros». Son las de 0451 y 0467 con ese campo.
+create or replace function booking.portal_my_guest(p jsonb)
+returns jsonb language plpgsql stable as $$
+declare v_g booking.guests; v_r booking.reservations; v_e booking.events; v_field text; v_fields jsonb := '{}'::jsonb; v_row jsonb; v_res uuid;
+begin
+  begin v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid); exception when invalid_text_representation then
+    perform core.fail('OUT_OF_SCOPE', 403, jsonb_build_object('guest_id', p->'args'->>'guest_id')); end;
+  v_res := booking.portal_reservation_of(v_g);
+  select * into v_r from booking.reservations where id = v_res;
+  select * into v_e from booking.events where id = v_g.event_id;
+  v_row := to_jsonb(v_g);
+  foreach v_field in array booking.portal_guest_fields() loop v_fields := v_fields || jsonb_build_object(v_field, v_row -> v_field); end loop;
+  return jsonb_build_object('id', v_g.id, 'revision', v_g.revision, 'portal_role', v_g.portal_role, 'fields', v_fields, 'mode', booking.guest_mode(v_res),
+    'missing', to_jsonb(booking.guest_missing(v_g, booking.guest_mode(v_res))), 'signed', v_g.signed_at is not null,
+    'allergies_visible_to_organizer', v_g.allergies_visible_to_organizer, 'privacy_ack_at', v_g.privacy_ack_at, 'privacy_ack_version', v_g.privacy_ack_version,
+    'reservation', jsonb_build_object('title', v_r.title, 'start_date', v_r.start_date, 'end_date', v_r.end_date, 'status', v_r.status,
+      'arrival_time', v_e.arrival_time, 'departure_time', v_e.departure_time),
+    'sources', coalesce((select jsonb_object_agg(key, value->>'by') from jsonb_each(v_g.field_sources)), '{}'::jsonb),
+    'diet_reviewed_at', v_g.diet_reviewed_at, 'signature_text_version', v_g.signature_text_version,
+    'restrictions', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'restriction_type', d.restriction_type, 'subject', d.subject,
+        'severity', d.severity, 'kitchen_notes', d.kitchen_notes, 'source', d.source) order by d.created_at)
+      from booking.dietary_restrictions d where d.guest_id = v_g.id and d.deleted_at is null), '[]'::jsonb));
+end $$;
+
+create or replace function booking.portal_my_retreats(p jsonb)
+returns jsonb language plpgsql stable as $$
+declare v_actor uuid := (p->>'actor')::uuid;
+begin
+  return jsonb_build_object('items', coalesce((
+    select jsonb_agg(jsonb_build_object('reservation_id', r.id, 'guest_id', g.id, 'person_key', g.person_key, 'name', g.first_name,
+             'title', r.title, 'start_date', r.start_date, 'end_date', r.end_date, 'status', r.status, 'mode', booking.guest_mode(r.id),
+             'portal_role', g.portal_role)
+             order by r.start_date nulls last, g.created_at)
+      from booking.account_guests(v_actor) g
+      join booking.events e on e.id = g.event_id and e.deleted_at is null
+      join booking.reservations r on r.id = e.reservation_id and r.deleted_at is null
+     where booking.portal_in_scope('guests', v_actor, r.id, g.id)), '[]'::jsonb));
+end $$;
+
 revoke all on all functions in schema booking from public, anon, authenticated;
 grant execute on all functions in schema booking to service_role;
