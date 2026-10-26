@@ -12,7 +12,7 @@ import sys
 ZONE = 'ikisai.com'
 PROJECT_REF = 'ctytaorylbninfyupfsn'
 # Esquemas propios de cada app (los portales guests y organizers incluidos).
-ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers', 'resources')
+ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers', 'resources', 'flow')
 
 # Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Los alias que solo
 # redirigen viven en Cloudflare (fase http_request_dynamic_redirect).
@@ -23,7 +23,9 @@ PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 
 # Organizers: materiales del retiro (fase 4); Guests usa el compartido de firmas.
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents',
-  'guests': 'guests-documents', 'organizers': 'organizers-materials'}
+  'guests': 'guests-documents', 'organizers': 'organizers-materials',
+  # Flow: sin bucket propio hasta que su especificación pida archivos (RELEVO-001 §6).
+  'flow': None}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
 BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152, 'organizers-materials': 15728640, 'resources-plans': 10485760}
@@ -63,7 +65,7 @@ def _entry(name):
 
 
 # Se publica solo la app «publicable» (con su Edge y su PWA, ver release_matrix): registrar un portal antes es inocuo.
-APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central', 'organizers', 'guests')}
+APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central', 'organizers', 'guests', 'flow')}
 APP_NAMES = tuple(APPS)
 SHARED_BUCKETS = ('feedback-media', 'guests-documents', 'resources-plans')
 BUCKETS = tuple(dict.fromkeys([app['bucket'] for app in APPS.values() if app['bucket']] + list(SHARED_BUCKETS)))
