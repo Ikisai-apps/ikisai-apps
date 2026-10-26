@@ -86,7 +86,8 @@ test('flow · carta pública sin sesión: 13 productos activos del §8, sin pedi
   assert.equal((byKey.get('gourmet:δ') as any).priceCents, 300);
   assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['code', 'description', 'id', 'imageKey', 'name', 'position', 'priceCents', 'scope']);
   assert.equal((byKey.get('clasico:A') as any).imageKey, 'montaditos/serrano');
-  assert.equal((byKey.get('clasico:B') as any).imageKey, null);
+  assert.equal((byKey.get('gourmet:γ') as any).imageKey, 'montaditos/cabra_dulce');
+  assert.equal((byKey.get('barra:D') as any).imageKey, 'barra/cafe_infusion');
   assert.equal(res.data.projectId, undefined); // el id del proyecto no sale al navegador
   assert.equal((await app.call('/api/v1/public/menu', { token: null, origin: 'https://foreign.example' })).status, 403);
 });

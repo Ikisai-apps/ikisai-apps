@@ -31,6 +31,21 @@ alter table flow.units drop constraint units_column_key_check;
 alter table flow.units add constraint units_column_key_check check (column_key ~ '^[a-z][a-z0-9_]{1,30}$');
 
 -- ---------------------------------------------------------------------------
+-- Imágenes definitivas de VG (flow-assets-v06): claves `<categoria>/<id>` con guion bajo (montaditos/cabra_dulce).
+-- ---------------------------------------------------------------------------
+alter table flow.products drop constraint products_image_key_check;
+alter table flow.products add constraint products_image_key_check check (image_key is null or image_key ~ '^[a-z0-9_-]+/[a-z0-9_-]+$');
+update flow.products p set image_key = k.key from (values
+  ('0f10a000-0000-4000-8000-000000000101', 'montaditos/serrano'), ('0f10a000-0000-4000-8000-000000000102', 'montaditos/dobladillo'),
+  ('0f10a000-0000-4000-8000-000000000103', 'montaditos/mediterraneo'), ('0f10a000-0000-4000-8000-000000000104', 'montaditos/caprese'),
+  ('0f10a000-0000-4000-8000-000000000201', 'montaditos/campero'), ('0f10a000-0000-4000-8000-000000000202', 'montaditos/payoyo'),
+  ('0f10a000-0000-4000-8000-000000000203', 'montaditos/cabra_dulce'), ('0f10a000-0000-4000-8000-000000000204', 'montaditos/nordico'),
+  ('0f10a000-0000-4000-8000-000000000301', 'barra/agua'), ('0f10a000-0000-4000-8000-000000000302', 'barra/refresco'),
+  ('0f10a000-0000-4000-8000-000000000303', 'barra/cerveza'), ('0f10a000-0000-4000-8000-000000000304', 'barra/cafe_infusion'),
+  ('0f10a000-0000-4000-8000-000000000305', 'barra/palomitas')
+) as k(id, key) where p.id = k.id::uuid;
+
+-- ---------------------------------------------------------------------------
 -- project_id en las tablas que no lo tenían, rellenado por el servidor desde su padre (el cliente nunca lo elige)
 -- ---------------------------------------------------------------------------
 alter table flow.order_lines add column project_id uuid references flow.projects(id);
