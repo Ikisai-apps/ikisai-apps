@@ -139,7 +139,7 @@ create table food.carta_lines (
   sale_price_cents integer not null check (sale_price_cents between 0 and 1000000),
   active boolean not null default true,
   position numeric not null default 0,
-  image_key text check (image_key is null or image_key ~ '^[a-z0-9]+(-[a-z0-9]+)*/[a-z0-9]+(-[a-z0-9]+)*$'),
+  image_key text check (image_key is null or image_key ~ '^[a-z0-9]+([_-][a-z0-9]+)*/[a-z0-9]+([_-][a-z0-9]+)*$'),
   constraint carta_lines_source check ((recipe_id is null) <> (item_id is null))
 );
 create unique index carta_lines_code_key on food.carta_lines (menu_id, scope, code) where deleted_at is null;
@@ -440,7 +440,8 @@ select core.allow_read('booking', 'food.booking_carta_projection', 'view', '{rea
 -- existía). Las 8 recetas llevan pan y sus componentes con cantidades de partida (§8 no las da: «en prueba», se
 -- ajustan en el recetario), las estaciones como pasos (1 Untar · 2 Colocar · 3 Dosificar · 4 Acabados) y los alérgenos
 -- vacíos y sin revisar: se confirman con las etiquetas reales (§8.4; decisión de Core del 26-10). La carta queda sin
--- evento: Flow la enlaza desde su proyecto (`flow.projects.food_menu_id`). Solo la imagen del Serrano existe hoy.
+-- evento: Flow la enlaza desde su proyecto (`flow.projects.food_menu_id`). Imágenes: las claves de los assets de VG (26-10), que
+-- sirve Flow; Food solo guarda la clave.
 --
 -- Va en una función: la migración la ejecuta solo si Food ya tiene miembros y están los artículos (producción). En una
 -- base de pruebas no siembra; las pruebas la llaman.
@@ -509,13 +510,13 @@ begin
   -- Todos llevan además 1 pan de montadito.
   for r in select * from (values
       (1, 'A', 'clasico', 'Serrano', 'montaditos/serrano', '[[2,"Tomate",15,"g"],[2,"Jamón serrano",15,"g"],[3,"Aceite de oliva",3,"ml"]]'::jsonb),
-      (2, 'B', 'clasico', 'Dobladillo', null, '[[1,"Atún preparado",20,"g"],[2,"Tomate",15,"g"],[3,"Mayonesa",8,"g"]]'),
-      (3, 'C', 'clasico', 'Mediterráneo', null, '[[1,"Hummus",20,"g"],[1,"Tomate seco en aceite",10,"g"],[4,"Rúcula",3,"g"]]'),
-      (4, 'D', 'clasico', 'Caprese', null, '[[1,"Queso crema",15,"g"],[2,"Tomate",15,"g"],[3,"Pesto",6,"g"],[4,"Albahaca fresca",1,"g"]]'),
-      (5, 'α', 'gourmet', 'Campero', null, '[[1,"Paté de campaña",20,"g"],[1,"Cebolla caramelizada",10,"g"],[4,"Tomillo",0.5,"g"]]'),
-      (6, 'β', 'gourmet', 'Payoyo', null, '[[2,"Queso payoyo",20,"g"],[3,"Miel",6,"g"],[4,"Nueces troceadas",5,"g"]]'),
-      (7, 'γ', 'gourmet', 'Cabra dulce', null, '[[1,"Cebolla caramelizada",10,"g"],[2,"Queso de cabra",20,"g"],[3,"Mermelada de tomate",8,"g"]]'),
-      (8, 'δ', 'gourmet', 'Nórdico', null, '[[1,"Queso crema",15,"g"],[2,"Salmón ahumado",15,"g"],[4,"Eneldo",0.5,"g"]]')
+      (2, 'B', 'clasico', 'Dobladillo', 'montaditos/dobladillo', '[[1,"Atún preparado",20,"g"],[2,"Tomate",15,"g"],[3,"Mayonesa",8,"g"]]'),
+      (3, 'C', 'clasico', 'Mediterráneo', 'montaditos/mediterraneo', '[[1,"Hummus",20,"g"],[1,"Tomate seco en aceite",10,"g"],[4,"Rúcula",3,"g"]]'),
+      (4, 'D', 'clasico', 'Caprese', 'montaditos/caprese', '[[1,"Queso crema",15,"g"],[2,"Tomate",15,"g"],[3,"Pesto",6,"g"],[4,"Albahaca fresca",1,"g"]]'),
+      (5, 'α', 'gourmet', 'Campero', 'montaditos/campero', '[[1,"Paté de campaña",20,"g"],[1,"Cebolla caramelizada",10,"g"],[4,"Tomillo",0.5,"g"]]'),
+      (6, 'β', 'gourmet', 'Payoyo', 'montaditos/payoyo', '[[2,"Queso payoyo",20,"g"],[3,"Miel",6,"g"],[4,"Nueces troceadas",5,"g"]]'),
+      (7, 'γ', 'gourmet', 'Cabra dulce', 'montaditos/cabra_dulce', '[[1,"Cebolla caramelizada",10,"g"],[2,"Queso de cabra",20,"g"],[3,"Mermelada de tomate",8,"g"]]'),
+      (8, 'δ', 'gourmet', 'Nórdico', 'montaditos/nordico', '[[1,"Queso crema",15,"g"],[2,"Salmón ahumado",15,"g"],[4,"Eneldo",0.5,"g"]]')
     ) as t(n, code, scope, name, image, parts)
   loop
     v_id := ('f00dca7a-0000-4000-8000-0000000001' || lpad(r.n::text, 2, '0'))::uuid;
@@ -548,16 +549,16 @@ begin
 
   -- Bebidas y extras (§8.3), como artículos de Recursos.
   for r in select * from (values
-      (9, 'A', 'fbd86e16-3bef-4dc0-b9a8-a4c9f139b72a'::uuid, 'Agua, botella pequeña', 100),
-      (10, 'B', '426bcf0c-d1ae-4e4c-bc67-b7bf35be6776', 'Refresco, lata', 200),
-      (11, 'C', '9a49b68d-fbcd-4270-8043-9cfc2441dd34', 'Cerveza, lata', 200),
-      (12, 'D', 'cf2b0ff7-21e1-4f61-8b93-a007fdb611c2', 'Café / infusión', 150),
-      (13, 'α', '2268636f-6764-40e6-a703-9ed13aad8ee4', 'Palomitas', 150)
-    ) as t(n, code, item_id, name, price)
+      (9, 'A', 'fbd86e16-3bef-4dc0-b9a8-a4c9f139b72a'::uuid, 'Agua, botella pequeña', 100, 'barra/agua'),
+      (10, 'B', '426bcf0c-d1ae-4e4c-bc67-b7bf35be6776', 'Refresco, lata', 200, 'barra/refresco'),
+      (11, 'C', '9a49b68d-fbcd-4270-8043-9cfc2441dd34', 'Cerveza, lata', 200, 'barra/cerveza'),
+      (12, 'D', 'cf2b0ff7-21e1-4f61-8b93-a007fdb611c2', 'Café / infusión', 150, 'barra/cafe_infusion'),
+      (13, 'α', '2268636f-6764-40e6-a703-9ed13aad8ee4', 'Palomitas', 150, 'barra/palomitas')
+    ) as t(n, code, item_id, name, price, image)
   loop
     v_ops := v_ops || jsonb_build_object('op', 'insert', 'table', 'food.carta_lines', 'id', ('f00dca7a-0000-4000-8000-0000000002' || lpad(r.n::text, 2, '0'))::uuid,
       'fields', jsonb_build_object('menu_id', v_menu, 'item_id', r.item_id, 'scope', 'barra', 'code', r.code, 'name', r.name,
-        'sale_price_cents', r.price, 'position', r.n));
+        'sale_price_cents', r.price, 'position', r.n, 'image_key', r.image));
   end loop;
 
   perform core.apply_migration_operations('food', 'migration:food-1109-carta-octubre', v_ops);

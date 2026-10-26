@@ -18,7 +18,7 @@ export const CARTA_CODES = ['A', 'B', 'C', 'D', 'α', 'β', 'γ', 'δ'] as const
 export type CartaCode = (typeof CARTA_CODES)[number];
 export const CARTA_PRICE_MAX_CENTS = 1_000_000;
 /** `<categoria>/<slug>`, como `flow.products.image_key` (montaditos/serrano). */
-export const IMAGE_KEY = /^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/;
+export const IMAGE_KEY = /^[a-z0-9]+([_-][a-z0-9]+)*\/[a-z0-9]+([_-][a-z0-9]+)*$/;
 
 export interface CartaLine extends SyncedColumns {
   menu_id: string;

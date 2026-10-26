@@ -111,6 +111,7 @@ test('proyección · la lee Flow, con coste desde el inventario, alérgenos sin 
   assert.equal(serrano.cost_cents, 65);
   assert.deepEqual([serrano.allergens, serrano.allergens_checked, serrano.image_key, serrano.menu_name], [[], false, 'montaditos/serrano', 'Barra · Evento de octubre']);
   assert.equal((await row(AGUA)).cost_cents, 25);
+  assert.deepEqual([(await row(AGUA)).image_key, (await row(LINE(7))).image_key, (await row(LINE(12))).image_key], ['barra/agua', 'montaditos/cabra_dulce', 'barra/cafe_infusion']);
   assert.equal((await row(DOBLADILLO)).cost_cents, null, 'sin precio de algún ingrediente, sin coste');
   // Por la API de lecturas, con filtro, como la consulta Flow.
   const res = await app.call(`/api/v1/read/food.carta_projection?where[menu_id]=${CARTA}`, { method: 'GET' });
