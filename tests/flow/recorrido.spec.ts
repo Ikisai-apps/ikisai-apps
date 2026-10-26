@@ -42,7 +42,7 @@ async function staff(browser: Browser): Promise<Page> {
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
-  await page.getByRole('button', { name: /Barra · Evento de octubre/ }).first().click();
+  await page.getByRole('button', { name: /Barra · v1/ }).first().click();
   await expect(page.locator('a.navbtn', { hasText: 'Pedido y cobro' })).toBeVisible();
   return page;
 }

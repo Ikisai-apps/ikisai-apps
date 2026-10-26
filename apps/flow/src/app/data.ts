@@ -22,7 +22,8 @@ export interface Unit extends Row {
   idx: number; pay_seq: number | null; label: string | null; priority: boolean; status: UnitStatus; assigned_to: string | null; done_at: string | null; done_by: string | null;
   payload: { item_key?: string; name?: string; unit?: string; qty?: number; to?: string; from?: string | null; external?: { app: string; kind: string; id: string; status?: string | null } } | null; source_ref: string | null;
 }
-export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null }
+export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null;
+  template_key: string | null; template_version: number | null; frozen: boolean; serves_public: boolean }
 
 export interface FlowData {
   project: Project | null;
@@ -120,11 +121,18 @@ export async function loadProjects(client: SyncClient): Promise<Project[]> {
     return Math.abs(Date.parse(ref) - Date.parse(today)) / 86_400_000;
   };
   return live<Project>(await client.list(TABLES.projects))
-    .sort((a, b) => rank(a) - rank(b) || distance(a) - distance(b) || b.created_at.localeCompare(a.created_at));
+    // Por evento (fechas) y, dentro, por versión: «Barra · v1 (congelada)», «Barra · v2».
+    .sort((a, b) => rank(a) - rank(b) || distance(a) - distance(b) || (a.booking_event_id ?? '').localeCompare(b.booking_event_id ?? '')
+      || (a.template_key ?? '').localeCompare(b.template_key ?? '') || (a.template_version ?? 0) - (b.template_version ?? 0) || b.created_at.localeCompare(a.created_at));
 }
 
 /** «Ahora · hasta el 1 nov», «Dentro de 3 días», «Ya pasó». */
 export function projectState(p: Project, today = new Date().toISOString().slice(0, 10)): string {
+  const base = projectStateBase(p, today);
+  return [base, p.frozen ? 'congelada' : '', p.test_mode ? 'modo pruebas' : ''].filter(Boolean).join(' · ');
+}
+
+function projectStateBase(p: Project, today: string): string {
   if (p.status === 'closed') return 'Cerrado';
   if (!p.starts_on) return 'Sin fechas';
   const fmt = (d: string) => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00`));

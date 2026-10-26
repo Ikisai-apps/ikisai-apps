@@ -1,5 +1,6 @@
-import { createCoverCarousel, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
-import { TABLES } from '@ikisai/domain-flow';
+import { confirmDialog, createCoverCarousel, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
+import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
 import { loadProjects, projectDates, projectState, type Project } from '../app/data.ts';
 import { projectDocuments, type ProjectDocument } from '../app/documents.ts';
@@ -29,7 +30,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     const carousel = createCoverCarousel({
       label: 'Tus flujos',
       index,
-      slides: projects.map((p) => ({ id: p.id, title: p.name, image: p.cover_image, state: projectState(p) + (p.test_mode ? ' · modo pruebas' : ''), meta: projectDates(p) || null })),
+      slides: projects.map((p) => ({ id: p.id, title: p.name, image: p.cover_image, state: projectState(p), meta: projectDates(p) || null })),
       onChange: (slide) => { if (slide.id !== projectId) navigate(`#/p/${slide.id}`); },
       feedbackId: 'flow.inicio.flujos',
     });
@@ -53,10 +54,42 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     } });
     replace(testHost, el('label', { class: 'flow-testmode-switch' }, input,
       el('span', null, el('strong', null, 'Modo pruebas'), el('small', { class: 'muted' }, ' · se cobra y se cuenta igual, pero el cierre no envía ingresos a Finance'))),
+      // Versiones (VG 27-10): una versión congelada no cambia de configuración; la nueva nace en modo pruebas.
+      el('div', { class: 'orders-owner flow-version' },
+        project.frozen ? el('p', { class: 'muted small' }, `Versión ${project.template_version ?? ''} congelada: su configuración no cambia.`) : null,
+        project.template_key ? el('button', { type: 'button', class: 'ghost', onclick: () => void newVersion(project) }, 'Nueva versión del flujo') : null,
+        el('label', { class: 'flow-public-switch' }, el('input', { type: 'checkbox', checked: project.serves_public, onchange: (e: Event) => void servePublic(project, (e.target as HTMLInputElement).checked) }),
+          el('span', null, 'Atiende la carta pública'))),
       // Enlaces del flujo (owner): su evento de Booking y su proyecto de Tasks.
       el('div', { class: 'orders-owner flow-links' },
         el('button', { type: 'button', class: 'ghost', onclick: () => void chooseBookingEvent(client, project) }, project.booking_event_id ? 'Evento de Booking: cambiar' : 'Ligar a un evento de Booking'),
         el('button', { type: 'button', class: 'ghost', onclick: () => void chooseTasksProject(client, project) }, project.tasks_project_id ? 'Proyecto de Tasks: cambiar' : 'Elegir proyecto de Tasks')));
+  }
+
+  async function newVersion(project: Project): Promise<void> {
+    if (!isOnline(client)) { toast('Necesita conexión.'); return; }
+    const ok = await confirmDialog({ title: 'Nueva versión del flujo', confirmLabel: 'Crear versión',
+      text: 'Se copia la configuración (columnas, carta, reglas, puntos de existencias vacíos, enlaces y portada), sin pedidos, clientes, pagos ni cierres. Nace en modo pruebas y sin atender la carta pública. Recuerda dar acceso al personal en Central.' });
+    if (!ok) return;
+    try {
+      const out = await callProcedure<{ project_id: string; name: string }>(client, PROCEDURES.newVersion, { source_project_id: project.id, project_id: crypto.randomUUID() });
+      await client.sync();
+      toast(`Creada «${out.name}».`);
+      navigate(`#/p/${out.project_id}`);
+    } catch (error) { toast(describeError(error)); }
+  }
+
+  /** Solo un flujo atiende la carta pública: se quita del que la tenía y se pone en este (en ese orden, en el mismo lote). */
+  async function servePublic(project: Project, on: boolean): Promise<void> {
+    try {
+      const all = await loadProjects(client);
+      const current = all.find((p) => p.serves_public && p.id !== project.id);
+      const ops: unknown[] = [];
+      if (on && current) ops.push({ op: 'update', table: TABLES.projects, id: current.id, expectedRevision: current.revision, fields: { serves_public: false } });
+      ops.push({ op: 'update', table: TABLES.projects, id: project.id, expectedRevision: project.revision, fields: { serves_public: on } });
+      await client.commit(ops as any);
+      toast(on ? `La carta pública sale ahora de «${project.name}».` : 'Este flujo ya no atiende la carta pública.');
+    } catch (error) { toast(describeError(error)); }
   }
 
   const figure = el('figure', { class: 'guide-figure' });
