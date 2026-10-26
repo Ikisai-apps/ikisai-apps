@@ -121,6 +121,8 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Tipos de reserva (26-10-2026, encargo de VG; migración 0482):** retiro, jornadas abiertas y familiar, con el mapeo de los valores viejos (también en las tarifas). API.md §30. Siguiente: el alta y la ficha según el tipo.
 
+- **Tipos de reserva, hito 2 (migración 0484):** la ficha según el tipo. Jornadas abiertas: cartas de Food y «Alojar a alguien»; familiar: sin dinero ni alojamiento y con menú de casa. API.md §30; pruebas en `tests/booking/open-days.spec.ts`.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).

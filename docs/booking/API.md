@@ -1763,7 +1763,18 @@ Flow guarda sus cierres del día en su schema y publica `flow.booking_service_pr
 
 Mapeo de los valores anteriores: `convivencia`, `formacion`, `encuentro`, `actividad_divulgativa` y `alquiler_grupo` pasan a `retiro`; `otro` pasa a `jornadas_abiertas`. `booking.rates.event_types` sigue el mismo mapeo, sin repetir valores. Food recibe el valor nuevo en `food_event_projection.event_type`.
 
-Siguiente (hito 2): el alta y la ficha cambian según el tipo.
-- Jornadas abiertas: sin régimen de comidas; cartas de Food (`food.booking_carta_projection`, `reservations.food_carta_ids`); «Alojar a alguien» con huésped y `room_assignment` con fechas.
-- Familiar: sin propuesta, cobro, tarifas ni alojamiento; «Menú de casa (Food)».
+Hito 2 (migración 0484): la ficha según el tipo (`apps/booking/src/ui/eventKinds.ts`).
+- **Jornadas abiertas:**
+  - Se confirman sin propuesta ni señal (#732).
+  - Sin régimen ni estilo de menú en las hojas.
+  - «Cartas de Food»: las cartas activas de `food.booking_carta_projection` (Food, #722) se marcan y se guardan en `reservations.food_carta_ids` (uuid[], 20 como mucho). Food las lee en `food_event_projection.carta_ids`.
+  - «Alojamiento a la carta», en lugar del bloque Alojamiento:
+    - «Duermen esta noche».
+    - «Alojar a alguien»: nombre, desde, noches y una cama libre esas noches (ni supletorias ni de equipo). Crea la ficha en `booking.guests` y su `room_assignment` con `from_date` y `to_date` en un lote; sin red, al reconectar.
+    - Cuenta para cocina, SES y camas como cualquier huésped.
+  - No cuenta camas contra el número de personas.
+- **Familiar:**
+  - Sin propuesta, cobro, extracto, coste ni alojamiento (bloques y campos).
+  - Comidas: «Menú de casa (Food)».
+  - Se confirma sin propuesta ni señal.
 
