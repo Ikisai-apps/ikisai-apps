@@ -39,3 +39,87 @@
 .carta-solo-list li,.carta-summary-list li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .carta-solo-name small{display:block}
 .carta-summary-total{display:flex;justify-content:space-between;margin:12px 0 0;font-size:1.1rem}
+
+/* ---- Personal (/equipo) ---------------------------------------------------------------------------------------- */
+.small{font-size:var(--text-sm,.875rem)}
+.col-title{margin:4px 0 8px;font-family:var(--font-display,inherit);font-size:1.4rem}
+
+/* Colas estables (Preparación, Logística, Caja, Servicio): orden fijo; lo hecho se queda en su sitio, gris y más bajo. */
+.queue{display:grid;gap:8px;overflow-anchor:auto;padding-bottom:72px}
+.qcard{border:1px solid var(--line);border-radius:var(--radius-card,16px);background:var(--paper);transition:opacity .15s}
+.qcard-main{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 12px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;touch-action:manipulation}
+.qcard-main:disabled{cursor:default}
+.qcard-text{min-width:0;display:grid}
+.qcard-title{font-size:1.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qcard-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qcard-state{font-size:.85rem;font-weight:700;white-space:nowrap;padding:4px 10px;border-radius:999px;background:var(--paper-2)}
+.qcard.is-in_progress{border-color:var(--accent);box-shadow:inset 4px 0 0 var(--accent)}
+.qcard.is-in_progress .qcard-state{background:var(--accent-soft,var(--paper-2));color:var(--accent)}
+.qcard.is-done,.qcard.is-cancelled{opacity:.6;background:var(--paper-2)}
+.qcard.is-done .qcard-main,.qcard.is-cancelled .qcard-main{min-height:44px;padding:6px 12px}
+.qcard.is-done .qcard-title,.qcard.is-cancelled .qcard-title{text-decoration:line-through;font-size:.95rem}
+.qcard.is-unconfirmed .qcard-state{outline:2px dashed var(--warn,#b5652b);outline-offset:1px}
+.qcard.is-priority:not(.is-done) .qcard-title::before{content:"! ";color:var(--alert,#b3261e)}
+.qcard-notice{margin:0 12px 10px;padding:6px 10px;border-radius:10px;background:var(--warn-soft,#fbecd9);color:var(--ink);font-size:.9rem}
+.queue-older{width:100%;margin-bottom:8px}
+.queue-next{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;display:inline-flex;align-items:center;gap:6px;box-shadow:var(--shadow-2,0 4px 12px rgba(0,0,0,.18))}
+.queue-empty{margin:16px 0}
+.task-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.task-form input[type=text]{flex:1 1 200px;min-width:0}
+.task-priority{display:inline-flex;align-items:center;gap:6px}
+.task-form button{display:inline-flex;align-items:center;gap:6px}
+
+/* Pedidos (Caja y Servicio) */
+.orders-tools{display:flex;gap:8px;margin:0 0 8px}
+.orders-tools input{flex:1;min-width:0;font-size:1.1rem}
+.orders-tools button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.order-badge{display:inline-grid;place-items:center;min-width:44px;height:44px;padding:0 6px;border-radius:12px;background:var(--paper-2);font-weight:800;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.order-card.is-open .order-badge{background:var(--accent-soft,var(--paper-2))}
+
+/* Fichas de pedido y de entrega */
+.order-head,.delivery-summary{margin:0 0 8px;font-weight:600}
+.order-group,.order-extra{margin:8px 0 14px}
+.order-group h3,.order-extra h3,.order-refunds h3{margin:0 0 6px;font-size:1rem}
+.order-row,.delivery-line{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.order-row-text,.delivery-line-text{display:grid;min-width:0}
+.order-row-qty .qtyfield>label,.delivery-line-qty .qtyfield>label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.order-row-qty .qty,.delivery-line-qty .qty{width:170px}
+.order-row-qty .qty-input input,.delivery-line-qty .qty-input input{text-align:center}
+.order-lines{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.order-lines li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center}
+.order-total{margin:10px 0 0;font-size:1.1rem;font-weight:700}
+.order-refund{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0}
+.sheet-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.sheet-actions button[hidden]{display:none}
+.deliver-incomplete{opacity:.85}
+.danger-text{color:var(--alert,#b3261e)}
+.delivery-ident{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;border:0}
+.delivery-ident legend{font-weight:700;margin-bottom:6px}
+.chip-radio{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px}
+
+/* Inicio: guías */
+.guide-carousel{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px}
+.guide-figure{margin:0;display:grid;gap:6px;justify-items:center}
+.guide-open{padding:0;border:0;background:none;cursor:zoom-in}
+.guide-open img{display:block;max-width:100%;max-height:62vh;border-radius:12px;box-shadow:var(--shadow-1)}
+.guide-figure figcaption{display:flex;flex-direction:column;align-items:center;text-align:center}
+.guide-thumbs{display:flex;gap:8px;justify-content:center;margin:10px 0 0;overflow-x:auto}
+.guide-thumb{padding:2px;border:2px solid transparent;border-radius:10px;background:none}
+.guide-thumb[aria-selected="true"]{border-color:var(--accent)}
+.guide-thumb img{display:block;width:64px;height:64px;object-fit:cover;border-radius:8px}
+.guide-zoom img{display:block;width:100%;height:auto}
+.guide-zoom a{display:inline-block;margin-top:8px}
+
+/* Carta: miniatura del producto, número de cliente */
+.carta-thumb{position:relative;padding:0;border:0;background:var(--paper-2);border-radius:12px;overflow:hidden;width:96px;height:64px;cursor:zoom-in}
+.carta-thumb img{display:block;width:100%;height:100%;object-fit:contain}
+.carta-thumb-code{position:absolute;left:4px;top:4px;display:grid;place-items:center;min-width:22px;height:22px;border-radius:999px;background:var(--paper);font-weight:800;font-size:.8rem}
+.carta-zoom img{display:block;width:100%;height:auto}
+.carta-mine{font-weight:700}
+.carta-number{display:grid;justify-items:center;margin:8px 0 12px}
+.carta-number strong{font-family:var(--font-display,inherit);font-size:2.4rem}
+.carta-send-status{min-height:1.4em;margin:8px 0 0}
+.carta-mine-order{margin:0 0 14px}
+.carta-mine-order h3{margin:0 0 6px;font-size:1rem}
+.carta-general{display:block;width:100%;max-width:720px;height:auto;margin:0 auto 12px;border-radius:12px}
+.carta-precios summary{cursor:pointer;font-weight:700;margin:4px 0 8px}

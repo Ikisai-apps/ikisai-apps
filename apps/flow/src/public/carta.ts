@@ -106,18 +106,23 @@ export function mountCarta(root: HTMLElement): () => void {
     );
   }
 
-  /** Carta completa de solo lectura, pintada desde el mismo catálogo: los precios no pueden diferir (§8.3). */
+  /**
+   * «Ver carta solo» (§3.1): la carta general de VG. Debajo, plegados, los precios vigentes del catálogo, que son los que
+   * se cobran si algún día la imagen se queda atrás (§8.3).
+   */
   function paintCarta(): void {
     replace(main,
       el('div', { class: 'carta-switch' },
         el('button', { type: 'button', class: 'primary', id: 'prepararPedido', onclick: () => { mode = 'pedido'; paint(); } }, el('span', null, 'Preparar pedido'))),
+      el('img', { class: 'carta-general', src: '/guias/carta-general.webp', alt: 'Carta general: Barra (bebidas y extras) y Montaditos (clásicos y gourmet)', decoding: 'async' }),
+      el('details', { class: 'carta-precios' }, el('summary', null, 'Precios vigentes'),
       ...groupMenu(products).map((g) => el('section', { class: 'carta-group carta-solo' },
         el('h2', null, g.label),
         el('ul', { class: 'carta-solo-list' }, ...g.products.map((p) => el('li', null,
           el('span', { class: 'carta-code' }, p.code),
           el('span', { class: 'carta-solo-name' }, p.name, p.description ? el('small', { class: 'muted' }, p.description) : null),
           el('span', { class: 'carta-price' }, formatEuros(p.priceCents)))))),
-      ),
+      )),
     );
   }
 

@@ -149,9 +149,13 @@ La `0900` queda tal cual: se publica con #707 y luego es inmutable. Lo siguiente
 - `confirm_refund` (nuevo): `{payment_id}` cierra una devolución pendiente (`settled_at` y `settled_by`). Owner o quien cobró.
 - `reverse_payment`: owner o quien cobró (P-2).
 - `deliver_order`: lo pendiente es ahora «unidades sin terminar + líneas con `delivered_qty < quantity`». Mientras quede algo, el pedido sigue `paid`; cerrarlo con algo pendiente exige `confirm_exception`, como antes.
-- **Públicos** (sin sesión; los ejecuta el actor de sistema con el helper que prepara Core):
-  - `public_submit_order`: `{token?, lines}`. Si el token no existe o no es válido, crea el cliente con número nuevo. Crea el pedido `open` con `origin = 'public'` y `customer_id`. Devuelve `{number, token (solo si es nuevo), orderId}`.
-  - `public_mine`: `{token}` devuelve solo los pedidos de ese cliente, con su estado (por cobrar, preparando o por entregar) y el total. Con el número solo no se ve nada.
+- **Escritura pública** (contrato de Core, migración core 0094): no son procedimientos. `flow-api` manda operaciones de fila con `applyPublicOperations` (actor «Flow (sistema)», lote público). La guarda solo deja, dentro de un lote público (`core.is_public_batch()`), crear el cliente (el número lo pone el trigger), crear su pedido `open`/`public` e insertar o cambiar líneas de un pedido público abierto.
+- **Rutas públicas de `flow-api`** (antes del kit, `no-store` salvo la carta):
+  - `GET public/menu`: la carta, con `imageKey` por producto.
+  - `POST public/customer`: genera el token (32 bytes), guarda solo su SHA-256 y devuelve `{token, number}`.
+  - `POST public/orders`: recibe `{lines: [{productId, quantity}]}` (50 como máximo) con la cabecera `X-Flow-Customer`, crea el pedido del cliente y devuelve `{orderId, number}`.
+  - `GET public/mine`: con la cabecera, `flow_mine` (`core.allow_public_read`) devuelve solo los pedidos de ese cliente, con «n de m preparados» y la cantidad entregada por línea.
+- **Imágenes de producto** (decisión de VG del 26-10): `flow.products.image_key` = `<categoria>/<slug>`. Las rutas se derivan en `_domain/flow` (`productAssets`) a `apps/flow/public/assets/<clave>/{icono.svg, medallon.svg, miniatura.webp, zoom.webp}`. Las genera `apps/flow/scripts/assets.mjs` a partir del `assets_manifest.json` de VG: saneado de SVG igual que Central, miniatura de 40 KB y zoom de 150 KB como máximo. Sin clave, medallón con el código.
 
 **Caja (§1):** busca por número de cliente y muestra sus pedidos por cobrar, en preparación y por entregar. Se cobra el pedido que se elige; nunca otros del mismo cliente automáticamente. La ficha de entrega es un único componente, que se abre desde caja y desde Servicio y vuelve a caja con el contexto (§2).
 
