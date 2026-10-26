@@ -14,9 +14,9 @@ const SRC = path.resolve(here, '../../apps/food/src');
 const PATTERN = /^food(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `food.…` del código que no son ids de feedback: tablas, procedimientos y lecturas del servidor. */
-const NOT_IDS = /^food\.(consumptions|recipes|ingredients|recipe_ingredients|recipe_equipment|equipment|menu_services|menu_items|menu_comments|menu_graph|shopping_lists|shopping_list_items|preparation_items|suggestion_votes|equipment_notices|stock_entries|acknowledge_event|house_dish_from_suggestion|regenerate_preparation|regenerate_shopping|set_menu_status|validate_menu)$/;
+const NOT_IDS = /^food\.(carta_lines|carta_sales|consumptions|recipes|ingredients|recipe_ingredients|recipe_equipment|equipment|menu_services|menu_items|menu_comments|menu_graph|shopping_lists|shopping_list_items|preparation_items|suggestion_votes|equipment_notices|stock_entries|acknowledge_event|house_dish_from_suggestion|regenerate_preparation|regenerate_shopping|set_menu_status|validate_menu)$/;
 /** La raíz de cada id: una pantalla o una pieza de la cáscara. */
-const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'organizador', 'cierre', 'recetario', 'despensa', 'maquinaria', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'cocina', 'menu_lateral', 'casa'];
+const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'organizador', 'cierre', 'recetario', 'despensa', 'maquinaria', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'cocina', 'menu_lateral', 'casa', 'carta'];
 /**
  * Piezas del kit que solo admiten el id y sacan la etiqueta de su propio texto (tanda 27): las filas y la base del menú
  * lateral, «‹ Volver a…», los bloques de «Lo de ahora» y el mazo de votos. No cuentan como marcas sin etiqueta.

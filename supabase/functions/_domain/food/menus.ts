@@ -31,6 +31,8 @@ export interface FoodEvent {
   reservation_code: string | null;
   title: string;
   event_type: string | null;
+  /** Cartas de Food que Booking marca para unas jornadas abiertas (Booking 0484); vacío o ausente si no hay. */
+  carta_ids?: string[] | null;
   start_date: string;
   end_date: string;
   arrival_time: string | null;
