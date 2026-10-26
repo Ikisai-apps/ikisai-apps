@@ -78,7 +78,6 @@
 html.dark .tcr-banner,html.dark .tcr-cuadre,html.dark .tcr-doneitem,html.dark .tcr-plan,html.dark .tcr-prepare,html.dark .tcr-packrow{color:var(--ink,#ece5d8)}
 html.dark .tcr-stopn,html.dark .tcr-check[aria-pressed="true"]{color:#1a1915}
 
-/* FB_2026_069 · la cifra que filtra, marcada (además de aria-pressed), y la línea «Solo …». */
-.tcr-statpick{outline:3px solid var(--olive-dark);outline-offset:-3px}
+/* FB_2026_069 · la línea «Solo …» (la cifra elegida la marca el kit: `selected`, K1). */
 .tcr-filtering{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;font-size:14px;font-weight:700;color:var(--ink)}
 .tcr-filtering .ghost{min-height:46px}
