@@ -101,9 +101,15 @@ export function createSso(supabase: Supabase, app: string) {
     await supabase.rpc('core_sso_revoke', { p_digest: await sha256Hex(pass), p_all: all });
   }
 
+  /** Al refrescar la sesión dentro de una app, el pase común se alarga (si no, caducaba a los 30 días sin cambiar de app). */
+  async function touch(pass: string | null): Promise<void> {
+    if (!pass) return;
+    await supabase.rpc('core_sso_touch', { p_digest: await sha256Hex(pass), p_days: DAYS }).catch(() => undefined);
+  }
+
   async function revokeUser(user: string): Promise<void> {
     await supabase.rpc('core_sso_revoke_user', { p_user: user });
   }
 
-  return { issueFor, issueForUser, login, sessionFor, revoke, revokeUser };
+  return { issueFor, issueForUser, login, sessionFor, revoke, revokeUser, touch };
 }
