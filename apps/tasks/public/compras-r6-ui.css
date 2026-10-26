@@ -82,3 +82,16 @@ html.dark .tcr-stopn,html.dark .tcr-check[aria-pressed="true"]{color:#1a1915}
 .tcr-statpick{outline:3px solid var(--olive-dark);outline-offset:-3px}
 .tcr-filtering{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;font-size:14px;font-weight:700;color:var(--ink)}
 .tcr-filtering .ghost{min-height:46px}
+/* «Compras del evento» en Suministros (lo pedido desde Flow, API.md §39.5). */
+.tcr-event{display:grid;gap:8px;margin:0 0 16px;padding:12px 14px;border-radius:20px;border:1px solid var(--line);background:var(--paper)}
+.tcr-eventtitle{margin:0;font:500 20px var(--serif);color:var(--ink)}
+.tcr-eventproject{margin:6px 0 4px;font-size:15px;color:var(--ink)}
+.tcr-eventproject small{font-weight:600}
+.tcr-eventlist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.tcr-eventrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border-radius:14px;border:1px solid var(--line);background:var(--paper-2)}
+.tcr-eventrow[data-status="received"]{opacity:.85}
+.tcr-eventmain{flex:1;min-width:180px;min-height:46px;display:grid;gap:1px;text-align:left;border:0;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.tcr-eventmain span,.tcr-eventmain small{font-size:13px;color:var(--ink)}
+.tcr-eventactions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tcr-eventactions button{min-height:46px}
+.tcr-eventlink{display:inline-flex;align-items:center;min-height:46px;padding:0 8px;font-weight:700;color:var(--ink)}
