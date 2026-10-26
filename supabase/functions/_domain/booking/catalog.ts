@@ -60,7 +60,8 @@ export const PROCEDURES = {
   acceptProposal: 'booking.accept_proposal',
 } as const;
 
-export const EVENT_TYPES = ['retiro', 'convivencia', 'formacion', 'encuentro', 'actividad_divulgativa', 'alquiler_grupo', 'otro'] as const;
+/** Tipos de reserva (0482, VG 26-10-2026): retiro (la actividad principal), jornadas abiertas (venta y alojamiento a la carta) y familiar (de la casa). */
+export const EVENT_TYPES = ['retiro', 'jornadas_abiertas', 'familiar'] as const;
 export const RESERVATION_STATUSES = ['en_estudio', 'negociacion', 'pre_reservada', 'confirmada', 'en_ejecucion', 'cerrada', 'cancelada', 'perdida'] as const;
 export const PRIORITIES = ['alta', 'media', 'baja'] as const;
 export const CUSTOMER_TYPES = ['particular', 'empresa', 'asociacion', 'colectivo', 'organizador_recurrente'] as const;

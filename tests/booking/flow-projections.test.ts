@@ -20,7 +20,7 @@ const commit = (operations: unknown[]) => {
 };
 async function event(title: string, start: string, end: string, guests = 40): Promise<{ reservation: string; event: string }> {
   const reservation = crypto.randomUUID(); const ev = crypto.randomUUID();
-  await commit([{ op: 'insert', table: 'booking.reservations', id: reservation, fields: { title, event_type: 'encuentro', status: 'pre_reservada', start_date: start, end_date: end, expected_guests: guests } }]);
+  await commit([{ op: 'insert', table: 'booking.reservations', id: reservation, fields: { title, event_type: 'jornadas_abiertas', status: 'pre_reservada', start_date: start, end_date: end, expected_guests: guests } }]);
   await commit([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: reservation, event_id: ev, from_status: 'pre_reservada' } }]);
   return { reservation, event: ev };
 }
@@ -39,7 +39,7 @@ test('event_projection · Flow (y Booking) leen el evento con sus fechas y su af
     assert.equal(rows.length, 1, `${app} ${role}`);
     assert.deepEqual(Object.keys(rows[0]).sort(), ['ends_on', 'event_code', 'event_id', 'event_revision', 'expected_attendance', 'kind', 'name', 'starts_on', 'status']);
     assert.deepEqual([rows[0].name, rows[0].kind, rows[0].status, rows[0].starts_on, rows[0].ends_on, rows[0].expected_attendance],
-      ['Encuentro de otoño (sintético)', 'encuentro', 'confirmada', '2026-10-30', '2026-11-01', 120]);
+      ['Encuentro de otoño (sintético)', 'jornadas_abiertas', 'confirmada', '2026-10-30', '2026-11-01', 120]);
     assert.match(rows[0].event_code, /^EVT_/);
   }
   // el aforo final manda sobre el previsto

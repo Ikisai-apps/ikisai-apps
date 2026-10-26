@@ -119,6 +119,8 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
   - dirección con «todos»: coorganizador, se apunta y elige cualquier cama.
   - Detalle en API.md §29; pruebas en `tests/booking/portal-access.test.ts` y `portal.test.ts`.
 
+- **Tipos de reserva (26-10-2026, encargo de VG; migración 0482):** retiro, jornadas abiertas y familiar, con el mapeo de los valores viejos (también en las tarifas). API.md §30. Siguiente: el alta y la ficha según el tipo.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).

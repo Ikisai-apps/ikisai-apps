@@ -9,6 +9,7 @@
  * Escribe lo mismo que Preparación (hecho, responsable, hora) y el consumo con la hoja compartida. Sin datos nuevos.
  */
 import {
+  closedMenus,
   dishNotes, isMenuStale, normalizeTerm, isOverdue, nextStep, restrictionLines, scaledIngredients, serviceConsumption, servicePhases, stepDay, stepService, untilText,
   type Consumption, type DishNotes, type FoodEvent, type Menu, type MenuGraph, type MenuService, type ServicePhase,
 } from '@ikisai/domain-food';
@@ -347,7 +348,7 @@ export const mountKitchen: ViewMount = ({ main, client, navigate }) => {
 
   async function load(): Promise<void> {
     [menus, allServices, allSteps, consumptions] = await Promise.all([
-      client.list(T.menus) as Promise<Array<Mirror<Menu>>>, client.list(T.menuServices) as Promise<Array<Mirror<MenuService>>>,
+      client.list(T.menus).then((rows) => closedMenus(rows as Array<Mirror<Menu>>)), client.list(T.menuServices) as Promise<Array<Mirror<MenuService>>>,
       client.list(T.preparation) as Promise<PrepRow[]>, client.list(T.consumptions) as Promise<Array<Mirror<Consumption>>>,
     ]);
     inventory = await loadInventory(client).catch(() => null);
