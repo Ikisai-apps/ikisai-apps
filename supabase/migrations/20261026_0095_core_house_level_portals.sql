@@ -41,7 +41,7 @@ begin
     -- Mismo nivel y misma concesión: se deja como está.
     if g.level = p_level and exists (select 1 from core.house_level_roles where level = p_level and app = g.app and role = g.role) then continue; end if;
     select role into v_current from core.memberships where app = g.app and user_id = p_user;
-    if v_current = g.role then
+    if v_current = g.role and g.previous_role is distinct from g.role then
       if g.previous_role is null then
         delete from core.memberships where app = g.app and user_id = p_user;
       else
@@ -82,6 +82,8 @@ begin
       if v_portal and p_level = 'direccion' and not core.portal_all_grant((select scopes from core.memberships where app = r.app and user_id = p_user)) then
         update core.memberships set scopes = jsonb_set(coalesce(scopes, '{}'::jsonb), '{grants}', coalesce(scopes -> 'grants', '[]'::jsonb) || '{"all": true}'::jsonb),
           updated_at = now(), revision = revision + 1 where app = r.app and user_id = p_user;
+        -- Queda apuntado como concesión del nivel (mismo rol antes y después) para que al dejar dirección se retire el «todos».
+        insert into core.house_grants (user_id, app, level, role, previous_role) values (p_user, r.app, p_level, v_current, v_current);
         v_changes := v_changes || jsonb_build_object('app', r.app, 'from', v_current, 'to', v_current, 'scope', 'all');
       end if;
       continue;
