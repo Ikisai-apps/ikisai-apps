@@ -74,10 +74,10 @@ test('organizers · dirección no escribe en un retiro que no es suyo: lo propon
   const direct = await commit(dire.token, [offer]);
   assert.equal(direct.status, 403);
   assert.equal(code(direct), 'SUGGESTION_REQUIRED');
-  // También por debajo de la Edge: el gancho de la base de datos pide permiso propio.
+  // También por debajo de la Edge: el gancho de la base de datos pide permiso propio («todos» lo ve, K8, pero no escribe).
   await assert.rejects(
     booking.t.db.query(`select core.commit('organizers', $1, $2, null, null, $3::jsonb)`, [dire.id, `sql-${uuid()}`, JSON.stringify([offer])]),
-    /SUGGESTION_REQUIRED|OUT_OF_SCOPE/);
+    /SUGGESTION_REQUIRED/);
   const own = await commit(dire.token, [{ op: 'insert', table: TABLES.offers, id: uuid(), fields: { reservation_id: R2, name: 'Paseo', price: 0 } }]);
   assert.equal(own.status, 200, JSON.stringify(own.data));
 });
