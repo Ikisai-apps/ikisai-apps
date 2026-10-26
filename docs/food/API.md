@@ -278,6 +278,47 @@ food.equipment_notices                          (1104)
   - `pending` sigue «Avisado»; `done`, `dismissed`, `deleted` y `unknown` vuelven a «Falla», con «Avisar a Tasks».
   - Siempre con la palabra del estado («averiada»).
 
+### 2.10 La carta (26-10-2026, decisión de VG; migración 1109)
+
+Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' o 'casa') y la **carta** (`kind = 'carta'`). Se dan de alta y se eligen para un evento igual, pero cada uno tiene su lógica y su vista. `'cerrado'` ya era un estado del menú, así que el tipo se llama por su valor de `kind`.
+
+- **Carta:** `menus.name` obligatorio. Puede ir con evento o sin él: es una carta guardada, y Flow la enlaza desde su proyecto. Puede haber, como mucho, una carta viva y un menú cerrado vivo por evento. No tiene servicios ni pasa por los estados del menú: siempre está en «borrador» (`CARTA_MENU`). Para reutilizarla en otro evento se copia, y así cada evento conserva sus precios y sus ventas.
+- **`food.carta_lines`:**
+  - **Origen:** una receta (`recipe_id`, los montaditos) o un artículo de Recursos (`item_id`, las bebidas y las palomitas), nunca los dos. El origen no cambia.
+  - **Ámbito y código:** `scope` puede ser 'clasico', 'gourmet' o 'barra'. `code` va de A a D o de α a δ, y es único por carta y ámbito entre las líneas vivas.
+  - **Textos:** `name` y `description` son públicos y propios de la línea. Si faltan, se usan los de la receta o el nombre del artículo.
+  - **Venta:** `sale_price_cents` es el precio de venta, que no es el coste. También llevan `active`, `position` e `image_key` (`<categoria>/<slug>`, como en Flow).
+  - **Historial:** los cambios de precio y de disponibilidad quedan en `core.changes` con su autor.
+- **`food.carta_sales`:** guarda lo vendido por línea y día. Solo la escribe `food.record_carta_sales` (`PROCEDURE_ONLY`).
+- **`food.record_carta_sales {menu_id, day, lines: [{line_id, quantity}]}`:** la llama Flow al cerrar el día, con `POST commands` y la sesión del encargado (editor u owner).
+  - Es idempotente por (carta, día): otra llamada sustituye a la anterior, y las líneas que no llegan pasan a 0.
+  - Errores: `CARTA_NOT_FOUND`, `LINE_NOT_IN_CARTA`, `INVALID_DAY` e `INVALID_OPERATION` (cantidad entera ≥ 0, sin repetir línea y 200 líneas como mucho).
+  - **Stock:** tras el commit, food-api deja los movimientos de Recursos con `source_ref = 'carta:<menu>:<día>'` como dicen las ventas.
+    - Lo hace con la cuenta de servicio `food` (`food.carta_stock_plan`, `food-api/carta.ts`).
+    - Si falta, consume con `resources.consume`, gastando de donde haya. Si no queda, el resto se anota en el sitio del artículo o en la cocina.
+    - Si las ventas se corrigen a la baja, devuelve la diferencia con una entrada a mano.
+    - Si falla, las ventas quedan guardadas. `POST carta/stock {menuId, day}` (editor u owner) lo reintenta, y repetirlo no cambia nada.
+- **Lo que gasta una unidad vendida** (`food.carta_line_usage`):
+  - **Receta:** cada ingrediente enlazado, dividido entre las raciones base, con las conversiones del consumo (1100).
+  - **Artículo:** una «ud» en su unidad base, o su conversión.
+- **Coste por unidad** (`food.carta_line_cost_cents`): lo que gasta por el coste medio de Recursos (`resources.item_costs`). Es null si falta algún precio o algún enlace. El margen es precio − coste (`cartaMargin`).
+- **`food.carta_projection`:** lectura registrada para `flow` y para `food`. Los nombres se acordaron con Flow el 26-10:
+  - `menu_id`, `menu_name` y `event_id`;
+  - `line_id`, `scope`, `code`, `name`, `description`, `sale_price_cents` y `active`;
+  - `allergens` y `allergens_checked`: los de la receta y si están revisados. Un artículo sale con `'{}'` y sin revisar;
+  - `image_key`, `cost_cents` y `position`;
+  - `line_revision` y `menu_revision`.
+- **`food.booking_carta_projection`** (para Booking, 26-10): una fila por carta viva, con `carta_id`, `name`, `active` (alguna línea activa), `items_count`, `event_id` y `carta_revision`. En «jornadas abiertas», la reserva elige sus cartas y guarda los ids en Booking (`food_carta_ids`), que Food lee de `booking.food_event_projection`.
+- **Semilla** (`food.seed_carta_octubre`, una sola vez): la carta «Barra · Evento de octubre» del §8 del documento de Flow.
+  - Los 8 montaditos son recetas «en prueba»:
+    - con pan y sus componentes;
+    - con cantidades de partida, porque §8 no las da;
+    - con las estaciones como pasos (1 Untar · 2 Colocar · 3 Dosificar · 4 Acabados);
+    - con los alérgenos vacíos y sin revisar, hasta tener las etiquetas reales (§8.4).
+  - Las 4 bebidas y las palomitas son artículos de Recursos. Core los crea con ids fijos en `20261026_0811_resources_barra_items.sql`.
+  - Se siembra en producción cuando están esos artículos. En las pruebas, se llama a mano.
+- **En la app (tanda 1):** las pantallas del menú cerrado no enseñan la carta (`closedMenus`). Su vista llega en la tanda 2.
+
 ### 2.3 Compra, preparación y stock
 
 ```text

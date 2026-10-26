@@ -1,5 +1,6 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import {
+  closedMenus,
   HOUSE_MENU_ID, isMenuStale, kitchenStock, menuTotals, pantryAlerts, restrictionLines, serviceConsumption, servicePhases, stepDay, stepService, untilText,
   type Equipment, type Menu, type MenuItem, type MenuService, type PreparationItem, type Recipe, type RecipeEquipment, type ShoppingList, type ShoppingListItem,
 } from '@ikisai/domain-food';
@@ -149,7 +150,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   async function loadKitchenNow(): Promise<void> {
     const today = todayKey();
     const [allMenus, services, prep] = await Promise.all([
-      client.list(T.menus) as Promise<Mirror<Menu>[]>, client.list(T.menuServices) as Promise<Mirror<MenuService>[]>, client.list(T.preparation) as Promise<Mirror<PreparationItem>[]>,
+      client.list(T.menus).then((rows) => closedMenus(rows as Mirror<Menu>[])), client.list(T.menuServices) as Promise<Mirror<MenuService>[]>, client.list(T.preparation) as Promise<Mirror<PreparationItem>[]>,
     ]);
     const options = kitchenMenus(allMenus, services, snapshot.events, today);
     const menu = options[0];
@@ -311,7 +312,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   paintUpcoming();
   const loadMenus = async () => {
     [menus, lists, buyItems, steps] = await Promise.all([
-      client.list(T.menus) as Promise<Mirror<Menu>[]>, client.list(T.shoppingLists) as Promise<Mirror<ShoppingList>[]>,
+      client.list(T.menus).then((rows) => closedMenus(rows as Mirror<Menu>[])), client.list(T.shoppingLists) as Promise<Mirror<ShoppingList>[]>,
       client.list(T.shoppingItems) as Promise<Mirror<ShoppingListItem>[]>, client.list(T.preparation) as Promise<Mirror<PreparationItem>[]>,
     ]);
     const [graphs, purchases] = await Promise.all([loadAllMenuGraphs(client), loadPurchases(client)]);

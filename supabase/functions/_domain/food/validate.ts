@@ -3,6 +3,7 @@
  * Reglas puras: corren en el cliente antes de encolar y otra vez en la Edge antes de core.commit.
  * Todo lo que PostgreSQL rechazaría con un check o un error de conversión se rechaza aquí con el campo en `details`.
  */
+import { CARTA_CODES, CARTA_PRICE_MAX_CENTS, CARTA_SCOPES, IMAGE_KEY } from './carta.ts';
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
 import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_KINDS, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
 import { SHOPPING_ITEM_STATUSES, SHOPPING_LIST_STATUSES } from './planning.ts';
@@ -127,13 +128,14 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
     },
   },
   'food.menus': {
-    // event_id y source_event_revision son obligatorios solo en un retiro (abajo, en validateOperation).
+    // event_id y source_event_revision son obligatorios solo en un retiro, y name solo en la carta (abajo, en
+    // validateOperation). El evento de una carta sí se cambia (se liga o se desliga): lo comprueba la base.
     required: [],
-    insertOnly: ['kind', 'event_id', 'source_event_revision', 'source_event_snapshot'],
+    insertOnly: ['kind', 'source_event_revision', 'source_event_snapshot'],
     reserved: ['status', 'validated_at', 'validated_by', 'validated_warnings', 'preparation_generated_at', 'preparation_source_revisions'],
     fields: {
       kind: { kind: 'enum', values: MENU_KINDS },
-      event_id: { kind: 'uuid' },
+      event_id: { kind: 'uuid', nullable: true },
       source_event_revision: { kind: 'number', min: 1, max: Number.MAX_SAFE_INTEGER, integer: true },
       source_event_snapshot: { kind: 'json', nullable: true },
       status: { kind: 'enum', values: MENU_STATUSES },
@@ -146,6 +148,36 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       closing_notes: freeText,
       organizer_shared: { kind: 'boolean' },
       house_servings: { kind: 'number', min: 0, exclusiveMin: true, max: SERVINGS_MAX, nullable: true },
+      name: { kind: 'text', max: 120, required: true, nullable: true },
+    },
+  },
+  // Línea de una carta (1109): una receta o un artículo de Recursos, que no cambian después.
+  'food.carta_lines': {
+    required: ['menu_id', 'scope', 'code', 'sale_price_cents'],
+    insertOnly: ['menu_id', 'recipe_id', 'item_id'],
+    fields: {
+      menu_id: { kind: 'uuid' },
+      recipe_id: { kind: 'uuid', nullable: true },
+      item_id: { kind: 'uuid', nullable: true },
+      scope: { kind: 'enum', values: CARTA_SCOPES },
+      code: { kind: 'enum', values: CARTA_CODES },
+      name: { kind: 'text', max: 120, required: true, nullable: true },
+      description: { kind: 'text', max: 300, nullable: true },
+      sale_price_cents: { kind: 'number', min: 0, max: CARTA_PRICE_MAX_CENTS, integer: true },
+      active: { kind: 'boolean' },
+      position: { kind: 'number', min: -1e9, max: 1e9 },
+      image_key: { kind: 'text', max: 120, nullable: true },
+    },
+  },
+  // Ventas de la carta: solo las escribe food.record_carta_sales.
+  'food.carta_sales': {
+    required: [],
+    reserved: ['menu_id', 'line_id', 'day', 'quantity'],
+    fields: {
+      menu_id: { kind: 'uuid' },
+      line_id: { kind: 'uuid' },
+      day: { kind: 'date' },
+      quantity: { kind: 'number', min: 0, max: 100000, integer: true },
     },
   },
   // Los comentarios del organizador los crea solo la acción de portal (food.portal_menu_comment); en Food se marcan
@@ -313,6 +345,13 @@ function checkField(field: string, value: unknown, spec: FieldSpec): string | nu
 
 /** Un retiro nace con su evento y su revisión; el menú de casa, sin nada del evento y con raciones propias. */
 function menuKindProblem(fields: Record<string, unknown>): { field: string; message: string } | null {
+  if (fields.kind === 'carta') {
+    if (typeof fields.name !== 'string' || !fields.name.trim()) return { field: 'name', message: 'La carta necesita un nombre.' };
+    for (const field of ['source_event_revision', 'source_event_snapshot', 'house_servings']) {
+      if (fields[field] !== undefined && fields[field] !== null) return { field, message: 'La carta no lleva ese campo.' };
+    }
+    return null;
+  }
   if ((fields.kind ?? 'retiro') === 'retiro') {
     for (const field of ['event_id', 'source_event_revision']) {
       if (fields[field] === undefined) return { field, message: `Falta el campo ${field}.` };
