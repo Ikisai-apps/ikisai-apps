@@ -36,7 +36,8 @@ test('[29][37] agentes: clave desde la interfaz, borrado con revisión humana ap
   test.setTimeout(120_000);
   // El menú de escritorio ya ofrece las tres pantallas a la propietaria con acceso completo.
   expect(await menuRows(a, 'people')).toEqual(expect.arrayContaining(['tasks.menu.accesos', 'tasks.menu.propuestas']));
-  expect(await menuRows(a, 'system')).toContain('tasks.menu.registro_accesos');
+  // FB_2026_073: el registro de accesos está en Central (enlace con «‹ Volver a Tasks»); la hoja de Tasks sigue para las pruebas.
+  expect(await menuRows(a, 'system')).toContain('tasks.menu.registro_accesos_central');
   await a.keyboard.press('Escape');
 
   let token = '';

@@ -35,7 +35,7 @@ function navigationGroups(){return [
     ['export','Exportar JSON','download'],['csvExport','Exportar CSV','download'],['readable','Exportar texto legible','file'],['portableExport','Exportar con adjuntos','copy'],['backup','Respaldo completo','download','action',isAdministrator()]]},
   {id:'people',name:'Personas y agentes',icon:'people',items:[
     ['users','Cuentas de personas','people','action',isAdministrator()],['accesses','Accesos y permisos','key','action',isAdministrator()],['proposals','Propuestas de agentes','agent'],['sessions','Mi cuenta y sesiones','key','action',!!Sync.actor?.session]]},
-  {id:'system',name:'Sistema',icon:'settings',items:[['sync','Sincronización','sync'],['history','Historial de cambios','history'],['accessLog','Registro de accesos','key','action',isAdministrator()]]}
+  {id:'system',name:'Sistema',icon:'settings',items:[['sync','Sincronización','sync'],['history','Historial de cambios','history'],['accessLogCentral','Registro de accesos en Central','key','action',isAdministrator()]]}
 ]}
 /* El menú común del kit (shell-ui.js) se cierra al navegar o al abrir una hoja desde él. */
 function closeNavigation(){if(typeof closeShellMenu==='function')closeShellMenu()}
