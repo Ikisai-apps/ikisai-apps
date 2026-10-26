@@ -1725,4 +1725,24 @@ Una fila por turno no cancelado de un evento de `event_projection`: `event_id`, 
 ### 28.3 Servicio de barra (decisión de Core del 26-10-2026)
 
 Flow guarda sus cierres del día en su schema y publica `flow.booking_service_projection`, abierta a Booking con `core.allow_read`. Booking la lee y la ficha del evento la enseña en «Servicio de barra». No hay tabla ni procedimiento en `booking.*` para esto.
+## 29. Reglas de acceso a los portales (migración 0481; encargo de VG del 26-10-2026, plan aprobado por Core)
+
+1. **Sin caducidad.** `booking.portal_link_valid_until` devuelve `infinity` mientras la reserva exista (también terminada, cancelada o perdida) y null solo si está borrada o no existe. «Ampliar» deja de tener sentido y la app no lo ofrece («Sin caducidad»). La conservación (§20) sigue anonimizando, pero ya no quita el permiso de Guests: la persona sigue viendo el retiro, sin sus datos.
+2. **Organizador como huésped.** Quien tiene acceso a Organizers para una reserva tiene también una ficha en `booking.guests` (`portal_role = 'organizer'`) y su entrada en Guests.
+3. **Personal como huésped.** Un turno no cancelado con `member_user_id` da lo mismo, con `portal_role = 'staff'` (u `'outsider'` si su nivel de casa lo es).
+   - Lo hace `booking.portal_access_run`: conciliación idempotente con tick (`portal-access/tick`, cada 5 minutos, sonda `booking.portal_access_has_work`). La app también la lanza (`invoke`) tras emitir un enlace.
+   - Solo crea fichas en retiros vivos (`pre_reservada`, `confirmada`, `en_ejecucion`) que no han terminado, y nunca dos para la misma cuenta en el mismo evento.
+   - Si desaparece el origen, quita la entrada de Guests y manda la ficha (y sus restricciones) a la papelera, salvo que tenga cama elegida.
+4. **Dirección («todos»).** `{"all": true}` en `scopes.grants` de Guests y Organizers, concedido por el núcleo por el nivel de casa (0095).
+   - Organizers: coorganizador de todas las reservas.
+     - `portal_reservations` lleva `as`: `'organizer'` por su entrada, `'coorganizer'` por «todos».
+     - También lleva `as_guest_id`, su ficha de huésped en esa reserva (o null).
+     - `portal_organizers` incluye a dirección.
+   - Guests:
+     - `portal_open_retreats` incluye los retiros no visibles para huéspedes (`direction: true`).
+     - `booking.portal_join_direction({reservation_id, persons?})` apunta sin aprobación a un retiro vivo, con `portal_role = 'direccion'`.
+     - Con esa ficha, `portal_lodging` y `portal_choose_bed` ofrecen todas las habitaciones del evento, sin plazo y confirmadas al momento.
+   - En Guests, «todos» nunca vale por un huésped concreto: lo que lleva `guest_id` exige el par reserva + huésped.
+
+`booking.guests.portal_role`: `organizer`, `staff`, `outsider`, `direccion` o null (huésped normal). Cuenta como un huésped más en totales, cocina y SES (recomendación de Booking, pendiente de VG).
 
