@@ -96,7 +96,99 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       if (!task) fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa una tarea que no puedes ver.');
       return { created, routed, task };
     },
+  }, {
+    /**
+     * `POST requests/purchase` (§39, «Pedir a Tasks» desde Flow): una solicitud de compra pedida por otra app con el token
+     * de la persona, en un proyecto de Tasks que esa persona ve. Nace «pedida» y la aprueba quien aprueba en el área.
+     * Idempotente como `requests/task`: el id se deriva de `<source>:<external_ref>` y repetir devuelve la que ya hay. La
+     * procedencia va en la nota («Pedida desde flow · <referencia>»): sin migración.
+     */
+    method: 'POST', pattern: 'requests/purchase', handler: async ({ ctx, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir compras necesita permiso de edición en Tasks.');
+      const body = await json() as Record<string, unknown>;
+      const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
+      const text = (field: string, max: number, required = false): string | undefined => {
+        const value = body[field];
+        if (value === undefined || value === null) return required ? invalid(field, `Falta ${field}.`) : undefined;
+        if (typeof value !== 'string' || value.length > max || (required && !value.trim())) invalid(field, `${field} debe ser texto de 1 a ${max} caracteres.`);
+        return value as string;
+      };
+      const source = text('source', 31, true)!;
+      if (!SOURCE.test(source)) invalid('source', 'source es el id de la app que pide, en minúsculas (p. ej. flow).');
+      const reference = text('external_ref', 150, true)!.trim();
+      const title = text('title', 300, true)!.trim();
+      const note = text('note', 4000);
+      const unit = text('unit', 20)?.trim() || null;
+      const due = text('due', 10);
+      if (due !== undefined && (!DATE.test(due) || Number.isNaN(Date.parse(due)))) invalid('due', 'due va como AAAA-MM-DD.');
+      const priority = text('priority', 10);
+      if (priority !== undefined && !PRIORITIES.includes(priority)) invalid('priority', 'priority es normal, high o critical.');
+      const projectId = text('project_id', 36, true)!.toLowerCase();
+      if (!UUID.test(projectId)) invalid('project_id', 'project_id debe ser un uuid.');
+      const rawQuantity = body.quantity;
+      if (rawQuantity !== undefined && rawQuantity !== null && (typeof rawQuantity !== 'number' || !Number.isFinite(rawQuantity) || rawQuantity <= 0 || rawQuantity >= 1e9)) invalid('quantity', 'quantity es un número mayor que 0.');
+      const quantity = typeof rawQuantity === 'number' ? Math.round(rawQuantity * 1000) / 1000 : null;
+
+      // El proyecto: tiene que existir y verlo quien pide (tasks.targets aplica su alcance); de él sale el área.
+      const target = async (kind: string, id: unknown): Promise<{ id?: string; tabId?: string; deleted?: boolean; archived?: boolean } | null> => {
+        try { return await supabase.rpc<{ id?: string; tabId?: string; deleted?: boolean; archived?: boolean }>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.targets', p_args: { kind, id } }); } catch { return null; }
+      };
+      const project = await target('project', projectId);
+      if (!project?.tabId || project.deleted) fail(404, 'NOT_FOUND', 'No existe ese proyecto o no lo puedes ver.', { field: 'project_id' });
+      if (project!.archived) fail(422, 'PROJECT_ARCHIVED', 'Ese proyecto está archivado: elige uno abierto.', { field: 'project_id' });
+      const tabId = project!.tabId!;
+
+      const externalRef = `${source}:${reference}`;
+      const id = await requestPurchaseId(externalRef);
+      const rows = async () => {
+        const out: Array<Record<string, unknown>> = [];
+        for (let offset = 0; ; offset += 2000) {
+          const page = await supabase.rpc<{ rows: Array<Record<string, unknown>> }>('core_snapshot_table', {
+            p_app: 'tasks', p_role: ctx.membership.role, p_table: 'tasks.purchase_requests', p_include_deleted: true, p_limit: 2000, p_offset: offset,
+          });
+          out.push(...page.rows);
+          if (page.rows.length < 2000) return out;
+        }
+      };
+      const shape = (r: Record<string, unknown>) => ({
+        kind: 'purchase_request', id: r.id, tabId: r.tab_id, projectId: r.project_id, title: r.title, status: r.status,
+        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
+      });
+      // La referencia es de quien pide: si la solicitud es de un área que no ve, no se dice nada de ella.
+      const visibleRow = async (row: Record<string, unknown>) => {
+        if (row.tab_id === tabId || (await target('tab', row.tab_id))?.id) return row;
+        return fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa una solicitud que no puedes ver.');
+      };
+      const all = await rows();
+      const existing = all.find((r) => r.id === id);
+      if (existing) return { created: false, purchase: shape(await visibleRow(existing)) };
+
+      const lastPosition = Math.max(0, ...all.filter((r) => r.tab_id === tabId && !r.deleted_at).map((r) => Number(r.position) || 0));
+      const fields: Record<string, unknown> = {
+        tab_id: tabId, project_id: projectId, title,
+        note: [`Pedida desde ${source} · ${reference}`, note?.trim()].filter(Boolean).join('\n'),
+        quantity, unit, priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
+      };
+      try {
+        await internal.commit(ctx, { requestId: `request-purchase-${crypto.randomUUID()}`, operations: [{ op: 'insert', table: 'tasks.purchase_requests', id, fields }] });
+      } catch (error) {
+        // Dos peticiones a la vez: la segunda choca con el id de la primera, que es la que se devuelve.
+        const raced = (await rows()).find((r) => r.id === id);
+        if (raced) return { created: false, purchase: shape(await visibleRow(raced)) };
+        throw error;
+      }
+      const row = (await rows()).find((r) => r.id === id);
+      if (!row) fail(500, 'NOT_CREATED', 'La solicitud no quedó guardada.');
+      return { created: true, purchase: shape(row!) };
+    },
   }];
+}
+
+/** Uuid v4 de la solicitud de compra pedida desde otra app (espacio aparte del de las tareas). */
+export async function requestPurchaseId(externalRef: string): Promise<string> {
+  const hex = (await sha256Hex(`ikisai-tasks-purchase:${externalRef}`)).slice(0, 32);
+  const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 /**
