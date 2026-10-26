@@ -80,7 +80,7 @@ export interface AppLauncher {
 
 const KIT_ICONS: Record<string, IconName> = {
   tasks: 'tasks', booking: 'bed', food: 'chef', invoices: 'invoice', finance: 'invoice',
-  central: 'grid', guests: 'guest', organizers: 'organizer',
+  central: 'grid', guests: 'guest', organizers: 'organizer', flow: 'board',
 };
 const ROLE_LABELS: Record<string, string> = { owner: 'Propietaria', editor: 'Edición', reader: 'Solo lectura' };
 
