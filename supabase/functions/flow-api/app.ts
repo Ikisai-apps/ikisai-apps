@@ -10,7 +10,7 @@
  * escritura pública del núcleo (actor «Flow (sistema)», lote público que limita `flow.guard`).
  */
 import { applyPublicOperations, createApp, createSupabase, isFault, sha256Hex, type AppConfig, type Supabase } from '../_kit/mod.ts';
-import { APP, TABLES } from '../_domain/flow/mod.ts';
+import { APP, TABLES, visibleRow } from '../_domain/flow/mod.ts';
 
 export const FLOW_ORIGINS = ['https://flow.ikisai.com', 'https://ikisai-flow.pages.dev'];
 
@@ -26,14 +26,15 @@ const TOKEN = /^[0-9a-f]{64}$/;
 /** Escritura pública del núcleo (`applyPublicOperations` del kit, migración core 0094); inyectable en pruebas. */
 export type PublicWriter = (supabase: Supabase, app: string, operations: unknown[]) => Promise<{ cursor: number; results: unknown[] }>;
 
-type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes'> & Partial<Pick<AppConfig, 'origins'>>;
+type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes' | 'hooks'> & Partial<Pick<AppConfig, 'origins'>>;
 
 interface Mine { number: number | null; customerId: string | null; projectId: string | null; orders: unknown[] }
 
 export function createFlowApp(base: FlowBase, options: { publicWrite?: PublicWriter } = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [] });
+  // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [], hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership) } });
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
   async function handlePublic(request: Request, route: string): Promise<Response> {

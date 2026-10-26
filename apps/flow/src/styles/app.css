@@ -126,3 +126,9 @@
 .service-toggle{display:inline-flex;align-items:center;gap:4px;width:auto;padding:0 10px;border-radius:999px}
 .service-toggle.is-on{background:var(--accent);color:var(--on-accent,#fff)}
 .service-label{font-size:.8rem;font-weight:700}
+
+/* Flujos (pantalla inicial del personal) y carrusel del Inicio de un flujo */
+.flows{display:grid;gap:12px}
+@media (min-width:720px){.flows{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.flow-card.is-closed{opacity:.6}
+.flow-carousel{margin:0 0 14px}

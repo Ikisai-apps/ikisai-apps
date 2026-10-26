@@ -96,7 +96,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       empty.textContent = kind === 'order' ? 'Aún no hay pedidos.' : 'Aún no hay pedidos cobrados.';
     }
 
-    const offData = watchData(client, (d) => { data = d; paint(); });
+    const offData = watchData(client, (d) => { data = d; paint(); }, ctx.projectId);
     return () => offData();
   };
 }

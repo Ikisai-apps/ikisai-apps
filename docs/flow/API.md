@@ -162,3 +162,27 @@ La `0900` queda tal cual: se publica con #707 y luego es inmutable. Lo siguiente
 **Cola (§5–6):** «Ir al siguiente pendiente» solo aparece si el siguiente no está a la vista. Se ven las últimas 10 hechas; las anteriores se despliegan hacia arriba en la misma lista. Cada toque se refleja al momento con «pendiente de confirmar». Solo hay una transición en vuelo por unidad. Un `UNIT_CHANGED` nunca se sobrescribe: la tarjeta muestra el estado real y un aviso localizado.
 
 **Pendiente de Dirección o VG (no bloquea):** la prioridad de las ampliaciones al final de la cola (es la propuesta de Dirección; la implemento así), el detalle de las entregas parciales y la autoría en un puesto compartido (sesión identificada honestamente; nada de usuario común).
+
+## 15. Flujos por evento y acceso por proyecto (navegación de VG del 26-10, migración `0902`)
+
+- **Pantalla inicial de `/equipo`:** la lista de flujos (proyectos), con el más actual arriba: primero los activos, y entre ellos el que está en curso o el más cercano a hoy. Son tarjetas apaisadas con su portada (`renderCover` del kit). Tocar una es entrar: `#/p/<id>`, el Inicio del flujo, con el carrusel de flujos arriba (`createCoverCarousel`; deslizar cambia de flujo) y sus guías. Dentro aparece la barra inferior del shell con sus columnas y badges (`setNav`); fuera no hay barra.
+- **`flow.projects`:** `booking_event_id`, `starts_on`, `ends_on` y `cover_image` (ruta de `apps/flow/public`). Las escribe el owner.
+- **Acceso:** los ámbitos del núcleo, `core.memberships.scopes = {"projects": [uuid…]}`. El owner (Dirección) ve todo. El editor, el lector y el outsider ven solo sus proyectos: `flow-api` filtra cada fila con el hook `visible` (`_domain/flow/scope.ts`). La base aplica la misma regla al escribir: el trigger `flow_scope` por `updated_by`, y `flow.check_scope` en los procedimientos (`PROJECT_OUT_OF_SCOPE`). Todas las tablas llevan `project_id`; en líneas, pagos y componentes lo pone el servidor desde su padre.
+- **Outsiders** (declarado para cuando VG los use; el sábado todos entran como editores): solo `unit_step` (`core.allow_outsider_procedure`) y crear o retocar tareas de Logística. Nada de cobros, ajustes, entregas ni catálogo.
+
+## 16. Cómo se define un flujo nuevo (hoy)
+
+Flow va a ser un generador de flujos (después del sábado, el siguiente es check-in/check-out de un evento). Sin editor todavía, esto es lo que ya es **dato** y lo que aún es **código**:
+
+| Pieza | Hoy | Dónde |
+|---|---|---|
+| Proyecto (nombre, fechas, evento, portada, estado) | Dato | `flow.projects` |
+| Columnas: clave, rótulo, orden y comportamiento (`inspect_confirm`, `quick_steps`, `free_task`) | Dato | `flow.columns` (la barra inferior se construye con ellas) |
+| Unidades de trabajo, su estado (pendiente → en curso → hecha → pendiente), asignación y orden estable | Dato y lógica genérica | `flow.units` y `flow.unit_step` |
+| Rastro de acciones | Dato | `flow.events` (los tipos de evento de la barra aún están en un `check`) |
+| Qué pantalla pinta cada comportamiento | Código, agrupado por comportamiento | `apps/flow/src/ui/prep.ts` (cola con toques: `quick_steps` y `free_task`) y `orders.ts` + fichas (`inspect_confirm`) |
+| Qué vista concreta usa cada columna de la barra (Caja, Servicio…) | Código | `COLUMN_VIEWS` en `ui/shell.ts`, por la clave de la columna |
+| Comercio de la barra: catálogo, pedidos, líneas, pagos, clientes y sus procedimientos | Código y tablas propias de la barra | `flow.products`, `orders`, `order_lines`, `payments`, `customers` y los procedimientos de cobro y entrega |
+| Guías del Inicio | Código (lista fija) | `ui/home.ts` (`GUIDES`) |
+
+Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (datos). Si sus columnas usan los comportamientos genéricos con unidades sueltas (como Logística), basta con eso más una entrada en `COLUMN_VIEWS`. Lo que necesite lotes propios (como el pedido de la barra) requiere hoy un módulo específico, igual que la barra. Pendiente para el editor: los tipos de evento, las guías y las piezas de tarjeta como dato.

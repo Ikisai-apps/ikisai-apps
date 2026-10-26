@@ -3,10 +3,11 @@ import {
   confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, el, openFeedbackCenter, replace, toast,
   type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
-import { APP } from '@ikisai/domain-flow';
+import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
-import { watchData } from '../app/data.ts';
+import { watchData, type FlowData } from '../app/data.ts';
 import { mountHome } from './home.ts';
+import { mountProjects } from './projects.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
 import { createServiceMode } from './service-mode.ts';
@@ -19,6 +20,8 @@ export interface ShellContext {
 export interface ViewContext extends ShellContext {
   main: HTMLElement;
   navigate(hash: string): void;
+  /** Flujo (proyecto) en el que se está; `null` en la lista de flujos. */
+  projectId: string | null;
 }
 
 export type ViewMount = (ctx: ViewContext) => () => void;
@@ -26,22 +29,35 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 /** Rótulos de los roles del núcleo (no son roles de negocio de Flow). */
 const ROLE_LABELS: Record<string, string> = { owner: 'Propietario', editor: 'Editor', reader: 'Lector', outsider: 'Outsider' };
 
-/** Casa + cuatro columnas operativas (canon V1 §2.1). No hay columna de bebidas: van en Servicio y entrega. */
-const NAV: NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/'] },
-  { hash: '#/caja', label: 'Caja', icon: 'euro', matches: ['#/caja'] },
-  { hash: '#/preparacion', label: 'Preparación', icon: 'chef', matches: ['#/preparacion'] },
-  { hash: '#/servicio', label: 'Servicio', icon: 'check', matches: ['#/servicio'] },
-  { hash: '#/logistica', label: 'Logística', icon: 'list', matches: ['#/logistica'] },
-];
-
-const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> = {
-  '#/': { title: 'Inicio', slug: 'inicio', mount: mountHome },
-  '#/caja': { title: 'Pedido y cobro', slug: 'caja', mount: mountOrders('order') },
-  '#/preparacion': { title: 'Preparación', slug: 'preparacion', mount: mountQueue('prep') },
-  '#/servicio': { title: 'Servicio y entrega', slug: 'servicio', mount: mountOrders('service') },
-  '#/logistica': { title: 'Logística', slug: 'logistica', mount: mountQueue('logistics') },
+/**
+ * Vistas por columna. Las columnas de un flujo son DATO (`flow.columns`: clave, rótulo, orden y comportamiento); qué
+ * pantalla pinta cada una es aún código, agrupado por comportamiento (API.md, «Cómo se define un flujo nuevo»):
+ * `inspect_confirm` → lista de lotes con ficha (en la barra, Pedido y cobro o Servicio), `quick_steps` y `free_task` →
+ * cola de unidades con toques.
+ */
+interface ColumnView { slug: string; icon: string; mount: ViewMount }
+const COLUMN_VIEWS: Record<string, ColumnView> = {
+  order: { slug: 'caja', icon: 'euro', mount: mountOrders('order') },
+  prep: { slug: 'preparacion', icon: 'chef', mount: mountQueue('prep') },
+  service: { slug: 'servicio', icon: 'check', mount: mountOrders('service') },
+  logistics: { slug: 'logistica', icon: 'list', mount: mountQueue('logistics') },
 };
+const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check', quick_steps: 'board', free_task: 'list' };
+
+interface FlowColumn { key: string; label: string; behavior: ColumnBehavior; position: number; project_id: string; deleted_at: string | null }
+
+/** Barra inferior de un flujo: la casa + sus columnas, en su orden (§2.1). */
+function navFor(projectId: string, columns: FlowColumn[]): NavItem[] {
+  const base = `#/p/${projectId}`;
+  return [
+    { hash: base, label: 'Inicio', icon: 'home', matches: [base] },
+    ...columns.map((c) => {
+      const view = COLUMN_VIEWS[c.key];
+      const hash = `${base}/${view?.slug ?? c.key}`;
+      return { hash, label: c.label, icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
+    }),
+  ];
+}
 
 /**
  * Cáscara común del kit: cabecera, menú lateral (MUELA-013) con el lanzador de apps y «Sugerencias y QA», «‹ Volver a…»
@@ -82,7 +98,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     appName: 'Flow',
     markIcon: 'sync',
     subtitle: boot?.profile.displayName ?? '',
-    nav: NAV,
+    nav: [],
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
@@ -130,18 +146,61 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   function navigate(hash: string): void {
-    if (location.hash === hash) route();
+    if (location.hash === hash) void route();
     else location.hash = hash;
   }
 
-  function route(): void {
+  let currentProject: string | null = null;
+  let columns: FlowColumn[] = [];
+  let offBadges: (() => void) | null = null;
+  let lastPrepPending: number | null = null;
+
+  async function loadColumns(projectId: string): Promise<FlowColumn[]> {
+    return ((await client.list(TABLES.columns)) as unknown as FlowColumn[])
+      .filter((c) => c.project_id === projectId && !c.deleted_at).sort((a, b) => a.position - b.position);
+  }
+
+  /** Al entrar en un flujo: su barra de columnas y sus badges. Fuera (lista de flujos), sin barra. */
+  async function enterProject(projectId: string | null): Promise<void> {
+    if (projectId === currentProject) return;
+    currentProject = projectId;
+    offBadges?.(); offBadges = null; lastPrepPending = null;
+    if (!projectId) { columns = []; shell.setNav([]); return; }
+    columns = await loadColumns(projectId);
+    if (currentProject !== projectId) return;
+    shell.setNav(navFor(projectId, columns));
+    offBadges = watchData(client, (d) => paintBadges(projectId, d), projectId);
+  }
+
+  function paintBadges(projectId: string, d: FlowData): void {
+    const base = `#/p/${projectId}`;
+    const prepPending = d.units.filter((u) => u.kind === 'prep' && u.status === 'pending').length;
+    if (lastPrepPending !== null && prepPending > lastPrepPending) service.notifyNew();
+    lastPrepPending = prepPending;
+    shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open').length);
+    shell.setBadge(`${base}/preparacion`, d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/servicio`, d.orders.filter((o) => o.status === 'paid').length);
+    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && (u.status === 'pending' || u.status === 'in_progress')).length);
+  }
+
+  async function route(): Promise<void> {
     const hash = (location.hash && location.hash !== '#' ? location.hash : '#/').split('?')[0]!;
-    const entry = ROUTES[hash] ?? ROUTES['#/']!;
+    const m = hash.match(/^#\/p\/([0-9a-f-]{36})(?:\/([a-z]+))?$/i);
+    const projectId = m ? m[1]! : null;
+    await enterProject(projectId);
+    let entry: { title: string; slug: string; mount: ViewMount };
+    if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
+    else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };
+    else {
+      const column = columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m![2]);
+      const view = column ? COLUMN_VIEWS[column.key] : undefined;
+      entry = view && column ? { title: column.label, slug: view.slug, mount: view.mount } : { title: 'Inicio', slug: 'inicio', mount: mountHome };
+    }
     unmountView?.();
     unmountView = null;
-    shell.setRoute(ROUTES[hash] ? hash : '#/');
+    shell.setRoute(projectId ? hash : '#/');
     replace(main);
-    unmountView = entry.mount({ ...ctx, main, navigate });
+    unmountView = entry.mount({ ...ctx, main, navigate, projectId });
     screen = { id: `flow.${entry.slug}`, label: entry.title };
     main.setAttribute('data-feedback-id', screen.id);
     main.setAttribute('data-feedback-label', screen.label);
@@ -150,18 +209,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
   }
-
-  // Badges de pendientes en cada columna (§2.1).
-  let lastPrepPending: number | null = null;
-  const offBadges = watchData(client, (d) => {
-    const prepPending = d.units.filter((u) => u.kind === 'prep' && u.status === 'pending').length;
-    if (lastPrepPending !== null && prepPending > lastPrepPending) service.notifyNew();
-    lastPrepPending = prepPending;
-    shell.setBadge('#/caja', d.orders.filter((o) => o.status === 'open').length);
-    shell.setBadge('#/preparacion', d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
-    shell.setBadge('#/servicio', d.orders.filter((o) => o.status === 'paid').length);
-    shell.setBadge('#/logistica', d.units.filter((u) => u.kind === 'task' && (u.status === 'pending' || u.status === 'in_progress')).length);
-  });
 
   const offStatus = client.onStatus((status) => {
     if (!client.session()) {
@@ -176,18 +223,19 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     paintBanners(client.status());
   };
   window.addEventListener('ikisai:update-available', onUpdate);
-  window.addEventListener('hashchange', route);
-  route();
+  const onHash = () => { void route(); };
+  window.addEventListener('hashchange', onHash);
+  void route();
 
   return () => {
     offStatus();
-    offBadges();
+    offBadges?.();
     service.destroy();
     offSessionEnd();
     feedback.destroy();
     review.destroy();
     unmountView?.();
-    window.removeEventListener('hashchange', route);
+    window.removeEventListener('hashchange', onHash);
     window.removeEventListener('ikisai:update-available', onUpdate);
     shell.destroy();
     replace(root, el('div'));

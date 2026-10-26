@@ -1,8 +1,10 @@
-import { el, icon, openSheet, replace } from '@ikisai/ui-kit';
+import { createCoverCarousel, el, icon, openSheet, replace } from '@ikisai/ui-kit';
+import { loadProjects, projectDates, projectState } from '../app/data.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
- * Inicio (canon V1 §2.2): la pestaña de la casa, sin ocupar sitio encima de las colas. Carrusel con las cuatro guías
+ * Inicio de un flujo (canon V1 §2.2; navegación de VG del 26-10). Arriba, el carrusel de eventos (como lo ven los
+ * huéspedes): deslizar cambia de flujo. Debajo, las guías: la pestaña de la casa, sin ocupar sitio encima de las colas. Carrusel con las cuatro guías
  * internas, con miniaturas para ir directo a una y «Ampliar» para verla entera. Las miniaturas se precargan; la guía a
  * tamaño completo solo se descarga al ampliarla (FLOW-DIR-001 §6). Estas guías nunca salen en la carta pública (§15.3).
  */
@@ -13,8 +15,21 @@ export const GUIDES = [
   { slug: 'mesa', title: 'Mesa de trabajo · disposición y orden' },
 ] as const;
 
-export const mountHome: ViewMount = ({ main }) => {
+export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
   let current = 0;
+  const carouselHost = el('div', { class: 'flow-carousel' });
+  void loadProjects(client).then((projects) => {
+    if (!projects.length) return;
+    const index = Math.max(0, projects.findIndex((p) => p.id === projectId));
+    const carousel = createCoverCarousel({
+      label: 'Tus flujos',
+      index,
+      slides: projects.map((p) => ({ id: p.id, title: p.name, image: p.cover_image, state: projectState(p), meta: projectDates(p) || null })),
+      onChange: (slide) => { if (slide.id !== projectId) navigate(`#/p/${slide.id}`); },
+      feedbackId: 'flow.inicio.flujos',
+    });
+    replace(carouselHost, carousel.element);
+  });
   const figure = el('figure', { class: 'guide-figure' });
   const thumbs = el('div', { class: 'guide-thumbs', role: 'tablist', 'aria-label': 'Guías' },
     ...GUIDES.map((g, i) => el('button', { type: 'button', class: 'guide-thumb', role: 'tab', 'aria-label': g.title, onclick: () => show(i) },
@@ -41,7 +56,8 @@ export const mountHome: ViewMount = ({ main }) => {
   }
 
   main.append(
-    el('h1', { class: 'col-title' }, 'Guías de la barra'),
+    carouselHost,
+    el('h2', { class: 'col-title' }, 'Guías de la barra'),
     el('div', { class: 'guide-carousel', 'data-feedback-id': 'flow.inicio.guias', 'data-feedback-label': 'Guías' },
       el('button', { type: 'button', class: 'iconbtn guide-prev', 'aria-label': 'Guía anterior', onclick: () => show(current - 1) }, icon('chevronLeft', 22)),
       figure,
