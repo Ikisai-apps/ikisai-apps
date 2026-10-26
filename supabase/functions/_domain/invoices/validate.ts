@@ -509,6 +509,11 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
       if (has(fields, 'key') && fields.key !== 'resources_links') domainFail('INVALID_SETTING', 'Ese ajuste no existe.', { field: 'key' });
       if (has(fields, 'value') && typeof fields.value !== 'boolean') domainFail('INVALID_SETTING', 'El ajuste vale sí o no.', { field: 'value' });
       return;
+    case TABLES.appEntries:
+      if (op === 'insert') return domainFail('APP_ENTRY_PROCEDURE_ONLY', domainMessage('APP_ENTRY_PROCEDURE_ONLY'), { table });
+      onlyWritable(TABLES.appEntries, fields);
+      uuid(fields, 'event_id', { nullable: true });
+      return text(fields, 'notes', { max: 2000 });
     default: return;
   }
 }
@@ -536,6 +541,9 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   TEMPLATE_REQUIRES_CONFIRMATION: 'Las plantillas solo se aprenden al validar una factura de ese proveedor.',
   DOCUMENT_TEXT_EDGE_ONLY: 'El texto de los documentos lo guarda el servidor.',
   ISSUED_ANNULLED: 'Esta factura emitida está anulada.',
+  APP_ENTRY_PROCEDURE_ONLY: 'Este apunte llega de otra app: aquí solo se cambian su evento y las notas.',
+  APP_ENTRY_NOT_DELETABLE: 'Un apunte de otra app no se borra: si no debía contar, se corrige en la app de origen.',
+  ENTRY_LOCKED: 'Este apunte ya está en una entrega a la gestoría: no se puede sustituir.',
   ENTITY_MISSING: 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.',
   ALLOCATIONS_EXCEED_INVOICE: 'Lo asignado supera la base de la factura.',
   INVOICE_NOT_IMPORTABLE: 'Esta factura ya tiene datos; importa sobre una factura vacía.',

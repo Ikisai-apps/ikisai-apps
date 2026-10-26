@@ -42,9 +42,13 @@ export function endOfDay(date: string): string {
   return new Date(y!, m! - 1, d!, 23, 59, 59, 0).toISOString();
 }
 
-/** Estado legible de un enlace: «Revocado», «Caducado» o la fecha límite. */
+/** Sin fecha límite: desde la 0481 el enlace vale mientras exista la reserva (el servidor responde `infinity`). */
+export const forever = (validUntil: string | null): boolean => validUntil !== null && !Number.isFinite(Date.parse(validUntil));
+
+/** Estado legible de un enlace: «Revocado», «Sin caducidad», «Caducado» o la fecha límite. */
 export function validityText(link: PortalLink): { text: string; state: 'revoked' | 'expired' | 'valid' } {
   if (link.revokedAt) return { text: 'Revocado', state: 'revoked' };
+  if (forever(link.validUntil)) return { text: 'Sin caducidad', state: 'valid' };
   if (!link.validUntil || Date.parse(link.validUntil) < Date.now()) return { text: 'Caducado', state: 'expired' };
   return { text: `Válido hasta ${formatDate(link.validUntil)}`, state: 'valid' };
 }
@@ -85,7 +89,7 @@ export function createPortalBlock(): PortalBlock {
     };
     const sheet: Sheet = openSheet({
       title: 'Enlace generado',
-      meta: `Para ${name}${issued.validUntil ? ` · válido hasta ${formatDate(issued.validUntil)}` : ''}`,
+      meta: `Para ${name}${forever(issued.validUntil) ? ' · sin caducidad' : issued.validUntil ? ` · válido hasta ${formatDate(issued.validUntil)}` : ''}`,
       body: el('div', { class: 'portal-issued', 'data-feedback-id': 'booking.reserva.portal.enlace_generado', 'data-feedback-label': 'Enlace generado', 'data-feedback-ignore': '' },
         el('div', { class: 'portal-urlbox', 'data-feedback-id': 'booking.reserva.portal.enlace_generado.url', 'data-feedback-label': 'Enlace' }, field),
         el('div', { class: 'choices' },
@@ -116,6 +120,8 @@ export function createPortalBlock(): PortalBlock {
       try {
         const issued = await o.client.api<Issued>('/portal-links', { json: { app: 'organizers', scope: { reservation_id: o.reservation.id }, person: { name, ...(email ? { email } : {}) } } });
         showIssued(issued, name);
+        // Regla 2 de VG: el organizador queda también como huésped de la reserva (el tick lo haría en 5 minutos).
+        void o.client.api('/invoke/booking.portal_access_run', { method: 'POST', json: {} }).catch(() => undefined);
       } catch (error) {
         form.showError(describeError(error));
         send.disabled = false;
@@ -177,7 +183,7 @@ export function createPortalBlock(): PortalBlock {
         el('span', { class: `chip${v.state === 'valid' ? ' ok' : ' muted'}`, dataset: { role: 'validity' } }, v.text)),
       el('div', { class: 'row-meta' }, el('span', null, `Creado ${formatDate(link.createdAt)}`), el('span', null, link.lastUsedAt ? `Último uso ${formatDate(link.lastUsedAt)}` : 'Sin usar')),
       link.revokedAt ? null : el('div', { class: 'row-actions portal-actions' },
-        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'extend' }, 'data-feedback-id': 'booking.reserva.portal.enlaces.ampliar', 'data-feedback-label': 'Ampliar hasta', disabled: !online, 'aria-label': `Ampliar hasta… (enlace de ${who})`, onclick: () => openExtend(link) }, 'Ampliar hasta…'),
+        forever(link.validUntil) ? null : el('button', { class: 'ghost small', type: 'button', dataset: { action: 'extend' }, 'data-feedback-id': 'booking.reserva.portal.enlaces.ampliar', 'data-feedback-label': 'Ampliar hasta', disabled: !online, 'aria-label': `Ampliar hasta… (enlace de ${who})`, onclick: () => openExtend(link) }, 'Ampliar hasta…'),
         el('button', { class: 'ghost small', type: 'button', dataset: { action: 'revoke' }, 'data-feedback-id': 'booking.reserva.portal.enlaces.revocar', 'data-feedback-label': 'Revocar', disabled: !online, 'aria-label': `Revocar (enlace de ${who})`, onclick: () => void revoke(link) }, 'Revocar')));
   }
 

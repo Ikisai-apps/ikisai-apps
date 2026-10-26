@@ -20,7 +20,7 @@ export function describeError(error: unknown, name?: string): string {
   const who = name || t('Esta persona');
   switch (code) {
     case 'LINK_INVALID': return t('Este enlace no es válido o ya no está activo. Pide uno nuevo a Ikisai.');
-    case 'LINK_EXPIRED': return t('Este enlace ha caducado. Si tu retiro sigue en marcha, pide uno nuevo a Ikisai.');
+    case 'LINK_EXPIRED': return t('Este enlace ya no está activo. Pide uno nuevo a Ikisai.');
     case 'RESERVATION_NOT_CONFIRMED': return t('Podrás añadir a tus asistentes cuando la reserva esté confirmada.');
     case 'GUEST_DATA_OFF': return t('En este retiro no hace falta la lista de asistentes.');
     case 'DECLARATION_REQUIRED': return t('Antes de guardar, marca la casilla de conformidad.');
@@ -41,6 +41,11 @@ export function describeError(error: unknown, name?: string): string {
     case 'CONSTRAINT_VIOLATION': return t('Algún dato tiene un formato que no vale. Revísalo.');
     case 'UNAUTHENTICATED':
     case 'UNAUTHORIZED': return t('Tu acceso ha caducado. Abre de nuevo el enlace que te enviamos.');
+    // Propuestas del equipo de Ikisai (0703).
+    case 'SUGGESTION_REQUIRED': return t('Desde dirección, los cambios se proponen a quien organiza. Envíalos desde «Propuesta para quien organiza».');
+    case 'PROPOSAL_NO_FILES': return t('Una propuesta no lleva archivos. Pon un enlace o pide a quien organiza que lo suba.');
+    case 'SUGGESTION_UNAVAILABLE': return t('Esa propuesta ya no está pendiente: alguien la ha decidido o retirado.');
+    case 'TOO_MANY_SUGGESTIONS': return t('Hay demasiadas propuestas sin decidir. Espera a que quien organiza las revise.');
     case 'FEEDBACK_RATE_LIMITED': return t('Has enviado muchos comentarios hoy. Inténtalo mañana.');
     case 'NETWORK':
     case 'OFFLINE':

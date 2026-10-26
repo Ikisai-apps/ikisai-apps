@@ -119,6 +119,9 @@ export function createAdminApi(client: SyncClient) {
       memory.grants = out.items;
       return out.items;
     },
+    /** «Aplicar accesos» de la ficha (`1515`): el núcleo aplica el nivel vigente de la ficha a su cuenta. Solo owners de Central. */
+    applyHouseLevel: (personId: string) =>
+      call<{ personId: string; userId: string; level: string | null; changes: Array<{ app: string; from: string | null; to: string | null }> }>('/invoke/central.apply_house_level', { method: 'POST', json: { personId } }),
     setMembership: (body: { app: string; userId: string; role: Role | null; scopes?: unknown; displayName?: string }) =>
       call<AccountMembership | { removed: true }>('/admin/memberships', { method: 'POST', json: body }),
     invite: (body: { email: string; displayName?: string; memberships: Array<{ app: string; role: Role; scopes?: unknown }> }) =>

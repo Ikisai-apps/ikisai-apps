@@ -13,14 +13,13 @@ export interface EntryOptions {
 
 export function renderEntry(root: HTMLElement, options: EntryOptions = {}): () => void {
   const code = options.error ? errorCode(options.error) : '';
-  const validUntil = (options.error as { details?: { validUntil?: string | null } } | undefined)?.details?.validUntil;
   let title = t('Entra con tu enlace');
   let text = t('Para entrar, abre el enlace que te enviamos por correo o por WhatsApp.');
+  // El acceso de quien organiza no caduca (decisión de VG del 26-10-2026, Booking B19): un enlace solo deja de valer si
+  // se revoca o se borra su reserva. Con uno nuevo se vuelve a ver todo, también los retiros pasados.
   if (code === 'LINK_EXPIRED') {
-    title = t('Este enlace ha caducado');
-    text = validUntil
-      ? t('Caducó el {fecha}. Si tu retiro sigue en marcha, pídenos uno nuevo.', { fecha: new Intl.DateTimeFormat(i18n.tag(), { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' }).format(new Date(validUntil)) })
-      : t('Si tu retiro sigue en marcha, pídenos uno nuevo.');
+    title = t('Este enlace ya no está activo');
+    text = t('Pídenos uno nuevo y volverás a ver todos tus retiros, también los pasados.');
   } else if (code === 'LINK_INVALID') {
     title = t('Este enlace no funciona');
     text = t('No es válido o ya no está activo. Pídenos uno nuevo.');

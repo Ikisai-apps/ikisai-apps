@@ -1153,19 +1153,10 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('Organizadora Sintética Dos');
     await expect(row).toContainText('Sin usar');
-    await expect(row.locator('[data-role="validity"]')).toContainText('Válido hasta');
     expect(await page.content()).not.toContain(link!.token);
-    await expect(row.locator('[data-role="validity"]')).toContainText('Válido hasta');
-
-    // Ampliar: la fecha manda si es posterior al fin de la reserva más margen.
-    await row.getByRole('button', { name: 'Ampliar hasta…' }).click();
-    const extend = page.getByRole('dialog', { name: 'Ampliar enlace' });
-    await extend.locator('#f-until').fill(inDays(40));
-    await page.locator('#portalExtendSave').click();
-    await expect(extend).toBeHidden();
-    await expect.poll(() => api.portalLinks()[0]!.extendedUntil).not.toBeNull();
-    expect(api.portalLinks()[0]!.extendedUntil!.slice(0, 10) >= inDays(39)).toBeTruthy();
-    await expect(row.locator('[data-role="validity"]')).not.toContainText('Caducado');
+    // 0481 (regla 1 de VG): el enlace vale mientras exista la reserva; no hay nada que ampliar.
+    await expect(row.locator('[data-role="validity"]')).toHaveText('Sin caducidad');
+    await expect(row.getByRole('button', { name: 'Ampliar hasta…' })).toHaveCount(0);
 
     // Un lector recibe 403 y el aviso lo dice.
     api.setPortalRole('reader');

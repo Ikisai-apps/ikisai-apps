@@ -1725,6 +1725,34 @@ Una fila por turno no cancelado de un evento de `event_projection`: `event_id`, 
 ### 28.3 Servicio de barra (decisión de Core del 26-10-2026)
 
 Flow guarda sus cierres del día en su schema y publica `flow.booking_service_projection`, abierta a Booking con `core.allow_read`. Booking la lee y la ficha del evento la enseña en «Servicio de barra». No hay tabla ni procedimiento en `booking.*` para esto.
+## 29. Reglas de acceso a los portales (migración 0481; encargo de VG del 26-10-2026, plan aprobado por Core y respuestas de VG)
+
+1. **Sin caducidad.** `booking.portal_link_valid_until` devuelve `infinity` mientras la reserva exista: también terminada, cancelada o perdida, que se ve en solo lectura. Devuelve null solo si está borrada o no existe.
+   - La app enseña «Sin caducidad» y no ofrece «Ampliar».
+   - La conservación (§20) sigue anonimizando, pero ya no quita el permiso de Guests.
+2. **Organizador como huésped.** Quien tiene acceso a Organizers para una reserva tiene también una ficha en `booking.guests` (`portal_role = 'organizer'`) y su entrada en Guests.
+3. **Personal como huésped.** Un turno no cancelado con `member_user_id` da lo mismo, con `portal_role = 'staff'`.
+   - Un outsider con turno viene a trabajar y no es huésped.
+   - Si viene como huésped, es una ficha normal, sin `portal_role`.
+   - Lo hace `booking.portal_access_run`, una conciliación idempotente:
+     - corre en un tick (`portal-access/tick`, cada 5 minutos, con la sonda `portal_access_has_work`), y la app la lanza también tras emitir un enlace;
+     - solo crea fichas en retiros vivos y no terminados;
+     - si desaparece el origen, la ficha y el acceso se quedan (propuesta de Core, pendiente de VG).
+4. **Fichas de equipo** (`organizer`, `staff` y `direccion`, decisión de VG):
+   - No cuentan como comensales: sus restricciones no salen en `food_event_projection`.
+   - No cuentan en `guest_summary` ni en los recuentos de `portal_reservations`.
+   - No van a SES aunque duerman: `ses_status = 'no_aplica'` y no se puede marcar su llegada.
+   - Ven el menú como un huésped.
+   - Solo eligen entre camas de equipo. Son las de `booking.beds.team_bed` (migración 0483): en modo Booking, «Cama de equipo» en la hoja de la cama; con los espacios en Recursos, el espejo la copia de `attributes.team_bed` (Core, 0812). Eligen cualquiera libre de las habitaciones del evento, sin plazo y confirmada al momento (`portal_lodging.team: true`). Sin ninguna marcada no eligen y la cama la asigna el personal. Los huéspedes nunca ven ni eligen una cama de equipo.
+5. **Dirección («todos»).** `{"all": true}` en `scopes.grants` de Guests y Organizers, concedido por el núcleo por el nivel de casa (0095).
+   - Organizers: coorganizador de todas.
+     - `portal_reservations` lleva `as` (`'organizer'` o `'coorganizer'`) y `as_guest_id`.
+     - `portal_organizers` incluye a dirección.
+   - Guests:
+     - `portal_open_retreats` le da todos los retiros, pasados y futuros, con `joinable` en los vivos.
+     - `portal_scope_reservation` le deja recorrer cualquiera (programa y detalle).
+     - `booking.portal_join_direction({reservation_id, persons?})` la apunta sin aprobación a un retiro vivo (`portal_role = 'direccion'`).
+   - En Guests, «todos» nunca vale por un huésped concreto: lo que lleva `guest_id` exige el par reserva + huésped.
 
 ## 30. Tipos de reserva (migración 0482; encargo de VG del 26-10-2026)
 
