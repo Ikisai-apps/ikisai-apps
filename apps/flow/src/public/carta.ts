@@ -168,7 +168,7 @@ export function mountCarta(root: HTMLElement): () => void {
         el('p', { class: 'carta-summary-total' }, el('span', null, 'Total'), el('strong', null, formatEuros(totalCents))),
         status,
       ),
-      foot: el('div', { class: 'sheet-actions' }, send, el('button', { type: 'button', class: 'ghost', onclick: () => {
+      foot: el('div', { class: 'flow-actions' }, send, el('button', { type: 'button', class: 'ghost', onclick: () => {
         basket = {}; saveBasket(basket);
         for (const f of fields.values()) f.set(0);
         paintBar(); sheet.close();

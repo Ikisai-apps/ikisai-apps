@@ -40,7 +40,7 @@ async function login(page: Page, url = `${baseURL}/equipo`): Promise<void> {
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Guías de la barra' })).toBeVisible();
 }
 
 test('flow · login con contraseña errónea avisa y no entra', async ({ page }) => {
@@ -51,10 +51,11 @@ test('flow · login con contraseña errónea avisa y no entra', async ({ page })
   await expect(page.locator('#loginError')).toHaveText('Correo o contraseña incorrectos.');
 });
 
-test('flow · login → Inicio en preparación; menú común con perfil; cerrar sesión vuelve al login', async ({ page }) => {
+test('flow · login → Inicio con las guías y las cinco pestañas; menú común con perfil; cerrar sesión vuelve al login', async ({ page }) => {
   await login(page);
   await expect(page).toHaveTitle('Inicio · Ikisai Flow');
-  await expect(page.getByRole('heading', { name: 'Flow está en preparación' })).toBeVisible();
+  // Casa + cuatro columnas (§15.1).
+  for (const name of ['Inicio', 'Caja', 'Preparación', 'Servicio', 'Logística']) await expect(page.locator(`a.navbtn`, { hasText: name }).first()).toBeVisible();
   await page.locator('#appLauncher').click();
   const drawer = page.locator('#appMenu');
   await expect(drawer).toBeVisible();

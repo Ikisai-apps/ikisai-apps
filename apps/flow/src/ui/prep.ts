@@ -37,10 +37,10 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
     /** Avisos localizados por tarjeta (otra persona se adelantó). */
     const notices = new Map<string, string>();
 
-    const olderButton = el('button', { type: 'button', class: 'ghost queue-older', hidden: true, onclick: () => { showAllDone = true; paint(); } });
-    const listEl = el('div', { class: 'queue', role: 'list', 'aria-label': kind === 'prep' ? 'Montaditos' : 'Tareas' });
-    const nextButton = el('button', { type: 'button', class: 'primary queue-next', hidden: true, onclick: goToNext }, icon('chevronDown', 18), el('span', null, 'Ir al siguiente pendiente'));
-    const empty = el('p', { class: 'muted queue-empty', hidden: true }, kind === 'prep' ? 'No hay montaditos cobrados todavía.' : 'No hay tareas. Crea la primera arriba.');
+    const olderButton = el('button', { type: 'button', class: 'ghost fqueue-older', hidden: true, onclick: () => { showAllDone = true; paint(); } });
+    const listEl = el('div', { class: 'fqueue', role: 'list', 'aria-label': kind === 'prep' ? 'Montaditos' : 'Tareas' });
+    const nextButton = el('button', { type: 'button', class: 'primary fqueue-next', hidden: true, onclick: goToNext }, icon('chevronDown', 18), el('span', null, 'Ir al siguiente pendiente'));
+    const empty = el('p', { class: 'muted fqueue-empty', hidden: true }, kind === 'prep' ? 'No hay montaditos cobrados todavía.' : 'No hay tareas. Crea la primera arriba.');
     const head = kind === 'logistics' ? taskForm() : null;
     main.append(
       el('h1', { class: 'col-title' }, kind === 'prep' ? 'Preparación' : 'Logística'),

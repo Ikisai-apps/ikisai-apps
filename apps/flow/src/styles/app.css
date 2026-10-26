@@ -45,7 +45,7 @@
 .col-title{margin:4px 0 8px;font-family:var(--font-display,inherit);font-size:1.4rem}
 
 /* Colas estables (Preparación, Logística, Caja, Servicio): orden fijo; lo hecho se queda en su sitio, gris y más bajo. */
-.queue{display:grid;gap:8px;overflow-anchor:auto;padding-bottom:72px}
+.fqueue{display:grid;gap:8px;overflow-anchor:auto;padding-bottom:72px}
 .qcard{border:1px solid var(--line);border-radius:var(--radius-card,16px);background:var(--paper);transition:opacity .15s}
 .qcard-main{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 12px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;touch-action:manipulation}
 .qcard-main:disabled{cursor:default}
@@ -61,9 +61,9 @@
 .qcard.is-unconfirmed .qcard-state{outline:2px dashed var(--warn,#b5652b);outline-offset:1px}
 .qcard.is-priority:not(.is-done) .qcard-title::before{content:"! ";color:var(--alert,#b3261e)}
 .qcard-notice{margin:0 12px 10px;padding:6px 10px;border-radius:10px;background:var(--warn-soft,#fbecd9);color:var(--ink);font-size:.9rem}
-.queue-older{width:100%;margin-bottom:8px}
-.queue-next{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;display:inline-flex;align-items:center;gap:6px;box-shadow:var(--shadow-2,0 4px 12px rgba(0,0,0,.18))}
-.queue-empty{margin:16px 0}
+.fqueue-older{width:100%;margin-bottom:8px}
+.fqueue-next{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;display:inline-flex;align-items:center;gap:6px;box-shadow:var(--shadow-2,0 4px 12px rgba(0,0,0,.18))}
+.fqueue-empty{margin:16px 0}
 .task-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 .task-form input[type=text]{flex:1 1 200px;min-width:0}
 .task-priority{display:inline-flex;align-items:center;gap:6px}
@@ -89,8 +89,8 @@
 .order-lines li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center}
 .order-total{margin:10px 0 0;font-size:1.1rem;font-weight:700}
 .order-refund{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0}
-.sheet-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
-.sheet-actions button[hidden]{display:none}
+.flow-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.flow-actions button[hidden]{display:none}
 .deliver-incomplete{opacity:.85}
 .danger-text{color:var(--alert,#b3261e)}
 .delivery-ident{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;border:0}

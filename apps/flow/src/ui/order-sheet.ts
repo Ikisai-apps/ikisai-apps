@@ -40,7 +40,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
   const head = el('p', { class: 'order-head', role: 'status' });
   const body = el('div', { class: 'order-body' });
   const totalEl = el('p', { class: 'order-total' });
-  const foot = el('div', { class: 'sheet-actions' });
+  const foot = el('div', { class: 'flow-actions' });
   const sheet = openSheet({ title: 'Pedido', body: el('div', { class: 'order-sheet' }, head, body, totalEl), foot, onClose: () => offData() });
 
   const order = (): Order | undefined => data?.orders.find((o) => o.id === orderId);

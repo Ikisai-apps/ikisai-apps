@@ -29,7 +29,7 @@ export function openDeliverySheet(client: SyncClient, orderId: string, options: 
       el('input', { type: 'radio', name: 'ident', value, checked: value === ident, onchange: () => { ident = value; } }), el('span', null, label))));
   const deliverButton = busyButton({ class: 'primary' }, 'Menú entregado', deliver);
   const reopenButton = busyButton({ class: 'ghost' }, 'Reabrir entrega', reopen);
-  const foot = el('div', { class: 'sheet-actions' }, reopenButton, deliverButton);
+  const foot = el('div', { class: 'flow-actions' }, reopenButton, deliverButton);
   const sheet = openSheet({
     title: 'Entrega',
     body: el('div', { class: 'delivery' }, summary, linesEl, identEl),

@@ -27,8 +27,8 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       oninput: () => { search = searchInput.value.replace(/\D/g, ''); paint(); } });
     const newButton = el('button', { type: 'button', class: 'primary', onclick: newOrder }, icon('plus', 18), el('span', null, 'Nuevo pedido'));
     const found = el('p', { class: 'muted small', role: 'status' });
-    const listEl = el('div', { class: 'queue', role: 'list' });
-    const empty = el('p', { class: 'muted queue-empty', hidden: true });
+    const listEl = el('div', { class: 'fqueue', role: 'list' });
+    const empty = el('p', { class: 'muted fqueue-empty', hidden: true });
     main.append(
       el('h1', { class: 'col-title' }, kind === 'order' ? 'Pedido y cobro' : 'Servicio y entrega'),
       el('div', { class: 'orders-tools' }, searchInput, ...(kind === 'order' && canEdit ? [newButton] : [])),
