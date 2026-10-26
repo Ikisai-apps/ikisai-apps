@@ -14,22 +14,13 @@ App interna nueva (`flow.ikisai.com`, Pages `ikisai-flow`, Edge `flow-api`, sche
 
 - Rebasar sobre `main` cuando Core fusione la PR compartida (registro, CI, rango 0900, `core.apps` y la opción sin tabla de `runConformance`). Hasta entonces, `tests/flow` falla en `main` porque `flow` no está en `core.apps`.
 - Primera release y dominio (`release_cloud.py --app flow --bind-domain`) y propietario inicial (`initialize_app_owner.py`). Los hace Core.
-- `docs/flow/API.md` (puerta G2, `docs/core/PLANTILLA_API_APP.md`), cuando llegue el documento funcional. Sin él no hay migraciones ni rutas propias.
+- `docs/flow/API.md` (puerta G2): propuesta del 26-10-2026, en revisión por Core. Sin su visto bueno no hay migraciones ni rutas propias.
 - Con la primera tabla sincronizable, `runConformance` completo (`table`, `fieldA`, `fieldB` y `required`).
 - Icono y color de marca propios de Flow (hoy, los de Central con un dibujo provisional).
 
-## Preguntas abiertas (para VG, por Core)
+## Preguntas abiertas
 
-Pendientes del documento funcional. No se ha inventado nada de esto:
-
-1. ¿Qué resuelve Flow y qué deja fuera? ¿Qué datos son de otras apps y se leen por proyección o por su API?
-2. Entidades y tablas de `flow.*`: qué se guarda, qué estados tiene cada cosa y cuáles son las transiciones.
-3. Roles de negocio y ámbitos: ¿bastan `owner`, `editor` y `reader` del núcleo, o hacen falta ámbitos (`memberships.scopes`)? ¿Quién ve y quién edita cada cosa?
-4. Pantallas y navegación (cuatro o cinco entradas como máximo): qué muestra Inicio y qué secciones hay.
-5. Offline: qué hay que poder hacer sin red.
-6. Archivos: ¿Flow guarda documentos o fotos? Si es así, qué bucket y qué límites.
-7. Enlaces con otras apps (Tasks, Central, Booking…): qué se pide o se consulta.
-8. Descripción corta de la app para el lanzador y el manifiesto (hoy «Ikisai Flow.»; Core la añadirá en otra migración).
+El documento funcional V1 de VG ya está (canon V1, fuera del repo). Las preguntas de modelo, roles, imágenes y refresco entre móviles están en `docs/flow/API.md` §13 (P-1 a P-5), pendientes de la revisión de Core.
 
 ## Bloqueos
 
