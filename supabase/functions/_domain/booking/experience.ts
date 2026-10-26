@@ -41,7 +41,7 @@ export interface ExperienceInput {
   reservation: {
     id: string; status: ReservationStatus; start_date: string | null; end_date: string | null; expected_guests: number | null;
     priority?: string | null; briefing_received?: boolean | null; uses_accommodation?: boolean | null;
-    ses_enabled?: boolean | null; collect_guest_data?: boolean | null;
+    ses_enabled?: boolean | null; collect_guest_data?: boolean | null; event_type?: string | null;
   };
   event?: { id: string; final_guests?: number | null; closed_at?: string | null } | null;
   /** `null`: el rol no ve importes. */
@@ -136,10 +136,15 @@ export function daysText(daysLeft: number | null, phase: Phase): string | null {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Experiencia de una reserva en el día `today` (AAAA-MM-DD). */
+/** Jornadas abiertas y familiar (0482, VG 26-10-2026): sin propuesta ni señal; se confirman directamente. */
+export const withoutDeal = (eventType: string | null | undefined): boolean => eventType === 'jornadas_abiertas' || eventType === 'familiar';
+
 export function experienceOf(input: ExperienceInput, today: string): Experience {
   const r = input.reservation;
   const phase = phaseOf(r.status);
-  const proposals = input.proposals ?? null;
+  const deal = !withoutDeal(r.event_type);
+  const proposals = deal ? input.proposals ?? null : null;
+  const finance = deal ? input.finance : null;
   const now = dayNumber(today);
   const start = dayNumber(r.start_date);
   const end = dayNumber(r.end_date) ?? start;
@@ -165,7 +170,7 @@ export function experienceOf(input: ExperienceInput, today: string): Experience 
       if (!accepted && !sent) step('propuesta', draft ? `Enviar la propuesta v${draft.version}` : 'Preparar la propuesta', 'blockProposal');
       else if (!accepted) step('propuesta', 'Seguir la propuesta enviada', 'blockProposal');
     }
-    const deposit = input.finance === undefined || input.finance === null ? null : depositStatus(input.finance);
+    const deposit = finance === undefined || finance === null ? null : depositStatus(finance);
     if (deposit === 'pendiente' || deposit === 'parcial') {
       if (proposals?.some((p) => p.status === 'aceptada') || r.status === 'pre_reservada') step('senal', deposit === 'parcial' ? 'Cobrar el resto de la señal' : 'Cobrar la señal', 'blockFinance');
     }
@@ -176,8 +181,8 @@ export function experienceOf(input: ExperienceInput, today: string): Experience 
     if (proposals) areas.push(proposals.some((p) => p.status === 'aceptada')
       ? { key: 'propuesta', ok: true, text: 'Propuesta', block: 'blockProposal' }
       : { key: 'propuesta', ok: false, text: 'Propuesta sin aceptar', block: 'blockProposal' });
-    if (input.finance) {
-      const d = depositStatus(input.finance);
+    if (finance) {
+      const d = depositStatus(finance);
       const ok = d === 'no_aplica' || d === 'completado';
       areas.push({ key: 'senal', ok, text: ok ? 'Señal' : d === 'parcial' ? 'Señal parcial' : 'Señal pendiente', block: 'blockFinance' });
       if (!ok) step('senal', d === 'parcial' ? 'Cobrar el resto de la señal' : 'Cobrar la señal', 'blockFinance', daysLeft !== null && daysLeft <= 7 ? 'alert' : null);
