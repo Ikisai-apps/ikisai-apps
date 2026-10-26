@@ -19,9 +19,7 @@ create table flow.projects (
   deleted_at timestamptz,
   name text not null check (length(name) between 1 and 120),
   status text not null default 'active' check (status in ('active','closed')),
-  notes text check (notes is null or length(notes) <= 1000),
-  -- Último número de cobro (§4: el orden de trabajo es la secuencia de confirmación del pago). Solo lo sube confirm_payment.
-  last_pay_seq integer not null default 0 check (last_pay_seq >= 0)
+  notes text check (notes is null or length(notes) <= 1000)
 );
 
 create table flow.columns (
@@ -187,14 +185,16 @@ create table flow.events (
   at timestamptz not null default now()
 );
 create index events_project_idx on flow.events (project_id, at);
+-- Número de cobro (§4): el siguiente al mayor `paySeq` de los eventos `paid` del proyecto. Los eventos solo se añaden y
+-- nunca se purgan, así que el número no se repite aunque se anule un cobro; los commits de la app van en serie.
+create index events_paid_idx on flow.events (project_id, ((data->>'paySeq')::int)) where kind = 'paid';
 
 -- ---------------------------------------------------------------------------
 -- Registro en el núcleo. Las columnas que solo escriben los procedimientos están en la lista (apply_row_op las exige),
--- y la guarda de abajo las cierra al cliente. Todas never_purge (llevan el dinero y su rastro) salvo `projects`, que es
--- también la tabla de muestra de la conformidad (purgar un proyecto con pedidos lo impiden sus FK).
+-- y la guarda de abajo las cierra al cliente. Todas never_purge (llevan el dinero y su rastro) salvo `projects` (solo owner),
+-- que es también la tabla de muestra de la conformidad (purgar un proyecto con pedidos lo impiden sus FK).
 -- ---------------------------------------------------------------------------
--- Editor en writable_roles solo para que confirm_payment suba last_pay_seq; fuera de los procedimientos, solo el owner (guarda).
-select core.register_table('flow', 'flow', 'projects', array['name','status','notes','last_pay_seq'], '{reader,editor,owner}', '{editor,owner}', false);
+select core.register_table('flow', 'flow', 'projects', array['name','status','notes'], '{reader,editor,owner}', '{owner}', false);
 select core.register_table('flow', 'flow', 'columns', array['project_id','key','label','behavior','position'], '{reader,editor,owner}', '{owner}', true);
 select core.register_table('flow', 'flow', 'products', array['project_id','scope','code','name','description','price_cents','active','prepared','position'], '{reader,editor,owner}', '{owner}', true);
 select core.register_table('flow', 'flow', 'product_components', array['product_id','station','ingredient','position'], '{reader,editor,owner}', '{owner}', true);
@@ -224,14 +224,7 @@ declare v_new jsonb := to_jsonb(new); v_old jsonb; v_status text;
 begin
   if flow.in_proc() then return new; end if;
   if tg_op = 'UPDATE' then v_old := to_jsonb(old); end if;
-  if tg_table_name = 'projects' then
-    if coalesce(current_setting('core.role', true), '') not in ('owner', '') then
-      perform core.fail('FORBIDDEN', 403, jsonb_build_object('table', 'flow.projects'));
-    end if;
-    if (tg_op = 'INSERT' and new.last_pay_seq <> 0) or (tg_op = 'UPDATE' and new.last_pay_seq <> old.last_pay_seq) then
-      perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.projects', 'field', 'last_pay_seq'));
-    end if;
-  elsif tg_table_name = 'orders' then
+  if tg_table_name = 'orders' then
     if (tg_op = 'INSERT' and (new.status <> 'open' or new.pay_seq is not null or new.paid_at is not null or new.total_cents is not null or new.delivered_at is not null or new.delivery_exception))
        or (tg_op = 'UPDATE' and flow.changed(v_old, v_new, array['status','pay_seq','paid_at','paid_by','pay_method','total_cents','delivered_at','delivered_by','delivery_ident','delivery_exception','project_id'])) then
       perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.orders'));
@@ -267,7 +260,6 @@ begin
   return new;
 end $$;
 
-create trigger flow_guard before insert or update on flow.projects for each row execute function flow.guard();
 create trigger flow_guard before insert or update on flow.orders for each row execute function flow.guard();
 create trigger flow_guard before insert or update on flow.order_lines for each row execute function flow.guard();
 create trigger flow_guard before insert or update on flow.units for each row execute function flow.guard();
@@ -358,7 +350,7 @@ end $$;
 -- args = { order_id, method: 'cash'|'bizum', expected_revision }
 create or replace function flow.confirm_payment(p jsonb) returns jsonb language plpgsql as $$
 declare
-  v_order flow.orders; v_project flow.projects; v_method text := p->'args'->>'method';
+  v_order flow.orders; v_method text := p->'args'->>'method';
   v_line record; v_total int := 0; v_seq int; v_units int := 0;
 begin
   perform flow.proc_begin();
@@ -381,9 +373,7 @@ begin
     v_total := v_total + v_line.quantity * v_line.price_cents;
   end loop;
 
-  select * into v_project from flow.projects where id = v_order.project_id for update;
-  v_seq := v_project.last_pay_seq + 1;
-  perform flow.upd(p, 'flow.projects', v_project.id, v_project.revision, jsonb_build_object('last_pay_seq', v_seq));
+  select coalesce(max((data->>'paySeq')::int), 0) + 1 into v_seq from flow.events where project_id = v_order.project_id and kind = 'paid';
   perform flow.upd(p, 'flow.orders', v_order.id, v_order.revision, jsonb_build_object('status', 'paid', 'pay_seq', v_seq, 'paid_at', now(),
     'paid_by', (p->>'actor')::uuid, 'pay_method', v_method, 'total_cents', v_total));
   perform flow.ins(p, 'flow.payments', jsonb_build_object('order_id', v_order.id, 'kind', 'charge', 'method', v_method, 'amount_cents', v_total));

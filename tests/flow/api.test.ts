@@ -160,8 +160,6 @@ test('flow · §15.8: dos cobros simultáneos reciben números únicos y consecu
   const [ra, rb] = await Promise.all([pay(a.id, 'cash', app.tokens.editor), pay(b.id, 'bizum', app.tokens.owner)]);
   assert.notEqual(ra.pay_seq, rb.pay_seq);
   assert.equal(Math.abs(ra.pay_seq - rb.pay_seq), 1);
-  const project = await row(TABLES.projects, PROJECT);
-  assert.equal(project.last_pay_seq, Math.max(ra.pay_seq, rb.pay_seq));
 });
 
 test('flow · §15.10: cambiar el precio no toca ventas cobradas; el total lo calcula siempre el servidor', async () => {
