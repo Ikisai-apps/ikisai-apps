@@ -5,7 +5,10 @@ import {
 } from '@ikisai/ui-kit';
 import { APP } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
+import { watchData } from '../app/data.ts';
 import { mountHome } from './home.ts';
+import { mountOrders } from './orders.ts';
+import { mountQueue } from './prep.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -22,11 +25,21 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 /** Rótulos de los roles del núcleo (no son roles de negocio de Flow). */
 const ROLE_LABELS: Record<string, string> = { owner: 'Propietario', editor: 'Editor', reader: 'Lector', outsider: 'Outsider' };
 
-/** Primer incremento: solo Inicio. Las secciones llegan con el documento funcional (docs/flow/ESTADO.md). */
-const NAV: NavItem[] = [{ hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/'] }];
+/** Casa + cuatro columnas operativas (canon V1 §2.1). No hay columna de bebidas: van en Servicio y entrega. */
+const NAV: NavItem[] = [
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/'] },
+  { hash: '#/caja', label: 'Caja', icon: 'euro', matches: ['#/caja'] },
+  { hash: '#/preparacion', label: 'Preparación', icon: 'chef', matches: ['#/preparacion'] },
+  { hash: '#/servicio', label: 'Servicio', icon: 'check', matches: ['#/servicio'] },
+  { hash: '#/logistica', label: 'Logística', icon: 'list', matches: ['#/logistica'] },
+];
 
 const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> = {
   '#/': { title: 'Inicio', slug: 'inicio', mount: mountHome },
+  '#/caja': { title: 'Pedido y cobro', slug: 'caja', mount: mountOrders('order') },
+  '#/preparacion': { title: 'Preparación', slug: 'preparacion', mount: mountQueue('prep') },
+  '#/servicio': { title: 'Servicio y entrega', slug: 'servicio', mount: mountOrders('service') },
+  '#/logistica': { title: 'Logística', slug: 'logistica', mount: mountQueue('logistics') },
 };
 
 /**
@@ -135,6 +148,14 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     window.scrollTo({ top: 0 });
   }
 
+  // Badges de pendientes en cada columna (§2.1).
+  const offBadges = watchData(client, (d) => {
+    shell.setBadge('#/caja', d.orders.filter((o) => o.status === 'open').length);
+    shell.setBadge('#/preparacion', d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge('#/servicio', d.orders.filter((o) => o.status === 'paid').length);
+    shell.setBadge('#/logistica', d.units.filter((u) => u.kind === 'task' && (u.status === 'pending' || u.status === 'in_progress')).length);
+  });
+
   const offStatus = client.onStatus((status) => {
     if (!client.session()) {
       ctx.onLogout();
@@ -153,6 +174,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   return () => {
     offStatus();
+    offBadges();
     offSessionEnd();
     feedback.destroy();
     review.destroy();

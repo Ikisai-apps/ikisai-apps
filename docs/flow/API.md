@@ -121,7 +121,40 @@ Lo mecánico (escenarios de Playwright siguiendo un patrón aprobado) puede ir a
 ## 13. Preguntas y peticiones
 
 - **P-1 (Core): aprobado.** `flow-api` atiende `public/menu` antes de pasar la petición al kit. Nada genérico en el kit por ahora.
-- **P-2 (VG, por Core):** ¿anular un cobro y devolver dinero en un ajuste exigen encargado (owner)? La propuesta es que sí.
+- **P-2: decidido por VG.** Anular un cobro o devolver dinero lo puede hacer el owner o quien hizo ese cobro (`paid_by`). Al resto, `FORBIDDEN` («Solo quien cobró o el encargado»). Va en la 0901.
 - **P-3 (Core): aprobado.** Pull cada 3 s con la app visible.
-- **P-4 (VG, por Core):** las imágenes: dónde viven las guías y si hay miniaturas por producto. Ya la lleva Core.
+- **P-4: decidido por VG.** Las 4 guías, la carta general y el logo van en `apps/flow/public`, en webp de 1600 px como máximo. Miniaturas por producto solo si el recorte queda limpio; si no, medallón con el código. Sin bucket. **No hay QR personal de acceso**: basta el login del kit.
 - **P-5: cerrado.** La semilla crea «Barra · Evento de octubre», y el nombre es editable.
+
+## 14. FLOW-DIR-001 (precisiones de VG del 26-10): cambios de modelo, migración `0901`
+
+La `0900` queda tal cual: se publica con #707 y luego es inmutable. Lo siguiente va en la `0901_flow_customers`.
+
+**Rutas (§8):** `flow.ikisai.com/` abre la **carta pública**, sin login. El área de personal va en **`/equipo`**, con el login del kit, el menú común y la PWA (`start_url` y `scope` en `/equipo/`).
+
+**Tablas nuevas o cambiadas:**
+
+| Tabla | Cambio |
+|---|---|
+| `flow.customers` (nueva) | Cliente anónimo del servicio (§1). Columnas: `project_id` FK, `number int` (único por proyecto; lo asigna el servidor al primer envío, correlativo desde 100 y sin reutilizarse), `token_hash text unique` (SHA-256 de un token aleatorio de 32 bytes que **solo vive en el navegador** del cliente; nunca se guarda el token). Lectura: personal. Escritura: solo los procedimientos públicos. `never_purge`. |
+| `flow.orders` | `customer_id uuid null` FK a `customers`: el pedido enviado desde la carta, o el de caja si se asocia a un número. `parent_id uuid null` FK a `orders`: una **ampliación** (§3). |
+| `flow.order_lines` | `delivered_qty int not null default 0 check (0 ≤ delivered_qty ≤ quantity)`: cantidad realmente entregada («1 de 3 aguas», §2). Sustituye a `delivery_checked`, que se elimina. El cliente la escribe también con el pedido cobrado; su historia queda en `core.changes`. |
+| `flow.payments` | `kind` pasa a admitir `refund` (sustituye a `adjustment` con importe negativo). Columnas nuevas: `settled_at`, `settled_by`. Una devolución nace **pendiente** (`settled_at null`) y se cierra con `confirm_refund` cuando el dinero se ha devuelto de verdad (§3). Un `charge` positivo de ampliación es un pedido aparte con su propio `charge`. |
+
+**Procedimientos:**
+
+- `confirm_payment`: sin cambios. Cobrar una **ampliación** (un pedido con `parent_id`) le da su propio `pay_seq`, al final de la cola, y genera sus unidades en ese momento. La secuencia del pedido original nunca se recalcula.
+- `create_extension` (nuevo): `{parent_order_id, lines}` crea la ampliación abierta, ligada al padre y a su cliente. Hasta que se cobra no genera unidades.
+- `adjust_paid_order`: **solo reduce**. Primero cancela unidades pendientes. Si tiene que tocar unidades en curso o terminadas, falla con `REDUCTION_NEEDS_CONFIRMATION` y el detalle de lo afectado, salvo que llegue `confirm_started: true`. La diferencia crea un `refund` pendiente. Lo puede hacer el owner o quien cobró (P-2).
+- `confirm_refund` (nuevo): `{payment_id}` cierra una devolución pendiente (`settled_at` y `settled_by`). Owner o quien cobró.
+- `reverse_payment`: owner o quien cobró (P-2).
+- `deliver_order`: lo pendiente es ahora «unidades sin terminar + líneas con `delivered_qty < quantity`». Mientras quede algo, el pedido sigue `paid`; cerrarlo con algo pendiente exige `confirm_exception`, como antes.
+- **Públicos** (sin sesión; los ejecuta el actor de sistema con el helper que prepara Core):
+  - `public_submit_order`: `{token?, lines}`. Si el token no existe o no es válido, crea el cliente con número nuevo. Crea el pedido `open` con `origin = 'public'` y `customer_id`. Devuelve `{number, token (solo si es nuevo), orderId}`.
+  - `public_mine`: `{token}` devuelve solo los pedidos de ese cliente, con su estado (por cobrar, preparando o por entregar) y el total. Con el número solo no se ve nada.
+
+**Caja (§1):** busca por número de cliente y muestra sus pedidos por cobrar, en preparación y por entregar. Se cobra el pedido que se elige; nunca otros del mismo cliente automáticamente. La ficha de entrega es un único componente, que se abre desde caja y desde Servicio y vuelve a caja con el contexto (§2).
+
+**Cola (§5–6):** «Ir al siguiente pendiente» solo aparece si el siguiente no está a la vista. Se ven las últimas 10 hechas; las anteriores se despliegan hacia arriba en la misma lista. Cada toque se refleja al momento con «pendiente de confirmar». Solo hay una transición en vuelo por unidad. Un `UNIT_CHANGED` nunca se sobrescribe: la tarjeta muestra el estado real y un aviso localizado.
+
+**Pendiente de Dirección o VG (no bloquea):** la prioridad de las ampliaciones al final de la cola (es la propuesta de Dirección; la implemento así), el detalle de las entregas parciales y la autoría en un puesto compartido (sesión identificada honestamente; nada de usuario común).

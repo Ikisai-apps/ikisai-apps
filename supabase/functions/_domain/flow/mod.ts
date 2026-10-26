@@ -9,6 +9,7 @@ export const APP = 'flow';
 /** Tablas sincronizables de Flow (`flow.*`). */
 export const TABLES = {
   projects: 'flow.projects',
+  customers: 'flow.customers',
   columns: 'flow.columns',
   products: 'flow.products',
   productComponents: 'flow.product_components',
@@ -27,6 +28,8 @@ export const PROCEDURES = {
   unitStep: 'flow.unit_step',
   deliverOrder: 'flow.deliver_order',
   reopenOrder: 'flow.reopen_order',
+  createExtension: 'flow.create_extension',
+  confirmRefund: 'flow.confirm_refund',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -66,6 +69,11 @@ export const FLOW_ERRORS: Record<string, string> = {
   UNIT_CANCELLED: 'Esta tarjeta está cancelada.',
   DELIVERY_NEEDS_CONFIRMATION: 'Faltan montaditos por terminar o líneas por revisar.',
   PROCEDURE_ONLY: 'Esto solo se cambia con su botón.',
+  MONEY_BACK_FORBIDDEN: 'Solo quien cobró o el encargado puede devolver o anular.',
+  REDUCTION_NEEDS_CONFIRMATION: 'Hay montaditos ya empezados, terminados o entregados: confirma la corrección.',
+  USE_EXTENSION: 'Lo que se añade tras cobrar va en una ampliación con su propio cobro.',
+  REFUND_NOT_PENDING: 'Esa devolución ya está confirmada.',
+  OFFLINE: 'Esta acción necesita conexión.',
 };
 
 export * from './menu.ts';
