@@ -1,13 +1,13 @@
 import { createSyncClient, type ApiError, type SyncClient } from '@ikisai/sync-client';
-import { APP, TABLES } from '@ikisai/domain-flow';
+import { APP, FLOW_ERRORS, PULL_INTERVAL_MS, TABLES } from '@ikisai/domain-flow';
 
-/** Cliente de sincronización de Flow. Sin tablas todavía: sesión, bootstrap y cola del núcleo (docs/flow/ESTADO.md). */
+/** Cliente de sincronización de Flow: las 9 tablas en el espejo y refresco rápido entre móviles (API.md §10). */
 export function createClient(): SyncClient {
   return createSyncClient({
     app: APP,
     apiBase: '/api/v1',
     tables: Object.values(TABLES),
-    pullIntervalMs: 30_000,
+    pullIntervalMs: PULL_INTERVAL_MS,
   });
 }
 
@@ -22,6 +22,8 @@ export function describeError(error: unknown): string {
     case 'FORBIDDEN': return 'Tu cuenta no tiene permiso para esto.';
     case 'NO_MEMBERSHIP': return 'Tu cuenta no tiene acceso a Flow.';
     case 'BACKEND_UNAVAILABLE': return 'El servidor no está disponible ahora mismo.';
-    default: return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
+    default:
+      if (typeof e?.code === 'string' && FLOW_ERRORS[e.code]) return FLOW_ERRORS[e.code]!;
+      return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
   }
 }

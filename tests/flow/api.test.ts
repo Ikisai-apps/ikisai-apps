@@ -1,42 +1,306 @@
 /**
- * Flow · `flow-api` sobre el `_kit` (primer incremento, sin tablas). La conformidad del núcleo va en `conformance.test.ts`;
- * aquí, lo propio de Flow: health con su release, bootstrap sin tablas, nada que escribir y sin subidas.
- * Requiere `flow` en `core.apps` (migración core del lanzador).
+ * Flow · `flow-api` y migración 0900 de punta a punta (docs/flow/API.md), sobre PGlite. La conformidad del núcleo va en
+ * `conformance.test.ts`. Aquí, la carta pública, la guarda de columnas y los procedimientos, con los criterios del canon V1
+ * §15 que se pueden automatizar sin navegador (7–12, 14, 19–21). Datos ficticios; el catálogo es la semilla del §8.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
+import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
 
 const ORIGIN = FLOW_ORIGINS[0]!;
+const PROJECT = '0f10a000-0000-4000-8000-000000000001';
+/** Productos de la semilla: Serrano (clásico A, 2,50), Payoyo (gourmet β, 3,00), Agua (barra A, 1,00), Cerveza (barra C, 2,00). */
+const P = {
+  serrano: '0f10a000-0000-4000-8000-000000000101',
+  payoyo: '0f10a000-0000-4000-8000-000000000202',
+  agua: '0f10a000-0000-4000-8000-000000000301',
+  cerveza: '0f10a000-0000-4000-8000-000000000303',
+};
+const uuid = () => crypto.randomUUID();
 let app: TestApp;
+let seq = 0;
 
 test.before(async () => {
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }) });
 });
 test.after(async () => { await app.close(); });
 
-test('flow · health público con su app y su release', async () => {
-  const health = await app.call('/api/v1/health', { token: null });
-  assert.equal(health.status, 200); assert.equal(health.data.app, 'flow'); assert.equal(health.data.release, 'test');
-});
+type Token = string | null;
+async function commit(operations: unknown[], token: Token = app.tokens.editor, requestId = `t-${++seq}-${uuid()}`) {
+  return app.call('/api/v1/commands', { token, body: { requestId, operations } });
+}
+async function ok(operations: unknown[], token: Token = app.tokens.editor) {
+  const res = await commit(operations, token);
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  return res.data;
+}
+const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
+const code = (res: { data: any }) => res.data?.error?.code;
 
-test('flow · bootstrap del owner sin tablas; el reader también entra', async () => {
+async function rows(table: string, where: (r: any) => boolean = () => true): Promise<any[]> {
+  const snap = await app.call(`/api/v1/snapshot?tables=${table}`);
+  assert.equal(snap.status, 200, JSON.stringify(snap.data));
+  return snap.data.tables[0].rows.filter(where);
+}
+const row = async (table: string, id: string) => (await rows(table, (r) => r.id === id))[0];
+
+/** Pedido abierto con sus líneas: `[producto, cantidad]`. */
+async function openOrder(lines: Array<[string, number]>, origin: 'counter' | 'public' = 'counter'): Promise<{ id: string; lines: string[] }> {
+  const id = uuid();
+  const lineIds = lines.map(() => uuid());
+  await ok([
+    { op: 'insert', table: TABLES.orders, id, fields: { project_id: PROJECT, origin } },
+    ...lines.map(([product, quantity], i) => ({ op: 'insert', table: TABLES.orderLines, id: lineIds[i], fields: { order_id: id, product_id: product, quantity, position: i + 1 } })),
+  ]);
+  return { id, lines: lineIds };
+}
+async function pay(orderId: string, method = 'cash', token: Token = app.tokens.editor) {
+  const order = await row(TABLES.orders, orderId);
+  const res = await ok([call(PROCEDURES.confirmPayment, { order_id: orderId, method, expected_revision: order.revision })], token);
+  return res.results[0].result;
+}
+const unitsOf = (orderId: string) => rows(TABLES.units, (u) => u.order_id === orderId).then((us) => us.sort((a, b) => a.idx - b.idx));
+
+test('flow · health y bootstrap con las 9 tablas de Flow', async () => {
+  const health = await app.call('/api/v1/health', { token: null });
+  assert.equal(health.status, 200); assert.equal(health.data.app, 'flow');
   const boot = await app.call('/api/v1/bootstrap');
   assert.equal(boot.status, 200, JSON.stringify(boot.data));
-  assert.equal(boot.data.membership.role, 'owner');
-  assert.deepEqual(boot.data.tables, []);
-  assert.equal((await app.call('/api/v1/bootstrap', { token: app.tokens.reader })).status, 200);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), Object.values(TABLES).sort());
 });
 
-test('flow · sin tablas: insert en tabla ajena y call no permitido → 422', async () => {
-  const insert = await app.call('/api/v1/commands', { body: { requestId: 'flow-c1', operations: [{ op: 'insert', table: 'central.people', id: crypto.randomUUID(), fields: {} }] } });
-  assert.equal(insert.status, 422, JSON.stringify(insert.data));
-  const call = await app.call('/api/v1/commands', { body: { requestId: 'flow-c2', operations: [{ op: 'call', procedure: 'invoices.nada', args: {} }] } });
-  assert.equal(call.status, 422); assert.equal(call.data.error.code, 'INVALID_OPERATION');
+test('flow · carta pública sin sesión: 13 productos activos del §8, sin pedidos ni personas; origen ajeno 403', async () => {
+  const res = await app.call('/api/v1/public/menu', { token: null });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.equal(res.data.project, 'Barra · Evento de octubre');
+  assert.equal(res.data.products.length, 13);
+  const byKey = new Map(res.data.products.map((p: any) => [`${p.scope}:${p.code}`, p]));
+  assert.equal((byKey.get('clasico:A') as any).name, 'Serrano');
+  assert.equal((byKey.get('clasico:A') as any).priceCents, 250);
+  assert.equal((byKey.get('barra:A') as any).name, 'Agua, botella pequeña');
+  assert.equal((byKey.get('gourmet:δ') as any).priceCents, 300);
+  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['code', 'description', 'id', 'image', 'name', 'position', 'priceCents', 'scope']);
+  assert.equal((await app.call('/api/v1/public/menu', { token: null, origin: 'https://foreign.example' })).status, 403);
 });
 
-test('flow · no declara subidas: el ticket no existe', async () => {
-  const res = await app.call('/api/v1/uploads', { body: { filename: 'x.pdf', mime: 'application/pdf', size: 1, sha256: 'a'.repeat(64) } });
-  assert.equal(res.status, 404);
+test('flow · catálogo: solo el owner lo cambia; (ámbito, código) único; desactivar lo saca de la carta', async () => {
+  const agua = await row(TABLES.products, P.agua);
+  const denied = await commit([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: agua.revision, fields: { price_cents: 1 } }]);
+  assert.equal(denied.status, 403);
+  const dup = await commit([{ op: 'insert', table: TABLES.products, id: uuid(), fields: { project_id: PROJECT, scope: 'barra', code: 'A', name: 'Otra agua', price_cents: 100 } }], app.tokens.owner);
+  assert.equal(dup.status, 422); assert.equal(code(dup), 'CONSTRAINT_VIOLATION');
+  // El mismo código en otro ámbito es otro producto (§8): ya existe clasico:A y barra:A.
+  const off = await commit([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: agua.revision, fields: { active: false } }], app.tokens.owner);
+  assert.equal(off.status, 200, JSON.stringify(off.data));
+  const menu = await app.call('/api/v1/public/menu', { token: null });
+  assert.equal(menu.data.products.some((p: any) => p.id === P.agua), false);
+  const back = await row(TABLES.products, P.agua);
+  await ok([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: back.revision, fields: { active: true } }], app.tokens.owner);
+});
+
+test('flow · guarda: el cliente no escribe estado, número de cobro, precio cerrado, pagos ni eventos', async () => {
+  const order = await openOrder([[P.serrano, 1]]);
+  const o = await row(TABLES.orders, order.id);
+  assert.equal(code(await commit([{ op: 'update', table: TABLES.orders, id: order.id, expectedRevision: o.revision, fields: { status: 'paid', pay_seq: 99 } }])), 'PROCEDURE_ONLY');
+  assert.equal(code(await commit([{ op: 'insert', table: TABLES.orders, id: uuid(), fields: { project_id: PROJECT, status: 'paid' } }])), 'PROCEDURE_ONLY');
+  const l = await row(TABLES.orderLines, order.lines[0]!);
+  assert.equal(code(await commit([{ op: 'update', table: TABLES.orderLines, id: l.id, expectedRevision: l.revision, fields: { unit_price_cents: 1 } }])), 'PROCEDURE_ONLY');
+  assert.equal(code(await commit([{ op: 'insert', table: TABLES.payments, id: uuid(), fields: { order_id: order.id, kind: 'charge', method: 'cash', amount_cents: 250 } }])), 'PROCEDURE_ONLY');
+  assert.equal(code(await commit([{ op: 'insert', table: TABLES.events, id: uuid(), fields: { project_id: PROJECT, kind: 'paid' } }])), 'PROCEDURE_ONLY');
+  assert.equal(code(await commit([{ op: 'insert', table: TABLES.units, id: uuid(), fields: { project_id: PROJECT, column_key: 'prep', kind: 'prep', status: 'done' } }])), 'PROCEDURE_ONLY');
+  const pr = await row(TABLES.projects, PROJECT);
+  assert.equal((await commit([{ op: 'update', table: TABLES.projects, id: PROJECT, expectedRevision: pr.revision, fields: { name: 'x' } }])).status, 403);
+});
+
+test('flow · §15.6–7: pedido de caja y del público se corrige antes de cobrar; nada entra en Preparación sin cobro', async () => {
+  const order = await openOrder([[P.serrano, 2], [P.agua, 1]], 'public');
+  const line = await row(TABLES.orderLines, order.lines[0]!);
+  await ok([{ op: 'update', table: TABLES.orderLines, id: line.id, expectedRevision: line.revision, fields: { quantity: 3 } }]);
+  assert.equal((await unitsOf(order.id)).length, 0);
+  assert.equal((await row(TABLES.orders, order.id)).status, 'open');
+  const empty = await openOrder([]);
+  const e = await row(TABLES.orders, empty.id);
+  assert.equal(code(await commit([call(PROCEDURES.confirmPayment, { order_id: empty.id, method: 'cash', expected_revision: e.revision })])), 'ORDER_EMPTY');
+  assert.equal((await commit([call(PROCEDURES.confirmPayment, { order_id: order.id, method: 'cash', expected_revision: 1 })], app.tokens.reader)).status, 403);
+});
+
+test('flow · §15.7, 9: el cobro cierra precios, da número y crea una unidad por montadito; el reintento no duplica', async () => {
+  const order = await openOrder([[P.serrano, 3], [P.payoyo, 1], [P.cerveza, 2]]);
+  const o = await row(TABLES.orders, order.id);
+  const requestId = `pay-${uuid()}`;
+  const ops = [call(PROCEDURES.confirmPayment, { order_id: order.id, method: 'bizum', expected_revision: o.revision })];
+  const first = await commit(ops, app.tokens.editor, requestId);
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const result = first.data.results[0].result;
+  assert.equal(result.total_cents, 3 * 250 + 300 + 2 * 200);
+  assert.equal(result.units, 4);
+  const again = await commit(ops, app.tokens.editor, requestId);
+  assert.equal(again.status, 200); assert.equal(again.data.replayed, true);
+  const units = await unitsOf(order.id);
+  assert.equal(units.length, 4);
+  assert.deepEqual(units.map((u) => u.idx), [1, 2, 3, 4]);
+  assert.ok(units.every((u) => u.status === 'pending' && u.pay_seq === result.pay_seq && u.column_key === 'prep'));
+  const payments = await rows(TABLES.payments, (p) => p.order_id === order.id);
+  assert.equal(payments.length, 1); assert.equal(payments[0].amount_cents, result.total_cents); assert.equal(payments[0].method, 'bizum');
+  const paid = await row(TABLES.orders, order.id);
+  assert.equal(paid.status, 'paid'); assert.equal(paid.pay_seq, result.pay_seq); assert.equal(paid.paid_by, app.users.editor);
+  // Con el pedido cobrado, la línea ya no se cambia desde el cliente (solo el check de entrega).
+  const line = await row(TABLES.orderLines, order.lines[0]!);
+  assert.equal(line.unit_price_cents, 250);
+  assert.equal(code(await commit([{ op: 'update', table: TABLES.orderLines, id: line.id, expectedRevision: line.revision, fields: { quantity: 1 } }])), 'ORDER_NOT_OPEN');
+  await ok([{ op: 'update', table: TABLES.orderLines, id: line.id, expectedRevision: line.revision, fields: { delivery_checked: true } }]);
+  assert.equal(code(await commit([call(PROCEDURES.confirmPayment, { order_id: order.id, method: 'cash', expected_revision: paid.revision })])), 'ORDER_NOT_OPEN');
+});
+
+test('flow · §15.8: dos cobros simultáneos reciben números únicos y consecutivos', async () => {
+  const a = await openOrder([[P.serrano, 1]]);
+  const b = await openOrder([[P.payoyo, 1]]);
+  const [ra, rb] = await Promise.all([pay(a.id, 'cash', app.tokens.editor), pay(b.id, 'bizum', app.tokens.owner)]);
+  assert.notEqual(ra.pay_seq, rb.pay_seq);
+  assert.equal(Math.abs(ra.pay_seq - rb.pay_seq), 1);
+  const project = await row(TABLES.projects, PROJECT);
+  assert.equal(project.last_pay_seq, Math.max(ra.pay_seq, rb.pay_seq));
+});
+
+test('flow · §15.10: cambiar el precio no toca ventas cobradas; el total lo calcula siempre el servidor', async () => {
+  const order = await openOrder([[P.cerveza, 2]]);
+  const sold = await pay(order.id);
+  assert.equal(sold.total_cents, 400);
+  const cerveza = await row(TABLES.products, P.cerveza);
+  await ok([{ op: 'update', table: TABLES.products, id: P.cerveza, expectedRevision: cerveza.revision, fields: { price_cents: 250 } }], app.tokens.owner);
+  assert.equal((await row(TABLES.orders, order.id)).total_cents, 400);
+  assert.equal((await row(TABLES.orderLines, order.lines[0]!)).unit_price_cents, 200);
+  const next = await openOrder([[P.cerveza, 2]]);
+  assert.equal((await pay(next.id)).total_cents, 500);
+  const restored = await row(TABLES.products, P.cerveza);
+  await ok([{ op: 'update', table: TABLES.products, id: P.cerveza, expectedRevision: restored.revision, fields: { price_cents: 200 } }], app.tokens.owner);
+});
+
+test('flow · §15.12, 14: toques pendiente → en curso → terminado → pendiente; dos toques a la vez, gana uno', async () => {
+  const order = await openOrder([[P.serrano, 1]]);
+  await pay(order.id);
+  const [unit] = await unitsOf(order.id);
+  const step = (from: string, token: Token) => commit([call(PROCEDURES.unitStep, { unit_id: unit.id, from })], token);
+  const [x, y] = await Promise.all([step('pending', app.tokens.editor), step('pending', app.tokens.owner)]);
+  assert.deepEqual([x.status, y.status].sort(), [200, 409]);
+  const lost = x.status === 409 ? x : y;
+  assert.equal(code(lost), 'UNIT_CHANGED'); assert.equal(lost.data.error.details.status, 'in_progress');
+  const winner = x.status === 200 ? app.users.editor : app.users.owner;
+  let u = await row(TABLES.units, unit.id);
+  assert.equal(u.status, 'in_progress'); assert.equal(u.assigned_to, winner);
+  // Ayuda cruzada: la cierra la otra persona y queda como quien la terminó (nota 5 de Core).
+  const helper = winner === app.users.editor ? app.tokens.owner : app.tokens.editor;
+  assert.equal((await step('in_progress', helper)).status, 200);
+  u = await row(TABLES.units, unit.id);
+  assert.equal(u.status, 'done'); assert.equal(u.done_by, winner === app.users.editor ? app.users.owner : app.users.editor); assert.equal(u.assigned_to, winner);
+  assert.equal((await step('done', app.tokens.editor)).status, 200);
+  u = await row(TABLES.units, unit.id);
+  assert.equal(u.status, 'pending'); assert.equal(u.assigned_to, null); assert.equal(u.idx, 1); assert.equal(u.pay_seq, (await row(TABLES.orders, order.id)).pay_seq);
+  const reverted = await rows(TABLES.events, (e) => e.unit_id === unit.id && e.kind === 'unit_reverted');
+  assert.equal(reverted.length, 1); assert.equal(reverted[0].actor, app.users.editor);
+});
+
+test('flow · §15.11: corregir un pedido cobrado solo toca las líneas afectadas y registra la diferencia', async () => {
+  const order = await openOrder([[P.serrano, 2], [P.payoyo, 2]]);
+  await pay(order.id);
+  let units = await unitsOf(order.id);
+  // Serrano 1 terminado, serrano 2 en curso; payoyos pendientes.
+  const s1 = units[0]!, s2 = units[1]!;
+  await ok([call(PROCEDURES.unitStep, { unit_id: s1.id, from: 'pending' })]);
+  await ok([call(PROCEDURES.unitStep, { unit_id: s1.id, from: 'in_progress' })]);
+  await ok([call(PROCEDURES.unitStep, { unit_id: s2.id, from: 'pending' })]);
+  const o = await row(TABLES.orders, order.id);
+  // Un serrano más y un payoyo menos; diferencia 2,50 − 3,00 = −0,50 → devolver dinero exige owner (P-2).
+  const args = { order_id: order.id, method: 'cash', expected_revision: o.revision, lines: [{ line_id: order.lines[0], quantity: 3 }, { line_id: order.lines[1], quantity: 1 }] };
+  const denied = await commit([call(PROCEDURES.adjustPaidOrder, args)]);
+  assert.equal(denied.status, 403);
+  const adjusted = await ok([call(PROCEDURES.adjustPaidOrder, args)], app.tokens.owner);
+  assert.equal(adjusted.results[0].result.diff_cents, -50);
+  units = await unitsOf(order.id);
+  const live = units.filter((u) => u.status !== 'cancelled');
+  assert.equal(live.length, 4);
+  assert.equal(units.find((u) => u.id === s1.id).status, 'done');
+  assert.equal(units.find((u) => u.id === s2.id).status, 'in_progress');
+  assert.equal(units.filter((u) => u.line_id === order.lines[0]).length, 3);
+  assert.equal(Math.max(...units.map((u) => u.idx)), 5); // la nueva va al final
+  const cancelled = units.filter((u) => u.status === 'cancelled');
+  assert.equal(cancelled.length, 1); assert.equal(cancelled[0].line_id, order.lines[1]);
+  assert.equal((await row(TABLES.orders, order.id)).total_cents, 3 * 250 + 300);
+  const adj = await rows(TABLES.payments, (p) => p.order_id === order.id && p.kind === 'adjustment');
+  assert.equal(adj.length, 1); assert.equal(adj[0].amount_cents, -50);
+  // Bajar otra vez los serranos: cancela antes la pendiente que la que está en curso o la terminada, y lo deja escrito (nota 4).
+  const o2 = await row(TABLES.orders, order.id);
+  await ok([call(PROCEDURES.adjustPaidOrder, { order_id: order.id, method: 'cash', expected_revision: o2.revision, lines: [{ line_id: order.lines[0], quantity: 2 }] })], app.tokens.owner);
+  units = await unitsOf(order.id);
+  assert.equal(units.find((u) => u.id === s1.id).status, 'done');
+  const ev = await rows(TABLES.events, (e) => e.order_id === order.id && e.kind === 'units_cancelled');
+  assert.ok(ev.some((e) => e.data.units.some((x: any) => x.status === 'pending')));
+  // Una línea nueva toma el precio vigente; subir importe lo puede hacer un editor.
+  const o3 = await row(TABLES.orders, order.id);
+  const add = await ok([call(PROCEDURES.adjustPaidOrder, { order_id: order.id, method: 'bizum', expected_revision: o3.revision, lines: [{ product_id: P.agua, quantity: 1 }] })]);
+  assert.equal(add.results[0].result.diff_cents, 100);
+});
+
+test('flow · §15.20 y P-2: anular cobro (solo owner) conserva el cargo; el recobro va al final con número nuevo', async () => {
+  const order = await openOrder([[P.serrano, 2]]);
+  const first = await pay(order.id);
+  const [u1] = await unitsOf(order.id);
+  await ok([call(PROCEDURES.unitStep, { unit_id: u1.id, from: 'pending' })]);
+  await ok([call(PROCEDURES.unitStep, { unit_id: u1.id, from: 'in_progress' })]);
+  const o = await row(TABLES.orders, order.id);
+  assert.equal((await commit([call(PROCEDURES.reversePayment, { order_id: order.id, reason: 'error de caja', expected_revision: o.revision })])).status, 403);
+  await ok([call(PROCEDURES.reversePayment, { order_id: order.id, reason: 'error de caja', expected_revision: o.revision })], app.tokens.owner);
+  const reopened = await row(TABLES.orders, order.id);
+  assert.equal(reopened.status, 'open'); assert.equal(reopened.pay_seq, null);
+  const payments = await rows(TABLES.payments, (p) => p.order_id === order.id);
+  assert.deepEqual(payments.map((p) => [p.kind, p.amount_cents]).sort(), [['charge', 500], ['reversal', -500]]);
+  const units = await unitsOf(order.id);
+  assert.equal(units.find((u) => u.id === u1.id).status, 'done');
+  assert.ok(units.filter((u) => u.id !== u1.id).every((u) => u.status === 'cancelled'));
+  const ev = await rows(TABLES.events, (e) => e.order_id === order.id && e.kind === 'payment_reversed');
+  assert.equal(ev[0].data.paySeq, first.pay_seq);
+  const again = await pay(order.id);
+  assert.ok(again.pay_seq > first.pay_seq);
+  assert.equal((await rows(TABLES.payments, (p) => p.order_id === order.id)).length, 3);
+});
+
+test('flow · §15.18–20: entrega con excepción confirmada; omitir identificación queda registrado; reabrir no toca el dinero', async () => {
+  const order = await openOrder([[P.serrano, 1], [P.agua, 1]]);
+  await pay(order.id);
+  let o = await row(TABLES.orders, order.id);
+  const needs = await commit([call(PROCEDURES.deliverOrder, { order_id: order.id, ident: 'skipped', expected_revision: o.revision })]);
+  assert.equal(code(needs), 'DELIVERY_NEEDS_CONFIRMATION');
+  assert.equal(needs.data.error.details.pendingUnits, 1); assert.equal(needs.data.error.details.uncheckedLines, 2);
+  await ok([call(PROCEDURES.deliverOrder, { order_id: order.id, ident: 'skipped', confirm_exception: true, expected_revision: o.revision })]);
+  o = await row(TABLES.orders, order.id);
+  assert.equal(o.status, 'delivered'); assert.equal(o.delivery_exception, true); assert.equal(o.delivery_ident, 'skipped');
+  const delivered = await rows(TABLES.events, (e) => e.order_id === order.id && e.kind === 'delivered');
+  assert.equal(delivered[0].data.ident, 'skipped'); assert.equal(delivered[0].data.exception, true); assert.equal(delivered[0].actor, app.users.editor);
+  await ok([call(PROCEDURES.reopenOrder, { order_id: order.id, reason: 'faltaba el agua', expected_revision: o.revision })]);
+  o = await row(TABLES.orders, order.id);
+  assert.equal(o.status, 'paid'); assert.equal(o.delivered_at, null);
+  assert.equal((await rows(TABLES.payments, (p) => p.order_id === order.id)).length, 1);
+  assert.equal((await rows(TABLES.events, (e) => e.order_id === order.id && e.kind === 'order_reopened')).length, 1);
+  // Todo listo y revisado: se entrega sin confirmar excepción.
+  const [u] = await unitsOf(order.id);
+  await ok([call(PROCEDURES.unitStep, { unit_id: u.id, from: 'pending' })]);
+  await ok([call(PROCEDURES.unitStep, { unit_id: u.id, from: 'in_progress' })]);
+  for (const id of order.lines) { const l = await row(TABLES.orderLines, id); await ok([{ op: 'update', table: TABLES.orderLines, id, expectedRevision: l.revision, fields: { delivery_checked: true } }]); }
+  o = await row(TABLES.orders, order.id);
+  const clean = await ok([call(PROCEDURES.deliverOrder, { order_id: order.id, ident: 'number', expected_revision: o.revision })]);
+  assert.equal(clean.results[0].result.exception, false);
+});
+
+test('flow · §15.21: tareas de Logística se crean, se asignan, se terminan y se reabren', async () => {
+  const id = uuid();
+  await ok([{ op: 'insert', table: TABLES.units, id, fields: { project_id: PROJECT, column_key: 'logistics', kind: 'task', label: 'Reponer tomate fresco', priority: true } }]);
+  for (const from of ['pending', 'in_progress', 'done']) await ok([call(PROCEDURES.unitStep, { unit_id: id, from })]);
+  const task = await row(TABLES.units, id);
+  assert.equal(task.status, 'pending'); assert.equal(task.label, 'Reponer tomate fresco');
+  // Texto y prioridad, sí; el estado, no.
+  await ok([{ op: 'update', table: TABLES.units, id, expectedRevision: task.revision, fields: { label: 'Reponer tomate', priority: false } }]);
+  const t2 = await row(TABLES.units, id);
+  assert.equal(code(await commit([{ op: 'update', table: TABLES.units, id, expectedRevision: t2.revision, fields: { status: 'done' } }])), 'PROCEDURE_ONLY');
 });

@@ -1,11 +1,71 @@
 /**
  * Ikisai Flow · código de dominio compartido entre la Edge `flow-api` y el frontend (contrato §5.4).
- * Primer incremento sin modelo de datos: las tablas, estados y roles de negocio llegan con el documento funcional
- * (docs/flow/ESTADO.md, «Preguntas abiertas»).
+ * Modelo y procedimientos: docs/flow/API.md (migración 0900).
  */
 
 /** Id de la app en `core.apps`. */
 export const APP = 'flow';
 
-/** Tablas sincronizables de Flow (`flow.*`). Vacío hasta que haya modelo de datos aprobado. */
-export const TABLES = {} as const satisfies Record<string, `flow.${string}`>;
+/** Tablas sincronizables de Flow (`flow.*`). */
+export const TABLES = {
+  projects: 'flow.projects',
+  columns: 'flow.columns',
+  products: 'flow.products',
+  productComponents: 'flow.product_components',
+  orders: 'flow.orders',
+  orderLines: 'flow.order_lines',
+  payments: 'flow.payments',
+  units: 'flow.units',
+  events: 'flow.events',
+} as const satisfies Record<string, `flow.${string}`>;
+
+/** Procedimientos `call` permitidos (API.md §3). */
+export const PROCEDURES = {
+  confirmPayment: 'flow.confirm_payment',
+  adjustPaidOrder: 'flow.adjust_paid_order',
+  reversePayment: 'flow.reverse_payment',
+  unitStep: 'flow.unit_step',
+  deliverOrder: 'flow.deliver_order',
+  reopenOrder: 'flow.reopen_order',
+} as const;
+
+/** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
+export const PULL_INTERVAL_MS = 3_000;
+
+export type ColumnKey = 'order' | 'prep' | 'service' | 'logistics';
+export type ColumnBehavior = 'inspect_confirm' | 'quick_steps' | 'free_task';
+export type OrderStatus = 'open' | 'paid' | 'delivered';
+export type UnitStatus = 'pending' | 'in_progress' | 'done' | 'cancelled';
+export type PayMethod = 'cash' | 'bizum';
+export type DeliveryIdent = 'number' | 'qr' | 'presence' | 'skipped';
+
+/** Siguiente estado de un toque (§5, §7). Una unidad cancelada no avanza. */
+export function nextUnitStatus(status: UnitStatus): UnitStatus | null {
+  switch (status) {
+    case 'pending': return 'in_progress';
+    case 'in_progress': return 'done';
+    case 'done': return 'pending';
+    default: return null;
+  }
+}
+
+export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = { pending: 'Pendiente', in_progress: 'En curso', done: 'Terminado', cancelled: 'Cancelado' };
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = { open: 'Pendiente de cobro', paid: 'Cobrado', delivered: 'Entregado' };
+export const PAY_METHOD_LABELS: Record<PayMethod, string> = { cash: 'Efectivo', bizum: 'Bizum' };
+
+/** Mensajes de los errores de dominio de los procedimientos y de la guarda (migración 0900). */
+export const FLOW_ERRORS: Record<string, string> = {
+  ORDER_NOT_OPEN: 'Este pedido ya está cobrado: para cambiarlo, corrige el pedido cobrado.',
+  ORDER_EMPTY: 'El pedido no tiene productos.',
+  ORDER_NOT_PAID: 'Este pedido no está cobrado.',
+  ORDER_NOT_DELIVERED: 'Este pedido no está entregado.',
+  ORDER_ALREADY_DELIVERED: 'Este pedido ya está entregado.',
+  ORDER_HAS_PAYMENTS: 'Un pedido con cobros no se borra: anula el cobro.',
+  PRODUCT_INACTIVE: 'Hay un producto que ya no está en la carta.',
+  UNIT_CHANGED: 'Otra persona ha cambiado esta tarjeta antes.',
+  UNIT_CANCELLED: 'Esta tarjeta está cancelada.',
+  DELIVERY_NEEDS_CONFIRMATION: 'Faltan montaditos por terminar o líneas por revisar.',
+  PROCEDURE_ONLY: 'Esto solo se cambia con su botón.',
+};
+
+export * from './menu.ts';
