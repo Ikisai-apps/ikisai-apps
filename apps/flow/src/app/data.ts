@@ -8,7 +8,7 @@ import { TABLES, type OrderStatus, type PayMethod, type UnitStatus } from '@ikis
 
 type Row = { id: string; revision: number; created_at: string; updated_at: string; deleted_at: string | null; _pending?: boolean };
 
-export interface Product extends Row { project_id: string; scope: 'clasico' | 'gourmet' | 'barra'; code: string; name: string; description: string | null; price_cents: number; active: boolean; prepared: boolean; position: number; image_key: string | null }
+export interface Product extends Row { project_id: string; scope: 'clasico' | 'gourmet' | 'barra'; code: string; name: string; description: string | null; price_cents: number; active: boolean; prepared: boolean; position: number; image_key: string | null; source_line_id: string | null; allergens: string[]; allergens_checked: boolean }
 export interface Customer extends Row { project_id: string; number: number }
 export interface Order extends Row {
   project_id: string; origin: 'public' | 'counter'; status: OrderStatus; pay_seq: number | null; paid_at: string | null; paid_by: string | null;
@@ -21,7 +21,7 @@ export interface Unit extends Row {
   project_id: string; column_key: string; kind: 'prep' | 'task'; order_id: string | null; line_id: string | null; product_id: string | null;
   idx: number; pay_seq: number | null; label: string | null; priority: boolean; status: UnitStatus; assigned_to: string | null; done_at: string | null; done_by: string | null;
 }
-export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean }
+export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null }
 
 export interface FlowData {
   project: Project | null;
