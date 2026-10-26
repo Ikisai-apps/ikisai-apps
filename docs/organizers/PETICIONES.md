@@ -118,7 +118,19 @@ Reglas de VG:
 - B21: la ficha de huésped del organizador lleva `booking.guests.portal_role = 'organizer'`. La crea la conciliación `booking.portal_access_sync` después de cada permiso de Organizers.
 - Todo va en la migración 0481, en una PR aparte.
 
-**Respuesta de Core (26-10):** K8 y K9 van en la migración 0095 y en el `_kit`. Hasta que VG conteste, las dos preguntas se resuelven con las recomendaciones: dirección escribe como coorganizadora y los cancelados se quedan.
+**Respuesta de Core (26-10):** K8 y K9 van en la migración 0095 y en el `_kit`.
+
+**Respuestas de VG (26-10, por Core):**
+- Dirección ve todos los retiros, pasados y futuros.
+- Los cancelados se quedan en «Cancelados» para siempre.
+- Dirección edita la experiencia y las ofertas de cualquier retiro como coorganizadora, **pero el cambio queda como «propuesta del equipo de Ikisai»** y quien organiza la acepta o la descarta desde su ficha. Se hace con las sugerencias del núcleo (contrato §3.10), en la migración 0703:
+  - El gancho de ámbito pide **permiso propio** para escribir en `organizers.*`. Con solo «todos» responde `SUGGESTION_REQUIRED`. Si dirección también organiza ese retiro, escribe directo.
+  - El tipo de sugerencia `propuesta_equipo` (experiencias, materiales, preguntas y ofertas) solo lo envía quien tiene el nivel de casa «dirección». `detail.reservation_id` dice de qué retiro es.
+  - `suggestionVisible`: la ven, previsualizan y deciden solo quienes tienen permiso propio sobre ese retiro. Dirección no decide las suyas; las sigue con `scope=mine` y puede retirarlas.
+  - En el cliente, lo que cambia dirección se junta en un borrador por retiro (`app/proposal-draft.ts`) que las pantallas ven encima del espejo. Se envía de una vez, como una sola sugerencia, desde «Propuesta para quien organiza». Así no sale una por campo ni se llega al límite de 30 pendientes.
+  - Quien organiza ve «Propuestas del equipo de Ikisai» con lo que cambia cada una, y los botones «Aceptar» y «Descartar». Al aceptar, lo nuevo en materiales y preguntas pasa a su biblioteca (`owner_id`).
+  - Límite: una propuesta no lleva archivos (`PROPOSAL_NO_FILES`); se propone un enlace.
+  - **Pregunta abierta:** Programa y Alojamiento (dentro de Experiencia) son acciones de Booking, no tablas de Organizers. Con «todos», dirección las escribe directo en Booking. ¿Deben ser también propuestas? Eso lo tendría que hacer Booking.
 
 Preguntas para VG (por Core):
 - Con «todos», ¿la dirección puede **escribir** en la experiencia y las ofertas de cualquier retiro, o solo verlas? Recomiendo verlo y escribirlo igual que un coorganizador (la regla dice «aparece como coorganizador»). Si es solo lectura, se marca en el ámbito.

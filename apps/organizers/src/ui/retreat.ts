@@ -23,6 +23,7 @@ import { renderOffers } from './offers.ts';
 import { renderKitchen } from './kitchen.ts';
 import { pendingJoins, type JoinRequest } from './joins.ts';
 import { stagesText } from './retreats.ts';
+import { renderTeamDraft, renderTeamInbox } from './team-proposals.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'pagos' | 'experiencia' | 'ofertas' | 'asistentes' | 'cocina';
@@ -94,9 +95,12 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
   const head = el('div', { id: 'retreatHead', 'data-feedback-id': 'organizers.retiro.cabecera', 'data-feedback-label': 'Cabecera del retiro' });
   const tabs = el('div', { id: 'retreatTabs', class: 'orgtabs-fade' });
   const body = el('div', { id: 'retreatBody' }, loading());
+  /** Propuestas del equipo de Ikisai (0703): el borrador de dirección o las pendientes de quien organiza. */
+  const team = el('div', { id: 'retreatTeam' });
+  let destroyTeam: (() => void) | null = null;
   replace(main,
     el('a', { class: 'backlink', href: '#/', id: 'backToRetreats', 'data-feedback-id': 'organizers.retiro.cabecera.volver', 'data-feedback-label': 'Mis retiros' }, icon('chevronLeft', 16), t('Mis retiros')),
-    head, tabs, body);
+    head, team, tabs, body);
 
   async function load(): Promise<void> {
     try {
@@ -167,6 +171,10 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     document.title = `${d.title} · Ikisai Organizers`;
     lastDetail = { d, organizers: data.organizers, access: data.access };
     paintHead(d, data.organizers, data.access);
+    destroyTeam?.();
+    const card = data.access.coorganizer ? renderTeamDraft(ctx, reservationId, d.title) : renderTeamInbox(ctx, reservationId);
+    destroyTeam = card.destroy;
+    replace(team, card);
 
     const joinsPending = pendingJoins(data.joinRequests).length;
     // Con solicitudes para apuntarse, Asistentes se ve aunque el retiro no recoja datos de huéspedes.
@@ -223,7 +231,7 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
   }
 
   void load();
-  return () => { alive = false; destroySub?.(); covers.destroy(); };
+  return () => { alive = false; destroySub?.(); destroyTeam?.(); covers.destroy(); };
 };
 
 /** Id literal de feedback de cada paso del Resumen (kit 0.49: así entran en el catálogo). */

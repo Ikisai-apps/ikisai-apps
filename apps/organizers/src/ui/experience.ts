@@ -360,7 +360,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     async function remove(): Promise<void> {
       if (!row || !(await confirmDialog({ title: t('¿Quitar este material?'), text: t('Tus asistentes dejarán de verlo.'), confirmLabel: t('Quitar'), danger: true }))) return;
       try {
-        await ctx.usage.run('organizers.experiencia.material_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.materials, id: row.id, expectedRevision: row.revision }]));
+        await ctx.usage.run('organizers.experiencia.material_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.materials, id: row.id, expectedRevision: row.revision }], [row]));
         await sheet.close(true);
         await read(); paintMaterials();
       } catch (e) { error.textContent = describeError(e); }
@@ -453,7 +453,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     async function remove(): Promise<void> {
       if (!row || !(await confirmDialog({ title: t('¿Quitar esta pregunta?'), text: answered ? t('Ya tiene respuestas: dejarás de verlas aquí.') : t('Tus asistentes dejarán de verla.'), confirmLabel: t('Quitar'), danger: true }))) return;
       try {
-        await ctx.usage.run('organizers.experiencia.pregunta_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.questions, id: row.id, expectedRevision: row.revision }]));
+        await ctx.usage.run('organizers.experiencia.pregunta_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.questions, id: row.id, expectedRevision: row.revision }], [row]));
         await sheet.close(true);
         await read(); paintQuestions();
       } catch (e) { error.textContent = describeError(e); }

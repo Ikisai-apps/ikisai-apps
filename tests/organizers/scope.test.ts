@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasAllReservations, inReservationScope, TABLES, validateOperations, visibleRow } from '../../supabase/functions/_domain/organizers/mod.ts';
+import { hasAllReservations, inReservationScope, proposalReservation, proposalVisible, TABLES, TEAM_PROPOSAL_KIND, validateOperations, visibleRow, writeMode } from '../../supabase/functions/_domain/organizers/mod.ts';
 import { isCoorganizer, matchesRetreat } from '../../apps/organizers/src/app/journey.ts';
 import { guestViewUrl } from '../../apps/organizers/src/app/guest-view.ts';
 
@@ -21,13 +21,31 @@ test('organizers · ámbito: el permiso propio da solo su reserva', () => {
   assert.equal(visibleRow(TABLES.offers, { reservation_id: R2 }, own), false);
 });
 
-test('organizers · ámbito: «todos» da cualquier reserva, para leer y para escribir', () => {
+test('organizers · ámbito: «todos» ve cualquier reserva, pero sin permiso propio propone en vez de escribir (VG, 26-10)', () => {
   assert.equal(hasAllReservations(all), true);
   assert.equal(inReservationScope(all, R2), true);
   assert.equal(visibleRow(TABLES.offers, { reservation_id: R2 }, all), true);
   const insert = { op: 'insert' as const, table: TABLES.offers, id: '00000000-0000-4000-8000-0000000000a1', fields: { reservation_id: R2, name: 'Masaje', price: 30 } };
-  assert.equal(validateOperations([insert], all), null);
+  assert.equal(validateOperations([insert], all)?.code, 'SUGGESTION_REQUIRED');
+  assert.equal(validateOperations([insert], all, undefined, null, 'proposal'), null);
   assert.equal(validateOperations([insert], own)?.code, 'OUT_OF_SCOPE');
+  assert.equal(validateOperations([insert], own, undefined, null, 'proposal')?.code, 'OUT_OF_SCOPE');
+  assert.equal(writeMode(all, R2), 'propose');
+  assert.equal(writeMode(own, R1), 'write');
+  assert.equal(writeMode(own, R2), null);
+  const both = { role: 'editor', scopes: { grants: [{ reservation_id: R1 }, { all: true }] } };
+  assert.equal(writeMode(both, R1), 'write', 'dirección que además organiza ese retiro escribe directo');
+  assert.equal(validateOperations([{ ...insert, fields: { ...insert.fields, reservation_id: R1 } }], both), null);
+});
+
+test('organizers · propuestas del equipo: las ve y decide quien tiene permiso propio sobre su retiro', () => {
+  const proposal = { kind: TEAM_PROPOSAL_KIND, detail: { reservation_id: R1 } };
+  assert.equal(proposalReservation(proposal), R1);
+  assert.equal(proposalReservation({ kind: 'otra', detail: { reservation_id: R1 } }), null);
+  assert.equal(proposalReservation({ kind: TEAM_PROPOSAL_KIND, detail: null }), null);
+  assert.equal(proposalVisible(proposal, own), true);
+  assert.equal(proposalVisible({ ...proposal, detail: { reservation_id: R2 } }, own), false);
+  assert.equal(proposalVisible(proposal, all), false, 'dirección no decide sus propias propuestas');
 });
 
 test('organizers · ámbito: solo vale «all: true», y sin pertenencia no hay nada', () => {

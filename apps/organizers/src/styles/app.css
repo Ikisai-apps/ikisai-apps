@@ -375,3 +375,8 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgaudience-people legend{padding:0 4px;font-weight:600}
 .orgaudience-list{display:grid;gap:2px;max-height:240px;overflow:auto}
 .orgaudience-list .field.check{min-height:var(--tap,46px);margin:0;align-items:center}
+/* Propuestas del equipo de Ikisai (0703): el borrador de dirección y las pendientes de quien organiza */
+.orgproposal{display:grid;gap:8px}
+.orgproposal-changes{margin:0;padding-left:18px;display:grid;gap:2px}
+.orgproposal-item{display:grid;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
+.orgproposal-item p{margin:0}
