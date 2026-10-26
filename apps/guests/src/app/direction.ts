@@ -7,6 +7,7 @@ import type { SyncClient } from '@ikisai/sync-client';
 import type { Loaded } from './api.ts';
 import { cache } from './cache.ts';
 import { isNetworkError } from './client.ts';
+import { personLink, type JoinPerson } from './outsider.ts';
 
 export interface DirectionRetreat {
   reservation_id: string; title: string | null; start_date: string | null; end_date: string | null;
@@ -37,7 +38,14 @@ export async function allRetreats(client: SyncClient): Promise<Loaded<DirectionR
   }
 }
 
-/** Apuntarse como dirección a un retiro vivo, con su nombre (sin `persons`). Devuelve las fichas nuevas. */
-export function joinDirection(client: SyncClient, reservationId: string): Promise<{ guest_ids: string[] }> {
-  return client.api('/invoke/booking.portal_join_direction', { method: 'POST', json: { reservation_id: reservationId } });
+/**
+ * Apuntarse como dirección a un retiro vivo. Sin `people`, ella misma con su nombre; con la familia, cada persona con su
+ * clave de Booking (la de sus fichas, que se une con `portal_person_link` si aún no la tiene). Devuelve las fichas nuevas.
+ */
+export async function joinDirection(client: SyncClient, reservationId: string, people?: JoinPerson[]): Promise<{ guest_ids: string[] }> {
+  const persons = people?.length ? await Promise.all(people.map(async (p) => {
+    const key = p.personKey ?? (p.guestIds.length ? (await personLink(client, p.guestIds)).person_key : null);
+    return { ...(key ? { person_key: key } : {}), name: p.name };
+  })) : null;
+  return client.api('/invoke/booking.portal_join_direction', { method: 'POST', json: { reservation_id: reservationId, ...(persons ? { persons } : {}) } });
 }

@@ -390,8 +390,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView = mountDirectionRetreat(view, {
       reservationId, today: todayMadrid(), list: listAll, back: RETREATS,
       program: (id) => reads.program(id),
-      join: async (retreat) => {
-        await joinDirection(client, retreat.reservation_id);
+      persons: (roster?.persons ?? []).map((p) => ({ name: p.name, personKey: p.personKey, guestIds: p.guestIds })),
+      join: async (retreat, people) => {
+        await joinDirection(client, retreat.reservation_id, people ?? undefined);
         await client.refreshBootstrap();
         roster = null; rosterLoad = null; directionList = null;
         navigate(`#/r/${retreat.reservation_id}`, true);

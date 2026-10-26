@@ -801,4 +801,7 @@ export const EN: Dictionary = {
   'direction.band': 'You are viewing this as management. You have not joined yet.',
   'direction.program': 'Programme',
   'direction.noProgram': 'This retreat has no published programme yet.',
+  'retreats.joinWho': 'Who with?',
+  'retreats.joinTextFamily': 'As management, you join without approval. Tick who is coming.',
+  'calendar.toRetreats': 'See "My retreats", with their status',
 };

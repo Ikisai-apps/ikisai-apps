@@ -9,6 +9,7 @@ import { confirmDialog, el, icon, replace, toast } from '@ikisai/ui-kit';
 import type { PortalRole } from '../app/api.ts';
 import { describeError, errorCode } from '../app/client.ts';
 import type { DirectionRetreat } from '../app/direction.ts';
+import type { JoinPerson } from '../app/outsider.ts';
 import { formatDate, t } from '../app/i18n.ts';
 import { hhmm } from '../app/labels.ts';
 import type { ProgramItem } from '../app/portal.ts';
@@ -143,8 +144,10 @@ export interface DirectionRetreatOptions {
   today: string;
   list(): Promise<{ value: DirectionRetreat[]; at: string; stale: boolean } | null>;
   program(reservationId: string): Promise<{ value: { items: ProgramItem[] }; at: string; stale: boolean } | null>;
-  /** Se apunta y abre su ficha. */
-  join(retreat: DirectionRetreat): Promise<void>;
+  /** Las personas de la cuenta: con más de una, «¿Con quién?». */
+  persons: JoinPerson[];
+  /** Se apunta (con esas personas o, sin ellas, ella misma) y abre su ficha. */
+  join(retreat: DirectionRetreat, people: JoinPerson[] | null): Promise<void>;
   back: string;
 }
 
@@ -161,11 +164,18 @@ export function mountDirectionRetreat(main: HTMLElement, options: DirectionRetre
       type: 'button', class: 'primary', id: 'directionJoin', 'data-feedback-id': 'guests.retiros.direccion.apuntarme', 'data-feedback-label': 'Apuntarme como dirección',
       onclick: async () => {
         if (busy) return;
-        const ok = await confirmDialog({ title: t('retreats.joinTitle', { title: retreat.title ?? '' }), text: t('retreats.joinText'), confirmLabel: t('retreats.join') });
+        // Con la familia, «¿Con quién?» (todas marcadas); con una persona, ella misma.
+        const many = options.persons.length > 1;
+        const boxes = many ? options.persons.map((_, i) => el('input', { type: 'checkbox', id: `directionWho${i}`, checked: true }) as HTMLInputElement) : [];
+        const body = many ? el('fieldset', { class: 'gwho', id: 'directionWho' }, el('legend', null, t('retreats.joinWho')),
+          ...options.persons.map((p, i) => el('label', { class: 'gwho-row' }, boxes[i]!, ' ', p.name || t('picker.unknown')))) : undefined;
+        const ok = await confirmDialog({ title: t('retreats.joinTitle', { title: retreat.title ?? '' }), text: many ? t('retreats.joinTextFamily') : t('retreats.joinText'), confirmLabel: t('retreats.join'), ...(body ? { body } : {}) });
         if (!ok || !alive) return;
+        const people = many ? options.persons.filter((_, i) => boxes[i]!.checked) : null;
+        if (many && !people!.length) return;
         busy = true;
         try {
-          await options.join(retreat);
+          await options.join(retreat, people);
           toast(t('retreats.joinDone', { title: retreat.title ?? '' }));
         } catch (error) {
           const code = errorCode(error);

@@ -815,4 +815,7 @@ export const ES: Dictionary = {
   'direction.band': 'Lo ves como dirección. Aún no te has apuntado.',
   'direction.program': 'Programa',
   'direction.noProgram': 'Este retiro aún no tiene programa publicado.',
+  'retreats.joinWho': '¿Con quién?',
+  'retreats.joinTextFamily': 'Como dirección, entráis sin aprobación. Marca quién viene.',
+  'calendar.toRetreats': 'Ver «Mis retiros», con su estado',
 };
