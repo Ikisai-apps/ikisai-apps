@@ -4,7 +4,7 @@
  * dispositivo: lleva correos) para pintarla sin red mientras dure la sesión.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import type { HouseGrant } from '@ikisai/domain-central';
+import { FLOW_PROJECTS_READ, type FlowProject, type HouseGrant } from '@ikisai/domain-central';
 import { offlineError } from './client.ts';
 
 /** `outsider` (núcleo 0092) no se da a mano: lo deriva el nivel de casa de Personas. */
@@ -93,7 +93,7 @@ export const EVENT_LABELS: Record<string, string> = {
 };
 
 export function createAdminApi(client: SyncClient) {
-  const memory: { accounts?: { at: string; items: Account[] }; catalog?: CatalogApp[]; agents?: { at: string; items: AgentKey[] }; grants?: HouseGrant[] } = {};
+  const memory: { accounts?: { at: string; items: Account[] }; catalog?: CatalogApp[]; agents?: { at: string; items: AgentKey[] }; grants?: HouseGrant[]; flowProjects?: FlowProject[] } = {};
 
   async function call<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
     if (!navigator.onLine) throw offlineError();
@@ -118,6 +118,12 @@ export function createAdminApi(client: SyncClient) {
       const out = await call<{ items: HouseGrant[] }>('/people/house-grants');
       memory.grants = out.items;
       return out.items;
+    },
+    /** Proyectos de Flow (`flow.projects_projection`, la abre Flow a Central) para los ámbitos de la ficha y el alta. */
+    async flowProjects(): Promise<FlowProject[]> {
+      const out = await call<{ rows: FlowProject[] }>(`/read/${FLOW_PROJECTS_READ}`, { method: 'POST', json: { limit: 500 } });
+      memory.flowProjects = out.rows;
+      return out.rows;
     },
     /** «Aplicar accesos» de la ficha (`1515`): el núcleo aplica el nivel vigente de la ficha a su cuenta. Solo owners de Central. */
     applyHouseLevel: (personId: string) =>
@@ -148,7 +154,7 @@ export function createAdminApi(client: SyncClient) {
       return call<{ items: AccessEvent[]; hasMore: boolean; nextBefore: number | null }>(`/admin/access-log?${q}`);
     },
     clear(): void {
-      delete memory.accounts; delete memory.catalog; delete memory.agents; delete memory.grants;
+      delete memory.accounts; delete memory.catalog; delete memory.agents; delete memory.grants; delete memory.flowProjects;
     },
   };
 }
