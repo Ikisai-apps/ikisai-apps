@@ -84,3 +84,20 @@ test('dormitorio · nombre corto de la cama', () => {
   assert.equal(dorm.shortName('Cama de matrimonio del apartamento'), 'Cama de matri…');
   assert.equal(dorm.shortName('Individual 1'), 'Individual 1');
 });
+
+// FB_2026_052 (VG, 26-10): tamaño fijo por tipo; la doble ocupa 2×2 gire como gire.
+test('dormitorio · la doble ocupa 2×2 y no deja montar otra cama encima', () => {
+  assert.equal(dorm.sizeOfKind('doble'), 'doble');
+  assert.equal(dorm.sizeOfKind('litera'), 'normal');
+  assert.deepEqual(dorm.footprint({ x: 1, y: 1, rot: 0 }, 'doble'), { x: 1, y: 1, w: 2, h: 2 });
+  assert.deepEqual(dorm.footprint({ x: 1, y: 1, rot: 90 }, 'doble'), { x: 1, y: 1, w: 2, h: 2 });
+  const sizes = new Map<string, 'normal' | 'doble'>([['d', 'doble']]);
+  const { grid, cells } = dorm.arrange({ cols: 4, rows: 2 }, [bed('d', { x: 0, y: 0, rot: 0 }), bed('s', { x: 0, y: 1, rot: 0 })], sizes);
+  // la individual guardada en (0,1) caería dentro de la doble: se recoloca al lado
+  assert.deepEqual(cells.get('d'), { x: 0, y: 0, rot: 0 });
+  assert.deepEqual(cells.get('s'), { x: 2, y: 0, rot: 0 });
+  assert.deepEqual(dorm.placeProblem(grid, cells, 's', { x: 1, y: 1, rot: 0 }, sizes), { reason: 'encima', other: 'd' });
+  assert.equal(dorm.fitsIn({ cols: 4, rows: 1 }, cells, sizes), false, 'la doble necesita 2 de fondo');
+  // sin tamaños, como antes (2×1)
+  assert.equal(dorm.placeProblem(grid, cells, 's', { x: 0, y: 1, rot: 0 }), null);
+});

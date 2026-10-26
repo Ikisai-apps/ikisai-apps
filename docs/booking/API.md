@@ -1516,6 +1516,7 @@ Plan aprobado por el usuario el 13-10-2026 (`coordinacion/ampliacion/RECURSOS.md
 - **Espejo** (interruptor en `resources`): `booking.spaces` y `beds` se rellenan desde Recursos:
   - edificios reservables, habitaciones, salas y exteriores; `zona` = el padre (o la descripción de la altura);
   - las camas, por partes: la fija, con su tipo, y la supletoria (`extra_capacity`, como `supletoria`, que no cuenta en las plazas y se cobra como extra);
+  - una cama sin plazas fijas declaradas cuenta 1, como el árbol de Recursos (`spaceSeats` del kit); sin supletorias declaradas, 0; un 0 declarado vale (migración 0479, FB_2026_049, decisión de VG del 26-10-2026);
   - lo hace el tick `spaces/tick` (cada minuto, sonda `booking.spaces_mirror_has_work`) y, al momento, la app del owner con `booking.spaces_mirror_pending`;
   - un cambio a mano que se aparte de Recursos da `SPACES_IN_RESOURCES`.
   Todas las lecturas (portales, alojamiento, disponibilidad, indicadores, `BED_OVERBOOKED`) siguen igual: la misma caracterización pasa con las dos fuentes (`tests/booking/spaces-characterization.shared.ts`).
@@ -1652,7 +1653,7 @@ Con las sugerencias del núcleo (contrato §3.10), no con una cola propia. Así 
 
 - **Columnas nuevas (opcionales; no cambian nada por sí solas):**
   - `spaces.layout = {cols, rows}`: la estancia en cuadrantes, de 2 a 16 de ancho y de 2 a 40 de fondo.
-  - `beds.cell = {x, y, rot}`: dónde está la cama. Ocupa dos cuadrantes, a lo ancho (`rot` 0) o a lo largo (90).
+  - `beds.cell = {x, y, rot}`: dónde está la cama. Ocupa dos cuadrantes, a lo ancho (`rot` 0) o a lo largo (90). La doble (de matrimonio) ocupa 2×2, gire como gire (FB_2026_052, decisión de VG del 26-10-2026). Una cama de Recursos partida en fija y supletoria se dibuja como una sola pieza y sus dos filas guardan el mismo `cell`.
   - Las comprueban `booking.valid_space_layout` y `booking.valid_bed_cell`, y también el validador del dominio (`grid` y `cell`).
   - Que una cama no se salga ni se monte sobre otra lo comprueba la pantalla (`_domain/booking/dormLayout.ts`), porque depende del tamaño.
 - **Litera:** sigue siendo una sola cama de 2 plazas. Sus dos plazas comparten celda y se asignan por separado, como hasta ahora.

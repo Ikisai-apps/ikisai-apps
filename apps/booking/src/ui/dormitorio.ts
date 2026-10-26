@@ -8,6 +8,7 @@
  * - Con los espacios en Recursos, las camas se añaden y se quitan allí; aquí solo se colocan.
  * - Se dibujan piezas (`dorm.pieces`): una cama de Recursos partida en fija y supletoria es una sola pieza, y las
  *   inactivas no se dibujan (FB_2026_047, 050 y 051). El texto va siempre en horizontal (FB_2026_046).
+ * - La doble ocupa 2×2 cuadrantes; las demás, 2×1 (FB_2026_052).
  */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { el, plural, replace, toast } from '@ikisai/ui-kit';
@@ -60,12 +61,16 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   let beds: DraftBed[];
   let removed: Row[] = [];
   let inactive: Row[] = [];
+  /** Tamaño de cada pieza en el dibujo (la doble, 2×2). */
+  const sizes = new Map<string, dorm.BedSize>();
   let drag: { id: string; pointer: number; startX: number; startY: number; from: Cell } | null = null;
   let dragged = false;
 
   function reset(): void {
     const p = dorm.pieces(o.beds as Array<Row & dorm.BedPart>);
-    const a = dorm.arrange(o.space.layout, p.pieces.map((x) => ({ id: x.id, cell: x.main.cell })));
+    sizes.clear();
+    for (const x of p.pieces) sizes.set(x.id, dorm.sizeOfKind(x.main.kind));
+    const a = dorm.arrange(o.space.layout, p.pieces.map((x) => ({ id: x.id, cell: x.main.cell })), sizes);
     grid = a.grid; cells = a.cells; removed = []; inactive = p.inactive;
     beds = p.pieces.map((x) => ({ id: x.id, label: String(x.main.label), kind: String(x.main.kind), seats: x.seats, extras: x.extras, parts: x.parts, isNew: false }));
     selected = null;
@@ -89,7 +94,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   }
 
   function tryPlace(id: string, cell: Cell, done: string): boolean {
-    const problem = dorm.placeProblem(grid, cells, id, cell);
+    const problem = dorm.placeProblem(grid, cells, id, cell, sizes);
     if (problem?.reason === 'fuera') { say('No cabe ahí: se saldría de la estancia.'); return false; }
     if (problem?.reason === 'encima') { say(`No cabe ahí: se montaría sobre ${nameOf(problem.other)}.`); return false; }
     cells.set(id, cell);
@@ -104,7 +109,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   function rotate(id: string): void {
     const cell = cells.get(id);
     if (!cell) return;
-    const next = dorm.rotated(grid, cells, id, cell);
+    const next = dorm.rotated(grid, cells, id, cell, sizes);
     if (tryPlace(id, next, `${nameOf(id)}: ${next.rot === 90 ? 'a lo largo' : 'a lo ancho'}.`)) paint(id);
   }
   function remove(id: string): void {
@@ -121,9 +126,10 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   function add(kind: string, text: string, capacity: number): void {
     const same = beds.filter((b) => b.kind === kind).length + 1;
     const id = crypto.randomUUID();
-    let cell = dorm.firstFree(grid, cells, id);
-    while (!cell && grid.rows < dorm.GRID_LIMITS.maxRows) { grid = { ...grid, rows: grid.rows + 1 }; cell = dorm.firstFree(grid, cells, id); }
-    if (!cell) return say('No cabe otra cama: la estancia ya tiene el fondo máximo.');
+    sizes.set(id, dorm.sizeOfKind(kind));
+    let cell = dorm.firstFree(grid, cells, id, sizes);
+    while (!cell && grid.rows < dorm.GRID_LIMITS.maxRows) { grid = { ...grid, rows: grid.rows + 1 }; cell = dorm.firstFree(grid, cells, id, sizes); }
+    if (!cell) { sizes.delete(id); return say('No cabe otra cama: la estancia ya tiene el fondo máximo.'); }
     const extra = kind === 'supletoria';
     beds.push({ id, label: `${text} ${same}`, kind, seats: extra ? 0 : capacity, extras: extra ? capacity : 0, parts: [], isNew: true });
     cells.set(id, cell);
@@ -133,7 +139,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   function resize(axis: 'cols' | 'rows', delta: number): void {
     const next = { ...grid, [axis]: grid[axis] + delta };
     if (!dorm.validGrid(next)) return say(axis === 'cols' ? `El ancho va de ${dorm.GRID_LIMITS.minCols} a ${dorm.GRID_LIMITS.maxCols} cuadrantes.` : `El fondo va de ${dorm.GRID_LIMITS.minRows} a ${dorm.GRID_LIMITS.maxRows} cuadrantes.`);
-    if (!dorm.fitsIn(next, cells)) return say('No se puede encoger: alguna cama se quedaría fuera. Muévela antes.');
+    if (!dorm.fitsIn(next, cells, sizes)) return say('No se puede encoger: alguna cama se quedaría fuera. Muévela antes.');
     grid = next;
     say(`${axis === 'cols' ? 'Ancho' : 'Fondo'}: ${next[axis]} cuadrantes.`);
     paint();
@@ -173,7 +179,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
 
   function bedButton(b: DraftBed): HTMLElement {
     const cell = cells.get(b.id)!;
-    const r = dorm.footprint(cell);
+    const r = dorm.footprint(cell, sizes.get(b.id));
     const state = stateText(b);
     const occupied = isOccupied(b);
     const button = el('button', {
