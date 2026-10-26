@@ -1,6 +1,6 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
+Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance el agente de La Muela (`ux-finance-e2`), en el worktree `wt-finance`. Coordina Core Producción (La Muela). El nombre visible es Ikisai Finance; el id interno sigue siendo `invoices`.
 
 ## Hecho
 
@@ -158,6 +158,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 ## Pendiente
 
+- **Ingresos de Flow:** que Flow llame a `invoices.record_app_entry` desde su «Cierre del día» (formato acordado; API.md §17.2) y probar el recorrido entero antes del evento del 31-10.
+- **Duda fiscal (VG → gestoría):** si los gastos que lleguen de otras apps dan IVA soportado (PETICIONES.md, 26-10). Hoy van aparte.
 - Aceptación manual en Android: la hace el usuario con facturas reales del negocio; sus incidencias llegan por el buzón de Core.
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
