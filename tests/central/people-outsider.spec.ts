@@ -93,6 +93,7 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   await page.locator('#newPerson').click();
   await expect(page.locator('#p-level')).toHaveValue('outsider');
   await expect(page.locator('#p-level-hint')).toContainText('Como outsider entrará en Guests');
+  await expect(page.locator('#p-level-doors')).toContainText('en Guests, como huésped de los retiros en los que participa');
   await page.keyboard.press('Escape');
   await page.locator('#peopleLevels [data-level="outsider"]').click();
   await expect(page.locator('#newPerson')).toContainText('Nueva persona');
@@ -106,6 +107,18 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   await expect(page.locator('#derivedNote')).toContainText('Antes tenía Tasks · Lector');
   await expect(page.locator('a', { hasText: 'Cambiar accesos en Accesos' })).toHaveAttribute('href', '#/accesos');
   await expect(page.locator('#convertOutsider')).toHaveCount(0);
+  // Accesos del nivel (encargo de VG del 26-10): cada app y portal que abre el nivel, con su estado, y «Aplicar accesos».
+  const doors = page.locator('#blockDoors');
+  await expect(doors).toContainText('El nivel «Outsider» abre estas apps y portales de una vez.');
+  await expect(doors.locator('li[data-app="tasks"]')).toHaveAttribute('data-status', 'concedido');
+  await expect(doors.locator('li[data-app="guests"]')).toHaveAttribute('data-kind', 'portal');
+  await expect(doors.locator('li[data-app="guests"]')).toHaveAttribute('data-status', 'concedido');
+  await expect(doors.locator('li[data-app="booking"]')).toHaveAttribute('data-status', 'pendiente');
+  await expect(page.locator('#doorsSummary')).toContainText('Booking');
+  // Hoy el núcleo solo da Tasks y Guests al outsider: aplicar no cambia nada más, y lo dice.
+  await page.locator('#applyDoors').click();
+  await expect(page.locator('.ikisai-toast')).toContainText('no ha cambiado nada');
+  await expect(doors.locator('li[data-app="booking"]')).toHaveAttribute('data-status', 'pendiente');
 
   // Accesos › Cuentas: lo que da el nivel sale marcado y fijo; «Outsider» no se ofrece a mano en ninguna app.
   await page.goto(`${baseURL}/#/accesos`);
@@ -114,6 +127,10 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   await expect(tasksCell).toHaveText('O');
   await expect(tasksCell).toHaveClass(/derived/);
   await expect(tasksCell).toHaveAttribute('aria-label', /por nivel de casa/);
+  // Columna del portal: el alcance en palabras (26-10), no la letra del rol.
+  await expect(accountRow.locator('.ctl-cell[data-app="guests"]')).toHaveText('Huésped');
+  await expect(accountRow.locator('.ctl-cell[data-app="guests"]')).toHaveAttribute('aria-label', /huésped de sus retiros/);
+  await expect(page.locator('.ctl-apphead.portal')).toHaveCount(2);
   // La hoja de la casilla la deja bloqueada, con «se cambia en Personas».
   await tasksCell.click();
   await expect(page.getByRole('dialog').locator('[data-locked]')).toContainText('se cambia en Personas');

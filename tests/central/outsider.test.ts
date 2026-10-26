@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { MERGE_PEOPLE_PROCEDURE, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
+import { MERGE_PEOPLE_PROCEDURE, TABLES, houseDoors, pendingDoors, portalCell } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -144,4 +144,72 @@ test('O4 · fusión: se queda el nivel de la ficha de destino (también para los
   await merge(outsider2, staff);
   assert.equal(await level(staff), 'staff');
   assert.deepEqual(await capable(), [[staff, 1]]);
+});
+
+test('«Aplicar accesos» (1515): el núcleo aplica el nivel de la ficha, solo el owner y solo con cuenta', async () => {
+  const user = await app.t.createUser();
+  const id = uuid();
+  const created = await commit([{ op: 'insert', table: TABLES.people, id, fields: { display_name: 'Pía Ficticia', relation: 'colaborador', house_level: 'outsider', user_id: user } }]);
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  const access = async () => (await rows(`select app, role from core.memberships where user_id = $1 and app in ('guests', 'tasks') order by app`, [user])).map((m) => `${m.app}:${m.role}`);
+  assert.deepEqual(await access(), ['guests:editor', 'tasks:outsider']);
+  // Falta una puerta (se perdió el acceso a Tasks y lo que lo apuntaba): «Aplicar accesos» la vuelve a abrir.
+  await app.t.db.query(`delete from core.memberships where user_id = $1 and app = 'tasks'`, [user]);
+  await app.t.db.query(`delete from core.house_grants where user_id = $1 and app = 'tasks'`, [user]);
+  const apply = (body: unknown, token?: string) => app.call('/api/v1/invoke/central.apply_house_level', { body, ...(token ? { token } : {}) });
+  const out = await apply({ personId: id });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  assert.equal(out.data.level, 'outsider');
+  assert.equal(out.data.userId, user);
+  assert.deepEqual(out.data.changes, [{ app: 'tasks', from: null, to: 'outsider' }]);
+  assert.deepEqual(await access(), ['guests:editor', 'tasks:outsider']);
+  // Idempotente: otra vez no cambia nada.
+  assert.deepEqual((await apply({ personId: id })).data.changes, []);
+  // Solo el owner de Central; el lector, ni invocar.
+  assert.equal((await apply({ personId: id }, app.tokens.editor)).status, 403);
+  assert.equal((await apply({ personId: id }, app.tokens.reader)).status, 403);
+  // Sin cuenta, lo dice; una ficha que no existe o un id raro, 404.
+  const bare = uuid();
+  assert.equal((await commit([{ op: 'insert', table: TABLES.people, id: bare, fields: { display_name: 'Sin Cuenta Ficticia', relation: 'colaborador', house_level: 'staff' } }])).status, 200);
+  const none = await apply({ personId: bare });
+  assert.equal(none.status, 422); assert.equal(none.data.error.code, 'NO_ACCOUNT');
+  assert.equal((await apply({ personId: uuid() })).status, 404);
+  assert.equal((await apply({ personId: 'x' })).status, 404);
+  // Una ficha inactiva no tiene nivel vigente: aplicar la trata como sin nivel (lo que dio ya se retiró al desactivarla).
+  await update(id, { active: false });
+  const off = await apply({ personId: id });
+  assert.equal(off.status, 200, JSON.stringify(off.data));
+  assert.equal(off.data.level, null);
+});
+
+test('dominio · puertas del nivel: lo que pide cada nivel, concedido o pendiente, nunca a la baja', () => {
+  const catalog = [
+    { id: 'central', kind: 'internal' }, { id: 'tasks', kind: 'internal' }, { id: 'flow', kind: 'internal' },
+    { id: 'organizers', kind: 'portal' }, { id: 'guests', kind: 'portal' },
+  ];
+  assert.deepEqual(houseDoors(null, catalog, [], []), []);
+  // Dirección: propietario en las internas y todos los retiros en los dos portales.
+  const dir = houseDoors('direccion', catalog, [{ app: 'tasks', role: 'owner' }, { app: 'central', role: 'editor' }, { app: 'guests', role: 'editor' }], [{ app: 'guests', role: 'editor' }]);
+  assert.deepEqual(dir.map((d) => [d.app, d.kind, d.status]), [
+    ['central', 'internal', 'pendiente'], ['tasks', 'internal', 'concedido'], ['flow', 'internal', 'pendiente'],
+    ['organizers', 'portal', 'pendiente'], ['guests', 'portal', 'concedido'],
+  ]);
+  assert.deepEqual(dir.find((d) => d.app === 'organizers')!.want, { portal: 'todos' });
+  assert.equal(dir.find((d) => d.app === 'tasks')!.derived, false, 'puesto a mano');
+  // «Todos los retiros» solo cuenta si lo dio el nivel: una membresía de huésped no basta.
+  assert.equal(houseDoors('direccion', catalog, [{ app: 'guests', role: 'editor' }], []).find((d) => d.app === 'guests')!.status, 'pendiente');
+  // Staff: editor (un propietario a mano también vale) y huésped en Guests; Organizers no es suyo.
+  const staff = houseDoors('staff', catalog, [{ app: 'central', role: 'owner' }, { app: 'tasks', role: 'reader' }], []);
+  assert.deepEqual(staff.map((d) => [d.app, d.status]), [['central', 'concedido'], ['tasks', 'pendiente'], ['flow', 'pendiente'], ['guests', 'pendiente']]);
+  assert.deepEqual(staff.find((d) => d.app === 'guests')!.want, { portal: 'huesped' });
+  // Outsider: el lector sube a outsider; con huésped ya dado, Guests concedido.
+  const out = houseDoors('outsider', catalog, [{ app: 'tasks', role: 'reader' }, { app: 'guests', role: 'editor' }], [{ app: 'guests', role: 'editor' }]);
+  assert.deepEqual(pendingDoors(out).map((d) => d.app), ['central', 'tasks', 'flow']);
+  assert.equal(out.find((d) => d.app === 'guests')!.derived, true);
+  // Casilla del portal en Accesos.
+  assert.equal(portalCell('guests', null, null), null);
+  assert.equal(portalCell('guests', { role: 'editor' }, null), 'huesped');
+  assert.equal(portalCell('organizers', { role: 'editor' }, null), 'organiza');
+  assert.equal(portalCell('organizers', { role: 'editor' }, { level: 'direccion' }), 'todos');
+  assert.equal(portalCell('guests', { role: 'editor' }, { level: 'outsider' }), 'huesped');
 });

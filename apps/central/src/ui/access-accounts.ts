@@ -1,6 +1,7 @@
 /**
  * Accesos · Cuentas (Bloque 2, MUELA-085 «Cuadrícula cuentas × apps», con las reglas de §2 de PERDIDAS_central_bloque2):
- * - Una fila por cuenta y una columna por app; cada casilla dice P, E, L u O y se toca para cambiarla en una hoja.
+ * - Una fila por cuenta y una columna por app; cada casilla dice P, E, L u O y se toca para cambiarla en una hoja. En los
+ *   portales (Guests y Organizers) dice el alcance: Todos (todos los retiros, por nivel de dirección), Huésped u Organiza.
  * - La cabecera marca la app con un solo propietario o ninguno, y una nota lo dice; la casilla y la ficha lo avisan antes
  *   de que el núcleo devuelva LAST_OWNER.
  * - Chips (en una fila que se desliza): Nunca han entrado, Desactivadas, Por revisar y por rol. Buscador y «Mostrar agentes».
@@ -17,7 +18,7 @@ import {
   bindOnline, confirmDialog, el, formatDate, icon, openSheet, plural, relativeTime, replace, toast, toastWithAction, type Sheet,
 } from '@ikisai/ui-kit';
 import type { SyncClient } from '@ikisai/sync-client';
-import { HOUSE_LEVEL_LABELS, type HouseGrant, type HouseLevel } from '@ikisai/domain-central';
+import { HOUSE_LEVEL_LABELS, PORTAL_CELL_LABELS, PORTAL_CELL_TEXT, portalCell, type HouseGrant, type HouseLevel } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import { accountIssue, isStaffAccount, syncAccountName } from '../app/account-names.ts';
 import { describeScopes, grantFor, ROLE_LABELS, type Account, type AccountMembership, type AdminApi, type CatalogApp, type Role } from '../app/admin.ts';
@@ -106,13 +107,15 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
     const scoped = m ? describeScopes(app.id, m.scopes) : null;
     const lone = m?.role === 'owner' && onlyOwner(a, app.id);
     const locked = !!derived || (a.userId === me && app.id === 'central') || (a.kind === 'agent' && app.id === 'central' && !m);
-    const what = m ? ROLE_LABELS[m.role] : 'sin acceso';
+    // Portal: el alcance en palabras (encargo de VG del 26-10); los ámbitos de cada retiro se editan en la app.
+    const reach = app.kind === 'portal' ? portalCell(app.id, m, grants.find((g) => g.userId === a.userId && g.app === app.id)) : null;
+    const what = reach ? PORTAL_CELL_TEXT[reach] : m ? ROLE_LABELS[m.role] : 'sin acceso';
     return el('td', null, el('button', {
-      type: 'button', class: `ctl-cell${m ? ` role-${m.role}` : ' none'}${derived ? ' derived' : ''}${lone ? ' lone' : ''}${locked ? ' locked' : ''}`, dataset: { app: app.id },
+      type: 'button', class: `ctl-cell${m ? ` role-${m.role}` : ' none'}${app.kind === 'portal' ? ' portal' : ''}${derived ? ' derived' : ''}${lone ? ' lone' : ''}${locked ? ' locked' : ''}`, dataset: { app: app.id, ...(reach ? { reach } : {}) },
       'aria-label': `${nameOf(a)} en ${appShort(catalog, app.id)}: ${what}${derived ? ', por nivel de casa' : ''}${lone ? ', único propietario' : ''}${scoped ? `, ${scoped}` : ''}. Cambiar`,
       title: derived ? 'Lo da el nivel de casa: se cambia en Personas' : scoped ?? '',
       'data-feedback-id': 'central.accesos.cuentas.casilla', 'data-feedback-label': 'Casilla de acceso', onclick: () => openCell(a, app),
-    }, m ? ROLE_LETTERS[m.role] : '·', scoped ? el('span', { class: 'ctl-cellmark', 'aria-hidden': 'true' }, '*') : null, derived ? icon('lock', 12) : null));
+    }, reach ? PORTAL_CELL_LABELS[reach] : m ? ROLE_LETTERS[m.role] : '·', scoped && !reach ? el('span', { class: 'ctl-cellmark', 'aria-hidden': 'true' }, '*') : null, derived ? icon('lock', 12) : null));
   }
 
   function nameCell(a: Account): HTMLElement {
@@ -149,15 +152,15 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
     const head = el('tr', null, el('th', { scope: 'col', class: 'ctl-acname' }, 'Cuenta'),
       ...catalog.map((app) => {
         const n = ownersOf(accounts, app.id).length;
-        return el('th', { scope: 'col', class: `ctl-apphead${n <= 1 ? ' lone' : ''}`, title: n === 0 ? 'Sin propietario' : n === 1 ? 'Un solo propietario' : '' },
-          appShort(catalog, app.id), n <= 1 ? el('span', { class: 'ctl-appwarn', 'aria-label': n === 0 ? ' (sin propietario)' : ' (un solo propietario)' }, n === 0 ? ' !' : ' 1') : null);
+        return el('th', { scope: 'col', class: `ctl-apphead${n <= 1 ? ' lone' : ''}${app.kind === 'portal' ? ' portal' : ''}`, title: n === 0 ? 'Sin propietario' : n === 1 ? 'Un solo propietario' : '' },
+          appShort(catalog, app.id), app.kind === 'portal' ? el('span', { class: 'ctl-portaltag' }, 'portal') : null, n <= 1 ? el('span', { class: 'ctl-appwarn', 'aria-label': n === 0 ? ' (sin propietario)' : ' (un solo propietario)' }, n === 0 ? ' !' : ' 1') : null);
       }));
     replace(list,
       fbIgnoreWithin(el('table', { class: 'ctl-grid' },
-        el('caption', { class: 'vh' }, 'Acceso de cada cuenta a cada app: P propietario, E editor, L lector, O outsider'),
+        el('caption', { class: 'vh' }, 'Acceso de cada cuenta a cada app: P propietario, E editor, L lector, O outsider; en los portales, Todos, Huésped u Organiza'),
         el('thead', null, head),
         el('tbody', null, ...visible.map((a) => el('tr', { class: 'accountrow', 'data-user': a.userId }, nameCell(a), ...catalog.map((app) => cell(a, app)))))), '.ctl-acname .accountname'),
-      el('p', { class: 'hint ctl-legend' }, 'P propietario · E editor · L lector · O outsider (lo da el nivel de casa) · * con ámbitos en su app.'));
+      el('p', { class: 'hint ctl-legend' }, 'P propietario · E editor · L lector · O outsider (lo da el nivel de casa) · * con ámbitos en su app. En los portales: Todos (todos los retiros), Huésped u Organiza.'));
   }
 
   /** Aviso con las cuentas del equipo que hay que enlazar o alinear (FB_2026_013). */
