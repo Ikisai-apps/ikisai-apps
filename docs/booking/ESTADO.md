@@ -1,6 +1,6 @@
 # Booking · estado
 
-Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar real probado contra Google por Core y escenarios sin red automatizados; falta el recorrido de aceptación del usuario en producción.**
+Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar real probado contra Google por Core y escenarios sin red automatizados; falta el recorrido de aceptación del usuario en producción.**
 
 ## Hecho
 
@@ -84,6 +84,15 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 - **FB_2026_014 · nombres que ya existen:** en «Nuevo espacio» y su edición, la zona ofrece las existentes en una lista con búsqueda (se puede escribir una nueva) y avisa «Nuevo: no existe todavía» o «Ya existe «X»» con «Usar «X»» si solo cambian mayúsculas, tildes o espacios; el nombre del espacio avisa si ya hay uno igual o parecido; «Otro lugar» del programa, igual que la zona. Con `attachSuggestions` del kit 0.27 (`suggestions` y `suggestMode` en `FieldSpec`).
 - **Cierre de la 067 (20-10-2026):** «Movimientos» del extracto de la ficha, con las emitidas de Finance una a una (`invoices.reservation_movements`, #643). Van por meses y las rectificativas restan. Sin red se ve la última copia del dispositivo, que también da lo cobrado; se borra al cerrar sesión (`forgetMovements`). Prueba en `tests/booking/extract-moves.spec.ts`.
 - **Tanda 36 (20-10-2026, MUELA-049):** Espacios y camas con plano y ficha, y «Monta el dormitorio» en cuadrantes (migración 0477, API.md §27). Cualquier estancia con camas cuenta sus plazas. Pruebas en `tests/booking/dorm-layout.test.ts`, `space-layout.test.ts` y `spaces.spec.ts`.
+- **Feedback de Espacios y Tarifas (26-10-2026, La Muela desarrolla; migración 0479):**
+  - **FB_2026_051 y FB_2026_050:** «Monta el dormitorio» dibuja piezas (`dorm.pieces`): la cama de Recursos que el espejo (0465) guarda en dos filas, fija y supletoria, es una sola pieza («1 + 1»), y las dos filas guardan el mismo sitio.
+  - **FB_2026_047:** las camas inactivas (archivadas) no se dibujan y se nombran aparte (`#dormInactive`); las supletorias tienen su color (además del borde discontinuo), la fija + supletoria va mitad y mitad, con leyenda.
+  - **FB_2026_046:** el texto de la cama va siempre en horizontal, también a lo largo; en la pieza, el nombre corto en dos líneas como mucho (`dorm.shortName`); el completo, en la barra, en `title` y en la etiqueta accesible.
+  - **FB_2026_048:** los campos de casillas múltiples (p. ej. «Tipos de reserva» de Nueva tarifa) son chips de 46 px que se activan; la casilla sigue dentro.
+  - **FB_2026_049 (decisión de VG):** el espejo cuenta 1 plaza fija en una cama de Recursos sin plazas declaradas, como el árbol del kit (migración 0479, `booking.resource_seats`); antes contaba 0 y la cama no llegaba a Booking.
+  - **FB_2026_052 (decisión de VG, opción a):** tamaño fijo por tipo; la doble ocupa 2×2 cuadrantes y las demás, 2×1 (`dorm.sizeOfKind`).
+  - La prueba del Calendario del humo pasa de mes cuando la reserva (dentro de 10 días) cae en el siguiente.
+  - Pruebas en `tests/booking/dorm-layout.test.ts` y `r2-mirror.test.ts`.
 - **MUELA-065, PR 3 (20-10-2026):** `audience` en las actividades del programa (migración 0475, API.md §23). Lo usan Organizers, que pone el selector, y Guests, que hace el Programa de la familia por columnas. Por defecto, «todos». Prueba en `tests/booking/portal-program.test.ts`.
 - **Tanda 30 (20-10-2026, MUELA-086 §3):** el lector ve los precios en «Fines de semana libres» del Calendario, con la lectura `booking.price_calendar_source` (migración 0474, API.md §17.7), sin motivos ni textos internos. Prueba en `tests/booking/price-calendar.test.ts`.
 - **Tanda 27, interfaz de una pasada (20-10-2026, MUELA-067 con 009, 020, 038 y 052):** sin migraciones ni escrituras nuevas.

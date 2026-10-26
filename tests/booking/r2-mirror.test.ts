@@ -101,3 +101,21 @@ test('R2 · camas con plazas fijas y supletorias, cambios a mano rechazados y vu
   assert.equal(back.status, 200, JSON.stringify(back.data));
   assert.equal(Number((await tick()).applied ?? 0), 0);
 });
+
+// FB_2026_049 (VG, 26-10): una cama sin plazas declaradas cuenta 1 fija, como el árbol de Recursos (kit `spaceSeats`).
+test('R2 · una cama sin plazas declaradas cuenta 1 plaza fija; sin supletorias declaradas, ninguna', async () => {
+  await app.t.db.query(`update booking.module_settings set spaces_source = 'resources'`);
+  const albergue = await resource('edificio', 'Albergue C', await altura(), { bookable: true, capacity: 10 });
+  const hab = await resource('habitacion', 'Hab 9', albergue, { bookable: true });
+  const sinDatos = await resource('cama', 'Cama sin datos', hab, { bed_kind: 'individual' });
+  const vacia = await resource('cama', 'Cama vacía', hab, { bed_kind: 'individual', capacity: '' });
+  const cero = await resource('cama', 'Cama cero', hab, { bed_kind: 'sofa_cama', capacity: 0, extra_capacity: 1 });
+  await mirror();
+  const parts = async (id: string) => q(`select kind, capacity, resource_part from booking.beds where resource_id = $1 and deleted_at is null order by resource_part`, [id]);
+  assert.deepEqual(await parts(sinDatos), [{ kind: 'individual', capacity: 1, resource_part: 'fija' }]);
+  assert.deepEqual(await parts(vacia), [{ kind: 'individual', capacity: 1, resource_part: 'fija' }]);
+  // 0 declarado sigue valiendo: solo supletoria
+  assert.deepEqual(await parts(cero), [{ kind: 'supletoria', capacity: 1, resource_part: 'supletoria' }]);
+  assert.equal((await q<{ v: boolean }>(`select booking.spaces_mirror_has_work() v`))[0]!.v, false);
+  await app.t.db.query(`update booking.module_settings set spaces_source = 'booking'`);
+});

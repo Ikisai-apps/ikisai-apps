@@ -952,6 +952,8 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
       items: [{ reservationId, syncStatus: 'error', lastSyncedAt: null, lastError: 'sin permiso', htmlLink: null, pendingJob: true, attempts: 2, nextAttemptAt: null }] });
     await page.locator('.nav').getByText('Calendario', { exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calendario', level: 2 })).toBeVisible();
+    // La reserva empieza dentro de 10 días: en los últimos días del mes cae en el siguiente, y el calendario abre en el de hoy.
+    if (inDays(10).slice(0, 7) !== inDays(0).slice(0, 7)) await page.locator('#calendarHost').getByRole('button', { name: 'Siguiente', exact: true }).click();
     await expect(page.locator('#calendarHost')).toContainText('Retiro Test');
     await expect(page.locator('#calendarHealth')).toContainText('no está compartido con la cuenta de servicio');
     await expect(page.locator('#calendarCounts')).toContainText('1 pendiente · 1 con error');

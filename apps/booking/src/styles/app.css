@@ -185,7 +185,12 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .chip.ok { --chip: var(--ok); }
 fieldset.multi { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
 fieldset.multi legend { padding: 0; margin-bottom: 4px; font-size: var(--text-sm); color: var(--muted); }
-fieldset.multi .check { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+/* FB_2026_048: las casillas múltiples, como chips que se activan (la casilla sigue dentro, para el teclado y el lector). */
+fieldset.multi .multi-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 6px; }
+fieldset.multi .check { display: inline-flex; align-items: center; gap: 8px; min-height: var(--tap); padding: 0 14px 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); cursor: pointer; }
+fieldset.multi .check input { margin: 0; accent-color: var(--accent); }
+fieldset.multi .check:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--paper)); font-weight: 600; }
+fieldset.multi .check:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 /* Documento de la propuesta: hoja A4 en pantalla y al imprimir. */
 .pdoc-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -324,14 +329,22 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .bk-dorm-cell { border: 1px dashed var(--line); border-radius: 6px; min-width: 0; }
 .bk-dorm-board.editing .bk-dorm-cell { border-style: solid; }
 .bk-dorm-bed { z-index: 1; min-width: 0; min-height: var(--bk-dorm-cell); display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 6px; border-radius: 8px; border: 2px solid var(--bed-free-line); background: var(--bed-free); color: var(--ink); font: inherit; font-size: var(--text-xs); text-align: left; overflow: hidden; cursor: default; }
-.bk-dorm-bed[data-rot='90'] { writing-mode: vertical-rl; text-orientation: mixed; }
+.bk-dorm-bed[data-rot='90'] { padding: 4px 3px; text-align: center; align-items: center; }
 .bk-dorm-bed.occupied { border-color: var(--bed-occ-line); background: repeating-linear-gradient(135deg, var(--bed-occ) 0 6px, color-mix(in srgb, var(--bed-occ) 70%, var(--paper)) 6px 12px); }
 .bk-dorm-bed.extra { border-style: dashed; }
+.bk-dorm-bed.extra:not(.occupied):not(.picked) { border-style: dashed; border-color: var(--bed-extra-line); background: var(--bed-extra); }
+.bk-dorm-bed.mixed:not(.occupied):not(.picked) { border-color: var(--bed-free-line); background: linear-gradient(to bottom, var(--bed-free) 0 55%, var(--bed-extra) 55% 100%); }
+.bk-dorm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: var(--text-xs); }
+.bk-dorm-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.bk-dorm-legend i { width: 18px; height: 12px; border-radius: 3px; border: 2px solid var(--bed-free-line); background: var(--bed-free); }
+.bk-dorm-legend .extra i { border-style: dashed; border-color: var(--bed-extra-line); background: var(--bed-extra); }
+.bk-dorm-legend .mixed i { background: linear-gradient(to bottom, var(--bed-free) 0 55%, var(--bed-extra) 55% 100%); }
 .bk-dorm-board.editing .bk-dorm-bed { cursor: grab; touch-action: none; }
 .bk-dorm-bed.picked { border-color: var(--bed-pick-line); background: var(--bed-pick); color: var(--bed-pick-ink); border-width: 3px; }
 .bk-dorm-bed:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.bk-dorm-bed-name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bk-dorm-bed-kind { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-dorm-bed-name { font-weight: 800; overflow: hidden; overflow-wrap: anywhere; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.bk-dorm-bed[data-rot='90'] .bk-dorm-bed-name { -webkit-line-clamp: 3; }
+.bk-dorm-bed-kind { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .bk-dorm-tools { display: grid; gap: 8px; }
 .bk-dorm-size { display: flex; flex-wrap: wrap; gap: 12px; }
 .bk-dorm-sizer { display: inline-flex; align-items: center; gap: 6px; }
@@ -339,6 +352,6 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .bk-dorm-bar { align-items: center; }
 .bk-dorm-msg:empty { display: none; }
 /* Los colores de cama del plano del kit (están en .map-box): los mismos aquí, en claro y en oscuro. */
-.bk-dorm { --bed-free: #d7ecc9; --bed-free-line: #4f8a33; --bed-occ: #d3e2f6; --bed-occ-line: #2f62a3; --bed-pick: #2f7d22; --bed-pick-line: #1d5214; --bed-pick-ink: #fff; }
-:root[data-theme='dark'] .bk-dorm { --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .bk-dorm { --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; } }
+.bk-dorm { --bed-extra: #f6e3bf; --bed-extra-line: #9a6412; --bed-free: #d7ecc9; --bed-free-line: #4f8a33; --bed-occ: #d3e2f6; --bed-occ-line: #2f62a3; --bed-pick: #2f7d22; --bed-pick-line: #1d5214; --bed-pick-ink: #fff; }
+:root[data-theme='dark'] .bk-dorm { --bed-extra: #4a3514; --bed-extra-line: #e3b25e; --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .bk-dorm { --bed-extra: #4a3514; --bed-extra-line: #e3b25e; --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; } }
