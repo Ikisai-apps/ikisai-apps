@@ -77,3 +77,18 @@ test('experiencia · en curso y cierre piden anotar el cierre; personas con su n
   assert.equal(peopleText(24, 22), '22 finales · 24 previstas');
   assert.equal(foldText('Yoga de OTOÑO'), 'yoga de otono');
 });
+
+// Jornadas abiertas y familiar (0482, VG 26-10-2026): se confirman sin propuesta ni señal.
+test('experiencia · jornadas abiertas y familiar: sin propuesta ni señal; «Confirmar» es lo siguiente', () => {
+  for (const type of ['jornadas_abiertas', 'familiar']) {
+    const x = experienceOf({
+      reservation: base({ status: 'pre_reservada', event_type: type }), proposals: [], finance: { deposit_required: 600, deposit_paid: 0 },
+    }, TODAY);
+    assert.deepEqual(x.steps.map((s) => s.key), ['confirmar'], type);
+    assert.ok(!x.areas.some((a) => a.key === 'propuesta' || a.key === 'senal'), type);
+    const live = experienceOf({ reservation: base({ event_type: type }), event: { id: 'e1', final_guests: 24, closed_at: null }, finance: { deposit_required: 600, deposit_paid: 0 }, proposals: [] }, TODAY);
+    assert.ok(!live.areas.some((a) => a.key === 'propuesta' || a.key === 'senal'), `${type} en preparación`);
+  }
+  const retiro = experienceOf({ reservation: base({ status: 'pre_reservada', event_type: 'retiro' }), proposals: [], finance: { deposit_required: 600, deposit_paid: 0 } }, TODAY);
+  assert.ok(retiro.steps.some((s) => s.key === 'propuesta'), 'el retiro sigue igual');
+});
