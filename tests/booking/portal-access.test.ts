@@ -158,3 +158,39 @@ test('dirección: ve todos los retiros (también cerrados), se apunta a los vivo
   assert.equal((await read('guests', boss, 'booking.portal_open_retreats', range)).items.find((i: any) => i.reservation_id === res)?.joinable, false);
   assert.equal(await code(invoke('guests', boss, 'booking.portal_join_direction', { reservation_id: res })), 'RESERVATION_NOT_OPEN');
 });
+
+// 0483: camas de equipo (VG y Core, 26-10-2026). Las fichas de equipo solo eligen entre ellas; los huéspedes no las ven.
+test('camas de equipo: la organizadora elige solo una de equipo; un huésped ni la ve ni la puede elegir', async () => {
+  const { res, event } = await retreat('Retiro con camas de equipo');
+  const org = await member('organizers');
+  await grant('organizers', org, { reservation_id: res });
+  await tick();
+  const team = (await guestsOf(event)).find((g) => g.portal_role === 'organizer')!;
+  const space = uuid(); const teamBed = uuid(); const guestBed = uuid();
+  await ok([
+    { op: 'insert', table: TABLES.spaces, id: space, fields: { name: 'Hab con equipo', kind: 'habitacion' } },
+    { op: 'insert', table: TABLES.beds, id: teamBed, fields: { space_id: space, label: 'Cama equipo', team_bed: true } },
+    { op: 'insert', table: TABLES.beds, id: guestBed, fields: { space_id: space, label: 'Cama huésped' } },
+    // la habitación es del evento (asignada al grupo)
+    { op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: event, space_id: space, group_label: 'Grupo', persons: 1 } },
+  ]);
+  const lodging = await read('guests', org, 'booking.portal_lodging', { guest_id: team.id });
+  assert.deepEqual([lodging.choice, lodging.open, lodging.team], ['choose', true, true]);
+  assert.deepEqual(lodging.rooms.flatMap((r: any) => r.beds.map((b: any) => b.label)), ['Cama equipo']);
+  assert.equal(await code(invoke('guests', org, 'booking.portal_choose_bed', { guest_id: team.id, bed_id: guestBed })), 'NOT_OFFERED');
+  const chosen = await invoke('guests', org, 'booking.portal_choose_bed', { guest_id: team.id, bed_id: teamBed });
+  assert.equal(chosen.status, 'confirmed', JSON.stringify(chosen));
+
+  // un huésped normal (con las habitaciones abiertas) no ve ni elige la de equipo
+  const guest = uuid();
+  await ok([{ op: 'insert', table: TABLES.guests, id: guest, fields: { event_id: event, first_name: 'Huésped' } }]);
+  const account = await member('guests');
+  await grant('guests', account, { reservation_id: res, guest_id: guest });
+  await app.t.db.query(`insert into booking.lodging_settings (event_id, choice) values ($1, 'choose')
+    on conflict (event_id) do update set choice = 'choose'`, [event]).catch(() => null);
+  await app.t.db.query(`insert into booking.open_rooms (event_id, space_id) values ($1, $2)`, [event, space]).catch(() => null);
+  const seen = await read('guests', account, 'booking.portal_lodging', { guest_id: guest });
+  assert.ok(!JSON.stringify(seen).includes('Cama equipo'));
+  assert.equal(await code(invoke('guests', account, 'booking.portal_choose_bed', { guest_id: guest, bed_id: teamBed })), 'NOT_OFFERED');
+});
+
