@@ -71,12 +71,8 @@ export interface FinanceRow extends SyncedRow {
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   retiro: 'Retiro',
-  convivencia: 'Convivencia',
-  formacion: 'Formación',
-  encuentro: 'Encuentro',
-  actividad_divulgativa: 'Actividad divulgativa',
-  alquiler_grupo: 'Alquiler de grupo',
-  otro: 'Otro',
+  jornadas_abiertas: 'Jornadas abiertas',
+  familiar: 'Familiar',
 };
 
 export function statusLabel(value: unknown): string {

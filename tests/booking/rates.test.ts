@@ -51,7 +51,7 @@ test('tarifas · dominio: sugerencia, totales con y sin IVA, señal mínima y de
     rate('recinto', { layer: 'recinto', unit: 'dia', amount: 500 }),
     rate('pequeño', { max_persons: 15 }), rate('grande', { min_persons: 16 }),
     rate('comidas', { layer: 'servicio', unit: 'persona_dia', service: 'comidas' }),
-    rate('formacion', { event_types: ['formacion'] }), rate('2026', { valid_to: '2026-12-31' }), rate('inactiva', { active: false }),
+    rate('familiar', { event_types: ['familiar'] }), rate('2026', { valid_to: '2026-12-31' }), rate('inactiva', { active: false }),
     rate('descuento', { layer: 'ajuste', unit: 'porcentaje', amount: -10 }),
   ];
   // regla de VG (tanda 27): un retiro de 2 noches son 2 días de sala y comidas; lo de más es un extra
@@ -97,7 +97,7 @@ test('tarifas · dominio: sugerencia, totales con y sin IVA, señal mínima y de
 test('tarifas · ciclo: borrador → enviada (inmutable) → nueva versión → aceptada escribe los importes', async () => {
   const conditionsId = await createConditions();
   const rateId = uuid();
-  await ok([{ op: 'insert', table: RATES, id: rateId, fields: { name: 'Grupo con pernocta', layer: 'por_persona', unit: 'persona_noche', amount: 40, service: 'alojamiento', event_types: ['retiro', 'convivencia'] } }]);
+  await ok([{ op: 'insert', table: RATES, id: rateId, fields: { name: 'Grupo con pernocta', layer: 'por_persona', unit: 'persona_noche', amount: 40, service: 'alojamiento', event_types: ['retiro', 'jornadas_abiertas'] } }]);
   assert.match((await row(RATES, rateId)).code, /^TAR_/);
   assert.equal((await commands([{ op: 'insert', table: RATES, id: uuid(), fields: { name: 'X', layer: 'recinto', unit: 'dia', amount: 1 } }], app.tokens.editor)).status, 403, 'solo el owner toca el tarifario');
   await ok([{ op: 'update', table: CONDITIONS, id: conditionsId, expectedRevision: await revision(CONDITIONS, conditionsId), fields: { is_default: true } }]);
