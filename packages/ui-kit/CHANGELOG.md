@@ -1,5 +1,23 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.58.0 · 26 de octubre de 2026
+
+**Tres peticiones de Tasks** (K1, K2 y K3 de `docs/tasks/PETICIONES.md`). Todo es opcional: sin las opciones nuevas no cambia nada.
+
+1. **K1 · `Stat.selected`** (FB_2026_069). En `renderStats`, la cifra que filtra lleva `aria-pressed="true"`; las demás con botón, `"false"`. La elegida se marca con un borde de 3 px del acento (`.stat-selected`), sin depender del color del texto. Sin `selected` en ninguna cifra, no se pinta `aria-pressed`, como antes.
+2. **K2 · la barra inferior en la app instalada** (FB_2026_075; VG eligió «a + b»). Nueva opción `renderTabBar({ …, standalone: 'flush' | 'autohide' | 'both' })`. Solo actúa con `display-mode: standalone`; en el navegador no cambia nada.
+   - `'flush'`: los botones bajan hasta el borde (relleno inferior `max(6px, área segura − 14px)`), sin la franja de papel vacía bajo ellos.
+   - `'autohide'` (`bindTabBarAutoHide(nav)`): la barra se esconde al bajar más de 24 px. Vuelve al subir, al llegar al final, al deslizar hacia arriba desde los 24 px inferiores y cuando el foco entra en ella. Va superpuesta al contenido.
+     - Hay un solo vigilante para toda la página, así que repintar la barra no suma oyentes.
+     - No cuentan las hojas, los diálogos, la paleta ni el menú.
+     - Sin animación con `prefers-reduced-motion`.
+   - **`--tabbar-offset`** en `:root`: lo que ocupa la barra a la vista, y 0 escondida. El `.fab` del kit la usa (`bottom: calc(var(--tabbar-offset, 68px + área segura) + 16px)`), así que baja con la barra. Sin la opción, queda donde estaba.
+3. **K3 · «Mis reportes»** (FB_2026_072). `openFeedbackCenter({ …, scope: 'mine' })` y `renderFeedbackCenter` igual.
+   - Sin Mapa, con tres vistas: Abiertos, Pendientes de verificar («Funciona» y «Sigue fallando») y Mis borradores.
+   - Las listas piden `&mine=true`, y la hoja se titula «Mis reportes» («My reports» en inglés).
+   - Es para las apps cuya revisión vive en otra (Central, `#/revision`).
+- **Pruebas:** `v62` (4 casos). La app instalada se simula en `matchMedia`, porque Playwright no emula `display-mode`.
+
 ## 0.57.0 · 20 de octubre de 2026
 
 **El envase, la baldosa con varios mandos y la estantería** (tanda 40, MUELA-093 y 094). Las piden la Compra de Food y Compras R6 de Tasks. Todo es nuevo u opcional: lo de antes no cambia.
