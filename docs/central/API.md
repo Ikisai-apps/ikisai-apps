@@ -428,19 +428,19 @@ Migración `1512`. Lectura `{reader, editor, owner}`: todos ven el avance. Escri
 
 ### 2.15 El nivel de casa abre todas las puertas (encargo de VG del 26-10-2026, plazo 29-10; migración `1515`)
 
-El nivel de casa de una persona abre de golpe todas las apps internas (Flow incluida) y los portales:
+El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es la del núcleo (`core.house_level_roles`, 0095):
 
 | Nivel | Apps internas | Guests | Organizers |
 |---|---|---|---|
-| Dirección | Propietario | Todos los retiros: los ve, se apunta y coorganiza | Todos los retiros |
-| Staff | Editor | Huésped de los retiros en los que participa | — |
-| Outsider | Outsider | Huésped | — |
+| Dirección | Propietario en Central, Tasks, Finance, Booking, Food y Flow | Todos los retiros (ámbito `{"all": true}`): los ve, se apunta y coorganiza | Todos los retiros |
+| Staff | Editor en Tasks, Food y Flow | Huésped de los retiros en los que participa (lo pone Booking al apuntarle) | — |
+| Outsider | Outsider en Tasks y Flow | Huésped | — |
 
-- **Quién lo concede:** el núcleo, `core.apply_house_level` (0092). Hoy solo concede lo de `core.house_level_roles` (outsider: Tasks y Guests) y nunca rebaja. Core lo amplía a los portales (con Booking) y a Flow. Central no toca el núcleo.
-- **Reglas del cliente** (`_domain/central/house-doors.ts`): `houseDoors(level, catalog, memberships, grants)` da cada puerta con lo que pide el nivel y su estado. `pendingDoors` deja las que faltan. `portalCell` da lo que dice la casilla de un portal en Accesos.
+- **Quién lo concede:** el núcleo, `core.apply_house_level` (0092, ampliada en la 0095). Nunca rebaja. Central no toca el núcleo.
+- **Reglas del cliente** (`_domain/central/house-doors.ts`): `HOUSE_LEVEL_DOORS` es la misma tabla, app por app. `houseDoors(level, catalog, memberships, grants)` da cada puerta del catálogo con lo que pide el nivel y su estado. `pendingDoors` deja las que faltan. `portalAllGrant` y `portalCell` leen el ámbito «todos».
   - Interna: concedida si el rol llega al que pide el nivel; uno mayor también vale.
-  - Portal «huésped»: concedida si ya entra en el portal. Sus retiros los pone Booking en los ámbitos.
-  - Portal «todos»: concedida solo si se lo dio el nivel (`core.house_grants`). El ámbito de todos los retiros lo define el núcleo.
+  - Portal «todos»: concedida si la pertenencia lleva `{"all": true}` en `scopes.grants` (como `core.portal_all_grant`).
+  - Portal «huésped»: concedida si ya entra en el portal. El de staff lo pone Booking: sin retiros sale «Al apuntarle a un retiro», no «Pendiente», y «Aplicar accesos» no lo cuenta.
 - **Ficha de persona** (owner, con los niveles activos): bloque «Accesos del nivel» con cada app y portal, «Concedido» o «Pendiente», y lo que tiene hoy si es distinto. Si falta alguna, «Aplicar accesos» (necesita red, `bindOnline`). Sin cuenta, «Sin cuenta» en cada puerta y el aviso de que se abren al dársela.
 - **Editor de la ficha:** al elegir el nivel, una línea dice qué abre («Abre Central, Tasks… como propietario; en Guests y Organizers, todos los retiros…»).
 - **Accesos › Cuentas:** una columna por portal, con «portal» en la cabecera. La casilla dice el alcance en palabras: Todos, Huésped u Organiza.
@@ -926,7 +926,7 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
 | P11 ✅ 0.50 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | — |
 | P12 ✅ #640 | Núcleo: `admin/access-log?user=<uuid>` (lo que hizo esa cuenta, lo que la afecta y lo de sus claves de agente) y `only=grave`. | Registro por persona y «Lo grave» (§9.4) | — |
-| P13 | Núcleo: que `core.apply_house_level` abra todas las puertas del nivel (§2.15): internas con Flow para los tres niveles y los portales (dirección, todos los retiros en Guests y Organizers; staff y outsider, huésped), anotando cada una en `core.house_grants`. Y decir cómo se guarda «todos los retiros» en los ámbitos. | La ficha pasa de «Pendiente» a «Concedido» al pulsar «Aplicar accesos» | La ficha enseña lo que falta; «Aplicar accesos» aplica lo que el núcleo ya concede |
+| P13 | Núcleo: que `core.apply_house_level` abra todas las puertas del nivel (§2.15): internas con Flow para los tres niveles y los portales (dirección, todos los retiros en Guests y Organizers; staff y outsider, huésped) **Hecha en la 0095 (#723)**: «todos» es `{"all": true}` en `scopes.grants`., anotando cada una en `core.house_grants`. Y decir cómo se guarda «todos los retiros» en los ámbitos. | La ficha pasa de «Pendiente» a «Concedido» al pulsar «Aplicar accesos» | La ficha enseña lo que falta; «Aplicar accesos» aplica lo que el núcleo ya concede |
 | P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---

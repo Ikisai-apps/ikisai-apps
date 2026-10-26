@@ -1,7 +1,7 @@
 /**
  * Accesos · Cuentas (Bloque 2, MUELA-085 «Cuadrícula cuentas × apps», con las reglas de §2 de PERDIDAS_central_bloque2):
  * - Una fila por cuenta y una columna por app; cada casilla dice P, E, L u O y se toca para cambiarla en una hoja. En los
- *   portales (Guests y Organizers) dice el alcance: Todos (todos los retiros, por nivel de dirección), Huésped u Organiza.
+ *   portales (Guests y Organizers) dice el alcance: Todos (ámbito «todos», el de dirección), Huésped u Organiza.
  * - La cabecera marca la app con un solo propietario o ninguno, y una nota lo dice; la casilla y la ficha lo avisan antes
  *   de que el núcleo devuelva LAST_OWNER.
  * - Chips (en una fila que se desliza): Nunca han entrado, Desactivadas, Por revisar y por rol. Buscador y «Mostrar agentes».
@@ -108,7 +108,7 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
     const lone = m?.role === 'owner' && onlyOwner(a, app.id);
     const locked = !!derived || (a.userId === me && app.id === 'central') || (a.kind === 'agent' && app.id === 'central' && !m);
     // Portal: el alcance en palabras (encargo de VG del 26-10); los ámbitos de cada retiro se editan en la app.
-    const reach = app.kind === 'portal' ? portalCell(app.id, m, grants.find((g) => g.userId === a.userId && g.app === app.id)) : null;
+    const reach = app.kind === 'portal' ? portalCell(app.id, m) : null;
     const what = reach ? PORTAL_CELL_TEXT[reach] : m ? ROLE_LABELS[m.role] : 'sin acceso';
     return el('td', null, el('button', {
       type: 'button', class: `ctl-cell${m ? ` role-${m.role}` : ' none'}${app.kind === 'portal' ? ' portal' : ''}${derived ? ' derived' : ''}${lone ? ' lone' : ''}${locked ? ' locked' : ''}`, dataset: { app: app.id, ...(reach ? { reach } : {}) },

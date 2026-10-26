@@ -402,7 +402,8 @@ export function levelDoorsText(level: HouseLevel, catalog: readonly CatalogApp[]
   const role = first && 'role' in first.want ? ROLE_LABELS[first.want.role].toLowerCase() : '';
   const reach = new Map<string, string[]>();
   for (const d of doors) if ('portal' in d.want) reach.set(d.want.portal, [...(reach.get(d.want.portal) ?? []), short(d.app)]);
-  const portals = [...reach].map(([r, apps]) => `en ${join(apps)}, ${r === 'todos' ? 'todos los retiros (los ve, se apunta y coorganiza)' : 'como huésped de los retiros en los que participa'}`);
+  const booking = doors.some((d) => 'portal' in d.want && d.want.booking);
+  const portals = [...reach].map(([r, apps]) => `en ${join(apps)}, ${r === 'todos' ? 'todos los retiros (los ve, se apunta y coorganiza)' : `como huésped de los retiros en los que participa${booking ? ' (lo pone Booking al apuntarle)' : ''}`}`);
   return [`Abre ${join(internal.map((d) => short(d.app)))}${role ? ` como ${role}` : ''}`, ...portals].join('; ') + '.';
 }
 
@@ -886,11 +887,12 @@ export function mountPerson(personId: string): ViewMount {
       const doorsOf = (acc: Account | null) => houseDoors(level, catalog, acc?.memberships ?? [], acc ? grants.filter((g) => g.userId === acc.userId) : []);
       const doors = doorsOf(account);
       const missing = pendingDoors(doors);
-      const wantText = (d: HouseDoor) => 'role' in d.want ? ROLE_LABELS[d.want.role] : PORTAL_REACH_LABELS[d.want.portal];
+      const wantText = (d: HouseDoor) => 'role' in d.want ? ROLE_LABELS[d.want.role] : `${PORTAL_REACH_LABELS[d.want.portal]}${d.want.booking ? ' (lo pone Booking al apuntarle)' : ''}`;
       const status = (d: HouseDoor) => !person.user_id ? el('span', { class: 'chip', 'data-status': 'sin_cuenta' }, 'Sin cuenta')
         : !account ? el('span', { class: 'chip', 'data-status': 'por_comprobar' }, 'Por comprobar')
           : d.status === 'concedido' ? el('span', { class: 'chip ok', 'data-status': 'concedido' }, icon('check', 14), 'Concedido')
-            : el('span', { class: 'chip warn', 'data-status': 'pendiente' }, 'Pendiente');
+            : d.status === 'al_participar' ? el('span', { class: 'chip', 'data-status': 'al_participar' }, 'Al apuntarle a un retiro')
+              : el('span', { class: 'chip warn', 'data-status': 'pendiente' }, 'Pendiente');
       const extra = (d: HouseDoor) => {
         if (!account || !d.have) return null;
         if (d.status === 'concedido' && !d.derived) return el('span', { class: 'muted small' }, `Ya tenía ${ROLE_LABELS[d.have as Role] ?? d.have}, puesto a mano.`);

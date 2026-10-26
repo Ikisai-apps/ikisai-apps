@@ -113,12 +113,19 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   await expect(doors.locator('li[data-app="tasks"]')).toHaveAttribute('data-status', 'concedido');
   await expect(doors.locator('li[data-app="guests"]')).toHaveAttribute('data-kind', 'portal');
   await expect(doors.locator('li[data-app="guests"]')).toHaveAttribute('data-status', 'concedido');
-  await expect(doors.locator('li[data-app="booking"]')).toHaveAttribute('data-status', 'pendiente');
-  await expect(page.locator('#doorsSummary')).toContainText('Booking');
-  // Hoy el núcleo solo da Tasks y Guests al outsider: aplicar no cambia nada más, y lo dice.
+  await expect(doors.locator('li[data-app="flow"]')).toHaveAttribute('data-status', 'concedido');
+  await expect(doors.locator('li[data-app="booking"]')).toHaveCount(0);
+  await expect(page.locator('#doorsSummary')).toContainText('Todas las puertas del nivel están abiertas.');
+  await expect(page.locator('#applyDoors')).toHaveCount(0);
+  // Falta una (se perdió Flow): sale «Pendiente» y «Aplicar accesos» la vuelve a abrir.
+  await api.app.t.db.query(`delete from core.house_grants where user_id = $1 and app = 'flow'`, [beaUser]);
+  await api.app.t.db.query(`delete from core.memberships where user_id = $1 and app = 'flow'`, [beaUser]);
+  await page.reload();
+  await expect(doors.locator('li[data-app="flow"]')).toHaveAttribute('data-status', 'pendiente');
+  await expect(page.locator('#doorsSummary')).toContainText('Falta 1 puerta: Flow.');
   await page.locator('#applyDoors').click();
-  await expect(page.locator('.ikisai-toast')).toContainText('no ha cambiado nada');
-  await expect(doors.locator('li[data-app="booking"]')).toHaveAttribute('data-status', 'pendiente');
+  await expect(page.locator('.ikisai-toast')).toContainText('todas las puertas del nivel están abiertas');
+  await expect(doors.locator('li[data-app="flow"]')).toHaveAttribute('data-status', 'concedido');
 
   // Accesos › Cuentas: lo que da el nivel sale marcado y fijo; «Outsider» no se ofrece a mano en ninguna app.
   await page.goto(`${baseURL}/#/accesos`);

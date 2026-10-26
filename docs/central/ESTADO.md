@@ -114,7 +114,7 @@
   - Editor: al elegir el nivel, qué apps y portales abre.
   - Accesos › Cuentas: columna por portal con el alcance en palabras (Todos, Huésped, Organiza).
   - Reglas puras en `_domain/central/house-doors.ts`. Pruebas en `outsider.test.ts` y `people-outsider.spec.ts`.
-  - Falta la parte del núcleo (P13): hasta entonces, lo que no da `core.house_level_roles` sale «Pendiente».
+  - Con la tabla del núcleo 0095 (#723, P13): dirección propietaria de las seis internas y «todos» en los portales; staff, editor de Tasks, Food y Flow; outsider, también Flow.
 
 ## Pendiente
 

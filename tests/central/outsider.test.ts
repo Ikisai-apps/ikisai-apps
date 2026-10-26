@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { MERGE_PEOPLE_PROCEDURE, TABLES, houseDoors, pendingDoors, portalCell } from '../../supabase/functions/_domain/central/mod.ts';
+import { MERGE_PEOPLE_PROCEDURE, TABLES, houseDoors, pendingDoors, portalAllGrant, portalCell } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -182,34 +182,41 @@ test('«Aplicar accesos» (1515): el núcleo aplica el nivel de la ficha, solo e
   assert.equal(off.data.level, null);
 });
 
-test('dominio · puertas del nivel: lo que pide cada nivel, concedido o pendiente, nunca a la baja', () => {
+test('dominio · puertas del nivel (tabla del núcleo 0095): lo que pide cada nivel, concedido o pendiente, nunca a la baja', () => {
   const catalog = [
-    { id: 'central', kind: 'internal' }, { id: 'tasks', kind: 'internal' }, { id: 'flow', kind: 'internal' },
+    { id: 'central', kind: 'internal' }, { id: 'tasks', kind: 'internal' }, { id: 'invoices', kind: 'internal' }, { id: 'booking', kind: 'internal' },
+    { id: 'food', kind: 'internal' }, { id: 'resources', kind: 'internal' }, { id: 'flow', kind: 'internal' },
     { id: 'organizers', kind: 'portal' }, { id: 'guests', kind: 'portal' },
   ];
   assert.deepEqual(houseDoors(null, catalog, [], []), []);
-  // Dirección: propietario en las internas y todos los retiros en los dos portales.
-  const dir = houseDoors('direccion', catalog, [{ app: 'tasks', role: 'owner' }, { app: 'central', role: 'editor' }, { app: 'guests', role: 'editor' }], [{ app: 'guests', role: 'editor' }]);
+  const all = { grants: [{ reservation_id: uuid() }, { all: true }] };
+  // Dirección: propietaria de las seis internas (Recursos no es una puerta) y «todos» en los dos portales.
+  const dir = houseDoors('direccion', catalog, [{ app: 'tasks', role: 'owner' }, { app: 'central', role: 'editor' }, { app: 'guests', role: 'editor', scopes: all },
+    { app: 'organizers', role: 'editor', scopes: { grants: [{ reservation_id: uuid() }] } }], [{ app: 'guests', role: 'editor' }]);
   assert.deepEqual(dir.map((d) => [d.app, d.kind, d.status]), [
-    ['central', 'internal', 'pendiente'], ['tasks', 'internal', 'concedido'], ['flow', 'internal', 'pendiente'],
-    ['organizers', 'portal', 'pendiente'], ['guests', 'portal', 'concedido'],
+    ['central', 'internal', 'pendiente'], ['tasks', 'internal', 'concedido'], ['invoices', 'internal', 'pendiente'], ['booking', 'internal', 'pendiente'],
+    ['food', 'internal', 'pendiente'], ['flow', 'internal', 'pendiente'], ['organizers', 'portal', 'pendiente'], ['guests', 'portal', 'concedido'],
   ]);
   assert.deepEqual(dir.find((d) => d.app === 'organizers')!.want, { portal: 'todos' });
   assert.equal(dir.find((d) => d.app === 'tasks')!.derived, false, 'puesto a mano');
-  // «Todos los retiros» solo cuenta si lo dio el nivel: una membresía de huésped no basta.
-  assert.equal(houseDoors('direccion', catalog, [{ app: 'guests', role: 'editor' }], []).find((d) => d.app === 'guests')!.status, 'pendiente');
-  // Staff: editor (un propietario a mano también vale) y huésped en Guests; Organizers no es suyo.
-  const staff = houseDoors('staff', catalog, [{ app: 'central', role: 'owner' }, { app: 'tasks', role: 'reader' }], []);
-  assert.deepEqual(staff.map((d) => [d.app, d.status]), [['central', 'concedido'], ['tasks', 'pendiente'], ['flow', 'pendiente'], ['guests', 'pendiente']]);
-  assert.deepEqual(staff.find((d) => d.app === 'guests')!.want, { portal: 'huesped' });
-  // Outsider: el lector sube a outsider; con huésped ya dado, Guests concedido.
-  const out = houseDoors('outsider', catalog, [{ app: 'tasks', role: 'reader' }, { app: 'guests', role: 'editor' }], [{ app: 'guests', role: 'editor' }]);
-  assert.deepEqual(pendingDoors(out).map((d) => d.app), ['central', 'tasks', 'flow']);
-  assert.equal(out.find((d) => d.app === 'guests')!.derived, true);
+  // Staff: editor de Tasks, Food y Flow (un propietario a mano también vale); Central, Booking y Finance no son suyas.
+  // Su huésped de Guests lo pone Booking: sin retiros, «al participar», no «pendiente».
+  const staff = houseDoors('staff', catalog, [{ app: 'food', role: 'owner' }, { app: 'tasks', role: 'reader' }], []);
+  assert.deepEqual(staff.map((d) => [d.app, d.status]), [['tasks', 'pendiente'], ['food', 'concedido'], ['flow', 'pendiente'], ['guests', 'al_participar']]);
+  assert.deepEqual(pendingDoors(staff).map((d) => d.app), ['tasks', 'flow']);
+  assert.equal(houseDoors('staff', catalog, [{ app: 'guests', role: 'editor' }], []).find((d) => d.app === 'guests')!.status, 'concedido');
+  // Outsider: Tasks y Flow como outsider (el lector sube) y huésped en Guests, que sí da el nivel.
+  const out = houseDoors('outsider', catalog, [{ app: 'tasks', role: 'reader' }], []);
+  assert.deepEqual(out.map((d) => [d.app, d.status]), [['tasks', 'pendiente'], ['flow', 'pendiente'], ['guests', 'pendiente']]);
+  // Una app que aún no está en el catálogo no sale.
+  assert.deepEqual(houseDoors('outsider', catalog.filter((a) => a.id !== 'flow'), [], []).map((d) => d.app), ['tasks', 'guests']);
+  // «Todos» es el ámbito {"all": true} (core.portal_all_grant).
+  assert.equal(portalAllGrant(all), true);
+  assert.equal(portalAllGrant({ grants: [{ reservation_id: uuid() }] }), false);
+  assert.equal(portalAllGrant(null), false);
   // Casilla del portal en Accesos.
-  assert.equal(portalCell('guests', null, null), null);
-  assert.equal(portalCell('guests', { role: 'editor' }, null), 'huesped');
-  assert.equal(portalCell('organizers', { role: 'editor' }, null), 'organiza');
-  assert.equal(portalCell('organizers', { role: 'editor' }, { level: 'direccion' }), 'todos');
-  assert.equal(portalCell('guests', { role: 'editor' }, { level: 'outsider' }), 'huesped');
+  assert.equal(portalCell('guests', null), null);
+  assert.equal(portalCell('guests', { role: 'editor', scopes: { grants: [] } }), 'huesped');
+  assert.equal(portalCell('organizers', { role: 'editor', scopes: null }), 'organiza');
+  assert.equal(portalCell('organizers', { role: 'editor', scopes: all }), 'todos');
 });
