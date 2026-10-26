@@ -1,5 +1,5 @@
 /**
- * Flow · cáscara del primer incremento: login del kit, Inicio, menú lateral común con el lanzador, «‹ Volver a…» (K9) al
+ * Flow · cáscara del personal en `/equipo` (FLOW-DIR-001 §8): login del kit, Inicio, menú lateral común con el lanzador, «‹ Volver a…» (K9) al
  * llegar desde otra app y cierre de sesión. Contra la `flow-api` real sobre PGlite. Datos ficticios.
  */
 import { expect, test, type Page } from 'playwright/test';
@@ -34,27 +34,28 @@ test.afterAll(async () => {
   await api?.close();
 });
 
-async function login(page: Page, url = `${baseURL}/`): Promise<void> {
+async function login(page: Page, url = `${baseURL}/equipo`): Promise<void> {
   await page.goto(url);
   await expect(page.getByText('Ikisai Flow').first()).toBeVisible();
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Guías de la barra' })).toBeVisible();
 }
 
 test('flow · login con contraseña errónea avisa y no entra', async ({ page }) => {
-  await page.goto(`${baseURL}/`);
+  await page.goto(`${baseURL}/equipo`);
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill('mal');
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page.locator('#loginError')).toHaveText('Correo o contraseña incorrectos.');
 });
 
-test('flow · login → Inicio en preparación; menú común con perfil; cerrar sesión vuelve al login', async ({ page }) => {
+test('flow · login → Inicio con las guías y las cinco pestañas; menú común con perfil; cerrar sesión vuelve al login', async ({ page }) => {
   await login(page);
   await expect(page).toHaveTitle('Inicio · Ikisai Flow');
-  await expect(page.getByRole('heading', { name: 'Flow está en preparación' })).toBeVisible();
+  // Casa + cuatro columnas (§15.1).
+  for (const name of ['Inicio', 'Caja', 'Preparación', 'Servicio', 'Logística']) await expect(page.locator(`a.navbtn`, { hasText: name }).first()).toBeVisible();
   await page.locator('#appLauncher').click();
   const drawer = page.locator('#appMenu');
   await expect(drawer).toBeVisible();
@@ -67,7 +68,7 @@ test('flow · login → Inicio en preparación; menú común con perfil; cerrar 
 
 test('flow · llegar desde otra app con returnTo muestra «Volver a…» y limpia la URL', async ({ page }) => {
   const volver = encodeURIComponent('https://central.ikisai.com/#/');
-  await login(page, `${baseURL}/?desde=central&volver=${volver}&titulo=Central`);
+  await login(page, `${baseURL}/equipo?desde=central&volver=${volver}&titulo=Central`);
   const back = page.locator('a.return-link');
   await expect(back).toBeVisible();
   await expect(back).toContainText('Volver a Central');
