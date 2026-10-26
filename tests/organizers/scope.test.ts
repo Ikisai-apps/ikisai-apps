@@ -76,6 +76,7 @@ test('organizers · coorganizadora solo con as = coorganizer; sin el dato, como 
 test('organizers · «Verlo como huésped»: solo con ficha de huésped y con Guests en el catálogo', () => {
   const catalog = { items: [{ id: 'organizers', name: 'Organizers', domain: 'organizers.ikisai.com' }, { id: 'guests', name: 'Guests', domain: 'guests.ikisai.com' }] };
   assert.equal(guestViewUrl(catalog, R1, 'g-1'), `https://guests.ikisai.com/#/r/${R1}`);
+  assert.equal(guestViewUrl(catalog, R1.toUpperCase(), 'g-1'), `https://guests.ikisai.com/#/r/${R1}`, 'en minúsculas (Gu1)');
   assert.equal(guestViewUrl(catalog, R1, null), null, 'sin ficha de huésped en ese retiro');
   assert.equal(guestViewUrl(catalog, R1, undefined), null, 'Booking aún no lo publica');
   assert.equal(guestViewUrl({ items: [catalog.items[0]!] }, R1, 'g-1'), null, 'la cuenta no tiene Guests');

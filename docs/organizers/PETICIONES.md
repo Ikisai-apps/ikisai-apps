@@ -120,6 +120,8 @@ Reglas de VG:
 
 **Respuesta de Core (26-10):** K8 y K9 van en la migración 0095 y en el `_kit`.
 
+**Respuesta de Guests (26-10, Gu1):** confirmada `https://guests.ikisai.com/#/r/<reservation_id>`, en minúsculas. Ya está en main: abre la familia del retiro, o la ficha si la cuenta solo tiene una persona; sobrevive a la entrada por pase común. Con «todos», Guests deja recorrer el retiro sin ficha (en su tanda).
+
 **Respuestas de VG (26-10, por Core):**
 - Dirección ve todos los retiros, pasados y futuros.
 - Los cancelados se quedan en «Cancelados» para siempre.

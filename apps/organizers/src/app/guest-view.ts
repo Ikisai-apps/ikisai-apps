@@ -15,7 +15,8 @@ export function guestViewUrl(catalog: LauncherCatalog | null, reservationId: str
   if (!asGuestId) return null;
   const guests = catalog?.items.find((app) => app.id === 'guests');
   if (!guests?.domain) return null;
-  return `https://${guests.domain}/#/r/${encodeURIComponent(reservationId)}`;
+  // Ruta confirmada por Guests (Gu1): `#/r/<reservation_id>` en minúsculas abre ese retiro (la familia, o la ficha si es una).
+  return `https://${guests.domain}/#/r/${encodeURIComponent(reservationId.toLowerCase())}`;
 }
 
 let catalog: Promise<LauncherCatalog | null> | null = null;
