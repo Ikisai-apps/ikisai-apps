@@ -8,6 +8,8 @@ export const FOOD_PROCEDURES = {
   regenerateShopping: 'food.regenerate_shopping',
   regeneratePreparation: 'food.regenerate_preparation',
   houseDishFromSuggestion: 'food.house_dish_from_suggestion',
+  /** Ventas de un día de una carta (1109): las manda Flow al cerrar el día. */
+  recordCartaSales: 'food.record_carta_sales',
 } as const;
 
 export interface AcknowledgedWarning {
@@ -50,11 +52,31 @@ function houseDishArgument(args: Record<string, unknown>): string | null {
   return typeof args.service === 'string' && (SERVICE_TYPES as readonly string[]).includes(args.service) ? null : 'service';
 }
 
+/** Ventas de una carta: `menu_id`, `day` (fecha real) y `lines` (hasta 200, sin repetir línea, cantidades enteras ≥ 0). */
+export interface RecordCartaSalesArgs { menu_id: string; day: string; lines: Array<{ line_id: string; quantity: number }> }
+export const CARTA_SALES_MAX_LINES = 200;
+
+function cartaSalesArgument(args: Record<string, unknown>): string | null {
+  if (typeof args.day !== 'string' || !DATE.test(args.day) || Number.isNaN(Date.parse(args.day)) || new Date(Date.parse(args.day)).toISOString().slice(0, 10) !== args.day) return 'day';
+  const lines = args.lines;
+  if (!Array.isArray(lines) || lines.length > CARTA_SALES_MAX_LINES) return 'lines';
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (!line || typeof line !== 'object') return 'lines';
+    const { line_id: id, quantity } = line as Record<string, unknown>;
+    if (typeof id !== 'string' || !UUID.test(id) || seen.has(id.toLowerCase())) return 'lines';
+    seen.add(id.toLowerCase());
+    if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 100000) return 'quantity';
+  }
+  return null;
+}
+
 /** Devuelve el nombre del argumento inválido de una llamada a un procedimiento de Food, o `null`. */
 export function invalidCallArgument(procedure: string, args: Record<string, unknown>): string | null {
   if (!(Object.values(FOOD_PROCEDURES) as string[]).includes(procedure)) return null; // lo decide core.allowed_procedures
   if (procedure === FOOD_PROCEDURES.houseDishFromSuggestion) return houseDishArgument(args);
   if (typeof args.menu_id !== 'string' || !UUID.test(args.menu_id)) return 'menu_id';
+  if (procedure === FOOD_PROCEDURES.recordCartaSales) return cartaSalesArgument(args);
   if (procedure === FOOD_PROCEDURES.regeneratePreparation || procedure === FOOD_PROCEDURES.regenerateShopping) {
     // Rango del menú de casa (O3b): los dos días o ninguno; que sea obligatorio en casa lo decide el servidor.
     const bad = periodArgument(args);

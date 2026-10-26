@@ -7,8 +7,8 @@ export const SERVICE_TYPES = ['desayuno', 'comida', 'cena', 'picnic', 'merienda'
 export const MENU_COMMENT_KINDS = ['prefiero_que_no', 'comentario'] as const;
 export const MENU_COMMENT_STATUSES = ['nuevo', 'visto', 'resuelto'] as const;
 export type MenuStatus = (typeof MENU_STATUSES)[number];
-/** Menú de un retiro (con evento) o el menú de casa (sin evento, uno solo). */
-export const MENU_KINDS = ['retiro', 'casa'] as const;
+/** Menú de un retiro (con evento), el menú de casa (sin evento, uno solo) o una carta (carta.ts, con o sin evento). */
+export const MENU_KINDS = ['retiro', 'casa', 'carta'] as const;
 export type MenuKind = (typeof MENU_KINDS)[number];
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 
@@ -60,8 +60,10 @@ export interface EventSnapshot {
 }
 
 export interface Menu extends SyncedColumns {
-  /** 'retiro' (con evento; lo de siempre) o 'casa' (sin evento; house.ts). Sin el campo, retiro. */
+  /** 'retiro' (con evento; lo de siempre), 'casa' (sin evento; house.ts) o 'carta' (carta.ts). Sin el campo, retiro. */
   kind?: MenuKind;
+  /** Solo en la carta: «Barra · Evento de octubre». */
+  name?: string | null;
   /** Solo en el de retiro. */
   event_id: string | null;
   source_event_revision: number | null;

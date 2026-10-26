@@ -1,4 +1,5 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
+import { afterCartaSales, syncCartaStock } from './carta.ts';
 import { runConsumptionTick } from './consumption.ts';
 import { createApp, createSupabase, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
@@ -68,10 +69,23 @@ async function checkRecipePhotos(supabase: Supabase, operations: Operation[], ct
   }
 }
 
-/** Un menú de retiro nace contra un evento que existe y contra una revisión que el evento ya ha alcanzado. El de casa no tiene evento. */
+/**
+ * Un menú de retiro nace contra un evento que existe y contra una revisión que el evento ya ha alcanzado. El de casa no
+ * tiene evento. Una carta puede no tenerlo; si se liga a uno (al crearla o después), el evento tiene que existir.
+ */
 async function checkNewMenus(events: EventReader, operations: Operation[], ctx: RequestContext): Promise<void> {
   for (const [index, op] of operations.entries()) {
-    if (op.op !== 'insert' || op.table !== 'food.menus' || !op.fields || op.fields.kind === 'casa') continue;
+    if (op.table !== 'food.menus' || !op.fields) continue;
+    if (op.op === 'update' && typeof op.fields.event_id === 'string' && !(await events.get(ctx, op.fields.event_id))) {
+      fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: op.fields.event_id });
+    }
+    if (op.op !== 'insert' || op.fields.kind === 'casa') continue;
+    if (op.fields.kind === 'carta') {
+      if (typeof op.fields.event_id === 'string' && !(await events.get(ctx, op.fields.event_id))) {
+        fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: op.fields.event_id });
+      }
+      continue;
+    }
     const event = await events.get(ctx, String(op.fields.event_id));
     if (!event) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: op.fields.event_id });
     if ((op.fields.source_event_revision as number) > event.event_revision) {
@@ -93,6 +107,7 @@ async function checkMenuCalls(supabase: Supabase, events: EventReader, operation
       p_app: ctx.app, p_actor: ctx.user.id, p_name: 'food.menu_graph', p_args: { menu_id: args.menu_id },
     });
     if (!graph.menu) fail(422, 'MENU_NOT_FOUND', 'El menú no existe o está en la papelera.', { index, menu_id: args.menu_id });
+    if (graph.menu.kind === 'carta') fail(422, 'CARTA_MENU', 'Una carta no se revisa ni se valida.', { index, menu_id: args.menu_id, action: 'status' });
     if (isHouseMenu(graph.menu) || !graph.menu.event_id) fail(422, 'HOUSE_MENU', 'El menú de casa no tiene evento: no se revisa ni se valida.', { index, menu_id: args.menu_id, action: 'status' });
     const event = await events.get(ctx, graph.menu.event_id);
     if (!event) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: graph.menu.event_id });
@@ -223,6 +238,22 @@ function voteRoutes(supabase: Supabase): AppRoute[] {
   }];
 }
 
+/**
+ * La carta (1109): `POST carta/stock {menuId, day}` vuelve a dejar el stock de Recursos como dicen las ventas de ese
+ * día. Lo hace solo tras registrar las ventas; esta ruta es para reintentarlo si entonces falló. Editor u owner.
+ */
+function cartaRoutes(supabase: Supabase): AppRoute[] {
+  return [{
+    method: 'POST', pattern: 'carta/stock', handler: async ({ ctx, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Solo quien edita puede ajustar el stock de la carta.');
+      const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      const menuId = typeof body.menuId === 'string' && UUID.test(body.menuId) ? body.menuId.toLowerCase() : fail(422, 'INVALID_OPERATION', 'Carta no válida.');
+      const day = typeof body.day === 'string' && DATE.test(body.day) ? body.day : fail(422, 'INVALID_DAY', 'Día no válido.');
+      return syncCartaStock(supabase, menuId, day);
+    },
+  }];
+}
+
 function tasksRoutes(supabase: Supabase, options: FoodAppOptions): AppRoute[] {
   const tasks = createTasksClient(options);
   return [{
@@ -272,8 +303,10 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
         await checkNewMenus(events, operations, ctx);
         await checkMenuCalls(supabase, events, operations, ctx);
       },
+      // La carta: las ventas registradas mueven el stock de Recursos (carta.ts). Un fallo no deshace las ventas.
+      afterCommit: async (result) => { await afterCartaSales(supabase, result); },
     },
-    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase)],
+    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
     // Tanda 27: el estado de las peticiones de máquina en Tasks, para «En reparación» (migración 1106).
     workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) },

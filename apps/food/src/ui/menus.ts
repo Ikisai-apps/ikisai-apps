@@ -1,5 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
+  closedMenus,
   FOOD_PROCEDURES, HOUSE_MENU_ID, crossContext, undeclaredAllergens, undeclaredText, dishNotes, isSevere, verifiableSubject, type DishNotes, type ShoppingList, type Recipe, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type PreparationItem, type RecipeIngredient,
@@ -178,7 +179,8 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   }
 
   async function load(): Promise<void> {
-    const [rows, comments] = await Promise.all([client.list(T.menus) as Promise<MenuRow[]>, client.list(T.menuComments) as Promise<CommentRow[]>]);
+    // La carta tiene su vista (PR 2 de la tanda de la carta): aquí, solo los menús cerrados.
+    const [rows, comments] = await Promise.all([client.list(T.menus).then((all) => closedMenus(all as MenuRow[])), client.list(T.menuComments) as Promise<CommentRow[]>]);
     menus = rows;
     house = await loadHouseToday(client);
     fresh = new Map();
