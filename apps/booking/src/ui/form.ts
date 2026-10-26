@@ -106,7 +106,7 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
       multis.set(spec.key, boxes);
       if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
       children.push(el('fieldset', { class: 'field multi', id, ...fieldMarks(spec) }, el('legend', null, spec.label),
-        (spec.options ?? []).map(([, text], i) => el('label', { class: 'check' }, boxes[i]!, el('span', null, text))),
+        el('div', { class: 'multi-options' }, (spec.options ?? []).map(([, text], i) => el('label', { class: 'check' }, boxes[i]!, el('span', null, text)))),
         spec.hint ? el('small', { class: 'hint' }, spec.hint) : null));
       continue;
     }

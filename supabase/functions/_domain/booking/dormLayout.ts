@@ -94,3 +94,43 @@ export function rotated(grid: Grid, cells: ReadonlyMap<string, Cell>, id: string
 /** ¿Se puede encoger hasta `next`? Todas las camas tienen que seguir dentro. */
 export const fitsIn = (next: Grid, cells: ReadonlyMap<string, Cell>): boolean =>
   validGrid(next) && [...cells.values()].every((c) => inside(next, footprint(c)));
+
+/** Una cama tal como la guarda Booking (lo que hace falta para dibujarla). */
+export interface BedPart { id: string; kind?: string; capacity?: number; active?: boolean; cell?: unknown; resource_id?: string | null; resource_part?: string | null }
+/** Lo que se dibuja: una cama con sus partes. `id` y `cell` son los de la parte principal (la fija, si la hay). */
+export interface Piece<B extends BedPart> { id: string; main: B; parts: B[]; seats: number; extras: number }
+
+const isExtraPart = (b: BedPart): boolean => b.kind === 'supletoria';
+
+/**
+ * Las piezas del dormitorio (FB_2026_047, 050 y 051):
+ * - El espejo de Recursos (migración 0465) guarda una cama de Recursos en dos filas, la parte fija y la supletoria, con el
+ *   mismo `resource_id`. Son la misma cama física (p. ej. una litera de abajo fija y arriba supletoria): una sola pieza.
+ * - Las inactivas (archivadas) no se dibujan: van aparte, para nombrarlas.
+ * El orden es el de la primera parte de cada pieza.
+ */
+export function pieces<B extends BedPart>(beds: readonly B[]): { pieces: Piece<B>[]; inactive: B[] } {
+  const out: Piece<B>[] = [];
+  const byResource = new Map<string, Piece<B>>();
+  const inactive: B[] = [];
+  for (const bed of beds) {
+    if (bed.active === false) { inactive.push(bed); continue; }
+    const key = bed.resource_id && bed.resource_part ? bed.resource_id : null;
+    const found = key ? byResource.get(key) : undefined;
+    const piece = found ?? { id: bed.id, main: bed, parts: [], seats: 0, extras: 0 };
+    piece.parts.push(bed);
+    const n = Number(bed.capacity) || 0;
+    if (isExtraPart(bed)) piece.extras += n; else piece.seats += n;
+    // La parte principal es la fija; la supletoria solo si no hay otra.
+    if (found && isExtraPart(piece.main) && !isExtraPart(bed)) { piece.main = bed; piece.id = bed.id; }
+    if (!found) { out.push(piece); if (key) byResource.set(key, piece); }
+  }
+  return { pieces: out, inactive };
+}
+
+/** Nombre corto para la pieza del dibujo (el completo va en la barra y en la etiqueta accesible): «Hab 4 · Litera 1» → «Litera 1». */
+export function shortName(label: string, max = 14): string {
+  const text = label.replace(/\s*\(supletoria\)\s*$/i, '').trim();
+  const tail = text.includes(' · ') ? text.slice(text.lastIndexOf(' · ') + 3) : text;
+  return tail.length <= max ? tail : `${tail.slice(0, max - 1).trimEnd()}…`;
+}
