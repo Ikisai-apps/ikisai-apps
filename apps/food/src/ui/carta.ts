@@ -22,8 +22,11 @@ import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
 import { fbRows } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
+import { mountPrevision } from './carta-prevision.ts';
+import { mountShopping } from './menu-shopping.ts';
 
-export const cartaHash = (id: string) => `#/cartas/${id}`;
+export type CartaTab = 'carta' | 'prevision' | 'compra';
+export const cartaHash = (id: string, tab: CartaTab = 'carta') => (tab === 'carta' ? `#/cartas/${id}` : `#/cartas/${id}/${tab}`);
 /** Las imágenes de la carta las sirve Flow (assets de VG del 26-10): miniatura de cada clave. */
 export const FLOW_ORIGIN = 'https://flow.ikisai.com';
 export const cartaImage = (key: string | null | undefined) => (key ? `${FLOW_ORIGIN}/assets/${key}/miniatura.webp` : null);
@@ -143,7 +146,7 @@ export function paintCartas(host: HTMLElement, args: { client: SyncClient; carta
 }
 
 /** La vista de una carta: `#/cartas/<id>`. */
-export function mountCarta(menuId: string): ViewMount {
+export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
   return ({ main, client, navigate }) => {
     const resources = resourcesClient(client);
     let menu: CartaMenu | null = null;
@@ -159,9 +162,23 @@ export function mountCarta(menuId: string): ViewMount {
     const settings = el('section', { 'data-feedback-id': 'food.carta.cabecera', 'data-feedback-label': 'Datos de la carta', class: 'card formblock', id: 'cartaSettings' });
     const blocks = el('div', { id: 'cartaBlocks' });
     const note = el('p', { class: 'muted', id: 'cartaCostNote' });
+    // Pestañas: la carta, su previsión (unidades esperadas, reparto y plan de bandejas) y su lista de la compra.
+    const TABS: Array<{ key: CartaTab; label: string; mark: string }> = [
+      { key: 'carta', label: 'Carta', mark: 'food.carta.pestanas.carta' },
+      { key: 'prevision', label: 'Previsión', mark: 'food.carta.pestanas.prevision' },
+      { key: 'compra', label: 'Compra', mark: 'food.carta.pestanas.compra' },
+    ];
+    const tabs = el('nav', { 'data-feedback-id': 'food.carta.pestanas', 'data-feedback-label': 'Partes de la carta', class: 'segmented menutabs', 'aria-label': 'Partes de la carta' },
+      ...TABS.map((t) => el('a', { 'data-feedback-id': t.mark, 'data-feedback-label': t.label, href: cartaHash(menuId, t.key), 'data-tab': t.key,
+        'aria-current': t.key === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(cartaHash(menuId, t.key)); } }, t.label)));
+    const content = el('div', { id: 'cartaTab' });
     replace(main,
       el('p', { class: 'crumb' }, el('a', { 'data-feedback-id': 'food.carta.volver', 'data-feedback-label': 'Volver a Menús', href: '#/menus', onclick: (e: Event) => { e.preventDefault(); navigate('#/menus'); } }, '← Menús')),
-      head, settings, blocks, note);
+      head, tabs, content);
+    let unmountTab: (() => void) | null = null;
+    if (tab === 'carta') replace(content, settings, blocks, note);
+    else if (tab === 'prevision') unmountTab = mountPrevision({ client, menuId, host: content, canWrite: writable, navigate });
+    else unmountTab = mountShopping({ client, menuId, host: content, canWrite: () => writable, carta: true, navigate });
 
     function paintHead(): void {
       if (!menu) {
@@ -305,7 +322,7 @@ export function mountCarta(menuId: string): ViewMount {
         : 'El coste necesita conexión: se calcula con el inventario del servidor.';
     }
 
-    function paint(): void { paintHead(); paintSettings(); paintBlocks(); }
+    function paint(): void { paintHead(); if (tab === 'carta') { paintSettings(); paintBlocks(); } }
 
     async function loadCosts(): Promise<void> {
       try {
@@ -332,10 +349,10 @@ export function mountCarta(menuId: string): ViewMount {
       paint();
     }
 
-    void load().then(loadCosts);
-    const offEvents = watchEvents(client, (next) => { snapshot = next; paintHead(); paintSettings(); });
-    const offTables = [T.menus, T.cartaLines, T.recipes].map((table) => client.onTable(table, () => void load().then(loadCosts)));
+    void load().then(() => (tab === 'carta' ? loadCosts() : undefined));
+    const offEvents = watchEvents(client, (next) => { snapshot = next; paintHead(); if (tab === 'carta') paintSettings(); });
+    const offTables = [T.menus, T.cartaLines, T.recipes].map((table) => client.onTable(table, () => void load().then(() => (tab === 'carta' ? loadCosts() : undefined))));
     const offItems = resources.onTable(R.items, () => void load());
-    return () => { offEvents(); offTables.forEach((off) => off()); offItems(); };
+    return () => { unmountTab?.(); offEvents(); offTables.forEach((off) => off()); offItems(); };
   };
 }

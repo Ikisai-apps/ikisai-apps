@@ -49,6 +49,8 @@ export interface FakeApiOptions {
   events?: FakeEvent[];
   /** Filas de `invoices.food_stock_projection` que sirve `GET read/invoices.food_stock_projection`. */
   purchases?: Array<Record<string, unknown>>;
+  /** Otras lecturas registradas (`GET read/<nombre>`), filtradas por `where[columna]` (la carta: `food.carta_projection`, `food.carta_prep_totals_projection`…). */
+  reads?: Record<string, Array<Record<string, unknown>>>;
   /** Si la cuenta ya aceptó el aviso de medición de uso (por defecto sí, para que el aviso no tape las demás pruebas). */
   usageConsent?: boolean;
 }
@@ -711,6 +713,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const kind = url.searchParams.get('where[target_kind]');
         const rows = (options.purchases ?? []).filter((r) => !kind || r.target_kind === kind);
         return json(res, 200, { name: 'invoices.food_stock_projection', rows, total: rows.length, limit: 2000, offset: 0 });
+      }
+      if (path.startsWith('read/') && method === 'GET' && options.reads?.[path.slice(5)]) {
+        const name = path.slice(5);
+        const where = [...url.searchParams.entries()].filter(([k]) => /^where\[[a-z_]+\]$/.test(k)).map(([k, v]) => [k.slice(6, -1), v] as const);
+        const rows = options.reads[name]!.filter((r) => where.every(([k, v]) => String(r[k]) === v));
+        return json(res, 200, { name, rows, total: rows.length, limit: 1000, offset: 0 });
       }
       if (path === 'events' && method === 'GET') {
         return json(res, 200, { events: [...events].sort((a, b) => a.start_date.localeCompare(b.start_date)), serverTime: nowIso() });

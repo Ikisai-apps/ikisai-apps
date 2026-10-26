@@ -62,7 +62,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - El evento familiar come del menú de casa.
   - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
 
-- **Previsión de la carta: modelo y lecturas** (migración 1110; API.md §2.11). Unidades esperadas, reparto mesa/nevera/fresco, estación por ingrediente, conversiones sin inventar (rodajas incluidas), `food.carta_prep_projection` y `food.carta_prep_totals_projection` para Flow, y la lista de la compra de una carta. Prueba: `carta-prevision.test.ts`. Pendiente: su pantalla.
+- **Previsión de la carta: modelo y lecturas** (migración 1110; API.md §2.11). Unidades esperadas, reparto mesa/nevera/fresco, estación por ingrediente, conversiones sin inventar (rodajas incluidas), `food.carta_prep_projection` y `food.carta_prep_totals_projection` para Flow, y la lista de la compra de una carta. Prueba: `carta-prevision.test.ts`. **Su pantalla:** las pestañas Previsión (reparto, unidades esperadas y plan de bandejas imprimible) y Compra de la carta. Prueba: `carta.spec.ts`.
 
 ## Aceptación del usuario (6 de octubre de 2026)
 

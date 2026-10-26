@@ -493,3 +493,23 @@
 .carta-line-foot .checkline,.carta-line-foot button{min-height:var(--tap,46px)}
 .carta-inline{display:flex;gap:8px;align-items:center}
 .carta-inline input{flex:1;min-width:0}
+/* Previsión de la carta: reparto, unidades esperadas y plan de bandejas (imprimible). */
+.carta-split{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.carta-split input,.carta-units{width:100%;min-height:var(--tap,46px)}
+.carta-units-list{display:grid;gap:6px}
+.carta-unitrow{display:grid;grid-template-columns:auto minmax(0,1fr) 110px;gap:8px;align-items:center}
+.carta-unitname{overflow-wrap:anywhere}
+.carta-planhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.carta-planhead button{min-height:var(--tap,46px)}
+.carta-plan{width:100%;border-collapse:collapse;font-size:.95rem}
+.carta-plan th,.carta-plan td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.carta-plan td{white-space:nowrap}
+.carta-missing td,.carta-missing th{color:var(--alert)}
+#trayPlan{overflow-x:auto}
+@media print{
+  body.print-trays *{visibility:hidden}
+  body.print-trays #trayPlan,body.print-trays #trayPlan *{visibility:visible}
+  body.print-trays #trayPlan{position:absolute;inset:0 auto auto 0;width:100%;overflow:visible;border:0;box-shadow:none}
+  body.print-trays #printTrays,body.print-trays #trayMissing .btnrow{display:none}
+  body.print-trays .carta-plan th,body.print-trays .carta-plan td{color:#000;border-bottom-color:#999}
+}
