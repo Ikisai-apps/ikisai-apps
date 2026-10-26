@@ -84,6 +84,15 @@ test('FB_2026_041: «Pasos en orden» bloquea cada hija por la de arriba; soltar
   await page.evaluate(() => (window as any).closeSheet());
   // En la lista, «Nivelar» aparece bloqueada por «Quitar azulejos».
   expect(await page.evaluate((b) => (window as any).dependencyBlockers((window as any).taskLocation(b).t, (window as any).project()), B)).toEqual([A]);
+  // FB_2026_064: es un aviso; marcarla antes que la de arriba se guarda, sin «Completa primero».
+  await page.evaluate((b) => (window as any).toggleTask(b), B);
+  await settled(page);
+  expect((await server.rows('tasks.tasks')).find((t) => t.id === B).done).toBe(true);
+  expect((await server.rows('tasks.tasks')).find((t) => t.id === A).done).toBe(false);
+  await expect(page.locator('#toast')).not.toContainText('Completa primero');
+  await page.evaluate((b) => (window as any).toggleTask(b), B);
+  await settled(page);
+  expect((await server.rows('tasks.tasks')).find((t) => t.id === B).done).toBe(false);
   // En el editor de la hija: paso anterior y «Soltar de la cadena».
   await page.evaluate((id) => openTaskEditor(id), B);
   await fichaBloque(page, 'pasos');

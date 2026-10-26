@@ -1,13 +1,14 @@
 /**
- * Tasks · «Pasos en orden» (FB_2026_041, migración 0320), contra el núcleo y el hook reales: con la casilla en la madre, una
- * hija no se completa mientras la anterior (por posición) esté pendiente; las hechas no bloquean; reordenar recalcula; una
- * hija soltada de la cadena ni bloquea ni espera; y convive con las dependencias manuales. También el cálculo del dominio.
+ * Tasks · «Pasos en orden» (FB_2026_041, migración 0320; como aviso desde FB_2026_064, migración 0341), contra el núcleo y el
+ * hook reales: con la casilla en la madre, la hija anterior pendiente sale como aviso («bloqueada» en `statuses`) pero ya no
+ * impide completar; las dependencias manuales sí lo impiden. También el cálculo del dominio.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
 import { createTabOps, statuses, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import { completionBlockers } from '../../supabase/functions/_domain/tasks/graph.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
@@ -37,36 +38,26 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('con «pasos en orden», una hija espera a la anterior; las hechas no bloquean', async () => {
+test('FB_2026_064: con «pasos en orden», un paso se marca aunque el anterior esté pendiente', async () => {
+  const skipped = await set(B, { done: true });
+  assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+  assert.equal((await row('tasks.tasks', B)).done, true);
+  assert.equal((await row('tasks.tasks', A)).done, false, 'el anterior sigue pendiente');
+  assert.equal((await set(B, { done: false })).status, 200);
+});
+
+test('las dependencias manuales siguen impidiendo completar; quitar la casilla no las toca', async () => {
+  await ok([{ op: 'insert', table: 'tasks.task_dependencies', id: uuid(), fields: { tab_id: TAB, project_id: P, task_id: B, depends_on_id: OTRA, position: 1024 } }]);
   const blocked = await set(B, { done: true });
   assert.equal(blocked.status, 422, JSON.stringify(blocked.data));
   assert.equal(blocked.data.error.code, 'TASK_BLOCKED');
-  assert.deepEqual(blocked.data.error.details.blockedBy, [A]);
-  assert.equal((await set(A, { done: true })).status, 200);
-  assert.equal((await set(B, { done: true })).status, 200, 'hecha la anterior, ya se puede');
-});
-
-test('reordenar recalcula la cadena; una hija suelta ni espera ni bloquea; convive con las dependencias manuales', async () => {
-  // C pasa delante de B (que ya está hecha) y de A: queda la primera, sin paso anterior.
-  assert.equal((await set(C, { position: 500 })).status, 200);
-  assert.equal((await set(B, { done: false })).status, 200);
-  assert.equal((await set(A, { done: false })).status, 200);
-  // Orden ahora: C, A, B. A espera a C.
-  assert.equal((await set(A, { done: true })).data.error?.code, 'TASK_BLOCKED');
-  // Soltada de la cadena, A ya no espera a C; y B pasa a esperar directamente a C.
-  assert.equal((await set(A, { step_free: true })).status, 200);
-  assert.equal((await set(A, { done: true })).status, 200);
-  const b = await set(B, { done: true });
-  assert.deepEqual(b.data.error?.details?.blockedBy, [C]);
-  // Una dependencia manual más: B también espera a «Comprar material».
-  await ok([{ op: 'insert', table: 'tasks.task_dependencies', id: uuid(), fields: { tab_id: TAB, project_id: P, task_id: B, depends_on_id: OTRA, position: 1024 } }]);
-  assert.equal((await set(C, { done: true })).status, 200);
-  assert.deepEqual((await set(B, { done: true })).data.error?.details?.blockedBy, [OTRA]);
-  // Sin la casilla en la madre, la cadena desaparece (la manual sigue).
+  assert.deepEqual(blocked.data.error.details.blockedBy, [OTRA], 'solo la manual, no el paso anterior');
+  assert.equal((await set(OTRA, { done: true })).status, 200);
+  assert.equal((await set(B, { done: true })).status, 200);
   assert.equal((await set(MADRE, { steps_in_order: false })).status, 200);
 });
 
-test('el dominio calcula lo mismo: la hija anterior pendiente aparece entre lo que bloquea', () => {
+test('el dominio: la hija anterior pendiente sale como aviso en `statuses`, pero no en `completionBlockers`', () => {
   const base = { tab_id: TAB, project_id: P, note: '', priority: 'normal', due: null, owner_label_id: null, cost: null, done_at: null, revision: 1, deleted_at: null, created_at: '', updated_at: '', updated_by: null } as const;
   const tasks = [
     { ...base, id: MADRE, parent_id: null, title: 'M', done: false, position: 1, steps_in_order: true },
@@ -78,4 +69,5 @@ test('el dominio calcula lo mismo: la hija anterior pendiente aparece entre lo q
   assert.deepEqual(out.get(B)!.blockedBy, [A]);
   assert.deepEqual(out.get(A)!.blockedBy, []);
   assert.deepEqual(out.get(C)!.blockedBy, [], 'suelta');
+  assert.deepEqual(completionBlockers(B, { tasks, projects: [], dependencies: [] }), [], 'el paso anterior no impide completar');
 });
