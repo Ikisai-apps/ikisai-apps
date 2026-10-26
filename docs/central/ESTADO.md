@@ -108,6 +108,7 @@
 
 - 2026-10-20 · **Tanda 36 · Planos del centro y «Colocar»** (MUELA-024 con sus adendas; núcleo #655 y kit 0.52): pantalla `#/entidad/planos` con el mapa de zonas para todos y, para el owner en el ordenador, subir, sustituir y quitar dibujos, colocar solo con un SVG con nombres (DOMPurify, perfil SVG, sin meterlo en la página), colocar a mano con ratón y teclado, y «Por revisar». El plano en imagen o PDF de la Entidad sigue igual para los portales. Prueba nueva `plans.spec.ts`; el servidor de pruebas reescribe también las subidas de Recursos.
 - 2026-10-20 · **Tanda 37 · Siete ajustes de Planos y «Colocar»** (MUELA-092): se sube el SVG limpio (DOMPurify) con su tamaño y hash; las camas acompañan a su habitación en un lote con un «Deshacer»; sin red se apagan subir, sustituir, quitar y «Colocar solo»; el aviso dice los nombres del SVG sin estancia; giros e inclinaciones con la matriz completa y, lo que no se lee, a «Por revisar» con el motivo; halo en los rótulos; «Quitar» desactivado con su motivo. Pruebas nuevas en `plans.spec.ts` y `svg-plan.test.ts`.
+- 2026-10-26 · **Flow en Revisión** (RELEVO-001, alta de Flow; `1514`): `flow` en `REVIEW_APPS` con la etiqueta «Flow», antes de «Común»; la base acepta sus pantallas. Primera PR de Central desde La Muela (Core Producción).
 
 ## Pendiente
 

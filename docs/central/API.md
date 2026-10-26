@@ -404,7 +404,7 @@ Migración `1512`. Lectura `{reader, editor, owner}`: todos ven el avance. Escri
 
 | Columna | Tipo | Notas |
 |---|---|---|
-| `app` | `text not null` | `central`, `tasks`, `invoices`, `booking`, `food`, `guests`, `organizers`, `resources` o `transversal` (piezas comunes y menú). |
+| `app` | `text not null` | `central`, `tasks`, `invoices`, `booking`, `food`, `guests`, `organizers`, `resources`, `flow` o `transversal` (piezas comunes y menú). |
 | `name` | `text not null` | 1–120. Único por app, sin distinguir mayúsculas. |
 | `step` | `text not null default 'sin'` | Uno de los diez pasos del cuadro: `cal` Sevilla la está tocando, `fuera` Sin agente, `sin` Sin empezar, `hoy` En estudio, `alt` Prototipo hecho: te toca valorarlo, `demo` Montaje: se hace la demo, `listo` Demo hecha: te toca validarla, `cons` Construcción, `aprob` Aprobada, `hecha` Pasada a Sevilla. |
 | `url` | `text null` | «Ir al sitio», `https://`. |
