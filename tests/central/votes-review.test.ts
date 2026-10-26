@@ -141,6 +141,8 @@ test('pantallas de Revisión · escribe solo el owner, leen todos; pasos y enlac
   assert.equal((await commit([{ op: 'insert', table: REVIEW_SCREENS_TABLE, id, fields }])).status, 200);
   assert.equal((await commit([{ op: 'insert', table: REVIEW_SCREENS_TABLE, id: uuid(), fields: { ...fields, name: 'Otra' } }], app.tokens.editor)).status, 403);
   assert.equal((await commit([{ op: 'insert', table: REVIEW_SCREENS_TABLE, id: uuid(), fields: { ...fields, name: 'Otra' } }], app.tokens.reader)).status, 403);
+  // Flow entra en el cuadro (`1514`): la base y la validación aceptan sus pantallas.
+  assert.equal((await commit([{ op: 'insert', table: REVIEW_SCREENS_TABLE, id: uuid(), fields: { ...fields, app: 'flow', name: 'Flow · Inicio', route: '#/', feedback_prefix: 'flow.inicio' } }])).status, 200);
   for (const [field, value] of [['step', 'listisimo'], ['app', 'marte'], ['route', '/cumplimiento'], ['url', 'http://x'], ['feedback_prefix', 'Central.X']] as const) {
     const res = await commit([{ op: 'insert', table: REVIEW_SCREENS_TABLE, id: uuid(), fields: { ...fields, name: `Mal ${field}`, [field]: value } }]);
     assert.equal(res.status, 422, `${field}: ${JSON.stringify(res.data)}`);
@@ -210,6 +212,7 @@ test('dominio · Revisión: orden, recuento por paso, avance, lo que te toca y e
     S('menu', 'transversal', 'cons'), S('tareas', 'tasks', 'hecha'), S('vieja', 'central', 'alt', { deleted_at: '2026-10-01T00:00:00Z' }),
   ];
   assert.deepEqual(sortScreens(screens).map((s) => s.id), ['inicio', 'cumpl', 'ficha', 'tareas', 'menu']);
+  assert.deepEqual(sortScreens([...screens, S('flujo', 'flow', 'sin'), S('recursos', 'resources', 'sin')]).map((s) => s.id).slice(-3), ['recursos', 'flujo', 'menu'], 'Flow, antes de lo común');
   const counts = stepCounts(screens);
   assert.equal(Object.keys(counts).length, 10);
   assert.deepEqual([counts.hecha, counts.listo, counts.alt, counts.cons, counts.sin], [2, 1, 1, 1, 0]);

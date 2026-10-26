@@ -38,7 +38,7 @@ const STEP_COLORS: Record<ReviewStep, string> = {
   cal: '#c63b2e', fuera: '#1d1d1b', sin: '#bdb7ab', hoy: '#e8822a', alt: '#e8822a', demo: '#f4cf3c', listo: '#f4cf3c', cons: '#2f6fb5', aprob: '#2f6fb5', hecha: '#2f8a45',
 };
 const APP_COLORS: Record<string, string> = {
-  central: '#56663f', tasks: '#7a4f9a', invoices: '#2f6f6a', booking: '#b35a2b', food: '#9a6b14', guests: '#3b6aa0', organizers: '#8a3b5c', resources: '#5b6470', transversal: '#4b4b4b',
+  central: '#56663f', tasks: '#7a4f9a', invoices: '#2f6f6a', booking: '#b35a2b', food: '#9a6b14', guests: '#3b6aa0', organizers: '#8a3b5c', resources: '#5b6470', flow: '#2c6a87', transversal: '#4b4b4b',
 };
 const DISPLAY: Record<string, string> = { open: 'Abierto', in_progress: 'En curso', pending_verify: 'Por comprobar', verified: 'Verificado', dismissed: 'Descartado' };
 const OPEN = new Set(['open', 'in_progress', 'pending_verify']);

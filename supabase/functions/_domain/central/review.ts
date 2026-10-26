@@ -16,10 +16,10 @@ export const REVIEW_STEP_LABELS: Record<ReviewStep, string> = {
 /** Pasos en los que la pantalla espera a quien administra. */
 export const REVIEW_STEPS_TO_ACT: readonly ReviewStep[] = ['alt', 'listo'];
 
-export const REVIEW_APPS = ['central', 'tasks', 'invoices', 'booking', 'food', 'guests', 'organizers', 'resources', 'transversal'] as const;
+export const REVIEW_APPS = ['central', 'tasks', 'invoices', 'booking', 'food', 'guests', 'organizers', 'resources', 'flow', 'transversal'] as const;
 export const REVIEW_APP_LABELS: Record<string, string> = {
   central: 'Central', tasks: 'Tasks', invoices: 'Finance', booking: 'Booking', food: 'Food', guests: 'Guests', organizers: 'Organizers',
-  resources: 'Recursos', transversal: 'Común',
+  resources: 'Recursos', flow: 'Flow', transversal: 'Común',
 };
 
 export interface ReviewScreenLike {
