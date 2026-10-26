@@ -202,6 +202,7 @@ FIELDS[TABLES.beds] = {
   active: { kind: 'bool' },
   position: { kind: 'number' },
   cell: { kind: 'cell' },
+  team_bed: { kind: 'bool' },
 };
 FIELDS[TABLES.roomAssignments] = {
   event_id: { kind: 'uuid' },

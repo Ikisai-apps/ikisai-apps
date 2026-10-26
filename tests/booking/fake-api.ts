@@ -554,6 +554,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const linkValidUntil = (link: FakePortalLink): string | null => {
     if (link.revokedAt) return null;
     const reservation = data.get('booking.reservations')?.get(link.reservationId);
+    // 0481: vale mientras la reserva exista
+    if (reservation && !reservation.deleted_at) return 'infinity';
     const end = typeof reservation?.end_date === 'string' ? Date.parse(`${reservation.end_date}T23:59:59Z`) + 3 * 86_400_000 : null;
     const extended = link.extendedUntil ? Date.parse(link.extendedUntil) : null;
     const best = Math.max(end ?? -Infinity, extended ?? -Infinity);
@@ -675,6 +677,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const rows = costRows.filter((row) => target === null || row.target_id === target);
         return json(res, 200, { rows, total: rows.length });
       }
+      if (path === 'invoke/booking.portal_access_run' && method === 'POST') return json(res, 200, { created: 0, removed: 0 });
       if (path === 'portal-links' || path.startsWith('portal-links/')) {
         if (portalRole === 'reader') throw new Fault(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura gestiona enlaces.');
         if (path === 'portal-links' && method === 'POST') {
