@@ -78,6 +78,13 @@ test('ingresos de apps: lista, notas, ficha y resultado del evento', async ({ pa
     await expect(page.locator('#appEntrySheet')).toContainText('Efectivo 798,00');
     await page.locator('#appEntrySheet details summary').click();
     await expect(page.locator('#appEntryDetail')).toContainText('Montadito clásico A × 100');
+    await page.locator('#appEntryReceipt').click();
+    await expect(page.locator('#dayReceipt')).toContainText('IVA 10 % incluido');
+    await expect(page.locator('#receiptMethods')).toContainText('Efectivo');
+    await expect(page.locator('#receiptLines')).toContainText('A · Montadito clásico A');
+    await expect(page.locator('#dayReceiptView')).toContainText('SIN NUMERACIÓN FISCAL');
+    await page.locator('.sheet[role="dialog"] .sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
+    await page.locator('#appEntriesList li.row', { hasText: '31-10' }).getByText('Barra · Evento de octubre · 31-10').click();
     await page.locator('#appEntrySheet').getByRole('link').click();
   });
 

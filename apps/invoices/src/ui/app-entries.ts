@@ -8,16 +8,16 @@
  * Lo que viene de la otra app no se edita aquí: si estaba mal, lo corrige la app de origen con otro envío.
  * Solo piezas del kit; el lector ve todo sin botones de escritura.
  */
-import { bindOnline, closeSheet, el, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
+import { bindOnline, closeSheet, createPrintView, el, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
 import { APP_ENTRIES, ISSUED_ALLOCATIONS, ISSUED_INVOICES, describeError, type LocalAppEntry } from '../app/client.ts';
 import { eur, loadMirror, monthLabel, onAnyTable, shortDate } from '../app/data.ts';
 import { appName, entriesTotals, eventResults, liveEntries, type EventResult, type EventSources } from '../app/app-entries-state.ts';
 import { rememberTarget, searchTargets, type TargetChoice } from '../app/targets.ts';
+import { dayReceipt, methodLabel } from '../app/day-receipt.ts';
+import { MISSING_ENTITY, fetchEntity, issuerLines } from './issued.ts';
 import type { SyncClient } from '@ikisai/sync-client';
 import type { ViewContext, ViewMount } from './shell.ts';
 
-const METHOD_LABELS: Record<string, string> = { cash: 'Efectivo', bizum: 'Bizum', card: 'Tarjeta', transfer: 'Transferencia' };
-const methodLabel = (k: string) => METHOD_LABELS[k] ?? k;
 const fromCents = (c: number) => eur(c / 100);
 interface Data { entries: LocalAppEntry[]; events: EventResult[] }
 
@@ -82,6 +82,8 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
       canEdit ? el('p', { class: 'btnrow' }, linkButton) : null, linkReason,
       canEdit ? el('label', { class: 'field' }, el('span', null, 'Notas'), notes) : el('p', null, entry.notes ?? '')),
     foot: [
+      entry.kind === 'income' ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.justificante', 'data-feedback-label': 'Justificante del día', class: 'ghost', type: 'button', id: 'appEntryReceipt',
+        onclick: () => void openDayReceipt(ctx, entry) }, icon('invoice', 16), 'Justificante') : null,
       canEdit ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.guardar', 'data-feedback-label': 'Guardar', class: 'primary', type: 'button', id: 'appEntrySave', onclick: async () => {
         const fields: Record<string, unknown> = {};
         const n = notes.value.trim() || null;
@@ -92,6 +94,46 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
       el('button', { class: canEdit ? 'ghost' : 'primary', type: 'button', onclick: () => void closeSheet() }, 'Cerrar'),
     ].filter(Boolean) as HTMLElement[],
   });
+}
+
+/**
+ * «Justificante del día» (API.md §17.5): la hoja imprimible de un ingreso, con el emisor de Central (con red), los medios,
+ * el desglose (productos o, en una liquidación, pedidos) y el IVA incluido. Sin numeración fiscal (`app/day-receipt.ts`).
+ */
+async function openDayReceipt(ctx: ViewContext, entry: LocalAppEntry): Promise<void> {
+  const r = dayReceipt(entry);
+  const { entity } = await fetchEntity(ctx.client);
+  const rate = `${String(r.rate).replace('.', ',')} %`;
+  const body = el('div', { class: 'issued-print', id: 'dayReceipt' },
+    el('div', { class: 'issued-print-parties' },
+      el('div', { id: 'receiptIssuer' }, el('small', null, 'Emisor'),
+        ...(entity ? issuerLines(entity).map((l, i) => (i === 0 ? el('strong', null, l) : el('div', null, l))) : [el('div', { class: 'banner warn' }, MISSING_ENTITY)])),
+      el('div', null, el('small', null, 'Ventas'), el('strong', null, r.description), el('div', null, `${shortDate(r.date)} · ${appName(entry.source_app)}`))),
+    r.lines.length ? el('table', { class: 'inv-table', id: 'receiptLines' },
+      el('thead', null, el('tr', null, el('th', null, 'Concepto'), el('th', { class: 'num' }, 'Cantidad'), el('th', { class: 'num' }, 'Importe'))),
+      el('tbody', null, ...r.lines.map((l) => el('tr', null, el('td', null, l.label), el('td', { class: 'num' }, String(l.quantity).replace('.', ',')), el('td', { class: 'num' }, fromCents(l.cents)))))) : null,
+    r.methods.length ? el('table', { class: 'inv-table', id: 'receiptMethods' },
+      el('thead', null, el('tr', null, el('th', null, 'Medio de cobro'), el('th', { class: 'num' }, 'Importe'))),
+      el('tbody', null, ...r.methods.map((m) => el('tr', null, el('td', null, m.label), el('td', { class: 'num' }, fromCents(m.cents)))))) : null,
+    el('div', { class: 'inv-totals', 'data-feedback-ignore': '' },
+      el('div', null, el('span', null, 'Base'), el('strong', null, fromCents(r.netCents))),
+      el('div', null, el('span', null, `IVA ${rate} incluido`), el('strong', null, fromCents(r.taxCents))),
+      r.pendingRefundsCents ? el('div', null, el('span', null, 'Devoluciones pendientes'), el('strong', null, fromCents(r.pendingRefundsCents))) : null,
+      el('div', { class: 'total' }, el('span', null, 'TOTAL'), el('strong', null, fromCents(r.totalCents)))));
+  const view = createPrintView({
+    brand: { appName: 'Finance', markIcon: 'invoice', line: entity?.legal_name ?? MISSING_ENTITY },
+    title: r.title,
+    subtitle: r.number ?? undefined,
+    meta: [shortDate(r.date), r.description],
+    draft: r.number ? false : 'SIN NUMERACIÓN FISCAL',
+    intro: body,
+    sections: [],
+    notes: r.notice,
+    runningFoot: `Ikisai Finance · ${r.title} · ${r.date}`,
+  }, { printLabel: 'Imprimir / Guardar PDF' });
+  openSheet({ title: r.title, meta: `${shortDate(r.date)} · ${r.description}`,
+    body: el('div', { 'data-feedback-id': 'invoices.apuntes.justificante', 'data-feedback-label': 'Justificante del día', 'data-feedback-ignore': '', id: 'dayReceiptView' }, view.element),
+    foot: [el('button', { 'data-feedback-id': 'invoices.apuntes.justificante.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
 }
 
 async function save(client: SyncClient, entry: LocalAppEntry, fields: Record<string, unknown>, okMessage: string): Promise<boolean> {

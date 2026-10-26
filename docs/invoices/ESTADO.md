@@ -160,6 +160,8 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 
 - **Ingresos de Flow:** que Flow llame a `invoices.record_app_entry` desde su «Cierre del día» (formato acordado; API.md §17.2) y probar el recorrido entero antes del evento del 31-10.
 - **Duda fiscal (VG → gestoría):** si los gastos que lleguen de otras apps dan IVA soportado (PETICIONES.md, 26-10). Hoy van aparte.
+- **Justificante del día** (API.md §17.5): sin numeración fiscal hasta que la gestoría diga ticket o factura simplificada (PETICIONES.md, 27-10). El hueco de la serie está preparado.
+- **Liquidaciones de Flow** (API.md §17.6): caben en `record_app_entry` con el desglose por pedido. Falta confirmar con Flow que ese dinero no va también en el cierre del día.
 - Aceptación manual en Android: la hace el usuario con facturas reales del negocio; sus incidencias llegan por el buzón de Core.
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
