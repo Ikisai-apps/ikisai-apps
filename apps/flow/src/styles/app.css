@@ -149,3 +149,4 @@
 .closure-sends{display:grid;gap:8px;margin:12px 0}
 .closure-send{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
 .closure-send.is-error{border-color:var(--alert,#b3261e)}
+.carta-allergens{margin:2px 0 0;font-size:.8rem;color:var(--muted)}
