@@ -20,9 +20,9 @@ export interface Payment extends Row { order_id: string; kind: 'charge' | 'rever
 export interface Unit extends Row {
   project_id: string; column_key: string; kind: 'prep' | 'task'; order_id: string | null; line_id: string | null; product_id: string | null;
   idx: number; pay_seq: number | null; label: string | null; priority: boolean; status: UnitStatus; assigned_to: string | null; done_at: string | null; done_by: string | null;
-  payload: { item_key?: string; name?: string; unit?: string; qty?: number; to?: string; from?: string | null } | null; source_ref: string | null;
+  payload: { item_key?: string; name?: string; unit?: string; qty?: number; to?: string; from?: string | null; external?: { app: string; kind: string; id: string; status?: string | null } } | null; source_ref: string | null;
 }
-export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null }
+export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null }
 
 export interface FlowData {
   project: Project | null;

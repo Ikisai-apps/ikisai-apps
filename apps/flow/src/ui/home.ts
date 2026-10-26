@@ -3,6 +3,7 @@ import { TABLES } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { loadProjects, projectDates, projectState, type Project } from '../app/data.ts';
 import { projectDocuments, type ProjectDocument } from '../app/documents.ts';
+import { chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
@@ -51,7 +52,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
       finally { input.disabled = false; }
     } });
     replace(testHost, el('label', { class: 'flow-testmode-switch' }, input,
-      el('span', null, el('strong', null, 'Modo pruebas'), el('small', { class: 'muted' }, ' · se cobra y se cuenta igual, pero el cierre no envía ingresos a Finance'))));
+      el('span', null, el('strong', null, 'Modo pruebas'), el('small', { class: 'muted' }, ' · se cobra y se cuenta igual, pero el cierre no envía ingresos a Finance'))),
+      // Enlaces del flujo (owner): su evento de Booking y su proyecto de Tasks.
+      el('div', { class: 'orders-owner flow-links' },
+        el('button', { type: 'button', class: 'ghost', onclick: () => void chooseBookingEvent(client, project) }, project.booking_event_id ? 'Evento de Booking: cambiar' : 'Ligar a un evento de Booking'),
+        el('button', { type: 'button', class: 'ghost', onclick: () => void chooseTasksProject(client, project) }, project.tasks_project_id ? 'Proyecto de Tasks: cambiar' : 'Elegir proyecto de Tasks')));
   }
 
   const figure = el('figure', { class: 'guide-figure' });
