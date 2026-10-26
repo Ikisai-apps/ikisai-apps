@@ -384,6 +384,15 @@ test('flow · lote público: solo crea su cliente, su pedido abierto y sus líne
   const paid = await openOrder([[P.agua, 1]]);
   await pay(paid.id);
   assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: paid.id, product_id: P.agua, quantity: 5 } }]), 'FORBIDDEN');
+  // Solo productos activos de la carta.
+  const own = uuid();
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orders, id: own, fields: { project_id: PROJECT, origin: 'public', customer_id: customerId } }]), 'ok');
+  const agua = await row(TABLES.products, P.agua);
+  await ok([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: agua.revision, fields: { active: false } }], app.tokens.owner);
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: own, product_id: P.agua, quantity: 1 } }]), 'FORBIDDEN');
+  const off = await row(TABLES.products, P.agua);
+  await ok([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: off.revision, fields: { active: true } }], app.tokens.owner);
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: own, product_id: P.agua, quantity: 1 } }]), 'ok');
   // El número lo pone el servidor aunque el lote mande otro.
   assert.equal(await tryPublic([{ op: 'insert', table: TABLES.customers, id: uuid(), fields: { project_id: PROJECT, token_hash: 'a'.repeat(64), number: 5 } }]), 'ok');
   assert.ok((await rows(TABLES.customers, (c) => c.number === 5)).length === 0);

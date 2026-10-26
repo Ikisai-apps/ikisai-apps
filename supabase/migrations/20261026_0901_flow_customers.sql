@@ -90,6 +90,9 @@ begin
     elsif tg_table_name = 'order_lines' then
       if new.unit_price_cents is null and new.delivered_qty = 0
          and exists (select 1 from flow.orders o where o.id = new.order_id and o.status = 'open' and o.origin = 'public' and o.deleted_at is null)
+         -- Solo productos de la carta: activos y del mismo proyecto que el pedido.
+         and exists (select 1 from flow.products pr join flow.orders o on o.id = new.order_id
+                      where pr.id = new.product_id and pr.project_id = o.project_id and pr.active and pr.deleted_at is null)
          and (tg_op = 'INSERT' or not flow.changed(v_old, v_new, array['order_id'])) then
         return new;
       end if;
