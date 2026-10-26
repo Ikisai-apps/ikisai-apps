@@ -1,18 +1,20 @@
--- Ikisai Booking · reglas de acceso a los portales (encargo de VG del 26-10-2026; plan aprobado por Core el mismo día).
+-- Ikisai Booking · reglas de acceso a los portales (encargo de VG del 26-10-2026; plan aprobado por Core y respuestas de VG
+-- del mismo día).
 -- 1. El acceso a Guests y Organizers no caduca: el enlace vale mientras la reserva exista (también terminada, cancelada o
---    perdida; B19 de Organizers). La conservación anonimiza lo que obliga la ley, pero ya no quita el permiso: la persona
---    sigue viendo el retiro, sin sus datos.
+--    perdida; B19 de Organizers). La conservación anonimiza lo que obliga la ley, pero ya no quita el permiso.
 -- 2. Quien tiene acceso a Organizers para una reserva es también huésped de ella (`portal_role = 'organizer'`), con su
---    entrada en Guests, para elegir cama y comida como uno más (B21).
--- 3. El personal con cuenta y un turno no cancelado en un retiro, igual (`staff`, u `outsider` si su nivel de casa lo es).
---    Si desaparece el origen (sin acceso a Organizers o sin turno), se quita la entrada y la ficha va a la papelera, salvo
---    que ya tenga cama elegida (entonces se queda).
+--    entrada en Guests (B21). 3. El personal (no outsider) con cuenta y un turno no cancelado, igual (`staff`). Un outsider
+--    con turno viene a trabajar y no es huésped; si viene como huésped, es una ficha normal.
+--    Las fichas con `portal_role` no cuentan como comensales (fuera de `food_event_projection` y de los recuentos), no van
+--    a SES aunque duerman (`ses_status = 'no_aplica'` y sin llegada) y solo eligen entre camas de equipo (pendiente: hasta
+--    que exista ese dato, no eligen; la cama la asigna el personal).
 --    Lo hace una conciliación idempotente (`booking.portal_access_run`): un tick con sonda y la app de Booking tras emitir
---    un enlace o tocar el personal. Solo crea fichas en retiros vivos y no terminados.
+--    un enlace. Solo crea fichas en retiros vivos y no terminados. Si desaparece el origen, la ficha y el acceso se quedan.
 -- 4. Dirección: `{"all": true}` en los grants de Guests y Organizers (lo concede el núcleo por el nivel de casa, 0095).
---    En Organizers, coorganizador de todas (`as = 'coorganizer'`). En Guests ve todos los retiros vivos y se apunta sin
---    `guests_visible` ni aprobación (`booking.portal_join_direction`); con su ficha (`portal_role = 'direccion'`) ve y elige
---    cualquier cama del evento. En Guests, «todos» nunca vale por un huésped concreto: solo el par reserva + huésped.
+--    En Organizers, coorganizador de todas (`as = 'coorganizer'`). En Guests ve todos los retiros, pasados y futuros
+--    (`joinable` en los vivos), los recorre (`portal_scope_reservation`) y se apunta a los vivos sin `guests_visible` ni
+--    aprobación (`booking.portal_join_direction`, `portal_role = 'direccion'`). En Guests, «todos» nunca vale por un
+--    huésped concreto: solo el par reserva + huésped.
 -- Toca solo el schema booking.
 
 -- ---------------------------------------------------------------------------
@@ -59,7 +61,7 @@ end $$;
 -- 2 y 3. Ficha de huésped del organizador y del personal
 -- ---------------------------------------------------------------------------
 alter table booking.guests add column portal_role text
-  check (portal_role is null or portal_role in ('organizer','staff','outsider','direccion'));
+  check (portal_role is null or portal_role in ('organizer','staff','direccion'));
 select core.register_table('booking', 'booking', 'guests', array[
   'event_id','first_name','last_name_1','last_name_2','sex','document_type','document_number','document_support_number',
   'nationality','birth_date','residence_address','residence_postal_code','residence_city','residence_country','phone','email',
@@ -91,11 +93,11 @@ returns setof uuid language sql stable as $$
    where m.app = 'guests' and gr ->> 'guest_id' = p_guest::text;
 $$;
 
--- Lo que falta para que se cumplan las reglas 2 y 3: `[{action: 'create', role, account, reservation_id, event_id, name}]`
--- y `[{action: 'remove', guest_id, revision}]`. Vacío si ya se cumplen.
+-- Lo que falta para que se cumplan las reglas 2 y 3: `[{action: 'create', role, account, reservation_id, event_id, name}]`.
+-- Vacío si ya se cumplen.
 create or replace function booking.portal_access_plan()
 returns jsonb language plpgsql stable as $$
-declare v_out jsonb := '[]'::jsonb; s record; g booking.guests; v_has_source boolean;
+declare v_out jsonb := '[]'::jsonb; s record;
 begin
   for s in
     select distinct on (src.account, e.id) src.account, src.role, r.id reservation_id, e.id event_id, src.name
@@ -106,11 +108,12 @@ begin
           left join core.profiles pr on pr.user_id = m.user_id
          where m.app = 'organizers' and gr ? 'reservation_id'
         union all
-        select st.member_user_id, case when hl.level = 'outsider' then 'outsider' else 'staff' end, ev.reservation_id, st.person_name, 2
+        select st.member_user_id, 'staff', ev.reservation_id, st.person_name, 2
           from booking.staff_assignments st
           join booking.events ev on ev.id = st.event_id and ev.deleted_at is null
           left join core.house_levels hl on hl.user_id = st.member_user_id
          where st.deleted_at is null and st.status <> 'cancelada' and st.member_user_id is not null
+           and coalesce(hl.level, '') <> 'outsider'
       ) src
       join booking.reservations r on r.id = src.reservation_id and r.deleted_at is null and r.archived_at is null
        and r.status in ('pre_reservada','confirmada','en_ejecucion') and (r.end_date is null or r.end_date >= current_date)
@@ -123,19 +126,7 @@ begin
       'event_id', s.event_id, 'name', left(btrim(s.name), 120));
   end loop;
 
-  -- fichas que puso la conciliación y cuyo origen ya no está
-  for g in select gu.* from booking.guests gu where gu.deleted_at is null and gu.anonymized_at is null and gu.portal_role in ('organizer','staff','outsider') loop
-    v_has_source := exists (
-      select 1 from booking.guest_accounts(g.id) a(account)
-       where booking.organizer_grant(a.account, (select reservation_id from booking.events where id = g.event_id))
-          or exists (select 1 from booking.staff_assignments st where st.event_id = g.event_id and st.member_user_id = a.account
-                      and st.deleted_at is null and st.status <> 'cancelada'));
-    continue when v_has_source;
-    -- sin ninguna cuenta (p. ej. ya se quitó) o con cama elegida: se queda
-    continue when not exists (select 1 from booking.guest_accounts(g.id));
-    continue when exists (select 1 from booking.room_assignments ra where ra.guest_id = g.id and ra.deleted_at is null);
-    v_out := v_out || jsonb_build_object('action', 'remove', 'guest_id', g.id, 'revision', g.revision);
-  end loop;
+  -- Si desaparece el origen, la ficha y el acceso se quedan (propuesta de Core, pendiente de VG): no hay bajas.
   return v_out;
 end $$;
 
@@ -182,10 +173,89 @@ end $$;
 select core.allow_read('booking', 'booking.portal_access_run', 'action', '{editor,owner}');
 select core.schedule_tick('booking', 'portal-access/tick', '*/5 * * * *', 'booking.portal_access_has_work');
 
+-- Fichas de equipo (con `portal_role`): ni SES ni llegada (como el huésped de muestra), y fuera de cocina y recuentos.
+alter table booking.guests add constraint guests_team_not_arrived check (portal_role is null or arrived_at is null);
+
+create or replace function booking.guest_team_ses()
+returns trigger language plpgsql as $$
+begin
+  if new.portal_role is not null then new.ses_status := 'no_aplica'; end if;
+  return new;
+end $$;
+create trigger guests_team_ses before insert or update on booking.guests
+  for each row execute function booking.guest_team_ses();
+
+-- La de 0459, sin las restricciones de las fichas de equipo.
+create or replace view booking.food_event_projection as
+select
+  e.id as event_id,
+  e.code as event_code,
+  r.code as reservation_code,
+  r.title,
+  r.event_type,
+  r.start_date,
+  r.end_date,
+  e.arrival_time,
+  e.departure_time,
+  coalesce(e.final_guests, r.expected_guests) as guest_count,
+  r.minors_count,
+  coalesce(e.meal_plan_confirmed, r.meal_plan_requested) as meal_plan,
+  coalesce(e.menu_style_confirmed, r.menu_style_requested) as menu_style,
+  coalesce((
+    select jsonb_agg(jsonb_build_object('type', x.restriction_type, 'subject', x.subject, 'severity', x.severity, 'servings', x.servings, 'kitchen_notes', x.kitchen_notes)
+                     order by x.restriction_type, x.subject nulls first, x.severity nulls first, x.kitchen_notes nulls first)
+    from (
+      select d.restriction_type, nullif(lower(btrim(d.subject)), '') as subject, d.severity,
+             nullif(btrim(d.kitchen_notes), '') as kitchen_notes, sum(coalesce(d.servings, 1))::int as servings
+      from booking.dietary_restrictions d
+      where d.event_id = e.id and d.active and d.deleted_at is null
+        and not exists (select 1 from booking.guests pg where pg.id = d.guest_id and (pg.preview or pg.portal_role is not null))
+      group by 1, 2, 3, 4) x), '[]'::jsonb) as dietary_restrictions,
+  s.revision as event_revision,
+  r.status as reservation_status,
+  (e.final_guests is not null) as guest_count_is_final,
+  r.requires_meals,
+  r.meal_notes,
+  r.id as reservation_id
+from booking.events e
+join booking.reservations r on r.id = e.reservation_id
+join booking.event_food_state s on s.id = e.id
+where e.deleted_at is null and r.deleted_at is null;
+
+revoke all on booking.food_event_projection from public, anon, authenticated;
+grant select on booking.food_event_projection to service_role;
+
+-- La de 0459, sin las fichas de equipo.
+create or replace function booking.guest_summary(p jsonb)
+returns jsonb language plpgsql stable as $$
+declare v_event uuid; v_out jsonb;
+begin
+  begin v_event := (p->'args'->>'event_id')::uuid; exception when others then v_event := null; end;
+  if v_event is null then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'event_id must be a uuid')); end if;
+  if not exists (select 1 from booking.events where id = v_event and deleted_at is null) then
+    perform core.fail('NOT_FOUND', 404, jsonb_build_object('table', 'booking.events', 'id', v_event));
+  end if;
+  select jsonb_build_object(
+      'eventId', v_event,
+      'total', count(*),
+      'bySex', jsonb_build_object('H', count(*) filter (where g.sex = 'H'), 'M', count(*) filter (where g.sex = 'M'),
+                                  'X', count(*) filter (where g.sex = 'X'), 'sinDato', count(*) filter (where g.sex is null)),
+      'minors', count(*) filter (where g.is_minor),
+      'signed', count(*) filter (where g.signed_at is not null),
+      'dataStatus', coalesce((select jsonb_object_agg(a.data_status, a.n) from (
+          select data_status, count(*) n from booking.guests where event_id = v_event and deleted_at is null and not preview and portal_role is null group by 1) a), '{}'::jsonb),
+      'sesStatus', coalesce((select jsonb_object_agg(b.ses_status, b.n) from (
+          select ses_status, count(*) n from booking.guests where event_id = v_event and deleted_at is null and not preview and portal_role is null group by 1) b), '{}'::jsonb))
+    into v_out
+    from booking.guests g where g.event_id = v_event and g.deleted_at is null and not g.preview and g.portal_role is null;
+  return v_out;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- 4. Dirección
 -- ---------------------------------------------------------------------------
--- Guests · retiros abiertos: dirección ve también los que no son visibles para huéspedes.
+-- Guests · retiros abiertos. Dirección ve todos, pasados y futuros (también archivados o cerrados); `joinable` dice si se
+-- puede apuntar (los vivos).
 create or replace function booking.portal_open_retreats(p jsonb)
 returns jsonb language plpgsql stable as $$
 declare v_actor uuid := (p->>'actor')::uuid; v_range record; v_all boolean := booking.portal_all('guests', (p->>'actor')::uuid);
@@ -193,15 +263,16 @@ begin
   select * into v_range from booking.portal_range(p);
   return jsonb_build_object('direction', v_all, 'items', coalesce((
     select jsonb_agg(jsonb_build_object('reservation_id', r.id, 'title', r.title, 'start_date', r.start_date, 'end_date', r.end_date,
-             'summary', r.public_summary,
+             'summary', r.public_summary, 'status', r.status,
+             'joinable', r.archived_at is null and r.status in ('pre_reservada','confirmada','en_ejecucion') and (r.guests_visible or v_all),
              'joined', exists (select 1 from booking.account_guests(v_actor) g join booking.events e on e.id = g.event_id where e.reservation_id = r.id),
              'request', (select jsonb_build_object('status', case j.status when 'pendiente' then 'con_el_organizador' else j.status end, 'comment', j.comment)
                            from booking.join_requests j where j.reservation_id = r.id and j.account_id = v_actor and j.deleted_at is null
                           order by j.created_at desc limit 1))
              order by r.start_date, r.title)
       from booking.reservations r
-     where r.deleted_at is null and r.archived_at is null and (r.guests_visible or v_all)
-       and r.status in ('pre_reservada','confirmada','en_ejecucion')
+     where r.deleted_at is null
+       and (v_all or (r.archived_at is null and r.guests_visible and r.status in ('pre_reservada','confirmada','en_ejecucion')))
        and r.start_date is not null and r.end_date is not null
        and r.start_date < v_range.d_to and v_range.d_from <= r.end_date), '[]'::jsonb));
 end $$;
@@ -239,19 +310,19 @@ begin
 end $$;
 select core.allow_read('guests', 'booking.portal_join_direction', 'action', '{editor,owner}');
 
--- Guests · alojamiento: la ficha de dirección ve todas las habitaciones del evento y elige siempre (sin «Habitaciones
--- abiertas» ni plazo). Es la de 0478 con esa rama.
+-- Guests · alojamiento. Las fichas de equipo (con `portal_role`) solo eligen entre camas de equipo; hasta que exista ese
+-- dato no eligen (choice 'off' y sin habitaciones; la cama la asigna el personal). Es la de 0478 con esa rama.
 create or replace function booking.portal_lodging(p jsonb)
 returns jsonb language plpgsql stable as $$
-declare v_g booking.guests; v_s booking.lodging_settings; v_a booking.room_assignments; v_dir boolean;
+declare v_g booking.guests; v_s booking.lodging_settings; v_a booking.room_assignments; v_team boolean;
 begin
   v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid);
-  v_dir := coalesce(v_g.portal_role = 'direccion', false);
+  v_team := v_g.portal_role is not null;
   v_s := booking.lodging_settings_of(v_g.event_id);
   select * into v_a from booking.room_assignments where event_id = v_g.event_id and guest_id = v_g.id and deleted_at is null order by created_at desc limit 1;
   return jsonb_build_object(
-    'choice', case when v_dir then 'choose' else coalesce(v_s.choice, 'off') end, 'choose_until', case when v_dir then null else v_s.choose_until end,
-    'open', v_dir or booking.lodging_choice_open(v_s), 'preferences', coalesce(v_s.preferences, false), 'direction', v_dir,
+    'choice', case when v_team then 'off' else coalesce(v_s.choice, 'off') end, 'choose_until', v_s.choose_until,
+    'open', not v_team and booking.lodging_choice_open(v_s), 'preferences', coalesce(v_s.preferences, false), 'team', v_team,
     'mine', case when v_a.id is null then null else (select jsonb_build_object('space_name', booking.space_public_name(s), 'zone', s.zone,
         'resource_space_id', coalesce(v_a.resource_space_id, booking.resource_twin('booking.space', s.id)),
         'resource_bed_id', coalesce(v_a.resource_bed_id, booking.resource_twin('booking.bed', v_a.bed_id)),
@@ -259,37 +330,30 @@ begin
       from booking.spaces s where s.id = v_a.space_id) end,
     'preference', case when v_g.room_preference is null and not v_g.needs_ground_floor then null
       else jsonb_build_object('text', v_g.room_preference, 'ground_floor', v_g.needs_ground_floor) end,
-    'rooms', case
-      when v_dir then coalesce((
-        select jsonb_agg(booking.portal_room_json(s.id, v_g.event_id, v_g.id, false) order by s.zone nulls last, s.position)
-          from booking.spaces s where s.deleted_at is null and s.active and s.id in (select booking.event_rooms(v_g.event_id))), '[]'::jsonb)
-      when coalesce(v_s.choice, 'off') = 'off' then '[]'::jsonb
-      else coalesce((
-        select jsonb_agg(booking.portal_room_json(o.space_id, v_g.event_id, v_g.id, false) order by s.zone nulls last, s.position)
-          from booking.open_rooms o join booking.spaces s on s.id = o.space_id and s.deleted_at is null and s.active
-         where o.event_id = v_g.event_id and o.deleted_at is null and o.space_id in (select booking.event_rooms(v_g.event_id))), '[]'::jsonb) end);
+    'rooms', case when v_team or coalesce(v_s.choice, 'off') = 'off' then '[]'::jsonb else coalesce((
+      select jsonb_agg(booking.portal_room_json(o.space_id, v_g.event_id, v_g.id, false) order by s.zone nulls last, s.position)
+        from booking.open_rooms o join booking.spaces s on s.id = o.space_id and s.deleted_at is null and s.active
+       where o.event_id = v_g.event_id and o.deleted_at is null and o.space_id in (select booking.event_rooms(v_g.event_id))), '[]'::jsonb) end);
 end $$;
 
--- Guests · elegir cama: dirección, cualquier cama utilizable del evento, confirmada al momento. Es la de 0466 con esa rama.
+-- Guests · elegir cama: las fichas de equipo, no (todavía no hay camas de equipo). Es la de 0466 con esa comprobación.
 create or replace function booking.portal_choose_bed(p jsonb)
 returns jsonb language plpgsql as $$
 declare
   v_g booking.guests; v_s booking.lodging_settings; v_b booking.beds; v_ops jsonb := '[]'::jsonb; a booking.room_assignments;
-  v_id uuid := gen_random_uuid(); v_status text; v_out jsonb; v_dir boolean;
+  v_id uuid := gen_random_uuid(); v_status text; v_out jsonb;
 begin
   v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid);
   if v_g.preview then perform core.fail('PREVIEW_READ_ONLY', 403, jsonb_build_object('guest_id', v_g.id)); end if;
-  v_dir := coalesce(v_g.portal_role = 'direccion', false);
+  if v_g.portal_role is not null then perform core.fail('NOT_OFFERED', 422, jsonb_build_object('guest_id', v_g.id, 'reason', 'team')); end if;
   v_s := booking.lodging_settings_of(v_g.event_id);
-  if not v_dir then
-    if v_s.id is null or v_s.choice = 'off' then perform core.fail('NOT_OFFERED', 422, jsonb_build_object('guest_id', v_g.id)); end if;
-    if not booking.lodging_choice_open(v_s) then perform core.fail('CHOICE_CLOSED', 422, jsonb_build_object('choose_until', v_s.choose_until)); end if;
-  end if;
+  if v_s.id is null or v_s.choice = 'off' then perform core.fail('NOT_OFFERED', 422, jsonb_build_object('guest_id', v_g.id)); end if;
+  if not booking.lodging_choice_open(v_s) then perform core.fail('CHOICE_CLOSED', 422, jsonb_build_object('choose_until', v_s.choose_until)); end if;
   begin
     select * into v_b from booking.beds where id = (p->'args'->>'bed_id')::uuid and deleted_at is null and active for update;
   exception when invalid_text_representation then v_b := null; end;
   if v_b.id is null or not booking.extra_bed_usable(v_b, v_g.event_id)
-     or (not v_dir and not exists (select 1 from booking.open_rooms o where o.event_id = v_g.event_id and o.space_id = v_b.space_id and o.deleted_at is null))
+     or not exists (select 1 from booking.open_rooms o where o.event_id = v_g.event_id and o.space_id = v_b.space_id and o.deleted_at is null)
      or v_b.space_id not in (select booking.event_rooms(v_g.event_id)) then
     perform core.fail('NOT_OFFERED', 422, jsonb_build_object('bed_id', p->'args'->>'bed_id'));
   end if;
@@ -299,11 +363,30 @@ begin
   for a in select * from booking.room_assignments where event_id = v_g.event_id and guest_id = v_g.id and deleted_at is null loop
     v_ops := v_ops || jsonb_build_object('op', 'delete', 'table', 'booking.room_assignments', 'id', a.id, 'expectedRevision', a.revision);
   end loop;
-  v_status := case when not v_dir and v_s.choice = 'request' then 'requested' else 'confirmed' end;
+  v_status := case when v_s.choice = 'request' then 'requested' else 'confirmed' end;
   v_ops := v_ops || jsonb_build_object('op', 'insert', 'table', 'booking.room_assignments', 'id', v_id,
     'fields', jsonb_build_object('event_id', v_g.event_id, 'space_id', v_b.space_id, 'bed_id', v_b.id, 'guest_id', v_g.id, 'persons', 1, 'status', v_status));
   v_out := booking.portal_apply('guest', v_ops);
   return jsonb_build_object('assignment_id', v_id, 'revision', (select revision from booking.room_assignments where id = v_id), 'status', v_status, 'cursor', v_out->'cursor');
+end $$;
+
+-- Lecturas comunes de los portales (programa, detalle del retiro): en Guests, también dirección («todos») sin ficha
+-- propia, para recorrer cualquier retiro. Es la de 0459 con esa condición.
+create or replace function booking.portal_scope_reservation(p jsonb)
+returns booking.reservations language plpgsql stable as $$
+declare v_res uuid; v_r booking.reservations; v_actor uuid := (p->>'actor')::uuid; v_ok boolean;
+begin
+  begin v_res := (p->'args'->>'reservation_id')::uuid; exception when others then v_res := null; end;
+  if p->>'app' = 'guests' then
+    v_ok := v_res is not null and (booking.portal_all('guests', v_actor) or exists (select 1 from booking.guests g join booking.events e on e.id = g.event_id
+      where e.reservation_id = v_res and g.deleted_at is null and booking.portal_in_scope('guests', v_actor, v_res, g.id)));
+  else
+    v_ok := v_res is not null and booking.portal_in_scope(p->>'app', v_actor, v_res, null);
+  end if;
+  if not coalesce(v_ok, false) then perform core.fail('OUT_OF_SCOPE', 403, jsonb_build_object('reservation_id', p->'args'->>'reservation_id')); end if;
+  select * into v_r from booking.reservations where id = v_res and deleted_at is null;
+  if v_r.id is null then perform core.fail('OUT_OF_SCOPE', 403, jsonb_build_object('reservation_id', v_res)); end if;
+  return v_r;
 end $$;
 
 -- Organizers · sus reservas, con `as` ('organizer' por su entrada; 'coorganizer' por «todos») y `as_guest_id` (su
@@ -315,8 +398,8 @@ begin
   return jsonb_build_object('items', coalesce((
     select jsonb_agg(jsonb_build_object('id', r.id, 'code', r.code, 'title', r.title, 'start_date', r.start_date, 'end_date', r.end_date,
       'expected_guests', r.expected_guests, 'status', r.status, 'confirmed', e.id is not null, 'mode', booking.guest_mode(r.id),
-      'guests', (select count(*) from booking.guests g where g.event_id = e.id and g.deleted_at is null and not g.preview),
-      'complete', (select count(*) from booking.guests g where g.event_id = e.id and g.deleted_at is null and not g.preview
+      'guests', (select count(*) from booking.guests g where g.event_id = e.id and g.deleted_at is null and not g.preview and g.portal_role is null),
+      'complete', (select count(*) from booking.guests g where g.event_id = e.id and g.deleted_at is null and not g.preview and g.portal_role is null
                       and cardinality(booking.guest_missing(g, booking.guest_mode(r.id))) = 0),
       'as', case when booking.organizer_grant(v_actor, r.id) then 'organizer' else 'coorganizer' end,
       'as_guest_id', (select ag.id from booking.account_guests(v_actor) ag where e.id is not null and ag.event_id = e.id order by ag.created_at limit 1))
