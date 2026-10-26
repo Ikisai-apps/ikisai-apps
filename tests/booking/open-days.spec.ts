@@ -125,3 +125,25 @@ test('servicio de barra: los cierres del día de Flow en la ficha del evento (pe
   await expect(bar).toContainText('Lo más vendido: α Caña × 120 · A Montadito de lomo × 64');
 });
 
+test('ofertas de comida de Food en la ficha del evento, junto a las cartas', async ({ page }) => {
+  const api = harness.api;
+  const res = api.serverInsert(RESERVATIONS, { title: 'Jornadas con ofertas', status: 'confirmada', start_date: inDays(3), end_date: inDays(5), expected_guests: 80, event_type: 'jornadas_abiertas', priority: 'media' });
+  api.serverInsert(FINANCE, { id: res.id });
+  const event = api.serverInsert(EVENTS, { reservation_id: res.id });
+  api.setOffers([
+    { offer_id: 'o2', event_id: event.id, name: 'Barra', meal_groups: [], days: null, services: null, place: 'Terraza', payer: 'huesped', charge_when: 'barra', menu_kind: 'carta', menu_id: 'c1', price_cents: null, active: true, position: 2 },
+    { offer_id: 'o1', event_id: event.id, name: 'Cena de ponentes', meal_groups: ['Ponentes'], days: [inDays(3)], services: ['cena'], place: 'Comedor', payer: 'organizador', charge_when: null, menu_kind: 'cerrado', menu_id: 'm1', price_cents: null, active: true, position: 1 },
+    { offer_id: 'o3', event_id: 'otro', name: 'De otro evento', meal_groups: [], days: null, services: null, place: null, payer: null, charge_when: null, menu_kind: 'cerrado', menu_id: null, price_cents: null, active: true, position: 0 },
+  ]);
+  await login(page, harness.baseURL);
+  await page.goto(`${harness.baseURL}/#/reservas/${res.id}`);
+  const list = page.locator('#foodOffers #offersList li');
+  await expect(list).toHaveCount(2);
+  await expect(list.nth(0)).toContainText('Cena de ponentes');
+  await expect(list.nth(0)).toContainText('Para Ponentes');
+  await expect(list.nth(0)).toContainText('Paga el organizador');
+  await expect(list.nth(1)).toContainText('Para todos los huéspedes');
+  await expect(list.nth(1)).toContainText('Paga el huésped en barra');
+  await expect(list.nth(1)).toContainText('Carta');
+});
+

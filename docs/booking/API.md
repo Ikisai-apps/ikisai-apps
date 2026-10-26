@@ -1805,4 +1805,8 @@ Hito 2 (migración 0484): la ficha según el tipo (`apps/booking/src/ui/eventKin
     - Son idempotentes y devuelven `{guest_id, arrived_at, left_at, revision}`; `undo` deshace.
     - Errores: `SES_ALREADY_REGISTERED` (deshacer la llegada de quien ya está comunicado), `GUEST_ALREADY_LEFT` (deshacer la llegada de quien ya salió), `TEAM_GUEST` (las fichas de equipo no marcan llegada), `PREVIEW_READ_ONLY` y `NOT_FOUND`.
   - `booking.guests.left_at`, con `left_at >= arrived_at`.
+- **Ofertas de comida** (Food #758): en la ficha, en Comidas y junto a las cartas, «Ofertas de comida (Food)».
+  - Lee `GET read/food.event_offers_projection?where[event_id]=…`.
+  - Por oferta: nombre, carta o menú cerrado, para qué grupos (o todos), qué días y servicios, dónde y quién paga (y cuándo).
+  - Solo lee, con red, y lo hace una vez por visita.
 
