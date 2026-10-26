@@ -46,7 +46,7 @@ async function login(page: Page, url = `${baseURL}/equipo`): Promise<void> {
 
 async function enterBar(page: Page): Promise<void> {
   await page.getByRole('button', { name: /Barra · Evento de octubre/ }).first().click();
-  await expect(page.getByRole('heading', { name: 'Guías de la barra' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Guías' })).toBeVisible();
 }
 
 test('flow · login con contraseña errónea avisa y no entra', async ({ page }) => {

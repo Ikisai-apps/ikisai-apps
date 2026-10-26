@@ -11,8 +11,10 @@ alter table flow.projects add column booking_event_id uuid;
 alter table flow.projects add column starts_on date;
 alter table flow.projects add column ends_on date;
 alter table flow.projects add column cover_image text check (cover_image is null or cover_image ~ '^/[a-z0-9/_.-]+\.(webp|jpg|png)$');
+-- Modo pruebas (VG, 26-10): se cobra y se cuenta igual, pero el Cierre del día no envía ingresos a Finance.
+alter table flow.projects add column test_mode boolean not null default false;
 alter table flow.projects add constraint projects_dates_check check (starts_on is null or ends_on is null or ends_on >= starts_on);
-select core.register_table('flow', 'flow', 'projects', array['name','status','notes','booking_event_id','starts_on','ends_on','cover_image'], '{reader,editor,owner,outsider}', '{owner}', false);
+select core.register_table('flow', 'flow', 'projects', array['name','status','notes','booking_event_id','starts_on','ends_on','cover_image','test_mode'], '{reader,editor,owner,outsider}', '{owner}', false);
 
 -- El proyecto de la barra, con su portada y las fechas del evento (§14 del canon: del 30-10 al 1-11-2026).
 update flow.projects set cover_image = '/guias/carta-general-mini.webp', starts_on = '2026-10-30', ends_on = '2026-11-01'
