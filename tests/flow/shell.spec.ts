@@ -40,7 +40,13 @@ async function login(page: Page, url = `${baseURL}/equipo`): Promise<void> {
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('heading', { name: 'Guías de la barra' })).toBeVisible();
+  // Al entrar: la lista de flujos (VG 26-10); se entra en el de la barra.
+  await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
+}
+
+async function enterBar(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /Barra · Evento de octubre/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Guías' })).toBeVisible();
 }
 
 test('flow · login con contraseña errónea avisa y no entra', async ({ page }) => {
@@ -51,11 +57,14 @@ test('flow · login con contraseña errónea avisa y no entra', async ({ page })
   await expect(page.locator('#loginError')).toHaveText('Correo o contraseña incorrectos.');
 });
 
-test('flow · login → Inicio con las guías y las cinco pestañas; menú común con perfil; cerrar sesión vuelve al login', async ({ page }) => {
+test('flow · login → flujos → Inicio de la barra con las guías y sus cinco pestañas; menú común con perfil; cerrar sesión vuelve al login', async ({ page }) => {
   await login(page);
+  await expect(page).toHaveTitle('Flujos · Ikisai Flow');
+  await expect(page.locator('a.navbtn')).toHaveCount(0); // sin barra fuera de un flujo
+  await enterBar(page);
   await expect(page).toHaveTitle('Inicio · Ikisai Flow');
   // Casa + cuatro columnas (§15.1).
-  for (const name of ['Inicio', 'Caja', 'Preparación', 'Servicio', 'Logística']) await expect(page.locator(`a.navbtn`, { hasText: name }).first()).toBeVisible();
+  for (const name of ['Inicio', 'Pedido y cobro', 'Preparación', 'Servicio y entrega', 'Logística']) await expect(page.locator(`a.navbtn`, { hasText: name }).first()).toBeVisible();
   await page.locator('#appLauncher').click();
   const drawer = page.locator('#appMenu');
   await expect(drawer).toBeVisible();

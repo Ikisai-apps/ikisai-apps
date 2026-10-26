@@ -28,9 +28,9 @@ export interface MenuProduct {
 export interface ProductAssets { icon: string; medal: string; thumb: string; zoom: string }
 
 export function productAssets(imageKey: string | null | undefined): ProductAssets | null {
-  if (!imageKey || !/^[a-z0-9-]+\/[a-z0-9-]+$/.test(imageKey)) return null;
+  if (!imageKey || !/^[a-z0-9_-]+\/[a-z0-9_-]+$/.test(imageKey)) return null;
   const base = `/assets/${imageKey}`;
-  return { icon: `${base}/icono.svg`, medal: `${base}/medallon.svg`, thumb: `${base}/miniatura.webp`, zoom: `${base}/zoom.webp` };
+  return { icon: `${base}/icono.svg`, medal: `${base}/medallon.webp`, thumb: `${base}/miniatura.webp`, zoom: `${base}/zoom.webp` };
 }
 
 export interface MenuGroup {
