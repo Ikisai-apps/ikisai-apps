@@ -23,7 +23,7 @@ const proposalRow = async (id: string) => (await app.t.db.query<Record<string, a
 test('mínimo · por debajo pide motivo y lo guarda; por encima no; el detalle del portal trae los campos de B14', async () => {
   const cond = uuid(); const res = uuid();
   await ok([{ op: 'insert', table: TABLES.conditions, id: cond, fields: { name: 'Con mínimo', is_default: true, minimum_total: 2500 } }]);
-  await ok([{ op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Retiro mínimo', status: 'negociacion', event_type: 'formacion', start_date: '2028-06-02', end_date: '2028-06-04',
+  await ok([{ op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Retiro mínimo', status: 'negociacion', event_type: 'jornadas_abiertas', start_date: '2028-06-02', end_date: '2028-06-04',
     expected_guests: 10, special_setup: true, technical_support: true } }]);
 
   const low = uuid();
@@ -48,5 +48,5 @@ test('mínimo · por debajo pide motivo y lo guarda; por encima no; el detalle d
   await app.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('organizers', $1, 'editor', $2::jsonb)`, [org, JSON.stringify({ grants: [{ reservation_id: res }] })]);
   const detail = (await app.t.rpc('core_read', { p_app: 'organizers', p_actor: org, p_name: 'booking.portal_reservation_detail', p_args: { reservation_id: res } })) as any;
   assert.deepEqual([detail.event_type, detail.special_setup, detail.technical_support, detail.dates_definitive, detail.organizer_notes, typeof detail.revision],
-    ['formacion', true, true, false, null, 'number']);
+    ['jornadas_abiertas', true, true, false, null, 'number']);
 });

@@ -72,7 +72,7 @@ Una fila = una reserva (regla madre de C03 §2). Es la parte comercial.
 code                  text unique            -- RSV_AAAA_NNN, lo pone el trigger; no escribible
 title                 text not null          -- 1..200; nombre visible del grupo o evento
 event_type            text not null default 'retiro'
-                      check in (retiro, convivencia, formacion, encuentro, actividad_divulgativa, alquiler_grupo, otro)
+                      check in (retiro, jornadas_abiertas, familiar) — 0482, §30
 status                text not null default 'en_estudio'
                       check in (en_estudio, negociacion, pre_reservada, confirmada, en_ejecucion, cerrada, cancelada, perdida)
 priority              text not null default 'media' check in (alta, media, baja)
@@ -1725,4 +1725,17 @@ Una fila por turno no cancelado de un evento de `event_projection`: `event_id`, 
 ### 28.3 Servicio de barra (decisión de Core del 26-10-2026)
 
 Flow guarda sus cierres del día en su schema y publica `flow.booking_service_projection`, abierta a Booking con `core.allow_read`. Booking la lee y la ficha del evento la enseña en «Servicio de barra». No hay tabla ni procedimiento en `booking.*` para esto.
+
+## 30. Tipos de reserva (migración 0482; encargo de VG del 26-10-2026)
+
+`event_type` tiene tres valores:
+- `retiro`: la actividad principal.
+- `jornadas_abiertas`: evento abierto, con venta a la carta y alojamiento a la carta sobre la marcha.
+- `familiar`: de la casa, sin precios ni alojamiento; come del menú de casa de Food.
+
+Mapeo de los valores anteriores: `convivencia`, `formacion`, `encuentro`, `actividad_divulgativa` y `alquiler_grupo` pasan a `retiro`; `otro` pasa a `jornadas_abiertas`. `booking.rates.event_types` sigue el mismo mapeo, sin repetir valores. Food recibe el valor nuevo en `food_event_projection.event_type`.
+
+Siguiente (hito 2): el alta y la ficha cambian según el tipo.
+- Jornadas abiertas: sin régimen de comidas; cartas de Food (`food.booking_carta_projection`, `reservations.food_carta_ids`); «Alojar a alguien» con huésped y `room_assignment` con fechas.
+- Familiar: sin propuesta, cobro, tarifas ni alojamiento; «Menú de casa (Food)».
 
