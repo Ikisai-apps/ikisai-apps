@@ -34,7 +34,7 @@ test.beforeAll(async () => {
     { op: 'insert', table: 'resources.spaces', id: ids.albergue, fields: { parent_id: a3, kind: 'edificio', name: 'Albergue' } },
     { op: 'insert', table: 'resources.spaces', id: ids.despensa, fields: { parent_id: ids.albergue, kind: 'almacen', name: 'Despensa' } },
     { op: 'insert', table: 'resources.items', id: ids.harina, fields: { name: 'Harina', kind: 'ingrediente', base_unit: 'g', min_quantity: 5000, default_space_id: ids.despensa } },
-    { op: 'insert', table: 'resources.items', id: ids.aceite, fields: { name: 'Aceite de oliva', kind: 'ingrediente', base_unit: 'ml', default_space_id: ids.despensa } },
+    { op: 'insert', table: 'resources.items', id: ids.aceite, fields: { name: 'Aceite de girasol', kind: 'ingrediente', base_unit: 'ml', default_space_id: ids.despensa } },
   ]);
   expect(first.status, JSON.stringify(first.data)).toBe(200);
   const second = await resources([
@@ -124,7 +124,7 @@ test('inventario · catálogo sin ámbito, filtros, enlace con filtro, alta ráp
   await page.getByRole('link', { name: '← Inventario' }).click();
   await row(page, ids.aceite).locator('.stk-open').click();
   await expect(page).toHaveURL(new RegExp(`#/inventario/${ids.aceite}$`));
-  await expect(page.locator('.stk-sheet-title')).toHaveText('Aceite de oliva');
+  await expect(page.locator('.stk-sheet-title')).toHaveText('Aceite de girasol');
   await page.getByRole('tab', { name: 'Movimientos' }).click();
   const moves = page.locator('.stk-movements');
   await expect(moves.locator('.stk-mov')).toHaveCount(2);
@@ -176,14 +176,14 @@ test('inventario · baldosas por defecto, «Lista» a un toque, Trasladar y Cont
   // Chip del sitio donde hay algo (la despensa, con el aceite).
   await expect(page.locator('.stk-chips').getByRole('button', { name: 'Despensa', exact: true })).toBeVisible();
   // Gastar, Entrada, Contar y Trasladar en cada artículo, con su nombre.
-  for (const name of ['Gastar', 'Entrada', 'Contar', 'Trasladar']) await expect(tile(page, ids.aceite).getByRole('button', { name: `${name}: Aceite de oliva` })).toBeVisible();
+  for (const name of ['Gastar', 'Entrada', 'Contar', 'Trasladar']) await expect(tile(page, ids.aceite).getByRole('button', { name: `${name}: Aceite de girasol` })).toBeVisible();
   // Contar abre el recuento solo de ese artículo (no el de todo).
-  await tile(page, ids.aceite).getByRole('button', { name: 'Contar: Aceite de oliva' }).click();
+  await tile(page, ids.aceite).getByRole('button', { name: 'Contar: Aceite de girasol' }).click();
   await expect(dialog.locator('.stk-count-line')).toHaveCount(1);
   await expect(dialog.locator(`.stk-count-line[data-item-id="${ids.aceite}"]`)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await tile(page, ids.aceite).getByRole('button', { name: 'Trasladar: Aceite de oliva' }).click();
+  await tile(page, ids.aceite).getByRole('button', { name: 'Trasladar: Aceite de girasol' }).click();
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');
 
