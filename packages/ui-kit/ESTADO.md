@@ -1,9 +1,10 @@
 # UI kit · estado
 
-Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `packages/ui-kit`.
+Actualizado: 26 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), directorio `packages/ui-kit`.
 
 ## Hecho
 
+- v0.57.1: icono de Flow (`board`) en el lanzador; antes salía `grid`, como Central.
 - v0.56.0: `labelJoin` en `createSpaceMap` y `openLabel` por tarjeta en `createFocus`.
 - v0.57.0: la pieza «envase» (`Envase`), `renderTile` con varios mandos y la estantería `createShelves` (MUELA-093 y 094); el asa de `createSortableList` a 46 × 46 (MUELA-095).
 - v0.55.0: `createSpaceMap` para Tasks: todos los dibujos a la vez, solo plano y cifra corta en el dibujo.
