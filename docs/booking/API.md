@@ -1743,7 +1743,7 @@ Flow guarda sus cierres del día en su schema y publica `flow.booking_service_pr
    - No cuentan en `guest_summary` ni en los recuentos de `portal_reservations`.
    - No van a SES aunque duerman: `ses_status = 'no_aplica'` y no se puede marcar su llegada.
    - Ven el menú como un huésped.
-   - Solo eligen entre camas de equipo. Ese dato aún no existe (se ha preguntado a Core); mientras tanto no eligen (`portal_lodging.team: true`, `choice: 'off'`) y la cama la asigna el personal.
+   - Solo eligen entre camas de equipo. Son las de `booking.beds.team_bed` (migración 0483): en modo Booking, «Cama de equipo» en la hoja de la cama; con los espacios en Recursos, el espejo la copia de `attributes.team_bed` (Core, 0812). Eligen cualquiera libre de las habitaciones del evento, sin plazo y confirmada al momento (`portal_lodging.team: true`). Sin ninguna marcada no eligen y la cama la asigna el personal. Los huéspedes nunca ven ni eligen una cama de equipo.
 5. **Dirección («todos»).** `{"all": true}` en `scopes.grants` de Guests y Organizers, concedido por el núcleo por el nivel de casa (0095).
    - Organizers: coorganizador de todas.
      - `portal_reservations` lleva `as` (`'organizer'` o `'coorganizer'`) y `as_guest_id`.
