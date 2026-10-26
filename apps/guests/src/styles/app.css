@@ -567,3 +567,18 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .ghelp-picked{display:flex;align-items:center;gap:6px;margin:0;padding:8px 12px;border-radius:14px;border:2px solid var(--accent-deep);font-weight:700}
 .gplan-backup{margin-top:8px}
 .gplan-backup>summary{cursor:pointer;font-size:var(--text-sm,.875rem);font-weight:700;min-height:44px;display:flex;align-items:center}
+
+/* «Mis retiros» (§9.17) */
+.gretreats{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.gretreats-group{margin:0 0 18px}
+.gretreats-group h3{margin:0 0 8px;font-size:1rem}
+.gretreat{display:flex;align-items:center;gap:12px;margin:0;min-height:46px;color:inherit;text-decoration:none}
+.gretreat-text{display:grid;gap:4px;flex:1;min-width:0}
+.gretreat-off{opacity:.8}
+.gretreats-all{margin-top:24px}
+.gretreats-all .input{width:100%;min-height:46px;margin:0 0 12px}
+.grole-fact{align-items:center}
+.gprogram{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
+#directionJoin{min-height:46px;margin:0 0 16px}
+.gwho{border:0;margin:12px 0 0;padding:0;display:grid;gap:6px}
+.gwho-row{display:flex;align-items:center;gap:8px;min-height:46px}
