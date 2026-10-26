@@ -133,7 +133,8 @@ test('entrega a la gestoría: los apuntes van en el manifest y el CSV; entregada
 
   const csv = await app.handler(new Request(`${app.supabase.url}/functions/v1/invoices-api/api/v1/exports/${exportId}/ingresos_gastos_apps.csv`, { headers: { Origin: app.origin, Authorization: 'Bearer ' + app.tokens.owner } }));
   assert.equal(csv.status, 200);
-  const text = await csv.text();
+  // Response.text() se come el BOM: se lee en bytes para comprobar que va
+  const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await csv.arrayBuffer());
   assert.ok(text.startsWith(CSV_BOM));
   assert.ok(text.includes(`2026-10-31;flow;${REF};ingreso;Barra · Evento de octubre · 31-10;10;1120,45;112,05;1232,50;0,00;cash: 798,00 | bizum: 434,50`), text);
   const taxes = await (await app.handler(new Request(`${app.supabase.url}/functions/v1/invoices-api/api/v1/exports/${exportId}/resumen_impuestos.csv`, { headers: { Origin: app.origin, Authorization: 'Bearer ' + app.tokens.owner } }))).text();
