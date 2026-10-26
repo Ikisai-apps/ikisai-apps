@@ -9,6 +9,7 @@ import { watchData } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
+import { createServiceMode } from './service-mode.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -76,6 +77,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   });
 
   const boot = client.bootstrap();
+  const service = createServiceMode();
   const shell = createAppShell(root, {
     appName: 'Flow',
     markIcon: 'sync',
@@ -85,6 +87,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     navLayout: 'bar',
+    tools: [service.button],
     returnTo: { feedbackId: 'flow.cabecera.volver' },
     menu: {
       label: 'Menú de Flow',
@@ -149,7 +152,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   // Badges de pendientes en cada columna (§2.1).
+  let lastPrepPending: number | null = null;
   const offBadges = watchData(client, (d) => {
+    const prepPending = d.units.filter((u) => u.kind === 'prep' && u.status === 'pending').length;
+    if (lastPrepPending !== null && prepPending > lastPrepPending) service.notifyNew();
+    lastPrepPending = prepPending;
     shell.setBadge('#/caja', d.orders.filter((o) => o.status === 'open').length);
     shell.setBadge('#/preparacion', d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
     shell.setBadge('#/servicio', d.orders.filter((o) => o.status === 'paid').length);
@@ -175,6 +182,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   return () => {
     offStatus();
     offBadges();
+    service.destroy();
     offSessionEnd();
     feedback.destroy();
     review.destroy();

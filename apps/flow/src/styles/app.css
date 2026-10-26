@@ -123,3 +123,6 @@
 .carta-mine-order h3{margin:0 0 6px;font-size:1rem}
 .carta-general{display:block;width:100%;max-width:720px;height:auto;margin:0 auto 12px;border-radius:12px}
 .carta-precios summary{cursor:pointer;font-weight:700;margin:4px 0 8px}
+.service-toggle{display:inline-flex;align-items:center;gap:4px;width:auto;padding:0 10px;border-radius:999px}
+.service-toggle.is-on{background:var(--accent);color:var(--on-accent,#fff)}
+.service-label{font-size:.8rem;font-weight:700}
