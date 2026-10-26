@@ -8,6 +8,7 @@ import { describeError } from '../app/client.ts';
 import { watchData, type FlowData } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
+import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
 import { createServiceMode } from './service-mode.ts';
@@ -191,6 +192,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     let entry: { title: string; slug: string; mount: ViewMount };
     if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };
+    else if (m![2] === 'cierre') entry = { title: 'Cierre del día', slug: 'cierre', mount: mountClosure };
     else {
       const column = columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m![2]);
       const view = column ? COLUMN_VIEWS[column.key] : undefined;
