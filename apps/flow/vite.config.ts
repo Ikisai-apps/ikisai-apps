@@ -14,6 +14,10 @@ function publicShellFiles(dir: string, prefix = '/'): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
     if (name.startsWith('_')) continue; // _worker.js, _headers, _redirects
+    // Guías a tamaño completo: se cargan al ampliarlas, no al instalar (FLOW-DIR-001 §6). Las miniaturas sí se precargan.
+    if (prefix === '/guias/' && !name.endsWith('-mini.webp') && name !== 'logo.webp') continue;
+    // Imágenes de producto: se precargan icono y medallón (pocos KB); miniatura y zoom, al verlas.
+    if (prefix.startsWith('/assets/') && (name === 'zoom.webp' || name === 'miniatura.webp')) continue;
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) out.push(...publicShellFiles(full, `${prefix}${name}/`));
     else out.push(`${prefix}${name}`);

@@ -28,7 +28,8 @@ function validateLocalDependencies(before,after){
   const marks=new Map();for(const start of edges.keys()){if(marks.get(start)===2)continue;const stack=[[start,false]];while(stack.length){const [node,exit]=stack.pop();if(exit){marks.set(node,2);continue}if(marks.get(node)===1)throw Error('Estas dependencias forman un ciclo, incluido el nivel padre/hija.');if(marks.get(node)===2)continue;marks.set(node,1);stack.push([node,true]);for(const dep of edges.get(node))stack.push([dep,false])}}
   for(const [id,{t,p}] of index){const previous=old.get('task|'+scope.id+'|'+id)?.item;if(t.deleted||p.deleted||!t.done||previous?.done||children(p,id).length)continue;
    // Evaluate the final batch: internal dependencies completed together are valid.
-   const pending=effectiveDependencies(t,index).filter(d=>{const target=index.get(d);return target?target.t.deleted||target.p.deleted||status(target.p,target.t)!=='done':t.hiddenBlockers>0||typeof t.hiddenBlockers!=='number'});if(pending.length||t.hiddenBlockers>0)throw Error('Completa primero: '+(pending.map(d=>dependencyText(d,scope)).join(', ')||'la tarea fuera de tu acceso')+'.');
+   // FB_2026_064: «pasos en orden» avisa pero no impide completar; solo las dependencias propias y de la madre (como 0341).
+   const pending=[...new Set([...(t.dependsOn||[]),...(index.get(t.parentId)?.t.dependsOn||[])])].filter(d=>{const target=index.get(d);return target?target.t.deleted||target.p.deleted||status(target.p,target.t)!=='done':t.hiddenBlockers>0||typeof t.hiddenBlockers!=='number'});if(pending.length||t.hiddenBlockers>0)throw Error('Completa primero: '+(pending.map(d=>dependencyText(d,scope)).join(', ')||'la tarea fuera de tu acceso')+'.');
   }
  }
 }

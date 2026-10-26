@@ -1,6 +1,6 @@
 /** Datos de un menú leídos del espejo local, compartidos por sus pestañas (Menú, Compra, Preparación, Cierre). */
 import type { SyncClient } from '@ikisai/sync-client';
-import type { Equipment, Ingredient, Menu, MenuGraph, MenuItem, MenuService, Recipe, RecipeEquipment, RecipeIngredient } from '@ikisai/domain-food';
+import { closedMenus, type Equipment, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type Recipe, type RecipeEquipment, type RecipeIngredient } from '@ikisai/domain-food';
 import { T, type Mirror } from './client.ts';
 import type { PhotoRef } from './photos.ts';
 
@@ -51,7 +51,7 @@ export const MENU_TABLES = [T.menus, T.menuServices, T.menuItems, T.recipes, T.r
 /** Grafo de cada menú vivo, leído del espejo una sola vez (para Inicio y Eventos). */
 export async function loadAllMenuGraphs(client: SyncClient): Promise<Map<string, MenuGraph>> {
   const [menus, services, items, recipes, lines, ingredients] = await Promise.all([
-    client.list(T.menus) as Promise<Mirror<Menu>[]>,
+    client.list(T.menus).then((rows) => closedMenus(rows as Mirror<Menu>[])),
     client.list(T.menuServices) as Promise<Mirror<MenuService>[]>,
     client.list(T.menuItems) as Promise<Mirror<MenuItem>[]>,
     client.list(T.recipes, { includeDeleted: true }) as Promise<RecipeRow[]>,

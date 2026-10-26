@@ -1569,6 +1569,7 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - `tasks.tasks.step_free` (en una hija, «Soltar de la cadena» en su editor): fuera de la cadena, ni espera ni bloquea. Se mantiene al reordenar.
 - El servidor (`tasks.step_blocker`, `tasks.validate_batch`, migración `0320`) y el dominio (`stepBefore` en `graph.ts`) calculan lo mismo. Convive con las dependencias manuales: `TASK_BLOCKED` devuelve las dos.
 - En el editor de una tarea principal salen sus hijas (marcar, abrir) y «+ Nueva hija» (FB_2026_044).
+- **Desde el 26-10-2026 (FB_2026_064, decisión de VG, migración `0341`), el paso anterior es un aviso, no una regla:** un paso se puede marcar aunque el anterior esté pendiente, sin mensaje. Sigue saliendo como «espera al paso anterior» y en `statuses` (`blockedBy`), pero `validate_batch` y `completionBlockers` ya no lo cuentan: `TASK_BLOCKED` solo lleva las dependencias manuales (propias y de la madre).
 
 ## 29. Oficios para Central: lectura `tasks.action_labels` (fase P1 de `coordinacion/ampliacion/RECURSOS.md` §13.3, 13-10-2026)
 
@@ -1991,3 +1992,59 @@ Pantalla nueva «Hoy» y el sol (☀) en cada tarea. VG: «lo que quiero es que 
   - Quien solo lee: el arco, su plan y «Apunta aquí lo tuyo». No tiene sol, ni buscar, ni «Para coger», ni «Llevar a…».
   - Un aviso cada vez: `hideToast()` antes de cada «Deshacer» de Tasks (`offerLocalUndo`, `undoToast`, «Por clasificar» y el reporte). Compras se rehará en su PR.
 - **Pruebas:** `tests/tasks/dayplans.test.ts` (privacidad por snapshot, changes e history; nadie escribe el de otro; la lectora solo con texto; una tarea que no se ve; el outsider; uno por día; elementos) y `tests/tasks/hoy.spec.ts` (las PRUEBAS del traspaso 095, sin red y la lectora).
+
+## 39. «Pedir a Tasks» desde otra app (Flow, 26-10-2026; encargo de VG por Core para el jueves)
+
+Flow tiene tareas de logística de un toque durante el servicio («reponer tomate»). Desde una de ellas, «Pedir a Tasks» la convierte en una **tarea** o en una **solicitud de compra** de Tasks, ligada a un proyecto de Tasks (el del montaje de la barra). Flow llama desde su Edge con el token de la persona (contrato §5.3 y §8: lo pide por la API de Tasks, que decide); quien pide tiene que ser `editor` u `owner` de Tasks y ver ese proyecto. No hace falta migración ni procedimiento nuevo.
+
+### 39.1 Elegir el proyecto: `POST /api/v1/read/tasks.targets`
+
+- Cuerpo `{}` (o `{"tabId": "<área>"}`) → `{tabs: [{id, name, projects: [{id, title, status, system, deleted, …, tasks: […]}]}]}`, solo lo que ve quien llama, sin papelera ni archivados por defecto.
+- Proyectos abiertos para «Pedir a Tasks»: los de `projects` con `!system`, `status !== 'archived'` y `!deleted` (`status` es `active` o `paused`).
+- Flow guarda el `id` del proyecto elegido en su proyecto de la barra (una vez) y lo manda en cada petición. Si deja de valer, Tasks responde 404 y Flow vuelve a pedir que se elija.
+
+### 39.2 Una tarea: `POST /api/v1/requests/task` (§19 y §20, ya existe)
+
+```http
+POST https://tasks.ikisai.com/api/v1/requests/task
+Authorization: Bearer <token de la persona>
+
+{"source": "flow", "kind": "flow.logistics", "kind_label": "Logística de la barra", "external_ref": "<id de la unidad de Flow>",
+ "title": "Reponer vasos", "note": "Desde la barra · 31-10", "project_id": "<proyecto>", "priority": "high"}
+```
+- `external_ref`: el id de la unidad `flow.units` (o `unit:<id>`). La tarea se crea **una vez** por referencia (id derivado de `flow:<ref>`): repetir devuelve la misma (`created: false`), sin tocarla.
+- Destino (§20.3): manda la regla de Entrada del tipo `flow.logistics` si el usuario la crea; si no, el `project_id` sugerido.
+- Respuesta `{created, routed, task: {kind: 'task', id, tabId, projectId, title, done, revision, deleted, archived, externalRef}}`. Estado más tarde: `POST read/tasks.targets {"kind": "task", "ids": [...]}`.
+
+### 39.3 Una compra: `POST /api/v1/requests/purchase` (nueva, rama `tasks/flow-pedir`)
+
+```http
+POST https://tasks.ikisai.com/api/v1/requests/purchase
+Authorization: Bearer <token de la persona>
+
+{"source": "flow", "external_ref": "<id de la unidad>", "title": "Tomate rallado", "quantity": 3, "unit": "kg",
+ "note": "Para el turno de noche", "project_id": "<proyecto>", "priority": "normal", "due": "2026-10-31"}
+```
+
+| Campo | Obligatorio | Notas |
+|---|---|---|
+| `source` | sí | `[a-z][a-z0-9_-]{1,30}`: `flow`. |
+| `external_ref` | sí | 1 a 150 caracteres. |
+| `title` | sí | Hasta 300 caracteres. |
+| `project_id` | sí | Un proyecto que quien pide ve; de él sale el área (`tab_id`). Archivado: `422 PROJECT_ARCHIVED`. |
+| `quantity`, `unit` | no | Número mayor que 0 (tres decimales) y unidad de hasta 20 caracteres. |
+| `note` | no | Hasta 4000 caracteres. |
+| `priority`, `due` | no | `normal`, `high` o `critical`; `AAAA-MM-DD`. |
+
+- Es la operación de siempre (`insert` en `tasks.purchase_requests` por `core.commit`, con el hook): nace **«pedida»**, con «Llegará factura», al final de la lista del área, y la aprueba quien aprueba compras en esa área. En la estantería sale en su tienda (sin tienda: «Sin tienda»).
+- **Una vez por referencia:** id derivado de `ikisai-tasks-purchase:flow:<ref>`. Repetir, también a la vez y **para el mismo proyecto**, devuelve la misma (`created: false`) sin cambiarla. Si esa referencia ya está en otro proyecto, `409 EXTERNAL_REF_IN_USE` sin datos: una referencia no sirve para leer ni para adoptar una solicitud ajena. Como en §19, `source` es un espacio de nombres, no una credencial (decisión de Core): lo que protege es el permiso de quien llama y el proyecto. Flow usa como referencia el uuid de la unidad, que no se adivina.
+- **Procedencia:** la nota empieza por «Pedida desde flow · <referencia>» (sin columna nueva).
+- **Respuesta:** `{created, purchase: {kind: 'purchase_request', id, tabId, projectId, title, status, quantity, unit, revision, deleted, externalRef}}`.
+- **Errores:** `403 FORBIDDEN` (lector o sin rol), `404 NOT_FOUND` (el proyecto no existe o no lo ve), `422 INVALID_INPUT` (con `field`), `422 PROJECT_ARCHIVED`, `409 EXTERNAL_REF_IN_USE` (la referencia ya es de una solicitud de otro proyecto).
+- **Pruebas:** `tests/tasks/requests-purchase.test.ts` (crear y repetir, a la vez, alcance, archivado, lector, entrada mala, la tarea con `source: 'flow'` y la lista de proyectos abiertos).
+
+### 39.4 Lo que no hace (V1)
+
+- Tasks no avisa a Flow cuando la tarea o la compra cambian: Flow consulta el estado cuando lo enseña (`tasks.targets` con `ids` para las tareas; para la compra, la respuesta de `requests/purchase` repetida con la misma referencia, que devuelve su `status`).
+- Sin artículo de Recursos (`item_id`) ni tienda: los pone quien la aprueba en Tasks.
+- Un agente no usa estas rutas: tiene `tasks_create_task` y `tasks_request_purchase` (MCP).

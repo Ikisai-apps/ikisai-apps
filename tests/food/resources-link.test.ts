@@ -115,8 +115,8 @@ test('enlace · el servidor comprueba el artículo: que exista, que sea del tipo
 
 test('enlace · un ingrediente que nace enlazado desde el recetario (artículo de otra app) recibe su referencia', async () => {
   const oil = uuid(), ingredient = uuid();
-  await ok('resources/commands', [insert('resources.items', oil, { name: 'Aceite de oliva', kind: 'ingrediente', base_unit: 'l' })]);
-  await ok('commands', [insert('food.ingredients', ingredient, { name: 'Aceite de oliva', preferred_unit: 'l', item_id: oil })]);
+  await ok('resources/commands', [insert('resources.items', oil, { name: 'Aceite de girasol', kind: 'ingrediente', base_unit: 'l' })]);
+  await ok('commands', [insert('food.ingredients', ingredient, { name: 'Aceite de girasol', preferred_unit: 'l', item_id: oil })]);
   assert.deepEqual((await link()).map((s) => [s.kind, 'fields' in s ? s.fields : null]), [['sync', { source_refs: [ingredientRef(ingredient)] }]]);
   assert.deepEqual(await link(), []);
 });

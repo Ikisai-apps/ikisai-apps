@@ -11,13 +11,17 @@ if (!root) throw new Error('Falta el contenedor #app');
 
 applyTheme();
 
-/** Carta pública (canon V1 §3): `/carta`, sin sesión ni espejo local. Lo demás es la app del personal. */
-const isPublic = /^\/carta\/?$/.test(location.pathname);
+/**
+ * Entradas separadas (FLOW-DIR-001 §8): `flow.ikisai.com/` abre la carta pública, sin login ni espejo local; el área del
+ * personal va en `/equipo` (login del kit, menú común, PWA).
+ */
+export const STAFF_PATH = '/equipo';
+const isStaff = location.pathname === STAFF_PATH || location.pathname.startsWith(`${STAFF_PATH}/`);
 
-if (isPublic) {
-  mountCarta(root);
-} else {
+if (isStaff) {
   startStaffApp(root);
+} else {
+  mountCarta(root);
 }
 
 function startStaffApp(root: HTMLElement): void {

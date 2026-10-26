@@ -121,7 +121,70 @@ Lo mecánico (escenarios de Playwright siguiendo un patrón aprobado) puede ir a
 ## 13. Preguntas y peticiones
 
 - **P-1 (Core): aprobado.** `flow-api` atiende `public/menu` antes de pasar la petición al kit. Nada genérico en el kit por ahora.
-- **P-2 (VG, por Core):** ¿anular un cobro y devolver dinero en un ajuste exigen encargado (owner)? La propuesta es que sí.
+- **P-2: decidido por VG.** Anular un cobro o devolver dinero lo puede hacer el owner o quien hizo ese cobro (`paid_by`). Al resto, `FORBIDDEN` («Solo quien cobró o el encargado»). Va en la 0901.
 - **P-3 (Core): aprobado.** Pull cada 3 s con la app visible.
-- **P-4 (VG, por Core):** las imágenes: dónde viven las guías y si hay miniaturas por producto. Ya la lleva Core.
+- **P-4: decidido por VG.** Las 4 guías, la carta general y el logo van en `apps/flow/public`, en webp de 1600 px como máximo. Miniaturas por producto solo si el recorte queda limpio; si no, medallón con el código. Sin bucket. **No hay QR personal de acceso**: basta el login del kit.
 - **P-5: cerrado.** La semilla crea «Barra · Evento de octubre», y el nombre es editable.
+
+## 14. FLOW-DIR-001 (precisiones de VG del 26-10): cambios de modelo, migración `0901`
+
+La `0900` queda tal cual: se publica con #707 y luego es inmutable. Lo siguiente va en la `0901_flow_customers`.
+
+**Rutas (§8):** `flow.ikisai.com/` abre la **carta pública**, sin login. El área de personal va en **`/equipo`**, con el login del kit, el menú común y la PWA (`start_url` y `scope` en `/equipo/`).
+
+**Tablas nuevas o cambiadas:**
+
+| Tabla | Cambio |
+|---|---|
+| `flow.customers` (nueva) | Cliente anónimo del servicio (§1). Columnas: `project_id` FK, `number int` (único por proyecto; lo asigna el servidor al primer envío, correlativo desde 100 y sin reutilizarse), `token_hash text unique` (SHA-256 de un token aleatorio de 32 bytes que **solo vive en el navegador** del cliente; nunca se guarda el token). Lectura: personal. Escritura: solo los procedimientos públicos. `never_purge`. |
+| `flow.orders` | `customer_id uuid null` FK a `customers`: el pedido enviado desde la carta, o el de caja si se asocia a un número. `parent_id uuid null` FK a `orders`: una **ampliación** (§3). |
+| `flow.order_lines` | `delivered_qty int not null default 0 check (0 ≤ delivered_qty ≤ quantity)`: cantidad realmente entregada («1 de 3 aguas», §2). Sustituye a `delivery_checked`, que se elimina. El cliente la escribe también con el pedido cobrado; su historia queda en `core.changes`. |
+| `flow.payments` | `kind` pasa a admitir `refund` (sustituye a `adjustment` con importe negativo). Columnas nuevas: `settled_at`, `settled_by`. Una devolución nace **pendiente** (`settled_at null`) y se cierra con `confirm_refund` cuando el dinero se ha devuelto de verdad (§3). Un `charge` positivo de ampliación es un pedido aparte con su propio `charge`. |
+
+**Procedimientos:**
+
+- `confirm_payment`: sin cambios. Cobrar una **ampliación** (un pedido con `parent_id`) le da su propio `pay_seq`, al final de la cola, y genera sus unidades en ese momento. La secuencia del pedido original nunca se recalcula.
+- `create_extension` (nuevo): `{parent_order_id, lines}` crea la ampliación abierta, ligada al padre y a su cliente. Hasta que se cobra no genera unidades.
+- `adjust_paid_order`: **solo reduce**. Primero cancela unidades pendientes. Si tiene que tocar unidades en curso o terminadas, falla con `REDUCTION_NEEDS_CONFIRMATION` y el detalle de lo afectado, salvo que llegue `confirm_started: true`. La diferencia crea un `refund` pendiente. Lo puede hacer el owner o quien cobró (P-2).
+- `confirm_refund` (nuevo): `{payment_id}` cierra una devolución pendiente (`settled_at` y `settled_by`). Owner o quien cobró.
+- `reverse_payment`: owner o quien cobró (P-2).
+- `deliver_order`: lo pendiente es ahora «unidades sin terminar + líneas con `delivered_qty < quantity`». Mientras quede algo, el pedido sigue `paid`; cerrarlo con algo pendiente exige `confirm_exception`, como antes.
+- **Escritura pública** (contrato de Core, migración core 0094): no son procedimientos. `flow-api` manda operaciones de fila con `applyPublicOperations` (actor «Flow (sistema)», lote público). La guarda solo deja, dentro de un lote público (`core.is_public_batch()`), crear el cliente (el número lo pone el trigger), crear su pedido `open`/`public` e insertar o cambiar líneas de un pedido público abierto.
+- **Rutas públicas de `flow-api`** (antes del kit, `no-store` salvo la carta):
+  - `GET public/menu`: la carta, con `imageKey` por producto.
+  - `POST public/customer`: genera el token (32 bytes), guarda solo su SHA-256 y devuelve `{token, number}`.
+  - `POST public/orders`: recibe `{lines: [{productId, quantity}]}` (50 como máximo) con la cabecera `X-Flow-Customer`, crea el pedido del cliente y devuelve `{orderId, number}`.
+  - `GET public/mine`: con la cabecera, `flow_mine` (`core.allow_public_read`) devuelve solo los pedidos de ese cliente, con «n de m preparados» y la cantidad entregada por línea.
+- **Imágenes de producto** (decisión de VG del 26-10): `flow.products.image_key` = `<categoria>/<slug>`. Las rutas se derivan en `_domain/flow` (`productAssets`) a `apps/flow/public/assets/<clave>/{icono.svg, medallon.svg, miniatura.webp, zoom.webp}`. Las genera `apps/flow/scripts/assets.mjs` a partir del `assets_manifest.json` de VG: saneado de SVG igual que Central, miniatura de 40 KB y zoom de 150 KB como máximo. Sin clave, medallón con el código.
+
+**Caja (§1):** busca por número de cliente y muestra sus pedidos por cobrar, en preparación y por entregar. Se cobra el pedido que se elige; nunca otros del mismo cliente automáticamente. La ficha de entrega es un único componente, que se abre desde caja y desde Servicio y vuelve a caja con el contexto (§2).
+
+**Cola (§5–6):** «Ir al siguiente pendiente» solo aparece si el siguiente no está a la vista. Se ven las últimas 10 hechas; las anteriores se despliegan hacia arriba en la misma lista. Cada toque se refleja al momento con «pendiente de confirmar». Solo hay una transición en vuelo por unidad. Un `UNIT_CHANGED` nunca se sobrescribe: la tarjeta muestra el estado real y un aviso localizado.
+
+**Pendiente de Dirección o VG (no bloquea):** la prioridad de las ampliaciones al final de la cola (es la propuesta de Dirección; la implemento así), el detalle de las entregas parciales y la autoría en un puesto compartido (sesión identificada honestamente; nada de usuario común).
+
+## 15. Flujos por evento y acceso por proyecto (navegación de VG del 26-10, migración `0902`)
+
+- **Pantalla inicial de `/equipo`:** la lista de flujos (proyectos), con el más actual arriba: primero los activos, y entre ellos el que está en curso o el más cercano a hoy. Son tarjetas apaisadas con su portada (`renderCover` del kit). Tocar una es entrar: `#/p/<id>`, el Inicio del flujo, con el carrusel de flujos arriba (`createCoverCarousel`; deslizar cambia de flujo) y sus guías. Dentro aparece la barra inferior del shell con sus columnas y badges (`setNav`); fuera no hay barra.
+- **`flow.projects`:** `booking_event_id`, `starts_on`, `ends_on` y `cover_image` (ruta de `apps/flow/public`). Las escribe el owner.
+- **Acceso:** los ámbitos del núcleo, `core.memberships.scopes = {"projects": [uuid…]}`. El owner (Dirección) ve todo. El editor, el lector y el outsider ven solo sus proyectos: `flow-api` filtra cada fila con el hook `visible` (`_domain/flow/scope.ts`). La base aplica la misma regla al escribir: el trigger `flow_scope` por `updated_by`, y `flow.check_scope` en los procedimientos (`PROJECT_OUT_OF_SCOPE`). Todas las tablas llevan `project_id`; en líneas, pagos y componentes lo pone el servidor desde su padre.
+- **Modo pruebas** (`flow.projects.test_mode`, VG 26-10): lo cambia el owner en el Inicio del flujo. Se cobra y se cuenta igual, pero el Cierre del día no envía ingresos a Finance (el botón lo dice). Food y la proyección para Booking sí se envían. Nada se «desfactura» en Finance.
+- **Documentos del flujo** (guías del Inicio): el Inicio lee `projectDocuments(projectId)` (`apps/flow/src/app/documents.ts`). Hoy son las cuatro guías de la barra en el código; después del sábado serán archivos del proyecto (core.files, bucket de Flow), cambiando solo esa función.
+- **Outsiders** (declarado para cuando VG los use; el sábado todos entran como editores): solo `unit_step` (`core.allow_outsider_procedure`) y crear o retocar tareas de Logística. Nada de cobros, ajustes, entregas ni catálogo.
+
+## 16. Cómo se define un flujo nuevo (hoy)
+
+Flow va a ser un generador de flujos (después del sábado, el siguiente es check-in/check-out de un evento). Sin editor todavía, esto es lo que ya es **dato** y lo que aún es **código**:
+
+| Pieza | Hoy | Dónde |
+|---|---|---|
+| Proyecto (nombre, fechas, evento, portada, estado) | Dato | `flow.projects` |
+| Columnas: clave, rótulo, orden y comportamiento (`inspect_confirm`, `quick_steps`, `free_task`) | Dato | `flow.columns` (la barra inferior se construye con ellas) |
+| Unidades de trabajo, su estado (pendiente → en curso → hecha → pendiente), asignación y orden estable | Dato y lógica genérica | `flow.units` y `flow.unit_step` |
+| Rastro de acciones | Dato | `flow.events` (los tipos de evento de la barra aún están en un `check`) |
+| Qué pantalla pinta cada comportamiento | Código, agrupado por comportamiento | `apps/flow/src/ui/prep.ts` (cola con toques: `quick_steps` y `free_task`) y `orders.ts` + fichas (`inspect_confirm`) |
+| Qué vista concreta usa cada columna de la barra (Caja, Servicio…) | Código | `COLUMN_VIEWS` en `ui/shell.ts`, por la clave de la columna |
+| Comercio de la barra: catálogo, pedidos, líneas, pagos, clientes y sus procedimientos | Código y tablas propias de la barra | `flow.products`, `orders`, `order_lines`, `payments`, `customers` y los procedimientos de cobro y entrega |
+| Guías del Inicio | Código (lista por proyecto); serán archivos del proyecto | `app/documents.ts` (`projectDocuments`) |
+
+Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (datos). Si sus columnas usan los comportamientos genéricos con unidades sueltas (como Logística), basta con eso más una entrada en `COLUMN_VIEWS`. Lo que necesite lotes propios (como el pedido de la barra) requiere hoy un módulo específico, igual que la barra. Pendiente para el editor: los tipos de evento, las guías y las piezas de tarjeta como dato.

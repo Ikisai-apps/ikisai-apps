@@ -112,6 +112,10 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 - **Actualizaciones (kit 0.23):** `initAppUpdates` del kit en lugar del `updates.ts` propio: al abrir, o al volver tras más de un minuto, la versión nueva se aplica sola si es seguro (`safeToUpdate`); si no, el banner de siempre.
 - **Fase 5 de los portales (§23.1, migración 0460):** alojamiento delegable: inventario del retiro, ajustes y habitaciones abiertas (solo con baño), elección atómica de cama (`BED_TAKEN`, `CHOICE_CLOSED`, `NOT_OFFERED`), petición con aprobación, reparto del organizador y preferencias de compañeros.
 
+- **Flow, hito 1 (26-10-2026, encargo de VG; migración 0480):** `booking.event_projection` (evento con nombre, tipo, estado, fechas y aforo) y `booking.event_staff_projection` (turnos con cuenta, ficha de Central y nombre corto), abiertas a Flow (API.md §28). Pruebas en `tests/booking/flow-projections.test.ts`. Siguiente: «Servicio de barra» en la ficha, leyendo `flow.booking_service_projection`.
+
+- **Tipos de reserva (26-10-2026, encargo de VG; migración 0482):** retiro, jornadas abiertas y familiar, con el mapeo de los valores viejos (también en las tarifas). API.md §30. Siguiente: el alta y la ficha según el tipo.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).

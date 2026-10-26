@@ -28,7 +28,7 @@ test.beforeAll(async ({ browser }) => {
 });
 test.afterAll(async () => { await context?.close(); await server?.close(); });
 
-test('cabecera del kit en móvil: marca de Tasks visible y la hoja «Apps de Ikisai» con sus tres interruptores @smoke', async () => {
+test('cabecera del kit en móvil: marca de Tasks visible y la hoja «Apps de Ikisai» con sus interruptores (sin «Revisor de QA», FB_2026_072) @smoke', async () => {
   await settled(page);
   const mark = page.locator('#appLauncher');
   await expect(mark).toBeVisible();
@@ -48,7 +48,8 @@ test('cabecera del kit en móvil: marca de Tasks visible y la hoja «Apps de Iki
   await expect(sheet.getByText('Sugerencias y QA').first()).toBeVisible();
   const signal = sheet.getByRole('switch', { name: /Señalar para comentar/ });
   await expect(signal).toBeVisible();
-  await expect(sheet.getByRole('switch', { name: /Revisor de QA/ })).toBeVisible();
+  // FB_2026_072: la revisión de QA es de Central; Tasks ya no lleva el interruptor (el menú ofrece «Revisar en Central»).
+  await expect(sheet.getByRole('switch', { name: /Revisor de QA/ })).toHaveCount(0);
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(shots, 'cabecera-tasks-lanzador.png') });
 

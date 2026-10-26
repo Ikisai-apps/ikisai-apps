@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { eventSnapshot, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
+import { closedMenus, eventSnapshot, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
@@ -201,7 +201,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   }
 
   async function loadMenus(): Promise<void> {
-    menus = (await client.list(T.menus)) as Mirror<Menu>[];
+    menus = closedMenus((await client.list(T.menus)) as Mirror<Menu>[]);
     const [graphs, purchases] = await Promise.all([loadAllMenuGraphs(client), loadPurchases(client)]);
     totals = purchases.fetchedAt ? menuTotals(graphs, purchases.prices) : new Map();
     paint();

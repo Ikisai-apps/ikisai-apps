@@ -72,7 +72,7 @@ Una fila = una reserva (regla madre de C03 §2). Es la parte comercial.
 code                  text unique            -- RSV_AAAA_NNN, lo pone el trigger; no escribible
 title                 text not null          -- 1..200; nombre visible del grupo o evento
 event_type            text not null default 'retiro'
-                      check in (retiro, convivencia, formacion, encuentro, actividad_divulgativa, alquiler_grupo, otro)
+                      check in (retiro, jornadas_abiertas, familiar) — 0482, §30
 status                text not null default 'en_estudio'
                       check in (en_estudio, negociacion, pre_reservada, confirmada, en_ejecucion, cerrada, cancelada, perdida)
 priority              text not null default 'media' check in (alta, media, baja)
@@ -1699,3 +1699,43 @@ Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en f
 | C04 | `cierre_operativo_realizado`, `fecha_cierre_operativo` | `closed_at` |
 | C04 | `ID_feedback_principal` | C10 fuera de alcance |
 | C04 | `huespedes_raw_=>`, `_raw_control_c04`, formularios | mecanismo de Sheets |
+
+## 28. Flow: el evento, su personal y el servicio de barra (migración 0480; encargo de VG del 26-10-2026)
+
+Primer caso: la barra del evento del 30-10 al 1-11-2026. Flow liga su proyecto a un evento de Booking (`flow.projects.booking_event_id`, enlace tipado del contrato §8). Ninguna app escribe en el schema de la otra.
+
+### 28.1 `booking.event_projection` (Flow: reader, editor y owner; Booking)
+
+Una fila por evento vivo cuya reserva no está cancelada ni perdida. Sin importes, sin organizador y sin huéspedes.
+
+| Columna | Origen |
+|---|---|
+| `event_id`, `event_code` | `booking.events` |
+| `name` | título de la reserva |
+| `kind` | `event_type` de la reserva |
+| `status` | estado de la reserva |
+| `starts_on`, `ends_on` | fechas de la reserva (`ends_on` es el día de salida) |
+| `expected_attendance` | `final_guests` del evento si está; si no, `expected_guests` |
+| `event_revision` | revisión del evento |
+
+### 28.2 `booking.event_staff_projection` (Flow: editor y owner)
+
+Una fila por turno no cancelado de un evento de `event_projection`: `event_id`, `user_id` (`member_user_id`, la cuenta Ikisai si la tiene), `central_person_id` (`person_ref_id` si el enlace es a Central), `display_name` (nombre corto, `booking.short_person_name`: «Marta Ruiz» → «Marta R.»), `role` (la función de C05) y `day` (`work_date`; null si es para todo el evento). Sin horas, notas ni nombre completo.
+
+### 28.3 Servicio de barra (decisión de Core del 26-10-2026)
+
+Flow guarda sus cierres del día en su schema y publica `flow.booking_service_projection`, abierta a Booking con `core.allow_read`. Booking la lee y la ficha del evento la enseña en «Servicio de barra». No hay tabla ni procedimiento en `booking.*` para esto.
+
+## 30. Tipos de reserva (migración 0482; encargo de VG del 26-10-2026)
+
+`event_type` tiene tres valores:
+- `retiro`: la actividad principal.
+- `jornadas_abiertas`: evento abierto, con venta a la carta y alojamiento a la carta sobre la marcha.
+- `familiar`: de la casa, sin precios ni alojamiento; come del menú de casa de Food.
+
+Mapeo de los valores anteriores: `convivencia`, `formacion`, `encuentro`, `actividad_divulgativa` y `alquiler_grupo` pasan a `retiro`; `otro` pasa a `jornadas_abiertas`. `booking.rates.event_types` sigue el mismo mapeo, sin repetir valores. Food recibe el valor nuevo en `food_event_projection.event_type`.
+
+Siguiente (hito 2): el alta y la ficha cambian según el tipo.
+- Jornadas abiertas: sin régimen de comidas; cartas de Food (`food.booking_carta_projection`, `reservations.food_carta_ids`); «Alojar a alguien» con huésped y `room_assignment` con fechas.
+- Familiar: sin propuesta, cobro, tarifas ni alojamiento; «Menú de casa (Food)».
+

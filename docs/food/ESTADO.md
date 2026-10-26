@@ -44,6 +44,19 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 - **Ficha de menú y Cierre** (tanda 38, MUELA-091, 20 de octubre de 2026; `docs/food/MENU_CIERRE_INTERFAZ.md`): restricciones en una sola línea plegada encima de las pestañas (se abre sola solo en Menú, en borrador o revisar con avisos por aceptar), portada, «Lo siguiente», foco de lo que falta, menú en lectura con el ⚠ de cada plato y lo ya servido plegado, y estado, portal, comentarios y coste plegados. El Cierre suma comentarios y alérgenos, y deja «Cerrar menú» también allí (con algo pendiente, solo avisa). M1 de Cocina arreglado.
 - **Compra «Estantería» con el envase** (tanda 40, MUELA-093, 20 de octubre de 2026; `docs/food/COMPRA_ESTANTERIA.md`): una estantería por tienda con baldosas, el envase dibujado y su hoja («Guardar en la Despensa» crea una fila de `item_units` habitual, sin cambiar el factor de otra), el carrito y el lote con «Deshacer», el dinero con «≈» y sin sumar 0 €. Regenerar ya no toca lo comprado y redondea al envase habitual (1108). H-C5 arreglado: lo comprado sigue editable y corrige la Despensa.
 
+- **La carta, tanda 1: modelo, ventas y proyección para Flow** (26 de octubre de 2026; decisión de VG para el servicio del sábado 31; API.md §2.10).
+  - **Migración 1109:**
+    - `menus.kind = 'carta'` con `name`;
+    - las tablas `food.carta_lines` y `food.carta_sales`;
+    - `food.record_carta_sales`, idempotente por carta y día;
+    - el coste por unidad desde el inventario;
+    - `food.carta_projection`, registrada para Flow;
+    - la semilla «Barra · Evento de octubre», con 8 montaditos como recetas y 5 artículos de barra.
+  - **food-api** ajusta el stock de Recursos tras registrar las ventas (`carta.ts`) y ofrece `POST carta/stock` para reintentarlo.
+  - **En la app**, las pantallas del menú cerrado no enseñan la carta.
+  - **Prueba:** `carta.test.ts`.
+  - **Pendiente, tanda 2:** la interfaz de la carta. En el alta de Menús se elige el tipo; la vista muestra Clásicos, Gourmet y Barra con código, foto, precio, coste y margen, activar y desactivar y editar el precio; «Usar en otro evento»; y elegir menú para un evento con los dos tipos.
+
 ## Aceptación del usuario (6 de octubre de 2026)
 
 - Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.

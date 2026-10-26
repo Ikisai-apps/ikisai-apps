@@ -35,7 +35,9 @@ for (const file of files) {
       if (schema === 'organizers' && other === 'booking' && ref === 'booking.reservation_end_dates') continue; // fechas de fin para purgar respuestas (B18 de Organizers)
       if (other === 'resources' && ['resources.spaces', 'resources.space_kinds', 'resources.items', 'resources.item_kinds', 'resources.item_units', 'resources.lots', 'resources.movements', 'resources.movement_costs', 'resources.stock_levels', 'resources.item_costs'].includes(ref)) continue; // módulo común: cualquier app lee espacios e inventario en sus hooks (RECURSOS.md §4.2 y §6); escribir, solo vía resources-api
       if (other === 'central' && ['central.person_alive', 'central.trade_alive'].includes(ref)) continue; // comprobaciones de existencia para hooks (P2, Tasks); no devuelven datos de la ficha
-      if (schema === 'tasks' && other === 'invoices' && ref === 'invoices.purchase_request_invoiced') continue; // ¿compra ya ligada a una factura? Solo un booleano para validate_batch de Tasks (deshacer compra, VG 20-10-2026)
+      if (schema === 'tasks' && other === 'invoices' && ref === 'invoices.purchase_request_invoiced') continue;
+      if (schema === 'flow' && other === 'food' && ref === 'food.carta_projection') continue; // la carta de Food que Flow refleja al abrir caja (VG 26-10-2026)
+      if (schema === 'flow' && other === 'booking' && ['booking.event_projection', 'booking.event_staff_projection'].includes(ref)) continue; // el evento y su personal, para el proyecto de Flow (VG 26-10-2026) // ¿compra ya ligada a una factura? Solo un booleano para validate_batch de Tasks (deshacer compra, VG 20-10-2026)
       problems.push(`${file}: referencia a ${ref} fuera de su schema`);
     }
   }

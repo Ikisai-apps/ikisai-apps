@@ -36,7 +36,8 @@ const usage={
 function tasksRealLauncher(){
   if(tasksLauncher)return tasksLauncher;const p=tasksFeedback();
   const launcher=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:async()=>{const c=await Sync.core.api('/apps');p?.setCatalog(c);return c},
-    ...(p?{feedback:p.feedback.mode,review:{get:()=>p.review.mode.get(),set:on=>p.review.mode.set(on),available:()=>p.review.available()},center:openTasksFeedbackCenter}:{})});
+    // FB_2026_072: la revisión de QA es de Central; en Tasks queda «Señalar para comentar» (sin el interruptor «Revisor de QA»).
+    ...(p?{feedback:p.feedback.mode,center:openTasksFeedbackCenter}:{})});
   if(p)tasksLauncher=launcher;return launcher}
 shellLauncher=function(){return {attach(trigger){if(!trigger)return;trigger.setAttribute('aria-haspopup','dialog');trigger.onclick=()=>{void tasksRealLauncher().open()}}}};
 /* Con el menú común (shell-ui.js), el lanzador va dentro del menú: «Apps de Ikisai» y «Comentarios y ayuda». */
@@ -45,11 +46,20 @@ shellLauncher=function(){return {attach(trigger){if(!trigger)return;trigger.setA
 Object.assign(menuPaths,{help:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14 M12 17.5v.01'});
 const navigationBeforeFeedback=navigationGroups;
 navigationGroups=function(){const groups=navigationBeforeFeedback(),system=groups.find(g=>g.id==='system');
-  if(system&&Sync.core)system.items.unshift(['feedbackCenter','Sugerencias y QA','help','action']);return groups};
+  if(system&&Sync.core){system.items.unshift(['feedbackCenter','Sugerencias y QA','help','action']);
+    // FB_2026_072: quien revisa lo hace en Central (#/revision, todas las apps), con «‹ Volver a Tasks».
+    if(tasksReviewAvailable())system.items.splice(1,0,['feedbackReviewCentral','Revisar en Central','help','action'])}
+  return groups};
 function openTasksFeedbackCenter(){const p=tasksFeedback();if(!p)return toast('Aún no hay conexión con la cuenta.');
   closeNavigation?.();IkisaiKit.openFeedbackCenter({api:(path,init)=>Sync.core.api(path,init),app:'tasks',canEdit:()=>canEdit(),feedback:p.feedback})}
 const actionBeforeFeedback=handleTopAction;
-handleTopAction=function(action){if(action==='feedbackCenter')return openTasksFeedbackCenter();return actionBeforeFeedback(action)};
+/* ¿Revisa esta cuenta? (el owner de Central). El kit lo responde con una promesa: se pregunta una vez y se recuerda; hasta
+   saberlo, el menú no ofrece «Revisar en Central». */
+let tasksReviewOk=null;
+function tasksReviewAvailable(){if(tasksReviewOk===null){const p=tasksFeedback();if(p){tasksReviewOk=false;p.review.available().then(v=>{tasksReviewOk=!!v}).catch(()=>{})}}return !!tasksReviewOk}
+/* Enlaces a Central con «‹ Volver a Tasks» (FB_2026_072 y FB_2026_073). */
+function openInCentral(hash){closeNavigation?.();location.assign(IkisaiKit.withReturnTo(CENTRAL_URL+hash,{from:'tasks',url:location.href,title:'Tasks'}))}
+handleTopAction=function(action){if(action==='feedbackCenter')return openTasksFeedbackCenter();if(action==='feedbackReviewCentral')return openInCentral('#/revision');if(action==='accessLogCentral')return openInCentral('#/accesos/registro');return actionBeforeFeedback(action)};
 
 /* --- Marcas -------------------------------------------------------------------------------------------------------- */
 function fbMark(node,mark){if(node&&mark){node.setAttribute('data-feedback-id',mark.feedbackId);node.setAttribute('data-feedback-label',mark.label)}return node}
@@ -73,7 +83,7 @@ const MENU_MARKS={
   portableImport:{feedbackId:'tasks.menu.importar_portable',label:'Importar con adjuntos'},portableExport:{feedbackId:'tasks.menu.exportar_portable',label:'Exportar con adjuntos'},
   backup:{feedbackId:'tasks.menu.respaldo',label:'Respaldo completo'},users:{feedbackId:'tasks.menu.cuentas',label:'Cuentas de personas'},accesses:{feedbackId:'tasks.menu.accesos',label:'Accesos y agentes'},
   proposals:{feedbackId:'tasks.menu.propuestas',label:'Propuestas de agentes'},sessions:{feedbackId:'tasks.menu.mi_cuenta',label:'Mi cuenta'},sync:{feedbackId:'tasks.menu.sincronizacion',label:'Sincronización'},
-  history:{feedbackId:'tasks.menu.historial',label:'Historial de cambios'},accessLog:{feedbackId:'tasks.menu.registro_accesos',label:'Registro de accesos'},
+  history:{feedbackId:'tasks.menu.historial',label:'Historial de cambios'},accessLogCentral:{feedbackId:'tasks.menu.registro_accesos_central',label:'Registro de accesos en Central'},feedbackReviewCentral:{feedbackId:'tasks.menu.revisar_central',label:'Revisar en Central'},
   feedbackCenter:{feedbackId:'tasks.menu.sugerencias',label:'Sugerencias y QA'},
   myproposals:{feedbackId:'tasks.menu.mis_propuestas',label:'Mis propuestas'},
 };

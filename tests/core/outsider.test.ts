@@ -30,7 +30,7 @@ test.after(async () => { await app.close(); });
 
 test('nivel de casa · outsider da Tasks outsider y Guests editor; nunca rebaja; al quitarlo devuelve solo lo que dio', async () => {
   const fresh = await app.t.createUser();
-  assert.deepEqual((await q(`select core.apply_house_level($1, 'outsider') as r`, [fresh]))[0].r.map((c: any) => c.app).sort(), ['guests', 'tasks']);
+  assert.deepEqual((await q(`select core.apply_house_level($1, 'outsider') as r`, [fresh]))[0].r.map((c: any) => c.app).sort(), ['flow', 'guests', 'tasks']);
   assert.equal(await role('tasks', fresh), 'outsider');
   assert.equal(await role('guests', fresh), 'editor');
   assert.equal(await role('resources', fresh), 'reader', 'el módulo deriva lector de un outsider');
@@ -76,10 +76,12 @@ test('nivel de casa · outsider da Tasks outsider y Guests editor; nunca rebaja;
   await level(later, null);
   assert.equal(await role('tasks', later), 'editor');
 
-  // Dirección y staff no derivan nada (decisión del usuario del 13-10-2026), pero el nivel queda guardado.
+  // Staff: editor de Tasks, Food y Flow (decisión del usuario del 26-10-2026, 0095); nada en Booking, Finance ni Central.
   const staff = await app.t.createUser();
   await level(staff, 'staff');
-  assert.equal(await role('tasks', staff), undefined);
+  assert.equal(await role('tasks', staff), 'editor');
+  assert.equal(await role('flow', staff), 'editor');
+  assert.equal(await role('central', staff), undefined);
   assert.equal((await q(`select level from core.house_levels where user_id = $1`, [staff]))[0].level, 'staff');
 
   // Un agente nunca; el rol outsider no se da a mano.

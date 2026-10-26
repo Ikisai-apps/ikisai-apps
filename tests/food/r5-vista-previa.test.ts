@@ -56,6 +56,8 @@ test('R5 · vista previa: recuentos, propuesta por fila y dudas, sin escribir na
     insert('food.recipe_equipment', uuid(), { recipe_id: recipe, equipment_id: oven, quantity_required: 1 }),
   ]);
   // En Recursos ya hay «Sal» (de otra app) y un espacio «Cocina».
+  // La vista previa cuenta todo el inventario: fuera los artículos sembrados por migración (la barra del 31-10, 0811).
+  await q(`update resources.items set deleted_at = now() where source_refs @> array['food:carta:barra-octubre-2026']`);
   await q(`insert into resources.items (name, kind, base_unit) values ('Sal', 'ingrediente', 'kg')`);
   const altura = (await q(`select id from resources.spaces where kind = 'altura' and name = 'Altura 1' and deleted_at is null`))[0].id; // de la migración
   await q(`insert into resources.spaces (kind, name, parent_id) values ('edificio', 'Casa', $1)`, [altura]);

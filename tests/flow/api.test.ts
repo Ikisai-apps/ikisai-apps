@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
+import { applyPublicOperations, createSupabase } from '../../supabase/functions/_kit/mod.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
 
@@ -24,6 +25,8 @@ let seq = 0;
 
 test.before(async () => {
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }) });
+  // Acceso por proyecto (0902): el editor y el lector trabajan en la barra; el owner lo ve todo.
+  await app.t.db.query(`update core.memberships set scopes = $1::jsonb where app = 'flow' and role in ('editor','reader')`, [JSON.stringify({ projects: [PROJECT] })]);
 });
 test.after(async () => { await app.close(); });
 
@@ -81,7 +84,11 @@ test('flow · carta pública sin sesión: 13 productos activos del §8, sin pedi
   assert.equal((byKey.get('clasico:A') as any).priceCents, 250);
   assert.equal((byKey.get('barra:A') as any).name, 'Agua, botella pequeña');
   assert.equal((byKey.get('gourmet:δ') as any).priceCents, 300);
-  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['code', 'description', 'id', 'image', 'name', 'position', 'priceCents', 'scope']);
+  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['code', 'description', 'id', 'imageKey', 'name', 'position', 'priceCents', 'scope']);
+  assert.equal((byKey.get('clasico:A') as any).imageKey, 'montaditos/serrano');
+  assert.equal((byKey.get('gourmet:γ') as any).imageKey, 'montaditos/cabra_dulce');
+  assert.equal((byKey.get('barra:D') as any).imageKey, 'barra/cafe_infusion');
+  assert.equal(res.data.projectId, undefined); // el id del proyecto no sale al navegador
   assert.equal((await app.call('/api/v1/public/menu', { token: null, origin: 'https://foreign.example' })).status, 403);
 });
 
@@ -146,11 +153,11 @@ test('flow · §15.7, 9: el cobro cierra precios, da número y crea una unidad p
   assert.equal(payments.length, 1); assert.equal(payments[0].amount_cents, result.total_cents); assert.equal(payments[0].method, 'bizum');
   const paid = await row(TABLES.orders, order.id);
   assert.equal(paid.status, 'paid'); assert.equal(paid.pay_seq, result.pay_seq); assert.equal(paid.paid_by, app.users.editor);
-  // Con el pedido cobrado, la línea ya no se cambia desde el cliente (solo el check de entrega).
+  // Con el pedido cobrado, la línea ya no se cambia desde el cliente (solo la cantidad entregada).
   const line = await row(TABLES.orderLines, order.lines[0]!);
   assert.equal(line.unit_price_cents, 250);
   assert.equal(code(await commit([{ op: 'update', table: TABLES.orderLines, id: line.id, expectedRevision: line.revision, fields: { quantity: 1 } }])), 'ORDER_NOT_OPEN');
-  await ok([{ op: 'update', table: TABLES.orderLines, id: line.id, expectedRevision: line.revision, fields: { delivery_checked: true } }]);
+  await ok([{ op: 'update', table: TABLES.orderLines, id: line.id, expectedRevision: line.revision, fields: { delivered_qty: 1 } }]);
   assert.equal(code(await commit([call(PROCEDURES.confirmPayment, { order_id: order.id, method: 'cash', expected_revision: paid.revision })])), 'ORDER_NOT_OPEN');
 });
 
@@ -200,55 +207,82 @@ test('flow · §15.12, 14: toques pendiente → en curso → terminado → pendi
   assert.equal(reverted.length, 1); assert.equal(reverted[0].actor, app.users.editor);
 });
 
-test('flow · §15.11: corregir un pedido cobrado solo toca las líneas afectadas y registra la diferencia', async () => {
-  const order = await openOrder([[P.serrano, 2], [P.payoyo, 2]]);
-  await pay(order.id);
+test('flow · §15.11 y FLOW-DIR-001 §3: reducir un pedido cobrado solo toca esa línea; devolución pendiente hasta confirmarla', async () => {
+  const order = await openOrder([[P.serrano, 3], [P.payoyo, 2]]);
+  await pay(order.id, 'cash', app.tokens.owner);
   let units = await unitsOf(order.id);
-  // Serrano 1 terminado, serrano 2 en curso; payoyos pendientes.
-  const s1 = units[0]!, s2 = units[1]!;
+  // Serrano 1 terminado, serrano 2 en curso, serrano 3 pendiente; payoyos pendientes.
+  const [s1, s2] = units;
   await ok([call(PROCEDURES.unitStep, { unit_id: s1.id, from: 'pending' })]);
   await ok([call(PROCEDURES.unitStep, { unit_id: s1.id, from: 'in_progress' })]);
   await ok([call(PROCEDURES.unitStep, { unit_id: s2.id, from: 'pending' })]);
-  const o = await row(TABLES.orders, order.id);
-  // Un serrano más y un payoyo menos; diferencia 2,50 − 3,00 = −0,50 → devolver dinero exige owner (P-2).
-  const args = { order_id: order.id, method: 'cash', expected_revision: o.revision, lines: [{ line_id: order.lines[0], quantity: 3 }, { line_id: order.lines[1], quantity: 1 }] };
-  const denied = await commit([call(PROCEDURES.adjustPaidOrder, args)]);
-  assert.equal(denied.status, 403);
-  const adjusted = await ok([call(PROCEDURES.adjustPaidOrder, args)], app.tokens.owner);
-  assert.equal(adjusted.results[0].result.diff_cents, -50);
+  let o = await row(TABLES.orders, order.id);
+  // Subir o añadir tras cobrar va en una ampliación.
+  assert.equal(code(await commit([call(PROCEDURES.adjustPaidOrder, { order_id: order.id, method: 'cash', expected_revision: o.revision, lines: [{ line_id: order.lines[0], quantity: 4 }] })], app.tokens.owner)), 'USE_EXTENSION');
+  // P-2: devolver dinero, solo el owner o quien cobró (aquí cobró el owner).
+  const oneLess = { order_id: order.id, method: 'cash', expected_revision: o.revision, lines: [{ line_id: order.lines[1], quantity: 1 }] };
+  assert.equal(code(await commit([call(PROCEDURES.adjustPaidOrder, oneLess)])), 'MONEY_BACK_FORBIDDEN');
+  const adjusted = await ok([call(PROCEDURES.adjustPaidOrder, oneLess)], app.tokens.owner);
+  assert.equal(adjusted.results[0].result.diff_cents, -300);
   units = await unitsOf(order.id);
-  const live = units.filter((u) => u.status !== 'cancelled');
-  assert.equal(live.length, 4);
   assert.equal(units.find((u) => u.id === s1.id).status, 'done');
   assert.equal(units.find((u) => u.id === s2.id).status, 'in_progress');
-  assert.equal(units.filter((u) => u.line_id === order.lines[0]).length, 3);
-  assert.equal(Math.max(...units.map((u) => u.idx)), 5); // la nueva va al final
-  const cancelled = units.filter((u) => u.status === 'cancelled');
-  assert.equal(cancelled.length, 1); assert.equal(cancelled[0].line_id, order.lines[1]);
+  assert.equal(units.filter((u) => u.status === 'cancelled').length, 1);
+  assert.equal(units.find((u) => u.status === 'cancelled').line_id, order.lines[1]);
   assert.equal((await row(TABLES.orders, order.id)).total_cents, 3 * 250 + 300);
-  const adj = await rows(TABLES.payments, (p) => p.order_id === order.id && p.kind === 'adjustment');
-  assert.equal(adj.length, 1); assert.equal(adj[0].amount_cents, -50);
-  // Bajar otra vez los serranos: cancela antes la pendiente que la que está en curso o la terminada, y lo deja escrito (nota 4).
-  const o2 = await row(TABLES.orders, order.id);
-  await ok([call(PROCEDURES.adjustPaidOrder, { order_id: order.id, method: 'cash', expected_revision: o2.revision, lines: [{ line_id: order.lines[0], quantity: 2 }] })], app.tokens.owner);
+  const refunds = await rows(TABLES.payments, (p) => p.order_id === order.id && p.kind === 'refund');
+  assert.equal(refunds.length, 1); assert.equal(refunds[0].amount_cents, -300); assert.equal(refunds[0].settled_at, null);
+  // Quitar dos serranos: solo queda uno pendiente → pide confirmación y dice qué trabajo toca.
+  o = await row(TABLES.orders, order.id);
+  const twoLess = { order_id: order.id, method: 'cash', expected_revision: o.revision, lines: [{ line_id: order.lines[0], quantity: 1 }] };
+  const needs = await commit([call(PROCEDURES.adjustPaidOrder, twoLess)], app.tokens.owner);
+  assert.equal(code(needs), 'REDUCTION_NEEDS_CONFIRMATION');
+  assert.ok(needs.data.error.details.affected[0].units.length >= 1);
+  await ok([call(PROCEDURES.adjustPaidOrder, { ...twoLess, confirm_started: true })], app.tokens.owner);
   units = await unitsOf(order.id);
+  // Primero la pendiente, luego la que estaba en curso; la terminada se conserva.
   assert.equal(units.find((u) => u.id === s1.id).status, 'done');
+  assert.equal(units.find((u) => u.id === s2.id).status, 'cancelled');
   const ev = await rows(TABLES.events, (e) => e.order_id === order.id && e.kind === 'units_cancelled');
-  assert.ok(ev.some((e) => e.data.units.some((x: any) => x.status === 'pending')));
-  // Una línea nueva toma el precio vigente; subir importe lo puede hacer un editor.
-  const o3 = await row(TABLES.orders, order.id);
-  const add = await ok([call(PROCEDURES.adjustPaidOrder, { order_id: order.id, method: 'bizum', expected_revision: o3.revision, lines: [{ product_id: P.agua, quantity: 1 }] })]);
-  assert.equal(add.results[0].result.diff_cents, 100);
+  assert.ok(ev.some((e) => e.data.units.some((x: any) => x.status === 'in_progress' && x.assignedTo === app.users.editor)));
+  // La devolución se confirma cuando se hace de verdad.
+  const pending = await rows(TABLES.payments, (p) => p.order_id === order.id && p.kind === 'refund' && !p.settled_at);
+  assert.equal(pending.length, 2);
+  assert.equal(code(await commit([call(PROCEDURES.confirmRefund, { payment_id: pending[0].id })])), 'MONEY_BACK_FORBIDDEN');
+  await ok([call(PROCEDURES.confirmRefund, { payment_id: pending[0].id })], app.tokens.owner);
+  assert.ok((await row(TABLES.payments, pending[0].id)).settled_at);
+  assert.equal(code(await commit([call(PROCEDURES.confirmRefund, { payment_id: pending[0].id })], app.tokens.owner)), 'REFUND_NOT_PENDING');
 });
 
-test('flow · §15.20 y P-2: anular cobro (solo owner) conserva el cargo; el recobro va al final con número nuevo', async () => {
+test('flow · FLOW-DIR-001 §3: una ampliación se cobra aparte, con número propio al final de la cola; la original no cambia', async () => {
+  const parent = await openOrder([[P.serrano, 1]]);
+  const first = await pay(parent.id);
+  const other = await openOrder([[P.payoyo, 1]]);
+  const second = await pay(other.id);
+  const extId = uuid();
+  await ok([call(PROCEDURES.createExtension, { parent_order_id: parent.id, order_id: extId, lines: [{ product_id: P.serrano, quantity: 2 }, { product_id: P.agua, quantity: 1 }] })]);
+  const ext = await row(TABLES.orders, extId);
+  assert.equal(ext.status, 'open'); assert.equal(ext.parent_id, parent.id);
+  assert.equal((await unitsOf(extId)).length, 0); // sin unidades hasta cobrarla
+  const paidExt = await pay(extId);
+  assert.ok(paidExt.pay_seq > second.pay_seq);
+  assert.equal(paidExt.units, 2);
+  assert.equal((await row(TABLES.orders, parent.id)).pay_seq, first.pay_seq);
+  assert.ok((await unitsOf(extId)).every((u) => u.pay_seq === paidExt.pay_seq));
+  // Sobre un pedido sin cobrar no hay ampliación: se edita directamente.
+  const open = await openOrder([[P.agua, 1]]);
+  assert.equal(code(await commit([call(PROCEDURES.createExtension, { parent_order_id: open.id, order_id: uuid(), lines: [{ product_id: P.agua, quantity: 1 }] })])), 'ORDER_NOT_PAID');
+});
+
+test('flow · §15.20 y P-2: anular cobro (owner o quien cobró) conserva el cargo; el recobro va al final con número nuevo', async () => {
   const order = await openOrder([[P.serrano, 2]]);
-  const first = await pay(order.id);
+  const first = await pay(order.id, 'cash', app.tokens.owner);
   const [u1] = await unitsOf(order.id);
   await ok([call(PROCEDURES.unitStep, { unit_id: u1.id, from: 'pending' })]);
   await ok([call(PROCEDURES.unitStep, { unit_id: u1.id, from: 'in_progress' })]);
   const o = await row(TABLES.orders, order.id);
-  assert.equal((await commit([call(PROCEDURES.reversePayment, { order_id: order.id, reason: 'error de caja', expected_revision: o.revision })])).status, 403);
+  const denied = await commit([call(PROCEDURES.reversePayment, { order_id: order.id, reason: 'error de caja', expected_revision: o.revision })]);
+  assert.equal(denied.status, 403); assert.equal(code(denied), 'MONEY_BACK_FORBIDDEN');
   await ok([call(PROCEDURES.reversePayment, { order_id: order.id, reason: 'error de caja', expected_revision: o.revision })], app.tokens.owner);
   const reopened = await row(TABLES.orders, order.id);
   assert.equal(reopened.status, 'open'); assert.equal(reopened.pay_seq, null);
@@ -259,18 +293,21 @@ test('flow · §15.20 y P-2: anular cobro (solo owner) conserva el cargo; el rec
   assert.ok(units.filter((u) => u.id !== u1.id).every((u) => u.status === 'cancelled'));
   const ev = await rows(TABLES.events, (e) => e.order_id === order.id && e.kind === 'payment_reversed');
   assert.equal(ev[0].data.paySeq, first.pay_seq);
+  // Quien cobró (un editor) puede anular su propio cobro.
   const again = await pay(order.id);
   assert.ok(again.pay_seq > first.pay_seq);
-  assert.equal((await rows(TABLES.payments, (p) => p.order_id === order.id)).length, 3);
+  const o2 = await row(TABLES.orders, order.id);
+  await ok([call(PROCEDURES.reversePayment, { order_id: order.id, reason: 'otra vez', expected_revision: o2.revision })]);
+  assert.equal((await rows(TABLES.payments, (p) => p.order_id === order.id)).length, 4);
 });
 
-test('flow · §15.18–20: entrega con excepción confirmada; omitir identificación queda registrado; reabrir no toca el dinero', async () => {
+test('flow · §15.18–20: entrega parcial y con excepción confirmada; omitir identificación queda registrado; reabrir no toca el dinero', async () => {
   const order = await openOrder([[P.serrano, 1], [P.agua, 1]]);
   await pay(order.id);
   let o = await row(TABLES.orders, order.id);
   const needs = await commit([call(PROCEDURES.deliverOrder, { order_id: order.id, ident: 'skipped', expected_revision: o.revision })]);
   assert.equal(code(needs), 'DELIVERY_NEEDS_CONFIRMATION');
-  assert.equal(needs.data.error.details.pendingUnits, 1); assert.equal(needs.data.error.details.uncheckedLines, 2);
+  assert.equal(needs.data.error.details.pendingUnits, 1); assert.equal(needs.data.error.details.undeliveredItems, 2);
   await ok([call(PROCEDURES.deliverOrder, { order_id: order.id, ident: 'skipped', confirm_exception: true, expected_revision: o.revision })]);
   o = await row(TABLES.orders, order.id);
   assert.equal(o.status, 'delivered'); assert.equal(o.delivery_exception, true); assert.equal(o.delivery_ident, 'skipped');
@@ -285,7 +322,7 @@ test('flow · §15.18–20: entrega con excepción confirmada; omitir identifica
   const [u] = await unitsOf(order.id);
   await ok([call(PROCEDURES.unitStep, { unit_id: u.id, from: 'pending' })]);
   await ok([call(PROCEDURES.unitStep, { unit_id: u.id, from: 'in_progress' })]);
-  for (const id of order.lines) { const l = await row(TABLES.orderLines, id); await ok([{ op: 'update', table: TABLES.orderLines, id, expectedRevision: l.revision, fields: { delivery_checked: true } }]); }
+  for (const id of order.lines) { const l = await row(TABLES.orderLines, id); await ok([{ op: 'update', table: TABLES.orderLines, id, expectedRevision: l.revision, fields: { delivered_qty: l.quantity } }]); }
   o = await row(TABLES.orders, order.id);
   const clean = await ok([call(PROCEDURES.deliverOrder, { order_id: order.id, ident: 'number', expected_revision: o.revision })]);
   assert.equal(clean.results[0].result.exception, false);
@@ -301,4 +338,85 @@ test('flow · §15.21: tareas de Logística se crean, se asignan, se terminan y 
   await ok([{ op: 'update', table: TABLES.units, id, expectedRevision: task.revision, fields: { label: 'Reponer tomate', priority: false } }]);
   const t2 = await row(TABLES.units, id);
   assert.equal(code(await commit([{ op: 'update', table: TABLES.units, id, expectedRevision: t2.revision, fields: { status: 'done' } }])), 'PROCEDURE_ONLY');
+});
+
+test('flow · FLOW-DIR-001 §1: el público pide número, envía su pedido y solo ve lo suyo; caja lo encuentra y lo cobra', async () => {
+  const pub = (path: string, init: { body?: unknown; token?: string; method?: string } = {}) =>
+    app.call(`/api/v1/public/${path}`, { token: null, body: init.body, method: init.method, headers: init.token ? { 'X-Flow-Customer': init.token } : {} });
+  const a = await pub('customer', { body: {} });
+  assert.equal(a.status, 200, JSON.stringify(a.data));
+  assert.match(a.data.token, /^[0-9a-f]{64}$/); assert.ok(a.data.number >= 100);
+  assert.equal(a.headers.get('cache-control'), 'no-store');
+  const b = await pub('customer', { body: {} });
+  assert.equal(b.data.number, a.data.number + 1);
+  // El token nunca se guarda: solo su resumen.
+  const stored = await app.t.db.query<{ token_hash: string }>(`select token_hash from flow.customers where number = $1`, [a.data.number]);
+  assert.notEqual(stored.rows[0]!.token_hash, a.data.token);
+  // Sin cabecera o con un token desconocido, nada.
+  assert.equal((await pub('mine')).status, 401);
+  assert.equal((await pub('orders', { body: { lines: [{ productId: P.serrano, quantity: 1 }] } })).status, 401);
+  assert.equal((await pub('mine', { token: 'f'.repeat(64) })).data.error.code, 'CUSTOMER_UNKNOWN');
+  const sent = await pub('orders', { token: a.data.token, body: { lines: [{ productId: P.serrano, quantity: 2 }, { productId: P.agua, quantity: 1 }] } });
+  assert.equal(sent.status, 200, JSON.stringify(sent.data));
+  assert.equal(sent.data.number, a.data.number);
+  assert.equal((await pub('orders', { token: a.data.token, body: { lines: [{ productId: P.serrano, quantity: 0 }] } })).status, 422);
+  const mineA = await pub('mine', { token: a.data.token });
+  assert.equal(mineA.data.number, a.data.number);
+  assert.equal(mineA.data.orders.length, 1); assert.equal(mineA.data.orders[0].status, 'open');
+  assert.equal(mineA.data.customerId, undefined); assert.equal(mineA.data.projectId, undefined);
+  assert.equal((await pub('mine', { token: b.data.token })).data.orders.length, 0);
+  // Caja: el pedido está abierto, con su cliente; se cobra como cualquier otro y el cliente lo ve preparando.
+  const order = await row(TABLES.orders, sent.data.orderId);
+  assert.equal(order.origin, 'public'); assert.equal(order.status, 'open');
+  const customer = (await rows(TABLES.customers, (c) => c.id === order.customer_id))[0];
+  assert.equal(customer.number, a.data.number);
+  await pay(order.id);
+  const after = await pub('mine', { token: a.data.token });
+  assert.equal(after.data.orders[0].status, 'paid'); assert.equal(after.data.orders[0].preparing, true);
+  const serrano = after.data.orders[0].lines.find((l: any) => l.code === 'A' && l.prepared);
+  assert.equal(serrano.preparedQty, 0); assert.equal(serrano.quantity, 2);
+});
+
+test('flow · lote público: solo crea su cliente, su pedido abierto y sus líneas; nada de cobros ni de tocar lo cobrado', async () => {
+  const supabase = createSupabase({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch });
+  const tryPublic = async (operations: any[]) => { try { await applyPublicOperations(supabase, 'flow', operations); return 'ok'; } catch (e: any) { return e.code ?? String(e); } };
+  const cust = await app.call('/api/v1/public/customer', { token: null, body: {} });
+  const customerId = (await rows(TABLES.customers, (c) => c.number === cust.data.number))[0].id;
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orders, id: uuid(), fields: { project_id: PROJECT, origin: 'public', customer_id: customerId, status: 'paid' } }]), 'FORBIDDEN');
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.payments, id: uuid(), fields: { order_id: uuid(), kind: 'charge', amount_cents: 1 } }]), 'FORBIDDEN');
+  const paid = await openOrder([[P.agua, 1]]);
+  await pay(paid.id);
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: paid.id, product_id: P.agua, quantity: 5 } }]), 'FORBIDDEN');
+  // Solo productos activos de la carta.
+  const own = uuid();
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orders, id: own, fields: { project_id: PROJECT, origin: 'public', customer_id: customerId } }]), 'ok');
+  const agua = await row(TABLES.products, P.agua);
+  await ok([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: agua.revision, fields: { active: false } }], app.tokens.owner);
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: own, product_id: P.agua, quantity: 1 } }]), 'FORBIDDEN');
+  const off = await row(TABLES.products, P.agua);
+  await ok([{ op: 'update', table: TABLES.products, id: P.agua, expectedRevision: off.revision, fields: { active: true } }], app.tokens.owner);
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: own, product_id: P.agua, quantity: 1 } }]), 'ok');
+  // El número lo pone el servidor aunque el lote mande otro.
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.customers, id: uuid(), fields: { project_id: PROJECT, token_hash: 'a'.repeat(64), number: 5 } }]), 'ok');
+  assert.ok((await rows(TABLES.customers, (c) => c.number === 5)).length === 0);
+});
+
+test('flow · acceso por proyecto (0902): fuera de sus ámbitos, ni se ve ni se toca; el owner lo ve todo', async () => {
+  const other = uuid();
+  await ok([{ op: 'insert', table: TABLES.projects, id: other, fields: { name: 'Otro evento', starts_on: '2026-12-01', ends_on: '2026-12-02' } }], app.tokens.owner);
+  const orderId = uuid();
+  await ok([{ op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: other, origin: 'counter' } },
+    { op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: orderId, product_id: P.agua, quantity: 1 } }], app.tokens.owner);
+  // Lo ve el owner; el editor no ve ni el proyecto ni sus filas.
+  assert.ok((await rows(TABLES.projects)).some((p) => p.id === other));
+  const snap = await app.call(`/api/v1/snapshot?tables=${TABLES.projects},${TABLES.orders},${TABLES.orderLines}`, { token: app.tokens.editor });
+  const all = snap.data.tables.flatMap((t: any) => t.rows);
+  assert.equal(all.some((r: any) => r.id === other || r.project_id === other), false);
+  assert.ok(all.some((r: any) => r.id === PROJECT));
+  // Ni escribir filas ni llamar a procedimientos sobre él.
+  assert.equal(code(await commit([{ op: 'insert', table: TABLES.orders, id: uuid(), fields: { project_id: other, origin: 'counter' } }])), 'PROJECT_OUT_OF_SCOPE');
+  assert.equal(code(await commit([call(PROCEDURES.confirmPayment, { order_id: orderId, method: 'cash', expected_revision: 1 })])), 'PROJECT_OUT_OF_SCOPE');
+  // Las líneas heredan el proyecto de su pedido, aunque el cliente no lo mande.
+  const line = (await rows(TABLES.orderLines, (l) => l.order_id === orderId))[0];
+  assert.equal(line.project_id, other);
 });

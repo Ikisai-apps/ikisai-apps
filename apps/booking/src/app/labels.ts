@@ -9,7 +9,7 @@ type Pairs = ReadonlyArray<readonly [string, string]>;
 
 const LABELS: Record<string, string> = {
   ...STATUS_LABELS,
-  retiro: 'Retiro', convivencia: 'Convivencia', formacion: 'Formación', encuentro: 'Encuentro', actividad_divulgativa: 'Actividad divulgativa', alquiler_grupo: 'Alquiler de grupo', otro: 'Otro',
+  retiro: 'Retiro', jornadas_abiertas: 'Jornadas abiertas', familiar: 'Familiar', convivencia: 'Convivencia', formacion: 'Formación', encuentro: 'Encuentro', actividad_divulgativa: 'Actividad divulgativa', alquiler_grupo: 'Alquiler de grupo', otro: 'Otro',
   alta: 'Alta', media: 'Media', baja: 'Baja',
   particular: 'Particular', empresa: 'Empresa', asociacion: 'Asociación', colectivo: 'Colectivo', organizador_recurrente: 'Organizador recurrente',
   no_aplica: 'No aplica', desayuno: 'Desayuno', media_pension: 'Media pensión', pension_completa: 'Pensión completa', segun_programa: 'Según programa',

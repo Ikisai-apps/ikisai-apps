@@ -20,8 +20,17 @@ export interface MenuProduct {
   description: string | null;
   priceCents: number;
   position: number;
-  /** URL de la miniatura, si la hay (pendiente de VG). */
-  image: string | null;
+  /** Clave de sus imágenes (`montaditos/serrano`), si las tiene; ver `productAssets`. */
+  imageKey: string | null;
+}
+
+/** Las cuatro representaciones de un producto (decisión de VG del 26-10), en apps/flow/public/assets/<clave>/. */
+export interface ProductAssets { icon: string; medal: string; thumb: string; zoom: string }
+
+export function productAssets(imageKey: string | null | undefined): ProductAssets | null {
+  if (!imageKey || !/^[a-z0-9_-]+\/[a-z0-9_-]+$/.test(imageKey)) return null;
+  const base = `/assets/${imageKey}`;
+  return { icon: `${base}/icono.svg`, medal: `${base}/medallon.webp`, thumb: `${base}/miniatura.webp`, zoom: `${base}/zoom.webp` };
 }
 
 export interface MenuGroup {
