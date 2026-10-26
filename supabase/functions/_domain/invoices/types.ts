@@ -156,8 +156,8 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.supplier_templates': ['supplier_id', 'version', 'status', 'layout_tokens', 'layout_hash', 'page_size', 'fields', 'confirmations', 'uses', 'full_hits', 'last_confirmed_invoice_id'],
   'invoices.item_labels': ['label', 'item_id', 'item_factor'],
   'invoices.settings': ['key', 'value'],
-  // Lo demás lo escribe `invoices.record_app_entry` (0244); en Finance solo se decide esto.
-  'invoices.app_entries': ['invoiced', 'invoiced_reason', 'event_id', 'notes'],
+  // Lo demás lo escribe `invoices.record_app_entry` (0244); en Finance solo el evento y las notas.
+  'invoices.app_entries': ['event_id', 'notes'],
 };
 
 /** Columnas comunes del contrato §2.1. */
@@ -311,10 +311,6 @@ export interface AppEntryRow extends SyncedColumns {
   methods: Record<string, number>;
   detail: Array<{ code?: string | null; name: string; quantity: number; amount_cents: number }>;
   event_id: string | null;
-  invoiced: boolean;
-  invoiced_reason: string | null;
-  invoiced_changed_by: string | null;
-  invoiced_changed_at: string | null;
   received_by: string | null;
   received_at: string;
   notes: string | null;

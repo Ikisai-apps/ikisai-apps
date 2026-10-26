@@ -80,12 +80,11 @@ export interface ExportManifest {
   issued_file_count?: number;
   issued_totals?: { base: number; quota: number; surcharge: number; withholding: number; total: number; quota_by_rate: Array<{ tax: string; rate: number | null; base: number; quota: number; surcharge: number }> };
   issued?: ManifestIssued[];
-  /** Ingresos y gastos de otras apps marcados como facturados (desde la migración 0244). */
+  /** Ingresos y gastos de otras apps (desde la migración 0244). */
   app_entry_count?: number;
   app_entries_totals?: {
     income: { count: number; base: number; quota: number; total: number; quota_by_rate: Array<{ rate: number; base: number; quota: number }> };
     expense: { count: number; base: number; quota: number; total: number };
-    not_invoiced: { count: number; income: number; expense: number };
   };
   app_entries?: ManifestAppEntry[];
 }
@@ -141,7 +140,7 @@ export function issuedCsv(manifest: ExportManifest): string {
   );
 }
 
-/** Ingresos y gastos de otras apps (p. ej. las ventas de la barra de Flow), uno por apunte, solo los facturados. */
+/** Ingresos y gastos de otras apps (p. ej. las ventas de la barra de Flow), uno por apunte. */
 export function appEntriesCsv(manifest: ExportManifest): string {
   return csvRows(
     ['fecha', 'app', 'referencia', 'tipo', 'concepto', 'iva_tipo', 'base', 'cuota', 'total', 'devoluciones_pendientes', 'medios'],
@@ -210,7 +209,7 @@ export function taxesCsv(manifest: ExportManifest): string {
       ['diferencia_repercutido_soportado', null, null, money(Math.round((it.quota - t.vat) * 100) / 100)],
     );
   }
-  // Ingresos de otras apps facturados (0244): IVA repercutido aparte, para que la gestoría vea de dónde sale.
+  // Ingresos y gastos de otras apps (0244): IVA repercutido aparte, para que la gestoría vea de dónde sale.
   const at = manifest.app_entries_totals;
   if (at && (at.income.count || at.expense.count)) {
     rows.push(

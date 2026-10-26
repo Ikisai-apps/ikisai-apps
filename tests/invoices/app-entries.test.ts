@@ -1,7 +1,7 @@
 /**
  * 0244 (API.md §17): ingresos y gastos que llegan de otras apps. `invoices.record_app_entry` es idempotente por
- * (source_app, source_ref) y sustituye el apunte salvo que ya esté entregado a la gestoría; en Finance solo se decide
- * «facturado», su motivo, el evento y las notas; lo facturado entra en el resumen y en la entrega, lo no facturado no.
+ * (source_app, source_ref) y sustituye el apunte salvo que ya esté entregado a la gestoría; en Finance solo se cambian
+ * el evento y las notas; todo apunte es real y entra en el resumen y en la entrega (decisión de VG del 26-10).
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,10 +54,9 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('un apunte nuevo: IVA incluido, neto redondeado, facturado por defecto; repetirlo no cambia nada', async () => {
+test('un apunte nuevo: IVA incluido y neto redondeado; repetirlo no cambia nada', async () => {
   const first = await record(barDay(), app.tokens.editor);
   assert.equal(first.status, 'created');
-  assert.equal(first.invoiced, true);
   // 123450 / 1,10 = 112227,27 → 112227 de neto y 11223 de cuota
   assert.equal(Number(first.net_cents), 112227);
   assert.equal(Number(first.tax_cents), 11223);
@@ -91,50 +90,37 @@ test('validación de lo que manda la otra app', async () => {
   assert.equal(plain.status, 'created');
 });
 
-test('sin red de Finance: el lector no envía; en Finance no se crea, no se borra y solo se decide facturado, evento y notas', async () => {
+test('el lector no envía; en Finance no se crea, no se borra y no se toca lo que viene de la otra app', async () => {
   await rejected([call('invoices.record_app_entry', barDay())], 'FORBIDDEN', 403, app.tokens.reader);
   const { entry_id: id } = await record(barDay());
   const row = await entry(id);
-  await rejected([{ op: 'insert', table: 'invoices.app_entries', id: uuid(), fields: { invoiced: true } }], 'APP_ENTRY_PROCEDURE_ONLY');
+  await rejected([{ op: 'insert', table: 'invoices.app_entries', id: uuid(), fields: { notes: 'a mano' } }], 'APP_ENTRY_PROCEDURE_ONLY');
   await rejected([update(id, row.revision, { amount_cents: 1 })], 'INVALID_FIELDS');
   await rejected([{ op: 'delete', table: 'invoices.app_entries', id, expectedRevision: row.revision }], 'APP_ENTRY_NOT_DELETABLE');
 });
 
-test('facturado sí o no: queda quién y cuándo; la otra app no lo pisa; el evento enlazado a mano se queda', async () => {
+test('evento y notas desde Finance; la otra app no los pisa al sustituir; todo cuenta en el resumen', async () => {
   const EVENT = uuid();
   const { entry_id: id } = await record(barDay());
   let row = await entry(id);
-  await ok([update(id, row.revision, { invoiced: false, invoiced_reason: 'Venta sin ticket: lo decide la gestoría', event_id: EVENT })], app.tokens.editor);
-  row = await entry(id);
-  assert.equal(row.invoiced, false);
-  assert.ok(row.invoiced_changed_by);
-  assert.ok(row.invoiced_changed_at);
+  await ok([update(id, row.revision, { event_id: EVENT, notes: 'Caja cuadrada' })], app.tokens.editor);
 
-  // Flow reenvía el cierre con una devolución ya confirmada: se sustituye, pero sigue sin facturar y con su evento.
+  // Flow reenvía el cierre con una devolución ya confirmada: se sustituye y conserva el evento y las notas.
   const replaced = await record(barDay({ amount_cents: 123250, pending_refunds_cents: 0, methods: { cash: 79800, bizum: 43450 } }));
   assert.equal(replaced.status, 'replaced');
   row = await entry(id);
   assert.equal(Number(row.amount_cents), 123250);
-  assert.equal(row.invoiced, false);
-  assert.equal(row.invoiced_reason, 'Venta sin ticket: lo decide la gestoría');
   assert.equal(row.event_id, EVENT);
+  assert.equal(row.notes, 'Caja cuadrada');
 
   const summary = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { year: 2026, quarter: 4 } })).data;
-  assert.equal(Number(summary.income.count), 1, 'solo el del 30-10 cuenta');
-  assert.equal(Number(summary.not_invoiced.count), 1);
-  assert.equal(Number(summary.not_invoiced.income), 1232.5);
-
-  // Volver a facturar borra el motivo
-  await ok([update(id, row.revision, { invoiced: true })]);
-  row = await entry(id);
-  assert.equal(row.invoiced, true);
-  assert.equal(row.invoiced_reason, null);
-  const after = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { year: 2026, quarter: 4 } })).data;
-  assert.equal(Number(after.income.total), 1232.5);
-  assert.deepEqual(after.income.quota_by_rate.map((g: any) => [Number(g.rate), Number(g.base), Number(g.quota)]), [[10, 1120.45, 112.05]]);
+  assert.equal(Number(summary.income.count), 2, 'el del 30-10 y el del 31-10');
+  assert.equal(Number(summary.income.total), 1232.5);
+  assert.deepEqual(summary.income.quota_by_rate.map((g: any) => [Number(g.rate), Number(g.base), Number(g.quota)]), [[10, 1120.45, 112.05]]);
+  assert.equal(summary.not_invoiced, undefined, 'no hay «sin facturar»');
 });
 
-test('entrega a la gestoría: los facturados van en el manifest y el CSV; entregada, ya no se cambian', async () => {
+test('entrega a la gestoría: los apuntes van en el manifest y el CSV; entregada, ya no se sustituyen', async () => {
   const exportId = uuid();
   const created = (await ok([call('invoices.create_export', { export_id: exportId, period_kind: 'quarter', fiscal_year: 2026, fiscal_quarter: 4 })])).results[0].result;
   assert.equal(Number(created.invoice_count), 0);
@@ -165,7 +151,6 @@ test('entrega a la gestoría: los facturados van en el manifest y el CSV; entreg
   // Lo mismo que ya está entregado sí responde, sin cambiar nada
   assert.equal((await record(barDay({ amount_cents: 123350, pending_refunds_cents: 100, methods: { cash: 79900, bizum: 43450 } }))).status, 'unchanged');
   const row = (await app.call('/api/v1/snapshot?tables=invoices.app_entries')).data.tables[0].rows.find((r: any) => r.source_ref === REF);
-  await rejected([update(row.id, row.revision, { invoiced: false })], 'ENTRY_LOCKED', 409);
   // Las notas sí se pueden escribir
   await ok([update(row.id, row.revision, { notes: 'Revisado con la caja del día' })]);
 });

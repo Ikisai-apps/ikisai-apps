@@ -152,7 +152,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
   - tanda 31, la hoja «Inventario» de Inicio (MUELA-079; API.md §16.21.5): hecho (#641);
   - tanda 31, las emitidas de una reserva una a una para «Movimientos» de Booking (`invoices.reservation_movements`, 0241; API.md §7.9): hecho (#643).
 - **Ingresos y gastos de otras apps** (encargo de VG del 26-10-2026, plazo jueves 29; API.md §17):
-  - PR 1 (`invoices/app-entries`): migración 0244 con `invoices.app_entries`, `invoices.record_app_entry` (idempotente por `source_ref`, `ENTRY_LOCKED` si ya está entregado) y los apuntes facturados en el resumen y la entrega (`ingresos_gastos_apps.csv`). El formato está acordado con Flow.
+  - PR 1 (`invoices/app-entries`): migración 0244 con `invoices.app_entries`, `invoices.record_app_entry` (idempotente por `source_ref`, `ENTRY_LOCKED` si ya está entregado) y todos los apuntes en el resumen y la entrega (`ingresos_gastos_apps.csv`). Sin «facturado sí/no» (decisión de VG del 26-10). El formato está acordado con Flow.
   - PR 2: la pantalla «Ingresos y gastos de apps» y la vista «Evento», con su baldosa en Inicio.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 

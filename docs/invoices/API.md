@@ -1850,13 +1850,13 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
 ## 17. Ingresos y gastos de otras apps (encargo de VG del 26-10-2026 · migración 0244)
 
 Finance recibe apuntes de otras apps. El primero son las ventas de la barra de Flow del evento del 31-10. VG decidió:
-- cada apunte se puede facturar o no por separado, y por defecto está facturado;
-- desfacturar lo saca de la entrega a la gestoría y del IVA;
+- todo apunte que llega a Finance es real: entra en el IVA y en la entrega a la gestoría. No hay «facturar o no» (decisión del 26-10, tras la duda del IVA de las ventas sin factura);
+- lo que no debe contar no se envía: Flow tiene «modo pruebas» por proyecto y en ese modo no manda nada;
 - el resultado del evento se entiende desde Finance.
 
 ### 17.1 Tabla `invoices.app_entries`
 
-Sincronizable y `never_purge`. No se borra: un apunte que no cuenta se marca como no facturado.
+Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige la app de origen con otro envío.
 
 | Columna | Qué es |
 |---|---|
@@ -1869,14 +1869,12 @@ Sincronizable y `never_purge`. No se borra: un apunte que no cuenta se marca com
 | `methods` | `{cash, bizum, …}` en céntimos. Si viene, suma el importe. |
 | `detail` | `[{code?, name, quantity, amount_cents}]`. Si viene, su suma más las devoluciones pendientes es el importe. |
 | `event_id` | Evento de Booking (referencia, sin FK). Lo manda la otra app o se enlaza en Finance. |
-| `invoiced`, `invoiced_reason`, `invoiced_changed_by`, `invoiced_changed_at` | Facturado sí o no, con motivo opcional. Quién y cuándo lo pone el disparador. |
 | `received_by`, `received_at` | Quién lo envió por última vez y cuándo. |
 | `notes` | Notas de Finance. |
 
-**En Finance** solo se escriben `invoiced`, `invoiced_reason`, `event_id` y `notes`. Si se intenta otra cosa:
+**En Finance** solo se escriben `event_id` y `notes`. Si se intenta otra cosa:
 - `APP_ENTRY_PROCEDURE_ONLY`, al crear un apunte o cambiar lo que viene de la otra app;
-- `APP_ENTRY_NOT_DELETABLE`, al borrarlo;
-- `ENTRY_LOCKED` (409), al cambiar «facturado» con el apunte ya en una entrega **entregada**.
+- `APP_ENTRY_NOT_DELETABLE`, al borrarlo.
 
 ### 17.2 `invoices.record_app_entry` (lo llama la otra app)
 
@@ -1895,8 +1893,8 @@ Sincronizable y `never_purge`. No se borra: un apunte que no cuenta se marca com
 - **Idempotente por (`source_app`, `source_ref`):**
   - la primera vez crea el apunte (`created`);
   - después lo sustituye (`replaced`) o, si los datos son los mismos, no hace nada (`unchanged`).
-- **Lo que no toca nunca:** «facturado», su motivo, las notas ni el evento enlazado en Finance (si llega `event_id` nulo).
-- **Resultado:** `{entry_id, status, revision, invoiced, tax_cents, net_cents}`.
+- **Lo que no toca nunca:** las notas ni el evento enlazado en Finance (si llega `event_id` nulo).
+- **Resultado:** `{entry_id, status, revision, tax_cents, net_cents}`.
 - **Errores:**
   - `INVALID_ARGS` (422), con `details.field`;
   - `FORBIDDEN` (403);
@@ -1907,11 +1905,10 @@ Sincronizable y `never_purge`. No se borra: un apunte que no cuenta se marca com
 ### 17.3 Resumen fiscal y entrega a la gestoría
 
 - **Lectura `invoices.app_entries_summary`** (`{year, quarter}` o `{from, to}`): devuelve, en euros,
-  - `income` (los ingresos facturados: base, cuota, total, `quota_by_rate` y `by_app`);
-  - `expense` (los gastos facturados);
-  - `not_invoiced` (los no facturados, que quedan fuera de la cuenta pero contados).
-- **Entrega:** los apuntes facturados del periodo van en el manifest (`app_entries`, `app_entry_count`, `app_entries_totals`) y en `ingresos_gastos_apps.csv`.
+  - `income` (los ingresos: base, cuota, total, `quota_by_rate` y `by_app`);
+  - `expense` (los gastos).
+- **Entrega:** todos los apuntes del periodo van en el manifest (`app_entries`, `app_entry_count`, `app_entries_totals`) y en `ingresos_gastos_apps.csv`.
   - `resumen_impuestos.csv` añade el IVA repercutido de las apps por tipo (`iva_repercutido_apps`), su base y los gastos de apps.
   - Una entrega solo con apuntes no está vacía.
-  - La entrega queda desactualizada si un apunte incluido cambia o si aparece uno nuevo facturado del periodo.
-- La regla fiscal de los gastos de apps y de las ventas sin factura está pendiente de la gestoría (PETICIONES.md, 26-10).
+  - La entrega queda desactualizada si un apunte incluido cambia o si aparece uno nuevo del periodo.
+- La regla fiscal de los gastos de apps (si dan IVA soportado) está pendiente de la gestoría (PETICIONES.md, 26-10).

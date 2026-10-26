@@ -6,11 +6,10 @@
 -- - `invoices.record_app_entry`: lo llama la otra app por `invoices-api` (`POST commands`, `call`) con la sesión de quien
 --   cierra (editor u owner en Finance). Idempotente por (source_app, source_ref): la segunda llamada sustituye el apunte
 --   («replaced») o no hace nada si es igual («unchanged»). Si el apunte ya está en una entrega entregada a la gestoría,
---   409 ENTRY_LOCKED. Nunca toca «facturado» ni el evento que se enlazó a mano en Finance.
--- - Facturado (decisión de VG): cada apunte se puede facturar o no; por defecto, sí. En Finance solo se cambian
---   `invoiced`, `invoiced_reason`, `event_id` y `notes`; quién y cuándo cambió «facturado» lo pone el disparador. Lo
---   facturado entra en el resumen y en la entrega del periodo de su fecha (los ingresos, como IVA repercutido); lo no
---   facturado queda fuera, pero visible (`app_entries_totals.not_invoiced`). Con la entrega ya entregada, ENTRY_LOCKED.
+--   409 ENTRY_LOCKED. Nunca toca las notas ni el evento que se enlazó a mano en Finance.
+-- - Todo apunte es real (decisión de VG del 26-10): no hay «facturar o no». Entra en el resumen y en la entrega del
+--   periodo de su fecha (los ingresos, como IVA repercutido). Lo que no debe contar no se envía: Flow tiene «modo
+--   pruebas» por proyecto y en ese modo no manda nada. En Finance solo se cambian `event_id` y `notes`.
 
 create table invoices.app_entries (
   id uuid primary key default gen_random_uuid(),
@@ -32,10 +31,6 @@ create table invoices.app_entries (
   methods jsonb not null default '{}'::jsonb check (jsonb_typeof(methods) = 'object'),
   detail jsonb not null default '[]'::jsonb check (jsonb_typeof(detail) = 'array'),
   event_id uuid,
-  invoiced boolean not null default true,
-  invoiced_reason text check (invoiced_reason is null or length(invoiced_reason) <= 300),
-  invoiced_changed_by uuid references auth.users(id),
-  invoiced_changed_at timestamptz,
   received_by uuid references auth.users(id),
   received_at timestamptz not null default now(),
   notes text check (notes is null or length(notes) <= 2000),
@@ -48,7 +43,7 @@ create index app_entries_event_idx on invoices.app_entries (event_id) where even
 
 select core.register_table('invoices', 'invoices', 'app_entries', array[
   'source_app', 'source_ref', 'kind', 'entry_date', 'description', 'amount_cents', 'tax_rate', 'tax_cents', 'net_cents',
-  'pending_refunds_cents', 'methods', 'detail', 'event_id', 'invoiced', 'invoiced_reason', 'notes'],
+  'pending_refunds_cents', 'methods', 'detail', 'event_id', 'notes'],
   '{reader,editor,owner}', '{editor,owner}', true);
 
 -- ¿Está el apunte en una entrega ya entregada a la gestoría?
@@ -58,37 +53,28 @@ returns boolean language sql stable as $$
     where e.deleted_at is null and e.status = 'entregada' and e.manifest->'app_entries' @> jsonb_build_array(jsonb_build_object('id', p_id)))
 $$;
 
--- Guarda: lo que viene de la otra app solo lo escribe `record_app_entry`; en Finance, solo facturado, motivo, evento y notas.
+-- Guarda: lo que viene de la otra app solo lo escribe `record_app_entry`; en Finance, solo el evento y las notas.
 create or replace function invoices.guard_app_entry()
 returns trigger language plpgsql as $$
 declare
   v_proc boolean := coalesce(current_setting('invoices.procedure', true), '') = 'record_app_entry';
   v_actor uuid;
-  v_free text[] := array['invoiced', 'invoiced_reason', 'invoiced_changed_by', 'invoiced_changed_at', 'event_id', 'notes', 'revision', 'updated_at', 'updated_by'];
+  v_free text[] := array['event_id', 'notes', 'revision', 'updated_at', 'updated_by'];
 begin
   begin v_actor := nullif(current_setting('core' || '.actor', true), '')::uuid; exception when others then v_actor := null; end;
   if tg_op = 'INSERT' then
     if not v_proc then perform core.fail('APP_ENTRY_PROCEDURE_ONLY', 422, jsonb_build_object('procedure', 'invoices.record_app_entry')); end if;
     new.received_by := v_actor; new.received_at := now();
-    new.invoiced := true; new.invoiced_reason := null; new.invoiced_changed_by := null; new.invoiced_changed_at := null;
     return new;
   end if;
   if new.deleted_at is distinct from old.deleted_at then perform core.fail('APP_ENTRY_NOT_DELETABLE', 422, jsonb_build_object('id', old.id)); end if;
   if v_proc then
-    -- La otra app no decide lo que se decide en Finance.
-    new.invoiced := old.invoiced; new.invoiced_reason := old.invoiced_reason;
-    new.invoiced_changed_by := old.invoiced_changed_by; new.invoiced_changed_at := old.invoiced_changed_at; new.notes := old.notes;
+    -- Las notas son de Finance.
+    new.notes := old.notes;
     new.received_by := v_actor; new.received_at := now();
     return new;
   end if;
   if (to_jsonb(new) - v_free) <> (to_jsonb(old) - v_free) then perform core.fail('APP_ENTRY_PROCEDURE_ONLY', 422, jsonb_build_object('id', old.id)); end if;
-  new.invoiced_changed_by := old.invoiced_changed_by; new.invoiced_changed_at := old.invoiced_changed_at;
-  if new.invoiced is distinct from old.invoiced then
-    if invoices.app_entry_delivered(old.id) then perform core.fail('ENTRY_LOCKED', 409, jsonb_build_object('id', old.id)); end if;
-    new.invoiced_changed_by := v_actor; new.invoiced_changed_at := now();
-    -- Volver a facturar borra el motivo de no facturar, salvo que llegue uno nuevo.
-    if new.invoiced and new.invoiced_reason is not distinct from old.invoiced_reason then new.invoiced_reason := null; end if;
-  end if;
   return new;
 end $$;
 create trigger app_entries_guard before insert or update on invoices.app_entries for each row execute function invoices.guard_app_entry();
@@ -132,7 +118,7 @@ begin
   v_amount := invoices.app_entry_int(a, 'amount_cents');
   v_pending := invoices.app_entry_int(a, 'pending_refunds_cents', 0);
   if v_pending < 0 then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'pending_refunds_cents')); end if;
-  if case when jsonb_typeof(a->'tax_rate') = 'number' then (a->>'tax_rate')::numeric not between 0 and 100 else true end then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'tax_rate')); end if;
+  if (case when jsonb_typeof(a->'tax_rate') = 'number' then (a->>'tax_rate')::numeric not between 0 and 100 else true end) then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'tax_rate')); end if;
   v_rate := round((a->>'tax_rate')::numeric, 2);
   -- IVA incluido: el neto se redondea al céntimo y la cuota es el resto, así siempre suman el importe.
   v_net := round(v_amount * 100 / (100 + v_rate)); v_tax := v_amount - v_net;
@@ -186,21 +172,20 @@ begin
   end if;
   perform set_config('invoices.procedure', '', true);
   select * into e from invoices.app_entries where id = v_id;
-  return jsonb_build_object('entry_id', e.id, 'status', v_status, 'revision', e.revision, 'invoiced', e.invoiced, 'tax_cents', e.tax_cents, 'net_cents', e.net_cents);
+  return jsonb_build_object('entry_id', e.id, 'status', v_status, 'revision', e.revision, 'tax_cents', e.tax_cents, 'net_cents', e.net_cents);
 end $$;
 select core.allow_procedure('invoices', 'invoices.record_app_entry');
 
 -- ---------------------------------------------------------------------------
 -- Resumen fiscal y entrega a la gestoría
 -- ---------------------------------------------------------------------------
--- Totales en euros, con la forma de `issued_summary_for`: ingresos facturados como IVA repercutido por tipo; gastos
--- facturados aparte (sin factura de proveedor no hay IVA soportado deducible: pregunta en PETICIONES.md); los no
--- facturados, fuera de la cuenta pero contados.
+-- Totales en euros, con la forma de `issued_summary_for`: los ingresos como IVA repercutido por tipo; los gastos aparte
+-- (sin factura de proveedor no hay IVA soportado deducible: pregunta en PETICIONES.md).
 create or replace function invoices.app_entries_summary_for(p_from date, p_to date)
 returns jsonb language sql stable as $$
   with live as (select * from invoices.app_entries where deleted_at is null and entry_date between p_from and p_to),
-  inc as (select * from live where invoiced and kind = 'income'),
-  exp as (select * from live where invoiced and kind = 'expense')
+  inc as (select * from live where kind = 'income'),
+  exp as (select * from live where kind = 'expense')
   select jsonb_build_object(
     'income', jsonb_build_object('count', (select count(*) from inc),
       'base', (select coalesce(sum(net_cents), 0) / 100.0 from inc), 'quota', (select coalesce(sum(tax_cents), 0) / 100.0 from inc),
@@ -211,9 +196,7 @@ returns jsonb language sql stable as $$
         from (select source_app, count(*) n, sum(amount_cents) / 100.0 total from inc group by source_app) g)),
     'expense', jsonb_build_object('count', (select count(*) from exp),
       'base', (select coalesce(sum(net_cents), 0) / 100.0 from exp), 'quota', (select coalesce(sum(tax_cents), 0) / 100.0 from exp),
-      'total', (select coalesce(sum(amount_cents), 0) / 100.0 from exp)),
-    'not_invoiced', (select jsonb_build_object('count', count(*), 'income', coalesce(sum(amount_cents) filter (where kind = 'income'), 0) / 100.0,
-      'expense', coalesce(sum(amount_cents) filter (where kind = 'expense'), 0) / 100.0) from live where not invoiced));
+      'total', (select coalesce(sum(amount_cents), 0) / 100.0 from exp)));
 $$;
 
 create or replace function invoices.app_entries_summary(p jsonb)
@@ -224,7 +207,7 @@ begin
 end $$;
 select core.allow_read('invoices', 'invoices.app_entries_summary', 'function');
 
--- Lo que va a la gestoría: los facturados del periodo, uno a uno (sin notas ni motivo).
+-- Lo que va a la gestoría: todos los apuntes del periodo, uno a uno (sin notas).
 create or replace function invoices.app_entries_manifest(p_from date, p_to date)
 returns jsonb language sql stable as $$
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -233,7 +216,7 @@ returns jsonb language sql stable as $$
       'pending_refunds', x.pending_refunds_cents / 100.0,
       'methods', (select coalesce(jsonb_object_agg(k, (v #>> '{}')::numeric / 100), '{}'::jsonb) from jsonb_each(x.methods) m(k, v)),
       'event_id', x.event_id) order by x.entry_date, x.source_app, x.source_ref), '[]'::jsonb)
-  from invoices.app_entries x where x.deleted_at is null and x.invoiced and x.entry_date between p_from and p_to;
+  from invoices.app_entries x where x.deleted_at is null and x.entry_date between p_from and p_to;
 $$;
 
 -- El manifest de 0206 más los apuntes de apps (`app_entry_count`, `app_entries_totals`, `app_entries`).
@@ -251,7 +234,7 @@ returns jsonb language sql stable as $$
       'app_entries', (select list from entries));
 $$;
 
--- create_export (de 0206): tampoco está vacía si hay apuntes facturados.
+-- create_export (de 0206): tampoco está vacía si hay apuntes de apps.
 create or replace function invoices.create_export(p jsonb)
 returns jsonb language plpgsql as $$
 declare a jsonb := p->'args'; v_id uuid; v_range jsonb; v_kind text; v_year int; v_quarter int; v_from date; v_to date; v_folder text; v_manifest jsonb; v_sha text; v_count int; inv jsonb; v_row jsonb;
@@ -269,7 +252,7 @@ begin
     else format('IKISAI_COMPRAS_%s_%s', to_char(v_from, 'YYYY_MM_DD'), to_char(v_to, 'YYYY_MM_DD')) end;
   v_manifest := invoices.export_manifest_v2(v_from, v_to, v_kind, v_year, v_quarter, v_folder);
   v_count := (v_manifest->>'invoice_count')::int;
-  -- Una entrega sin recibidas vale si hay emitidas registradas o apuntes de apps facturados en el periodo.
+  -- Una entrega sin recibidas vale si hay emitidas registradas o apuntes de apps en el periodo.
   if v_count = 0 and coalesce((v_manifest->>'issued_count')::int, 0) = 0 and coalesce((v_manifest->>'app_entry_count')::int, 0) = 0 then
     perform core.fail('EXPORT_EMPTY', 422, jsonb_build_object('from', v_from, 'to', v_to));
   end if;
@@ -311,7 +294,7 @@ begin
       from jsonb_array_elements(v_manifest->'app_entries') x));
 end $$;
 
--- export_bundle (de 0231): también desfasada si cambió un apunte incluido o hay apuntes facturados nuevos del periodo
+-- export_bundle (de 0231): también desfasada si cambió un apunte incluido o hay apuntes nuevos del periodo
 -- (solo en las entregas que ya llevan apuntes; las anteriores a esta migración no los tenían).
 create or replace function invoices.export_bundle(p jsonb)
 returns jsonb language plpgsql stable as $$
@@ -341,8 +324,8 @@ begin
                    and not exists (select 1 from jsonb_array_elements(e.manifest->'issued') iss where (iss->>'id')::uuid = ii.id))))
       or (e.manifest ? 'app_entries' and (
         exists (select 1 from jsonb_array_elements(e.manifest->'app_entries') x join invoices.app_entries ae on ae.id = (x->>'id')::uuid
-                where ae.revision <> (x->>'revision')::bigint or not ae.invoiced)
-        or exists (select 1 from invoices.app_entries ae where ae.deleted_at is null and ae.invoiced and ae.entry_date between e.from_date and e.to_date
+                where ae.revision <> (x->>'revision')::bigint)
+        or exists (select 1 from invoices.app_entries ae where ae.deleted_at is null and ae.entry_date between e.from_date and e.to_date
                    and not exists (select 1 from jsonb_array_elements(e.manifest->'app_entries') x where (x->>'id')::uuid = ae.id)))));
 end $$;
 
