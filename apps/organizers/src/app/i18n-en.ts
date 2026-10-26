@@ -279,7 +279,7 @@ export const EN: Dictionary = {
   'Verlo como huésped': 'See it as a guest',
   // Propuestas del equipo de Ikisai (0703)
   'Desde dirección, los cambios se proponen a quien organiza. Envíalos desde «Propuesta para quien organiza».': 'From management, changes are proposed to the organiser. Send them from “Proposal for the organiser”.',
-  'Una propuesta no lleva archivos. Pon un enlace o pide a quien organiza que lo suba.': 'A proposal cannot carry files. Add a link or ask the organiser to upload it.',
+  'Para proponer un archivo hace falta conexión: se sube al momento. Inténtalo con red.': 'Proposing a file needs a connection: it is uploaded straight away. Try again online.',
   'Esa propuesta ya no está pendiente: alguien la ha decidido o retirado.': 'That proposal is no longer pending: someone has decided on it or withdrawn it.',
   'Hay demasiadas propuestas sin decidir. Espera a que quien organiza las revise.': 'There are too many undecided proposals. Wait for the organiser to review them.',
   'Qué ven tus asistentes': 'What your attendees see',

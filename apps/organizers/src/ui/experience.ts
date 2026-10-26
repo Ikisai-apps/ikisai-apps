@@ -15,7 +15,8 @@ import type { ReservationStatus } from '../app/api.ts';
 import { describeError, errorCode } from '../app/client.ts';
 import { MODULE_OF, sectionsOf, stepsOf, type SectionKey, type SectionsInput, type SectionState, type SectionStateName } from '../app/experience-state.ts';
 import { L, t } from '../app/i18n.ts';
-import { fileIdOf, libraryOf, nextPosition, rowsOf, save, TABLES, watch, type Row } from '../app/own.ts';
+import { fileIdOf, libraryOf, nextPosition, proposes, rowsOf, save, TABLES, watch, type Row } from '../app/own.ts';
+import { uploadNow } from '../app/upload-now.ts';
 import { fbIgnore, fbMark, loading, needsNet, section } from './common.ts';
 import { renderLodging } from './lodging.ts';
 import { renderMenu, type PortalMenu } from './menu.ts';
@@ -258,11 +259,15 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
         toast(t('Solo se pueden subir PDF e imágenes PNG, JPG o WebP.')); return;
       }
       if (blob.size > MATERIAL_MAX_BYTES) { toast(t('El archivo pasa de 15 MB. Prueba con uno más ligero.')); return; }
-      const sha = await ctx.client.stageBlob(blob, { filename: name, mime });
+      // Quien organiza lo encola (se sube al volver la red). Dirección, que propone (0703), lo sube ya: la propuesta lleva el
+      // archivo verificado, porque una sugerencia no viaja con la cola de subidas.
+      const fileRef = proposes(ctx.client, reservationId)
+        ? await uploadNow(ctx.client, blob, { filename: name, mime })
+        : { $blob: await ctx.client.stageBlob(blob, { filename: name, mime }) };
       const id = crypto.randomUUID();
       const title = file.name.replace(/\.[^.]+$/, '').slice(0, 160) || t('Documento');
       await track(() => ctx.usage.run('organizers.experiencia.material_subir', () => save(ctx.client, [{ op: 'insert', table: TABLES.materials, id,
-        fields: { reservation_id: reservationId, owner_id: ctx.userId, kind: 'file', title, file_id: { $blob: sha }, published: false, window: 'always', position: nextPosition(materials) } }])));
+        fields: { reservation_id: reservationId, owner_id: ctx.userId, kind: 'file', title, file_id: fileRef, published: false, window: 'always', position: nextPosition(materials) } }])));
       await read();
       paintMaterials();
       const row = materials.find((m) => m.id === id);

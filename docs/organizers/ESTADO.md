@@ -105,6 +105,8 @@
 
   Pruebas en `scope.test.ts`, `proposal-draft.test.ts` y `team-proposals.test.ts` (PGlite).
 
+- 2026-10-27 · **Propuestas del equipo con archivos** (VG por Core): dirección sube el archivo del material al momento (`app/upload-now.ts`) y la propuesta lleva su `file_id`. Quien organiza lo lee al aceptarla. Prueba en `team-proposals.test.ts`.
+
 ## Pendiente
 
 - **Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped»** (encargo de VG, 26-10; plazo: jueves 29). Peticiones B19–B21, K8, K9 y Gu1, y lo que hace Organizers, en `PETICIONES.md`.

@@ -701,7 +701,11 @@ Dirección edita la experiencia y las ofertas de un retiro que no es suyo, pero 
 - **«Propuestas del equipo de Ikisai»** (`#teamInbox`, quien organiza): cada pendiente con lo que cambia («Añade · Oferta «Masaje»»), «Aceptar» y «Descartar».
   - Al aceptar, el lote se aplica como un commit suyo, y lo nuevo en materiales y preguntas pasa a su biblioteca (`owner_id`, lote corregido).
   - En Mis retiros, la tarjeta del retiro lleva «N propuestas del equipo».
-- **Necesita red** enviar, retirar, aceptar y descartar. Una propuesta no lleva archivos (`PROPOSAL_NO_FILES`), solo enlaces (Core lo apunta para VG).
+- **Necesita red** enviar, retirar, aceptar y descartar.
+- **Archivos** (encargo de VG por Core, 27-10): un material con archivo propuesto por dirección se sube al momento (`app/upload-now.ts`: ticket, `PUT` y verificación, como la firma de Guests), y la propuesta lleva el `file_id` verificado. Una sugerencia no viaja con la cola de subidas: sin red, `PROPOSAL_NO_FILES`.
+  - Hasta que se acepta, el archivo solo lo lee quien lo subió (K3).
+  - Al aceptarlo lo referencia el material, y lo leen quien organiza y, si lo publica, sus asistentes.
+  - Si la propuesta no se acepta, la recogida de huérfanos lo borra (marca a los 2 días y borra a los 30).
 - **Errores:** `SUGGESTION_REQUIRED`, `SUGGESTION_UNAVAILABLE` (ya decidida o retirada) y `TOO_MANY_SUGGESTIONS` (30 pendientes por persona), con su texto en `describeError`.
 - **Ids de feedback:**
   - `organizers.retiro.propuesta_equipo` (`.enviar`, `.descartar` y `.retirar`);
