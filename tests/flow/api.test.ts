@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
+import { applyPublicOperations, createSupabase } from '../../supabase/functions/_kit/mod.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
 
@@ -334,4 +335,56 @@ test('flow · §15.21: tareas de Logística se crean, se asignan, se terminan y 
   await ok([{ op: 'update', table: TABLES.units, id, expectedRevision: task.revision, fields: { label: 'Reponer tomate', priority: false } }]);
   const t2 = await row(TABLES.units, id);
   assert.equal(code(await commit([{ op: 'update', table: TABLES.units, id, expectedRevision: t2.revision, fields: { status: 'done' } }])), 'PROCEDURE_ONLY');
+});
+
+test('flow · FLOW-DIR-001 §1: el público pide número, envía su pedido y solo ve lo suyo; caja lo encuentra y lo cobra', async () => {
+  const pub = (path: string, init: { body?: unknown; token?: string; method?: string } = {}) =>
+    app.call(`/api/v1/public/${path}`, { token: null, body: init.body, method: init.method, headers: init.token ? { 'X-Flow-Customer': init.token } : {} });
+  const a = await pub('customer', { body: {} });
+  assert.equal(a.status, 200, JSON.stringify(a.data));
+  assert.match(a.data.token, /^[0-9a-f]{64}$/); assert.ok(a.data.number >= 100);
+  assert.equal(a.headers.get('cache-control'), 'no-store');
+  const b = await pub('customer', { body: {} });
+  assert.equal(b.data.number, a.data.number + 1);
+  // El token nunca se guarda: solo su resumen.
+  const stored = await app.t.db.query<{ token_hash: string }>(`select token_hash from flow.customers where number = $1`, [a.data.number]);
+  assert.notEqual(stored.rows[0]!.token_hash, a.data.token);
+  // Sin cabecera o con un token desconocido, nada.
+  assert.equal((await pub('mine')).status, 401);
+  assert.equal((await pub('orders', { body: { lines: [{ productId: P.serrano, quantity: 1 }] } })).status, 401);
+  assert.equal((await pub('mine', { token: 'f'.repeat(64) })).data.error.code, 'CUSTOMER_UNKNOWN');
+  const sent = await pub('orders', { token: a.data.token, body: { lines: [{ productId: P.serrano, quantity: 2 }, { productId: P.agua, quantity: 1 }] } });
+  assert.equal(sent.status, 200, JSON.stringify(sent.data));
+  assert.equal(sent.data.number, a.data.number);
+  assert.equal((await pub('orders', { token: a.data.token, body: { lines: [{ productId: P.serrano, quantity: 0 }] } })).status, 422);
+  const mineA = await pub('mine', { token: a.data.token });
+  assert.equal(mineA.data.number, a.data.number);
+  assert.equal(mineA.data.orders.length, 1); assert.equal(mineA.data.orders[0].status, 'open');
+  assert.equal(mineA.data.customerId, undefined); assert.equal(mineA.data.projectId, undefined);
+  assert.equal((await pub('mine', { token: b.data.token })).data.orders.length, 0);
+  // Caja: el pedido está abierto, con su cliente; se cobra como cualquier otro y el cliente lo ve preparando.
+  const order = await row(TABLES.orders, sent.data.orderId);
+  assert.equal(order.origin, 'public'); assert.equal(order.status, 'open');
+  const customer = (await rows(TABLES.customers, (c) => c.id === order.customer_id))[0];
+  assert.equal(customer.number, a.data.number);
+  await pay(order.id);
+  const after = await pub('mine', { token: a.data.token });
+  assert.equal(after.data.orders[0].status, 'paid'); assert.equal(after.data.orders[0].preparing, true);
+  const serrano = after.data.orders[0].lines.find((l: any) => l.code === 'A' && l.prepared);
+  assert.equal(serrano.preparedQty, 0); assert.equal(serrano.quantity, 2);
+});
+
+test('flow · lote público: solo crea su cliente, su pedido abierto y sus líneas; nada de cobros ni de tocar lo cobrado', async () => {
+  const supabase = createSupabase({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch });
+  const tryPublic = async (operations: any[]) => { try { await applyPublicOperations(supabase, 'flow', operations); return 'ok'; } catch (e: any) { return e.code ?? String(e); } };
+  const cust = await app.call('/api/v1/public/customer', { token: null, body: {} });
+  const customerId = (await rows(TABLES.customers, (c) => c.number === cust.data.number))[0].id;
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orders, id: uuid(), fields: { project_id: PROJECT, origin: 'public', customer_id: customerId, status: 'paid' } }]), 'FORBIDDEN');
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.payments, id: uuid(), fields: { order_id: uuid(), kind: 'charge', amount_cents: 1 } }]), 'FORBIDDEN');
+  const paid = await openOrder([[P.agua, 1]]);
+  await pay(paid.id);
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: paid.id, product_id: P.agua, quantity: 5 } }]), 'FORBIDDEN');
+  // El número lo pone el servidor aunque el lote mande otro.
+  assert.equal(await tryPublic([{ op: 'insert', table: TABLES.customers, id: uuid(), fields: { project_id: PROJECT, token_hash: 'a'.repeat(64), number: 5 } }]), 'ok');
+  assert.ok((await rows(TABLES.customers, (c) => c.number === 5)).length === 0);
 });

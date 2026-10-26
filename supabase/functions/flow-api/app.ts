@@ -9,7 +9,7 @@
  * El token nunca llega a la base de datos: aquí se resume con SHA-256 y solo viaja el resumen. Las escrituras van por la
  * escritura pública del núcleo (actor «Flow (sistema)», lote público que limita `flow.guard`).
  */
-import { createApp, createSupabase, isFault, sha256Hex, type AppConfig, type Supabase } from '../_kit/mod.ts';
+import { applyPublicOperations, createApp, createSupabase, isFault, sha256Hex, type AppConfig, type Supabase } from '../_kit/mod.ts';
 import { APP, TABLES } from '../_domain/flow/mod.ts';
 
 export const FLOW_ORIGINS = ['https://flow.ikisai.com', 'https://ikisai-flow.pages.dev'];
@@ -23,7 +23,7 @@ export const MAX_PUBLIC_LINES = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[0-9a-f]{64}$/;
 
-/** Escritura pública del núcleo (helper `applyPublicOperations` del kit, migración core 0094). */
+/** Escritura pública del núcleo (`applyPublicOperations` del kit, migración core 0094); inyectable en pruebas. */
 export type PublicWriter = (supabase: Supabase, app: string, operations: unknown[]) => Promise<{ cursor: number; results: unknown[] }>;
 
 type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes'> & Partial<Pick<AppConfig, 'origins'>>;
@@ -34,10 +34,7 @@ export function createFlowApp(base: FlowBase, options: { publicWrite?: PublicWri
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [] });
-  const publicWrite: PublicWriter = options.publicWrite ?? (async () => {
-    // Hasta que el núcleo publique la escritura pública (0094), enviar pedidos desde la carta no está disponible.
-    throw Object.assign(new Error('PUBLIC_WRITE_UNAVAILABLE'), { status: 503, code: 'PUBLIC_WRITE_UNAVAILABLE' });
-  });
+  const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
   async function handlePublic(request: Request, route: string): Promise<Response> {
     const origin = request.headers.get('origin');
@@ -97,9 +94,7 @@ export function createFlowApp(base: FlowBase, options: { publicWrite?: PublicWri
       }
       return error(404, 'NOT_FOUND', 'Ruta no encontrada.');
     } catch (caught) {
-      const fault = caught as { status?: number; code?: string };
       if (isFault(caught) && caught.status < 500) return error(caught.status, caught.code, caught.message);
-      if (fault?.code === 'PUBLIC_WRITE_UNAVAILABLE') return error(503, 'PUBLIC_WRITE_UNAVAILABLE', 'Enviar el pedido aún no está disponible: enséñalo en la barra.');
       return error(503, 'BACKEND_UNAVAILABLE', 'No disponible ahora mismo. Inténtalo de nuevo.');
     }
   }

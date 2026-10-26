@@ -78,16 +78,21 @@ begin
   if flow.in_proc() then return new; end if;
   if tg_op = 'UPDATE' then v_old := to_jsonb(old); end if;
   -- Lote público (carta, sin sesión): crear su cliente, crear su pedido abierto y poner líneas en un pedido público abierto.
+  -- (Un `if` por tabla: PL/pgSQL resuelve `new.<campo>` aunque la condición anterior del `and` sea falsa.)
   if core.is_public_batch() then
-    if tg_table_name = 'customers' and tg_op = 'INSERT' then return new; end if;
-    if tg_table_name = 'orders' and tg_op = 'INSERT' and new.status = 'open' and new.origin = 'public' and new.customer_id is not null
-       and new.parent_id is null and new.pay_seq is null and new.paid_at is null and new.total_cents is null and not new.delivery_exception then
-      return new;
-    end if;
-    if tg_table_name = 'order_lines' and new.unit_price_cents is null and new.delivered_qty = 0
-       and exists (select 1 from flow.orders o where o.id = new.order_id and o.status = 'open' and o.origin = 'public' and o.deleted_at is null)
-       and (tg_op = 'INSERT' or not flow.changed(v_old, v_new, array['order_id'])) then
-      return new;
+    if tg_table_name = 'customers' then
+      if tg_op = 'INSERT' then return new; end if;
+    elsif tg_table_name = 'orders' then
+      if tg_op = 'INSERT' and new.status = 'open' and new.origin = 'public' and new.customer_id is not null and new.parent_id is null
+         and new.pay_seq is null and new.paid_at is null and new.total_cents is null and not new.delivery_exception then
+        return new;
+      end if;
+    elsif tg_table_name = 'order_lines' then
+      if new.unit_price_cents is null and new.delivered_qty = 0
+         and exists (select 1 from flow.orders o where o.id = new.order_id and o.status = 'open' and o.origin = 'public' and o.deleted_at is null)
+         and (tg_op = 'INSERT' or not flow.changed(v_old, v_new, array['order_id'])) then
+        return new;
+      end if;
     end if;
     perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'public batch', 'table', 'flow.' || tg_table_name));
   end if;
