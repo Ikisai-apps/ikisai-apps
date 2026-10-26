@@ -14,5 +14,7 @@ export type { AppConfig, AppRoute, RouteRequest, AppHandler, WorkerRoute, Worker
 export { createMcp, MCP_PROTOCOL_VERSIONS } from './mcp.ts';
 export type { McpTool, McpToolKit } from './mcp.ts';
 export { ensureServiceActor } from './service.ts';
+export { applyPublicOperations } from './public-write.ts';
+export type { PublicOperation, PublicBatchResult } from './public-write.ts';
 export { createStorage, r2ConfigFromEnv, type StorageAccess, type StoredObject, type ProviderName } from './storage.ts';
 export { createGoogleTokenSource, parseServiceAccount, GoogleAuthError, type GoogleServiceAccount } from './google.ts';
