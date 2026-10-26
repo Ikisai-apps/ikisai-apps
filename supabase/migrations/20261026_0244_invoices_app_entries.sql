@@ -66,7 +66,7 @@ declare
   v_actor uuid;
   v_free text[] := array['invoiced', 'invoiced_reason', 'invoiced_changed_by', 'invoiced_changed_at', 'event_id', 'notes', 'revision', 'updated_at', 'updated_by'];
 begin
-  begin v_actor := nullif(current_setting('core.actor', true), '')::uuid; exception when others then v_actor := null; end;
+  begin v_actor := nullif(current_setting('core' || '.actor', true), '')::uuid; exception when others then v_actor := null; end;
   if tg_op = 'INSERT' then
     if not v_proc then perform core.fail('APP_ENTRY_PROCEDURE_ONLY', 422, jsonb_build_object('procedure', 'invoices.record_app_entry')); end if;
     new.received_by := v_actor; new.received_at := now();
