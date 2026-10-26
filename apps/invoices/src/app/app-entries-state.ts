@@ -23,10 +23,10 @@ export interface EntryLike {
   deleted_at: string | null;
 }
 
-export interface AllocationLike { id: string; invoice_line_id: string; target_app: string; target_kind: string; target_id: string; target_label: string | null; allocated_amount: number; deleted_at: string | null }
+export interface AllocationLike { id: string; invoice_line_id: string; target_app: string; target_kind: string; target_id: string | null; target_label: string | null; allocated_amount: number; deleted_at: string | null }
 export interface LineLike { id: string; invoice_id: string; deleted_at: string | null }
 export interface InvoiceLike { id: string; code: string | null; status: string; object: string | null; invoice_date: string | null; supplier_id: string; deleted_at: string | null }
-export interface IssuedAllocationLike { id: string; issued_invoice_id: string; target_app: string; target_kind: string; target_id: string; target_label: string | null; allocated_amount: number; deleted_at: string | null }
+export interface IssuedAllocationLike { id: string; issued_invoice_id: string; target_app: string; target_kind: string; target_id: string | null; target_label: string | null; allocated_amount: number; deleted_at: string | null }
 export interface IssuedLike { id: string; full_number: string | null; status: string; description: string | null; issue_date: string | null; deleted_at: string | null }
 
 export interface EventSources {
@@ -58,7 +58,8 @@ const APP_NAMES: Record<string, string> = { flow: 'Flow', tasks: 'Tasks', food: 
 export const appName = (id: string): string => APP_NAMES[id] ?? (id ? id[0]!.toUpperCase() + id.slice(1) : '');
 
 const cents = (euros: number | null | undefined): number => Math.round(Number(euros ?? 0) * 100);
-const isEvent = (a: { target_app: string; target_kind: string; deleted_at: string | null }) => !a.deleted_at && a.target_app === 'booking' && a.target_kind === 'event';
+const isEvent = <T extends { target_app: string; target_kind: string; target_id: string | null; deleted_at: string | null }>(a: T): a is T & { target_id: string } =>
+  !a.deleted_at && a.target_app === 'booking' && a.target_kind === 'event' && !!a.target_id;
 const COUNTED_RECEIVED = new Set(['validada', 'archivada']);
 const COUNTED_ISSUED = new Set(['registrada', 'emitida', 'rectificada']);
 
