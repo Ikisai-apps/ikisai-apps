@@ -20,6 +20,7 @@ import { uploadNow } from '../app/upload-now.ts';
 import { fbIgnore, fbMark, loading, needsNet, section } from './common.ts';
 import { renderLodging } from './lodging.ts';
 import { renderMenu, type PortalMenu } from './menu.ts';
+import { renderFoodOffers } from './food-offers.ts';
 import { renderProgram, type PortalProgram } from './program.ts';
 import { typing } from './offers.ts';
 import type { ViewContext } from './shell.ts';
@@ -595,7 +596,12 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     questionsHost.hidden = current !== 'preguntas';
     let title: string | null = null;
     if (current === 'programa') { other = renderProgram(ctx, reservationId); title = L('Programa'); }
-    else if (current === 'menu') { other = renderMenu(ctx, reservationId); title = L('Menú'); }
+    // Menú: primero lo que ofrece Food (menú incluido y cartas, con quién paga) y debajo el menú día a día.
+    else if (current === 'menu') {
+      const menu = renderMenu(ctx, reservationId) as HTMLElement & { destroy?: () => void };
+      other = Object.assign(el('div', null, renderFoodOffers(ctx, reservationId), menu), { destroy: () => menu.destroy?.() });
+      title = L('Menú');
+    }
     else if (current === 'alojamiento') { other = renderLodging(ctx, reservationId, () => exp, setExperience); title = L('Alojamiento'); }
     replace(otherHost, title ? el('h3', { class: 'orgexp-title' }, t(title)) : null, other);
     // Al volver a la portada desde un apartado, sus cifras se vuelven a calcular.

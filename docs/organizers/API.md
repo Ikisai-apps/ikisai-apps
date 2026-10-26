@@ -718,3 +718,17 @@ Dirección edita la experiencia y las ofertas de un retiro que no es suyo, pero 
 - **Cuándo sale:** en la cabecera de la ficha (`#viewAsGuest`), si `as_guest_id` no es null y la cuenta tiene Guests en `GET apps`. Booking crea la ficha de huésped de quien organiza (`portal_role = 'organizer'`) solo en retiros vivos y no terminados.
 - **Dónde lleva:** abre `https://guests.ikisai.com/#/r/<reservation_id>` (en minúsculas, Gu1) en otra pestaña. Guests entra con el pase común, sin otro inicio de sesión, y abre la familia del retiro o la ficha si solo hay una persona.
 - **Catálogo de apps:** se lee una vez y se olvida al cerrar sesión (`app/guest-view.ts`).
+
+## 20. Comida que se ofrece (Food Fd4, `food.portal_offers`; encargo de VG por Core, 27-10-2026)
+
+En Experiencia › Menú, encima del menú día a día, el bloque «Comida que se ofrece» (`#foodOffers`) enseña las ofertas de comida del retiro tal como las publica Food. Es solo lectura.
+
+- **Cada oferta:**
+  - el nombre, «Menú cerrado» o «Carta», y «Provisional» si lo es;
+  - **quién paga**: «Lo pagas tú (incluido en tu retiro)», «Lo paga cada asistente, en barra» o «…, al final, en su cuenta», con los textos acordados con Food;
+  - los días y servicios, o «Todos los días · todos los servicios», el lugar y, si los hay, los grupos de comida.
+- **Una carta** enseña sus líneas por ámbito (Clásicos, Gourmet, Barra) y por código, con el precio de venta (céntimos, IVA incluido), la descripción, las dietas y los alérgenos con su nombre. Si cocina no ha revisado la receta, dice «sin revisar por cocina».
+- **Un menú cerrado** remite al menú día a día, que sigue debajo con sus comentarios (`portal_menu`).
+- **Lo interno no se ve:** Food no lo devuelve y Organizers, además, descarta lo que llegue con `audience = 'interna'`.
+- **Sin la lectura** (Food sin publicar) o con un fallo sin copia guardada, el bloque no sale. Sin red, la última copia con su aviso.
+- **Reglas puras** en `app/food-offers.ts` (`visibleOffers`, `payerText`, `whenText`, `priceText` y `linesByScope`), con su prueba `food-offers.test.ts`. Id de feedback: `organizers.menu.ofertas`.
