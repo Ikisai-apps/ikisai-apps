@@ -43,3 +43,12 @@ html.dark .tkp-task.late small{color:#f0a08c}
 .tkp-card .stat-row .stat-label{overflow-wrap:anywhere}
 .tkp-card.system .stat-row{grid-template-columns:1fr}
 .tkp-card .chips.tkp-chips{flex-wrap:nowrap!important}
+
+/* FB_2026_063 · barras de «cómo vamos» encima de la banda de atención. */
+.tkp-progress{display:grid;gap:8px;margin:0 0 10px}
+.tkp-bar{display:grid;gap:4px}
+.tkp-bar-label{font-size:14px;color:var(--ink)}
+.tkp-bar-track{display:block;height:12px;border-radius:999px;background:var(--paper-2);border:1px solid var(--line);overflow:hidden}
+.tkp-bar-fill{display:block;height:100%;border-radius:inherit}
+.tkp-bar-fill.done{background:var(--olive-dark)}
+.tkp-bar-fill.left{background:var(--warn,#a86b12)}

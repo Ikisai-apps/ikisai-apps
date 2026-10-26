@@ -87,7 +87,9 @@ function itemSupplierField(value,onChange){const wrap=document.createElement('di
 
 /* --- Vistas -------------------------------------------------------------------------------------------------------- */
 function purchaseAreaNote(){return generalMode()?'<div class="notice">Elige un área en la tira de arriba: las compras se llevan por área.</div>':''}
-function purchaseRow(r){const [label,tone]=PURCHASE_STATUS[r.status]||[r.status,''];const project=r.project_id?tab().projects.find(p=>p.id===r.project_id)?.title:'';
+/* El área de la solicitud (no la activa, que puede faltar al arrancar o al cerrar sesión: «reading 'projects'» en 14 reportes). */
+function purchaseAreaOf(r){return (r?.tab_id&&state.tabs.find(t=>t.id===r.tab_id))||tab()||null}
+function purchaseRow(r){const [label,tone]=PURCHASE_STATUS[r.status]||[r.status,''];const project=r.project_id?purchaseAreaOf(r)?.projects.find(p=>p.id===r.project_id)?.title:'';
   const meta=[qty(r.quantity,r.unit),r.supplier_name,project,r.due?'para el '+shortDate(r.due):'',r.repeat_days?`cada ${r.repeat_days} días`:'',invoiceCodes(r.id).length?'Factura '+invoiceCodes(r.id).join(', '):''].filter(Boolean).join(' · ');
   return `<button type="button" class="pcard" data-purchase="${r.id}" data-feedback-id="tasks.compras.lista.solicitud" data-feedback-label="Solicitud de compra"><span class="phead">${r.priority!=='normal'?priorityStar(r.priority):''}<strong>${esc(r.title)}</strong><span class="pstate ${tone}">${label}</span></span>${meta?`<span class="pmeta">${esc(meta)}</span>`:''}</button>`}
 let showRejectedPurchases=false;
@@ -176,7 +178,7 @@ main=function(){if(state.view==='purchases')return purchasesView();if(state.view
 function purchaseSheet(id=null,preset={}){
   const r=id?liveRows('tasks.purchase_requests').find(x=>x.id===id):{title:'',note:'',quantity:null,unit:'',estimated_amount:null,priority:'normal',needs_invoice:true,repeat_days:null,due:'',supplier_name:'',project_id:null,...preset};
   if(!r)return;const editable=canEdit()&&(!id||['requested','approved'].includes(r.status)),approve=id&&canApprovePurchases(r.tab_id);
-  const projects=tab().projects.filter(p=>!p.deleted&&p.status!=='archived');
+  const projects=(purchaseAreaOf(r)?.projects||[]).filter(p=>!p.deleted&&p.status!=='archived');
   openSheet(`<h2 class="sheettitle">${id?'Solicitud de compra':'Pedir algo'}</h2>${id?`<p class="small">${esc((PURCHASE_STATUS[r.status]||[r.status])[0])}${r.approved_at?' · aprobada '+shortDate(r.approved_at):''}${r.purchased_at?' · comprada '+shortDate(r.purchased_at):''}${r.received_at?' · recibida '+shortDate(r.received_at):''}</p>`:''}
     <div class="field"><label for="prTitle">Qué hay que comprar</label><input id="prTitle" maxlength="300" value="${esc(r.title)}" ${editable?'':'disabled'} data-feedback-id="tasks.solicitud.campos.titulo" data-feedback-label="Qué hay que comprar"></div>
     ${r.item_id?`<p class="small muted" id="prItem">Del inventario: <strong>${esc(inventoryItemName(r.item_id)||'artículo de Recursos')}</strong>. Al recibirla, entra en el almacén.</p>`:''}

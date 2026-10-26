@@ -80,8 +80,16 @@ function tkpArrange(html,projects){const tpl=document.createElement('template');
   const counts=tkpBandCounts(projects),band=document.createElement('div');band.className='ikisai-kit tkp-band';
   band.append(IkisaiKit.renderStats(TKP_BAND.map(b=>({value:counts[b.key],label:b.label,tone:counts[b.key]?b.tone:null,feedbackId:b.feedbackId,onClick:()=>{}})),{label:'Lo que pide atención'}));
   band.querySelectorAll('button.stat-item').forEach((b,i)=>{b.dataset.tkpFocus=TKP_BAND[i].key;b.setAttribute('aria-pressed',String(tkpFocus===TKP_BAND[i].key))});
+  band.insertAdjacentHTML('afterbegin',tkpProgressHtml(projects));
   const at=main.querySelector(':scope > [data-area-block], :scope > .sectionlabel, :scope > .project-grid');if(at)at.before(band);else main.append(band);
   return tpl.innerHTML}
+/* FB_2026_063 (opción a, sin datos nuevos): de un vistazo, cuánto trabajo hay y cuánto falta, contando tareas (las hojas, como
+   projectStats). Dos barras: todo lo que hay (con lo hecho dentro) y lo que falta. */
+function tkpProgressHtml(projects){let total=0,open=0;for(const p of projects){const s=tkpStats(p);total+=s.total;open+=s.open}
+  if(!total)return '';const done=total-open,pct=Math.round(100*done/total),left=Math.round(100*open/total);
+  return `<div class="tkp-progress" role="group" aria-label="Cómo vamos en general">
+    <div class="tkp-bar"><span class="tkp-bar-label"><b>${total}</b> ${total===1?'tarea en total':'tareas en total'} · ${pct}% hecho</span><span class="tkp-bar-track" role="img" aria-label="${done} de ${total} hechas"><span class="tkp-bar-fill done" style="width:${pct}%"></span></span></div>
+    <div class="tkp-bar"><span class="tkp-bar-label"><b>${open}</b> ${open===1?'falta':'faltan'}</span><span class="tkp-bar-track" role="img" aria-label="Faltan ${open} de ${total}"><span class="tkp-bar-fill left" style="width:${left}%"></span></span></div></div>`}
 const projectsViewBeforePortadas=projectsView;
 projectsView=function(){return tkpArrange(projectsViewBeforePortadas(),tab().projects.filter(p=>!p.deleted&&p.status!=='archived'&&!p.system))};
 const generalProjectsViewBeforePortadas=generalProjectsView;

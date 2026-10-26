@@ -105,7 +105,7 @@ let state=load();
 function load(){try{const x=localStorage.getItem('ikisai_p5a_demo');return x?JSON.parse(x):structuredClone(demo)}catch(e){return structuredClone(demo)}}
 function save(){localStorage.setItem('ikisai_p5a_demo',JSON.stringify(state))}
 function tab(){return state.tabs.find(t=>t.id===state.activeTab)}
-function project(){return tab().projects.find(p=>p.id===state.currentProject)}
+function project(){return tab()?.projects.find(p=>p.id===state.currentProject)}
 function family(id){return tab().families.find(f=>f.id===id)}
 function label(id){return tab().labels.find(l=>l.id===id)}
 function familyColorByLabel(id){const l=label(id);const f=l&&family(l.family);return f?f.color:'#777'}
@@ -218,7 +218,7 @@ function progress(p){const list=leaves(p);return list.length?Math.round(100*list
 function pending(p){return leaves(p).filter(t=>!t.done).length}
 function syncParent(p,id){const t=p.tasks.find(t=>t.id===id);if(!t)return;const c=children(p,id);if(c.length){const done=c.every(x=>x.done);if(t.done!==done){t.done=done;touch(t)}}}
 function syncAll(p){p.tasks.filter(t=>!t.parentId).forEach(t=>syncParent(p,t.id))}
-function taskLocation(id){for(const p of tab().projects){const t=p.tasks.find(t=>t.id===id);if(t)return{p,t}}}
+function taskLocation(id){for(const p of tab()?.projects||[]){const t=p.tasks.find(t=>t.id===id);if(t)return{p,t}}}
 function filteredTasks(p){return p.tasks.filter(t=>{
  if(t.deleted)return false;const st=state.filters?._state||[],done=status(p,t)==='done';if(st.length&&!((st.includes('pending')&&!done)||(st.includes('done')&&done)))return false;
  const q=state.search.trim().toLowerCase();if(q&&!(t.text+' '+(t.note||'')).toLowerCase().includes(q)&&!(t.labels||[]).some(id=>label(id)?.text.toLowerCase().includes(q)))return false;

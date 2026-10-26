@@ -74,7 +74,7 @@ moveTask=function(id,destId,parentId=null,beforeId=null){const ok=moveBeforeUndo
 const batchBeforeUndo=batchRun;
 batchRun=function(label,fn,options={}){const n=batchSelection.size,ok=batchBeforeUndo(label,fn,options);if(ok&&!options.undo)offerUndo(label.replace('%n',n));return ok};
 // ---- Atajos de teclado --------------------------------------------------------------------------
-document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;const t=e.target;if(t&&t.matches&&t.matches('input,textarea,select,[contenteditable]'))return;if(document.getElementById('sheetBack')?.classList.contains('show'))return;
+document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;const t=e.target;if(t&&t.matches&&t.matches('input,textarea,select,[contenteditable]'))return;if(document.getElementById('sheetBack')?.classList.contains('show'))return;if(document.querySelector('[role="dialog"][aria-modal="true"]'))return;/* hojas y diálogos del kit (FB_2026_054) */
   if(e.key==='/'){const s=document.getElementById('searchInput');if(s){e.preventDefault();s.focus();s.select()}}
   else if(e.key==='n'||e.key==='N'){const add=document.querySelector('[data-add-task]:not([disabled])');if(add&&canEdit()){e.preventDefault();add.click()}}
   else if(e.key==='s'||e.key==='S'){const b=document.getElementById('batchToggle');if(b){e.preventDefault();b.click()}}

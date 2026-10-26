@@ -1,5 +1,5 @@
 /* Dependencias: mismo grafo que el servidor, también al trabajar offline. */
-function dependencyIndex(scope=tab()){return new Map(scope.projects.flatMap(p=>p.tasks.map(t=>[t.id,{t,p}])))}
+function dependencyIndex(scope=tab()){return new Map((scope?.projects||[]).flatMap(p=>p.tasks.map(t=>[t.id,{t,p}])))}
 function effectiveDependencies(t,index){const step=stepBefore(t,index);return [...new Set([...(t.dependsOn||[]),...(index.get(t.parentId)?.t.dependsOn||[]),...(step?[step]:[])])]}
 /* Pasos en orden (FB_2026_041): la hija anterior de la cadena de su madre (por orden, sin las sueltas), como el servidor. */
 function stepChain(parent,p){return p.tasks.filter(c=>c.parentId===parent.id&&!c.deleted&&!c.stepFree).sort((a,b)=>(a.order||0)-(b.order||0)||(a.id<b.id?-1:1))}

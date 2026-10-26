@@ -458,3 +458,16 @@ test('sin red: los nombres y las iniciales salen de lo guardado en el dispositiv
   await settled(page);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('FB_2026_067: quien no tiene nivel de casa en Central también se puede elegir (responsable y «Personas»)', async () => {
+  const P_SIN = id();
+  await server.app.t.db.query(`insert into central.people (id, display_name, relation, house_level, initials, active, user_id) values ($1, $2, 'equipo', null, null, true, null)`, [P_SIN, 'Lucía Sanz']);
+  expect(await page.evaluate(() => (window as any).eval('Sync.core.refreshPeople()'))).toBe(true);
+  await openProject(MANT, PINTURA);
+  await page.evaluate((t) => openTaskEditor(t), T_NADA);
+  await fichaBloque(page, 'quien');
+  expect(await page.locator('#teOwner optgroup').evaluateAll((g) => g.map((x: any) => x.label))).toEqual(['Dirección', 'Staff', 'Outsider', 'Sin nivel de casa']);
+  await expect(page.locator('#teOwner optgroup[label="Sin nivel de casa"] option')).toHaveText(['Lucía Sanz']);
+  await page.evaluate(() => navigateView('projects'));
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});

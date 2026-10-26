@@ -101,3 +101,9 @@ main.tkh.small .tkh-head .title{font-size:20px}
 .tkh-carryhere{width:100%;min-height:46px;margin:4px 0}
 .tkh-carryback{min-height:46px;padding:0 10px 0 2px;border:0;background:none;color:var(--olive-dark);font:inherit;font-weight:800;cursor:pointer}
 html.dark .tkh-carryback{color:var(--ink)}
+
+/* FB_2026_059 · oficio y lugar bajo la línea de la tarea. */
+.tkh-place{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+/* FB_2026_060 · portada de fondo: velo del papel (88 % → 72 %) sobre la imagen, para que el texto mantenga el contraste. */
+.tkh-row.tkh-cover{border-radius:14px;padding:4px 6px;background-image:linear-gradient(90deg,color-mix(in srgb,var(--paper) 90%,transparent) 0%,color-mix(in srgb,var(--paper) 86%,transparent) 65%,color-mix(in srgb,var(--paper) 74%,transparent) 100%),var(--tkh-cover);background-size:cover;background-position:center}
+.tkh-row.tkh-cover .tkh-text,.tkh-row.tkh-cover .tkh-meta{text-shadow:0 0 6px var(--paper),0 0 2px var(--paper)}

@@ -181,10 +181,13 @@ function tcrFormatSheet(itemId,need,back){const it=tcrItem(itemId);if(!it)return
 /* Solicitudes · estantería por tienda                                                                                   */
 /* ===================================================================================================================== */
 let tcrShelvesBox=null,tcrShowDone=false;
+/* FB_2026_069: las cifras de arriba filtran la estantería (otro toque, o «Quitar filtro», lo quita). */
+let tcrFilter=null;
+const TCR_FILTERS={requested:'por aprobar',approved:'por comprar',purchased:'por recibir',keep:'dejan sobra'};
 function tcrDestroyShelves(){try{tcrShelvesBox?.destroy()}catch{}tcrShelvesBox=null}
 function tcrRequestTile(r){const n=tcrNext(r),{rp}=tcrPack(r),cu=tcrCuadreOf(r),money=tcrMoney(),amount=money?tcrAmount(r):null;
   const [label]=PURCHASE_STATUS[r.status]||[r.status];
-  const project=r.project_id?tab().projects.find(p=>p.id===r.project_id)?.title:'';
+  const project=r.project_id?purchaseAreaOf(r)?.projects.find(p=>p.id===r.project_id)?.title:'';
   const meta=[project,r.due?'para el '+shortDate(r.due):'',r.repeat_days?`cada ${r.repeat_days} días`:''].filter(Boolean).join(' · ');
   const actions=[{slot:'more',label:`Más: ${r.title}`,feedbackId:'tasks.compras.baldosa.mas',onClick:()=>tcrMoreSheet(r.id)}];
   const draw=tcrDraw(r,0.62);
@@ -208,12 +211,17 @@ function tcrMountPurchases(){const host=document.getElementById('tcrPurchases');
   const req=by('requested'),app=by('approved'),pur=by('purchased'),done=all.filter(r=>r.status==='received').sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||'')).slice(0,20),rej=all.filter(r=>r.status==='rejected');
   const keep=open.filter(r=>{const p=tcrPack(r);return p.rp&&p.rp.extra>0}).length;
   const hint=list=>{const s=tcrSum(list);return s?tcrEuro(s):null};
-  const stats=tcrKit().renderStats([{value:req.length,label:'por aprobar',hint:hint(req),tone:req.length?'warn':null},{value:app.length,label:'por comprar',hint:hint(app)},{value:pur.length,label:'por recibir',hint:hint(pur)},{value:keep,label:'dejan sobra',hint:TCR_KEEP}],{label:'Compras abiertas'});
+  const pick=k=>()=>{tcrFilter=tcrFilter===k?null:k;render()};
+  const stats=tcrKit().renderStats([{value:req.length,label:'por aprobar',hint:hint(req),tone:req.length?'warn':null,onClick:pick('requested'),feedbackId:'tasks.compras.cifras.por_aprobar'},{value:app.length,label:'por comprar',hint:hint(app),onClick:pick('approved'),feedbackId:'tasks.compras.cifras.por_comprar'},{value:pur.length,label:'por recibir',hint:hint(pur),onClick:pick('purchased'),feedbackId:'tasks.compras.cifras.por_recibir'},{value:keep,label:'dejan sobra',hint:TCR_KEEP,onClick:pick('keep'),feedbackId:'tasks.compras.cifras.sobra'}],{label:'Compras abiertas · toca una cifra para filtrar'});
+  // Cuál filtra: aria-pressed en su botón (el kit aún no tiene `selected` en renderStats; pedido al UI-kit).
+  stats.querySelectorAll('button.stat-item').forEach((b,i)=>{const k=['requested','approved','purchased','keep'][i];b.setAttribute('aria-pressed',String(tcrFilter===k));if(tcrFilter===k)b.classList.add('tcr-statpick')});
+  const shown=tcrFilter==='keep'?open.filter(r=>{const p=tcrPack(r);return p.rp&&p.rp.extra>0}):tcrFilter?open.filter(r=>r.status===tcrFilter):open;
   const ORDER={requested:0,approved:1,purchased:2};
-  const sups=[...new Set(open.map(tcrSupplierOf))].sort((a,b)=>(a==='Sin tienda')-(b==='Sin tienda')||open.filter(r=>tcrSupplierOf(r)===b).length-open.filter(r=>tcrSupplierOf(r)===a).length||a.localeCompare(b,'es'));
-  const rows=sups.map(s=>{const list=open.filter(r=>tcrSupplierOf(r)===s).sort((a,b)=>ORDER[a.status]-ORDER[b.status]),n=list.filter(r=>r.status==='requested').length,sum=tcrSum(list);
+  const sups=[...new Set(shown.map(tcrSupplierOf))].sort((a,b)=>(a==='Sin tienda')-(b==='Sin tienda')||shown.filter(r=>tcrSupplierOf(r)===b).length-shown.filter(r=>tcrSupplierOf(r)===a).length||a.localeCompare(b,'es'));
+  const rows=sups.map(s=>{const list=shown.filter(r=>tcrSupplierOf(r)===s).sort((a,b)=>ORDER[a.status]-ORDER[b.status]),n=list.filter(r=>r.status==='requested').length,sum=tcrSum(list);
     return {key:s,label:s,medal:s==='Sin tienda'?{icon:'cart'}:{},sub:`${tcrPlural(list.length,'cosa','cosas')}${sum?' · '+tcrEuro(sum):''}${n?` · ${n} por aprobar`:''}`,items:list}});
   host.innerHTML=`<div class="tcr-top"></div>
+    ${tcrFilter?`<p class="tcr-filtering" role="status">Solo ${esc(TCR_FILTERS[tcrFilter])} · ${tcrPlural(shown.length,'cosa','cosas')} <button type="button" class="ghost small" id="tcrClearFilter" data-feedback-id="tasks.compras.cifras.quitar_filtro" data-feedback-label="Quitar filtro">Quitar filtro</button></p>`:''}
     ${canApprovePurchases()&&canEdit()&&req.length?`<div class="tcr-banner" role="region" aria-label="Te toca aprobar"><span><b>Te toca aprobar · ${req.length}</b>${hint(req)?' · '+esc(hint(req)):''}</span><button class="primary" type="button" id="tcrApproveAll" data-feedback-id="tasks.compras.aprobar_todas" data-feedback-label="Aprobar todas">✓ Aprobar ${req.length===1?'la 1':'las '+req.length}</button></div>`:''}
     ${!canApprovePurchases()&&canEdit()&&req.length?`<p class="tcr-howto">Aprueba ${esc(approverName(tab().id))}.</p>`:''}
     <div class="tcr-legend"></div><div class="tcr-shelves"></div>
@@ -221,11 +229,12 @@ function tcrMountPurchases(){const host=document.getElementById('tcrPurchases');
     ${rej.length?`<button class="ghost" id="toggleRejectedPurchases" type="button" data-feedback-id="tasks.compras.lista.ver_rechazadas" data-feedback-label="Ver rechazadas">${showRejectedPurchases?'Ocultar rechazadas':`Ver rechazadas (${rej.length})`}</button>${showRejectedPurchases?`<ul class="tcr-donelist">${rej.map(r=>`<li><button type="button" class="tcr-doneitem" data-purchase="${r.id}" data-feedback-id="tasks.compras.rechazada.abrir" data-feedback-label="Ver la solicitud"><b>${esc(r.title)}</b><span>Rechazada</span></button></li>`).join('')}</ul>`:''}`:''}`;
   host.querySelector('.tcr-top').append(stats);
   if(open.some(r=>tcrPack(r).rp?.pack))host.querySelector('.tcr-legend').append(tcrEnv().legend({kit:tcrKit(),keep:TCR_KEEP,used:'Lo que hace falta'}));
-  if(open.length){tcrShelvesBox=tcrKit().createShelves({rows,key:r=>r.id,name:r=>r.title,tile:r=>tcrRequestTile(r),label:'Estanterías por tienda',noun:'tienda',feedbackId:'tasks.compras.estanterias',
+  if(shown.length){tcrShelvesBox=tcrKit().createShelves({rows,key:r=>r.id,name:r=>r.title,tile:r=>tcrRequestTile(r),label:'Estanterías por tienda',noun:'tienda',feedbackId:'tasks.compras.estanterias',
       canMove:r=>canEdit()&&['requested','approved'].includes(r.status)&&!tcrP().planOf(purchasesData(),tcrRow(r.id)||r),
       onMove:(r,from,to)=>tcrMoveSupplier(r.id,to)});
     host.querySelector('.tcr-shelves').append(tcrShelvesBox.element)}
-  else host.querySelector('.tcr-shelves').innerHTML='<p class="small muted">Nada pendiente.</p>';
+  else host.querySelector('.tcr-shelves').innerHTML=tcrFilter?'<p class="small muted">Nada con este filtro.</p>':'<p class="small muted">Nada pendiente.</p>';
+  const cf=document.getElementById('tcrClearFilter');if(cf)cf.onclick=()=>{tcrFilter=null;render()};
   host.querySelector('.tcr-done')?.addEventListener('toggle',e=>{tcrShowDone=e.target.open});
   const aa=document.getElementById('tcrApproveAll');if(aa)aa.onclick=()=>tcrApproveAll(req)}
 /* Arrastrar a otra tienda: con «Deshacer». Lo que está en un plan o comprado no se mueve (lo dice el «⋯»). */
@@ -270,16 +279,21 @@ function tcrSupplyItems(){return tcrInv().items.filter(i=>!i.deleted_at&&i.activ
 const suppliesViewBeforeCompras=suppliesView;
 suppliesView=function(){const html=suppliesViewBeforeCompras();if(generalMode()||!tab()||!fullScope(tab().id)||!Sync.core?.resources)return html;
   return html.replace('<div class="ikisai-kit" id="suppliesCatalog"></div>','<div class="ikisai-kit tcr-host" id="tcrSupplies"></div><section class="tcr-catalog" aria-labelledby="tcrCatalogTitle"><h2 class="sectionlabel" id="tcrCatalogTitle">Todo el inventario: buscar, filtrar y dar de alta</h2><div class="ikisai-kit" id="suppliesCatalog"></div></section>')};
-function tcrSupplyTile(x){const it=x.item,u=it.base_unit||'',tone=x.min&&x.stock<x.min?'alert':x.min&&x.stock<x.min*1.25?'warn':'ok';
-  const days=x.days!=null&&x.days<60?`te dura ~${x.days} ${x.days===1?'día':'días'}`:'';
+/* Icono de la baldosa según el tipo del artículo (FB_2026_055, opción a); los iconos son los del kit. */
+const TCR_KIND_ICON={ingrediente:'chef',bebida:'chef',menaje:'chef',material:'briefcase',limpieza:'sync',higiene:'user',consumible:'cart',textil:'bed',herramienta:'settings',maquina:'bot'};
+function tcrKindIcon(kind){return TCR_KIND_ICON[kind]||'grid'}
+/* Máquinas, herramientas y lo que no se gasta (FB_2026_053): tocar abre la ficha, no resta 1. Con 1 y mínimo 1 está bien
+   (sin la franja de «va justo») y no se calcula «te dura». */
+function tcrSupplyTile(x){const it=x.item,u=it.base_unit||'',equip=!isConsumable(it.id),tone=x.min&&x.stock<x.min?'alert':!equip&&x.min&&x.stock<x.min*1.25?'warn':'ok';
+  const days=!equip&&x.days!=null&&x.days<60?`te dura ~${x.days} ${x.days===1?'día':'días'}`:'';
   const hint=x.open?`Pedido · ${(PURCHASE_STATUS[x.open.status]||[''])[0].toLowerCase()}`:x.low&&x.plan?`Pedir ${tcrEnv().buyText(x.plan)}`:'';
   const level=[x.min?`mín. ${tcrNum(x.min)}`:'sin mínimo',days,tone==='alert'?'queda poco':tone==='warn'?'va justo':''].filter(Boolean).join(' · ');
   const edit=canEdit();
-  const node=tcrKit().renderTile({title:it.name,value:`${tcrNum(x.stock)} ${u}`,levelText:level,level:{pct:x.min?Math.max(0,Math.min(100,x.stock/(2*x.min)*100)):60,min:x.min?50:null,tone},icon:'grid',
-    ...(edit?{onClick:()=>tcrSupplyMinus(it.id),mainLabel:`Gastar 1: ${it.name}`,actions:[{slot:'more',label:`Más: ${it.name}`,feedbackId:'tasks.suministros.baldosa.mas',onClick:()=>tcrSupplyMore(it.id)}]}:{}),
+  const node=tcrKit().renderTile({title:it.name,value:`${tcrNum(x.stock)} ${u}`,levelText:level,level:{pct:x.min?Math.max(0,Math.min(100,x.stock/(2*x.min)*100)):60,min:x.min?50:null,tone},icon:tcrKindIcon(it.kind),
+    ...(edit?{onClick:equip?()=>openSupply(IkisaiKit.itemFromRow(it)):()=>tcrSupplyMinus(it.id),mainLabel:equip?`Ver la ficha: ${it.name}`:`Gastar 1: ${it.name}`,actions:[{slot:'more',label:`Más: ${it.name}`,feedbackId:'tasks.suministros.baldosa.mas',onClick:()=>tcrSupplyMore(it.id)}]}:{}),
     feedbackId:'tasks.suministros.baldosa'});
-  node.dataset.supplyItem=it.id;node.classList.add('tcr-tile');
-  const main=node.querySelector('.tile-main');if(main){main.dataset.feedbackId='tasks.suministros.baldosa.menos1';main.dataset.feedbackLabel='Gastar 1'}
+  node.dataset.supplyItem=it.id;node.classList.add('tcr-tile');if(equip)node.classList.add('tcr-equip');
+  const main=node.querySelector('.tile-main');if(main){main.dataset.feedbackId=equip?'tasks.suministros.baldosa.ficha':'tasks.suministros.baldosa.menos1';main.dataset.feedbackLabel=equip?'Ver la ficha':'Gastar 1'}
   if(hint){const s=document.createElement('span');s.className='tcr-supplyhint';s.textContent=hint;node.append(s)}
   return node}
 function tcrMountSupplies(){const host=document.getElementById('tcrSupplies');try{tcrSupplyShelves?.destroy()}catch{}tcrSupplyShelves=null;if(!host)return;
@@ -291,7 +305,7 @@ function tcrMountSupplies(){const host=document.getElementById('tcrSupplies');tr
     .sort((a,b)=>(a.key==='')-(b.key==='')||b.items.filter(x=>x.low).length-a.items.filter(x=>x.low).length||a.label.localeCompare(b.label,'es'));
   host.innerHTML=`<div class="tcr-top"></div>
     ${canEdit()&&toOrder.length?`<div class="tcr-banner" role="region" aria-label="Queda poco"><span><b>Queda poco de ${toOrder.length}</b>${cost?' · '+esc(tcrEuro(cost)):''}</span><button class="primary" type="button" id="tcrOrderAll" data-feedback-id="tasks.suministros.pedir_todo" data-feedback-label="Pedir lo que falta">Pedir lo que falta (${toOrder.length})</button></div>`:''}
-    ${all.length&&canEdit()?'<p class="tcr-howto">Tocar una baldosa gasta 1. Mantén pulsado o toca «⋯» para más.</p>':''}<div class="tcr-shelves"></div>`;
+    ${all.length&&canEdit()?`<p class="tcr-howto">${all.some(x=>isConsumable(x.item.id))?'Tocar una baldosa gasta 1; en máquinas y herramientas, abre su ficha.':'Tocar una baldosa abre su ficha.'} Mantén pulsado o toca «⋯» para más.</p>`:''}<div class="tcr-shelves"></div>`;
   host.querySelector('.tcr-top').append(tcrKit().renderStats([{value:low.length,label:'con poco',tone:low.length?'alert':null},{value:all.filter(x=>x.open).length,label:'pedidas'},{value:soon.length,label:'duran < 1 semana',tone:soon.length?'warn':null}],{label:'Suministros'}));
   if(all.length){tcrSupplyShelves=tcrKit().createShelves({rows,key:x=>x.item.id,name:x=>x.item.name,tile:x=>tcrSupplyTile(x),label:'Estanterías por sitio',noun:'sitio',feedbackId:'tasks.suministros.estanterias',
       canMove:()=>canEdit(),onMove:(x,from,to)=>tcrSupplyMove(x.item.id,from.key,to)});
@@ -417,7 +431,7 @@ bindMaterials=function(taskId){bindMaterialsBeforeCompras(taskId);
     if(purchaseRun(d=>tcrP().requestPurchaseOps(d,{tab_id:loc?.p?.tab_id||tab().id,item_id:m.item_id,task_id:taskId,title:it?.name||'Material',quantity:need,unit:it?.base_unit||null,need_quantity:need,supplier_id:it?.default_supplier_id||null,supplier_name:supplierNameOf(it?.default_supplier_id)||null}),canApprovePurchases()?'Pedido.':'Pedido. Lo verá '+approverName(tab().id)+'.')){usage.track('tasks.tarea.materiales.pedir');drawMaterials(taskId)}})};
 /* − y + suman o restan 1 a la cifra escrita (no la sustituyen: hay decimales, 2,5 l). */
 const consumptionSheetBeforeCompras=consumptionSheet;
-consumptionSheet=function(taskIds){consumptionSheetBeforeCompras(taskIds);
+consumptionSheet=function(taskIds,onlyId=null){consumptionSheetBeforeCompras(taskIds,onlyId);
   document.querySelectorAll('#sheet [data-consume-qty]').forEach(i=>{const name=i.getAttribute('aria-label')?.replace(/^Gastado de /,'')||'';
     const b=(step,sign)=>{const x=document.createElement('button');x.type='button';x.className='iconbtn tcr-step';x.textContent=sign;x.setAttribute('aria-label',`${step<0?'Menos':'Más'} ${name}`.trim());x.dataset.feedbackId=step<0?'tasks.consumo.menos':'tasks.consumo.mas';x.dataset.feedbackLabel=step<0?'Menos':'Más';
       x.onclick=()=>{if(i.disabled)return;const v=Number(String(i.value).replace(',','.'))||0;i.value=String(Math.max(0,Math.round((v+step)*1000)/1000));i.dispatchEvent(new Event('input',{bubbles:true}))};return x};

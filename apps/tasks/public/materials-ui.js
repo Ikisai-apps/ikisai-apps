@@ -22,6 +22,7 @@ function materialRow(m,editable){const item=inventoryItem(m.item_id),name=item?.
   const state=consumed?(Number(m.consumed)>0?`Gastado: ${materialQty(m.consumed,item)}`:'No se usó'):equip?'Hace falta':'';
   const qty=equip?'':editable&&!consumed?`<input class="materialqty" type="number" min="0" step="any" inputmode="decimal" value="${m.quantity??''}" placeholder="Cuánto" aria-label="Cantidad de ${esc(name)}" data-material-qty="${m.id}" data-feedback-id="tasks.tarea.materiales.cantidad" data-feedback-label="Cantidad"><span class="materialunit">${esc(item?.base_unit||'')}</span>`:`<span class="materialunit">${esc(materialQty(m.quantity,item))}</span>`;
   return `<li class="materialrow ${equip?'equipment':''}" data-material="${m.id}"><span class="materialname">${esc(name)}${equip?' <span class="pstate">Equipo</span>':''}</span>${qty}${state?`<span class="materialstate ${consumed?'ok':''}">${esc(state)}</span>`:''}
+    ${editable&&!consumed&&!equip?`<button class="softbtn small materialspent" type="button" data-material-spent="${m.id}" aria-label="Gastado: ${esc(name)}" data-feedback-id="tasks.tarea.materiales.gastado" data-feedback-label="Gastado">Gastado</button>`:''}
     ${editable&&!(consumed&&Number(m.consumed)>0)?`<button class="iconbtn small" type="button" data-material-remove="${m.id}" aria-label="Quitar ${esc(name)}" data-feedback-id="tasks.tarea.materiales.quitar" data-feedback-label="Quitar material">×</button>`:''}</li>`}
 function materialSectionHtml(taskId){const rows=materialRows(taskId),editable=canEditMaterials();
   if(!rows.length&&!editable)return '';
@@ -44,18 +45,30 @@ function drawMaterials(taskId){const box=document.getElementById('taskMaterials'
   bindMaterials(taskId)}
 function bindMaterials(taskId){const run=(build,msg)=>{if(purchaseRun(build,msg))drawMaterials(taskId)};
   const host=document.getElementById('materialPicker'),src=typeof inventorySources==='function'?inventorySources():null;
-  if(host&&src){materialPicker=IkisaiKit.createItemPicker({label:'Añadir material o equipo',source:src.items,spaces:src.spaces,quantity:true,create:true,feedbackId:'tasks.tarea.materiales.elegir'});host.append(materialPicker.element)}
+  const add=document.getElementById('materialAdd');
+  /* FB_2026_057: elegir no añade (falta la cantidad); el botón dice qué se va a añadir y, si se guarda la tarea con algo elegido
+     sin añadir, se añade entonces (materialPendingAdd), en vez de perderse sin aviso. */
+  const paintAdd=pick=>{if(!add)return;const it=pick?.itemId?inventoryItem(pick.itemId):null;add.textContent=it?`Añadir «${it.name}» a la tarea`:'Añadir';add.classList.toggle('primary',!!it);add.classList.toggle('ghost',!it)};
+  if(host&&src){materialPicker=IkisaiKit.createItemPicker({label:'Añadir material o equipo',source:src.items,spaces:src.spaces,quantity:true,create:true,feedbackId:'tasks.tarea.materiales.elegir',onChange:paintAdd});host.append(materialPicker.element)}
   else if(host)host.innerHTML='<p class="small muted">El inventario no está disponible ahora mismo.</p>';
-  const add=document.getElementById('materialAdd');if(add)add.onclick=()=>{const pick=materialPicker?.get();if(!pick?.itemId)return toast('Elige un artículo del inventario.');
-    const q=pick.baseQuantity??pick.quantity??null;run(d=>M().addMaterialOps(d,{taskId,itemId:pick.itemId,quantity:q==null||q===''?null:Number(q)}),'Material añadido.')};
+  if(add)add.onclick=()=>{if(!materialPendingAdd(taskId))toast('Elige un artículo del inventario.')};
   const kit=document.getElementById('materialKit');if(kit)kit.onclick=()=>{const live=id=>{const it=inventoryItem(id);return !it||(!it.deleted_at&&it.active!==false)};
     const list=M().kitSuggestions(purchasesData(),taskId,Sync.core.tradeKit,live);run(d=>M().addKitOps(d,taskId,list),list.length===1?'Añadido 1 material del oficio.':`Añadidos ${list.length} materiales del oficio.`)};
+  document.querySelectorAll('[data-material-spent]').forEach(b=>b.onclick=()=>consumptionSheet([taskId],b.dataset.materialSpent));
   document.querySelectorAll('[data-material-remove]').forEach(b=>b.onclick=()=>run(d=>M().removeMaterialOps(d,b.dataset.materialRemove),'Quitado.'));
   document.querySelectorAll('[data-material-qty]').forEach(i=>i.onchange=()=>{const v=i.value.trim();run(d=>M().setMaterialQuantityOps(d,i.dataset.materialQty,v===''?null:Number(v)))});
   const consume=document.getElementById('materialConsume');if(consume)consume.onclick=()=>consumptionSheet([taskId])}
+/* Añade a la tarea lo elegido en el selector, si lo hay. Devuelve si había algo que añadir. */
+function materialPendingAdd(taskId){const pick=materialPicker?.get();if(!pick?.itemId)return false;
+  const q=pick.baseQuantity??pick.quantity??null;
+  if(purchaseRun(d=>M().addMaterialOps(d,{taskId,itemId:pick.itemId,quantity:q==null||q===''?null:Number(q)}),'Material añadido.')){if(document.getElementById('taskMaterials'))drawMaterials(taskId);else materialPicker?.set({itemId:null})}
+  return true}
+/* «Guardar» de la ficha con un material elegido y sin añadir: se añade antes de guardar (FB_2026_057). */
+document.addEventListener('click',e=>{if(!e.target.closest('#saveTaskBtn'))return;const box=document.getElementById('taskMaterials');if(box?.dataset.task)materialPendingAdd(box.dataset.task)},true);
 
-/* «Confirmar consumo»: lo previsto de cada material, editable, o «No se usó». Primero Recursos, después la tarea. */
-function consumptionSheet(taskIds){const pending=taskIds.flatMap(id=>M().pendingConsumption(purchasesData(),id,isConsumable));if(!pending.length)return;
+/* «Confirmar consumo»: lo previsto de cada material, editable, o «No se usó». Primero Recursos, después la tarea. Con
+   `onlyId`, solo esa línea («Gastado» de la fila, FB_2026_058). */
+function consumptionSheet(taskIds,onlyId=null){const pending=taskIds.flatMap(id=>M().pendingConsumption(purchasesData(),id,isConsumable)).filter(m=>!onlyId||m.id===onlyId);if(!pending.length)return;
   const line=m=>{const item=inventoryItem(m.item_id);return `<li class="consumeline" data-consume="${m.id}"><span class="materialname">${esc(item?.name||'Artículo del inventario')}</span>
     <input type="number" min="0" step="any" inputmode="decimal" value="${m.quantity??''}" placeholder="Cuánto" aria-label="Gastado de ${esc(item?.name||'')}" data-consume-qty="${m.id}" data-feedback-id="tasks.consumo.cantidad" data-feedback-label="Cantidad gastada"><span class="materialunit">${esc(item?.base_unit||'')}</span>
     <label class="checkline"><input type="checkbox" data-consume-none="${m.id}" data-feedback-id="tasks.consumo.no_se_uso" data-feedback-label="No se usó"> No se usó</label></li>`};

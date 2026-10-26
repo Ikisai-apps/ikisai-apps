@@ -1,6 +1,29 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 13). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. **los 72 escenarios de no regresión en verde**, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
+Actualizado: 26 de octubre de 2026 (tanda de feedback, RELEVO-001). **Desde el 26-10 desarrolla Tasks La Muela (`ux-tasks-e3`); Sevilla revisa.** Lo último en `main`: Plan de hoy con `tasks.day_plans` y el sol en cada tarea (#699, MUELA-095) y Compras R6 «Estantería» con envase y cuadre (#705, MUELA-094). Abajo, la tanda de feedback en curso; el resto es el histórico (el texto de la tanda 13 se conserva tal cual).
+
+## Tanda de feedback (26-10-2026, rama `tasks/feedback`)
+
+Clasificación de los 28 reportes aprobados y abiertos (`MUELA\equipo\UX-Tasks\FEEDBACK_clasificacion.md`), con el visto bueno de Core y las respuestas de VG. Un reporte se cierra cuando VG lo comprueba en la app, no al fusionar.
+
+- **PR 1 (esta):**
+  - FB_2026_053: en Estanterías, máquinas y herramientas (lo no consumible) abren su ficha al tocarlas, sin «Gastar 1», sin «va justo» con 1/1 y sin «te dura».
+  - FB_2026_055 (a): icono del kit según el tipo del artículo.
+  - FB_2026_057 y 058: en «Material y coste», el botón dice qué se va a añadir; «Guardar» con un artículo elegido sin añadir lo añade; «Gastado» en cada material abre «Confirmar consumo» solo de esa línea.
+  - FB_2026_059 y 060: en el Plan de hoy, oficio y lugar bajo cada tarea, y su portada de fondo bajo un velo del papel.
+  - FB_2026_054: el atajo «i» no actúa con una hoja o diálogo del kit abiertos, y «atrás» vuelve a la pantalla de antes (no siempre a Inicio).
+  - FB_2026_063 (a): en Proyectos, dos barras (tareas en total con lo hecho, y lo que falta), contando hojas como `projectStats`.
+  - FB_2026_067: con personas de Central, quien no tiene nivel de casa también se elige («Sin nivel de casa»); si la lectura falló, se reintenta al abrir la ficha y se dice el motivo.
+  - FB_2026_069: las cifras de Solicitudes filtran la estantería (`aria-pressed`, «Quitar filtro»).
+  - FB_2026_074: «para hoy» de Inicio cuenta también lo puesto en el plan con el sol.
+  - Error «Cannot read properties of undefined (reading 'projects')» (14 reportes): guardas en `project()`, `taskLocation`, `dependencyIndex`, las compras (usan el área de la solicitud) y las envolturas de `render` de Inicio y Hoy.
+  - Pruebas: `atras.spec.ts` (camino de dos pantallas), `fichas.spec.ts` (barras de Proyectos) y `personas-central.spec.ts` (persona sin nivel).
+- **PR 2 (aparte, con migración):** FB_2026_064, marcar un paso aunque esté bloqueado por «pasos en orden».
+- **PR 3:** FB_2026_072 y 073: la revisión de «Sugerencias y QA» y el «Registro de accesos» pasan a Central, con enlace; antes, en PETICIONES, lo que aporta la vista de Tasks.
+- **Verificar (arreglados en #459):** FB_2026_034, 036, 038, 040 y 043.
+- **Sin actuar (VG):** FB_2026_062 (se deja abierto), 065 y 068 (errores al reportar).
+- **Pendiente de VG o de otros equipos:** FB_2026_035, 056, 066, 070, 071 (replanteo, después del evento del sábado) y 075 (kit).
+
 
 ## Hecho
 
