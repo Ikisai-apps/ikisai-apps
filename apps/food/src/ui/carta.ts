@@ -57,7 +57,7 @@ function lineName(line: CartaLine, recipes: Map<string, Recipe>, items: Map<stri
 async function copyCarta(client: SyncClient, source: CartaMenu, name: string, eventId: string | null, navigate: (hash: string) => void): Promise<boolean> {
   const lines = (await client.list(T.cartaLines)) as LineRow[];
   const newId = crypto.randomUUID();
-  const ops = copyCartaOperations({ lines, sourceId: source.id, newId, name, eventId, newLineId: () => crypto.randomUUID() }) as unknown as RowOperation[];
+  const ops = copyCartaOperations({ lines, sourceId: source.id, newId, name, eventId, newLineId: () => crypto.randomUUID(), prepSplit: source.prep_split ?? null }) as unknown as RowOperation[];
   const done = await usage.run('food.carta.copiar', () => commit(client, ops));
   if (done) navigate(cartaHash(newId));
   return done;

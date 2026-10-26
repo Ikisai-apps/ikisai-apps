@@ -3,7 +3,7 @@
  * Reglas puras: corren en el cliente antes de encolar y otra vez en la Edge antes de core.commit.
  * Todo lo que PostgreSQL rechazaría con un check o un error de conversión se rechaza aquí con el campo en `details`.
  */
-import { CARTA_CODES, CARTA_PRICE_MAX_CENTS, CARTA_SCOPES, IMAGE_KEY } from './carta.ts';
+import { CARTA_CODES, CARTA_PRICE_MAX_CENTS, CARTA_SCOPES, IMAGE_KEY, prepSplitProblem } from './carta.ts';
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
 import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_KINDS, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
 import { SHOPPING_ITEM_STATUSES, SHOPPING_LIST_STATUSES } from './planning.ts';
@@ -102,6 +102,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       unit: { kind: 'enum', values: UNITS },
       position: { kind: 'number', min: -1e9, max: 1e9 },
       notes: freeText,
+      station: { kind: 'number', min: 1, max: 4, integer: true, nullable: true },
     },
   },
   'food.equipment': {
@@ -149,6 +150,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       organizer_shared: { kind: 'boolean' },
       house_servings: { kind: 'number', min: 0, exclusiveMin: true, max: SERVINGS_MAX, nullable: true },
       name: { kind: 'text', max: 120, required: true, nullable: true },
+      prep_split: { kind: 'json', nullable: true },
     },
   },
   // Línea de una carta (1109): una receta o un artículo de Recursos, que no cambian después.
@@ -167,6 +169,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       active: { kind: 'boolean' },
       position: { kind: 'number', min: -1e9, max: 1e9 },
       image_key: { kind: 'text', max: 120, nullable: true },
+      expected_units: { kind: 'number', min: 0, max: 1_000_000, integer: true, nullable: true },
     },
   },
   // Ventas de la carta: solo las escribe food.record_carta_sales.
@@ -396,6 +399,10 @@ export function validateOperation(op: DomainOperation): Issue | null {
   if (op.table === 'food.menus' && op.op === 'insert') {
     const problem = menuKindProblem(fields);
     if (problem) return issue('INVALID_FIELDS', problem.message, { table: op.table, field: problem.field });
+  }
+  if (op.table === 'food.menus' && 'prep_split' in fields) {
+    const problem = prepSplitProblem(fields.prep_split);
+    if (problem) return issue('INVALID_FIELDS', problem, { table: op.table, field: 'prep_split' });
   }
   if (op.table === 'food.recipes' && 'method_steps' in fields) {
     const problem = methodStepsProblem(fields.method_steps);
