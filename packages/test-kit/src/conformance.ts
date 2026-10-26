@@ -1,24 +1,29 @@
 /**
  * Suite de conformidad del núcleo (contrato §9). Toda <app>-api debe pasarla con una tabla
- * sincronizable de muestra. Se ejecuta con node:test.
+ * sincronizable de muestra. Se ejecuta con node:test. Una app recién dada de alta, aún sin tablas
+ * (Flow, RELEVO-001), puede omitir `table`: entonces solo corren las pruebas que no escriben filas
+ * (auth, sesión, permisos de acceso, `call` no permitido y subidas). En cuanto la app registre su
+ * primera tabla sincronizable, la suite completa es obligatoria.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, TEST_PASSWORD, type TestApp, type TestAppOptions } from './http.ts';
 
 export interface ConformanceOptions extends TestAppOptions {
-  /** Tabla de muestra registrada para la app, con dos campos escribibles de texto. */
-  table: string;
-  fieldA: string;
-  fieldB: string;
+  /** Tabla de muestra registrada para la app, con dos campos escribibles de texto. Omitir solo mientras la app no tenga ninguna. */
+  table?: string;
+  fieldA?: string;
+  fieldB?: string;
   /** Campos obligatorios mínimos para insertar una fila válida. */
-  required: Record<string, unknown>;
+  required?: Record<string, unknown>;
   /** Archivo de muestra para la prueba de subidas; por defecto un PDF. Apps que solo admiten imágenes pasan `{ mime: 'image/webp', filename: 'foto.webp' }`. */
   uploadSample?: { mime: string; filename: string; bytes?: Uint8Array };
 }
 
 export function runConformance(options: ConformanceOptions) {
-  const { table, fieldA, fieldB, required } = options;
+  const { table, fieldA = '', fieldB = '', required = {} } = options;
+  // Pruebas que escriben filas en la tabla de muestra: solo si la app tiene una.
+  const rowTest: (name: string, fn: () => Promise<void>) => void = table ? (name, fn) => { test(name, fn); } : () => {};
   const uuid = () => crypto.randomUUID();
   const insert = (id: string, extra: Record<string, unknown> = {}) => ({ op: 'insert', table, id, fields: { ...required, ...extra } });
 
@@ -39,11 +44,11 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal(refreshed.status, 200);
     const boot = await app.call('/api/v1/bootstrap', { token: refreshed.data.token });
     assert.equal(boot.status, 200); assert.equal(boot.data.membership.role, 'owner');
-    assert.ok(boot.data.tables.some((x: any) => x.table === table));
+    if (table) assert.ok(boot.data.tables.some((x: any) => x.table === table));
     assert.equal(JSON.stringify(boot.data).includes('private-service-key'), false);
   });
 
-  test('conformidad · insert con id de cliente; reintento idempotente; digest distinto rechazado', async () => {
+  rowTest('conformidad · insert con id de cliente; reintento idempotente; digest distinto rechazado', async () => {
     const id = uuid();
     const batch = { requestId: 'conf-insert', operations: [insert(id, { [fieldA]: 'uno' })] };
     const first = await app.call('/api/v1/commands', { body: batch });
@@ -57,7 +62,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal(snap.data.tables[0].rows.filter((r: any) => r.id === id).length, 1);
   });
 
-  test('conformidad · update con revisión correcta; revisión antigua → 409 sin cambiar la fila', async () => {
+  rowTest('conformidad · update con revisión correcta; revisión antigua → 409 sin cambiar la fila', async () => {
     const id = uuid();
     await app.call('/api/v1/commands', { body: { requestId: 'conf-u0', operations: [insert(id, { [fieldA]: 'a' })] } });
     const ok = await app.call('/api/v1/commands', { body: { requestId: 'conf-u1', operations: [{ op: 'update', table, id, expectedRevision: 1, fields: { [fieldB]: 'b' } }] } });
@@ -69,7 +74,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal(snap.data.tables[0].rows.find((r: any) => r.id === id)[fieldB], 'b');
   });
 
-  test('conformidad · expectedCursor desactualizado → CURSOR_CONFLICT; campo fuera de lista → INVALID_FIELDS', async () => {
+  rowTest('conformidad · expectedCursor desactualizado → CURSOR_CONFLICT; campo fuera de lista → INVALID_FIELDS', async () => {
     const boot = await app.call('/api/v1/bootstrap');
     const stale = await app.call('/api/v1/commands', { body: { requestId: 'conf-c1', expectedCursor: boot.data.cursor - 1, operations: [insert(uuid())] } });
     assert.equal(stale.data.error.code, 'CURSOR_CONFLICT');
@@ -81,8 +86,10 @@ export function runConformance(options: ConformanceOptions) {
   });
 
   test('conformidad · reader no escribe; sin membresía 403; sesión cerrada 401', async () => {
-    const denied = await app.call('/api/v1/commands', { token: app.tokens.reader, body: { requestId: 'conf-r1', operations: [insert(uuid())] } });
-    assert.equal(denied.status, 403);
+    if (table) {
+      const denied = await app.call('/api/v1/commands', { token: app.tokens.reader, body: { requestId: 'conf-r1', operations: [insert(uuid())] } });
+      assert.equal(denied.status, 403);
+    }
     assert.equal((await app.call('/api/v1/snapshot', { token: app.tokens.reader })).status, 200);
     const stranger = await app.t.createUser();
     const strangerToken = app.supabase.tokenFor(stranger);
@@ -95,7 +102,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal((await app.call('/api/v1/bootstrap', { token: victimToken })).status, 401);
   });
 
-  test('conformidad · delete lógico sale del snapshot, aparece en changes; restore lo devuelve', async () => {
+  rowTest('conformidad · delete lógico sale del snapshot, aparece en changes; restore lo devuelve', async () => {
     const id = uuid();
     const created = await app.call('/api/v1/commands', { body: { requestId: 'conf-d0', operations: [insert(id, { [fieldA]: 'borrable' })] } });
     const del = await app.call('/api/v1/commands', { body: { requestId: 'conf-d1', operations: [{ op: 'delete', table, id, expectedRevision: 1 }] } });
@@ -111,7 +118,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal((await app.call('/api/v1/commands', { body: { requestId: 'conf-d3', operations: [{ op: 'restore', table, id, expectedRevision: 3 }] } })).data.error.code, 'ROW_NOT_DELETED');
   });
 
-  test('conformidad · changes?after devuelve solo lo posterior y pagina', async () => {
+  rowTest('conformidad · changes?after devuelve solo lo posterior y pagina', async () => {
     const before = (await app.call('/api/v1/bootstrap')).data.cursor;
     const ids = [uuid(), uuid(), uuid()];
     for (const [i, id] of ids.entries()) await app.call('/api/v1/commands', { body: { requestId: `conf-p${i}-${id}`, operations: [insert(id)] } });
@@ -123,7 +130,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal((await app.call('/api/v1/changes?after=abc')).status, 422);
   });
 
-  test('conformidad · undo restaura before; undo tras edición ajena → 409; plan cambiado → UNDO_PLAN_CHANGED', async () => {
+  rowTest('conformidad · undo restaura before; undo tras edición ajena → 409; plan cambiado → UNDO_PLAN_CHANGED', async () => {
     const id = uuid();
     await app.call('/api/v1/commands', { body: { requestId: 'conf-h0', operations: [insert(id, { [fieldA]: 'v1' })] } });
     const edit = await app.call('/api/v1/commands', { body: { requestId: 'conf-h1', operations: [{ op: 'update', table, id, expectedRevision: 1, fields: { [fieldA]: 'v2' } }] } });
@@ -145,7 +152,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal((await app.call(`/api/v1/history/${edit.data.cursor}/undo-plan`, { token: app.tokens.reader, body: {} })).status, 403);
   });
 
-  test('conformidad · respuesta perdida tras commit: el reintento devuelve el recibo sin duplicar', async () => {
+  rowTest('conformidad · respuesta perdida tras commit: el reintento devuelve el recibo sin duplicar', async () => {
     const id = uuid();
     const batch = { requestId: 'conf-lost', operations: [insert(id)] };
     app.supabase.loseNextCommitReply();
@@ -157,7 +164,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal(snap.data.tables[0].rows.filter((r: any) => r.id === id).length, 1);
   });
 
-  test('conformidad · dos commits al mismo cursor: uno confirma y el otro recibe conflicto', async () => {
+  rowTest('conformidad · dos commits al mismo cursor: uno confirma y el otro recibe conflicto', async () => {
     const boot = await app.call('/api/v1/bootstrap');
     const [a, b] = await Promise.all([
       app.call('/api/v1/commands', { body: { requestId: 'conf-race-a', expectedCursor: boot.data.cursor, operations: [insert(uuid())] } }),
@@ -174,7 +181,7 @@ export function runConformance(options: ConformanceOptions) {
     assert.equal(res.status, 422); assert.equal(res.data.error.code, 'INVALID_OPERATION');
   });
 
-  test('conformidad · papelera: purge solo owner; facturas exentas por never_purge', async () => {
+  rowTest('conformidad · papelera: purge solo owner; facturas exentas por never_purge', async () => {
     const id = uuid();
     await app.call('/api/v1/commands', { body: { requestId: 'conf-t0', operations: [insert(id)] } });
     await app.call('/api/v1/commands', { body: { requestId: 'conf-t1', operations: [{ op: 'delete', table, id, expectedRevision: 1 }] } });
