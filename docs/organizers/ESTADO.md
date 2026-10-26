@@ -98,6 +98,8 @@
 
 ## Pendiente
 
+- **Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped»** (encargo de VG, 26-10; plazo: jueves 29). Peticiones B19–B21, K8, K9 y Gu1, y lo que hace Organizers, en `PETICIONES.md`.
+
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
