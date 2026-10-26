@@ -20,6 +20,7 @@ import { openHelp } from './help.ts';
 import { mountAccessButton } from './access.ts';
 import { clearDishPhotos } from './menu.ts';
 import { fbMark } from './common.ts';
+import { resetCatalog } from '../app/guest-view.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -68,7 +69,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const apiCall = client.api.bind(client);
   // Uso sin persona en los portales (contrato §3.8): sin aviso.
   const usage = createUsage({ app: 'organizers', api: apiCall, userId: () => userId, notice: false });
-  const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); clearPosterImages(); clearDishPhotos(); });
+  const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); clearPosterImages(); clearDishPhotos(); resetCatalog(); });
   let currentReservation: string | null = null;
   void loadCommonTexts(client);
 
