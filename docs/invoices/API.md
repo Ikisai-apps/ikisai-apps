@@ -1954,4 +1954,10 @@ Una liquidación es un pago único que cierra varios pedidos de un cliente. Va p
 - `methods`: el medio del pago, como siempre;
 - el desglose más las devoluciones pendientes suman el importe.
 
-**Para no contar dos veces:** el dinero de una liquidación no puede ir también en el «Cierre del día» de ese día. O va en el cierre o va como liquidación, nunca en los dos. Lo decide Flow, y está pendiente de confirmar con él.
+**Lo que hace Flow (27-10): opción «solo en el cierre».** Una liquidación es un pago más del día en que se cobra:
+- entra en el «Cierre del día» de ese día, con su dinero por medio de cobro;
+- lo vendido «a cuenta» va en el desglose de ese día, con su precio cerrado;
+- Flow no manda apuntes `flow:settlement:…` aparte, así que nada se cuenta dos veces.
+El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan otra cosa.
+
+**Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
