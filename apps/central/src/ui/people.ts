@@ -1,16 +1,17 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  compressImage, confirmDialog, createFocus, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, type Sheet,
+  bindOnline, compressImage, confirmDialog, createFocus, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, type Sheet,
 } from '@ikisai/ui-kit';
 import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
   FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATIONS, RELATION_LABELS,
   DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, OUTSIDER_ACCESS_TEXT, proposeHouseLevel, relationForLevel, type HouseGrant, type HouseLevel,
+  houseDoors, pendingDoors, PORTAL_REACH_LABELS, type HouseDoor,
   canSeeReserved, dueState, personStatus, recordTypesFor, todayInMadrid, validateOperations, type RecordKind,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
-import { grantFor, ROLE_LABELS, type Account, type Role } from '../app/admin.ts';
+import { grantFor, ROLE_LABELS, type Account, type CatalogApp, type Role } from '../app/admin.ts';
 import { showSecret } from './access.ts';
 import { syncAccountName } from '../app/account-names.ts';
 import { checkExistingAccount, mergePeople } from './account-conflict.ts';
@@ -391,6 +392,21 @@ async function restorePerson(client: SyncClient, data: Awaited<ReturnType<typeof
 // ---------------------------------------------------------------------------
 // Editor de la ficha básica (alta y edición)
 // ---------------------------------------------------------------------------
+/** «Abre Central, Tasks y Flow como propietario; en Guests y Organizers, todos los retiros…» (sin cuenta, al dársela). */
+export function levelDoorsText(level: HouseLevel, catalog: readonly CatalogApp[]): string {
+  const doors = houseDoors(level, catalog, [], []);
+  const short = (id: string) => catalog.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id;
+  const join = (xs: string[]) => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`;
+  const internal = doors.filter((d) => d.kind === 'internal');
+  const first = internal[0];
+  const role = first && 'role' in first.want ? ROLE_LABELS[first.want.role].toLowerCase() : '';
+  const reach = new Map<string, string[]>();
+  for (const d of doors) if ('portal' in d.want) reach.set(d.want.portal, [...(reach.get(d.want.portal) ?? []), short(d.app)]);
+  const booking = doors.some((d) => 'portal' in d.want && d.want.booking);
+  const portals = [...reach].map(([r, apps]) => `en ${join(apps)}, ${r === 'todos' ? 'todos los retiros (los ve, se apunta y coorganiza)' : `como huésped de los retiros en los que participa${booking ? ' (lo pone Booking al apuntarle)' : ''}`}`);
+  return [`Abre ${join(internal.map((d) => short(d.app)))}${role ? ` como ${role}` : ''}`, ...portals].join('; ') + '.';
+}
+
 function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (id: string) => void, defaults: { level?: HouseLevel } = {}): void {
   const { client } = ctx;
   let sheet: Sheet | null = null;
@@ -412,8 +428,18 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
       ? `Como outsider entrará en ${OUTSIDER_ACCESS_TEXT}.${person?.user_id ? '' : ' Sin cuenta no entra en ninguna app.'}`
       : was === 'outsider' && now !== 'outsider' ? 'Deja de ser outsider: pierde lo que le daba el nivel en Guests y Tasks. Su ficha, sus oficios y lo que hizo se conservan.' : '';
   };
+  // Encargo de VG (26-10): qué apps y portales abre el nivel elegido, todo de una vez. Solo dirección (ve el catálogo).
+  const levelDoors = el('p', { class: 'small', id: 'p-level-doors', 'aria-live': 'polite', 'data-feedback-id': 'central.persona.editar.puertas_nivel', 'data-feedback-label': 'Qué apps y portales abre el nivel' });
+  const paintLevelDoors = () => {
+    const catalog = ctx.isAdmin ? ctx.admin.cached.catalog ?? [] : [];
+    levelDoors.hidden = !catalog.length || !houseLevel.value;
+    if (levelDoors.hidden) { levelDoors.textContent = ''; return; }
+    levelDoors.textContent = levelDoorsText(houseLevel.value as HouseLevel, catalog);
+  };
   houseLevel.addEventListener('change', paintLevelHint);
+  houseLevel.addEventListener('change', paintLevelDoors);
   paintLevelHint();
+  paintLevelDoors();
   const coverage = el('select', { id: 'p-coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
   const availability = el('select', { id: 'p-availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
   const notes = el('textarea', { id: 'p-notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
@@ -471,6 +497,7 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_relacion', 'data-feedback-label': 'Relación con Ikisai' }, el('span', null, 'Relación con Ikisai'), relation),
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_funcion', 'data-feedback-label': 'Función' }, el('span', null, 'Función'), baseRole)),
   levelsOn ? levelHint : null,
+  levelsOn ? levelDoors : null,
   levelsOn
     ? el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_disponibilidad', 'data-feedback-label': 'Disponibilidad' }, el('span', null, 'Disponibilidad'), availability)
     : el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.cobertura_disponibilidad', 'data-feedback-label': 'Cobertura y disponibilidad' },
@@ -506,6 +533,8 @@ export function mountPerson(personId: string): ViewMount {
     let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [], trades: [], capabilities: [] };
     let accounts: Account[] | null = null;
     let grants: HouseGrant[] = isAdmin ? admin.cached.grants ?? [] : [];
+    let catalog: CatalogApp[] = isAdmin ? admin.cached.catalog ?? [] : [];
+    let doorBinds: Array<() => void> = [];
     const host = el('div', { id: 'personView', 'data-feedback-id': 'central.persona.contenido', 'data-feedback-label': 'Ficha de la persona' });
     replace(main, el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.persona.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'), host);
 
@@ -613,6 +642,8 @@ export function mountPerson(personId: string): ViewMount {
         : el('p', { class: 'muted' }, 'Sin oficios.')],
         reserved && !person.deleted_at ? el('button', { class: 'linkbtn', type: 'button', id: 'addTrade', 'data-feedback-id': 'central.persona.oficios.anadir', 'data-feedback-label': 'Añadir oficio', onclick: () => openCapabilityEditor(person, null) }, icon('plus', 16), 'Añadir oficio') : null);
       const accountBlock = isAdmin ? block('Cuenta', 'blockAccount', accountBody(person, priv)) : null;
+      doorBinds.forEach((off) => off()); doorBinds = [];
+      const doorsBlock = isAdmin && houseLevelsOn && person.house_level && !person.deleted_at ? block('Accesos del nivel', 'blockDoors', doorsBody(person)) : null;
 
       const danger = canEdit && !person.deleted_at ? el('div', { class: 'zone', 'data-feedback-id': 'central.persona.acciones', 'data-feedback-label': 'Acciones de la persona' },
         el('button', { class: 'ghost', type: 'button', id: 'toggleActive', 'data-feedback-id': 'central.persona.acciones.activar', 'data-feedback-label': 'Marcar activa o inactiva', onclick: () => void commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: person.revision, fields: { active: !person.active } }], person.active ? 'Marcada como inactiva.' : 'Marcada como activa.') },
@@ -620,13 +651,14 @@ export function mountPerson(personId: string): ViewMount {
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', 'data-feedback-id': 'central.persona.acciones.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
       // Documentación primero cuando algo caduca (076); si no, el orden de siempre.
-      replace(host, head, focus, ...(due.length ? [recordsBlock, basic] : [basic]), tradesBlock, teamsBlock, privateBlock, ...(due.length ? [] : [recordsBlock]), accountBlock, danger);
+      replace(host, head, focus, ...(due.length ? [recordsBlock, basic] : [basic]), tradesBlock, teamsBlock, privateBlock, ...(due.length ? [] : [recordsBlock]), doorsBlock, accountBlock, danger);
       fbMark(host.querySelector('#blockTrades'), 'central.persona.oficios', 'Oficios');
       fbMark(host.querySelector('#blockBasic'), 'central.persona.ficha', 'Ficha');
       fbMark(host.querySelector('#blockTeams'), 'central.persona.equipos', 'Equipos');
       fbMark(host.querySelector('#blockPrivate'), 'central.persona.contacto', 'Contacto y vinculación');
       fbMark(host.querySelector('#blockRecords'), 'central.persona.documentacion', 'Documentación y formación');
       fbMark(host.querySelector('#blockAccount'), 'central.persona.cuenta', 'Cuenta');
+      fbMark(host.querySelector('#blockDoors'), 'central.persona.accesos_nivel', 'Accesos del nivel');
     }
 
     /** «Por «Albañilería» ya tiene Sabe: aquí, como mínimo, Sabe.» */
@@ -840,6 +872,65 @@ export function mountPerson(personId: string): ViewMount {
         closeAttrs: { 'data-feedback-id': 'central.persona.outsider.quitar_cerrar', 'data-feedback-label': 'Cerrar' },
         foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.persona.outsider.quitar_cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), submit],
       }));
+    }
+
+    /**
+     * Qué apps y portales abre el nivel de casa (encargo de VG del 26-10): cada puerta con su estado, concedido o pendiente, y
+     * «Aplicar accesos», que pide al núcleo lo que falte (`1515`). Sin cuenta o sin red, lo dice en lugar de adivinar.
+     */
+    function doorsBody(person: Person): HTMLElement[] {
+      const level = person.house_level as HouseLevel;
+      const account = person.user_id ? accounts?.find((a) => a.userId === person.user_id) ?? null : null;
+      const intro = el('p', { class: 'muted small', 'data-feedback-id': 'central.persona.accesos_nivel.explicacion', 'data-feedback-label': 'Qué abre el nivel' },
+        `El nivel «${levelLabel(level)}» abre estas apps y portales de una vez.`);
+      if (!catalog.length) return [intro, el('p', { class: 'muted', id: 'doorsOffline' }, 'Las apps y su estado se ven con conexión.')];
+      const doorsOf = (acc: Account | null) => houseDoors(level, catalog, acc?.memberships ?? [], acc ? grants.filter((g) => g.userId === acc.userId) : []);
+      const doors = doorsOf(account);
+      const missing = pendingDoors(doors);
+      const wantText = (d: HouseDoor) => 'role' in d.want ? ROLE_LABELS[d.want.role] : `${PORTAL_REACH_LABELS[d.want.portal]}${d.want.booking ? ' (lo pone Booking al apuntarle)' : ''}`;
+      const status = (d: HouseDoor) => !person.user_id ? el('span', { class: 'chip', 'data-status': 'sin_cuenta' }, 'Sin cuenta')
+        : !account ? el('span', { class: 'chip', 'data-status': 'por_comprobar' }, 'Por comprobar')
+          : d.status === 'concedido' ? el('span', { class: 'chip ok', 'data-status': 'concedido' }, icon('check', 14), 'Concedido')
+            : d.status === 'al_participar' ? el('span', { class: 'chip', 'data-status': 'al_participar' }, 'Al apuntarle a un retiro')
+              : el('span', { class: 'chip warn', 'data-status': 'pendiente' }, 'Pendiente');
+      const extra = (d: HouseDoor) => {
+        if (!account || !d.have) return null;
+        if (d.status === 'concedido' && !d.derived) return el('span', { class: 'muted small' }, `Ya tenía ${ROLE_LABELS[d.have as Role] ?? d.have}, puesto a mano.`);
+        if (d.status === 'pendiente') return el('span', { class: 'muted small' }, `Hoy: ${ROLE_LABELS[d.have as Role] ?? d.have}.`);
+        return null;
+      };
+      const list = el('ul', { class: 'list ctl-doors', id: 'doorList', 'data-feedback-id': 'central.persona.accesos_nivel.lista', 'data-feedback-label': 'Apps y portales del nivel' },
+        ...doors.map((d) => el('li', { class: 'approw', dataset: { app: d.app, kind: d.kind, status: account ? d.status : 'desconocido' } },
+          el('div', { class: 'appname' }, el('strong', null, appName(d.app)), el('span', { class: 'muted small' }, d.kind === 'portal' ? `Portal · ${wantText(d)}` : wantText(d)), extra(d)),
+          status(d))));
+      const out: HTMLElement[] = [intro, list];
+      if (!person.user_id) {
+        out.push(el('p', { class: 'note', id: 'doorsNoAccount' }, 'Sin cuenta no entra en ninguna: se abren al darle cuenta, en el bloque «Cuenta».'));
+        return out;
+      }
+      if (!account) { out.push(el('p', { class: 'muted small', id: 'doorsOffline' }, 'El estado de cada puerta se comprueba con conexión.')); return out; }
+      out.push(el('p', { class: missing.length ? 'note warn' : 'muted small', id: 'doorsSummary', 'aria-live': 'polite' },
+        missing.length ? `${missing.length === 1 ? 'Falta 1 puerta' : `Faltan ${missing.length} puertas`}: ${missing.map((d) => appName(d.app)).join(', ')}.` : 'Todas las puertas del nivel están abiertas.'));
+      if (missing.length) {
+        const apply = el('button', { class: 'primary', type: 'button', id: 'applyDoors', 'data-feedback-id': 'central.persona.accesos_nivel.aplicar', 'data-feedback-label': 'Aplicar accesos',
+          onclick: async () => {
+            apply.disabled = true;
+            try {
+              const res = await usage.run('central.persona.accesos_nivel.aplicar', () => admin.applyHouseLevel(person.id));
+              await loadAccounts();
+              const fresh = accounts ? (accounts as Account[]).find((a) => a.userId === person.user_id) ?? null : null;
+              const after = fresh ? pendingDoors(doorsOf(fresh)) : [];
+              toast(!res.changes.length ? 'El núcleo no ha cambiado nada: lo que falta todavía no lo concede.'
+                : after.length ? `Aplicado en ${res.changes.length === 1 ? '1 app' : `${res.changes.length} apps`}. Siguen pendientes: ${after.map((d) => appName(d.app)).join(', ')}.`
+                  : 'Accesos aplicados: todas las puertas del nivel están abiertas.');
+            } catch (e) {
+              toast(describeError(e));
+            } finally { apply.disabled = false; }
+          } }, icon('lock', 18), 'Aplicar accesos') as HTMLButtonElement;
+        doorBinds.push(bindOnline(apply, { client, reason: 'Aplicar accesos necesita conexión.' }));
+        out.push(el('div', { class: 'zone', 'data-feedback-id': 'central.persona.accesos_nivel.acciones', 'data-feedback-label': 'Acciones de los accesos del nivel' }, apply));
+      }
+      return out;
     }
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
@@ -1172,7 +1263,7 @@ export function mountPerson(personId: string): ViewMount {
 
     async function loadAccounts(): Promise<void> {
       if (!isAdmin) return;
-      try { [accounts, , grants] = await Promise.all([admin.accounts(), admin.catalog(), admin.houseGrants().catch(() => grants)]); } catch { accounts = admin.cached.accounts?.items ?? null; }
+      try { [accounts, catalog, grants] = await Promise.all([admin.accounts(), admin.catalog(), admin.houseGrants().catch(() => grants)]); } catch { accounts = admin.cached.accounts?.items ?? null; catalog = admin.cached.catalog ?? catalog; }
       paint();
     }
 
@@ -1183,6 +1274,6 @@ export function mountPerson(personId: string): ViewMount {
 
     void load().then(() => loadAccounts());
     const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams, T.trades, T.personTrades].map((t) => client.onTable(t, () => void load()));
-    return () => offs.forEach((off) => off());
+    return () => { offs.forEach((off) => off()); doorBinds.forEach((off) => off()); };
   };
 }

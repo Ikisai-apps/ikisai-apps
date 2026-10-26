@@ -199,7 +199,7 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
 
     const onScroll = () => paintNext();
     window.addEventListener('scroll', onScroll, { passive: true });
-    const offData = watchData(client, (d) => { data = d; paint(); });
+    const offData = watchData(client, (d) => { data = d; paint(); }, ctx.projectId);
     void loadPeople(client).then((p) => { people = p; for (const u of units()) repaintOne(u); });
 
     return () => { offData(); window.removeEventListener('scroll', onScroll); };

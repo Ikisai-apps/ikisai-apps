@@ -18,6 +18,7 @@ export const TABLES = {
   payments: 'flow.payments',
   units: 'flow.units',
   events: 'flow.events',
+  dayClosures: 'flow.day_closures',
 } as const satisfies Record<string, `flow.${string}`>;
 
 /** Procedimientos `call` permitidos (API.md §3). */
@@ -30,6 +31,8 @@ export const PROCEDURES = {
   reopenOrder: 'flow.reopen_order',
   createExtension: 'flow.create_extension',
   confirmRefund: 'flow.confirm_refund',
+  closeDay: 'flow.close_day',
+  markClosureSent: 'flow.mark_closure_sent',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -74,6 +77,13 @@ export const FLOW_ERRORS: Record<string, string> = {
   USE_EXTENSION: 'Lo que se añade tras cobrar va en una ampliación con su propio cobro.',
   REFUND_NOT_PENDING: 'Esa devolución ya está confirmada.',
   OFFLINE: 'Esta acción necesita conexión.',
+  PROJECT_OUT_OF_SCOPE: 'Este flujo no es tuyo: pide acceso a Dirección.',
+  NEEDS_ACCESS: 'Tu cuenta no tiene acceso a esa app: pide acceso a Dirección.',
+  NO_FOOD_MENU: 'Este flujo no está ligado a una carta de Food: actualiza la carta desde Food primero.',
+  APP_UNAVAILABLE: 'La otra app no responde ahora mismo. Inténtalo más tarde.',
+  ENTRY_LOCKED: 'Finance ya entregó ese día a la gestoría: no se puede sustituir.',
 };
 
 export * from './menu.ts';
+export * from './scope.ts';
+export * from './carta-sync.ts';

@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.57.1 · 26 de octubre de 2026
+
+**Icono de Flow en el lanzador.** En `KIT_ICONS` (`shell/launcher.ts`), `flow` lleva `board`, un icono neutro del set. Hasta ahora salía el de repuesto (`grid`), el mismo que Central. No cambia nada más; una app que pase `appIcon` sigue usando el suyo.
+
 ## 0.57.0 · 20 de octubre de 2026
 
 **El envase, la baldosa con varios mandos y la estantería** (tanda 40, MUELA-093 y 094). Las piden la Compra de Food y Compras R6 de Tasks. Todo es nuevo u opcional: lo de antes no cambia.

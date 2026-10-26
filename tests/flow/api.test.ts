@@ -25,6 +25,8 @@ let seq = 0;
 
 test.before(async () => {
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }) });
+  // Acceso por proyecto (0902): el editor y el lector trabajan en la barra; el owner lo ve todo.
+  await app.t.db.query(`update core.memberships set scopes = $1::jsonb where app = 'flow' and role in ('editor','reader')`, [JSON.stringify({ projects: [PROJECT] })]);
 });
 test.after(async () => { await app.close(); });
 
@@ -82,9 +84,10 @@ test('flow · carta pública sin sesión: 13 productos activos del §8, sin pedi
   assert.equal((byKey.get('clasico:A') as any).priceCents, 250);
   assert.equal((byKey.get('barra:A') as any).name, 'Agua, botella pequeña');
   assert.equal((byKey.get('gourmet:δ') as any).priceCents, 300);
-  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['code', 'description', 'id', 'imageKey', 'name', 'position', 'priceCents', 'scope']);
+  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['allergens', 'allergensChecked', 'code', 'description', 'id', 'imageKey', 'name', 'position', 'priceCents', 'scope']);
   assert.equal((byKey.get('clasico:A') as any).imageKey, 'montaditos/serrano');
-  assert.equal((byKey.get('clasico:B') as any).imageKey, null);
+  assert.equal((byKey.get('gourmet:γ') as any).imageKey, 'montaditos/cabra_dulce');
+  assert.equal((byKey.get('barra:D') as any).imageKey, 'barra/cafe_infusion');
   assert.equal(res.data.projectId, undefined); // el id del proyecto no sale al navegador
   assert.equal((await app.call('/api/v1/public/menu', { token: null, origin: 'https://foreign.example' })).status, 403);
 });
@@ -396,4 +399,24 @@ test('flow · lote público: solo crea su cliente, su pedido abierto y sus líne
   // El número lo pone el servidor aunque el lote mande otro.
   assert.equal(await tryPublic([{ op: 'insert', table: TABLES.customers, id: uuid(), fields: { project_id: PROJECT, token_hash: 'a'.repeat(64), number: 5 } }]), 'ok');
   assert.ok((await rows(TABLES.customers, (c) => c.number === 5)).length === 0);
+});
+
+test('flow · acceso por proyecto (0902): fuera de sus ámbitos, ni se ve ni se toca; el owner lo ve todo', async () => {
+  const other = uuid();
+  await ok([{ op: 'insert', table: TABLES.projects, id: other, fields: { name: 'Otro evento', starts_on: '2026-12-01', ends_on: '2026-12-02' } }], app.tokens.owner);
+  const orderId = uuid();
+  await ok([{ op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: other, origin: 'counter' } },
+    { op: 'insert', table: TABLES.orderLines, id: uuid(), fields: { order_id: orderId, product_id: P.agua, quantity: 1 } }], app.tokens.owner);
+  // Lo ve el owner; el editor no ve ni el proyecto ni sus filas.
+  assert.ok((await rows(TABLES.projects)).some((p) => p.id === other));
+  const snap = await app.call(`/api/v1/snapshot?tables=${TABLES.projects},${TABLES.orders},${TABLES.orderLines}`, { token: app.tokens.editor });
+  const all = snap.data.tables.flatMap((t: any) => t.rows);
+  assert.equal(all.some((r: any) => r.id === other || r.project_id === other), false);
+  assert.ok(all.some((r: any) => r.id === PROJECT));
+  // Ni escribir filas ni llamar a procedimientos sobre él.
+  assert.equal(code(await commit([{ op: 'insert', table: TABLES.orders, id: uuid(), fields: { project_id: other, origin: 'counter' } }])), 'PROJECT_OUT_OF_SCOPE');
+  assert.equal(code(await commit([call(PROCEDURES.confirmPayment, { order_id: orderId, method: 'cash', expected_revision: 1 })])), 'PROJECT_OUT_OF_SCOPE');
+  // Las líneas heredan el proyecto de su pedido, aunque el cliente no lo mande.
+  const line = (await rows(TABLES.orderLines, (l) => l.order_id === orderId))[0];
+  assert.equal(line.project_id, other);
 });

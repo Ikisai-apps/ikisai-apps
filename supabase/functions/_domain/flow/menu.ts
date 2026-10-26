@@ -22,15 +22,18 @@ export interface MenuProduct {
   position: number;
   /** Clave de sus imágenes (`montaditos/serrano`), si las tiene; ver `productAssets`. */
   imageKey: string | null;
+  /** Alérgenos (de Food) y si están confirmados con las etiquetas reales (§8.4). */
+  allergens?: string[];
+  allergensChecked?: boolean;
 }
 
 /** Las cuatro representaciones de un producto (decisión de VG del 26-10), en apps/flow/public/assets/<clave>/. */
 export interface ProductAssets { icon: string; medal: string; thumb: string; zoom: string }
 
 export function productAssets(imageKey: string | null | undefined): ProductAssets | null {
-  if (!imageKey || !/^[a-z0-9-]+\/[a-z0-9-]+$/.test(imageKey)) return null;
+  if (!imageKey || !/^[a-z0-9_-]+\/[a-z0-9_-]+$/.test(imageKey)) return null;
   const base = `/assets/${imageKey}`;
-  return { icon: `${base}/icono.svg`, medal: `${base}/medallon.svg`, thumb: `${base}/miniatura.webp`, zoom: `${base}/zoom.webp` };
+  return { icon: `${base}/icono.svg`, medal: `${base}/medallon.webp`, thumb: `${base}/miniatura.webp`, zoom: `${base}/zoom.webp` };
 }
 
 export interface MenuGroup {
