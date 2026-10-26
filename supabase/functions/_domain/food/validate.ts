@@ -3,6 +3,7 @@
  * Reglas puras: corren en el cliente antes de encolar y otra vez en la Edge antes de core.commit.
  * Todo lo que PostgreSQL rechazaría con un check o un error de conversión se rechaza aquí con el campo en `details`.
  */
+import { OFFER_AUDIENCES, OFFER_CHARGES, OFFER_PAYERS, offerProblem } from './offers.ts';
 import { CARTA_CODES, CARTA_PRICE_MAX_CENTS, CARTA_SCOPES, IMAGE_KEY, prepSplitProblem } from './carta.ts';
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
 import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_KINDS, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
@@ -172,6 +173,26 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       image_key: { kind: 'text', max: 120, nullable: true },
       expected_units: { kind: 'number', min: 0, max: 1_000_000, integer: true, nullable: true },
       per_person: { kind: 'number', min: 0, max: 1000, nullable: true },
+    },
+  },
+  // Ofertas de comida por evento (1111): un menú o una carta, cuándo, para quién, dónde y quién paga.
+  'food.event_offers': {
+    required: ['menu_id', 'name', 'audience'],
+    insertOnly: ['event_id'],
+    fields: {
+      event_id: { kind: 'uuid', nullable: true },
+      menu_id: { kind: 'uuid' },
+      name: { kind: 'text', max: 120, required: true },
+      audience: { kind: 'enum', values: OFFER_AUDIENCES },
+      meal_groups: { kind: 'json' },
+      days: { kind: 'json', nullable: true },
+      services: { kind: 'json', nullable: true },
+      place: { kind: 'text', max: 200, nullable: true },
+      space_id: { kind: 'uuid', nullable: true },
+      payer: { kind: 'enum', values: OFFER_PAYERS, nullable: true },
+      charge_when: { kind: 'enum', values: OFFER_CHARGES, nullable: true },
+      position: { kind: 'number', min: -1e9, max: 1e9 },
+      notes: { kind: 'text', max: 1000, nullable: true },
     },
   },
   // Ventas de la carta: solo las escribe food.record_carta_sales.
@@ -400,6 +421,13 @@ export function validateOperation(op: DomainOperation): Issue | null {
   }
   if (op.table === 'food.menus' && op.op === 'insert') {
     const problem = menuKindProblem(fields);
+    if (problem) return issue('INVALID_FIELDS', problem.message, { table: op.table, field: problem.field });
+  }
+  if (op.table === 'food.event_offers') {
+    // Al crearla, todas las reglas; en un cambio, la forma de las listas (quién paga lo comprueba la base con la fila entera).
+    const problem = op.op === 'insert'
+      ? offerProblem(fields as Parameters<typeof offerProblem>[0])
+      : offerProblem({ audience: 'interna', meal_groups: fields.meal_groups as string[] | undefined, days: fields.days as string[] | null | undefined, services: fields.services as never });
     if (problem) return issue('INVALID_FIELDS', problem.message, { table: op.table, field: problem.field });
   }
   if (op.table === 'food.menus' && 'prep_split' in fields) {

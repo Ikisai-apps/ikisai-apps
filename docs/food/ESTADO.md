@@ -64,6 +64,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 - **Previsión de la carta: modelo y lecturas** (migración 1110; API.md §2.11). Unidades esperadas, reparto mesa/nevera/fresco, estación por ingrediente, conversiones sin inventar (rodajas incluidas), `food.carta_prep_projection` y `food.carta_prep_totals_projection` para Flow, y la lista de la compra de una carta. Prueba: `carta-prevision.test.ts`. **Su pantalla:** las pestañas Previsión (reparto, unidades esperadas y plan de bandejas imprimible) y Compra de la carta. Prueba: `carta.spec.ts`.
 
+- **Ofertas de comida por evento** (migración 1111; API.md §2.12): `food.event_offers`, la conversión de lo de hoy, `food.event_offers_projection` para Booking, `food.portal_offers` para Organizers y Guests (las internas solo a Guests, marcadas), `food.event_needs` y el bloque «Ofertas de comida» en la ficha del evento. Prueba: `offers.test.ts`.
+
 ## Aceptación del usuario (6 de octubre de 2026)
 
 - Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.

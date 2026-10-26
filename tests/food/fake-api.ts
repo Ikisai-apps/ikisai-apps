@@ -146,6 +146,8 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   // La carta (1109): líneas y ventas (estas, en la app real, solo por food.record_carta_sales).
   'food.carta_lines': ['menu_id', 'recipe_id', 'item_id', 'scope', 'code', 'name', 'description', 'sale_price_cents', 'active', 'position', 'image_key', 'expected_units', 'per_person'],
   'food.carta_sales': ['menu_id', 'line_id', 'day', 'quantity'],
+  // Ofertas de comida por evento (1111).
+  'food.event_offers': ['event_id', 'menu_id', 'name', 'audience', 'meal_groups', 'days', 'services', 'place', 'space_id', 'payer', 'charge_when', 'position', 'notes'],
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
     'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
@@ -176,6 +178,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.preparation_items': { done: false, position: 0, manual: false },
   'food.consumptions': { automatic: false },
   'food.carta_lines': { active: true, position: 0 },
+  'food.event_offers': { audience: 'huespedes', meal_groups: [], position: 0 },
   'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
   'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
   'resources.counts': { status: 'abierto' },
