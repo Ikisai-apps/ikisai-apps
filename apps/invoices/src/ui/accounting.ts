@@ -19,7 +19,7 @@
  */
 import { bindOnline, confirmDialog, closeSheet, el, icon, openSheet, renderList, renderStages, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
 import { INCOME_CATEGORY_LABELS, fiscalSummary, issuedSummary, periodOfDate, type FiscalSummary } from '@ikisai/domain-invoices';
-import { categoryLabel as categoryName, describeError, type LocalExport } from '../app/client.ts';
+import { APP_ENTRIES, categoryLabel as categoryName, describeError, type LocalAppEntry, type LocalExport } from '../app/client.ts';
 import { DEDUCTIBILITY_LABELS, TAX_TYPE_LABELS, workingQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, type Mirror, type RangeKind } from '../app/data.ts';
 import { downloadWithSession } from '../app/files.ts';
 import { DELIVERY_STAGES, deliveryState, type DeliveryStage } from '../app/delivery-state.ts';
@@ -28,11 +28,14 @@ import { loadIssued } from './issued.ts';
 import type { ViewMount } from './shell.ts';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
+import { appEntriesSummary } from '../app/app-entries-state.ts';
 
 export const mountAccounting: ViewMount = (ctx) => {
   const { main, client, navigate } = ctx;
   let mirror: Mirror | null = null;
   let issued: Awaited<ReturnType<typeof loadIssued>> | null = null;
+  // Ingresos y gastos de otras apps (0244): lo facturado entra en el IVA repercutido del periodo
+  let appEntries: LocalAppEntry[] = [];
   let range = workingQuarter();
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
@@ -145,7 +148,9 @@ export const mountAccounting: ViewMount = (ctx) => {
     const folder = range.kind === 'year' ? `${range.year}` : `${range.year}_${range.quarter}T`;
 
     // --- La carpeta: recorrido de la entrega y el ticket --------------------------------------------------------------
-    const balance = t ? Math.round((t.quota - s.vat) * 100) / 100 : null;
+    const apps = appEntriesSummary(appEntries, range);
+    const hasApps = apps.income.count + apps.expense.count + apps.not_invoiced.count > 0;
+    const balance = t || apps.income.count ? Math.round(((t?.quota ?? 0) + apps.income.quota - s.vat) * 100) / 100 : null;
     replace(folderHost,
       el('div', { class: 'inv-folder-head' }, el('h3', null, `Para la gestoría · ${folder}`), el('span', { class: `chip ${state.seal === 'Desfasada' ? 'alert' : state.seal === 'Entregada' || state.seal === 'Archivada' || state.seal === 'Lista' ? 'ok' : 'warn'}`, id: 'deliverySeal' }, state.seal)),
       renderStages({ label: 'Recorrido de la entrega', stages: [...DELIVERY_STAGES], current: state.stage, bad: state.bad, caption: state.caption, feedbackId: 'invoices.gestoria.recorrido',
@@ -156,6 +161,7 @@ export const mountAccounting: ViewMount = (ctx) => {
         el('dt', null, 'Retenciones'), el('dd', null, eur(s.withholding)),
         el('dt', null, 'Total facturado'), el('dd', null, eur(s.total)),
         el('dt', null, 'Facturas validadas'), el('dd', null, String(s.invoices.validada + s.invoices.archivada)),
+        ...(apps.income.count ? [el('dt', null, 'IVA repercutido de apps'), el('dd', null, eur(apps.income.quota))] : []),
         ...(balance !== null ? [el('dt', null, balance >= 0 ? 'IVA a ingresar (orientativo)' : 'IVA a compensar (orientativo)'), el('dd', null, eur(Math.abs(balance)))] : [])),
       balance !== null ? el('p', { class: 'hint' }, 'Orientativo: la deducibilidad y el modelo 303 los decide la gestoría.') : null,
     );
@@ -194,6 +200,14 @@ export const mountAccounting: ViewMount = (ctx) => {
         summaryBlock('Por categoría', s.by_category.length ? s.by_category.map((g) => [`${categoryName(g.expense_category)}${g.is_investment ? ' (inv.)' : ''}`, `${eur(g.base)} · ${g.count}`] as [string, string]) : [['—', 'Nada validado']]),
         s.withholdings_by_type.length ? summaryBlock('Retenciones', s.withholdings_by_type.map((g) => [`${TAX_TYPE_LABELS[g.tax_type] ?? g.tax_type}${g.rate !== null ? ` ${g.rate} %` : ''}`, eur(g.amount)] as [string, string])) : null,
         ...issuedCards(s, t),
+        hasApps ? el('article', { class: 'card', id: 'appEntriesSummary' }, el('h3', null, 'Ingresos y gastos de apps'), el('dl', { class: 'kv', 'data-feedback-ignore': '' },
+          el('dt', null, 'Ingresos facturados'), el('dd', null, `${eur(apps.income.total)} (${apps.income.count})`),
+          el('dt', null, 'Base'), el('dd', null, eur(apps.income.base)),
+          el('dt', null, 'IVA repercutido'), el('dd', null, eur(apps.income.quota)),
+          ...apps.income.quota_by_rate.map((g) => [el('dt', null, `IVA ${g.rate} %`), el('dd', null, `${eur(g.base)} → ${eur(g.quota)}`)]).flat(),
+          ...(apps.expense.count ? [el('dt', null, 'Gastos facturados'), el('dd', null, `${eur(apps.expense.total)} (${apps.expense.count})`)] : []),
+          el('dt', null, 'Sin facturar (fuera de la entrega)'), el('dd', null, `${apps.not_invoiced.count} · ${eur(apps.not_invoiced.income - apps.not_invoiced.expense)}`)),
+          el('p', null, el('button', { 'data-feedback-id': 'invoices.gestoria.apuntes.ver', 'data-feedback-label': 'Ver los ingresos de apps', class: 'linkbtn', type: 'button', onclick: () => navigate('#/apuntes') }, 'Ver los apuntes'))) : null,
       ),
     );
 
@@ -368,7 +382,7 @@ export const mountAccounting: ViewMount = (ctx) => {
     try { await usage.run('invoices.gestoria.archivar_periodo', () => client.commit([{ op: 'call', procedure: 'invoices.archive_period', args: { export_id: e.id } }])); toast('Periodo archivado.'); } catch (error) { toast(describeError(error)); }
   }
 
-  async function load(): Promise<void> { [mirror, issued] = await Promise.all([loadMirror(client), loadIssued(client)]); paint(); }
+  async function load(): Promise<void> { [mirror, issued, appEntries] = await Promise.all([loadMirror(client), loadIssued(client), client.list(APP_ENTRIES) as unknown as Promise<LocalAppEntry[]>]); paint(); }
   const off = onAnyTable(client, () => void load());
   void load();
   return () => { off(); for (const o of offline) o(); };

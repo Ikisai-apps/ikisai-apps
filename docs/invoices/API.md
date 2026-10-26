@@ -1915,3 +1915,20 @@ Sincronizable y `never_purge`. No se borra: un apunte que no cuenta se marca com
   - Una entrega solo con apuntes no está vacía.
   - La entrega queda desactualizada si un apunte incluido cambia o si aparece uno nuevo facturado del periodo.
 - La regla fiscal de los gastos de apps y de las ventas sin factura está pendiente de la gestoría (PETICIONES.md, 26-10).
+
+### 17.4 Pantallas (PR 2)
+
+- **«Ingresos y gastos de apps»** (`#/apuntes`). Se entra desde la herramienta «Ingresos de apps» de Inicio (`#toolAppEntries`). Su pista dice «n sin facturar» o lo facturado.
+  - **Cifras:** ingresos facturados, sin facturar, sin evento y eventos.
+  - **Resultado por evento:** cada evento abre su vista.
+  - **Apuntes por mes:** cada uno con «Facturado» o «No facturado», que se cambia con un toque. Al dejarlo sin facturar sale «Añadir motivo». Un apunte entregado a la gestoría no cambia.
+  - **La ficha:** total, base, IVA, devoluciones pendientes, medios, desglose, facturado y su motivo, evento, recibido y referencia. Desde ella se enlaza un evento de Booking (con red) y se escriben el motivo y las notas.
+- **«Evento»** (`#/evento?id=<event_id>`): ingresos − gastos = resultado, **sin IVA**.
+  - **Ingresos:** los apuntes de ingreso de apps del evento (facturados o no: es dinero cobrado) y lo asignado de las emitidas registradas.
+  - **Gastos:** lo asignado de las recibidas validadas o archivadas y los gastos de apps.
+  - Las recibidas asignadas sin validar se dicen, pero no cuentan.
+  - Cada movimiento abre su ficha.
+  - El cálculo está en `app/app-entries-state.ts`.
+- **Gestoría:**
+  - el ticket suma al saldo de IVA (orientativo) el IVA repercutido de los apuntes facturados;
+  - «Todo el detalle» lleva la tarjeta «Ingresos y gastos de apps» (`#appEntriesSummary`), con la misma cuenta que `invoices.app_entries_summary_for`.
