@@ -154,3 +154,8 @@
 .qcard-edit{position:absolute;right:8px;bottom:6px}
 .qcard.is-proposed{border-style:dashed}
 .qcard.is-proposed .qcard-state{background:transparent;border:1px dashed var(--line)}
+.qcard-tasks{position:absolute;right:52px;bottom:6px}
+.flow-pick{display:grid;gap:8px}
+.flow-pick button{text-align:left}
+.flow-tasks-qty{display:flex;gap:8px}
+.flow-tasks-qty input{flex:1;min-width:0}

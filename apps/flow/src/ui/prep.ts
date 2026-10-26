@@ -4,6 +4,7 @@ import { describeError } from '../app/client.ts';
 import { productMedal } from './sheets-common.ts';
 import { callProcedure, errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
 import { generateIngredientTasks } from '../app/ingredients.ts';
+import { askTasks } from '../app/links.ts';
 import { customerNumber, watchData, type FlowData, type Unit } from '../app/data.ts';
 import { loadPeople, personName } from '../app/people.ts';
 import { createStableList } from './stable-list.ts';
@@ -99,6 +100,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
           el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }), el('small', { class: 'qcard-sub muted' })),
           el('span', { class: 'qcard-state' })),
         el('button', { type: 'button', class: 'iconbtn qcard-edit', hidden: true, 'aria-label': 'Revisar la cantidad', onclick: () => editQty(u.id) }, icon('edit', 18)),
+        el('button', { type: 'button', class: 'iconbtn qcard-tasks', hidden: true, 'aria-label': 'Pedir a Tasks', onclick: () => { const x = data?.units.find((y) => y.id === u.id); if (x) askTasks(client, x); } }, icon('tasks', 18)),
         el('p', { class: 'qcard-notice', role: 'status', hidden: true }),
       );
       return node;
@@ -121,13 +123,16 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const who = status === 'done' ? personName(people, u.done_by, me) : status === 'in_progress' ? personName(people, u.assigned_to, me) : '';
       const number = order ? customerNumber(data!, order) : null;
       const load = u.payload?.qty !== undefined ? `${fmtQty(u.payload.qty, u.payload.unit)}${u.payload.to ? ` a ${u.payload.to}` : ''}${u.payload.from ? ` desde ${u.payload.from}` : ''}` : '';
-      const sub = [order?.pay_seq ? `Pedido ${order.pay_seq}` : '', number ? `cliente ${number}` : '', load, u.priority ? 'prioritaria' : '', who].filter(Boolean).join(' · ');
+      const ext = u.payload?.external?.app === 'tasks' ? `en Tasks: ${u.payload.external.kind === 'purchase_request' ? 'compra' : 'tarea'}` : '';
+      const sub = [order?.pay_seq ? `Pedido ${order.pay_seq}` : '', number ? `cliente ${number}` : '', load, ext, u.priority ? 'prioritaria' : '', who].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = sub;
       // En una columna con propuestas, «pendiente» es «confirmada» (propuesta → confirmada → asignada → hecha).
       const label = kind === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
       node.querySelector('.qcard-state')!.textContent = pending ? `${label} · pendiente de confirmar` : label;
       const edit = node.querySelector<HTMLButtonElement>('.qcard-edit')!;
       edit.hidden = !(canEdit && u.kind === 'task' && u.payload?.qty !== undefined && (status === 'proposed' || status === 'pending'));
+      const role = client.bootstrap()?.membership.role;
+      node.querySelector<HTMLButtonElement>('.qcard-tasks')!.hidden = !(u.kind === 'task' && !u.payload?.external && status !== 'done' && (role === 'editor' || role === 'owner'));
       const main = node.querySelector<HTMLButtonElement>('.qcard-main')!;
       main.disabled = !canEdit || status === 'cancelled' || inFlight.has(u.id);
       main.setAttribute('aria-label', `${product ? product.name : u.label}: ${UNIT_STATUS_LABELS[status]}${sub ? `, ${sub}` : ''}`);

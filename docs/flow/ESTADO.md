@@ -17,12 +17,13 @@ App interna `flow` (`flow.ikisai.com`, Pages `ikisai-flow`, Edge `flow-api`, sch
 | Food: «Actualizar carta desde Food» (reflejo manual, congelado durante el servicio) | #735 |
 | Cierre del día (owner): resumen, envío a Food y a Finance (no en modo pruebas), proyección que lee Booking | #735 |
 | Ingredientes: propuestas, existencias de mesa y nevera, consumo por montadito, reposición bajo el 25 %, generación desde la previsión de Food, consumo en el cierre | #745 |
+| Enlaces: evento de Booking del flujo; proyecto de Tasks y «Pedir a Tasks» (tarea o compra) desde una tarea | rama `flow/enlaces` (0905) |
 | Pruebas: 40 en PGlite (conformidad, criterios §15, públicos, acceso, integraciones, ingredientes) y Playwright de la cáscara y del recorrido completo | #707–#745 |
 
 ## Qué falta para el jueves
 
-1. **Elegir el evento de Booking** del flujo (owner): leer `booking.event_projection` y guardar `booking_event_id` y las fechas. Sin esto, Booking no ve el resumen del servicio. La reserva del fin de semana (RSV_2026_007, «Carrera de orientación») sigue pre-reservada sin evento hasta que VG la confirme.
-2. **«Pedir a Tasks»** desde una tarea de Logística (contrato de Tasks, #717): `projects.tasks_project_id`, elegir el proyecto de Tasks y crear la tarea o la compra con la sesión de la persona.
+1. **Ligar el flujo a su evento** en cuanto VG confirme la reserva del fin de semana (RSV_2026_007, «Carrera de orientación»): hoy está pre-reservada y sin evento, así que no sale para elegir. Mientras, Booking no ve el resumen del servicio.
+2. **Elegir el proyecto de Tasks** del flujo (owner, una vez), para que funcione «Pedir a Tasks».
 3. **Ensayo con varios móviles** (§15.13 y §15.16): concurrencia y red variable. Solo se puede hacer a mano, en el entorno real.
 4. **Previsión de Food** para Ingredientes: depende de la #741 de Food. Sin ella, la columna funciona con tareas a mano.
 5. **Altas de las 6 personas**: las da VG desde Central (jueves o viernes), como editoras y con el ámbito del proyecto de la barra.
