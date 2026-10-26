@@ -164,13 +164,16 @@ export function mountQueue(kind: QueueKind): ViewMount {
     async function tap(id: string): Promise<void> {
       const u = data?.units.find((x) => x.id === id);
       if (!u || inFlight.has(id)) return; // una sola transición en vuelo por tarjeta
-      const next = nextUnitStatus(u.status);
+      // Se parte de lo que se enseña: incluye lo que el servidor ya confirmó aunque el espejo aún no lo traiga (dos toques
+      // seguidos no deben dar un falso «otra persona se adelantó»).
+      const from = shownStatus(u);
+      const next = nextUnitStatus(from);
       if (!next) return;
       notices.delete(id);
       inFlight.set(id, next);
       repaintOne(u);
       try {
-        await actions.unitStep(id, u.status);
+        await actions.unitStep(id, from);
         settled.set(id, { status: next, revision: u.revision });
       } catch (error) {
         if (errorCode(error) === 'UNIT_CHANGED') {
