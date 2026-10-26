@@ -117,6 +117,9 @@ test('ficha de proyecto: portada, «Siguiente ›» sin escritura, «Hecha» en 
 test('Proyectos: portadas en orden (Entrada, fijado, atención), la banda filtra y se marca desde la tarjeta', async () => {
   await openProjects(owner);
   await expect(owner.locator('.tkp-band .stat-item')).toHaveCount(3);
+  // FB_2026_063: las dos barras de «cómo vamos» (total y lo que falta).
+  await expect(owner.locator('.tkp-progress .tkp-bar')).toHaveCount(2);
+  await expect(owner.locator('.tkp-progress')).toContainText('en total');
   const pinned = await owner.evaluate(() => activeProjects().find((p: any) => !p.system)?.id === activeProjects()[0]?.id ? activeProjects()[0].id : null);
   if (pinned) await expect(owner.locator('.project:not(.system)').first()).toHaveAttribute('data-drop-project', pinned);
   const order = await owner.locator('.project-grid > .tkp-wrap').evaluateAll((els) => els.map((e) => e.getAttribute('data-tkp-health')));

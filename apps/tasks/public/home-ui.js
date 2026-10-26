@@ -25,14 +25,17 @@ function homePeopleOf(r){const out=new Map();
 /* El filtro de persona es de este dispositivo y de esta pantalla (no cambia los filtros de Tareas). */
 let homePerson='';
 let homeData=null;
+/* «para hoy» cuenta también lo puesto en el plan de hoy con el sol, no solo lo que vence hoy (FB_2026_074). hoy-ui.js se carga
+   después: se mira al pintar. */
+function homePlanIds(){try{return new Set(typeof tkhItems==='function'?tkhItems().map(it=>it.task_id).filter(Boolean):[])}catch{return new Set()}}
 function homeView(){
   if(typeof outsiderMode==='function'&&outsiderMode())return outsiderHomeView();
   const areas=areasForTasks(),single=areas.length===1?areas[0]:null,all=homeTasks(),today=isoDay(0);
   const peopleNames=new Map();for(const r of all)for(const [k,n] of homePeopleOf(r))if(!peopleNames.has(k))peopleNames.set(k,n);
   if(homePerson&&!peopleNames.has(homePerson))homePerson='';
   const rows=homePerson?all.filter(r=>homePeopleOf(r).has(homePerson)):all;
-  const leaves=rows.filter(r=>r.leaf),pendingRows=rows.filter(r=>!r.done);
-  const overdue=pendingRows.filter(r=>r.t.due&&homeDayOf(r.t.due)<0),dueToday=pendingRows.filter(r=>r.t.due&&homeDayOf(r.t.due)===0),doneWeek=rows.filter(r=>r.done&&r.t.updatedAt&&Date.now()-new Date(r.t.updatedAt).getTime()<7*86400000);
+  const leaves=rows.filter(r=>r.leaf),pendingRows=rows.filter(r=>!r.done),planIds=homePlanIds();
+  const overdue=pendingRows.filter(r=>r.t.due&&homeDayOf(r.t.due)<0),dueToday=pendingRows.filter(r=>(r.t.due&&homeDayOf(r.t.due)===0)||planIds.has(r.t.id)),doneWeek=rows.filter(r=>r.done&&r.t.updatedAt&&Date.now()-new Date(r.t.updatedAt).getTime()<7*86400000);
   const blockedRows=pendingRows.filter(r=>r.blocked.length);
   const progressPct=leaves.length?Math.round(100*leaves.filter(r=>r.done).length/leaves.length):0,pendingLeaves=leaves.filter(r=>!r.done).length;
   const dateLabel=new Intl.DateTimeFormat('es-ES',{weekday:'long',day:'numeric',month:'long'}).format(new Date());
@@ -137,7 +140,7 @@ main=function(){if(state.view==='home'&&tab())return homeView();return mainBefor
 const groupsBeforeHome=navigationGroups;
 navigationGroups=function(){const groups=groupsBeforeHome(),work=groups.find(g=>g.id==='work');if(work)work.items.unshift(['home','Inicio','home','view']);return groups};
 const renderBeforeHome=render;
-render=function(){const result=renderBeforeHome();if(state.view==='home'&&document.querySelector('#view main.home')){if(typeof outsiderMode==='function'&&outsiderMode())fillOutsiderProposals();else{mountHome();fillHomeActivity()}}return result};
+render=function(){const result=renderBeforeHome();if(state.view==='home'&&tab()&&document.querySelector('#view main.home')){if(typeof outsiderMode==='function'&&outsiderMode())fillOutsiderProposals();else{mountHome();fillHomeActivity()}}return result};
 const bindBeforeHome=bind;
 bind=function(){bindBeforeHome();
   // Cambiar de área desde Inicio mantiene Inicio; desde otra vista se conserva el comportamiento original.

@@ -120,9 +120,14 @@ downloadServerBackup=function(...args){return usage.run('tasks.datos.respaldo',(
    Tasks no lleva sus pantallas en la URL, así que registra una cosa más: salir del Inicio (y «atrás» vuelve a él). */
 IkisaiKit.installBackNavigation({home:'#/',returnTo:true});
 let backView=null;
+/* «Atrás» vuelve a la pantalla de antes (Suministros, Compras…), no siempre a Inicio (FB_2026_054). Se recuerda el camino
+   desde Inicio; volver a Inicio lo vacía. */
+let backTrail=[],backLast=null,backGoing=false;
 function syncBackStack(){
-  const away=!!state.view&&state.view!=='home';
-  if(away&&!backView)backView=IkisaiKit.trackOverlay(()=>{backView=null;navigateView('home')});
+  const view=state.view||null;
+  if(view!==backLast){if(view==='home'||!view)backTrail=[];else if(!backGoing&&backLast&&backLast!=='home'&&backTrail.at(-1)!==backLast)backTrail.push(backLast);if(backTrail.length>20)backTrail.shift();backLast=view;backGoing=false}
+  const away=!!view&&view!=='home';
+  if(away&&!backView)backView=IkisaiKit.trackOverlay(()=>{backView=null;const prev=backTrail.pop();backGoing=true;navigateView(prev||'home')});
   else if(!away&&backView){const h=backView;backView=null;if(h.active())h.release()}
 }
 const renderBeforeBack=render;

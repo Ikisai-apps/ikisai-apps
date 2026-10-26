@@ -132,13 +132,14 @@ const PERSON_KINDS=[{kind:'altura',label:'Grupo',level:1},{kind:'persona',label:
 const PERSON_TEXTS={empty:'Ninguna persona coincide con «{q}».',search:'Buscar por nombre o iniciales…',feedback:{quick:'Persona más usada',search:'Buscar persona',remove:'Quitar persona'}};
 // Con el tipo «altura», el kit no antepone el nivel al nombre en lo elegido: sale «Valeria Gómez», no «Todo el staff › …».
 function personRows(){const rows=PERSON_LEVELS.map(([level],i)=>({id:'level:'+level,parentId:null,kind:'altura',name:levelGroupName(level),publicName:levelName(level),code:null,position:i,active:true,notes:null,attributes:{}}));
-  peopleIndex().sorted.filter(p=>p.house_level).forEach((p,i)=>rows.push({id:p.person_id,parentId:'level:'+p.house_level,kind:'persona',name:p.name,publicName:null,code:p.initials,position:i,active:true,notes:null,attributes:{}}));
+  // FB_2026_067: quien no tiene nivel de casa en Central también se puede elegir (sin grupo, al final), no desaparece.
+  peopleIndex().sorted.forEach((p,i)=>rows.push({id:p.person_id,parentId:p.house_level?'level:'+p.house_level:null,kind:'persona',name:p.name,publicName:null,code:p.initials,position:p.house_level?i:PERSON_LEVELS.length+i,active:true,notes:null,attributes:{}}));
   return rows}
 function personPicker(options){return IkisaiKit.createSpacePicker({rows:personRows(),kinds:PERSON_KINDS,multiple:true,texts:PERSON_TEXTS,quick:mostUsedPeople(),...options})}
 
 /* --- «Responsable principal»: un select agrupado por nivel, con el grupo delante y las personas por nombre -------------- */
 function ownerOptionsHtml(value){const {sorted}=peopleIndex(),known=!value||knownPerson(value),on=v=>v===(value||'')?' selected':'';
-  return `<option value=""${on('')}>Sin asignar</option>${PERSON_LEVELS.map(([level,name,group])=>`<optgroup label="${esc(name)}"><option value="level:${level}"${on('level:'+level)}>${esc(group)}</option>${sorted.filter(p=>p.house_level===level).map(p=>`<option value="${esc(p.person_id)}"${on(p.person_id)}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}${known?'':`<option value="${esc(value)}" selected>Persona (no disponible)</option>`}`}
+  return `<option value=""${on('')}>Sin asignar</option>${PERSON_LEVELS.map(([level,name,group])=>`<optgroup label="${esc(name)}"><option value="level:${level}"${on('level:'+level)}>${esc(group)}</option>${sorted.filter(p=>p.house_level===level).map(p=>`<option value="${esc(p.person_id)}"${on(p.person_id)}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}${sorted.some(p=>!p.house_level)?`<optgroup label="Sin nivel de casa">${sorted.filter(p=>!p.house_level).map(p=>`<option value="${esc(p.person_id)}"${on(p.person_id)}>${esc(p.name)}</option>`).join('')}</optgroup>`:''}${known?'':`<option value="${esc(value)}" selected>Persona (no disponible)</option>`}`}
 function mountOwnerSelect(select,key,initial){if(!select)return null;const value=ownerDraft&&ownerDraft.key===key?ownerDraft.value:(initial||'');ownerDraft={key,value};
   select.innerHTML=ownerOptionsHtml(value);select.value=value;select.dataset.personOwner='1';select.addEventListener('change',()=>{ownerDraft={key,value:select.value}});return select}
 
@@ -152,8 +153,15 @@ function addPersonToField(personId){const f=peopleField;if(!f||!f.field.isConnec
   f.field.dispatchEvent(new CustomEvent('people-change',{detail:[...next]}));return true}
 function mountPeopleField(anchor,key,initial,label,feedbackId,hint){if(!anchor)return;const ids=peopleDraft&&peopleDraft.key===key?peopleDraft.ids:[...initial];peopleDraft={key,ids:[...ids]};
   const field=document.createElement('div');field.className='field personfield ikisai-kit';
-  const picker=personPicker({label,value:ids,feedbackId,onChange:next=>{peopleDraft={key,ids:[...next]};field.dispatchEvent(new CustomEvent('people-change',{detail:[...next]}))}});
-  peopleField={key,picker,field};field.append(picker.element);if(!(Sync.core?.people||[]).length)field.insertAdjacentHTML('beforeend','<p class="small muted">Las personas de Central no se han podido leer todavía. Vuelve a abrir la ficha con conexión.</p>');
+  const onChange=next=>{peopleDraft={key,ids:[...next]};field.dispatchEvent(new CustomEvent('people-change',{detail:[...next]}))};
+  const picker=personPicker({label,value:ids,feedbackId,onChange});
+  peopleField={key,picker,field};field.append(picker.element);if(!(Sync.core?.people||[]).length){field.insertAdjacentHTML('beforeend',`<p class="small muted" role="status" data-people-missing>${navigator.onLine?'Leyendo las personas de Central…':'Sin conexión: las personas de Central se leerán al volver la red.'}</p>`);
+    // FB_2026_067: la lectura se pedía una sola vez por sesión; si falló, se reintenta al abrir la ficha y se dice cómo acabó.
+    if(navigator.onLine)askPeople(true).then(ok=>{const note=field.querySelector('[data-people-missing]');if(!note)return;
+      if(ok&&(Sync.core?.people||[]).length){const fresh=personPicker({label,value:peopleDraft?.key===key?peopleDraft.ids:ids,feedbackId,onChange});
+        peopleField.picker.element.replaceWith(fresh.element);try{peopleField.picker.destroy?.()}catch{}peopleField.picker=fresh;note.remove();
+        if(!canEdit())field.querySelectorAll('input,button').forEach(x=>x.disabled=true);return}
+      note.textContent='No se han podido leer las personas de Central (sin permiso o sin respuesta). Avisa a quien administra Central.'})}
   if(hint)field.insertAdjacentHTML('beforeend',`<p class="small muted">${esc(hint)}</p>`);anchor.insertAdjacentElement('beforebegin',field);
   if(!canEdit())field.querySelectorAll('input,button').forEach(x=>x.disabled=true)}
 /* Al pulsar «Guardar» (antes que la ficha): se apunta lo elegido y el select del responsable se vacía para que la ficha no

@@ -49,6 +49,17 @@ test('«atrás» cierra la hoja abierta y no cambia de pantalla', async () => {
   await expect.poll(view).toBe('home');
 });
 
+test('«atrás» vuelve a la pantalla de antes, no siempre al Inicio (FB_2026_054)', async () => {
+  await page.evaluate(() => navigateView('home'));
+  await page.evaluate(() => navigateView('projects'));
+  await page.evaluate(() => navigateView('tasks'));
+  await expect.poll(view).toBe('tasks');
+  await back();
+  await expect.poll(view).toBe('projects');
+  await back();
+  await expect.poll(view).toBe('home');
+});
+
 test('«atrás» cierra el menú común', async () => {
   await page.locator('#appLauncher').click();
   await expect(page.locator('.appmenu-drawer')).toBeVisible();
