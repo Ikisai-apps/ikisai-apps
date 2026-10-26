@@ -246,7 +246,7 @@ returns jsonb language plpgsql stable as $$
 declare v_g booking.guests; v_s booking.lodging_settings; v_a booking.room_assignments; v_dir boolean;
 begin
   v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid);
-  v_dir := v_g.portal_role = 'direccion';
+  v_dir := coalesce(v_g.portal_role = 'direccion', false);
   v_s := booking.lodging_settings_of(v_g.event_id);
   select * into v_a from booking.room_assignments where event_id = v_g.event_id and guest_id = v_g.id and deleted_at is null order by created_at desc limit 1;
   return jsonb_build_object(
@@ -279,7 +279,7 @@ declare
 begin
   v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid);
   if v_g.preview then perform core.fail('PREVIEW_READ_ONLY', 403, jsonb_build_object('guest_id', v_g.id)); end if;
-  v_dir := v_g.portal_role = 'direccion';
+  v_dir := coalesce(v_g.portal_role = 'direccion', false);
   v_s := booking.lodging_settings_of(v_g.event_id);
   if not v_dir then
     if v_s.id is null or v_s.choice = 'off' then perform core.fail('NOT_OFFERED', 422, jsonb_build_object('guest_id', v_g.id)); end if;

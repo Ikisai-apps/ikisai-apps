@@ -128,28 +128,28 @@ test('dirección: ve los retiros no visibles, se apunta sin aprobación, elige s
   const { res, event } = await retreat('Retiro privado', { visible: false });
   const boss = await member('guests', [{ all: true }]);
   const plain = await member('guests');
-  const range = { args: { from: '2033-01-01', to: '2033-12-31' } };
+  const range = { from: '2033-01-01', to: '2033-12-31' };
   const seen = await read('guests', boss, 'booking.portal_open_retreats', range);
   assert.equal(seen.direction, true);
   assert.ok(seen.items.some((i: any) => i.reservation_id === res));
   assert.ok(!(await read('guests', plain, 'booking.portal_open_retreats', range)).items.some((i: any) => i.reservation_id === res));
 
-  assert.equal(await code(invoke('guests', plain, 'booking.portal_join_direction', { args: { reservation_id: res } })), 'OUT_OF_SCOPE');
-  const joined = await invoke('guests', boss, 'booking.portal_join_direction', { args: { reservation_id: res } });
+  assert.equal(await code(invoke('guests', plain, 'booking.portal_join_direction', { reservation_id: res })), 'OUT_OF_SCOPE');
+  const joined = await invoke('guests', boss, 'booking.portal_join_direction', { reservation_id: res });
   assert.equal(joined.guest_ids.length, 1, JSON.stringify(joined));
   const mine = joined.guest_ids[0];
   assert.deepEqual((await guestsOf(event)).map((g) => g.portal_role), ['direccion']);
-  assert.equal((await invoke('guests', boss, 'booking.portal_join_direction', { args: { reservation_id: res } })).guest_ids.length, 0, 'no se apunta dos veces');
+  assert.equal((await invoke('guests', boss, 'booking.portal_join_direction', { reservation_id: res })).guest_ids.length, 0, 'no se apunta dos veces');
 
   // Su ficha: elige siempre, sin «Habitaciones abiertas»
-  const lodging = await read('guests', boss, 'booking.portal_lodging', { args: { guest_id: mine } });
+  const lodging = await read('guests', boss, 'booking.portal_lodging', { guest_id: mine });
   assert.deepEqual([lodging.choice, lodging.open, lodging.direction], ['choose', true, true]);
 
   // Otro huésped del mismo retiro: «todos» no le deja leerlo ni tocarlo
   const other = uuid();
   await ok([{ op: 'insert', table: TABLES.guests, id: other, fields: { event_id: event, first_name: 'Otra' } }]);
-  assert.equal(await code(read('guests', boss, 'booking.portal_lodging', { args: { guest_id: other } })), 'OUT_OF_SCOPE');
+  assert.equal(await code(read('guests', boss, 'booking.portal_lodging', { guest_id: other })), 'OUT_OF_SCOPE');
   // No apunta a un retiro cerrado
   await app.t.db.query(`update booking.reservations set status = 'cerrada' where id = $1`, [res]);
-  assert.equal(await code(invoke('guests', boss, 'booking.portal_join_direction', { args: { reservation_id: res } })), 'RESERVATION_NOT_OPEN');
+  assert.equal(await code(invoke('guests', boss, 'booking.portal_join_direction', { reservation_id: res })), 'RESERVATION_NOT_OPEN');
 });
