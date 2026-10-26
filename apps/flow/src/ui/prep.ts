@@ -1,8 +1,9 @@
-import { el, icon, renderMedal, replace, toast } from '@ikisai/ui-kit';
-import { nextUnitStatus, SCOPE_LABELS, UNIT_STATUS_LABELS, type UnitStatus } from '@ikisai/domain-flow';
+import { confirmDialog, el, icon, openSheet, renderMedal, replace, toast } from '@ikisai/ui-kit';
+import { nextUnitStatus, PROCEDURES, UNIT_STATUS_LABELS, type UnitStatus } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { productMedal } from './sheets-common.ts';
-import { errorCode, errorDetails, flowActions } from '../app/actions.ts';
+import { callProcedure, errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
+import { generateIngredientTasks } from '../app/ingredients.ts';
 import { customerNumber, watchData, type FlowData, type Unit } from '../app/data.ts';
 import { loadPeople, personName } from '../app/people.ts';
 import { createStableList } from './stable-list.ts';
@@ -21,7 +22,17 @@ import type { ViewMount } from './shell.ts';
  */
 export const VISIBLE_DONE = 10;
 
-export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
+/** Columna de unidades con toques: Preparación (unidades de producto), Logística e Ingredientes (tareas). */
+export type QueueKind = 'prep' | 'logistics' | 'ingredients';
+const QUEUE_TITLE: Record<QueueKind, string> = { prep: 'Preparación', logistics: 'Logística', ingredients: 'Ingredientes' };
+const QUEUE_EMPTY: Record<QueueKind, string> = {
+  prep: 'No hay montaditos cobrados todavía.',
+  logistics: 'No hay tareas. Crea la primera arriba.',
+  ingredients: 'No hay tareas de ingredientes. El encargado puede generarlas desde la previsión de Food, o créalas a mano arriba.',
+};
+const fmtQty = (q: number | undefined, unit: string | undefined) => (q === undefined || q === null ? '' : `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: unit === 'ud' ? 0 : 2 }).format(q)} ${unit ?? ''}`.trim());
+
+export function mountQueue(kind: QueueKind): ViewMount {
   return (ctx) => {
     const { main, client } = ctx;
     const actions = flowActions(client);
@@ -39,11 +50,15 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
 
     const olderButton = el('button', { type: 'button', class: 'ghost fqueue-older', hidden: true, onclick: () => { showAllDone = true; paint(); } });
     const listEl = el('div', { class: 'fqueue', role: 'list', 'aria-label': kind === 'prep' ? 'Montaditos' : 'Tareas' });
+    const isOwner = client.bootstrap()?.membership.role === 'owner';
     const nextButton = el('button', { type: 'button', class: 'primary fqueue-next', hidden: true, onclick: goToNext }, icon('chevronDown', 18), el('span', null, 'Ir al siguiente pendiente'));
-    const empty = el('p', { class: 'muted fqueue-empty', hidden: true }, kind === 'prep' ? 'No hay montaditos cobrados todavía.' : 'No hay tareas. Crea la primera arriba.');
-    const head = kind === 'logistics' ? taskForm() : null;
+    const empty = el('p', { class: 'muted fqueue-empty', hidden: true }, QUEUE_EMPTY[kind]);
+    const head = kind === 'prep' ? null : taskForm();
+    const ownerTools = kind === 'ingredients' && isOwner
+      ? [el('div', { class: 'orders-owner' }, el('button', { type: 'button', class: 'ghost', onclick: () => void generate() }, 'Generar tareas de ingredientes'))] : [];
     main.append(
-      el('h1', { class: 'col-title' }, kind === 'prep' ? 'Preparación' : 'Logística'),
+      el('h1', { class: 'col-title' }, QUEUE_TITLE[kind]),
+      ...ownerTools,
       ...(kind === 'prep' ? [el('p', { class: 'muted small' }, 'Toca para tomar un montadito, otra vez cuando esté listo para servir. Un tercer toque lo devuelve a pendiente.')] : []),
       ...(head ? [head] : []),
       olderButton, listEl, empty, nextButton,
@@ -53,7 +68,7 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
 
     function units(): Unit[] {
       if (!data) return [];
-      const all = data.units.filter((u) => (kind === 'prep' ? u.kind === 'prep' && u.column_key === 'prep' : u.kind === 'task' && u.column_key === 'logistics'));
+      const all = data.units.filter((u) => (kind === 'prep' ? u.kind === 'prep' && u.column_key === 'prep' : u.kind === 'task' && u.column_key === kind));
       return all.sort(kind === 'prep'
         ? (a, b) => (a.pay_seq ?? 0) - (b.pay_seq ?? 0) || a.idx - b.idx || a.id.localeCompare(b.id)
         : (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
@@ -83,6 +98,7 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
           el('span', { class: 'qcard-medal' }),
           el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }), el('small', { class: 'qcard-sub muted' })),
           el('span', { class: 'qcard-state' })),
+        el('button', { type: 'button', class: 'iconbtn qcard-edit', hidden: true, 'aria-label': 'Revisar la cantidad', onclick: () => editQty(u.id) }, icon('edit', 18)),
         el('p', { class: 'qcard-notice', role: 'status', hidden: true }),
       );
       return node;
@@ -104,9 +120,14 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
       node.querySelector('.qcard-title')!.textContent = product ? product.name : (u.label ?? '');
       const who = status === 'done' ? personName(people, u.done_by, me) : status === 'in_progress' ? personName(people, u.assigned_to, me) : '';
       const number = order ? customerNumber(data!, order) : null;
-      const sub = [order?.pay_seq ? `Pedido ${order.pay_seq}` : '', number ? `cliente ${number}` : '', u.priority ? 'prioritaria' : '', who].filter(Boolean).join(' · ');
+      const load = u.payload?.qty !== undefined ? `${fmtQty(u.payload.qty, u.payload.unit)}${u.payload.to ? ` a ${u.payload.to}` : ''}${u.payload.from ? ` desde ${u.payload.from}` : ''}` : '';
+      const sub = [order?.pay_seq ? `Pedido ${order.pay_seq}` : '', number ? `cliente ${number}` : '', load, u.priority ? 'prioritaria' : '', who].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = sub;
-      node.querySelector('.qcard-state')!.textContent = pending ? `${UNIT_STATUS_LABELS[status]} · pendiente de confirmar` : UNIT_STATUS_LABELS[status];
+      // En una columna con propuestas, «pendiente» es «confirmada» (propuesta → confirmada → asignada → hecha).
+      const label = kind === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
+      node.querySelector('.qcard-state')!.textContent = pending ? `${label} · pendiente de confirmar` : label;
+      const edit = node.querySelector<HTMLButtonElement>('.qcard-edit')!;
+      edit.hidden = !(canEdit && u.kind === 'task' && u.payload?.qty !== undefined && (status === 'proposed' || status === 'pending'));
       const main = node.querySelector<HTMLButtonElement>('.qcard-main')!;
       main.disabled = !canEdit || status === 'cancelled' || inFlight.has(u.id);
       main.setAttribute('aria-label', `${product ? product.name : u.label}: ${UNIT_STATUS_LABELS[status]}${sub ? `, ${sub}` : ''}`);
@@ -114,6 +135,30 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
       const text = notices.get(u.id);
       notice.hidden = !text;
       notice.textContent = text ?? '';
+    }
+
+    /** Revisar la cantidad antes de confirmar o hacer la tarea (FLOW-DIR VG 27-10). */
+    function editQty(id: string): void {
+      const u = data?.units.find((x) => x.id === id);
+      if (!u || u.payload?.qty === undefined) return;
+      const input = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: String(u.payload.qty), 'aria-label': `Cantidad (${u.payload.unit ?? ''})` });
+      const sheet = openSheet({ title: u.label ?? 'Cantidad', meta: u.payload.unit ? `En ${u.payload.unit}` : undefined, body: el('div', null, input),
+        foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
+          const qty = Number(input.value);
+          if (!Number.isFinite(qty) || qty < 0) { toast('Cantidad no válida.'); return; }
+          try { await callProcedure(client, PROCEDURES.unitSetQty, { unit_id: u.id, qty, expected_revision: u.revision }); sheet.close(); }
+          catch (error) { toast(describeError(error)); }
+        } }, 'Guardar')) });
+    }
+
+    /** Owner: tareas de preparación desde la previsión de Food (app/ingredients.ts). */
+    async function generate(): Promise<void> {
+      if (!isOnline(client)) { toast('Generar necesita conexión.'); return; }
+      if (!(await confirmDialog({ title: 'Generar tareas de ingredientes', text: 'Se proponen «Preparar X para mesa» y «para nevera» con la previsión de Food. Lo ya generado hoy no se duplica.', confirmLabel: 'Generar' }))) return;
+      try {
+        const out = await generateIngredientTasks(client, ctx.projectId!);
+        toast(out.message);
+      } catch (error) { toast(describeError(error)); }
     }
 
     async function tap(id: string): Promise<void> {
@@ -186,7 +231,7 @@ export function mountQueue(kind: 'prep' | 'logistics'): ViewMount {
         const label = input.value.trim();
         if (!label || !data?.project) return;
         try {
-          await client.commit([{ op: 'insert', table: 'flow.units', id: crypto.randomUUID(), fields: { project_id: data.project.id, column_key: 'logistics', kind: 'task', label, priority: priority.checked } }]);
+          await client.commit([{ op: 'insert', table: 'flow.units', id: crypto.randomUUID(), fields: { project_id: data.project.id, column_key: kind, kind: 'task', label, priority: priority.checked } }]);
           input.value = ''; priority.checked = false;
         } catch (error) { toast(describeError(error)); }
       } },
