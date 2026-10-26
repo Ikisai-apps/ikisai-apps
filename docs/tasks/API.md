@@ -1569,6 +1569,7 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - `tasks.tasks.step_free` (en una hija, «Soltar de la cadena» en su editor): fuera de la cadena, ni espera ni bloquea. Se mantiene al reordenar.
 - El servidor (`tasks.step_blocker`, `tasks.validate_batch`, migración `0320`) y el dominio (`stepBefore` en `graph.ts`) calculan lo mismo. Convive con las dependencias manuales: `TASK_BLOCKED` devuelve las dos.
 - En el editor de una tarea principal salen sus hijas (marcar, abrir) y «+ Nueva hija» (FB_2026_044).
+- **Desde el 26-10-2026 (FB_2026_064, decisión de VG, migración `0341`), el paso anterior es un aviso, no una regla:** un paso se puede marcar aunque el anterior esté pendiente, sin mensaje. Sigue saliendo como «espera al paso anterior» y en `statuses` (`blockedBy`), pero `validate_batch` y `completionBlockers` ya no lo cuentan: `TASK_BLOCKED` solo lleva las dependencias manuales (propias y de la madre).
 
 ## 29. Oficios para Central: lectura `tasks.action_labels` (fase P1 de `coordinacion/ampliacion/RECURSOS.md` §13.3, 13-10-2026)
 

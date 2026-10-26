@@ -91,11 +91,15 @@ export function statuses(input: GraphInput): Map<string, TaskStatus> {
   return out;
 }
 
-/** Condiciones que impiden marcar como hecha una tarea hoja (regla `TASK_BLOCKED`). */
+/** Condiciones que impiden marcar como hecha una tarea hoja (regla `TASK_BLOCKED`): las dependencias propias y las de su
+ *  madre. La hija anterior de «pasos en orden» no: es un aviso (sale en `statuses`), no impide completar (FB_2026_064,
+ *  migración 0341). */
 export function completionBlockers(taskId: string, input: GraphInput): string[] {
   const ix = index(input);
   const task = ix.tasks.get(taskId);
-  return task ? effective(task, ix).filter((dep) => unmet(dep, ix)) : [];
+  if (!task) return [];
+  const required = [...new Set([...(ix.deps.get(task.id) ?? []), ...(task.parent_id ? ix.deps.get(task.parent_id) ?? [] : [])])];
+  return required.filter((dep) => unmet(dep, ix));
 }
 
 /**
