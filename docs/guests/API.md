@@ -603,7 +603,7 @@ Revisado en `main` (830df42):
 
 **Nada depende de la fecha del retiro**: Guests no filtra los `grants` por fechas ni borra nada al terminar. Lo que cortaba el acceso era el servidor (el enlace caducaba y el `grant` desaparecía con la conservación); eso lo quita Booking (§29.1, `validUntil = 'infinity'`). En Guests:
 - `validUntil` `'infinity'` (`Date.parse` da `NaN`) se trata como «sin caducidad»: la entrada nunca dice «Caducó el …» con una fecha inválida.
-- Un retiro pasado se abre en el momento «después», como siempre. La ficha anonimizada sale con el nombre «Huésped anonimizado»; en ella Guests no ofrece «Tus datos» ni la firma.
+- Un retiro pasado se abre en el momento «después», como siempre. La ficha anonimizada (conservación) sale con el nombre «Huésped anonimizado» y sus datos vacíos, sin más cambios en Guests.
 - Prueba: una cuenta con un retiro pasado y otro futuro se abre, ve los dos en «Mis retiros» y no ve «No tienes acceso».
 
 #### c) Dirección («todos»)
@@ -612,24 +612,27 @@ Revisado en `main` (830df42):
 - **Sin ninguna ficha:** ya no es «No tienes acceso»: la entrada lleva a `#/retiros`.
 - **«Mis retiros»** añade, debajo, **«Todos los retiros»** (`portal_open_retreats`, que con dirección devuelve `direction: true` y todos, pasados y futuros): buscador por título y los mismos grupos por fecha; cada fila con su estado y, si ya tiene ficha, «Ya estás dentro».
 - **Recorrer sin estar apuntada:** `#/r/<reservationId>` de un retiro sin ficha abre la **vista de dirección**: cabecera del retiro (título, fechas, estado) y **Programa** (`portal_program` lo permite con `portal_scope_reservation`). Menú, Alojamiento, Guía, datos y firma llevan `guest_id` y necesitan ficha: no salen. Franja: «Lo ves como dirección. Aún no te has apuntado.».
-- **Apuntarse:** en los vivos (`joinable`), «Apuntarme» en la fila y en la franja → confirmación («Te apuntas a … ¿Con quién?», el mismo «para quién» de O4b) → `booking.portal_join_direction({reservation_id, persons?})`, sin aprobación. Después se relee el `bootstrap` (el `grant` nuevo) y se abre su ficha. Errores en texto: `RESERVATION_NOT_OPEN` «Este retiro ya no admite apuntarse» y `RESERVATION_NOT_CONFIRMED` «Este retiro aún no está confirmado».
+- **Apuntarse:** en los vivos (`joinable`), «Apuntarme» en la vista del retiro → confirmación («¿Te apuntas a …?») → `booking.portal_join_direction({reservation_id})`, sin aprobación y con su nombre (sin `persons`; la familia, si hace falta, en otra tanda). Después se relee el `bootstrap` (el `grant` nuevo) y se abre su ficha. Errores en texto: `RESERVATION_NOT_OPEN` «Este retiro ya no admite apuntarse» y `RESERVATION_NOT_CONFIRMED` «Este retiro aún no está confirmado».
 - **«Todos» nunca vale por un huésped:** Guests no pide nada con el `guest_id` de otro.
 
 #### d) Organizador, staff y dirección en el retiro
 
-- **Etiqueta** (`portal_role` de `portal_my_guest` y `portal_my_retreats`, BG14): «Organizas» (`organizer`) · «Equipo» (`staff`) · «Dirección» (`direccion`). Una píldora en la cabecera del retiro junto al nombre, en su fila de «Mis retiros» y en su tarjeta de la familia. Nada más cambia de sitio.
-- **Cama** (`portal_lodging.team: true`): con `choice: 'off'`, «La cama te la asigna el equipo» en lugar de la elección; con `choice: 'choose'` (camas de equipo marcadas, 0483), la elección de siempre entre las habitaciones que da Booking, sin plazo y confirmada al momento. `NOT_OFFERED` con `reason: 'team'` dice lo mismo que `'off'`.
-- **Menú:** como un huésped (VG). Ver la pregunta G-B1 sobre «Cocina tiene registrado…».
+- **Etiqueta** (`portal_role` de `portal_my_guest` y `portal_my_retreats`, BG14): «Organizas» (`organizer`) · «Equipo» (`staff`) · «Dirección» (`direccion`). Una píldora en «Tu retiro de un vistazo» (`#teamRole`) y en su fila de «Mis retiros». Nada más cambia de sitio.
+- **Datos y firma** (G-B2, Core 26-10): sus fichas se ven en el modo `ninguno` (`teamMode`, `api.ts`): sin «Tus datos», sin firma y sin esas tareas; `#/p/<id>/datos` y `/firma` vuelven al Resumen.
+- **Cama** (`portal_lodging.team: true`): con `choice: 'off'`, «La cama te la asigna el equipo» (`#lodgingTeam`) en lugar de la elección; con `choice: 'choose'` (camas de equipo marcadas, 0483), la elección de siempre entre las habitaciones que da Booking, sin plazo y confirmada al momento. `NOT_OFFERED` con `reason: 'team'` dice lo mismo que `'off'`.
+- **Menú:** como un huésped (VG), pero nunca «Cocina tiene registrado…»: «Tu ficha de equipo no llega a cocina: si comes aquí, avisa tú en cocina.» (G-B1, Core 26-10). El cruce plato a plato sigue.
 - **Outsider que viene como huésped:** ficha normal. Guests no enlaza a Tasks desde el portal (hoy no lo hace; TK1 sigue sin construir).
 
 #### Enlace directo para Organizers (Gu1)
 
 `https://guests.ikisai.com/#/r/<reservation_id>` (ya en `main`): con varias personas de la cuenta en ese retiro, la familia junta; con una, redirige a `#/p/<guest_id>`; con dirección y sin ficha, la vista de dirección (c). Sobrevive al pase común: `auth/sso` es un `fetch` dentro de `client.start()`, sin redirección.
 
-#### Preguntas para VG (por Core)
+#### Preguntas para VG (por Core; Core decidió las dos según la recomendación el 26-10, a falta de VG)
 
 - **G-B1 · Menú de una ficha de equipo.** Sus restricciones no llegan a cocina (§29.4 de Booking), pero hoy el Menú dice «Cocina tiene registrado…». Opciones: (1) quitar esa línea y decir «Tu ficha de equipo no llega a cocina: si comes aquí, avisa tú en cocina»; (2) quitar también Alimentación de su ficha; (3) dejarlo igual. **Recomiendo (1):** el cruce con sus alergias le sigue avisando y nadie cree que cocina lo sabe.
 - **G-B2 · Datos y firma de una ficha de equipo.** No van a SES. Opciones: (1) ocultar los datos de registro y la firma en sus fichas (quedan nombre y alimentación); (2) dejarlos opcionales; (3) igual que un huésped. **Recomiendo (1):** no pedir datos que no se usan.
+
+**Pruebas:** `tests/guests/accesos.spec.ts` («Mis retiros», ficha de equipo y dirección).
 
 ## 10. Offline
 
