@@ -49,7 +49,7 @@ const count = (n: number) => (n === 1 ? t('1 cambio') : t('{n} cambios', { n }))
 
 /** Dirección: el borrador de este retiro y lo que ya envió. */
 export function renderTeamDraft(ctx: ViewContext, reservationId: string, title: string): Mounted {
-  const box = el('section', { class: 'card orgcard orgproposal', id: 'teamProposal', 'data-feedback-id': 'organizers.retiro.propuesta_equipo', 'data-feedback-label': 'Propuesta del equipo' }) as Mounted;
+  const box: Mounted = Object.assign(el('section', { class: 'card orgcard orgproposal', id: 'teamProposal', 'data-feedback-id': 'organizers.retiro.propuesta_equipo', 'data-feedback-label': 'Propuesta del equipo' }), { destroy: () => undefined });
   let alive = true;
   let releases: Array<() => void> = [];
   let sent: Suggestion[] = [];
@@ -124,7 +124,7 @@ export function renderTeamDraft(ctx: ViewContext, reservationId: string, title: 
 
 /** Quien organiza: las propuestas pendientes de su retiro. Sin ninguna (o sin poder leerlas), la tarjeta queda vacía. */
 export function renderTeamInbox(ctx: ViewContext, reservationId: string): Mounted {
-  const box = el('div', { id: 'teamInboxHost' }) as Mounted;
+  const box: Mounted = Object.assign(el('div', { id: 'teamInboxHost' }), { destroy: () => undefined });
   let alive = true;
   let releases: Array<() => void> = [];
 
