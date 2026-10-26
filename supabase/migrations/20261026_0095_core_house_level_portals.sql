@@ -31,9 +31,10 @@ $$;
 
 create or replace function core.apply_house_level(p_user uuid, p_level text, p_actor uuid default null)
 returns jsonb language plpgsql as $$
-declare g core.house_grants; r core.house_level_roles; v_current text; v_changes jsonb := '[]'::jsonb; v_portal boolean;
+declare g core.house_grants; r core.house_level_roles; v_current text; v_changes jsonb := '[]'::jsonb; v_portal boolean; v_prev text;
 begin
   if p_user is null then return v_changes; end if;
+  select level into v_prev from core.house_levels where user_id = p_user;
   if p_level is not null and p_level not in ('direccion', 'staff', 'outsider') then perform core.fail('INVALID_HOUSE_LEVEL', 422, jsonb_build_object('level', p_level)); end if;
   if coalesce((select kind from core.profiles where user_id = p_user), 'human') = 'agent' then return v_changes; end if;
 
@@ -60,6 +61,13 @@ begin
     delete from core.house_grants where user_id = p_user and app = g.app;
   end loop;
 
+  -- Quien deja de ser dirección pierde el ámbito «todos» de los portales, tuviera la pertenencia por el nivel o por otra vía.
+  if v_prev = 'direccion' and p_level is distinct from 'direccion' then
+    update core.memberships m set scopes = jsonb_set(coalesce(m.scopes, '{}'::jsonb), '{grants}',
+      coalesce((select jsonb_agg(x) from jsonb_array_elements(coalesce(m.scopes -> 'grants', '[]'::jsonb)) x where (x ->> 'all')::boolean is not true), '[]'::jsonb)),
+      updated_at = now(), revision = revision + 1
+    where m.user_id = p_user and core.portal_all_grant(m.scopes) and exists (select 1 from core.apps a where a.id = m.app and a.kind = 'portal');
+  end if;
   if p_level is null then
     delete from core.house_levels where user_id = p_user;
     return v_changes;
@@ -82,8 +90,6 @@ begin
       if v_portal and p_level = 'direccion' and not core.portal_all_grant((select scopes from core.memberships where app = r.app and user_id = p_user)) then
         update core.memberships set scopes = jsonb_set(coalesce(scopes, '{}'::jsonb), '{grants}', coalesce(scopes -> 'grants', '[]'::jsonb) || '{"all": true}'::jsonb),
           updated_at = now(), revision = revision + 1 where app = r.app and user_id = p_user;
-        -- Queda apuntado como concesión del nivel (mismo rol antes y después) para que al dejar dirección se retire el «todos».
-        insert into core.house_grants (user_id, app, level, role, previous_role) values (p_user, r.app, p_level, v_current, v_current);
         v_changes := v_changes || jsonb_build_object('app', r.app, 'from', v_current, 'to', v_current, 'scope', 'all');
       end if;
       continue;
@@ -117,3 +123,4 @@ revoke all on function core.sso_touch(text, int) from public, anon, authenticate
 revoke all on function public.core_sso_touch(text, int) from public, anon, authenticated;
 grant execute on function public.core_sso_touch(text, int) to service_role;
 grant execute on function core.portal_all_grant(jsonb) to service_role;
+
