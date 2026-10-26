@@ -1846,3 +1846,72 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
 - **La vista previa entera se guarda** (`counts` y `rows`, no solo la cifra de «por decidir»). Se vuelve a pedir al recuperar la red, tras «Aplicar» y al cambiar el interruptor, aquí o en otro dispositivo.
 - **«Apagar»:** diálogo de peligro, sin «Deshacer», con el texto completo: «Las facturas que valides dejan de entrar en el inventario y la app vuelve a verse como antes. Mientras esté apagado, ni las compras que se reciban en Tasks ni las facturas que anules o rectifiques se cuadran con el inventario, y una compra puede contarse dos veces. Al volver a encenderlo, todo se cuadra. Lo que ya entró se queda.»
 - **No cambia:** la vista previa, «Aplicar» (que no enciende el interruptor), el sitio habitual, «Encender», lo que pasa sin red, los ids y que solo la vea el owner.
+
+## 17. Ingresos y gastos de otras apps (encargo de VG del 26-10-2026 · migración 0244)
+
+Finance recibe apuntes de otras apps. El primero son las ventas de la barra de Flow del evento del 31-10. VG decidió:
+- cada apunte se puede facturar o no por separado, y por defecto está facturado;
+- desfacturar lo saca de la entrega a la gestoría y del IVA;
+- el resultado del evento se entiende desde Finance.
+
+### 17.1 Tabla `invoices.app_entries`
+
+Sincronizable y `never_purge`. No se borra: un apunte que no cuenta se marca como no facturado.
+
+| Columna | Qué es |
+|---|---|
+| `source_app`, `source_ref` | App de origen (`core.apps`) y su clave, que empieza por `<app>:`. Flow manda `flow:project:<uuid>:<AAAA-MM-DD>`. Única entre los vivos. |
+| `kind` | `income` o `expense`. |
+| `entry_date`, `description` | Fecha del apunte (da el trimestre) y concepto. |
+| `amount_cents` | Importe con IVA incluido, en céntimos. Es el dinero que se ha movido. |
+| `tax_rate`, `tax_cents`, `net_cents` | Tipo de IVA (10 en la barra). El neto lo calcula Finance redondeado al céntimo (`round(importe × 100 / (100 + tipo))`) y la cuota es el resto, así que siempre suman el importe. |
+| `pending_refunds_cents` | Devoluciones pendientes de confirmar en la otra app: no restan del importe. |
+| `methods` | `{cash, bizum, …}` en céntimos. Si viene, suma el importe. |
+| `detail` | `[{code?, name, quantity, amount_cents}]`. Si viene, su suma más las devoluciones pendientes es el importe. |
+| `event_id` | Evento de Booking (referencia, sin FK). Lo manda la otra app o se enlaza en Finance. |
+| `invoiced`, `invoiced_reason`, `invoiced_changed_by`, `invoiced_changed_at` | Facturado sí o no, con motivo opcional. Quién y cuándo lo pone el disparador. |
+| `received_by`, `received_at` | Quién lo envió por última vez y cuándo. |
+| `notes` | Notas de Finance. |
+
+**En Finance** solo se escriben `invoiced`, `invoiced_reason`, `event_id` y `notes`. Si se intenta otra cosa:
+- `APP_ENTRY_PROCEDURE_ONLY`, al crear un apunte o cambiar lo que viene de la otra app;
+- `APP_ENTRY_NOT_DELETABLE`, al borrarlo;
+- `ENTRY_LOCKED` (409), al cambiar «facturado» con el apunte ya en una entrega **entregada**.
+
+### 17.2 `invoices.record_app_entry` (lo llama la otra app)
+
+`POST /api/v1/commands` de `invoices-api`, con la sesión de quien cierra (editor u owner en Finance):
+
+```json
+{ "requestId": "flow:<source_ref>:<sha256 del payload>",
+  "operations": [{ "op": "call", "procedure": "invoices.record_app_entry", "args": {
+    "source_app": "flow", "source_ref": "flow:project:<uuid>:2026-10-31", "kind": "income", "entry_date": "2026-10-31",
+    "description": "Barra · Evento de octubre · 31-10", "amount_cents": 123450, "tax_rate": 10, "pending_refunds_cents": 200,
+    "methods": { "cash": 80000, "bizum": 43450 },
+    "detail": [{ "code": "A", "name": "Montadito clásico A", "quantity": 100, "amount_cents": 70000 }],
+    "event_id": null } }] }
+```
+
+- **Idempotente por (`source_app`, `source_ref`):**
+  - la primera vez crea el apunte (`created`);
+  - después lo sustituye (`replaced`) o, si los datos son los mismos, no hace nada (`unchanged`).
+- **Lo que no toca nunca:** «facturado», su motivo, las notas ni el evento enlazado en Finance (si llega `event_id` nulo).
+- **Resultado:** `{entry_id, status, revision, invoiced, tax_cents, net_cents}`.
+- **Errores:**
+  - `INVALID_ARGS` (422), con `details.field`;
+  - `FORBIDDEN` (403);
+  - `ENTRY_LOCKED` (409): el apunte ya está en una entrega entregada a la gestoría y los datos cambian.
+- `tax_cents` y `net_cents` son opcionales; si llegan, tienen que coincidir con el cálculo de Finance.
+- Un agente necesita aprobación (`agent_confirmation` por defecto).
+
+### 17.3 Resumen fiscal y entrega a la gestoría
+
+- **Lectura `invoices.app_entries_summary`** (`{year, quarter}` o `{from, to}`): devuelve, en euros,
+  - `income` (los ingresos facturados: base, cuota, total, `quota_by_rate` y `by_app`);
+  - `expense` (los gastos facturados);
+  - `not_invoiced` (los no facturados, que quedan fuera de la cuenta pero contados).
+- **Entrega:** los apuntes facturados del periodo van en el manifest (`app_entries`, `app_entry_count`, `app_entries_totals`) y en `ingresos_gastos_apps.csv`.
+  - `resumen_impuestos.csv` añade el IVA repercutido de las apps por tipo (`iva_repercutido_apps`), su base y los gastos de apps.
+  - Una entrega solo con apuntes no está vacía.
+  - La entrega queda desactualizada si un apunte incluido cambia o si aparece uno nuevo facturado del periodo.
+- La regla fiscal de los gastos de apps y de las ventas sin factura está pendiente de la gestoría (PETICIONES.md, 26-10).

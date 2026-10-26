@@ -110,6 +110,8 @@ export const TABLES = {
   // «Mi nombre» de los artículos recordado por proveedor (0230)
   itemLabels: 'invoices.item_labels',
   settings: 'invoices.settings',
+  // Ingresos y gastos que llegan de otras apps (0244, API.md §17)
+  appEntries: 'invoices.app_entries',
 } as const;
 export type InvoicesTable = (typeof TABLES)[keyof typeof TABLES];
 
@@ -154,6 +156,8 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.supplier_templates': ['supplier_id', 'version', 'status', 'layout_tokens', 'layout_hash', 'page_size', 'fields', 'confirmations', 'uses', 'full_hits', 'last_confirmed_invoice_id'],
   'invoices.item_labels': ['label', 'item_id', 'item_factor'],
   'invoices.settings': ['key', 'value'],
+  // Lo demás lo escribe `invoices.record_app_entry` (0244); en Finance solo se decide esto.
+  'invoices.app_entries': ['invoiced', 'invoiced_reason', 'event_id', 'notes'],
 };
 
 /** Columnas comunes del contrato §2.1. */
@@ -289,6 +293,31 @@ export interface ItemLabelRow extends SyncedColumns {
 export interface InvoiceSettingRow extends SyncedColumns {
   key: 'resources_links';
   value: unknown;
+}
+
+/** Ingreso o gasto recibido de otra app (0244, API.md §17). Importes en céntimos, IVA incluido. */
+export interface AppEntryRow extends SyncedColumns {
+  source_app: string;
+  /** Clave de la otra app, p. ej. `flow:project:<uuid>:2026-10-31`; única por app entre los vivos. */
+  source_ref: string;
+  kind: 'income' | 'expense';
+  entry_date: string;
+  description: string;
+  amount_cents: number;
+  tax_rate: number;
+  tax_cents: number;
+  net_cents: number;
+  pending_refunds_cents: number;
+  methods: Record<string, number>;
+  detail: Array<{ code?: string | null; name: string; quantity: number; amount_cents: number }>;
+  event_id: string | null;
+  invoiced: boolean;
+  invoiced_reason: string | null;
+  invoiced_changed_by: string | null;
+  invoiced_changed_at: string | null;
+  received_by: string | null;
+  received_at: string;
+  notes: string | null;
 }
 
 export interface TaxLineRow extends SyncedColumns {
