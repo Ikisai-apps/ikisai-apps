@@ -1,0 +1,9 @@
+/* Ikisai Flow · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
+   Aquí solo lo específico de Flow. Móvil primero (390 px), escritorio desde 1024 px. */
+
+.muted{color:var(--muted)}
+
+/* Inicio */
+.card.soon{padding:14px 16px;border:1px dashed var(--line);border-radius:var(--radius-card,16px)}
+.card.soon h2{margin:0 0 6px;font-size:1rem}
+.card.soon p{margin:0}
