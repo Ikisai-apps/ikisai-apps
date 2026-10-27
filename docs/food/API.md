@@ -342,6 +342,8 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
   - **Previsión:** el reparto (mesa, nevera y fresco; avisa si no suma 100), los asistentes esperados (si no se tocan, los del evento), «Por persona» y «Total» enlazados en cada línea disponible, y el plan de bandejas. Se guardan los dos valores. Al cambiar los asistentes, las líneas con «por persona» recalculan su total. El plan viene de `food.carta_prep_totals_projection` y necesita red. Lleva el ingrediente, la estación, el total, la mesa, la nevera y el fresco, en g o ml por debajo de 1 kg o 1 l. Las bebidas y los extras van aparte. Se imprime solo el plan. Lo que no tiene conversión dice «falta la conversión» y lleva a la Despensa.
   - **Compra:** la pestaña Compra de siempre (`mountShopping` con `carta: true`). Sabe si está al día con `cartaShoppingSources`, que coincide con `food.carta_shopping_sources`.
 
+- **Sin previsión no hay existencias en Flow** (hueco S3 de la QA de Flow, 27-10): si ninguna línea disponible tiene unidades a cubrir, la carta lo avisa («Sin previsión: Flow no podrá preparar existencias») en Carta y en Previsión. «Rellenar previsión» reparte un total (p. ej. 400) entre los montaditos, la barra o toda la carta, a partes iguales o según la previsión que ya hay (`distributeUnits`: enteros que suman el total). Con asistentes, también rellena el «por persona». Después se toca línea a línea. La carta de octubre trae una previsión de partida (1114: 50 de cada montadito, 120 aguas, 100 refrescos, 120 cervezas, 60 cafés y 80 palomitas), solo en las líneas que seguían a 0.
+
 ### 2.12 Ofertas de comida por evento (27-10-2026, encargo de VG; migración 1111)
 
 - **`food.event_offers`:** un evento tiene N ofertas.

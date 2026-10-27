@@ -70,6 +70,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 - **Capacidades en el catálogo del núcleo** (migración 1113; API.md §2.14): `food.carta_prep`, `food.carta_prep_lines`, `food.event_offers`, `food.event_needs` y `food.use_carta_in_event`, con la ruta `POST carta/:id/use-in-event`. Prueba: `capability.test.ts`.
 
+- **«Rellenar previsión» y aviso «Sin previsión»** (hueco S3 de la QA de Flow; migración 1114 con la previsión de partida de la carta de octubre; API.md §2.11).
+
 ## Aceptación del usuario (6 de octubre de 2026)
 
 - Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.
