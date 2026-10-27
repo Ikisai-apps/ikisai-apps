@@ -94,3 +94,8 @@ html.dark .tcr-stopn,html.dark .tcr-check[aria-pressed="true"]{color:#1a1915}
 .tcr-eventactions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .tcr-eventactions button{min-height:46px}
 .tcr-eventlink{display:inline-flex;align-items:center;min-height:46px;padding:0 8px;font-weight:700;color:var(--ink)}
+/* Registro en Finance (§44): los campos opcionales al recibir y la línea de la ficha. */
+.tcr-finance{border:1px solid var(--line);border-radius:14px;padding:8px 12px;display:grid;gap:6px;margin:0}
+.tcr-finance legend{font-weight:700;padding:0 4px}
+.tcr-kind{display:flex;flex-wrap:wrap;gap:12px}
+.tcr-financeline{display:grid;gap:6px;margin:8px 0}

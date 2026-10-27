@@ -503,3 +503,65 @@ bind=function(){bindBeforeCompras();
   document.querySelectorAll('.tcr-host [data-purchase]').forEach(b=>{if(b.tagName==='BUTTON')b.onclick=()=>purchaseSheet(b.dataset.purchase)});
   const tr=document.getElementById('toggleRejectedPurchases');if(tr)tr.onclick=()=>{showRejectedPurchases=!showRejectedPurchases;render()};
   document.querySelectorAll('.tcr-host [data-plan]').forEach(b=>b.onclick=()=>planSheet(b.dataset.plan))};
+
+/* ===================================================================================================================== */
+/* Registro en Finance de la compra recibida (encargo de Core del 27-10-2026; API.md §44; Finance, API.md §18)            */
+/* ===================================================================================================================== */
+/* Al recibir, opcional: lo pagado (con IVA), ticket o factura, su número y su foto o PDF (archivo de Tasks, se sube ya).
+   Con lo pagado, Tasks la registra en Finance con el token de la persona (`POST purchases/:id/finance`, que invoca la
+   capacidad `invoices.register_purchase_quick` y sube la foto a Finance). Sin acceso a Finance o sin red queda «pendiente
+   de registrar» con «Registrar en Finance» en la ficha. Nada se bloquea: la recepción ya está hecha. */
+const TCR_FINANCE_URL='https://finance.ikisai.com/#/facturas/';
+function tcrFinanceFields(r,prefix){const kind=r?.receipt_kind||'ticket';
+  return `<fieldset class="tcr-finance" id="${prefix}Finance"><legend>Para Finance <span class="small muted">· opcional</span></legend>
+    ${r?.supplier_name?'':`<div class="field"><label for="${prefix}Supplier">Tienda</label><input id="${prefix}Supplier" maxlength="200" autocomplete="off" data-feedback-id="tasks.compras.finanzas.tienda" data-feedback-label="Tienda"></div>`}
+    <div class="field"><label for="${prefix}Paid">Pagado (€, con IVA)</label><input id="${prefix}Paid" type="number" min="0.01" step="0.01" inputmode="decimal" value="${r?.paid_total!=null?esc(String(r.paid_total)):''}" data-feedback-id="tasks.compras.finanzas.pagado" data-feedback-label="Pagado"></div>
+    <div class="tcr-kind" role="radiogroup" aria-label="Justificante"><label class="checkline"><input type="radio" name="${prefix}Kind" value="ticket" ${kind==='ticket'?'checked':''} data-feedback-id="tasks.compras.finanzas.ticket" data-feedback-label="Ticket"><span>Ticket</span></label><label class="checkline"><input type="radio" name="${prefix}Kind" value="invoice" ${kind==='invoice'?'checked':''} data-feedback-id="tasks.compras.finanzas.factura" data-feedback-label="Factura"><span>Factura</span></label></div>
+    <div class="field"><label for="${prefix}Number">Número <span class="small muted">· opcional</span></label><input id="${prefix}Number" maxlength="64" value="${esc(r?.invoice_number||'')}" data-feedback-id="tasks.compras.finanzas.numero" data-feedback-label="Número del justificante"></div>
+    <div class="field"><label for="${prefix}File">Foto o PDF${r?.receipt_file_id?' <span class="small muted">· ya hay una; elige otra para cambiarla</span>':''}</label><input id="${prefix}File" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-feedback-id="tasks.compras.finanzas.foto" data-feedback-label="Foto del justificante"></div>
+  </fieldset>`}
+/* Lo escrito en esos campos, como campos de la solicitud (la foto se sube ya; sin red, se queda sin foto y se dice). */
+async function tcrFinanceRead(prefix){const v=id=>document.getElementById(prefix+id);const fields={};
+  const paid=v('Paid')?.value.trim();if(paid){const n=Number(paid);if(!Number.isFinite(n)||n<=0)throw new Error('Lo pagado tiene que ser un importe mayor que cero.');fields.paid_total=Math.round(n*100)/100}
+  const number=v('Number')?.value.trim(),file=v('File')?.files?.[0];
+  const kind=document.querySelector(`input[name="${prefix}Kind"]:checked`)?.value;if(kind&&(paid||number||file))fields.receipt_kind=kind;
+  if(number)fields.invoice_number=number.slice(0,64);
+  const shop=v('Supplier')?.value.trim();if(shop)fields.supplier_name=shop.slice(0,200);
+  if(file){if(!navigator.onLine)toast('Sin conexión: la foto no se ha guardado. Añádela luego desde la compra.');
+    else{const photo=await Sync.core.uploadNow(file,{filename:file.name||'justificante',mime:file.type||'image/jpeg'});fields.receipt_file_id=photo.fileId}}
+  return fields}
+function tcrFinanceSave(id,fields){const r=tcrRow(id);if(!r||!Object.keys(fields).length)return true;
+  return purchaseCommit([{op:'update',table:'tasks.purchase_requests',id,expectedRevision:r.revision,fields}],null)}
+async function tcrFinanceRegister(id){const r=tcrRow(id);if(!r||r.status!=='received'||!(Number(r.paid_total)>0))return;
+  if(!navigator.onLine)return toast('Sin conexión: queda pendiente de registrar en Finance.');
+  await syncNow();let out;
+  try{out=await usage.run('tasks.compras.finanzas.registrar',()=>Sync.core.api(`/purchases/${encodeURIComponent(id)}/finance`,{method:'POST',json:{}}))}
+  catch(e){return toast(e.message||'No se pudo registrar en Finance; queda pendiente.')}
+  await syncNow();
+  if(out?.status==='registered'){const url=out.url||TCR_FINANCE_URL+out.invoiceId;return IkisaiKit.toastWithAction(`Registrada en Finance${out.code?' · '+out.code:''}.`,{label:'Ver en Finance',onClick:()=>window.open(url,'_blank','noopener')})}
+  if(out?.status==='needs_access')return toast('Queda pendiente de registrar en Finance: tu cuenta no tiene acceso a Finance.');
+  IkisaiKit.toastWithAction(`No se pudo registrar en Finance${out?.message?': '+out.message:''}. Queda pendiente.`,{label:'Reintentar',onClick:()=>tcrFinanceRegister(id)})}
+/* La línea de Finance en la ficha de una compra recibida. */
+function tcrFinanceLine(r){if(r.status!=='received')return '';
+  if(r.finance_status==='registered'&&r.finance_invoice_id)return `<p class="tcr-financeline" id="tcrFinanceLine">En Finance: <b>${esc(r.finance_code||'factura')}</b> · <a href="${esc(TCR_FINANCE_URL+r.finance_invoice_id)}" target="_blank" rel="noopener" data-feedback-id="tasks.compras.finanzas.ver" data-feedback-label="Ver en Finance">Ver en Finance ›</a></p>`;
+  const why=r.finance_status==='needs_access'?'Tu cuenta no tiene acceso a Finance.':r.finance_status==='failed'?(r.finance_error||'No se pudo registrar.'):Number(r.paid_total)>0?'Aún no se ha registrado.':'Apunta lo pagado para registrarla.';
+  return `<div class="tcr-financeline" id="tcrFinanceLine"><p><b>Pendiente de registrar en Finance.</b> <span class="small muted">${esc(why)}</span></p>${canEdit()?tcrFinanceFields(r,'tcrFl')+`<div class="actions"><button class="primary" id="tcrFinanceGo" type="button" data-feedback-id="tasks.compras.finanzas.registrar" data-feedback-label="Registrar en Finance">Registrar en Finance</button></div>`:''}</div>`}
+
+// «¿Ha llegado?»: los campos de Finance antes de los botones; al confirmar, se guardan y, tras recibir, se registra.
+const tcrReceiveConfirmBeforeFinance=tcrReceiveConfirm;
+tcrReceiveConfirm=async function(r){await tcrReceiveConfirmBeforeFinance(r);const actions=document.querySelector('#sheet .actions'),ok=document.getElementById('tcrReceiveOk');
+  if(!actions||!ok||!canEdit())return;actions.insertAdjacentHTML('beforebegin',tcrFinanceFields(r,'tcrRc'));
+  const go=ok.onclick;ok.onclick=async()=>{let fields;ok.disabled=true;try{fields=await tcrFinanceRead('tcrRc')}catch(e){ok.disabled=false;return toast(e.message||'No se pudo leer lo de Finance.')}
+    ok.disabled=false;if(!tcrFinanceSave(r.id,fields))return;go()}};
+const finishReceiveBeforeFinance=finishReceive;
+finishReceive=async function(r,spaceId){const out=await finishReceiveBeforeFinance(r,spaceId);const now=tcrRow(r.id);
+  if(now?.status==='received'&&Number(now.paid_total)>0&&now.finance_status!=='registered')setTimeout(()=>tcrFinanceRegister(r.id),0);return out};
+// La ficha: la línea de Finance (y, si falta, el formulario y «Registrar en Finance»).
+const purchaseSheetBeforeFinance=purchaseSheet;
+purchaseSheet=function(id=null,preset={}){const out=purchaseSheetBeforeFinance(id,preset);const r=id?tcrRow(id):null,actions=document.querySelector('#sheet .actions');
+  if(!r||!actions||document.getElementById('tcrFinanceLine'))return out;const html=tcrFinanceLine(r);if(!html)return out;actions.insertAdjacentHTML('beforebegin',html);
+  const goBtn=document.getElementById('tcrFinanceGo');if(goBtn)goBtn.onclick=async()=>{goBtn.disabled=true;
+    try{const fields=await tcrFinanceRead('tcrFl');if(!tcrFinanceSave(id,fields)){goBtn.disabled=false;return}
+      if(!(Number(tcrRow(id)?.paid_total)>0)){goBtn.disabled=false;return toast('Apunta lo pagado para registrarla en Finance.')}
+      closeSheet();await tcrFinanceRegister(id)}catch(e){goBtn.disabled=false;toast(e.message||'No se pudo registrar.')}};
+  return out};
