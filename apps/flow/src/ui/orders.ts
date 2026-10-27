@@ -1,9 +1,13 @@
-import { el, icon, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, openSheet, toast } from '@ikisai/ui-kit';
 import { formatEuros, TABLES } from '@ikisai/domain-flow';
+import { isOnline } from '../app/actions.ts';
+import { loadProjects } from '../app/data.ts';
+import { pickMenu, planSync, readFoodMenus, type CartaMenu } from '../app/food-sync.ts';
 import { describeError } from '../app/client.ts';
 import { byPaySeq, customerNumber, orderTotal, pendingOf, watchData, type FlowData, type Order } from '../app/data.ts';
 import { openDeliverySheet } from './delivery-sheet.ts';
 import { openOrderSheet } from './order-sheet.ts';
+import { accountLabel, openAccountsSheet } from './accounts.ts';
 import { createStableList } from './stable-list.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -12,7 +16,7 @@ import type { ViewMount } from './shell.ts';
  * se ejecutan dentro, expresamente.
  * - **Pedido y cobro** (§4; FLOW-DIR-001 §1): arriba los pendientes de cobro por llegada, debajo los cobrados por número de
  *   cobro, en gris y más bajos, sin moverse. Buscar por número de cliente («Soy el 142») enseña solo sus pedidos.
- *   «Nuevo pedido» para quien llega sin pedido preparado.
+ *   «Nuevo pedido» para quien llega sin pedido preparado. Con cuentas (v2, 0910), «Cuentas» abre, enseña y liquida.
  * - **Servicio y entrega** (§6): los cobrados por número de cobro, con lo que falta; abre la ficha de entrega. Bebidas y
  *   extras van aquí (no hay columna de bebidas).
  */
@@ -26,12 +30,18 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     const searchInput = el('input', { type: 'search', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Número de cliente', 'aria-label': 'Buscar por número de cliente', autocomplete: 'off',
       oninput: () => { search = searchInput.value.replace(/\D/g, ''); paint(); } });
     const newButton = el('button', { type: 'button', class: 'primary', onclick: newOrder }, icon('plus', 18), el('span', null, 'Nuevo pedido'));
+    const accountsButton = el('button', { type: 'button', class: 'secondary', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
     const found = el('p', { class: 'muted small', role: 'status' });
     const listEl = el('div', { class: 'fqueue', role: 'list' });
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true });
+    const isOwner = client.bootstrap()?.membership.role === 'owner';
+    const ownerTools = kind === 'order' && isOwner ? [el('div', { class: 'orders-owner' },
+      el('button', { type: 'button', class: 'ghost', onclick: () => void syncFromFood() }, 'Actualizar carta desde Food'),
+      el('a', { class: 'ghost button-link', href: `#/p/${ctx.projectId}/cierre` }, 'Cierre del día'))] : [];
     main.append(
       el('h1', { class: 'col-title' }, kind === 'order' ? 'Pedido y cobro' : 'Servicio y entrega'),
-      el('div', { class: 'orders-tools' }, searchInput, ...(kind === 'order' && canEdit ? [newButton] : [])),
+      ...ownerTools,
+      el('div', { class: 'orders-tools' }, searchInput, ...(kind === 'order' && canEdit ? [newButton, accountsButton] : [])),
       found, listEl, empty,
     );
 
@@ -64,7 +74,9 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       node.className = `qcard order-card is-${o.status}${finished ? ' is-done' : ''}${o._pending ? ' is-unconfirmed' : ''}`;
       node.querySelector('.order-badge')!.textContent = o.pay_seq ? String(o.pay_seq) : '·';
       const items = (data.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
-      node.querySelector('.qcard-title')!.textContent = [number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : ''].filter(Boolean).join(' · ');
+      const account = o.account_id ? data.accounts.find((a) => a.id === o.account_id) : null;
+      node.querySelector('.qcard-title')!.textContent = [number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
+        account ? `a cuenta: ${accountLabel(data, account)}` : ''].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = `${items || 'sin productos'} · ${formatEuros(orderTotal(data, o))}`;
       const state = o.status === 'open' ? 'Por cobrar'
         : o.status === 'delivered' ? (o.delivery_exception ? 'Entregado con excepción' : 'Entregado')
@@ -79,6 +91,35 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       else openOrderSheet(client, id);
     }
 
+    /** «Actualizar carta desde Food»: lee su carta, enseña qué cambia y, si se confirma, lo aplica (food-sync.ts). */
+    async function syncFromFood(): Promise<void> {
+      if (!isOnline(client)) { toast('Actualizar la carta necesita conexión.'); return; }
+      try {
+        const project = (await loadProjects(client)).find((p) => p.id === ctx.projectId);
+        if (!project || !data) return;
+        const menus = await readFoodMenus(client);
+        if (!menus.length) { toast('Food aún no tiene ninguna carta.'); return; }
+        const menu = pickMenu(menus, project) ?? await chooseMenu(menus);
+        if (!menu) return;
+        const plan = planSync(project, menu, [...data.products.values()]);
+        if (!plan.operations.length) { toast('La carta ya está al día con Food.'); return; }
+        const ok = await confirmDialog({ title: `Carta de Food: ${menu.name}`, confirmLabel: 'Actualizar',
+          text: [`${plan.created} nuevos`, `${plan.changed} con cambios${plan.priced ? ` (${plan.priced} de precio)` : ''}`, `${plan.deactivated} se retiran`].join(' · ')
+            + '. Lo ya cobrado no cambia de precio.' });
+        if (!ok) return;
+        await client.commit(plan.operations as any);
+        toast('Carta actualizada desde Food.');
+      } catch (error) { toast(describeError(error)); }
+    }
+
+    function chooseMenu(menus: CartaMenu[]): Promise<CartaMenu | null> {
+      return new Promise((resolve) => {
+        let chosen: CartaMenu | null = null;
+        const sheet = openSheet({ title: 'Elige la carta de Food', onClose: () => resolve(chosen),
+          body: el('div', { class: 'flow-actions' }, ...menus.map((m) => el('button', { type: 'button', class: 'secondary', onclick: () => { chosen = m; sheet.close(); } }, `${m.name} (${m.lines.length})`))) });
+      });
+    }
+
     async function newOrder(): Promise<void> {
       if (!data?.project) return;
       const id = crypto.randomUUID();
@@ -89,6 +130,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     }
 
     function paint(): void {
+      accountsButton.hidden = !data?.accountsEnabled;
       const items = orders();
       list.set(items);
       found.textContent = search ? (items.length ? `Pedidos del cliente ${search}: ${items.length}` : `No hay pedidos del cliente ${search}.`) : '';

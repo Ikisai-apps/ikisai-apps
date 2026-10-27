@@ -96,6 +96,18 @@
 - 2026-10-20 · Portadas de Mis retiros con el velo completo del kit (`veil: 'full'`, 0.51); fuera el refuerzo propio.
 - 2026-10-20 · «Para quién» en Experiencia › Programa (MUELA-065, Booking #664): todos, solo adultos, solo menores o algunas personas, con la etiqueta en la lista del día (API.md §18.3).
 
+- 2026-10-26 · **Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped»** (encargo de VG; PR #718, en borrador hasta que estén Booking 0481, Core 0095 y Guests Gu1):
+  - **Entrada:** «Este enlace ya no está activo» en lugar de «si tu retiro sigue en marcha».
+  - **Ámbito «todos»** (`{"all": true}`) en `_domain/organizers` (`hasAllReservations` e `inReservationScope`). El gancho de la base de datos lo cubre K8.
+  - **Mis retiros:** buscador, «Coorganizas» y portadas diferidas con «todos».
+  - **Ficha:** la línea de coorganización y «Verlo como huésped».
+  - **Propuestas del equipo de Ikisai** (respuesta de VG, migración 0703): dirección sin permiso propio propone en lugar de escribir, y quien organiza acepta o descarta desde su ficha (PETICIONES, respuestas de VG). En Mis retiros, «N propuestas del equipo» en la tarjeta. Detalle en API.md §19.
+
+  Pruebas en `scope.test.ts`, `proposal-draft.test.ts` y `team-proposals.test.ts` (PGlite).
+
+- 2026-10-27 · **Propuestas del equipo con archivos** (VG por Core): dirección sube el archivo del material al momento (`app/upload-now.ts`) y la propuesta lleva su `file_id`. Quien organiza lo lee al aceptarla. Prueba en `team-proposals.test.ts`.
+- 2026-10-27 · **Comida que se ofrece** (VG por Core; Food Fd4, `food.portal_offers`, migración 1111): en Experiencia › Menú, el menú cerrado y las cartas con quién paga, cuándo, dónde y sus líneas con precio; lo interno no se ve (API.md §20). Prueba en `food-offers.test.ts`.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.

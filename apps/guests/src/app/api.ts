@@ -8,6 +8,8 @@ import { cache } from './cache.ts';
 import { isNetworkError } from './client.ts';
 
 export type Source = 'guest' | 'organizer' | 'staff';
+/** Ficha de equipo (Booking §29.4, BG14): organizador, staff o dirección. No va a cocina ni a SES. */
+export type PortalRole = 'organizer' | 'staff' | 'direccion';
 
 export interface Restriction {
   id?: string; restriction_type: string; subject: string | null; severity: string | null; kitchen_notes: string | null; source?: Source;
@@ -19,6 +21,9 @@ export interface MyGuest {
   diet_reviewed_at: string | null; signature_text_version: string | null;
   /** Huésped de muestra de Booking (BG11): no cuenta en totales ni en SES. */
   preview?: boolean;
+  portal_role?: PortalRole | null;
+  /** Grupo de comida de la ficha (Booking, BG16): para las ofertas de Food. */
+  meal_group?: string | null;
   reservation: { title: string; start_date: string | null; end_date: string | null; status: string; arrival_time: string | null; departure_time: string | null };
   restrictions: Restriction[];
 }
@@ -33,6 +38,8 @@ export interface WriteResult { guest_id: string; revision: number; cursor: numbe
 
 export interface GuestApi {
   grants(): Grant[];
+  /** Dirección: «todos» (`{all: true}` en `scopes.grants`, Booking §29.5). Ve todos los retiros, pero nunca la ficha de otro. */
+  direction(): boolean;
   myGuest(guestId: string): Promise<Loaded<MyGuest>>;
   update(guestId: string, expectedRevision: number, fields: Record<string, unknown>): Promise<WriteResult>;
   consent(guestId: string, expectedRevision: number, args: { allergies_visible_to_organizer?: boolean; privacy_ack_version?: string }): Promise<WriteResult>;
@@ -44,6 +51,19 @@ export interface GuestApi {
 async function sha256(blob: Blob): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Fichas de equipo (G-B2, Core 26-10-2026): no van a SES, así que no se piden los datos de registro ni la firma; se
+ * quedan el nombre y la alimentación. Se ven como el modo `ninguno`.
+ */
+export function teamMode(guest: MyGuest): MyGuest {
+  return guest.portal_role ? { ...guest, mode: 'ninguno', missing: [] } : guest;
+}
+
+/** Reserva cancelada o perdida (Booking §29.1): sigue en «Mis retiros», en solo lectura. */
+export function cancelled(status: string | null | undefined): boolean {
+  return status === 'cancelada' || status === 'perdida';
 }
 
 export function createGuestApi(client: SyncClient): GuestApi {
@@ -73,16 +93,20 @@ export function createGuestApi(client: SyncClient): GuestApi {
       const scopes = client.bootstrap()?.membership.scopes as { grants?: Array<Partial<Grant>> } | null | undefined;
       return (scopes?.grants ?? []).filter((g): g is Grant => typeof g.reservation_id === 'string' && typeof g.guest_id === 'string');
     },
+    direction() {
+      const scopes = client.bootstrap()?.membership.scopes as { grants?: Array<{ all?: unknown }> } | null | undefined;
+      return (scopes?.grants ?? []).some((g) => g?.all === true);
+    },
     async myGuest(guestId) {
       const user = userId();
       try {
         const value = await client.api<MyGuest>('/read/booking.portal_my_guest', { method: 'POST', json: { guest_id: guestId } });
         void cache.saveRead(user, 'my_guest', { guestId }, value);
-        return { value, at: new Date().toISOString(), stale: false };
+        return { value: teamMode(value), at: new Date().toISOString(), stale: false };
       } catch (error) {
         if (isNetworkError(error)) {
           const copy = await cache.read<MyGuest>(user, 'my_guest', { guestId });
-          if (copy) return { value: copy.value, at: copy.at, stale: true };
+          if (copy) return { value: teamMode(copy.value), at: copy.at, stale: true };
         }
         throw error;
       }

@@ -90,6 +90,14 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
       return supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.spaces_mirror_apply', p_args: {} });
     },
   }, {
+    // Reglas de acceso de VG (0481): organizador y personal con cuenta, huéspedes de su retiro en Guests.
+    method: 'POST', pattern: 'portal-access/tick',
+    handler: async () => {
+      if (!supabase) return { created: 0, removed: 0 };
+      await ensureServiceActor(supabase, 'booking');
+      return supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.portal_access_run', p_args: {} });
+    },
+  }, {
     method: 'POST', pattern: 'retention/tick',
     handler: async () => {
       if (!supabase) return { anonymized: 0 };

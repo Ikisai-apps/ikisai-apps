@@ -8,6 +8,7 @@ import { describeError } from '../app/client.ts';
 import { watchData, type FlowData } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
+import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
 import { createServiceMode } from './service-mode.ts';
@@ -39,6 +40,7 @@ interface ColumnView { slug: string; icon: string; mount: ViewMount }
 const COLUMN_VIEWS: Record<string, ColumnView> = {
   order: { slug: 'caja', icon: 'euro', mount: mountOrders('order') },
   prep: { slug: 'preparacion', icon: 'chef', mount: mountQueue('prep') },
+  ingredients: { slug: 'ingredientes', icon: 'tag', mount: mountQueue('ingredients') },
   service: { slug: 'servicio', icon: 'check', mount: mountOrders('service') },
   logistics: { slug: 'logistica', icon: 'list', mount: mountQueue('logistics') },
 };
@@ -180,7 +182,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open').length);
     shell.setBadge(`${base}/preparacion`, d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
     shell.setBadge(`${base}/servicio`, d.orders.filter((o) => o.status === 'paid').length);
-    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'logistics' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/ingredientes`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'ingredients' && ['proposed', 'pending', 'in_progress'].includes(u.status)).length);
   }
 
   async function route(): Promise<void> {
@@ -191,6 +194,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     let entry: { title: string; slug: string; mount: ViewMount };
     if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };
+    else if (m![2] === 'cierre') entry = { title: 'Cierre del día', slug: 'cierre', mount: mountClosure };
     else {
       const column = columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m![2]);
       const view = column ? COLUMN_VIEWS[column.key] : undefined;

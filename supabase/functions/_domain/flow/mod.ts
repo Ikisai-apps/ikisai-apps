@@ -18,6 +18,13 @@ export const TABLES = {
   payments: 'flow.payments',
   units: 'flow.units',
   events: 'flow.events',
+  dayClosures: 'flow.day_closures',
+  buffers: 'flow.buffers',
+  consumptionRules: 'flow.consumption_rules',
+  projectDocuments: 'flow.project_documents',
+  templateUnits: 'flow.template_units',
+  templateColumnPatches: 'flow.template_column_patches',
+  accounts: 'flow.accounts',
 } as const satisfies Record<string, `flow.${string}`>;
 
 /** Procedimientos `call` permitidos (API.md §3). */
@@ -30,6 +37,17 @@ export const PROCEDURES = {
   reopenOrder: 'flow.reopen_order',
   createExtension: 'flow.create_extension',
   confirmRefund: 'flow.confirm_refund',
+  closeDay: 'flow.close_day',
+  markClosureSent: 'flow.mark_closure_sent',
+  unitSetQty: 'flow.unit_set_qty',
+  generateIngredientTasks: 'flow.generate_ingredient_tasks',
+  unitLinkExternal: 'flow.unit_link_external',
+  newVersion: 'flow.new_version',
+  stationSetParams: 'flow.station_set_params',
+  openAccount: 'flow.open_account',
+  chargeToAccount: 'flow.charge_to_account',
+  settleAccount: 'flow.settle_account',
+  assignGuestNumbers: 'flow.assign_guest_numbers',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -38,13 +56,16 @@ export const PULL_INTERVAL_MS = 3_000;
 export type ColumnKey = 'order' | 'prep' | 'service' | 'logistics';
 export type ColumnBehavior = 'inspect_confirm' | 'quick_steps' | 'free_task';
 export type OrderStatus = 'open' | 'paid' | 'delivered';
-export type UnitStatus = 'pending' | 'in_progress' | 'done' | 'cancelled';
+export type UnitStatus = 'proposed' | 'pending' | 'in_progress' | 'done' | 'cancelled';
 export type PayMethod = 'cash' | 'bizum';
+/** Liquidación de una cuenta (0910): también con tarjeta. */
+export type SettleMethod = PayMethod | 'card';
 export type DeliveryIdent = 'number' | 'qr' | 'presence' | 'skipped';
 
 /** Siguiente estado de un toque (§5, §7). Una unidad cancelada no avanza. */
 export function nextUnitStatus(status: UnitStatus): UnitStatus | null {
   switch (status) {
+    case 'proposed': return 'pending';
     case 'pending': return 'in_progress';
     case 'in_progress': return 'done';
     case 'done': return 'pending';
@@ -52,9 +73,10 @@ export function nextUnitStatus(status: UnitStatus): UnitStatus | null {
   }
 }
 
-export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = { pending: 'Pendiente', in_progress: 'En curso', done: 'Terminado', cancelled: 'Cancelado' };
+export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = { proposed: 'Propuesta', pending: 'Pendiente', in_progress: 'En curso', done: 'Terminado', cancelled: 'Cancelado' };
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = { open: 'Pendiente de cobro', paid: 'Cobrado', delivered: 'Entregado' };
 export const PAY_METHOD_LABELS: Record<PayMethod, string> = { cash: 'Efectivo', bizum: 'Bizum' };
+export const SETTLE_METHOD_LABELS: Record<SettleMethod, string> = { ...PAY_METHOD_LABELS, card: 'Tarjeta' };
 
 /** Mensajes de los errores de dominio de los procedimientos y de la guarda (migración 0900). */
 export const FLOW_ERRORS: Record<string, string> = {
@@ -74,7 +96,29 @@ export const FLOW_ERRORS: Record<string, string> = {
   USE_EXTENSION: 'Lo que se añade tras cobrar va en una ampliación con su propio cobro.',
   REFUND_NOT_PENDING: 'Esa devolución ya está confirmada.',
   OFFLINE: 'Esta acción necesita conexión.',
+  PROJECT_OUT_OF_SCOPE: 'Este flujo no es tuyo: pide acceso a Dirección.',
+  NEEDS_ACCESS: 'Tu cuenta no tiene acceso a esa app: pide acceso a Dirección.',
+  NO_FOOD_MENU: 'Este flujo no está ligado a una carta de Food: actualiza la carta desde Food primero.',
+  APP_UNAVAILABLE: 'La otra app no responde ahora mismo. Inténtalo más tarde.',
+  ENTRY_LOCKED: 'Finance ya entregó ese día a la gestoría: no se puede sustituir.',
+  INVALID_FILE: 'Ese archivo no vale aquí: sube una imagen (o un PDF en documentos) ya terminada de subir.',
+  UNSUPPORTED_MEDIA: 'Ese tipo de archivo no se admite: imágenes (webp, jpeg, png) o PDF.',
+  PAYLOAD_TOO_LARGE: 'El archivo es demasiado grande (15 MB como máximo).',
+  FLOW_FROZEN: 'Esta versión del flujo está congelada: crea una versión nueva para cambiar su configuración.',
+  NO_TASKS_PROJECT: 'Este flujo aún no tiene proyecto de Tasks: el encargado lo elige en el Inicio del flujo.',
+  TASKS_PROJECT_GONE: 'El proyecto de Tasks de este flujo ya no existe o no lo ves: elige otro.',
+  PROJECT_ARCHIVED: 'Ese proyecto de Tasks está archivado: elige otro.',
+  EXTERNAL_REF_IN_USE: 'Esta tarea ya se pidió a Tasks en otro proyecto.',
+  ACCOUNTS_DISABLED: 'Esta versión del flujo no lleva cuentas.',
+  ACCOUNT_ALREADY_OPEN: 'Ese cliente ya tiene una cuenta abierta.',
+  ACCOUNT_NOT_OPEN: 'Esa cuenta ya está liquidada.',
+  ACCOUNT_OPEN: 'Este pedido está en una cuenta abierta: no se corrige ni se anula hasta liquidarla.',
+  ACCOUNT_SETTLED: 'Este pedido se pagó con su cuenta: corrígelo (la diferencia se devuelve), no se anula.',
+  SETTLE_FORBIDDEN: 'Solo quien abrió la cuenta o el encargado puede liquidarla.',
+  INVITATION_INVALID: 'Ese enlace no vale. Pide uno nuevo en la app de huéspedes.',
+  INVITATION_EXPIRED: 'Ese enlace ha caducado. Ábrelo otra vez desde la app de huéspedes.',
 };
 
 export * from './menu.ts';
 export * from './scope.ts';
+export * from './carta-sync.ts';

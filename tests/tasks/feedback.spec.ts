@@ -84,9 +84,9 @@ test('recorrido de feedback en Tasks: interruptor, pulsación larga, envío, «S
     await expect(page.locator('html.fb-mode')).toHaveCount(0);
   });
 
-  await test.step('«Sugerencias y QA» del menú lista el reporte', async () => {
+  await test.step('«Mis reportes» del menú lista el reporte propio (kit 0.58, `scope: \'mine\'`)', async () => {
     await page.evaluate(() => (window as any).handleTopAction('feedbackCenter'));
-    const sheet = page.getByRole('dialog', { name: 'Sugerencias y QA' });
+    const sheet = page.getByRole('dialog', { name: 'Mis reportes' });
     await expect(sheet).toBeVisible();
     await sheet.getByRole('tab', { name: 'Abiertos' }).click();
     await expect(sheet.locator('.fb-card')).toHaveCount(1);
