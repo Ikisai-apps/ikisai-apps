@@ -50,7 +50,7 @@ test('station · la v1 no tiene puesto; la v2 nace con «Pan» desde la plantill
   assert.equal(s.label, 'Pan'); assert.equal(s.column_key, 'logistics'); assert.equal(s.status, 'pending');
   // Desde la 0913 la v2 nace con bread_v2 (bread.test.ts); aquí se sigue probando bread_ahead, que no cambia.
   assert.equal(s.payload.metric, 'bread_v2');
-  await app.t.db.query(`update flow.units set payload = payload || '{"metric": "bread_ahead"}'::jsonb where id = $1`, [s.id]);
+  await app.t.db.exec(`begin; select set_config('flow.proc', 'on', true); update flow.units set payload = payload || '{"metric": "bread_ahead"}'::jsonb where id = '${s.id}'; commit;`);
   s = await station();
   assert.equal(s.payload.metric, 'bread_ahead');
 });

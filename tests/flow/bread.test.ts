@@ -6,8 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
-import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
-import { steadyMetrics, type StationMetric } from '../../apps/flow/src/app/data.ts';
+import { PROCEDURES, TABLES, steadyMetrics, type MetricReading } from '../../supabase/functions/_domain/flow/mod.ts';
 
 const ORIGIN = FLOW_ORIGINS[0]!;
 const V1 = '0f10a000-0000-4000-8000-000000000001';
@@ -82,7 +81,7 @@ test('pan v2 · tope de la máquina y suavizado con la ventana larga', async () 
 });
 
 test('pan v2 · histéresis de la app: no baila por menos de 2; nunca por debajo de lo firme', () => {
-  const at = (target: number, firm: number): Map<string, StationMetric> =>
+  const at = (target: number, firm: number): Map<string, MetricReading> =>
     new Map([['u', { unit_id: 'u', metric: 'bread_v2', value: { target, firm, rate: 1, window: 5, hysteresis: 2 } }]]);
   let shown = steadyMetrics(new Map(), at(8, 7));
   assert.equal(shown.get('u')!.value.target, 8);
@@ -92,6 +91,6 @@ test('pan v2 · histéresis de la app: no baila por menos de 2; nunca por debajo
   assert.equal(shown.get('u')!.value.target, 10);
   shown = steadyMetrics(shown, at(11, 11)); // lo firme sube a 11: mostrar 10 sería poco
   assert.equal(shown.get('u')!.value.target, 11);
-  const plain = new Map([['u', { unit_id: 'u', metric: 'bread_ahead', value: { target: 3, rate: 1, window: 5 } }]]) as Map<string, StationMetric>;
+  const plain = new Map([['u', { unit_id: 'u', metric: 'bread_ahead', value: { target: 3, rate: 1, window: 5 } }]]) as Map<string, MetricReading>;
   assert.equal(steadyMetrics(at(9, 0), plain).get('u')!.value.target, 3); // sin histéresis, tal cual
 });
