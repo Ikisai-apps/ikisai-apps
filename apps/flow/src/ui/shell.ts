@@ -9,6 +9,7 @@ import { watchData, type FlowData } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
+import { mountEditor } from './editor.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
@@ -198,9 +199,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const projectId = m ? m[1]! : null;
     await enterProject(projectId);
     let entry: { title: string; slug: string; mount: ViewMount };
-    if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
+    if (!projectId && hash === '#/nuevo') entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
+    else if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };
     else if (m![2] === 'cierre') entry = { title: 'Cierre del día', slug: 'cierre', mount: mountClosure };
+    else if (m![2] === 'editor') entry = { title: 'Columnas del flujo', slug: 'editor', mount: mountEditor('edit') };
     else {
       const column = columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m![2]);
       const view = column ? COLUMN_VIEWS[column.key] : undefined;
