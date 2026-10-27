@@ -10,7 +10,8 @@ import type { ViewMount } from './shell.ts';
 /**
  * Inicio de un flujo (canon V1 §2.2; navegación de VG del 26-10):
  * - Arriba, el carrusel de flujos (como lo ven los huéspedes): deslizar cambia de flujo.
- * - Para el owner, el modo pruebas del flujo (VG 26-10: se cobra y se cuenta igual, pero no se envían ingresos a Finance).
+ * - Para el owner, las herramientas del flujo (versiones, portada, documentos, carta pública, enlaces). Ya no hay «modo
+ *   pruebas» (VG 27-10): el cierre va siempre a Finance como apunte de proceso.
  * - Debajo, los documentos del flujo (guías) con miniaturas para ir directo a uno y «Ampliar» para verlo entero. Las
  *   miniaturas se precargan; el tamaño completo solo se descarga al ampliar (FLOW-DIR-001 §6). Nunca salen en la carta
  *   pública (§15.3). Son archivos del proyecto (0907) que el owner sube, ordena y quita; la v1 sigue con las guías del
@@ -44,20 +45,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
 
   function paintTestMode(project: Project | null): void {
     if (!project) { replace(testHost); return; }
-    if (!isOwner) {
-      replace(testHost, ...(project.test_mode ? [el('p', { class: 'flow-testmode-pill' }, 'Modo pruebas: el cierre no envía ingresos a Finance')] : []));
-      return;
-    }
-    const input = el('input', { type: 'checkbox', checked: project.test_mode, onchange: async () => {
-      input.disabled = true;
-      try {
-        await client.commit([{ op: 'update', table: TABLES.projects, id: project.id, expectedRevision: project.revision, fields: { test_mode: input.checked } }]);
-        toast(input.checked ? 'Modo pruebas activado: el cierre no enviará ingresos a Finance.' : 'Modo pruebas desactivado.');
-      } catch (error) { input.checked = !input.checked; toast(describeError(error)); }
-      finally { input.disabled = false; }
-    } });
-    replace(testHost, el('label', { class: 'flow-testmode-switch' }, input,
-      el('span', null, el('strong', null, 'Modo pruebas'), el('small', { class: 'muted' }, ' · se cobra y se cuenta igual, pero el cierre no envía ingresos a Finance'))),
+    if (!isOwner) { replace(testHost); return; }
+    // Sin «Modo pruebas» (VG 27-10): el cierre siempre va a Finance como apunte de proceso; lo fiscal es la factura de la caja.
+    replace(testHost,
       // Versiones (VG 27-10): una versión congelada no cambia de configuración; la nueva nace en modo pruebas.
       el('div', { class: 'orders-owner flow-version' },
         project.frozen ? el('p', { class: 'muted small' }, `Versión ${project.template_version ?? ''} congelada: su configuración no cambia.`) : null,
@@ -77,7 +67,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
   async function newVersion(project: Project): Promise<void> {
     if (!isOnline(client)) { toast('Necesita conexión.'); return; }
     const ok = await confirmDialog({ title: 'Nueva versión del flujo', confirmLabel: 'Crear versión',
-      text: 'Se copia la configuración (columnas, carta, reglas, puntos de existencias vacíos, enlaces y portada), sin pedidos, clientes, pagos ni cierres. Nace en modo pruebas y sin atender la carta pública. Recuerda dar acceso al personal en Central.' });
+      text: 'Se copia la configuración (columnas, carta, reglas, puntos de existencias vacíos, enlaces y portada), sin pedidos, clientes, pagos ni cierres. Nace sin atender la carta pública. Recuerda dar acceso al personal en Central.' });
     if (!ok) return;
     try {
       const out = await callProcedure<{ project_id: string; name: string }>(client, PROCEDURES.newVersion, { source_project_id: project.id, project_id: crypto.randomUUID() });

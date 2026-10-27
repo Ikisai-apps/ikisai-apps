@@ -1,7 +1,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
   FOOD_PROCEDURES, SHOPPING_ITEM_STATUSES, defaultPurchase, ingredientKey, isStale, itemAverageCost, lastTicket, linePacks, linePerUnit, purchaseMovement, purchaseSpace,
-  savePackOperations, shopColor, shoppingSources, sourceChanges, toItemBase, validateOperations,
+  cartaShoppingSources, savePackOperations, shopColor, shoppingSources, type CartaLine, sourceChanges, toItemBase, validateOperations,
   type CostMovement, type ItemConversion, type MovementCost, type MovementLike, type PackUnitRow, type ResourceItem, type ShoppingItemStatus, type ShoppingList,
   type ShoppingListItem, type ShoppingListStatus, type SpaceLike, type Unit,
 } from '@ikisai/domain-food';
@@ -36,6 +36,8 @@ export interface TabContext {
   canWrite(): boolean;
   /** Menú de casa (O3b): compra y preparación por un rango de días que se elige al generar. */
   house?: boolean;
+  /** Carta (previsión, 1110): la lista sale de las unidades esperadas de sus líneas, no de servicios y platos. */
+  carta?: boolean;
   /** Ir a otra pantalla (las comprobaciones del Organizador y del Cierre llevan a su arreglo). */
   navigate?: (hash: string) => void;
   /** Ir a los comentarios del organizador en la pestaña Menú, con su plegado abierto (el Cierre lo usa). */
@@ -60,7 +62,8 @@ interface LineView {
  * su envase dibujado, el carrito y el «⋯»; arriba, el dinero y las tiendas. Generar y regenerar necesitan red; marcar,
  * el lote, «En casa», «Comprar», el envase y las líneas a mano, no.
  */
-export function mountShopping({ client, menuId, host, canWrite, house = false }: TabContext): () => void {
+export function mountShopping({ client, menuId, host, canWrite, house = false, carta = false }: TabContext): () => void {
+  let cartaLines: Array<Mirror<CartaLine>> = []; // en una carta, sus líneas (para saber si la lista está al día)
   let data: MenuData | null = null;
   let list: ListRow | null = null;
   let houseLists: ListRow[] = []; // en casa: las listas vivas del menú, cada una con sus días
@@ -479,6 +482,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
       replace(host, houseHead, el('div', { 'data-feedback-id': 'food.menu.compra.vacia', 'data-feedback-label': 'Sin lista de compra', class: 'empty', id: 'shoppingEmpty' },
         el('strong', null, house ? `Todavía no hay lista para ${periodLabel(housePeriod())}` : 'Todavía no hay lista de compra'),
         house ? 'Se calcula con los platos de esos días: raciones × cantidad de cada ingrediente ÷ raciones base de la receta.'
+          : carta ? 'Se calcula con la previsión: unidades esperadas de cada línea × lo que gasta cada una.'
           : 'Se calcula a partir de los platos del menú: raciones × cantidad de cada ingrediente ÷ raciones base de la receta.',
         overlap ? el('p', { class: 'warnline', id: 'periodOverlap' }, `Se solapa con la lista de ${periodLabel({ start: overlap.period_start!, end: overlap.period_end! })}: elige otros días o abre esa lista.`) : null,
         provisional, writable && !overlap ? el('p', { style: 'margin-top:10px' }, generate(house ? `Generar la lista de ${periodLabel(housePeriod())}` : 'Generar lista de compra', 'generateShopping')) : null,
@@ -487,7 +491,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     }
 
     const closed = list.status === 'cerrada';
-    const current = shoppingSources(data.graph, house ? housePeriod() : null);
+    const current = carta ? cartaShoppingSources(menuId, cartaLines, data.graph) : shoppingSources(data.graph, house ? housePeriod() : null);
     const diff = sourceChanges(list.source_revisions, current);
     const stale = data.pending || isStale(list.source_revisions, current);
     const names = new Map(data.ingredients.map((i) => [i.id, i.name]));
@@ -583,6 +587,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
 
   async function load(): Promise<void> {
     data = await loadMenuData(client, menuId);
+    if (carta) cartaLines = (await client.list(T.cartaLines)) as Array<Mirror<CartaLine>>;
     const lists = ((await client.list(T.shoppingLists)) as ListRow[]).filter((l) => l.menu_id === menuId && !l.deleted_at);
     houseLists = house ? lists.filter((l) => l.period_start).sort((a, b) => b.period_start!.localeCompare(a.period_start!)) : [];
     list = (house ? lists.find((l) => samePeriod(housePeriod(), l)) : lists.find((l) => !l.period_start)) ?? null;
@@ -603,7 +608,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
   void load();
   void loadPurchases(client).then((snapshot) => { purchases = snapshot; if (!sheet && !busy) paint(); }).catch(() => undefined);
   const refresh = () => { if (!sheet && !busy) void load(); };
-  const offs = [...[...MENU_TABLES, T.shoppingLists, T.shoppingItems].map((table) => client.onTable(table, refresh)),
+  const offs = [...[...MENU_TABLES, T.shoppingLists, T.shoppingItems, ...(carta ? [T.cartaLines] : [])].map((table) => client.onTable(table, refresh)),
     ...[R.itemUnits, R.items].map((table) => r.onTable(table, refresh))];
   return () => {
     net.release();

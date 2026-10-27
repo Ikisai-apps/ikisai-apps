@@ -1,5 +1,44 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.61.0 · 27 de octubre de 2026
+
+**`createLanes`: carriles con dos vistas que se intercambian** (encargo de VG del 27-10 para Flow v2; vale para cualquier app con columnas). La API está acordada con Flow.
+- **Firma**: `createLanes({ label, lanes: [{ id, title, short?, count?, empty?, mount(body) }], view?, storageKey?, wideFrom?, selected?, onSelect?, onView?, feedbackId? })`. Devuelve `{ element, view, setView, selected, setLanes, select, refresh, destroy }`.
+- **Pestañas**: chips desplazables con título y recuento, y un carril visible. Es `tablist`/`tab`/`tabpanel`, y las flechas, Inicio y Fin cambian de carril.
+- **Lado a lado**: desplazamiento horizontal, y vertical dentro de cada carril.
+  - La altura sale de `--lanes-height`, por defecto `min(72dvh, 760px)`.
+  - Cada carril mide `clamp(172px, 50vw − 22px, 240px)` y crece hasta llenar el ancho: dos en un móvil en vertical y de 5 a 7 en un PC.
+  - Un carril `empty` se pliega a una mini columna de 44 px con el título girado (o `short`); al tocarla se despliega.
+- **Conmutador «Pestañas / Lado a lado»** siempre visible.
+  - La elección se guarda en el dispositivo (`storageKey`).
+  - Sin nada guardado, se usan pestañas por debajo de `wideFrom` (720 px) y lado a lado por encima.
+- **Ciclo de vida** (lo pidió Flow): `mount(body)` se llama una vez, cuando el carril se ve por primera vez, y puede devolver su limpieza.
+  - La limpieza se llama al quitar el carril con `setLanes`, con `refresh(id)` (que vuelve a montarlo) y con `destroy()`.
+  - En «Pestañas», los carriles ya montados se ocultan sin desmontarse; el mismo nodo pasa de una vista a otra.
+- **`onSelect(id)`** avisa del carril principal, por ejemplo para el hash o la barra inferior. Se llama:
+  - al elegir una pestaña;
+  - en «Lado a lado», al tocar una cabecera o cuando otro carril pasa a ser el primero visible (60 % o más) al desplazar.
+- **Feedback**: `feedbackId` marca `<base>.vista`, `<base>.carril` y `<base>.desplegar`; el catálogo añade esos hijos solo.
+- Tokens del kit en los dos temas y textos en inglés.
+- Pruebas: `tests/v65.spec.ts`.
+
+## 0.60.0 · 27 de octubre de 2026
+
+**`renderQr(text, { size, label, margin })`** → `SVGSVGElement` (petición de Booking, visión V0.2: el QR de entrada de visitantes que se imprime en la ficha del evento).
+- **Sin red y sin dependencias**: codificador propio (`src/print/qr.ts`) en modo byte UTF-8.
+  - Nivel de corrección M. Versiones 1 a 10, hasta 213 bytes; una URL corta como `https://ven.ikisai.com/e/AB12CD` sale en la versión 3.
+  - Se queda la máscara con menos penalización (reglas 1 a 4 de ISO/IEC 18004).
+  - Con un texto más largo lanza un error que dice cuánto cabe.
+- **Negro sobre blanco en los dos temas**, para imprimir: los colores van fijos en el SVG.
+  - `size` en px (por defecto 160).
+  - `margin` en módulos (por defecto 4, el de la norma).
+  - `role="img"` y `aria-label`, que es `label` o, si no se da, el propio texto.
+  - Clase `qr-code`.
+- **Pruebas** (`tests/v64.spec.ts`, con un lector propio en `tests/qr-read.ts` que no usa el codificador):
+  - se leen de vuelta textos de 1 a 213 bytes, con los síndromes Reed-Solomon a cero;
+  - la información de versión (7 a 10) coincide con la tabla de la norma, y las dos copias del formato son iguales;
+  - el SVG se lee desde su propio dibujo.
+
 ## 0.59.0 · 27 de octubre de 2026
 
 **Inventario semántico de campos** (visión V0.2, encargo de Core; la forma está acordada con Central para «Uso y cobertura»). Cada campo de un formulario declara qué es, nunca lo que se escribe en él: no se toca la telemetría de valores. Sin declarar nada, no cambia nada.

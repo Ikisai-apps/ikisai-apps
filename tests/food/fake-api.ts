@@ -49,6 +49,8 @@ export interface FakeApiOptions {
   events?: FakeEvent[];
   /** Filas de `invoices.food_stock_projection` que sirve `GET read/invoices.food_stock_projection`. */
   purchases?: Array<Record<string, unknown>>;
+  /** Otras lecturas registradas (`GET read/<nombre>`), filtradas por `where[columna]` (la carta: `food.carta_projection`, `food.carta_prep_totals_projection`…). */
+  reads?: Record<string, Array<Record<string, unknown>>>;
   /** Si la cuenta ya aceptó el aviso de medición de uso (por defecto sí, para que el aviso no tape las demás pruebas). */
   usageConsent?: boolean;
 }
@@ -125,11 +127,11 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.recipes': ['name', 'public_name', 'public_description', 'category', 'base_servings', 'method', 'conservation', 'freezable', 'regeneration',
     'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id', 'method_steps', 'quick'],
   'food.ingredients': ['name', 'preferred_unit', 'preferred_supplier', 'active', 'item_id'],
-  'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes'],
+  'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes', 'station'],
   'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes', 'item_id', 'status_since'],
   'food.recipe_equipment': ['recipe_id', 'equipment_id', 'quantity_required', 'notes'],
   'food.menus': ['kind', 'event_id', 'source_event_revision', 'source_event_snapshot', 'status', 'validated_at', 'validated_by', 'validated_warnings',
-    'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes', 'organizer_shared', 'house_servings'],
+    'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes', 'organizer_shared', 'house_servings', 'name', 'prep_split', 'expected_attendance'],
   'food.menu_comments': ['menu_id', 'service_id', 'menu_item_id', 'kind', 'message', 'author_id', 'status', 'reply'],
   'food.menu_services': ['menu_id', 'service_date', 'service_type', 'service_time', 'position', 'notes'],
   'food.menu_items': ['service_id', 'recipe_id', 'servings', 'position', 'notes'],
@@ -141,6 +143,9 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   // Tanda 27: votos de los platos sugeridos (quién vota lo pone la ruta, como el trigger real) y avisos a Tasks.
   'food.suggestion_votes': ['suggestion_id', 'voter_id', 'vote'],
   'food.equipment_notices': ['equipment_id', 'notified_on', 'equipment_status', 'task_id', 'request_status'],
+  // La carta (1109): líneas y ventas (estas, en la app real, solo por food.record_carta_sales).
+  'food.carta_lines': ['menu_id', 'recipe_id', 'item_id', 'scope', 'code', 'name', 'description', 'sale_price_cents', 'active', 'position', 'image_key', 'expected_units', 'per_person'],
+  'food.carta_sales': ['menu_id', 'line_id', 'day', 'quantity'],
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
     'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
@@ -170,6 +175,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.shopping_list_items': { required_quantity: 0, status: 'pendiente', manual_override: false, manual: false, restock: false },
   'food.preparation_items': { done: false, position: 0, manual: false },
   'food.consumptions': { automatic: false },
+  'food.carta_lines': { active: true, position: 0 },
   'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
   'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
   'resources.counts': { status: 'abierto' },
@@ -554,7 +560,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       let row = store.get(op.id);
       if (op.op === 'insert') {
         if (row) throw new Fault(422, 'INVALID_OPERATION', 'La fila ya existe.', { index });
-        if (allowed.includes('name') && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre es obligatorio.', { field: 'name' });
+        // El nombre de un menú solo lo lleva la carta, y el de una línea de carta es opcional (1109).
+        if (allowed.includes('name') && !['food.menus', 'food.carta_lines'].includes(op.table) && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? DEFAULTS[op.table]?.[column] ?? null;
         store.set(op.id, row);
@@ -706,6 +713,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const kind = url.searchParams.get('where[target_kind]');
         const rows = (options.purchases ?? []).filter((r) => !kind || r.target_kind === kind);
         return json(res, 200, { name: 'invoices.food_stock_projection', rows, total: rows.length, limit: 2000, offset: 0 });
+      }
+      if (path.startsWith('read/') && method === 'GET' && options.reads?.[path.slice(5)]) {
+        const name = path.slice(5);
+        const where = [...url.searchParams.entries()].filter(([k]) => /^where\[[a-z_]+\]$/.test(k)).map(([k, v]) => [k.slice(6, -1), v] as const);
+        const rows = options.reads[name]!.filter((r) => where.every(([k, v]) => String(r[k]) === v));
+        return json(res, 200, { name, rows, total: rows.length, limit: 1000, offset: 0 });
       }
       if (path === 'events' && method === 'GET') {
         return json(res, 200, { events: [...events].sort((a, b) => a.start_date.localeCompare(b.start_date)), serverTime: nowIso() });

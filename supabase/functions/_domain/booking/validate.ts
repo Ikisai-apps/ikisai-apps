@@ -378,6 +378,8 @@ FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], guests_visible: 
 FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], food_carta_ids: { kind: 'uuidList', max: 20 } };
 // 0485: grupo de comensal para las ofertas de Food
 FIELDS[TABLES.guests] = { ...FIELDS[TABLES.guests], meal_group: text(40) };
+// 0486: salida del huésped (la marca Flow en recepción o el personal)
+FIELDS[TABLES.guests] = { ...FIELDS[TABLES.guests], left_at: { kind: 'timestamp' } };
 FIELDS[TABLES.stays] = {
   kind: choice(STAY_KINDS, false),
   account_id: { kind: 'uuid' },

@@ -2,6 +2,8 @@
 
 El catálogo lo genera el kit al compilar (`apps/<app>/dist/feature-catalog.json`) a partir de los `data-feedback-id` y de las
 llamadas `usage.run`/`usage.track` del código. Lo llama release.yml después de publicar cada app. Sin archivo, no hace nada.
+Desde ui-kit 0.59 trae también el inventario de campos (`fields` y `fieldsUninstrumented`, P15), que va a
+`core.ingest_field_inventory`. Un catálogo anterior, sin esas listas, no toca el inventario.
 
 Uso: python scripts/usage_catalog_ingest.py --app booking --release v0.1.0-build.230 [--apply]
 """
@@ -29,11 +31,20 @@ def main():
     return 0
   catalog = json.loads(path.read_text(encoding='utf-8'))
   features = [f for f in catalog.get('features', []) if isinstance(f, dict) and isinstance(f.get('id'), str)]
-  result = {'app': args.app, 'release': args.release, 'features': len(features), 'apply': args.apply, 'ingest': None}
+  has_fields = isinstance(catalog.get('fields'), list) or isinstance(catalog.get('fieldsUninstrumented'), list)
+  fields = [f for f in catalog.get('fields') or [] if isinstance(f, dict) and isinstance(f.get('fieldId'), str)]
+  uninstrumented = [u for u in catalog.get('fieldsUninstrumented') or [] if isinstance(u, dict)]
+  result = {'app': args.app, 'release': args.release, 'features': len(features), 'fields': len(fields), 'fieldsUninstrumented': len(uninstrumented),
+            'apply': args.apply, 'ingest': None, 'fieldsIngest': None}
   if args.apply:
     payload = sql_literal(json.dumps(features, ensure_ascii=False)) + '::jsonb'
     rows = SupabaseManagement().query(f'select core.usage_catalog_ingest({sql_literal(args.app)}, {sql_literal(args.release)}, {payload}) as r')
     result['ingest'] = rows[0]['r'] if rows else None
+    if has_fields:
+      jsonb = lambda v: sql_literal(json.dumps(v, ensure_ascii=False)) + '::jsonb'
+      rows = SupabaseManagement().query(
+        f'select core.ingest_field_inventory({sql_literal(args.app)}, {sql_literal(args.release)}, {jsonb(fields)}, {jsonb(uninstrumented)}) as r')
+      result['fieldsIngest'] = rows[0]['r'] if rows else None
   print(json.dumps(result, ensure_ascii=False))
   return 0
 
