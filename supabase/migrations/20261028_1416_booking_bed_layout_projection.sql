@@ -1,4 +1,4 @@
--- Ikisai Booking · cómo están colocadas las camas dentro de su habitación, para Central (petición de Central por Core,
+-- Ikisai Booking · cómo están colocadas las camas dentro de su habitación, para Central, Guests, Tasks y Organizers (Core,
 -- 27-10-2026: VG no veía en Central las camas ordenadas como en Booking). La fuente es la de «Monta el dormitorio» (0477):
 -- `spaces.layout` = {cols, rows} (la habitación en cuadrantes) y `beds.cell` = {x, y, rot} (la cama ocupa dos cuadrantes,
 -- a lo ancho con rot 0 o a lo largo con rot 90).
@@ -21,3 +21,7 @@ select b.id as bed_id, b.resource_id as resource_bed_id, s.id as space_id, s.res
 revoke all on booking.bed_layout_projection from public, anon, authenticated;
 grant select on booking.bed_layout_projection to service_role;
 select core.allow_read('central', 'booking.bed_layout_projection', 'view');
+-- VG: un solo modelo de colocación de camas, el de Booking; lo derivan todas las apps que pintan el mapa de zonas
+select core.allow_read('guests', 'booking.bed_layout_projection', 'view');
+select core.allow_read('tasks', 'booking.bed_layout_projection', 'view');
+select core.allow_read('organizers', 'booking.bed_layout_projection', 'view');

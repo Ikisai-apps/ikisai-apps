@@ -26,6 +26,13 @@ test('bed_layout_projection: celda de cada cama y cuadrantes de su habitación, 
     assert.equal(rows.length, 1, 'la cama sin celda no sale');
     assert.deepEqual([rows[0]!.bed_id, rows[0]!.resource_bed_id, rows[0]!.resource_space_id, rows[0]!.cols, rows[0]!.rows, rows[0]!.x, rows[0]!.y, rows[0]!.rot, rows[0]!.label],
       [placed, resourceBed, resourceSpace, 6, 8, 2, 3, 90, 'Cama 1']);
+    // la leen también las apps que pintan el mapa de zonas (un solo modelo, el de Booking)
+    for (const app of ['guests', 'tasks', 'organizers']) {
+      const member = await t.createUser();
+      await t.db.query(`insert into core.memberships (app, user_id, role) values ($1, $2, 'reader')`, [app, member]);
+      const got = await t.rpc('core_read', { p_app: app, p_actor: member, p_name: 'booking.bed_layout_projection', p_args: { where: { space_id: space } } }) as any;
+      assert.equal(((got.rows ?? got) as unknown[]).length, 1, app);
+    }
   } finally {
     await t.close();
   }
