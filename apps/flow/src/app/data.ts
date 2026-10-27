@@ -26,7 +26,7 @@ export interface Unit extends Row {
     /** Puesto (kind 'station'): su métrica, parámetros y textos con {target} y {rate}. */
     metric?: string; params?: Record<string, unknown>; text?: string; notice?: string; notice_in?: string[];
     /** «Comprar X» (fresco bajo umbral): se pide a Tasks como compra de un toque. */
-    purchase?: boolean } | null; source_ref: string | null;
+    purchase?: boolean; purchase_qty?: number; purchase_unit?: string; containers?: number } | null; source_ref: string | null;
 }
 export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null;
   template_key: string | null; template_version: number | null; frozen: boolean; serves_public: boolean; cover_file_id: string | null }

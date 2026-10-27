@@ -91,7 +91,8 @@ export async function quickPurchase(client: SyncClient, unit: Unit): Promise<voi
   if (!isOnline(client)) { toast('Pedir a Tasks necesita conexión.'); return; }
   try {
     const out = await client.api<{ link: { app: string; kind: string; id: string; status?: string } }>(`/units/${unit.id}/tasks`, {
-      method: 'POST', json: { type: 'purchase', quantity: unit.payload?.qty, unit: unit.payload?.unit } });
+      // En unidades de compra si Food da el rendimiento (0918): «Comprar 3 unidad».
+      method: 'POST', json: { type: 'purchase', quantity: unit.payload?.purchase_qty ?? unit.payload?.qty, unit: unit.payload?.purchase_unit ?? unit.payload?.unit } });
     await callProcedure(client, PROCEDURES.unitLinkExternal, { unit_id: unit.id, link: out.link });
     toast('Compra pedida en Tasks.');
   } catch (error) { toast(describeError(error)); }

@@ -343,3 +343,16 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - En la ficha de un pedido abierto, «Pagar».
   - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
   - Tras pagar: Imprimir factura y Enviar por correo (aún sin función), Enviar a Finance y Cerrar.
+
+## 31. Recipientes y rendimiento (migración `0918`)
+
+- **`flow.buffers`** suma `containers`, `per_container`, `prep_unit`, `purchase_unit` y `yield`.
+- **`set_buffer_containers({buffer_id, containers, per_container})`**, solo owner y solo en mesa o nevera de un flujo no congelado: «3 recipientes × 8 rodajas».
+  - La capacidad sale de ahí (`containers × per_container`) y regenerar no la pisa.
+  - Con los dos valores null se quitan los recipientes.
+  - En la app, «Recipientes» junto a Existencias, en el Inicio.
+- **Generar**: guarda el rendimiento de Food (#774: `prep_unit`, `purchase_unit`, `yield`) en los puntos del ingrediente. La app pasa también `fresco`: antes no lo pasaba y en uso real el punto «fresco» de la 0909 no se creaba.
+- **Reposición**:
+  - Con recipientes: «Reponer mesa: 3 recipientes de Tomate (20 rodaja ≈ 2.5 unidad)», con `payload.containers`.
+  - «Comprar X» con rendimiento: `ceil(necesario ÷ yield)` en `purchase_unit` («Comprar Tomate · 1 unidad»), con `payload.purchase_qty` y `purchase_unit`. Así se pide a Tasks.
+  - Sin recipientes ni rendimiento, como antes.

@@ -186,10 +186,39 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     const items = await loadStock(client, projectId);
     if (!items.length) { replace(stockHost); return; }
     replace(stockHost, el('h2', { class: 'col-title' }, 'Existencias'),
+      ...(isOwner ? [el('button', { type: 'button', class: 'ghost', onclick: () => void editContainers() }, 'Recipientes')] : []),
       el('table', { class: 'closure-products stock-table' },
         el('thead', null, el('tr', null, el('th', null, 'Ingrediente'), el('th', null, 'Mesa'), el('th', null, 'Nevera'), el('th', null, 'Fresco'), el('th', null, 'Hoy'))),
         el('tbody', null, ...items.map((i) => el('tr', null, el('td', null, `${i.name} (${i.unit})`), place(i, 'mesa'), place(i, 'nevera'), place(i, 'fresco'),
           el('td', null, fmt(i.consumed_today, i.unit)))))));
+  }
+  /** Owner (0918): «3 recipientes × 8 rodajas» por punto de mesa y nevera; la capacidad sale de ahí. */
+  async function editContainers(): Promise<void> {
+    if (!projectId) return;
+    type Buffer = { id: string; project_id: string; name: string; unit: string; location: string; containers: number | null; per_container: number | null; deleted_at: string | null };
+    const buffers = ((await client.list(TABLES.buffers)) as unknown as Buffer[])
+      .filter((b) => b.project_id === projectId && !b.deleted_at && (b.location === 'mesa' || b.location === 'nevera'))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es') || a.location.localeCompare(b.location));
+    if (!buffers.length) { toast('Aún no hay puntos de existencias: genera las tareas de ingredientes.'); return; }
+    const inputs = new Map<string, { c: HTMLInputElement; per: HTMLInputElement }>();
+    const body = el('div', { class: 'containers-list' }, ...buffers.map((b) => {
+      const c = el('input', { type: 'number', min: '1', max: '99', step: '1', inputmode: 'numeric', value: b.containers ?? '', 'aria-label': `Recipientes de ${b.name} en ${b.location}` }) as HTMLInputElement;
+      const per = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: b.per_container ?? '', 'aria-label': `${b.unit} por recipiente` }) as HTMLInputElement;
+      inputs.set(b.id, { c, per });
+      return el('div', { class: 'containers-row' }, el('span', null, `${b.name} · ${b.location}`), c, el('span', { class: 'muted' }, '×'), per, el('span', { class: 'muted small' }, b.unit));
+    }));
+    const ok = await confirmDialog({ title: 'Recipientes', text: 'Por punto: cuántos recipientes y cuánto lleva cada uno. Vacío: sin recipientes (capacidad de Food).', body, confirmLabel: 'Guardar' });
+    if (!ok) return;
+    try {
+      for (const b of buffers) {
+        const v = inputs.get(b.id)!;
+        const c = v.c.value ? Number(v.c.value) : null; const per = v.per.value ? Number(v.per.value) : null;
+        if (c === b.containers && per === b.per_container) continue;
+        await callProcedure(client, PROCEDURES.setBufferContainers, { buffer_id: b.id, containers: c, per_container: per });
+      }
+      toast('Recipientes guardados.');
+      void paintStock();
+    } catch (error) { toast(describeError(error)); }
   }
   void paintStock();
   const offStock = [TABLES.buffers, TABLES.units].map((t) => client.onTable(t, () => void paintStock()));

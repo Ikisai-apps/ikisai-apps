@@ -57,6 +57,7 @@ export const PROCEDURES = {
   deliverAll: 'flow.deliver_all',
   saveTemplate: 'flow.save_template',
   payOrders: 'flow.pay_orders',
+  setBufferContainers: 'flow.set_buffer_containers',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
