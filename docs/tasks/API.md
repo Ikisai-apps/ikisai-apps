@@ -2291,3 +2291,23 @@ Aunque la Edge no deja llamarlos desde `commands`, cada procedimiento comprueba 
 - **`tasks.request_project`**: solo la identidad de servicio de su fuente. El proyecto existente se busca por su referencia.
 - **En la Edge:** `purchases/:id/finance`, `requests/task` y `requests/purchase` no los usan los agentes (403); los agentes van por `commands`, con su revisión de riesgo.
 - **Pruebas:** `tests/tasks/procedures-guard.test.ts`.
+
+## 51. Fases del proyecto (migración `0356`; «Proyectos y producción» 7.1, encargo de Core, 27-10-2026)
+
+Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decisiones de VG en vg-37.
+
+- **`tasks.project_phases`**: `tab_id` y `project_id` (inmutables), `name` (1–120), `position`, `status` (`pending` | `active` | `done`), `start` y `due` (fechas opcionales, `start` ≤ `due`) y `closed_note`. La visibilidad es la de su proyecto. Leen todos los roles con acceso; escriben editor y owner.
+- **`tasks.tasks.phase_id`**: solo en una madre. Los pasos heredan la de su madre al leer (`compose` les pone `phaseId`) y no la guardan.
+- **Reglas (hook `tasks.validate_phases`):**
+  - la fase de una tarea es una fase viva de su mismo proyecto, y la tarea es madre (422 `INVALID_PHASE`);
+  - una fase nueva va en un proyecto vivo de su área (422 `INCONSISTENT_KEYS` / `PROJECT_UNAVAILABLE`);
+  - `start` posterior a `due` da 422 `INVALID_PHASE`;
+  - cerrar (`done`) con tareas abiertas pide `closed_note` (422 `PHASE_OPEN_TASKS`, con `open` en los detalles). Abierta es una madre viva sin hacer: con pasos, alguno vivo sin hacer;
+  - una fase con tareas vivas no se borra (422 `PHASE_NOT_EMPTY`): se sueltan sus tareas en el mismo lote.
+- **Mover:** si una tarea cambia de proyecto o pasa a ser hija, el trigger `tasks.task_phase_follow` le quita la fase (también al convertir un área en proyecto). `moveTaskOps` hace lo mismo en el cliente.
+- **Modelo de la interfaz:**
+  - `LegacyProject.phases` (solo si el proyecto tiene alguna): `{id, name, order, status, start, due, closedNote, version}`, más los calculados `done`, `open` y `total` sobre las madres;
+  - `LegacyTask.phaseId`;
+  - `decompose`: quitar una fase del modelo la manda a la papelera y suelta sus tareas en el mismo guardado.
+- **Papelera:** las fases de los proyectos y áreas en la papelera van a ella después de sus tareas, y la purga las borra.
+- **Pruebas:** `tests/tasks/phases.test.ts`.

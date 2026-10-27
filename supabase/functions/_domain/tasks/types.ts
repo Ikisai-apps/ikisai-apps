@@ -44,6 +44,8 @@ export interface TaskRow extends BaseRow {
   /** FB_2026_041: en la madre, sus hijas son pasos en orden; en una hija, `step_free` la deja fuera de la cadena. */
   steps_in_order?: boolean;
   step_free?: boolean;
+  /** Fase del proyecto (0356, §51), solo en la madre: las hijas heredan la de su madre al leer. */
+  phase_id?: Uuid | null;
 }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid | null; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
@@ -142,6 +144,12 @@ export interface DayPlanRow extends BaseRow { actor_id: Uuid; day: string; items
 export const REVIEW_ZONES = ['habitaciones', 'camas', 'aseos', 'duchas_acs', 'puertas', 'electricidad', 'cocina', 'maquinaria',
   'accesos', 'barandillas', 'comunes', 'limpieza', 'extintores', 'agua'] as const;
 export type ReviewZone = (typeof REVIEW_ZONES)[number];
+/** Fases de un proyecto (0356, §51): el cierre es a mano; con tareas abiertas, con nota. */
+export const PHASE_STATUSES = ['pending', 'active', 'done'] as const;
+export type PhaseStatus = (typeof PHASE_STATUSES)[number];
+export interface ProjectPhaseRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid; name: string; position: number; status: PhaseStatus; start: string | null; due: string | null; closed_note: string;
+}
 export const REVIEW_ANSWERS = ['check', 'quantity', 'photo', 'reading', 'note'] as const;
 export type ReviewAnswer = (typeof REVIEW_ANSWERS)[number];
 export interface ReviewExpected { count?: number; unit?: string; min?: number; max?: number }
@@ -166,7 +174,7 @@ export interface ReviewTemplateItemRow extends BaseRow {
 
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
-  'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
+  'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces',
   'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
   'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials',
@@ -177,7 +185,7 @@ export const TABLES = [
 export type TableName = (typeof TABLES)[number];
 
 export interface RowTypes {
-  'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.tasks': TaskRow;
+  'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.project_phases': ProjectPhaseRow; 'tasks.tasks': TaskRow;
   'tasks.project_labels': ProjectLabelRow; 'tasks.task_labels': TaskLabelRow;
   'tasks.project_spaces': ProjectSpaceRow; 'tasks.task_spaces': TaskSpaceRow;
   'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow;
@@ -203,7 +211,8 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref', 'owner_person_id', 'owner_house_level'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free', 'owner_person_id', 'owner_house_level'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free', 'owner_person_id', 'owner_house_level', 'phase_id'],
+  'tasks.project_phases': ['tab_id', 'project_id', 'name', 'position', 'status', 'start', 'due', 'closed_note'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
@@ -238,6 +247,8 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.labels': ['tab_id'],
   'tasks.projects': ['tab_id', 'system', 'external_ref'],
   'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
+  // Una fase es de su proyecto (0356).
+  'tasks.project_phases': ['tab_id', 'project_id'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
   'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
