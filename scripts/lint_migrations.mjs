@@ -24,7 +24,8 @@ for (const file of files) {
   if (seen.has(key)) problems.push(`${file}: prefijo ${key} repetido`);
   seen.add(key);
   const schema = match[3];
-  const sql = fs.readFileSync(path.join(DIR, file), 'utf8').replace(/--[^\n]*/g, '');
+  // Un id de capacidad ("invoices.register_purchase_quick") dentro de un JSON no es una referencia a otro schema (catálogo 0097).
+  const sql = fs.readFileSync(path.join(DIR, file), 'utf8').replace(/--[^\n]*/g, '').replace(/"(id|capability|capabilityId)"\s*:\s*"[a-z]+\.[a-z0-9_]+"/g, '"$1": ""');
   for (const other of SCHEMAS.filter((s) => s !== schema)) {
     const refs = [...sql.matchAll(new RegExp(`\\b${other}\\.([a-z_][a-z0-9_]*)`, 'g'))].map((m) => `${other}.${m[1]}`);
     for (const ref of new Set(refs)) {
