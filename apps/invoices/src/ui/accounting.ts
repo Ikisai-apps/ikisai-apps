@@ -150,7 +150,8 @@ export const mountAccounting: ViewMount = (ctx) => {
     // --- La carpeta: recorrido de la entrega y el ticket --------------------------------------------------------------
     const apps = appEntriesSummary(appEntries, range);
     const hasApps = apps.income.count + apps.expense.count + apps.process.count > 0;
-    const balance = t || apps.income.count ? Math.round(((t?.quota ?? 0) + apps.income.quota - s.vat) * 100) / 100 : null;
+    // 0247: el IVA de los gastos de apps con factura es soportado
+    const balance = t || apps.income.count || apps.expense.count ? Math.round(((t?.quota ?? 0) + apps.income.quota - s.vat - apps.expense.quota) * 100) / 100 : null;
     replace(folderHost,
       el('div', { class: 'inv-folder-head' }, el('h3', null, `Para la gestoría · ${folder}`), el('span', { class: `chip ${state.seal === 'Desfasada' ? 'alert' : state.seal === 'Entregada' || state.seal === 'Archivada' || state.seal === 'Lista' ? 'ok' : 'warn'}`, id: 'deliverySeal' }, state.seal)),
       renderStages({ label: 'Recorrido de la entrega', stages: [...DELIVERY_STAGES], current: state.stage, bad: state.bad, caption: state.caption, feedbackId: 'invoices.gestoria.recorrido',
@@ -205,7 +206,7 @@ export const mountAccounting: ViewMount = (ctx) => {
           el('dt', null, 'Base'), el('dd', null, eur(apps.income.base)),
           el('dt', null, 'IVA repercutido'), el('dd', null, eur(apps.income.quota)),
           ...apps.income.quota_by_rate.map((g) => [el('dt', null, `IVA ${g.rate} %`), el('dd', null, `${eur(g.base)} → ${eur(g.quota)}`)]).flat(),
-          ...(apps.expense.count ? [el('dt', null, 'Gastos'), el('dd', null, `${eur(apps.expense.total)} (${apps.expense.count})`)] : []),
+          ...(apps.expense.count ? [el('dt', null, 'Gastos con factura'), el('dd', null, `${eur(apps.expense.total)} (${apps.expense.count}) · IVA soportado ${eur(apps.expense.quota)}`)] : []),
           ...(apps.process.count ? [el('dt', null, 'De proceso (no va a la gestoría)'), el('dd', null, `${apps.process.count} · ${eur(apps.process.income - apps.process.expense)}`)] : [])),
           el('p', null, el('button', { 'data-feedback-id': 'invoices.gestoria.apuntes.ver', 'data-feedback-label': 'Ver los ingresos de apps', class: 'linkbtn', type: 'button', onclick: () => navigate('#/apuntes') }, 'Ver los apuntes'))) : null,
       ),

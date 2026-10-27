@@ -1941,10 +1941,7 @@ Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige 
   - el desglose, por producto o, en una liquidación, por pedido;
   - los totales por medio de cobro;
   - la base, el IVA incluido, las devoluciones pendientes y el total.
-- **Sin numeración fiscal:**
-  - mientras la gestoría no diga si es ticket o factura simplificada, se titula «Justificante de ventas», lleva la marca «SIN NUMERACIÓN FISCAL» y dice que no es factura ni ticket;
-  - **el hueco para la serie está preparado:** `DAY_RECEIPT_SERIES` en `app/day-receipt.ts`. Con una serie de simplificadas y un número, el documento pasa a ser «Factura simplificada <número>»;
-  - numerar de verdad (dar y guardar el número en el servidor) irá en una migración propia cuando llegue la respuesta (PETICIONES.md, 27-10).
+- **Es un ticket** (decisión de VG del 27-10): «Ticket de ventas», con la marca «TICKET», sin serie ni numeración de factura. El IVA va incluido y no se trata como el de una factura.
 - El modelo está en `app/day-receipt.ts` y se prueba con `tests/invoices/day-receipt.test.ts`.
 
 ### 17.6 Liquidaciones de cuentas de cliente (Flow)
@@ -1986,6 +1983,21 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
   - **vista «Evento»:** las recibidas asignadas aún sin validar cuentan como gasto de proceso, marcadas.
 - **Para no contar dos veces en «Evento»** (Core, 27-10): cada cobro va en un solo apunte. El cierre de Flow excluye lo ya enviado como fiscal, y Finance no resta nada.
 
+### 17.8 Factura o ticket (decisión de VG del 27-10, migración 0247)
+
+A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se registra como gasto, pero no es deducible: puede haber compras con ticket que nunca tengan factura.
+
+- **Facturas recibidas** (`invoices.invoices.receipt_kind`, `invoice` | `ticket`; por defecto, factura):
+  - un ticket queda fuera del resumen fiscal (`fiscal_summary_for` y `fiscalSummary` del dominio) y de la entrega;
+  - en «Evento» cuenta como gasto de proceso, marcado;
+  - en la ficha, «Justificante: Factura | Ticket». Mientras está pendiente, se corrige; validada como factura, ya no vuelve a ser ticket (`409 NATURE_CHANGE`).
+- **Apuntes de otras apps** (`app_entries.receipt_kind`): con justificante y sin decir cuál, factura (lo de la 0245).
+  - **Gasto con factura:** fiscal. Va a la gestoría y su IVA cuenta como soportado, venga de la app que venga: en Gestoría resta del saldo, y en `resumen_impuestos.csv` va como `iva_soportado_apps_total`.
+  - **Gasto con ticket:** de proceso. Se registra, pero no es deducible. Pedirlo fiscal da `422 INVOICE_REQUIRED`.
+  - **Ingreso con ticket:** fiscal. La venta va al IVA repercutido.
+  - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
+- **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
+
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
 Ficha de capacidad para el catálogo del núcleo:
@@ -2011,6 +2023,7 @@ Ficha de capacidad para el catálogo del núcleo:
   "description": "Hielo para la barra",               // hasta 120 caracteres, el objeto de la compra
   "file_id": "<uuid>",                                // opcional: foto o PDF de Finance ya verificado (core.files)
   "invoice_number": "T-0042",                         // opcional: número de la factura o del ticket (hasta 64)
+  "receipt_kind": "invoice",                          // opcional: invoice (por defecto) o ticket (0247)
   "target": { "app": "booking", "kind": "event", "id": "<uuid>" },   // o { "app": "general", "kind": "unassigned" | "operating_expense" | "investment" }
   "notes": "Pagado con la caja de la barra"           // opcional, hasta 2000
 }
@@ -2029,7 +2042,7 @@ Ficha de capacidad para el catálogo del núcleo:
 }
 ```
 
-**Fiscal o de proceso** (VG, 27-10): con justificante (`file_id` o `invoice_number`), `nature: "fiscal"`; sin él, `"process"`. Una compra de proceso cuenta en la vista «Evento» (marcada), pero no llega a la gestoría, porque una factura no se valida sin su documento original. Al adjuntarle el documento en Finance, sigue el camino de siempre.
+**Fiscal o de proceso** (VG, 27-10): con factura (`file_id` o `invoice_number`, y `receipt_kind` «invoice»), `nature: "fiscal"`; con ticket o sin justificante, `"process"`. Una compra de proceso cuenta en la vista «Evento» (marcada), pero no llega a la gestoría, porque una factura no se valida sin su documento original. Al adjuntarle el documento en Finance, sigue el camino de siempre.
 
 **Qué hace por dentro:** son operaciones de fila normales por el commit de siempre, con `beforeCommit`, riesgo de agentes y `core.commit`.
 - **Proveedor:** el del `id`. Si no hay `id`, el que ya existe con ese NIF o, sin NIF, con ese nombre (sin mayúsculas ni acentos). Si no existe ninguno, crea uno nuevo.

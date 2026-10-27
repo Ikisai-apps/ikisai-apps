@@ -444,6 +444,10 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const invDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.fecha', 'data-feedback-label': 'Fecha de la factura', type: 'date', id: 'invDate', value: invoice.invoice_date ?? '', disabled: !editable, onchange: () => void update({ invoice_date: invDate.value || null }) });
   const kind = select('invKind', [['ordinaria', 'Factura ordinaria'], ['rectificativa', 'Rectificativa (abono o devolución)']], invoice.invoice_kind ?? 'ordinaria',
     { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.tipo', 'data-feedback-label': 'Tipo de factura', disabled: !editable, onchange: () => void update({ invoice_kind: kind.value }) });
+  // 0247 (VG, 27-10): un ticket se registra, pero no es deducible ni va a la gestoría. Validada, ya no vuelve a ser ticket.
+  const receiptKind = select('invReceiptKind', [['invoice', 'Factura'], ['ticket', 'Ticket (no deducible, no va a la gestoría)']], invoice.receipt_kind ?? 'invoice',
+    { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.justificante', 'data-feedback-label': 'Factura o ticket', disabled: !editable || ((invoice.receipt_kind ?? 'invoice') === 'invoice' && (invoice.status === 'validada' || invoice.status === 'archivada')),
+      onchange: () => void update({ receipt_kind: receiptKind.value }) });
   const rectNumber = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.rectifica_numero', 'data-feedback-label': 'Número de la factura que rectifica', type: 'text', id: 'invRectNumber', maxlength: '64',
     value: invoice.rectifies_number ?? '', disabled: !editable, onchange: () => void update({ rectifies_number: rectNumber.value.trim() || null }) });
   const candidates = mirror.invoices.filter((o) => !o.deleted_at && o.status !== 'anulada' && o.id !== invoice.id && o.supplier_id === invoice.supplier_id && (o.invoice_kind ?? 'ordinaria') === 'ordinaria')
@@ -503,6 +507,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     el('div', { class: 'row2' }, withEditor ? null : field('Categoría de gasto', category), field('Deducibilidad', deductibility)),
     el('label', { class: 'check' }, investment, el('span', null, 'Es inversión (no gasto de explotación)')),
     field('Tipo de factura', kind),
+    field('Justificante', receiptKind),
     rectFields,
     field('Se declara en', periodSelect, 'Fecha real aparte: una factura del 2T que no declaraste entonces se declara en el trimestre que elijas.'),
     el('div', { class: 'row2' }, withEditor ? null : field('Fecha de la factura', invDate, invoice.invoice_date ? undefined : 'Sin fecha no se puede validar.'), field('Vencimiento', dueDate)),

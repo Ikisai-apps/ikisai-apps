@@ -91,7 +91,11 @@ test('proveedor que ya existe (por nombre, sin acentos ni mayúsculas) y destino
   // Por id de proveedor
   const byId = await ok({ requestId: 'flow-vasos', supplier: { id: out.supplier.id }, date: '2026-10-30', total: 8, vat_rate: 10, description: 'Vasos', invoice_number: 'T-0042', target: { app: 'general', kind: 'unassigned' } });
   assert.equal(byId.supplier.id, out.supplier.id);
-  assert.equal(byId.nature, 'fiscal', 'con número de ticket: fiscal');
+  assert.equal(byId.nature, 'fiscal', 'con número de factura: fiscal');
+  // Con ticket (0247): se registra como ticket, de proceso, fuera de la gestoría
+  const ticket = await ok({ requestId: 'flow-limones', supplier: { id: out.supplier.id }, date: '2026-10-30', total: 4.4, vat_rate: 10, description: 'Limones', invoice_number: 'T-12', receipt_kind: 'ticket', target: { app: 'general', kind: 'operating_expense' } });
+  assert.equal(ticket.nature, 'process');
+  assert.equal((await rows('invoices.invoices')).find((i) => i.id === ticket.invoice_id)!.receipt_kind, 'ticket');
   assert.equal((await rows('invoices.invoices')).find((i) => i.id === byId.invoice_id)!.invoice_number, 'T-0042');
 });
 
@@ -113,6 +117,7 @@ test('permiso y validación: el lector no registra; cada error dice su campo', a
   await field({ total: -3 }, 'total');
   await field({ total: 10.555 }, 'total');
   await field({ vat_rate: 7 }, 'vat_rate');
+  await field({ receipt_kind: 'albaran' }, 'receipt_kind');
   await field({ description: '' }, 'description');
   await field({ file_id: 'x' }, 'file_id');
   await field({ target: { app: 'tasks', kind: 'project', id: uuid() } }, 'target.app');

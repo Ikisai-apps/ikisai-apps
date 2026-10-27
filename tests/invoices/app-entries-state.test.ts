@@ -74,6 +74,14 @@ test('resumen del periodo: la misma cuenta que invoices.app_entries_summary_for'
   assert.deepEqual(s.expense, { count: 1, base: 50, quota: 5, total: 55 });
 });
 
+test('0247: una factura recibida que es un ticket cuenta en el evento como gasto de proceso', () => {
+  const [r] = eventResults(sources({ invoices: [
+    { id: 'i1', code: 'FVR_2026_070', status: 'validada', object: 'pan', invoice_date: '2026-10-29', supplier_id: 's', deleted_at: null, receipt_kind: 'ticket' },
+    { id: 'i2', code: 'FVR_2026_071', status: 'validada', object: 'hielo', invoice_date: '2026-10-30', supplier_id: 's', deleted_at: null },
+  ] }));
+  assert.deepEqual(r!.moves.filter((m) => m.kind === 'invoice').map((m) => [m.id, m.cents, !!m.process]), [['i1', 20000, true], ['i2', 8000, false]]);
+});
+
 test('0245: lo de proceso cuenta en el evento (marcado) y en las cifras, pero no en el resumen fiscal', () => {
   const proc = entry({ nature: 'process', amount_cents: 55000, net_cents: 50000, tax_cents: 5000, description: 'Cierre del día' });
   const [r] = eventResults(sources({ entries: [entry(), proc] }));

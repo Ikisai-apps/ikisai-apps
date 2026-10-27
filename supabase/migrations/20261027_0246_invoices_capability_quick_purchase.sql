@@ -27,6 +27,7 @@ select core.register_capability($cap${
       "description": { "type": "string", "minLength": 1, "maxLength": 120 },
       "file_id": { "type": ["string", "null"], "format": "uuid" },
       "invoice_number": { "type": ["string", "null"], "maxLength": 64 },
+      "receipt_kind": { "enum": ["invoice", "ticket"] },
       "target": { "oneOf": [
         { "type": "object", "required": ["app", "kind", "id"], "properties": { "app": { "const": "booking" }, "kind": { "const": "event" }, "id": { "type": "string", "format": "uuid" } }, "additionalProperties": false },
         { "type": "object", "required": ["app", "kind"], "properties": { "app": { "const": "general" }, "kind": { "enum": ["unassigned", "operating_expense", "investment"] } }, "additionalProperties": false }
