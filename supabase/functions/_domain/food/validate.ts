@@ -267,13 +267,16 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
   'food.shopping_list_items': {
     required: ['shopping_list_id', 'ingredient_id', 'unit', 'purchase_quantity', 'manual'],
     insertOnly: ['shopping_list_id', 'ingredient_id', 'unit', 'manual'],
-    reserved: ['required_quantity', 'min_quantity', 'restock'],
+    reserved: ['required_quantity', 'min_quantity', 'restock', 'purchase_ref', 'purchase_project_id', 'purchase_requested'],
     fields: {
       shopping_list_id: { kind: 'uuid' },
       ingredient_id: { kind: 'uuid' },
       required_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX },
       min_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX, nullable: true },
       restock: { kind: 'boolean' },
+      purchase_ref: { kind: 'text', max: 150, nullable: true },
+      purchase_project_id: { kind: 'uuid', nullable: true },
+      purchase_requested: { kind: 'number', min: 0, max: QUANTITY_MAX, nullable: true },
       unit: { kind: 'enum', values: UNITS },
       stock_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX, nullable: true },
       purchase_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX },

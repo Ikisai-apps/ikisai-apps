@@ -72,6 +72,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 - **«Rellenar previsión» y aviso «Sin previsión»** (hueco S3 de la QA de Flow; migración 1114 con la previsión de partida de la carta de octubre; API.md §2.11).
 - **Qué falta en la previsión para Flow** (encargo de Core del 28-10: rendimiento y recipientes; migración 1115; API.md §2.13): `missing`, `yield_missing` y `note` en las dos lecturas; avisos en el plan de bandejas y «Falta» en el rendimiento.
+- **Lista de la compra única por evento** (encargo de Core del 28-10; migración 1117; API.md §2.15): suma el menú y las cartas del evento por tienda y pasillo, avisa de lo que no tiene lista, compra desde aquí o pide a Tasks (`tasks.request_purchase`) y marca lo que Tasks ha comprado.
 
 ## Aceptación del usuario (6 de octubre de 2026)
 
