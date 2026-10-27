@@ -342,7 +342,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - En Caja, «Ficha del cliente» al buscar su número: todos sus pedidos con casillas, «Pagar (n)» y «Entregar (n)».
   - En la ficha de un pedido abierto, «Pagar».
   - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
-  - Tras pagar: Imprimir factura y Enviar por correo (aún sin función), Enviar a Finance y Cerrar.
+  - Tras pagar: Enviar a Finance; después, Imprimir factura abre el justificante de Finance (`https://finance.ikisai.com/#/justificante?ref=flow:receipt:<id>`, Finance #817). Enviar por correo aún no tiene función. Cerrar.
 
 ## 31. Recipientes y rendimiento (migración `0918`)
 
@@ -371,3 +371,13 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Aprender**: hace todas las preguntas con su explicación; «Registrar» no escribe nada fuera.
 - **App**: «Recorridos» (`#/recorridos`, editor y owner) con «Aprender» y «Ejecutar». Pregunta a pregunta con `createStepForm`, y al final revisión con Registrar, Corregir y Descartar. Los campos salen del `input` del catálogo.
 - **Central**: `flow.journey_steps_projection` (flow_id, flow_name, version, step, app, feature_id = anclaje o capacidad, capability), con `allow_read('central', …, '{owner}')`.
+
+## 33. Carriles (vistas intercambiables del flujo)
+
+- En los flujos no congelados (la v2 y lo que nazca de ella), las columnas van en un tablero `createLanes` del kit (0.61), con dos vistas que se cambian con un conmutador visible:
+  - Pestañas: una columna a la vista.
+  - Lado a lado: scroll horizontal, y vertical dentro de cada carril. Caben unos dos carriles en un móvil en vertical y de 4 a 6 en un PC.
+- La elección se recuerda en el dispositivo (`storageKey: flow-board`).
+- Cada carril monta la vista de siempre de su columna, una sola vez y al verse por primera vez.
+- El carril principal se refleja en la dirección (`#/p/<flujo>/<columna>`). Tocar otra columna en la barra inferior solo cambia de carril, sin volver a montar.
+- La v1 congelada sigue con una columna por pantalla.

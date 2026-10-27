@@ -226,3 +226,6 @@
 .journey-values{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0 0 12px}
 .journey-values dt{font-weight:600}
 .journey-values dd{margin:0;display:flex;gap:8px;align-items:center;justify-content:space-between}
+
+/* Tablero de carriles (createLanes): la altura disponible bajo la cabecera y sobre la barra */
+.app-main .lanes{--lanes-height:calc(100dvh - 180px)}
