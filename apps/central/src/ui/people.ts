@@ -960,9 +960,8 @@ export function mountPerson(personId: string): ViewMount {
           ? el('span', { class: 'chips', id: 'flowScope', 'data-feedback-ignore': '' }, ...mine.map((pr) => el('span', { class: 'chip', dataset: { project: pr.id } }, pr.name)))
           : el('p', { class: 'note warn', id: 'flowScope' }, 'No ve ningún proyecto de Flow: elige al menos uno.'));
       }
-      // Outsider: el admin del núcleo aún no acepta su rol al cambiar ámbitos (P14); se enseña, sin editar.
-      if (m.role === 'outsider' && flowProjects) body.push(el('p', { class: 'muted small', id: 'flowOutsider' }, 'A un outsider todavía no se le cambian los proyectos desde Central.'));
-      const change = (m.role === 'editor' || m.role === 'reader') && flowProjects ? el('button', { class: 'linkbtn', type: 'button', id: 'editFlowProjects', 'data-feedback-id': 'central.persona.proyectos_flow.cambiar', 'data-feedback-label': 'Cambiar proyectos de Flow',
+      // También el outsider (P14, kit #757): el admin del núcleo cambia sus ámbitos sin tocar su rol, que da el nivel.
+      const change = m.role !== 'owner' && flowProjects ? el('button', { class: 'linkbtn', type: 'button', id: 'editFlowProjects', 'data-feedback-id': 'central.persona.proyectos_flow.cambiar', 'data-feedback-label': 'Cambiar proyectos de Flow',
         onclick: () => openFlowProjects(person, account, m) }, icon('edit', 16), 'Cambiar') as HTMLButtonElement : null;
       if (change) doorBinds.push(bindOnline(change, { client, reason: 'Cambiar los proyectos necesita conexión.' }));
       return block('Proyectos de Flow', 'blockFlow', [el('p', { class: 'muted small' }, `En Flow es ${ROLE_LABELS[m.role as Role]?.toLowerCase() ?? m.role}.`), ...body], change);
