@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
+import { seedBookingEvent, seedBookingGuests } from './booking-event.ts';
 import { buildFlowApp } from './e2e-build.ts';
 import { startFlowServer, type FlowTestServer } from './server.ts';
 
@@ -40,6 +41,12 @@ test.beforeAll(async () => {
   const v2 = crypto.randomUUID();
   await ok([call(PROCEDURES.newVersion, { source_project_id: V1, project_id: v2, name: FLOW_NAME })]);
   const guest = crypto.randomUUID();
+  // FL12 (0935): el flujo, ligado a un evento de Booking con ese huésped.
+  const event = crypto.randomUUID();
+  await seedBookingEvent(api.app.t.db, event, [api.app.users.owner]);
+  await seedBookingGuests(api.app.t.db, event, [guest]);
+  const p = (await rows(TABLES.projects)).find((x) => x.id === v2);
+  await ok([{ op: 'update', table: TABLES.projects, id: v2, expectedRevision: p.revision, fields: { booking_event_id: event } }]);
   await ok([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests: [{ guest_id: guest, display_name: 'Cliente de prueba' }] })]);
   const customer = (await rows(TABLES.customers)).find((c) => c.project_id === v2 && c.number != null);
   number = customer.number;

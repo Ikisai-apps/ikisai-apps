@@ -431,3 +431,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 ## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
 
 - En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).
+
+## 42. Huéspedes solo del evento (FL12, migración `0935`)
+
+- `assign_guest_numbers` y `mark_presence` preguntan a Booking por el núcleo (`core.read` de `booking.flow_guests_of`, con el ámbito de quien actúa) y fallan con `422 GUEST_NOT_IN_EVENT` si algún `guest_id` no es de ese evento. Un flujo sin evento no tiene huéspedes: `409 NO_BOOKING_EVENT`.

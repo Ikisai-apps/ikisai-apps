@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { seedBookingEvent, seedBookingGuests } from './booking-event.ts';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
@@ -117,8 +118,24 @@ test('cuentas · el resumen de la v1 no cambia de forma (sin card si no hay tarj
 const guest = uuid();
 const reservation = uuid();
 
+/** FL12 (0935): el flujo tiene que estar ligado a un evento de Booking con esos huéspedes. */
+async function linkEventWithGuests(project: string, guestIds: string[]): Promise<string> {
+  const event = crypto.randomUUID();
+  await seedBookingEvent(app.t.db, event, [app.users.owner]);
+  await seedBookingGuests(app.t.db, event, guestIds);
+  const p = (await rows(TABLES.projects)).find((x) => x.id === project);
+  await ok([{ op: 'update', table: TABLES.projects, id: project, expectedRevision: p.revision, fields: { booking_event_id: event } }]);
+  return event;
+}
+
+test('huéspedes · FL12: sin evento no hay huéspedes; un guest_id que no es del evento no se numera', async () => {
+  const none = await commit([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests: [{ guest_id: uuid(), display_name: 'X' }] })]);
+  assert.equal(none.status, 409, JSON.stringify(none.data)); assert.equal(none.data.error.code, 'NO_BOOKING_EVENT');
+});
+
 test('huéspedes · dar número es del owner e idempotente; la cuenta se abre por número', async () => {
   const guests = [{ guest_id: guest, display_name: 'Ana P.' }, { guest_id: uuid(), display_name: 'Luis G.' }];
+  await linkEventWithGuests(v2, guests.map((g) => g.guest_id));
   assert.equal((await commit([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests })], app.tokens.editor)).status, 403);
   const first = await ok([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests })]);
   assert.equal(first.created, 2);
@@ -126,6 +143,8 @@ test('huéspedes · dar número es del owner e idempotente; la cuenta se abre po
   assert.equal(again.created, 0); assert.equal(again.updated, 0);
   const c = (await rows(TABLES.customers)).find((x) => x.guest_id === guest);
   assert.equal(c.origin, 'guest'); assert.equal(c.display_name, 'Ana P.');
+  const stranger = await commit([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests: [{ guest_id: uuid(), display_name: 'Ajeno' }] })]);
+  assert.equal(stranger.status, 422, JSON.stringify(stranger.data)); assert.equal(stranger.data.error.code, 'GUEST_NOT_IN_EVENT');
   const opened = await ok([call(PROCEDURES.openAccount, { project_id: v2, customer_number: String(c.number) })]);
   assert.equal(opened.holder, 'Ana P.');
   assert.equal(await code([call(PROCEDURES.openAccount, { project_id: v2, customer_number: String(c.number) })]), 'ACCOUNT_ALREADY_OPEN');
