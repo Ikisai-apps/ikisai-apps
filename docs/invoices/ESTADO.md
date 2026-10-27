@@ -154,6 +154,7 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 - **Ingresos y gastos de otras apps** (encargo de VG del 26-10-2026, plazo jueves 29; API.md §17):
   - PR 1 (`invoices/app-entries`): migración 0244 con `invoices.app_entries`, `invoices.record_app_entry` (idempotente por `source_ref`, `ENTRY_LOCKED` si ya está entregado) y todos los apuntes en el resumen y la entrega (`ingresos_gastos_apps.csv`). Sin «facturado sí/no» (decisión de VG del 26-10). El formato está acordado con Flow.
   - PR 2 (`invoices/app-entries-ui`): «Ingresos y gastos de apps» (`#/apuntes`), la vista «Evento» (`#/evento`) con el resultado sin IVA, la herramienta en Inicio y la tarjeta en Gestoría (API.md §17.4).
+- **QA de la cadena de compra de la barra** (`tests/invoices/cadena-compra.test.ts`): Flow → Tasks → Finance → «Evento» y Gestoría. Queda un hueco: Tasks → Finance al recibir la compra (PETICIONES.md, 27-10).
 - **Justificante imprimible de un cobro** (API.md §17.9): `#/justificante/<id>` o `?ref=<source_ref>`, ticket o factura simplificada según `receipt_kind`, con «Imprimir / Guardar PDF» y «Compartir». Lo enlaza Flow desde «Imprimir factura».
 - **Factura o ticket** (0247, API.md §17.8): a la gestoría y al IVA soportado solo van las facturas; los tickets se registran, pero no son deducibles. El «Justificante del día» es un ticket.
 - **Apuntes fiscales y de proceso** (0245, API.md §17.7): `nature` por apunte. Solo lo fiscal va a la gestoría, al IVA y al justificante; lo de proceso se ve y cuenta en «Evento». Por defecto, fiscal.
