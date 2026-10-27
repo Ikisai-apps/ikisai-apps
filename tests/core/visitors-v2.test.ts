@@ -67,6 +67,15 @@ test('v2 · salir de un móvil revoca solo ese token; el freno corta la sexta pe
   assert.equal(sixth.status, 429); assert.equal(sixth.data.error.code, 'RATE_LIMITED');
 });
 
+test('v2 · freno por IP: la IP del proxy no da de alta más de 30 visitantes por hora', async () => {
+  const ipCall = () => app.call('/api/v1/public/visitor', { token: null, body: {}, origin: GUESTS, headers: { 'X-Ikisai-Client-Ip': '10.0.0.77' } });
+  let last = 0;
+  for (let i = 0; i < 30; i++) last = (await ipCall()).status;
+  assert.equal(last, 200);
+  const over = await ipCall();
+  assert.equal(over.status, 429); assert.equal(over.data.error.code, 'RATE_LIMITED');
+});
+
 test('v2 · traspaso entre dominios: un código de un solo uso da un token propio del mismo visitante en el otro dominio', async () => {
   const hand = await pub('/api/v1/public/visitor/handoff', { body: {}, visitor: token2 });
   assert.equal(hand.status, 200, JSON.stringify(hand.data)); assert.match(hand.data.code, /^[0-9a-f]{64}$/);

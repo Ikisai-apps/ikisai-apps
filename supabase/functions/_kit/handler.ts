@@ -15,7 +15,7 @@ import { createFilesGc } from './files-gc.ts';
 import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
 import { applyPublicOperations, type PublicOperation } from './public-write.ts';
 import { isPublicOrigin, issueVisitor, publicReadWithVisitor, resolveVisitor, type Visitor } from './visitors.ts';
-import { claimVisitor, createVisitorHandoff, forgetVisitorEmail, linkVisitorToGuest, logoutVisitor, redeemVisitorHandoff, requestVisitorEmail, unlinkVisitorFromGuest, verifyVisitorEmail, visitorMe, visitorVisit } from './visitors-v2.ts';
+import { claimVisitor, clientIp, createVisitorHandoff, forgetVisitorEmail, linkVisitorToGuest, logoutVisitor, redeemVisitorHandoff, requestVisitorEmail, unlinkVisitorFromGuest, verifyVisitorEmail, visitorMe, visitorVisit } from './visitors-v2.ts';
 import { createPortalLinks, resolvePortalLink, PORTAL_DOMAINS, portalUserFor } from './portal.ts';
 import { createCapabilities, type CapabilitiesOptions } from './capabilities.ts';
 
@@ -418,7 +418,7 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/public/visitor' && request.method === 'POST') {
         const body = await readJson() as { eventCode?: unknown; event_code?: unknown };
         const code = body.eventCode ?? body.event_code;
-        return json(await issueVisitor(supabase, typeof code === 'string' ? code : null));
+        return json(await issueVisitor(supabase, typeof code === 'string' ? code : null, clientIp(request)));
       }
       // Visitantes v2 (C11 v2, 0106): varios móviles, correo optativo y reclamación de la ficha del huésped.
       if (path === '/api/v1/public/visitor/logout' && request.method === 'POST') return json(await logoutVisitor(supabase, request));

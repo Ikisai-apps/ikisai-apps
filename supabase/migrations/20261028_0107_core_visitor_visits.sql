@@ -23,17 +23,22 @@ begin
     select event_code from core.visitor_visits where visitor_id = p_visitor order by last_at desc limit 50);
 end $$;
 
--- El alta por QR ya cuenta como primera visita.
-create or replace function core.visitor_create(p_token_hash text, p_event_code text default null)
+-- El alta por QR ya cuenta como primera visita. Freno por IP (B8 de la auditoría): 30 altas por hora desde la misma IP del proxy.
+alter table core.visitors add column created_ip text;
+create index visitors_created_ip_idx on core.visitors (created_ip, created_at) where created_ip is not null;
+drop function if exists core.visitor_create(text, text);
+drop function if exists public.core_visitor_create(text, text);
+create or replace function core.visitor_create(p_token_hash text, p_event_code text default null, p_ip text default null)
 returns uuid language plpgsql as $$
 declare v_id uuid;
 begin
   if p_token_hash !~ '^[0-9a-f]{64}$' then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'token hash must be sha-256 hex')); end if;
   if (select count(*) from core.visitors where created_at > now() - interval '1 minute') >= 120
-     or (p_event_code is not null and (select count(*) from core.visitors where event_code = p_event_code and created_at > now() - interval '1 minute') >= 60) then
+     or (p_event_code is not null and (select count(*) from core.visitors where event_code = p_event_code and created_at > now() - interval '1 minute') >= 60)
+     or (nullif(p_ip, '') is not null and (select count(*) from core.visitors where created_ip = p_ip and created_at > now() - interval '1 hour') >= 30) then
     perform core.fail('RATE_LIMITED', 429, jsonb_build_object('reason', 'too many visitors created'));
   end if;
-  insert into core.visitors (event_code) values (nullif(p_event_code, '')) returning id into v_id;
+  insert into core.visitors (event_code, created_ip) values (nullif(p_event_code, ''), nullif(p_ip, '')) returning id into v_id;
   insert into core.visitor_tokens (visitor_id, token_hash) values (v_id, p_token_hash);
   insert into core.visitor_events (visitor_id, event, meta) values (v_id, 'created', jsonb_build_object('eventCode', nullif(p_event_code, '')));
   if nullif(p_event_code, '') is not null then insert into core.visitor_visits (visitor_id, event_code) values (v_id, p_event_code) on conflict do nothing; end if;
@@ -53,3 +58,8 @@ create or replace function public.core_visitor_visit(p_visitor uuid, p_event_cod
 language sql security definer set search_path = '' as $$ select core.visitor_visit(p_visitor, p_event_code) $$;
 revoke all on function core.visitor_visit(uuid, text), public.core_visitor_visit(uuid, text) from public, anon, authenticated;
 grant execute on function public.core_visitor_visit(uuid, text) to service_role;
+
+create or replace function public.core_visitor_create(p_token_hash text, p_event_code text default null, p_ip text default null) returns uuid
+language sql security definer set search_path = '' as $$ select core.visitor_create(p_token_hash, p_event_code, p_ip) $$;
+revoke all on function core.visitor_create(text, text, text), public.core_visitor_create(text, text, text) from public, anon, authenticated;
+grant execute on function public.core_visitor_create(text, text, text) to service_role;
