@@ -18,7 +18,8 @@ export function validateBookingOperations(operations: Operation[], ctx: RequestC
 
 /** Visibilidad (docs/booking/API.md §5.1): los huéspedes solo los ve un propietario o un editor con `scopes.guests`. */
 export function visibleBookingRow(table: string, _row: Record<string, unknown>, ctx: RequestContext): boolean {
-  return table !== TABLES.guests || canSeeGuests(ctx.membership);
+  // el borrador del viajero (1400) son datos de huésped: lo mismo que la ficha
+  return (table !== TABLES.guests && table !== TABLES.stayTravelers) || canSeeGuests(ctx.membership);
 }
 
 /** SES.HOSPEDAJES (API.md §17): transporte y secretos. En la Edge, `Deno.env`; en las pruebas, un SES simulado. */
@@ -261,6 +262,49 @@ function montageRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] {
  * comprueba el resto (0489). Si ya tenía una pendiente de ese tipo, la devuelve. «Lo mío» lo sirve el kit
  * (`GET public/booking_visitor_requests`).
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function uuidOrFail(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !UUID_RE.test(value)) fail(422, 'INVALID_FIELDS', 'Identificador no válido.', { field });
+  return (value as string).toLowerCase();
+}
+
+/** Campos del viajero que el visitante puede dejar en borrador (los de `booking.guests`; 1400). */
+const TRAVELER_TEXT: Record<string, number> = {
+  first_name: 120, last_name_1: 120, last_name_2: 120, document_number: 40, document_support_number: 40, residence_address: 300,
+  residence_postal_code: 20, residence_city: 120, phone: 40, email: 320, kinship: 80,
+};
+/** El borrador: un objeto (una persona) o una lista (una por persona), solo con los campos conocidos y sin vacíos. */
+function travelersOf(input: unknown, persons: number): Array<Record<string, unknown>> {
+  const list = (Array.isArray(input) ? input : input && typeof input === 'object' ? [input] : []).slice(0, persons);
+  return list.map((raw) => {
+    const t = (raw ?? {}) as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [key, max] of Object.entries(TRAVELER_TEXT)) {
+      const value = t[key];
+      if (typeof value === 'string' && value.trim()) out[key] = value.trim().slice(0, max);
+    }
+    if (typeof t.sex === 'string' && ['H', 'M', 'X'].includes(t.sex)) out.sex = t.sex;
+    if (typeof t.document_type === 'string' && ['DNI', 'NIE', 'Pasaporte', 'TIE', 'Otro'].includes(t.document_type)) out.document_type = t.document_type;
+    for (const key of ['nationality', 'residence_country']) {
+      const value = t[key];
+      if (typeof value === 'string' && /^[A-Za-z]{3}$/.test(value)) out[key] = value.toUpperCase();
+    }
+    if (typeof t.birth_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.birth_date)) out.birth_date = t.birth_date;
+    if (typeof t.is_minor === 'boolean') out.is_minor = t.is_minor;
+    return out;
+  }).filter((t) => Object.keys(t).length > 0);
+}
+
+/** Lo que vuelve al visitante de su solicitud de noches (contrato con Guests). */
+function stayOut(item: Record<string, unknown>) {
+  const beds = (item.beds as Array<{ room: string; label: string }> | undefined) ?? [];
+  return {
+    id: item.id, number: item.number, status: item.status, stay_status: item.stay_status, from: item.from, to: item.to, persons: item.persons,
+    mode_id: item.mode_id, total_cents: item.total_cents, pay: item.pay, hold_until: item.hold_until, beds, bed: beds[0] ?? null,
+    paid_at: item.paid_at ?? null, missing: item.missing ?? [],
+  };
+}
+
 export function bookingPublicRoutes(): PublicRoute[] {
   const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
   return [{
@@ -284,9 +328,10 @@ export function bookingPublicRoutes(): PublicRoute[] {
       return item ? { event_code: item.event_code, kind: item.kind, name: item.name, status: item.status, created_at: item.created_at } : null;
     },
   }, {
-    // Alojamiento libre, tarjeta 2 (0499): el visitante pide noches. La base valida fechas, tarifa y plazas, calcula el
-    // total y, si el evento reserva la plaza unas horas, la bloquea en el mismo lote (sin hueco, 409 NO_AVAILABILITY). Una
-    // solicitud nueva del mismo visitante para el mismo evento sustituye a la anterior.
+    // Alojamiento libre «como la barra» (0499 y 1400; contrato con Guests): el visitante pide noches y, si quiere, una cama
+    // y sus datos en borrador. La base valida fechas, modalidad y camas, calcula el total, da el número corto y, si el evento
+    // reserva la plaza unas horas, la retiene en el mismo lote. Sin hueco, 409 NO_AVAILABILITY; con la cama elegida
+    // ocupada, 409 BED_TAKEN. Una solicitud nueva del mismo visitante para el mismo evento sustituye a la anterior.
     method: 'POST', pattern: 'stay',
     handler: async ({ json, visitor, apply, read }) => {
       if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
@@ -299,19 +344,45 @@ export function bookingPublicRoutes(): PublicRoute[] {
       };
       const persons = Number(body.persons ?? 1);
       if (!Number.isInteger(persons) || persons < 1 || persons > 20) fail(422, 'INVALID_FIELDS', 'Personas: de 1 a 20.', { field: 'persons' });
-      const mode = typeof body.mode_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.mode_id) ? body.mode_id : null;
-      if (!mode) fail(422, 'INVALID_FIELDS', 'Elige una modalidad.', { field: 'mode_id' });
-      const name = text(body.name, 120);
+      const mode = body.mode_id === undefined || body.mode_id === null ? null : uuidOrFail(body.mode_id, 'mode_id');
+      const beds = ([] as unknown[]).concat(body.bed_ids ?? [], body.bed_id ?? []).map((b) => uuidOrFail(b, 'bed_id'));
+      if (beds.length > 20) fail(422, 'INVALID_FIELDS', 'Demasiadas camas.', { field: 'bed_ids' });
+      const travelers = travelersOf(body.traveler, persons);
+      const name = text(body.name, 120) ?? text(travelers[0]?.first_name, 120);
       if (!name) fail(422, 'INVALID_FIELDS', 'Falta el nombre.', { field: 'name' });
       const id = crypto.randomUUID();
-      await apply([{ op: 'insert', table: TABLES.visitorRequests, id, fields: {
-        via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200), note: text(body.note, 500),
-        from_date: date(body.from, 'from'), to_date: date(body.to, 'to'), persons, rate_id: mode,
-      } }]);
-      const mine = await read('booking_visitor_requests', { event_code: code }) as { items?: Array<Record<string, unknown>> } | null;
-      const item = (mine?.items ?? []).find((i) => i.id === id) ?? null;
-      return item ? { id: item.id, event_code: item.event_code, status: item.status, from: item.from, to: item.to, persons: item.persons, mode_id: item.mode_id,
-        total_cents: item.total_cents, pay: item.pay, hold_until: item.hold_until } : null;
+      await apply([
+        { op: 'insert', table: TABLES.visitorRequests, id, fields: {
+          via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200), note: text(body.note, 500),
+          from_date: date(body.from, 'from'), to_date: date(body.to, 'to'), persons, rate_id: mode, ...(beds.length ? { hold_bed_ids: [...new Set(beds)] } : {}),
+        } },
+        ...travelers.map((fields, i) => ({ op: 'insert' as const, table: TABLES.stayTravelers, id: crypto.randomUUID(), fields: { ...fields, request_id: id, position: i + 1 } })),
+      ]);
+      const item = await read('booking_visitor_stay', { event_code: code }) as Record<string, unknown> | null;
+      return item && item.id === id ? stayOut(item) : null;
+    },
+  }, {
+    // El borrador de los datos del viajero, después: solo el visitante dueño y mientras la solicitud está pendiente.
+    method: 'POST', pattern: 'stay/traveler',
+    handler: async ({ json, visitor, apply, read }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
+      const drafts = await read('booking_stay_drafts', { request_id: requestId }) as { request: { id: string; persons: number; status: string } | null; items: Array<{ id: string; position: number; revision: number }> } | null;
+      if (!drafts?.request) fail(404, 'NOT_FOUND', 'Esa solicitud no existe.');
+      if (drafts!.request!.status !== 'pendiente') fail(409, 'REQUEST_CLOSED', 'Esa solicitud ya está cerrada: los datos los completa recepción.');
+      const travelers = travelersOf(body.traveler ?? body.fields, drafts!.request!.persons);
+      if (!travelers.length) fail(422, 'INVALID_FIELDS', 'No hay datos que guardar.', { field: 'traveler' });
+      const byPosition = new Map(drafts!.items.map((d) => [d.position, d]));
+      await apply(travelers.map((fields, i) => {
+        const current = byPosition.get(i + 1);
+        return current
+          ? { op: 'update' as const, table: TABLES.stayTravelers, id: current.id, expectedRevision: current.revision, fields }
+          : { op: 'insert' as const, table: TABLES.stayTravelers, id: crypto.randomUUID(), fields: { ...fields, request_id: requestId, position: i + 1 } };
+      }));
+      const mine = await read('booking_visitor_requests', {}) as { items?: Array<Record<string, unknown>> } | null;
+      const item = (mine?.items ?? []).find((x) => x.id === requestId) ?? null;
+      return { missing: item?.missing ?? [] };
     },
   }];
 }

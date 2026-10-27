@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appEntriesSummary, appName, entriesTotals, entryDelivered, eventResults, isFiscal, type EntryLike, type EventSources } from '../../apps/invoices/src/app/app-entries-state.ts';
+import { appEntriesSummary, appName, entriesTotals, entryDelivered, eventResults, isFiscal, knownEventIds, type EntryLike, type EventSources } from '../../apps/invoices/src/app/app-entries-state.ts';
 
 const EVENT = 'ev-oct';
 let n = 0;
@@ -96,3 +96,30 @@ test('0245: lo de proceso cuenta en el evento (marcado) y en las cifras, pero no
   assert.equal(isFiscal({ nature: 'process' }), false);
 });
 
+test('finance-15: alojamiento facturado a las reservas del evento (facturado y cobrado), alojamiento de recepción y barra', () => {
+  const RES = 'res-1'; const OTHER = 'res-otra';
+  const src = sources({
+    entries: [entry(), entry({ source_app: 'booking', source_ref: 'booking:stay:s1', description: 'Alojamiento · 2 noches', net_cents: 6364, amount_cents: 7000, tax_cents: 636 })],
+    issuedAllocations: [
+      { id: 'b1', issued_invoice_id: 'e1', target_app: 'booking', target_kind: 'event', target_id: EVENT, target_label: 'Retiro de octubre · 2026-10-30', allocated_amount: 300, deleted_at: null },
+      { id: 'b2', issued_invoice_id: 'e2', target_app: 'booking', target_kind: 'reservation', target_id: RES, target_label: 'Reserva', allocated_amount: 1000, deleted_at: null },
+      { id: 'b3', issued_invoice_id: 'e3', target_app: 'booking', target_kind: 'reservation', target_id: RES, target_label: 'Reserva', allocated_amount: 400, deleted_at: null },
+      { id: 'b4', issued_invoice_id: 'e4', target_app: 'booking', target_kind: 'reservation', target_id: OTHER, target_label: 'Otra', allocated_amount: 50, deleted_at: null },
+    ],
+    issued: [
+      { id: 'e1', full_number: 'F_12_26', status: 'emitida', description: 'Sala', issue_date: '2026-10-28', deleted_at: null },
+      { id: 'e2', full_number: 'F_13_26', status: 'emitida', description: 'Señal del alojamiento', issue_date: '2026-10-01', deleted_at: null, payment_status: 'cobrada' },
+      { id: 'e3', full_number: 'F_14_26', status: 'emitida', description: 'Saldo del alojamiento', issue_date: '2026-10-29', deleted_at: null, payment_status: 'pendiente' },
+      { id: 'e4', full_number: 'F_15_26', status: 'emitida', description: 'Otro retiro', issue_date: '2026-10-29', deleted_at: null, payment_status: 'cobrada' },
+    ],
+    reservations: [{ reservation_id: RES, event_id: EVENT, status: 'confirmada' }],
+  });
+  const [r] = eventResults(src);
+  assert.deepEqual(r!.balance, { lodgingInvoicedCents: 140000, lodgingCollectedCents: 100000, stayCents: 6364, barCents: 100000 });
+  assert.equal(r!.issuedIncomeCents, 30000 + 140000, 'la reserva de otro evento no suma');
+  assert.ok(r!.moves.some((m) => m.id === 'e2' && m.lodging));
+  // Sin la lectura de Booking, el alojamiento de las reservas no suma (la vista lo avisa)
+  const [plain] = eventResults({ ...src, reservations: undefined });
+  assert.deepEqual([plain!.balance.lodgingInvoicedCents, plain!.issuedIncomeCents], [0, 30000]);
+  assert.deepEqual(knownEventIds(src), [EVENT]);
+});
