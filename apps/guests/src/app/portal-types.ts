@@ -94,9 +94,10 @@ export interface Lodging {
   /** `resource_space_id` y `resource_bed_id` (Booking #680): su pareja en Recursos, para el mapa; null si no la hay. */
   mine: { space_name: string; zone: string | null; bed_label: string | null; status: 'confirmed' | 'requested'; source?: string; resource_space_id?: string | null; resource_bed_id?: string | null } | null;
   preference: { text: string | null; ground_floor: boolean } | null;
-  rooms: Array<{ space_id: string; resource_space_id?: string | null; name: string; zone: string | null; kind?: string; capacity?: number | null; en_suite: boolean; small_en_suite?: boolean;
+  /** `layout` (Booking 1417): la habitación en cuadrantes `{cols, rows}` y cada cama en ellos `{x, y, rot}`; null si no la hay. */
+  rooms: Array<{ space_id: string; resource_space_id?: string | null; layout?: { cols: number; rows: number } | null; name: string; zone: string | null; kind?: string; capacity?: number | null; en_suite: boolean; small_en_suite?: boolean;
     option_key: string | null; open?: boolean; supplement?: boolean; beds_total: number; beds_free: number;
     /** Supletorias activadas por el organizador (BG13): van en `beds` con `kind: 'supletoria'` y se cuentan aparte. */
     extra_total?: number; extra_free?: number;
-    beds: Array<{ bed_id: string; resource_bed_id?: string | null; label: string; kind: string; free: boolean; mine?: boolean }> }>;
+    beds: Array<{ bed_id: string; resource_bed_id?: string | null; layout?: { x: number; y: number; rot: number } | null; label: string; kind: string; free: boolean; mine?: boolean }> }>;
 }

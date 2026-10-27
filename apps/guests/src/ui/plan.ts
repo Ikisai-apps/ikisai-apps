@@ -11,7 +11,7 @@
  * por su `sha256` para verlo sin red y no volver a bajarlo si no cambia. Sin plano y sin texto, nada; sin plano pero con
  * texto, solo la línea del sitio.
  */
-import { createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type DecorItem, type FloorPlan, type SpaceMap, type SpaceMapOptions, type SpaceRow } from '@ikisai/ui-kit';
+import { bedShape, createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type DecorItem, type FloorPlan, type SpaceMap, type SpaceMapOptions, type SpaceRow } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { whyNote } from './common.ts';
 import { t } from '../app/i18n.ts';
@@ -33,6 +33,8 @@ export interface PlanOptions {
   whole?: boolean;
   /** Marca de feedback del desplegable, con id y etiqueta literales en cada pantalla (con `fbMark` de common.ts). */
   mark?: (node: HTMLElement) => void;
+  /** Las habitaciones de Booking con su disposición (`portal_lodging`): de ellas salen las camas del plano (`withBedLayouts`). */
+  rooms?: LayoutRoom[] | null;
 }
 
 /** Línea del sitio sin plano: chincheta y texto. */
@@ -58,6 +60,36 @@ const norm = (s: string | null | undefined) => (s ?? '').trim().toLocaleLowerCas
 export function toRows(spaces: PortalSpace[]): SpaceRow[] {
   return spaces.map((s) => ({ id: s.id, parentId: s.parentId, kind: s.kind, name: s.name, publicName: null, code: null, position: s.position ?? 0,
     active: true, notes: null, attributes: s.bedKind ? { bed_kind: s.bedKind } : {}, planId: s.planId, planShape: s.planShape }));
+}
+
+/** Una habitación de Booking con su disposición (`portal_lodging` y `booking_public_beds`, Booking 1417). */
+export interface LayoutRoom {
+  resource_space_id?: string | null;
+  layout?: { cols: number; rows: number } | null;
+  beds: Array<{ resource_bed_id?: string | null; layout?: { x: number; y: number; rot?: number } | null }>;
+}
+
+/**
+ * Las camas con un solo modelo (VG, por Core y Central, 27-10-2026): la forma de cada cama en el dibujo sale de su
+ * disposición en Booking (`bedShape` del kit sobre la forma de su habitación), nunca de Recursos. Se casa por
+ * `resource_bed_id` y la habitación por `resource_space_id` o, si la lectura no lo da (`booking_public_beds`), por la
+ * habitación de la cama en Recursos. Las camas sin disposición se quedan sin forma: no se pintan y queda la lista. Pura.
+ */
+export function withBedLayouts(data: PortalPlans, rooms: LayoutRoom[]): PortalPlans {
+  const byId = new Map(data.spaces.map((s) => [s.id, s]));
+  const shapes = new Map<string, Pick<PortalSpace, 'planId' | 'planShape'>>();
+  for (const room of rooms) {
+    if (!room.layout) continue;
+    for (const bed of room.beds) {
+      const space = bed.resource_bed_id ? byId.get(bed.resource_bed_id) : undefined;
+      if (!space || !bed.layout) continue;
+      const parent = byId.get(room.resource_space_id ?? space.parentId ?? '');
+      if (!parent?.planId) continue;
+      const shape = bedShape(parent.planShape, room.layout, { x: bed.layout.x, y: bed.layout.y, rot: bed.layout.rot === 90 ? 90 : 0 });
+      if (shape) shapes.set(space.id, { planId: parent.planId, planShape: shape });
+    }
+  }
+  return { ...data, spaces: data.spaces.map((s) => (s.kind === 'cama' ? { ...s, ...(shapes.get(s.id) ?? { planId: null, planShape: null }) } : s)) };
 }
 
 /** El espacio del sitio: por id o, si no, por nombre (habitación y cama dentro), solo si la coincidencia es única. Pura. */
@@ -185,8 +217,10 @@ export function verEnPlano(options: PlanOptions): HTMLElement | null {
   const both = readsOf(reads);
   void Promise.all([both.plans, both.place]).then(([plansLoaded, placeLoaded]) => {
     const p = placeLoaded?.value ?? null;
-    const data = plansLoaded?.value ?? null;
-    const target = data ? findSpace(data.spaces, options.spaceId, options.match ?? (place ? { space: place } : null)) : null;
+    const data = plansLoaded?.value ? (options.rooms ? withBedLayouts(plansLoaded.value, options.rooms) : plansLoaded.value) : null;
+    const found = data ? findSpace(data.spaces, options.spaceId, options.match ?? (place ? { space: place } : null)) : null;
+    // Una cama sin forma (sin disposición en Booking) no se pinta: «Aquí» va en su habitación.
+    const target = found?.kind === 'cama' && !found.planShape ? data!.spaces.find((s) => s.id === found.parentId) ?? found : found;
     const withMap = Boolean(data && data.plans.length && (target || options.whole));
     if (!withMap && !p?.site_plan_file_id) {
       // Sin nada que enseñar, se dice por qué: el plano no se pudo leer, aún no está publicado o tu sitio no está en él.
