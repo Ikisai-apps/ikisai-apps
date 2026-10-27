@@ -14,7 +14,7 @@
  * En la vista previa del organizador, franja de solo lectura.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, createUsage, el, icon, openSheet, replace, toast, type AppMenuSection, type LauncherCatalog } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createUsage, el, icon, openSheet, registerReveal, replace, toast, type AppMenuSection, type LauncherCatalog } from '@ikisai/ui-kit';
 import { cancelled, createGuestApi, type Grant } from '../app/api.ts';
 import { allRetreats, joinDirection } from '../app/direction.ts';
 import { cache } from '../app/cache.ts';
@@ -120,6 +120,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let menuSections: AppMenuSection[] = [];
   const shell = createAppShell(root, {
     appName: 'Guests',
+    // Guiado mínimo (kit 0.68): con `?campo=` señala el campo y con `?paso=` explica y pone «Volver a…». Sin `client`: no
+    // lee nada de Flow.
+    guide: { feedbackId: 'guests.guia' },
     markIcon: 'guest',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
@@ -577,9 +580,19 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const offStatus = client.onStatus(() => { if (!client.session()) ctx.onLogout(); });
   const onHash = () => void route();
   window.addEventListener('hashchange', onHash);
+  // El Guiado enseña lo que esté plegado: si el anclaje está dentro de un desplegable cerrado («Ver en el plano»,
+  // «Completar mis datos»…) o lo es, se abre. Las hojas y las pestañas de Guests tienen su propia ruta (el enlace ya lleva a ella).
+  const offReveal = registerReveal('guests', (id) => {
+    const q = CSS.escape(id);
+    // El selector se arma con los nombres de atributo (el catálogo de ids no lo confunde con un id literal).
+    const node = document.querySelector<HTMLElement>(['data-field-id', 'data-feedback-id'].map((attr) => `[${attr}="${q}"]`).join(', '));
+    for (let d = node?.closest('details') ?? null; d; d = d.parentElement?.closest('details') ?? null) (d as HTMLDetailsElement).open = true;
+  });
+
   void route();
 
   return () => {
+    offReveal();
     headerSize?.disconnect();
     frame?.destroy();
     offStatus();
