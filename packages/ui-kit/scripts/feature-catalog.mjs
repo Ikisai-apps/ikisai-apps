@@ -278,7 +278,7 @@ export function extractFeatures(text, file = '') {
 // Inventario de campos (src/fields/field-mark.ts): `fields` (declarados) y `fieldsUninstrumented` (inputs sin `data-field-id`).
 // Solo metadatos del código: ningún valor ni contenido.
 
-const FIELD_KEYS = ['type', 'entity', 'prop', 'required', 'permission', 'sensitivity', 'since', 'route', 'confirm', 'validator'];
+const FIELD_KEYS = ['type', 'entity', 'prop', 'storage', 'required', 'permission', 'sensitivity', 'since', 'route', 'confirm', 'validator'];
 const CONFIRMS = new Set(['save', 'event', 'none']);
 const SENSITIVITIES = new Set(['public', 'internal', 'personal', 'sensitive']);
 /** Campos del kit y el tipo que ponen solos. Mantener al día con los `fieldAttrs(options.field, { type })` de `src/fields/`. */
@@ -338,6 +338,7 @@ function fieldEntry(app, spec, defaults, source, file, line) {
     type: s.type ?? 'text', entity: s.entity ?? null, prop: s.prop ?? null, required: requiredOf(s.required),
     permission: s.permission ?? null, sensitivity: SENSITIVITIES.has(s.sensitivity) ? s.sensitivity : null, since: s.since ?? null,
     // Guiado: solo si se declaran (así los catálogos de siempre no cambian).
+    ...(s.storage === 'device' || s.storage === 'none' ? { storage: s.storage } : {}),
     ...(CONFIRMS.has(s.confirm) ? { confirm: s.confirm } : {}), ...(typeof s.validator === 'string' && /^[a-z][a-z0-9_]{0,40}$/.test(s.validator) ? { validator: s.validator } : {}),
     source, file, line,
   };
@@ -434,10 +435,11 @@ export function extractFields(text, file = '', app = null) {
     }
   }
 
-  // 4. Sin declarar: `el('input'|'select'|'textarea', …)`, `<input …>` y campos del kit sin `field`.
+  // 4. Sin declarar: `el('input'|'select'|'textarea', …)`, `<input …>` y campos del kit sin `field`. Los controles que no son
+  // datos (buscadores, filtros, selección de filas) se excluyen con `data-field-none` (o `...NOT_A_FIELD` del kit).
   for (const m of text.matchAll(/\bel\(\s*['"](input|select|textarea)['"]/g)) {
     const attrs = splitArgs(text, text.indexOf('(', m.index))?.[1] ?? '';
-    if (/data-field-id|fieldAttrs\s*\(/.test(attrs) || enclosingCall(text, m.index) === 'markField') continue;
+    if (/data-field-id|fieldAttrs\s*\(|data-field-none|\bNOT_A_FIELD\b/.test(attrs) || enclosingCall(text, m.index) === 'markField') continue;
     const a = attrLiterals(attrs);
     const type = fieldTypeOf(m[1], a.type);
     if (m[1] === 'input' && SKIP_INPUT_TYPES.has(type)) continue;
@@ -446,7 +448,7 @@ export function extractFields(text, file = '', app = null) {
   for (const m of text.matchAll(/<(input|select|textarea)\b/g)) {
     const end = text.indexOf('>', m.index);
     const tag = text.slice(m.index, end < 0 ? m.index + 400 : end);
-    if (/data-field-id/.test(tag)) continue;
+    if (/data-field-id|data-field-none/.test(tag)) continue;
     const a = attrLiterals(tag);
     const type = fieldTypeOf(m[1], a.type);
     if (m[1] === 'input' && SKIP_INPUT_TYPES.has(type)) continue;
@@ -479,7 +481,7 @@ export function buildFields(found) {
 export function fieldReport(catalogs) {
   const lines = ['# Campos sin instrumentar', '', 'Sale de `node packages/ui-kit/scripts/feature-catalog.mjs --fields-report`. Solo metadatos del código, ningún valor.', '',
     '| App | Declarados | Sin instrumentar | Sin leer (id no literal) | Sin entidad | Sin sensibilidad |', '|---|---:|---:|---:|---:|---:|'];
-  for (const c of catalogs) lines.push(`| ${c.app} | ${c.fields.length} | ${c.fieldsUninstrumented.length} | ${c.fieldsDynamic?.length ?? 0} | ${c.fields.filter((f) => !f.entity).length} | ${c.fields.filter((f) => !f.sensitivity).length} |`);
+  for (const c of catalogs) lines.push(`| ${c.app} | ${c.fields.length} | ${c.fieldsUninstrumented.length} | ${c.fieldsDynamic?.length ?? 0} | ${c.fields.filter((f) => !f.entity && !f.storage).length} | ${c.fields.filter((f) => !f.sensitivity).length} |`);
   for (const c of catalogs) {
     const unread = c.fieldsDynamic ?? [];
     if (!c.fieldsUninstrumented.length && !unread.length) continue;
