@@ -402,3 +402,12 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Generar tareas de ingredientes**: si la previsión de Food sale a cero (carta sin unidades previstas), no se llama a Flow y se explica qué poner en Food. Lo que sale sin cantidad o con aviso enseña la frase de Food (`note`, Food 1115) en una hoja que se cierra con «Entendido», no en un aviso que se va.
 - **Pantalla que no se actualiza**: si el pull (cada 3 s) lleva más de un minuto sin volver y no hay otro aviso de red, sale «Esta pantalla no se actualiza desde hace N min» con «Actualizar».
 - Prueba: `tests/flow/avisos.spec.ts`.
+
+## 37. Frenos de la carta pública (FL5, migración `0923`)
+
+- En la base de datos, solo en lotes públicos (`flow.guard_public_limits`):
+  - clientes: 60 altas por minuto en un flujo;
+  - pedidos públicos: 5 abiertos (sin cobrar) por cliente (`429 TOO_MANY_OPEN_ORDERS`), 6 por minuto por cliente y 120 por minuto en un flujo (`429 RATE_LIMITED`).
+- En flow-api, por IP (memoria de la instancia, freno de más): 10 altas de cliente cada 10 minutos y 30 pedidos por minuto. La IP la pone el proxy de Pages en `X-Ikisai-Client-Ip` desde `CF-Connecting-IP`.
+- Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
+- Prueba: `tests/flow/public-limits.test.ts`.
