@@ -98,20 +98,22 @@ test('caracterización · Inicio, Eventos y Menús: cada menú cuelga de un even
     await expect(page.locator('#upcoming .eventcard', { hasText: 'Retiro sin menú' })).toContainText('pendiente');
   });
 
-  await test.step('Menús: uno por evento, con su título, fechas, personas y régimen; el más lejano arriba', async () => {
+  await test.step('Menús: uno por evento, con su título, fechas, personas y régimen; por cercanía, el más cercano arriba (decisión de Core del 27-10, F-MEN-1)', async () => {
     await page.goto(`${baseURL}/#/menus`);
     await expect(page.locator('.pagehead p')).toHaveText('El menú de cada evento. Se crean desde Eventos.');
     const rows = page.locator('#menuList li');
     await expect(rows).toHaveCount(2);
-    await expect(rows.nth(0)).toContainText('Retiro Test');
-    await expect(rows.nth(0)).toContainText('22 personas');
-    await expect(rows.nth(0)).toContainText('Pensión completa');
-    await expect(rows.nth(1)).toContainText('Retiro de primavera');
-    await expect(rows.nth(1)).toContainText('Media pensión');
+    await expect(rows.nth(0)).toContainText('Retiro de primavera');
+    await expect(rows.nth(0)).toContainText('Media pensión');
+    await expect(rows.nth(1)).toContainText('Retiro Test');
+    await expect(rows.nth(1)).toContainText('22 personas');
+    await expect(rows.nth(1)).toContainText('Pensión completa');
+    // Ninguno ha pasado: no hay grupo de pasados.
+    await expect(page.locator('#menusPast')).toHaveCount(0);
     await capture(page, '02-menus');
     // No hay botón para crear un menú en Menús: se crean desde la ficha del evento.
     await expect(page.locator('main').getByRole('button', { name: /Crear menú|Nuevo menú/ })).toHaveCount(0);
-    await rows.nth(1).click();
+    await rows.nth(0).click();
     await expect(page).toHaveURL(new RegExp(`#/menus/${earlierMenu}$`));
   });
 
