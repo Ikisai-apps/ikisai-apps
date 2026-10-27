@@ -48,6 +48,7 @@ test('compra al evento con proveedor nuevo, IVA conocido y foto; repetirla devue
   const first = await ok(body, app.tokens.editor);
   assert.equal(first.replayed, false);
   assert.equal(first.supplier.created, true);
+  assert.equal(first.nature, 'fiscal', 'con foto: fiscal');
   assert.deepEqual([first.base, first.vat, first.total], [30, 6.3, 36.3]);
   assert.match(first.code, /^FVR_2026_\d{3}$/);
   assert.match(first.target.label, /Evento de octubre/);
@@ -80,6 +81,7 @@ test('proveedor que ya existe (por nombre, sin acentos ni mayúsculas) y destino
   const out = await ok({ requestId: 'flow-servilletas', supplier: { name: 'HIELOS DEL SUR' }, date: '2026-10-30', total: 12.5,
     description: 'Servilletas', target: { app: 'general', kind: 'operating_expense' } });
   assert.equal(out.supplier.created, false);
+  assert.equal(out.nature, 'process', 'sin foto ni número: de proceso (no llega a la gestoría hasta tener su justificante)');
   assert.equal(out.supplier.name, 'Hielos del Sur');
   assert.deepEqual([out.base, out.vat], [12.5, null]);
   assert.equal(out.target.label, 'Gasto de explotación');
@@ -87,8 +89,10 @@ test('proveedor que ya existe (por nombre, sin acentos ni mayúsculas) y destino
   assert.equal(Number(line.net_amount), 12.5);
   assert.equal((await rows('invoices.tax_lines')).filter((t) => t.invoice_id === out.invoice_id).length, 0);
   // Por id de proveedor
-  const byId = await ok({ requestId: 'flow-vasos', supplier: { id: out.supplier.id }, date: '2026-10-30', total: 8, vat_rate: 10, description: 'Vasos', target: { app: 'general', kind: 'unassigned' } });
+  const byId = await ok({ requestId: 'flow-vasos', supplier: { id: out.supplier.id }, date: '2026-10-30', total: 8, vat_rate: 10, description: 'Vasos', invoice_number: 'T-0042', target: { app: 'general', kind: 'unassigned' } });
   assert.equal(byId.supplier.id, out.supplier.id);
+  assert.equal(byId.nature, 'fiscal', 'con número de ticket: fiscal');
+  assert.equal((await rows('invoices.invoices')).find((i) => i.id === byId.invoice_id)!.invoice_number, 'T-0042');
 });
 
 test('permiso y validación: el lector no registra; cada error dice su campo', async () => {

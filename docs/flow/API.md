@@ -287,3 +287,42 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **target** = mín(`machine_capacity`, firme + ⌊prevista⌋). Devuelve `target`, `firm`, `forecast`, `rate`, `pct`, `units`, `window`, `machine_capacity` y `hysteresis`. Sin conteo manual.
 - **Histéresis** (`hysteresis`, 2 panes): la app (`steadyMetrics`) solo cambia la cifra mostrada si se mueve al menos eso, o si quedaría por debajo de lo firme.
 - El owner cambia los parámetros desde la tarjeta del puesto, como en la 0908.
+
+## 28. Editor de flujos (migración `0914`)
+
+- **Piezas**: cada columna es una pieza conocida, con comportamiento y config base fijos (`flow.piece_behavior`, `flow.piece_config`; en el dominio, `PIECES`). Opciones booleanas por pieza:
+
+  | Pieza | Comportamiento | Opción |
+  |---|---|---|
+  | `order` | `inspect_confirm` | `accounts` |
+  | `prep` | `quick_steps` | — |
+  | `ingredients` | `quick_steps` | `fresh_stock` |
+  | `service` | `inspect_confirm` | `complete_on_delivery` |
+  | `logistics` | `free_task` | — |
+  | `arrival`, `bed`, `signature`, `departure` | `guest_presence` | — |
+
+  Cada pieza va una sola vez por flujo, con un máximo de 12. Las vistas son las de siempre.
+- **`create_flow({project_id, template_key?, columns?: [{key, label?, options?}], name?, booking_event_id?, starts_on?, ends_on?})`**, solo owner. Sustituye al de la 0911.
+  - Se crea desde una plantilla, desde columnas o con ambas; si se dan columnas, mandan ellas.
+  - La versión es la siguiente de esa plantilla en ese evento.
+  - Desde plantilla, se aplican los ajustes de plantilla que le toquen.
+- **`save_template({project_id, template_key, label_base})`**, solo owner: guarda las columnas del flujo como versión nueva de la plantilla. Se siembra la plantilla `barra` v1 con las columnas de «Barra · v1»; `checkin` v1 ya existía. Así la barra y el check-in se reconstruyen desde el editor.
+- **App** (solo owner):
+  - «Nuevo flujo» (`#/nuevo`): se elige una plantilla o en blanco, el nombre y el evento de Booking.
+  - «Columnas del flujo» (`#/p/<id>/editor`): nombres, orden, opciones, añadir o quitar piezas y «Guardar como plantilla». Editar es escritura normal del owner sobre `flow.columns`; la v1 congelada no cambia (`FLOW_FROZEN`).
+  - La portada y los documentos se ponen en el Inicio del flujo, como hasta ahora.
+
+## 29. Visitantes por QR (migración `0915`, FL2)
+
+- **`flow.customers.visitor_id`** (origen `visitor`): un cliente por visitante y flujo. El flujo es el del evento de Booking, por su `event_code`, que atiende la carta pública.
+- **`POST public/visitor_join {event_code}`**: ruta pública del kit, con `X-Visitor` obligatorio.
+  - Crea o encuentra su cliente, por el lote público firmado por el visitante, y devuelve «Mi pedido».
+  - Errores: `401 VISITOR_REQUIRED` y `404 NO_FLOW`.
+- **`flow_visitor_customer({event_code})`**: lectura pública expuesta al navegador, con el `visitor_id` que pone el kit (el del cliente se descarta).
+  - Devuelve `{number, carta_url, account_open, orders: [{number, status, summary, preparing}]}`.
+  - Sin visitante, o si aún no se ha unido: `number` null y sin pedidos.
+- **Enlaces a la carta, de huésped y de visitante**: `<cliente>.<caducidad>.<revisión>.<firma>`.
+  - El canje rota el token y sube la revisión: son de un solo uso (`410 INVITATION_USED`) y caducan a los 10 min.
+  - Los enlaces de huésped de tres partes (0910) valen hasta caducar.
+- **Guarda del lote público**: un cliente nuevo es `web`, o `visitor` con el visitante del propio lote (`core.current_visitor()`). De un cliente de huésped o de visitante solo cambia el token.
+- «Soy el 142» sigue funcionando sin visitante.

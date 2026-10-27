@@ -154,19 +154,23 @@ test('huéspedes · con clave y la barra en la carta: enlace HMAC-SHA256 de 10 m
     { op: 'update', table: TABLES.projects, id: v2, expectedRevision: p2.revision, fields: { serves_public: true } }]);
   const out = await portal(app.users.reader, { reservation_id: reservation, guest_id: guest });
   const invitation = new URL(out.carta_url).searchParams.get('invitacion')!;
-  const [id, exp, sig] = invitation.split('.');
-  assert.equal(sig, createHmac('sha256', KEY).update(`${id}.${exp}`).digest('hex'));
+  // <cliente>.<caducidad>.<revisión>.<firma> desde la 0915 (un solo uso).
+  const parts = invitation.split('.');
+  const [id, exp] = parts; const sig = parts.at(-1)!;
+  assert.equal(sig, createHmac('sha256', KEY).update(parts.slice(0, -1).join('.')).digest('hex'));
   assert.ok(Number(exp) - Date.now() / 1000 > 590 && Number(exp) - Date.now() / 1000 <= 601);
 
   const pub = (path: string, body: unknown, headers: Record<string, string> = {}) => app.call(`/api/v1/public/${path}`, { token: null, body, headers });
-  assert.equal((await pub('invitation', { invitation: `${id}.${exp}.${'0'.repeat(64)}` })).status, 404);
+  assert.equal((await pub('invitation', { invitation: [...parts.slice(0, -1), '0'.repeat(64)].join('.') })).status, 404);
   const redeemed = await pub('invitation', { invitation });
   assert.equal(redeemed.status, 200, JSON.stringify(redeemed.data));
   assert.equal(redeemed.data.number, out.number);
   const mine = await app.call('/api/v1/public/mine', { token: null, headers: { 'X-Flow-Customer': redeemed.data.token } });
   assert.equal(mine.status, 200); assert.equal(mine.data.number, out.number);
-  // Un segundo canje rota otra vez: el primer navegador deja de valer.
-  const second = await pub('invitation', { invitation });
+  // El mismo enlace no vale dos veces; uno nuevo rota otra vez y el primer navegador deja de valer.
+  assert.equal((await pub('invitation', { invitation })).data.error.code, 'INVITATION_USED');
+  const fresh = new URL((await portal(app.users.reader, { reservation_id: reservation, guest_id: guest })).carta_url).searchParams.get('invitacion')!;
+  const second = await pub('invitation', { invitation: fresh });
   assert.equal(second.status, 200);
   assert.equal((await app.call('/api/v1/public/mine', { token: null, headers: { 'X-Flow-Customer': redeemed.data.token } })).status, 401);
   // Caducado (firma buena, fecha pasada).

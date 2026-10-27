@@ -11,10 +11,11 @@
 import { bindOnline, closeSheet, createPrintView, el, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
 import { APP_ENTRIES, ISSUED_ALLOCATIONS, ISSUED_INVOICES, describeError, type LocalAppEntry } from '../app/client.ts';
 import { eur, loadMirror, monthLabel, onAnyTable, shortDate } from '../app/data.ts';
-import { appName, entriesTotals, eventResults, liveEntries, type EventResult, type EventSources } from '../app/app-entries-state.ts';
+import { appName, entriesTotals, eventResults, isFiscal, liveEntries, type EventResult, type EventSources } from '../app/app-entries-state.ts';
 import { rememberTarget, searchTargets, type TargetChoice } from '../app/targets.ts';
 import { dayReceipt, methodLabel } from '../app/day-receipt.ts';
 import { MISSING_ENTITY, fetchEntity, issuerLines } from './issued.ts';
+import { ACCEPT_ATTR, openFile, stageDocument } from '../app/files.ts';
 import type { SyncClient } from '@ikisai/sync-client';
 import type { ViewContext, ViewMount } from './shell.ts';
 
@@ -51,6 +52,9 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
   const canEdit = (client.bootstrap()?.membership.role ?? 'reader') !== 'reader';
   const event = entry.event_id ? data.events.find((r) => r.eventId === entry.event_id) : undefined;
   const notes = el('textarea', { id: 'appEntryNotes', rows: '3', maxlength: '2000' }, entry.notes ?? '') as HTMLTextAreaElement;
+  // Justificante (0245): con él, un apunte de proceso pasa a fiscal y va a la gestoría (el único sentido permitido)
+  const receiptFile = el('input', { type: 'file', id: 'appEntryReceiptFile', accept: ACCEPT_ATTR }) as HTMLInputElement;
+  const receiptNumber = el('input', { type: 'text', id: 'appEntryReceiptNumber', maxlength: '64', value: entry.receipt_number ?? '', placeholder: 'Número de la factura o del ticket' }) as HTMLInputElement;
   const linkButton = canEdit ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.enlazar_evento', 'data-feedback-label': 'Enlazar con un evento', class: 'ghost', type: 'button', id: 'appEntryLinkEvent',
     onclick: () => openEventPicker(ctx, entry, reload) }, icon('calendar', 16), entry.event_id ? 'Cambiar el evento' : 'Enlazar con un evento') : null;
   const linkReason = el('div', { class: 'inv-reason' });
@@ -73,6 +77,11 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
           ? el('a', { href: `#/evento?id=${entry.event_id}`, 'data-feedback-id': 'invoices.apuntes.ficha.ver_evento', 'data-feedback-label': 'Ver el evento',
             onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/evento?id=${entry.event_id}`); } }, eventLabel(event, entry.event_id))
           : 'Sin evento'),
+        el('dt', null, 'Tipo'), el('dd', { id: 'appEntryNature' }, isFiscal(entry) ? 'Fiscal: va a la gestoría y al IVA' : 'De proceso: informativo, no va a la gestoría'),
+        el('dt', null, 'Justificante'), el('dd', { id: 'appEntryReceiptInfo' }, entry.receipt_number ? `Nº ${entry.receipt_number}` : null,
+          entry.receipt_file_id ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.ver_justificante', 'data-feedback-label': 'Ver el justificante', class: 'linkbtn', type: 'button',
+            onclick: () => void openFile(client, entry.receipt_file_id!).catch((e) => toast(describeError(e))) }, ' Ver el documento') : null,
+          !entry.receipt_number && !entry.receipt_file_id ? 'Sin justificante' : null),
         el('dt', null, 'Recibido'), el('dd', null, formatDate(entry.received_at)),
         el('dt', null, 'Referencia'), el('dd', { class: 'hint' }, entry.source_ref)),
       entry.detail?.length
@@ -80,14 +89,24 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
           el('ul', { class: 'plain', id: 'appEntryDetail', 'data-feedback-ignore': '' }, ...entry.detail.map((d) => el('li', null, `${d.code ? `${d.code} · ` : ''}${d.name} × ${d.quantity} · ${fromCents(d.amount_cents)}`))))
         : null,
       canEdit ? el('p', { class: 'btnrow' }, linkButton) : null, linkReason,
+      canEdit ? el('fieldset', { class: 'field', id: 'appEntryReceiptForm' }, el('legend', null, 'Justificante'),
+        isFiscal(entry) ? null : el('p', { class: 'hint' }, 'Con su factura o su ticket pasa a fiscal y va a la gestoría. No se puede deshacer.'),
+        el('label', { class: 'field' }, el('span', null, 'Foto o PDF'), receiptFile),
+        el('label', { class: 'field' }, el('span', null, 'Número'), receiptNumber)) : null,
       canEdit ? el('label', { class: 'field' }, el('span', null, 'Notas'), notes) : el('p', null, entry.notes ?? '')),
     foot: [
-      entry.kind === 'income' ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.justificante', 'data-feedback-label': 'Justificante del día', class: 'ghost', type: 'button', id: 'appEntryReceipt',
+      entry.kind === 'income' && isFiscal(entry) ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.justificante', 'data-feedback-label': 'Justificante del día', class: 'ghost', type: 'button', id: 'appEntryReceipt',
         onclick: () => void openDayReceipt(ctx, entry) }, icon('invoice', 16), 'Justificante') : null,
       canEdit ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.guardar', 'data-feedback-label': 'Guardar', class: 'primary', type: 'button', id: 'appEntrySave', onclick: async () => {
         const fields: Record<string, unknown> = {};
         const n = notes.value.trim() || null;
         if (n !== (entry.notes ?? null)) fields.notes = n;
+        const number = receiptNumber.value.trim() || null;
+        if (number !== (entry.receipt_number ?? null)) fields.receipt_number = number;
+        const file = receiptFile.files?.[0];
+        if (file) {
+          try { fields.receipt_file_id = (await stageDocument(client, file)).marker; } catch (error) { toast(describeError(error)); return; }
+        }
         if (!Object.keys(fields).length) { void closeSheet(); return; }
         if (await save(client, entry, fields, 'Apunte guardado.')) { void closeSheet(); reload(); }
       } }, 'Guardar') : null,
@@ -194,7 +213,7 @@ export const mountAppEntries: ViewMount = (ctx) => {
     const li = listRow({
       id: entry.id,
       title: entry.description,
-      meta: [shortDate(entry.entry_date), appName(entry.source_app), entry.kind === 'income' ? 'Ingreso' : 'Gasto', entry.event_id ? eventLabel(d.events.find((r) => r.eventId === entry.event_id), entry.event_id) : 'Sin evento'],
+      meta: [shortDate(entry.entry_date), appName(entry.source_app), entry.kind === 'income' ? 'Ingreso' : 'Gasto', isFiscal(entry) ? 'Fiscal' : 'De proceso', entry.event_id ? eventLabel(d.events.find((r) => r.eventId === entry.event_id), entry.event_id) : 'Sin evento'],
       chips: [el('span', { class: `chip${entry.kind === 'income' ? ' ok' : ''}` }, `${entry.kind === 'income' ? '+' : '−'}${fromCents(entry.amount_cents)}`)],
       pending: (entry as { _pending?: boolean })._pending === true,
       onClick: () => openEntry(ctx, d, entry, () => void load()),
@@ -208,7 +227,7 @@ export const mountAppEntries: ViewMount = (ctx) => {
   function paint(d: Data): void {
     const t = entriesTotals(d.entries);
     replace(stats, renderStats([
-      { value: fromCents(t.incomeCents), label: 'ingresos', hint: 'con IVA' },
+      { value: fromCents(t.incomeCents), label: 'ingresos', hint: t.process ? `fiscal ${fromCents(t.fiscalIncomeCents)} · con IVA` : 'con IVA' },
       { value: fromCents(t.expenseCents), label: 'gastos', hint: 'con IVA' },
       { value: t.withoutEvent, label: 'sin evento' },
       { value: d.events.length, label: 'eventos', onClick: d.events.length ? () => eventsHost.scrollIntoView({ behavior: 'smooth' }) : undefined, feedbackId: 'invoices.apuntes.cifras.eventos' },
@@ -285,11 +304,11 @@ export const mountEvent: ViewMount = (ctx) => {
         { value: fromCents(r.expenseCents), label: 'gastos', hint: `facturas ${fromCents(r.invoiceExpenseCents)} · apps ${fromCents(r.appExpenseCents)}` },
         { value: fromCents(r.resultCents), label: 'resultado', tone: r.resultCents >= 0 ? 'ok' : 'alert' },
       ], { label: 'Resultado del evento' })),
-      r.pendingInvoices ? el('p', { class: 'hint', id: 'eventPending' }, `${r.pendingInvoices} factura${r.pendingInvoices === 1 ? '' : 's'} asignada${r.pendingInvoices === 1 ? '' : 's'} al evento aún sin validar: no cuenta${r.pendingInvoices === 1 ? '' : 'n'} todavía.`) : null,
+      r.pendingInvoices ? el('p', { class: 'hint', id: 'eventPending' }, `${r.pendingInvoices} factura${r.pendingInvoices === 1 ? '' : 's'} asignada${r.pendingInvoices === 1 ? '' : 's'} al evento aún sin validar: cuenta${r.pendingInvoices === 1 ? '' : 'n'} como gasto de proceso hasta tener su justificante y validarse.`) : null,
       el('h3', { class: 'sectionlabel' }, 'Movimientos'),
       el('ul', { class: 'list', id: 'eventMoves', 'aria-label': 'Movimientos del evento' }, ...r.moves.map((m) => {
         const li = listRow({
-          id: `${m.kind}-${m.id}`, title: m.title, meta: [shortDate(m.date), KIND[m.kind]],
+          id: `${m.kind}-${m.id}`, title: m.title, meta: [shortDate(m.date), KIND[m.kind], m.process ? 'De proceso' : ''].filter(Boolean),
           chips: [el('span', { class: `chip ${m.sign > 0 ? 'ok' : ''}` }, `${m.sign > 0 ? '+' : '−'}${fromCents(m.cents)}`)],
           onClick: () => open(m), label: `Abrir ${m.title}`,
         });

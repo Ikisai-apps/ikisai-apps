@@ -127,6 +127,10 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Grupo de comensal y llegada y salida desde Flow (0485 y 0486):** `meal_group` para las ofertas de Food; `flow_guests_projection`, `guest_arrive` y `guest_leave` para recepción en Flow. API.md §31; pruebas en `meal-groups.test.ts` y `flow-checkin.test.ts`.
 
+- **Cobro del alojamiento a la carta (0487):** precio por noche de la tarifa, cobro en el momento (efectivo, Bizum o tarjeta) o pendiente, envío a Finance (`invoices.record_app_entry`) con la sesión de la persona, y lo cobrado y lo pendiente en la ficha. API.md §32; pruebas en `walkin-finance.test.ts` y `open-days.spec.ts`.
+
+- **Código público del evento (0488):** `public_code` para el QR de visitantes a ven.ikisai.com y la lectura pública `booking_event`; «QR de entrada» en la ficha (imprimir y regenerar). API.md §33; prueba en `public-code.test.ts`. El QR, con `renderQr` del kit 0.60.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).

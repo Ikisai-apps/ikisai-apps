@@ -39,7 +39,7 @@ test.after(async () => { await app.close(); });
 
 test('artículos · el editor crea artículos con conversiones; tipos y unidad base se validan', async () => {
   const kinds = await app.call('/api/v1/resources/snapshot?tables=resources.item_kinds', { token: app.tokens.reader });
-  assert.equal(kinds.data.tables[0].rows.length, 11);
+  assert.equal(kinds.data.tables[0].rows.length, 12); // 11 de la semilla + «epi» (0813)
   const harina = uuid();
   const ok = await commit([
     { op: 'insert', table: 'resources.items', id: harina, fields: { name: 'Harina', kind: 'ingrediente', base_unit: 'g', min_quantity: 5000, default_space_id: despensa } },

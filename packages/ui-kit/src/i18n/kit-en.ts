@@ -116,6 +116,8 @@ export const KIT_EN: Dictionary = {
   'Mis borradores': 'My drafts',
   'Mis reportes': 'My reports',
   'Vista de los carriles': 'Lane view',
+  'Sugerido': 'Suggested',
+  '→ completa «{name}»': '→ complete “{name}”',
   'Pestañas': 'Tabs',
   'Lado a lado': 'Side by side',
   '{title}: sin elementos. Desplegar': '{title}: empty. Expand',

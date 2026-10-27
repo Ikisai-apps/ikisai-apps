@@ -1,6 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderWalkIn, specsFor } from './eventKinds.ts';
+import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderPublicCode, renderWalkIn, specsFor } from './eventKinds.ts';
 import { renderBarService } from './barService.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
@@ -10,7 +10,7 @@ import {
 import { onSesPending, sesCandidates, takeRequestedBlock } from '../app/experience.ts';
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import { createFichaLayout } from './fichaLayout.ts';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, WALKINS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
 import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../app/joins.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
@@ -139,6 +139,8 @@ export function mountReservation(id: string): ViewMount {
 
     // «Servicio de barra» (Flow): una lectura por evento y visita, no una por repintado.
     let barService: { eventId: string; element: HTMLElement } | null = null;
+    // «Ofertas de comida» (Food): igual, una lectura por evento y visita.
+    let offers: { eventId: string; element: HTMLElement } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
       try {
         await client.commit(operations);
@@ -190,6 +192,9 @@ export function mountReservation(id: string): ViewMount {
       const guests = seesGuests ? ofEvent(await client.list(GUESTS)).filter((g) => !g.preview) : [];
       const program = liveEvent ? await loadProgram(client, liveEvent.id) : null;
       const lodging = liveEvent ? await loadLodging(client, liveEvent.id) : null;
+      // Alojamiento a la carta (0487): sus cobros y las tarifas para el precio por noche
+      const walkinCharges = liveEvent && reservation.event_type === 'jornadas_abiertas' && canRead(client, WALKINS) ? ((await client.list(WALKINS)) as Row[]).filter((c) => c.event_id === liveEvent.id && !c.deleted_at) : [];
+      const walkinRates = reservation.event_type === 'jornadas_abiertas' && canRead(client, RATES) ? (await client.list(RATES)) as Row[] : [];
       const staff = liveEvent ? await loadStaff(client, liveEvent.id) : null;
       const editable = writable && !deleted;
       const proposalData = writable ? await loadProposals(client, id) : null;
@@ -407,7 +412,7 @@ export function mountReservation(id: string): ViewMount {
       const family = isFamily(reservation.event_type);
       const openDays = isOpenDays(reservation.event_type);
       const lodgingBlock = !liveEvent || !lodging || family ? null
-        : openDays && seesGuests ? renderWalkIn({ client, reservation, event: liveEvent, data: lodging, guests, editable })
+        : openDays && seesGuests ? renderWalkIn({ client, reservation, event: liveEvent, data: lodging, guests, charges: walkinCharges, rates: walkinRates, editable })
         : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 
       const datesCard = dateOptions ? datesBlock.render({ client, reservation, options: dateOptions, editable, run }) : null;
@@ -500,6 +505,7 @@ export function mountReservation(id: string): ViewMount {
             ['Tipo de menú', `${label(reservation.menu_style_requested)} solicitado · ${label(liveEvent?.menu_style_confirmed)} confirmado`],
             reservation.meal_notes ? ['Notas', reservation.meal_notes] : null),
         (family || openDays) && reservation.meal_notes ? kv(['Notas', reservation.meal_notes]) : null,
+        liveEvent ? (offers && offers.eventId === liveEvent.id ? offers : (offers = { eventId: liveEvent.id, element: renderOffers({ client, eventId: liveEvent.id }) })).element : null,
         liveEvent ? [
           el('div', { class: 'sectionlabel' }, 'Restricciones', el('span', { class: 'count' }, String(restrictions.length))),
           restrictions.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : [
@@ -683,7 +689,8 @@ export function mountReservation(id: string): ViewMount {
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
         layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
           // familiar: sin propuesta, cobro ni coste
-          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard], {
+          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard,
+          liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null], {
           writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
         }, requested),
@@ -694,7 +701,7 @@ export function mountReservation(id: string): ViewMount {
     }
 
     void paint();
-    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAYS, STAFF, NEEDS, PROGRAM].filter((table) => canRead(client, table) || table === RESERVATIONS)
+    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAYS, STAFF, NEEDS, PROGRAM, WALKINS].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));

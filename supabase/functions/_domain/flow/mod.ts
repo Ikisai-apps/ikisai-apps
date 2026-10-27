@@ -53,6 +53,7 @@ export const PROCEDURES = {
   createFlow: 'flow.create_flow',
   markPresence: 'flow.mark_presence',
   deliverAll: 'flow.deliver_all',
+  saveTemplate: 'flow.save_template',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -60,6 +61,22 @@ export const PULL_INTERVAL_MS = 3_000;
 
 export type ColumnKey = 'order' | 'prep' | 'service' | 'logistics';
 export type ColumnBehavior = 'inspect_confirm' | 'quick_steps' | 'free_task' | 'guest_presence';
+/**
+ * Piezas del editor de flujos (0914): cada columna es una pieza conocida (su clave de datos), con su comportamiento fijo y
+ * sus opciones. Debe coincidir con flow.piece_behavior / flow.piece_config.
+ */
+export const PIECES: ReadonlyArray<{ key: string; label: string; behavior: ColumnBehavior; hint: string; options?: ReadonlyArray<{ key: string; label: string }> }> = [
+  { key: 'order', label: 'Pedido y cobro', behavior: 'inspect_confirm', hint: 'Caja: pedidos, cobro y número de cliente', options: [{ key: 'accounts', label: 'Cuentas del cliente' }] },
+  { key: 'prep', label: 'Preparación', behavior: 'quick_steps', hint: 'Cocina: una tarjeta por montadito cobrado' },
+  { key: 'ingredients', label: 'Ingredientes', behavior: 'quick_steps', hint: 'Propuestas de reposición y existencias', options: [{ key: 'fresh_stock', label: 'Punto «fresco» y «Comprar X»' }] },
+  { key: 'service', label: 'Servicio y entrega', behavior: 'inspect_confirm', hint: 'Entrega de lo cobrado', options: [{ key: 'complete_on_delivery', label: '«Dar por hecho y entregar»' }] },
+  { key: 'logistics', label: 'Logística', behavior: 'free_task', hint: 'Tareas libres y puestos' },
+  { key: 'arrival', label: 'Llegada', behavior: 'guest_presence', hint: 'Huéspedes por llegar (Booking)' },
+  { key: 'bed', label: 'Cama', behavior: 'guest_presence', hint: 'Acompañar a su cama' },
+  { key: 'signature', label: 'Firma', behavior: 'guest_presence', hint: 'Parte de viajeros pendiente' },
+  { key: 'departure', label: 'Salida', behavior: 'guest_presence', hint: 'Huéspedes que se van (Booking)' },
+];
+
 /** Paso de una columna `guest_presence` (check-in, 0911). */
 export type PresenceStage = 'arrival' | 'bed' | 'signature' | 'departure';
 export type OrderStatus = 'open' | 'paid' | 'delivered';
@@ -124,6 +141,8 @@ export const FLOW_ERRORS: Record<string, string> = {
   SETTLE_FORBIDDEN: 'Solo quien abrió la cuenta o el encargado puede liquidarla.',
   INVITATION_INVALID: 'Ese enlace no vale. Pide uno nuevo en la app de huéspedes.',
   INVITATION_EXPIRED: 'Ese enlace ha caducado. Ábrelo otra vez desde la app de huéspedes.',
+  INVITATION_USED: 'Ese enlace ya se ha usado. Ábrelo otra vez desde la app de huéspedes.',
+  NO_FLOW: 'Este evento no tiene la barra abierta ahora mismo.',
   NO_BOOKING_EVENT: 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.',
   SES_ALREADY_REGISTERED: 'Su llegada ya está comunicada a SES: no se puede deshacer desde aquí.',
   GUEST_ALREADY_LEFT: 'Este huésped ya se ha ido: deshaz la salida antes.',

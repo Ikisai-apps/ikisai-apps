@@ -513,6 +513,8 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
       if (op === 'insert') return domainFail('APP_ENTRY_PROCEDURE_ONLY', domainMessage('APP_ENTRY_PROCEDURE_ONLY'), { table });
       onlyWritable(TABLES.appEntries, fields);
       uuid(fields, 'event_id', { nullable: true });
+      if (has(fields, 'receipt_file_id') && fields.receipt_file_id !== null && !isBlobMarker(fields.receipt_file_id)) uuid(fields, 'receipt_file_id');
+      text(fields, 'receipt_number', { max: 64 });
       return text(fields, 'notes', { max: 2000 });
     default: return;
   }
@@ -544,6 +546,8 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   APP_ENTRY_PROCEDURE_ONLY: 'Este apunte llega de otra app: aquí solo se cambian su evento y las notas.',
   APP_ENTRY_NOT_DELETABLE: 'Un apunte de otra app no se borra: si no debía contar, se corrige en la app de origen.',
   ENTRY_LOCKED: 'Este apunte ya está en una entrega a la gestoría: no se puede sustituir.',
+  NATURE_CHANGE: 'Un apunte fiscal no vuelve a ser de proceso.',
+  RECEIPT_REQUIRED: 'Un gasto fiscal necesita su factura o su ticket.',
   ENTITY_MISSING: 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.',
   ALLOCATIONS_EXCEED_INVOICE: 'Lo asignado supera la base de la factura.',
   INVOICE_NOT_IMPORTABLE: 'Esta factura ya tiene datos; importa sobre una factura vacía.',
