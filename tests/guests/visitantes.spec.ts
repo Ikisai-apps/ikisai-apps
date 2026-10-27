@@ -197,3 +197,44 @@ test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y dat
   await expect(page.locator('#lodgeTonight')).toContainText('Esta noche duermes en');
   await expect(page.locator('#lodgeTonight')).toContainText('Cama 1');
 });
+
+test('ENTRADA_PUBLICA · «Guarda tu acceso»: correo y código, y se recupera en otro móvil con lo pedido', async ({ page, browser }) => {
+  const r = await api.reservation({ title: 'Jornada para guardar acceso', start: day(7), end: day(7) });
+  await api.booking.t.db.query('update booking.reservations set guests_visible = true where id = $1', [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+  const email = `noa-${Date.now()}@example.invalid`;
+
+  await page.goto(`${baseURL}/e/${code}`);
+  await page.locator('#visitorEnter').click();
+  await page.locator('#visitorLeaveBox > summary').click();
+  await page.locator('#visitorContact').fill('noa@example.invalid');
+  await page.locator('#visitorLeave').click();
+  await expect(page.locator('#visitorSent')).toContainText('Pendiente');
+
+  const box = page.locator('#visitorAccess');
+  await box.locator('summary').click();
+  await box.locator('#accessEmail').fill('no-es-un-correo');
+  await box.locator('#accessSend').click();
+  await expect(box.locator('#accessWhy')).toContainText('Escribe un correo válido.');
+  await box.locator('#accessEmail').fill(email);
+  await box.locator('#accessSend').click();
+  await expect(box.locator('#accessSent')).toContainText(email);
+  await box.locator('#accessCode').fill('000000');
+  await box.locator('#accessVerify').click();
+  await expect(box.locator('#accessWhy')).toContainText('no vale o ha caducado');
+  await box.locator('#accessCode').fill('123456');
+  await box.locator('#accessVerify').click();
+  await expect(box.locator('#accessSaved')).toContainText('Guardado con');
+
+  // Otro móvil: el mismo correo recupera el acceso y lo pedido.
+  const other = await browser.newPage();
+  await other.goto(`${baseURL}/#/v/${code}`);
+  const box2 = other.locator('#visitorAccess');
+  await box2.locator('summary').click();
+  await box2.locator('#accessEmail').fill(email);
+  await box2.locator('#accessSend').click();
+  await box2.locator('#accessCode').fill('123456');
+  await box2.locator('#accessVerify').click();
+  await expect(other.locator('#visitorSent')).toContainText('Pendiente');
+  await other.close();
+});
