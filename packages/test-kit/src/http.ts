@@ -13,6 +13,8 @@ export interface FakeSupabase {
   storage: Map<string, Uint8Array>;
   /** Último enlace de recuperación «enviado» por correo: {email, tokenHash, redirectTo}. */
   lastRecovery(): { email: string; tokenHash: string; redirectTo: string } | null;
+  /** Último código «enviado» por correo (`/auth/v1/otp`, sin crear cuentas): {email, code}; null si no se envió ninguno. */
+  lastEmailCode(): { email: string; code: string } | null;
   anonKey: string;
   serviceKey: string;
   url: string;
@@ -28,6 +30,8 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
   const refreshTokens = new Map<string, string>(); // refresh -> userId
   const magicLinks = new Map<string, string>(); // hashed_token -> userId
   let recovery: { email: string; tokenHash: string; redirectTo: string } | null = null;
+  let emailCode: { email: string; code: string } | null = null;
+  const emailCodes = new Map<string, { code: string; userId: string }>(); // correo -> código vigente
   const storage = new Map<string, Uint8Array>();
   let loseReply = false;
   let storageDown = false;
@@ -93,6 +97,24 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       const userId = [...users.entries()].find(([, email]) => email === String(body.email ?? '').toLowerCase())?.[0];
       if (userId) { const hashed = `rec-${Math.random().toString(36).slice(2)}`; magicLinks.set(hashed, userId); recovery = { email: body.email, tokenHash: hashed, redirectTo: route.searchParams.get('redirect_to') ?? '' }; }
       return Response.json({});
+    }
+    // Código por correo (signInWithOtp): como Auth con create_user=false, un correo sin cuenta responde 422 y no envía nada.
+    if (route.pathname === '/auth/v1/otp' && method === 'POST') {
+      const email = String(body.email ?? '').toLowerCase();
+      const userId = [...users.entries()].find(([, e]) => e === email)?.[0];
+      if (!userId) return Response.json({ code: 'otp_disabled', msg: 'Signups not allowed for otp' }, { status: 422 });
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      emailCodes.set(email, { code, userId }); emailCode = { email, code };
+      return Response.json({});
+    }
+    if (route.pathname === '/auth/v1/verify' && method === 'POST' && body.type === 'email') {
+      const email = String(body.email ?? '').toLowerCase();
+      const pending = emailCodes.get(email);
+      if (!pending || pending.code !== String(body.token ?? '')) return Response.json({ code: 'otp_expired', msg: 'Token has expired or is invalid' }, { status: 403 });
+      emailCodes.delete(email);
+      await t.createUser(pending.userId);
+      const token = mockToken(pending.userId); const refresh = `refresh-${Math.random().toString(36).slice(2)}`; refreshTokens.set(refresh, pending.userId);
+      return Response.json({ access_token: token, refresh_token: refresh, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600 });
     }
     if (route.pathname === '/auth/v1/verify' && method === 'POST') {
       const userId = magicLinks.get(body.token_hash);
@@ -167,6 +189,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
     loseNextCommitReply: () => { loseReply = true; },
     storageOffline: (value) => { storageDown = value; },
     lastRecovery: () => recovery,
+    lastEmailCode: () => emailCode,
     storage, anonKey, serviceKey, url,
   };
 }

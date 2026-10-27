@@ -63,9 +63,17 @@ function show(error?: unknown): void {
     return;
   }
   unmount = renderEntry(root!, { error });
-  // Contacto público y cuenta permanente: si llegan, se vuelve a pintar la entrada con ellos.
-  void Promise.all([loadPublicContact(), createPortalApi(client).permanentAccount()]).then(([, permanentAccount]) => {
-    if (!client.session()) { unmount?.(); unmount = renderEntry(root!, { error, permanentAccount }); }
+  // Código por correo (0106): pedirlo y canjearlo; al entrar, la app como tras el enlace.
+  const emailCode = {
+    send: (email: string) => client.sendEmailCode(email),
+    enter: async (email: string, code: string) => { await client.loginWithEmailCode(email, code); await client.start().catch(() => undefined); show(); },
+  };
+  // Contacto público y `auth/config`: si llegan, se vuelve a pintar la entrada con ellos.
+  void Promise.all([loadPublicContact(), createPortalApi(client).authConfig()]).then(([, config]) => {
+    if (!client.session()) {
+      unmount?.();
+      unmount = renderEntry(root!, { error, permanentAccount: config.permanentAccount, emailCode: config.emailCode ? emailCode : undefined });
+    }
   });
 }
 

@@ -109,10 +109,11 @@
 - 2026-10-27 · **Comida que se ofrece** (VG por Core; Food Fd4, `food.portal_offers`, migración 1111): en Experiencia › Menú, el menú cerrado y las cartas con quién paga, cuándo, dónde y sus líneas con precio; lo interno no se ve (API.md §20). Prueba en `food-offers.test.ts`.
 - 2026-10-27 · **Notas de Central en Fechas, Diseño y Propuesta** (X2, central 0590): `organizers.dates_note`, `organizers.quote_note` y `organizers.proposal_note` se leen de Central como los demás textos comunes, con reserva en los dos idiomas.
 - 2026-10-27 · **Comentarios de tus asistentes** (API.md §15): en el resumen del retiro, lo que cuentan los asistentes desde Guests sobre el retiro, con el tema, quién y cuándo; los tres últimos a la vista y el resto plegados. Lo da el núcleo (`core.feedback_can_see`, destino `organizer`); no hacía falta nada nuevo. Prueba PGlite en `retreat-comments.test.ts`.
+- 2026-10-27 · **Entrar con un código por correo** (decisión de VG; 0106, kit y sync-client 0.8.0): en la entrada, «¿No tienes el enlace a mano?» manda un código al correo del enlace y entra con él. Solo para cuentas de portal con un enlace vigente en Organizers. Pruebas en `tests/core/email-code.test.ts` y `portal.spec.ts`.
 
 ## Pendiente
 
-- Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
+- Fase 1: cerrada. La entrada con código por correo (0106) está construida y espera a que VG dé de alta el correo propio en Auth (`IKISAI_EMAIL_CODE=1` y la plantilla con `{{ .Token }}`); Google, con Workspace. Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: abrir el PDF de una factura registrada. K2 está reabierta con propuesta en PETICIONES: Finance o Core da la función de servicio y Organizers hace la ruta y el botón.
 

@@ -57,6 +57,27 @@ test('organizers · enlace no válido: pantalla clara, sin sesión @smoke', asyn
   await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
 });
 
+test('organizers · sin el enlace, entra con un código por correo (0106) @smoke', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con código', confirm: true });
+  await api.organizerLink([reservation], 'codigo@example.invalid', 'Clara');
+  await page.goto(`${baseURL}/`);
+  const form = page.locator('#emailCode');
+  await expect(form).toContainText('¿No tienes el enlace a mano?');
+  await page.locator('#codeEmail').fill('codigo@example.invalid');
+  await page.locator('#codeSend').click();
+  await expect(page.locator('#codeStep')).toBeVisible();
+  await expect(page.locator('#codeSend')).toHaveText('Enviar otro código');
+  const mail = api.booking.supabase.lastEmailCode();
+  expect(mail?.email).toBe('codigo@example.invalid');
+  // Equivocado: aviso y se sigue en la entrada.
+  await page.locator('#codeInput').fill(mail!.code === '000000' ? '111111' : '000000');
+  await page.locator('#codeEnter').click();
+  await expect(page.locator('.toast.show')).toContainText('El código no es correcto o ha caducado');
+  await page.locator('#codeInput').fill(mail!.code);
+  await page.locator('#codeEnter').click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro con código');
+});
+
 test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, recordatorio y baja', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const reservation = await api.reservation({ title: 'Retiro de primavera', confirm: true });

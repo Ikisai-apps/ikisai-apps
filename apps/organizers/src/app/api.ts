@@ -158,7 +158,8 @@ export interface PortalApi {
   setRestrictions(args: { guest_id: string; items: PortalRestriction[]; declaration?: boolean }): Promise<unknown>;
   issueGuestLink(args: { reservationId: string; guestId: string; name: string; email?: string | null; replace: boolean }): Promise<IssuedLink>;
   revokeLink(linkId: string): Promise<unknown>;
-  permanentAccount(): Promise<boolean>;
+  /** `auth/config`: cuenta permanente (Workspace) y entrada con código por correo (0106). Sin red, las dos apagadas. */
+  authConfig(): Promise<{ permanentAccount: boolean; emailCode: boolean }>;
   /** Fases 4 y 5: lectura y acción de otra app con caché (programa y alojamiento de Booking, menú de Food, lugar de Central). */
   readAny<T>(name: string, args?: Record<string, unknown>): Promise<Loaded<T>>;
   invokeAny<T = unknown>(name: string, args: Record<string, unknown>): Promise<T>;
@@ -226,11 +227,12 @@ export function createPortalApi(client: SyncClient): PortalApi {
       json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name }, label: name, preview: true, replace: true },
     }),
     portalFile: (fileId) => client.api(`/portal-files/${encodeURIComponent(fileId)}`),
-    async permanentAccount() {
+    async authConfig() {
       try {
-        return (await client.api<{ permanentAccount?: boolean }>('/auth/config')).permanentAccount === true;
+        const out = await client.api<{ permanentAccount?: boolean; emailCode?: boolean }>('/auth/config');
+        return { permanentAccount: out.permanentAccount === true, emailCode: out.emailCode === true };
       } catch {
-        return false;
+        return { permanentAccount: false, emailCode: false };
       }
     },
   };

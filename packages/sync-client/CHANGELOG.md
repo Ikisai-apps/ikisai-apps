@@ -1,5 +1,9 @@
 # Cambios de @ikisai/sync-client
 
+## 0.8.0 · 27 de octubre de 2026
+
+- **Entrar con un código por correo** en los portales (migración 0106, decisión de VG): `sendEmailCode(email)` pide el código (`POST auth/email-code`, responde igual exista o no la cuenta) y `loginWithEmailCode(email, code)` lo canjea por una sesión (`POST auth/email-code/verify`), como `loginWithLink`. Lo existente no cambia.
+
 ## 0.7.3 · 20 de octubre de 2026
 
 - **Un adjunto que el servidor no aceptará nunca ya no atasca la cola:** con `UNSUPPORTED_MEDIA` (p. ej. un SVG con contenido activo, #694), `PAYLOAD_TOO_LARGE`, `INVALID_OPERATION`, `FORBIDDEN` o `FILE_MISMATCH` al subir o verificar, su lote pasa a `rejected`, como con `BLOB_MISSING`, y la cola sigue. La red y los 5xx siguen esperando. Aviso de Central (tanda 37).
