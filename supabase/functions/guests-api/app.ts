@@ -5,8 +5,10 @@
  * guest_id}`. Sube la imagen de su firma al bucket privado `guests-documents`; en los portales, el kit solo deja leer y
  * verificar un archivo a quien lo subió (C7, #288). No emite enlaces.
  * Ruta propia: `GET plans`, el mapa de zonas (Recursos §2, `resources.portal_plans`) con cada dibujo firmado aquí.
+ * Ruta pública: `GET public/plans?event_code=…`, el mismo mapa para el visitante que se aloja («Alójate aquí»): nunca sin
+ * `X-Visitor`, solo si el evento ofrece noches y el visitante ha entrado en él (VG, 27-10-2026).
  */
-import { createApp, createStorage, createSupabase, r2ConfigFromEnv, type AppConfig, type AppRoute, type Supabase } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, fail, r2ConfigFromEnv, type AppConfig, type AppRoute, type PublicRoute, type Supabase } from '../_kit/mod.ts';
 
 export const GUESTS_ORIGINS = ['https://guests.ikisai.com', 'https://ikisai-guests.pages.dev'];
 
@@ -26,30 +28,62 @@ interface PortalPlansRow {
   decor?: Array<Record<string, unknown>>;
 }
 
-export function guestsRoutes(supabase: Supabase): AppRoute[] {
+/**
+ * El mapa de zonas listo para la app: cada dibujo, icono e imagen con una URL de 10 minutos y su `sha256` (la app lo guarda
+ * para verlo sin red y no lo vuelve a bajar si no cambia). Nunca bucket ni ruta. La decoración, solo la capa general.
+ */
+function planSigner(supabase: Supabase) {
   // Los dibujos los sube Central al bucket de Recursos: se firman aquí con la clave de servicio (contrato §3.9).
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
+  return async (out: PortalPlansRow) => {
+    const sign = async (file: StoredFile | null) => ({
+      fileId: file?.id ?? null,
+      mime: file?.mime ?? null,
+      sha256: file?.sha256 ?? null,
+      url: file ? await storage.readUrl({ bucket: file.bucket, path: file.path, storage_provider: file.provider ?? null }, 600).catch(() => null) : null,
+    });
+    const plans = await Promise.all((out.plans ?? []).map(async ({ file, ...plan }) => ({ ...plan, ...(await sign(file)) })));
+    const icons = await Promise.all((out.icons ?? []).map(async ({ file, ...icon }) => ({ ...icon, ...(await sign(file)) })));
+    const images = await Promise.all((out.images ?? []).map(async ({ file, ...image }) => ({ ...image, ...(await sign(file)) })));
+    return { plans, spaces: out.spaces ?? [], icons, images, decor: out.decor ?? [] };
+  };
+}
+
+export function guestsRoutes(supabase: Supabase): AppRoute[] {
+  const signed = planSigner(supabase);
   return [
     {
-      // El mapa de zonas (MUELA-024): geometría y nombres públicos, nunca personas. Cada dibujo con una URL de 10 minutos
-      // y su `sha256` (la app lo guarda para verlo sin red y no lo vuelve a bajar si no cambia). Nunca bucket ni ruta.
+      // El mapa de zonas (MUELA-024): geometría y nombres públicos, nunca personas.
       method: 'GET', pattern: 'plans',
-      handler: async ({ ctx }) => {
-        const out = await supabase.rpc<PortalPlansRow>('core_read', { p_app: 'guests', p_actor: ctx.user.id, p_name: PORTAL_PLANS, p_args: {} });
-        const sign = async (file: StoredFile | null) => ({
-          fileId: file?.id ?? null,
-          mime: file?.mime ?? null,
-          sha256: file?.sha256 ?? null,
-          url: file ? await storage.readUrl({ bucket: file.bucket, path: file.path, storage_provider: file.provider ?? null }, 600).catch(() => null) : null,
-        });
-        const plans = await Promise.all((out.plans ?? []).map(async ({ file, ...plan }) => ({ ...plan, ...(await sign(file)) })));
-        // Finca y decoración (0814): los iconos y las imágenes, firmados igual; la decoración, solo la capa general.
-        const icons = await Promise.all((out.icons ?? []).map(async ({ file, ...icon }) => ({ ...icon, ...(await sign(file)) })));
-        const images = await Promise.all((out.images ?? []).map(async ({ file, ...image }) => ({ ...image, ...(await sign(file)) })));
-        return { plans, spaces: out.spaces ?? [], icons, images, decor: out.decor ?? [] };
-      },
+      handler: async ({ ctx }) => signed(await supabase.rpc<PortalPlansRow>('core_read', { p_app: 'guests', p_actor: ctx.user.id, p_name: PORTAL_PLANS, p_args: {} })),
     },
   ];
+}
+
+const EVENT_CODE = /^[A-HJKMNP-Z2-9]{10}$/i;
+
+/**
+ * El mapa para el visitante que se aloja («Alójate aquí», VG 27-10-2026): sin sesión, nunca. Exige su identidad mínima
+ * (`X-Visitor`), que el evento ofrezca noches (`booking_event.lodging`) y que el visitante haya entrado en él (visitas del
+ * núcleo, 0107). La lectura de Recursos solo la puede pedir código de Edge (0817). La ocupación no va aquí: la app cruza
+ * las camas con las libres de `booking_public_beds`.
+ */
+export function guestsPublicRoutes(supabase: Supabase): PublicRoute[] {
+  const signed = planSigner(supabase);
+  return [{
+    method: 'GET', pattern: 'plans',
+    handler: async ({ visitor, url, read }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', 'Entra en el evento desde su QR para ver el plano.');
+      const code = (url.searchParams.get('event_code') ?? '').toUpperCase();
+      if (!EVENT_CODE.test(code)) fail(422, 'INVALID_FIELDS', 'Código de evento inválido.');
+      const event = await read('booking_event', { code }) as { lodging?: boolean } | null;
+      if (!event) fail(404, 'NOT_FOUND', 'No encontramos ese evento.');
+      if (event!.lodging !== true) fail(422, 'NO_LODGING', 'Este evento no ofrece noches.');
+      const me = await supabase.rpc<{ eventCodes?: string[] } | null>('core_visitor_me', { p_visitor: visitor!.id });
+      if (!(me?.eventCodes ?? []).map((c) => c.toUpperCase()).includes(code)) fail(403, 'FORBIDDEN', 'Entra en el evento para ver el plano.');
+      return signed(await read('resources_portal_plans', {}) as PortalPlansRow);
+    },
+  }];
 }
 
 export function createGuestsApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'uploads' | 'portalIssuer' | 'routes'> & Partial<Pick<AppConfig, 'origins'>>) {
@@ -61,5 +95,6 @@ export function createGuestsApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins'
     origins: base.origins ?? GUESTS_ORIGINS,
     uploads: GUESTS_UPLOADS,
     routes: guestsRoutes(supabase),
+    publicRoutes: guestsPublicRoutes(supabase),
   });
 }
