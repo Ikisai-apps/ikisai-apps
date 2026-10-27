@@ -119,8 +119,14 @@ function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
     if (!target.booking_event_id) fail(409, 'NO_BOOKING_EVENT', 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.');
     return target.booking_event_id;
   }
-  const guestsOf = (ctx: RequestContext, event: string, guest?: string) => supabase.rpc<{ rows?: unknown[] } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id,
-    p_name: 'booking.flow_guests_projection', p_args: { where: { event_id: event, ...(guest ? { guest_id: guest } : {}) }, limit: guest ? 1 : 2000 } });
+  // Los huéspedes de un evento: booking.flow_guests_of (Booking 0486), que solo responde si el evento está en el ámbito de la
+  // persona en Flow (core.reader_in_scope → flow.in_scope, 0916). Con `guest`, solo ese huésped.
+  async function guestsOf(ctx: RequestContext, event: string, guest?: string): Promise<{ rows: Array<{ guest_id: string }> }> {
+    const out = await supabase.rpc<{ items?: Array<{ guest_id: string }> } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id,
+      p_name: 'booking.flow_guests_of', p_args: { event_id: event } });
+    const items = out?.items ?? [];
+    return { rows: guest ? items.filter((g) => g.guest_id === guest) : items };
+  }
   return [{
     // Los huéspedes del evento de ESTE flujo (la app no lee la proyección de Booking directamente: así solo ve los de sus flujos).
     method: 'GET', pattern: 'checkin/:project/guests', handler: async ({ ctx, params }) => {
