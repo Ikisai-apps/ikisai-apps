@@ -72,7 +72,8 @@ test('los ítems: de una plantilla viva de su misma área, con zona y tipo conoc
     { answer: 'quantity', expected: { count: 2.5 } },
     { answer: 'check', expected: { count: 1 } },
   ]) {
-    assert.equal(await code([item(uuid(), tpl, TAB, bad)]), '422 INVALID_FIELDS', JSON.stringify(bad));
+    // La forma la descarta ya la Edge (INVALID_REVIEW); el cruce con el tipo, el hook (INVALID_FIELDS).
+    assert.match(await code([item(uuid(), tpl, TAB, bad)]), /^422 INVALID_(FIELDS|REVIEW)$/, JSON.stringify(bad));
   }
   // Lo que la Edge descarta antes: zona o tipo desconocidos, lo esperado mal formado.
   assert.equal(await code([item(uuid(), tpl, TAB, { zone: 'jardin' })]), '422 INVALID_REVIEW');
