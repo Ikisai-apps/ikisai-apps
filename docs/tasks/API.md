@@ -2217,3 +2217,10 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
   - Las hijas se asignan como cualquier tarea.
 - **Quién escribe:** `tasks.reviews` y `tasks.review_items` solo los escriben los procedimientos de la revisión (hook `tasks.validate_reviews`). Desde `commands`, 422 `INVALID_REVIEW`.
 - **Pruebas:** `tests/tasks/reviews-create.test.ts`.
+
+## 48. Limpieza de cama al salir un huésped (Booking #907; tarjeta tasks-24, 27-10-2026)
+
+- **Qué pide Booking:** por `worker/requests/task`, `{source: 'booking', kind: 'booking.bed_cleaning', external_ref: 'LIMP-<asignación>', title, due?, note?, priority?, external_url?}`, sin `project_ref` (si lo trae, 422). La referencia tiene que empezar por `LIMP-`.
+- **Dónde va:** la regla del usuario para `booking.bed_cleaning` («Gestionar entradas», con la sugerencia del proyecto «Limpieza»). Sin regla, a «Por clasificar». El tipo sale como «Limpieza · Salida de huésped». Repetir con la misma referencia devuelve la misma tarea.
+- **Asignarla por oficio** (limpieza) necesita que la regla lleve oficio: va en una migración aparte, detrás de las de la revisión de apertura. Mientras, la regla puede llevar responsable (persona o nivel de casa).
+- **Pruebas:** `tests/tasks/bed-cleaning.test.ts`.
