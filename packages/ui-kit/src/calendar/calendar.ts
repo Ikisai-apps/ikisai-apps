@@ -1,6 +1,7 @@
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { kt, onKitLocaleChange } from '../i18n/i18n.ts';
+import { openSheet, type Sheet } from '../overlay/sheet.ts';
 
 /** Fecha local `YYYY-MM-DD`. */
 export type DayKey = string;
@@ -111,6 +112,12 @@ export interface CalendarOptions {
   agenda?: boolean | { renderDay?: (day: DayKey, events: CalendarEvent[], info: CalendarDayInfo) => Child };
   /** Elegir días. Se entra con `selectRange()`. */
   select?: CalendarSelectOptions;
+  /**
+   * K23 (revisión del 27-10): en pantallas táctiles y sin `agenda`, el día entero es el objetivo. Tocar un día con eventos
+   * abre una hoja con ellos (de ≥ 46 px, con su capa y su texto; tocar uno llama a `onSelectEvent`), y las barras del mes,
+   * de pocos píxeles, dejan de recibir toques. Por defecto sí; `false` lo apaga.
+   */
+  daySheet?: boolean;
   /** Cambiar de mes o semana deslizando a los lados en pantallas táctiles; por defecto sí. */
   swipe?: boolean;
   /** Nombre accesible del calendario. */
@@ -141,6 +148,7 @@ export const CALENDAR_MARKS = {
   day: ['dia', 'Día del calendario'],
   save: ['guardar_dias', 'Guardar días elegidos'],
   cancel: ['cancelar_dias', 'Cancelar la elección de días'],
+  event: ['evento_dia', 'Evento del día (hoja)'],
 } as const;
 
 const DAY = 86_400_000;
@@ -496,7 +504,26 @@ export function createCalendar(options: CalendarOptions): Calendar {
     return cell;
   }
 
+  /** Hoja del día (K23): en táctil y sin `agenda`. */
+  const touchDay = () => !agendaOpt && options.daySheet !== false && typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  let daySheetOpen: Sheet | null = null;
+  element.classList.toggle('cal-touchday', touchDay());
+  function openDaySheet(day: DayKey, dayEvents: CalendarEvent[]): void {
+    const items = dayEvents.map((event) => {
+      const layer = event.layer ? layerOf.get(event.layer) : undefined;
+      const color = event.color ?? layer?.color;
+      const body = [el('span', { class: 'cal-sheet-title' }, event.badge ? `${event.badge} ` : '', event.title), layer ? el('span', { class: 'cal-sheet-meta' }, layer.label) : null];
+      return el('li', null, options.onSelectEvent
+        ? el('button', { type: 'button', class: 'cal-sheet-event', style: color ? `--event-color:${color}` : null, dataset: { eventId: event.id }, ...mark('event'),
+          onclick: () => { daySheetOpen?.close(); options.onSelectEvent?.(event, day); } }, ...body)
+        : el('div', { class: 'cal-sheet-event', style: color ? `--event-color:${color}` : null, dataset: { eventId: event.id } }, ...body));
+    });
+    daySheetOpen = openSheet({ title: capital(longDay(day)), meta: dayEvents.length === 1 ? kt('1 evento') : kt('{n} eventos', { n: String(dayEvents.length) }),
+      body: el('ul', { class: 'cal-sheet-list' }, ...items), onClose: () => { daySheetOpen = null; } });
+  }
+
   function choose(day: DayKey, dayEvents: CalendarEvent[]): void {
+    if (touchDay() && view === 'month' && dayEvents.length && !selecting) openDaySheet(day, dayEvents);
     if (agenda) { picked = day; grid.querySelectorAll<HTMLElement>('.cal-day').forEach((c) => c.classList.toggle('picked', c.dataset.day === day)); paintAgenda(); }
     options.onSelectDay?.(day, dayEvents);
   }

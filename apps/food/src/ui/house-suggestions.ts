@@ -14,7 +14,7 @@
  * Las sugerencias necesitan red: sin conexión, la pantalla lo dice y la entrada de Menús no aparece.
  */
 import {
-  HOUSE_DISH_SUGGESTION_KIND, HOUSE_MENU_ID, houseDishWithRecipe, voteRequest, voteTally,
+  HOUSE_DISH_SUGGESTION_KIND, HOUSE_MENU_ID, houseDishWithRecipe, similarRecipes, voteRequest, voteTally,
   type MenuItem, type MenuService, type Recipe, type ServiceType, type SuggestionVote,
 } from '@ikisai/domain-food';
 import type { RowOperation, Suggestion, SyncClient } from '@ikisai/sync-client';
@@ -90,6 +90,8 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
   let houseItems: Array<Mirror<MenuItem>> = [];
   let selected: string | null = null;
   let showAll = false;
+  /** «Elegir varias» (hallazgo F-SUG-5): las marcadas para decidir de una vez; `null` = decidir de una en una. */
+  let batch: Set<string> | null = null;
   let loaded = false;
   let error: string | null = null;
   /** Decisiones que esperan sus 5 s: se pueden deshacer; al salir de la pantalla se envían. */
@@ -154,8 +156,11 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     }
   }
 
-  /** Aprobar o descartar con «Deshacer»: la sugerencia se aparta al momento y el envío espera 5 s. */
-  function decideLater(s: VoteSuggestion, decision: 'approve' | 'reject'): void {
+  /**
+   * Aparta la sugerencia y deja su envío esperando 5 s. `quiet`: sin el aviso de «Completar la receta» (en un lote saldrían
+   * varios a la vez). Devuelve cómo anularla mientras no se haya enviado.
+   */
+  function schedule(s: VoteSuggestion, decision: 'approve' | 'reject', quiet = false): { undo: () => boolean } {
     const comment = comments.get(s.id)?.trim() || undefined;
     const recipeId = similar.get(s.id);
     const operations = decision === 'approve' && recipeId ? houseDishWithRecipe(s.operations, recipeId) as RowOperation[] | null : null;
@@ -178,7 +183,7 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
         return;
       }
       await load();
-      const created = quick ? known(dish!) : undefined;
+      const created = quick && !quiet ? known(dish!) : undefined;
       if (created) toastWithAction(`«${created.name}» está en el menú de casa como plato rápido: faltan sus alérgenos e ingredientes.`, {
         label: 'Completar la receta', onClick: () => navigate(`#/recetario?receta=${created.id}`),
       }, 10_000);
@@ -186,11 +191,53 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const timer = setTimeout(() => void send(), UNDO_MS);
     waiting.set(s.id, { timer, send });
     if (selected === s.id) selected = null;
+    return { undo: () => { if (sent) return false; clearTimeout(timer); waiting.delete(s.id); return true; } };
+  }
+
+  /** Aprobar o descartar con «Deshacer»: la sugerencia se aparta al momento y el envío espera 5 s. */
+  function decideLater(s: VoteSuggestion, decision: 'approve' | 'reject'): void {
+    const handle = schedule(s, decision);
     paint();
     toastWithAction(`${decision === 'approve' ? 'Aprobado' : 'Descartado'}: ${nameOf(s)}`, {
       label: 'Deshacer',
-      onClick: () => { if (sent) return; clearTimeout(timer); waiting.delete(s.id); selected = s.id; paint(); },
+      onClick: () => { if (handle.undo()) { selected = s.id; paint(); } },
     }, UNDO_MS);
+  }
+
+  /** Varias a la vez (F-SUG-5): cada una con su comentario y su receta parecida, si los tiene; un solo «Deshacer» para todas. */
+  function decideMany(list: VoteSuggestion[], decision: 'approve' | 'reject'): void {
+    if (!list.length) return;
+    const handles = list.map((s) => schedule(s, decision, true));
+    batch = null;
+    paint();
+    const n = list.length;
+    toastWithAction(`${decision === 'approve' ? (n === 1 ? 'Aprobada' : 'Aprobadas') : (n === 1 ? 'Descartada' : 'Descartadas')}: ${n === 1 ? nameOf(list[0]!) : `${n} sugerencias`}`, {
+      label: 'Deshacer',
+      onClick: () => { const back = handles.filter((h) => h.undo()).length; if (back) { selected = list[0]!.id; paint(); } },
+    }, UNDO_MS);
+  }
+
+  /** La lista para marcar varias: nombre, cuándo y «Ya pasó»; las pasadas solo se pueden descartar. */
+  function paintBatch(top: HTMLElement, list: VoteSuggestion[]): void {
+    const marked = list.filter((s) => batch!.has(s.id));
+    const pastOf = (s: VoteSuggestion) => { const a = argsOf(s); return !a || a.date < todayKey(); };
+    const rows = list.map((s) => {
+      const a = argsOf(s);
+      const box = el('input', { type: 'checkbox', id: `batch-${s.id}`, checked: batch!.has(s.id),
+        onchange: () => { if (box.checked) batch!.add(s.id); else batch!.delete(s.id); paintSheet(); } }) as HTMLInputElement;
+      return el('li', null, el('label', { class: 'checkline', for: box.id }, box,
+        el('span', { 'data-feedback-ignore': '' }, nameOf(s), a ? el('span', { class: 'muted' }, ` · ${SERVICE_LABELS[a.service] ?? a.service} del ${longDay(a.date)}`) : null),
+        pastOf(s) ? el('span', { class: 'chip warn fd-past' }, 'Ya pasó') : null));
+    });
+    const approvable = marked.length > 0 && !marked.some(pastOf);
+    replace(sheetHost, top,
+      el('ul', { 'data-feedback-id': 'food.menus.sugeridos.lote.lista', 'data-feedback-label': 'Sugerencias para decidir juntas', class: 'plainlist fd-batch', id: 'suggestionBatch' }, ...rows),
+      el('div', { class: 'btnrow' },
+        el('button', { 'data-feedback-id': 'food.menus.sugeridos.lote.descartar', 'data-feedback-label': 'Descartar las marcadas', class: 'ghost fd-decide-btn', type: 'button', id: 'rejectBatch',
+          disabled: !marked.length, onclick: () => decideMany(marked, 'reject') }, `Descartar (${marked.length})`),
+        el('button', { 'data-feedback-id': 'food.menus.sugeridos.lote.aprobar', 'data-feedback-label': 'Aprobar las marcadas', class: 'primary fd-decide-btn', type: 'button', id: 'approveBatch',
+          disabled: !approvable, onclick: () => decideMany(marked, 'approve') }, `Aprobar (${marked.length})`)),
+      marked.some(pastOf) ? el('p', { class: 'hint' }, 'Entre las marcadas hay alguna de un día que ya pasó: esas solo se pueden descartar.') : null);
   }
 
   function paintDeck(): void {
@@ -238,7 +285,10 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const at = current ? list.indexOf(current) : -1;
     const top = el('div', { class: 'fd-decide-head' },
       el('h3', null, `Para decidir (${list.length})`),
+      reviewer && (list.length > 1 || batch) ? el('button', { 'data-feedback-id': 'food.menus.sugeridos.lote', 'data-feedback-label': 'Elegir varias', class: 'linkbtn', type: 'button', id: 'suggestionsBatchToggle',
+        'aria-pressed': String(!!batch), onclick: () => { batch = batch ? null : new Set(); paintSheet(); } }, batch ? 'Decidir de una en una' : 'Elegir varias') : null,
       reviewer ? el('button', { 'data-feedback-id': 'food.menus.sugeridos.ver_todas', 'data-feedback-label': 'Ver todas en lista', class: 'linkbtn', type: 'button', id: 'suggestionsAll', onclick: () => { showAll = true; paintAll(); } }, 'Ver todas en lista') : null);
+    if (batch && list.length) { paintBatch(top, list); return; }
     if (!current) {
       replace(sheetHost, top, el('p', { class: 'muted', id: 'suggestionsEmpty' }, loaded ? 'No hay platos sugeridos pendientes.' : 'Cargando…'));
       return;
@@ -251,9 +301,14 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     comment.value = comments.get(current.id) ?? '';
     comment.addEventListener('input', () => comments.set(current.id, comment.value));
     const options = recipes.filter((r) => r.status !== 'archivada').sort((x, y) => x.name.localeCompare(y.name, 'es'));
+    // Arriba, las más parecidas por el nombre (hallazgo F-SUG-3); debajo, el resto por orden alfabético, sin repetirlas.
+    const close = a ? similarRecipes(a.name, a.service, options.filter((r) => r.id !== known(a)?.id)) : [];
+    const option = (r: (typeof options)[number]) => el('option', { value: r.id, selected: similar.get(current.id) === r.id }, r.name);
     const pick = el('select', { 'data-feedback-id': 'food.menus.sugeridos.receta_parecida', 'data-feedback-label': 'Usar receta parecida', id: 'similarRecipe' },
       el('option', { value: '' }, a && known(a) ? `La del Recetario: ${known(a)!.name}` : 'Nueva: plato rápido por completar'),
-      ...options.map((r) => el('option', { value: r.id, selected: similar.get(current.id) === r.id }, r.name))) as HTMLSelectElement;
+      ...(close.length
+        ? [el('optgroup', { label: 'Más parecidas' }, ...close.map(option)), el('optgroup', { label: 'Todas' }, ...options.filter((r) => !close.includes(r)).map(option))]
+        : options.map(option))) as HTMLSelectElement;
     pick.addEventListener('change', () => { if (pick.value) similar.set(current.id, pick.value); else similar.delete(current.id); });
     const voteButton = (vote: 'keep' | 'drop') => el('button', { type: 'button', class: 'ghost fd-myvote', 'aria-pressed': String(mine === vote),
       onclick: () => void sendVote(current, mine === vote ? null : vote) }, voteWord(vote));

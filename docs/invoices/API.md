@@ -2153,3 +2153,20 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
 - **Secretos:** la app los lee de su entorno y se los pasa (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Sin ellos, la app no conecta la pasarela.
 - Pruebas: `tests/invoices/payments-stripe.test.ts`.
 
+### 19.2 Enlaces de pago de las emitidas (migración 0255, PR 2)
+
+- **Qué se cobra:** cada emitida no borrada, ni borrador ni anulada ni rectificada, aún `pendiente` y con total > 0. El importe es el **total de la factura**; lo pone el servidor.
+- **Tablas internas,** sin roles: `invoices.payment_links` (como mucho uno `abierto` por factura) y `invoices.payment_events` (avisos, PR 3). Las escriben solo acciones de sistema:
+  - `payment_link_prepare`: la factura, el enlace abierto vigente (si quedan más de 10 min) y `attempt`. Los vencidos pasan a `caducado`.
+  - `payment_link_save`: comprueba el importe (`PAYMENT_AMOUNT_MISMATCH`).
+  - `payment_link_close`.
+- **Cancelación:** al anular, rectificar, borrar o marcar «cobrada» a mano, los abiertos pasan a `cancelado` (trigger). La sesión de Stripe la caduca la conciliación (PR 3).
+- **`POST issued/:id/payment-link`** (editor u owner): devuelve `{id, url, provider, provider_ref, amount, expires_at, reused}`. Reutiliza el abierto o crea una sesión de Checkout de 24 h. La clave de idempotencia es por factura, importe e intento.
+- **Errores:**
+  - `409 PAYMENT_NOT_ALLOWED`: la factura no se puede cobrar;
+  - `503 PAYMENTS_OFF`: no hay `STRIPE_SECRET_KEY`;
+  - `502/503 PAYMENT_GATEWAY`: falla la pasarela.
+- **Lectura `invoices.payment_links_of {issued_invoice_id}`** (lector, editor y owner): los enlaces con su estado. La URL solo sale si está abierto.
+- **F5 de Organizers:** `portal_reservation_money` añade `payment_link: {url, provider, expires_at} | null` a cada factura: el abierto y vigente. **Leer no crea nada.** La acción del portal que lo crea al pulsar «Pagar ahora» va en la PR 3.
+- Pruebas: `tests/invoices/payment-links.test.ts`, con el Stripe falso.
+

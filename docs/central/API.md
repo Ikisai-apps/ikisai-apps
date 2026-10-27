@@ -499,6 +499,29 @@ La ficha no es una cuenta: se apoya en la cuenta de agente del núcleo (`core.pr
 
 Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). El agente no cambia su ficha: lo que proponga irá por `core.proposals` cuando la pantalla lo admita.
 
+### 2.19 Revisión semanal de Dirección (`central.weekly_reviews`, `central.weekly_review_items`; `1521`, C01; decisiones de VG del 27-10)
+
+Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y los editores con el ámbito `direccion` (`core.memberships.scopes.direccion = true`, que se da en Accesos); el permiso se mira con el rol y los ámbitos con los que empezó el lote. Al cerrarla se guarda la foto de los indicadores en crítico o en atención; una revisión cerrada ya no cambia de foto (`REVIEW_CLOSED`). Los OKR, después.
+
+| `weekly_reviews` | Tipo | Notas |
+|---|---|---|
+| `week` | `text not null` | `AAAA-Wnn`. Una viva por semana. |
+| `held_on` | `date` | Día en que se cerró. |
+| `attendee_ids` | `uuid[]` | Fichas de personas que estuvieron (hasta 40). |
+| `summary` | `text` | Hasta 1000. |
+| `status` | `text` | `abierta` o `cerrada`. |
+
+| `weekly_review_items` | Tipo | Notas |
+|---|---|---|
+| `review_id` | `uuid not null` | Su revisión. Inmutable. |
+| `app`, `kpi`, `label`, `period` | `text not null` | Lo que enseñaba el panel. Uno por indicador y periodo. |
+| `value`, `target` | `numeric` | Valor y objetivo de ese momento. |
+| `unit` | `text not null` | La del indicador. |
+| `state` | `text not null` | `critico` o `atencion`. |
+| `note` | `text` | Hasta 300. |
+
+Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque puede llevar importes. La foto también se borra del dispositivo al cerrar sesión. Pantalla: `#/direccion/semana`, desde el panel de Dirección.
+
 ## 3. Procedimientos y lecturas
 
 ### 3.1 Procedimientos (`call`)
