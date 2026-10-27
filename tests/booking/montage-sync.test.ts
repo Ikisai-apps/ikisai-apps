@@ -38,7 +38,9 @@ test('montaje · sync: sin proyecto, 409; sin cambios, nada; con cambios, la lis
   assert.equal((await sync()).data?.error?.code, 'PROJECT_NOT_READY', 'sin proyecto del retiro en Tasks');
   await db.query(`insert into booking.tasks_projects (reservation_id, project_id, synced_at) values ($1, 'proyecto-1', now())
     on conflict (reservation_id) do update set project_id = 'proyecto-1'`, [res]);
-  assert.equal((await sync()).data?.error?.code, 'NEEDS_ACCESS', 'sin Recursos no se lee la decoración');
+  await db.query(`delete from core.memberships where app = 'resources' and user_id = $1`, [app.users.owner]);
+  const noAccess = await sync();
+  assert.equal(noAccess.data?.error?.code, 'NEEDS_ACCESS', `sin Recursos no se lee la decoración: ${JSON.stringify(noAccess.data)}`);
   await db.query(`insert into core.memberships (app, user_id, role) values ('resources', $1, 'reader')`, [app.users.owner]);
   assert.deepEqual((await sync()).data, { status: 'nothing', children: 0 }, 'sin cambios y sin nada mandado no se crea la madre');
   assert.equal(posts.length, 0);

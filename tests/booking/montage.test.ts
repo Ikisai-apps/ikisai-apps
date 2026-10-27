@@ -56,7 +56,7 @@ test('montaje · cada cambio del plano a set_event_decor: poner, mover o quitar 
   assert.ok(!('id' in montage.eventDecorArgs(withRev, EV, { type: 'add', item: item('deco-x') })!.put![0]!), 'un id que no es uuid lo pone Recursos');
   assert.deepEqual(montage.eventDecorArgs(withRev, EV, { type: 'move', item: item('g-mesa', { iconId: 'mesa' }) })!.put![0],
     { plan_id: 'plan-a', cell_x: 7, cell_y: 1, scale: 1, size: 1, rotation: 90, icon_id: 'mesa', op: 'replace', replaces_item_id: 'g-mesa' });
-  assert.deepEqual(montage.eventDecorArgs(withRev, EV, { type: 'remove', item: item('g-planta', { iconId: 'planta' }) })!.put![0]!.op, 'remove');
+  assert.equal((montage.eventDecorArgs(withRev, EV, { type: 'remove', item: item('g-planta', { iconId: 'planta' }) })!.put![0] as Record<string, unknown>).op, 'remove');
   assert.deepEqual(montage.eventDecorArgs(withRev, EV, { type: 'remove', item: item('e-atril') }), { event_id: EV, delete: ['e-atril'] });
   assert.deepEqual(montage.eventDecorArgs(withRev, EV, { type: 'rotate', item: item('e-cambia-planta', { iconId: 'planta-grande' }) })!.put![0],
     { id: 'e-cambia-planta', expectedRevision: 3, plan_id: 'plan-a', cell_x: 7, cell_y: 1, scale: 1, size: 1, rotation: 90, icon_id: 'planta-grande', op: 'replace', replaces_item_id: 'g-planta' });
