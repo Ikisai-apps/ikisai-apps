@@ -2162,3 +2162,20 @@ Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): c
 | Sale (libera la cama y pide la limpieza) | `#/recepcion` | `booking.recepcion.sale` | `event` |
 
 Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` al guardar.
+
+## 47. Factura a petición de las noches (migración 1424; VG, vg-38; contrato con Finance)
+
+Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no guarda los datos fiscales: comprueba su forma (`checkInvoiceCustomer`) y los reenvía a Finance (`POST invoices-api/api/v1/worker/entry-invoice`, con `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: booking`). Va un cobro por petición (`source: booking:stay:<cobro>`), y el `request_id` sale del cobro y del destinatario, así que repetir lo mismo no pide dos veces.
+- **Destinatario (`customer`):**
+  - `name` y `tax_id` obligatorios;
+  - `id_type`: `NIF` por defecto, o `02` a `06`;
+  - `country` (ISO-2, `ES` por defecto) y `kind`: `particular` o `empresa`;
+  - `address {line, postal_code, city, province?, country}`, obligatoria para `empresa`.
+  - El NIF con dígito de control lo valida Finance (422 `TAX_ID_INVALID`).
+- **`POST public/stay/invoice {stay_id, customer}`** (X-Visitor):
+  - devuelve `{invoices: [{charge_id, status, full_number, pdf_url}]}` con los cobros cobrados y no devueltos del todo;
+  - un cobro que aún no está en Finance sale con `status: 'sin_apunte'`;
+  - sin nada cobrado, 409 `NOTHING_TO_INVOICE`.
+- **Recepción:** `POST walkins/:id/invoice {customer}` y `GET walkins/:id/invoice` (cómo va), para editor y owner.
+- **Apagado hasta que Finance tenga la ruta:** si Finance responde 404 sin código, 503 `INVOICES_OFF`.
+- `booking.stay_charges_of` (sistema) da los cobros de la solicitud aceptada, solo al visitante dueño.

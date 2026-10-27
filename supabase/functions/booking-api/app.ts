@@ -1,6 +1,6 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, sha256Hex, type AppConfig, type AppRoute, type PublicRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
-import { bookingAgentRisk, canSeeGuests, montage, TABLES, validateOperations, walkinFinanceEntry, type WalkinForSend } from '../_domain/booking/mod.ts';
+import { bookingAgentRisk, canSeeGuests, checkInvoiceCustomer, montage, TABLES, validateOperations, walkinFinanceEntry, type InvoiceCustomer, type WalkinForSend } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
@@ -242,9 +242,57 @@ const RETREAT_LOGO_BUCKET = 'organizers-materials';
  * `X-Ikisai-Worker-Key` (la `IKISAI_WORKER_KEY`) y `X-Ikisai-Caller: booking`; un navegador no tiene la clave, así que
  * nadie más puede apuntar con `source_app: 'booking'`.
  */
+/** Cómo llega Booking a Finance (`invoices-api`) como servidor: la clave de worker y quién llama. */
+export interface FinanceLink { base: string; appsFetch: typeof fetch; workerKey: string | undefined }
+
+/**
+ * Factura a petición de un cobro (vg-38; contrato con Finance): `worker/entry-invoice` de Finance, uno por cobro
+ * (`booking:stay:<cobro>`). Los datos fiscales no se guardan en Booking. `request_id` sale del cobro y del destinatario: repetir
+ * lo mismo no pide dos veces. Sin la ruta en Finance (404 sin código), `INVOICES_OFF`.
+ */
+async function requestEntryInvoice(link: FinanceLink, chargeId: string, customer: InvoiceCustomer | null) {
+  const url = `${link.base}/functions/v1/invoices-api/api/v1/worker/entry-invoice`;
+  const source = `booking:stay:${chargeId}`;
+  const headers = { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': link.workerKey ?? '', 'X-Ikisai-Caller': 'booking' };
+  let res: Response;
+  try {
+    if (!customer) {
+      res = await link.appsFetch(`${url}?source=${encodeURIComponent(source)}`, { method: 'GET', headers, signal: AbortSignal.timeout(15_000) });
+    } else {
+      const hex = (await sha256Hex(`booking-invoice:${chargeId}:${JSON.stringify(customer)}`)).slice(0, 32);
+      const requestId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+      res = await link.appsFetch(url, { method: 'POST', headers, body: JSON.stringify({ request_id: requestId, source, customer }), signal: AbortSignal.timeout(15_000) });
+    }
+  } catch {
+    fail(503, 'APP_UNAVAILABLE', 'Finance no responde ahora mismo. Inténtalo más tarde.');
+  }
+  const body = await res!.json().catch(() => ({})) as any;
+  const code = body?.error?.code as string | undefined;
+  if (res!.ok) return { charge_id: chargeId, status: body.status ?? null, full_number: body.full_number ?? null, pdf_url: body.pdf_url ?? null };
+  if (code === 'ALREADY_REQUESTED') return { charge_id: chargeId, status: body.error?.details?.status ?? 'pendiente', full_number: body.error?.details?.full_number ?? null, pdf_url: body.error?.details?.pdf_url ?? null };
+  if (res!.status === 404 && !code) fail(503, 'INVOICES_OFF', 'La factura a petición todavía no está activa.');
+  fail(res!.status === 409 || res!.status === 404 ? res!.status : 422, code ?? 'APP_REJECTED', body?.error?.message ?? 'Finance no ha aceptado la petición de factura.', { details: body?.error?.details ?? null });
+}
+
 function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: string | undefined): AppRoute[] {
   const commandsOf = (slug: string) => `${supabase.base}/functions/v1/${slug}/api/v1/commands`;
+  const link: FinanceLink = { base: supabase.base, appsFetch, workerKey };
   return [{
+    // Factura a petición desde recepción (vg-38): el cobro tiene que estar ya en Finance. GET dice cómo va.
+    method: 'POST', pattern: 'walkins/:id/invoice',
+    handler: async ({ ctx, params, json }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura pide facturas.');
+      const checked = checkInvoiceCustomer(((await json().catch(() => ({}))) as Record<string, unknown>).customer);
+      if ('field' in checked) fail(422, 'INVALID_FIELDS', 'Revisa los datos de la factura.', { field: checked.field });
+      return requestEntryInvoice(link, uuidOrFail(params.id, 'id'), (checked as { customer: InvoiceCustomer }).customer);
+    },
+  }, {
+    method: 'GET', pattern: 'walkins/:id/invoice',
+    handler: async ({ ctx, params }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura consulta facturas.');
+      return requestEntryInvoice(link, uuidOrFail(params.id, 'id'), null);
+    },
+  }, {
     method: 'POST', pattern: 'walkins/:id/send/finance',
     handler: async ({ ctx, params }) => {
       if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura envía cobros a Finance.');
@@ -392,7 +440,7 @@ function stayOut(item: Record<string, unknown>) {
   };
 }
 
-export function bookingPublicRoutes(payments: PaymentProvider | null = null): PublicRoute[] {
+export function bookingPublicRoutes(payments: PaymentProvider | null = null, finance: Omit<FinanceLink, 'base'> | null = null): PublicRoute[] {
   const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
   return [{
     method: 'POST', pattern: 'join',
@@ -502,6 +550,30 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       }
       await invoke({ action: 'open', request_id: requestId, provider: payments!.name, provider_ref: intent!.providerRef, amount_cents: Number(item!.total_cents), redirect_url: intent!.redirectUrl });
       return { redirect_url: intent!.redirectUrl, expires_at: item!.hold_until, reused: false };
+    },
+  }, {
+    // Factura a petición (vg-38): el visitante pide factura de sus noches ya cobradas, una por cobro. Los datos fiscales no
+    // se guardan en Booking; Finance valida el NIF (`TAX_ID_INVALID`). Si un cobro aún no está en Finance, se dice.
+    method: 'POST', pattern: 'stay/invoice',
+    handler: async ({ json, visitor, supabase }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      if (!finance) fail(503, 'INVOICES_OFF', 'La factura a petición todavía no está activa.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
+      const checked = checkInvoiceCustomer(body.customer);
+      if ('field' in checked) fail(422, 'INVALID_FIELDS', 'Revisa los datos de la factura.', { field: checked.field });
+      await ensureServiceActor(supabase, 'booking');
+      const out = await supabase.rpc<{ status: string; charges: Array<{ id: string; paid: boolean; sent: boolean; amount_cents: number; refund_cents: number }> }>('core_invoke',
+        { p_app: 'booking', p_actor: null, p_name: 'booking.stay_charges_of', p_args: { request_id: requestId, visitor_id: visitor!.id } });
+      const billable = (out?.charges ?? []).filter((c) => c.paid && c.refund_cents < c.amount_cents);
+      if (!billable.length) fail(409, 'NOTHING_TO_INVOICE', 'Todavía no hay nada cobrado que facturar.');
+      const link: FinanceLink = { base: supabase.base, ...finance! };
+      const invoices = [];
+      for (const c of billable) {
+        if (!c.sent) { invoices.push({ charge_id: c.id, status: 'sin_apunte', full_number: null, pdf_url: null }); continue; }
+        invoices.push(await requestEntryInvoice(link, c.id, (checked as { customer: InvoiceCustomer }).customer));
+      }
+      return { invoices };
     },
   }, {
     // Cancelar noches pagadas en línea (1419; política de VG): sin `confirm`, solo dice cuánto se devolvería; con `confirm`,
@@ -765,7 +837,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: async (result) => { await calendarAfterCommit(supabase, calendar)(result); await cleaningAfterCommit(supabase, ses)(result); }, agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY'), payments ?? null),
-    publicRoutes: bookingPublicRoutes(payments ?? null),
+    publicRoutes: bookingPublicRoutes(payments ?? null, { appsFetch, workerKey: config.workerKey ?? denoEnv('IKISAI_WORKER_KEY') }),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses, payments ?? null),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,
