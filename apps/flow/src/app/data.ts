@@ -23,7 +23,7 @@ export interface Unit extends Row {
   payload: { item_key?: string; name?: string; unit?: string; qty?: number; to?: string; from?: string | null; external?: { app: string; kind: string; id: string; status?: string | null } } | null; source_ref: string | null;
 }
 export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null;
-  template_key: string | null; template_version: number | null; frozen: boolean; serves_public: boolean }
+  template_key: string | null; template_version: number | null; frozen: boolean; serves_public: boolean; cover_file_id: string | null }
 
 export interface FlowData {
   project: Project | null;

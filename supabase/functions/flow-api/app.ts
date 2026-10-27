@@ -9,7 +9,7 @@
  * El token nunca llega a la base de datos: aquí se resume con SHA-256 y solo viaja el resumen. Las escrituras van por la
  * escritura pública del núcleo (actor «Flow (sistema)», lote público que limita `flow.guard`).
  */
-import { applyPublicOperations, createApp, createSupabase, fail, isFault, sha256Hex, type AppConfig, type AppRoute, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { applyPublicOperations, createApp, createSupabase, fail, isFault, sha256Hex, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import { APP, TABLES, visibleRow } from '../_domain/flow/mod.ts';
 
 export const FLOW_ORIGINS = ['https://flow.ikisai.com', 'https://ikisai-flow.pages.dev'];
@@ -26,7 +26,7 @@ const TOKEN = /^[0-9a-f]{64}$/;
 /** Escritura pública del núcleo (`applyPublicOperations` del kit, migración core 0094); inyectable en pruebas. */
 export type PublicWriter = (supabase: Supabase, app: string, operations: unknown[]) => Promise<{ cursor: number; results: unknown[] }>;
 
-type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes' | 'hooks'> & Partial<Pick<AppConfig, 'origins'>>;
+type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes' | 'hooks' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>>;
 
 interface Mine { number: number | null; customerId: string | null; projectId: string | null; orders: unknown[] }
 
@@ -34,6 +34,38 @@ interface Mine { number: number | null; customerId: string | null; projectId: st
 export interface FlowAppOptions { publicWrite?: PublicWriter; appsFetch?: typeof fetch; tasksApiBase?: string }
 
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
+
+/** Documentos y portadas del flujo (orden de VG del 27-10): bucket privado `flow-media`, imágenes y PDF. */
+export const FLOW_UPLOADS: UploadsConfig = {
+  bucket: 'flow-media',
+  maxBytes: 15 * 1024 * 1024,
+  allowedMime: ['image/webp', 'image/jpeg', 'image/png', 'application/pdf'],
+};
+
+/** Columnas que referencian un archivo de Flow y los tipos que admite cada una. */
+const FILE_FIELDS: Record<string, Array<{ field: string; mime: readonly string[] }>> = {
+  'flow.projects': [{ field: 'cover_file_id', mime: ['image/webp', 'image/jpeg', 'image/png'] }],
+  'flow.project_documents': [{ field: 'file_id', mime: FLOW_UPLOADS.allowedMime! }],
+};
+
+/** Un archivo referenciado tiene que ser de Flow, estar verificado y tener un tipo admitido para esa columna (como Central). */
+async function checkFiles(supabase: Supabase, operations: Operation[], ctx: RequestContext): Promise<void> {
+  for (const [index, op] of operations.entries()) {
+    for (const spec of (op.table ? FILE_FIELDS[op.table] : undefined) ?? []) {
+      const id = op.fields ? op.fields[spec.field] : undefined;
+      if (typeof id !== 'string') continue;
+      let file: { status: string; mime: string };
+      try {
+        file = await supabase.rpc('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: id });
+      } catch (error) {
+        if (isFault(error) && error.code === 'FILE_NOT_FOUND') fail(422, 'INVALID_FILE', 'El archivo no existe o no es de Flow.', { index, field: spec.field });
+        throw error;
+      }
+      if (file.status !== 'verified') fail(422, 'INVALID_FILE', 'El archivo todavía no se ha subido por completo.', { index, field: spec.field });
+      if (!spec.mime.includes(file.mime)) fail(422, 'INVALID_FILE', spec.field === 'cover_file_id' ? 'La portada debe ser una imagen.' : 'Ese tipo de archivo no vale aquí.', { index, field: spec.field, mime: file.mime });
+    }
+  }
+}
 
 /** Ruta de cada columna en la app (`#/p/<proyecto>/<ruta>`), para los enlaces que se mandan a otras apps. */
 const COLUMN_SLUGS: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica' };
@@ -201,7 +233,8 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options)], hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership) } });
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options)], uploads: FLOW_UPLOADS,
+    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
   async function handlePublic(request: Request, route: string): Promise<Response> {

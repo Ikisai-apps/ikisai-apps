@@ -3,7 +3,7 @@ import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
 import { loadProjects, projectDates, projectState, type Project } from '../app/data.ts';
-import { projectDocuments, type ProjectDocument } from '../app/documents.ts';
+import { addDocument, coverUrl, loadCodeGuides, moveDocument, projectDocuments, removeDocument, setCover, type ProjectDocument } from '../app/documents.ts';
 import { chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -13,7 +13,8 @@ import type { ViewMount } from './shell.ts';
  * - Para el owner, el modo pruebas del flujo (VG 26-10: se cobra y se cuenta igual, pero no se envían ingresos a Finance).
  * - Debajo, los documentos del flujo (guías) con miniaturas para ir directo a uno y «Ampliar» para verlo entero. Las
  *   miniaturas se precargan; el tamaño completo solo se descarga al ampliar (FLOW-DIR-001 §6). Nunca salen en la carta
- *   pública (§15.3). Hoy vienen del código (`projectDocuments`); después del sábado, de los archivos del proyecto.
+ *   pública (§15.3). Son archivos del proyecto (0907) que el owner sube, ordena y quita; la v1 sigue con las guías del
+ *   código mientras no tenga documentos propios. Un PDF se abre aparte.
  */
 export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
   const isOwner = client.bootstrap()?.membership.role === 'owner';
@@ -24,13 +25,15 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
   const docsHost = el('section', { class: 'flow-docs', 'data-feedback-id': 'flow.inicio.guias', 'data-feedback-label': 'Guías' });
   main.append(carouselHost, testHost, docsHost);
 
-  void loadProjects(client).then((projects) => {
+  const covers = new Map<string, string | null>();
+  void loadProjects(client).then(async (projects) => {
     if (!projects.length) return;
+    await Promise.all(projects.map(async (p) => covers.set(p.id, await coverUrl(client, p))));
     const index = Math.max(0, projects.findIndex((p) => p.id === projectId));
     const carousel = createCoverCarousel({
       label: 'Tus flujos',
       index,
-      slides: projects.map((p) => ({ id: p.id, title: p.name, image: p.cover_image, state: projectState(p), meta: projectDates(p) || null })),
+      slides: projects.map((p) => ({ id: p.id, title: p.name, image: covers.get(p.id) ?? p.cover_image, state: projectState(p), meta: projectDates(p) || null })),
       onChange: (slide) => { if (slide.id !== projectId) navigate(`#/p/${slide.id}`); },
       feedbackId: 'flow.inicio.flujos',
     });
@@ -58,6 +61,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
       el('div', { class: 'orders-owner flow-version' },
         project.frozen ? el('p', { class: 'muted small' }, `Versión ${project.template_version ?? ''} congelada: su configuración no cambia.`) : null,
         project.template_key ? el('button', { type: 'button', class: 'ghost', onclick: () => void newVersion(project) }, 'Nueva versión del flujo') : null,
+        el('button', { type: 'button', class: 'ghost', onclick: () => pickFile('image/*', (file) => setCover(client, project, file, file.name || 'portada.webp').then(() => toast('Portada cambiada.'))) }, 'Cambiar portada'),
+        el('button', { type: 'button', class: 'ghost', onclick: () => manageDocuments() }, 'Gestionar documentos'),
         el('label', { class: 'flow-public-switch' }, el('input', { type: 'checkbox', checked: project.serves_public, onchange: (e: Event) => void servePublic(project, (e.target as HTMLInputElement).checked) }),
           el('span', null, 'Atiende la carta pública'))),
       // Enlaces del flujo (owner): su evento de Booking y su proyecto de Tasks.
@@ -100,14 +105,15 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     current = (i + docs.length) % docs.length;
     const d = docs[current]!;
     replace(figure,
-      el('button', { type: 'button', class: 'guide-open', 'aria-label': `Ampliar: ${d.title}`, onclick: () => enlarge(current) },
-        el('img', { src: d.thumb, alt: d.title, decoding: 'async' })),
+      el('button', { type: 'button', class: 'guide-open', 'aria-label': `${d.isPdf ? 'Abrir' : 'Ampliar'}: ${d.title}`, onclick: () => enlarge(current) },
+        d.isPdf ? el('span', { class: 'guide-pdf' }, icon('attach', 40), el('span', null, 'PDF')) : el('img', { src: d.thumb, alt: d.title, decoding: 'async' })),
       el('figcaption', null, el('span', null, d.title), el('span', { class: 'muted small' }, `${current + 1} de ${docs.length}`)));
     thumbs.querySelectorAll('.guide-thumb').forEach((b, j) => b.setAttribute('aria-selected', String(j === current)));
   }
 
   function enlarge(i: number): void {
     const d = docs[i]!;
+    if (d.isPdf) { window.open(d.full, '_blank', 'noopener'); return; }
     openSheet({
       title: d.title,
       body: el('div', { class: 'guide-zoom' },
@@ -116,11 +122,50 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     });
   }
 
-  void projectDocuments(projectId).then((list) => {
+  /** Elegir un archivo del dispositivo. */
+  function pickFile(accept: string, then: (file: File) => Promise<void>): void {
+    const input = el('input', { type: 'file', accept }) as HTMLInputElement;
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try { await then(file); } catch (error) { toast(describeError(error)); }
+    });
+    input.click();
+  }
+
+  /** Owner: subir, ordenar y quitar documentos; la primera vez, cargar las guías de la barra del código. */
+  function manageDocuments(): void {
+    if (!projectId) return;
+    const list = el('ul', { class: 'flow-docs-admin' });
+    const paintList = async () => {
+      const rows = (await projectDocuments(client, projectId)).filter((d) => d.rowId);
+      replace(list, ...(rows.length ? rows.map((d, i) => el('li', null,
+        el('span', null, `${d.title}${d.isPdf ? ' (PDF)' : ''}`),
+        el('button', { type: 'button', class: 'iconbtn', 'aria-label': `Subir ${d.title}`, disabled: i === 0, onclick: () => void moveDocument(client, projectId, d.rowId!, -1).then(paintList) }, icon('chevronUp', 18)),
+        el('button', { type: 'button', class: 'iconbtn', 'aria-label': `Bajar ${d.title}`, disabled: i === rows.length - 1, onclick: () => void moveDocument(client, projectId, d.rowId!, 1).then(paintList) }, icon('chevronDown', 18)),
+        el('button', { type: 'button', class: 'iconbtn', 'aria-label': `Quitar ${d.title}`, onclick: () => void confirmDialog({ title: `¿Quitar «${d.title}»?`, confirmLabel: 'Quitar', danger: true })
+          .then((ok) => (ok ? removeDocument(client, projectId, d.rowId!).then(paintList) : undefined)) }, icon('trash', 18))))
+        : [el('li', { class: 'muted' }, 'Aún no hay documentos subidos.')]));
+    };
+    const title = el('input', { type: 'text', maxlength: '120', placeholder: 'Título del documento', 'aria-label': 'Título' }) as HTMLInputElement;
+    openSheet({
+      title: 'Documentos del flujo',
+      body: el('div', null, list, el('div', { class: 'flow-docs-add' }, title)),
+      foot: el('div', { class: 'flow-actions' },
+        el('button', { type: 'button', class: 'ghost', onclick: () => void loadCodeGuides(client, projectId).then((n) => { toast(n ? `${n} guías cargadas.` : 'Ya hay documentos: no se cargan las guías.'); void paintList(); }).catch((e) => toast(describeError(e))) }, 'Cargar las guías de la barra'),
+        el('button', { type: 'button', class: 'primary', onclick: () => pickFile('image/*,application/pdf', async (file) => {
+          await addDocument(client, projectId, file, title.value.trim() || file.name.replace(/\.[^.]+$/, '') || 'Documento', file.name || 'documento');
+          title.value = ''; toast('Documento subido.'); await paintList();
+        }) }, 'Subir documento')),
+    });
+    void paintList();
+  }
+
+  void projectDocuments(client, projectId).then((list) => {
     docs = list;
     if (!docs.length) { replace(docsHost, el('p', { class: 'muted' }, 'Este flujo aún no tiene guías.')); return; }
     replace(thumbs, ...docs.map((d, i) => el('button', { type: 'button', class: 'guide-thumb', role: 'tab', 'aria-label': d.title, onclick: () => show(i) },
-      el('img', { src: d.thumb, alt: '', loading: 'lazy', decoding: 'async' }))));
+      d.isPdf ? el('span', { class: 'guide-pdf small' }, 'PDF') : el('img', { src: d.thumb, alt: '', loading: 'lazy', decoding: 'async' }))));
     replace(docsHost,
       el('h2', { class: 'col-title' }, 'Guías'),
       el('div', { class: 'guide-carousel' },

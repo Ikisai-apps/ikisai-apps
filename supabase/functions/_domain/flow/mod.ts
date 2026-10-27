@@ -21,6 +21,7 @@ export const TABLES = {
   dayClosures: 'flow.day_closures',
   buffers: 'flow.buffers',
   consumptionRules: 'flow.consumption_rules',
+  projectDocuments: 'flow.project_documents',
 } as const satisfies Record<string, `flow.${string}`>;
 
 /** Procedimientos `call` permitidos (API.md §3). */
