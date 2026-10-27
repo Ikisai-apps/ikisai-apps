@@ -119,6 +119,8 @@ test('Inicio · lo ya caducado primero, lo bajo mínimo con «A la compra» y la
 test('ficha de receta · el próximo servicio, la cantidad de la receta debajo y «Hay bastante» solo sin dudas', async ({ page }) => {
   await login(page);
   await page.goto(`${baseURL}/#/recetario`);
+  // F-REC-3: sin foto, la tarjeta lleva el medallón con las iniciales sobre el color de su categoría.
+  await expect(page.locator('#recipeGrid .recipecard', { hasText: 'Crema de calabaza' }).locator('.recipephoto .medal-initials')).toHaveText('CC');
   await page.locator('#recipeGrid .recipecard', { hasText: 'Crema de calabaza' }).click();
   const ficha = page.getByRole('dialog', { name: 'Crema de calabaza' });
   await expect(ficha.locator('.cover-stats')).toContainText(', comida · 24 raciones');
