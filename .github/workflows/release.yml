@@ -1,8 +1,15 @@
 name: Release
-# Por lotes (VG, 27-10-2026): antes, una release por fusión (78 en 24 h). Ahora un cron cada 30 min publica, si main cambió
-# desde la última release completa (tag ligero `released`), las apps afectadas desde lo que cada una tiene publicado. El
-# push a main ya no publica. A mano, `workflow_dispatch` como siempre (una app, versión y `bind_domain`).
+# Por lotes (VG, 27-10-2026): antes, una release por fusión (78 en 24 h). Ahora cada pasada publica, si main cambió desde
+# la última release completa (tag ligero `released`), las apps afectadas desde lo que cada una tiene publicado.
+# - push a main: espera 10 min antes de mirar main (antirrebote). Con la concurrencia de abajo, las fusiones que llegan
+#   mientras tanto se juntan en una sola pasada en espera, que al final no hace nada si ya está todo publicado.
+# - cron cada 30 min: red de seguridad. GitHub entrega aquí los `schedule` con horas de retraso (los diarios llegan unas
+#   5 h tarde; tras #803 no llegó ninguno en 3 h), así que no basta por sí solo.
+# A mano, `workflow_dispatch` como siempre (una app, versión y `bind_domain`).
 on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'MUELA/**', '**.md']
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
@@ -32,7 +39,7 @@ jobs:
   plan:
     name: Apps afectadas y versión
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     outputs:
       apps: ${{ steps.matrix.outputs.apps || '[]' }}
       migrations: ${{ steps.matrix.outputs.migrations || 'false' }}
@@ -42,8 +49,13 @@ jobs:
       released: ${{ steps.last.outputs.released }}
       skip: ${{ steps.last.outputs.skip }}
     steps:
+      - name: Esperar a que acaben de llegar las fusiones (antirrebote)
+        if: github.event_name == 'push'
+        run: sleep 600
+      # Fuera de dispatch, main tal como esté ahora (no el commit que disparó el run): recoge lo fusionado en la espera.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name != 'workflow_dispatch' && 'main' || '' }}
           fetch-depth: 0
       - id: last
         name: Última release completa
@@ -52,7 +64,7 @@ jobs:
           sha=$(git rev-parse HEAD)
           released=$(git rev-parse -q --verify 'refs/tags/released^{commit}' || true)
           skip=false
-          if [ "${{ github.event_name }}" = schedule ] && [ "$released" = "$sha" ]; then skip=true; fi
+          if [ "${{ github.event_name }}" != workflow_dispatch ] && [ "$released" = "$sha" ]; then skip=true; fi
           { echo "sha=$sha"; echo "released=$released"; echo "skip=$skip"; } >> "$GITHUB_OUTPUT"
           echo "main=$sha  publicado=${released:-ninguno}  saltar=$skip"
       - uses: actions/setup-python@v5
@@ -74,7 +86,7 @@ jobs:
   migraciones:
     name: Migraciones (una vez)
     needs: [plan]
-    # También sin apps que publicar si el push trae migraciones (p. ej. solo de Recursos, que no tiene dominio propio).
+    # También sin apps que publicar si hay migraciones desde la última release (p. ej. solo de Recursos, que no tiene dominio propio).
     if: needs.plan.outputs.apps != '[]' || needs.plan.outputs.migrations == 'true'
     runs-on: ubuntu-24.04
     environment: production
@@ -161,7 +173,7 @@ jobs:
     name: Reportes de feedback publicados
     needs: [plan, release]
     # Los códigos FB de los commits entre la última release completa y esta.
-    if: github.event_name == 'schedule' && needs.plan.outputs.apps != '[]'
+    if: github.event_name != 'workflow_dispatch' && needs.plan.outputs.apps != '[]'
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 5
@@ -183,11 +195,11 @@ jobs:
   publicado:
     name: Marcar lo publicado
     needs: [plan, migraciones, release]
-    # Solo en la pasada programada y si todo lo que tocaba salió bien, o no hacía falta: el tag `released` pasa al commit
+    # Solo en la pasada por lotes (push o cron) y si todo lo que tocaba salió bien, o no hacía falta: el tag `released` pasa al commit
     # publicado. Si algo falla, no se mueve y la siguiente pasada lo reintenta; lo ya publicado no se repite, porque
     # release_matrix mira el version.json de cada app. A mano (una sola app), no se mueve.
     if: >-
-      always() && github.event_name == 'schedule' && needs.plan.result == 'success' && needs.plan.outputs.skip != 'true'
+      always() && github.event_name != 'workflow_dispatch' && needs.plan.result == 'success' && needs.plan.outputs.skip != 'true'
       && (needs.migraciones.result == 'success' || needs.migraciones.result == 'skipped')
       && (needs.release.result == 'success' || needs.release.result == 'skipped')
     runs-on: ubuntu-24.04

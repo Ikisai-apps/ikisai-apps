@@ -16,7 +16,7 @@ Guía mínima para que el rol de Core (hoy **Core Producción · La Muela**, REL
 3. Leer `AGENTS.md`, `docs/core/CONTRATO_SINCRONIZACION.md`, `docs/core/DESPLIEGUE.md` y los últimos mensajes de `canal/`.
 
 ## Publicar
-- Lo fusionado en `main` se publica por lotes: cada 30 min, las apps afectadas (`release.yml`, environment `production`, secretos custodiados en GitHub). El equipo no necesita conocer sus valores.
+- Lo fusionado en `main` se publica por lotes: unos 10 min después de fusionar (y un cron cada 30 min de red de seguridad), las apps afectadas (`release.yml`, environment `production`, secretos custodiados en GitHub). El equipo no necesita conocer sus valores.
 - `main` tiene un ruleset: PR obligatoria y checks «Qué ha cambiado» y «Lint de migraciones, typecheck y pruebas PGlite». No se desactiva para ganar tiempo.
 - Los scripts de una sola vez (`configure_supabase_auth.py`, `configure_supabase_storage.py`, `initialize_app_owner.py`) leen `private/cloud-credentials.json` (ignorado por Git). Cada equipo usa **su propio token** de Supabase, creado por el usuario para ese ordenador; nunca se copian claves entre equipos ni se pegan en un chat.
 
