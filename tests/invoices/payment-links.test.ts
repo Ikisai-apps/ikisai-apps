@@ -96,11 +96,12 @@ test('«Pagar ahora» del portal (F5, worker de Organizers): solo dentro del ám
   const uid = (await app.t.db.query<{ u: string }>(`select user_id u from core.memberships where app = 'organizers' limit 1`)).rows[0]!.u;
   const portal = (body: Record<string, unknown>, caller = 'organizers') => app.call('/api/v1/worker/payment-links/portal', { token: null, method: 'POST', body,
     headers: { 'x-ikisai-worker-key': WORKER_KEY, 'x-ikisai-caller': caller } });
-  const ok = await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id, return_url: 'https://organizers.ikisai.com/#/retiro/x' });
+  const ok = await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id, return_url: 'https://organizers.ikisai.com/#/retiro/x/pagos?pago=ok&factura=f' });
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
   assert.match(ok.data.url, /^https:\/\/checkout\.stripe\.com\//);
   const sent = stripe.requests.at(-1)!;
-  assert.deepEqual([sent.successUrl, sent.amountCents], ['https://organizers.ikisai.com/#/retiro/x', 22000]);
+  assert.deepEqual([sent.successUrl, sent.amountCents], ['https://organizers.ikisai.com/#/retiro/x/pagos?pago=ok&factura=f', 22000]);
+  assert.equal(sent.cancelUrl, 'https://organizers.ikisai.com/#/retiro/x/pagos?pago=cancelado&factura=f', 'quien cancela no vuelve con «pago=ok»');
   assert.equal((await links(id))[0]!.requested_from, 'portal');
   // Una URL de vuelta ajena no se usa
   await app.t.db.query(`update invoices.payment_links set status = 'cancelado' where issued_invoice_id = $1`, [id]);

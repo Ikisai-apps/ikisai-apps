@@ -929,13 +929,16 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
       // organizador. Solo con `X-Ikisai-Caller: organizers`; el ámbito lo comprueba el SQL (portal_payment_scope).
       method: 'POST', pattern: 'payment-links/portal', handler: async ({ request, json, invoke }) => {
         if ((request.headers.get('x-ikisai-caller') ?? '').trim().toLowerCase() !== 'organizers') fail(403, 'CALLER_REJECTED', 'Solo el servidor de Organizers pide enlaces del portal.');
-        const body = (await json().catch(() => null)) as { actor?: unknown; reservation_id?: unknown; issued_invoice_id?: unknown; return_url?: unknown } | null;
+        const body = (await json().catch(() => null)) as { actor?: unknown; reservation_id?: unknown; issued_invoice_id?: unknown; return_url?: unknown; cancel_url?: unknown } | null;
         const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         for (const k of ['actor', 'reservation_id', 'issued_invoice_id'] as const) if (typeof body?.[k] !== 'string' || !uuid.test(body[k] as string)) fail(422, 'INVALID_ARGS', `Falta ${k}.`, { field: k });
         await invoke('invoices.portal_payment_scope', { actor: body!.actor, reservation_id: body!.reservation_id, issued_invoice_id: body!.issued_invoice_id });
-        // Vuelta al portal: solo a Organizers (nunca a una URL que mande quien llama sin comprobar)
-        const back = typeof body!.return_url === 'string' && ORGANIZERS_RETURN.some((o) => (body!.return_url as string).startsWith(`${o}/`)) ? body!.return_url as string : `${ORGANIZERS_RETURN[0]}/`;
-        const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success: back, cancel: back });
+        // Vuelta al portal: solo a Organizers (nunca a una URL que mande quien llama sin comprobar). Pagado → `return_url`;
+        // cancelado → `cancel_url`, o la misma con `pago=ok` cambiado por `pago=cancelado` (revisión de Organizers, 28-10).
+        const ours = (u: unknown): u is string => typeof u === 'string' && ORGANIZERS_RETURN.some((o) => u.startsWith(`${o}/`));
+        const success = ours(body!.return_url) ? body!.return_url : `${ORGANIZERS_RETURN[0]}/`;
+        const cancel = ours(body!.cancel_url) ? body!.cancel_url : success.replace(/([?&])pago=ok/, '$1pago=cancelado');
+        const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success, cancel });
         return { url: out.url, provider: out.provider, expires_at: out.expires_at, amount: out.amount, reused: out.reused };
       },
     } satisfies WorkerRoute],

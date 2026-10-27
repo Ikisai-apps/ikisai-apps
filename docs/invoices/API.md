@@ -2174,10 +2174,11 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
 
 - **Portal (F5, acordado con Organizers):** si la factura no trae `payment_link`, el servidor de Organizers llama a `POST invoices-api/api/v1/worker/payment-links/portal`.
   - **Cabeceras:** `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: organizers`.
-  - **Cuerpo:** `{actor, reservation_id, issued_invoice_id, return_url?}`.
+  - **Cuerpo:** `{actor, reservation_id, issued_invoice_id, return_url?, cancel_url?}`.
   - **Antes de crear nada:** la acción de sistema `invoices.portal_payment_scope` (0256) comprueba lo mismo que F2: editor u owner del portal, reserva de su ámbito y factura de esa reserva. Si no, `403 OUT_OF_SCOPE`.
   - **Respuesta:** `{url, provider, expires_at, amount, reused}`.
-  - **Vuelta:** `return_url` solo vale si es de Organizers (`https://organizers.ikisai.com/…`); si no, la portada del portal.
+  - **Vuelta:** `return_url` (pagado) y `cancel_url` (cancelado) solo valen si son de Organizers (`https://organizers.ikisai.com/…`). Sin `cancel_url`, es la de `return_url` con `pago=ok` cambiado por `pago=cancelado`, y si no vale ninguna, la portada del portal. Que Stripe conserve el fragmento (`#/…`) se comprueba en la puesta en marcha con la clave de pruebas; si no lo conserva, Organizers acepta `?vuelta=` fuera del fragmento.
+  - **Quién llama:** `X-Ikisai-Caller` no autentica, porque la clave de worker es la misma en todas las Edges: quien la tenga puede decir «organizers» y elegir `actor`. Lo que protege es el ámbito (0256: la persona tiene que ser editora u owner del portal y la factura de su reserva), así que no se puede pagar ni ver nada fuera de él.
 - **Ficha de la emitida (Finance):** bloque «Pago en línea»:
   - el enlace abierto, con caducidad, «Copiar» y «Compartir»;
   - «Pagada en línea el…»;
