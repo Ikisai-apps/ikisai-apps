@@ -69,6 +69,7 @@ export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './piece
 export { ANCHOR_ID, announceSaved, findAnchor, onSaved, pointAt, registerReveal, revealAnchor, waitForAnchor } from './guide/anchors.ts';
 export { clearGuideLink, currentGuideLink, readGuideLink, withGuideLink, type GuideLink } from './guide/link.ts';
 export { createFieldPointer, type FieldPointer } from './guide/point.ts';
+export { createGuide, type Guide, type GuideConfirm, type GuideOptions, type GuideRun, type GuideStep } from './guide/guide.ts';
 export { groupLanes, LANE_NONE, type GroupLanesOptions } from './pieces/lanes-group.ts';
 export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion, type StepRenderContext } from './pieces/step-form.ts';

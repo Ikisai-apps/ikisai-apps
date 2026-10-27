@@ -1,5 +1,30 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.67.0 · 27 de octubre de 2026
+
+**Guiado, tanda 2: `createGuide`** (`src/guide/guide.ts`), la guía completa dentro de la app real. No bloquea nada: se puede trabajar libremente y volver a la guía.
+
+- **Foco y burbuja:**
+  - un anillo sigue al anclaje del paso y el resto de la pantalla se oscurece un poco, sin capturar toques;
+  - la burbuja va abajo en el móvil y a la derecha en el ordenador, con «Paso 2 de 5», la barra, el título y la explicación;
+  - el campo sube bajo la cabecera, así que lo que le sigue («Guardar») queda a la vista.
+- **Avanza solo con la confirmación real:**
+  - `confirm: 'save' | 'event'` espera el aviso de guardado de ese campo (0.66, sin valores);
+  - `manual` pide «Hecho»;
+  - `none` informa y tiene «Siguiente».
+  - Cada confirmación llama a `onConfirmed(step, { how, pending })`, para que quien guía la registre.
+- **Lo pendiente se recalcula:**
+  - `load()` devuelve los pasos con `done` y se vuelve a llamar al volver a la pestaña, al desplegar la guía y con `refresh()`;
+  - lo hecho fuera de la guía no se repregunta;
+  - «Anterior» vuelve a un paso ya hecho para cambiarlo.
+- **Escondido o en otra pantalla:** pide a la app que lo enseñe (`registerReveal`). Si no está, lo dice y ofrece «Ir allí» con la `route` del paso.
+- **Otros controles:**
+  - «Saltar» en los pasos no esenciales;
+  - «Ocultar» la deja en una píldora («Guía · paso 2 de 5»);
+  - «Volver a…» usa la convención K9;
+  - en `mode: 'learn'` sale la etiqueta «Practicando».
+- Demo: «Guía completa» en la sección del Guiado. Pruebas: `tests/v71.spec.ts`.
+
 ## 0.66.0 · 27 de octubre de 2026
 
 **Guiado, tanda 1: anclajes semánticos y campo señalado.** Es el nivel mínimo y el primer paso del Guiado completo que decidió VG el 27-10; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`.

@@ -86,9 +86,11 @@ export function onSaved(listener: (id: string, info: { pending: boolean }) => vo
 }
 
 /** Trae el anclaje a la vista, le da el foco (al campo de dentro si es un contenedor) y lo resalta `ms` milisegundos. */
-export function pointAt(node: HTMLElement, options: { ms?: number; focus?: boolean } = {}): void {
+export function pointAt(node: HTMLElement, options: { ms?: number; focus?: boolean; block?: ScrollLogicalPosition; marginTop?: number } = {}): void {
   const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  // `marginTop`: lo que tapa la cabecera fija al llevarlo arriba (`block: 'start'`).
+  if (options.marginTop !== undefined) node.style.scrollMarginTop = `${options.marginTop}px`;
+  node.scrollIntoView({ block: options.block ?? 'center', inline: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
   if (options.focus !== false) {
     const target = node.matches('input, select, textarea, button, a[href], [tabindex]') ? node
       : node.querySelector<HTMLElement>('input:not([type=hidden]), select, textarea, button, [tabindex]:not([tabindex="-1"])');
