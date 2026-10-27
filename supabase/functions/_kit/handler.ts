@@ -138,6 +138,12 @@ const withHeaders = (body: unknown, extra: Record<string, string>, status = 200)
 export function createApp(config: AppConfig): AppHandler {
   const supabase = createSupabase(config);
   const auth = createAuth(supabase);
+  /** 0118: origen de un lote de /commands. 'server' solo con la clave de worker correcta y X-Ikisai-Caller (otra Edge con identidad de servicio). */
+  const batchOrigin = (request: Request | undefined): 'server' | 'browser' => {
+    const key = request?.headers.get('x-ikisai-worker-key') ?? '';
+    const caller = request?.headers.get('x-ikisai-caller') ?? '';
+    return config.workerKey && key && caller && timingSafeEqual(key, config.workerKey) ? 'server' : 'browser';
+  };
   const sync = createSync(supabase, config.app, config.hooks ?? {});
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const storage = createStorage(supabase, {
@@ -172,7 +178,7 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
     { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => sync.snapshot(ctx, url.searchParams) },
     { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => sync.changes(ctx, url.searchParams) },
-    { method: 'POST', pattern: 'commands', handler: async ({ ctx, json }) => sync.commit(ctx, await json()) },
+    { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => sync.commit(ctx, await json(), { origin: batchOrigin(request) }) },
     { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => sync.history(ctx, url.searchParams) },
     { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => sync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
     { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => sync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },
@@ -325,7 +331,7 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
       { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => moduleSync.snapshot(ctx, url.searchParams) },
       { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => moduleSync.changes(ctx, url.searchParams) },
-      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json }) => moduleSync.commit(ctx, await json()) },
+      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => moduleSync.commit(ctx, await json(), { origin: batchOrigin(request) }) },
       { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => moduleSync.history(ctx, url.searchParams) },
       { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => moduleSync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
       { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => moduleSync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },
