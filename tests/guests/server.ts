@@ -35,7 +35,11 @@ export interface GuestsTestServer {
    * Menú de Food validado y compartido, sembrado en la base: `[{date, type, time, dishes: [{name, allergens?, allergensChecked?, diet?}]}]`.
    * Sin `allergensChecked`, la receta cuenta como revisada si trae `allergens`.
    */
-  menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; allergensChecked?: boolean; diet?: string[] }> }>): Promise<void>;
+  menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; allergensChecked?: boolean; diet?: string[] }> }>): Promise<string>;
+  /** Oferta de Food (`food.event_offers`, 1111) sobre un menú del evento; devuelve su id. */
+  offer(event: string, menuId: string, fields: { name: string; audience?: 'huespedes' | 'interna'; meal_groups?: string[]; payer?: 'organizador' | 'huesped' | null; charge_when?: 'barra' | 'cuenta' | null; place?: string }): Promise<string>;
+  /** Carta del evento (`kind = 'carta'`) con sus líneas (una receta por línea); devuelve el id del menú. */
+  carta(event: string, name: string, lines: Array<{ code: string; name: string; price: number; allergens?: string[] }>): Promise<string>;
   /** Mapa de zonas de Recursos (MUELA-024): un edificio con un dibujo (sin archivo: la capa sobre papel) y sus espacios con forma. */
   floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points: Array<[number, number]>; refs?: string[] }>): Promise<{ planId: string; ids: Record<string, string> }>;
   /** Servicios del menú de casa de Food (FD2, `food.portal_house_menu`). */
@@ -102,7 +106,11 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       for (const [key, value] of Object.entries(req.headers)) if (typeof value === 'string' && key !== 'host' && key !== 'content-length') headers.set(key, value);
       // El proxy de `vite preview` conserva el Origin del navegador: la Edge solo admite el de producción.
       headers.set('Origin', origin);
-      const response = await guests(new Request(`${booking.supabase.url}/functions/v1/guests-api${req.url ?? '/'}`, {
+      // Como el worker de Pages (§9.19): `/api/booking/v1/public/*` va a las rutas públicas de booking-api.
+      const toBooking = (req.url ?? '').startsWith('/api/booking/v1/public/');
+      const target = toBooking ? `${booking.supabase.url}/functions/v1/booking-api${(req.url ?? '').replace('/api/booking/v1/', '/api/v1/')}` : `${booking.supabase.url}/functions/v1/guests-api${req.url ?? '/'}`;
+      if (toBooking) headers.delete('authorization');
+      const response = await (toBooking ? booking.handler : guests)(new Request(target, {
         method: req.method, headers, body: ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : Buffer.concat(chunks),
       }));
       res.writeHead(response.status, Object.fromEntries(response.headers));
@@ -191,6 +199,25 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
         }
       }
       await db.query(`update food.menus set status = 'validado', validated_at = now() where id = $1`, [menuId]);
+      return menuId;
+    },
+    async offer(event, menuId, { name, audience = 'huespedes', meal_groups = [], payer, charge_when, place }) {
+      const id = uuid();
+      const internal = audience === 'interna';
+      await booking.t.db.query(`insert into food.event_offers (id, event_id, menu_id, name, audience, meal_groups, payer, charge_when, place) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, event, menuId, name, audience, meal_groups, internal ? null : payer ?? 'organizador', internal ? null : charge_when ?? null, place ?? null]);
+      return id;
+    },
+    async carta(event, name, lines) {
+      const db = booking.t.db;
+      const menuId = uuid();
+      await db.query(`insert into food.menus (id, kind, event_id, name, status) values ($1, 'carta', $2, $3, 'borrador')`, [menuId, event, name]);
+      for (const [i, l] of lines.entries()) {
+        const recipeId = uuid();
+        await db.query(`insert into food.recipes (id, name, category, base_servings, allergens, allergens_checked) values ($1, $2, 'principal', 1, $3, true)`, [recipeId, l.name, l.allergens ?? []]);
+        await db.query(`insert into food.carta_lines (menu_id, recipe_id, scope, code, sale_price_cents, position) values ($1, $2, 'barra', $3, $4, $5)`, [menuId, recipeId, l.code, l.price, i]);
+      }
+      return menuId;
     },
     async floorPlan(spaces) {
       const db = booking.t.db;

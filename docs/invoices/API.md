@@ -1962,7 +1962,7 @@ Una liquidación es un pago único que cierra varios pedidos de un cliente. Va p
 - Flow no manda apuntes `flow:settlement:…` aparte, así que nada se cuenta dos veces.
 El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan otra cosa.
 
-**Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
+**Medios de cobro de Flow:** `cash`, `bizum`, `card` (tarjeta en un datáfono externo, sin pasarela) y `bitcoin` (27-10). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
 
 ### 17.7 Decisión de VG (27-10): apuntes fiscales y apuntes de proceso (migración 0245)
 
@@ -2049,3 +2049,5 @@ Ficha de capacidad para el catálogo del núcleo:
 - `428 CONFIRMATION_REQUIRED`, para un agente sin propuesta aprobada.
 
 **Pruebas:** `tests/invoices/quick-purchase.test.ts`.
+
+**En el catálogo del núcleo** (0246, sobre la 0097 de Core): `core.register_capability` con esta ficha, los esquemas JSON de entrada y salida y las anclas `invoices.facturas.nueva`, `invoices.facturas.nueva.formulario` e `invoices.facturas.nueva.crear` (la alta manual de factura, lo más parecido en Finance). Prueba: `tests/invoices/capability.test.ts`.

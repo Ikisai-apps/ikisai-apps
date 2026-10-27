@@ -47,7 +47,7 @@ export interface DayReceipt {
   notice: string;
 }
 
-const METHOD_LABELS: Record<string, string> = { cash: 'Efectivo', bizum: 'Bizum', card: 'Tarjeta', transfer: 'Transferencia' };
+const METHOD_LABELS: Record<string, string> = { cash: 'Efectivo', bizum: 'Bizum', card: 'Tarjeta', bitcoin: 'Bitcoin', transfer: 'Transferencia' };
 export const methodLabel = (k: string): string => METHOD_LABELS[k] ?? k;
 
 /** El justificante de un ingreso. `number` solo con serie (cuando la gestoría diga factura simplificada). */

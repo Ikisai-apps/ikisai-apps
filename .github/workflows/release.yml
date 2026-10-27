@@ -1,7 +1,10 @@
 name: Release
+# Por lotes (VG, 27-10-2026): antes, una release por fusión (78 en 24 h). Ahora un cron cada 30 min publica, si main cambió
+# desde la última release completa (tag ligero `released`), las apps afectadas desde lo que cada una tiene publicado. El
+# push a main ya no publica. A mano, `workflow_dispatch` como siempre (una app, versión y `bind_domain`).
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       app:
@@ -20,28 +23,50 @@ on:
         default: false
 permissions:
   contents: read
+# Nunca dos releases a la vez: la nueva espera a la que corre. GitHub deja una sola en espera; si llega otra, la que
+# esperaba se cancela y la siguiente pasada recoge lo que quedara.
+concurrency:
+  group: ikisai-release
+  cancel-in-progress: false
 jobs:
   plan:
     name: Apps afectadas y versión
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      apps: ${{ steps.matrix.outputs.apps }}
-      migrations: ${{ steps.matrix.outputs.migrations }}
+      apps: ${{ steps.matrix.outputs.apps || '[]' }}
+      migrations: ${{ steps.matrix.outputs.migrations || 'false' }}
       version: ${{ steps.matrix.outputs.version }}
+      # El commit que publica todo el run: los demás jobs lo sacan con `ref`, aunque main avance mientras tanto.
+      sha: ${{ steps.last.outputs.sha }}
+      released: ${{ steps.last.outputs.released }}
+      skip: ${{ steps.last.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - id: last
+        name: Última release completa
+        shell: bash
+        run: |
+          sha=$(git rev-parse HEAD)
+          released=$(git rev-parse -q --verify 'refs/tags/released^{commit}' || true)
+          skip=false
+          if [ "${{ github.event_name }}" = schedule ] && [ "$released" = "$sha" ]; then skip=true; fi
+          { echo "sha=$sha"; echo "released=$released"; echo "skip=$skip"; } >> "$GITHUB_OUTPUT"
+          echo "main=$sha  publicado=${released:-ninguno}  saltar=$skip"
       - uses: actions/setup-python@v5
+        if: steps.last.outputs.skip != 'true'
         with:
           python-version: '3.12'
       - id: matrix
+        if: steps.last.outputs.skip != 'true'
         env:
           EVENT: ${{ github.event_name }}
           INPUT_APP: ${{ inputs.app }}
           INPUT_VERSION: ${{ inputs.version }}
-          BEFORE: ${{ github.event.before }}
+          # Sin version.json legible, cada app se compara con la última release completa (antes, con el push).
+          BEFORE: ${{ steps.last.outputs.released }}
           RUN_NUMBER: ${{ github.run_number }}
         run: python scripts/release_matrix.py | tee -a "$GITHUB_OUTPUT"
   # Sin repetir las comprobaciones: cada PR ya pasó `checks.yml` antes de fusionarse (ahorro de minutos de Actions,
@@ -62,6 +87,8 @@ jobs:
       IKISAI_DEBUG: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -87,6 +114,7 @@ jobs:
     env:
       APP: ${{ matrix.app }}
       IKISAI_RELEASE: ${{ needs.plan.outputs.version }}
+      IKISAI_COMMIT: ${{ needs.plan.outputs.sha }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       IKISAI_DEBUG: '1'
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -94,6 +122,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -118,7 +148,7 @@ jobs:
           python scripts/release_cloud.py --app "$APP" --version "$IKISAI_RELEASE" --apply --skip-schema $EXTRA
       - name: Subir el catálogo de funcionalidades (perspectiva «Uso» del Revisor)
         run: |
-          node packages/ui-kit/scripts/feature-catalog.mjs --app "$APP" --release "$IKISAI_RELEASE" --commit "$GITHUB_SHA" || echo "sin catálogo para $APP"
+          node packages/ui-kit/scripts/feature-catalog.mjs --app "$APP" --release "$IKISAI_RELEASE" --commit "$IKISAI_COMMIT" || echo "sin catálogo para $APP"
           python scripts/usage_catalog_ingest.py --app "$APP" --release "$IKISAI_RELEASE" --apply
       - uses: actions/upload-artifact@v4
         if: always()
@@ -130,7 +160,8 @@ jobs:
   feedback:
     name: Reportes de feedback publicados
     needs: [plan, release]
-    if: github.event_name == 'push' && needs.plan.outputs.apps != '[]'
+    # Los códigos FB de los commits entre la última release completa y esta.
+    if: github.event_name == 'schedule' && needs.plan.outputs.apps != '[]'
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 5
@@ -139,12 +170,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Pasar a «pendiente de verificar» los reportes con su código en los commits publicados
         env:
-          BEFORE: ${{ github.event.before }}
+          BEFORE: ${{ needs.plan.outputs.released }}
           BUILD: ${{ needs.plan.outputs.version }}
         run: python scripts/feedback_mark_released.py --since "$BEFORE" --build "$BUILD" --apply
+  publicado:
+    name: Marcar lo publicado
+    needs: [plan, migraciones, release]
+    # Solo en la pasada programada y si todo lo que tocaba salió bien, o no hacía falta: el tag `released` pasa al commit
+    # publicado. Si algo falla, no se mueve y la siguiente pasada lo reintenta; lo ya publicado no se repite, porque
+    # release_matrix mira el version.json de cada app. A mano (una sola app), no se mueve.
+    if: >-
+      always() && github.event_name == 'schedule' && needs.plan.result == 'success' && needs.plan.outputs.skip != 'true'
+      && (needs.migraciones.result == 'success' || needs.migraciones.result == 'skipped')
+      && (needs.release.result == 'success' || needs.release.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - name: Tag ligero `released` en el commit publicado
+        run: git push --force origin "${{ needs.plan.outputs.sha }}:refs/tags/released"

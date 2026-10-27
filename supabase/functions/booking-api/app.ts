@@ -1,6 +1,6 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
-import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
-import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
+import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, sha256Hex, type AppConfig, type AppRoute, type PublicRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
+import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations, walkinFinanceEntry, type WalkinForSend } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
@@ -174,12 +174,80 @@ const ENTITY_LOGO_BUCKET = 'central-documents';
 const RETREAT_LOGOS = 'organizers.booking_logo_projection';
 const RETREAT_LOGO_BUCKET = 'organizers-materials';
 
-export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}): AppRoute[] {
+/**
+ * Alojamiento a la carta (0487): el ingreso de un cobro a Finance (`invoices.record_app_entry`, idempotente por
+ * `booking:stay:<id>`) con la sesión de la persona, que tiene que ser editor u owner en Finance (si no, `NEEDS_ACCESS`).
+ * El resultado lo anota la app en el cobro (`finance_entry_id` y `finance_sent_at`, o `finance_error`).
+ */
+function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch): AppRoute[] {
+  const commandsOf = (slug: string) => `${supabase.base}/functions/v1/${slug}/api/v1/commands`;
+  return [{
+    method: 'POST', pattern: 'walkins/:id/send/finance',
+    handler: async ({ ctx, params }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura envía cobros a Finance.');
+      const out = await supabase.rpc<{ charge: (WalkinForSend & { paid_at: string | null }) | null }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.walkin_charge_for_send', p_args: { id: params.id ?? '' } });
+      const charge = out?.charge ?? null;
+      if (!charge) fail(404, 'NOT_FOUND', 'Ese cobro no existe.');
+      if (!charge.method || !charge.paid_day) fail(409, 'NOT_PAID', 'Todavía no está cobrado: cóbralo antes de enviarlo a Finance.');
+      // el nombre del huésped solo sale si quien envía puede verlo (API.md §5.1)
+      const args = walkinFinanceEntry(canSeeGuests(ctx.membership) ? charge : { ...charge, guest: null });
+      let res: Response;
+      try {
+        res = await appsFetch(commandsOf('invoices-api'), {
+          method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId: `booking:walkin:${charge.id}:${(await sha256Hex(JSON.stringify(args))).slice(0, 24)}`, operations: [{ op: 'call', procedure: 'invoices.record_app_entry', args }] }),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch {
+        fail(503, 'APP_UNAVAILABLE', 'Finance no responde ahora mismo. Inténtalo más tarde.');
+      }
+      const body = await res.json().catch(() => ({})) as any;
+      const code = body?.error?.code as string | undefined;
+      if (res.status === 401 || res.status === 403 || code === 'NO_MEMBERSHIP') fail(403, 'NEEDS_ACCESS', 'Pide acceso a Finance: tu cuenta no puede enviarle cobros.', { app: 'invoices', code: code ?? null });
+      if (!res.ok) fail(res.status === 409 ? 409 : 422, code ?? 'APP_REJECTED', body?.error?.message ?? 'Finance no ha aceptado el cobro.', { app: 'invoices', details: body?.error?.details ?? null });
+      return { status: 'sent', result: body?.results?.[0]?.result ?? null };
+    },
+  }];
+}
+
+/**
+ * C11 (BG18): un visitante del QR pide apuntarse o deja un dato: `POST /api/v1/public/join` con la cabecera X-Visitor.
+ * El evento sale del código del QR (`event_code`, o el del token del visitante); el lote lo firma el visitante y la base
+ * comprueba el resto (0489). Si ya tenía una pendiente de ese tipo, la devuelve. «Lo mío» lo sirve el kit
+ * (`GET public/booking_visitor_requests`).
+ */
+export function bookingPublicRoutes(): PublicRoute[] {
+  const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
+  return [{
+    method: 'POST', pattern: 'join',
+    handler: async ({ json, visitor, apply, read }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const code = text(body.event_code, 20) ?? visitor.eventCode ?? null;
+      if (!code) fail(422, 'INVALID_FIELDS', 'Falta el código del evento.', { field: 'event_code' });
+      const kind = body.kind === 'contact' ? 'contact' : 'join';
+      const fields = { via_code: code, visitor_id: visitor.id, kind, name: text(body.name, 120), contact: text(body.contact, 200), note: text(body.note, 500) };
+      try {
+        await apply([{ op: 'insert', table: TABLES.visitorRequests, id: crypto.randomUUID(), fields }]);
+      } catch (error) {
+        // una pendiente del mismo tipo para ese evento: se devuelve la que hay
+        const sqlstate = (error as { details?: { sqlstate?: string } } | null)?.details?.sqlstate;
+        if (sqlstate !== '23505') throw error;
+      }
+      const mine = await read('booking_visitor_requests', { event_code: code }) as { items?: Array<Record<string, unknown>> } | null;
+      const item = (mine?.items ?? []).find((i) => i.kind === kind) ?? null;
+      return item ? { event_code: item.event_code, kind: item.kind, name: item.name, status: item.status, created_at: item.created_at } : null;
+    },
+  }];
+}
+
+export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
   // Archivos ajenos (logotipo de Central, firmas subidas desde Guests): siempre por la abstracción del kit (contrato §3.9)
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
+    ...walkinRoutes(supabase, appsFetch),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
       // Todos los roles: es la imagen del retiro, no un dato personal. URL firmada de corta duración; el `sha256` deja al
@@ -322,8 +390,8 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   ];
 }
 
-export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig }) {
-  const { calendar = {}, ses = {}, ...config } = base;
+export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads' | 'publicRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig; appsFetch?: typeof fetch }) {
+  const { calendar = {}, ses = {}, appsFetch = fetch, ...config } = base;
   const supabase = createSupabase(config);
   return createApp({
     ...config,
@@ -333,7 +401,8 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     // K3 para miembros: un archivo ajeno (justificante o firma de un huésped) solo lo lee por su id quien ve la fila que lo referencia
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
-    routes: bookingRoutes(supabase, calendar, ses),
+    routes: bookingRoutes(supabase, calendar, ses, appsFetch),
+    publicRoutes: bookingPublicRoutes(),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,

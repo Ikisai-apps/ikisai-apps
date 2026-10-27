@@ -154,7 +154,7 @@ function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
  * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
  * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
  */
-function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
+function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions, publicWrite: PublicWriter): AppRoute[] {
   const callApp = appCaller(base, options);
 
   async function closure(ctx: RequestContext, id: string): Promise<ClosureForSend> {
@@ -186,12 +186,26 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
         const { closure: c, project } = await closure(ctx, params.id ?? '');
         const [y, m, d] = c.day.split('-');
         const sourceRef = `flow:project:${project.id}:${c.day}`;
+        // Un cobro va en un solo apunte (Core/Finance 27-10): lo ya enviado como fiscal (justificantes de la caja, 0917) sale del resumen.
+        const fiscal = await supabase.rpc<FiscalOfDay | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.fiscal_of_day', p_args: { project_id: project.id, day: c.day } });
+        const fm = fiscal?.methods ?? {};
+        const byMethod: Record<string, number> = { cash: c.data.sales_by_method.cash - (fm.cash ?? 0), bizum: c.data.sales_by_method.bizum - (fm.bizum ?? 0) };
+        const card = (c.data.sales_by_method.card ?? 0) - (fm.card ?? 0);
+        if (card) byMethod.card = card;
+        const amount = c.data.sales_cents - (fiscal?.amount_cents ?? 0);
+        const other = amount - Object.values(byMethod).reduce((s, v) => s + v, 0);
+        if (other) byMethod.bitcoin = other; // lo cobrado en Bitcoin (Lightning u on-chain) que no ha ido como fiscal
+        const minus = new Map((fiscal?.detail ?? []).map((x) => [x.code, x]));
+        const detail = c.data.units_by_product.map((u) => {
+          const f = minus.get(`${u.scope}:${u.code}`);
+          return { code: `${u.scope}:${u.code}`, name: u.name, quantity: u.units - (f?.units ?? 0), amount_cents: u.amount_cents - (f?.amount_cents ?? 0) };
+        }).filter((x) => x.quantity !== 0 || x.amount_cents !== 0);
         const args = {
           source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'process', entry_date: c.day,
           description: `${project.name} · ${d}-${m}-${y}`,
-          amount_cents: c.data.sales_cents, tax_rate: 10,
-          methods: { cash: c.data.sales_by_method.cash, bizum: c.data.sales_by_method.bizum, ...(c.data.sales_by_method.card ? { card: c.data.sales_by_method.card } : {}) },
-          detail: c.data.units_by_product.map((u) => ({ code: `${u.scope}:${u.code}`, name: u.name, quantity: u.units, amount_cents: u.amount_cents })),
+          amount_cents: amount, tax_rate: 10,
+          methods: byMethod,
+          detail,
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
         };
@@ -199,7 +213,44 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
         return { status: 'sent', result };
       },
     },
+    {
+      // «Enviar a Finance» de un justificante de la caja (0917): ESE cobro como apunte fiscal, idempotente por justificante.
+      method: 'POST', pattern: 'receipts/:id/send/finance', handler: async ({ ctx, params }) => {
+        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede enviar a Finance.');
+        const out = await supabase.rpc<ReceiptForSend | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.receipt_for_send', p_args: { id: params.id } });
+        if (!out?.receipt) fail(404, 'NOT_FOUND', 'Ese justificante no existe.');
+        const r = out.receipt;
+        const [y, m, d] = out.day.split('-');
+        const sourceRef = `flow:receipt:${r.id}`;
+        const method = r.method === 'btc_ln' || r.method === 'btc_chain' ? 'bitcoin' : r.method;
+        const args = {
+          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'fiscal', entry_date: out.day,
+          description: `${out.project.name} · justificante ${r.id.slice(0, 8)} · ${d}-${m}-${y}`,
+          amount_cents: r.total_cents, tax_rate: 10, methods: { [method]: r.total_cents },
+          detail: out.detail, pending_refunds_cents: 0, event_id: out.project.booking_event_id,
+        };
+        // El estado lo anota el servidor (lote público, solo los campos de envío): el navegador no puede marcarlo.
+        const mark = (fields: Record<string, unknown>) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.receipts, id: r.id, expectedRevision: r.revision, fields }]);
+        let result: unknown;
+        try {
+          result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+        } catch (error) {
+          await mark({ finance_status: 'error', finance_sent_at: new Date().toISOString(), finance_result: { code: isFault(error) ? error.code : 'ERROR' } }).catch(() => undefined);
+          throw error;
+        }
+        await mark({ finance_status: 'sent', finance_sent_at: new Date().toISOString(), finance_result: result ?? null });
+        return { status: 'sent', result };
+      },
+    },
   ];
+}
+
+interface FiscalOfDay { amount_cents: number; methods: Record<string, number>; detail: Array<{ code: string; units: number; amount_cents: number }> }
+interface ReceiptForSend {
+  receipt: { id: string; revision: number; method: string; total_cents: number; order_ids: string[] };
+  project: { id: string; name: string; booking_event_id: string | null };
+  day: string;
+  detail: Array<{ code: string; name: string; quantity: number; amount_cents: number }>;
 }
 
 /**
@@ -312,10 +363,10 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options)], uploads: FLOW_UPLOADS,
+  const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
-  const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
   async function handlePublic(request: Request, route: string): Promise<Response> {
     const origin = request.headers.get('origin');

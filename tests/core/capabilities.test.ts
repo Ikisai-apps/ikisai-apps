@@ -28,15 +28,17 @@ test('capacidades · Flow invoca una capacidad de Invoices con la sesión de la 
 
     // La persona (owner de Flow) aún no es de Invoices: ve el catálogo vacío y no puede invocar.
     const empty = await app.call('/api/v1/capabilities');
-    assert.equal(empty.status, 200); assert.deepEqual(empty.data.items, []);
+    assert.equal(empty.status, 200); assert.deepEqual(empty.data.items.filter((i: any) => i.id === 'invoices.test_compra'), []);
     const denied = await app.call('/api/v1/capabilities/invoices.test_compra/invoke', { body: { requestId: 'r1', total: 12 } });
     assert.equal(denied.status, 403); assert.equal(denied.data.error.code, 'NEEDS_ACCESS');
 
     // Como editora de Invoices: la ve permitida y la invoca; el dueño recibe su token y contesta.
     await db.query(`insert into core.memberships (app, user_id, role) values ('invoices', $1, 'editor')`, [app.users.owner]);
     const listed = await app.call('/api/v1/capabilities');
-    assert.equal(listed.data.items.length, 1);
-    assert.equal(listed.data.items[0].id, 'invoices.test_compra'); assert.equal(listed.data.items[0].allowed, true); assert.equal(listed.data.items[0].appName, 'Ikisai Finance');
+    // El catálogo real ya trae las fichas de las apps (invoices.register_purchase_quick…): se mira solo la de prueba.
+    const mine = listed.data.items.filter((i: any) => i.id === 'invoices.test_compra');
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].allowed, true); assert.equal(mine[0].appName, 'Ikisai Finance');
     const done = await app.call('/api/v1/capabilities/invoices.test_compra/invoke', { body: { requestId: 'r1', total: 12 } });
     assert.equal(done.status, 200, JSON.stringify(done.data));
     assert.deepEqual(done.data, { capability: 'invoices.test_compra', version: 1, result: { purchaseId: 'c-1', replayed: false, total: 12 } });
@@ -66,13 +68,13 @@ test('capacidades · Flow invoca una capacidad de Invoices con la sesión de la 
     // Un rol insuficiente en la app dueña: la ve, pero no permitida, y no puede invocar.
     await db.query(`update core.memberships set role = 'reader' where app = 'invoices' and user_id = $1`, [app.users.owner]);
     const asReader = await app.call('/api/v1/capabilities');
-    assert.equal(asReader.data.items[0].allowed, false);
+    assert.equal(asReader.data.items.find((i: any) => i.id === 'invoices.test_compra').allowed, false);
     const deniedRole = await app.call('/api/v1/capabilities/invoices.test_compra/invoke', { body: { requestId: 'r2' } });
     assert.equal(deniedRole.status, 403); assert.equal(deniedRole.data.error.code, 'NEEDS_ACCESS');
 
     // Retirada: deja de listarse y de invocarse.
     await db.query(`select core.deprecate_capability('invoices.test_compra')`);
-    assert.deepEqual((await app.call('/api/v1/capabilities')).data.items, []);
+    assert.equal((await app.call('/api/v1/capabilities')).data.items.some((i: any) => i.id === 'invoices.test_compra'), false);
     const gone = await app.call('/api/v1/capabilities/invoices.test_compra/invoke', { body: {} });
     assert.equal(gone.status, 410);
     const unknown = await app.call('/api/v1/capabilities/invoices.nada/invoke', { body: {} });

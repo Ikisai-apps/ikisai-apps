@@ -2071,3 +2071,54 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
 - Errores: con hijas General, 422 `LABEL_HAS_GENERAL_CHILDREN` (primero ellas). Si no es una General viva, 422 `INVALID_OPERATION`. Si el área no existe, 404.
 - Interfaz: «Solo de un área…» en el editor de una etiqueta General. Se elige el área, que viene marcada con la que más la usa o con la actual, y la hoja dice en qué otras áreas queda una copia.
 - Pruebas: `tests/tasks/general-to-area.test.ts`.
+
+## 41. «Vista de trabajo» de la tarea (FB_2026_071; VG eligió «Mesa de trabajo» el 27-10-2026)
+
+- **Dónde:** en las tareas principales, la baldosa ancha «Vista de trabajo» de la ficha «Portada y foco». Abre la mesa en foco, con «‹ Portada» (`apps/tasks/public/trabajo-ui.js`, clases `tkw-`).
+- **«Todo»** (añadido de VG; marcado al entrar): la lista completa de lo que necesita la tarea y sus pasos, con sus materiales de `tasks.task_materials`. Se agrupa así:
+  - máquinas y herramientas (artículos no consumibles);
+  - EPI: los puestos a mano y los que piden esas máquinas (`resources.item_links`, `requires_ppe`, migración 0813), con la parte del cuerpo de `attributes.body_parts`;
+  - materiales, con las cantidades sumadas.
+
+  Al tocar un paso, la lista se queda con lo de ese paso; «Todo» vuelve a la lista completa.
+- **«Preparar antes de empezar»** (añadido de VG; plegado por defecto): el carro como lista que se marca, con los EPI por parte del cuerpo y quién los pide. Lo marcado se recuerda solo en el dispositivo (`localStorage`).
+- **Pasos:**
+  - las hijas, «en orden» con «Pasos en orden» (`steps_in_order`) y «En cualquier momento» (`step_free`, 0320);
+  - «Hecho», «+ Paso», «Fuera de orden» o «Volver a la cadena», y «Abrir el paso»;
+  - el mismo modelo y los mismos guardados que «Tareas hijas».
+- **EPI:** se leen de `GET /api/v1/resources/snapshot?tables=resources.item_links` al abrir la mesa, como mucho una vez por minuto. Sin la tabla o sin red, la mesa sale sin EPI. El tipo `epi` cuenta como equipo, no se gasta.
+- **Lectura:** quien solo lee ve la mesa sin «+ Paso», sin «Fuera de orden» y con «Hecho» desactivado.
+- **Pruebas:** `tests/tasks/trabajo.spec.ts`.
+
+## 42. «Pedir a Tasks» con hijas: el «Montaje del evento» de Booking (encargo de Core, 27-10-2026)
+
+`POST worker/requests/task` (§22.2, clave de worker) admite `children`: las tareas hijas de la que se pide, cada una con su clave estable. Lo resuelve `tasks.request_children` (migración `0344`) con la identidad de servicio y con historial. Primero, en un lote, se pone al día y se retira. Después, cada hija nueva entra en su propio lote, porque la procedencia de una tarea se fija una por lote. Si algo falla a medias, repetir la petición lo completa.
+
+- **Tipo nuevo `booking.event_setup`** («Montaje del evento»): como `booking.retreat_extra`, necesita `project_ref` (la reserva) y va al proyecto de esa reserva. Si el proyecto aún no existe, 409 `PROJECT_NOT_READY`: primero `requests/project`. Al reenviarlo con la madre abierta, toma el título y la nota nuevos (`updated`).
+- **Forma:**
+  ```json
+  {
+    "source": "booking", "kind": "booking.event_setup",
+    "external_ref": "RES2026-80-MONTAJE", "project_ref": "RES2026-80",
+    "title": "Montaje del evento", "note": "…", "due": "2026-11-14",
+    "external_url": "https://booking.ikisai.com/#/reservas/80",
+    "children": [
+      { "external_ref": "mesas", "title": "Montar 12 mesas", "note": "…", "due": "2026-11-13", "priority": "high" },
+      { "external_ref": "sillas", "title": "Colocar 96 sillas" }
+    ]
+  }
+  ```
+  - `children`: hasta 100.
+  - `external_ref` de cada hija: única en la petición, de 1 a 100 caracteres de `[A-Za-z0-9_.:-]`.
+  - `title`: de 1 a 120 caracteres.
+  - `note` (hasta 1000), `due` (AAAA-MM-DD) y `priority` (normal, high o critical) son opcionales.
+- **La lista va ENTERA en cada envío.** Lo que pasa con cada hija:
+  - **nueva:** se crea bajo la madre, en su proyecto, con las etiquetas del proyecto. Su referencia es `booking:<external_ref de la madre>/<external_ref de la hija>` y su id se deriva de ella, así que repetir no duplica;
+  - **sigue abierta:** se pone al día (título; y nota, fecha y urgencia si se mandan) solo si algo cambió;
+  - **ya no viene:** se retira a la papelera con sus propias hijas, si no está hecha, y desde la app se puede restaurar. Las hechas se quedan;
+  - **añadida a mano** en Tasks (sin esa referencia): no se toca nunca;
+  - **alguien la borró:** no se resucita y vuelve con `status: 'deleted'`.
+- **Respuesta:** `{ taskId, status, updated?, children: [{ ref, taskId, status: open|done|deleted }], childrenCounts: { created, updated, retired } }`.
+  - Si la madre no está abierta (hecha, descartada o en la papelera), las hijas no se tocan y llega `children: null`.
+  - `children` también vale con los demás tipos de las fuentes de sistema. La madre, reenviada, toma el título y la nota nuevos mientras esté abierta.
+- **Pruebas:** `tests/tasks/requests-children.test.ts`.

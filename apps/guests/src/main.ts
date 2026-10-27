@@ -7,6 +7,7 @@ import { onLocaleChange } from './app/i18n.ts';
 import { loadPublicContact } from './app/common-texts.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
+import { isVisitorHash, renderVisitor, visitorEntry } from './ui/visitor.ts';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Falta el contenedor #app');
@@ -29,6 +30,9 @@ initAppUpdates({ isSafe: () => !busy(), enabled: import.meta.env.PROD });
  * sesión guardada o la sesión única; si no hay ninguna, la pantalla de entrada.
  */
 async function boot(): Promise<void> {
+  // Visitantes por QR (§9.19): `/e/<código>` abre el portal del visitante, sin sesión ni datos.
+  const visitor = visitorEntry(location.pathname);
+  if (visitor) history.replaceState(null, '', `/${visitor}`);
   const match = location.pathname.match(/^\/i\/([^/?#]*)\/?$/);
   if (match) {
     history.replaceState(null, '', '/');
@@ -49,9 +53,17 @@ async function boot(): Promise<void> {
   show();
 }
 
+/** ¿Se está enseñando el portal del visitante? Cambia con el ancla (`#/v…`). */
+let visitorMode = false;
+
 function show(): void {
   unmount?.();
   unmount = null;
+  visitorMode = isVisitorHash(location.hash);
+  if (visitorMode) {
+    unmount = renderVisitor(root!);
+    return;
+  }
   if (!entryError && client.session()) {
     unmount = renderShell(root!, {
       client,
@@ -74,5 +86,7 @@ function show(): void {
 
 // Cambio de idioma (selector de la cabecera o de la entrada): se repinta todo; la cola de guardado sigue en IndexedDB.
 onLocaleChange(() => show());
+// Entrar o salir del portal del visitante desde un enlace (`#/v…` ↔ el resto).
+window.addEventListener('hashchange', () => { if (isVisitorHash(location.hash) !== visitorMode) show(); });
 
 void boot();

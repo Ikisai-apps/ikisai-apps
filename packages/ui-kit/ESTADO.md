@@ -4,6 +4,7 @@ Actualizado: 27 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), direct
 
 ## Hecho
 
+- v0.63.0: decoración y finca en `createSpaceMap`. Retícula de 5 m, 1 m y 0,5 m; capa de decoración y modo colocar; camas con icono; alturas y cotas; bajar de la finca al edificio y a la habitación con miga.
 - v0.62.0: K4 y K5 de Tasks. Sugeridos en `createItemPicker` (`suggested`, `suggestedLabel`; `searchItems({ boost })`), y búsqueda de artículos por palabras en cualquier orden con «→ completa» a un nombre que ya existe.
 - v0.61.0: `createLanes` (Flow v2 y cualquier app con columnas): pestañas o lado a lado, la elección recordada, carriles vacíos plegados, `mount` perezoso con limpieza y `onSelect` del carril principal.
 - v0.60.0: `renderQr` para Booking (QR de entrada de visitantes): SVG negro sobre blanco, nivel M, sin dependencias.

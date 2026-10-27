@@ -113,6 +113,28 @@ En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futur
 - **Sin forma o sin dibujo,** la estancia sale en la lista equivalente (`createSpaceTree`). Las literas siguen siendo camas con su capacidad.
 - **Portales (0809):** `core.read('guests', actor, 'resources.portal_plans', {})` → `{ plans: [{ id, buildingId, floor, position, width, height, file: { id, bucket, path, mime, sha256, provider } | null }], spaces: [{ id, parentId, kind, name, planId, planShape, position }] }`. Solo da geometría y nombres públicos, nunca personas ni notas. El archivo lo firma la Edge de Guests con `createStorage(...).readUrl`. La ocupación de las camas la sigue dando Booking.
 
+## 2.7 Finca y decoración sobre el plano (migración 0814, encargo de VG del 27-10-2026)
+
+Diseño en `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`; forma acordada con UI-kit (`createSpaceMap`, 0.63) y Central («Colocar» › Decoración).
+
+- **`floor_plans` gana:**
+  - `kind`: `'building'` (por defecto) o `'estate'`. El plano de la finca es un `estate` colgado de un espacio raíz de tipo `exterior` («Finca»); en él se colocan edificios y exteriores (`spaces.plan_id` + `plan_shape`, como las estancias). Un espacio con plano de finca no tiene también plano de edificio.
+  - `grid`: `{metersPerUnit, originX?, originY?}`, con el origen en unidades del dibujo. Sin `grid` no se decora; no se quita de un dibujo decorado.
+  - `bands`: `[{name, y0, y1}]` (de 1 a 10, en 0..1 de alto): las alturas como franjas.
+  - `contours`: `[{spaceId, x, y, points?}]` (de 1 a 20, en 0..1): dónde va la etiqueta de la curva de nivel de cada altura (solo espacios `altura`) y, desde 0815, la curva ajustada a mano en «Colocar» (`points`, de 2 a 200 puntos en 0..1). Sin `points`, la curva la trae el SVG (`<path data-contour="Altura N">`); el nombre y la cota van siempre como datos (`bands` y `contours`), nunca como texto del dibujo.
+- **Cota:** `attributes.elevation_m` de cada `altura` (número, de −500 a 9000 m), que editan editor y owner.
+- **`resources.decor_icons`:** `name`, `category`, `file_id` y `default_size` (1 = una celda · 4 = 2×2). `created_by` lo pone el alta. Archivo SVG, PNG o GIF de hasta 1 MB, subido como los dibujos (`POST /api/v1/resources/uploads`; el GIF lo admite la subida cuando el kit lo añada). Escribe el owner; un icono en uso no se borra (`ICON_IN_USE`).
+- **`resources.decor_items`:** `plan_id`, `icon_id`, `cell_x` y `cell_y` (enteros, desde el origen), `scale` (0,5 · 1 · 5 metros por celda), `size` (1 · 4), `rotation` (0 · 90 · 180 · 270), `layer` (`general` · `event`), `event_id` (solo en `event`), `op` (`add` · `remove` · `replace`) y `replaces_item_id`.
+  - **Geometría:** posición = origen + celda × `scale` / `metersPerUnit`; lado = 1 o 2 celdas. La pieza cabe en el dibujo: `(cell + lado) × scale ≤ width (o height) × metersPerUnit`.
+  - **Capa general:** solo `op = 'add'`; la escribe el owner por commands (también `delete` y `restore`, para «Deshacer»).
+  - **Capa de evento:** `add`, `remove` o `replace` sobre una pieza general viva del mismo dibujo (sin cadenas ni ciclos). Solo la escribe `resources.set_event_decor`; una pieza general con cambios de evento encima no se borra (`DECOR_REPLACED`). Un dibujo con decoración no se borra (`PLAN_HAS_DECOR`).
+- **`resources.set_event_decor`** (para Booking): `{op: 'call', procedure: 'resources.set_event_decor', args: {event_id, put?: [{id?, expectedRevision?, plan_id, icon_id?, cell_x, cell_y, scale?, size?, rotation?, op, replaces_item_id?}], delete?: [id]}}` en `POST /api/v1/resources/commands`, con el token de la persona. Exige ser editor u owner de Booking. De 1 a 200 cambios; devuelve `{eventId, ids}`. Que el evento exista lo comprueba booking-api antes de llamar. Cada cambio puede generar su tarea en Tasks, lo que es cosa de Booking.
+- **`resources.space_images`:** `space_id` (edificio o exterior), `kind` (`silueta` · `seccion` · `foto`), `title`, `file_id` (PNG, JPG, WebP o SVG de hasta 5 MB) y `position`. Del owner.
+- **Lecturas:**
+  - `resources.portal_plans` (Guests y, desde 0814, Organizers): lo de 0809 más `kind`, `grid`, `bands`, `contours: [{spaceId, label, elevationM, x, y, points}]`, `icons: [{id, name, category, defaultSize, file}]`, `images: [{id, spaceId, kind, title, position, file}]` y `decor` (**solo la capa general**). Nunca personas ni notas.
+  - `resources.plans_with_decor` (miembros de Recursos: Central y Booking): lo mismo con las dos capas sin resolver (`layer`, `eventId`, `op`, `replacesItemId`). Con `{event_id}`, la general y la de ese evento.
+- **Pruebas:** `tests/resources/decor-estate.test.ts`.
+
 ## 3. Inventario (fase R3, migración 0802)
 
 Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de artículo, solo el owner. Huéspedes, organizadores y outsiders no lo ven.
@@ -157,6 +179,17 @@ Sin red, el cliente puede sumar `movements` de su espejo.
   - Un ref de `refs` sin entrada queda a 0 (anulación o vuelta a revisión).
   - `item_costs` cuenta los contrarios.
 - **Lectura desde otras apps:** sus migraciones pueden leer `items`, `item_kinds`, `item_units`, `lots`, `movements`, `movement_costs`, `stock_levels` e `item_costs`, como los espacios.
+
+## 3.1 EPI y lo que pide cada máquina (migración 0813, R3 de Tasks)
+
+- **Tipo `epi`** («EPI»; se cuenta, no se gasta). Cada EPI guarda en `attributes.body_parts` qué protege: una o varias de `head`, `eyes`, `ears`, `mouth_nose`, `hands`, `feet`, `legs`, `knees`, `body`, `harness`, sin repetir.
+- **`resources.item_links`** `{item_id, linked_item_id, kind: 'requires_ppe', position, notes}`: la máquina o herramienta `item_id` pide el EPI `linked_item_id`. Hay un vínculo vivo por pareja y tipo, y nunca va de un artículo a sí mismo. Lo escriben editor y owner, como los artículos.
+- **Validación** (`resources.check_item_links`):
+  - los dos artículos existen;
+  - el ligado es un EPI y el que lo pide no;
+  - las partes del cuerpo son de la lista;
+  - un EPI que una máquina pide no puede cambiar de tipo hasta que se quite el vínculo (`ITEM_IN_USE`).
+- Para qué sirve: la «Vista de trabajo» de Tasks (FB_2026_071) enseña los EPI de las máquinas de cada paso.
 
 ## 4. Lo que viene
 

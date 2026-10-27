@@ -8,6 +8,7 @@ import { byPaySeq, customerNumber, orderTotal, pendingOf, watchData, type FlowDa
 import { openDeliverySheet } from './delivery-sheet.ts';
 import { openOrderSheet } from './order-sheet.ts';
 import { accountLabel, openAccountsSheet } from './accounts.ts';
+import { openCustomerSheet } from './checkout.ts';
 import { createStableList } from './stable-list.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -32,6 +33,8 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     const newButton = el('button', { type: 'button', class: 'primary', onclick: newOrder }, icon('plus', 18), el('span', null, 'Nuevo pedido'));
     const accountsButton = el('button', { type: 'button', class: 'secondary', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
     const found = el('p', { class: 'muted small', role: 'status' });
+    const customerButton = el('button', { type: 'button', class: 'secondary', hidden: true,
+      onclick: () => { if (ctx.projectId && search) openCustomerSheet(client, ctx.projectId, Number(search)); } }, 'Ficha del cliente');
     const listEl = el('div', { class: 'fqueue', role: 'list' });
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true });
     const isOwner = client.bootstrap()?.membership.role === 'owner';
@@ -42,7 +45,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       el('h1', { class: 'col-title' }, kind === 'order' ? 'Pedido y cobro' : 'Servicio y entrega'),
       ...ownerTools,
       el('div', { class: 'orders-tools' }, searchInput, ...(kind === 'order' && canEdit ? [newButton, accountsButton] : [])),
-      found, listEl, empty,
+      el('div', { class: 'orders-found' }, found, customerButton), listEl, empty,
     );
 
     const list = createStableList<Order>({ element: listEl, key: (o) => o.id, render: (o) => { const n = shell(o); fill(n, o); return n; }, update: fill });
@@ -133,6 +136,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       accountsButton.hidden = !data?.accountsEnabled;
       const items = orders();
       list.set(items);
+      customerButton.hidden = !(kind === 'order' && search && items.length && ctx.projectId && data?.deepCheckout.has(ctx.projectId));
       found.textContent = search ? (items.length ? `Pedidos del cliente ${search}: ${items.length}` : `No hay pedidos del cliente ${search}.`) : '';
       empty.hidden = items.length > 0 || !!search;
       empty.textContent = kind === 'order' ? 'Aún no hay pedidos.' : 'Aún no hay pedidos cobrados.';

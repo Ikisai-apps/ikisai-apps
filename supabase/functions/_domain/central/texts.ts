@@ -149,6 +149,10 @@ export const PORTAL_TEXTS: Record<TextPortal, PortalScreen[]> = {
     { screen: 'Ayuda y contacto', slots: [{ key: 'contact.guests.email', kind: 'contacto', title: 'Correo de los huéspedes' }, { key: 'contact.phone', kind: 'contacto', title: 'Teléfono' }] },
   ],
   organizers: [
+    // X2 (0590): Organizers las lee desde su #787, en Fechas, Diseño y Propuesta.
+    { screen: 'Fechas', slots: [{ key: 'organizers.dates_note', kind: 'mensaje', title: 'Nota de las fechas' }] },
+    { screen: 'Diseño', slots: [{ key: 'organizers.quote_note', kind: 'mensaje', title: 'Nota del presupuesto' }] },
+    { screen: 'Propuesta', slots: [{ key: 'organizers.proposal_note', kind: 'mensaje', title: 'Nota de la propuesta' }] },
     { screen: 'Asistentes', slots: [{ key: 'organizers.declaration', kind: 'legal', title: 'Declaración' }, { key: 'portal.privacy', kind: 'legal', title: 'Protección de datos' }] },
     { screen: 'Pagos', slots: [{ key: 'payment.instructions', kind: 'mensaje', title: 'Cómo pagar' }] },
     { screen: 'Menú', slots: [{ key: 'portal.menu_note', kind: 'mensaje', title: 'Nota del menú' }] },
