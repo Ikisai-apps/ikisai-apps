@@ -1,7 +1,7 @@
 /**
  * Flow · recorrido de la primera entrega real (FLOW-DIR-001 §9): cliente con número estable → caja → preparación →
  * entrega parcial y final, sin perder pedidos, dinero ni estados entre sesiones. Dos navegadores: el del público (carta,
- * sin sesión) y el del personal (/equipo). Contra la `flow-api` real sobre PGlite. Datos ficticios.
+ * sin sesión, en /recorridos/carta) y el del personal (raíz). Contra la `flow-api` real sobre PGlite. Datos ficticios.
  */
 import { expect, test, type Browser, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -37,7 +37,7 @@ test.afterAll(async () => {
 
 async function staff(browser: Browser): Promise<Page> {
   const page = await (await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-ES', timezoneId: 'Europe/Madrid' })).newPage();
-  await page.goto(`${baseURL}/equipo`);
+  await page.goto(`${baseURL}/`);
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
@@ -53,7 +53,7 @@ test('recorrido · cliente 100 → caja cobra → preparación → entrega parci
   test.setTimeout(180_000);
   // 1. Público: carta en la raíz, sin login. Dos serranos y un agua; enviar a barra da un número.
   const pub = await (await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-ES' })).newPage();
-  await pub.goto(`${baseURL}/`);
+  await pub.goto(`${baseURL}/recorridos/carta`);
   await expect(pub.getByRole('heading', { name: 'Carta' })).toBeVisible();
   await expect(pub.getByRole('heading', { name: 'Clásicos' })).toBeVisible();
   const serrano = pub.locator('[data-product="clasico:A"]');

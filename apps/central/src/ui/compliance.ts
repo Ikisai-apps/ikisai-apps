@@ -383,21 +383,21 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
   const input = (id: string, value: unknown, attrs: Record<string, string> = {}) => el('input', { id, type: 'text', value: value == null ? '' : String(value), ...attrs }) as HTMLInputElement;
   const area = (id: string, value: unknown, max: string) => { const t = el('textarea', { id, rows: '2', maxlength: max }) as HTMLTextAreaElement; t.value = value == null ? '' : String(value); return t; };
   const name = input('q-name', req?.name, { maxlength: '160' });
-  const type = el('select', { id: 'q-type', 'data-field-id': 'central.cumplimiento.type' }, ...options(REQUIREMENT_TYPES, REQUIREMENT_TYPE_LABELS, req?.requirement_type ?? 'seguro')) as HTMLSelectElement;
-  const status = el('select', { id: 'q-status', 'data-field-id': 'central.cumplimiento.q_status' }, ...options(REQUIREMENT_STATUSES, REQUIREMENT_STATUS_LABELS, req?.status ?? 'pendiente')) as HTMLSelectElement;
+  const type = el('select', { id: 'q-type', 'data-field-id': 'central.cumplimiento.type', 'data-field-entity': 'central.requirements', 'data-field-prop': 'requirement_type' }, ...options(REQUIREMENT_TYPES, REQUIREMENT_TYPE_LABELS, req?.requirement_type ?? 'seguro')) as HTMLSelectElement;
+  const status = el('select', { id: 'q-status', 'data-field-id': 'central.cumplimiento.q_status', 'data-field-entity': 'central.requirements', 'data-field-prop': 'status' }, ...options(REQUIREMENT_STATUSES, REQUIREMENT_STATUS_LABELS, req?.status ?? 'pendiente')) as HTMLSelectElement;
   const authority = input('q-authority', req?.authority, { maxlength: '160' });
   const source = input('q-source', req?.source, { maxlength: '300', placeholder: 'Norma, pliego, contrato…' });
   const responsible = personSelect('q-responsible', data, req?.responsible_person_id);
   const reference = input('q-reference', req?.reference_date, { type: 'date' });
   const expires = input('q-expires', req?.expires_on, { type: 'date' });
-  const frequency = el('select', { id: 'q-frequency', 'data-field-id': 'central.cumplimiento.frequency' }, ...options(FREQUENCIES, FREQUENCY_LABELS, req?.frequency ?? 'unica')) as HTMLSelectElement;
+  const frequency = el('select', { id: 'q-frequency', 'data-field-id': 'central.cumplimiento.frequency', 'data-field-entity': 'central.requirements', 'data-field-prop': 'frequency' }, ...options(FREQUENCIES, FREQUENCY_LABELS, req?.frequency ?? 'unica')) as HTMLSelectElement;
   const months = input('q-months', req?.frequency_months, { type: 'number', min: '1', max: '120', inputmode: 'numeric' });
   const monthsField = el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_meses', 'data-feedback-label': 'Cada cuántos meses' }, el('span', null, 'Cada cuántos meses'), months);
   const notice = input('q-notice', req?.notice_days ?? 30, { type: 'number', min: '0', max: '365', inputmode: 'numeric' });
-  const risk = el('select', { id: 'q-risk', 'data-field-id': 'central.cumplimiento.risk' }, ...options(RISKS, RISK_LABELS, req?.risk ?? 'medio')) as HTMLSelectElement;
-  const impact = el('select', { id: 'q-impact', 'data-field-id': 'central.cumplimiento.impact' }, ...options(IMPACTS, IMPACT_LABELS, req?.impact, 'Sin indicar')) as HTMLSelectElement;
-  const blocks = el('input', { type: 'checkbox', id: 'q-blocks', 'data-field-id': 'central.cumplimiento.blocks', checked: req?.blocks_operation === true }) as HTMLInputElement;
-  const cost = el('input', { type: 'checkbox', id: 'q-cost', 'data-field-id': 'central.cumplimiento.cost', checked: req?.generates_cost === true }) as HTMLInputElement;
+  const risk = el('select', { id: 'q-risk', 'data-field-id': 'central.cumplimiento.risk', 'data-field-entity': 'central.requirements', 'data-field-prop': 'risk' }, ...options(RISKS, RISK_LABELS, req?.risk ?? 'medio')) as HTMLSelectElement;
+  const impact = el('select', { id: 'q-impact', 'data-field-id': 'central.cumplimiento.impact', 'data-field-entity': 'central.requirements', 'data-field-prop': 'impact' }, ...options(IMPACTS, IMPACT_LABELS, req?.impact, 'Sin indicar')) as HTMLSelectElement;
+  const blocks = el('input', { type: 'checkbox', id: 'q-blocks', 'data-field-id': 'central.cumplimiento.blocks', 'data-field-entity': 'central.requirements', 'data-field-prop': 'blocks_operation', checked: req?.blocks_operation === true }) as HTMLInputElement;
+  const cost = el('input', { type: 'checkbox', id: 'q-cost', 'data-field-id': 'central.cumplimiento.cost', 'data-field-entity': 'central.requirements', 'data-field-prop': 'generates_cost', checked: req?.generates_cost === true }) as HTMLInputElement;
   const nextAction = input('q-next', req?.next_action, { maxlength: '300' });
   const nextOn = input('q-next-on', req?.next_action_on, { type: 'date' });
   const description = area('q-description', req?.description, '2000');
@@ -462,18 +462,18 @@ export function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, 
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
   const input = (id: string, value: unknown, attrs: Record<string, string> = {}) => el('input', { id, type: 'text', value: value == null ? '' : String(value), ...attrs }) as HTMLInputElement;
   const name = input('d-name', doc?.name, { maxlength: '160' });
-  const kind = el('select', { id: 'd-kind', 'data-field-id': 'central.cumplimiento.kind' }, ...options(DOCUMENT_KINDS, DOCUMENT_KIND_LABELS, doc?.document_type ?? 'poliza')) as HTMLSelectElement;
-  const status = el('select', { id: 'd-status', 'data-field-id': 'central.cumplimiento.d_status' }, ...options(KEY_DOCUMENT_STATUSES, KEY_DOCUMENT_STATUS_LABELS, doc?.status ?? 'vigente')) as HTMLSelectElement;
+  const kind = el('select', { id: 'd-kind', 'data-field-id': 'central.cumplimiento.kind', 'data-field-entity': 'central.key_documents', 'data-field-prop': 'document_type' }, ...options(DOCUMENT_KINDS, DOCUMENT_KIND_LABELS, doc?.document_type ?? 'poliza')) as HTMLSelectElement;
+  const status = el('select', { id: 'd-status', 'data-field-id': 'central.cumplimiento.d_status', 'data-field-entity': 'central.key_documents', 'data-field-prop': 'status' }, ...options(KEY_DOCUMENT_STATUSES, KEY_DOCUMENT_STATUS_LABELS, doc?.status ?? 'vigente')) as HTMLSelectElement;
   const requirements = (data?.requirements ?? []).filter((r) => !r.deleted_at);
-  const reqSel = el('select', { id: 'd-requirement', 'data-field-id': 'central.cumplimiento.requirement', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Sin obligación'),
+  const reqSel = el('select', { id: 'd-requirement', 'data-field-id': 'central.cumplimiento.requirement', 'data-field-entity': 'central.key_documents', 'data-field-prop': 'requirement_id', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Sin obligación'),
     ...requirements.map((r) => el('option', { value: r.id, selected: (doc?.requirement_id ?? requirementId) === r.id }, `${r.code ?? ''} ${r.name}`.trim()))) as HTMLSelectElement;
   const docDate = input('d-date', doc?.document_date, { type: 'date' });
   const expires = input('d-expires', doc?.expires_on, { type: 'date' });
   const version = input('d-version', doc?.version, { maxlength: '40' });
-  const signed = el('input', { type: 'checkbox', id: 'd-signed', 'data-field-id': 'central.cumplimiento.signed', checked: doc?.signed === true }) as HTMLInputElement;
+  const signed = el('input', { type: 'checkbox', id: 'd-signed', 'data-field-id': 'central.cumplimiento.signed', 'data-field-entity': 'central.key_documents', 'data-field-prop': 'signed', checked: doc?.signed === true }) as HTMLInputElement;
   const url = input('d-url', doc?.external_url, { maxlength: '500', placeholder: 'https://…', 'data-feedback-ignore': '' });
   const responsible = personSelect('d-responsible', data, doc?.responsible_person_id);
-  const fileInput = el('input', { id: 'd-file', 'data-field-id': 'central.cumplimiento.file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.cumplimiento.documento.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
+  const fileInput = el('input', { id: 'd-file', 'data-field-id': 'central.cumplimiento.file', 'data-field-entity': 'central.key_documents', 'data-field-prop': 'file_id', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.cumplimiento.documento.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
   const fileState = el('span', { class: 'muted small', id: 'd-file-state', 'data-feedback-id': 'central.cumplimiento.documento.estado_archivo', 'data-feedback-label': 'Estado del archivo' }, doc?.file_id ? 'Tiene archivo adjunto.' : 'Sin archivo.');
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
@@ -544,9 +544,9 @@ export function openMarkDone(client: SyncClient, usage: Usage, req: Requirement,
   let sheet: Sheet | null = null;
   const today = todayInMadrid();
   const before: Before = { status: req.status, reference_date: req.reference_date ?? null, expires_on: req.expires_on ?? null };
-  const reference = el('input', { id: 'md-reference', 'data-field-id': 'central.cumplimiento.reference', type: 'date', value: today }) as HTMLInputElement;
+  const reference = el('input', { id: 'md-reference', 'data-field-id': 'central.cumplimiento.reference', 'data-field-entity': 'central.requirements', 'data-field-prop': 'reference_date', type: 'date', value: today }) as HTMLInputElement;
   const proposed = nextExpiry(today, req.frequency, req.frequency_months as number | null);
-  const expires = el('input', { id: 'md-expires', 'data-field-id': 'central.cumplimiento.expires', type: 'date', value: proposed ?? '' }) as HTMLInputElement;
+  const expires = el('input', { id: 'md-expires', 'data-field-id': 'central.cumplimiento.expires', 'data-field-entity': 'central.requirements', 'data-field-prop': 'expires_on', type: 'date', value: proposed ?? '' }) as HTMLInputElement;
   reference.addEventListener('change', () => { expires.value = nextExpiry(reference.value || today, req.frequency, req.frequency_months as number | null) ?? ''; });
   const save = el('button', { class: 'primary', type: 'button', id: 'confirmDone', 'data-feedback-id': 'central.obligacion.cumplido.confirmar', 'data-feedback-label': 'Marcar cumplido', onclick: async () => {
     const fields = { status: 'cumplido', reference_date: reference.value || today, expires_on: expires.value || null };

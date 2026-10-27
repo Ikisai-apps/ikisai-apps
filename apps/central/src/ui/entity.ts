@@ -247,7 +247,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     let logo: LogoRef = (current?.logo_file_id as LogoRef) ?? null;
     let stagedLogo: Blob | null = null;
     const logoPreview = el('div', { class: 'logopreview', 'data-feedback-id': 'central.entidad.editar.logotipo_vista', 'data-feedback-label': 'Vista del logotipo' });
-    const logoInput = el('input', { id: 'en-logo', 'data-field-id': 'central.entidad.logo', type: 'file', accept: LOGO_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.logotipo_archivo', 'data-feedback-label': 'Archivo del logotipo' }) as HTMLInputElement;
+    const logoInput = el('input', { id: 'en-logo', 'data-field-id': 'central.entidad.logo', 'data-field-entity': 'central.entity', 'data-field-prop': 'logo_file_id', type: 'file', accept: LOGO_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.logotipo_archivo', 'data-feedback-label': 'Archivo del logotipo' }) as HTMLInputElement;
     const paintLogo = async () => {
       if (stagedLogo) {
         const url = URL.createObjectURL(stagedLogo);
@@ -274,7 +274,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     let stagedPlan: File | Blob | null = null;
     let stagedPlanName = '';
     const planPreview = el('div', { class: 'planpreview', 'data-feedback-id': 'central.entidad.editar.plano_vista', 'data-feedback-label': 'Plano elegido' });
-    const planInput = el('input', { id: 'en-plan', 'data-field-id': 'central.entidad.plan', type: 'file', accept: SITE_PLAN_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.plano_archivo', 'data-feedback-label': 'Archivo del plano' }) as HTMLInputElement;
+    const planInput = el('input', { id: 'en-plan', 'data-field-id': 'central.entidad.plan', 'data-field-entity': 'central.entity', 'data-field-prop': 'site_plan_file_id', type: 'file', accept: SITE_PLAN_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.plano_archivo', 'data-feedback-label': 'Archivo del plano' }) as HTMLInputElement;
     const paintPlan = async () => {
       replace(planPreview, stagedPlan ? el('span', null, icon('check', 16), ` ${stagedPlanName}`) : (await planNode(plan)) ?? el('span', { class: 'muted' }, 'Sin plano'));
     };

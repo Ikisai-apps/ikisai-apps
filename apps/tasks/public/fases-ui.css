@@ -1,0 +1,12 @@
+/* Fases del proyecto (fases-ui.js, §51): la banda del proyecto, la hoja de una fase y «Fase» en la ficha de la tarea. */
+.tkph-band{display:grid;gap:8px;margin:0 0 12px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--paper)}
+.tkph-chips{display:flex;flex-wrap:wrap;gap:8px}
+.tkph-chip,.tkph-band .softbtn{min-height:44px;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);text-align:left}
+.tkph-chip.active{border-color:var(--accent)}
+.tkph-chip.done{opacity:.75}
+.tkph-dates{gap:8px;flex-wrap:wrap}
+.tkph-dates .field{flex:1 1 140px}
+.tkph-h{margin:12px 0 4px;font-size:14px}
+.tkph-field{margin:4px 0 8px}
+.tkph-field select{min-height:44px}
+.actions #tkphUp,.actions #tkphDown{min-width:44px;min-height:44px}

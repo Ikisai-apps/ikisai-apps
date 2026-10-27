@@ -262,7 +262,7 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
       const target = fbMark(num('k-target', current?.target), 'central.direccion.objetivo.objetivo', 'Objetivo');
       const warn = fbMark(num('k-warn', current?.warn_at), 'central.direccion.objetivo.atencion', 'Umbral de atención');
       const critical = fbMark(num('k-critical', current?.critical_at), 'central.direccion.objetivo.critico', 'Umbral crítico');
-      const direction = el('select', { id: 'k-direction', 'data-field-id': 'central.inicio.direction', 'data-feedback-id': 'central.direccion.objetivo.sentido', 'data-feedback-label': 'Sentido' },
+      const direction = el('select', { id: 'k-direction', 'data-field-id': 'central.inicio.direction', 'data-field-entity': 'central.kpi_targets', 'data-field-prop': 'direction', 'data-feedback-id': 'central.direccion.objetivo.sentido', 'data-feedback-label': 'Sentido' },
         el('option', { value: 'up', selected: (current?.direction ?? i.direction ?? 'up') === 'up' }, 'Más es mejor'),
         el('option', { value: 'down', selected: (current?.direction ?? i.direction) === 'down' }, 'Menos es mejor')) as HTMLSelectElement;
       const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.direccion.objetivo.error', 'data-feedback-label': 'Error del formulario' });

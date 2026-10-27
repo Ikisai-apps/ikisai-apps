@@ -17,6 +17,7 @@ let page: Page;
 const errors: string[] = [];
 const id = () => crypto.randomUUID();
 const TAB = id(), JARDIN = id(), TALLER = id();
+const HUERTO = id(), TALLER_SPACE = id();
 const JUNTA = id(), PERSIANA = id(), VALLA = id(), PASO1 = id(), PASO2 = id(), PASO3 = id(), PASO4 = id(), ESTANTE = id(), SETO = id(), RIEGO = id(), BANCO = id();
 /** El día en Madrid (como la app), con desplazamiento en días. */
 const madrid = (offset = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
@@ -59,6 +60,12 @@ test.beforeAll(async ({ browser }) => {
   // Su plan de ayer: el seto y una llamada sin hacer.
   await ok([{ op: 'insert', table: 'tasks.day_plans', id: id(), fields: { actor_id: server.app.users.owner, day: madrid(-1), reviewed: false,
     items: [{ id: id(), task_id: SETO, tab_id: TAB, position: 1024 }, { id: id(), text: 'Llamar al cerrajero', tab_id: null, position: 2048, done: false }] } }]);
+  // Filtro por espacio (encargo de VG, 27-10): la casa usa los espacios de Recursos; dos de una palabra, en cuatro tareas.
+  const altura = (await q(`select id from resources.spaces where name = 'Altura 1'`)).rows[0] as { id: string };
+  await q(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $3, 'edificio', 'Huerto', 1), ($2, $3, 'edificio', 'Taller', 2)`, [HUERTO, TALLER_SPACE, altura.id]);
+  await q(`insert into tasks.settings (key, value) values ('zone_source', to_jsonb('spaces'::text))`);
+  const sp = (task: string, project: string, space: string) => ({ op: 'insert', table: 'tasks.task_spaces', id: id(), fields: { tab_id: TAB, project_id: project, task_id: task, space_id: space } });
+  await ok([sp(SETO, JARDIN, HUERTO), sp(RIEGO, JARDIN, HUERTO), sp(BANCO, TALLER, TALLER_SPACE), sp(ESTANTE, TALLER, TALLER_SPACE)]);
   context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   page = await openApp(context, server, { errors });
   await page.evaluate((tab) => { state.taskScope = 'area'; state.activeTab = tab; state.view = 'today'; render(); }, TAB);
@@ -296,4 +303,54 @@ test('el outsider no tiene plan: ni la pestaña «Hoy» ni la pantalla, tampoco 
   expect(await outsider.evaluate(() => state.view)).toBe('home');
   await expect(outsider.locator('[data-tkh-sun],[data-tkh-lead]')).toHaveCount(0);
   await outsiderContext.close();
+});
+
+test('filtro por espacio arriba: un toque marca y otro desmarca, varios suman, ninguno o todos es todo, y se recuerda', async () => {
+  await go('today');
+  await settled(page);
+  const chips = page.locator('#tkhSpaces [data-tkh-space]');
+  const huerto = page.locator(`[data-tkh-space="${HUERTO}"]`), taller = page.locator(`[data-tkh-space="${TALLER_SPACE}"]`);
+  await expect(chips).toHaveCount(2);
+  // La fila lleva la pista del kit (installScrollHints la vigila: pone data-more-start/end cuando hace falta).
+  expect(await page.evaluate(() => document.getElementById('view')?.dataset.tkhHints)).toBe('1');
+  await expect(huerto).toContainText('Huerto');
+  await expect(huerto.locator('.tkh-space-n')).toHaveText(/^[1-9]\d*$/);
+  const take = page.locator('.tkh-take');
+  await expect(take).toContainText('Barnizar el banco');
+  // Huerto: solo lo del huerto.
+  await huerto.click();
+  await expect(huerto).toHaveAttribute('aria-pressed', 'true');
+  await expect(huerto).toContainText('✓');
+  await expect(huerto).toBeFocused();
+  await expect(page.locator('.tkh-filtering[role="status"]')).toContainText('Solo Huerto');
+  await expect(take).toContainText('Revisar el riego');
+  await expect(take).not.toContainText('Barnizar el banco');
+  // Se recuerda en el dispositivo.
+  await page.reload();
+  await settled(page);
+  await go('today');
+  await settled(page);
+  await expect(huerto).toHaveAttribute('aria-pressed', 'true');
+  await expect(take).not.toContainText('Barnizar el banco');
+  // Los dos marcados: se ve todo (son todos).
+  await taller.click();
+  await expect(take).toContainText('Barnizar el banco');
+  await expect(take).toContainText('Revisar el riego');
+  // «Quitar filtro» deja ninguno marcado; volvemos a marcar los dos para probar quitarlos a mano.
+  await taller.click();
+  await expect(page.locator('.tkh-filtering')).toHaveCount(1);
+  await page.locator('.tkh-filtering [data-tkh-clear]').click();
+  await expect(page.locator('.tkh-filtering')).toHaveCount(0);
+  await expect(huerto).toHaveAttribute('aria-pressed', 'false');
+  await huerto.click();
+  await taller.click();
+  // Ninguno: todo.
+  await huerto.click();
+  await expect(take).not.toContainText('Revisar el riego');
+  await taller.click();
+  await expect(huerto).toHaveAttribute('aria-pressed', 'false');
+  await expect(taller).toHaveAttribute('aria-pressed', 'false');
+  await expect(take).toContainText('Revisar el riego');
+  await expect(take).toContainText('Barnizar el banco');
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

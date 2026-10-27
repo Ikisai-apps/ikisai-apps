@@ -1,6 +1,7 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { clearGuideLink, readGuideLink } from '../guide/link.ts';
 import { createFieldPointer } from '../guide/point.ts';
+import { installScrollHints } from '../scroll-hint.ts';
 import { createGuide } from '../guide/guide.ts';
 import { flowGuideSource, type GuideApiClient, type GuideSource } from '../guide/flow-source.ts';
 import { el, replace } from '../dom.ts';
@@ -279,6 +280,8 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, returnLink, pointer?.element ?? null, banners, main));
   // La app pinta su pantalla después: el campo se busca cuando aparezca.
   if (pointer) queueMicrotask(() => void pointer.point());
+  // K4: pista de desplazamiento en las filas horizontales de la app y del kit (`.scrollrow`, pestañas…), sin código en la app.
+  const stopScrollHints = installScrollHints(element);
   if (guide) { element.append(guide.element); queueMicrotask(() => void guide.start()); }
   replace(root, element);
 
@@ -311,6 +314,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     setNav(items, more) { paintNav(items, more); },
     menu,
     destroy() {
+      stopScrollHints();
       fitObserver?.disconnect();
       guide?.destroy();
       menu?.destroy();

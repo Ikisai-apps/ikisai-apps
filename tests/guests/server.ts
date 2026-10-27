@@ -121,6 +121,8 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       for (const [key, value] of Object.entries(req.headers)) if (typeof value === 'string' && key !== 'host' && key !== 'content-length') headers.set(key, value);
       // El proxy de `vite preview` conserva el Origin del navegador: la Edge solo admite el de producción.
       headers.set('Origin', origin);
+      // La IP del móvil, como la pone `_worker.js` en producción (el traspaso de visitante va atado a ella, 0106).
+      headers.set('X-Ikisai-Client-Ip', req.socket.remoteAddress ?? '127.0.0.1');
       // Como el worker de Pages (§9.19): `/api/booking/v1/public/*` va a las rutas públicas de booking-api.
       const toBooking = (req.url ?? '').startsWith('/api/booking/v1/public/');
       const toFlow = (req.url ?? '').startsWith('/api/flow/v1/public/');

@@ -376,7 +376,7 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: str
           const out = await tasks<{ created: boolean; purchase: { id: string; status: string } }>(ctx, 'requests/purchase', {
             source: 'flow', external_ref: found.unit.id, title: String(found.unit.label ?? '').slice(0, 300), project_id: found.project.tasks_project_id, priority, note,
             // «Ver en Flow ›» de Tasks (§39.5): la columna de la tarea en su flujo.
-            external_url: `${FLOW_ORIGINS[0]}/equipo#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
+            external_url: `${FLOW_ORIGINS[0]}/#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
             ...(Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: typeof body.unit === 'string' ? body.unit.slice(0, 20) : undefined } : {}),
           });
           const link = { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status };
@@ -593,12 +593,17 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
       if (route === 'menu' && request.method === 'GET') {
         const out = await supabase.rpc<{ project: string | null; products: unknown[]; eventCode?: string | null } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
         // «Alójate aquí» (0936): solo si el evento del flujo admite alojamiento según Booking. Si Booking no responde, sin enlace.
+        // `eventCode` (URLS_ENTRADA, 27-10): el de ven.ikisai.com/e/<código>, solo si el evento sale abierto en Booking, para
+        // «Seguir» con el siguiente recorrido.
         let lodging: { eventCode: string } | null = null;
+        let eventCode: string | null = null;
         if (out?.eventCode) {
           const events = await supabase.rpc<{ items?: Array<{ code: string; lodging?: boolean }> } | null>('core_public_read', { p_name: 'booking_public_events', p_args: {} }).catch(() => null);
-          if (events?.items?.some((e) => e.code === out.eventCode && e.lodging)) lodging = { eventCode: out.eventCode };
+          const event = events?.items?.find((e) => e.code === out.eventCode);
+          if (event) eventCode = out.eventCode;
+          if (event?.lodging) lodging = { eventCode: out.eventCode };
         }
-        return reply({ project: out?.project ?? null, products: Array.isArray(out?.products) ? out.products : [], lodging }, 200, { 'Cache-Control': 'public, max-age=30' });
+        return reply({ project: out?.project ?? null, products: Array.isArray(out?.products) ? out.products : [], lodging, eventCode }, 200, { 'Cache-Control': 'public, max-age=30' });
       }
       if (route === 'mine' && request.method === 'GET') {
         const hash = await customerHash();

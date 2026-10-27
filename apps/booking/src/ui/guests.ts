@@ -1,6 +1,6 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { compressImage, compressedFilename, confirmDialog, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
+import { compressImage, compressedFilename, confirmDialog, registerReveal, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
 import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
@@ -96,8 +96,12 @@ function signaturePad(): { element: HTMLElement; clear(): void; toBlob(): Promis
   };
 }
 
-export function mountGuests(initialEventId: string | null): ViewMount {
+export function mountGuests(initialEventId: string | null, initialGuestId: string | null = null): ViewMount {
   return ({ main, client, navigate }) => {
+    // la ficha pedida por la ruta se abre una vez; el Guiado la vuelve a abrir si su anclaje no está a la vista
+    let openGuestId = initialGuestId;
+    let openPending: (() => void) | null = null;
+    const offReveal = registerReveal('booking.huespedes.ficha', () => { if (initialGuestId) { openGuestId = initialGuestId; openPending?.(); } });
     const boot = client.bootstrap();
     const allowed = boot ? canSeeGuests(boot.membership) : false;
     const writable = allowed && canWrite(client);
@@ -601,6 +605,13 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         writable ? el('button', { class: 'fab', type: 'button', id: 'newGuest', 'data-feedback-id': 'booking.huespedes.nuevo_huesped', 'data-feedback-label': 'Nuevo huésped', onclick: () => openGuest(null, context) }, icon('plus'), 'Nuevo huésped') : null,
       );
       if (fetch && arrivalOn) void refreshSes();
+      openPending = () => {
+        const wanted = openGuestId ? guests.find((g) => g.id === openGuestId) : null;
+        if (!wanted || !writable || sheet) return;
+        openGuestId = null;
+        openGuest(wanted, context);
+      };
+      openPending();
     }
 
     void paint();
@@ -610,6 +621,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     const onOnline = () => void refreshSes();
     window.addEventListener('online', onOnline);
     return () => {
+      offReveal();
       clearInterval(timer);
       window.removeEventListener('online', onOnline);
       offs.forEach((off) => off());
