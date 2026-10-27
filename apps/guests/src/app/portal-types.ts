@@ -54,7 +54,11 @@ export interface PortalIcon { id: string; name: string; category: string; defaul
 /** Pieza de la decoración general (Recursos 0814): celda en su escala, tamaño y giro. */
 export interface PortalDecor { id: string; planId: string; iconId: string | null; cellX: number; cellY: number; scale: number; size: number; rotation: number }
 /** Silueta, sección o foto de un edificio o exterior, ya firmada. */
-export interface PortalImage { id: string; spaceId: string; kind: 'silueta' | 'seccion' | 'foto' | string; title: string | null; position: number; url: string | null }
+export interface PortalImage {
+  id: string; spaceId: string; kind: 'silueta' | 'seccion' | 'foto' | string; title: string | null; position: number; url: string | null;
+  /** Apps de las que es la silueta de cabecera (Recursos 0816; la elige Central en «Imágenes del centro»). */
+  headerFor?: string[];
+}
 /** Un espacio con su forma en el dibujo (solo nombres públicos y geometría; las camas, sin ocupación). */
 export interface PortalSpace {
   id: string; parentId: string | null; kind: string; name: string; planId: string | null; planShape: { points: Array<[number, number]> } | null; position: number;

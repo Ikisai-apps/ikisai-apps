@@ -26,6 +26,37 @@ export const MAX_PUBLIC_LINES = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[0-9a-f]{64}$/;
 
+/**
+ * Freno por IP de la carta pública (FL5): ventana deslizante en memoria de cada instancia de la Edge. Es un freno de más;
+ * los topes firmes (por flujo y por cliente) los pone la base de datos (0923). La IP llega del proxy de Pages
+ * (`X-Ikisai-Client-Ip`, desde `CF-Connecting-IP`) o, si no, de `X-Forwarded-For`.
+ */
+const PUBLIC_IP_LIMITS: Record<'customer' | 'orders', { max: number; windowMs: number }> = {
+  customer: { max: 10, windowMs: 10 * 60_000 },
+  orders: { max: 30, windowMs: 60_000 },
+};
+const PUBLIC_MESSAGES: Record<string, string> = {
+  RATE_LIMITED: 'Demasiados intentos seguidos. Espera un momento y vuelve a probar.',
+  TOO_MANY_OPEN_ORDERS: 'Tienes varios pedidos sin cobrar: pásate por la barra antes de pedir más.',
+  MENU_CLOSED: 'La barra no está abierta ahora mismo.',
+};
+export function createIpLimiter(now: () => number = Date.now) {
+  const hits = new Map<string, number[]>();
+  return (kind: keyof typeof PUBLIC_IP_LIMITS, ip: string | null): boolean => {
+    if (!ip) return true;
+    const { max, windowMs } = PUBLIC_IP_LIMITS[kind];
+    const key = `${kind}:${ip}`;
+    const t = now();
+    const recent = (hits.get(key) ?? []).filter((x) => t - x < windowMs);
+    if (recent.length >= max) { hits.set(key, recent); return false; }
+    recent.push(t); hits.set(key, recent);
+    if (hits.size > 5000) for (const [k, v] of hits) if (!v.some((x) => t - x < 10 * 60_000)) hits.delete(k);
+    return true;
+  };
+}
+const clientIp = (request: Request): string | null =>
+  (request.headers.get('x-ikisai-client-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0] ?? '').trim().slice(0, 64) || null;
+
 /** Escritura pública del núcleo (`applyPublicOperations` del kit, migración core 0094); inyectable en pruebas. */
 export type PublicWriter = (supabase: Supabase, app: string, operations: unknown[]) => Promise<{ cursor: number; results: unknown[] }>;
 
@@ -82,6 +113,16 @@ interface DayData {
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
 }
 
+/**
+ * Cabeceras de servicio de Flow (auditoría 27-10, FL1 y FL2): Finance y Tasks reservan `source_app`/`source: 'flow'` a
+ * quien llega con la clave de worker y `X-Ikisai-Caller: flow`. Van además del token de la persona, que sigue decidiendo.
+ * Solo a esas dos apps, que son las que las piden.
+ */
+const SERVICE_IDENTITY_APPS = new Set(['invoices-api', 'tasks-api']);
+export function serviceHeaders(workerKey: string | undefined, slug: string): Record<string, string> {
+  return workerKey && SERVICE_IDENTITY_APPS.has(slug) ? { 'X-Ikisai-Worker-Key': workerKey, 'X-Ikisai-Caller': 'flow' } : {};
+}
+
 /** Llamada a un procedimiento de otra app por su API, con el token de la persona (su acceso decide). */
 function appCaller(base: FlowBase, options: FlowAppOptions) {
   const transport = options.appsFetch ?? fetch;
@@ -91,7 +132,7 @@ function appCaller(base: FlowBase, options: FlowAppOptions) {
     try {
       res = await transport(apiOf(slug), {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', ...serviceHeaders(base.workerKey, slug) },
         body: JSON.stringify({ requestId, operations: [{ op: 'call', procedure, args }] }),
         signal: AbortSignal.timeout(15_000),
       });
@@ -261,16 +302,25 @@ interface ReceiptForSend {
  * «Pedir a Tasks» (contrato de Tasks §39): con la sesión de la persona, a la API de Tasks, como Central. Quien pide tiene
  * que ser editor u owner de Tasks y ver el proyecto. Tasks no avisa de cambios: el estado se consulta al enseñarlo.
  */
-function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
+function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: string | undefined, publicWrite: PublicWriter): AppRoute[] {
   const transport = options.appsFetch ?? fetch;
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const base = (options.tasksApiBase ?? env('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
+
+  /**
+   * Anota en la unidad lo que Tasks creó (FL6, 0931): el servidor, con el lote público que solo cambia `payload.external`.
+   * El navegador ya no puede marcar una unidad como pedida.
+   */
+  async function linkUnit(unit: { id: string; revision: number; payload?: Record<string, unknown> | null }, link: Record<string, unknown>): Promise<void> {
+    const payload = { ...(unit.payload ?? {}), external: { ...link, at: new Date().toISOString() } };
+    await publicWrite(supabase, APP, [{ op: 'update', table: TABLES.units, id: unit.id, expectedRevision: unit.revision, fields: { payload } }]);
+  }
 
   async function tasks<T>(ctx: RequestContext, path: string, body: unknown): Promise<T> {
     let res: Response;
     try {
       res = await transport(`${base}/api/v1/${path}`, {
-        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', ...serviceHeaders(workerKey, 'tasks-api') },
         body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
       });
     } catch {
@@ -314,13 +364,17 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
             external_url: `${FLOW_ORIGINS[0]}/equipo#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
             ...(Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: typeof body.unit === 'string' ? body.unit.slice(0, 20) : undefined } : {}),
           });
-          return { created: out.created, link: { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status } };
+          const link = { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status };
+          await linkUnit(found.unit, link);
+          return { created: out.created, link };
         }
         const out = await tasks<{ created: boolean; task: { id: string; done?: boolean } }>(ctx, 'requests/task', {
           source: 'flow', kind: 'flow.logistics', kind_label: 'Logística de la barra', external_ref: found.unit.id,
           title: String(found.unit.label ?? '').slice(0, 300), note, project_id: found.project.tasks_project_id, priority,
         });
-        return { created: out.created, link: { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' } };
+        const link = { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' };
+        await linkUnit(found.unit, link);
+        return { created: out.created, link };
       },
     },
     {
@@ -384,12 +438,17 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
         if (typeof body.project_id !== 'string' || !UUID.test(body.project_id)) fail(422, 'INVALID_OPERATION', 'project_id inválido.');
         const label = typeof body.label === 'string' ? body.label.trim().slice(0, 120) : '';
         if (!label) fail(422, 'INVALID_OPERATION', 'Falta el texto de la tarea.');
-        // El id sale de la persona y del requestId: repetir la petición no crea otra tarea.
-        const h = await sha256Hex(`${ctx.user.id}:${requestId}`);
-        const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
-        const operations = [{ op: 'insert', table: TABLES.units, id, fields: { project_id: body.project_id, column_key: 'logistics', kind: 'task', label, priority: body.priority === true } }];
-        const out = await supabase.rpc<{ replayed?: boolean }>('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
-          p_digest: await sha256Hex(JSON.stringify(operations)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        // Lo que declara la capacidad: editor u owner, y el proyecto en su ámbito (FL7).
+        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede crear tareas de Logística.');
+        const access = await supabase.rpc<{ in_scope?: boolean } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.project_access_read', p_args: { project_id: body.project_id } });
+        if (!access?.in_scope) fail(403, 'PROJECT_OUT_OF_SCOPE', 'Ese flujo no está en tu ámbito.');
+        // Id aleatorio (nadie puede ocuparlo antes); repetir la petición devuelve la misma tarea por el recibo del núcleo,
+        // que es de la persona y del requestId.
+        const fields = { project_id: body.project_id, column_key: 'logistics', kind: 'task', label, priority: body.priority === true };
+        const operations = [{ op: 'insert', table: TABLES.units, id: crypto.randomUUID(), fields }];
+        const out = await supabase.rpc<{ replayed?: boolean; results?: Array<{ id?: string }> }>('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(fields)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        const id = out?.results?.[0]?.id ?? operations[0]!.id;
         return { id, replayed: !!out?.replayed };
       },
     },
@@ -401,10 +460,11 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 
+  const ipAllowed = createIpLimiter();
   async function handlePublic(request: Request, route: string): Promise<Response> {
     const origin = request.headers.get('origin');
     const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff', Vary: 'Origin', 'Cache-Control': 'no-store' };
@@ -432,6 +492,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         return reply({ number: out.number, orders: out.orders ?? [] });
       }
       if (route === 'customer' && request.method === 'POST') {
+        if (!ipAllowed('customer', clientIp(request))) return error(429, 'RATE_LIMITED', PUBLIC_MESSAGES.RATE_LIMITED!);
         const menu = await supabase.rpc<{ projectId?: string | null } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
         const projectId = menu?.projectId ?? null;
         if (!projectId) return error(409, 'MENU_CLOSED', 'La barra no está abierta ahora mismo.');
@@ -456,6 +517,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         return reply({ token, number: link.number ?? null });
       }
       if (route === 'orders' && request.method === 'POST') {
+        if (!ipAllowed('orders', clientIp(request))) return error(429, 'RATE_LIMITED', PUBLIC_MESSAGES.RATE_LIMITED!);
         const hash = await customerHash();
         const me = hash ? await mine(hash) : null;
         if (!me?.customerId || !me.projectId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
@@ -476,7 +538,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
       }
       return error(404, 'NOT_FOUND', 'Ruta no encontrada.');
     } catch (caught) {
-      if (isFault(caught) && caught.status < 500) return error(caught.status, caught.code, caught.message);
+      if (isFault(caught) && caught.status < 500) return error(caught.status, caught.code, PUBLIC_MESSAGES[caught.code] ?? caught.message);
       return error(503, 'BACKEND_UNAVAILABLE', 'No disponible ahora mismo. Inténtalo de nuevo.');
     }
   }

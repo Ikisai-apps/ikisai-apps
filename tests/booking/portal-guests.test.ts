@@ -145,7 +145,7 @@ test('portales · alergias con consentimiento, firma solo del huésped y baja po
   await app.t.db.query(`update core.files set storage_provider = 'supabase' where id = (select signature_file_id from booking.guests where id = $1)`, [guestId]);
 
   // baja por el organizador: a la papelera con sus restricciones, y su enlace de Guests revocado
-  const link = await app.call('/api/v1/portal-links', { token: app.tokens.editor, body: { app: 'guests', scope: { reservation_id: res, guest_id: guestId }, person: { name: 'Leo' } } });
+  const link = await app.call('/api/v1/portal-links', { token: app.tokens.owner, body: { app: 'guests', scope: { reservation_id: res, guest_id: guestId }, person: { name: 'Leo' } } });
   assert.equal(link.status, 200, JSON.stringify(link.data));
   await invoke('organizers', organizer, 'booking.portal_remove_guest', { guest_id: guestId });
   const gone = await guestRow(guestId);

@@ -4,12 +4,13 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 
-const calls: Array<{ url: string; auth: string | null; body: Record<string, any> }> = [];
+const calls: Array<{ url: string; auth: string | null; key: string | null; caller: string | null; body: Record<string, any> }> = [];
 let reply: (body: Record<string, any>) => Response = () => new Response('{}', { status: 500 });
 const seen = new Set<string>();
 const tasksFetch: typeof fetch = async (input, init) => {
   const body = JSON.parse(String(init?.body ?? '{}'));
-  calls.push({ url: String(input), auth: new Headers(init?.headers).get('Authorization'), body });
+  const headers = new Headers(init?.headers);
+  calls.push({ url: String(input), auth: headers.get('Authorization'), key: headers.get('X-Ikisai-Worker-Key'), caller: headers.get('X-Ikisai-Caller'), body });
   return reply(body);
 };
 /** Como Tasks: la misma referencia devuelve la misma tarea sin crearla otra vez; sin regla, «Por clasificar». */
@@ -23,7 +24,7 @@ let app: TestApp;
 test.before(async () => {
   app = await createTestApp({
     app: 'food', slug: 'food-api', origin: FOOD_ORIGINS[0]!,
-    createHandler: (config) => createFoodApp({ ...config, origins: [FOOD_ORIGINS[0]!] }, { tasksApiBase: 'https://tasks.example.invalid', tasksFetch }),
+    createHandler: (config) => createFoodApp({ ...config, origins: [FOOD_ORIGINS[0]!] }, { tasksApiBase: 'https://tasks.example.invalid', tasksFetch, workerKey: 'clave-de-worker-de-prueba' }),
   });
 });
 
@@ -38,6 +39,8 @@ test('avería → petición a Tasks con tipo, referencia por máquina y día, en
   const sent = calls.at(-1)!;
   assert.equal(sent.url, 'https://tasks.example.invalid/api/v1/requests/task');
   assert.match(sent.auth ?? '', /^Bearer .+/);
+  // FO2 (Tasks #852): la prueba de que pide el servidor de Food, además del token de la persona.
+  assert.deepEqual([sent.key, sent.caller], ['clave-de-worker-de-prueba', 'food']);
   assert.equal(sent.body.source, 'food');
   assert.equal(sent.body.kind, 'food.equipment_fault');
   assert.match(sent.body.external_ref, new RegExp(`^equipment_fault:${id}:\\d{4}-\\d{2}-\\d{2}$`));

@@ -24,6 +24,7 @@ import { mountTexts } from './texts.ts';
 import { mountCompliance, mountRequirement } from './compliance.ts';
 import { mountInventory, mountInventoryItem } from './inventory.ts';
 import { fbMark } from './feedback.ts';
+import { mountHeaderArt } from './header-art.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -223,6 +224,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
   fbMark(shell.header, 'central.cabecera', 'Cabecera');
+  // La silueta de cabecera que el owner elige en «Imágenes del centro» (Recursos 0816): una lectura al arrancar.
+  const offHeaderArt = mountHeaderArt(client, shell.header);
   const launcherButton = shell.header.querySelector('#appLauncher');
   if (launcherButton) fbMark(launcherButton, 'central.cabecera.menu', 'Menú');
   const statusBar = shell.header.querySelector('#syncStatus');
@@ -346,6 +349,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offStatus();
     offSessionEnd();
     offMenuTables.forEach((off) => off());
+    offHeaderArt();
     if (menuTimer) clearTimeout(menuTimer);
     palette.destroy();
     window.removeEventListener('online', flushNames);

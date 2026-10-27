@@ -164,9 +164,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Instalar Chromium
-        # El mirror apt de Azure va a veces a 45 kB/s (27-10, run 40475209816: 9 min 37 s y el job del kit cortado a los 15).
-        # Cada intento tiene 4 min; lo ya bajado se queda en la caché de apt, así que el siguiente sigue desde ahí.
-        run: for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && exit 0; echo "::warning::Chromium, intento $i sin terminar"; done; exit 1
+        uses: ./.github/actions/chromium
       - name: Pruebas end-to-end de ${{ matrix.app }}
         shell: bash
         run: |
@@ -194,9 +192,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Instalar Chromium
-        # El mirror apt de Azure va a veces a 45 kB/s (27-10, run 40475209816: 9 min 37 s y el job del kit cortado a los 15).
-        # Cada intento tiene 4 min; lo ya bajado se queda en la caché de apt, así que el siguiente sigue desde ahí.
-        run: for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && exit 0; echo "::warning::Chromium, intento $i sin terminar"; done; exit 1
+        uses: ./.github/actions/chromium
       - run: npm -w @ikisai/ui-kit run test:e2e -- v45 --project=escritorio
   uikit:
     name: Pruebas del ui-kit · ${{ matrix.shard }}/3
@@ -217,7 +213,5 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Instalar Chromium
-        # El mirror apt de Azure va a veces a 45 kB/s (27-10, run 40475209816: 9 min 37 s y el job del kit cortado a los 15).
-        # Cada intento tiene 4 min; lo ya bajado se queda en la caché de apt, así que el siguiente sigue desde ahí.
-        run: for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && exit 0; echo "::warning::Chromium, intento $i sin terminar"; done; exit 1
+        uses: ./.github/actions/chromium
       - run: npm -w @ikisai/ui-kit run test:e2e -- --shard=${{ matrix.shard }}/3

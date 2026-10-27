@@ -49,7 +49,6 @@ export const PROCEDURES = {
   markClosureSent: 'flow.mark_closure_sent',
   unitSetQty: 'flow.unit_set_qty',
   generateIngredientTasks: 'flow.generate_ingredient_tasks',
-  unitLinkExternal: 'flow.unit_link_external',
   newVersion: 'flow.new_version',
   stationSetParams: 'flow.station_set_params',
   openAccount: 'flow.open_account',
@@ -119,6 +118,7 @@ export const SETTLE_METHOD_LABELS: Record<SettleMethod, string> = { ...PAY_METHO
 /** Mensajes de los errores de dominio de los procedimientos y de la guarda (migración 0900). */
 export const FLOW_ERRORS: Record<string, string> = {
   ORDER_NOT_OPEN: 'Este pedido ya está cobrado: para cambiarlo, corrige el pedido cobrado.',
+  TOO_MANY_OPEN_ORDERS: 'Tienes varios pedidos sin cobrar: pásate por la barra antes de pedir más.',
   ORDER_EMPTY: 'El pedido no tiene productos.',
   ORDER_NOT_PAID: 'Este pedido no está cobrado.',
   ORDER_NOT_DELIVERED: 'Este pedido no está entregado.',

@@ -9,16 +9,21 @@ import { randomUUID as uuid } from 'node:crypto';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
 import { CSV_BOM } from '../../packages/domain-invoices/src/index.ts';
+import { checkAppEntrySources, serverCaller, withServerCaller } from '../../supabase/functions/invoices-api/app-entries-caller.ts';
 
 let app: TestApp;
 let counter = 0;
 const PROJECT = '7d1c1a52-3f0e-4c55-9b7a-0c6a3e7f2b10';
 const REF = `flow:project:${PROJECT}:2026-10-31`;
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
 const update = (id: string, expectedRevision: number, fields: Record<string, unknown>) => ({ op: 'update', table: 'invoices.app_entries', id, expectedRevision, fields });
 
+/** Un `record_app_entry` llega desde el servidor de su app (F1, §17.10): la prueba de origen va con su `source_app`. */
 function commit(operations: unknown[], token?: string) {
-  return app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations }, ...(token ? { token } : {}) });
+  const entry = (operations as Array<{ procedure?: string; args?: { source_app?: string } }>).find((o) => o.procedure === 'invoices.record_app_entry');
+  const headers: Record<string, string> = entry?.args?.source_app ? { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': entry.args.source_app } : {};
+  return app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations }, headers, ...(token ? { token } : {}) });
 }
 async function ok(operations: unknown[], token?: string) {
   const res = await commit(operations, token);
@@ -49,7 +54,7 @@ const record = async (args: Record<string, unknown>, token?: string) => (await o
 test.before(async () => {
   app = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
-    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null } }),
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, workerKey: WORKER_KEY }),
   });
 });
 test.after(async () => { await app.close(); });
@@ -278,3 +283,29 @@ test('0247: un ticket registrado como factura recibida queda fuera del resumen f
   assert.equal(Number(after.invoices.pendiente_datos) + Number(after.invoices.pendiente_revision), 1);
 });
 
+test('F1 (API.md §17.10): con la clave de worker y X-Ikisai-Caller, source_app tiene que ser la app que llama', async () => {
+  const proof = (caller: string, key = WORKER_KEY) => ({ 'X-Ikisai-Worker-Key': key, 'X-Ikisai-Caller': caller });
+  const send = (args: Record<string, unknown>, headers: Record<string, string> = {}) =>
+    app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations: [call('invoices.record_app_entry', args)] }, headers });
+  const day = (d: string) => barDay({ source_ref: `flow:project:${PROJECT}:${d}`, entry_date: d, nature: 'process' });
+  // Desde el servidor de Flow, con la persona: entra como siempre
+  const ok1 = await send(day('2027-02-01'), proof('flow'));
+  assert.equal(ok1.status, 200, JSON.stringify(ok1.data));
+  // Quien llama es Booking y dice ser Flow: no
+  const forged = await send(day('2027-02-02'), proof('booking'));
+  assert.deepEqual([forged.status, forged.data.error.code], [403, 'SOURCE_MISMATCH']);
+  // Otra clave u otra app no son prueba
+  assert.equal(serverCaller(new Request('http://x', { headers: proof('flow', 'otra') }), WORKER_KEY), null);
+  assert.equal(serverCaller(new Request('http://x', { headers: proof('tasks') }), WORKER_KEY), null);
+  const noProof = await send(day('2027-02-03'), proof('flow', 'otra'));
+  assert.deepEqual([noProof.status, noProof.data.error.code], [403, 'CALLER_REQUIRED'], 'obligatoria para flow y booking');
+  // Cuando sea obligatoria: sin prueba, 403 CALLER_REQUIRED; con la suya, sí
+  const required = new Set(['flow', 'booking']);
+  const ops = [call('invoices.record_app_entry', { source_app: 'flow' })] as never;
+  assert.throws(() => checkAppEntrySources(ops, required), (e: any) => e.status === 403 && e.code === 'CALLER_REQUIRED');
+  const through = (headers: Record<string, string>) => withServerCaller(async () => { checkAppEntrySources(ops, required); return new Response('ok'); }, WORKER_KEY)(new Request('http://x', { headers }));
+  assert.equal(await (await through(proof('flow'))).text(), 'ok');
+  await assert.rejects(through(proof('flow', 'otra')), (e: any) => e.code === 'CALLER_REQUIRED');
+  await assert.rejects(through(proof('booking')), (e: any) => e.code === 'SOURCE_MISMATCH');
+  assert.doesNotThrow(() => checkAppEntrySources([{ op: 'update', table: 'invoices.app_entries', id: 'x', fields: {} }] as never, required), 'lo demás, igual que siempre');
+});

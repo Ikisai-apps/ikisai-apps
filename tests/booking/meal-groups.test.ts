@@ -22,6 +22,11 @@ test('grupo de comensal: meal_groups en la proyección de Food y en guest_summar
 
   const row = (await t.db.query<{ g: any }>(`select meal_groups g from booking.food_event_projection where event_id = $1`, [event])).rows[0]!;
   assert.deepEqual(row.g, [{ group: 'Ponentes', guests: 1 }, { group: 'VIP', guests: 2 }]);
+  // FO1 de Food (0497): el código público del evento (el del QR) también va en la proyección
+  const codes = (await t.db.query<{ p: string | null; e: string | null }>(`select f.public_code p, e.public_code e from booking.food_event_projection f join booking.events e on e.id = f.event_id where f.event_id = $1`, [event])).rows[0]!;
+  assert.equal(codes.p, codes.e);
+  await t.db.query(`update booking.events set public_code = 'ABCDEFGH23' where id = $1`, [event]);
+  assert.equal((await t.db.query<{ p: string }>(`select public_code p from booking.food_event_projection where event_id = $1`, [event])).rows[0]!.p, 'ABCDEFGH23');
   const summary = await t.rpc('core_read', { p_app: 'booking', p_actor: owner, p_name: 'booking.guest_summary', p_args: { event_id: event } }) as any;
   assert.deepEqual(summary.mealGroups, [{ group: 'Ponentes', guests: 1 }, { group: 'VIP', guests: 2 }]);
   assert.equal(summary.total, 5, 'la ficha de equipo tampoco cuenta en el total');
