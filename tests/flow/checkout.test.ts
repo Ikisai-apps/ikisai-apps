@@ -17,13 +17,14 @@ let seq = 0;
 let v2 = '';
 let customer = '';
 const sent: any[] = [];
+const sentHeaders: Headers[] = [];
 
 test.before(async () => {
   const appsFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-    sent.push(JSON.parse(String(init?.body ?? '{}')));
+    sent.push(JSON.parse(String(init?.body ?? '{}'))); sentHeaders.push(new Headers(init?.headers));
     return Response.json({ results: [{ result: { status: 'created' } }] });
   }) as typeof fetch;
-  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, { appsFetch }) });
+  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN], workerKey: 'clave-worker-de-prueba' }, { appsFetch }) });
 });
 test.after(async () => { await app.close(); });
 
@@ -81,6 +82,9 @@ test('caja · «Enviar a Finance» manda ese cobro como fiscal; el cierre (proce
   assert.equal(res.status, 200, JSON.stringify(res.data));
   const args = sent.at(-1).operations[0].args;
   assert.equal(args.nature, 'fiscal'); assert.equal(args.source_ref, `flow:receipt:${receipt.id}`);
+  // FL1: identidad de servicio de Flow ante Finance, además del token de la persona.
+  assert.equal(sentHeaders.at(-1)!.get('x-ikisai-worker-key'), 'clave-worker-de-prueba'); assert.equal(sentHeaders.at(-1)!.get('x-ikisai-caller'), 'flow');
+  assert.equal(sentHeaders.at(-1)!.get('authorization'), 'Bearer ' + app.tokens.owner);
   assert.equal(args.amount_cents, receipt.total_cents); assert.deepEqual(args.methods, { bitcoin: receipt.total_cents });
   const seqs = (await rows(TABLES.orders)).filter((o) => receipt.order_ids.includes(o.id)).map((o) => o.pay_seq).sort((x: number, y: number) => x - y);
   assert.equal(args.receipt_kind, 'ticket'); assert.equal(args.receipt_number, seqs.join('+')); assert.equal(seqs.length, 2);

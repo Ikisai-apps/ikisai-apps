@@ -112,6 +112,16 @@ interface DayData {
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
 }
 
+/**
+ * Cabeceras de servicio de Flow (auditoría 27-10, FL1 y FL2): Finance y Tasks reservan `source_app`/`source: 'flow'` a
+ * quien llega con la clave de worker y `X-Ikisai-Caller: flow`. Van además del token de la persona, que sigue decidiendo.
+ * Solo a esas dos apps, que son las que las piden.
+ */
+const SERVICE_IDENTITY_APPS = new Set(['invoices-api', 'tasks-api']);
+export function serviceHeaders(workerKey: string | undefined, slug: string): Record<string, string> {
+  return workerKey && SERVICE_IDENTITY_APPS.has(slug) ? { 'X-Ikisai-Worker-Key': workerKey, 'X-Ikisai-Caller': 'flow' } : {};
+}
+
 /** Llamada a un procedimiento de otra app por su API, con el token de la persona (su acceso decide). */
 function appCaller(base: FlowBase, options: FlowAppOptions) {
   const transport = options.appsFetch ?? fetch;
@@ -121,7 +131,7 @@ function appCaller(base: FlowBase, options: FlowAppOptions) {
     try {
       res = await transport(apiOf(slug), {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', ...serviceHeaders(base.workerKey, slug) },
         body: JSON.stringify({ requestId, operations: [{ op: 'call', procedure, args }] }),
         signal: AbortSignal.timeout(15_000),
       });
@@ -291,7 +301,7 @@ interface ReceiptForSend {
  * «Pedir a Tasks» (contrato de Tasks §39): con la sesión de la persona, a la API de Tasks, como Central. Quien pide tiene
  * que ser editor u owner de Tasks y ver el proyecto. Tasks no avisa de cambios: el estado se consulta al enseñarlo.
  */
-function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
+function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: string | undefined): AppRoute[] {
   const transport = options.appsFetch ?? fetch;
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const base = (options.tasksApiBase ?? env('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
@@ -300,7 +310,7 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
     let res: Response;
     try {
       res = await transport(`${base}/api/v1/${path}`, {
-        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', ...serviceHeaders(workerKey, 'tasks-api') },
         body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
       });
     } catch {
@@ -431,7 +441,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 
