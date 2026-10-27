@@ -30,17 +30,18 @@ test('ci por app · solo documentación: nada', () => {
     { code: false, full: false, folders: [], groups: [] });
 });
 
-test('ci por app · el cliente de una app: sus pruebas y las que importan su app', () => {
+test('ci por app · el cliente de una app: solo sus pruebas, aunque otra carpeta importe su app', () => {
   const root = fakeRepo();
   const out = plan({ root, files: ['apps/organizers/src/ui/retreats.ts', 'docs/organizers/API.md'] });
-  assert.deepEqual(out.folders, ['guests', 'organizers']);
+  assert.deepEqual(out.folders, ['organizers']);
   assert.equal(out.full, false);
 });
 
-test('ci por app · el servidor de una app: también las que nombran su schema (no una variable con su nombre)', () => {
+test('ci por app · el servidor de una app: solo sus pruebas, aunque otra carpeta nombre su schema', () => {
   const root = fakeRepo();
-  assert.deepEqual(plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql'] }).folders, ['booking', 'food']);
+  assert.deepEqual(plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql'] }).folders, ['booking']);
   assert.deepEqual(plan({ root, files: ['supabase/functions/food-api/app.ts'] }).folders, ['food']);
+  assert.deepEqual(plan({ root, files: ['supabase/functions/food-api/app.ts', 'apps/organizers/a.ts'] }).folders, ['food', 'organizers']);
 });
 
 test('ci por app · lo compartido y fuera de una PR: todas, la grande sola y las pequeñas juntas', () => {
