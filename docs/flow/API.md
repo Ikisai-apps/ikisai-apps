@@ -381,3 +381,11 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Cada carril monta la vista de siempre de su columna, una sola vez y al verse por primera vez.
 - El carril principal se refleja en la dirección (`#/p/<flujo>/<columna>`). Tocar otra columna en la barra inferior solo cambia de carril, sin volver a montar.
 - La v1 congelada sigue con una columna por pantalla.
+
+## 34. Servicio del sábado: arreglos y capacidades (migración `0920`)
+
+- **`create_flow` desde plantilla**: la versión del flujo nunca queda por debajo de la de la plantilla. Se siembra `barra` v2 (columnas de la v1 con los ajustes de la v2) y se añaden las unidades de plantilla (el puesto «Pan»). Así, «Nuevo flujo» → Barra en un evento nuevo nace como una v2 completa.
+- **Capacidades de Flow** en el catálogo del núcleo:
+  - `flow.day_summary`: `POST day-summary {project_id, day}`, solo owner y con el ámbito comprobado. Devuelve el resumen del día (`flow.day_summary`).
+  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Es idempotente: el id sale de la persona y del `requestId`, y repetir devuelve `replayed: true`.
+- **Prueba de extremo a extremo**: `tests/flow/servicio-sabado.test.ts`. Los huecos que encuentra van en `docs/flow/PETICIONES.md` (S1…).

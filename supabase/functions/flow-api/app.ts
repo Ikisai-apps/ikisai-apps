@@ -359,12 +359,45 @@ function visitorJoinRoute(): PublicRoute {
   };
 }
 
+/**
+ * Capacidades que Flow ofrece a otras apps (catálogo del núcleo, 0920): `flow.day_summary` (lectura, owner) y
+ * `flow.logistics_task` (crear una tarea de Logística; idempotente por requestId). Las invoca la Edge de quien las ofrece
+ * con el token de la persona: su rol y su ámbito en Flow deciden.
+ */
+function capabilityRoutes(supabase: Supabase): AppRoute[] {
+  return [
+    {
+      method: 'POST', pattern: 'day-summary', handler: async ({ ctx, json }) => {
+        const body = (await json().catch(() => ({}))) ?? {};
+        return supabase.rpc('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.day_summary_read', p_args: { project_id: body.project_id, day: body.day } });
+      },
+    },
+    {
+      method: 'POST', pattern: 'logistics-task', handler: async ({ ctx, json }) => {
+        const body = (await json().catch(() => ({}))) ?? {};
+        const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
+        if (!requestId) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        if (typeof body.project_id !== 'string' || !UUID.test(body.project_id)) fail(422, 'INVALID_OPERATION', 'project_id inválido.');
+        const label = typeof body.label === 'string' ? body.label.trim().slice(0, 120) : '';
+        if (!label) fail(422, 'INVALID_OPERATION', 'Falta el texto de la tarea.');
+        // El id sale de la persona y del requestId: repetir la petición no crea otra tarea.
+        const h = await sha256Hex(`${ctx.user.id}:${requestId}`);
+        const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+        const operations = [{ op: 'insert', table: TABLES.units, id, fields: { project_id: body.project_id, column_key: 'logistics', kind: 'task', label, priority: body.priority === true } }];
+        const out = await supabase.rpc<{ replayed?: boolean }>('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(operations)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        return { id, replayed: !!out?.replayed };
+      },
+    },
+  ];
+}
+
 export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 
