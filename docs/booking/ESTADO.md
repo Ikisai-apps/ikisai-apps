@@ -129,7 +129,7 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Cobro del alojamiento a la carta (0487):** precio por noche de la tarifa, cobro en el momento (efectivo, Bizum o tarjeta) o pendiente, envío a Finance (`invoices.record_app_entry`) con la sesión de la persona, y lo cobrado y lo pendiente en la ficha. API.md §32; pruebas en `walkin-finance.test.ts` y `open-days.spec.ts`.
 
-- **Código público del evento (0488):** `public_code` para el QR de visitantes a ven.ikisai.com y la lectura pública `booking_event`; «QR de entrada» en la ficha (imprimir y regenerar). API.md §33; prueba en `public-code.test.ts`. El dibujo del QR espera a `renderQr` del kit.
+- **Código público del evento (0488):** `public_code` para el QR de visitantes a ven.ikisai.com y la lectura pública `booking_event`; «QR de entrada» en la ficha (imprimir y regenerar). API.md §33; prueba en `public-code.test.ts`. El QR, con `renderQr` del kit 0.60.
 
 ## Pendiente
 

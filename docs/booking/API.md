@@ -1840,6 +1840,6 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - Sin precio, organizador, huéspedes ni ids internos.
   - La sirve guests-api en `GET public/event?code=…`.
 - **URL del QR:** `https://ven.ikisai.com/e/<code>`.
-- **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El dibujo del QR lo pone `renderQr` del kit, pedido a UI-kit; mientras tanto se ve el hueco.
+- **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El QR lo dibuja `renderQr` del kit (0.60, #773).
 - **Pendiente (BG18):** que un visitante se apunte, cuando Core cierre `core.visitors` y su vía de escritura.
 
