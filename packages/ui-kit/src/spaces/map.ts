@@ -924,6 +924,8 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     setOffline,
     setShape(spaceId, plan, shape) {
       if (!validShape(shape)) return;
+      // Las formas derivadas (camas con disposición en Booking) no se mueven a mano.
+      if (rows.find((r) => r.id === spaceId)?.shapeLocked) return;
       localShapes.set(spaceId, { planId: plan, shape });
       paint();
       const s = rows.find((r) => r.id === spaceId);
