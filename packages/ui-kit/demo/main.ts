@@ -1874,6 +1874,8 @@ const guideSection = section('guiado', 'Guiado: campo señalado', 'Nivel mínimo
     el('button', { type: 'button', class: 'primary', id: 'guideStart', onclick: startDemoGuide }, 'Empezar la guía «Alojar a alguien»'),
     el('button', { type: 'button', class: 'ghost small', id: 'guideOutside', onclick: () => { guideRunDone.add('llegada'); void demoGuide?.refresh(); } }, 'Hacer la hora fuera de la guía')),
   el('p', null, 'Confirmados: ', guideLogOut),
+  el('p', { class: 'hint' }, 'En una app, una línea en el shell: ', el('code', { style: 'overflow-wrap:anywhere' }, "createAppShell(root, { …, guide: { client, app: 'booking', feedbackId: 'booking.guia' } })"),
+    '. Con ?guia=<ejecución> lee los pasos de Flow (flow.guide_read) y confirma en Flow (flow.guide_confirm), sin valores; con ?campo=… señala el campo.'),
   el('p', { class: 'hint', style: 'overflow-wrap:anywhere' }, 'Enlace de ejemplo: ', el('code', { style: 'overflow-wrap:anywhere;word-break:break-all' }, withGuideLink('https://booking.ikisai.com/#/reservas/123', { field: 'booking.ficha.llegada', step: 'Pon la hora de llegada', from: 'flow', title: 'Flow', url: 'https://flow.ikisai.com/#/recepcion' }))),
 );
 
