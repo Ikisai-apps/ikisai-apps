@@ -51,9 +51,9 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | FD3 | Food | `food.portal_offers` para Guests y Organizers, con las internas (`audience`) solo para Guests (API.md §9.18) | acordada; PR de Food pendiente |
 | BG16 | Booking | `meal_group` en el primer nivel de `portal_my_guest` (§9.18) | hecha en #748 (0485), sin fusionar |
 | FL1 | Flow | `flow.portal_customer({reservation_id, guest_id})` → `{number, carta_url}` con enlace de un solo uso, para la carta «a cuenta» (§9.18) | acordada; en el paso 3 de Flow |
-| C11 | Core | visitantes: `create`/`resolve` públicos, ámbito por evento, sugerencias del visitante, recuperación por correo y transferencia con código de un solo uso (API.md §9.19) | pedida; contrato en preparación por Core |
-| BG17 | Booking | `booking.events.public_code` para el QR (`/e/<código>`) (§9.19) | acordada con Booking |
-| BG18 | Booking | «Apuntarme» de visitante como sugerencia con {code, name, contact?}; ficha ligada al visitante al aceptarla (§9.19) | propuesta |
-| BG19 | Booking | `booking.public_event({code})`, lectura pública que Guests sirve en `GET public/event` (§9.19) | acordada con Booking |
+| C11 | Core | visitantes: `core.visitors`, `POST public/visitor`, `X-Visitor`, `resolveVisitor` y `publicReadWithVisitor`; recuperación y transferencia en v2 (API.md §9.19) | contrato fijado (token `X-Visitor`, escrituras en la API del dueño); PR core/visitantes |
+| BG17 | Booking | `booking.events.public_code` para el QR (`/e/<código>`) (§9.19) | en #767 (0488) |
+| BG18 | Booking | `POST public/join` en booking-api (`booking.visitor_requests`) con {event_code, name, contact?}, su «lo mío» y `join_from_visitor`; ficha ligada al visitante al aceptarla (§9.19) | tras C11 |
+| BG19 | Booking | `booking.public_event({code})`, lectura pública que Guests sirve en `GET public/event` (§9.19) | en #767 (0488); `GET public/event` hecho |
 | FD5 | Food | `food.visitor_offers({event_code})`: solo las ofertas con `public` (indicador de `food.event_offers`, «Visible para visitantes (QR)») (§9.19) | acordada; en la #758 de Food |
-| FL2 | Flow | `flow.visitor_customer({event_code})` → `{number, carta_url, account_open, orders}` (§9.19) | propuesta |
+| FL2 | Flow | `flow.visitor_join({event_code})` (acción) y `flow.visitor_customer` → `{number, carta_url, account_open, orders}` (§9.19) | acordada; tras C11 |
