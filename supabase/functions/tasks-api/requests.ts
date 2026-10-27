@@ -316,7 +316,9 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
     // Plazo legal de SES y, desde los portales de organizadores (T3), fechas posibles, «quiere confirmar» y comentarios a la propuesta.
     // `booking.retreat_extra`: un extra contratado de un retiro (§23), que va al proyecto de su reserva (`project_ref`).
     // `booking.event_setup`: el «Montaje del evento» (§42), al proyecto de su reserva, con sus hijas (`children`); se reenvía entero.
-    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra', 'booking.event_setup']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
+    // `booking.bed_cleaning`: limpiar una cama cuando sale su huésped (#907; §48): `LIMP-<asignación>`, sin `project_ref`; va
+    // donde diga la regla del usuario para ese tipo (p. ej. el proyecto «Limpieza»), o a «Por clasificar».
+    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra', 'booking.event_setup', 'booking.bed_cleaning']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
     url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
   },
   core: {
@@ -361,6 +363,7 @@ const DEFAULT_KIND_LABELS: Record<string, string> = {
   'core.user_task': 'Core · Tarea para ti',
   'invoices.drive_review': 'Finance · Facturas de Drive por revisar',
   'invoices.drive_blocked': 'Finance · Drive bloqueado',
+  'booking.bed_cleaning': 'Limpieza · Salida de huésped',
 };
 const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,150}$`);
 /** Avisos de máquina de Food (§22.3): los pide una persona por `requests/task`, pero su estado lo lee la Edge de Food. */
@@ -416,6 +419,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const projectRef = text('project_ref', 150);
       const eventReport = sourceName === 'feedback' && kind.startsWith('feedback.event.');
       const toReservation = kind === 'booking.retreat_extra' || kind === 'booking.event_setup';
+      if (kind === 'booking.bed_cleaning' && !/^LIMP-[A-Za-z0-9_.:-]{1,140}$/.test(reference)) invalid('external_ref', 'La limpieza de una cama va como LIMP-<asignación>.');
       if (toReservation && !projectRef) invalid('project_ref', 'Un extra o un montaje necesita project_ref (la referencia de su reserva).');
       if (projectRef !== undefined && ((!toReservation && !eventReport) || !SYSTEM_SOURCES.booking!.reference.test(projectRef))) {
         invalid('project_ref', 'project_ref solo vale para booking.retreat_extra, booking.event_setup y feedback.event.*, y es una referencia de reserva.');
