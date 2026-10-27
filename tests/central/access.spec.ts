@@ -418,6 +418,12 @@ test('accesos · fichas de agente: el owner crea una con responsable, la activa 
   await page.locator('#ag-service').fill('Servicio de guardia');
   await page.locator('#saveAgentCard').click();
   await expect(card.locator('[data-agent-meta]')).toContainText('Responde: Servicio de guardia (servicio)');
+  // Su carril en el Avance de Flow (1524).
+  await card.getByRole('button', { name: 'Editar: Agente de textos' }).click();
+  await page.locator('#ag-flow-project').fill('avance-26');
+  await page.locator('#ag-flow-lane').fill('central');
+  await page.locator('#saveAgentCard').click();
+  await expect(card.locator('[data-agent-lane]')).toHaveAttribute('href', 'https://flow.ikisai.com/#/p/avance-26/avance?carril=central');
   // La pantalla lo enseña ya (espejo local); el servidor lo recibe al sincronizar.
   await expect.poll(async () => { const [row] = (await t.db.query<{ k: string; p: string | null }>(`select responsible_kind as k, responsible_person_id as p from central.agents where display_name = 'Agente de textos'`)).rows; return [row?.k, row?.p]; })
     .toEqual(['service', null]);

@@ -16,7 +16,7 @@ import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
 import { WEEKLY_ACTIONS_TABLE, WEEKLY_ACTION_KINDS, WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
 import { FIELD_GROUP_REVIEWS_TABLE, GROUP_DECISIONS, UTILITY_FREQUENCIES, canDeclareUtility } from './field-coverage.ts';
 import { PENDING_ACCESS_TABLE } from './scopes.ts';
-import { AGENTS_TABLE, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
+import { AGENTS_TABLE, FLOW_LANE_ID, FLOW_PROJECT_ID, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
@@ -336,6 +336,8 @@ const SPECS: Record<string, TableSpec> = {
       active: { kind: 'boolean' },
       successor_id: { kind: 'uuid', nullable: true },
       notes: { kind: 'text', max: 500, nullable: true },
+      flow_project: { kind: 'text', min: 1, max: 64, nullable: true, pattern: FLOW_PROJECT_ID, patternText: 'id del proyecto de Flow (letras, cifras, - y _)' },
+      flow_lane: { kind: 'text', min: 1, max: 64, nullable: true, pattern: FLOW_LANE_ID, patternText: 'clave del carril (letras, cifras, ., - y _)' },
     },
     required: ['display_name'],
   },

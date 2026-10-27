@@ -455,3 +455,4 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-shapes.compact .ctl-shaperow{padding:6px 8px;gap:4px;background:none;border-bottom:1px solid var(--line);border-radius:0}
 .ctl-shapes.compact .ctl-shapenum{width:22px;height:22px;font-size:.75rem}
 .ctl-shapes.compact select{min-height:36px;font-size:var(--text-sm,.875rem)}
+.ctl-agentfocus{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
