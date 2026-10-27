@@ -161,3 +161,14 @@
 .flow-tasks-qty input{flex:1;min-width:0}
 .flow-version{align-items:center}
 .flow-public-switch{display:inline-flex;align-items:center;gap:6px}
+.guide-pdf{display:grid;place-items:center;gap:4px;width:200px;height:140px;border-radius:12px;background:var(--paper-2)}
+.guide-pdf.small{width:64px;height:64px;font-weight:700}
+.flow-docs-admin{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
+.flow-docs-admin li{display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center}
+.flow-docs-add input{width:100%}
+
+/* Puestos (station): aviso en la cabecera y parámetros */
+.station-notice{margin:0 0 8px;padding:6px 10px;border-radius:999px;background:var(--accent-soft,var(--paper-2));font-weight:700;display:inline-block}
+.qcard-params{position:absolute;right:8px;bottom:6px}
+.station-params{display:grid;gap:8px}
+.station-params label{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center}

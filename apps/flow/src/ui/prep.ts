@@ -5,7 +5,7 @@ import { productMedal } from './sheets-common.ts';
 import { callProcedure, errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
 import { generateIngredientTasks } from '../app/ingredients.ts';
 import { askTasks } from '../app/links.ts';
-import { customerNumber, watchData, type FlowData, type Unit } from '../app/data.ts';
+import { customerNumber, fillMetricText, loadStationMetrics, watchData, type FlowData, type StationMetric, type Unit } from '../app/data.ts';
 import { loadPeople, personName } from '../app/people.ts';
 import { createStableList } from './stable-list.ts';
 import type { ViewMount } from './shell.ts';
@@ -52,6 +52,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
     const olderButton = el('button', { type: 'button', class: 'ghost fqueue-older', hidden: true, onclick: () => { showAllDone = true; paint(); } });
     const listEl = el('div', { class: 'fqueue', role: 'list', 'aria-label': kind === 'prep' ? 'Montaditos' : 'Tareas' });
     const isOwner = client.bootstrap()?.membership.role === 'owner';
+    const noticeEl = el('p', { class: 'station-notice', role: 'status', hidden: true });
     const nextButton = el('button', { type: 'button', class: 'primary fqueue-next', hidden: true, onclick: goToNext }, icon('chevronDown', 18), el('span', null, 'Ir al siguiente pendiente'));
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true }, QUEUE_EMPTY[kind]);
     const head = kind === 'prep' ? null : taskForm();
@@ -59,6 +60,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
       ? [el('div', { class: 'orders-owner' }, el('button', { type: 'button', class: 'ghost', onclick: () => void generate() }, 'Generar tareas de ingredientes'))] : [];
     main.append(
       el('h1', { class: 'col-title' }, QUEUE_TITLE[kind]),
+      noticeEl,
       ...ownerTools,
       ...(kind === 'prep' ? [el('p', { class: 'muted small' }, 'Toca para tomar un montadito, otra vez cuando esté listo para servir. Un tercer toque lo devuelve a pendiente.')] : []),
       ...(head ? [head] : []),
@@ -69,7 +71,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
 
     function units(): Unit[] {
       if (!data) return [];
-      const all = data.units.filter((u) => (kind === 'prep' ? u.kind === 'prep' && u.column_key === 'prep' : u.kind === 'task' && u.column_key === kind));
+      const all = data.units.filter((u) => (kind === 'prep' ? u.kind === 'prep' && u.column_key === 'prep' : (u.kind === 'task' || u.kind === 'station') && u.column_key === kind));
       return all.sort(kind === 'prep'
         ? (a, b) => (a.pay_seq ?? 0) - (b.pay_seq ?? 0) || a.idx - b.idx || a.id.localeCompare(b.id)
         : (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
@@ -100,6 +102,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
           el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }), el('small', { class: 'qcard-sub muted' })),
           el('span', { class: 'qcard-state' })),
         el('button', { type: 'button', class: 'iconbtn qcard-edit', hidden: true, 'aria-label': 'Revisar la cantidad', onclick: () => editQty(u.id) }, icon('edit', 18)),
+        el('button', { type: 'button', class: 'iconbtn qcard-params', hidden: true, 'aria-label': 'Parámetros del puesto', onclick: () => editParams(u.id) }, icon('settings', 18)),
         el('button', { type: 'button', class: 'iconbtn qcard-tasks', hidden: true, 'aria-label': 'Pedir a Tasks', onclick: () => { const x = data?.units.find((y) => y.id === u.id); if (x) askTasks(client, x); } }, icon('tasks', 18)),
         el('p', { class: 'qcard-notice', role: 'status', hidden: true }),
       );
@@ -126,13 +129,19 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const ext = u.payload?.external?.app === 'tasks' ? `en Tasks: ${u.payload.external.kind === 'purchase_request' ? 'compra' : 'tarea'}` : '';
       const sub = [order?.pay_seq ? `Pedido ${order.pay_seq}` : '', number ? `cliente ${number}` : '', load, ext, u.priority ? 'prioritaria' : '', who].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = sub;
-      // En una columna con propuestas, «pendiente» es «confirmada» (propuesta → confirmada → asignada → hecha).
-      const label = kind === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
+      // En una columna con propuestas, «pendiente» es «confirmada» (propuesta → confirmada → asignada → hecha). Un puesto: libre u ocupado.
+      const label = u.kind === 'station' ? (status === 'in_progress' ? 'Ocupado' : 'Libre')
+        : kind === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
+      if (u.kind === 'station') {
+        const live = fillMetricText(u.payload?.text, metrics.get(u.id));
+        node.querySelector('.qcard-sub')!.textContent = [live, status === 'in_progress' ? personName(people, u.assigned_to, me) : ''].filter(Boolean).join(' · ');
+      }
       node.querySelector('.qcard-state')!.textContent = pending ? `${label} · pendiente de confirmar` : label;
       const edit = node.querySelector<HTMLButtonElement>('.qcard-edit')!;
       edit.hidden = !(canEdit && u.kind === 'task' && u.payload?.qty !== undefined && (status === 'proposed' || status === 'pending'));
       const role = client.bootstrap()?.membership.role;
       node.querySelector<HTMLButtonElement>('.qcard-tasks')!.hidden = !(u.kind === 'task' && !u.payload?.external && status !== 'done' && (role === 'editor' || role === 'owner'));
+      node.querySelector<HTMLButtonElement>('.qcard-params')!.hidden = !(u.kind === 'station' && role === 'owner');
       const main = node.querySelector<HTMLButtonElement>('.qcard-main')!;
       main.disabled = !canEdit || status === 'cancelled' || inFlight.has(u.id);
       main.setAttribute('aria-label', `${product ? product.name : u.label}: ${UNIT_STATUS_LABELS[status]}${sub ? `, ${sub}` : ''}`);
@@ -140,6 +149,36 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const text = notices.get(u.id);
       notice.hidden = !text;
       notice.textContent = text ?? '';
+    }
+
+    /** Métricas de los puestos (servidor), refrescadas con los datos y cada 20 s. */
+    let metrics = new Map<string, StationMetric>();
+    async function refreshMetrics(): Promise<void> {
+      if (!ctx.projectId || !data?.units.some((u) => u.kind === 'station')) { noticeEl.hidden = true; return; }
+      metrics = await loadStationMetrics(client, ctx.projectId);
+      for (const u of units()) if (u.kind === 'station') repaintOne(u);
+      // Aviso pequeño en la cabecera de las columnas que lo pidan (notice_in).
+      const notes = data!.units.filter((u) => u.kind === 'station' && (u.payload?.notice_in ?? []).includes(kind))
+        .map((u) => fillMetricText(u.payload?.notice, metrics.get(u.id))).filter(Boolean);
+      noticeEl.hidden = !notes.length;
+      noticeEl.textContent = notes.join(' · ');
+    }
+    const metricsTimer = setInterval(() => void refreshMetrics(), 20_000);
+
+    /** Owner: parámetros numéricos de la métrica de un puesto. */
+    function editParams(id: string): void {
+      const u = data?.units.find((x) => x.id === id);
+      if (!u) return;
+      const params = (u.payload?.params ?? {}) as Record<string, unknown>;
+      const inputs = Object.entries(params).filter(([, v]) => typeof v === 'number')
+        .map(([k, v]) => [k, el('input', { type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
+      const sheet = openSheet({ title: `Parámetros · ${u.label ?? ''}`,
+        body: el('div', { class: 'station-params' }, ...inputs.map(([k, input]) => el('label', null, el('span', null, k), input))),
+        foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
+          const next = Object.fromEntries(inputs.map(([k, input]) => [k, Number(input.value)]));
+          try { await callProcedure(client, PROCEDURES.stationSetParams, { unit_id: u.id, params: next, expected_revision: u.revision }); sheet.close(); void refreshMetrics(); }
+          catch (error) { toast(describeError(error)); }
+        } }, 'Guardar')) });
     }
 
     /** Revisar la cantidad antes de confirmar o hacer la tarea (FLOW-DIR VG 27-10). */
@@ -172,7 +211,8 @@ export function mountQueue(kind: QueueKind): ViewMount {
       // Se parte de lo que se enseña: incluye lo que el servidor ya confirmó aunque el espejo aún no lo traiga (dos toques
       // seguidos no deben dar un falso «otra persona se adelantó»).
       const from = shownStatus(u);
-      const next = nextUnitStatus(from);
+      // Un puesto no se termina: un toque lo ocupa y otro lo suelta.
+      const next: UnitStatus | null = u.kind === 'station' ? (from === 'pending' ? 'in_progress' : 'pending') : nextUnitStatus(from);
       if (!next) return;
       notices.delete(id);
       inFlight.set(id, next);
@@ -252,9 +292,9 @@ export function mountQueue(kind: QueueKind): ViewMount {
 
     const onScroll = () => paintNext();
     window.addEventListener('scroll', onScroll, { passive: true });
-    const offData = watchData(client, (d) => { data = d; paint(); }, ctx.projectId);
+    const offData = watchData(client, (d) => { data = d; paint(); void refreshMetrics(); }, ctx.projectId);
     void loadPeople(client).then((p) => { people = p; for (const u of units()) repaintOne(u); });
 
-    return () => { offData(); window.removeEventListener('scroll', onScroll); };
+    return () => { offData(); clearInterval(metricsTimer); window.removeEventListener('scroll', onScroll); };
   };
 }
