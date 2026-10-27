@@ -2038,3 +2038,5 @@ Ficha de capacidad para el catálogo del núcleo:
 - `428 CONFIRMATION_REQUIRED`, para un agente sin propuesta aprobada.
 
 **Pruebas:** `tests/invoices/quick-purchase.test.ts`.
+
+**En el catálogo del núcleo** (0246, sobre la 0097 de Core): `core.register_capability` con esta ficha, los esquemas JSON de entrada y salida y las anclas `invoices.facturas.nueva`, `invoices.facturas.nueva.formulario` e `invoices.facturas.nueva.crear` (la alta manual de factura, lo más parecido en Finance). Prueba: `tests/invoices/capability.test.ts`.
