@@ -16,6 +16,8 @@ test('invoices.register_purchase_quick en core.capabilities', async () => {
   assert.deepEqual([row.risk, row.idempotent, row.reversible, row.kind], ['low', true, false, 'execute']);
   assert.deepEqual(row.input_schema.required, ['requestId', 'supplier', 'date', 'total', 'description', 'target']);
   assert.ok(row.output_schema.required.includes('summary'));
+  assert.ok(row.output_schema.required.includes('nature'));
+  assert.ok('invoice_number' in row.input_schema.properties);
   assert.ok(row.anchors.includes('invoices.facturas.nueva'));
   await db.close();
 });
