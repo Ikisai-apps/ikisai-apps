@@ -1,1 +1,0 @@
-`.segmented` admite enlaces (`<a>`) además de botones: misma altura (44 px), sin subrayado, y la activa con `.on` o `aria-current="page"`. Lo pidió la revisión móvil de Guests: sus pestañas «El evento» / «Alójate aquí» son rutas y salían como enlaces sueltos de unos 20 px.

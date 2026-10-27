@@ -404,7 +404,6 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 
 /* Revisión › Uso y cobertura (V0.2, 27-10): una función por fila, su estado y la decisión de una persona. */
 .ctl-cov{display:flex;flex-direction:column;gap:4px;padding:10px 0;min-width:0}
-.ctl-covhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ctl-cov .muted.small{overflow-wrap:anywhere}
 .ctl-covdecide{flex-wrap:wrap;margin-top:4px}
 .ctl-covdecide button{min-height:var(--tap,46px)}
@@ -436,3 +435,6 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-placemissing{margin:12px 0}
 .ctl-placemissing summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600}
 #placeShapes select{min-height:var(--tap,46px);max-width:100%}
+.ctl-itemtrade{margin:12px 0}
+.ctl-itemtrade select{min-height:var(--tap,46px);max-width:100%}
+.ctl-giveextra summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;color:var(--muted)}

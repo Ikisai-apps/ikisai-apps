@@ -119,6 +119,7 @@
 - 2026-10-27 · **Primer estimado de utilidad** (decisión de VG; 0707 con `core.usage_estimate`, 0113): frecuencia y audiencia (`kinds: organizers`) de las 287 funcionalidades del catálogo, por área. Dirección decide después en Central.
 - 2026-10-28 · **«Pagar ahora» sin enlace** (F5 con Finance #1057; API.md §24): `POST payments/link` pide el enlace al worker de Finance en nombre de quien organiza y vuelve a Pagos del retiro con `pago=ok` o `pago=cancelado`. Se enciende con `IKISAI_PORTAL_PAYMENTS=1`. Arreglado de paso: la Edge no recibía `IKISAI_WORKER_KEY`, así que `worker/retention/tick` daba 401.
 - 2026-10-28 · **Avisos por correo de comentarios nuevos** (línea de Core; 0709; API.md §25): un correo por organizador, como mucho cada hora, con lo que aún no ha visto de sus retiros. Apagado hasta `IKISAI_ORGANIZER_MAIL=1` y el SMTP (`IKISAI_SMTP_*`).
+- 2026-10-28 · **Conservación de las lecturas de comentarios** (línea de Core; 0710; API.md §23): `retention_run` borra también las lecturas de más de 180 días o de retiros terminados hace más de 90.
 
 ## Pendiente
 

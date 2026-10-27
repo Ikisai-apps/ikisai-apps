@@ -91,10 +91,10 @@
 .order-refund{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0}
 .flow-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .flow-actions button[hidden]{display:none}
-.flow-nav{display:flex;flex-wrap:nowrap;gap:8px;align-items:center;padding:4px 16px;position:sticky;top:0;z-index:5;background:var(--bg,var(--surface))}
-.flow-nav[hidden]{display:none}
-.flow-nav button{min-height:44px}
-.sheet-foot .flow-nav{padding:0;justify-content:space-between}
+/* «Volver» y «Cerrar» en la cabecera: iconos de 40 px (VG, 27-10). */
+.flow-nav-btn{width:40px;height:40px;min-width:40px}
+.flow-nav-btn[hidden]{display:none}
+.flow-nav-chev{font-size:26px;line-height:1}
 .deliver-incomplete{opacity:.85}
 .danger-text{color:var(--alert,#b3261e)}
 .delivery-ident{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;border:0}
@@ -237,7 +237,7 @@
 .journey-values dd{margin:0;display:flex;gap:8px;align-items:center;justify-content:space-between}
 
 /* Tablero de carriles (createLanes): la altura disponible bajo la cabecera y sobre la barra */
-.app-main .lanes{--lanes-height:calc(100dvh - 180px - var(--flow-nav-h, 0px))}
+.app-main .lanes{--lanes-height:calc(100dvh - 180px)}
 
 /* «Avance por aplicaciones» (0937–0938): copiado de la página del artefacto v94 con los tokens del kit. */
 .avance{display:grid;gap:10px}
@@ -305,3 +305,6 @@
 .flow-card-facts li.is-blocked{color:var(--warn-ink,#7a5414);font-weight:600}
 .order-card.is-test .qcard-title{color:var(--warn-ink,#7a5414)}
 .carta-test{color:var(--warn-ink,#7a5414);font-weight:600;margin:4px 0}
+/* Revisión móvil de los recorridos (UI-kit): «Esencial» con zona de toque de 44 px. */
+.editor-option{min-height:44px;display:inline-flex;align-items:center;gap:8px}
+@media (pointer:coarse){.editor-option input[type=checkbox]{width:22px;height:22px}}

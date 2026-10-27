@@ -5,7 +5,7 @@
  * «Apuntarme» en los vivos.
  */
 import type { Suggestion } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import type { PortalRole } from '../app/api.ts';
 import { describeError, errorCode } from '../app/client.ts';
 import type { DirectionRetreat } from '../app/direction.ts';
@@ -118,7 +118,7 @@ export function mountRetreats(main: HTMLElement, roster: Roster, selection: Sele
       const results = el('div', { id: 'retreatsAllList' });
       const search = el('input', {
         type: 'search', id: 'retreatsSearch', class: 'input', placeholder: t('retreats.search'), 'aria-label': t('retreats.search'), autocomplete: 'off',
-        'data-feedback-id': 'guests.retiros.todos.buscar', 'data-feedback-label': 'Buscar un retiro',
+        'data-feedback-id': 'guests.retiros.todos.buscar', 'data-feedback-label': 'Buscar un retiro', 'data-field-id': 'guests.retiros.todos.buscar', 'data-field-type': 'search',
         oninput: () => paint(),
       }) as HTMLInputElement;
       const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -166,7 +166,7 @@ export function mountDirectionRetreat(main: HTMLElement, options: DirectionRetre
         if (busy) return;
         // Con la familia, «¿Con quién?» (todas marcadas); con una persona, ella misma.
         const many = options.persons.length > 1;
-        const boxes = many ? options.persons.map((_, i) => el('input', { type: 'checkbox', id: `directionWho${i}`, checked: true }) as HTMLInputElement) : [];
+        const boxes = many ? options.persons.map((_, i) => el('input', { type: 'checkbox', id: `directionWho${i}`, checked: true, ...fieldAttrs({ id: 'guests.retiros.direccion.quien', type: 'multi', required: true, sensitivity: 'personal' }) }) as HTMLInputElement) : [];
         const body = many ? el('fieldset', { class: 'gwho', id: 'directionWho' }, el('legend', null, t('retreats.joinWho')),
           ...options.persons.map((p, i) => el('label', { class: 'gwho-row' }, boxes[i]!, ' ', p.name || t('picker.unknown')))) : undefined;
         const ok = await confirmDialog({ title: t('retreats.joinTitle', { title: retreat.title ?? '' }), text: many ? t('retreats.joinTextFamily') : t('retreats.joinText'), confirmLabel: t('retreats.join'), ...(body ? { body } : {}) });
