@@ -68,7 +68,7 @@ test('visitante: no en retiros no visibles ni con un código desconocido; en pú
   await failsWith(ask('ZZZZZZZZZZ', await visitorOf()), 'RESERVATION_NOT_OPEN');
   const open = await retreat(true);
   await failsWith(ask(open.code, await visitorOf(open.code), { status: 'aceptada' }), 'INVALID_FIELDS');
-  const visitor = await visitorOf(code);
+  const visitor = await visitorOf(open.code);
   await ask(open.code, visitor);
   const req = (await app.t.db.query<{ id: string; revision: string }>(`select id, revision from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
   await assert.rejects(applyPublicOperations(db(), 'booking', [{ op: 'update', table: TABLES.visitorRequests, id: req.id, expectedRevision: Number(req.revision), fields: { name: 'Otro' } }], visitor));

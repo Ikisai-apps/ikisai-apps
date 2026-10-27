@@ -410,7 +410,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           if (!request) throw new Fault(404, 'NOT_FOUND', 'La petición no existe.');
           const accept = call.args?.decision === 'accept';
           const guestId = accept ? randomUUID() : null;
-          if (guestId) stagedTable('booking.guests').set(guestId, <Record<string, unknown>><unknown>{ ...(COLUMN_DEFAULTS['booking.guests'] ?? {}), ...(SERVER_COLUMNS['booking.guests'] ?? {}), id: guestId, event_id: request.event_id, first_name: request.name ?? 'Visitante', revision: 1, created_at: nowIso(), updated_at: nowIso(), deleted_at: null });
+          if (guestId) stagedTable('booking.guests').set(guestId, <FakeRow><unknown>{ ...(COLUMN_DEFAULTS['booking.guests'] ?? {}), ...(SERVER_COLUMNS['booking.guests'] ?? {}), id: guestId, event_id: request.event_id, first_name: request.name ?? 'Visitante', revision: 1, created_at: nowIso(), updated_at: nowIso(), deleted_at: null });
           requests.set(request.id as string, { ...request, status: accept ? 'aceptada' : 'descartada', guest_id: guestId, decided_at: nowIso(), revision: Number(request.revision) + 1 });
           results.push({ op: 'call', procedure: call.procedure, result: { request_id: request.id, status: accept ? 'aceptada' : 'descartada', guest_id: guestId } });
           return;
