@@ -404,6 +404,7 @@ test('accesos · fichas de agente: el owner crea una con responsable, la activa 
   await page.locator('#ag-service').fill('Servicio de guardia');
   await page.locator('#saveAgentCard').click();
   await expect(card.locator('[data-agent-meta]')).toContainText('Responde: Servicio de guardia (servicio)');
-  const [row] = (await t.db.query<{ k: string; p: string | null }>(`select responsible_kind as k, responsible_person_id as p from central.agents where display_name = 'Agente de textos'`)).rows;
-  expect([row!.k, row!.p]).toEqual(['service', null]);
+  // La pantalla lo enseña ya (espejo local); el servidor lo recibe al sincronizar.
+  await expect.poll(async () => { const [row] = (await t.db.query<{ k: string; p: string | null }>(`select responsible_kind as k, responsible_person_id as p from central.agents where display_name = 'Agente de textos'`)).rows; return [row?.k, row?.p]; })
+    .toEqual(['service', null]);
 });
