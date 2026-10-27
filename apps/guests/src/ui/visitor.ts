@@ -10,7 +10,7 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, rememberEvent, sendRequest, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
@@ -58,7 +58,7 @@ export function renderVisitor(root: HTMLElement): () => void {
     const codes = myEventCodes();
     if (!codes.length) {
       replace(main, el('div', { class: 'pagehead' }, el('h2', null, t('visitor.mine'))),
-        el('p', { class: 'card gcard', id: 'visitorEmpty' }, t('visitor.mineEmpty')), footer());
+        el('p', { class: 'card gcard', id: 'visitorEmpty' }, t('visitor.mineEmpty')), openEvents(), footer());
       return;
     }
     replace(main, loading());
@@ -269,6 +269,34 @@ function visitorError(error: unknown): string {
     case 'INVALID_FIELDS': return t('error.invalid');
     default: return t('error.generic');
   }
+}
+
+/**
+ * «Eventos abiertos» (ENTRADA_PUBLICA.md, tarjeta 1): los de Booking abiertos al público y los retiros con «Apuntarme»,
+ * con su tipo en texto. Tocar uno abre su página de visitante (`#/v/<código>`); la identidad se crea solo al «Entrar».
+ * Sin eventos o sin poder leerlos, una línea que lo dice.
+ */
+export function openEvents(): HTMLElement {
+  const host = el('section', { class: 'gopen-events', id: 'openEvents', 'aria-labelledby': 'openEventsTitle', 'data-feedback-id': 'guests.entrada.eventos', 'data-feedback-label': 'Eventos abiertos' },
+    el('h2', { id: 'openEventsTitle' }, t('visitor.openTitle')), loading());
+  void publicEvents().then((loaded) => {
+    const today = todayMadrid();
+    const list = loaded.value.filter((e) => !e.ends_on || e.ends_on >= today)
+      .sort((a, b) => (a.starts_on ?? '9999').localeCompare(b.starts_on ?? '9999'));
+    replace(host, el('h2', { id: 'openEventsTitle' }, t('visitor.openTitle')), loaded.stale ? staleNote(loaded.at) : null,
+      list.length ? el('ul', { class: 'gretreats' }, ...list.map((e) => el('li', null, el('a', {
+        class: 'card gcard gretreat', href: `#/v/${e.code}`, dataset: { code: e.code },
+        'data-feedback-id': 'guests.entrada.eventos.abrir', 'data-feedback-label': 'Abrir un evento abierto',
+      }, el('span', { class: 'gretreat-text' }, el('strong', null, e.name),
+        el('span', { class: 'small' }, [shortRange(e.starts_on, e.ends_on), retreatState({ start: e.starts_on, end: e.ends_on }, today).text].filter(Boolean).join(' · ')),
+        el('span', { class: 'gtags' },
+          kindText(e.kind) ? el('span', { class: 'chip small' }, kindText(e.kind)) : null,
+          e.joinable ? el('span', { class: 'chip small' }, t('retreats.join')) : null,
+          e.lodging ? el('span', { class: 'chip small' }, t('visitor.lodging')) : null)),
+      icon('chevronRight', 16))))) : whyNote('openEventsNone', t('visitor.openNone')));
+  }).catch((error) => replace(host, el('h2', { id: 'openEventsTitle' }, t('visitor.openTitle')),
+    whyNote('openEventsWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('visitor.openFailed'))));
+  return host;
 }
 
 /** `/e/<código>` → `#/v/<CÓDIGO>` (sin el código en la ruta), o null si no es una entrada de visitante. */
