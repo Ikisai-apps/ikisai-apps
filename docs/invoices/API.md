@@ -1962,6 +1962,20 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
 
 **Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
 
+### 17.7 Decisión de VG (27-10): apuntes fiscales y apuntes de proceso (pendiente de implementar, tras #768)
+
+- **Fiscal:** lo que acaba en factura o ticket. Llega cuando la caja de Flow, o cualquier app, pulsa «Enviar a Finance» tras cobrar. Lleva justificante (§17.5), va a la gestoría y cuenta en el IVA.
+- **Proceso:** el resto de lo que llega de las apps, como el resumen del cierre del día o los pedidos cobrados sin factura. Es informativo: se ve y cuenta en la vista «Evento», pero **no** va a la gestoría ni tiene justificante.
+- **Sin «desfacturar»:** un apunte de proceso no se vuelve fiscal. Lo fiscal llega como apunte propio, con su factura.
+- **Para el sábado 31 no cambia nada:** Flow manda lo que ya manda.
+- **Cambio previsto** (migración nueva; la 0244 ya es inmutable):
+  - columna `nature` (`fiscal` | `process`) en `invoices.app_entries`, que fija `record_app_entry` y no cambia al sustituir (`409 NATURE_CHANGE`);
+  - el resumen, el manifest, `ingresos_gastos_apps.csv` y el IVA de Gestoría, solo con lo fiscal;
+  - el justificante, solo para lo fiscal;
+  - la lista y la vista «Evento», con los dos tipos;
+  - el valor por defecto de lo que ya esté en la base, por decidir (ver la pregunta a Core).
+- **Para no contar dos veces en «Evento»:** cada cobro va en un solo apunte. Lo enviado como fiscal no entra también en el apunte de proceso del cierre de ese día (como las liquidaciones, §17.6), y lo decide Flow.
+
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
 Ficha de capacidad para el catálogo del núcleo:
