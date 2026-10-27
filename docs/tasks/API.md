@@ -2122,7 +2122,7 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
   - Si la madre no está abierta (hecha, descartada o en la papelera), las hijas no se tocan y llega `children: null`.
   - `children` también vale con los demás tipos de las fuentes de sistema. La madre, reenviada, toma el título y la nota nuevos mientras esté abierta.
 - **Quién puede** (migración `0347`): `tasks.request_children` comprueba por sí mismo, antes de tocar nada, que quien escribe es editor u owner y que tiene la madre en su ámbito (su área entera o, si está en un proyecto, ese proyecto). Si no, `FORBIDDEN` 403, también si se invoca directamente sin la Edge. Las identidades de servicio lo ven todo.
-- **Pruebas:** `tests/tasks/requests-children.test.ts` (también el caso denegado).
+- **Pruebas:** `tests/tasks/requests-children.test.ts`: también el caso denegado y el contrato con Booking (la petición que arma `montageRequest` de `_domain/booking/montage.ts`, una hija por objeto).
 
 ## 43. Lo que Tasks ofrece en el catálogo de capacidades (contrato §8, migración 0345; encargo de Core, 27-10-2026)
 
