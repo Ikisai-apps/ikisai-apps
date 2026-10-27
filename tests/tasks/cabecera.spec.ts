@@ -45,7 +45,7 @@ test('cabecera del kit en móvil: marca de Tasks visible y la hoja «Apps de Iki
   const sheet = page.getByRole('dialog', { name: 'Menú de Tasks' });
   await expect(sheet).toBeVisible();
   await expect(sheet).toBeInViewport();
-  await expect(sheet.getByText('Sugerencias y QA').first()).toBeVisible();
+  await expect(sheet.getByText('Mis reportes').first()).toBeVisible();
   const signal = sheet.getByRole('switch', { name: /Señalar para comentar/ });
   await expect(signal).toBeVisible();
   // FB_2026_072: la revisión de QA es de Central; Tasks ya no lleva el interruptor (el menú ofrece «Revisar en Central»).

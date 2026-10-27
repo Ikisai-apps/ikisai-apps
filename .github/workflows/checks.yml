@@ -2,7 +2,9 @@ name: Checks
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    # Sin `ready_for_review`: la PR en borrador ya corrió al abrirse y en cada push; quitar el borrador repetía toda la CI
+    # (20–30 min por PR con la cola llena, 26-10-2026). Las comprobaciones del SHA siguen valiendo para la fusión.
+    types: [opened, synchronize, reopened]
     # Sin filtro de rutas: con main protegida (14-10-2026) las comprobaciones obligatorias tienen que informar siempre.
     # En una PR solo de documentación, «Qué ha cambiado» decide `code=false` y el job pesado queda saltado (cuenta como verde).
   workflow_call:

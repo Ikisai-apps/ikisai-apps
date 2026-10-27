@@ -22,6 +22,9 @@ export interface MenuProduct {
   position: number;
   /** Clave de sus imágenes (`montaditos/serrano`), si las tiene; ver `productAssets`. */
   imageKey: string | null;
+  /** Alérgenos (de Food) y si están confirmados con las etiquetas reales (§8.4). */
+  allergens?: string[];
+  allergensChecked?: boolean;
 }
 
 /** Las cuatro representaciones de un producto (decisión de VG del 26-10), en apps/flow/public/assets/<clave>/. */

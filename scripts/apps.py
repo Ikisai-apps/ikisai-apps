@@ -24,11 +24,11 @@ PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 # Organizers: materiales del retiro (fase 4); Guests usa el compartido de firmas.
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents',
   'guests': 'guests-documents', 'organizers': 'organizers-materials',
-  # Flow: sin bucket propio hasta que su especificación pida archivos (RELEVO-001 §6).
-  'flow': None}
+  # Flow: documentos e imágenes de cada flujo (guías del Inicio, portada), subidos desde la app (VG 27-10-2026).
+  'flow': 'flow-media'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
-BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152, 'organizers-materials': 15728640, 'resources-plans': 10485760}
+BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152, 'organizers-materials': 15728640, 'resources-plans': 10485760, 'flow-media': 15728640}
 DEFAULT_BUCKET_LIMIT = 15728640
 BUCKET_MIME_TYPES = {
   'ikisai-files': ['image/webp', 'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'text/csv', 'application/zip',
@@ -46,6 +46,8 @@ BUCKET_MIME_TYPES = {
   'guests-documents': ['image/webp', 'image/jpeg', 'image/png'],
   # Organizers: logotipo, imágenes recomprimidas en cliente (≤ 5 MB) y PDF (≤ 15 MB) de los materiales del retiro.
   'organizers-materials': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
+  # Flow: guías e imágenes del flujo (recomprimidas en cliente) y PDF.
+  'flow-media': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
 }
 
 

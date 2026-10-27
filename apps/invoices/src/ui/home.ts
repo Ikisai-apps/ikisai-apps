@@ -13,6 +13,7 @@ import { mirrorRows, type MirrorRow } from '../app/work-mirror.ts';
 import { validateNow } from '../app/validate.ts';
 import { quietOwnMerges } from './undo.ts';
 import { chipsWithMore } from './chips.ts';
+import { appEntriesHint } from './app-entries.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -80,6 +81,7 @@ export const mountHome: ViewMount = (ctx) => {
   const linksSwitch = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.interruptor', 'data-feedback-label': 'Encender o apagar el enlace', class: 'ghost', type: 'button', id: 'resourceLinksSwitch', onclick: () => void switchResourceLinks() }, '…') as HTMLButtonElement;
   const linksPreviewButton = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa');
   const supplierCount = el('span', { id: 'statSuppliers' }, '…');
+  const appEntriesHintText = el('span', { id: 'statAppEntries' }, '…');
   const network = el('dd'); const pending = el('dd'); const conflicts = el('dd'); const lastPull = el('dd'); const roleText = el('dd');
   const driveRun = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null;
   const driveReread = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.releer', 'data-feedback-label': 'Volver a leer las pendientes', class: 'ghost', type: 'button', id: 'driveReread', onclick: (e: Event) => void rereadDrive(e.currentTarget as HTMLButtonElement) }, 'Volver a leer las pendientes') : null;
@@ -124,6 +126,9 @@ export const mountHome: ViewMount = (ctx) => {
       el('div', { class: 'inv-stocklink-state' }, renderMedal({ icon: 'cart', size: 40 }), el('div', null, linksState, linksMeaning)),
       linksFigures,
       el('p', { class: 'btnrow' }, linksPreviewButton, linksSwitch), linksReason), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' })] : []),
+    // Ingresos y gastos de otras apps (0244): la lista, el resultado por evento y «facturado» con un toque
+    fb(el('a', { class: 'inv-tool', id: 'toolAppEntries', href: '#/apuntes', onclick: (e: Event) => { e.preventDefault(); navigate('#/apuntes'); } },
+      icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Ingresos de apps'), el('span', { class: 'inv-tool-hint' }, appEntriesHintText)), { feedbackId: 'invoices.inicio.apuntes', feedbackLabel: 'Ingresos y gastos de apps' }),
     // La única entrada a Proveedores (no está en el menú)
     fb(el('a', { class: 'inv-tool', id: 'toolSuppliers', href: '#/proveedores', onclick: (e: Event) => { e.preventDefault(); navigate('#/proveedores'); } },
       icon('people', 20), el('span', { class: 'inv-tool-label' }, 'Proveedores'), el('span', { class: 'inv-tool-hint' }, supplierCount)), { feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }),
@@ -340,6 +345,7 @@ export const mountHome: ViewMount = (ctx) => {
     fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((r) => r.invoice.status === 'pendiente_datos').length} sin leer)` : '0';
     if (toolHint.drive) toolHint.drive.textContent = drive.length ? `${drive.length} por revisar` : 'Al día';
     supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
+    void appEntriesHint(client).then((text) => { appEntriesHintText.textContent = text; }).catch(() => undefined);
     // El interruptor ha cambiado (aquí o en otro dispositivo): la vista previa se vuelve a pedir
     const on = linksEnabled();
     if (linksOnSeen !== null && linksOnSeen !== on) refreshLinksPreview();

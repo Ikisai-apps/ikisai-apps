@@ -24,7 +24,8 @@ export function createAdmin(supabase: Supabase) {
     human(ctx);
     if (typeof body?.app !== 'string' || !APP_ID.test(body.app)) fail(422, 'INVALID_OPERATION', 'App inválida.');
     if (typeof body?.userId !== 'string' || !UUID.test(body.userId)) fail(422, 'INVALID_OPERATION', 'userId inválido.');
-    if (body.role !== null && !ROLES.includes(body.role)) fail(422, 'INVALID_ROLE', messageFor('INVALID_ROLE'));
+    // 'outsider' solo para cambiar los ámbitos de quien ya lo es: core.set_membership no lo da ni lo quita (C24; P14 de Central).
+    if (body.role !== null && !ROLES.includes(body.role) && body.role !== 'outsider') fail(422, 'INVALID_ROLE', messageFor('INVALID_ROLE'));
     return supabase.rpc('core_admin_set_membership', {
       p_actor: ctx.user.id, p_app: body.app, p_user: body.userId, p_role: body.role, p_scopes: body.scopes ?? null,
       p_display_name: typeof body.displayName === 'string' ? body.displayName : null,

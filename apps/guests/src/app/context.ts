@@ -2,7 +2,7 @@
  * Estado de la persona en pantalla (una entrada del ámbito): su ficha de Booking y su cola de guardado (`writer.ts`).
  * Las vistas se suscriben con `onChange` y se repintan por partes, sin perder el foco de lo que se está escribiendo.
  */
-import type { Grant, GuestApi, MyGuest } from './api.ts';
+import { cancelled, type Grant, type GuestApi, type MyGuest } from './api.ts';
 import type { Experience, PortalReads } from './portal.ts';
 import { createWriter, type Conflict, type Op, type Writer } from './writer.ts';
 
@@ -12,7 +12,7 @@ export interface GuestContext {
   guest(): MyGuest;
   /** Lo que configuró el organizador (§13.1); null sin configuración o si Organizers aún no la publica. */
   experience(): Experience | null;
-  /** Vista previa del organizador (enlace con `preview`, contrato §3.6 O6): solo lectura; el kit rechaza las escrituras. */
+  /** Vista previa del organizador (enlace con `preview`, contrato §3.6 O6) o retiro cancelado (§9.17): solo lectura. */
   readOnly(): boolean;
   /** Hora de la copia local si la ficha viene de la caché sin red; null si es del servidor. */
   staleAt(): string | null;
@@ -46,7 +46,7 @@ export async function openGuest(api: GuestApi, reads: PortalReads, userId: strin
   const writer: Writer = createWriter({
     api, userId, guest,
     answer: (questionId, value) => reads.answer(guestId, questionId, value),
-    readOnly: () => grant.preview === true || guest.preview === true,
+    readOnly: () => grant.preview === true || guest.preview === true || cancelled(guest.reservation.status),
     onGuest(fresh) { guest = fresh; staleAt = null; emit('guest'); },
     onState() { emit('state'); },
     onConflict(found) { conflicts = [...conflicts.filter((c) => !found.some((f) => f.field === c.field)), ...found]; emit('conflict'); },
@@ -59,7 +59,7 @@ export async function openGuest(api: GuestApi, reads: PortalReads, userId: strin
     reads,
     guest: () => guest,
     experience: () => experience,
-    readOnly: () => grant.preview === true || guest.preview === true,
+    readOnly: () => grant.preview === true || guest.preview === true || cancelled(guest.reservation.status),
     staleAt: () => staleAt,
     writer,
     conflicts: () => conflicts,

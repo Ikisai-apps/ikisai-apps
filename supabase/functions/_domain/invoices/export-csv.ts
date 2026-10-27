@@ -80,6 +80,28 @@ export interface ExportManifest {
   issued_file_count?: number;
   issued_totals?: { base: number; quota: number; surcharge: number; withholding: number; total: number; quota_by_rate: Array<{ tax: string; rate: number | null; base: number; quota: number; surcharge: number }> };
   issued?: ManifestIssued[];
+  /** Ingresos y gastos de otras apps (desde la migración 0244). */
+  app_entry_count?: number;
+  app_entries_totals?: {
+    income: { count: number; base: number; quota: number; total: number; quota_by_rate: Array<{ rate: number; base: number; quota: number }> };
+    expense: { count: number; base: number; quota: number; total: number };
+  };
+  app_entries?: ManifestAppEntry[];
+}
+
+export interface ManifestAppEntry {
+  id: string;
+  revision: number;
+  source_app: string;
+  source_ref: string;
+  kind: 'income' | 'expense';
+  entry_date: string;
+  description: string;
+  tax_rate: number;
+  base: number; quota: number; total: number;
+  pending_refunds: number;
+  methods: Record<string, number>;
+  event_id: string | null;
 }
 
 export interface ManifestIssued {
@@ -114,6 +136,17 @@ export function issuedCsv(manifest: ExportManifest): string {
       money(i.base), money(i.quota), money(i.surcharge), money(i.withholding), money(i.total), money(i.source_total), money(i.totals_delta), i.status, i.annulled_reason,
       i.payment.status, i.rectification ? JSON.stringify(i.rectification.rectified) : null, i.external_tool ?? i.origin,
       i.files.map((f) => f.name.replace(/^emitidas\//, '')).join(' | '),
+    ]),
+  );
+}
+
+/** Ingresos y gastos de otras apps (p. ej. las ventas de la barra de Flow), uno por apunte. */
+export function appEntriesCsv(manifest: ExportManifest): string {
+  return csvRows(
+    ['fecha', 'app', 'referencia', 'tipo', 'concepto', 'iva_tipo', 'base', 'cuota', 'total', 'devoluciones_pendientes', 'medios'],
+    (manifest.app_entries ?? []).map((e) => [
+      e.entry_date, e.source_app, e.source_ref, e.kind === 'income' ? 'ingreso' : 'gasto', e.description, rate(e.tax_rate), money(e.base), money(e.quota), money(e.total),
+      money(e.pending_refunds), Object.entries(e.methods ?? {}).map(([k, v]) => `${k}: ${money(v)}`).join(' | '),
     ]),
   );
 }
@@ -176,6 +209,16 @@ export function taxesCsv(manifest: ExportManifest): string {
       ['diferencia_repercutido_soportado', null, null, money(Math.round((it.quota - t.vat) * 100) / 100)],
     );
   }
+  // Ingresos y gastos de otras apps (0244): IVA repercutido aparte, para que la gestoría vea de dónde sale.
+  const at = manifest.app_entries_totals;
+  if (at && (at.income.count || at.expense.count)) {
+    rows.push(
+      ...at.income.quota_by_rate.map((g) => ['iva_repercutido_apps', rate(g.rate), money(g.base), money(g.quota)] as Cell[]),
+      ['base_ingresos_apps', null, money(at.income.base), null],
+      ['iva_repercutido_apps_total', null, null, money(at.income.quota)],
+      ['gastos_apps_total', null, money(at.expense.base), money(at.expense.total)],
+    );
+  }
   return csvRows(['tipo', 'tasa', 'base', 'importe'], rows);
 }
 
@@ -184,5 +227,6 @@ export const EXPORT_CSV_FILES = {
   'lineas_compra.csv': linesCsv,
   'resumen_impuestos.csv': taxesCsv,
   'facturas_emitidas.csv': issuedCsv,
+  'ingresos_gastos_apps.csv': appEntriesCsv,
 } as const;
 export type ExportCsvName = keyof typeof EXPORT_CSV_FILES;

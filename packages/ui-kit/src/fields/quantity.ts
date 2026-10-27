@@ -1,5 +1,6 @@
 import { el } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 export interface QuantityUnit {
   /** Valor que se guarda (`g`, `kg`, `ud`, `l`, `EUR`). */
@@ -30,6 +31,8 @@ export interface QuantityFieldOptions {
   disabled?: boolean;
   onChange?: (value: QuantityValue) => void;
   locale?: string;
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface QuantityValue {
@@ -75,6 +78,7 @@ export function createQuantityField(options: QuantityFieldOptions): QuantityFiel
     id, name: options.name, type: 'text', inputmode: decimals > 0 ? 'decimal' : 'numeric', autocomplete: 'off', spellcheck: 'false',
     placeholder: options.placeholder ?? (decimals > 0 ? '0,00' : '0'), required: !!options.required, disabled: !!options.disabled,
     value: formatQuantity(options.value ?? null, decimals, options.locale, options.fixedDecimals), 'aria-describedby': `${id}-error`,
+    ...fieldAttrs(options.field, { type: 'number', required: options.required, label: options.label }),
   });
   const select = units.length > 1
     ? el('select', { id: `${id}-unit`, name: `${options.name}_unit`, 'aria-label': `Unidad de ${options.label.toLowerCase()}`, disabled: !!options.disabled },

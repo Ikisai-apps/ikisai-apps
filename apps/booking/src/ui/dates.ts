@@ -118,6 +118,16 @@ export function createDatesBlock(): DatesBlock {
     return sortable.element;
   }
 
+  /** Reservas creadas con fechas antes de que el alta las guardara como fecha posible: un toque las fija. */
+  async function fixReservationDates(): Promise<void> {
+    const o = current!;
+    const r = o.reservation;
+    const ops: RowOperation[] = [];
+    if (String(r.end_date) > String(r.start_date)) ops.push({ op: 'insert', table: DATE_OPTIONS, id: crypto.randomUUID(), fields: { reservation_id: r.id, start_date: r.start_date, end_date: r.end_date, proposed_by: 'ikisai', position: 1 } });
+    ops.push({ op: 'update', table: RESERVATIONS, id: r.id, expectedRevision: r.revision, fields: { dates_definitive: true } });
+    await o.run(ops, 'Fecha fijada.');
+  }
+
   function render(options: DatesBlockOptions): HTMLElement {
     current = options;
     const { reservation, editable } = options;
@@ -132,13 +142,18 @@ export function createDatesBlock(): DatesBlock {
     const toggle = (open: boolean) => () => { expanded = open; if (current && card) { const old = card; old.replaceWith(render(current)); } };
     card = next;
     if (definitive && !expanded) {
-      next.append(el('p', { class: 'hint' }, 'La fecha es definitiva: el organizador la ve fija y no puede proponer otras.'),
+      next.append(el('p', { id: 'datesFixed' }, el('strong', null, dateRange({ start_date: reservation.start_date ?? null, end_date: reservation.end_date ?? null }))),
+        el('p', { class: 'hint' }, 'La fecha es definitiva: el organizador la ve fija y no puede proponer otras.'),
         el('button', { class: 'linkbtn', type: 'button', id: 'showDateOptions', 'data-feedback-id': 'booking.reserva.fechas.ver', 'data-feedback-label': 'Ver fechas posibles', onclick: toggle(true) }, 'Ver fechas posibles'));
       return next;
     }
     const insertFields = () => ({ reservation_id: reservation.id, proposed_by: 'ikisai', position: live.reduce((max, r) => Math.max(max, Number(r.position) || 0), 0) + 1 });
     const parts: Array<Node | null> = [
-      ikisai.length === 0 ? el('p', { class: 'hint', id: 'dateOptionsEmpty' }, 'Todavía no hay fechas posibles. Añade las que Ikisai puede ofrecer.') : ikisaiList(ikisai, editable),
+      ikisai.length === 0 && reservation.start_date && reservation.end_date
+        ? el('div', { id: 'reservationDates' },
+          el('p', null, 'Fecha de la reserva: ', el('strong', null, dateRange({ start_date: reservation.start_date, end_date: reservation.end_date }))),
+          editable && !definitive ? el('button', { class: 'ghost small', type: 'button', id: 'fixReservationDates', 'data-feedback-id': 'booking.reserva.fechas.fijar_reserva', 'data-feedback-label': 'Fijar la fecha de la reserva', onclick: () => void fixReservationDates() }, 'Fijarla como definitiva') : null)
+        : ikisai.length === 0 ? el('p', { class: 'hint', id: 'dateOptionsEmpty' }, 'Todavía no hay fechas posibles. Añade las que Ikisai puede ofrecer.') : ikisaiList(ikisai, editable),
       editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addDateOption', 'data-feedback-id': 'booking.reserva.fechas.anadir', 'data-feedback-label': 'Añadir fecha posible', onclick: () => openRowSheet({
         client: options.client, title: 'Nueva fecha posible', table: DATE_OPTIONS, row: null, specs: DATE_OPTION_SPECS, check: checkDateRange, savedMessage: 'Fecha añadida.',
         feedbackId: 'booking.reserva.fechas.nueva', feedbackLabel: 'Nueva fecha posible', insertFields: insertFields() }) }, 'Añadir fecha posible')) : null,

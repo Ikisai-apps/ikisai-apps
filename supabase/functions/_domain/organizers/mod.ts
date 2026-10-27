@@ -43,6 +43,50 @@ export function grantedReservations(membership: { scopes?: unknown } | null | un
   return new Set((Array.isArray(grants) ? grants : []).map((g) => String(g?.reservation_id ?? '')).filter(Boolean));
 }
 
+/**
+ * Ámbito «todos»: dirección figura como coorganizadora de cualquier retiro (decisión de VG del 26-10-2026). La forma de la
+ * entrada la fija Booking (petición B20); aquí, en un solo sitio. El núcleo la admite en `core.portal_in_scope` (K8).
+ */
+export function hasAllReservations(membership: { scopes?: unknown } | null | undefined): boolean {
+  const grants = (membership?.scopes as { grants?: Array<{ all?: unknown }> } | null | undefined)?.grants;
+  return Array.isArray(grants) && grants.some((g) => g?.all === true);
+}
+
+/** ¿Esta reserva está en el ámbito del organizador? Por su permiso propio o por «todos». */
+export function inReservationScope(membership: { scopes?: unknown } | null | undefined, reservationId: unknown): boolean {
+  return hasAllReservations(membership) || grantedReservations(membership).has(String(reservationId ?? ''));
+}
+
+/**
+ * Propuestas del equipo de Ikisai (decisión de VG del 26-10-2026, migración 0703): con «todos» y sin permiso propio sobre
+ * la reserva, lo que se cambia no se escribe; se envía como sugerencia del núcleo de este tipo y el organizador la acepta.
+ */
+export const TEAM_PROPOSAL_KIND = 'propuesta_equipo';
+
+/** ¿Escribe directo (permiso propio) o propone (solo «todos»)? Fuera de ámbito, ninguna de las dos. */
+export function writeMode(membership: { scopes?: unknown } | null | undefined, reservationId: unknown): 'write' | 'propose' | null {
+  if (grantedReservations(membership).has(String(reservationId ?? ''))) return 'write';
+  return hasAllReservations(membership) ? 'propose' : null;
+}
+
+/** Reserva de una propuesta del equipo (`detail.reservation_id`), o null si no es de ese tipo. */
+export function proposalReservation(suggestion: { kind: string; detail?: unknown }): string | null {
+  if (suggestion.kind !== TEAM_PROPOSAL_KIND) return null;
+  const id = (suggestion.detail as { reservation_id?: unknown } | null | undefined)?.reservation_id;
+  return typeof id === 'string' && id ? id : null;
+}
+
+/**
+ * Quién ve, previsualiza y decide una propuesta: quien tiene permiso PROPIO sobre su reserva (el organizador). Dirección
+ * no decide las suyas aunque sea editora; las sigue con `scope=mine`. Lo que no es una propuesta del equipo, nadie: en
+ * Organizers no hay otro tipo. La reserva sale de `detail` y solo sirve para repartir: al aceptar, el commit es del
+ * organizador y el gancho de la base de datos vuelve a comprobar cada fila.
+ */
+export function proposalVisible(suggestion: { kind: string; detail?: unknown }, membership: { scopes?: unknown } | null | undefined): boolean {
+  const reservation = proposalReservation(suggestion);
+  return reservation !== null && grantedReservations(membership).has(reservation);
+}
+
 /** Tablas con biblioteca del organizador: sus materiales y preguntas le acompañan a sus próximos retiros. */
 export const OWNED_TABLES: readonly string[] = [TABLES.materials, TABLES.questions];
 
@@ -53,7 +97,7 @@ export const OWNED_TABLES: readonly string[] = [TABLES.materials, TABLES.questio
 export function visibleRow(table: string, row: Record<string, unknown>, membership: { scopes?: unknown } | null | undefined, userId?: string | null): boolean {
   if (!table.startsWith('organizers.')) return true;
   if (userId && OWNED_TABLES.includes(table) && row.owner_id === userId) return true;
-  return grantedReservations(membership).has(String(row.reservation_id ?? ''));
+  return inReservationScope(membership, row.reservation_id);
 }
 
 type Spec =
@@ -156,15 +200,16 @@ function fieldProblem(spec: Spec, value: unknown): string | null {
 
 /**
  * Valida un lote del organizador. `current` da la fila que hay (para los cambios parciales); en la Edge se omite y la base
- * de datos completa la comprobación con sus checks y el gancho de ámbito.
+ * de datos completa la comprobación con sus checks y el gancho de ámbito. Con `mode: 'proposal'` valida un lote que dirección
+ * va a proponer (basta «todos»; el `owner_id` de lo nuevo lo pone el organizador al aceptarlo).
  */
 export function validateOperations(
   operations: DomainOperation[],
   membership: { role?: string; scopes?: unknown } | null | undefined,
   current: (table: string, id: string) => Record<string, unknown> | undefined = () => undefined,
   userId?: string | null,
+  mode: 'commit' | 'proposal' = 'commit',
 ): Issue | null {
-  const granted = grantedReservations(membership);
   for (const op of operations) {
     if (op.op === 'call') return { code: 'FORBIDDEN', message: 'Organizers no admite procedimientos en sus lotes.', details: {} };
     const table = op.table ?? '';
@@ -181,8 +226,10 @@ export function validateOperations(
     }
     if (op.op === 'insert') {
       for (const key of spec.required) if (fields[key] === undefined || fields[key] === null) return { code: 'INVALID_FIELDS', message: `Campo ${key} es obligatorio.`, details: { table, field: key } };
-      if (!granted.has(String(fields.reservation_id))) return { code: 'OUT_OF_SCOPE', message: 'Ese retiro no es tuyo.', details: { reservation_id: fields.reservation_id } };
-      if (userId && OWNED_TABLES.includes(table) && fields.owner_id !== userId) return { code: 'INVALID_FIELDS', message: 'Campo owner_id debe ser quien lo crea.', details: { table, field: 'owner_id' } };
+      const how = writeMode(membership, fields.reservation_id);
+      if (!how) return { code: 'OUT_OF_SCOPE', message: 'Ese retiro no es tuyo.', details: { reservation_id: fields.reservation_id } };
+      if (how === 'propose' && mode === 'commit') return { code: 'SUGGESTION_REQUIRED', message: 'Desde dirección, los cambios se proponen al organizador.', details: { reservation_id: fields.reservation_id, kind: TEAM_PROPOSAL_KIND } };
+      if (mode === 'commit' && userId && OWNED_TABLES.includes(table) && fields.owner_id !== userId) return { code: 'INVALID_FIELDS', message: 'Campo owner_id debe ser quien lo crea.', details: { table, field: 'owner_id' } };
     } else {
       for (const key of ['reservation_id', 'owner_id']) {
         if (!(key in fields)) continue;

@@ -24,20 +24,18 @@ test('fechas posibles: dos opciones, orden, chip del organizador, fijar una; y u
   await loginTo(page, harness.baseURL);
 
   await test.step('una pre-reserva con fechas provisionales', async () => {
+    // Una reserva de antes de #732 (con fechas, sin fecha posible ni definitiva). El alta de hoy deja la fecha como fecha
+    // posible definitiva: lo prueba open-days.spec.ts.
+    api.serverInsert(RESERVATIONS, { title: 'Retiro Fechas', status: 'pre_reservada', start_date: inDays(10), end_date: inDays(12), expected_guests: 20, event_type: 'retiro', priority: 'media' });
     await nav('Reservas');
-    await page.getByRole('button', { name: 'Nueva reserva' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Nueva reserva' });
-    await dialog.getByLabel('Nombre del grupo o evento').fill('Retiro Fechas');
-    await dialog.getByLabel('Estado').selectOption('pre_reservada');
-    await dialog.getByLabel('Entrada').fill(inDays(10));
-    await dialog.getByLabel('Salida').fill(inDays(12));
-    await dialog.getByLabel('Personas previstas').fill('20');
-    await page.getByRole('button', { name: 'Guardar' }).click();
-    await expect(dialog).toBeHidden();
+    await sync();
     await page.locator('#reservationList .row', { hasText: 'Retiro Fechas' }).getByText('Retiro Fechas').first().click();
     await expect(page.locator('#statusChip')).toBeVisible();
     await expect(page.locator('#datesChip')).toHaveText('Provisional');
     await expect(page.locator('#datesDefinitive')).not.toBeChecked();
+    // sin fechas posibles, enseña la de la reserva para fijarla en un toque
+    await expect(page.locator('#reservationDates')).toContainText('Fecha de la reserva');
+    await expect(page.locator('#fixReservationDates')).toBeVisible();
   });
 
   const reservationId = () => api.rows(RESERVATIONS)[0]!.id;
