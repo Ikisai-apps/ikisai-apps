@@ -396,8 +396,8 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
   const notice = input('q-notice', req?.notice_days ?? 30, { type: 'number', min: '0', max: '365', inputmode: 'numeric' });
   const risk = el('select', { id: 'q-risk', 'data-field-id': 'central.cumplimiento.risk' }, ...options(RISKS, RISK_LABELS, req?.risk ?? 'medio')) as HTMLSelectElement;
   const impact = el('select', { id: 'q-impact', 'data-field-id': 'central.cumplimiento.impact' }, ...options(IMPACTS, IMPACT_LABELS, req?.impact, 'Sin indicar')) as HTMLSelectElement;
-  const blocks = el('input', { type: 'checkbox', id: 'q-blocks', checked: req?.blocks_operation === true }) as HTMLInputElement;
-  const cost = el('input', { type: 'checkbox', id: 'q-cost', checked: req?.generates_cost === true }) as HTMLInputElement;
+  const blocks = el('input', { type: 'checkbox', id: 'q-blocks', 'data-field-id': 'central.cumplimiento.blocks', checked: req?.blocks_operation === true }) as HTMLInputElement;
+  const cost = el('input', { type: 'checkbox', id: 'q-cost', 'data-field-id': 'central.cumplimiento.cost', checked: req?.generates_cost === true }) as HTMLInputElement;
   const nextAction = input('q-next', req?.next_action, { maxlength: '300' });
   const nextOn = input('q-next-on', req?.next_action_on, { type: 'date' });
   const description = area('q-description', req?.description, '2000');
@@ -470,7 +470,7 @@ export function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, 
   const docDate = input('d-date', doc?.document_date, { type: 'date' });
   const expires = input('d-expires', doc?.expires_on, { type: 'date' });
   const version = input('d-version', doc?.version, { maxlength: '40' });
-  const signed = el('input', { type: 'checkbox', id: 'd-signed', checked: doc?.signed === true }) as HTMLInputElement;
+  const signed = el('input', { type: 'checkbox', id: 'd-signed', 'data-field-id': 'central.cumplimiento.signed', checked: doc?.signed === true }) as HTMLInputElement;
   const url = input('d-url', doc?.external_url, { maxlength: '500', placeholder: 'https://…', 'data-feedback-ignore': '' });
   const responsible = personSelect('d-responsible', data, doc?.responsible_person_id);
   const fileInput = el('input', { id: 'd-file', 'data-field-id': 'central.cumplimiento.file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.cumplimiento.documento.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;

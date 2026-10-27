@@ -158,7 +158,7 @@ export const mountPeople: ViewMount = (ctx) => {
   const trashList = el('ul', { class: 'list', 'aria-label': 'Personas en la papelera', 'data-feedback-id': 'central.personas.papelera.lista', 'data-feedback-label': 'Personas en la papelera' });
   const trashLabel = el('summary', { class: 'sectionlabel ctl-trashhead', 'data-feedback-id': 'central.personas.papelera.cabecera', 'data-feedback-label': 'Papelera de personas' }, 'Papelera ', el('span', { class: 'count' }, '0'));
   const trash = el('details', { id: 'peopleTrash', 'data-feedback-id': 'central.personas.papelera', 'data-feedback-label': 'Papelera', hidden: true }, trashLabel, trashList);
-  const search = el('input', { type: 'search', id: 'peopleSearch', 'data-feedback-id': 'central.personas.buscar', 'data-feedback-label': 'Buscar persona', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar persona',
+  const search = el('input', { type: 'search', id: 'peopleSearch', 'data-field-id': 'central.persona.people_search', 'data-feedback-id': 'central.personas.buscar', 'data-feedback-label': 'Buscar persona', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar persona',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const relationFilter = el('select', { id: 'peopleRelation', 'data-field-id': 'central.persona.people_relation', 'aria-label': 'Relación', 'data-feedback-id': 'central.personas.filtro_relacion', 'data-feedback-label': 'Filtro por relación', onchange: (e: Event) => { relation = (e.target as HTMLSelectElement).value; paint(); } },
     ...options(RELATIONS, RELATION_LABELS, '', 'Todas las relaciones'));
@@ -173,7 +173,7 @@ export const mountPeople: ViewMount = (ctx) => {
   const teamFilter = el('select', { id: 'peopleTeam', 'data-field-id': 'central.persona.people_team', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los equipos')) as HTMLSelectElement;
   const fabLabel = el('span', null, 'Nueva persona');
-  const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
+  const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-field-id': 'central.persona.people_inactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
   const filtersPanel = el('div', { class: 'ctl-filters', id: 'peopleFilters', hidden: true, 'data-feedback-id': 'central.personas.filtros', 'data-feedback-label': 'Filtros' }, relationFilter, tradeFilter, teamFilter, inactive);
   const filtersToggle = el('button', { type: 'button', class: 'ghost', id: 'peopleFiltersToggle', 'aria-expanded': 'false', 'aria-controls': 'peopleFilters', 'data-feedback-id': 'central.personas.filtros_abrir', 'data-feedback-label': 'Abrir los filtros',
     onclick: () => { filtersOpen = !filtersOpen; filtersPanel.hidden = !filtersOpen; filtersToggle.setAttribute('aria-expanded', String(filtersOpen)); } }, icon('filter', 16), el('span', { class: 'ctl-filtercount' }, 'Filtros'));
@@ -445,7 +445,7 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   const availability = el('select', { id: 'p-availability', 'data-field-id': 'central.persona.availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
   const notes = el('textarea', { id: 'p-notes', 'data-field-id': 'central.persona.p_notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
   notes.value = person?.availability_notes ?? '';
-  const committed = el('input', { type: 'checkbox', id: 'p-committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
+  const committed = el('input', { type: 'checkbox', id: 'p-committed', 'data-field-id': 'central.persona.committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
 
   const values = (): Record<string, unknown> => {
     const common = { display_name: name.value.trim(), initials: text(initials.value), base_role: baseRole.value, availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked };

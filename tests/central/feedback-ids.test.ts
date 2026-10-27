@@ -109,13 +109,15 @@ test('inventario de campos (UI-kit #771): cada campo con id fijo lleva su data-f
   const clash: string[] = [];
   for (const file of sources(path.join(SRC, 'ui'))) {
     const text = readFileSync(file, 'utf8');
-    const rel = path.relative(SRC, file).replaceAll('\', '/');
-    for (const m of text.matchAll(/el\('(input|select|textarea)',\s*\{\s*id:\s*'([A-Za-z0-9_-]+)'([^\n]*)/g)) {
-      const field = /'data-field-id':\s*'(central\.[a-z]+\.[a-z0-9_]+)'/.exec(m[3]!)?.[1];
-      if (!field) { missing.push(`${rel}: #${m[2]}`); continue; }
+    const rel = path.relative(SRC, file).split(path.sep).join('/');
+    // El id en cualquier sitio del objeto. Los campos con id variable (funciones auxiliares) esperan a `markField` del kit.
+    for (const m of text.matchAll(/el\('(?:input|select|textarea)',\s*\{[^\n]*?\bid:\s*'([A-Za-z0-9_-]+)'[^\n]*/g)) {
+      const id = m[1]!;
+      const field = /'data-field-id':\s*'(central\.[a-z]+\.[a-z0-9_]+)'/.exec(m[0])?.[1];
+      if (!field) { missing.push(`${rel}: #${id}`); continue; }
       const prev = owner.get(field);
-      if (prev && prev !== m[2]) clash.push(`${field}: #${prev} y #${m[2]}`);
-      owner.set(field, m[2]!);
+      if (prev && prev !== id) clash.push(`${field}: #${prev} y #${id}`);
+      owner.set(field, id);
     }
   }
   assert.deepEqual(missing, []);

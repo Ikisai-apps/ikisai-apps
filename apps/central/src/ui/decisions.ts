@@ -82,7 +82,7 @@ export const mountDecisions: ViewMount = (ctx) => {
   const deckHost = el('section', { class: 'ctl-block', id: 'decisionVote', 'data-feedback-id': 'central.decisiones.votar', 'data-feedback-label': '¿Se mantienen?' });
   const chipsHost = el('div', { class: 'ctl-chiprows', 'data-feedback-id': 'central.decisiones.filtros', 'data-feedback-label': 'Filtros' });
   const host = el('div', { id: 'decisionList', 'data-feedback-id': 'central.decisiones.lista', 'data-feedback-label': 'Lista de decisiones' });
-  const search = el('input', { type: 'search', id: 'decisionSearch', 'data-feedback-id': 'central.decisiones.buscar', 'data-feedback-label': 'Buscar decisión', placeholder: 'Buscar en las decisiones', 'aria-label': 'Buscar decisión',
+  const search = el('input', { type: 'search', id: 'decisionSearch', 'data-field-id': 'central.decisiones.decision_search', 'data-feedback-id': 'central.decisiones.buscar', 'data-feedback-label': 'Buscar decisión', placeholder: 'Buscar en las decisiones', 'aria-label': 'Buscar decisión',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value; paintList(); } }) as HTMLInputElement;
   replace(main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.decisiones.cabecera', 'data-feedback-label': 'Cabecera de Decisiones' },

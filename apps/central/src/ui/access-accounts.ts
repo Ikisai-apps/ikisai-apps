@@ -65,10 +65,10 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
   const issues = el('div', { 'data-feedback-id': 'central.accesos.cuentas.por_revisar', 'data-feedback-label': 'Cuentas por revisar' });
   const owners = el('div', { 'data-feedback-id': 'central.accesos.cuentas.propietarios', 'data-feedback-label': 'Apps con un solo propietario' });
   const chips = el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Filtrar cuentas', id: 'accountChips' });
-  const search = el('input', { type: 'search', id: 'accountSearch', 'data-feedback-id': 'central.accesos.cuentas.buscar', 'data-feedback-label': 'Buscar cuenta', placeholder: 'Buscar por nombre o correo', 'aria-label': 'Buscar cuenta',
+  const search = el('input', { type: 'search', id: 'accountSearch', 'data-field-id': 'central.accesos.account_search', 'data-feedback-id': 'central.accesos.cuentas.buscar', 'data-feedback-label': 'Buscar cuenta', placeholder: 'Buscar por nombre o correo', 'aria-label': 'Buscar cuenta',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const agentsToggle = el('label', { class: 'check' },
-    el('input', { type: 'checkbox', id: 'showAgents', 'data-feedback-id': 'central.accesos.cuentas.mostrar_agentes', 'data-feedback-label': 'Mostrar agentes', onchange: (e: Event) => { showAgents = (e.target as HTMLInputElement).checked; paint(); } }),
+    el('input', { type: 'checkbox', id: 'showAgents', 'data-field-id': 'central.accesos.show_agents', 'data-feedback-id': 'central.accesos.cuentas.mostrar_agentes', 'data-feedback-label': 'Mostrar agentes', onchange: (e: Event) => { showAgents = (e.target as HTMLInputElement).checked; paint(); } }),
     el('span', null, 'Mostrar agentes'));
   const goInvite = el('button', { class: 'primary', type: 'button', id: 'goInvite', 'data-feedback-id': 'central.accesos.cuentas.alta', 'data-feedback-label': 'Alta de cuenta', onclick: () => navigate('#/accesos/alta') }, icon('plus', 18), 'Alta');
   replace(body, el('div', { class: 'toolbar', 'data-feedback-id': 'central.accesos.cuentas.barra', 'data-feedback-label': 'Barra de cuentas' }, search, agentsToggle, goInvite), note, issues, owners, chips, list);
@@ -394,7 +394,7 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
           `Lo da el nivel de casa «${HOUSE_LEVEL_LABELS[derived.level as HouseLevel] ?? derived.level}»: cámbialo en `,
           person ? el('a', { href: `#/personas/${person.id}`, 'data-feedback-id': 'central.accesos.cuenta.ir_a_personas', 'data-feedback-label': 'Ir a la ficha de Personas' }, 'Personas') : 'Personas', '.');
       } else if (app.id === 'central' && m?.role === 'editor') {
-        const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
+        const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-field-id': 'central.accesos.scope_people', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
         box.addEventListener('change', () => void togglePeopleScope(box));
         extra = el('label', { class: 'check' }, box, el('span', null, 'Ve datos reservados de personas (contacto, documentos)'));
       } else if (scopes && app.id !== 'central') {

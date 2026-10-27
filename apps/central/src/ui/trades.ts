@@ -136,7 +136,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     'data-feedback-id': 'central.oficios.filtro', 'data-feedback-label': 'Filtro de oficios', onclick: () => { flag = flag === value ? null : value; paint(); } }, label);
   const riskBox = el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Cobertura', id: 'tradesChips', hidden: true },
     flagChip('riesgo', 'tradesRisk', 'En riesgo'), flagChip('sinexperto', 'tradesNoExpert', 'Sin experto'), flagChip('outsiders', 'tradesOutsiders', 'Solo outsiders'));
-  const search = el('input', { type: 'search', id: 'tradesSearch', placeholder: 'Buscar oficio', 'aria-label': 'Buscar oficio', 'data-feedback-id': 'central.oficios.buscar', 'data-feedback-label': 'Buscar oficio',
+  const search = el('input', { type: 'search', id: 'tradesSearch', 'data-field-id': 'central.oficios.trades_search', placeholder: 'Buscar oficio', 'aria-label': 'Buscar oficio', 'data-feedback-id': 'central.oficios.buscar', 'data-feedback-label': 'Buscar oficio',
     oninput: (e: Event) => { query = fold((e.target as HTMLInputElement).value.trim()); paint(); } });
   replace(main,
     el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.oficios.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'),
@@ -145,7 +145,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     el('div', { class: 'ctl-searchrow' }, search),
     riskBox,
     el('div', { class: 'toolbar', 'data-feedback-id': 'central.oficios.barra', 'data-feedback-label': 'Barra de oficios' },
-      el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'tradesArchived', 'data-feedback-id': 'central.oficios.mostrar_archivados', 'data-feedback-label': 'Mostrar archivados',
+      el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'tradesArchived', 'data-field-id': 'central.oficios.trades_archived', 'data-feedback-id': 'central.oficios.mostrar_archivados', 'data-feedback-label': 'Mostrar archivados',
         onchange: (e: Event) => { showArchived = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar archivados')),
       isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'importTrades', 'data-feedback-id': 'central.oficios.importar', 'data-feedback-label': 'Importar de Tasks', onclick: () => void openImport() }, icon('download', 16), 'Importar de Tasks') : null),
     host,
