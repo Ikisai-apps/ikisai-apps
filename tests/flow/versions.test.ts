@@ -60,7 +60,7 @@ test('versiones · «Nueva versión» (solo owner) copia la configuración y nad
   // La config se copia; los ajustes de plantilla de la v2 (0909: fresh_stock en Ingredientes; 0910: accounts en Caja) se suman encima.
   for (const c of cols2) {
     const base = cols1.find((x) => x.key === c.key).config;
-    const patch: Record<string, Record<string, unknown>> = { ingredients: { fresh_stock: true }, order: { accounts: true } }; // 0909 y 0910
+    const patch: Record<string, Record<string, unknown>> = { ingredients: { fresh_stock: true }, order: { accounts: true }, service: { complete_on_delivery: true } }; // 0909, 0910 y 0912
     assert.deepEqual(c.config, patch[c.key] ? { ...base, ...patch[c.key] } : base);
   }
   const prods2 = (await rows(TABLES.products)).filter((p) => p.project_id === v2);

@@ -266,3 +266,13 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Cama** («en su cama»): marca de Flow `flow.presence_marks`, solo por procedimiento: `mark_presence({project_id, guest_id, step: 'bed', undo?})`.
 - **Firma**: solo avisa. El parte se firma en Huéspedes y la tarjeta pasa sola a hecha.
 - La barra no cambia.
+
+## 26. Cocina sin tocar el móvil y resolutor de ámbito (migración `0912`, «B»)
+
+- **`complete_on_delivery`** en la config de Servicio. Lo lleva la v2 por plantilla. La 0912 aplica además todos los ajustes de plantilla a las versiones ya creadas y no congeladas, sin pisar lo que tengan.
+- **`deliver_all({order_id, ident, expected_revision?})`**: termina las unidades de preparación que queden y entrega el pedido sin excepción.
+  - Las unidades pasan por `unit_step` (pendiente → en curso → hecho), con su consumo de ingredientes y a nombre de quien entrega.
+  - Las líneas quedan entregadas en su totalidad.
+  - Sin la config, `INVALID_OPERATION`: la v1 entrega con `deliver_order` como siempre.
+- **App**: en la ficha de entrega de la v2, con algo en cocina, aparece «Dar por hecho y entregar». En Servicio, esas tarjetas dicen «En cocina x/y». En Preparación, lo terminado desde entrega desaparece solo.
+- **Resolutor de ámbito**: `flow.in_scope(actor, kind, id)`, registrado con `core.allow_scope_resolver`. Con `kind = 'booking_event'`, es verdadero si la persona tiene en su ámbito algún flujo de ese evento. Booking lo usa en `booking.flow_guests_of`.

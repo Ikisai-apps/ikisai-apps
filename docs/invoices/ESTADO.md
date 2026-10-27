@@ -154,6 +154,7 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 - **Ingresos y gastos de otras apps** (encargo de VG del 26-10-2026, plazo jueves 29; API.md §17):
   - PR 1 (`invoices/app-entries`): migración 0244 con `invoices.app_entries`, `invoices.record_app_entry` (idempotente por `source_ref`, `ENTRY_LOCKED` si ya está entregado) y todos los apuntes en el resumen y la entrega (`ingresos_gastos_apps.csv`). Sin «facturado sí/no» (decisión de VG del 26-10). El formato está acordado con Flow.
   - PR 2 (`invoices/app-entries-ui`): «Ingresos y gastos de apps» (`#/apuntes`), la vista «Evento» (`#/evento`) con el resultado sin IVA, la herramienta en Inicio y la tarjeta en Gestoría (API.md §17.4).
+- **Capacidad «Registrar compra rápida»** (V0.2, API.md §18): `POST /api/v1/purchases/quick`, idempotente por `requestId`, al evento o a un destino general, con la ficha para el catálogo del núcleo.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente
