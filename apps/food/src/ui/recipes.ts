@@ -1,5 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
+  STATION_LABELS,
   PREP_UNITS, allergenPresence, ingredientNeeds, needText, nextRecipeService, pendingConsumption, readableQuantity, serviceShares, stockText, weekdayLong,
   type Consumption, type IngredientNeed, type Menu, type MenuGraph, type MenuItem, type MenuService, crossContext, undeclaredAllergens, undeclaredText, type CrossContext, foodUnitFromBase, formatMethodSteps, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
@@ -484,7 +485,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const shared = sharedIngredientItems(resourceItems, ingredients);
     const datalist = el('datalist', { id: 'ingredientNames' }, ...ingredients.map((i) => el('option', { value: i.name })), ...shared.map((i) => el('option', { value: i.name })));
     const sharedByKey = (value: string) => shared.find((i) => ingredientKey(i.name) === ingredientKey(value)) ?? null;
-    interface LineForm { line: LineRow | null; name: HTMLInputElement; quantity: HTMLInputElement; unit: HTMLSelectElement; node: HTMLElement }
+    interface LineForm { line: LineRow | null; name: HTMLInputElement; quantity: HTMLInputElement; unit: HTMLSelectElement; station: HTMLSelectElement; node: HTMLElement }
     const lineForms: LineForm[] = [];
     const lineHost = el('div', { 'data-feedback-id': 'food.recetario.ingredientes.lista', 'data-feedback-label': 'Lista de ingredientes', class: 'linerows', id: 'ingredientRows' });
     const names = new Map(ingredients.map((i) => [i.id, i]));
@@ -501,9 +502,13 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
           } }),
         quantity: el('input', { 'data-feedback-id': 'food.recetario.ingredientes.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', placeholder: 'Cantidad', 'aria-label': 'Cantidad', value: line ? formatQuantity(line.quantity) : '' }),
         unit: el('select', { 'data-feedback-id': 'food.recetario.ingredientes.unidad', 'data-feedback-label': 'Unidad', 'aria-label': 'Unidad' }, ...UNITS.map((u) => el('option', { value: u, selected: (line?.unit ?? 'g') === u }, UNIT_LABELS[u]))),
+        // Estación del montaje (1110): 1 Untar · 2 Colocar · 3 Dosificar · 4 Acabados; la usan la previsión de la carta y Flow.
+        station: el('select', { 'data-feedback-id': 'food.recetario.ingredientes.estacion', 'data-feedback-label': 'Estación', 'aria-label': 'Estación' },
+          el('option', { value: '' }, 'Sin estación'),
+          ...[1, 2, 3, 4].map((s) => el('option', { value: String(s), selected: Number(line?.station ?? 0) === s }, `${s} · ${STATION_LABELS[s]}`))),
         node: el('div', { 'data-feedback-id': 'food.recetario.ingredientes.linea', 'data-feedback-label': 'Línea de ingrediente', class: 'linerow' }),
       };
-      form.node.append(form.name, form.quantity, form.unit,
+      form.node.append(form.name, form.quantity, form.unit, form.station,
         el('button', { 'data-feedback-id': 'food.recetario.ingredientes.quitar', 'data-feedback-label': 'Quitar ingrediente', class: 'iconbtn', type: 'button', 'aria-label': 'Quitar ingrediente', onclick: () => { lineForms.splice(lineForms.indexOf(form), 1); form.node.remove(); guard.dirtyEditor = true; } }, icon('close', 18)));
       lineForms.push(form);
       lineHost.append(form.node);
@@ -546,7 +551,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
 
       // Ingredientes nuevos van en el mismo lote que la línea que los usa: si el servidor rechaza uno, no queda nada a medias.
       const created = new Map<string, string>();
-      const resolved: Array<{ form: LineForm; ingredientId: string; quantity: number; unit: Unit }> = [];
+      const resolved: Array<{ form: LineForm; ingredientId: string; quantity: number; unit: Unit; station: number | null }> = [];
       for (const form of lineForms) {
         const label = form.name.value.trim();
         if (!label && !form.quantity.value.trim()) continue;
@@ -564,7 +569,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
             ? { name: item.name, preferred_unit: foodUnitFromBase(item.base_unit) ?? unit, item_id: item.id }
             : { name: label.replace(/\s+/g, ' '), preferred_unit: unit } });
         }
-        resolved.push({ form, ingredientId, quantity, unit });
+        resolved.push({ form, ingredientId, quantity, unit, station: form.station.value ? Number(form.station.value) : null });
       }
 
       if (!recipe) operations.push({ op: 'insert', table: T.recipes, id: recipeId, fields });
@@ -573,13 +578,14 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         if (Object.keys(changed).length) operations.push({ op: 'update', table: T.recipes, id: recipe.id, expectedRevision: recipe.revision, fields: changed });
       }
 
-      resolved.forEach(({ form, ingredientId, quantity, unit }, index) => {
+      resolved.forEach(({ form, ingredientId, quantity, unit, station }, index) => {
         const position = index + 1;
         if (!form.line) {
-          operations.push({ op: 'insert', table: T.recipeIngredients, id: crypto.randomUUID(), fields: { recipe_id: recipeId, ingredient_id: ingredientId, quantity, unit, position } });
+          operations.push({ op: 'insert', table: T.recipeIngredients, id: crypto.randomUUID(), fields: { recipe_id: recipeId, ingredient_id: ingredientId, quantity, unit, position, ...(station ? { station } : {}) } });
         } else {
-          const next = { ingredient_id: ingredientId, quantity, unit, position };
-          const changed = Object.fromEntries(Object.entries(next).filter(([key, value]) => (key === 'quantity' || key === 'position' ? Number(form.line![key]) !== value : form.line![key] !== value)));
+          const next = { ingredient_id: ingredientId, quantity, unit, position, station };
+          const changed = Object.fromEntries(Object.entries(next).filter(([key, value]) => (key === 'quantity' || key === 'position' ? Number(form.line![key]) !== value
+            : key === 'station' ? (form.line!.station === null || form.line!.station === undefined ? null : Number(form.line!.station)) !== value : form.line![key] !== value)));
           if (Object.keys(changed).length) operations.push({ op: 'update', table: T.recipeIngredients, id: form.line.id, expectedRevision: form.line.revision, fields: changed });
         }
       });
