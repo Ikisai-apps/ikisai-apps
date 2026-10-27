@@ -346,10 +346,21 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const withChildren = async <T extends { status: string }>(out: T) => {
         if (children === undefined) return out;
         if (out.status !== 'open' || !childCtx) return { ...out, children: null };
-        const done = await internal.commit(childCtx, { requestId: `${sourceName}-children-${crypto.randomUUID()}`,
-          operations: [{ op: 'call', procedure: 'tasks.request_children', args: { parentRef: externalRef, kind, children } }] });
-        const result = (done.results[0] as { result?: { children: unknown[]; created: number; updated: number; retired: number } })?.result;
-        return { ...out, children: result?.children ?? [], childrenCounts: { created: result?.created ?? 0, updated: result?.updated ?? 0, retired: result?.retired ?? 0 } };
+        type ChildOut = { ref: string; taskId: string; status: string };
+        type Outcome = { children: ChildOut[]; created: number; updated: number; retired: number };
+        const call = async (args: Record<string, unknown>) => ((await internal.commit(childCtx!, { requestId: `${sourceName}-children-${crypto.randomUUID()}`,
+          operations: [{ op: 'call', procedure: 'tasks.request_children', args: { parentRef: externalRef, kind, ...args } }] })).results[0] as { result?: Outcome })?.result;
+        // 1. Poner al día y retirar con la lista entera; 2. cada hija que falta, en su propio lote (una procedencia por lote).
+        const first = await call({ children, create: false, retire: true });
+        const list = first?.children ?? [];
+        let created = 0;
+        for (const [i, child] of list.entries()) {
+          if (child.status !== 'missing') continue;
+          const made = await call({ children: [children.find((c) => c.ref === child.ref)], retire: false });
+          list[i] = made?.children[0] ?? child;
+          created += made?.created ?? 0;
+        }
+        return { ...out, children: list, childrenCounts: { created, updated: first?.updated ?? 0, retired: first?.retired ?? 0 } };
       };
       const before = await status();
       if (before.status !== 'unknown' && !(refreshes && before.status === 'open')) return reply(before);

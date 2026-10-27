@@ -1,9 +1,14 @@
 -- Ikisai Tasks · «Pedir a Tasks» con hijas (encargo de Core para el «Montaje del evento» de Booking, 27-10-2026;
 -- docs/tasks/API.md §42). Toca solo el schema tasks y, del núcleo, solo usa apply_row_op, fail y allow_procedure.
 --
--- tasks.request_children(args { parentRef, kind, children: [{ ref, title, note?, due?, priority? }] }): las hijas de una
--- tarea pedida (la de `parentRef`, viva y sin hacer), cada una con su clave estable. Lo llama `worker/requests/task` justo
--- después de crear o reenviar la madre, con la lista ENTERA de hijas de esa petición:
+-- tasks.request_children(args { parentRef, kind, children: [{ ref, title, note?, due?, priority? }], create?, retire? }):
+-- las hijas de una tarea pedida (la de `parentRef`, viva), cada una con su clave estable. Lo llama `worker/requests/task`
+-- después de crear o reenviar la madre:
+-- 1. una vez con la lista ENTERA, `create: false` y `retire: true`: pone al día y retira, y dice qué hijas faltan
+--    (`status: 'missing'`);
+-- 2. una vez por cada hija que falta, con solo ella y `retire: false`: la crea. Va en su propio lote porque la procedencia
+--    (`external_ref`) solo la fija una petición por lote (tasks.external_request, como tasks.request_task).
+-- Lo que pasa con cada hija:
 -- - una hija nueva se crea bajo la madre, en su proyecto, al final y con las etiquetas del proyecto. Su `external_ref` es
 --   `<parentRef>/<ref>` y su id se deriva de él, así que repetir la petición no duplica;
 -- - una que ya estaba y sigue abierta se pone al día (título, nota, fecha y urgencia) solo si algo cambió;
@@ -36,6 +41,8 @@ declare
   v_hash text;
   v_out jsonb := '[]'::jsonb;
   v_created int := 0; v_updated int := 0; v_retired int := 0;
+  v_create boolean := coalesce((v_args->>'create')::boolean, true);
+  v_retire boolean := coalesce((v_args->>'retire')::boolean, true);
   l record;
 begin
   if v_parent_ref is null or v_parent_ref !~ '^[a-z][a-z0-9_-]{1,30}:.+$' or v_kind is null or split_part(v_kind, '.', 1) <> split_part(v_parent_ref, ':', 1)
@@ -58,7 +65,14 @@ begin
     v_id := (substr(v_hex, 1, 8) || '-' || substr(v_hex, 9, 4) || '-4' || substr(v_hex, 14, 3) || '-'
              || to_hex((('x' || substr(v_hex, 17, 1))::bit(4)::int & 3) | 8) || substr(v_hex, 18, 3) || '-' || substr(v_hex, 21, 12))::uuid;
     select * into v_row from tasks.tasks t where t.id = v_id;
+    if v_row.id is null and not v_create then
+      v_out := v_out || jsonb_build_object('ref', v_ref, 'taskId', v_id, 'status', 'missing');
+      continue;
+    end if;
     if v_row.id is null then
+      if v_created > 0 then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'one new child per batch')); end if;
+      perform set_config('tasks.external_request', v_full, true);
+      perform set_config('tasks.external_request_id', v_id::text, true);
       select coalesce(max(t.position), 0) + 1024 into v_position from tasks.tasks t where t.project_id = v_parent.project_id;
       perform core.apply_row_op(v_app, v_actor, v_role, v_req, v_cur, jsonb_build_object('op', 'insert', 'table', 'tasks.tasks', 'id', v_id,
         'fields', jsonb_build_object('tab_id', v_parent.tab_id, 'project_id', v_parent.project_id, 'parent_id', v_parent.id,
@@ -92,7 +106,7 @@ begin
 
   -- Las que ya no vienen: a la papelera si no están hechas. Solo las de esta madre con su referencia.
   for v_row in select t.* from tasks.tasks t
-                where t.parent_id = v_parent.id and t.deleted_at is null and not t.done
+                where v_retire and t.parent_id = v_parent.id and t.deleted_at is null and not t.done
                   and t.external_ref like v_parent_ref || '/%' and not (substr(t.external_ref, length(v_parent_ref) + 2) = any (v_refs)) loop
     perform core.apply_row_op(v_app, v_actor, v_role, v_req, v_cur, jsonb_build_object('op', 'delete', 'table', 'tasks.tasks', 'id', v_row.id, 'expectedRevision', v_row.revision));
     -- Con sus propias hijas vivas, como borrar en la app (deleteTaskOps).
