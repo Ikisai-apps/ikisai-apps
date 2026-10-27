@@ -321,7 +321,7 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
   - **Menús:** el bloque «Cartas», con las cartas guardadas y «Nueva carta». Las pantallas del menú cerrado no enseñan la carta (`closedMenus`).
   - **`#/cartas/<id>`:** nombre y evento (ligar o desligar), y «Usar en otro evento», que copia la carta con sus líneas y sin las ventas (`copyCartaOperations`). Los bloques Clásicos, Gourmet y Barra; en cada línea, el código, la imagen (miniatura de Flow, `https://flow.ikisai.com/assets/<clave>/miniatura.webp`), el precio editable, el coste de `food.carta_projection` (con red), el margen, «Disponible», «Alérgenos sin revisar» y «Quitar». «Añadir a…» admite una receta o un artículo de Recursos, con un código libre del bloque.
   - **Ficha del evento:** la carta del evento («Abrir la carta») o, si no tiene, «Usar esta carta» (copia una guardada) y «Carta nueva». En jornadas abiertas, también las cartas que marca Booking (`carta_ids` de `booking.food_event_projection`, Booking 0484).
-- **Evento familiar** (`event_type = 'familiar'`, Booking 0482): come del menú de casa. No pide menú propio (`needsMenu`), sale con el chip «Menú de casa» y su ficha lleva «Abrir el menú de casa».
+- **Evento familiar** (`event_type = 'familiar'`, Booking 0482): come del menú de casa. No pide menú propio (`needsMenu`), sale con el chip «Menú de casa» y su ficha lleva «Abrir el menú de casa». En el menú de casa, sus personas se suman a las raciones por defecto de los platos de esos días (`familyGuestsOn`), y el día lo avisa: «+6 de Visita de la familia».
 
 ### 2.11 Previsión de la carta (26-10-2026, encargo de VG; migración 1110)
 
@@ -368,6 +368,7 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
 - **En el ingrediente de Food:** `purchase_unit` (cómo se compra), `prep_unit` (cómo se cuenta en las recetas: «rodaja», «rebanada») y `yield` (cuántas unidades de preparación da una de compra: 1 tomate = 8 rodajas). `prep_unit` y `yield` van juntos o no van. Es conocimiento de cocina y vale para todos los eventos.
 - **Cuentas:** una línea de receta en «unidad» de un ingrediente con rendimiento cuenta piezas de preparación. Para el inventario se pasa así: piezas ÷ rendimiento, en la unidad de compra, y después la conversión del artículo (`food.recipe_qty_to_base`). Sin rendimiento, todo sigue como antes, con la nota y la conversión «rodaja» incluidas. Lo usan el consumo de las ventas, la previsión y la compra de la carta.
 - **Para Flow:** a `carta_prep_projection` se le añaden al final `prep_unit`, `prep_per_unit`, `prep_need_total` (en unidades de preparación), `purchase_unit` y `yield`. A `carta_prep_totals_projection`, `prep_unit` y `prep_need_total` (solo si todas sus líneas cuentan en la misma unidad), `purchase_unit` y `yield`. Comprar = `ceil(prep_need_total ÷ yield)` (`purchaseFromPrep`).
+- **Estación en el recetario:** cada línea de ingrediente del formulario de receta tiene «Estación» (sin estación, o de 1 a 4).
 - **En la app:** la pestaña Previsión de la carta lleva la sección «Rendimiento de los ingredientes» con los que las recetas cuentan en piezas («1 unidad = 8 rodaja»). El plan de bandejas añade «24 rodaja = comprar 3 unidad».
 
 ### 2.3 Compra, preparación y stock
