@@ -164,3 +164,44 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
         el('div', { class: 'row-meta' }, `${bedOf.get(a.bed_id)?.label ?? 'Sin cama'} · ${shortDay(a.from_date ?? o.reservation.start_date)} → ${shortDay(a.to_date ?? o.reservation.end_date)}`)))),
     o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'primary small', type: 'button', id: 'walkIn', 'data-feedback-id': 'booking.reserva.alacarta.alojar', 'data-feedback-label': 'Alojar a alguien', onclick: open }, 'Alojar a alguien')) : null);
 }
+
+/** Una oferta de comida de Food (`food.event_offers_projection`, #758): un menú o una carta para uno o varios grupos. */
+interface Offer {
+  offer_id: string; event_id: string; name: string; meal_groups: string[] | null; days: string[] | null; services: string[] | null;
+  place: string | null; payer: string | null; charge_when: string | null; menu_kind: string | null; menu_id: string | null;
+  price_cents: number | null; active: boolean; position: number | null;
+}
+
+const PAYER: Record<string, string> = { huesped: 'Paga el huésped', organizador: 'Paga el organizador' };
+const CHARGE: Record<string, string> = { barra: 'en barra', cuenta: 'a cuenta' };
+
+/** «Ofertas de comida» del evento (Food): para quién, qué días y servicios, dónde, quién paga y qué menú. Solo lee; con red. */
+export function renderOffers(o: { client: SyncClient; eventId: string }): HTMLElement {
+  const body = el('div', null, el('p', { class: 'hint' }, 'Cargando las ofertas de Food…'));
+  const host = el('div', { id: 'foodOffers', 'data-feedback-id': 'booking.reserva.comidas.ofertas', 'data-feedback-label': 'Ofertas de comida' },
+    el('div', { class: 'sectionlabel' }, 'Ofertas de comida (Food)'), body);
+  async function load(): Promise<void> {
+    if (!navigator.onLine) return void replace(body, el('p', { class: 'hint' }, 'Las ofertas de Food se leen con conexión.'));
+    let rows: Offer[];
+    try {
+      rows = (await o.client.api<{ rows: Offer[] }>(`/read/food.event_offers_projection?where[event_id]=${encodeURIComponent(o.eventId)}&limit=100`)).rows ?? [];
+    } catch (error) {
+      return void replace(body, el('p', { class: 'hint' }, `No se pueden leer las ofertas de Food: ${describeError(error)}`));
+    }
+    if (rows.length === 0) return void replace(body, el('p', { class: 'hint', id: 'offersEmpty' }, 'Food aún no ha publicado ofertas para este evento.'));
+    rows.sort((a, b) => (Number(a.position) || 0) - (Number(b.position) || 0) || a.name.localeCompare(b.name, 'es'));
+    replace(body, el('ul', { class: 'list', id: 'offersList' }, rows.map((r) => el('li', { class: 'row', dataset: { offer: r.offer_id, active: String(r.active) }, 'data-feedback-id': 'booking.reserva.comidas.ofertas.oferta', 'data-feedback-label': 'Oferta' },
+      el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.name),
+        el('span', { class: 'chip' }, r.menu_kind === 'carta' ? 'Carta' : 'Menú cerrado'),
+        r.active ? null : el('span', { class: 'chip muted' }, 'Sin nada disponible')),
+      el('div', { class: 'row-meta' }, [
+        r.meal_groups && r.meal_groups.length ? `Para ${r.meal_groups.join(', ')}` : 'Para todos los huéspedes',
+        r.days && r.days.length ? r.days.map((d) => shortDay(d)).join(', ') : 'todos los días',
+        r.services && r.services.length ? r.services.join(', ') : null,
+        r.place,
+        r.payer ? `${PAYER[r.payer] ?? r.payer}${r.charge_when ? ` ${CHARGE[r.charge_when] ?? r.charge_when}` : ''}` : null,
+      ].filter(Boolean).join(' · '))))));
+  }
+  void load();
+  return host;
+}

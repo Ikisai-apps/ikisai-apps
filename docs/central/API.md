@@ -457,7 +457,7 @@ El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es l
   - Con ninguno, el aviso «No ve ningún proyecto de Flow».
   - «Cambiar» abre una hoja con los proyectos y guarda con `admin/memberships`: mismo rol y el resto de ámbitos intacto. Lleva «Deshacer» y necesita red.
   - El propietario sale como «Todos los proyectos (propietario)», sin editar.
-  - El outsider sale sin editar hasta P14.
+  - El outsider también se edita (P14, kit #757): se cambian sus ámbitos, no su rol.
 - **Alta:** bajo Flow, los proyectos. Marcar uno sin acceso a Flow le da Editor, y van en el mismo `admin/invite` como `scopes.projects`. A un outsider nuevo, Flow se lo da el nivel: su proyecto se elige después, en la ficha.
 
 ### 2.17 Revisión › Uso y cobertura (`central.coverage_decisions`, `1517`; visión V0.2 aprobada por VG el 27-10)
@@ -465,7 +465,7 @@ El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es l
 - **Pantalla:** `#/revision/uso`, solo owner, desde Revisión y desde el menú. Por app, cada función o campo con su uso de 30 días (de su audiencia, de otros y personas distintas), su estado y, cuando existan, los recorridos de Flow en los que participa.
 - **Fuentes:**
   - `GET usage/review?app=all`: el uso, núcleo 0071.
-  - El inventario de campos de UI-kit, que va en el `feature-catalog.json` de cada release (`fields` y `fieldsUninstrumented`). Core lo cargará y lo servirá en `GET usage/inventory?app=all` (P15). Mientras falte, la pantalla lo dice y sigue con el uso.
+  - El inventario de campos de UI-kit, que va en el `feature-catalog.json` de cada release (`fields` y `fieldsUninstrumented`). Core lo carga y lo sirve en `GET usage/inventory?app=all` (P15, #783). Si no responde, la pantalla lo dice y sigue con el uso.
   - Los recorridos de Flow: `flow.journey_steps_projection` (`flow_id, flow_name, version, step, app, feature_id`, forma acordada con Flow), que Flow publicará con su primer recorrido. Hasta entonces, no sale ninguno.
 - **Estados** (`_domain/central/coverage.ts`, en este orden): nadie llega · se ve, no se usa · sin instrumentar (desconocido, no inútil) · usado fuera de recorridos · requerido por N recorridos. El estado solo informa.
 - **Decisiones** (solo de una persona): Mantener, Simplificar, Integrar o Retirar. Retirar pide confirmación y no borra nada: queda anotado para el equipo de la app. Van por `commands`, también sin red, y se quitan pulsando otra vez.
@@ -961,8 +961,8 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P11 ✅ 0.50 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | — |
 | P12 ✅ #640 | Núcleo: `admin/access-log?user=<uuid>` (lo que hizo esa cuenta, lo que la afecta y lo de sus claves de agente) y `only=grave`. | Registro por persona y «Lo grave» (§9.4) | — |
 | P13 | Núcleo: que `core.apply_house_level` abra todas las puertas del nivel (§2.15): internas con Flow para los tres niveles y los portales (dirección, todos los retiros en Guests y Organizers; staff y outsider, huésped) **Hecha en la 0095 (#723)**: «todos» es `{"all": true}` en `scopes.grants`., anotando cada una en `core.house_grants`. Y decir cómo se guarda «todos los retiros» en los ámbitos. | La ficha pasa de «Pendiente» a «Concedido» al pulsar «Aplicar accesos» | La ficha enseña lo que falta; «Aplicar accesos» aplica lo que el núcleo ya concede |
-| P14 | Kit · `admin/memberships` acepta `role: 'outsider'` cuando la pertenencia ya es outsider (lo comprueba `core.set_membership`, C24), para cambiar sus ámbitos (proyectos de Flow) desde Central. | Proyectos de Flow de un outsider (§2.16) | Se enseñan, sin editar |
-| P15 | Núcleo · cargar el inventario de campos de UI-kit (`fields` y `fieldsUninstrumented` del `feature-catalog.json`, con `scripts/usage_catalog_ingest.py`), guardar la primera release en que se vio cada `fieldId` y servirlo en `GET usage/inventory?app=all` (solo owner de Central). | «Sin instrumentar» en Uso y cobertura (§2.17) | Solo lo que mide el uso |
+| P14 ✅ #757 y #794 | Kit · `admin/memberships` acepta `role: 'outsider'` cuando la pertenencia ya es outsider (lo comprueba `core.set_membership`, C24), para cambiar sus ámbitos (proyectos de Flow) desde Central. | Proyectos de Flow de un outsider (§2.16) | Se enseñan, sin editar |
+| P15 ✅ #783 | Núcleo · cargar el inventario de campos de UI-kit (`fields` y `fieldsUninstrumented` del `feature-catalog.json`, con `scripts/usage_catalog_ingest.py`), guardar la primera release en que se vio cada `fieldId` y servirlo en `GET usage/inventory?app=all` (solo owner de Central). | «Sin instrumentar» en Uso y cobertura (§2.17) | Solo lo que mide el uso |
 | P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---

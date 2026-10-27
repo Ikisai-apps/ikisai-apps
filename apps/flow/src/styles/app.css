@@ -188,3 +188,16 @@
 .presence-card{display:flex;align-items:center;gap:10px;padding:10px 12px}
 .presence-card .qcard-text{flex:1;min-width:0}
 .presence-card.is-done{opacity:.6}
+
+/* Editor de flujos */
+.editor-head{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.editor-head input{flex:1 1 200px;min-width:0}
+.editor-templates{margin:0 0 12px}
+.editor-templates [aria-pressed="true"]{outline:2px solid var(--accent)}
+.editor-columns{display:grid;gap:8px}
+.editor-row{display:flex;gap:8px;align-items:flex-start;padding:10px 12px}
+.editor-row-main{flex:1;min-width:0;display:grid;gap:4px}
+.editor-row-tools{display:flex;gap:2px}
+.editor-option{display:flex;gap:6px;align-items:center;font-size:.9em}
+.editor-add{display:flex;gap:6px;align-items:center;margin:12px 0}
+.editor-add select{flex:1;min-width:0}

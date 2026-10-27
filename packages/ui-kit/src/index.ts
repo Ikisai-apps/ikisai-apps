@@ -66,6 +66,7 @@ export { createVoteDeck, type Vote, type VoteDeck, type VoteDeckOptions, type Vo
 export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type TimelineLane, type TimelineOptions } from './pieces/timeline.ts';
 export { renderTray, renderTrayRow, type TrayAction, type TrayRow, type TrayGroup, type TrayOptions } from './pieces/tray.ts';
 export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
+export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion } from './pieces/step-form.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { setKitLayer, kitLayer } from './layer.ts';

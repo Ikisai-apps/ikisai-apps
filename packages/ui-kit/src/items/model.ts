@@ -251,25 +251,47 @@ export interface ItemSearchOptions {
   /** Nombres extra que da la app (id → nombres), además de `attributes.aliases`. */
   aliases?: Record<string, readonly string[]>;
   limit?: number;
+  /** Ids que van primero entre los que coinciden (K4 de Tasks: los del kit del oficio). */
+  boost?: readonly string[];
 }
 
-/** Busca por nombre y alias sin mayúsculas ni tildes: primero los que empiezan así, luego los que lo contienen, luego por alias. */
+/** Rango de un texto ya normalizado frente a la búsqueda (frase y palabras); `-1` si no coincide. */
+function matchRank(text: string, q: string, words: readonly string[]): number {
+  if (text.startsWith(q)) return 0;
+  if (text.includes(q)) return 1;
+  if (words.length < 2) return -1;
+  const tokens = text.split(/[\s\-_/.,;:()]+/).filter(Boolean);
+  if (words.every((w) => tokens.some((t) => t.startsWith(w)))) return 2;
+  if (words.every((w) => text.includes(w))) return 3;
+  return -1;
+}
+
+/**
+ * Busca por nombre y alias sin mayúsculas ni tildes, por la frase y por cada palabra en cualquier orden (K5 de Tasks:
+ * «multicapa 20» encuentra «Tubo multicapa 20 mm»). Orden: empieza así, contiene la frase, todas las palabras al principio de
+ * palabras del nombre, todas las palabras dentro del nombre; luego lo mismo en los alias, y por último las palabras repartidas
+ * entre nombre y alias. Con `boost`, esos ids van delante y conservan el orden entre ellos.
+ */
 export function searchItems(items: readonly ItemRow[], query: string, options: ItemSearchOptions = {}): ItemRow[] {
   const q = normalizeName(query);
   if (!q) return [];
+  const words = [...new Set(q.split(' ').filter(Boolean))];
   const rank = (i: ItemRow): number => {
     const name = normalizeName(i.name);
-    if (name.startsWith(q)) return 0;
-    if (name.includes(q)) return 1;
+    const own = matchRank(name, q, words);
+    if (own >= 0) return own;
     const extra = [...i.aliases, ...(options.aliases?.[i.id] ?? [])].map(normalizeName);
-    if (extra.some((a) => a.startsWith(q))) return 2;
-    if (extra.some((a) => a.includes(q))) return 3;
-    return -1;
+    const best = Math.min(...extra.map((a) => matchRank(a, q, words)).filter((r) => r >= 0));
+    if (Number.isFinite(best)) return 4 + best;
+    const all = [name, ...extra].join(' ');
+    return words.length > 1 && words.every((w) => all.includes(w)) ? 8 : -1;
   };
+  const boost = new Set(options.boost ?? []);
   return items
     .filter((i) => (options.includeArchived || i.active) && (!options.kinds || options.kinds.includes(i.kind)))
     .map((i) => [i, rank(i)] as const).filter(([, r]) => r >= 0)
-    .sort((a, b) => a[1] - b[1] || a[0].name.localeCompare(b[0].name)).slice(0, options.limit ?? 30).map(([i]) => i);
+    .sort((a, b) => Number(boost.has(b[0].id)) - Number(boost.has(a[0].id)) || a[1] - b[1] || a[0].name.localeCompare(b[0].name))
+    .slice(0, options.limit ?? 30).map(([i]) => i);
 }
 
 export interface ItemUnitOption {

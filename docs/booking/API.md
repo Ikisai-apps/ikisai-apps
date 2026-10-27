@@ -1787,3 +1787,26 @@ Hito 2 (migración 0484): la ficha según el tipo (`apps/booking/src/ui/eventKin
   - Comidas: «Menú de casa (Food)».
   - Se confirma sin propuesta ni señal.
 
+## 31. Grupo de comensal y llegada y salida desde Flow (migraciones 0485 y 0486; VG 27-10-2026)
+
+- **Grupo de comensal** (0485, acordado con Food):
+  - `booking.guests.meal_group`: texto libre de 40 como mucho, con sugerencias en la hoja del huésped.
+  - `food_event_projection.meal_groups` y `guest_summary.mealGroups`: `[{group, guests}]`, solo con grupo y sin fichas de equipo ni la de muestra.
+  - `portal_my_guest.meal_group` (BG16 de Guests).
+  - Food cruza con esto sus ofertas (`food.event_offers_projection`).
+- **Llegada y salida** (0486, acordado con Flow):
+  - `booking.flow_guests_of({event_id})` (Flow: reader, editor, owner y outsider; decisión de Core): los huéspedes de un evento, solo si está en el ámbito de la persona en Flow (`core.reader_in_scope`, 0098). Si no, `FORBIDDEN`. Devuelve `{items}` con las filas de la vista `booking.flow_guests_projection`, que no se abre a Flow. Una fila por huésped vivo de un evento vivo, sin el de muestra ni los anonimizados:
+    - `event_id`, `guest_id`, `guest_revision`;
+    - `display_name` («Ana R.»), `portal_role`;
+    - `space_name` y `bed_label` (la asignación con cama, si la hay);
+    - `from_date` y `to_date` (las de la asignación o las de la reserva);
+    - `arrived_at`, `left_at` y `signed`.
+  - Procedimientos `booking.guest_arrive` y `booking.guest_leave` (`{guest_id, undo?}`): Flow los llama por booking-api con el token de la persona, que es editor en Booking.
+    - Son idempotentes y devuelven `{guest_id, arrived_at, left_at, revision}`; `undo` deshace.
+    - Errores: `SES_ALREADY_REGISTERED` (deshacer la llegada de quien ya está comunicado), `GUEST_ALREADY_LEFT` (deshacer la llegada de quien ya salió), `TEAM_GUEST` (las fichas de equipo no marcan llegada), `PREVIEW_READ_ONLY` y `NOT_FOUND`.
+  - `booking.guests.left_at`, con `left_at >= arrived_at`.
+- **Ofertas de comida** (Food #758): en la ficha, en Comidas y junto a las cartas, «Ofertas de comida (Food)».
+  - Lee `GET read/food.event_offers_projection?where[event_id]=…`.
+  - Por oferta: nombre, carta o menú cerrado, para qué grupos (o todos), qué días y servicios, dónde y quién paga (y cuándo).
+  - Solo lee, con red, y lo hace una vez por visita.
+
