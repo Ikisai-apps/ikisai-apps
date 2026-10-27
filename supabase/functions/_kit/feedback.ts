@@ -188,8 +188,10 @@ export function createFeedback(supabase: Supabase, app: string, storage: Storage
     create: (ctx: RequestContext, id: string, body: any) => {
       if (!UUID.test(id)) fail(404, 'OUT_OF_SCOPE', messageFor('OUT_OF_SCOPE'));
       if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
-      const message = str(body?.message, 2000)?.trim();
+      // Sin recortar: una respuesta más larga se rechaza entera (no se manda a medias).
+      const message = typeof body?.message === 'string' ? body.message.trim() : '';
       if (!message) fail(422, 'INVALID_FIELDS', 'Escribe la respuesta.', { field: 'message' });
+      if (message.length > 2000) fail(422, 'INVALID_FIELDS', 'La respuesta puede tener como mucho 2000 caracteres.', { field: 'message', max: 2000 });
       return supabase.rpc('core_feedback_reply', { p_actor: ctx.user.id, p_report: id, p_message: message });
     },
   };
