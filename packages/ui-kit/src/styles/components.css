@@ -2265,3 +2265,13 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .lanes-short{max-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Revisión móvil del 27-10: pestañas, botones de enlace, chips de filtro y «¿Sin red?» del inicio de sesión a 44 px con el dedo. */
 @media (pointer: coarse){.tabpill,.linkbtn,.pl-tabs button,.space-quick-chip{min-height:44px}.tabtool{width:44px;height:44px}.login summary{display:flex;align-items:center;min-height:44px;padding:0}}
+/* K23: en táctil y sin panel del día, el día entero es el objetivo y sus eventos van en una hoja (src/calendar/calendar.ts). */
+.calendar.cal-touchday[data-view="month"] .cal-event{pointer-events:none}
+.cal-sheet-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.cal-sheet-event{--event-color:var(--accent);display:grid;gap:2px;width:100%;min-height:46px;padding:8px 12px;border:0;border-left:4px solid var(--event-color);border-radius:10px;background:color-mix(in srgb,var(--event-color) 14%,var(--paper));color:var(--ink);font:inherit;text-align:left;align-content:center}
+button.cal-sheet-event{cursor:pointer}
+.cal-sheet-title{font-weight:700;overflow-wrap:anywhere}
+.cal-sheet-meta{font-size:var(--text-xs);color:var(--muted)}
+/* K19: en oscuro, el texto de los eventos con menos color de capa (45 %) para pasar de 4,5:1 (antes 3,7–4,5). */
+:root[data-theme="dark"] .cal-event{color:color-mix(in srgb,var(--event-color) 45%,var(--ink))}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .cal-event{color:color-mix(in srgb,var(--event-color) 45%,var(--ink))}}
