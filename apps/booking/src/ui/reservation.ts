@@ -3,6 +3,7 @@ import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
 import { createMontage } from './montage.ts';
 import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderPublicCode, renderVisitorRequests, renderWalkIn, specsFor } from './eventKinds.ts';
 import { renderBarService } from './barService.ts';
+import { renderFlowReady } from './flowReady.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
@@ -142,6 +143,8 @@ export function mountReservation(id: string): ViewMount {
     let barService: { eventId: string; element: HTMLElement } | null = null;
     // «Ofertas de comida» (Food): igual, una lectura por evento y visita.
     let offers: { eventId: string; element: HTMLElement } | null = null;
+    // «Listo para Flow» (Core 27-10-2026): igual, una lectura por evento y visita.
+    let flowReady: { eventId: string; element: HTMLElement } | null = null;
     // «Montaje» (VG 27-10-2026): se conserva entre repintados; se rehace si cambia el evento o el permiso
     let montageCard: { key: string; card: ReturnType<typeof createMontage> } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
@@ -530,6 +533,8 @@ export function mountReservation(id: string): ViewMount {
 
       if (liveEvent && seesFinance && (!barService || barService.eventId !== liveEvent.id)) barService = { eventId: liveEvent.id, element: renderBarService({ client, eventId: liveEvent.id }) };
       const barCard = liveEvent && seesFinance ? barService!.element : null;
+      if (liveEvent && (!flowReady || flowReady.eventId !== liveEvent.id)) flowReady = { eventId: liveEvent.id, element: renderFlowReady({ client, reservationId: id, eventId: liveEvent.id }) };
+      const flowReadyCard = liveEvent ? flowReady!.element : null;
       const portalRequestsCard = portalData && editable ? renderPortalRequests({ data: portalData, proposals: proposalData?.proposals ?? [], run }) : null;
       const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
 
@@ -694,7 +699,7 @@ export function mountReservation(id: string): ViewMount {
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
         layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
           // familiar: sin propuesta, cobro ni coste
-          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard,
+          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard, flowReadyCard,
           liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null,
           liveEvent ? (() => {
             const key = `${liveEvent.id}:${editable}`;
