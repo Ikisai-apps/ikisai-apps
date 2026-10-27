@@ -1,9 +1,10 @@
-/** Food · lo que Food ofrece en el catálogo de capacidades del núcleo (1113) y la ejecución «Usar en otro evento». */
+/** Food · lo que Food ofrece en el catálogo de capacidades del núcleo (1113, con campos en la 1120) y la ejecución «Usar en otro evento». */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import { day, seedBookingEvent } from './helpers.ts';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -40,6 +41,37 @@ test('catálogo · lecturas y ejecución de Food, con rutas, roles y anclajes', 
   // Las lecturas a las que apuntan existen para Food.
   const reads = (await q(`select name from core.allowed_reads where app = 'food'`)).map((r) => r.name);
   for (const name of ['food.carta_prep_totals_projection', 'food.carta_prep_projection', 'food.event_needs', 'food.event_offers_projection']) assert.ok(reads.includes(name), name);
+});
+
+test('catálogo · cada capacidad dice qué campos lee y escribe (0111): `food.<tabla>.<columna>` que existen', async () => {
+  const rows = await q(`select id, kind, reads, writes from core.capabilities where app = 'food' order by id`);
+  const columns = new Set((await q(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'food'`)).map((r) => `food.${r.c}`));
+  for (const r of rows) {
+    assert.ok(r.reads.length > 0, `${r.id} sin reads`);
+    if (r.kind === 'read') assert.deepEqual(r.writes, [], `${r.id}: una lectura no escribe`);
+    for (const f of [...r.reads, ...r.writes]) assert.ok(columns.has(f), `${r.id}: ${f} no es una columna de Food`);
+  }
+  const copy = rows.find((r) => r.id === 'food.use_carta_in_event')!;
+  for (const f of ['food.menus.event_id', 'food.carta_lines.sale_price_cents', 'food.event_offers.payer']) assert.ok(copy.writes.includes(f), f);
+});
+
+test('inventario · cada campo de Food que declara `entity` y `prop` apunta a una columna que existe (0111)', async () => {
+  const columns = new Set((await q(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'food'`)).map((r) => `food.${r.c}`));
+  const dir = new URL('../../apps/food/src/ui/', import.meta.url);
+  const declared: string[] = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+    const text = readFileSync(new URL(file, dir), 'utf8');
+    for (const m of text.matchAll(/'data-field-entity': '([a-z_.]+)', 'data-field-prop': '([a-z_]+)'/g)) declared.push(`${m[1]}.${m[2]}`);
+  }
+  assert.ok(declared.length >= 70, `solo ${declared.length} campos declarados`);
+  for (const f of declared) assert.ok(columns.has(f), `${f} no es una columna de Food`);
+});
+
+test('uso · el primer estimado de Food (1121): las 46 funcionalidades de USO_ESTIMADO.md, con frecuencia y equipos', async () => {
+  const rows = await q(`select feature_id, frequency, audience from core.usage_estimates where app = 'food' order by feature_id`);
+  assert.equal(rows.length, 46);
+  assert.ok(rows.every((r) => ['frequent', 'normal', 'occasional', 'rare_critical'].includes(r.frequency) && r.audience.teams.length > 0));
+  assert.deepEqual(rows.find((r) => r.feature_id === 'food.maquinaria.avisar_averia'), { feature_id: 'food.maquinaria.avisar_averia', frequency: 'rare_critical', audience: { teams: ['cocina'] } });
 });
 
 test('ejecución · «Usar en otro evento» copia la carta y crea su oferta; repetir devuelve la misma copia', async () => {

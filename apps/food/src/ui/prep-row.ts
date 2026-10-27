@@ -30,7 +30,7 @@ export interface StepRowOptions {
 /** La fila de paso: casilla, hora con «Propuesta / Paso propio», medallón, texto, para qué servicio, aviso y responsable. */
 export function stepRow(step: PrepRow, options: StepRowOptions): HTMLElement {
   const { writable } = options;
-  const done = el('input', { 'data-feedback-id': 'food.menu.preparacion.fila.hecho', 'data-feedback-label': 'Hecho', type: 'checkbox', class: 'bigcheck', checked: step.done, disabled: !writable,
+  const done = el('input', { 'data-field-id': 'food.menu.preparacion.fila.hecho', 'data-field-entity': 'food.preparation_items', 'data-field-prop': 'done', 'data-feedback-id': 'food.menu.preparacion.fila.hecho', 'data-feedback-label': 'Hecho', type: 'checkbox', class: 'bigcheck', checked: step.done, disabled: !writable,
     'aria-label': `Hecho: ${step.text}`, onchange: () => options.onDone(step, done.checked) });
   const time = shortTime(step.scheduled_time) || '—';
   const who = step.responsible?.trim() || null;

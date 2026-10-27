@@ -1,6 +1,6 @@
 /** Formularios de fila: se describen con una lista de campos y solo viaja al servidor lo que cambia. */
 import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/sync-client';
-import { attachSuggestions, confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { announceSaved, attachSuggestions, confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { validateFields } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import { describeError } from '../app/client.ts';
@@ -217,6 +217,8 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
       }
       guard.dirtyEditor = false;
       await sheet.close(true);
+      // Guiado: el paso de esta hoja (`<feedbackId>.guardar`) se confirma con el guardado de verdad, sin valores
+      if (options.feedbackId) announceSaved(`${options.feedbackId}.guardar`, { pending: !navigator.onLine });
       toast(navigator.onLine ? message : `${message} Se enviará al reconectar.`);
     } catch (error) {
       form.showError(describeError(error));

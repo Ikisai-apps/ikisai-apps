@@ -116,10 +116,11 @@
 
 - 2026-10-27 · «Mi pedido» del visitante, en uso con Flow FL2 (0915): «Abrir la carta» le da su número, que se conserva al volver. Prueba de punta a punta con flow-api en el servidor de pruebas de Guests (`linkBar`).
 
+- 2026-10-27 · Camas con un solo modelo (VG, por Core y Central): en los tres planos de camas (Inicio «Tu habitación en el plano», Alojamiento y «Ver las camas en el plano» del visitante) la forma de cada cama sale de su disposición en Booking (`layout` de `portal_lodging` y `booking_public_beds`, Booking 1417) con `bedShape` del kit 0.69.9 sobre la forma de su habitación (`withBedLayouts` en `ui/plan.ts`), nunca de Recursos. Sin disposición, la cama no se pinta: queda la lista y «Aquí» va en su habitación. Las e2e siembran la disposición en Booking (`bedLayout`) y ya no dan forma a las camas en Recursos.
+
 ## Pendiente
 
-
-- Al recuperar el acceso de visitante en otro móvil, «Mis eventos» sale vacía, porque la lista vive en cada móvil. Hace falta que el núcleo dé los códigos de evento del visitante (p. ej. en `public/visitor/me`); pedido a Core.
+- Tu cama en el plano también en el Inicio (con la habitación sin abrir), el Outsider y la Casa: Guests ya lee `room_layout` y `bed_layout` de la cama propia (`ownBedRoom` en `ui/plan.ts`); pedido a Booking en `portal_lodging.mine`, `portal_my_stays` y `default_bed`. Sin ellos, «Aquí» va en la habitación.
 - Barras estrechas del calendario anual: el rótulo fuera de la barra, en el kit (`renderTimeline`); pedido a UI-kit por Core.
 
 ## Bloqueos

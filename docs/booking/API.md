@@ -2117,4 +2117,45 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
   - Errores: sin pago en línea, 409 `NOT_PAID_ONLINE`; si ya llegó, 409 `ALREADY_ARRIVED`; si la solicitud es de otro visitante, 404; sin pasarela, 503 `PAYMENTS_OFF`.
 - **Recepción:** «Devolver…» de un cobro `online` muestra lo que propone la política.
 - **Adaptador:** `refund(providerRef, cents, idempotencyKey?)` admite la clave.
+**Elegir pago en línea o en recepción (migración 1418; VG, vg-38):**
+- `reservations.lodging_pay_on_site` (por defecto `false`). Con `lodging_pay_mode = 'online'` deja además pagar en recepción. En Booking es la casilla «En línea, o también en recepción» de «Visible para huéspedes».
+- La oferta pública (`booking_public_lodging`) añade `pay_options`:
+  - `["online", "on_site"]` si el evento deja las dos; `["online"]` si es solo en línea; `["on_site"]` en `hold` y `pay_first`.
+  - `hold_hours` sale también cuando se puede pagar en recepción.
+- `POST public/stay` admite `pay: 'online' | 'on_site'`. Sin `pay`, se usa el modo del evento.
+  - `on_site` guarda la plaza `lodging_hold_hours` (`pay: 'hold'` en la respuesta).
+  - `online` la guarda 20 minutos (`lodging_online_minutes`).
+  - Un modo que el evento no deja responde 422 `PAY_MODE_NOT_ALLOWED`.
+- Antes de pagar en línea hace falta un correo: el de `contact` (o `email` suelto en `public/stay`) o el del borrador del primer viajero (`public/stay/traveler`). Sin correo, `public/stay/pay` responde 422 `EMAIL_REQUIRED`. Los datos de SES se completan al llegar o desde el enlace.
 
+
+**La cama propia en el plano (migración 1421; petición de Guests, CAMA_PROPIA_PLANO.md):** `portal_lodging.mine`, `portal_my_stays.items[]` y `portal_my_stays.default_bed` llevan `room_layout: {cols, rows} | null` y `bed_layout: {x, y, rot} | null`, con la misma forma que la 1417. Son de la cama propia, nunca de la de otras personas; sin disposición, `null`.
+
+**Stripe (migración 1420; VG con Finance: Stripe ahora, Redsys/Bizum después):**
+- **Adaptador:** `stripeBookingProvider` (`booking-api/payments.ts`) envuelve la pasarela compartida de Finance (`_domain/payments/stripe.ts`). En `index.ts` solo se conecta si existen `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`; sin ellos, `PAYMENTS_OFF`.
+- **La sesión de Checkout:**
+  - importe del servidor en `eur` y `metadata: {app: 'booking', reference: 'booking-stay-<id>'}`;
+  - vuelta a `ven.ikisai.com/e/<código>?pago=<id>` (al cancelar en Stripe, `&cancelado=1`);
+  - caducidad mínima de 31 minutos, porque Stripe no deja menos.
+- **Retención y sesión:** la cama se guarda 20 minutos (VG). El worker `payments/reconcile` caduca a mano (`expireCheckout`) las sesiones cuya retención ya venció y lo anota como `expired` (respuesta `{checked, applied, expired}`).
+- **Webhook `POST public/payments/stripe`** (`Stripe-Signature`):
+  - firma mala: 400;
+  - avisos de otra app de la misma cuenta (`metadata.app` distinto de `booking`) o sin interés: 200 `{ignored: true}`;
+  - `paid` guarda el pago de Stripe (`stay_payments.provider_payment_ref`, `pi_…`). Por él se casa `charge.refunded`, que no trae la sesión.
+- **Devoluciones:** `refund` busca el pago de la sesión y devuelve con la clave de idempotencia recibida (o con una nueva).
+
+## 46. Guiado de Flow en Booking (prueba del alojamiento; VG 27-10-2026)
+
+Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): con `?guia=<ejecución>` lee los pasos de Flow (`flow.guide_read`) y los confirma (`flow.guide_confirm`) por su Edge, nunca con valores. Con `?campo=` señala el anclaje. Los pasos con `confirm: 'event'` avanzan cuando Booking avisa (`announceSaved`) de que la base ha guardado de verdad.
+
+| Paso | Ruta | Anclaje (`anchor`) | Confirmación |
+|---|---|---|---|
+| Crear el evento de prueba | `#/reservas` | `booking.reservas.alta.guardar` | `event` (al guardar la reserva) |
+| Confirmarlo (crea el evento y su número público) | `#/reservas/<id>` | `booking.reserva.acciones.confirmar` | `event` |
+| Buscar el número en recepción | `#/recepcion` | `booking.recepcion.buscar` | `manual` |
+| Cobrar y alojar | `#/recepcion` | `booking.recepcion.cobrar` (o `booking.recepcion.alojar_pagado` si se pagó en línea) | `event` (aceptado por la base) |
+| Completar los datos | `#/huespedes/<evento>` | `booking.huespedes.ficha.guardar` | `event` (al guardar la ficha) |
+| Llega | `#/recepcion` | `booking.recepcion.llega` | `event` |
+| Sale (libera la cama y pide la limpieza) | `#/recepcion` | `booking.recepcion.sale` | `event` |
+
+Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` al guardar.

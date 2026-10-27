@@ -98,6 +98,7 @@ export interface AppShellOptions {
    * Una app lo monta en una línea: `guide: { feedbackId: '<app>.cabecera.guia' }` (nivel mínimo). El id va bajo `cabecera`, raíz que
    * todas las apps ya reconocen como pieza de la cáscara; sus botones son `.ver` y `.cerrar`. Guía completa: añadir `client` y `app`.
    */
+  /** `app`: la que pide sus pasos a Flow; si falta, el primer segmento de `feedbackId` (`booking.guia` → `booking`). */
   guide?: boolean | { feedbackId?: string; client?: GuideApiClient; app?: string; source?: GuideSource };
 }
 
@@ -136,7 +137,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   const navigate = options.navigate ?? ((hash: string) => { location.hash = hash; });
   const guideLink = options.guide ? readGuideLink() : null;
   const guideOptions = typeof options.guide === 'object' ? options.guide : {};
-  const guideSource = guideOptions.source ?? (guideOptions.client ? flowGuideSource(guideOptions.client, { app: guideOptions.app ?? null }) : null);
+  const guideSource = guideOptions.source ?? (guideOptions.client ? flowGuideSource(guideOptions.client, { app: guideOptions.app ?? guideOptions.feedbackId?.split('.')[0] ?? null }) : null);
   const guideRun = guideLink?.run ?? null;
   // Guía completa si hay ejecución y de dónde leerla; si no, el nivel mínimo (el campo señalado).
   const guide = guideRun && guideSource
