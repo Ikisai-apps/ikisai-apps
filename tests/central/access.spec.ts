@@ -189,7 +189,7 @@ test('accesos · el owner administra cuentas, altas, agentes y registro', async 
   await expect(page.locator('#logApp')).toHaveValue('tasks');
   await expect(page.locator('#logView').getByRole('button', { name: 'Por fecha' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#accessLog .accesslog')).toBeVisible();
-  await expect(page.locator('#accessLog')).toContainText('Clave de agente revocada');
+  await expect(page.locator('#accessLog')).toContainText('Clave de agente emitida · Tasks');
   // La vista recordada no cambia: sin `?app`, otra vez «Por persona».
   await page.goto(`${baseURL}/#/accesos/registro`);
   await expect(page.locator('#logView').getByRole('button', { name: 'Por persona' })).toHaveAttribute('aria-pressed', 'true');
