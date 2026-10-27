@@ -25,6 +25,7 @@ let reply: (url: string) => Response = () => Response.json({ results: [{ result:
 
 test.before(async () => {
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, {
+    tasksApiBase: 'https://tasks.example.invalid',
     appsFetch: async (input, init) => {
       const url = String(input);
       calls.push({ url, auth: new Headers(init?.headers).get('authorization'), body: JSON.parse(String(init?.body ?? '{}')) });
@@ -161,4 +162,52 @@ test('flow · Booking lee el resumen del servicio por su proyección cuando el f
   assert.ok(view.rows[0]!.data.sales_cents !== undefined);
   const reads = await app.t.db.query(`select 1 from core.allowed_reads where app = 'booking' and name = 'flow.booking_service_projection'`);
   assert.equal(reads.rows.length, 1);
+});
+
+test('enlaces · Booking: sus eventos se leen con la sesión de Flow (proyección abierta por Booking)', async () => {
+  const res = await app.call('/api/v1/read/booking.event_projection?limit=5');
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.ok(Array.isArray(res.data.rows));
+});
+
+test('enlaces · «Pedir a Tasks»: proyecto elegido una vez, tarea o compra con la sesión, una vez por tarea; el enlace queda en la tarea', async () => {
+  const unitId = uuid();
+  await ok([{ op: 'insert', table: TABLES.units, id: unitId, fields: { project_id: PROJECT, column_key: 'logistics', kind: 'task', label: 'Reponer vasos', priority: true } }]);
+  // Sin proyecto de Tasks, lo dice.
+  assert.equal((await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'task' } })).data.error.code, 'NO_TASKS_PROJECT');
+  // Lista de proyectos de Tasks: solo abiertos.
+  reply = (url) => url.endsWith('/read/tasks.targets')
+    ? Response.json({ tabs: [{ id: 'a1', name: 'Barra', projects: [{ id: 'p-open', title: 'Montaje', status: 'active' }, { id: 'p-arch', title: 'Viejo', status: 'archived' }, { id: 'p-sys', title: 'Entrada', status: 'active', system: true }] }] })
+    : url.endsWith('/requests/task') ? Response.json({ created: true, task: { kind: 'task', id: 't-1', done: false } })
+    : Response.json({ created: true, purchase: { kind: 'purchase_request', id: 'c-1', status: 'requested' } });
+  const projects = await app.call('/api/v1/tasks/projects', { body: {} });
+  assert.deepEqual(projects.data.items.map((p: any) => p.id), ['p-open']);
+  const tasksProject = '00000000-0000-4000-8000-0000000000aa';
+  const p2 = await row(TABLES.projects, PROJECT);
+  await ok([{ op: 'update', table: TABLES.projects, id: PROJECT, expectedRevision: p2.revision, fields: { tasks_project_id: tasksProject } }], app.tokens.owner);
+  calls.length = 0;
+  const asked = await app.call(`/api/v1/units/${unitId}/tasks`, { token: app.tokens.editor, body: { type: 'task' } });
+  assert.equal(asked.status, 200, JSON.stringify(asked.data));
+  assert.equal(calls[0]!.url, 'https://tasks.example.invalid/api/v1/requests/task');
+  assert.equal(calls[0]!.auth, 'Bearer ' + app.tokens.editor);
+  assert.equal(calls[0]!.body.external_ref, unitId); assert.equal(calls[0]!.body.project_id, tasksProject);
+  assert.equal(calls[0]!.body.priority, 'high'); assert.equal(calls[0]!.body.source, 'flow');
+  await ok([call(PROCEDURES.unitLinkExternal, { unit_id: unitId, link: asked.data.link })]);
+  assert.deepEqual((await row(TABLES.units, unitId)).payload.external.id, 't-1');
+  // Compra con cantidad.
+  const bought = await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'purchase', quantity: 3, unit: 'kg' } });
+  assert.equal(bought.data.link.kind, 'purchase_request');
+  assert.equal(calls[1]!.body.quantity, 3); assert.equal(calls[1]!.body.unit, 'kg');
+  assert.equal(calls[1]!.body.external_url, `https://flow.ikisai.com/equipo#/p/${PROJECT}/logistica`);
+  // El lector no pide; sin acceso a Tasks, «Pide acceso a Tasks»; proyecto que ya no vale, elegir otro.
+  assert.equal((await app.call(`/api/v1/units/${unitId}/tasks`, { token: app.tokens.reader, body: { type: 'task' } })).status, 403);
+  reply = () => Response.json({ error: { code: 'FORBIDDEN', message: 'x', details: null } }, { status: 403 });
+  assert.equal((await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'task' } })).data.error.code, 'NEEDS_ACCESS');
+  reply = () => Response.json({ error: { code: 'NOT_FOUND', message: 'x', details: null } }, { status: 404 });
+  assert.equal((await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'task' } })).data.error.code, 'TASKS_PROJECT_GONE');
+  reply = () => Response.json({ results: [{ result: { status: 'created' } }] });
+  // Una tarea de producto no se pide; ni se falsea el enlace a mano.
+  const manual = uuid();
+  await ok([{ op: 'insert', table: TABLES.units, id: manual, fields: { project_id: PROJECT, column_key: 'logistics', kind: 'task', label: 'x', payload: { external: { app: 'tasks', id: 'fake' } } } }]);
+  assert.equal((await row(TABLES.units, manual)).payload.external, undefined);
 });

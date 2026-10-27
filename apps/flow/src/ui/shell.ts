@@ -40,6 +40,7 @@ interface ColumnView { slug: string; icon: string; mount: ViewMount }
 const COLUMN_VIEWS: Record<string, ColumnView> = {
   order: { slug: 'caja', icon: 'euro', mount: mountOrders('order') },
   prep: { slug: 'preparacion', icon: 'chef', mount: mountQueue('prep') },
+  ingredients: { slug: 'ingredientes', icon: 'tag', mount: mountQueue('ingredients') },
   service: { slug: 'servicio', icon: 'check', mount: mountOrders('service') },
   logistics: { slug: 'logistica', icon: 'list', mount: mountQueue('logistics') },
 };
@@ -181,7 +182,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open').length);
     shell.setBadge(`${base}/preparacion`, d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
     shell.setBadge(`${base}/servicio`, d.orders.filter((o) => o.status === 'paid').length);
-    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'logistics' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/ingredientes`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'ingredients' && ['proposed', 'pending', 'in_progress'].includes(u.status)).length);
   }
 
   async function route(): Promise<void> {

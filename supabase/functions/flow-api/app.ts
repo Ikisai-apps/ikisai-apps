@@ -9,7 +9,7 @@
  * El token nunca llega a la base de datos: aquí se resume con SHA-256 y solo viaja el resumen. Las escrituras van por la
  * escritura pública del núcleo (actor «Flow (sistema)», lote público que limita `flow.guard`).
  */
-import { applyPublicOperations, createApp, createSupabase, fail, isFault, sha256Hex, type AppConfig, type AppRoute, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { applyPublicOperations, createApp, createSupabase, fail, isFault, sha256Hex, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import { APP, TABLES, visibleRow } from '../_domain/flow/mod.ts';
 
 export const FLOW_ORIGINS = ['https://flow.ikisai.com', 'https://ikisai-flow.pages.dev'];
@@ -26,12 +26,49 @@ const TOKEN = /^[0-9a-f]{64}$/;
 /** Escritura pública del núcleo (`applyPublicOperations` del kit, migración core 0094); inyectable en pruebas. */
 export type PublicWriter = (supabase: Supabase, app: string, operations: unknown[]) => Promise<{ cursor: number; results: unknown[] }>;
 
-type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes' | 'hooks'> & Partial<Pick<AppConfig, 'origins'>>;
+type FlowBase = Omit<AppConfig, 'app' | 'slug' | 'origins' | 'routes' | 'hooks' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>>;
 
 interface Mine { number: number | null; customerId: string | null; projectId: string | null; orders: unknown[] }
 
-/** Opciones inyectables en pruebas: escritura pública y transporte hacia food-api e invoices-api. */
-export interface FlowAppOptions { publicWrite?: PublicWriter; appsFetch?: typeof fetch }
+/** Opciones inyectables en pruebas: escritura pública, transporte hacia las otras apps y base de la API de Tasks. */
+export interface FlowAppOptions { publicWrite?: PublicWriter; appsFetch?: typeof fetch; tasksApiBase?: string }
+
+export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
+
+/** Documentos y portadas del flujo (orden de VG del 27-10): bucket privado `flow-media`, imágenes y PDF. */
+export const FLOW_UPLOADS: UploadsConfig = {
+  bucket: 'flow-media',
+  maxBytes: 15 * 1024 * 1024,
+  allowedMime: ['image/webp', 'image/jpeg', 'image/png', 'application/pdf'],
+};
+
+/** Columnas que referencian un archivo de Flow y los tipos que admite cada una. */
+const FILE_FIELDS: Record<string, Array<{ field: string; mime: readonly string[] }>> = {
+  'flow.projects': [{ field: 'cover_file_id', mime: ['image/webp', 'image/jpeg', 'image/png'] }],
+  'flow.project_documents': [{ field: 'file_id', mime: FLOW_UPLOADS.allowedMime! }],
+};
+
+/** Un archivo referenciado tiene que ser de Flow, estar verificado y tener un tipo admitido para esa columna (como Central). */
+async function checkFiles(supabase: Supabase, operations: Operation[], ctx: RequestContext): Promise<void> {
+  for (const [index, op] of operations.entries()) {
+    for (const spec of (op.table ? FILE_FIELDS[op.table] : undefined) ?? []) {
+      const id = op.fields ? op.fields[spec.field] : undefined;
+      if (typeof id !== 'string') continue;
+      let file: { status: string; mime: string };
+      try {
+        file = await supabase.rpc('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: id });
+      } catch (error) {
+        if (isFault(error) && error.code === 'FILE_NOT_FOUND') fail(422, 'INVALID_FILE', 'El archivo no existe o no es de Flow.', { index, field: spec.field });
+        throw error;
+      }
+      if (file.status !== 'verified') fail(422, 'INVALID_FILE', 'El archivo todavía no se ha subido por completo.', { index, field: spec.field });
+      if (!spec.mime.includes(file.mime)) fail(422, 'INVALID_FILE', spec.field === 'cover_file_id' ? 'La portada debe ser una imagen.' : 'Ese tipo de archivo no vale aquí.', { index, field: spec.field, mime: file.mime });
+    }
+  }
+}
+
+/** Ruta de cada columna en la app (`#/p/<proyecto>/<ruta>`), para los enlaces que se mandan a otras apps. */
+const COLUMN_SLUGS: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica' };
 
 interface ClosureForSend {
   closure: { id: string; project_id: string; day: string; data: DayData };
@@ -114,11 +151,90 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
   ];
 }
 
+/**
+ * «Pedir a Tasks» (contrato de Tasks §39): con la sesión de la persona, a la API de Tasks, como Central. Quien pide tiene
+ * que ser editor u owner de Tasks y ver el proyecto. Tasks no avisa de cambios: el estado se consulta al enseñarlo.
+ */
+function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
+  const transport = options.appsFetch ?? fetch;
+  const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
+  const base = (options.tasksApiBase ?? env('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
+
+  async function tasks<T>(ctx: RequestContext, path: string, body: unknown): Promise<T> {
+    let res: Response;
+    try {
+      res = await transport(`${base}/api/v1/${path}`, {
+        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      fail(503, 'APP_UNAVAILABLE', 'Tasks no responde ahora mismo. Inténtalo más tarde.');
+    }
+    const out = await res.json().catch(() => ({})) as any;
+    const code = out?.error?.code as string | undefined;
+    if (res.status === 401 || res.status === 403 || code === 'NO_MEMBERSHIP') fail(403, 'NEEDS_ACCESS', 'Pide acceso a Tasks: tu cuenta no puede crear tareas allí.', { app: 'tasks', code: code ?? null });
+    if (res.status === 404) fail(409, 'TASKS_PROJECT_GONE', 'El proyecto de Tasks de este flujo ya no existe o no lo ves: elige otro.');
+    if (!res.ok) fail(res.status === 409 ? 409 : 422, code ?? 'APP_REJECTED', out?.error?.message ?? 'Tasks no ha aceptado la petición.', { details: out?.error?.details ?? null });
+    return out as T;
+  }
+
+  return [
+    {
+      // Proyectos abiertos de Tasks que ve la persona (para elegir el del flujo, una vez).
+      method: 'POST', pattern: 'tasks/projects', handler: async ({ ctx }) => {
+        const out = await tasks<{ tabs?: Array<{ id: string; name: string; projects?: Array<{ id: string; title: string; status: string; system?: boolean; deleted?: boolean }> }> }>(ctx, 'read/tasks.targets', {});
+        const items = (out.tabs ?? []).flatMap((t) => (t.projects ?? [])
+          .filter((p) => !p.system && p.status !== 'archived' && !p.deleted)
+          .map((p) => ({ id: p.id, title: p.title, area: t.name })));
+        return { items };
+      },
+    },
+    {
+      // Pedir a Tasks una tarea o una compra desde una tarea de Flow. Una vez por tarea (external_ref = id de la unidad).
+      method: 'POST', pattern: 'units/:id/tasks', handler: async ({ ctx, params, json }) => {
+        if (ctx.membership.role === 'reader' || ctx.membership.role === 'outsider') fail(403, 'FORBIDDEN', 'Tu cuenta no puede pedir a Tasks.');
+        const body = (await json().catch(() => ({}))) ?? {};
+        const found = await supabase.rpc<{ unit: any; project: any } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.unit_for_tasks', p_args: { id: params.id } });
+        if (!found?.unit) fail(404, 'NOT_FOUND', 'Esa tarea no existe.');
+        if (found.unit.kind !== 'task') fail(422, 'INVALID_OPERATION', 'Solo las tareas se piden a Tasks.');
+        if (!found.project.tasks_project_id) fail(409, 'NO_TASKS_PROJECT', 'Este flujo aún no tiene proyecto de Tasks: el encargado lo elige en el Inicio del flujo.');
+        const priority = found.unit.priority ? 'high' : 'normal';
+        const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim().slice(0, 4000) : `Desde ${found.project.name}`;
+        if (body.type === 'purchase') {
+          const quantity = Number(body.quantity);
+          const out = await tasks<{ created: boolean; purchase: { id: string; status: string } }>(ctx, 'requests/purchase', {
+            source: 'flow', external_ref: found.unit.id, title: String(found.unit.label ?? '').slice(0, 300), project_id: found.project.tasks_project_id, priority, note,
+            // «Ver en Flow ›» de Tasks (§39.5): la columna de la tarea en su flujo.
+            external_url: `${FLOW_ORIGINS[0]}/equipo#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
+            ...(Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: typeof body.unit === 'string' ? body.unit.slice(0, 20) : undefined } : {}),
+          });
+          return { created: out.created, link: { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status } };
+        }
+        const out = await tasks<{ created: boolean; task: { id: string; done?: boolean } }>(ctx, 'requests/task', {
+          source: 'flow', kind: 'flow.logistics', kind_label: 'Logística de la barra', external_ref: found.unit.id,
+          title: String(found.unit.label ?? '').slice(0, 300), note, project_id: found.project.tasks_project_id, priority,
+        });
+        return { created: out.created, link: { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' } };
+      },
+    },
+    {
+      // Estado de las tareas pedidas (Tasks no avisa).
+      method: 'POST', pattern: 'tasks/status', handler: async ({ ctx, json }) => {
+        const body = (await json().catch(() => ({}))) ?? {};
+        const ids = Array.isArray(body.ids) ? body.ids.filter((x: unknown) => typeof x === 'string').slice(0, 200) : [];
+        if (!ids.length) return { items: [] };
+        return tasks(ctx, 'read/tasks.targets', { kind: 'task', ids });
+      },
+    },
+  ];
+}
+
 export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: closureRoutes(supabase, base, options), hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership) } });
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options)], uploads: FLOW_UPLOADS,
+    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
   async function handlePublic(request: Request, route: string): Promise<Response> {

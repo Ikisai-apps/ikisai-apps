@@ -113,7 +113,7 @@ function shellMount(){
   const v=state.view,item=(id,label,icon)=>({label,icon,active:v===id||id==='projects'&&v==='project',attrs:{'data-nav':id}});
   /* «Hoy» (MUELA-095, hoy-ui.js), después de Inicio; el outsider no tiene plan y conserva su barra de siempre. */
   const outsider=!!Sync.actor?.outsider;
-  const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),...(outsider?[]:[item('today','Hoy','sun')]),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),...(outsider?[item('labels','Etiquetas','tag')]:[]),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
+  const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',standalone:'both',items:[item('home','Inicio','home'),...(outsider?[]:[item('today','Hoy','sun')]),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),...(outsider?[item('labels','Etiquetas','tag')]:[]),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
   app.replaceChildren(
     K.el('div',{class:'ikisai-kit shellkit',id:'shellTop',style:'display:contents'},shellWide.matches?menu.column:null,bar,shellReturnLink()),
     K.el('div',{id:'view',style:'display:contents'}),
