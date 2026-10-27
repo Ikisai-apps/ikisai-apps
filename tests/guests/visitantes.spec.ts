@@ -271,6 +271,7 @@ test('ENTRADA_PUBLICA · «Tu ficha está lista» y «Unir este móvil a mi fich
   await expect(link.locator('#visitorLinked')).toBeVisible();
   await link.locator('#visitorUnlink').click();
   await expect(link.locator('#visitorLinkGo')).toBeVisible();
+});
 
 test('§9.19 · «Mi pedido» (Flow FL2): «Abrir la carta» le da su número, que sigue al volver', async ({ page, context }) => {
   const r = await api.reservation({ title: 'Jornada con barra', start: day(0), end: day(1) });
