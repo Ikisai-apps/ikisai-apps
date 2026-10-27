@@ -311,6 +311,8 @@ test('filtro por espacio arriba: un toque marca y otro desmarca, varios suman, n
   const chips = page.locator('#tkhSpaces [data-tkh-space]');
   const huerto = page.locator(`[data-tkh-space="${HUERTO}"]`), taller = page.locator(`[data-tkh-space="${TALLER_SPACE}"]`);
   await expect(chips).toHaveCount(2);
+  // La fila lleva la pista del kit (installScrollHints la vigila: pone data-more-start/end cuando hace falta).
+  expect(await page.evaluate(() => document.getElementById('view')?.dataset.tkhHints)).toBe('1');
   await expect(huerto).toContainText('Huerto');
   await expect(huerto.locator('.tkh-space-n')).toHaveText(/^[1-9]\d*$/);
   const take = page.locator('.tkh-take');
@@ -318,6 +320,9 @@ test('filtro por espacio arriba: un toque marca y otro desmarca, varios suman, n
   // Huerto: solo lo del huerto.
   await huerto.click();
   await expect(huerto).toHaveAttribute('aria-pressed', 'true');
+  await expect(huerto).toContainText('✓');
+  await expect(huerto).toBeFocused();
+  await expect(page.locator('.tkh-filtering[role="status"]')).toContainText('Solo Huerto');
   await expect(take).toContainText('Revisar el riego');
   await expect(take).not.toContainText('Barnizar el banco');
   // Se recuerda en el dispositivo.
@@ -331,6 +336,14 @@ test('filtro por espacio arriba: un toque marca y otro desmarca, varios suman, n
   await taller.click();
   await expect(take).toContainText('Barnizar el banco');
   await expect(take).toContainText('Revisar el riego');
+  // «Quitar filtro» deja ninguno marcado; volvemos a marcar los dos para probar quitarlos a mano.
+  await taller.click();
+  await expect(page.locator('.tkh-filtering')).toHaveCount(1);
+  await page.locator('.tkh-filtering [data-tkh-clear]').click();
+  await expect(page.locator('.tkh-filtering')).toHaveCount(0);
+  await expect(huerto).toHaveAttribute('aria-pressed', 'false');
+  await huerto.click();
+  await taller.click();
   // Ninguno: todo.
   await huerto.click();
   await expect(take).not.toContainText('Revisar el riego');

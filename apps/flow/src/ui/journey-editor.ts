@@ -128,13 +128,13 @@ export function mountJourneyEditor(key: string | null): ViewMount {
         published ? el('p', { class: 'muted small' }, draft ? 'Editas un borrador: lo publicado sigue igual hasta que publiques.' : `Al guardar se crea la versión ${nextVersion}; la publicada sigue igual hasta que publiques.`) : null,
         ...stages.map(stageCard),
         el('div', { class: 'flow-actions' },
-          ...(['capability', 'record', 'handoff'] as Kind[]).map((k) => el('button', { type: 'button', class: 'secondary', onclick: () => {
+          ...(['capability', 'record', 'handoff'] as Kind[]).map((k) => el('button', { type: 'button', class: 'ghost', onclick: () => {
             stages.push({ kind: k, capability: '', title: '', explain: '', app: 'tasks', anchor: '', steps: [] }); paint(); } },
           k === 'capability' ? 'Añadir tramo de capacidad' : k === 'record' ? 'Añadir tramo de registro' : 'Añadir «ir a otra app»'))),
         el('div', { class: 'flow-actions' },
-          busyButton({ class: 'secondary' }, 'Guardar borrador', async () => { await save(); }),
+          busyButton({ class: 'ghost' }, 'Guardar borrador', async () => { await save(); }),
           // Probar = ensayar el borrador tal como está (nada se registra fuera).
-          busyButton({ class: 'secondary' }, 'Probar', async () => {
+          busyButton({ class: 'ghost' }, 'Probar', async () => {
             const v = await save(); if (!v) return;
             const j = await loadJourneyVersion(client, v);
             if (!j) { toast('Guarda al menos un tramo para probarlo.'); return; }

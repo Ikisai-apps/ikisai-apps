@@ -108,7 +108,8 @@ export function priceText(cents: number | null, tag: string): string | null {
 }
 
 /** La carta pública de Flow sin número (mientras no exista `flow.portal_customer` o no devuelva nada). */
-export const FLOW_CARTA = 'https://flow.ikisai.com/';
+// La carta pública de Flow (entradas de Flow, 27-10: la raíz es la entrada del equipo).
+export const FLOW_CARTA = 'https://flow.ikisai.com/recorridos/carta';
 
 /** Solo enlaces https: lo demás, ninguno. */
 export function safeUrl(v: unknown): string | null {

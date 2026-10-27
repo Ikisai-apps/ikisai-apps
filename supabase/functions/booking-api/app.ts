@@ -511,25 +511,7 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
       const body = (await json().catch(() => ({}))) as Record<string, unknown>;
       const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
-      const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_cancel', p_args: { ...args, request_id: requestId, visitor_id: visitor!.id } });
-      await ensureServiceActor(supabase, 'booking');
-      const quote = await invoke({ action: 'quote' });
-      if (quote?.replayed) return { status: 'cancelada', replayed: true };
-      const preview = { percent: quote.percent, tier: quote.tier, paid_cents: quote.paid_cents, refund_cents: quote.refund_cents, full_until: quote.full_until, half_until: quote.half_until };
-      if (body.confirm !== true) return { status: 'quote', ...preview };
-      if (Number(quote.refund_cents) > 0 && (!payments?.refund || payments.name !== quote.provider)) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
-      // el importe queda fijado en la base antes de tocar la pasarela; la clave hace que repetir no devuelva dos veces
-      const claim = await invoke({ action: 'claim' });
-      const cents = Number(claim.refund_cents);
-      if (cents > 0) {
-        try {
-          await payments!.refund!(String(claim.provider_ref), cents, `booking-stay-cancel-${requestId}`);
-        } catch {
-          fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo. Vuelve a intentarlo: no se devolverá dos veces.');
-        }
-      }
-      const out = await invoke({ action: 'apply' });
-      return { status: 'cancelada', ...preview, refund_cents: cents, replayed: out?.replayed ?? false };
+      return cancelStayOnline(supabase, payments, requestId, { visitor_id: visitor!.id }, body.confirm === true);
     },
   }, {
     // El aviso de la pasarela (webhook firmado; sin sesión ni visitante). Cada aviso cuenta una vez.
@@ -557,6 +539,68 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
   }];
 }
 
+/**
+ * Cancelar noches pagadas en línea (1419), para el visitante (`public/stay/cancel`) y para el personal
+ * (`stays/:id/cancel/online`, 1422). El importe queda fijado en la base antes de tocar la pasarela, y la clave hace que
+ * repetir no devuelva dos veces.
+ */
+async function cancelStayOnline(supabase: Supabase, payments: PaymentProvider | null, requestId: string, who: { visitor_id: string } | { by_staff: true }, confirm: boolean) {
+  const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_cancel', p_args: { ...args, ...who, request_id: requestId } });
+  await ensureServiceActor(supabase, 'booking');
+  const quote = await invoke({ action: 'quote' });
+  if (quote?.replayed) return { status: 'cancelada', replayed: true };
+  const preview = { percent: quote.percent, tier: quote.tier, paid_cents: quote.paid_cents, refund_cents: quote.refund_cents, full_until: quote.full_until, half_until: quote.half_until };
+  if (!confirm) return { status: 'quote', ...preview };
+  if (Number(quote.refund_cents) > 0 && (!payments?.refund || payments.name !== quote.provider)) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
+  const claim = await invoke({ action: 'claim' });
+  const cents = Number(claim.refund_cents);
+  if (cents > 0) {
+    try {
+      await payments!.refund!(String(claim.provider_ref), cents, `booking-stay-cancel-${requestId}`);
+    } catch {
+      fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo. Vuelve a intentarlo: no se devolverá dos veces.');
+    }
+  }
+  const out = await invoke({ action: 'apply' });
+  return { status: 'cancelada', ...preview, refund_cents: cents, replayed: out?.replayed ?? false };
+}
+
+/**
+ * Las dos capacidades del catálogo (1422; para Flow y el Guiado): alojar una solicitud de noches y cancelar lo pagado en
+ * línea. Personal con permiso de escritura y con el ámbito de huéspedes.
+ */
+function staffStayRoutes(supabase: Supabase, payments: PaymentProvider | null): AppRoute[] {
+  const guard = (ctx: RequestContext, what: string) => {
+    if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', `Solo el personal con permiso de escritura puede ${what}.`);
+    if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', GUESTS_FORBIDDEN);
+  };
+  return [{
+    method: 'POST', pattern: 'stays/:id/accept',
+    handler: async ({ ctx, params, json }) => {
+      guard(ctx, 'alojar');
+      const requestId = uuidOrFail(params.id, 'id');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const method = body.method === undefined || body.method === null ? null : String(body.method);
+      if (method !== null && !['cash', 'bizum', 'bitcoin', 'card', 'online'].includes(method)) fail(422, 'INVALID_FIELDS', 'Método no válido.', { field: 'method' });
+      const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 120) : null;
+      const operations = [{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: requestId, decision: 'accept', ...(method ? { method } : {}), ...(name ? { name } : {}) } }];
+      const rid = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : `booking:accept:${requestId}`;
+      const out = await supabase.rpc<CommitResult>('core_commit', { p_app: 'booking', p_actor: ctx.user.id, p_request_id: rid, p_digest: await sha256Hex(JSON.stringify(operations)),
+        p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+      const first = out.results?.[0] as { result?: unknown } | undefined;
+      const result = (first?.result ?? first ?? {}) as { request_id?: string; status?: string; guest_id?: string | null };
+      return { request_id: result.request_id ?? requestId, status: result.status ?? null, guest_id: result.guest_id ?? null, replayed: out.replayed ?? false };
+    },
+  }, {
+    method: 'POST', pattern: 'stays/:id/cancel/online',
+    handler: async ({ ctx, params, json }) => {
+      guard(ctx, 'cancelar noches');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      return cancelStayOnline(supabase, payments, uuidOrFail(params.id, 'id'), { by_staff: true }, body.confirm === true);
+    },
+  }];
+}
+
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch, workerKey: string | undefined = denoEnv('IKISAI_WORKER_KEY'), payments: PaymentProvider | null = null): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
@@ -565,6 +609,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   return [
     ...walkinRoutes(supabase, appsFetch, workerKey),
     ...onlineRefundRoutes(supabase, payments),
+    ...staffStayRoutes(supabase, payments),
     ...montageRoutes(supabase, ses),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).

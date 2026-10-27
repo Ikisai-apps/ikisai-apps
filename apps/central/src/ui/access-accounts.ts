@@ -350,7 +350,7 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
             } }, 'Usar el nombre de la ficha')) : null);
       }
       const free = people.filter((p) => !p.user_id);
-      const select = el('select', { id: 'linkPerson', 'data-field-id': 'central.accesos.link_person', 'aria-label': 'Persona del equipo', 'data-feedback-ignore': '' },
+      const select = el('select', { id: 'linkPerson', 'data-field-id': 'central.accesos.link_person', 'data-field-entity': 'central.people', 'data-field-prop': 'user_id', 'aria-label': 'Persona del equipo', 'data-feedback-ignore': '' },
         el('option', { value: '' }, 'Persona nueva: crear su ficha con este nombre'),
         ...free.map((p) => el('option', { value: p.id }, p.display_name))) as HTMLSelectElement;
       const link = el('button', { class: 'primary', type: 'button', id: 'linkPersonSubmit', 'data-feedback-id': 'central.accesos.cuenta.enlazar_ficha', 'data-feedback-label': 'Enlazar con una persona', onclick: async () => {
@@ -396,10 +396,10 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
           `Lo da el nivel de casa «${HOUSE_LEVEL_LABELS[derived.level as HouseLevel] ?? derived.level}»: cámbialo en `,
           person ? el('a', { href: `#/personas/${person.id}`, 'data-feedback-id': 'central.accesos.cuenta.ir_a_personas', 'data-feedback-label': 'Ir a la ficha de Personas' }, 'Personas') : 'Personas', '.');
       } else if (app.id === 'central' && m?.role === 'editor') {
-        const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-field-id': 'central.accesos.scope_people', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
+        const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-field-id': 'central.accesos.scope_people', 'data-field-entity': 'core.memberships', 'data-field-prop': 'scopes', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
         box.addEventListener('change', () => void togglePeopleScope(box));
         // Ámbito de Dirección (VG, 27-10): prepara la revisión semanal.
-        const dir = el('input', { type: 'checkbox', id: 'scope-direccion', 'data-field-id': 'central.accesos.scope_direccion', 'data-feedback-id': 'central.accesos.cuenta.ambito_direccion', 'data-feedback-label': 'Prepara la revisión semanal', checked: (m.scopes as { direccion?: unknown } | null)?.direccion === true }) as HTMLInputElement;
+        const dir = el('input', { type: 'checkbox', id: 'scope-direccion', 'data-field-id': 'central.accesos.scope_direccion', 'data-field-entity': 'core.memberships', 'data-field-prop': 'scopes', 'data-feedback-id': 'central.accesos.cuenta.ambito_direccion', 'data-feedback-label': 'Prepara la revisión semanal', checked: (m.scopes as { direccion?: unknown } | null)?.direccion === true }) as HTMLInputElement;
         dir.addEventListener('change', () => void togglePeopleScope(dir, 'direccion'));
         extra = el('div', null,
           el('label', { class: 'check' }, box, el('span', null, 'Ve datos reservados de personas (contacto, documentos)')),

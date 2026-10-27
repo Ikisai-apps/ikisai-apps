@@ -31,9 +31,9 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     const searchInput = el('input', { type: 'search', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Número de cliente', 'aria-label': 'Buscar por número de cliente', autocomplete: 'off',
       oninput: () => { search = searchInput.value.replace(/\D/g, ''); paint(); } });
     const newButton = el('button', { type: 'button', class: 'primary', onclick: newOrder }, icon('plus', 18), el('span', null, 'Nuevo pedido'));
-    const accountsButton = el('button', { type: 'button', class: 'secondary', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
+    const accountsButton = el('button', { type: 'button', class: 'ghost', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
     const found = el('p', { class: 'muted small', role: 'status' });
-    const customerButton = el('button', { type: 'button', class: 'secondary', hidden: true,
+    const customerButton = el('button', { type: 'button', class: 'ghost', hidden: true,
       onclick: () => { if (ctx.projectId && search) openCustomerSheet(client, ctx.projectId, Number(search)); } }, 'Ficha del cliente');
     const listEl = el('div', { class: 'fqueue', role: 'list' });
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true });
@@ -74,11 +74,12 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       const number = customerNumber(data, o);
       const p = pendingOf(data, o);
       const finished = kind === 'order' ? o.status !== 'open' : o.status === 'delivered';
-      node.className = `qcard order-card is-${o.status}${finished ? ' is-done' : ''}${o._pending ? ' is-unconfirmed' : ''}`;
+      node.className = `qcard order-card is-${o.status}${finished ? ' is-done' : ''}${o._pending ? ' is-unconfirmed' : ''}${o.test_by ? ' is-test' : ''}`;
       node.querySelector('.order-badge')!.textContent = o.pay_seq ? String(o.pay_seq) : '·';
       const items = (data.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
       const account = o.account_id ? data.accounts.find((a) => a.id === o.account_id) : null;
-      node.querySelector('.qcard-title')!.textContent = [number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
+      // Pedido de prueba de un miembro (0952): se ve siempre y no cuenta en caja ni en Finance.
+      node.querySelector('.qcard-title')!.textContent = [o.test_by ? `Pedido de prueba (${o.test_name ?? 'equipo'})` : '', number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
         account ? `a cuenta: ${accountLabel(data, account)}` : ''].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = `${items || 'sin productos'} · ${formatEuros(orderTotal(data, o))}`;
       const state = o.status === 'open' ? 'Por cobrar'
@@ -119,7 +120,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       return new Promise((resolve) => {
         let chosen: CartaMenu | null = null;
         const sheet = openSheet({ title: 'Elige la carta de Food', onClose: () => resolve(chosen),
-          body: el('div', { class: 'flow-actions' }, ...menus.map((m) => el('button', { type: 'button', class: 'secondary', onclick: () => { chosen = m; sheet.close(); } }, `${m.name} (${m.lines.length})`))) });
+          body: el('div', { class: 'flow-actions' }, ...menus.map((m) => el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = m; sheet.close(); } }, `${m.name} (${m.lines.length})`))) });
       });
     }
 

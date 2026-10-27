@@ -44,7 +44,7 @@ import {
   DECOR_ICONS, HEADER_APPS, HEADER_APP_LABELS, IMAGE_KIND_LABELS, headerOf, headerOperations, type HeaderApp, IMAGE_KINDS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
   type DecorRow, type ImageKind,
 } from '../app/decor.ts';
-import { activeContent, cleanSvg, foldName, generatedName, matchShapes, readSvgPlan } from '../app/svg-plan.ts';
+import { activeContent, cleanSvg, foldName, generatedName, matchShapes, readSvgPlan, type SvgShape } from '../app/svg-plan.ts';
 import type { ViewMount } from './shell.ts';
 
 const PLANS = 'resources.floor_plans' as TableName;
@@ -57,9 +57,9 @@ type PlanRow = { id: string; revision: number; kind?: string | null; grid?: unkn
 type IconRow = { id: string; revision: number; name: string; category: string; file_id: unknown; default_size: number; deleted_at?: string | null };
 /** Ids literales del selector de cabecera de cada app (así entran en el catálogo y en el inventario de campos). */
 const HEADER_MARKS: Record<HeaderApp, { label: Record<string, string>; select: Record<string, string> }> = {
-  central: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.central', 'data-feedback-label': 'Cabecera de Central' }, select: { 'data-field-id': 'central.planos.header_central' } },
-  guests: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.guests', 'data-feedback-label': 'Cabecera de Guests' }, select: { 'data-field-id': 'central.planos.header_guests' } },
-  organizers: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.organizers', 'data-feedback-label': 'Cabecera de Organizers' }, select: { 'data-field-id': 'central.planos.header_organizers' } },
+  central: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.central', 'data-feedback-label': 'Cabecera de Central' }, select: { 'data-field-id': 'central.planos.header_central', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'header_for' } },
+  guests: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.guests', 'data-feedback-label': 'Cabecera de Guests' }, select: { 'data-field-id': 'central.planos.header_guests', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'header_for' } },
+  organizers: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.organizers', 'data-feedback-label': 'Cabecera de Organizers' }, select: { 'data-field-id': 'central.planos.header_organizers', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'header_for' } },
 };
 type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; header_for?: string[] | null; deleted_at?: string | null };
 const WIDE = '(min-width: 900px)';
@@ -133,6 +133,12 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   let rows: SpaceRow[] = [];
   let plans: FloorPlan[] = [];
   let editing: string | null = null;
+  // «Colocar» empieza por las formas que ya trae el dibujo (VG, 27-10): para cada una se dice qué estancia es.
+  const svgShapes = new Map<string, SvgShape[] | 'loading' | 'none'>();
+  let missingOpen: boolean | null = null;
+  // Guardado a la vista: «Guardando…», «Guardado a las 10:42» o el error.
+  let saveState = '';
+  const paintSaved = () => { const node = editor.querySelector('#placeSaved'); if (node) node.textContent = saveState; };
   const wantedText = new URLSearchParams(location.hash.split('?')[1] ?? '').get('colocar')?.trim() ?? '';
   let wanted: string | null = wantedText || null;
   let viewer: SpaceMap | null = null;
@@ -267,12 +273,14 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const undo = undoLabel ? new Map([...before].filter(([id]) => entries.some(([e]) => e === id))) : null;
     const label = undoLabel;
     before.clear(); undoLabel = null;
+    saveState = 'Guardando…'; paintSaved();
     try {
       const ops: RowOperation[] = [];
       for (const [id, p] of entries) ops.push({ op: 'update', table: SPACES, id, expectedRevision: Number((await r.get(SPACES, id))?.revision ?? 0), fields: spaceToFields({ planId: p.planId, planShape: p.shape }) });
       await r.commit(ops);
+      saveState = `Guardado a las ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date())}`; paintSaved();
       if (undo?.size && label && alive) toastWithAction(label, { label: 'Deshacer', onClick: () => restore(undo) });
-    } catch (e) { toast(describeError(e)); }
+    } catch (e) { saveState = `No se ha guardado: ${describeError(e)}`; paintSaved(); toast(describeError(e)); }
   }
   /** «Deshacer»: todas las del gesto vuelven a donde estaban, en un lote. */
   function restore(undo: Map<string, Placement>): void {
@@ -345,19 +353,19 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
     const estateNow = plan ? isEstate(plan) : false;
-    const kind = el('select', { id: 'planKind', 'data-field-id': 'central.planos.plan_kind', 'aria-label': 'Tipo de dibujo' },
+    const kind = el('select', { id: 'planKind', 'data-field-id': 'central.planos.plan_kind', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'kind', 'aria-label': 'Tipo de dibujo' },
       el('option', { value: 'building' }, 'Edificio o exterior'), el('option', { value: 'estate' }, 'Finca (el plano de todo el centro)')) as HTMLSelectElement;
     // La finca cuelga de un exterior raíz (Recursos 0814); un edificio o exterior, de lo demás.
     const buildingsOf = (k: string) => rows.filter((s) => s.active && (k === 'estate' ? s.kind === 'exterior' && !s.parentId : (s.kind === 'edificio' || s.kind === 'exterior'))).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'aria-label': 'Edificio' }) as HTMLSelectElement;
+    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'building_id', 'aria-label': 'Edificio' }) as HTMLSelectElement;
     const fillBuildings = () => replace(building, ...buildingsOf(kind.value).map((b) => el('option', { value: b.id }, spacePath(index(), b.id))));
     fillBuildings();
     kind.addEventListener('change', fillBuildings);
     // Escala: metros por unidad del dibujo. Del SVG si la trae (`data-meters-per-unit`); si no, se escribe (para decorar).
-    const scale = el('input', { id: 'planScale', 'data-field-id': 'central.planos.plan_scale', type: 'number', step: 'any', min: '0', inputmode: 'decimal', placeholder: 'Del SVG si la trae',
+    const scale = el('input', { id: 'planScale', 'data-field-id': 'central.planos.plan_scale', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'grid', type: 'number', step: 'any', min: '0', inputmode: 'decimal', placeholder: 'Del SVG si la trae',
       value: plan ? String(gridOfPlan(plan)?.metersPerUnit ?? '') : '' }) as HTMLInputElement;
-    const floor = el('input', { id: 'planFloor', 'data-field-id': 'central.planos.plan_floor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
-    const file = el('input', { id: 'planFile', 'data-field-id': 'central.planos.plan_file', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
+    const floor = el('input', { id: 'planFloor', 'data-field-id': 'central.planos.plan_floor', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'floor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
+    const file = el('input', { id: 'planFile', 'data-field-id': 'central.planos.plan_file', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'file_id', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'planSubmit', 'data-feedback-id': 'central.planos.subir.guardar', 'data-feedback-label': 'Guardar el dibujo', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];
@@ -622,6 +630,19 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       else if (typeof plan.fileId === 'string') void r.fileUrl(plan.fileId).then((u) => image.setAttribute('href', u)).catch(() => undefined);
       svg.append(image);
     }
+    if (!isEstate(plan) && plan.fileId && !svgShapes.has(plan.id)) void loadSvgShapes(plan);
+    const shapesHere = svgShapes.get(plan.id);
+    const drawn = Array.isArray(shapesHere) ? shapesHere : [];
+    // Las formas del dibujo que aún no son de ninguna estancia, en discontinuo con su nombre.
+    for (const shape of drawn) {
+      if (holderOf(plan, shape)) continue;
+      const ghost = document.createElementNS(NS, 'polygon');
+      ghost.setAttribute('points', shape.points.map(([x, y]) => `${x * w},${y * h}`).join(' '));
+      ghost.setAttribute('class', 'ctl-placeghost');
+      ghost.setAttribute('data-svg-shape', shape.name);
+      ghost.setAttribute('aria-hidden', 'true');
+      svg.append(ghost);
+    }
     const placed = placedOn(plan);
     const labels: SVGTextElement[] = [];
     const handles: SVGRectElement[] = [];
@@ -680,18 +701,42 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const rooms = placed.filter((s) => s.kind !== 'cama');
     const current = selected ? rows.find((s) => s.id === selected && s.kind !== 'cama') ?? null : null;
     // Un solo paso a la vista: colocar lo que falta o, si ya está todo, revisarlo.
-    const step = isEstate(plan) ? null : review.length
+    const unassigned = (Array.isArray(svgShapes.get(plan.id)) ? svgShapes.get(plan.id) as SvgShape[] : []).filter((x) => !holderOf(plan, x)).length;
+    const step = isEstate(plan) ? null : unassigned
+      ? `Paso 2 de 3 · Di qué estancia es cada forma del dibujo (${unassigned} sin estancia).`
+      : review.length
       ? `Paso 2 de 3 · Coloca ${review.length === 1 ? 'la estancia que falta' : `las ${review.length} estancias que faltan`}: «Poner» o «Colocar solo».`
       : 'Paso 3 de 3 · Todo tiene su sitio. Revisa el dibujo y, si algo no cuadra, arrástralo.';
     const unknown = unmatchedOf.get(plan.id) ?? [];
     const autoBtn = el('button', { type: 'button', class: 'ghost', id: 'autoPlace', 'data-feedback-id': 'central.planos.colocar.solo', 'data-feedback-label': 'Colocar solo', onclick: () => void autoFromFile(plan) }, 'Colocar solo (SVG con nombres)');
+    const candidates = inside(plan).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const pendingShapes = drawn.filter((x) => !holderOf(plan, x));
+    const shapeRow = (shape: SvgShape) => {
+      const holder = holderOf(plan, shape);
+      const select = el('select', { 'aria-label': `Qué estancia es «${shape.name}»`, 'data-svg-shape': shape.name },
+        el('option', { value: '' }, 'Elige qué estancia es'),
+        ...candidates.map((c) => el('option', { value: c.id, selected: holder?.id === c.id }, c.name))) as HTMLSelectElement;
+      select.addEventListener('change', () => { if (select.value) assignShape(plan, shape, select.value); });
+      const rename = holder && foldName(holder.name) !== foldName(shape.name.replace(/[_-]+/g, ' '))
+        ? el('button', { type: 'button', class: 'linkbtn small', 'data-feedback-id': 'central.planos.colocar.renombrar', 'data-feedback-label': 'Renombrar como en el dibujo', onclick: () => void renameTo(holder, shape.name.replace(/[_-]+/g, ' ')) }, `Llamarla «${shape.name.replace(/[_-]+/g, ' ')}»`)
+        : null;
+      return el('li', { class: `agentrow${holder ? '' : ' warn'}`, 'data-shape-row': shape.name },
+        el('div', null, el('strong', null, `Forma «${shape.name}»`), el('div', { class: 'muted small' }, holder ? `Es ${holder.name}` : 'Aún no es de ninguna estancia'), rename),
+        select);
+    };
+    const dupes = [...candidates.reduce((m, c) => m.set(foldName(c.name), [...(m.get(foldName(c.name)) ?? []), c]), new Map<string, SpaceRow[]>()).values()].filter((l) => l.length > 1);
+    const missing = el('details', { class: 'ctl-placemissing', id: 'placeMissing', open: missingOpen ?? (!drawn.length || !pendingShapes.length),
+      'data-feedback-id': 'central.planos.colocar.falta', 'data-feedback-label': '¿Falta alguna?' }) as HTMLDetailsElement;
+    missing.addEventListener('toggle', () => { missingOpen = missing.open; });
+    const fill = (node: HTMLElement, ...kids: Array<Parameters<typeof replace>[1]>) => { replace(node, ...kids); return node; };
     replace(editor,
       el('div', { class: 'blockhead' }, el('h3', null, `Colocar · ${planName(plan)}`),
+        el('span', { class: 'muted small', id: 'placeSaved', role: 'status', 'aria-live': 'polite', 'data-feedback-id': 'central.planos.colocar.guardado', 'data-feedback-label': 'Estado del guardado' }, saveState || 'Se guarda solo'),
         el('button', { type: 'button', class: 'linkbtn', id: 'closePlace', 'data-feedback-id': 'central.planos.colocar.cerrar', 'data-feedback-label': 'Cerrar Colocar', onclick: () => closeEditor() }, 'Cerrar')),
       tabBar(plan),
       step ? el('p', { class: 'ctl-placestep', id: 'placeStep', 'data-feedback-id': 'central.planos.colocar.paso', 'data-feedback-label': 'Paso de Colocar' }, step) : null,
       isEstate(plan) ? null : el('p', { class: 'ctl-placebeds', id: 'placeBeds', 'data-feedback-id': 'central.planos.colocar.camas', 'data-feedback-label': 'Camas de Booking' },
-        icon('info', 16), ' Las camas salen como están en Booking y van con su habitación. ',
+        icon('info', 16), layouts.length ? ' Las camas salen como están en Booking y van con su habitación. ' : ' Aún no se ven camas: Booking todavía no ha dado su sitio (o no tienen sitio en Booking). Cuando lo dé, saldrán solas dentro de su habitación. ',
         el('a', { href: BOOKING_BEDS_URL, target: '_blank', rel: 'noopener', id: 'placeBedsLink', 'data-feedback-id': 'central.planos.colocar.camas_booking', 'data-feedback-label': 'Mover camas en Booking' }, 'Moverlas en Booking › Espacios y camas')),
       el('details', { class: 'ctl-placehelp', 'data-feedback-id': 'central.planos.colocar.ayuda', 'data-feedback-label': 'Cómo se coloca' },
         el('summary', null, 'Cómo se coloca'),
@@ -700,16 +745,22 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       el('div', { class: 'ctl-place' },
         el('div', { class: 'ctl-placestage' }, svg),
         el('div', { class: 'ctl-placeside' },
-          el('div', { class: 'toolbar' }, autoBtn,
-            current ? el('button', { type: 'button', class: 'ghost', id: 'unplace', 'data-feedback-id': 'central.planos.colocar.quitar', 'data-feedback-label': 'Quitar del plano', onclick: () => unplace(current) }, `Quitar «${current.name}» del plano`) : null),
-          unknown.length ? el('p', { class: 'hint', id: 'placeUnmatched' }, icon('info', 16), ` ${unmatchedText(unknown)} Renómbralos en el dibujo o en Recursos y vuelve a «Colocar solo».`) : null,
+          dupes.length ? el('p', { class: 'note', id: 'placeDuplicates', 'data-feedback-id': 'central.planos.colocar.repetidas', 'data-feedback-label': 'Estancias repetidas' },
+            icon('info', 16), ` Hay estancias repetidas: ${dupes.map((l) => `«${l[0]!.name}» (${l.length})`).join(', ')}. Si sobra una, quítala del plano aquí y bórrala en Booking › Espacios y camas.`) : null,
+          shapesHere === 'loading' ? el('p', { class: 'muted', id: 'placeShapesLoading' }, 'Leyendo las formas del dibujo…') : null,
+          drawn.length ? el('h4', { class: 'sectionlabel', id: 'placeShapesHead' }, `Formas del dibujo · ${pendingShapes.length ? `${pendingShapes.length} sin estancia` : 'todas con su estancia'}`) : null,
+          drawn.length ? el('ul', { class: 'list', id: 'placeShapes', 'data-feedback-id': 'central.planos.colocar.formas', 'data-feedback-label': 'Formas del dibujo' }, ...drawn.map(shapeRow)) : null,
+          current ? el('div', { class: 'toolbar' }, el('button', { type: 'button', class: 'ghost', id: 'unplace', 'data-feedback-id': 'central.planos.colocar.quitar', 'data-feedback-label': 'Quitar del plano', onclick: () => unplace(current) }, `Quitar «${current.name}» del plano`)) : null,
+          fill(missing, el('summary', null, drawn.length ? `¿Falta alguna? Ponla en el dibujo (${review.length})` : `Por revisar · ${review.length}`),
+          el('div', { class: 'toolbar' }, autoBtn),
+          unknown.length ? el('p', { class: 'hint', id: 'placeUnmatched' }, icon('info', 16), ` ${unmatchedText(unknown)} Elige arriba qué estancia es cada una o vuelve a «Colocar solo».`) : null,
           el('h4', { class: 'sectionlabel', id: 'placeReviewHead' }, `Por revisar · ${review.length}`),
           review.length ? el('ul', { class: 'list', id: 'placeReview' }, ...review.map((s) => el('li', { class: 'agentrow', 'data-space': s.id },
             el('span', null, el('strong', null, s.name), el('span', { class: 'muted small' }, ` · ${s.parentId ? spacePath(index(), s.parentId) : ''}`),
               reviewWhy.has(s.id) ? el('span', { class: 'muted small ctl-placewhy', id: `placeWhy-${s.id}` }, `No se ha colocado sola: ${reviewWhy.get(s.id)}.`) : null),
             el('button', { type: 'button', class: 'ghost small', 'aria-label': `Poner ${s.name} en el plano`, 'aria-describedby': reviewWhy.has(s.id) ? `placeWhy-${s.id}` : undefined,
               'data-feedback-id': 'central.planos.colocar.poner', 'data-feedback-label': 'Poner en el plano', onclick: () => putOn(s, plan) }, 'Poner'))))
-            : el('p', { class: 'hint' }, 'Todas las estancias de este edificio tienen su sitio.'),
+            : el('p', { class: 'hint' }, 'Todas las estancias de este edificio tienen su sitio.')),
           el('h4', { class: 'sectionlabel' }, `En el plano · ${rooms.length}`),
           rooms.length ? el('ul', { class: 'list', id: 'placePlaced' }, ...rooms.map((s) => el('li', null,
             el('button', { type: 'button', class: `linkbtn${selected === s.id ? ' on' : ''}`, 'data-space': s.id, 'data-feedback-id': 'central.planos.colocar.elegir', 'data-feedback-label': 'Elegir estancia', onclick: () => { selected = s.id; paintEditor(); } }, s.name)))) : null)));
@@ -778,7 +829,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     if (!side) return;
     for (const b of editorBinds.splice(0)) b();
     const grid = gridOfPlan(plan);
-    const scaleIn = el('input', { id: 'decorPlanScale', 'data-field-id': 'central.planos.decor_plan_scale', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: grid ? String(grid.metersPerUnit) : '', 'aria-describedby': 'decorScaleHelp' }) as HTMLInputElement;
+    const scaleIn = el('input', { id: 'decorPlanScale', 'data-field-id': 'central.planos.decor_plan_scale', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'grid', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: grid ? String(grid.metersPerUnit) : '', 'aria-describedby': 'decorScaleHelp' }) as HTMLInputElement;
     const saveScale = el('button', { type: 'button', class: 'ghost small', id: 'saveDecorScale', 'data-feedback-id': 'central.planos.decoracion.guardar_escala', 'data-feedback-label': 'Guardar la escala', onclick: async () => {
       const v = Number(scaleIn.value.replace(',', '.'));
       if (!(v > 0)) { toast('La escala son los metros por unidad del dibujo: un número mayor que 0.'); return; }
@@ -829,11 +880,11 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   function openIconUpload(): void {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
-    const name = el('input', { id: 'iconName', 'data-field-id': 'central.planos.icon_name', type: 'text', maxlength: '80', placeholder: 'Planta grande' }) as HTMLInputElement;
-    const category = el('input', { id: 'iconCategory', 'data-field-id': 'central.planos.icon_category', type: 'text', maxlength: '40', placeholder: 'Plantas', list: 'iconCategories' }) as HTMLInputElement;
+    const name = el('input', { id: 'iconName', 'data-field-id': 'central.planos.icon_name', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'name', type: 'text', maxlength: '80', placeholder: 'Planta grande' }) as HTMLInputElement;
+    const category = el('input', { id: 'iconCategory', 'data-field-id': 'central.planos.icon_category', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'category', type: 'text', maxlength: '40', placeholder: 'Plantas', list: 'iconCategories' }) as HTMLInputElement;
     const cats = el('datalist', { id: 'iconCategories' }, ...[...new Set(icons.map((i) => i.category))].map((c) => el('option', { value: c })));
-    const size = el('select', { id: 'iconSize', 'data-field-id': 'central.planos.icon_size', 'aria-label': 'Tamaño por defecto' }, el('option', { value: '1' }, '1 celda (0,5 m en interior)'), el('option', { value: '4' }, '4 celdas (2×2, 1 m)')) as HTMLSelectElement;
-    const file = el('input', { id: 'iconFile', 'data-field-id': 'central.planos.icon_file', type: 'file', accept: ICON_ACCEPT }) as HTMLInputElement;
+    const size = el('select', { id: 'iconSize', 'data-field-id': 'central.planos.icon_size', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'default_size', 'aria-label': 'Tamaño por defecto' }, el('option', { value: '1' }, '1 celda (0,5 m en interior)'), el('option', { value: '4' }, '4 celdas (2×2, 1 m)')) as HTMLSelectElement;
+    const file = el('input', { id: 'iconFile', 'data-field-id': 'central.planos.icon_file', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'file_id', type: 'file', accept: ICON_ACCEPT }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'iconSubmit', 'data-feedback-id': 'central.planos.icono.guardar', 'data-feedback-label': 'Guardar el icono', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];
@@ -923,10 +974,10 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
     const buildings = rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior')).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const building = el('select', { id: 'imageBuilding', 'data-field-id': 'central.planos.image_building', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id, selected: b.id === spaceId }, b.name))) as HTMLSelectElement;
-    const kindSel = el('select', { id: 'imageKind', 'data-field-id': 'central.planos.image_kind', 'aria-label': 'Tipo de imagen' }, ...IMAGE_KINDS.map((k) => el('option', { value: k }, IMAGE_KIND_LABELS[k]))) as HTMLSelectElement;
-    const title = el('input', { id: 'imageTitle', 'data-field-id': 'central.planos.image_title', type: 'text', maxlength: '120', placeholder: 'Alzado norte' }) as HTMLInputElement;
-    const file = el('input', { id: 'imageFile', 'data-field-id': 'central.planos.image_file', type: 'file', accept: 'image/png,image/jpeg,image/svg+xml' }) as HTMLInputElement;
+    const building = el('select', { id: 'imageBuilding', 'data-field-id': 'central.planos.image_building', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'space_id', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id, selected: b.id === spaceId }, b.name))) as HTMLSelectElement;
+    const kindSel = el('select', { id: 'imageKind', 'data-field-id': 'central.planos.image_kind', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'kind', 'aria-label': 'Tipo de imagen' }, ...IMAGE_KINDS.map((k) => el('option', { value: k }, IMAGE_KIND_LABELS[k]))) as HTMLSelectElement;
+    const title = el('input', { id: 'imageTitle', 'data-field-id': 'central.planos.image_title', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'title', type: 'text', maxlength: '120', placeholder: 'Alzado norte' }) as HTMLInputElement;
+    const file = el('input', { id: 'imageFile', 'data-field-id': 'central.planos.image_file', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'file_id', type: 'file', accept: 'image/png,image/jpeg,image/svg+xml' }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'imageSubmit', 'data-feedback-id': 'central.planos.imagen.guardar', 'data-feedback-label': 'Guardar la imagen', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];
@@ -1058,6 +1109,46 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
 
   /** «Colocar solo» sobre un dibujo ya subido: se lee el archivo (si es SVG) y se colocan las que faltan. */
+  /** Lee las formas con nombre del dibujo (SVG) una vez por dibujo. Sin SVG o sin nombres, `none`. */
+  async function loadSvgShapes(plan: FloorPlan): Promise<void> {
+    svgShapes.set(plan.id, 'loading');
+    try {
+      const local = localUrls.get(plan.id);
+      if (!local && typeof plan.fileId !== 'string') { svgShapes.delete(plan.id); return; }
+      const text = await (await fetch(local ?? await r.fileUrl(plan.fileId as string))).text();
+      const read = /<svg[\s>]/i.test(text) ? readSvgPlan(text) : null;
+      const shapes = (read?.shapes ?? []).filter((x) => !x.problem && !generatedName(x.name) && x.points.length >= 3);
+      svgShapes.set(plan.id, shapes.length ? shapes : 'none');
+    } catch { svgShapes.delete(plan.id); }
+    if (alive && editing === plan.id) paintEditor();
+  }
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.002;
+  const sameShape = (shape: PlanShape | null | undefined, points: Array<[number, number]>) =>
+    !!shape?.points && shape.points.length === points.length && shape.points.every(([x, y], i) => near(x, points[i]![0]) && near(y, points[i]![1]));
+  /** La estancia que ya ocupa esa forma del dibujo, si la hay. */
+  const holderOf = (plan: FloorPlan, shape: SvgShape) => rows.find((s) => s.planId === plan.id && s.kind !== 'cama' && sameShape(s.planShape as PlanShape | null, shape.points)) ?? null;
+
+  /** «Esta forma es…»: la estancia elegida toma la forma; si otra la tenía, la deja. Un «Deshacer». */
+  function assignShape(plan: FloorPlan, shape: SvgShape, spaceId: string): void {
+    const before = holderOf(plan, shape);
+    if (before?.id === spaceId) return;
+    const target = rows.find((s) => s.id === spaceId);
+    if (!target) return;
+    remember(target.id);
+    if (before) { remember(before.id); before.planId = null; before.planShape = null; save(before.id, null, null); }
+    setShape(target.id, plan.id, { points: shape.points.map(([x, y]) => [x, y]) });
+    undoLabel = `«${shape.name}» del dibujo es ${target.name}.`;
+    paintEditor();
+  }
+
+  /** Cambiar el nombre de la estancia por el del dibujo (Recursos). */
+  async function renameTo(space: SpaceRow, name: string): Promise<void> {
+    try {
+      await spaces.update(space.id, { name: name.slice(0, 80) });
+      toast(`«${space.name}» ahora se llama «${name}».`);
+    } catch (e) { toast(describeError(e)); }
+  }
+
   async function autoFromFile(plan: FloorPlan): Promise<void> {
     if (!plan.fileId) { toast('Este plano no tiene dibujo: sube uno.'); return; }
     try {
@@ -1097,6 +1188,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     if (s.lastError?.code === 'UNSUPPORTED_MEDIA') { if (!warnedActive) toast(ACTIVE_SVG, 9000); warnedActive = true; } else warnedActive = false;
     repaint();
   });
+  const onHide = () => { void flush(); };
+  window.addEventListener('pagehide', onHide);
   const onMedia = () => repaint();
   media.addEventListener('change', onMedia);
   // Disposición de las camas (Booking): la última se recuerda en este dispositivo para verlas sin red.
@@ -1124,7 +1217,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     void flush();
     for (const b of binds.splice(0)) b();
     for (const b of editorBinds.splice(0)) b();
-    offRows(); offPlans?.(); offStatus(); media.removeEventListener('change', onMedia);
+    offRows(); offPlans?.(); offStatus(); media.removeEventListener('change', onMedia); window.removeEventListener('pagehide', onHide);
     for (const off of offExtra) off();
     for (const b of imageBinds.splice(0)) b();
     viewer?.destroy(); decorMap?.destroy(); spaces.destroy();

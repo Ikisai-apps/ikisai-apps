@@ -10,6 +10,8 @@ import {
   createLanes,
   groupLanes,
   renderCoverage,
+  installScrollHints,
+  watchScrollHint,
   createProjection,
   createFieldPointer,
   registerReveal,
@@ -1993,6 +1995,14 @@ const genericSection = section('genericas', 'Piezas genéricas (formulario libre
   el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
   el('h3', null, 'Proyección (Recepción, leyendo de Booking)'), el('div', { id: 'projHost', class: 'card', style: 'padding:6px 14px' }, projection.element), el('p', null, 'Llamadas: ', projOut),
   el('h3', null, 'Cobertura de campos por flujos (Revisor)'), el('div', { id: 'coverageHost' }, coverage.element), el('p', null, 'Abierto: ', coverageOut),
+  el('h3', null, 'Fila de chips con pista de desplazamiento (K4)'),
+  (() => {
+    const row = el('div', { class: 'scrollrow', id: 'scrollRowDemo', role: 'group', 'aria-label': 'Filtros de ejemplo' },
+      ...['Todas', 'Vencidas', 'Esta semana', 'Este mes', 'Licencias', 'Seguros', 'Inspecciones', 'Contratos', 'Formación', 'Sin responsable'].map((t, i) => el('button', { type: 'button', class: `chip${i === 0 ? ' on' : ''}` }, t)));
+    // En una app la cáscara lo instala sola; la muestra no usa la cáscara aquí.
+    watchScrollHint(row);
+    return row;
+  })(),
   el('h3', null, 'Carriles por cualquier clave'), el('p', null, 'Agrupar por: '), groupPick, el('div', { id: 'groupLanesHost' }, groupedLanes.element),
 );
 
@@ -2119,7 +2129,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, renderCoverage, createItemPicker, createFieldPointer, registerReveal, revealAnchor, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection, createCalendar };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, renderCoverage, createItemPicker, createFieldPointer, registerReveal, revealAnchor, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection, createCalendar, installScrollHints, watchScrollHint };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

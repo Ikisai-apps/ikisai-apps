@@ -61,16 +61,23 @@ export const mountJourneys: ViewMount = ({ main, client, navigate }) => {
   main.append(el('h1', { class: 'col-title' }, 'Recorridos'),
     el('p', { class: 'muted small' }, '«Aprender» es un ensayo: no registra nada. «Ejecutar» lo hace de verdad, con tu cuenta.'),
     list); // Sin «Nuevo recorrido» (VG, 27-10: «no ahora»); el editor queda tras el enlace de prueba `#/recorridos/nuevo?prueba`.
-  void loadJourneys(client).then((items) => {
+  const load = () => {
+    replace(list, el('p', { class: 'muted' }, 'Cargando…'));
+    void loadJourneys(client).then(paintList).catch(() => replace(list,
+      el('p', { class: 'formerror', role: 'alert' }, 'No se han podido cargar los recorridos.'),
+      el('button', { type: 'button', class: 'ghost', onclick: load }, 'Reintentar')));
+  };
+  load();
+  function paintList(items: Journey[]): void {
     if (!items.length) { replace(list, el('p', { class: 'muted' }, 'Aún no hay recorridos.')); return; }
     replace(list, ...items.map((j) => el('div', { class: 'qcard journey-card', role: 'listitem', 'data-feedback-id': `flow.recorridos.${j.def.key}`, 'data-feedback-label': j.def.name },
       el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, j.def.name),
         el('small', { class: 'qcard-sub muted' }, [j.def.description, j.stages.length > 1 ? `${j.stages.length} tramos` : ''].filter(Boolean).join(' · '))),
       el('div', { class: 'flow-actions' },
-        el('button', { type: 'button', class: 'secondary', onclick: () => void runJourney(client, j, 'learn') }, 'Aprender'),
+        el('button', { type: 'button', class: 'ghost', onclick: () => void runJourney(client, j, 'learn') }, 'Aprender'),
         el('button', { type: 'button', class: 'primary', onclick: () => void runJourney(client, j, 'run') }, 'Ejecutar'),
         isOwner ? el('button', { type: 'button', class: 'ghost', onclick: () => navigate(`#/recorridos/${j.def.key}/editar`) }, 'Editar') : null))));
-  });
+  }
   return () => undefined;
 };
 
@@ -115,8 +122,9 @@ export async function runJourney(client: SyncClient, j: Journey, mode: 'learn' |
     meta: mode === 'learn' ? 'Ensayo: no se registra nada.' : 'Se registrará de verdad, con tu cuenta.', body: el('div', null, progress, host),
     // Salir siempre a la vista (VG, 27-10): lo hecho queda guardado y el recorrido se retoma desde Recorridos.
     foot: el('div', { class: 'flow-nav', 'data-feedback-id': 'flow.recorrido.navegacion' },
-      el('button', { type: 'button', class: 'ghost', onclick: () => void sheet.close() }, '‹ Volver a Recorridos'),
-      el('button', { type: 'button', class: 'ghost', onclick: () => { void sheet.close().then(() => { location.hash = '#/'; }); } }, '✕ Cerrar y volver a la entrada')) });
+      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Volver a Recorridos', onclick: () => void sheet.close() }, el('span', { 'aria-hidden': 'true' }, '‹'), ' Recorridos'),
+      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Cerrar y volver a la entrada', onclick: () => { void sheet.close().then(() => { location.hash = '#/'; }); } },
+        el('span', { 'aria-hidden': 'true' }, '✕'), ' Cerrar')) });
 
   async function startStage(index: number): Promise<void> {
     const entry = j.stages[index];

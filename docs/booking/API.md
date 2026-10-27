@@ -2143,6 +2143,9 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
   - avisos de otra app de la misma cuenta (`metadata.app` distinto de `booking`) o sin interés: 200 `{ignored: true}`;
   - `paid` guarda el pago de Stripe (`stay_payments.provider_payment_ref`, `pi_…`). Por él se casa `charge.refunded`, que no trae la sesión.
 - **Devoluciones:** `refund` busca el pago de la sesión y devuelve con la clave de idempotencia recibida (o con una nueva).
+**Capacidades en el catálogo (migración 1422; para Flow y el Guiado):** son rutas del personal con permiso de escritura y el ámbito de huéspedes, y declaran sus `reads` y `writes` (`entity.prop`, núcleo 0111).
+- `booking.accept_stay`, «Alojar en recepción»: `POST stays/:id/accept {method?, name?, requestId?}`. Es `join_from_visitor` con `accept`. Repetir con el mismo `requestId` devuelve lo mismo. Con `online` y sin pago confirmado, `NOT_PAID_ONLINE`.
+- `booking.cancel_stay_online`, «Cancelar noches pagadas en línea»: `POST stays/:id/cancel/online {confirm?}`. Es lo mismo que `public/stay/cancel` (1419), pero lo hace el personal (`booking.stay_cancel` con `by_staff`).
 
 ## 46. Guiado de Flow en Booking (prueba del alojamiento; VG 27-10-2026)
 
@@ -2154,8 +2157,10 @@ Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): c
 | Confirmarlo (crea el evento y su número público) | `#/reservas/<id>` | `booking.reserva.acciones.confirmar` | `event` |
 | Buscar el número en recepción | `#/recepcion` | `booking.recepcion.buscar` | `manual` |
 | Cobrar y alojar | `#/recepcion` | `booking.recepcion.cobrar` (o `booking.recepcion.alojar_pagado` si se pagó en línea) | `event` (aceptado por la base) |
-| Completar los datos | `#/huespedes/<evento>` | `booking.huespedes.ficha.guardar` | `event` (al guardar la ficha) |
+| Completar los datos | `#/huespedes/<evento>/<huésped>` (abre su ficha) | un campo de la ficha, p. ej. `booking.huespedes.ficha.document_number` | `event` (al guardar la ficha; avisa la hoja y cada campo cambiado) |
 | Llega | `#/recepcion` | `booking.recepcion.llega` | `event` |
 | Sale (libera la cama y pide la limpieza) | `#/recepcion` | `booking.recepcion.sale` | `event` |
 
-Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` al guardar.
+Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` y `<feedbackId>.<campo>` por cada campo cambiado, y lo hace cuando la base lo ha aceptado (sin red, como pendiente). Los campos llevan `data-field-*` con entidad y columna (`booking.guests` y `document_number`), así que entran en el inventario.
+
+En Recepción, en el móvil (pestañas), el Guiado abre el carril del botón que busca (`registerReveal('booking.recepcion')`). El buscador se guarda en la pestaña, así que, si se ha buscado el número antes, el paso señala la ficha de esa persona. Lo pagado en línea confirma también `booking.recepcion.cobrar`.

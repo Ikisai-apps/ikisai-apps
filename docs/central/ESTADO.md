@@ -132,6 +132,7 @@
 - 2026-10-28 · **Fichas de agente, pantalla**: en Accesos › Agentes, encima de las claves, una ficha por agente con quién responde (persona o entidad de servicio), su cuenta y en qué apps entra (de sus claves), misión, dónde trabaja y quién le sigue. Crear y editar en una hoja, solo el owner. Código en `ui/agent-cards.ts`; prueba en `access.spec.ts`.
 - 2026-10-28 · **Revisión semanal de Dirección** (C01; VG 27-10): migración `1521` (`weekly_reviews` RSM y `weekly_review_items`, la foto al cerrar). La preparan el owner y el editor con el ámbito `direccion`, que se da en Accesos; el hook mira el rol del lote. Pantalla `#/direccion/semana`, con un paso cada vez: lo que está en rojo, con la nota de la semana anterior; notas y quién estuvo; cerrar. Prueba `weekly.test.ts`. Los OKR, después (backlog).
 - 2026-10-28 · **Acciones de la revisión semanal** (VG, vg-41): migración `1523` (`weekly_actions`); cada punto acaba en una decisión o en una tarea de Tasks (`POST weekly/:id/task`, kind `central.weekly_action`, aceptado por Tasks en la #1088). La revisión siguiente enseña cómo van. Prueba `weekly-actions.test.ts`.
+- 2026-10-28 · **«Colocar» empieza por el dibujo** (VG probó el Albergue, 27-10): primero las formas que ya trae el SVG, cada una con «Elige qué estancia es» y «Llamarla como en el dibujo»; lo demás, en «¿Falta alguna? Ponla en el dibujo». «Guardado a las HH:MM» a la vista; lo pendiente se guarda al salir. Aviso de estancias repetidas y de camas que aún no salen. Prueba en `plans.spec.ts`.
 
 ## Pendiente
 
