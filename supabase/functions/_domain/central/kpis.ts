@@ -45,8 +45,8 @@ export const KPI_SECTIONS: ReadonlyArray<{ title: string; kpis: readonly string[
   { title: 'Facturas recibidas', kpis: ['invoices.pending_review', 'invoices.unassigned', 'invoices.unpaid', 'invoices.unpaid_amount'] },
   { title: 'Mes y trimestre', kpis: ['invoices.income_issued_month', 'invoices.expenses_month', 'invoices.vat_quarter'] },
   // Food (P7): primero lo que falta en cocina y menús, después despensa y equipos, y la carta.
-  { title: 'Cocina y menús', kpis: ['food.events_without_menu_30d', 'food.menus_unvalidated_30d'] },
-  { title: 'Despensa y equipos', kpis: ['food.ingredients_without_price', 'food.equipment_notices_open', 'food.shopping_lists_open'] },
+  { title: 'Cocina y menús', kpis: ['food.events_without_menu_30d', 'food.menus_unvalidated_30d', 'food.recipes_allergens_unchecked_30d'] },
+  { title: 'Despensa y equipos', kpis: ['food.equipment_notices_open', 'food.shopping_lists_open'] },
   { title: 'Carta', kpis: ['food.carta_sales_yesterday'] },
   // Flow (P7): el día a día del servicio.
   { title: 'Día a día', kpis: ['flow.day_closures_pending', 'flow.orders_unfinished_past', 'flow.buffers_below_target', 'flow.sales_yesterday'] },
@@ -169,7 +169,7 @@ export function targetFor(targets: readonly KpiTarget[], kpi: string, period: st
 export const KPI_DEFAULT_TARGETS: readonly KpiTarget[] = [
   { kpi: 'food.events_without_menu_30d', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
   { kpi: 'food.menus_unvalidated_30d', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
-  { kpi: 'food.ingredients_without_price', period: '*', target: 0, warn_at: 4, critical_at: 19, direction: 'down' },
+  { kpi: 'food.recipes_allergens_unchecked_30d', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
   { kpi: 'food.equipment_notices_open', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
   { kpi: 'flow.day_closures_pending', period: '*', target: 0, warn_at: 0, critical_at: 1, direction: 'down' },
   { kpi: 'flow.orders_unfinished_past', period: '*', target: 0, warn_at: 0, critical_at: 4, direction: 'down' },
