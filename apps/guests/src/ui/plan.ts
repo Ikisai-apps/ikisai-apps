@@ -92,6 +92,23 @@ export function withBedLayouts(data: PortalPlans, rooms: LayoutRoom[]): PortalPl
   return { ...data, spaces: data.spaces.map((s) => (s.kind === 'cama' ? { ...s, ...(shapes.get(s.id) ?? { planId: null, planShape: null }) } : s)) };
 }
 
+/** La cama propia con su sitio (`room_layout` y `bed_layout` de Booking). */
+export interface OwnBed {
+  resource_space_id?: string | null; resource_bed_id?: string | null;
+  room_layout?: { cols: number; rows: number } | null; bed_layout?: { x: number; y: number; rot?: number } | null;
+}
+
+/**
+ * La cama propia como una habitación de una cama, para `withBedLayouts`. Sale de `mine` de `portal_lodging` y de las
+ * estancias y `default_bed` de `portal_my_stays`, para que «Aquí» caiga en la cama aunque su habitación no esté abierta a
+ * elegir. Sin esos campos, ninguna, y «Aquí» va en la habitación. Pura.
+ */
+export function ownBedRoom(bed: OwnBed | null | undefined): LayoutRoom[] {
+  return bed?.resource_bed_id && bed.room_layout && bed.bed_layout
+    ? [{ resource_space_id: bed.resource_space_id ?? null, layout: bed.room_layout, beds: [{ resource_bed_id: bed.resource_bed_id, layout: bed.bed_layout }] }]
+    : [];
+}
+
 /** El espacio del sitio: por id o, si no, por nombre (habitación y cama dentro), solo si la coincidencia es única. Pura. */
 export function findSpace(spaces: PortalSpace[], spaceId?: string | null, match?: { space?: string | null; bed?: string | null } | null): PortalSpace | null {
   if (spaceId) return spaces.find((s) => s.id === spaceId) ?? null;

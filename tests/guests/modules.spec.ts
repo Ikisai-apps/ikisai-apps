@@ -325,6 +325,30 @@ test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala re
   await capture(page, 'plano-mapa');
 });
 
+test('guests · «Tu habitación en el plano» con la cama colocada en Booking y su habitación sin abrir a elegir: «Aquí» en la cama (Booking 1421)', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con la cama colocada', start: day(0), end: day(2) });
+  const ona = await api.guest(event, { first_name: 'Ona' });
+  await api.experience(reservation, ALL_MODULES);
+  const room = await api.room(event, { name: 'Habitación colocada', enSuite: false, beds: ['Cama 1', 'Cama 2'] });
+  await api.assign(event, room.spaceId, room.bedIds[1]!, ona);
+  // Su sitio en Booking; la habitación no se abre a elegir, así que solo llega por `mine` (room_layout y bed_layout).
+  await api.bedLayout(room.spaceId, { cols: 4, rows: 4 }, [[room.bedIds[0]!, { x: 0, y: 0, rot: 0 }], [room.bedIds[1]!, { x: 2, y: 2, rot: 0 }]]);
+  const square = (x: number, y: number, s: number): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  const { ids } = await api.floorPlan([
+    { name: 'Habitación colocada', kind: 'habitacion', points: square(0.1, 0.1, 0.6), refs: [`booking.space:${room.spaceId}`] },
+    { name: 'Cama 1', kind: 'cama', parent: 'Habitación colocada', refs: [`booking.bed:${room.bedIds[0]}`] },
+    { name: 'Cama 2', kind: 'cama', parent: 'Habitación colocada', refs: [`booking.bed:${room.bedIds[1]}`] },
+  ]);
+  await enter(page, await api.guestLink(reservation, ona, 'Ona'));
+
+  const plan = page.locator('#roomPlan');
+  await expect(plan).toHaveAttribute('data-space', ids['Cama 2']!);
+  await plan.locator('summary').click();
+  await expect(plan.locator(`.map-svg [data-space-id="${ids['Cama 2']}"]`)).toHaveAttribute('aria-pressed', 'true');
+  // Solo su cama: la de al lado no se pinta (su sitio no le llega).
+  await expect(plan.locator(`.map-svg [data-space-id="${ids['Cama 1']}"]`)).toHaveCount(0);
+});
+
 /** Las estancias de un dibujo real (`MUELA/planos`, trazado sin cotas ni datos del pliego): `data-name` y su contorno en 0..1. */
 function drawing(file: string): { width: number; height: number; rooms: Array<{ name: string; points: Array<[number, number]> }> } {
   const text = readFileSync(path.join(here, 'fixtures/planos', file), 'utf8');

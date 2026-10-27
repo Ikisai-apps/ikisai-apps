@@ -120,8 +120,7 @@
 
 ## Pendiente
 
-
-- Al recuperar el acceso de visitante en otro móvil, «Mis eventos» sale vacía, porque la lista vive en cada móvil. Hace falta que el núcleo dé los códigos de evento del visitante (p. ej. en `public/visitor/me`); pedido a Core.
+- Tu cama en el plano también en el Inicio (con la habitación sin abrir), el Outsider y la Casa: Guests ya lee `room_layout` y `bed_layout` de la cama propia (`ownBedRoom` en `ui/plan.ts`); pedido a Booking en `portal_lodging.mine`, `portal_my_stays` y `default_bed`. Sin ellos, «Aquí» va en la habitación.
 - Barras estrechas del calendario anual: el rótulo fuera de la barra, en el kit (`renderTimeline`); pedido a UI-kit por Core.
 
 ## Bloqueos
