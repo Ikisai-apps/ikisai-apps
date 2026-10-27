@@ -138,7 +138,9 @@ returns jsonb language sql stable as $$
    where q.deleted_at is null and q.visitor_id = nullif(p->>'visitor_id', '')::uuid
      and (nullif(p->>'event_code', '') is null or e.public_code = upper(btrim(p->>'event_code')))
 $$;
-select core.allow_public_read('booking_visitor_requests', 'booking.visitor_requests_of');
+-- C11 (#775): el navegador las pide directamente (GET public/<nombre>), así que se exponen a propósito (tercer argumento).
+select core.allow_public_read('booking_visitor_requests', 'booking.visitor_requests_of', true);
+select core.allow_public_read('booking_event', 'booking.public_event', true);
 
 -- Conservación (acordada con Core): el nombre, el contacto y la nota de un visitante se borran a los 6 meses del fin del
 -- evento, en la misma vuelta de la conservación (§20). Es la de 0481 con esa parte.
