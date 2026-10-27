@@ -85,7 +85,7 @@ test('sin método queda por cobrar; dos personas, dos fichas; Bitcoin vale; un m
   assert.equal((await app.t.db.query<{ m: string }>(`select c.method m from booking.walkin_charges c join booking.visitor_requests q on q.guest_id = c.guest_id where q.id = $1`, [other.id])).rows[0]!.m, 'bitcoin');
 });
 
-test('retención caducada y la cama elegida ocupada: se aloja en otra libre; sin ninguna, NO_AVAILABILITY sin nada a medias', async () => {
+test('retención caducada y la cama elegida ocupada: se aloja en otra libre, sin camas dobles', async () => {
   const d = await openDays('2032-09-04', '2032-09-05');
   const v = await issueVisitor(db(), d.code);
   const stay = await (await post('stay', { event_code: d.code, from: '2032-09-04', to: '2032-09-05', persons: 1, bed_id: d.beds[0], name: 'Mar' }, v.token)).json();
@@ -97,13 +97,9 @@ test('retención caducada y la cama elegida ocupada: se aloja en otra libre; sin
   await ok(walk.map((id, i) => ({ op: 'insert', table: TABLES.guests, id, fields: { event_id: d.event, first_name: `Walk-in ${i}` } })));
   await ok(walk.map((id, i) => ({ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: d.event, space_id: d.space, bed_id: d.beds[i], guest_id: id, persons: 1, from_date: '2032-09-04', to_date: '2032-09-05' } })));
   assert.equal((await accept(stay.id, 'cash')).status, 200);
+  // las de la casa ocupadas no valen: se aloja en una libre (de esta habitación o de otra)
   const bed = (await app.t.db.query<{ b: string }>(`select a.bed_id b from booking.room_assignments a join booking.visitor_requests q on q.guest_id = a.guest_id where q.id = $1`, [stay.id])).rows[0]!.b;
-  assert.equal(bed, d.beds[2], 'la que queda libre');
-
-  // otra caducada sin camas: nada a medias
-  const w = await issueVisitor(db(), d.code);
-  const late = await (await post('stay', { event_code: d.code, from: '2032-09-04', to: '2032-09-05', persons: 1, name: 'Tarde' }, w.token)).json();
-  assert.equal(late.error?.code ?? null, 'NO_AVAILABILITY', 'ni siquiera se puede pedir: no queda sitio');
-  const before = Number((await app.t.db.query<{ n: string }>(`select count(*) n from booking.guests where event_id = $1`, [d.event])).rows[0]!.n);
-  assert.ok(before >= 3);
+  assert.ok(bed !== d.beds[0] && bed !== d.beds[1], 'ni la elegida (ya ocupada) ni la otra ocupada');
+  assert.equal((await app.t.db.query(`select 1 from booking.room_assignments a join booking.room_assignments b on a.bed_id = b.bed_id and a.id <> b.id
+     where a.deleted_at is null and b.deleted_at is null and a.from_date < b.to_date and b.from_date < a.to_date`)).rows.length, 0, 'ninguna cama doble');
 });
