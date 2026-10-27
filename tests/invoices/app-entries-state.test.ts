@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appEntriesSummary, appName, entriesTotals, entryDelivered, eventResults, type EntryLike, type EventSources } from '../../apps/invoices/src/app/app-entries-state.ts';
+import { appEntriesSummary, appName, entriesTotals, entryDelivered, eventResults, isFiscal, type EntryLike, type EventSources } from '../../apps/invoices/src/app/app-entries-state.ts';
 
 const EVENT = 'ev-oct';
 let n = 0;
@@ -73,3 +73,18 @@ test('resumen del periodo: la misma cuenta que invoices.app_entries_summary_for'
   assert.deepEqual(s.income, { count: 2, base: 1120.45, quota: 112.05, total: 1232.5, quota_by_rate: [{ rate: 10, base: 1120.45, quota: 112.05 }] });
   assert.deepEqual(s.expense, { count: 1, base: 50, quota: 5, total: 55 });
 });
+
+test('0245: lo de proceso cuenta en el evento (marcado) y en las cifras, pero no en el resumen fiscal', () => {
+  const proc = entry({ nature: 'process', amount_cents: 55000, net_cents: 50000, tax_cents: 5000, description: 'Cierre del día' });
+  const [r] = eventResults(sources({ entries: [entry(), proc] }));
+  assert.equal(r!.appIncomeCents, 150000);
+  assert.deepEqual(r!.moves.filter((m) => m.kind === 'app').map((m) => !!m.process), [false, true]);
+  const totals = entriesTotals([entry(), proc]);
+  assert.deepEqual([totals.incomeCents, totals.fiscalIncomeCents, totals.process], [165000, 110000, 1]);
+  const s = appEntriesSummary([entry(), proc], { from: '2026-10-01', to: '2026-12-31' });
+  assert.equal(s.income.count, 1);
+  assert.deepEqual(s.process, { count: 1, income: 550, expense: 0 });
+  assert.equal(isFiscal({}), true, 'sin valor, fiscal');
+  assert.equal(isFiscal({ nature: 'process' }), false);
+});
+

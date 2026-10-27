@@ -301,6 +301,8 @@ export interface AppEntryRow extends SyncedColumns {
   /** Clave de la otra app, p. ej. `flow:project:<uuid>:2026-10-31`; única por app entre los vivos. */
   source_ref: string;
   kind: 'income' | 'expense';
+  /** 0245 (decisión de VG del 27-10): `fiscal` va a la gestoría, al IVA y al justificante; `process` es informativo. */
+  nature: 'fiscal' | 'process';
   entry_date: string;
   description: string;
   amount_cents: number;

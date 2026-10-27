@@ -13,6 +13,8 @@ export interface EntryLike {
   source_app: string;
   source_ref: string;
   kind: 'income' | 'expense';
+  /** 0245: sin valor (filas antiguas en el dispositivo), fiscal. */
+  nature?: 'fiscal' | 'process';
   entry_date: string;
   description: string;
   amount_cents: number;
@@ -38,7 +40,7 @@ export interface EventSources {
   issued: IssuedLike[];
 }
 
-export interface EventMove { kind: 'app' | 'invoice' | 'issued'; id: string; date: string | null; title: string; cents: number; sign: 1 | -1 }
+export interface EventMove { kind: 'app' | 'invoice' | 'issued'; id: string; date: string | null; title: string; cents: number; sign: 1 | -1; /** Apunte de proceso (informativo). */ process?: boolean }
 
 export interface EventResult {
   eventId: string;
@@ -64,6 +66,8 @@ const COUNTED_RECEIVED = new Set(['validada', 'archivada']);
 const COUNTED_ISSUED = new Set(['registrada', 'emitida', 'rectificada']);
 
 export const liveEntries = <T extends EntryLike>(entries: T[]): T[] => entries.filter((e) => !e.deleted_at);
+/** Fiscal (va a la gestoría y tiene justificante) o de proceso (informativo). Sin valor, fiscal. */
+export const isFiscal = (e: { nature?: string | null }): boolean => (e.nature ?? 'fiscal') === 'fiscal';
 
 /** Todos los eventos con algo (apuntes de apps o asignaciones), el más reciente primero. */
 export function eventResults(src: EventSources): EventResult[] {
@@ -81,7 +85,7 @@ export function eventResults(src: EventSources): EventResult[] {
     if (!e.event_id) continue;
     const r = of(e.event_id, null);
     if (e.kind === 'income') r.appIncomeCents += e.net_cents; else r.appExpenseCents += e.net_cents;
-    r.moves.push({ kind: 'app', id: e.id, date: e.entry_date, title: `${e.description} · ${appName(e.source_app)}`, cents: e.net_cents, sign: e.kind === 'income' ? 1 : -1 });
+    r.moves.push({ kind: 'app', id: e.id, date: e.entry_date, title: `${e.description} · ${appName(e.source_app)}`, cents: e.net_cents, sign: e.kind === 'income' ? 1 : -1, process: !isFiscal(e) });
   }
   const lineById = new Map(src.lines.filter((l) => !l.deleted_at).map((l) => [l.id, l]));
   const invoiceById = new Map(src.invoices.filter((i) => !i.deleted_at).map((i) => [i.id, i]));
@@ -125,11 +129,12 @@ export function eventResults(src: EventSources): EventResult[] {
   return [...byId.values()].sort((a, b) => last(b).localeCompare(last(a)) || a.eventId.localeCompare(b.eventId));
 }
 
-/** Cifras de la lista y de la baldosa (con IVA): ingresos, gastos y lo que no tiene evento. */
-export function entriesTotals(entries: EntryLike[]): { count: number; incomeCents: number; expenseCents: number; withoutEvent: number } {
+/** Cifras de la lista y de la baldosa (con IVA): ingresos y gastos (todos), lo fiscal, lo de proceso y lo que no tiene evento. */
+export function entriesTotals(entries: EntryLike[]): { count: number; incomeCents: number; expenseCents: number; fiscalIncomeCents: number; process: number; withoutEvent: number } {
   const live = liveEntries(entries);
-  const sum = (kind: EntryLike['kind']) => live.filter((e) => e.kind === kind).reduce((n, e) => n + Number(e.amount_cents), 0);
-  return { count: live.length, incomeCents: sum('income'), expenseCents: sum('expense'), withoutEvent: live.filter((e) => !e.event_id).length };
+  const sum = (list: EntryLike[], kind: EntryLike['kind']) => list.filter((e) => e.kind === kind).reduce((n, e) => n + Number(e.amount_cents), 0);
+  return { count: live.length, incomeCents: sum(live, 'income'), expenseCents: sum(live, 'expense'), fiscalIncomeCents: sum(live.filter(isFiscal), 'income'),
+    process: live.filter((e) => !isFiscal(e)).length, withoutEvent: live.filter((e) => !e.event_id).length };
 }
 
 /** ¿Está el apunte en una entrega ya entregada a la gestoría? (misma regla que `invoices.app_entry_delivered`). */
@@ -137,12 +142,15 @@ export function entryDelivered(entryId: string, exports: Array<{ status: string;
   return exports.some((e) => !e.deleted_at && e.status === 'entregada' && (e.manifest?.app_entries ?? []).some((x) => x.id === entryId));
 }
 
-/** Resumen del periodo en euros, la misma cuenta que `invoices.app_entries_summary_for` (0244). */
+/** Resumen del periodo en euros, la misma cuenta que `invoices.app_entries_summary_for` (0245): solo lo fiscal; lo de proceso, aparte. */
 export function appEntriesSummary(entries: EntryLike[], range: { from: string; to: string }): {
   income: { count: number; base: number; quota: number; total: number; quota_by_rate: Array<{ rate: number; base: number; quota: number }> };
   expense: { count: number; base: number; quota: number; total: number };
+  process: { count: number; income: number; expense: number };
 } {
-  const live = liveEntries(entries).filter((e) => e.entry_date >= range.from && e.entry_date <= range.to);
+  const inRange = liveEntries(entries).filter((e) => e.entry_date >= range.from && e.entry_date <= range.to);
+  const live = inRange.filter(isFiscal);
+  const proc = inRange.filter((e) => !isFiscal(e));
   const sum = (list: EntryLike[], k: 'net_cents' | 'tax_cents' | 'amount_cents') => list.reduce((n, e) => n + Number(e[k]), 0) / 100;
   const inc = live.filter((e) => e.kind === 'income');
   const exp = live.filter((e) => e.kind === 'expense');
@@ -152,5 +160,6 @@ export function appEntriesSummary(entries: EntryLike[], range: { from: string; t
     income: { count: inc.length, base: sum(inc, 'net_cents'), quota: sum(inc, 'tax_cents'), total: sum(inc, 'amount_cents'),
       quota_by_rate: [...rates.entries()].sort(([a], [b]) => a - b).map(([rate, list]) => ({ rate, base: sum(list, 'net_cents'), quota: sum(list, 'tax_cents') })) },
     expense: { count: exp.length, base: sum(exp, 'net_cents'), quota: sum(exp, 'tax_cents'), total: sum(exp, 'amount_cents') },
+    process: { count: proc.length, income: sum(proc.filter((e) => e.kind === 'income'), 'amount_cents'), expense: sum(proc.filter((e) => e.kind === 'expense'), 'amount_cents') },
   };
 }

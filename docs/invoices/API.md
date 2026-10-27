@@ -1862,6 +1862,7 @@ Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige 
 |---|---|
 | `source_app`, `source_ref` | App de origen (`core.apps`) y su clave, que empieza por `<app>:`. Flow manda `flow:project:<uuid>:<AAAA-MM-DD>`. Única entre los vivos. |
 | `kind` | `income` o `expense`. |
+| `nature` (0245) | `fiscal` (factura o ticket: va a la gestoría, al IVA y al justificante) o `process` (informativo). Por defecto, `fiscal`. Lo fija la otra app al crear el apunte y no cambia (§17.7). |
 | `entry_date`, `description` | Fecha del apunte (da el trimestre) y concepto. |
 | `amount_cents` | Importe con IVA incluido, en céntimos. Es el dinero que se ha movido. |
 | `tax_rate`, `tax_cents`, `net_cents` | Tipo de IVA (10 en la barra). El neto lo calcula Finance redondeado al céntimo (`round(importe × 100 / (100 + tipo))`) y la cuota es el resto, así que siempre suman el importe. |
@@ -1894,7 +1895,8 @@ Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige 
   - la primera vez crea el apunte (`created`);
   - después lo sustituye (`replaced`) o, si los datos son los mismos, no hace nada (`unchanged`).
 - **Lo que no toca nunca:** las notas ni el evento enlazado en Finance (si llega `event_id` nulo).
-- **Resultado:** `{entry_id, status, revision, tax_cents, net_cents}`.
+- **`nature`** (0245, opcional): `fiscal` (por defecto) o `process`. Si un apunte ya existe con otra naturaleza, `409 NATURE_CHANGE`.
+- **Resultado:** `{entry_id, status, revision, nature, tax_cents, net_cents}`.
 - **Errores:**
   - `INVALID_ARGS` (422), con `details.field`;
   - `FORBIDDEN` (403);
@@ -1962,19 +1964,19 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
 
 **Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
 
-### 17.7 Decisión de VG (27-10): apuntes fiscales y apuntes de proceso (pendiente de implementar, tras #768)
+### 17.7 Decisión de VG (27-10): apuntes fiscales y apuntes de proceso (migración 0245)
 
 - **Fiscal:** lo que acaba en factura o ticket. Llega cuando la caja de Flow, o cualquier app, pulsa «Enviar a Finance» tras cobrar. Lleva justificante (§17.5), va a la gestoría y cuenta en el IVA.
 - **Proceso:** el resto de lo que llega de las apps, como el resumen del cierre del día o los pedidos cobrados sin factura. Es informativo: se ve y cuenta en la vista «Evento», pero **no** va a la gestoría ni tiene justificante.
 - **Sin «desfacturar»:** un apunte de proceso no se vuelve fiscal. Lo fiscal llega como apunte propio, con su factura.
 - **Para el sábado 31 no cambia nada:** Flow manda lo que ya manda.
-- **Cambio previsto** (migración nueva; la 0244 ya es inmutable):
+- **Hecho en la 0245:**
   - columna `nature` (`fiscal` | `process`) en `invoices.app_entries`, que fija `record_app_entry` y no cambia al sustituir (`409 NATURE_CHANGE`);
   - el resumen, el manifest, `ingresos_gastos_apps.csv` y el IVA de Gestoría, solo con lo fiscal;
   - el justificante, solo para lo fiscal;
   - la lista y la vista «Evento», con los dos tipos;
-  - el valor por defecto de lo que ya esté en la base, por decidir (ver la pregunta a Core).
-- **Para no contar dos veces en «Evento»:** cada cobro va en un solo apunte. Lo enviado como fiscal no entra también en el apunte de proceso del cierre de ese día (como las liquidaciones, §17.6), y lo decide Flow.
+  - **valor por defecto** (Core, 27-10): `fiscal`, para lo que ya hay y para lo que llegue sin `nature`. Cuando Flow lo mande, el cierre del día irá como `process` y «Enviar a Finance» como `fiscal`.
+- **Para no contar dos veces en «Evento»** (Core, 27-10): cada cobro va en un solo apunte. El cierre de Flow excluye lo ya enviado como fiscal, y Finance no resta nada.
 
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 

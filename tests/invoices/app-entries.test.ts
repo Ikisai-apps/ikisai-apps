@@ -175,3 +175,31 @@ test('liquidación de cuenta de cliente (pago único que cierra varios pedidos):
   // El desglose por pedido tiene que sumar lo cobrado
   await rejected([call('invoices.record_app_entry', { ...settlement, amount_cents: 3700, methods: { bizum: 3700 } })], 'INVALID_ARGS');
 });
+
+test('0245: fiscal y de proceso. Por defecto, fiscal; lo de proceso no va a la gestoría ni al IVA; no cambia al sustituir', async () => {
+  const day = (ref: string, extra: Record<string, unknown> = {}) => ({ source_app: 'flow', source_ref: `flow:project:${PROJECT}:${ref}`, kind: 'income', entry_date: '2026-12-20',
+    description: `Barra · ${ref}`, amount_cents: 11000, tax_rate: 10, methods: { cash: 11000 }, ...extra });
+  const fiscal = await record(day('fiscal-20-12'));
+  assert.equal(fiscal.nature, 'fiscal', 'sin nature, fiscal (lo de siempre)');
+  const process = await record(day('cierre-20-12', { nature: 'process', amount_cents: 55000, methods: { cash: 55000 } }));
+  assert.equal(process.nature, 'process');
+  assert.equal((await entry(process.entry_id)).nature, 'process');
+
+  const summary = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { from: '2026-12-20', to: '2026-12-20' } })).data;
+  assert.equal(Number(summary.income.count), 1);
+  assert.equal(Number(summary.income.total), 110);
+  assert.deepEqual([Number(summary.process.count), Number(summary.process.income)], [1, 550]);
+  const manifest = (await app.t.db.query<{ m: any }>(`select invoices.app_entries_manifest('2026-12-20', '2026-12-20') m`)).rows[0]!.m;
+  assert.deepEqual(manifest.map((x: any) => x.source_ref), [`flow:project:${PROJECT}:fiscal-20-12`]);
+
+  // Sin «desfacturar»: la naturaleza no cambia al sustituir
+  const change = await rejected([call('invoices.record_app_entry', day('cierre-20-12', { nature: 'fiscal', amount_cents: 55000, methods: { cash: 55000 } }))], 'NATURE_CHANGE', 409);
+  assert.equal(change.details.nature, 'process');
+  await rejected([call('invoices.record_app_entry', day('otro-20-12', { nature: 'informativo' }))], 'INVALID_ARGS');
+  // Con la misma naturaleza, se sustituye como siempre
+  assert.equal((await record(day('cierre-20-12', { nature: 'process', amount_cents: 56000, methods: { cash: 56000 } }))).status, 'replaced');
+  // En Finance no se cambia
+  const row = await entry(process.entry_id);
+  await rejected([update(process.entry_id, row.revision, { nature: 'fiscal' })], 'INVALID_FIELDS');
+});
+

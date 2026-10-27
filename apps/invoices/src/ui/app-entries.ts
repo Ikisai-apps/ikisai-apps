@@ -11,7 +11,7 @@
 import { bindOnline, closeSheet, createPrintView, el, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
 import { APP_ENTRIES, ISSUED_ALLOCATIONS, ISSUED_INVOICES, describeError, type LocalAppEntry } from '../app/client.ts';
 import { eur, loadMirror, monthLabel, onAnyTable, shortDate } from '../app/data.ts';
-import { appName, entriesTotals, eventResults, liveEntries, type EventResult, type EventSources } from '../app/app-entries-state.ts';
+import { appName, entriesTotals, eventResults, isFiscal, liveEntries, type EventResult, type EventSources } from '../app/app-entries-state.ts';
 import { rememberTarget, searchTargets, type TargetChoice } from '../app/targets.ts';
 import { dayReceipt, methodLabel } from '../app/day-receipt.ts';
 import { MISSING_ENTITY, fetchEntity, issuerLines } from './issued.ts';
@@ -73,6 +73,7 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
           ? el('a', { href: `#/evento?id=${entry.event_id}`, 'data-feedback-id': 'invoices.apuntes.ficha.ver_evento', 'data-feedback-label': 'Ver el evento',
             onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/evento?id=${entry.event_id}`); } }, eventLabel(event, entry.event_id))
           : 'Sin evento'),
+        el('dt', null, 'Tipo'), el('dd', { id: 'appEntryNature' }, isFiscal(entry) ? 'Fiscal: va a la gestoría y al IVA' : 'De proceso: informativo, no va a la gestoría'),
         el('dt', null, 'Recibido'), el('dd', null, formatDate(entry.received_at)),
         el('dt', null, 'Referencia'), el('dd', { class: 'hint' }, entry.source_ref)),
       entry.detail?.length
@@ -82,7 +83,7 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
       canEdit ? el('p', { class: 'btnrow' }, linkButton) : null, linkReason,
       canEdit ? el('label', { class: 'field' }, el('span', null, 'Notas'), notes) : el('p', null, entry.notes ?? '')),
     foot: [
-      entry.kind === 'income' ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.justificante', 'data-feedback-label': 'Justificante del día', class: 'ghost', type: 'button', id: 'appEntryReceipt',
+      entry.kind === 'income' && isFiscal(entry) ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.justificante', 'data-feedback-label': 'Justificante del día', class: 'ghost', type: 'button', id: 'appEntryReceipt',
         onclick: () => void openDayReceipt(ctx, entry) }, icon('invoice', 16), 'Justificante') : null,
       canEdit ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.guardar', 'data-feedback-label': 'Guardar', class: 'primary', type: 'button', id: 'appEntrySave', onclick: async () => {
         const fields: Record<string, unknown> = {};
@@ -194,7 +195,7 @@ export const mountAppEntries: ViewMount = (ctx) => {
     const li = listRow({
       id: entry.id,
       title: entry.description,
-      meta: [shortDate(entry.entry_date), appName(entry.source_app), entry.kind === 'income' ? 'Ingreso' : 'Gasto', entry.event_id ? eventLabel(d.events.find((r) => r.eventId === entry.event_id), entry.event_id) : 'Sin evento'],
+      meta: [shortDate(entry.entry_date), appName(entry.source_app), entry.kind === 'income' ? 'Ingreso' : 'Gasto', isFiscal(entry) ? 'Fiscal' : 'De proceso', entry.event_id ? eventLabel(d.events.find((r) => r.eventId === entry.event_id), entry.event_id) : 'Sin evento'],
       chips: [el('span', { class: `chip${entry.kind === 'income' ? ' ok' : ''}` }, `${entry.kind === 'income' ? '+' : '−'}${fromCents(entry.amount_cents)}`)],
       pending: (entry as { _pending?: boolean })._pending === true,
       onClick: () => openEntry(ctx, d, entry, () => void load()),
@@ -208,7 +209,7 @@ export const mountAppEntries: ViewMount = (ctx) => {
   function paint(d: Data): void {
     const t = entriesTotals(d.entries);
     replace(stats, renderStats([
-      { value: fromCents(t.incomeCents), label: 'ingresos', hint: 'con IVA' },
+      { value: fromCents(t.incomeCents), label: 'ingresos', hint: t.process ? `fiscal ${fromCents(t.fiscalIncomeCents)} · con IVA` : 'con IVA' },
       { value: fromCents(t.expenseCents), label: 'gastos', hint: 'con IVA' },
       { value: t.withoutEvent, label: 'sin evento' },
       { value: d.events.length, label: d.events.length === 1 ? 'evento' : 'eventos', onClick: d.events.length ? () => eventsHost.scrollIntoView({ behavior: 'smooth' }) : undefined, feedbackId: 'invoices.apuntes.cifras.eventos' },
@@ -289,7 +290,7 @@ export const mountEvent: ViewMount = (ctx) => {
       el('h3', { class: 'sectionlabel' }, 'Movimientos'),
       el('ul', { class: 'list', id: 'eventMoves', 'aria-label': 'Movimientos del evento' }, ...r.moves.map((m) => {
         const li = listRow({
-          id: `${m.kind}-${m.id}`, title: m.title, meta: [shortDate(m.date), KIND[m.kind]],
+          id: `${m.kind}-${m.id}`, title: m.title, meta: [shortDate(m.date), KIND[m.kind], m.process ? 'De proceso' : ''].filter(Boolean),
           chips: [el('span', { class: `chip ${m.sign > 0 ? 'ok' : ''}` }, `${m.sign > 0 ? '+' : '−'}${fromCents(m.cents)}`)],
           onClick: () => open(m), label: `Abrir ${m.title}`,
         });
