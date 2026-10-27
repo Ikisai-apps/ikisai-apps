@@ -10,6 +10,7 @@
  * `track` decide solo: éxito → guardado; error de red (o sin conexión) → pendiente; otro error → error con reintento.
  * Las apps con cola sin red (sync-client) pueden marcar «pendiente» a mano con `set(key, 'pending')`.
  */
+import { announceSaved } from '../guide/anchors.ts';
 import { el, replace } from '../dom.ts';
 import { kt } from '../i18n/i18n.ts';
 import { icon } from '../icons.ts';
@@ -109,9 +110,13 @@ export function createSaveState(options: SaveStateOptions = {}): SaveState {
     try {
       const value = await work;
       f.set('saved');
+      // Guiado (`confirm: 'save'`): si la clave es un id de campo, avisa de que se guardó. Solo el id, nunca el valor.
+      announceSaved(key);
       return value;
     } catch (error) {
-      f.set(isNetwork(error) ? 'pending' : 'error');
+      const net = isNetwork(error);
+      f.set(net ? 'pending' : 'error');
+      if (net) announceSaved(key, { pending: true });
       throw error;
     }
   }

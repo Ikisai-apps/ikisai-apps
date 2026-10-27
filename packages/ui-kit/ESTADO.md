@@ -4,6 +4,7 @@ Actualizado: 27 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), direct
 
 ## Hecho
 
+- v0.66.0: Guiado, tanda 1. Anclajes semánticos (`confirm`, `validator`), aviso de guardado sin valores, `registerReveal`, `withGuideLink` y `createAppShell({ guide })` con el campo señalado al llegar.
 - v0.65.0: `groupLanes`, que agrupa los carriles por cualquier clave (persona, fase, espacio…) sin tocar `createLanes`.
 - v0.64.0: piezas genéricas para Flow. Formulario libre a partir de un esquema (pregunta a pregunta, revisión y «Registrar») y lista de comprobación con quién y cuándo. `createStepForm` admite controles propios, «Saltar» y texto largo.
 - v0.63.0: decoración y finca en `createSpaceMap`. Retícula de 5 m, 1 m y 0,5 m; capa de decoración y modo colocar; camas con icono; alturas y cotas; bajar de la finca al edificio y a la habitación con miga.
