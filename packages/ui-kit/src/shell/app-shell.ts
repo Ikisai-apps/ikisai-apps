@@ -1,4 +1,6 @@
 import type { SyncStatus } from '@ikisai/sync-client';
+import { clearGuideLink, readGuideLink } from '../guide/link.ts';
+import { createFieldPointer } from '../guide/point.ts';
 import { el, replace } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
 import { createStatusBar, statusBanners, type StatusBannersOptions, type StatusBarOptions } from '../status/status-bar.ts';
@@ -80,6 +82,11 @@ export interface AppShellOptions {
    * «atrás» desde el inicio también (sin preguntar «¿Cerrar la app?»). Por defecto, no. Ver `withReturnTo`.
    */
   returnTo?: boolean | { feedbackId?: string };
+  /**
+   * Guiado (`src/guide/`): al llegar con `?campo=…&paso=…` (`withGuideLink`), una línea arriba explica el paso y el campo se
+   * señala. Implica `returnTo`. Por defecto, no. Una app lo monta con `guide: true` (o `{ feedbackId }`).
+   */
+  guide?: boolean | { feedbackId?: string };
 }
 
 export interface AppShell {
@@ -108,12 +115,14 @@ export interface AppShell {
 /** Cabecera, navegación (inferior en móvil, lateral en escritorio), zona de banners y `<main>`. */
 export function createAppShell(root: HTMLElement, options: AppShellOptions): AppShell {
   installKeyboardInsets();
-  if (options.backNavigation !== false) installBackNavigation({ ...(typeof options.backNavigation === 'object' ? options.backNavigation : {}), ...(options.returnTo ? { returnTo: true } : {}) });
-  const origin = options.returnTo ? readReturnTo() : null;
+  if (options.backNavigation !== false) installBackNavigation({ ...(typeof options.backNavigation === 'object' ? options.backNavigation : {}), ...(options.returnTo || options.guide ? { returnTo: true } : {}) });
+  const origin = options.returnTo || options.guide ? readReturnTo() : null;
   const returnLink = origin
-    ? el('a', { class: 'return-link', href: origin.url, ...(typeof options.returnTo === 'object' && options.returnTo.feedbackId ? { 'data-feedback-id': options.returnTo.feedbackId, 'data-feedback-label': 'Volver a la otra app' } : {}), onclick: () => clearReturnTo() },
+    ? el('a', { class: 'return-link', href: origin.url, ...(typeof options.returnTo === 'object' && options.returnTo.feedbackId ? { 'data-feedback-id': options.returnTo.feedbackId, 'data-feedback-label': 'Volver a la otra app' } : {}), onclick: () => { clearReturnTo(); clearGuideLink(); } },
       icon('chevronLeft', 18), el('span', null, kt('Volver a {place}', { place: origin.title ?? origin.from ?? kt('la app anterior') })))
     : null;
+  const guideLink = options.guide ? readGuideLink() : null;
+  const pointer = guideLink?.field ? createFieldPointer(guideLink, { feedbackId: typeof options.guide === 'object' ? options.guide.feedbackId : undefined }) : null;
   const navigate = options.navigate ?? ((hash: string) => { location.hash = hash; });
   const subtitle = el('small', { id: 'shellSubtitle' }, options.subtitle ?? '');
   const status = createStatusBar(options.status ?? {});
@@ -227,7 +236,9 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   let element: HTMLElement | null = null;
   paintNav(options.nav, options.more);
   const bar = options.navLayout === 'bar' || !!menu?.column;
-  element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, returnLink, banners, main));
+  element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, returnLink, pointer?.element ?? null, banners, main));
+  // La app pinta su pantalla después: el campo se busca cuando aparezca.
+  if (pointer) queueMicrotask(() => void pointer.point());
   replace(root, element);
 
   return {

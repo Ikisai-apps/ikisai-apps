@@ -1,5 +1,25 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.66.0 · 27 de octubre de 2026
+
+**Guiado, tanda 1: anclajes semánticos y campo señalado.** Es el nivel mínimo y el primer paso del Guiado completo que decidió VG el 27-10; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`.
+
+- **Anclajes** (`src/guide/anchors.ts`): un anclaje es un id del inventario (`data-field-id` o `data-feedback-id`), nunca un selector.
+  - `findAnchor(id)` devuelve el nodo, solo si se ve: un `<details>` cerrado o `display: none` no cuentan.
+  - `registerReveal(prefijo, fn)`: la app enseña lo escondido (abrir una hoja, cambiar de pestaña).
+  - `revealAnchor(id)` pide que se enseñe y espera a que aparezca; si no aparece, devuelve `null`.
+  - `pointAt(nodo)` lo trae a la vista, le da el foco y lo resalta.
+- **Confirmación de guardado, sin valores:**
+  - `FieldSpec` gana `confirm` (`'save' | 'event' | 'none'`) y `validator` (un nombre, no código). Van a `data-field-confirm`/`-validator` y al catálogo; solo aparecen si se declaran, así que los catálogos de siempre no cambian.
+  - `createSaveState` avisa solo cuando la clave es un id de campo (`confirm: 'save'`). Para el resto está `announceSaved(id)`. Se escucha con `onSaved(fn)`.
+  - El aviso lleva solo el id y si quedó en cola sin red.
+- **Enlace** (`src/guide/link.ts`): `withGuideLink(url, { field, step, run, from, title })` es la convención de «Volver a…» más `campo`, `paso` y `guia`. `readGuideLink()` lo lee al llegar, lo guarda en la pestaña y limpia la URL.
+- **Shell:** `createAppShell({ guide: true })` monta el Guiado en una línea e implica `returnTo`.
+  - Al llegar con `?campo=…&paso=…`, una línea arriba explica el paso y el campo queda señalado.
+  - Hay «Ver el campo» y «Cerrar». Si no encuentra el campo, lo dice.
+  - El texto del paso se pinta como texto, nunca como HTML.
+- Clases con el prefijo nuevo `guia-` (`guide-` ya lo usa una app). Demo: «Guiado: campo señalado». Pruebas: `tests/v70.spec.ts`.
+
 ## 0.65.0 · 27 de octubre de 2026
 
 **Carriles por cualquier clave** (traspaso de Flow v03, §12; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`). `groupLanes(items, { key, title?, order?, hideEmpty?, noneTitle?, emptyText?, card | mount })` (`src/pieces/lanes-group.ts`) devuelve los `lanes` de `createLanes` agrupados por persona, agente, fase, espacio u objetivo. `createLanes` no cambia.

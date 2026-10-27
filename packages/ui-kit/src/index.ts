@@ -66,6 +66,9 @@ export { createVoteDeck, type Vote, type VoteDeck, type VoteDeckOptions, type Vo
 export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type TimelineLane, type TimelineOptions } from './pieces/timeline.ts';
 export { renderTray, renderTrayRow, type TrayAction, type TrayRow, type TrayGroup, type TrayOptions } from './pieces/tray.ts';
 export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
+export { ANCHOR_ID, announceSaved, findAnchor, onSaved, pointAt, registerReveal, revealAnchor, waitForAnchor } from './guide/anchors.ts';
+export { clearGuideLink, currentGuideLink, readGuideLink, withGuideLink, type GuideLink } from './guide/link.ts';
+export { createFieldPointer, type FieldPointer } from './guide/point.ts';
 export { groupLanes, LANE_NONE, type GroupLanesOptions } from './pieces/lanes-group.ts';
 export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion, type StepRenderContext } from './pieces/step-form.ts';
@@ -110,7 +113,7 @@ export { createMovementForm, MOVEMENT_FORM_MARKS, type MovementForm, type Moveme
 export { createCountSession, COUNT_SESSION_MARKS, type CountSession, type CountSessionOptions, type CountDifference } from './items/count-session.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
-export { fieldAttrs, markField, fieldRequired, FIELD_SENSITIVITIES, type FieldSpec, type FieldSensitivity } from './fields/field-mark.ts';
+export { fieldAttrs, markField, fieldRequired, FIELD_CONFIRMS, FIELD_SENSITIVITIES, type FieldConfirm, type FieldSpec, type FieldSensitivity } from './fields/field-mark.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';
 export { createSignaturePad, type SignaturePad, type SignaturePadOptions } from './fields/signature.ts';
 export { createInstallPrompt, isAppInstalled, installPlatform, type InstallPrompt, type InstallPromptOptions, type InstallPlatform } from './shell/install.ts';

@@ -927,6 +927,12 @@ export const KIT_EN: Dictionary = {
   'No se pudo subir la foto. Prueba otra vez.': 'The photo could not be uploaded. Try again.',
   'Nuevo registro': 'New record',
   'Sin asignar': 'Unassigned',
+  // Guiado (0.66)
+  'Ver el campo': 'Show the field',
+  'Paso del recorrido': 'Step of the walkthrough',
+  'Cerrar el aviso del paso': 'Close the step notice',
+  'Este es el campo del paso.': 'This is the field for this step.',
+  'No encuentro el campo de este paso en esta pantalla.': 'I cannot find the field for this step on this screen.',
   'Nada aquí': 'Nothing here',
   'No se pudo registrar. Prueba otra vez.': 'It could not be recorded. Try again.',
   'No se guardó «{item}». Prueba otra vez.': '“{item}” was not saved. Try again.',

@@ -266,7 +266,8 @@ export function extractFeatures(text, file = '') {
 // Inventario de campos (src/fields/field-mark.ts): `fields` (declarados) y `fieldsUninstrumented` (inputs sin `data-field-id`).
 // Solo metadatos del código: ningún valor ni contenido.
 
-const FIELD_KEYS = ['type', 'entity', 'prop', 'required', 'permission', 'sensitivity', 'since', 'route'];
+const FIELD_KEYS = ['type', 'entity', 'prop', 'required', 'permission', 'sensitivity', 'since', 'route', 'confirm', 'validator'];
+const CONFIRMS = new Set(['save', 'event', 'none']);
 const SENSITIVITIES = new Set(['public', 'internal', 'personal', 'sensitive']);
 /** Campos del kit y el tipo que ponen solos. Mantener al día con los `fieldAttrs(options.field, { type })` de `src/fields/`. */
 const KIT_FIELDS = { createDateField: 'date', createQuantityField: 'number', createSuggestField: 'text', createColorField: 'color', createLabelPicker: 'labels', createLevelStar: 'level', createSignaturePad: 'signature' };
@@ -324,6 +325,8 @@ function fieldEntry(app, spec, defaults, source, file, line) {
     fieldId: s.id, app, screen: screenOf(s.id), route: s.route ?? null, anchorId: s.anchor ?? s.id, label: s.label ?? null,
     type: s.type ?? 'text', entity: s.entity ?? null, prop: s.prop ?? null, required: requiredOf(s.required),
     permission: s.permission ?? null, sensitivity: SENSITIVITIES.has(s.sensitivity) ? s.sensitivity : null, since: s.since ?? null,
+    // Guiado: solo si se declaran (así los catálogos de siempre no cambian).
+    ...(CONFIRMS.has(s.confirm) ? { confirm: s.confirm } : {}), ...(typeof s.validator === 'string' && /^[a-z][a-z0-9_]{0,40}$/.test(s.validator) ? { validator: s.validator } : {}),
     source, file, line,
   };
 }
