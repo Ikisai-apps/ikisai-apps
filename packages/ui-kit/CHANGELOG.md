@@ -1,5 +1,29 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.64.0 · 27 de octubre de 2026
+
+**Piezas genéricas para el catálogo de Flow** (encargo de Core; cómo las monta Flow en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Ninguna guarda nada por su cuenta: solo registran a través de la app.
+
+- **Formulario libre** (`createFreeForm`, `src/pieces/free-form.ts`): las preguntas salen de un esquema JSON y se contestan una a una sobre `createStepForm`.
+  - Tipos: texto (o `multiline`), número (con coma o punto, `min`, `max`, `unit`), sí/no, opción y foto.
+  - Las opcionales llevan «Saltar» y responden `null`; las obligatorias no avanzan vacías.
+  - Al final, una revisión con «Cambiar» en cada respuesta y «Registrar». `onSubmit(answers)` recibe `{ id: texto | número | booleano | valor | ref de foto | null }`.
+  - Foto: el kit la recomprime y `onPhoto(blob)` la sube y devuelve su referencia.
+  - `value` retoma un borrador y no repregunta lo contestado. `freeFormProblems(schema)` valida el esquema.
+- **Lista de comprobación** (`createChecklist`, `src/pieces/checklist.ts`): ítems con casilla, la etiqueta «Obligatoria» u «Opcional» y «Hecho por Ana · 10:42».
+  - Arriba, «3 de 5 hechas · faltan 2 obligatorias» con su barra.
+  - `onToggle(id, checked, { by, at })`: si falla, la marca vuelve atrás y lo dice.
+  - `summary()` y `checklistSummary()` devuelven `{ done, total, requiredDone, requiredTotal, complete }`; `onComplete` avisa al completar las obligatorias. También tiene `readOnly`.
+- `createStepForm`:
+  - `kind: 'custom'` con `render(ctx)`, para un control propio;
+  - `skip: true`, que añade «Saltar»;
+  - `multiline` e `inputAttrs` en las preguntas de texto.
+  - Sin estas opciones funciona como antes. La marca `saltar` solo se cataloga si la llamada usa `skip`.
+- Marcas nuevas en el catálogo:
+  - `createFreeForm`: `preguntas`, `foto`, `cambiar`, `registrar` y `nuevo`;
+  - `createChecklist`: `item`.
+- Demo: sección «Piezas genéricas». Pruebas: `tests/v68.spec.ts`.
+
 ## 0.63.0 · 27 de octubre de 2026
 
 **Decoración y finca en `createSpaceMap`** (encargo de VG del 27-10, `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`). Las formas de los datos se han acordado con Guests (Recursos), Central («Colocar» → Decoración) y Core (el SVG de la finca). Sin las opciones nuevas, el mapa se comporta como antes.

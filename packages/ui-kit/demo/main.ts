@@ -130,6 +130,8 @@ import {
   createVoteDeck,
   createStepForm,
   StepFormInvalid,
+  createFreeForm,
+  createChecklist,
   renderTimeline,
   renderHourAgenda,
   renderTray,
@@ -1769,6 +1771,36 @@ const askForm = createStepForm({ label: 'Tus datos', feedbackId: 'demo.datos.pre
     askOut.textContent = askAnswers.join(', ');
   } });
 const askHost = el('div', { id: 'askHost' }, askForm.element, el('p', null, 'Respuestas: ', askOut));
+// --- Piezas genéricas para Flow: formulario libre y lista de comprobación (0.64) -------------------------------
+const formOut = el('output', { id: 'freeFormOut' }, '—');
+const freeForm = createFreeForm({ label: 'Revisión de la piscina', feedbackId: 'demo.piscina.revision',
+  schema: { version: 1, questions: [
+    { id: 'cloro', label: '¿Cuánto cloro marca?', kind: 'number', unit: 'ppm', min: 0, max: 10, required: true, hint: 'Lo normal: entre 1 y 3' },
+    { id: 'limpia', label: '¿Está limpia el agua?', kind: 'yesno', required: true },
+    { id: 'estado', label: '¿Cómo está la depuradora?', kind: 'choice', required: true, options: [{ value: 'bien', label: 'Bien' }, { value: 'ruido', label: 'Hace ruido' }, { value: 'parada', label: 'Parada' }] },
+    { id: 'foto', label: 'Foto del agua', kind: 'photo' },
+    { id: 'nota', label: '¿Algo más?', kind: 'text', multiline: true },
+  ] },
+  onPhoto: async (blob) => { await new Promise((r) => setTimeout(r, 30)); return `demo-foto-${blob.size}`; },
+  onSubmit: async (answers) => { await new Promise((r) => setTimeout(r, 30)); formOut.textContent = JSON.stringify(answers); },
+});
+const clistOut = el('output', { id: 'checklistOut' }, '—');
+const clistLog: string[] = [];
+const checklist = createChecklist({ label: 'Apertura del albergue', feedbackId: 'demo.apertura.lista', who: () => 'Ana',
+  items: [
+    { id: 'luces', text: 'Encender las luces de fuera' },
+    { id: 'agua', text: 'Abrir la llave del agua', hint: 'En el cuarto de calderas' },
+    { id: 'banos', text: 'Revisar papel y jabón en los baños' },
+    { id: 'flores', text: 'Flores en el comedor', required: false },
+  ],
+  checked: { luces: { by: 'Luis', at: '2026-10-27T08:05:00' } },
+  onToggle: async (id, on) => { await new Promise((r) => setTimeout(r, 30)); clistLog.push(`${id}:${on ? 'sí' : 'no'}`); clistOut.textContent = clistLog.join(', '); },
+});
+const genericSection = section('genericas', 'Piezas genéricas (formulario libre y lista)', 'Para el catálogo de piezas de Flow: un formulario que sale de un esquema (pregunta a pregunta, revisión y «Registrar») y una lista de comprobación con quién y cuándo.',
+  el('h3', null, 'Formulario libre'), el('div', { id: 'freeFormHost' }, freeForm.element, el('p', null, 'Registrado: ', formOut)),
+  el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
+);
+
 const piecesB2Section = section('piecesb2', 'Piezas comunes (lote B2)', 'MUELA-075: paso a paso con lo siguiente en grande, una cosa cada vez (con «Deshacer»), votar deslizando (con botones y flechas) y pregunta a pregunta (solo lo que falta).',
   el('h3', null, 'Paso a paso'), stepsHost,
   el('h3', null, 'Una cosa cada vez'), queueHost,
@@ -1892,7 +1924,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, createItemPicker };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, createItemPicker };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
@@ -1903,5 +1935,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, genericSection, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
