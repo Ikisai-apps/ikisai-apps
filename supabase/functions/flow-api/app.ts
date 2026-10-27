@@ -228,6 +228,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           description: `${out.project.name} · justificante ${r.id.slice(0, 8)} · ${d}-${m}-${y}`,
           amount_cents: r.total_cents, tax_rate: 10, methods: { [method]: r.total_cents },
           detail: out.detail, pending_refunds_cents: 0, event_id: out.project.booking_event_id,
+          // Un cobro de la caja es un ticket de venta (la factura solo la hace Finance), con su número de cobro.
+          receipt_kind: 'ticket', ...(out.receipt_number ? { receipt_number: out.receipt_number } : {}),
         };
         // El estado lo anota el servidor (lote público, solo los campos de envío): el navegador no puede marcarlo.
         const mark = (fields: Record<string, unknown>) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.receipts, id: r.id, expectedRevision: r.revision, fields }]);
@@ -250,6 +252,8 @@ interface ReceiptForSend {
   receipt: { id: string; revision: number; method: string; total_cents: number; order_ids: string[] };
   project: { id: string; name: string; booking_event_id: string | null };
   day: string;
+  /** Números de cobro de sus pedidos («12» o «12+13»), 0921. */
+  receipt_number: string | null;
   detail: Array<{ code: string; name: string; quantity: number; amount_cents: number }>;
 }
 

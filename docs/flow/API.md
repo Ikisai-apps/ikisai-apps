@@ -389,3 +389,8 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - `flow.day_summary`: `POST day-summary {project_id, day}`, solo owner y con el ámbito comprobado. Devuelve el resumen del día (`flow.day_summary`).
   - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Es idempotente: el id sale de la persona y del `requestId`, y repetir devuelve `replayed: true`.
 - **Prueba de extremo a extremo**: `tests/flow/servicio-sabado.test.ts`. Los huecos que encuentra van en `docs/flow/PETICIONES.md` (S1…).
+
+## 35. Número de cobro y ticket hacia Finance (migración `0921`)
+
+- «Enviar a Finance» de un justificante manda `receipt_kind: 'ticket'` (un cobro de la caja es un ticket de venta; la factura solo la hace Finance) y `receipt_number`: los números de cobro de sus pedidos, en orden, unidos con «+» («12» o «12+13»; si pasan de 64 caracteres, «12…41»).
+- `flow.receipt_for_send` devuelve ese `receipt_number`.
