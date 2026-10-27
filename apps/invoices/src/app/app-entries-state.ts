@@ -7,6 +7,10 @@
  * - gastos: lo asignado al evento de las facturas recibidas no anuladas, y los apuntes de gasto de apps;
  * - las recibidas aún sin validar (una compra rápida sin justificante, por ejemplo) cuentan como gasto de proceso, marcadas
  *   (decisión de VG del 27-10: lo de proceso se ve y cuenta en el evento, pero no va a la gestoría).
+ *
+ * Cuadre de alojamiento y barra (finance-15): el alojamiento de un retiro se factura a su **reserva**; con la lectura de
+ * Booking `booking.event_reservations_for_invoices` (reserva → evento) también suma en el evento, con lo facturado y lo
+ * cobrado. El alojamiento de recepción (`booking:stay:…`) y la barra (Flow) son cobros: van como cobrados.
  */
 
 export interface EntryLike {
@@ -30,7 +34,9 @@ export interface AllocationLike { id: string; invoice_line_id: string; target_ap
 export interface LineLike { id: string; invoice_id: string; deleted_at: string | null }
 export interface InvoiceLike { id: string; code: string | null; status: string; object: string | null; invoice_date: string | null; supplier_id: string; deleted_at: string | null; receipt_kind?: string | null }
 export interface IssuedAllocationLike { id: string; issued_invoice_id: string; target_app: string; target_kind: string; target_id: string | null; target_label: string | null; allocated_amount: number; deleted_at: string | null }
-export interface IssuedLike { id: string; full_number: string | null; status: string; description: string | null; issue_date: string | null; deleted_at: string | null }
+export interface IssuedLike { id: string; full_number: string | null; status: string; description: string | null; issue_date: string | null; deleted_at: string | null; payment_status?: string | null }
+/** Booking (#909): de qué evento es cada reserva. */
+export interface EventReservation { reservation_id: string; event_id: string; status: string | null }
 
 export interface EventSources {
   entries: EntryLike[];
@@ -39,9 +45,21 @@ export interface EventSources {
   invoices: InvoiceLike[];
   issuedAllocations: IssuedAllocationLike[];
   issued: IssuedLike[];
+  /** Reserva → evento (Booking); sin ella (sin red o sin la lectura), el alojamiento facturado a reservas no suma. */
+  reservations?: EventReservation[];
 }
 
-export interface EventMove { kind: 'app' | 'invoice' | 'issued'; id: string; date: string | null; title: string; cents: number; sign: 1 | -1; /** Apunte de proceso (informativo). */ process?: boolean }
+export interface EventMove { kind: 'app' | 'invoice' | 'issued'; id: string; date: string | null; title: string; cents: number; sign: 1 | -1; /** Apunte de proceso (informativo). */ process?: boolean; /** Emitida a una reserva del evento (alojamiento). */ lodging?: boolean }
+
+/** Cuadre de alojamiento y barra del evento, en céntimos sin IVA. */
+export interface EventBalance {
+  /** Emitidas a las reservas del evento: lo facturado y, de ello, lo cobrado. */
+  lodgingInvoicedCents: number; lodgingCollectedCents: number;
+  /** Alojamiento de recepción (`booking:stay:…`), cobrado al momento. */
+  stayCents: number;
+  /** Barra y caja (Flow), cobrado. */
+  barCents: number;
+}
 
 export interface EventResult {
   eventId: string;
@@ -54,6 +72,7 @@ export interface EventResult {
   appIncomeCents: number; issuedIncomeCents: number; invoiceExpenseCents: number; appExpenseCents: number;
   /** Recibidas asignadas al evento todavía sin validar: cuentan como gasto de proceso (marcadas). */
   pendingInvoices: number;
+  balance: EventBalance;
   moves: EventMove[];
 }
 
@@ -76,7 +95,8 @@ export function eventResults(src: EventSources): EventResult[] {
   const of = (eventId: string, label: string | null): EventResult => {
     let r = byId.get(eventId);
     if (!r) {
-      r = { eventId, label: null, incomeCents: 0, expenseCents: 0, resultCents: 0, appIncomeCents: 0, issuedIncomeCents: 0, invoiceExpenseCents: 0, appExpenseCents: 0, pendingInvoices: 0, moves: [] };
+      r = { eventId, label: null, incomeCents: 0, expenseCents: 0, resultCents: 0, appIncomeCents: 0, issuedIncomeCents: 0, invoiceExpenseCents: 0, appExpenseCents: 0, pendingInvoices: 0,
+        balance: { lodgingInvoicedCents: 0, lodgingCollectedCents: 0, stayCents: 0, barCents: 0 }, moves: [] };
       byId.set(eventId, r);
     }
     if (!r.label && label) r.label = label;
@@ -86,6 +106,8 @@ export function eventResults(src: EventSources): EventResult[] {
     if (!e.event_id) continue;
     const r = of(e.event_id, null);
     if (e.kind === 'income') r.appIncomeCents += e.net_cents; else r.appExpenseCents += e.net_cents;
+    if (e.kind === 'income' && e.source_app === 'flow') r.balance.barCents += e.net_cents;
+    if (e.kind === 'income' && e.source_ref.startsWith('booking:stay:')) r.balance.stayCents += e.net_cents;
     r.moves.push({ kind: 'app', id: e.id, date: e.entry_date, title: `${e.description} · ${appName(e.source_app)}`, cents: e.net_cents, sign: e.kind === 'income' ? 1 : -1, process: !isFiscal(e) });
   }
   const lineById = new Map(src.lines.filter((l) => !l.deleted_at).map((l) => [l.id, l]));
@@ -110,16 +132,24 @@ export function eventResults(src: EventSources): EventResult[] {
     else r.moves.push({ kind: 'invoice', id: invoice.id, date: invoice.invoice_date, title: [invoice.code, invoice.object].filter(Boolean).join(' · ') || 'Factura recibida', cents: amount, sign: -1, process: pending });
   }
   const issuedById = new Map(src.issued.filter((i) => !i.deleted_at).map((i) => [i.id, i]));
+  const eventOfReservation = new Map((src.reservations ?? []).map((x) => [x.reservation_id, x.event_id]));
   for (const a of src.issuedAllocations) {
-    if (!isEvent(a)) continue;
+    // Al evento, o a una reserva de ese evento (alojamiento, finance-15)
+    const lodging = !a.deleted_at && a.target_app === 'booking' && a.target_kind === 'reservation' && !!a.target_id && eventOfReservation.has(a.target_id);
+    if (!isEvent(a) && !lodging) continue;
+    const eventId = lodging ? eventOfReservation.get(a.target_id!)! : a.target_id!;
     const issued = issuedById.get(a.issued_invoice_id);
     if (!issued || !COUNTED_ISSUED.has(issued.status)) continue;
-    const r = of(a.target_id, a.target_label);
+    const r = of(eventId, lodging ? null : a.target_label);
     const amount = cents(a.allocated_amount);
     r.issuedIncomeCents += amount;
+    if (lodging) {
+      r.balance.lodgingInvoicedCents += amount;
+      if (issued.payment_status === 'cobrada') r.balance.lodgingCollectedCents += amount;
+    }
     const existing = r.moves.find((m) => m.kind === 'issued' && m.id === issued.id);
     if (existing) existing.cents += amount;
-    else r.moves.push({ kind: 'issued', id: issued.id, date: issued.issue_date, title: [issued.full_number, issued.description].filter(Boolean).join(' · ') || 'Factura emitida', cents: amount, sign: 1 });
+    else r.moves.push({ kind: 'issued', id: issued.id, date: issued.issue_date, title: [issued.full_number, issued.description].filter(Boolean).join(' · ') || 'Factura emitida', cents: amount, sign: 1, ...(lodging ? { lodging: true } : {}) });
   }
   for (const r of byId.values()) {
     r.incomeCents = r.appIncomeCents + r.issuedIncomeCents;
@@ -129,6 +159,14 @@ export function eventResults(src: EventSources): EventResult[] {
   }
   const last = (r: EventResult) => r.moves.reduce((max, m) => ((m.date ?? '') > max ? (m.date ?? '') : max), '');
   return [...byId.values()].sort((a, b) => last(b).localeCompare(last(a)) || a.eventId.localeCompare(b.eventId));
+}
+
+/** Los eventos de los que hay algo en Finance (apuntes o asignaciones al evento): para pedir a Booking sus reservas. */
+export function knownEventIds(src: Pick<EventSources, 'entries' | 'allocations' | 'issuedAllocations'>): string[] {
+  const ids = new Set<string>();
+  for (const e of src.entries) if (!e.deleted_at && e.event_id) ids.add(e.event_id);
+  for (const a of [...src.allocations, ...src.issuedAllocations]) if (isEvent(a)) ids.add(a.target_id);
+  return [...ids].sort();
 }
 
 /** Cifras de la lista y de la baldosa (con IVA): ingresos y gastos (todos), lo fiscal, lo de proceso y lo que no tiene evento. */
