@@ -86,13 +86,13 @@ test('una General vuelve a ser de un área: se queda en ella, y la otra área re
 
 test('responsables y reglas de otra área pasan a su copia; las hijas General lo impiden; solo la propietaria con toda la app', async () => {
   const vg = (await rows('tasks.labels')).find((l) => l.tab_id === null && l.name === 'VG' && !l.deleted_at)!;
-  // Con una hija General, no.
-  const hija = uuid();
-  await ok([{ op: 'insert', table: 'tasks.labels', id: hija, fields: { tab_id: null, family_id: vg.family_id, parent_id: vg.id, name: 'VG mañanas' } }]);
-  const blocked = await toArea(vg.id, A);
+  // Con una hija General, no (otra General de la misma familia, con su hija; las etiquetas se archivan, no se borran).
+  const grupo = uuid(), hija = uuid();
+  await ok([{ op: 'insert', table: 'tasks.labels', id: grupo, fields: { tab_id: null, family_id: vg.family_id, name: 'Turno de tarde' } }]);
+  await ok([{ op: 'insert', table: 'tasks.labels', id: hija, fields: { tab_id: null, family_id: vg.family_id, parent_id: grupo, name: 'Tarde de sábado' } }]);
+  const blocked = await toArea(grupo, A);
   assert.equal(blocked.status, 422, JSON.stringify(blocked.data));
   assert.equal(blocked.data.error.code, 'LABEL_HAS_GENERAL_CHILDREN');
-  await ok([{ op: 'delete', table: 'tasks.labels', id: hija, expectedRevision: (await row('tasks.labels', hija)).revision }]);
 
   // Quien no es propietaria con toda la app, no.
   await app.t.db.query(`update core.memberships set scopes = $1 where app = 'tasks' and user_id = $2`, [JSON.stringify({ tabs: [A], projects: {} }), app.users.editor]);
