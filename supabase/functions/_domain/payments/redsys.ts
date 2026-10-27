@@ -107,7 +107,7 @@ export function normalizeRedsysNotification(n: RedsysNotification): PaymentEvent
   let metadata: Record<string, string> = {};
   try { const m = JSON.parse(n.Ds_MerchantData || '{}'); if (m && typeof m === 'object') metadata = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, String(v)])); } catch { /* sin metadatos */ }
   const amount = Number.isFinite(Number(n.Ds_Amount)) ? Number(n.Ds_Amount) : null;
-  const order = n.Ds_Order;
+  const order = n.Ds_Order ?? '';
   const base = { sessionId: order, paymentIntent: order, currency: n.Ds_Currency === '978' ? 'eur' : (n.Ds_Currency || null), metadata };
   if (type === '3') {
     return { ...base, eventId: `redsys:${order}:3:${n.Ds_AuthorisationCode || n.Ds_Response}`, kind: response === 900 ? 'refunded' : 'ignored', amountCents: amount, refundedCents: response === 900 ? amount : null };
