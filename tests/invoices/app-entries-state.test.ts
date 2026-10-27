@@ -55,7 +55,7 @@ test('sin evento, borrados, anuladas y emitidas en borrador quedan fuera; solo a
 
 test('cifras de la lista y apunte entregado', () => {
   const totals = entriesTotals([entry(), entry({ event_id: null }), entry({ kind: 'expense', amount_cents: 2200 }), entry({ deleted_at: 'x' })]);
-  assert.deepEqual(totals, { count: 3, incomeCents: 220000, expenseCents: 2200, withoutEvent: 1 });
+  assert.deepEqual(totals, { count: 3, incomeCents: 220000, expenseCents: 2200, fiscalIncomeCents: 220000, process: 0, withoutEvent: 1 });
   const exports = [{ status: 'generada', deleted_at: null, manifest: { app_entries: [{ id: 'a' }] } }, { status: 'entregada', deleted_at: null, manifest: { app_entries: [{ id: 'b' }] } }, { status: 'entregada', deleted_at: null, manifest: {} }];
   assert.equal(entryDelivered('a', exports), false);
   assert.equal(entryDelivered('b', exports), true);
