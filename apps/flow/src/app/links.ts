@@ -93,8 +93,8 @@ export async function quickPurchase(client: SyncClient, unit: Unit): Promise<voi
     const out = await client.api<{ link: { app: string; kind: string; id: string; status?: string } }>(`/units/${unit.id}/tasks`, {
       // En unidades de compra si Food da el rendimiento (0918): «Comprar 3 unidad».
       method: 'POST', json: { type: 'purchase', quantity: unit.payload?.purchase_qty ?? unit.payload?.qty, unit: unit.payload?.purchase_unit ?? unit.payload?.unit } });
-    await callProcedure(client, PROCEDURES.unitLinkExternal, { unit_id: unit.id, link: out.link });
     toast('Compra pedida en Tasks.');
+    void client.sync(); // el enlace lo anota flow-api (FL6)
   } catch (error) { toast(describeError(error)); }
 }
 
@@ -107,8 +107,8 @@ export function askTasks(client: SyncClient, unit: Unit): void {
     try {
       const out = await client.api<{ created: boolean; link: { app: string; kind: string; id: string; status?: string } }>(`/units/${unit.id}/tasks`, {
         method: 'POST', json: type === 'purchase' ? { type, quantity: Number(qty.value) || undefined, unit: measure.value || undefined } : { type } });
-      await callProcedure(client, PROCEDURES.unitLinkExternal, { unit_id: unit.id, link: out.link });
       toast(type === 'purchase' ? 'Compra pedida en Tasks.' : 'Tarea creada en Tasks.');
+      void client.sync();
       sheet.close();
     } catch (error) { toast(describeError(error)); }
   };
