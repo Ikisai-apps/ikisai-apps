@@ -46,9 +46,6 @@ test('recipientes · generar guarda el rendimiento de Food; el owner pone 3 × 8
   await ok([call(PROCEDURES.setBufferContainers, { buffer_id: mesa.id, containers: 3, per_container: 8 })]);
   mesa = await buffer('mesa');
   assert.equal(Number(mesa.capacity), 24); assert.equal(mesa.containers, 3);
-  // Regenerar no pisa la capacidad que sale de los recipientes.
-  await ok([call(PROCEDURES.generateIngredientTasks, { project_id: v2, totals: [{ ...TOTALS[0], mesa: 30 }], rules: RULES })]);
-  assert.equal(Number((await buffer('mesa')).capacity), 24);
 });
 
 test('recipientes · la reposición habla en recipientes y traduce; «Comprar» en unidades de compra', async () => {
@@ -74,4 +71,10 @@ test('recipientes · la reposición habla en recipientes y traduce; «Comprar» 
   assert.equal(open.length, 1);
   assert.equal(open[0].label, 'Comprar Tomate · 1 unidad');
   assert.equal(open[0].payload.purchase, true); assert.equal(open[0].payload.purchase_qty, 1); assert.equal(open[0].payload.purchase_unit, 'unidad');
+});
+
+test('recipientes · regenerar con otra previsión no pisa la capacidad que sale de los recipientes', async () => {
+  await ok([call(PROCEDURES.generateIngredientTasks, { project_id: v2, totals: [{ ...TOTALS[0], mesa: 30 }], rules: RULES })]);
+  assert.equal(Number((await buffer('mesa')).capacity), 24);
+  assert.equal(Number((await buffer('nevera')).capacity), 24); // sin recipientes: la de Food (no cambió)
 });
