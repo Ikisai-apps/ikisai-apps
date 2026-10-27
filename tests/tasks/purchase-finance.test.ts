@@ -103,6 +103,9 @@ test('el resultado de Finance no lo fija la app, y el justificante tiene que ser
   const row = await purchase(VASOS);
   const spoof = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: VASOS, expectedRevision: Number(row.revision), fields: { finance_status: 'registered' } }]);
   assert.equal(spoof.status, 422, JSON.stringify(spoof.data));
+  // Ni llamando al procedimiento del servidor por `commands`: los `call` solo los hace la Edge.
+  const call = await commit([{ op: 'call', procedure: 'tasks.purchase_finance_set', args: { id: VASOS, status: 'registered', invoiceId: uuid() } } as Operation]);
+  assert.equal(call.status, 422, JSON.stringify(call.data));
   // Un archivo que subió otra persona no se puede poner como justificante (no se manda a Finance lo ajeno).
   const bytes = new TextEncoder().encode('%PDF-1.4 documento de otra persona');
   const ticket = await app.call('/api/v1/uploads', { token: app.tokens.editor, body: { filename: 'otro.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256: await sha256(bytes) } });

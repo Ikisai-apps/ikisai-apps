@@ -56,6 +56,8 @@ declare
   v_id uuid;
   v_fields jsonb;
 begin
+  -- Solo desde la Edge: los `call` que llegan por `commands` los rechaza su beforeCommit (allowCalls); y solo editor u owner.
+  if coalesce(p->>'role', '') not in ('editor', 'owner') then perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'editor or owner')); end if;
   begin v_id := (v_args->>'id')::uuid; exception when others then v_id := null; end;
   select m.scopes into v_scopes from core.memberships m where m.app = p->>'app' and m.user_id = (p->>'actor')::uuid;
   select * into rq from tasks.purchase_requests r where r.id = v_id and r.deleted_at is null;
