@@ -50,7 +50,7 @@ interface FormValues {
 }
 
 function valuesOf(dates: { start?: string; end?: string } = {}): FormValues {
-  return { title: '', event_type: 'retiro', status: 'en_estudio', start_date: dates.start ?? '', end_date: dates.end ?? '', expected_guests: '', contact_name: '', contact_phone: '', lodging_pay_mode: 'hold', lodging_hold_hours: '24' };
+  return { title: '', event_type: 'retiro', status: 'en_estudio', start_date: dates.start ?? '', end_date: dates.end ?? '', expected_guests: '', contact_name: '', contact_phone: '', lodging_pay_mode: 'hold', lodging_hold_hours: '2' };
 }
 
 /** «Nueva reserva con estas fechas» desde el Calendario: el alta se abre al montar Reservas con las fechas puestas. */
@@ -70,7 +70,7 @@ function toFields(values: FormValues): Record<string, unknown> {
     contact_phone: values.contact_phone.trim() || null,
     ...(values.event_type === 'jornadas_abiertas' ? {
       lodging_pay_mode: values.lodging_pay_mode,
-      ...(values.lodging_pay_mode === 'hold' ? { lodging_hold_hours: Number(values.lodging_hold_hours) || 24 } : {}),
+      ...(values.lodging_pay_mode === 'hold' ? { lodging_hold_hours: Number(values.lodging_hold_hours) || 2 } : {}),
     } : {}),
   };
 }

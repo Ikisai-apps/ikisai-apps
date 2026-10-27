@@ -225,6 +225,8 @@ FIELDS[TABLES.visitorRequests] = {
   total_cents: { kind: 'int', nullable: true, min: 0 }, pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: true },
   hold_bed_ids: { kind: 'uuidList', max: 20 }, hold_until: { kind: 'timestamp' },
 };
+// 1403: devolución del cobro del alojamiento
+FIELDS[TABLES.walkinCharges] = { ...FIELDS[TABLES.walkinCharges], refund_cents: { kind: 'int', nullable: false, min: 0 }, refund_method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card'], nullable: true }, refunded_at: { kind: 'timestamp' } };
 // 1402: la salida prevista que guarda guest_leave al liberar la cama (la pone el procedimiento)
 FIELDS[TABLES.roomAssignments] = { ...FIELDS[TABLES.roomAssignments], planned_to_date: { kind: 'date' } };
 // 1400: número corto de la solicitud (lo pone el servidor) y borrador del viajero
