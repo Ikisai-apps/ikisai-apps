@@ -17,6 +17,8 @@ import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
 // Finance (antes Invoices): finance.ikisai.com es el dominio; invoices.ikisai.com y tramita.ikisai.com redirigen a él (301, fase C).
 export const INVOICES_ORIGINS = ['https://finance.ikisai.com', 'https://ikisai-invoices.pages.dev'];
+/** A dónde vuelve quien paga desde el portal del organizador (F5): solo a Organizers. */
+const ORGANIZERS_RETURN = ['https://organizers.ikisai.com', 'https://ikisai-organizers.pages.dev'];
 export const INVOICES_BUCKET = 'purchase-documents';
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
 
@@ -26,6 +28,8 @@ const SHA256 = /^[0-9a-f]{64}$/;
 export interface InvoicesAppOptions {
   /** Pasarela de pago (finance-18): Stripe si hay `STRIPE_SECRET_KEY` (index.ts); en las pruebas, el falso. Sin ella, PAYMENTS_OFF. */
   payments?: PaymentGateway | null;
+  /** Secreto de la firma del webhook de Stripe (`STRIPE_WEBHOOK_SECRET`); sin él, el webhook responde 503. */
+  paymentsWebhookSecret?: string | null;
   /** Base de la API de Tareas (`https://tasks.ikisai.com` o la función `tasks-api` directa en QA). */
   tasksApiBase?: string;
   /** Transporte hacia la API de Tareas (inyectable en pruebas). */
@@ -922,7 +926,26 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         return rereadDrive();
       },
     }],
-    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute],
+    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute, {
+      // «Pagar ahora» del portal (F5 de Organizers, API.md §19.3): el servidor de Organizers pide el enlace en nombre del
+      // organizador. Solo con `X-Ikisai-Caller: organizers`; el ámbito lo comprueba el SQL (portal_payment_scope).
+      method: 'POST', pattern: 'payment-links/portal', handler: async ({ request, json, invoke }) => {
+        if ((request.headers.get('x-ikisai-caller') ?? '').trim().toLowerCase() !== 'organizers') fail(403, 'CALLER_REJECTED', 'Solo el servidor de Organizers pide enlaces del portal.');
+        const body = (await json().catch(() => null)) as { actor?: unknown; reservation_id?: unknown; issued_invoice_id?: unknown; return_url?: unknown; cancel_url?: unknown } | null;
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        for (const k of ['actor', 'reservation_id', 'issued_invoice_id'] as const) if (typeof body?.[k] !== 'string' || !uuid.test(body[k] as string)) fail(422, 'INVALID_ARGS', `Falta ${k}.`, { field: k });
+        await invoke('invoices.portal_payment_scope', { actor: body!.actor, reservation_id: body!.reservation_id, issued_invoice_id: body!.issued_invoice_id });
+        // Vuelta al portal: solo a Organizers (nunca a una URL que mande quien llama sin comprobar). Pagado → `return_url`;
+        // cancelado → `cancel_url`, o la misma con `pago=ok` cambiado por `pago=cancelado` (revisión de Organizers, 28-10).
+        const ours = (u: unknown): u is string => typeof u === 'string' && ORGANIZERS_RETURN.some((o) => u.startsWith(`${o}/`));
+        const success = ours(body!.return_url) ? body!.return_url : `${ORGANIZERS_RETURN[0]}/`;
+        const cancel = ours(body!.cancel_url) ? body!.cancel_url : success.replace(/([?&])pago=ok(?=&|$)/, '$1pago=cancelado');
+        const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success, cancel });
+        return { url: out.url, provider: out.provider, expires_at: out.expires_at, amount: out.amount, reused: out.reused };
+      },
+    } satisfies WorkerRoute, { method: 'POST', pattern: 'payments/reconcile', handler: () => paymentLinks.reconcile() } satisfies WorkerRoute],
+    // Aviso de la pasarela (finance-18, API.md §19.4): sin sesión; vale solo con la firma de Stripe.
+    publicRoutes: [{ method: 'POST', pattern: 'payments/stripe', handler: ({ request }) => paymentLinks.webhook(request, base.paymentsWebhookSecret ?? null) }],
   });
   return withServerCaller(handler, base.workerKey);
 }

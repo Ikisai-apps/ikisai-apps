@@ -25,8 +25,8 @@ export function mountClosing({ client, menuId, host, canWrite, navigate, goToCom
   let closing = false;
   const checksHost = el('div', { class: 'fd-checkshost' });
   const closeHost = el('div', { class: 'fd-closebar', id: 'closeBar' });
-  const notes = el('textarea', { 'data-feedback-id': 'food.menu.cierre.notas', 'data-feedback-label': 'Notas del menú', 'data-feedback-ignore': '', id: 'menuNotes', rows: '3', placeholder: 'Para cocina: avisos, acuerdos con el organizador…' });
-  const closingNotes = el('textarea', { 'data-feedback-id': 'food.menu.cierre.cierre_cocina', 'data-feedback-label': 'Cierre de cocina', 'data-feedback-ignore': '', id: 'closingNotes', rows: '8', placeholder: GUIDE });
+  const notes = el('textarea', { 'data-field-id': 'food.menu.cierre.notas', 'data-field-entity': 'food.menus', 'data-field-prop': 'notes', 'data-feedback-id': 'food.menu.cierre.notas', 'data-feedback-label': 'Notas del menú', 'data-feedback-ignore': '', id: 'menuNotes', rows: '3', placeholder: 'Para cocina: avisos, acuerdos con el organizador…' });
+  const closingNotes = el('textarea', { 'data-field-id': 'food.menu.cierre.cierre_cocina', 'data-field-entity': 'food.menus', 'data-field-prop': 'closing_notes', 'data-feedback-id': 'food.menu.cierre.cierre_cocina', 'data-feedback-label': 'Cierre de cocina', 'data-feedback-ignore': '', id: 'closingNotes', rows: '8', placeholder: GUIDE });
   const save = el('button', { 'data-feedback-id': 'food.menu.cierre.guardar', 'data-feedback-label': 'Guardar notas', class: 'primary', type: 'button', id: 'saveClosing', hidden: true, onclick: () => void commit() }, 'Guardar');
   const value = (node: HTMLTextAreaElement) => node.value.trim() || null;
   const dirty = () => !!menu && (value(notes) !== (menu.notes ?? null) || value(closingNotes) !== (menu.closing_notes ?? null));

@@ -620,6 +620,34 @@ test('organizers · pago en línea (PAGO_EN_CURSO.md): «Pagar ahora» → «Pag
   await expect(page.locator('#payOnline')).toHaveCount(0);
 });
 
+test('organizers · pagar ahora sin enlace (F5): se pide a Finance al pulsar, se va a la pasarela y vuelve «Pago en curso»', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con pago bajo demanda', confirm: true });
+  const invoice = crypto.randomUUID();
+  let asked: unknown = null;
+  await page.route('**/api/v1/read/invoices.portal_reservation_money', (route) => route.fulfill({ json: {
+    reservation_id: reservation, currency: 'EUR', totals: { invoiced: 300, collected: 0, pending: 300 },
+    invoices: [{ id: invoice, number: 'F2026-0043', issue_date: '2026-10-20', type: 'F1', rectifies: null, base: 300, tax: 0, withholding: 0, total: 300,
+      status: 'emitida', collected: false, collected_at: null, has_document: false, purpose: 'saldo', payment_link: null }],
+  } }));
+  await page.route('**/api/v1/payments/config', (route) => route.fulfill({ json: { online: true } }));
+  await page.route('**/api/v1/payments/link', (route) => { asked = route.request().postDataJSON(); return route.fulfill({ json: {
+    url: 'https://checkout.stripe.com/c/pay/cs_test_demanda', provider: 'stripe', expires_at: '2099-01-01T00:00:00Z', reused: false } }); });
+  await page.context().route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>pasarela</p>' }));
+  await enter(page, await api.organizerLink([reservation], 'pago-demanda@example.invalid', 'Pilar'));
+  const base = page.url().split('#')[0];
+  await page.locator('#tab-pagos').click();
+  const pay = page.locator(`#payOnline button[data-invoice="${invoice}"]`);
+  await expect(pay).toHaveText('Pagar ahora');
+  await pay.click();
+  await page.waitForURL('https://checkout.stripe.com/**');
+  expect(asked).toEqual({ reservation_id: reservation, issued_invoice_id: invoice });
+  // Vuelve sin pagar del todo (atrás): la factura sigue «Pago en curso» en este dispositivo y el botón reutiliza el enlace.
+  await page.goto(`${base}#/retiro/${reservation}/pagos`);
+  const row = page.locator(`#payOnline li[data-invoice-id="${invoice}"]`);
+  await expect(row).toHaveAttribute('data-pay-state', 'en_curso');
+  await expect(row.getByRole('button', { name: 'Volver a la pasarela' })).toBeVisible();
+});
+
 test('organizers · factura emitida desde Finance: la copia congelada se pinta e imprime con la página del kit', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con factura emitida', confirm: true });
   const invoice = crypto.randomUUID();

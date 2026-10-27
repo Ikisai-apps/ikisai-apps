@@ -181,7 +181,7 @@ export function createStepsEditor(initial: MethodStep[], onChange: () => void): 
   }
 
   function make(id: string, text: string, depth: Depth): RowModel {
-    const area = el('textarea', { 'data-feedback-id': 'food.recetario.formulario.paso', 'data-feedback-label': 'Paso', class: 'steparea', rows: '2', maxlength: String(METHOD_STEP_MAX) });
+    const area = el('textarea', { 'data-field-id': 'food.recetario.formulario.paso', 'data-field-entity': 'food.recipes', 'data-field-prop': 'method_steps', 'data-feedback-id': 'food.recetario.formulario.paso', 'data-feedback-label': 'Paso', class: 'steparea', rows: '2', maxlength: String(METHOD_STEP_MAX) });
     area.value = text;
     const small = (attrs: Record<string, string>, name: Parameters<typeof icon>[0], action: 'up' | 'down' | 'in' | 'out') => {
       const button: HTMLButtonElement = el('button', { ...attrs, class: 'iconbtn small stepmove', type: 'button', title: attrs['data-feedback-label']!, onclick: () => step(m, action, button) }, icon(name, 16));

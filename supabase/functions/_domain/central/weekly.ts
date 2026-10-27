@@ -7,6 +7,15 @@
 export const WEEKLY_REVIEWS_TABLE = 'central.weekly_reviews';
 export const WEEKLY_ITEMS_TABLE = 'central.weekly_review_items';
 export const WEEKLY_STATUSES = ['abierta', 'cerrada'] as const;
+/** Acciones de la revisión (1523; VG, vg-41): cada punto puede terminar en una decisión o en una tarea de Tasks. */
+export const WEEKLY_ACTIONS_TABLE = 'central.weekly_actions';
+export const WEEKLY_ACTION_KINDS = ['decision', 'task'] as const;
+export const WEEKLY_TASK_KIND = 'central.weekly_action';
+export const WEEKLY_TASK_KIND_LABEL = 'Dirección: acción de la revisión semanal';
+/** Referencia externa de la tarea: el código de la revisión y el `requestId` (idempotente, como en las obligaciones). */
+export function weeklyTaskRef(code: string, requestId: string): string {
+  return `${code}:${requestId.replace(/[^A-Za-z0-9-]/g, '').slice(0, 36)}`;
+}
 export type WeeklyStatus = typeof WEEKLY_STATUSES[number];
 
 /** ¿Prepara la revisión? El owner, o un editor con `scopes.direccion = true`. */

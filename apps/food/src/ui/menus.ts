@@ -409,7 +409,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     /** Cabecera del menú de casa: siempre abierto y con las personas en casa, que son las raciones por defecto. */
     function paintHouseHead(): void {
       const current = () => (menu?.house_servings === null || menu?.house_servings === undefined ? null : Number(menu.house_servings));
-      const people = el('input', { 'data-feedback-id': 'food.menu.casa.personas', 'data-feedback-label': 'Personas en casa', id: 'houseServings', type: 'text', inputmode: 'decimal', class: 'servings compact',
+      const people = el('input', { 'data-field-id': 'food.menu.casa.personas', 'data-field-entity': 'food.menus', 'data-field-prop': 'house_servings', 'data-feedback-id': 'food.menu.casa.personas', 'data-feedback-label': 'Personas en casa', id: 'houseServings', type: 'text', inputmode: 'decimal', class: 'servings compact',
         value: current() ? formatQuantity(current()!) : '', placeholder: '—', 'aria-label': 'Personas en casa', disabled: !canWrite(),
         onchange: async () => {
           if (!menu) return;
@@ -577,7 +577,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const statusClass = comment.status === 'nuevo' ? 'chip warn' : comment.status === 'resuelto' ? 'chip ok' : 'chip';
       let actionsRow: HTMLElement | null = null;
       if (canWrite()) {
-        const field = el('textarea', { 'data-feedback-id': 'food.menu.comentarios.respuesta', 'data-feedback-label': 'Respuesta al organizador', class: 'replytext', maxlength: String(REPLY_MAX),
+        const field = el('textarea', { 'data-field-id': 'food.menu.comentarios.respuesta', 'data-field-entity': 'food.menu_comments', 'data-field-prop': 'reply', 'data-feedback-id': 'food.menu.comentarios.respuesta', 'data-feedback-label': 'Respuesta al organizador', class: 'replytext', maxlength: String(REPLY_MAX),
           rows: '2', 'aria-label': 'Respuesta al organizador', placeholder: 'Respuesta para el organizador',
           oninput: () => replyDrafts.set(comment.id, field.value) });
         field.value = replyDrafts.get(comment.id) ?? comment.reply ?? '';
@@ -780,7 +780,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const canEdit = editable();
       const img = el('img', { alt: '', hidden: true });
       if (recipe) showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
-      const servings = el('input', { 'data-feedback-id': 'food.menu.platos.raciones', 'data-feedback-label': 'Raciones', type: 'text', inputmode: 'decimal', class: 'servings compact', value: formatQuantity(item.servings), 'aria-label': `Raciones de ${recipe?.name ?? 'plato'}`, disabled: !canEdit,
+      const servings = el('input', { 'data-field-id': 'food.menu.platos.raciones', 'data-field-entity': 'food.menu_items', 'data-field-prop': 'servings', 'data-feedback-id': 'food.menu.platos.raciones', 'data-feedback-label': 'Raciones', type: 'text', inputmode: 'decimal', class: 'servings compact', value: formatQuantity(item.servings), 'aria-label': `Raciones de ${recipe?.name ?? 'plato'}`, disabled: !canEdit,
         onchange: async () => {
           const value = parseQuantity(servings.value);
           if (value === null || value <= 0) { toast('Las raciones deben ser un número mayor que cero.'); servings.value = formatQuantity(item.servings); return; }
@@ -825,7 +825,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const canEdit = editable();
       const label = SERVICE_LABELS[service.service_type];
       const dishes = dishesOf(service);
-      const time = el('input', { 'data-feedback-id': 'food.menu.servicios.hora', 'data-feedback-label': 'Hora del servicio', type: 'time', class: 'compact', value: shortTime(service.service_time), 'aria-label': `Hora de ${label}`, disabled: !canEdit,
+      const time = el('input', { 'data-field-id': 'food.menu.servicios.hora', 'data-field-entity': 'food.menu_services', 'data-field-prop': 'service_time', 'data-feedback-id': 'food.menu.servicios.hora', 'data-feedback-label': 'Hora del servicio', type: 'time', class: 'compact', value: shortTime(service.service_time), 'aria-label': `Hora de ${label}`, disabled: !canEdit,
         onchange: () => void commitSafely([{ op: 'update', table: T.menuServices, id: service.id, expectedRevision: service.revision, fields: { service_time: time.value || null } }]) });
       return el('section', { 'data-feedback-id': 'food.menu.servicios.servicio', 'data-feedback-label': 'Servicio', class: 'service', 'data-id': service.id, 'data-type': service.service_type },
         el('header', null, el('h4', null, label), time,
@@ -1013,8 +1013,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     function addService(day: string, count: number): void {
-      const type = el('select', { 'data-feedback-id': 'food.menu.servicios.nuevo.tipo', 'data-feedback-label': 'Tipo de servicio', id: 's-type' }, ...SERVICE_TYPES.map((t) => el('option', { value: t }, SERVICE_LABELS[t])));
-      const time = el('input', { 'data-feedback-id': 'food.menu.servicios.nuevo.hora', 'data-feedback-label': 'Hora', id: 's-time', type: 'time' });
+      const type = el('select', { 'data-field-id': 'food.menu.servicios.nuevo.tipo', 'data-field-entity': 'food.menu_services', 'data-field-prop': 'service_type', 'data-feedback-id': 'food.menu.servicios.nuevo.tipo', 'data-feedback-label': 'Tipo de servicio', id: 's-type' }, ...SERVICE_TYPES.map((t) => el('option', { value: t }, SERVICE_LABELS[t])));
+      const time = el('input', { 'data-field-id': 'food.menu.servicios.nuevo.hora', 'data-field-entity': 'food.menu_services', 'data-field-prop': 'service_time', 'data-feedback-id': 'food.menu.servicios.nuevo.hora', 'data-feedback-label': 'Hora', id: 's-time', type: 'time' });
       sheet = openSheet({
         title: `Nuevo servicio · ${longDay(day)}`,
         body: el('div', { 'data-feedback-id': 'food.menu.servicios.nuevo', 'data-feedback-label': 'Nuevo servicio' }, el('label', { class: 'field' }, el('span', null, 'Servicio'), type), el('label', { class: 'field' }, el('span', null, 'Hora'), time)),

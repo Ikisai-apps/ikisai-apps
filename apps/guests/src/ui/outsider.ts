@@ -21,7 +21,7 @@ import type { PortalReads } from '../app/portal.ts';
 import type { HouseMenu, MyStays, OutsiderApi, Stay } from '../app/outsider.ts';
 import { failure, fbIgnore, fbMark, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
-import { verEnPlano } from './plan.ts';
+import { ownBedRoom, verEnPlano } from './plan.ts';
 import { allergens } from './program.ts';
 
 export interface OutsiderActions {
@@ -109,7 +109,7 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
           el('p', { class: 'glodging-room', id: 'outsiderStayRoom' }, icon('bed', 20), ' ', el('strong', null, bed || t('outsider.noBed'))),
           el('p', { class: 'muted', id: 'outsiderStayDates' }, t(stay.from <= today ? 'outsider.stayNow' : 'outsider.stayNext', { from: formatDate(stay.from, { day: 'numeric', month: 'long' }), to: formatDate(stay.to, { day: 'numeric', month: 'long' }) })),
           stay.clash ? el('p', { class: 'banner warn', id: 'outsiderClash', role: 'status' }, icon('warn', 16), ' ', t('outsider.clash')) : null,
-          bed ? verEnPlano({ place: bed, spaceId: stay.resource_bed_id ?? stay.resource_space_id ?? null, match: { space: stay.space_name, bed: stay.bed_label }, label: t('outsider.yourBed', { bed }), id: 'outsiderPlan', reads: actions.reads ?? null, mark: (n) => fbMark(n, 'guests.outsider.estancia.plano', 'Tu cama en el plano') }) : null)
+          bed ? verEnPlano({ place: bed, spaceId: stay.resource_bed_id ?? stay.resource_space_id ?? null, match: { space: stay.space_name, bed: stay.bed_label }, label: t('outsider.yourBed', { bed }), id: 'outsiderPlan', reads: actions.reads ?? null, rooms: ownBedRoom(stay), mark: (n) => fbMark(n, 'guests.outsider.estancia.plano', 'Tu cama en el plano') }) : null)
         : el('p', { class: 'muted', id: 'outsiderNoStay' }, t('outsider.noStay')),
       !stay && data?.default_bed ? el('p', { class: 'muted small', id: 'outsiderDefaultBed' }, t('outsider.defaultBed', { bed: stayText({ space_name: data.default_bed.space_name, bed_label: data.default_bed.bed_label, zone: null }) })) : null,
       others.length ? el('details', { class: 'gothers', 'data-feedback-id': 'guests.outsider.estancia.otras', 'data-feedback-label': 'Otras estancias' },

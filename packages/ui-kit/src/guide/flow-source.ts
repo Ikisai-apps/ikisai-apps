@@ -7,6 +7,9 @@
  *   al sistema dueño.
  * - `flow.guide_confirm` `{ requestId, execution_id, step_id, how, pending }` → `{ ok }`. Es idempotente por `requestId`.
  *   **Nunca lleva valores de campo**: `save` sale del aviso de guardado de `createSaveState` (0.66), no de leer el campo.
+ *   Con Flow (0940, 27-10): `how` es `save | event | manual | none`, así que «Saltar» va como `none`; lo guardado sin red
+ *   (`pending`) y lo ya enviado tienen `requestId` distinto (el mismo con otro contenido sería un choque de recibo); y en
+ *   modo `learn` no se confirma nada (Flow lo rechaza: un ensayo no confirma fuera de Flow).
  * Lo que llega se valida: ids e anclajes con su formato, rutas solo internas (`#/…` o `/…`) y textos acotados.
  */
 import { ANCHOR_ID } from './anchors.ts';
@@ -59,11 +62,19 @@ export function sanitizeGuideRun(raw: unknown): GuideRun {
 /** Fuente de la guía con las capacidades de Flow, a través del cliente de la app. */
 export function flowGuideSource(client: GuideApiClient, options: { app: string | null }): GuideSource {
   const invoke = <T>(id: string, json: Record<string, unknown>) => client.api<{ result: T }>(`/capabilities/${id}/invoke`, { method: 'POST', json }).then((o) => o.result);
-  const confirm = (run: string, step: GuideStep, how: GuideConfirm | 'skip', pending: boolean) =>
-    invoke('flow.guide_confirm', { requestId: `guide:${run}:${step.id}:${how}`, execution_id: run, step_id: step.id, how, pending });
+  /** Ejecuciones leídas en modo `learn`: ahí no se confirma. */
+  const learning = new Set<string>();
+  const confirm = async (run: string, step: GuideStep, how: GuideConfirm, pending: boolean, tag: string = how): Promise<unknown> => {
+    if (learning.has(run)) return { ok: true, learn: true };
+    return invoke('flow.guide_confirm', { requestId: `guide:${run}:${step.id}:${tag}${pending ? ':p' : ''}`, execution_id: run, step_id: step.id, how, pending });
+  };
   return {
-    load: async (run) => sanitizeGuideRun(await invoke('flow.guide_read', { execution_id: run, app: options.app })),
+    load: async (run) => {
+      const out = sanitizeGuideRun(await invoke('flow.guide_read', { execution_id: run, app: options.app }));
+      if (out.mode === 'learn') learning.add(run); else learning.delete(run);
+      return out;
+    },
     confirm: (run, step, info) => confirm(run, step, info.how, info.pending),
-    skip: (run, step) => confirm(run, step, 'skip', false),
+    skip: (run, step) => confirm(run, step, 'none', false, 'skip'),
   };
 }

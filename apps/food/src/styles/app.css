@@ -295,7 +295,8 @@
 .fd-service{margin:12px 0}
 .fd-service[data-phase="ahora"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .fd-service-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
-.fd-service-head h3{margin:0;font-size:1.05rem}
+.fd-service-head h3{margin:0;font-size:1.05rem;display:flex;align-items:center;gap:6px}
+.fd-service-head h3 .icon{flex:none;color:var(--accent)}
 .fd-service-head p{margin:2px 0 0;font-size:var(--text-sm,.875rem)}
 .fd-passbtn{min-height:var(--tap);min-width:var(--tap)}
 .fd-dishes{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -525,8 +526,12 @@
 .fd-orgreview-service h4{margin:10px 0 4px;font-size:var(--text-sm,.875rem);color:var(--muted)}
 .fd-orgreview-dishes{list-style:none;margin:0;padding:0}
 .fd-orgreview-dishes li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--line)}
+/* Recetario · grupos (F-REC-4): la etiqueta ocupa toda la fila de la rejilla. */
+.recipegrid .fd-gridlabel{grid-column:1/-1;margin:6px 2px 0}
 /* Recetario · filtros en chips (F-REC-2): una fila que se desplaza; los selectores, en la hoja «Filtrar». */
 .fd-filterbar{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;margin:10px 0 14px;padding-bottom:2px;scrollbar-width:none}
 .fd-filterbar .filterchip{flex:none;white-space:nowrap}
 .fd-filterbar .linkbtn{flex:none}
 .fd-filtersheet{grid-template-columns:1fr;margin:0}
+.fd-menustyle{display:flex;align-items:center;gap:6px}
+.fd-menustyle .icon{flex:none;color:var(--accent)}

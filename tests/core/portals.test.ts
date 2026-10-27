@@ -285,11 +285,12 @@ test('portales · contacto público por público: cada portal pide el suyo por d
   assert.equal((await callPortal(guests, 'guests', '/api/v1/public/contact?audience=nadie')).data.audience, 'guests', 'público desconocido → el del portal');
 });
 
-test('portales · K7: la cuenta de servicio de Organizers se registra sin pertenencias', async () => {
+test('portales · K7: la cuenta de servicio de Organizers se registra sin pertenencias de persona (solo su carril de Flow, 0113)', async () => {
   const user = await app.t.createUser();
   const id = (await app.t.db.query<{ id: string }>(`select core.register_service_actor($1, 'organizers')::text id`, [user])).rows[0]!.id;
   assert.equal(id, user);
-  assert.equal((await app.t.db.query<{ n: number }>('select count(*)::int n from core.memberships where user_id = $1', [user])).rows[0]!.n, 0);
+  const m = (await app.t.db.query<{ app: string; scopes: any }>('select app, scopes from core.memberships where user_id = $1', [user])).rows;
+  assert.deepEqual(m, [{ app: 'flow', scopes: { lanes: ['organizers'] } }], 'ninguna pertenencia en organizers; solo el carril del Avance en Flow');
   assert.equal((await app.t.db.query<{ id: string }>(`select core.service_actor('organizers')::text id`)).rows[0]!.id, user);
 });
 

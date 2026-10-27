@@ -28,7 +28,7 @@ import { visitorLinkCard } from './visitor-link.ts';
 import { shortRange } from './frame.ts';
 import { choiceOpen } from './lodging.ts';
 import type { Modules } from './nav.ts';
-import { verEnPlano } from './plan.ts';
+import { ownBedRoom, verEnPlano } from './plan.ts';
 import { endOfItem, nextMeal, nowMadrid } from './program.ts';
 import { answered } from './questions.ts';
 
@@ -263,7 +263,7 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
     return el('section', { class: 'gpanel', id: 'panel', 'data-feedback-id': 'guests.inicio.estancia', 'data-feedback-label': 'Tu estancia' },
       el('h3', null, t('home2.panel')),
       !room && lodging && mods?.lodging ? whyNote('roomPlanWhy', t('lodging.none')) : null,
-      room ? verEnPlano({ place: room, spaceId: lodging?.mine?.resource_bed_id ?? lodging?.mine?.resource_space_id ?? null, match: { space: lodging?.mine?.space_name, bed: lodging?.mine?.bed_label }, label: t('home2.yourRoomPlan', { room }), id: 'roomPlan', reads: ctx.reads, mark: (n) => fbMark(n, 'guests.inicio.estancia.plano', 'Tu habitación en el plano') }) : null,
+      room ? verEnPlano({ place: room, spaceId: lodging?.mine?.resource_bed_id ?? lodging?.mine?.resource_space_id ?? null, match: { space: lodging?.mine?.space_name, bed: lodging?.mine?.bed_label }, label: t('home2.yourRoomPlan', { room }), id: 'roomPlan', reads: ctx.reads, rooms: lodging ? [...(lodging.rooms ?? []), ...ownBedRoom(lodging.mine)] : null, mark: (n) => fbMark(n, 'guests.inicio.estancia.plano', 'Tu habitación en el plano') }) : null,
       el('div', { class: 'gtiles', id: 'retreatTiles' },
         mods?.menu ? tile({ id: 'openMenu', href: `${retreatBase}/menu`, icon: 'chef', title: t('nav.menu'), sub: meal ? `${t(`menu.${meal.type}`)}${meal.time ? ` · ${hhmm(meal.time)}` : ''}` : t('home2.menuSub') }, (n) => fbMark(n, 'guests.inicio.estancia.menu', 'Menú')) : null,
         mods?.lodging && moment !== 'before' ? tile({ id: 'myRoom', href: `${retreatBase}/alojamiento`, icon: 'bed', title: t('home2.yourRoom'), sub: room ?? t('home2.roomNone') }, (n) => fbMark(n, 'guests.inicio.estancia.habitacion', 'Tu habitación')) : null,
