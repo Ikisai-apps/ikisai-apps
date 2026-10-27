@@ -235,8 +235,8 @@ begin
     || food.offers_payload(case when p->>'app' = 'guests' then 'guests' else 'organizers' end, v_res, null, v_from, v_to);
 end $$;
 
--- Visitantes por QR (Guests FD5): por el código del evento, solo las ofertas `public`. Con la forma de una lectura
--- pública del núcleo (args directos); su registro lo decide Core.
+-- Visitantes por QR (Guests FD5): por el código del evento, solo las ofertas `public`. Lectura pública del núcleo
+-- (decisión de Core del 27-10): cualquier API la sirve en `GET /api/v1/public/food_visitor_offers?event_code=…`, sin sesión.
 create or replace function food.visitor_offers(p_args jsonb)
 returns jsonb language plpgsql stable as $$
 declare v_event uuid; v_code text := btrim(coalesce(p_args->>'event_code', '')); v_from date; v_to date;
@@ -252,6 +252,7 @@ begin
   return jsonb_build_object('event_code', v_code) || food.offers_payload('visitor', null, v_event, v_from, v_to);
 end $$;
 
+select core.allow_public_read('food_visitor_offers', 'food.visitor_offers');
 select core.allow_read('organizers', 'food.portal_offers', 'function', '{editor,owner}');
 select core.allow_read('guests', 'food.portal_offers', 'function', '{editor,owner}');
 

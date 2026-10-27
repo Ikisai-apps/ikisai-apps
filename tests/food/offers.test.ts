@@ -132,6 +132,10 @@ test('visitantes por QR · solo las ofertas públicas del evento, sin grupos ni 
   assert.deepEqual(out.offers.map((o: any) => [o.name, o.meal_groups]), [['Barra del retiro', []]]);
   assert.deepEqual(out.offers[0].lines.map((l: any) => l.price_cents), [300]);
   assert.deepEqual(await visitor({ event_code: 'NO_EXISTE' }), { event_code: 'NO_EXISTE', offers: [], days: [] }, 'un código desconocido no dice nada');
+  // Lectura pública del núcleo: registrada y servida por core_public_read (la ruta HTTP es del kit).
+  assert.deepEqual(await q(`select procedure from core.public_reads where name = 'food_visitor_offers'`), [{ procedure: 'food.visitor_offers' }]);
+  const viaCore = await app.t.rpc('core_public_read', { p_name: 'food_visitor_offers', p_args: { event_code: code } }) as any;
+  assert.deepEqual(viaCore.offers.map((o: any) => o.name), ['Barra del retiro']);
   // Una interna no puede ser pública.
   const equipo = (await q(`select id, revision from food.event_offers where name = 'Equipo'`))[0];
   await rejected([{ op: 'update', table: 'food.event_offers', id: equipo.id, expectedRevision: Number(equipo.revision), fields: { public: true } }], 'CONSTRAINT_VIOLATION');
