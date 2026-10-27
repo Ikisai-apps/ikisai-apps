@@ -21,6 +21,10 @@ export const R = {
   spaceKinds: 'resources.space_kinds',
   /** Mapa de zonas (0808): el dibujo de cada edificio y planta (Planos del centro). */
   floorPlans: 'resources.floor_plans',
+  /** Finca y decoración (0814): iconos, objetos colocados e imágenes de los edificios. */
+  decorIcons: 'resources.decor_icons',
+  decorItems: 'resources.decor_items',
+  spaceImages: 'resources.space_images',
 } as const satisfies Record<string, TableName>;
 
 let resources: SyncClient | null = null;
