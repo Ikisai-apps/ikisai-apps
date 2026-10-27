@@ -219,7 +219,7 @@ function throwDomain(error: unknown, index: number): never {
 async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unknown, index: number, field = 'file_id'): Promise<{ mime_type: string; size_bytes: number; sha256: string }> {
   if (isBlobMarker(fileId)) fail(422, 'INVALID_FIELDS', 'El adjunto todavía no se ha subido.', { index, field });
   if (typeof fileId !== 'string' || !UUID.test(fileId)) fail(422, 'INVALID_FIELDS', 'Identificador de archivo inválido.', { index, field });
-  let file: { status: string; mime: string; size: number; sha256: string };
+  let file: { status: string; mime: string; size: number; sha256: string; created_by: string | null };
   try {
     file = await supabase.rpc('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
   } catch (error) {
@@ -228,6 +228,11 @@ async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unk
   }
   if (file.status !== 'verified') fail(422, 'INVALID_FILE', 'El documento todavía no se ha subido por completo.', { index, field });
   if (!(FILE_MIMES as readonly string[]).includes(file.mime)) fail(422, 'INVALID_FILE', 'El documento debe ser PDF, WebP, JPEG o PNG.', { index, field, mime: file.mime });
+  // F4 (0252): se adjunta lo que subió quien lo adjunta, o lo que ya está enlazado a algo de Finance (que todos ven).
+  if (file.created_by !== ctx.user.id) {
+    const use = await supabase.rpc<{ in_use: boolean }>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'invoices.file_in_use', p_args: { file_id: fileId } });
+    if (!use?.in_use) fail(403, 'FILE_NOT_YOURS', domainMessage('FILE_NOT_YOURS'), { index, field });
+  }
   return { mime_type: file.mime, size_bytes: Number(file.size), sha256: file.sha256 };
 }
 

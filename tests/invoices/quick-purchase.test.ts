@@ -20,12 +20,13 @@ async function ok(body: Record<string, unknown>, token?: string) {
 async function rows(table: string): Promise<Array<Record<string, any>>> {
   return (await app.call(`/api/v1/snapshot?tables=${table}`)).data.tables[0].rows;
 }
-async function uploadFile(content: string) {
+async function uploadFile(content: string, token?: string) {
+  const as = token ? { token } : {};
   const bytes = new TextEncoder().encode(content);
   const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
-  const ticket = await app.call('/api/v1/uploads', { body: { filename: 'ticket.jpg', mime: 'image/jpeg', size: bytes.byteLength, sha256: sha } });
+  const ticket = await app.call('/api/v1/uploads', { body: { filename: 'ticket.jpg', mime: 'image/jpeg', size: bytes.byteLength, sha256: sha }, ...as });
   app.supabase.storage.set(ticket.data.path, bytes);
-  await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {} });
+  await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {}, ...as });
   return ticket.data.id as string;
 }
 
@@ -42,7 +43,8 @@ test.before(async () => {
 test.after(async () => { await app.close(); });
 
 test('compra al evento con proveedor nuevo, IVA conocido y foto; repetirla devuelve lo mismo sin duplicar', async () => {
-  const fileId = await uploadFile('foto del ticket del hielo');
+  // La foto la sube quien registra la compra (F4: solo se adjunta lo propio o lo ya enlazado)
+  const fileId = await uploadFile('foto del ticket del hielo', app.tokens.editor);
   const body = { requestId: 'flow-hielo-31', supplier: { name: 'Hielos del Sur', tax_id: 'B00000000' }, date: '2026-10-31', total: 36.3, vat_rate: 21,
     description: 'Hielo para la barra', file_id: fileId, target: { app: 'booking', kind: 'event', id: EVENT } };
   const first = await ok(body, app.tokens.editor);
