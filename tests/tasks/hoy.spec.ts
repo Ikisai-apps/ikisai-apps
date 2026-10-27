@@ -311,6 +311,8 @@ test('filtro por espacio arriba: un toque marca y otro desmarca, varios suman, n
   const chips = page.locator('#tkhSpaces [data-tkh-space]');
   const huerto = page.locator(`[data-tkh-space="${HUERTO}"]`), taller = page.locator(`[data-tkh-space="${TALLER_SPACE}"]`);
   await expect(chips).toHaveCount(2);
+  // La fila lleva la pista del kit (installScrollHints la vigila: pone data-more-start/end cuando hace falta).
+  expect(await page.evaluate(() => document.getElementById('view')?.dataset.tkhHints)).toBe('1');
   await expect(huerto).toContainText('Huerto');
   await expect(huerto.locator('.tkh-space-n')).toHaveText(/^[1-9]\d*$/);
   const take = page.locator('.tkh-take');

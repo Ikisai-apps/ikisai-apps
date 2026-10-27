@@ -171,7 +171,11 @@ function tkhView(){const F=tkhSpaceFilter(),all=tkhItems(),items=F.on?all.filter
     ${left?`<section class="tkh-yesterday" aria-label="De ayer"><p>${esc(tkhLeftoverText(left))}</p><div class="tkh-yesterday-actions"><button type="button" class="primary" id="tkhBring" data-feedback-id="tasks.hoy.ayer.traer" data-feedback-label="Traer a hoy">Traer a hoy</button><button type="button" class="ghost" id="tkhLeave" data-feedback-id="tasks.hoy.ayer.dejar" data-feedback-label="Dejarlo">Dejarlo</button></div></section>`:''}
     <section class="tkh-plan" aria-labelledby="tkhPlanTitle"><h2 class="tkh-h2" id="tkhPlanTitle">Tu plan <span class="tkh-n">${tkhLeft(items)} por hacer</span></h2>${items.length?'<div class="ikisai-kit tkh-list" id="tkhList"></div>':F.on&&all.length?`<p class="tkh-empty">Nada de «${esc(tkhSpaceNames(F))}» en tu plan. ${tkhClearButton()}</p>`:`<p class="tkh-empty">${pick?'Todavía no hay nada. Busca arriba, toca ☀ en una tarea o coge algo de abajo.':'Todavía no hay nada. Apunta arriba lo que vas a hacer.'}</p>`}</section>
     ${pick?tkhTake():''}</main>`}
-function tkhMount(){document.querySelectorAll('[data-tkh-space]').forEach(b=>b.onclick=()=>tkhSpaceToggle(b.dataset.tkhSpace));
+/* La pista de desplazamiento del kit (K4) en las filas .scrollrow: la instala createAppShell, que Tasks no usa; aquí, una vez
+   sobre #view (vigila también las filas que aparecen en cada render). */
+function tkhScrollHints(){const v=document.getElementById('view');if(!v||v.dataset.tkhHints||typeof window.IkisaiKit?.installScrollHints!=='function')return;
+  try{window.IkisaiKit.installScrollHints(v);v.dataset.tkhHints='1'}catch(e){console.error(e)}}
+function tkhMount(){tkhScrollHints();document.querySelectorAll('[data-tkh-space]').forEach(b=>b.onclick=()=>tkhSpaceToggle(b.dataset.tkhSpace));
   document.querySelectorAll('[data-tkh-clear]').forEach(b=>b.onclick=tkhSpaceClear);
   const host=document.getElementById('tkhList');tkhSortable=null;if(host){const F=tkhSpaceFilter(),items=tkhItems().filter(it=>!F.on||(it.task_id&&F.match(tkhFind(it.task_id)?.t)));
     tkhSortable=IkisaiKit.createSortableList({items,key:it=>it.id,name:it=>(it.task_id?tkhFind(it.task_id)?.t.text:it.text)||'Tarea',render:it=>tkhRowNode(it),label:'Tu plan de hoy',rowClass:'tkh-sortrow',buttons:false,disabled:!tkhCanWrite()||F.on,
