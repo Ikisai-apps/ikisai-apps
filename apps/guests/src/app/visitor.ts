@@ -139,6 +139,30 @@ export function publicEvents(): Promise<Loaded<PublicEvent[]>> {
   });
 }
 
+/** Precios y plazas de un intervalo (Booking 0498, `booking_public_lodging`): calculado para todas las noches `[from, to)`. */
+export interface PublicLodging {
+  from: string; to: string; nights: number; persons: number;
+  /** Plazas libres todas esas noches (con tope). */
+  available: number;
+  modes: Array<{ id: string; name: string; includes: string | null; price_night_cents: number | null; total_cents: number | null; max_persons: number | null; available: number | null; fits: boolean }>;
+  rules_text: string | null;
+}
+
+export function publicLodging(code: string, from: string, to: string, persons: number): Promise<Loaded<PublicLodging>> {
+  return readPublic('booking_public_lodging', { event_code: code.toUpperCase(), from, to, persons: String(persons) }, (raw) => {
+    const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const modes = (Array.isArray(r.modes) ? r.modes : []).flatMap((m) => {
+      const x = (m && typeof m === 'object' ? m : {}) as Record<string, unknown>;
+      if (typeof x.id !== 'string' || typeof x.name !== 'string') return [];
+      return [{ id: x.id, name: x.name, includes: typeof x.includes === 'string' && x.includes.trim() ? x.includes : null,
+        price_night_cents: num(x.price_night_cents), total_cents: num(x.total_cents), max_persons: num(x.max_persons), available: num(x.available), fits: x.fits === true }];
+    });
+    return { from: String(r.from ?? from), to: String(r.to ?? to), nights: num(r.nights) ?? 0, persons: num(r.persons) ?? persons,
+      available: num(r.available) ?? 0, modes, rules_text: typeof r.rules_text === 'string' && r.rules_text.trim() ? r.rules_text : null };
+  });
+}
+
 /** Sus ofertas públicas (Food FD5, `food_visitor_offers`), sin cruzar: la forma de `food.portal_offers`. */
 export function visitorOffers(code: string): Promise<Loaded<unknown>> {
   return readPublic('food_visitor_offers', { event_code: code.toUpperCase() }, (raw) => raw);

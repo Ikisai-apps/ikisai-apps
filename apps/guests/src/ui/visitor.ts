@@ -17,6 +17,7 @@ import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
 import { languageSelect } from './language.ts';
 import { offersBlock } from './offers.ts';
+import { stayBlock } from './stay.ts';
 
 const LIST = '#/v';
 const EVENT = /^#\/v\/([A-Za-z0-9]{10})$/;
@@ -119,6 +120,9 @@ export function renderVisitor(root: HTMLElement): () => void {
         el('span', { class: 'chip small gstatus' }, t(event.status === 'abierto' ? 'visitor.open' : 'visitor.closed'))),
       event.summary ? el('p', { id: 'visitorSummary' }, event.summary) : null);
 
+    // «Dormir aquí» (tarjeta 2): precios y plazas por intervalo, también antes de entrar (mirar no pide nada).
+    const stay = event.lodging ? stayBlock(event, today) : null;
+
     // Sin identidad todavía: se entra sin dar nada.
     if (!visitorToken()) {
       const enter = el('button', { type: 'button', class: 'primary wide', id: 'visitorEnter', 'data-feedback-id': 'guests.visitante.evento.entrar', 'data-feedback-label': 'Entrar como visitante',
@@ -127,7 +131,7 @@ export function renderVisitor(root: HTMLElement): () => void {
           try { await ensureVisitor(code); rememberEvent(code); route(); } catch (error) { enter.removeAttribute('disabled'); toast(visitorError(error)); }
         } }, t('visitor.enter'));
       replace(main, loaded.stale ? staleNote(loaded.at) : null, head,
-        el('section', { class: 'card gcard', id: 'visitorWelcome' }, el('p', null, t('visitor.enterText')), enter), footer());
+        el('section', { class: 'card gcard', id: 'visitorWelcome' }, el('p', null, t('visitor.enterText')), enter), stay, footer());
       return;
     }
     rememberEvent(code);
@@ -135,7 +139,7 @@ export function renderVisitor(root: HTMLElement): () => void {
     const offersHost = el('div', { id: 'visitorOffers' });
     const requestsHost = el('div', { id: 'visitorRequests' });
     const orderHost = el('section', { class: 'card gcard', id: 'visitorOrder' });
-    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, offersHost, orderHost, requestsHost, invitation(), footer());
+    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, offersHost, stay, orderHost, requestsHost, invitation(), footer());
     const join = async () => { const c = await visitorJoin(code); return { number: c.number, carta_url: c.carta_url, account_open: c.account_open }; };
 
     // Ofertas públicas (FD5): la pieza del Menú, sin cruce personal.
