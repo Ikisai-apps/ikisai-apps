@@ -151,7 +151,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   /**
    * «Volver» y «Cerrar» siempre a la vista (VG, 27-10: se quedó atrapado en una pantalla): en todas las pantallas menos la
    * entrada común. «Volver» sube un nivel (pantalla del flujo → su Inicio → entrada; editor → Recorridos → entrada); «Cerrar»
-   * vuelve a la entrada común.
+   * vuelve a la entrada común. Una sola fila pegajosa (revisión móvil de UI-kit): «‹ Volver» y «✕ Cerrar», con el nombre
+   * completo en aria-label y los símbolos fuera del nombre accesible. Se oculta cuando la pantalla resuelta es la entrada.
    */
   const flowNav = el('nav', { class: 'flow-nav', 'aria-label': 'Volver o cerrar', 'data-feedback-id': 'flow.navegacion', hidden: true });
   main.before(flowNav);
@@ -160,12 +161,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     if (hash.startsWith('#/recorridos/')) return '#/recorridos';
     return hash === '#/' ? null : '#/';
   }
-  function paintFlowNav(hash: string, projectId: string | null): void {
-    const parent = parentOf(hash, projectId);
+  function paintFlowNav(hash: string, projectId: string | null, isEntry: boolean): void {
+    const parent = isEntry ? null : parentOf(hash, projectId);
     flowNav.hidden = !parent;
+    // Los carriles restan su altura (app.css, --flow-nav-h).
+    document.documentElement.style.setProperty('--flow-nav-h', parent ? '52px' : '0px');
     replace(flowNav, ...(parent ? [
-      el('button', { type: 'button', class: 'ghost', 'data-feedback-id': 'flow.navegacion.volver', onclick: () => navigate(parent) }, '‹ Volver'),
-      el('button', { type: 'button', class: 'ghost', 'data-feedback-id': 'flow.navegacion.cerrar', onclick: () => navigate('#/') }, '✕ Cerrar y volver a la entrada'),
+      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Volver', 'data-feedback-id': 'flow.navegacion.volver', onclick: () => navigate(parent) },
+        el('span', { 'aria-hidden': 'true' }, '‹'), ' Volver'),
+      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Cerrar y volver a la entrada', 'data-feedback-id': 'flow.navegacion.cerrar', onclick: () => navigate('#/') },
+        el('span', { 'aria-hidden': 'true' }, '✕'), ' Cerrar'),
     ] : []));
   }
 
@@ -292,7 +297,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView?.();
     unmountView = null;
     shell.setRoute(projectId ? hash : '#/');
-    paintFlowNav(hash, projectId);
+    paintFlowNav(hash, projectId, entry.slug === 'flujos');
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, projectId });
     screen = { id: `flow.${entry.slug}`, label: entry.title };
