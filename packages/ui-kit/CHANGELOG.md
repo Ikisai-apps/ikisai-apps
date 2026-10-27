@@ -1,5 +1,25 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.62.0 · 27 de octubre de 2026
+
+**Dos peticiones de Tasks** (K4 y K5 de `docs/tasks/PETICIONES.md`, decisiones de VG del 27-10). Sin las opciones nuevas, el selector se comporta como antes.
+
+1. **K5 · Buscar por palabras** (FB_2026_070). `searchItems`, y con él el buscador de `createItemPicker` y el de `createItemCatalog`, encuentra cada palabra en cualquier orden, sin tildes ni mayúsculas: «multicapa 20» da «Tubo multicapa 20 mm».
+   - Orden de los resultados:
+     1. el nombre empieza por lo escrito;
+     2. el nombre contiene la frase;
+     3. todas las palabras aparecen al principio de palabras del nombre;
+     4. todas las palabras aparecen dentro del nombre;
+     5. lo mismo en los alias;
+     6. las palabras repartidas entre nombre y alias.
+   - Con una sola palabra, el orden es el de siempre.
+   - **Completar con nombres que ya existen:** si el primer artículo empieza por lo escrito, bajo el campo sale «→ completa «Tubo multicapa 20 mm»». Se acepta con → al final del texto o tocando la línea.
+2. **K4 · Sugeridos en el selector** (FB_2026_056, «solo ordenar el selector»). `createItemPicker({ suggested: [ids], suggestedLabel: 'Del kit del oficio' })`:
+   - al buscar, los sugeridos que coinciden van primero y llevan la marca;
+   - con el campo vacío, al entrar en él, se ofrecen ellos solos.
+   - `searchItems(…, { boost: [ids] })` hace lo mismo para cualquier lista.
+- Marca de feedback nueva: `<base>.completar`. Pruebas: `tests/v66.spec.ts`.
+
 ## 0.61.0 · 27 de octubre de 2026
 
 **`createLanes`: carriles con dos vistas que se intercambian** (encargo de VG del 27-10 para Flow v2; vale para cualquier app con columnas). La API está acordada con Flow.
