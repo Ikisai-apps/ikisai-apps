@@ -46,7 +46,13 @@ export interface TaskRow extends BaseRow {
   step_free?: boolean;
   /** Fase del proyecto (0356, §51), solo en la madre: las hijas heredan la de su madre al leer. */
   phase_id?: Uuid | null;
+  /** Unidades repetidas (0360, §55), solo en la madre: sus pasos (o ella, sin pasos) se marcan unidad a unidad. */
+  unit_count?: number | null;
+  /** Entregable del proyecto (0361, §57), solo en la madre: los pasos heredan el de su madre al leer. */
+  deliverable_id?: Uuid | null;
 }
+/** Una unidad hecha de una tarea de trabajo (0360, §55). Solo la escribe `tasks.unit_step`; sigue a su tarea. */
+export interface TaskUnitRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; unit: number; done_by: Uuid | null; marked_at: string }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid | null; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
 export interface LabelRow extends BaseRow {
@@ -150,6 +156,12 @@ export type PhaseStatus = (typeof PHASE_STATUSES)[number];
 export interface ProjectPhaseRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; name: string; position: number; status: PhaseStatus; start: string | null; due: string | null; closed_note: string;
 }
+/** Entregables (0361, §57): el estado a mano; «hecho» se calcula con sus tareas. */
+export const DELIVERABLE_STATUSES = ['todo', 'delivered', 'installed'] as const;
+export type DeliverableStatus = (typeof DELIVERABLE_STATUSES)[number];
+export interface ProjectDeliverableRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid; name: string; quantity: number | null; status: DeliverableStatus; space_id: Uuid | null; note: string; position: number;
+}
 export const REVIEW_ANSWERS = ['check', 'quantity', 'photo', 'reading', 'note'] as const;
 export type ReviewAnswer = (typeof REVIEW_ANSWERS)[number];
 export interface ReviewExpected { count?: number; unit?: string; min?: number; max?: number }
@@ -174,10 +186,10 @@ export interface ReviewTemplateItemRow extends BaseRow {
 
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
-  'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.tasks',
+  'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.project_deliverables', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces',
   'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
-  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials',
+  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials', 'tasks.task_units',
   'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests',
   'tasks.request_routes', 'tasks.requests', 'tasks.settings', 'tasks.day_plans',
   'tasks.review_templates', 'tasks.review_template_items', 'tasks.reviews', 'tasks.review_items',
@@ -185,12 +197,12 @@ export const TABLES = [
 export type TableName = (typeof TABLES)[number];
 
 export interface RowTypes {
-  'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.project_phases': ProjectPhaseRow; 'tasks.tasks': TaskRow;
+  'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.project_phases': ProjectPhaseRow; 'tasks.project_deliverables': ProjectDeliverableRow; 'tasks.tasks': TaskRow;
   'tasks.project_labels': ProjectLabelRow; 'tasks.task_labels': TaskLabelRow;
   'tasks.project_spaces': ProjectSpaceRow; 'tasks.task_spaces': TaskSpaceRow;
   'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow;
   'tasks.project_people': ProjectPersonRow; 'tasks.task_people': TaskPersonRow; 'tasks.task_dependencies': TaskDependencyRow;
-  'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow; 'tasks.task_materials': TaskMaterialRow;
+  'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow; 'tasks.task_materials': TaskMaterialRow; 'tasks.task_units': TaskUnitRow;
   'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow; 'tasks.purchase_requests': PurchaseRequestRow;
   'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
   'tasks.day_plans': DayPlanRow;
@@ -211,7 +223,8 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref', 'owner_person_id', 'owner_house_level'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free', 'owner_person_id', 'owner_house_level', 'phase_id'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free', 'owner_person_id', 'owner_house_level', 'phase_id', 'unit_count', 'deliverable_id'],
+  'tasks.project_deliverables': ['tab_id', 'project_id', 'name', 'quantity', 'status', 'space_id', 'note', 'position'],
   'tasks.project_phases': ['tab_id', 'project_id', 'name', 'position', 'status', 'start', 'due', 'closed_note'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
@@ -226,6 +239,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
   'tasks.task_comments': ['tab_id', 'project_id', 'task_id', 'body', 'file_id'],
   'tasks.task_materials': ['tab_id', 'project_id', 'task_id', 'item_id', 'quantity', 'note', 'consumed', 'position'],
+  'tasks.task_units': ['tab_id', 'project_id', 'task_id', 'unit', 'done_by', 'marked_at'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'need_quantity', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position', 'source_app', 'source_ref', 'source_url', 'paid_total', 'receipt_kind', 'invoice_number', 'receipt_file_id', 'finance_status', 'finance_invoice_id', 'finance_code', 'finance_error'],
@@ -249,6 +263,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
   // Una fase es de su proyecto (0356).
   'tasks.project_phases': ['tab_id', 'project_id'],
+  'tasks.project_deliverables': ['tab_id', 'project_id'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
   'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
@@ -262,6 +277,8 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],
   'tasks.task_comments': ['tab_id', 'task_id'],
   'tasks.task_materials': ['tab_id', 'task_id', 'item_id'],
+  // Una unidad es de su tarea; el área y el proyecto la siguen (0360).
+  'tasks.task_units': ['task_id', 'unit'],
   'tasks.purchase_plans': ['tab_id'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id'],
   'tasks.purchase_requests': ['tab_id', 'source_app', 'source_ref', 'source_url'],
