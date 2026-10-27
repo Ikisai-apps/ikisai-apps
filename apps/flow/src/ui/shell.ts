@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, openFeedbackCenter, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, openFeedbackCenter, registerReveal, replace, toast,
   type Lanes, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
@@ -126,6 +126,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     navLayout: 'bar',
+    // Guiado mínimo del kit (0.68): ?campo= señala el campo; ?paso= lo explica y pone «Volver a…». Sin cliente: no lee nada de Flow.
+    guide: { feedbackId: 'flow.guia' },
     tools: [service.button],
     returnTo: { feedbackId: 'flow.cabecera.volver' },
     menu: {
@@ -282,7 +284,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     });
     vctx.main.append(lanes.element);
     board = { projectId, lanes };
-    return () => { lanes.destroy(); board = null; };
+    // Guiado: un campo de otra columna está en otro carril; se elige ese carril para que aparezca (`flow.<pantalla>…`).
+    const offReveals = columns.map((c) => registerReveal(`flow.${COLUMN_VIEWS[c.key]?.slug ?? c.key}`, () => lanes.select(c.key)));
+    return () => { offReveals.forEach((off) => off()); lanes.destroy(); board = null; };
   }
 
   const offStatus = client.onStatus((status) => {
