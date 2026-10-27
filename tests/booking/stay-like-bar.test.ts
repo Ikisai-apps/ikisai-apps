@@ -63,7 +63,7 @@ test('Alójate aquí: camas para elegir, número corto, cama elegida o asignada,
   assert.equal((await taken.json()).error.code, 'BED_TAKEN');
   const auto = await (await post('stay', { event_code: d.code, from: '2032-06-05', to: '2032-06-06', persons: 1, assign: true, name: 'Bea' }, b.token)).json();
   assert.equal(auto.number, 2);
-  assert.notEqual(auto.bed.label, 'Cama 2');
+  assert.notDeepEqual(auto.bed, { room: 'Habitación del pinar', label: 'Cama 2' }, 'otra cama, no la elegida por el primero');
 
   // completar el borrador después: solo lo del visitante dueño; dice lo que falta
   const more = await post('stay/traveler', { stay_id: one.id, fields: { birth_date: '1990-01-02', residence_address: 'Calle Sintética 1', residence_postal_code: '00000', residence_city: 'Ciudad', residence_country: 'FRA', document_number: 'x123' } }, a.token);

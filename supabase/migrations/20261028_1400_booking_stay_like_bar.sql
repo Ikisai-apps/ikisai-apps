@@ -174,8 +174,8 @@ begin
     perform set_config('booking.visitor_procedure', 'on', true);
     for f in select id, revision from booking.visitor_requests
               where event_id = new.event_id and visitor_id = new.visitor_id and kind = 'stay' and status = 'pendiente' and deleted_at is null loop
-      perform core.apply_row_op(current_setting('core.app'), nullif(current_setting('core.actor', true), '')::uuid, 'editor',
-        current_setting('core.request_id'), current_setting('core.cursor')::bigint,
+      perform core.apply_row_op(booking.batch_setting('app'), nullif(booking.batch_setting('actor'), '')::uuid, 'editor',
+        booking.batch_setting('request_id'), booking.batch_setting('cursor')::bigint,
         jsonb_build_object('op', 'update', 'table', 'booking.visitor_requests', 'id', f.id, 'expectedRevision', f.revision,
           'fields', jsonb_build_object('status', 'descartada', 'decided_at', now(), 'hold_until', null)));
     end loop;
