@@ -718,6 +718,15 @@ El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora
   - **Enviar:** «Pedir las noches» va a `POST /api/booking/v1/public/stay`; ahí se crea la identidad, porque es un gesto. Una solicitud nueva sustituye a la anterior.
   - **Seguimiento:** en «Lo que has pedido» se ven las noches, las personas, el total y hasta cuándo se guarda la plaza, o que el plazo ya pasó.
   - **Errores:** `NO_AVAILABILITY` (`409`), `NO_LODGING` e `INVALID_FIELDS`, cada uno con su texto.
+- **«Alójate aquí»** (VG, por Core: el alojamiento funciona como la barra; Booking, encima de 0499).
+  - **Dónde sale:** en una pestaña del visitante que solo se abre en el móvil que entró por el QR del evento (`/e/<código>`) o por la carta de Flow (`/e/<código>?alojate&v=<código>`). Con `v`, se canjea el traspaso de la misma identidad (`POST public/visitor/handoff/redeem`, núcleo 0106), que es de un solo uso.
+  - **Noches y cama:** llegada, salida y las camas libres **todas** esas noches (`booking_public_beds`), o «Asignadme una», que es lo que sale marcado.
+  - **Tus datos:** van en borrador. Solo el nombre es obligatorio; el documento hace falta para dormir, no para pedir.
+  - **«Ir a pagar»:** `POST public/stay`, que deja la estancia `por_pagar` con su número, como en la barra, y «Ve a recepción y di tu número para pagar».
+  - **Cuando recepción cobra:** la pantalla pasa a «Esta noche duermes en {habitación} · {cama}» (`booking_visitor_stay`, que se consulta cada 20 s con la pantalla a la vista).
+  - **Completar mis datos:** está disponible mientras no esté alojado (`POST public/stay/traveler`).
+  - **Caducada:** se dice, y se puede pedir otra vez.
+  - **Reservar antes de venir:** la solicitud anterior, con `hold` o `pay_first`, queda plegada como opción secundaria.
 - **Pruebas:** `visitantes.spec.ts`.
 
 ## 10. Offline

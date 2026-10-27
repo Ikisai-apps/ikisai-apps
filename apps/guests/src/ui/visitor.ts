@@ -10,17 +10,18 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { ensureVisitor, errorCodeOf, forgetVisitor, lodgingUnlocked, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
 import { languageSelect } from './language.ts';
 import { offersBlock } from './offers.ts';
+import { mountLodge } from './lodge.ts';
 import { stayBlock, stayRequestText } from './stay.ts';
 
 const LIST = '#/v';
-const EVENT = /^#\/v\/([A-Za-z0-9]{10})$/;
+const EVENT = /^#\/v\/([A-Za-z0-9]{10})(\/alojate)?$/;
 
 /** ¿Es una ruta del portal del visitante? */
 export function isVisitorHash(hash: string): boolean {
@@ -48,7 +49,7 @@ export function renderVisitor(root: HTMLElement): () => void {
   const route = () => {
     const mine = ++token;
     const m = location.hash.match(EVENT);
-    if (m) void showEvent(m[1]!.toUpperCase(), mine); else void showList(mine);
+    if (m) void showEvent(m[1]!.toUpperCase(), mine, m[2] ? 'alojate' : 'evento'); else void showList(mine);
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
   };
@@ -90,7 +91,7 @@ export function renderVisitor(root: HTMLElement): () => void {
       footer());
   }
 
-  async function showEvent(code: string, mine: number): Promise<void> {
+  async function showEvent(code: string, mine: number, tab: 'evento' | 'alojate' = 'evento'): Promise<void> {
     replace(main, loading());
     let loaded: Awaited<ReturnType<typeof publicEvent>>;
     try {
@@ -120,17 +121,33 @@ export function renderVisitor(root: HTMLElement): () => void {
         el('span', { class: 'chip small gstatus' }, t(event.status === 'abierto' ? 'visitor.open' : 'visitor.closed'))),
       event.summary ? el('p', { id: 'visitorSummary' }, event.summary) : null);
 
-    // «Dormir aquí» (tarjeta 2): precios y plazas por intervalo, también antes de entrar (mirar no pide nada).
-    // Elegir una modalidad abre la solicitud (nombre, contacto optativo y nota) con el resumen y cómo se paga.
-    const stay = event.lodging ? stayBlock(event, today, {
-      send: async (input) => {
-        await sendStay(code, input);
-        rememberEvent(code);
-        toast(t('stay.sent'));
-        route();
-      },
-      error: visitorError,
-    }) : null;
+    // «Alójate aquí» (VG, por Core): pestaña aparte, abierta en este móvil por el QR del evento o por el enlace de la carta
+    // de Flow (`/e/<código>?alojate`). Sin abrir, ni la pestaña ni las noches.
+    const lodging = event.lodging && lodgingUnlocked(code);
+    const tabs = lodging ? el('nav', { class: 'segmented gvisitor-tabs', id: 'visitorTabs', 'aria-label': t('visitor.tabs') },
+      ...([['evento', `#/v/${code}`, t('visitor.tabEvent')], ['alojate', `#/v/${code}/alojate`, t('lodge.tab')]] as const).map(([key, href, label]) => el('a', {
+        href, class: tab === key ? 'on' : '', 'aria-current': tab === key ? 'page' : null, dataset: { tab: key },
+        'data-feedback-id': 'guests.visitante.pestana.abrir', 'data-feedback-label': 'Pestaña del visitante',
+      }, label))) : null;
+    if (lodging && tab === 'alojate') {
+      // «Reservar antes» (la solicitud con `hold` o `pay_first`), opción secundaria y plegada.
+      const stay = stayBlock(event, today, {
+        send: async (input) => {
+          await sendStay(code, input);
+          rememberEvent(code);
+          toast(t('stay.sent'));
+          location.hash = `#/v/${code}`;
+        },
+        error: visitorError,
+      });
+      const later = el('details', { class: 'card gcard', id: 'lodgeLater', 'data-feedback-id': 'guests.visitante.alojate.antes', 'data-feedback-label': 'Reservar antes' },
+        el('summary', null, t('lodge.later')), stay);
+      rememberEvent(code);
+      const lodgeHost = el('div', { id: 'lodgeHost' });
+      replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, lodgeHost, later, footer());
+      mountLodge(lodgeHost, event, today, { alive: () => current(mine) && location.hash.endsWith('/alojate') });
+      return;
+    }
 
     // Sin identidad todavía: se entra sin dar nada.
     if (!visitorToken()) {
@@ -139,8 +156,8 @@ export function renderVisitor(root: HTMLElement): () => void {
           enter.setAttribute('disabled', '');
           try { await ensureVisitor(code); rememberEvent(code); route(); } catch (error) { enter.removeAttribute('disabled'); toast(visitorError(error)); }
         } }, t('visitor.enter'));
-      replace(main, loaded.stale ? staleNote(loaded.at) : null, head,
-        el('section', { class: 'card gcard', id: 'visitorWelcome' }, el('p', null, t('visitor.enterText')), enter), stay, footer());
+      replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs,
+        el('section', { class: 'card gcard', id: 'visitorWelcome' }, el('p', null, t('visitor.enterText')), enter), footer());
       return;
     }
     rememberEvent(code);
@@ -148,7 +165,7 @@ export function renderVisitor(root: HTMLElement): () => void {
     const offersHost = el('div', { id: 'visitorOffers' });
     const requestsHost = el('div', { id: 'visitorRequests' });
     const orderHost = el('section', { class: 'card gcard', id: 'visitorOrder' });
-    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, offersHost, stay, orderHost, requestsHost, invitation(), footer());
+    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, offersHost, orderHost, requestsHost, invitation(), footer());
     const join = async () => { const c = await visitorJoin(code); return { number: c.number, carta_url: c.carta_url, account_open: c.account_open }; };
 
     // Ofertas públicas (FD5): la pieza del Menú, sin cruce personal.
@@ -315,9 +332,13 @@ export function openEvents(): HTMLElement {
   return host;
 }
 
-/** `/e/<código>` → `#/v/<CÓDIGO>` (sin el código en la ruta), o null si no es una entrada de visitante. */
-export function visitorEntry(pathname: string): string | null {
+/** `/e/<código>` → `#/v/<CÓDIGO>` (sin el código en la ruta; con `?alojate`, `#/v/<CÓDIGO>/alojate`), o null si no es una entrada de visitante. */
+export function visitorEntry(pathname: string, search = ''): string | null {
   const m = pathname.match(/^\/e\/([^/?#]*)\/?$/);
   if (!m) return null;
-  return EVENT_CODE.test(m[1] ?? '') ? `#/v/${m[1]!.toUpperCase()}` : LIST;
+  if (!EVENT_CODE.test(m[1] ?? '')) return LIST;
+  // Por el QR o por la carta de Flow se abre «Alójate aquí» en este móvil; con `?alojate`, directamente en esa pestaña.
+  const code = m[1]!.toUpperCase();
+  unlockLodging(code);
+  return new URLSearchParams(search).has('alojate') ? `#/v/${code}/alojate` : `#/v/${code}`;
 }

@@ -157,3 +157,34 @@ test('ENTRADA_PUBLICA · «Dormir aquí»: precios y plazas para todas las noche
   await expect(page.locator('#visitorSent')).toContainText('plaza guardada hasta');
   await expect(page.locator('#visitorSent')).toContainText(/40,00/);
 });
+
+test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y datos en borrador, «Ir a pagar» y su número', async ({ page, browser }) => {
+  const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  // Sin QR (desde la raíz pública), no hay pestaña de alojamiento.
+  const other = await browser.newPage();
+  await other.goto(`${baseURL}/#/v/${d.code}`);
+  await expect(other.locator('#retreatTitle')).toBeVisible();
+  await expect(other.locator('#visitorTabs')).toHaveCount(0);
+  await other.close();
+
+  await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  await expect(page).toHaveURL(new RegExp(`/#/v/${d.code}/alojate$`));
+  await expect(page.locator('#visitorTabs a[data-tab="alojate"]')).toHaveClass(/on/);
+  const beds = page.locator('#lodgeBeds');
+  await expect(beds.getByLabel('Asignadme una')).toBeChecked();
+  await expect(page.locator('#lodgePrice')).toContainText(/20,00.*la noche/);
+  await beds.getByLabel('Cama 1').check();
+  // Solo el nombre es obligatorio; el documento, no.
+  await page.locator('#lodgeGo').click();
+  await expect(page.locator('#lodge_first_name')).toBeFocused();
+  await page.locator('#lodge_first_name').fill('Noa');
+  await page.locator('#lodgeGo').click();
+  await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
+  await expect(page.locator('#lodgePay')).toContainText('Ve a recepción y di tu número para pagar.');
+  await expect(page.locator('#lodgePay')).toContainText('Cama 1');
+  await expect(page.locator('#lodgeMissing')).toContainText('Número de documento');
+  // Al volver, la misma estancia (no se pide otra vez).
+  await page.reload();
+  await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
+  await expect(page.locator('#lodgeForm')).toHaveCount(0);
+});

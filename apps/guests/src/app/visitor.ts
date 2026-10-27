@@ -11,6 +11,8 @@ const TOKEN_KEY = 'ikisai-visitor';
 const EVENTS_KEY = 'ikisai-visitor-events';
 /** Marca de «tu acceso de visitante se renovó» (el anterior ya no valía), para decirlo una vez en la pantalla. */
 const RENEWED_KEY = 'ikisai-visitor-renewed';
+/** Eventos cuyo «Alójate aquí» está abierto en este móvil: se abre al entrar por su QR o por el enlace de la carta de Flow. */
+const LODGING_KEY = 'ikisai-visitor-lodging';
 /** Usuario de la caché sin red de lo público del visitante (no es una persona del núcleo). */
 const CACHE_USER = 'visitor';
 /** Código del QR (Booking BG17): 10 caracteres sin ambigüedades; vale en mayúsculas o minúsculas. */
@@ -58,9 +60,27 @@ export function rememberEvent(code: string): void {
   try { store()?.setItem(EVENTS_KEY, JSON.stringify(next)); } catch { /* solo en memoria */ }
 }
 
+/** Abre «Alójate aquí» de ese evento en este móvil (QR o enlace de Flow). */
+export function unlockLodging(code: string): void {
+  const next = [code.toUpperCase(), ...lodgingCodes().filter((c) => c !== code.toUpperCase())].slice(0, 50);
+  try { store()?.setItem(LODGING_KEY, JSON.stringify(next)); } catch { /* solo en esta visita */ }
+}
+
+function lodgingCodes(): string[] {
+  try {
+    const list = JSON.parse(store()?.getItem(LODGING_KEY) ?? '[]') as unknown;
+    return Array.isArray(list) ? list.filter((c): c is string => typeof c === 'string' && EVENT_CODE.test(c)) : [];
+  } catch { return []; }
+}
+
+/** ¿Tiene este móvil abierto «Alójate aquí» de ese evento? */
+export function lodgingUnlocked(code: string): boolean {
+  return lodgingCodes().includes(code.toUpperCase());
+}
+
 /** «Salir de este móvil»: el token, la lista de eventos y la caché del visitante. */
 export async function forgetVisitor(): Promise<void> {
-  try { store()?.removeItem(TOKEN_KEY); store()?.removeItem(EVENTS_KEY); store()?.removeItem(RENEWED_KEY); } catch { /* nada guardado */ }
+  try { store()?.removeItem(TOKEN_KEY); store()?.removeItem(EVENTS_KEY); store()?.removeItem(RENEWED_KEY); store()?.removeItem(LODGING_KEY); } catch { /* nada guardado */ }
   await cache.clearUser(CACHE_USER);
 }
 
@@ -90,6 +110,18 @@ export async function ensureVisitor(code: string | null): Promise<void> {
   const out = await call<{ visitorId?: string; token?: string }>('/api/v1/public/visitor', { json: code ? { eventCode: code.toUpperCase() } : {}, visitor: false });
   if (!out.token) throw new PublicError(500, 'VISITOR_FAILED', '');
   try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
+}
+
+/**
+ * Traspaso de la identidad desde otra app (núcleo 0106; la carta de Flow enlaza a `/e/<código>?alojate&v=<código>`): canjea
+ * el código de un solo uso y guarda su token como el de este móvil (es el mismo visitante; uno distinto se sustituye).
+ */
+export async function redeemHandoff(code: string): Promise<boolean> {
+  if (!/^[0-9a-f]{64}$/i.test(code)) return false;
+  const out = await call<{ visitorId?: string; token?: string }>('/api/v1/public/visitor/handoff/redeem', { json: { code }, visitor: false });
+  if (!out.token) return false;
+  try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
+  return true;
 }
 
 /** Una llamada con visitante; si su token ya no vale (revocado o malo), se borra, se crea otro y se repite una vez. */
@@ -189,6 +221,73 @@ export function sendStay(code: string, input: { mode_id: string; from: string; t
   return withVisitor(code, () => call<VisitorRequest & { id: string }>('/api/booking/v1/public/stay', {
     json: { event_code: code.toUpperCase(), mode_id: input.mode_id, from: input.from, to: input.to, persons: input.persons, name: input.name.trim(), contact: clean(input.contact), note: clean(input.note) },
   }));
+}
+
+// --- «Alójate aquí» (VG, por Core: como la barra) -------------------------------------------------------------------
+/** Camas libres **todas** las noches `[from, to)` (Booking, `booking_public_beds`): nombres públicos, nunca huéspedes. */
+export interface PublicBeds {
+  rooms: Array<{ id: string; name: string; beds: Array<{ id: string; label: string; kind: string | null; free: boolean; resource_bed_id: string | null }> }>;
+  price_night_cents: number | null;
+  nights: number;
+}
+
+export function publicBeds(code: string, from: string, to: string): Promise<Loaded<PublicBeds>> {
+  return readPublic('booking_public_beds', { event_code: code.toUpperCase(), from, to }, (raw) => {
+    const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    const rooms = (Array.isArray(r.rooms) ? r.rooms : []).flatMap((x) => {
+      const room = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+      if (!str(room.id) || !str(room.name)) return [];
+      const beds = (Array.isArray(room.beds) ? room.beds : []).flatMap((y) => {
+        const b = (y && typeof y === 'object' ? y : {}) as Record<string, unknown>;
+        return str(b.id) && str(b.label) ? [{ id: b.id as string, label: b.label as string, kind: str(b.kind), free: b.free === true, resource_bed_id: str(b.resource_bed_id) }] : [];
+      });
+      return [{ id: room.id as string, name: room.name as string, beds }];
+    });
+    return { rooms, price_night_cents: typeof r.price_night_cents === 'number' ? r.price_night_cents : null, nights: typeof r.nights === 'number' ? r.nights : 0 };
+  });
+}
+
+/** Datos del viajero en borrador (los nombres de `booking.guests`); ninguno obligatorio para guardar. */
+export type TravelerFields = Partial<Record<'first_name' | 'last_name_1' | 'last_name_2' | 'document_type' | 'document_number' | 'birth_date' | 'phone' | 'email', string>>;
+
+/** Su estancia en este evento (`booking_visitor_stay`, con el visitante que pone el kit), o null si no tiene. */
+export interface VisitorStay {
+  id: string; number: string | null; status: 'por_pagar' | 'pagada' | 'alojado' | 'salida' | 'caducada' | string;
+  from: string | null; to: string | null; bed: { room: string; label: string } | null; total_cents: number | null; paid_at: string | null; missing: string[];
+  hold_until: string | null;
+}
+
+export async function myStay(code: string): Promise<VisitorStay | null> {
+  if (!visitorToken()) return null;
+  const out = await withVisitor(code, () => call<Record<string, unknown> | null>(`/api/v1/public/booking_visitor_stay?event_code=${encodeURIComponent(code.toUpperCase())}`));
+  if (!out || typeof out.id !== 'string') return null;
+  const bed = out.bed && typeof out.bed === 'object' ? out.bed as { room?: unknown; label?: unknown } : null;
+  return {
+    // `stay_status` (Booking): por_pagar · caducada · pagada · alojado · salida · descartada.
+    id: out.id, number: out.number == null ? null : String(out.number), status: String(out.stay_status ?? out.status ?? ''),
+    hold_until: typeof out.hold_until === 'string' ? out.hold_until : null,
+    from: typeof out.from === 'string' ? out.from : null, to: typeof out.to === 'string' ? out.to : null,
+    bed: bed && typeof bed.room === 'string' && typeof bed.label === 'string' ? { room: bed.room, label: bed.label } : null,
+    total_cents: typeof out.total_cents === 'number' ? out.total_cents : null, paid_at: typeof out.paid_at === 'string' ? out.paid_at : null,
+    // Por persona (`[[campo…]]`) o plano: aquí, una persona.
+    missing: (Array.isArray(out.missing) ? (Array.isArray(out.missing[0]) ? out.missing[0] as unknown[] : out.missing) : []).filter((m): m is string => typeof m === 'string'),
+  };
+}
+
+/** «Ir a pagar»: la estancia `por_pagar` con su número; la cama elegida o «asignadme una». Crea la identidad (es un gesto). */
+export function startStay(code: string, input: { from: string; to: string; bed_id: string | null; traveler: TravelerFields }): Promise<{ id: string; number: string | null; status: string; total_cents: number | null; bed: { room: string; label: string } | null }> {
+  const traveler = Object.fromEntries(Object.entries(input.traveler).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v!.trim()]));
+  return withVisitor(code, () => call('/api/booking/v1/public/stay', {
+    json: { event_code: code.toUpperCase(), from: input.from, to: input.to, persons: 1, name: traveler.first_name ?? '',
+      ...(input.bed_id ? { bed_id: input.bed_id } : { assign: true }), traveler },
+  }));
+}
+
+/** Completa el borrador del viajero (sin perder la cama); devuelve lo que aún faltará para dormir. */
+export function saveTraveler(code: string, stayId: string, fields: TravelerFields): Promise<{ missing: string[] }> {
+  return withVisitor(code, () => call<{ missing?: unknown[] }>('/api/booking/v1/public/stay/traveler', { json: { stay_id: stayId, fields } }))
+    .then((out) => ({ missing: (Array.isArray(out?.missing) ? (Array.isArray(out.missing[0]) ? out.missing[0] as unknown[] : out.missing) : []).filter((m): m is string => typeof m === 'string') }));
 }
 
 /** «Apuntarme» (`kind: 'join'`) o «Déjanos un dato» (`kind: 'contact'`): una petición a Booking, firmada por el visitante. */
