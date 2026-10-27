@@ -7,6 +7,7 @@ import { onLocaleChange } from './app/i18n.ts';
 import { loadPublicContact } from './app/common-texts.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
+import { redeemHandoff } from './app/visitor.ts';
 import { isVisitorHash, renderVisitor, visitorEntry } from './ui/visitor.ts';
 
 const root = document.getElementById('app');
@@ -31,8 +32,12 @@ initAppUpdates({ isSafe: () => !busy(), enabled: import.meta.env.PROD });
  */
 async function boot(): Promise<void> {
   // Visitantes por QR (§9.19): `/e/<código>` abre el portal del visitante, sin sesión ni datos.
-  const visitor = visitorEntry(location.pathname);
+  const visitor = visitorEntry(location.pathname, location.search);
+  // Desde la carta de Flow llega además `v`: el traspaso de la misma identidad de visitante (un solo uso; sin él, caducado o
+  // si este móvil ya tiene la suya, se sigue como estaba). La URL se limpia antes de canjearlo.
+  const handoff = visitor ? new URLSearchParams(location.search).get('v') : null;
   if (visitor) history.replaceState(null, '', `/${visitor}`);
+  if (handoff) await redeemHandoff(handoff).catch(() => false);
   const match = location.pathname.match(/^\/i\/([^/?#]*)\/?$/);
   if (match) {
     history.replaceState(null, '', '/');
