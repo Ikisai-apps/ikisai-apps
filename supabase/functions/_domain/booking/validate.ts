@@ -225,6 +225,15 @@ FIELDS[TABLES.visitorRequests] = {
   total_cents: { kind: 'int', nullable: true, min: 0 }, pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: true },
   hold_bed_ids: { kind: 'uuidList', max: 20 }, hold_until: { kind: 'timestamp' },
 };
+// 1400: número corto de la solicitud (lo pone el servidor) y borrador del viajero
+FIELDS[TABLES.visitorRequests] = { ...FIELDS[TABLES.visitorRequests], number: { kind: 'int', nullable: true, min: 1 } };
+FIELDS[TABLES.stayTravelers] = {
+  request_id: { kind: 'uuid' }, position: { kind: 'int', nullable: false, min: 1 },
+  first_name: text(120), last_name_1: text(120), last_name_2: text(120), sex: { kind: 'enum', values: ['H', 'M', 'X'], nullable: true },
+  document_type: { kind: 'enum', values: ['DNI', 'NIE', 'Pasaporte', 'TIE', 'Otro'], nullable: true }, document_number: text(40), document_support_number: text(40),
+  nationality: text(3), birth_date: { kind: 'date' }, residence_address: text(300), residence_postal_code: text(20), residence_city: text(120),
+  residence_country: text(3), phone: text(40), email: text(320), is_minor: { kind: 'bool' }, kinship: text(80),
+};
 // 0499: cómo se pagan las noches del QR en ese evento
 FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], lodging_pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: false }, lodging_hold_hours: { kind: 'int', nullable: false, min: 1 } };
 FIELDS[TABLES.walkinCharges] = {

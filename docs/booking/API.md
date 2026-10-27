@@ -1933,3 +1933,34 @@ Lecturas públicas para Guests (`ven.ikisai.com`). Los nombres y las formas est�
   - `booking_public_lodging` da también `pay` y `hold_hours`.
 - **Cobro en recepción:** Bizum, metálico y Bitcoin, como en la caja de Flow. Lo recoge la tarjeta 3, al aceptar. El pago en línea queda a la espera de la pasarela (vg-27).
 
+## 38. Alojamiento libre «como la barra» (migración 1400; VG 27-10-2026, contrato con Guests)
+
+El visitante, desde «Alójate aquí»:
+1. elige noches y cama, o se le asigna una;
+2. mete sus datos en borrador;
+3. pulsa «Ir a pagar» y recibe un **número corto** por evento (como el de la barra);
+4. va a recepción, que busca el número, completa, cobra y aloja (§39).
+
+- **`booking_public_beds({event_code, from, to})`** (cliente) devuelve `{nights, price_night_cents, rooms:[{id, name, beds:[{id, label, kind, places, free, resource_bed_id}]}]}`.
+  - `name` es el nombre público de la habitación.
+  - `free` dice si la cama está libre todas las noches de `[from, to)`.
+  - Nunca personas.
+- **`POST /api/v1/public/stay`** recibe `{event_code, from, to, persons, name?, mode_id?, bed_id? | bed_ids?, assign?, traveler?: objeto | lista, contact?, note?}`.
+  - Sin `mode_id` se usa la primera modalidad que valga.
+  - Las camas elegidas tienen que estar libres todas las noches; si no, 409 `BED_TAKEN`. Si no llegan a las personas, se completan solas.
+  - En `hold` se retienen el plazo del evento; en `pay_first` quedan como preferencia.
+  - Responde `{id, number, status, stay_status, from, to, persons, mode_id, total_cents, pay, hold_until, beds:[{room, label}], bed, paid_at, missing}`.
+- **`POST /api/v1/public/stay/traveler`** recibe `{request_id | stay_id, traveler | fields}`.
+  - Guarda o actualiza el borrador de cada persona. Solo puede hacerlo el visitante dueño, y mientras la solicitud está pendiente; si no, 404 o 409 `REQUEST_CLOSED`.
+  - Responde `{missing:[[campo…] por persona]}`, con la regla de `missingForSes` (`booking.draft_missing`).
+- **`booking.stay_travelers`**: el borrador, uno por persona, con los campos de `booking.guests`. Es dato de huésped: la Edge solo lo da con el ámbito de huéspedes (`visibleBookingRow`). Al alojar se pasa a la ficha y se borra (§39).
+- **`booking_visitor_stay({event_code})`** (cliente, con el visitante) devuelve la última solicitud de noches. **`booking_visitor_requests`** añade por item `number`, `stay_status`, `beds`, `paid_at` y `missing`.
+- **Valores de `stay_status`:**
+  - `por_pagar`;
+  - `caducada`: el bloqueo de `hold` ha vencido;
+  - `pagada`: hay cobro registrado;
+  - `alojado`: `arrived_at`;
+  - `salida`: `left_at`;
+  - `descartada`.
+- **`booking_stay_drafts`** (solo servidor) da los ids y las revisiones de los borradores del visitante, para actualizarlos.
+
