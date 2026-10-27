@@ -223,7 +223,8 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
   booking: {
     // Plazo legal de SES y, desde los portales de organizadores (T3), fechas posibles, «quiere confirmar» y comentarios a la propuesta.
     // `booking.retreat_extra`: un extra contratado de un retiro (§23), que va al proyecto de su reserva (`project_ref`).
-    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
+    // `booking.event_setup`: el «Montaje del evento» (§42), al proyecto de su reserva, con sus hijas (`children`); se reenvía entero.
+    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra', 'booking.event_setup']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
     url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
   },
   core: {
@@ -239,6 +240,30 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
     url: (_reference, url) => /^https:\/\/finance\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
   },
 };
+/** Las hijas de una petición de worker (§42): hasta 100, cada una `{external_ref, title, note?, due?, priority?}` con una
+ *  clave única. Devuelve la forma que espera `tasks.request_children` (`ref` en lugar de `external_ref`). */
+function parseChildren(value: unknown, invalid: (field: string, message: string) => never): Array<Record<string, string>> | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > 100) invalid('children', 'children es una lista de hasta 100 hijas.');
+  const seen = new Set<string>();
+  return (value as unknown[]).map((raw, i) => {
+    const field = `children[${i}]`;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalid(field, `${field} es {external_ref, title, note?, due?, priority?}.`);
+    const child = raw as Record<string, unknown>;
+    for (const key of Object.keys(child)) if (!['external_ref', 'title', 'note', 'due', 'priority'].includes(key)) invalid(`${field}.${key}`, `Campo no admitido en una hija: ${key}.`);
+    const ref = typeof child.external_ref === 'string' ? child.external_ref.trim() : '';
+    if (!/^[A-Za-z0-9_.:-]{1,100}$/.test(ref)) invalid(`${field}.external_ref`, 'external_ref de la hija: de 1 a 100 letras, cifras, «_», «.», «:» o «-».');
+    if (seen.has(ref)) invalid(`${field}.external_ref`, `external_ref repetida: ${ref}.`);
+    seen.add(ref);
+    const title = typeof child.title === 'string' ? child.title.trim() : '';
+    if (!title || title.length > 120) invalid(`${field}.title`, 'title de la hija: de 1 a 120 caracteres.');
+    const out: Record<string, string> = { ref, title };
+    if (child.note !== undefined) { if (typeof child.note !== 'string' || child.note.length > 1000) invalid(`${field}.note`, 'note de la hija: hasta 1000 caracteres.'); out.note = child.note as string; }
+    if (child.due !== undefined) { if (typeof child.due !== 'string' || !DATE.test(child.due) || Number.isNaN(Date.parse(child.due))) invalid(`${field}.due`, 'due de la hija va como AAAA-MM-DD.'); out.due = child.due as string; }
+    if (child.priority !== undefined) { if (typeof child.priority !== 'string' || !PRIORITIES.includes(child.priority)) invalid(`${field}.priority`, 'priority de la hija es normal, high o critical.'); out.priority = child.priority as string; }
+    return out;
+  });
+}
 /** Nombre del tipo cuando quien pide no manda `kind_label`. */
 const DEFAULT_KIND_LABELS: Record<string, string> = {
   'core.user_task': 'Core · Tarea para ti',
@@ -271,7 +296,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         return (value as string).trim();
       };
       // Solo los campos del contrato: el destino lo deciden las reglas del usuario, nunca quien pide.
-      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority', 'project_ref', 'space_id'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
+      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority', 'project_ref', 'space_id', 'children'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
       const sourceName = String(body?.source ?? '');
       const source = Object.hasOwn(SYSTEM_SOURCES, sourceName) ? SYSTEM_SOURCES[sourceName]! : invalid('source', `source debe ser ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`);
       const kind = text('kind', 100, true)!;
@@ -298,10 +323,14 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       // `project_ref` es la referencia de la reserva en Booking (`RES<código>`), la misma con la que se creó el proyecto (§23).
       const projectRef = text('project_ref', 150);
       const eventReport = sourceName === 'feedback' && kind.startsWith('feedback.event.');
-      if (kind === 'booking.retreat_extra' && !projectRef) invalid('project_ref', 'Un extra necesita project_ref (la referencia de su reserva).');
-      if (projectRef !== undefined && ((kind !== 'booking.retreat_extra' && !eventReport) || !SYSTEM_SOURCES.booking!.reference.test(projectRef))) {
-        invalid('project_ref', 'project_ref solo vale para booking.retreat_extra y feedback.event.*, y es una referencia de reserva.');
+      const toReservation = kind === 'booking.retreat_extra' || kind === 'booking.event_setup';
+      if (toReservation && !projectRef) invalid('project_ref', 'Un extra o un montaje necesita project_ref (la referencia de su reserva).');
+      if (projectRef !== undefined && ((!toReservation && !eventReport) || !SYSTEM_SOURCES.booking!.reference.test(projectRef))) {
+        invalid('project_ref', 'project_ref solo vale para booking.retreat_extra, booking.event_setup y feedback.event.*, y es una referencia de reserva.');
       }
+
+      // Hijas (§42): la lista ENTERA de esta petición, cada una con su clave estable. Las que dejen de venir se retiran.
+      const children = parseChildren(body?.children, invalid);
 
       // De qué espacio de Recursos se avisa (0336; Feedback, el sitio del reporte): opcional, como en `requests/task`.
       const spaceId = text('space_id', 36);
@@ -311,19 +340,42 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const id = await requestTaskId(externalRef);
       const status = async () => ((await invoke('tasks.requests_status', { externalRefs: [externalRef] })) as { items: Array<{ status: string; taskId: string | null }> }).items[0]!;
       const reply = (current: { status: string }) => ({ taskId: id, status: current.status });
+      const refreshes = source.refresh || kind === 'booking.event_setup' || children !== undefined;
+      // Las hijas, con la madre ya creada o reenviada y abierta; si no está abierta, no se tocan (`children: null`).
+      let childCtx: Awaited<ReturnType<typeof internal.context>> | null = null;
+      const withChildren = async <T extends { status: string }>(out: T) => {
+        if (children === undefined) return out;
+        if (out.status !== 'open' || !childCtx) return { ...out, children: null };
+        type ChildOut = { ref: string; taskId: string; status: string };
+        type Outcome = { children: ChildOut[]; created: number; updated: number; retired: number };
+        const call = async (args: Record<string, unknown>) => ((await internal.commit(childCtx!, { requestId: `${sourceName}-children-${crypto.randomUUID()}`,
+          operations: [{ op: 'call', procedure: 'tasks.request_children', args: { parentRef: externalRef, kind, ...args } }] })).results[0] as { result?: Outcome })?.result;
+        // 1. Poner al día y retirar con la lista entera; 2. cada hija que falta, en su propio lote (una procedencia por lote).
+        const first = await call({ children, create: false, retire: true });
+        const list = first?.children ?? [];
+        let created = 0;
+        for (const [i, child] of list.entries()) {
+          if (child.status !== 'missing') continue;
+          const made = await call({ children: [children.find((c) => c.ref === child.ref)], retire: false });
+          list[i] = made?.children[0] ?? child;
+          created += made?.created ?? 0;
+        }
+        return { ...out, children: list, childrenCounts: { created, updated: first?.updated ?? 0, retired: first?.retired ?? 0 } };
+      };
       const before = await status();
-      if (before.status !== 'unknown' && !(source.refresh && before.status === 'open')) return reply(before);
+      if (before.status !== 'unknown' && !(refreshes && before.status === 'open')) return reply(before);
 
       let actor = ((await invoke('tasks.service_actor', { name: source.service })) as { actor: string | null }).actor;
       // Core no tiene Edge propia que cree su identidad (Booking y Feedback la crean en su tick): se crea aquí la primera vez.
       if (!actor && source.service === 'core') actor = await ensureServiceActor(supabase, 'core');
       if (!actor) fail(503, 'SERVICE_NOT_READY', `La identidad de servicio «${source.service}» aún no existe.`);
       const ctx = await internal.context({ id: actor!, email: null, sessionId: `service:${source.service}`, kind: 'human' }, '');
+      childCtx = ctx;
       if (before.status !== 'unknown') {
         // Reenvío de una tarea abierta (§25): título y nota nuevos, si cambiaron; si no, no se escribe nada.
         const refreshed = await internal.commit(ctx, { requestId: `${sourceName}-${crypto.randomUUID()}`,
           operations: [{ op: 'call', procedure: 'tasks.refresh_request_task', args: { externalRef, title, ...(note !== undefined ? { note } : {}) } }] });
-        return { ...reply(before), updated: Boolean((refreshed.results[0] as { result?: { updated?: boolean } })?.result?.updated) };
+        return withChildren({ ...reply(before), updated: Boolean((refreshed.results[0] as { result?: { updated?: boolean } })?.result?.updated) });
       }
       const send = (toProject: boolean) => internal.commit(ctx, {
         requestId: `${sourceName}-${crypto.randomUUID()}`,
@@ -342,10 +394,10 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         if ((error as { code?: string })?.code === 'PROJECT_NOT_READY') throw error;
         // Dos reintentos a la vez: el segundo choca con la petición que acaba de dar de alta el primero.
         const raced = await status();
-        if (raced.status !== 'unknown') return reply(raced);
+        if (raced.status !== 'unknown') return withChildren(reply(raced));
         throw error;
       }
-      return reply(await status());
+      return withChildren(reply(await status()));
     },
   }, {
     /**
