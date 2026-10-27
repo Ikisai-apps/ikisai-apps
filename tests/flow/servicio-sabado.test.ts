@@ -187,6 +187,7 @@ test('servicio del sábado · de la carta de Food al cierre del día, con huésp
   const fiscalEntry = (await entries()).find((e) => e.source_ref === `flow:receipt:${receipt}`);
   assert.ok(fiscalEntry, 'Finance guarda el apunte fiscal del justificante');
   assert.equal(fiscalEntry.nature, 'fiscal');
+  assert.equal(fiscalEntry.receipt_kind, 'ticket'); assert.match(fiscalEntry.receipt_number, /^\d+(\+\d+)*$/);
 
   // Cierre del día: consumo a Food, resumen a Finance como proceso, sin el cobro ya enviado.
   const closed = await ok([call(PROCEDURES.closeDay, { project_id: BARRA, day: madrid() })]);
