@@ -7,7 +7,7 @@
  * - supletorias por habitación (Booking #491, API §25): «Supletorias N de M» con − / +, el precio de Ikisai por plaza y noche
  *   y, con la propuesta aceptada, «Pendiente de Ikisai». Las activadas salen en el reparto marcadas «supletoria».
  */
-import { el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import type { Row } from '../app/own.ts';
@@ -107,13 +107,13 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
     const choosing = capability === 'choose' || capability === 'request';
 
     // --- Qué pueden hacer ---
-    const capabilitySel = el('select', { id: 'lodging-capability', onchange: (e: Event) => void changeCapability((e.target as HTMLSelectElement).value) },
+    const capabilitySel = el('select', { ...fieldAttrs({ id: 'organizers.alojamiento.capacidad', label: 'Qué pueden hacer tus asistentes', entity: 'booking.lodging_settings', prop: 'capability', type: 'select', sensitivity: 'internal' }), id: 'lodging-capability', onchange: (e: Event) => void changeCapability((e.target as HTMLSelectElement).value) },
       ...CAPABILITIES.map(([v, l]) => el('option', { value: v, selected: v === capability ? '' : null }, t(l))));
     async function changeCapability(value: string): Promise<void> {
       await setExperience({ lodging_capability: value });
       await act(() => ctx.usage.run('organizers.alojamiento.ajustes', () => ctx.api.invokeAny('booking.portal_room_settings', { reservation_id: reservationId, ...bookingSettingsFor(value) })));
     }
-    const untilInput = el('input', { type: 'date', id: 'lodging-until', value: chooseUntil, onchange: (e: Event) => void (async () => {
+    const untilInput = el('input', { ...fieldAttrs({ id: 'organizers.alojamiento.hasta', label: 'Hasta cuándo eligen', entity: 'booking.lodging_settings', prop: 'choose_until', type: 'date', sensitivity: 'internal' }), type: 'date', id: 'lodging-until', value: chooseUntil, onchange: (e: Event) => void (async () => {
       const v = (e.target as HTMLInputElement).value || null;
       await setExperience({ lodging_choose_until: v });
       await act(() => ctx.api.invokeAny('booking.portal_room_settings', { reservation_id: reservationId, choose_until: v ?? '' }));
@@ -125,9 +125,9 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
     const commitOptions = () => void setExperience({ lodging_options: list.filter((o) => o.label.trim()).map((o) => ({ key: o.key || slug(o.label), label: o.label.trim(), guest_note: o.guest_note?.trim() || null })) });
     function paintOptions(): void {
       replace(optionRows, ...list.map((o, i) => el('div', { class: 'orgoption' },
-        el('input', { type: 'text', maxlength: '120', value: o.label, placeholder: t('Habitación doble con baño'), 'aria-label': t('Tipo de habitación'),
+        el('input', { ...fieldAttrs({ id: 'organizers.alojamiento.opcion.nombre', label: 'Tipo de habitación', entity: 'organizers.experiences', prop: 'lodging_options', type: 'text', sensitivity: 'internal' }), type: 'text', maxlength: '120', value: o.label, placeholder: t('Habitación doble con baño'), 'aria-label': t('Tipo de habitación'),
           onchange: (e: Event) => { const v = (e.target as HTMLInputElement).value; list[i] = { ...list[i]!, label: v, key: list[i]!.key || slug(v) }; commitOptions(); } }),
-        el('input', { type: 'text', maxlength: '200', value: o.guest_note ?? '', placeholder: t('+60 € a pagar a tu organizador'), 'aria-label': t('Lo que ve tu asistente del precio'),
+        el('input', { ...fieldAttrs({ id: 'organizers.alojamiento.opcion.nota', label: 'Nota para tus asistentes', entity: 'organizers.experiences', prop: 'lodging_options', type: 'text', sensitivity: 'internal' }), type: 'text', maxlength: '200', value: o.guest_note ?? '', placeholder: t('+60 € a pagar a tu organizador'), 'aria-label': t('Lo que ve tu asistente del precio'),
           onchange: (e: Event) => { list[i] = { ...list[i]!, guest_note: (e.target as HTMLInputElement).value }; commitOptions(); } }),
         el('button', { type: 'button', class: 'ghost icon', 'aria-label': t('Quitar'), onclick: () => { list = list.filter((_, j) => j !== i); paintOptions(); commitOptions(); } }, icon('trash', 16)))));
     }
@@ -140,9 +140,9 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
     })));
     const openRows = enSuite.map((r) => el('div', { class: 'orgitem', 'data-room': r.space_id },
       el('label', { class: 'field check orgitem-main' },
-        el('input', { type: 'checkbox', checked: r.open ? '' : null, onchange: (e: Event) => void saveRooms(enSuite.map((x) => (x.space_id === r.space_id ? { ...x, open: (e.target as HTMLInputElement).checked } : x))) }),
+        el('input', { ...fieldAttrs({ id: 'organizers.alojamiento.habitacion.abierta', label: 'Habitación abierta', entity: 'booking.lodging_settings', prop: 'rooms', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', checked: r.open ? '' : null, onchange: (e: Event) => void saveRooms(enSuite.map((x) => (x.space_id === r.space_id ? { ...x, open: (e.target as HTMLInputElement).checked } : x))) }),
         el('span', null, el('strong', null, r.name), el('span', { class: 'muted small' }, ` · ${t('{n} camas', { n: r.beds.filter((b) => b.kind !== 'supletoria').length })}${r.zone ? ` · ${r.zone}` : ''}`))),
-      list.length ? el('select', { 'aria-label': t('Tipo de habitación'), disabled: r.open ? null : '',
+      list.length ? el('select', { ...fieldAttrs({ id: 'organizers.alojamiento.habitacion.tipo', label: 'Tipo de la habitación', entity: 'booking.lodging_settings', prop: 'rooms', type: 'select', sensitivity: 'internal' }), 'aria-label': t('Tipo de habitación'), disabled: r.open ? null : '',
         onchange: (e: Event) => void saveRooms(enSuite.map((x) => (x.space_id === r.space_id ? { ...x, option_key: (e.target as HTMLSelectElement).value || null } : x))) },
         el('option', { value: '' }, '—'), ...list.map((o) => el('option', { value: o.key, selected: o.key === r.option_key ? '' : null }, o.label))) : null));
 
@@ -226,7 +226,7 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
 
   function assign(room: Room, bed: Bed): void {
     const assigned = new Set(data!.rooms.flatMap((r) => r.beds.map((b) => b.guest_id).filter(Boolean)) as string[]);
-    const select = el('select', { id: 'bed-guest' },
+    const select = el('select', { ...fieldAttrs({ id: 'organizers.alojamiento.cama.asistente', label: 'Quién duerme en la cama', entity: 'booking.bed_assignments', prop: 'guest_id', type: 'select', sensitivity: 'personal' }), id: 'bed-guest' },
       el('option', { value: '' }, bed.guest_id ? t('Dejarla libre') : '—'),
       ...guestIds.map((id) => el('option', { value: id, selected: id === bed.guest_id ? '' : null }, `${nameOf(id)}${assigned.has(id) && id !== bed.guest_id ? ` (${t('ya tiene cama')})` : ''}`))) as HTMLSelectElement;
     const saveButton = el('button', { type: 'button', class: 'primary', id: 'bed-save', onclick: () => void save() }, t('Guardar'));

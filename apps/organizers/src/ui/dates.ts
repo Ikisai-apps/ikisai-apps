@@ -8,7 +8,7 @@
  * Arriba, el veredicto de Diseño y Fechas con «Siguiente: …» (`ui/ready.ts`; MUELA-072:47 y MUELA-084): las mismas
  * comprobaciones que Diseño, recalculadas al marcar. Con la reserva ya prerreservada (sin Diseño), solo las fechas.
  */
-import { createSaveState, el, replace, toast, type CheckItem } from '@ikisai/ui-kit';
+import { createSaveState, el, fieldAttrs, replace, toast, type CheckItem } from '@ikisai/ui-kit';
 import type { DateOption, DatePreference, PortalDates, PortalProposal, ReservationDetail, Weekend } from '../app/api.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { commonText } from '../app/common-texts.ts';
@@ -129,7 +129,7 @@ export function renderDates(ctx: ViewContext, reservationId: string, detail: Res
       const ok = new Map(dates.options.map((o) => [o.id, o.organizer_ok]));
       const rows = dates.options.map((o: DateOption) => {
         const busy = o.availability === 'ocupado';
-        const input = el('input', { type: 'checkbox', checked: ok.get(o.id) ? '' : null, disabled: busy ? '' : null,
+        const input = el('input', { ...fieldAttrs({ id: 'organizers.fechas.opcion', label: 'Fecha posible', entity: 'booking.reservations', prop: 'date_options', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', checked: ok.get(o.id) ? '' : null, disabled: busy ? '' : null,
           onchange: (e: Event) => {
             ok.set(o.id, (e.target as HTMLInputElement).checked);
             schedule(dates.options.map((x) => ({ option_id: x.id, ok: ok.get(x.id) === true })));

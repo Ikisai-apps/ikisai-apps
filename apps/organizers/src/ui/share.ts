@@ -2,7 +2,7 @@
  * Compartir el enlace personal de un asistente (API.md §9.4 y §9.6): Web Share si el dispositivo lo ofrece; WhatsApp
  * (a su número si lo escribió quien organiza) y Copiar siempre. La URL se ve una sola vez: para otra, se reenvía.
  */
-import { el, openSheet } from '@ikisai/ui-kit';
+import { el, fieldAttrs, openSheet } from '@ikisai/ui-kit';
 import { t } from '../app/i18n.ts';
 import { whatsappUrl } from '../app/texts.ts';
 import { copyText, fbIgnore } from './common.ts';
@@ -16,7 +16,7 @@ export function openShareSheet(options: ShareOptions): void {
     title: t('Enlace de {nombre}', { nombre: name }),
     body: el('div', { id: 'shareSheet' },
       el('p', { class: 'banner info' }, t('Este enlace es personal: envíaselo solo a {nombre}.', { nombre: name })),
-      fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), el('textarea', { id: 'shareText', readonly: '', rows: '6' }, text))),
+      fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), el('textarea', { ...fieldAttrs({ id: 'organizers.comun.mensaje_compartir', label: 'Mensaje para compartir', type: 'text', sensitivity: 'internal', confirm: 'none' }), id: 'shareText', readonly: '', rows: '6' }, text))),
       el('p', { class: 'muted small' }, t('Por seguridad, el enlace solo se muestra ahora. Si se pierde, podrás enviar uno nuevo y el anterior dejará de funcionar.'))),
     foot: el('div', { class: 'btnrow' },
       canShare ? el('button', {
