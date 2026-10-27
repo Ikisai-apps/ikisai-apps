@@ -210,7 +210,7 @@ FIELDS[TABLES.visitorRequests] = {
   event_id: { kind: 'uuid' },
   via_code: text(20),
   visitor_id: { kind: 'uuid' },
-  kind: { kind: 'enum', values: ['join', 'contact'], nullable: false },
+  kind: { kind: 'enum', values: ['join', 'contact', 'stay'], nullable: false },
   name: text(120),
   contact: text(200),
   note: text(500),
@@ -218,6 +218,15 @@ FIELDS[TABLES.visitorRequests] = {
   guest_id: { kind: 'uuid', nullable: true },
   decided_at: { kind: 'timestamp' },
 };
+// 0499 (alojamiento libre): solicitud de noches. El total, el modo y el bloqueo los pone el servidor.
+FIELDS[TABLES.visitorRequests] = {
+  ...FIELDS[TABLES.visitorRequests],
+  from_date: { kind: 'date' }, to_date: { kind: 'date' }, persons: { kind: 'int', nullable: true, min: 1 }, rate_id: { kind: 'uuid', nullable: true },
+  total_cents: { kind: 'int', nullable: true, min: 0 }, pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: true },
+  hold_bed_ids: { kind: 'uuidList', max: 20 }, hold_until: { kind: 'timestamp' },
+};
+// 0499: cómo se pagan las noches del QR en ese evento
+FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], lodging_pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: false }, lodging_hold_hours: { kind: 'int', nullable: false, min: 1 } };
 FIELDS[TABLES.walkinCharges] = {
   event_id: { kind: 'uuid' },
   assignment_id: { kind: 'uuid' },

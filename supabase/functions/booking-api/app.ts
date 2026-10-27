@@ -283,6 +283,36 @@ export function bookingPublicRoutes(): PublicRoute[] {
       const item = (mine?.items ?? []).find((i) => i.kind === kind) ?? null;
       return item ? { event_code: item.event_code, kind: item.kind, name: item.name, status: item.status, created_at: item.created_at } : null;
     },
+  }, {
+    // Alojamiento libre, tarjeta 2 (0499): el visitante pide noches. La base valida fechas, tarifa y plazas, calcula el
+    // total y, si el evento reserva la plaza unas horas, la bloquea en el mismo lote (sin hueco, 409 NO_AVAILABILITY). Una
+    // solicitud nueva del mismo visitante para el mismo evento sustituye a la anterior.
+    method: 'POST', pattern: 'stay',
+    handler: async ({ json, visitor, apply, read }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const code = text(body.event_code, 20) ?? visitor.eventCode ?? null;
+      if (!code) fail(422, 'INVALID_FIELDS', 'Falta el código del evento.', { field: 'event_code' });
+      const date = (value: unknown, field: string) => {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) fail(422, 'INVALID_FIELDS', 'Fecha no válida.', { field });
+        return value as string;
+      };
+      const persons = Number(body.persons ?? 1);
+      if (!Number.isInteger(persons) || persons < 1 || persons > 20) fail(422, 'INVALID_FIELDS', 'Personas: de 1 a 20.', { field: 'persons' });
+      const mode = typeof body.mode_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.mode_id) ? body.mode_id : null;
+      if (!mode) fail(422, 'INVALID_FIELDS', 'Elige una modalidad.', { field: 'mode_id' });
+      const name = text(body.name, 120);
+      if (!name) fail(422, 'INVALID_FIELDS', 'Falta el nombre.', { field: 'name' });
+      const id = crypto.randomUUID();
+      await apply([{ op: 'insert', table: TABLES.visitorRequests, id, fields: {
+        via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200), note: text(body.note, 500),
+        from_date: date(body.from, 'from'), to_date: date(body.to, 'to'), persons, rate_id: mode,
+      } }]);
+      const mine = await read('booking_visitor_requests', { event_code: code }) as { items?: Array<Record<string, unknown>> } | null;
+      const item = (mine?.items ?? []).find((i) => i.id === id) ?? null;
+      return item ? { id: item.id, event_code: item.event_code, status: item.status, from: item.from, to: item.to, persons: item.persons, mode_id: item.mode_id,
+        total_cents: item.total_cents, pay: item.pay, hold_until: item.hold_until } : null;
+    },
   }];
 }
 
