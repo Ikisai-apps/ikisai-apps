@@ -994,7 +994,7 @@ Rol `editor` u `owner`, con alcance sobre el destino (las reglas de siempre del 
 
 | Campo | Obligatorio | Notas |
 |---|---|---|
-| `source` | sí | App que pide: `[a-z][a-z0-9_-]{1,30}`, por ejemplo `central`. Es un espacio de nombres para `external_ref`, no una credencial. |
+| `source` | sí | App que pide: `[a-z][a-z0-9_-]{1,30}`, por ejemplo `central`. Es un espacio de nombres para `external_ref`, no una credencial. Las fuentes de sistema (`booking`, `feedback`, `core` e `invoices`) no valen aquí (422 `INVALID_INPUT`, campo `source`): solo entran por `worker/requests/task` con su identidad de servicio, para que nadie se adelante a una de sus referencias (27-10-2026, pedido por Core). |
 | `external_ref` | sí | Referencia de la app que pide, de 1 a 150 caracteres. Por ejemplo, el id de la obligación de cumplimiento. |
 | `title` | sí | Hasta 500 caracteres. |
 | `note` | no | La «notes» de la petición. Hasta 20 000 caracteres. |

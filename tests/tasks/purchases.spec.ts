@@ -318,12 +318,12 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   expect((await ask({ external_ref: 'VTO_3', title: 'Pasar la ITV' })).data.routed).toBe('rule');
 
   // Descartar lo que no es trabajo.
-  await server.app.call('/api/v1/requests/task', { body: { source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_1', title: 'Prueba' } });
+  await server.app.call('/api/v1/requests/task', { body: { source: 'central', kind: 'central.space_incident', external_ref: 'INC_1', title: 'Prueba' } });
   await sync();
   await owner.evaluate(() => (window as any).navigateView('triage'));
   await owner.locator('[data-request-dismiss]').click();
   await settled(owner);
-  expect((await server.rows('tasks.requests')).find((r) => r.external_ref === 'booking:INC_1').status).toBe('dismissed');
+  expect((await server.rows('tasks.requests')).find((r) => r.external_ref === 'central:INC_1').status).toBe('dismissed');
 
   // Un área «Comercial» para las peticiones de los portales de organizadores (T3).
   const commercial = crypto.randomUUID();
@@ -332,7 +332,7 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   // «Gestionar entradas» lista los tipos conocidos con su destino.
   await owner.locator('#manageRoutes').click();
   await expect(owner.locator('[data-route-edit="central.compliance_due"]')).toContainText('Vencimientos');
-  await expect(owner.locator('[data-route-edit="booking.space_incident"]')).toContainText('Por clasificar');
+  await expect(owner.locator('[data-route-edit="central.space_incident"]')).toContainText('Por clasificar');
   // Los tipos de los portales salen aunque aún no haya llegado ninguno, y su regla propone el área comercial.
   await expect(owner.locator('[data-route-edit="booking.organizer_dates"]')).toContainText('Organizador · Fechas posibles');
   await expect(owner.locator('[data-route-edit="booking.retreat_project"]')).toContainText('Retiro · Proyecto');
@@ -354,8 +354,13 @@ test('enlace directo del panel de Central (§21): #/supplies abre Suministros y 
 });
 
 test('enlace de un reporte de Feedback (§22.4): #/feedback/<código> enseña el reporte y su tarea', async () => {
-  const asked = await server.app.call('/api/v1/requests/task', { body: { source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0042', title: 'Persiana rota en la sala 2', tab_id: ID.ikisai } });
-  expect(asked.status, JSON.stringify(asked.data)).toBe(200);
+  // Feedback es fuente de sistema: entra por worker/ con su identidad de servicio (simulada) y va por la regla de su tipo.
+  if (!(await server.app.t.db.query(`select 1 from core.profiles where service_name = 'feedback'`)).rows.length) await simulateServiceIdentity(server.app.t.db, crypto.randomUUID());
+  await server.commit([{ op: 'insert', table: 'tasks.request_routes', id: crypto.randomUUID(), fields: { kind: 'feedback.space.utilities', tab_id: ID.ikisai, position: 2 } }], server.app.tokens.owner);
+  const asked = await server.app.handler(new Request('http://localhost/api/v1/worker/requests/task', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': E2E_WORKER_KEY }, body: JSON.stringify({
+    source: 'feedback', kind: 'feedback.space.utilities', external_ref: 'FB_2026_0042', title: 'Persiana rota en la sala 2',
+    external_url: 'https://tasks.ikisai.com/#/feedback/FB_2026_0042', on_behalf_of: { kind: 'guest', report_code: 'FB_2026_0042' } }) }));
+  expect(asked.status).toBe(200);
   await owner.goto(server.url + '/#/feedback/FB_2026_0042');
   await settled(owner);
   // MUELA-064 (tanda 31): el resguardo lleva el título y el estado; el código no se ve (va en el enlace que se copia).
@@ -371,8 +376,8 @@ test('enlace de un reporte de Feedback (§22.4): #/feedback/<código> enseña el
 });
 
 test('reporte de huésped por el worker de Feedback (§22.2): entra por la regla y el editor dice quién informó', async () => {
-  // La identidad de servicio es de Core (0067); aquí se simula.
-  await simulateServiceIdentity(server.app.t.db, crypto.randomUUID());
+  // La identidad de servicio es de Core (0067); aquí se simula (si no la creó ya la prueba del enlace, §22.4).
+  if (!(await server.app.t.db.query(`select 1 from core.profiles where service_name = 'feedback'`)).rows.length) await simulateServiceIdentity(server.app.t.db, crypto.randomUUID());
   await server.commit([{ op: 'insert', table: 'tasks.request_routes', id: crypto.randomUUID(), fields: { kind: 'feedback.space.damage', tab_id: ID.ikisai, position: 1 } }], server.app.tokens.owner);
   const res = await server.app.handler(new Request('http://localhost/api/v1/worker/requests/task', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': E2E_WORKER_KEY }, body: JSON.stringify({
     source: 'feedback', kind: 'feedback.space.damage', kind_label: 'Espacio · Avería', external_ref: 'FB_2026_000429', title: 'Ducha no evacúa bien · Habitación 3',
