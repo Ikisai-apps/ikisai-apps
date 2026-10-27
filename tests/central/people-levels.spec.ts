@@ -142,3 +142,33 @@ test('nivel de casa · vista previa, aplicar, pantalla nueva, Alta con nivel y m
   await expect(page.locator('#peopleRelation')).toBeVisible();
   await expect(page.locator('#peopleLevels')).toBeHidden();
 });
+
+test('nivel de casa · «Dar cuenta» en persona desde el móvil: solo el correo, la contraseña una vez y los accesos por nivel', async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const id = crypto.randomUUID();
+  const seeded = await api.app.call('/api/v1/commands', { body: { requestId: 'give-in-person', operations: [
+    { op: 'insert', table: 'central.people', id, fields: { display_name: 'Tati Ficticia', relation: 'equipo', house_level: 'staff' } },
+  ] } });
+  expect(seeded.status, JSON.stringify(seeded.data)).toBe(200);
+  await login(page);
+  await page.goto(`${baseURL}/#/personas/${id}`);
+  // Paso 1: «Dar cuenta» y el correo, escrito delante de la persona. Sus accesos los da el nivel.
+  await page.locator('#giveAccount').click();
+  await expect(page.locator('#giveByLevel')).toContainText('Staff');
+  await expect(page.locator('#giveByLevel')).toContainText('Tasks');
+  await page.locator('#ga-email').fill('tati.ficticia@example.invalid');
+  await page.locator('#giveSubmit').click();
+  // Paso 2: la contraseña temporal, visible una sola vez.
+  const secret = page.locator('[data-feedback-id="central.accesos.contrasena.valor"]');
+  await expect(secret).toBeVisible();
+  expect((await secret.inputValue()).length).toBeGreaterThan(7);
+  await page.locator('[data-feedback-id="central.accesos.contrasena.hecho"]').click();
+  await page.locator('.so-confirm input').check();
+  await page.locator('[data-feedback-id="central.accesos.contrasena.hecho"]').click();
+  await expect(secret).toHaveCount(0);
+  // La cuenta queda enlazada a la ficha y el nivel le da sus accesos (staff: editor de Tasks).
+  const user = async () => (await api.app.t.db.query<{ u: string | null }>(`select user_id as u from central.people where id = $1`, [id])).rows[0]!.u;
+  await expect.poll(user).not.toBeNull();
+  await expect.poll(async () => (await api.app.t.db.query<{ r: string }>(`select role as r from core.memberships where user_id = $1 and app = 'tasks'`, [await user()])).rows[0]?.r ?? null).toBe('editor');
+  await page.close();
+});
