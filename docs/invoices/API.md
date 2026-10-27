@@ -739,7 +739,7 @@ Dos lecturas registradas para la app `organizers` (`core.allow_read('organizers'
 **Lo contratado y lo cobrado** (decisión de Core, ronda 52): Booking publica lo contratado (total de la propuesta aceptada, señal requerida y vencimientos). Finance publica lo facturado y lo cobrado (F1); «pagado» sale solo de Finance. El portal calcula el saldo como contratado (Booking) − `totals.collected` (Finance).
 
 **Pendiente fuera de Invoices:**
-1. **URL firmada de un PDF guardado** (aplazada por Core en la ronda 52): una Edge con la clave de servicio tiene que firmarla con `createStorage`. La de Organizers es hoy genérica (`read/:name`). Propuesta: una ruta `portal-files` en `organizers-api` que repita la lectura F2 con la sesión del portal y firme solo un `file_id` que esa lectura devuelva. Las facturas emitidas desde Finance no la necesitan, porque el portal pinta su `document`.
+1. **URL firmada de un PDF guardado** (K2, hecha en 0249): Finance registra el resolutor `invoices.portal_invoice_file` para el portal `organizers` (`core.allow_portal_file`, C8). Organizers abre el PDF con su `GET /api/v1/portal-files/<file_id>` (ruta del kit, URL firmada de 5 minutos), con un `file_id` de `files` de F2. Responde solo si el archivo es de una factura de una reserva del ámbito, no borrador, y la persona es editora u owner del portal. Lo de fuera da `404 FILE_NOT_FOUND`, igual que lo inexistente. Las facturas emitidas desde Finance no lo necesitan, porque el portal pinta su `document`.
 
 ### 7.8 Lo cobrado por reserva, para Booking (migración 0222)
 
