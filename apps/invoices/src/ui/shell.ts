@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, registerReveal, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
@@ -87,6 +87,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     review,
     center: () => { openFeedbackCenter({ api, app: 'invoices', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
+  // El panel de la guía lo crea el kit (sin rótulo propio): solo su id de feedback.
+  const GUIDE_FEEDBACK_ID = 'invoices.guia';
   const shell = createAppShell(root, {
     appName: 'Finance',
     launcher,
@@ -95,8 +97,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
+    // Guiado mínimo (kit 0.68): `?campo=` señala el campo y `?paso=` lo explica con «Volver a…». Sin client: no lee de Flow.
+    guide: { feedbackId: GUIDE_FEEDBACK_ID },
   });
   const { main } = shell;
+  // Lo que vive en un desplegable cerrado: la guía lo abre antes de señalarlo.
+  const openDetails = (anchor: string) => () => { document.querySelector<HTMLDetailsElement>(`details[data-feedback-id="${anchor}"]`)?.setAttribute('open', ''); };
+  for (const anchor of ['invoices.gestoria.detalle', 'invoices.proveedores.papelera', 'invoices.apuntes.ficha.desglose']) registerReveal(anchor, openDetails(anchor));
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
   fb(shell.header, { feedbackId: 'invoices.cabecera', feedbackLabel: 'Cabecera' });
