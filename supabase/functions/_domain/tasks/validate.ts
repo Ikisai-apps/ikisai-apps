@@ -3,7 +3,7 @@
  * El mismo código corre en el cliente antes de encolar y en la Edge (`beforeCommit`). Solo ve las
  * operaciones y los ámbitos del actor: las reglas que dependen del estado viven en el hook SQL.
  */
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, IMMUTABLE, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, IMMUTABLE, REVIEW_ANSWERS, REVIEW_ZONES, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
 import { allAccess, canProject, fullTab, type Scopes } from './scopes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,6 +108,22 @@ const houseLevel = (code: string) => oneOf(HOUSE_LEVELS, code, 'Nivel de casa de
 const ownerPeople = { owner_person_id: nullable(uuid('INVALID_OWNER')), owner_house_level: nullable(houseLevel('INVALID_OWNER')) };
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
+
+const reviewOnly: Check = (_v, field) => reject(422, 'INVALID_REVIEW', 'La revisión y sus resultados solo se escriben desde sus acciones.', { field });
+
+/** Lo esperado de un ítem de revisión (0348): {count} en una cantidad, {unit, min?, max?} en una lectura (el tipo lo cruza el hook). */
+const reviewExpected: Check = (v, field) => {
+  const bad = (): never => reject(422, 'INVALID_REVIEW', 'Lo esperado del ítem no es válido.', { field });
+  if (!isObject(v)) bad();
+  const e = v as Record<string, unknown>;
+  for (const [key, value] of Object.entries(e)) {
+    if (key === 'unit') { if (typeof value !== 'string' || !value.trim() || value.length > 20) bad(); }
+    else if (key === 'count') { if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) bad(); }
+    else if (key === 'min' || key === 'max') { if (typeof value !== 'number' || !Number.isFinite(value)) bad(); }
+    else bad();
+  }
+  if (typeof e.min === 'number' && typeof e.max === 'number' && e.min > e.max) bad();
+};
 
 /** Lo que cabe en un plan de hoy (0339): hasta 100 elementos, cada uno una tarea o un texto «solo hoy». */
 export const DAY_PLAN_MAX_ITEMS = 100;
@@ -321,6 +337,27 @@ const RULES: Record<TableName, TableRules> = {
     fields: { actor_id: uuid(), day: date, items: planItems, reviewed: flag('INVALID_FLAG') },
     required: ['actor_id', 'day', 'items'],
   },
+  // Plantillas de revisión (0348, §46). Las de la casa (sin área) son de la owner y lo esperado según el tipo lo comprueba
+  // también el hook tasks.validate_review_templates.
+  'tasks.review_templates': {
+    fields: {
+      tab_id: nullable(uuid()), name: text(1, 120, 'INVALID_REVIEW', 'La plantilla necesita un nombre de hasta 120 caracteres.'),
+      note: shortText(2000), active: flag('INVALID_FLAG'), position,
+    },
+    required: ['name'],
+  },
+  'tasks.review_template_items': {
+    fields: {
+      tab_id: nullable(uuid()), template_id: uuid('INVALID_REVIEW'), zone: oneOf(REVIEW_ZONES, 'INVALID_REVIEW', 'Zona desconocida.'),
+      trade_id: nullable(uuid('INVALID_TRADE')), title: text(1, 200, 'INVALID_REVIEW', 'El ítem necesita un título de hasta 200 caracteres.'),
+      instructions: shortText(2000), answer: oneOf(REVIEW_ANSWERS, 'INVALID_REVIEW', 'Tipo de respuesta desconocido.'),
+      expected: reviewExpected, critical: flag('INVALID_FLAG'), position,
+    },
+    required: ['template_id', 'zone', 'title', 'answer'],
+  },
+  // Revisiones (0349): solo las escriben sus procedimientos, por las rutas `reviews/…` (§46.2–46.4).
+  'tasks.reviews': { fields: Object.fromEntries(WRITABLE['tasks.reviews'].map((f) => [f, reviewOnly])), required: [] },
+  'tasks.review_items': { fields: Object.fromEntries(WRITABLE['tasks.review_items'].map((f) => [f, reviewOnly])), required: [] },
 };
 
 export interface ValidationContext {
@@ -346,8 +383,9 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
   }
   if (table === 'tasks.requests') forbidden('Las peticiones de otras apps son de quien tiene acceso a toda la app.');
   if (op.op === 'insert' && (table === 'tasks.families' || table === 'tasks.labels') && f.tab_id === null) forbidden('El catálogo General es de quien tiene acceso a toda la app.');
+  if (op.op === 'insert' && (table === 'tasks.review_templates' || table === 'tasks.review_template_items') && (f.tab_id === null || f.tab_id === undefined)) forbidden('Las plantillas de revisión de la casa son de quien tiene acceso a toda la app.');
   if (op.op !== 'insert' || !tab) return;
-  if (table === 'tasks.families' || table === 'tasks.labels' || table === 'tasks.saved_views') {
+  if (table === 'tasks.families' || table === 'tasks.labels' || table === 'tasks.saved_views' || table === 'tasks.review_templates' || table === 'tasks.review_template_items') {
     if (!fullTab(scopes, tab)) forbidden('Un acceso por proyecto no administra el catálogo ni las vistas del área.');
   } else if (table === 'tasks.request_routes') {
     if (!fullTab(scopes, tab)) forbidden('Las reglas de entrada son del área entera.');
