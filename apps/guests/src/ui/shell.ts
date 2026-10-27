@@ -37,7 +37,7 @@ import { mountHouse } from './house.ts';
 import { personSelector, retreatFrame, retreatState, shortRange, type Frame } from './frame.ts';
 import { mountLodging } from './lodging.ts';
 import { clearOfflineMaterials } from './materials.ts';
-import { clearPlanImages } from './plan.ts';
+import { clearPlanImages, headerSilhouette, loadPlans } from './plan.ts';
 import { mountGuide } from './guide.ts';
 import { barItems, modulesOf, moreItems, sectionLabel, sectionsOf, type Modules, type Section } from './nav.ts';
 import { mountMenu, mountProgram } from './program.ts';
@@ -527,6 +527,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
           return mine ? [mine.space_name, mine.bed_label].filter(Boolean).join(' · ') : null;
         },
         placeName: async () => (await reads.place().catch(() => null))?.value.name ?? null,
+        silhouette: async () => headerSilhouette((await loadPlans(gctx.reads))?.value),
         role: family ? null : roleText(gctx.guest().portal_role) || null,
       });
     }
