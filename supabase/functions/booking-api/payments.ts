@@ -6,6 +6,8 @@
  * - Sin pasarela configurada (lo de hoy), el pago en línea responde 503 `PAYMENTS_OFF`.
  */
 
+import { normalizeStripeEvent, PaymentGatewayError, verifyStripeSignature, type PaymentGateway } from '../_domain/payments/stripe.ts';
+
 export interface PaymentIntentInput {
   /** Importe que calcula el servidor (céntimos, EUR). */
   amountCents: number;
@@ -24,7 +26,10 @@ export interface PaymentIntent { providerRef: string; redirectUrl: string }
 export interface PaymentEvent {
   eventId: string;
   providerRef: string;
-  status: 'paid' | 'failed' | 'expired' | 'refunded';
+  /** `ignored`: un aviso válido que no es de Booking (otra app de la misma cuenta) o que no interesa: se acusa con 200. */
+  status: 'paid' | 'failed' | 'expired' | 'refunded' | 'ignored';
+  /** El pago de la pasarela (`pi_…`), con `paid`: con él se casan después las devoluciones (1420). */
+  paymentRef?: string;
   refundedCents?: number;
   feeCents?: number;
 }
@@ -38,7 +43,71 @@ export interface PaymentProvider {
   /** Devuelve parte o todo de un pago (1414). Con la misma clave, la pasarela devuelve una sola vez (1419). */
   refund?(providerRef: string, cents: number, idempotencyKey?: string): Promise<{ refundRef: string }>;
   /** Estado de un intento, para conciliar avisos perdidos (1414). */
-  fetchStatus?(providerRef: string): Promise<{ status: 'pending' | 'paid' | 'failed' | 'expired'; feeCents?: number }>;
+  fetchStatus?(providerRef: string): Promise<{ status: 'pending' | 'paid' | 'failed' | 'expired'; feeCents?: number; paymentRef?: string }>;
+  /** Caduca a mano un intento abierto (la cama ya no está guardada; 1420). */
+  expireIntent?(providerRef: string): Promise<void>;
+}
+
+/**
+ * Stripe (1420): envuelve la pasarela compartida de Finance (`_domain/payments/stripe.ts`) con el contrato de Booking.
+ * - La sesión caduca como pronto a los 31 minutos (Stripe no deja menos); la cama se guarda 20 (VG). El worker de
+ *   conciliación caduca a mano las sesiones de lo que ya venció (`expireIntent`).
+ * - `metadata.app = 'booking'`: la cuenta de Stripe es compartida y cada app atiende solo sus avisos. Los de otra app son
+ *   `ignored`. Una devolución sin metadatos se intenta casar por el pago y, si no es nuestra, también se acusa.
+ */
+export function stripeBookingProvider(options: {
+  gateway: PaymentGateway;
+  webhookSecret: string;
+  verify?: typeof verifyStripeSignature;
+  now?: () => number;
+}): PaymentProvider {
+  const { gateway, webhookSecret } = options;
+  const verify = options.verify ?? verifyStripeSignature;
+  const now = options.now ?? Date.now;
+  return {
+    name: 'stripe',
+    async createIntent(input) {
+      const expiresAt = new Date(Math.max(Date.parse(input.expiresAt), now() + 31 * 60_000 + 30_000));
+      const session = await gateway.createCheckout({
+        amountCents: input.amountCents, currency: 'eur', description: input.description, metadata: { app: 'booking', reference: input.reference },
+        expiresAt, successUrl: input.returnUrl, cancelUrl: `${input.returnUrl}${input.returnUrl.includes('?') ? '&' : '?'}cancelado=1`,
+        idempotencyKey: `${input.reference}-${input.expiresAt}`,
+      });
+      return { providerRef: session.id, redirectUrl: session.url };
+    },
+    async parseWebhook(request) {
+      let raw: Awaited<ReturnType<typeof verifyStripeSignature>>;
+      try {
+        raw = await verify(await request.text(), request.headers.get('stripe-signature'), webhookSecret);
+      } catch {
+        return null;
+      }
+      const e = normalizeStripeEvent(raw);
+      const foreign = e.metadata.app !== undefined && e.metadata.app !== 'booking';
+      const ref = e.sessionId ?? e.paymentIntent;
+      if (foreign || e.kind === 'ignored' || !ref) return { eventId: e.eventId, providerRef: ref ?? '', status: 'ignored' };
+      return {
+        eventId: e.eventId, providerRef: ref, status: e.kind,
+        ...(e.kind === 'refunded' && e.refundedCents !== null ? { refundedCents: e.refundedCents } : {}),
+        ...(e.kind === 'paid' && e.paymentIntent ? { paymentRef: e.paymentIntent } : {}),
+      };
+    },
+    async refund(providerRef, cents, idempotencyKey) {
+      const session = await gateway.getCheckout(providerRef);
+      if (!session.paymentIntent) throw new PaymentGatewayError('La sesión no tiene pago.', 'NOT_PAID');
+      const out = await gateway.refund(session.paymentIntent, cents, idempotencyKey ?? `booking-refund-${providerRef}-${crypto.randomUUID()}`);
+      return { refundRef: out.refundId };
+    },
+    async fetchStatus(providerRef) {
+      const s = await gateway.getCheckout(providerRef);
+      if (s.status === 'complete' && s.paymentStatus === 'paid') return { status: 'paid', ...(s.paymentIntent ? { paymentRef: s.paymentIntent } : {}) };
+      if (s.status === 'expired') return { status: 'expired' };
+      return { status: 'pending' };
+    },
+    async expireIntent(providerRef) {
+      await gateway.expireCheckout(providerRef);
+    },
+  };
 }
 
 /**
