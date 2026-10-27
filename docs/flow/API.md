@@ -326,3 +326,20 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - Los enlaces de huésped de tres partes (0910) valen hasta caducar.
 - **Guarda del lote público**: un cliente nuevo es `web`, o `visitor` con el visitante del propio lote (`core.current_visitor()`). De un cliente de huésped o de visitante solo cambia el token.
 - «Soy el 142» sigue funcionando sin visitante.
+
+## 30. Caja profunda (migración `0917`, «C»)
+
+- **Interruptor**: config de Caja `deep_checkout`. La v2 la lleva por plantilla, y también las versiones de barra ya creadas y no congeladas. La v1 cobra como siempre.
+- **`pay_orders({order_ids, method, unify, revisions?})`**: paga varios pedidos abiertos del mismo flujo.
+  - Métodos: `cash`, `bizum`, `card`, `btc_ln` y `btc_chain`.
+  - Cada pedido se cobra con su número de cobro y sus unidades (`flow.charge_order`).
+  - Con `unify`, un justificante para todos; sin él, uno por pedido. Sin la config, `INVALID_OPERATION`.
+- **`flow.receipts`** (`method`, `total_cents`, `order_ids`, `customer_id`, `finance_status`…) y `payments.receipt_id`. Solo por procedimiento; `mark_receipt_sent({receipt_id, status, result})` anota el envío.
+- **«Enviar a Finance»**: `POST receipts/:id/send/finance` → `invoices.record_app_entry` con `nature: 'fiscal'`, `source_ref flow:receipt:<id>` y el detalle de sus líneas. Bitcoin va como método `bitcoin`.
+- **Cierre del día**: va siempre a Finance como `nature: 'process'` (VG 27-10). Excluye lo ya enviado como fiscal (`flow.fiscal_of_day`): importe, métodos y detalle. Un cobro va en un solo apunte. Lo cobrado en Bitcoin que no ha ido como fiscal sale como método `bitcoin`.
+- **`flow.project_settings`** (`lightning_address`, `bitcoin_address`): escribe solo el owner, desde «Cobro con Bitcoin» en el Inicio; leen editor y owner. Las direcciones nunca van en el repo.
+- **App**:
+  - En Caja, «Ficha del cliente» al buscar su número: todos sus pedidos con casillas, «Pagar (n)» y «Entregar (n)».
+  - En la ficha de un pedido abierto, «Pagar».
+  - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
+  - Tras pagar: Imprimir factura y Enviar por correo (aún sin función), Enviar a Finance y Cerrar.

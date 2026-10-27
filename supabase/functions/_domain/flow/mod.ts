@@ -25,6 +25,8 @@ export const TABLES = {
   templateUnits: 'flow.template_units',
   templateColumnPatches: 'flow.template_column_patches',
   accounts: 'flow.accounts',
+  projectSettings: 'flow.project_settings',
+  receipts: 'flow.receipts',
   templateColumns: 'flow.template_columns',
   presenceMarks: 'flow.presence_marks',
 } as const satisfies Record<string, `flow.${string}`>;
@@ -54,6 +56,8 @@ export const PROCEDURES = {
   markPresence: 'flow.mark_presence',
   deliverAll: 'flow.deliver_all',
   saveTemplate: 'flow.save_template',
+  payOrders: 'flow.pay_orders',
+  markReceiptSent: 'flow.mark_receipt_sent',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -84,6 +88,9 @@ export type UnitStatus = 'proposed' | 'pending' | 'in_progress' | 'done' | 'canc
 export type PayMethod = 'cash' | 'bizum';
 /** Liquidación de una cuenta (0910): también con tarjeta. */
 export type SettleMethod = PayMethod | 'card';
+/** Métodos de la caja profunda (0917). */
+export type CheckoutMethod = 'cash' | 'bizum' | 'card' | 'btc_ln' | 'btc_chain';
+export const CHECKOUT_METHOD_LABELS: Record<CheckoutMethod, string> = { cash: 'Metálico', bizum: 'Bizum', card: 'Tarjeta', btc_ln: 'Bitcoin · Lightning', btc_chain: 'Bitcoin · on-chain' };
 export type DeliveryIdent = 'number' | 'qr' | 'presence' | 'skipped';
 
 /** Siguiente estado de un toque (§5, §7). Una unidad cancelada no avanza. */
