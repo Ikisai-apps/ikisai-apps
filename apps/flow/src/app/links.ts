@@ -50,6 +50,17 @@ export async function chooseTasksProject(client: SyncClient, project: Project): 
   } catch (error) { toast(describeError(error)); }
 }
 
+/** «Comprar X»: la compra a Tasks de un toque, con su cantidad y unidad. */
+export async function quickPurchase(client: SyncClient, unit: Unit): Promise<void> {
+  if (!isOnline(client)) { toast('Pedir a Tasks necesita conexión.'); return; }
+  try {
+    const out = await client.api<{ link: { app: string; kind: string; id: string; status?: string } }>(`/units/${unit.id}/tasks`, {
+      method: 'POST', json: { type: 'purchase', quantity: unit.payload?.qty, unit: unit.payload?.unit } });
+    await callProcedure(client, PROCEDURES.unitLinkExternal, { unit_id: unit.id, link: out.link });
+    toast('Compra pedida en Tasks.');
+  } catch (error) { toast(describeError(error)); }
+}
+
 /** «Pedir a Tasks» desde una tarea: tarea, o compra con cantidad. */
 export function askTasks(client: SyncClient, unit: Unit): void {
   const qty = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: unit.payload?.qty !== undefined ? String(unit.payload.qty) : '', 'aria-label': 'Cantidad' });

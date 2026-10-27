@@ -56,7 +56,12 @@ test('versiones · «Nueva versión» (solo owner) copia la configuración y nad
   assert.equal(p2.frozen, false); assert.equal(p2.test_mode, true); assert.equal(p2.serves_public, false); assert.equal(p2.template_key, 'barra');
   const cols1 = (await rows(TABLES.columns)).filter((c) => c.project_id === V1).sort((a, b) => a.position - b.position);
   const cols2 = (await rows(TABLES.columns)).filter((c) => c.project_id === v2).sort((a, b) => a.position - b.position);
-  assert.deepEqual(cols2.map((c) => [c.key, c.label, c.behavior, c.config]), cols1.map((c) => [c.key, c.label, c.behavior, c.config]));
+  assert.deepEqual(cols2.map((c) => [c.key, c.label, c.behavior]), cols1.map((c) => [c.key, c.label, c.behavior]));
+  // La config se copia; los ajustes de plantilla de la v2 (0909: fresh_stock en Ingredientes) se suman encima.
+  for (const c of cols2) {
+    const base = cols1.find((x) => x.key === c.key).config;
+    assert.deepEqual(c.config, c.key === 'ingredients' ? { ...base, fresh_stock: true } : base);
+  }
   const prods2 = (await rows(TABLES.products)).filter((p) => p.project_id === v2);
   assert.equal(prods2.length, (await rows(TABLES.products)).filter((p) => p.project_id === V1).length);
   assert.ok(prods2.some((p) => p.image_key === 'montaditos/serrano'));
