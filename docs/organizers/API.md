@@ -790,3 +790,19 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **En «Mis retiros»:** la tarjeta de cada retiro lleva «N comentarios nuevos», junto a las propuestas del equipo. Se pinta después de la lista, con la misma lectura `GET feedback?app=guests` y las filas propias de `comment_reads` (`unreadByReservation`). Sin red, sin marca.
 - **Cliente:** `app/comment-reads.ts` (`readIds`, `allReadIds`, `unreadOf`, `unreadByReservation`, `readOperations`, `markRead`). Sin red, se encola como el resto.
 
+## 24. «Pagar ahora» sin enlace (F5; Finance API.md §19.3, #1057)
+
+- **Cuándo sale:** en «Pagar en línea», junto a las facturas que traen enlace, salen las emitidas sin cobrar, con importe y sin enlace vigente (`payOnDemand`), si `GET payments/config` dice `{online: true}`.
+- **Encendido:** la Edge lo enciende con `IKISAI_PORTAL_PAYMENTS=1`. Apagado, no sale el botón y `POST payments/link` responde `503 PAYMENTS_OFF`.
+- **`POST payments/link {reservation_id, issued_invoice_id}`** (editor u owner):
+  - organizers-api llama a `invoices-api/api/v1/worker/payment-links/portal` con `IKISAI_WORKER_KEY` y `X-Ikisai-Caller: organizers`, en nombre de quien pulsa (`actor`);
+  - Finance comprueba el ámbito (0256: su retiro y una factura de ese retiro) y crea el enlace, o reutiliza el abierto;
+  - responde `{url, provider, expires_at, reused}`. Errores: `403 OUT_OF_SCOPE`, `409 PAYMENT_NOT_ALLOWED` y `503 PAYMENTS_OFF`/`PAYMENT_GATEWAY`.
+- **Vuelta:** la fija el servidor, nunca el cliente: `https://organizers.ikisai.com/#/retiro/<reserva>/pagos?factura=<id>&pago=ok`, y con `pago=cancelado` si se cancela (`paymentReturnUrls`).
+- **En el cliente:**
+  - al pulsar, va a la pasarela en la misma pestaña (tras esperar la respuesta, el navegador bloquearía otra pestaña) y apunta «Pago en curso» (§13 y `PAGO_EN_CURSO.md`);
+  - con el enlace abierto, «Volver a la pasarela» lo pide otra vez y Finance lo reutiliza.
+- **Lo cobrado:** lo marca Finance con el aviso de Stripe (su PR 4); hasta entonces, a mano.
+- **Pruebas:**
+  - `tests/organizers/pay-now.test.ts`: las tres Edge sobre PGlite con el Stripe falso. Comprueba el importe, las URL de vuelta, la reutilización, la lectura del portal con el enlace, el ámbito y el apagado.
+  - `pay-link.test.ts` y `portal.spec.ts`.

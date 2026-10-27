@@ -1853,7 +1853,7 @@ const startDemoGuide = () => {
       { id: 'matricula', title: 'Apunta la matrícula', explain: 'Está en «Más datos». Si no viene en coche, sáltalo.', anchor: 'demo.guia.matricula', confirm: 'event', essential: false, done: guideRunDone.has('matricula') },
       { id: 'repaso', title: 'Repasa la ficha', explain: 'Mira que la hora y la matrícula estén bien.', confirm: 'manual', done: guideRunDone.has('repaso') },
     ] }),
-    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}`); guideLogOut.textContent = guideLog.join(', '); },
+    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}${info.pending ? ' (pendiente)' : ''}`); guideLogOut.textContent = guideLog.join(', '); },
     onSkipped: (s) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:saltado`); guideLogOut.textContent = guideLog.join(', '); },
     onExit: () => { demoGuide = null; },
   });
@@ -1970,12 +1970,15 @@ const todaySection = section('hoy', 'Trabajos de hoy (composición)', 'Una panta
 const coverageOut = el('output', { id: 'coverageOut' }, '—');
 const coverage = renderCoverage({ label: 'Cobertura de campos', feedbackId: 'demo.revisor.cobertura', periodDays: 30,
   onOpen: (r) => { coverageOut.textContent = r.field.fieldId; },
+  // Decisión por grupo (app · pantalla): la guarda Central; aquí, un retraso corto y el registro.
+  onDecide: (d, g) => new Promise((ok) => setTimeout(() => { coverageOut.textContent = `${d ?? 'deshacer'}:${g.app}·${g.screen ?? '—'}:${g.fieldIds.length}`; ok(null); }, 40)),
+  onDeclare: (g) => { coverageOut.textContent = `utilidad:${g.app}·${g.screen ?? '—'}`; },
   fields: [
     { fieldId: 'booking.ficha.llegada', app: 'Booking', screen: 'Ficha', label: 'Hora de llegada', entity: 'booking.stays', prop: 'arrival_time', required: 'always', critical: true, declared: 'Recepción · diaria · alto impacto' },
-    { fieldId: 'guests.datos.llegada', app: 'Guests', screen: 'Mis datos', label: 'Hora de llegada (huésped)', entity: 'booking.stays', prop: 'arrival_time' },
+    { fieldId: 'guests.datos.llegada', app: 'Guests', screen: 'Mis datos', label: 'Hora de llegada (huésped)', entity: 'booking.stays', prop: 'arrival_time', candidate: true, screenLabel: 'Mis datos de estancia', estimate: { frequency: 'semanal', audience: 'Huéspedes' } },
     { fieldId: 'finance.compra.proveedor', app: 'Finance', screen: 'Compra', label: 'Proveedor', entity: 'finance.purchases', prop: 'supplier' },
-    { fieldId: 'tasks.ficha.nota', app: 'Tasks', screen: 'Ficha', label: 'Nota de la tarea', entity: 'tasks.tasks', prop: 'note' },
-    { fieldId: 'food.receta.tiempo', app: 'Food', screen: 'Receta', label: 'Tiempo de preparación' },
+    { fieldId: 'tasks.ficha.nota', app: 'Tasks', screen: 'Ficha', label: 'Nota de la tarea', entity: 'tasks.tasks', prop: 'note', candidate: true, estimate: { frequency: 'diaria', audience: 'Equipo' } },
+    { fieldId: 'food.receta.tiempo', app: 'Food', screen: 'Receta', label: 'Tiempo de preparación', candidate: true },
   ],
   links: [
     { fieldId: 'booking.ficha.llegada', via: 'direct', flows: [{ id: 'alojar', name: 'Alojar a alguien' }] },

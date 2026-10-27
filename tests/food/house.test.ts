@@ -99,7 +99,7 @@ test('plato rápido · solo el nombre; en casa entra; en un retiro no hasta tene
 });
 
 test('indicadores · el menú de casa no cuenta como menú sin validar ni sus listas como abiertas', async () => {
-  const kpis = (await app.t.db.query<{ kpi: string; value: string }>(`select kpi, value from food.central_kpi_projection order by kpi`)).rows;
+  const kpis = (await app.t.db.query<{ kpi: string; value: string }>(`select kpi, value from food.central_kpi_projection where kpi in ('food.events_without_menu_30d', 'food.menus_unvalidated_30d', 'food.shopping_lists_open') order by kpi`)).rows;
   assert.deepEqual(kpis.map((k) => `${k.kpi}=${Number(k.value)}`), ['food.events_without_menu_30d=0', 'food.menus_unvalidated_30d=1', 'food.shopping_lists_open=0']);
 });
 

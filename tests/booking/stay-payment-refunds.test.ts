@@ -36,15 +36,15 @@ test('un aviso perdido se concilia con la pasarela; la devolución en línea la 
   await ok([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: res, event_id: event, from_status: 'pre_reservada' } }]);
   const code = (await app.t.db.query<{ c: string }>(`select public_code c from booking.events where id = $1`, [event])).rows[0]!.c;
   const v = await issueVisitor(db(), code);
-  const stay = await (await post('stay', { event_code: code, from: '2033-05-06', to: '2033-05-07', persons: 1, bed_id: bed, name: 'Mia' }, v.token)).json();
+  const stay = await (await post('stay', { event_code: code, from: '2033-05-06', to: '2033-05-07', persons: 1, bed_id: bed, name: 'Mia', email: 'mia@example.invalid' }, v.token)).json();
   assert.equal((await post('stay/pay', { stay_id: stay.id }, v.token)).status, 200);
   const ref = (await app.t.db.query<{ r: string }>(`select provider_ref r from booking.stay_payments where request_id = $1`, [stay.id])).rows[0]!.r;
 
   // la pasarela lo cobró, pero su aviso no llegó: la conciliación (intentos de hace más de 10 min) lo aplica
   gateway.states.set(ref, 'paid');
-  assert.deepEqual(await reconcile(), { checked: 0, applied: 0 }, 'aún reciente');
+  assert.deepEqual(await reconcile(), { checked: 0, applied: 0, expired: 0 }, 'aún reciente');
   // (sin esperar 10 minutos: el worker admite la antigüedad mínima; 0 = todos los pendientes)
-  assert.deepEqual(await reconcile({ older_minutes: 0 }), { checked: 1, applied: 1 });
+  assert.deepEqual(await reconcile({ older_minutes: 0 }), { checked: 1, applied: 1, expired: 0 });
   assert.equal((await app.t.db.query<{ s: string }>(`select status s from booking.stay_payments where provider_ref = $1`, [ref])).rows[0]!.s, 'paid');
 
   // alojado con «online» y devuelto en parte por la pasarela

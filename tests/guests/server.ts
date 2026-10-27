@@ -49,8 +49,11 @@ export interface GuestsTestServer {
   carta(event: string, name: string, lines: Array<{ code: string; name: string; price: number; allergens?: string[] }>): Promise<string>;
   /** Mapa de zonas de Recursos (MUELA-024): un edificio con un dibujo (sin archivo: la capa sobre papel) y sus espacios con forma. */
   /** Con `drawing`, el dibujo es un archivo verificado de Recursos de ese tamaño (la Edge lo firma). */
-  floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points: Array<[number, number]>; refs?: string[]; attributes?: Record<string, unknown> }>,
+  /** Sin `points`, el espacio no tiene forma (las camas: su forma sale de la disposición de Booking, `bedLayout`). */
+  floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points?: Array<[number, number]>; refs?: string[]; attributes?: Record<string, unknown> }>,
     drawing?: { width: number; height: number; mime: string }): Promise<{ planId: string; fileId: string | null; ids: Record<string, string> }>;
+  /** La disposición de una habitación de Booking (`spaces.layout`, en cuadrantes) y de sus camas (`beds.cell`): de ahí sale cada cama en el plano. */
+  bedLayout(spaceId: string, layout: { cols: number; rows: number }, cells: Array<[string, { x: number; y: number; rot: 0 | 90 }]>): Promise<void>;
   /** Servicios del menú de casa de Food (FD2, `food.portal_house_menu`). */
   houseMenu(services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; allergens?: string[]; allergensChecked?: boolean }> }>): Promise<void>;
   /** El lugar en Central: dirección del lugar (sin domicilio fiscal en los portales) y, si se pide, un plano verificado. */
@@ -263,9 +266,14 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       for (const [i, s] of spaces.entries()) {
         // `refs` (`booking.space:<id>`, `booking.bed:<id>`): la pareja de Booking, que da `resource_space_id` en sus lecturas (#680).
         ids[s.name] = (await db.query<{ id: string }>(`insert into resources.spaces (parent_id, kind, name, position, plan_id, plan_shape, source_refs, attributes) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-          [s.parent ? ids[s.parent] : building, s.kind ?? 'sala', s.name, i, planId, JSON.stringify({ points: s.points }), s.refs ?? [], JSON.stringify(s.attributes ?? {})])).rows[0]!.id;
+          [s.parent ? ids[s.parent] : building, s.kind ?? 'sala', s.name, i, s.points ? planId : null, s.points ? JSON.stringify({ points: s.points }) : null, s.refs ?? [], JSON.stringify(s.attributes ?? {})])).rows[0]!.id;
       }
       return { planId, fileId, ids };
+    },
+    async bedLayout(spaceId, layout, cells) {
+      const db = booking.t.db;
+      await db.query('update booking.spaces set layout = $1 where id = $2', [JSON.stringify(layout), spaceId]);
+      for (const [bedId, cell] of cells) await db.query('update booking.beds set cell = $1 where id = $2', [JSON.stringify(cell), bedId]);
     },
     async houseMenu(services) {
       const db = booking.t.db;

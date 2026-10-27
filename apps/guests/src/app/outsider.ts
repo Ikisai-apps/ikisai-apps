@@ -16,8 +16,14 @@ export interface Stay {
   persons: StayPerson[]; space_name: string | null; zone: string | null; bed_label: string | null; clash: boolean;
   /** Su pareja en Recursos (Booking #680), para el mapa; null si no la hay. */
   resource_space_id?: string | null; resource_bed_id?: string | null;
+  /** Su sitio en Booking (petición de Guests, CAMA_PROPIA_PLANO): la habitación en cuadrantes y la cama en ellos. */
+  room_layout?: { cols: number; rows: number } | null; bed_layout?: { x: number; y: number; rot: number } | null;
 }
-export interface MyStays { items: Stay[]; default_bed: { space_name: string; bed_label: string | null; resource_space_id?: string | null; resource_bed_id?: string | null } | null }
+export interface MyStays {
+  items: Stay[];
+  default_bed: { space_name: string; bed_label: string | null; resource_space_id?: string | null; resource_bed_id?: string | null;
+    room_layout?: { cols: number; rows: number } | null; bed_layout?: { x: number; y: number; rot: number } | null } | null;
+}
 export interface StayNote { id: string; revision: number; at: string; text: string; mine: boolean; by: 'outsider' | 'staff' }
 export interface Range { from: string; to: string }
 /** Plato del menú de casa (Food §7.6): nombre público y los alérgenos declarados, siempre, con `allergens_checked` (#597). */

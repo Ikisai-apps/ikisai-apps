@@ -12,7 +12,7 @@ import { createPrintView, el, openSheet, renderMoneyBreakdown, replace, toast, t
 import type { IssuedAddress, IssuedDocument, IssuerSnapshot } from '../../../../supabase/functions/_domain/invoices/issued.ts';
 import type { Contract, PortalInvoice, PortalInvoiceDocument, PortalMoney } from '../app/api.ts';
 import { statementOf, type StatementMove } from '../app/pay-state.ts';
-import { clearPending, markPending, payableInvoices, payState, pendingOf, returnOf } from '../app/pay-link.ts';
+import { clearPending, markPending, payableInvoices, payLinkOf, payOnDemand, payState, pendingOf, returnOf } from '../app/pay-link.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, contactLine, textParagraphs } from '../app/common-texts.ts';
 import { i18n, L, t } from '../app/i18n.ts';
@@ -44,6 +44,25 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
   };
   const onVisible = () => { if (document.visibilityState === 'visible' && pendingNow && alive) void load(); };
   document.addEventListener('visibilitychange', onVisible);
+  /** «Pagar ahora» sin enlace (F5): solo si organizers-api lo tiene encendido. Se pinta otra vez al saberlo. */
+  let online = false;
+  let last: { m: PortalMoney; staleAt: string | null } | null = null;
+  void ctx.api.paymentsConfig().then((c) => { online = c.online; if (online && alive && last) paint(last.m, last.staleAt); });
+
+  /** Pide el enlace a Finance y va a la pasarela en esta pestaña (tras esperar, otra pestaña la bloquearía el navegador). */
+  async function payNow(invoice: PortalInvoice, button: HTMLButtonElement): Promise<void> {
+    button.disabled = true;
+    try {
+      const out = await ctx.usage.run('organizers.pagos.pagar_ahora', () => ctx.api.paymentLink(reservationId, invoice.id));
+      const url = payLinkOf({ ...invoice, payment_link: out });
+      if (!url) throw new Error('payment link');
+      markPending(invoice.id);
+      location.assign(url);
+    } catch (error) {
+      button.disabled = false;
+      toast(error instanceof Error && error.message === 'payment link' ? t('No hemos podido preparar el pago. Prueba otra vez en un momento.') : describeError(error));
+    }
+  }
 
   // Vuelta de la pasarela (`#/retiro/<id>/pagos?pago=ok&factura=<id>`): un aviso y fuera de la URL. No demuestra el cobro.
   const back = returnOf(location.hash);
@@ -109,6 +128,7 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
   }
 
   function paint(m: PortalMoney, staleAt: string | null): void {
+    last = { m, staleAt };
     const totals = m.totals;
     const s = statementOf(contract, m, { t, money: (n) => money(n), day: issueDay });
     const toMove = (x: StatementMove): MoneyMove => {
@@ -144,12 +164,12 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
     // «Pago en curso» (PAGO_EN_CURSO.md): la marca del dispositivo al pulsar; se quita sola cuando Finance lo da por cobrado.
     const links = new Map(payableInvoices(m.invoices).map((p) => [p.invoice.id, p.url]));
     for (const invoice of m.invoices) if (invoice.collected) clearPending(invoice.id);
-    const rows = m.invoices.map((invoice) => ({ invoice, url: links.get(invoice.id) ?? null, state: payState(invoice, pendingOf(invoice.id)) }))
-      .filter((r) => r.state !== 'cobrada' && (r.url !== null || r.state !== 'pagar'));
+    const rows = m.invoices.map((invoice) => ({ invoice, url: links.get(invoice.id) ?? null, onDemand: online && payOnDemand(invoice), state: payState(invoice, pendingOf(invoice.id)) }))
+      .filter((r) => r.state !== 'cobrada' && (r.url !== null || r.onDemand || r.state !== 'pagar'));
     pendingNow = rows.some((r) => r.state === 'en_curso');
     poll();
     const payOnline = rows.length ? fbMark(section(t('Pagar en línea'), { id: 'payOnline' },
-      el('ul', { class: 'orgpaylist' }, ...rows.map(({ invoice, url, state }) => el('li', { 'data-pay-state': state },
+      el('ul', { class: 'orgpaylist' }, ...rows.map(({ invoice, url, onDemand, state }) => el('li', { 'data-pay-state': state, 'data-invoice-id': invoice.id },
         el('span', null, el('strong', null, t('Factura {numero}', { numero: invoice.number })), ' · ', money(invoice.total), purposeChip(invoice.purpose) ? ' ' : null, purposeChip(invoice.purpose),
           state === 'en_curso' ? el('span', { class: 'chip warn orgpay-pending' }, t('Pago en curso')) : null),
         state === 'caducado' ? el('p', { class: 'muted small orgpay-expired' }, t('¿Ya pagaste? Escríbenos y lo miramos.'), ' ', contactLine()) : null,
@@ -157,7 +177,13 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
           class: state === 'en_curso' ? 'btn' : 'btn primary', href: url, target: '_blank', rel: 'noopener noreferrer', 'data-invoice': invoice.id,
           'data-feedback-id': 'organizers.pagos.pagar_ahora', 'data-feedback-label': 'Pagar ahora',
           onclick: () => { markPending(invoice.id); setTimeout(() => { if (alive) paint(m, staleAt); }, 0); },
-        }, state === 'en_curso' ? t('Volver a la pasarela') : t('Pagar ahora')) : null))),
+        }, state === 'en_curso' ? t('Volver a la pasarela') : t('Pagar ahora'))
+          // Sin enlace: se pide a Finance al pulsar (con el abierto, Finance lo reutiliza: «Volver a la pasarela»).
+          : onDemand ? el('button', {
+            type: 'button', class: state === 'en_curso' ? 'btn' : 'btn primary', 'data-invoice': invoice.id,
+            'data-feedback-id': 'organizers.pagos.pagar_ahora', 'data-feedback-label': 'Pagar ahora',
+            onclick: (event: Event) => void payNow(invoice, event.currentTarget as HTMLButtonElement),
+          }, state === 'en_curso' ? t('Volver a la pasarela') : t('Pagar ahora')) : null))),
       el('p', { class: 'muted small' }, t('El pago se hace en la pasarela segura del banco o de la tarjeta: Ikisai no ve los datos de tu tarjeta. Lo verás como pagado cuando el equipo de Ikisai lo registre.'))),
     'organizers.pagos.en_linea', 'Pagar en línea') : null;
 

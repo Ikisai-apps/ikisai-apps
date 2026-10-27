@@ -41,6 +41,8 @@ export async function loadMenuData(client: SyncClient, menuId: string): Promise<
   const graph: MenuGraph = {
     services: services as MenuService[], items: items as MenuItem[], recipes: recipes as unknown as Recipe[],
     recipe_ingredients: lines as RecipeIngredient[], ingredients: ingredients as Ingredient[],
+    // La maquinaria, para el aviso de máquina averiada (F-MAQ-2; solo en el cliente).
+    equipment, recipe_equipment: needs,
   };
   const pending = [...services, ...items, ...recipes.filter((r) => used.has(r.id)), ...lines.filter((l) => used.has(l.recipe_id))].some((row) => row._pending === true);
   return { menu: live, services, items, recipes, lines, ingredients, equipment, needs, graph, pending };

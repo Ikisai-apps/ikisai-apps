@@ -44,32 +44,32 @@ export function openOfferSheet(args: { client: SyncClient; event: FoodEvent; men
   const { client, event, menus, offer } = args;
   // Qué se ofrece: el menú cerrado del evento, sus cartas y las cartas guardadas sin evento (se reutilizan tal cual).
   const choices = menus.filter((m) => !m.deleted_at && (m.event_id === event.event_id || (isCartaMenu(m) && !m.event_id)));
-  const menu = el('select', { 'data-feedback-id': 'food.eventos.oferta.menu', 'data-feedback-label': 'Menú o carta de la oferta', id: 'offerMenu', 'aria-label': 'Menú o carta' },
+  const menu = el('select', { 'data-field-id': 'food.eventos.oferta.menu', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'menu_id', 'data-feedback-id': 'food.eventos.oferta.menu', 'data-feedback-label': 'Menú o carta de la oferta', id: 'offerMenu', 'aria-label': 'Menú o carta' },
     ...choices.map((m) => el('option', { value: m.id, selected: offer?.menu_id === m.id },
       isCartaMenu(m) ? `Carta · ${m.name ?? 'Carta'}${m.event_id ? '' : ' (guardada)'}` : m.kind === 'casa' ? 'Menú de casa' : 'Menú cerrado del evento')));
-  const name = el('input', { 'data-feedback-id': 'food.eventos.oferta.nombre', 'data-feedback-label': 'Nombre de la oferta', id: 'offerName', type: 'text', maxlength: '120',
+  const name = el('input', { 'data-field-id': 'food.eventos.oferta.nombre', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'name', 'data-feedback-id': 'food.eventos.oferta.nombre', 'data-feedback-label': 'Nombre de la oferta', id: 'offerName', type: 'text', maxlength: '120',
     value: offer?.name ?? '', placeholder: 'Cena de huéspedes, Barra, Equipo…' });
-  const audience = el('select', { 'data-feedback-id': 'food.eventos.oferta.para_quien', 'data-feedback-label': 'Para quién', id: 'offerAudience', 'aria-label': 'Para quién',
+  const audience = el('select', { 'data-field-id': 'food.eventos.oferta.para_quien', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'audience', 'data-feedback-id': 'food.eventos.oferta.para_quien', 'data-feedback-label': 'Para quién', id: 'offerAudience', 'aria-label': 'Para quién',
     onchange: () => paintPay() },
     el('option', { value: 'huespedes', selected: (offer?.audience ?? 'huespedes') === 'huespedes' }, 'Huéspedes'),
     el('option', { value: 'interna', selected: offer?.audience === 'interna' }, 'Interna (equipo, outsiders, familia)'));
   const known = [...new Set([...eventGroups(event).map((g) => g.group), ...MEAL_GROUP_SUGGESTIONS])];
-  const groups = el('input', { 'data-feedback-id': 'food.eventos.oferta.grupos', 'data-feedback-label': 'Grupos de comensales', id: 'offerGroups', type: 'text',
+  const groups = el('input', { 'data-field-id': 'food.eventos.oferta.grupos', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'meal_groups', 'data-feedback-id': 'food.eventos.oferta.grupos', 'data-feedback-label': 'Grupos de comensales', id: 'offerGroups', type: 'text',
     value: (offer?.meal_groups ?? []).join(', '), placeholder: 'Vacío = todos', list: 'offerGroupList' });
   const counts = eventGroups(event);
   const days = eventDays(event);
-  const dayBoxes = days.map((d) => el('input', { 'data-feedback-id': 'food.eventos.oferta.dia', 'data-feedback-label': 'Día de la oferta', type: 'checkbox', id: `offer-day-${d}`, value: d,
+  const dayBoxes = days.map((d) => el('input', { 'data-field-id': 'food.eventos.oferta.dia', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'days', 'data-feedback-id': 'food.eventos.oferta.dia', 'data-feedback-label': 'Día de la oferta', type: 'checkbox', id: `offer-day-${d}`, value: d,
     checked: !offer?.days || offer.days.includes(d) }) as HTMLInputElement);
-  const serviceBoxes = SERVICE_TYPES.map((s) => el('input', { 'data-feedback-id': 'food.eventos.oferta.servicio', 'data-feedback-label': 'Servicio de la oferta', type: 'checkbox', id: `offer-service-${s}`, value: s,
+  const serviceBoxes = SERVICE_TYPES.map((s) => el('input', { 'data-field-id': 'food.eventos.oferta.servicio', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'services', 'data-feedback-id': 'food.eventos.oferta.servicio', 'data-feedback-label': 'Servicio de la oferta', type: 'checkbox', id: `offer-service-${s}`, value: s,
     checked: !offer?.services || offer.services.includes(s) }) as HTMLInputElement);
-  const place = el('input', { 'data-feedback-id': 'food.eventos.oferta.lugar', 'data-feedback-label': 'Dónde', id: 'offerPlace', type: 'text', maxlength: '200', value: offer?.place ?? '', placeholder: 'Comedor, terraza, barra…' });
-  const payer = el('select', { 'data-feedback-id': 'food.eventos.oferta.paga', 'data-feedback-label': 'Quién paga', id: 'offerPayer', 'aria-label': 'Quién paga', onchange: () => paintPay() },
+  const place = el('input', { 'data-field-id': 'food.eventos.oferta.lugar', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'place', 'data-feedback-id': 'food.eventos.oferta.lugar', 'data-feedback-label': 'Dónde', id: 'offerPlace', type: 'text', maxlength: '200', value: offer?.place ?? '', placeholder: 'Comedor, terraza, barra…' });
+  const payer = el('select', { 'data-field-id': 'food.eventos.oferta.paga', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'payer', 'data-feedback-id': 'food.eventos.oferta.paga', 'data-feedback-label': 'Quién paga', id: 'offerPayer', 'aria-label': 'Quién paga', onchange: () => paintPay() },
     el('option', { value: 'organizador', selected: (offer?.payer ?? 'organizador') === 'organizador' }, 'El organizador (incluido)'),
     el('option', { value: 'huesped', selected: offer?.payer === 'huesped' }, 'El huésped'));
-  const charge = el('select', { 'data-feedback-id': 'food.eventos.oferta.cobro', 'data-feedback-label': 'Cuándo se cobra', id: 'offerCharge', 'aria-label': 'Cuándo se cobra' },
+  const charge = el('select', { 'data-field-id': 'food.eventos.oferta.cobro', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'charge_when', 'data-feedback-id': 'food.eventos.oferta.cobro', 'data-feedback-label': 'Cuándo se cobra', id: 'offerCharge', 'aria-label': 'Cuándo se cobra' },
     el('option', { value: 'barra', selected: (offer?.charge_when ?? 'barra') === 'barra' }, 'En barra, al momento'),
     el('option', { value: 'cuenta', selected: offer?.charge_when === 'cuenta' }, 'A su cuenta, al final'));
-  const visible = el('input', { 'data-feedback-id': 'food.eventos.oferta.visitantes', 'data-feedback-label': 'Visible para visitantes', type: 'checkbox', id: 'offerPublic',
+  const visible = el('input', { 'data-field-id': 'food.eventos.oferta.visitantes', 'data-field-entity': 'food.event_offers', 'data-field-prop': 'public', 'data-feedback-id': 'food.eventos.oferta.visitantes', 'data-feedback-label': 'Visible para visitantes', type: 'checkbox', id: 'offerPublic',
     checked: offer?.public === true }) as HTMLInputElement;
   const payHost = el('div');
   function paintPay(): void {

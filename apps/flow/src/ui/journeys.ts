@@ -47,7 +47,7 @@ export const mountJourneys: ViewMount = ({ main, client, navigate }) => {
   const isOwner = client.bootstrap()?.membership.role === 'owner';
   main.append(el('h1', { class: 'col-title' }, 'Recorridos'),
     el('p', { class: 'muted small' }, '«Aprender» es un ensayo: no registra nada. «Ejecutar» lo hace de verdad, con tu cuenta.'),
-    ...(isOwner ? [el('p', null, el('button', { type: 'button', class: 'secondary', onclick: () => navigate('#/recorridos/nuevo') }, 'Nuevo recorrido'))] : []), list);
+    list); // Sin «Nuevo recorrido» (VG, 27-10: «no ahora»); el editor queda tras el enlace de prueba `#/recorridos/nuevo?prueba`.
   void loadJourneys(client).then((items) => {
     if (!items.length) { replace(list, el('p', { class: 'muted' }, 'Aún no hay recorridos.')); return; }
     replace(list, ...items.map((j) => el('div', { class: 'qcard journey-card', role: 'listitem', 'data-feedback-id': `flow.recorridos.${j.def.key}`, 'data-feedback-label': j.def.name },
@@ -101,7 +101,11 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
   const host = el('div', { class: 'journey' });
   const progress = el('p', { class: 'muted small journey-progress', role: 'status' });
   const sheet = openSheet({ title: `${j.def.name} · ${mode === 'learn' ? 'aprender' : 'ejecutar'}`,
-    meta: mode === 'learn' ? 'Ensayo: no se registra nada.' : 'Se registrará de verdad, con tu cuenta.', body: el('div', null, progress, host) });
+    meta: mode === 'learn' ? 'Ensayo: no se registra nada.' : 'Se registrará de verdad, con tu cuenta.', body: el('div', null, progress, host),
+    // Salir siempre a la vista (VG, 27-10): lo hecho queda guardado y el recorrido se retoma desde Recorridos.
+    foot: el('div', { class: 'flow-nav', 'data-feedback-id': 'flow.recorrido.navegacion' },
+      el('button', { type: 'button', class: 'ghost', onclick: () => void sheet.close() }, '‹ Volver a Recorridos'),
+      el('button', { type: 'button', class: 'ghost', onclick: () => { void sheet.close().then(() => { location.hash = '#/'; }); } }, '✕ Cerrar y volver a la entrada')) });
 
   async function startStage(index: number): Promise<void> {
     const entry = j.stages[index];

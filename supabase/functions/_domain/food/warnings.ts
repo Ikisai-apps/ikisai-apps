@@ -13,10 +13,10 @@
  * - lo que no se puede comprobar lo dice («revisar a mano»), y con alergias en el grupo, el plato sin revisar lo dice;
  * - nunca afirma «apto» ni «no contiene».
  */
-import type { Allergen, Ingredient, Recipe, RecipeIngredient } from './catalog.ts';
+import type { Allergen, Equipment, Ingredient, Recipe, RecipeEquipment, RecipeIngredient } from './catalog.ts';
 import { restrictionKey, type DietaryRestriction, type FoodEvent, type MenuItem, type MenuService } from './menus.ts';
 
-export type WarningKind = 'alergia' | 'no_verificable' | 'alergenos_sin_revisar' | 'dieta' | 'preferencia' | 'fuera_de_fechas' | 'receta_no_validada';
+export type WarningKind = 'alergia' | 'no_verificable' | 'alergenos_sin_revisar' | 'dieta' | 'preferencia' | 'fuera_de_fechas' | 'receta_no_validada' | 'maquinaria';
 
 export interface MenuWarning {
   key: string;
@@ -31,6 +31,12 @@ export interface MenuGraph {
   recipes: Recipe[];
   recipe_ingredients: RecipeIngredient[];
   ingredients: Ingredient[];
+  /**
+   * La maquinaria y lo que pide cada receta (hallazgo F-MAQ-2): solo en el cliente, que los tiene en su espejo. Sin ellos
+   * (la Edge al validar) no hay aviso de máquinas; por eso ese aviso no pide aceptación y no cambia la validación.
+   */
+  equipment?: Array<Pick<Equipment, 'id' | 'name' | 'status'> & { deleted_at?: string | null }>;
+  recipe_equipment?: Array<Pick<RecipeEquipment, 'recipe_id' | 'equipment_id'> & { deleted_at?: string | null }>;
 }
 
 /** Sin tildes, en minúsculas y sin plural simple, para comparar «Pistachos» con «pistacho». */
@@ -222,6 +228,19 @@ export function menuWarnings(event: Pick<FoodEvent, 'start_date' | 'end_date' | 
   for (const recipe of usedRecipes) {
     if (recipe.status !== 'validada') {
       warnings.push({ key: `receta_no_validada|${recipe.id}`, kind: 'receta_no_validada', requiresAck: false, text: `«${recipe.name}» está ${recipe.status === 'archivada' ? 'archivada' : 'en prueba'}.` });
+    }
+  }
+  // Una receta del menú necesita una máquina averiada o fuera de servicio (F-MAQ-2): informa, no pide aceptación.
+  if (graph.equipment && graph.recipe_equipment) {
+    const machines = new Map(graph.equipment.filter((m) => !m.deleted_at).map((m) => [m.id, m]));
+    for (const recipe of usedRecipes) {
+      for (const need of graph.recipe_equipment.filter((n) => !n.deleted_at && n.recipe_id === recipe.id)) {
+        const machine = machines.get(need.equipment_id);
+        if (machine && (machine.status === 'averiado' || machine.status === 'fuera_de_servicio')) {
+          warnings.push({ key: `maquinaria|${recipe.id}|${machine.id}`, kind: 'maquinaria', requiresAck: false,
+            text: `«${recipe.name}» necesita ${machine.name} (${machine.status === 'averiado' ? 'averiado' : 'fuera de servicio'}).` });
+        }
+      }
     }
   }
   return warnings;
