@@ -201,9 +201,9 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
         let keyId: string | null = null;
         const results: Array<{ app: string; ok: boolean; code?: string }> = [];
         for (const app of apps) {
-          const first = keyId === null;
+          const first: boolean = keyId === null;
           try {
-            const out = await supabase.rpc<{ keyId: string | null }>('core_agent_key_issue', {
+            const out: { keyId: string | null } | null = await supabase.rpc<{ keyId: string | null }>('core_agent_key_issue', {
               p_app: app, p_actor: ctx.user.id, p_user: created.id, p_name: name, p_role: role, p_scopes: null,
               p_digest: first ? digest : null, p_hint: first ? token.slice(-4) : null, p_expires_at: first ? expiresAt : null,
             });
