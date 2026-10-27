@@ -751,3 +751,17 @@ Capacidad de lectura del catálogo (0097, migración 0704) para Flow 6 «Avance 
   - Caché por estado, en la memoria de la Edge: 60 s con la CI en marcha, 5 min abierta, 10 min fusionada y 24 h desplegada.
   - Con la cuota agotada devuelve lo último con `stale: true`; sin nada guardado, `429 RATE_LIMITED` y `retryAfter`.
 - **Código:** `_domain/organizers/github.ts`, sin dependencias, con `fetch`, el token y la hora inyectados. La prueba usa respuestas reales grabadas de la PR #847 (`tests/organizers/fixtures/github-847.json`).
+
+## 22. Indicadores para el panel de Dirección (P7 de Central, migración 0705)
+
+Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2 y `allow_read('central', …, 'view')`. Solo agregados y siempre `period = 'actual'`, en hora de Madrid. Lee `booking.guests_kpi_projection` (reservas confirmadas o en ejecución, con sus fechas), `core.portal_links` y `core.feedback_reports`.
+
+| Clave | Etiqueta | Fórmula | Sentido |
+|---|---|---|---|
+| `organizers.retreats_next_30d` | Retiros próximos con quien organiza dentro | Reservas que empiezan de hoy a hoy+30 con un enlace de Organizers sin revocar | up |
+| `organizers.retreats_without_access` | Retiros próximos sin acceso de quien organiza | Las mismas, sin ningún enlace de Organizers vivo | down |
+| `organizers.guest_comments_open_30d` | Comentarios de asistentes abiertos (30 días) | Informes de Guests sobre el retiro (`subject = event`, destino `organizer`) de los últimos 30 días que siguen `open` | down |
+| `organizers.reports_sent_30d` | Informes enviados desde Organizers (30 días) | Informes con `origin_app = organizers` de los últimos 30 días | — |
+
+- **«Sin leer»:** Organizers no guarda qué ha leído quien organiza, así que el indicador cuenta los comentarios abiertos.
+- **«Pagos pendientes de quien organiza»:** es de Finance (petición F4).
