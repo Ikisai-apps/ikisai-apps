@@ -173,7 +173,8 @@ KIT_CHILDREN.createVoteDeck = [['a_favor', 'A favor', 'button'], ['en_contra', '
 KIT_CHILDREN.createStepForm = [['opcion', 'Opción', 'button'], ['aceptar', 'Aceptar', 'button'], ['atras', 'Atrás', 'button'], ['saltar', 'Saltar', 'button']];
 KIT_CHILDREN.createFreeForm = [['preguntas', 'Pregunta a pregunta', 'section'], ['foto', 'Hacer o elegir foto', 'button'], ['cambiar', 'Cambiar', 'button'], ['registrar', 'Registrar', 'button'], ['nuevo', 'Nuevo registro', 'button']];
 KIT_CHILDREN.createChecklist = [['item', 'Ítem', 'checkbox']];
-KIT_CHILDREN.renderCoverage = [['filtro', 'Filtrar por clase', 'button'], ['agrupar', 'Agrupar por', 'button'], ['abrir', 'Abrir el campo', 'button']];
+KIT_CHILDREN.renderCoverage = [['ver-todo', 'Ver todo', 'button'], ['ver-candidatos', 'Ver los candidatos', 'button'], ['filtro', 'Filtrar por clase', 'button'], ['agrupar', 'Agrupar por', 'button'],
+  ['abrir', 'Abrir el campo', 'button'], ['decidir', 'Decidir el grupo', 'button'], ['deshacer', 'Deshacer la decisión', 'button'], ['utilidad', 'Ajustar la utilidad de la pantalla', 'button']];
 KIT_CHILDREN.createProjection = [['abrir', 'Abrir en la app', 'link'], ['accion', 'Acción de la fila', 'button']];
 // `src/pieces/lanes.ts`.
 KIT_CHILDREN.createLanes = [['vista', 'Pestañas o lado a lado', 'button'], ['carril', 'Carril', 'tab'], ['desplegar', 'Desplegar el carril', 'button']];
@@ -203,7 +204,7 @@ function enclosingCallAt(text, at) {
  * funciones a las que nadie llega). Mantener al día con `SPACE_MAP_MARKS` (src/spaces/map.ts).
  */
 const KIT_CHILDREN_WHEN = {
-  renderCoverage: { abrir: /\bonOpen\b/ },
+  renderCoverage: { abrir: /\bonOpen\b/, decidir: /\bonDecide\b/, deshacer: /\bonDecide\b/, utilidad: /\bonDeclare\b/ },
   createCalendar: { evento_dia: /\bonSelectEvent\b/ },
   createStepForm: { saltar: /\bskip\s*:/ },
   createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/ },

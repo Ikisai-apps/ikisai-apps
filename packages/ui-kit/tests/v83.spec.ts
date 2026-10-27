@@ -23,7 +23,7 @@ test.describe('ui-kit v0.69.11 · renderCoverage', () => {
     ]);
     // Catálogo: «abrir» solo si la llamada tiene onOpen.
     const ids = (code: string) => extractFeatures(code).features.map((x: { id: string }) => x.id.split('.').pop());
-    expect(ids("renderCoverage({ fields, links, feedbackId: 'central.revisor.cobertura' })")).toEqual(['cobertura', 'filtro', 'agrupar']);
+    expect(ids("renderCoverage({ fields, links, feedbackId: 'central.revisor.cobertura' })")).toEqual(['cobertura', 'ver-todo', 'ver-candidatos', 'filtro', 'agrupar']);
     expect(ids("renderCoverage({ fields, links, onOpen, feedbackId: 'central.revisor.cobertura' })")).toContain('abrir');
   });
 
@@ -51,6 +51,8 @@ test.describe('ui-kit v0.69.11 · renderCoverage', () => {
     await page.addStyleTag({ content: '.demo-head{position:static!important}' });
     const host = page.locator('#coverageHost');
     await host.scrollIntoViewIfNeeded();
+    // Se abre en los candidatos (decisión de VG, 27-10); el detalle está en «Ver todo».
+    await host.locator('.cov-viewall').click();
     await expect(host.locator('.cov-filter').first()).toContainText('Todas 5');
     await expect(host.locator('.cov-filter[data-cls="direct"]')).toContainText('2');
     await expect(host.locator('.cov-filter[data-cls="automatic"]')).toBeDisabled();
