@@ -7,6 +7,8 @@ funcionen, y `entrypoint_path` es `<app>-api/index.ts`. Si IKISAI_RELEASE está 
 el literal `Deno.env.get('IKISAI_RELEASE') ?? 'development'` por la versión. `verify_jwt` es false: cada ruta
 privada verifica el JWT en _kit y relee la pertenencia. `supabase/functions/import_map.json` se sube con cada función y se
 declara como `import_map_path` para que Deno resuelva los paquetes npm del kit.
+Además de `_domain/<app>`, se sube cada carpeta de `supabase/functions/_domain/<x>/` que importan los archivos subidos
+(recursivo; p. ej. `invoices-api` → `_domain/payments`, finance-18). Sin ella, Supabase no resuelve el import y responde 400.
 """
 import argparse
 import hashlib
@@ -28,32 +30,69 @@ IMPORT_MAP = FUNCTIONS / 'import_map.json'
 EXTENSIONS = {'.ts': 'application/typescript', '.js': 'application/javascript', '.mjs': 'application/javascript', '.txt': 'text/plain', '.json': 'application/json'}
 EXCLUDED_DIRS = {'node_modules', 'tests', 'test', '__tests__', 'fixtures'}
 TEST_FILE = re.compile(r'.*[._](test|spec)\.(ts|js|mjs)$')
+# Especificadores relativos de import/export (`from '../x.ts'`, `import '../x.ts'`, `import('../x.ts')`), también `import type`.
+RELATIVE_IMPORT = re.compile(rb"""(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 RELEASE_LITERALS = (b"Deno.env.get('IKISAI_RELEASE') ?? 'development'", b'Deno.env.get("IKISAI_RELEASE") ?? "development"')
 
 
-def collect(directory):
+def collect(directory, functions=FUNCTIONS):
   """Archivos desplegables de un directorio, como {ruta relativa a supabase/functions: bytes}."""
   files = {}
   for path in sorted(directory.rglob('*')):
     if not path.is_file() or path.suffix not in EXTENSIONS or TEST_FILE.fullmatch(path.name):
       continue
-    relative = path.relative_to(FUNCTIONS)
+    relative = path.resolve().relative_to(functions.resolve())
     if any(part in EXCLUDED_DIRS or part.startswith('.') for part in relative.parts[:-1]):
       continue
     files[relative.as_posix()] = path.read_bytes()
   return files
 
 
-def deploy(client, app_name, apply=False, qa=False, release=None):
+def with_domains(files, functions=FUNCTIONS):
+  """Añade a `files` las carpetas de `<functions>/_domain/<x>/` que importan sus archivos, y las que importan esas.
+
+  Solo dentro de `_domain`: un import a otra función o fuera de `supabase/functions` no se sigue.
+  """
+  domain = (functions / '_domain').resolve()
+  pending = list(files)
+  done = set()
+  while pending:
+    name = pending.pop()
+    for spec in RELATIVE_IMPORT.findall(files[name]):
+      target = ((functions / name).parent / spec.decode()).resolve()
+      try:
+        parts = target.relative_to(domain).parts
+      except ValueError:
+        continue
+      folder = domain / parts[0]
+      if folder in done:
+        continue
+      done.add(folder)
+      found = collect(folder, functions) if folder.is_dir() else ({target.relative_to(functions.resolve()).as_posix(): target.read_bytes()} if target.is_file() else {})
+      for key, raw in found.items():
+        if key not in files:
+          files[key] = raw
+          pending.append(key)
+  return files
+
+
+def function_files(app_name):
+  """Los archivos que se suben con la función de una app: la suya, `_kit`, `_domain/<app>` y los `_domain` que importan."""
   app = get_app(app_name)
-  slug = app['function_slug'] + ('-qa' if qa else '')
   source = ROOT / app['function_dir']
-  entrypoint = f"{app['function_slug']}/index.ts"
   files = collect(source) if source.is_dir() else {}
   files.update(collect(KIT) if KIT.is_dir() else {})
   # Código de dominio compartido con el frontend: supabase/functions/_domain/<app>/ (el paquete packages/domain-<app> lo reexporta).
   domain = FUNCTIONS / '_domain' / app_name
   files.update(collect(domain) if domain.is_dir() else {})
+  return with_domains(files)
+
+
+def deploy(client, app_name, apply=False, qa=False, release=None):
+  app = get_app(app_name)
+  slug = app['function_slug'] + ('-qa' if qa else '')
+  entrypoint = f"{app['function_slug']}/index.ts"
+  files = function_files(app_name)
   if IMPORT_MAP.is_file():
     files[IMPORT_MAP.name] = IMPORT_MAP.read_bytes()
   if entrypoint not in files:
