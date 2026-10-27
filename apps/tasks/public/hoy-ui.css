@@ -107,9 +107,14 @@ html.dark .tkh-carryback{color:var(--ink)}
 /* FB_2026_060 · portada de fondo: velo del papel (88 % → 72 %) sobre la imagen, para que el texto mantenga el contraste. */
 .tkh-row.tkh-cover{border-radius:14px;padding:4px 6px;background-image:linear-gradient(90deg,color-mix(in srgb,var(--paper) 90%,transparent) 0%,color-mix(in srgb,var(--paper) 86%,transparent) 65%,color-mix(in srgb,var(--paper) 74%,transparent) 100%),var(--tkh-cover);background-size:cover;background-position:center}
 .tkh-row.tkh-cover .tkh-text,.tkh-row.tkh-cover .tkh-meta{text-shadow:0 0 6px var(--paper),0 0 2px var(--paper)}
-/* Filtro por espacio (encargo de VG, 27-10): chips de una palabra con su recuento; marcados, en el color de la casa. */
-.tkh-spaces{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
-.tkh-space{min-height:44px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);font-weight:600;display:inline-flex;align-items:center;gap:6px}
-.tkh-space-n{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
-.tkh-space[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--paper)}
-.tkh-space[aria-pressed="true"] .tkh-space-n{color:inherit;opacity:.85}
+/* Filtro por espacio (encargo de VG, 27-10; revisión móvil de UI-kit): una sola fila con la pista de desplazamiento del kit
+   (.scrollrow, K4); el chip sobre papel con borde de contraste, marcado en el color del área con su tinta (--accent-ink) y «✓». */
+.tkh-spaces-wrap{margin:0 0 8px}
+.tkh-spaces{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;padding-bottom:2px}
+.tkh-spaces .tkh-space{flex:none;min-height:44px;padding:8px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ink) 55%,var(--paper));background:var(--paper);color:var(--ink);font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.tkh-spaces .tkh-space-n{font-weight:500;color:color-mix(in srgb,var(--ink) 80%,var(--paper));font-variant-numeric:tabular-nums}
+.tkh-spaces .tkh-space[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink,#fff)}
+.tkh-spaces .tkh-space[aria-pressed="true"] .tkh-space-n{color:inherit}
+.tkh-space-check{font-weight:800}
+.tkh-filtering{margin:0 0 12px;font-size:14px}
+.tkh-clear{min-height:44px;font-weight:700}
