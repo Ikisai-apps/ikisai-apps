@@ -61,9 +61,12 @@ test('los marcos acústicos: proyecto, fases, madres con fase, pasos en orden, o
   const deps = (await rows('tasks.task_dependencies')).filter((d) => d.project_id === projectId);
   assert.deepEqual(deps.map((d) => [tasks.find((t) => t.id === d.task_id).title, tasks.find((t) => t.id === d.depends_on_id).title]).sort(),
     [['Montar bastidor', 'Cortar listones'], ['Tensar la tela', 'Montar bastidor']]);
-  // La producción ya lo lee: la siguiente acción de «Cortar» son los listones.
+  // La producción ya lo lee: los listones necesitan 4 tableros y no hay stock, así que están bloqueados por material (§53)
+  // y «Cortar» no tiene siguiente acción hasta que entre.
   const prod = (await app.call(`/api/v1/projects/production?projectId=${projectId}`)).data;
-  assert.equal(prod.phases[0].nextTaskId, by('Cortar listones').id);
+  const listones = prod.tasks.find((t: any) => t.id === by('Cortar listones').id);
+  assert.deepEqual(listones.blocked, { by: 'material', ids: [TABLERO] });
+  assert.equal(prod.phases[0].nextTaskId, null);
 
   // Repetir no duplica.
   const again = await design(marcos(designId.toUpperCase()));
