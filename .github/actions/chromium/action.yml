@@ -23,10 +23,15 @@ runs:
         printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
           "$HOME/.cache/apt-pw" | sudo tee /etc/apt/apt.conf.d/99ikisai-chromium > /dev/null
         # Cada intento, como mucho 4 min; lo ya bajado se queda en la caché de apt y el siguiente sigue desde ahí.
+        # `timeout` no llega al apt-get que lanza Playwright con sudo (otra sesión): se para a mano y se espera a que suelte
+        # el cerrojo de dpkg, o el siguiente intento falla con «Could not get lock» (27-10, run 40482609722).
         ok=false
         for i in 1 2 3; do
           if timeout 240 npx playwright install --with-deps chromium; then ok=true; break; fi
           echo "::warning::Chromium, intento $i sin terminar"
+          sudo pkill -INT -x apt-get || true
+          for _ in $(seq 60); do pgrep -x apt-get > /dev/null || pgrep -x dpkg > /dev/null || break; sleep 2; done
+          sudo dpkg --configure -a || true
         done
         # Para que actions/cache pueda leer lo que dejó apt (root).
         sudo chown -R "$(id -u):$(id -g)" ~/.cache/apt-pw
