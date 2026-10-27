@@ -57,6 +57,7 @@ export const PROCEDURES = {
   createFlow: 'flow.create_flow',
   markPresence: 'flow.mark_presence',
   deliverAll: 'flow.deliver_all',
+  boardCard: 'flow.board_card',
   saveTemplate: 'flow.save_template',
   payOrders: 'flow.pay_orders',
   setBufferContainers: 'flow.set_buffer_containers',

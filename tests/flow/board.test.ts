@@ -73,3 +73,44 @@ test('avance · formas: recurrente sin urgencia, sin «cancelled», marca pr o b
   assert.notEqual(await asProc(app.users.owner, sql(`'card', 'Otra marca', 'core', 'pending', null, 'aplazada'`)), 'ok');
   assert.equal(await asProc(app.users.owner, sql(`'card', '${'T'.repeat(250)}', 'core', 'pending', 'opcional', 'backlog'`)), 'ok');
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Paso 2 (0938): flow.board_card y la capacidad del catálogo
+// ---------------------------------------------------------------------------------------------------------------------
+const boardCard = (args: Record<string, unknown>, token = app.tokens.owner) => commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: board, ...args } }], token);
+const unit = async (id: string) => (await app.t.db.query<any>(`select * from flow.units where id = $1`, [id])).rows[0];
+
+test('avance · board_card crea y cambia solo lo que se da; done pone la hora; null quita la urgencia', async () => {
+  const r = await boardCard({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'urgente', ref: '#943', url: 'https://example.invalid/pr/943', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const id = r.data.results[0].result.card_id as string;
+  let u = await unit(id);
+  assert.equal(u.kind, 'card'); assert.equal(u.status, 'pending'); assert.equal(u.prio, 'urgente');
+  assert.deepEqual(u.payload.steps, ['Abrir la carta', 'Tocar «Alójate aquí»']); assert.equal(u.payload.ref, '#943');
+  assert.equal((await boardCard({ card_id: id, status: 'done', flag: 'pr' })).status, 200);
+  u = await unit(id);
+  assert.equal(u.status, 'done'); assert.ok(u.done_at); assert.equal(u.board_flag, 'pr'); assert.equal(u.prio, 'urgente'); assert.equal(u.label, 'Probar el alojamiento');
+  assert.equal((await boardCard({ card_id: id, status: 'in_progress', prio: null, flag: null, url: null })).status, 200);
+  u = await unit(id);
+  assert.equal(u.done_at, null); assert.equal(u.prio, null); assert.equal(u.board_flag, null); assert.equal(u.payload.url, undefined);
+  assert.notEqual((await boardCard({ lane_key: 'victor', title: 'Mal enlace', url: 'javascript:alert(1)' })).status, 200);
+  // Una recurrente no lleva urgencia: se crea sin ella aunque se pida.
+  const rec = await boardCard({ lane_key: 'victor', title: 'Recurrente', kind: 'recurring', prio: 'urgente' });
+  assert.equal(rec.status, 200, JSON.stringify(rec.data));
+  assert.equal((await unit(rec.data.results[0].result.card_id)).prio, null);
+});
+
+test('avance · capacidad board-card: el agente en su carril, idempotente por requestId; otro carril, LANE_FORBIDDEN', async () => {
+  const caps = (await app.call('/api/v1/capabilities', { token: app.tokens.editor })).data.items as Array<{ id: string; allowed: boolean }>;
+  assert.ok(caps.some((c) => c.id === 'flow.board_card' && c.allowed), JSON.stringify(caps.map((c) => c.id)));
+  const body = { requestId: 'flow-pr-943', project_id: board, lane_key: 'flow', title: '«Alójate aquí» en la carta', status: 'in_progress', flag: 'pr', ref: '#943' };
+  const first = await app.call('/api/v1/board-card', { token: app.tokens.editor, body });
+  assert.equal(first.status, 200, JSON.stringify(first.data)); assert.equal(first.data.created, true);
+  const again = await app.call('/api/v1/board-card', { token: app.tokens.editor, body });
+  assert.equal(again.data.card_id, first.data.card_id); assert.equal(again.data.replayed, true);
+  const done = await app.call('/api/v1/board-card', { token: app.tokens.editor, body: { requestId: 'flow-pr-943-done', project_id: board, card_id: first.data.card_id, lane_key: 'flow', status: 'done', flag: null } });
+  assert.equal(done.status, 200, JSON.stringify(done.data)); assert.equal((await unit(first.data.card_id)).status, 'done');
+  const other = await app.call('/api/v1/board-card', { token: app.tokens.editor, body: { requestId: 'flow-en-food', project_id: board, lane_key: 'food', title: 'No es mío' } });
+  assert.equal(other.status, 403, JSON.stringify(other.data)); assert.equal(other.data.error.code, 'LANE_FORBIDDEN');
+  assert.equal((await app.call('/api/v1/board-card', { token: app.tokens.reader, body: { ...body, requestId: 'lector' } })).status, 403);
+});

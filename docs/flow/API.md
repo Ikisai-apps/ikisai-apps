@@ -441,3 +441,8 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - `flow.units` gana `lane_key` (carril: el agente), `prio` (`urgente` | `importante` | `secundario` | `opcional`) y `board_flag` (`pr` | `backlog`), indexadas por proyecto. Tipos nuevos `card` y `recurring` (en servicio: cuenta como hecha, sin urgencia). Estado: `pending` · `in_progress` · `done`; nunca `cancelled`. Título hasta 300.
 - Las tarjetas solo se escriben por procedimiento (`flow.board_card`, siguiente paso). `flow.guard_board` comprueba el carril: owner, todos; editor u outsider, los de `scopes.lanes` de su membresía y con el proyecto en su ámbito (`403 LANE_FORBIDDEN`).
 - Plantilla `avance` v1: una columna `avance` («Avance»).
+
+## 44. «Avance»: `flow.board_card` y la capacidad del catálogo (migración `0938`)
+
+- Procedimiento `flow.board_card({project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, ref?, url?, url_text?, steps?, note?})`: sin `card_id` (o uno nuevo) crea; con uno que existe cambia solo lo dado (`prio`/`flag`/campos de payload a `null` los quitan). `done` pone `done_at`; volver de `done` lo quita. Una recurrente nunca lleva urgencia. `url` solo https; hasta 30 pasos de 300.
+- Capacidad `flow.board_card` (`POST board-card`, editor, owner u outsider): idempotente por `requestId` (recibo del núcleo por persona); devuelve `{card_id, created, replayed}`. El carril lo decide el guard (`403 LANE_FORBIDDEN`).
