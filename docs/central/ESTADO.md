@@ -123,6 +123,8 @@
 - 2026-10-27 · **Finca y decoración en Planos** (encargo de VG; Recursos 0814, kit 0.63): el mapa empieza en la finca y baja con miga; decoración general para ver; subir la finca (escala y cotas del SVG); «Colocar» › Decoración con iconos, escala y «Deshacer»; cota de cada altura; «Imágenes del centro». Reglas en `app/decor.ts` (`decor.test.ts`); prueba en `plans.spec.ts`. Curvas de nivel editables en «Colocar» (0815, `contours[i].points`).
 - 2026-10-27 · **Silueta de cabecera de cada app** (encargo de Core; Recursos 0816): en «Imágenes del centro», una silueta por app (Central, Guests y Organizers), con «Deshacer». Reglas en `headerOperations`; prueba en `plans.spec.ts`.
 
+- 2026-10-27 · **Cabecera de Central con su silueta** (encargo de Core; Recursos 0816): la silueta elegida para Central sale de fondo a la derecha de la cabecera. Es decorativa (`alt` vacío), va detrás de los botones y se invierte en modo oscuro. Código en `ui/header-art.ts`; prueba en `plans.spec.ts`.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
