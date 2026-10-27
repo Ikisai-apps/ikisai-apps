@@ -44,10 +44,13 @@ interface FormValues {
   expected_guests: string;
   contact_name: string;
   contact_phone: string;
+  /** Jornadas abiertas (0499): cómo se pagan las noches que se piden por el QR. */
+  lodging_pay_mode: string;
+  lodging_hold_hours: string;
 }
 
 function valuesOf(dates: { start?: string; end?: string } = {}): FormValues {
-  return { title: '', event_type: 'retiro', status: 'en_estudio', start_date: dates.start ?? '', end_date: dates.end ?? '', expected_guests: '', contact_name: '', contact_phone: '' };
+  return { title: '', event_type: 'retiro', status: 'en_estudio', start_date: dates.start ?? '', end_date: dates.end ?? '', expected_guests: '', contact_name: '', contact_phone: '', lodging_pay_mode: 'hold', lodging_hold_hours: '24' };
 }
 
 /** «Nueva reserva con estas fechas» desde el Calendario: el alta se abre al montar Reservas con las fechas puestas. */
@@ -65,6 +68,10 @@ function toFields(values: FormValues): Record<string, unknown> {
     expected_guests: guests === '' ? null : Number(guests),
     contact_name: values.contact_name.trim() || null,
     contact_phone: values.contact_phone.trim() || null,
+    ...(values.event_type === 'jornadas_abiertas' ? {
+      lodging_pay_mode: values.lodging_pay_mode,
+      ...(values.lodging_pay_mode === 'hold' ? { lodging_hold_hours: Number(values.lodging_hold_hours) || 24 } : {}),
+    } : {}),
   };
 }
 
@@ -314,11 +321,20 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const guests = input('resGuests', 'number', initial.expected_guests, { min: 0, step: 1, inputmode: 'numeric' });
     const contact = input('resContact', 'text', initial.contact_name, { maxlength: 200 });
     const phone = input('resPhone', 'tel', initial.contact_phone, { maxlength: 40 });
+    // Jornadas abiertas: las noches que se piden por el QR, o reservan la plaza unas horas y se pagan en recepción, o no
+    // reservan nada hasta pagar (VG 27-10-2026)
+    const payMode = select('resPayMode', [['hold', 'Reserva la plaza unas horas y se paga en recepción'], ['pay_first', 'No reserva hasta pagar']], initial.lodging_pay_mode);
+    const holdHours = input('resHoldHours', 'number', initial.lodging_hold_hours, { min: 1, max: 168, step: 1, inputmode: 'numeric' });
+    const holdField = field('Horas que se guarda la plaza', holdHours, 'horas_plaza');
+    const lodgingRow = el('div', { class: 'row2', id: 'resLodgingPay' }, field('Noches por el QR', payMode, 'pago_noches'), holdField);
+    const syncLodging = () => { lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold'; };
+    syncLodging();
     const error = el('p', { class: 'formerror', id: 'reservationError', role: 'alert', hidden: true });
     const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', 'data-feedback-id': 'booking.reservas.alta.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
 
     function current(): FormValues {
-      return { title: title.value, event_type: type.value, status: status.value, start_date: start.value, end_date: end.value, expected_guests: guests.value, contact_name: contact.value, contact_phone: phone.value };
+      return { title: title.value, event_type: type.value, status: status.value, start_date: start.value, end_date: end.value, expected_guests: guests.value, contact_name: contact.value, contact_phone: phone.value,
+        lodging_pay_mode: payMode.value, lodging_hold_hours: holdHours.value };
     }
     function dirty(): boolean {
       const now = current();
@@ -326,6 +342,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       return (Object.keys(blank) as Array<keyof FormValues>).some((key) => now[key].trim() !== initial[key].trim());
     }
     function onChange(): void {
+      syncLodging();
       guard.dirtyEditor = dirty();
       showError(null);
     }
@@ -370,6 +387,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       body: el('form', { id: 'reservationForm', 'data-feedback-id': 'booking.reservas.alta', 'data-feedback-label': 'Nueva reserva', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
         field('Nombre del grupo o evento', title, 'nombre'),
         el('div', { class: 'row2' }, field('Tipo', type, 'tipo'), field('Estado', status, 'estado')),
+        lodgingRow,
         el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
         field('Personas previstas', guests, 'personas'),
         el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto')), fbIgnore(field('Teléfono', phone, 'telefono'))),

@@ -1913,3 +1913,23 @@ Lecturas públicas para Guests (`ven.ikisai.com`). Los nombres y las formas est�
 
   Una sola cama para todo el intervalo. La usan también la solicitud y el bloqueo (tarjeta 2).
 
+## 37. Alojamiento libre · solicitud pública de noches (migración 0499; VG 27-10-2026)
+
+- **Modo de pago por evento**, elegido al crear la reserva de jornadas y editable en «Visible para huéspedes». Columnas `reservations.lodging_pay_mode` y `lodging_hold_hours`:
+  - `hold` (por defecto, 24 h): la solicitud reserva las plazas N horas y se paga en recepción;
+  - `pay_first`: no reserva nada hasta pagar. Comprueba que hay hueco, pero no bloquea.
+- **`POST /api/v1/public/stay`** (con `X-Visitor`; cuerpo `{event_code, mode_id, from, to, persons, name, contact?, note?}`):
+  - crea en `booking.visitor_requests` una fila con `kind = 'stay'`, `from_date`, `to_date`, `persons` y `rate_id`;
+  - la base calcula `total_cents` con la tarifa y copia `pay_mode` del evento; en `hold` elige las camas (`hold_bed_ids`) y la caducidad (`hold_until`);
+  - responde `{id, event_code, status, from, to, persons, mode_id, total_cents, pay, hold_until}`;
+  - si ya no hay sitio, 409 `NO_AVAILABILITY`; con fechas, tarifa, personas o nombre que no valen, 422 `INVALID_FIELDS`; si no es de jornadas, `NO_LODGING`;
+  - una solicitud nueva del mismo visitante para el mismo evento sustituye a la anterior pendiente y suelta su bloqueo. El cambio queda en `core.changes`.
+- **Sin doble reserva:** la comprobación y el bloqueo van en el mismo lote público, y los lotes van en serie. Además:
+  - `booking.free_beds` resta los bloqueos vivos;
+  - `booking.check_lodging_holds`, que valida cada lote, impide que el personal asigne una cama bloqueada (`BED_HELD`).
+- **Caducidad:** pasado `hold_until`, la plaza vuelve a estar libre. La solicitud sigue pendiente para el personal, y `booking_visitor_requests` la marca con `hold_expired: true`.
+- **Lectura pública:**
+  - `booking_visitor_requests` da también `id`, `from`, `to`, `persons`, `mode_id`, `total_cents`, `pay`, `hold_until` y `hold_expired`;
+  - `booking_public_lodging` da también `pay` y `hold_hours`.
+- **Cobro en recepción:** Bizum, metálico y Bitcoin, como en la caja de Flow. Lo recoge la tarjeta 3, al aceptar. El pago en línea queda a la espera de la pasarela (vg-27).
+
