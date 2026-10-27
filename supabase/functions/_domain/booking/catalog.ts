@@ -11,6 +11,8 @@ export const TABLES = {
   beds: 'booking.beds',
   roomAssignments: 'booking.room_assignments',
   staffAssignments: 'booking.staff_assignments',
+  /** 0487: cobro del alojamiento a la carta. */
+  walkinCharges: 'booking.walkin_charges',
   staffNeeds: 'booking.staff_needs',
   rates: 'booking.rates',
   conditions: 'booking.conditions',

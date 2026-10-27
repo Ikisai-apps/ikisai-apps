@@ -1810,3 +1810,20 @@ Hito 2 (migración 0484): la ficha según el tipo (`apps/booking/src/ui/eventKin
   - Por oferta: nombre, carta o menú cerrado, para qué grupos (o todos), qué días y servicios, dónde y quién paga (y cuándo).
   - Solo lee, con red, y lo hace una vez por visita.
 
+## 32. Cobro del alojamiento a la carta (migración 0487; VG 27-10-2026)
+
+En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noche, se cobra en el momento o queda pendiente, y lo cobrado va a Finance.
+- **Precio por noche:** `walkinNightPrice` toma la primera tarifa activa de servicio «alojamiento» por persona y noche que vale para el tipo y el día. Sin tarifa, se escribe a mano.
+- **`booking.walkin_charges`** (editor y owner): un cobro por asignación de cama.
+  - Campos: `nights`, `price_cents` y `amount_cents`, con `amount_cents = nights × price_cents` (base y dominio).
+  - Cobro: `method` (`cash`, `bizum` o `card`, el datáfono externo) y `paid_at`, siempre juntos.
+  - Resultado del envío: `finance_entry_id` y `finance_sent_at`, o `finance_error`.
+- **Envío a Finance:** `POST /api/v1/walkins/:id/send/finance` de booking-api, con la sesión de la persona, llama a `invoices.record_app_entry` de invoices-api.
+  - Datos del apunte: `source_app 'booking'`, `source_ref 'booking:stay:<id>'`, `kind 'income'`, fecha del cobro (Madrid), IVA del 10 %, `methods` con el método y `detail` con las noches y la cama.
+  - Es idempotente en Finance por `source_ref`.
+  - Errores: `NOT_PAID` (409), `NEEDS_ACCESS` (403, «Pide acceso a Finance») y `APP_UNAVAILABLE` (503).
+  - La app anota el resultado en el cobro.
+- **En la ficha:**
+  - «Alojamiento a la carta» enseña «Cobrado» y «Pendiente», y cada cobro con su estado: pendiente, cobrado sin enviar o en Finance.
+  - Acciones: «Cobrar…» y «Enviar a Finance».
+
