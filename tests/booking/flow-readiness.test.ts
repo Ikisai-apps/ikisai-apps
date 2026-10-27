@@ -41,11 +41,11 @@ test('flow_readiness: cada condición de flow_guests_of, en orden, con los recue
 
   // el de muestra y el anonimizado no los ve Flow: siguen sin contar, pero se dicen
   const sample = crypto.randomUUID(); const gone = crypto.randomUUID(); const ana = crypto.randomUUID();
-  await commit([
-    { op: 'insert', table: 'booking.guests', id: sample, fields: { event_id: event, first_name: 'Muestra' } },
-    { op: 'insert', table: 'booking.guests', id: gone, fields: { event_id: event, first_name: 'Antiguo' } },
-  ]);
-  await t.db.query(`update booking.guests set preview = true where id = $1`, [sample]);
+  await commit([{ op: 'insert', table: 'booking.guests', id: gone, fields: { event_id: event, first_name: 'Antiguo' } }]);
+  // el de muestra solo nace con booking.portal_preview_guest (guarda de 0459): aquí, con la misma marca que pone el procedimiento
+  await t.db.exec(`select set_config('booking.preview_procedure', 'on', false);
+    insert into booking.guests (id, event_id, first_name, preview) values ('${sample}', '${event}', 'Muestra', true);
+    select set_config('booking.preview_procedure', '', false);`);
   await t.db.query(`update booking.guests set anonymized_at = now() where id = $1`, [gone]);
   r = await readiness(res);
   assert.deepEqual([r.failing, r.guests, r.preview, r.anonymized], ['no_guests', 0, 1, 1]);
