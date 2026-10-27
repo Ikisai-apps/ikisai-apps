@@ -195,7 +195,7 @@ export function mountCarta(root: HTMLElement): () => void {
         paintBar(); paintMine();
         void linkCustomerToVisitor().catch(() => undefined);
         sheet.close();
-        showSent(out.number);
+        showSent(out.number, out.orderId);
       } catch (error) {
         send.disabled = false;
         replace(status, error instanceof PublicApiError ? error.message : 'No se ha podido enviar. Enséñalo en la barra.');
@@ -221,10 +221,17 @@ export function mountCarta(root: HTMLElement): () => void {
   }
 
   /** Solo con la respuesta del servidor: el pedido está en barra y este es tu número. */
-  function showSent(number: number | null): void {
+  function showSent(number: number | null, orderId: string): void {
+    const test = el('p', { class: 'carta-test', role: 'status', hidden: true });
+    // Si quien pide es del equipo (visitante atado a un miembro, 0952), el pedido es de prueba y se dice.
+    void myOrders().then((m) => {
+      const name = m?.orders.find((o) => o.id === orderId)?.testName;
+      if (name) { test.hidden = false; replace(test, `Pedido de prueba (${name}): no cuenta en caja.`); }
+    }).catch(() => undefined);
     openSheet({
       title: 'Pedido enviado',
       body: el('div', { class: 'carta-sent' },
+        test,
         el('p', { class: 'carta-number' }, el('small', null, 'Di en la barra'), el('strong', { id: 'numeroCliente' }, number ? `Soy el ${number}` : 'Tu pedido')),
         el('p', null, 'Paga en la barra: allí lo revisan contigo y lo cobran. Hasta entonces no se prepara.'),
         // El siguiente recorrido, en ven.ikisai.com con este móvil (URLS_ENTRADA, 27-10).
@@ -262,6 +269,7 @@ export function mountCarta(root: HTMLElement): () => void {
       if (!out || !out.orders.length) { replace(body, el('p', { class: 'muted' }, 'Aún no has enviado pedidos desde este dispositivo.')); paintMine(); return; }
       replace(body, ...out.orders.map((o) => el('section', { class: 'carta-mine-order' },
         el('h3', null, `${MINE_STATE[o.status]}${o.status === 'paid' && o.preparing ? ' · preparando' : o.status === 'paid' ? ' · listo para recoger' : ''}`),
+        o.testName ? el('p', { class: 'carta-test' }, `Pedido de prueba (${o.testName})`) : null,
         el('ul', { class: 'carta-summary-list' }, ...o.lines.map((l) => el('li', null,
           el('span', { class: 'carta-code' }, l.code),
           el('span', null, `${l.quantity} × ${l.name}`),
