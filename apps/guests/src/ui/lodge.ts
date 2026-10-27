@@ -47,7 +47,7 @@ function lodgeError(error: unknown): string {
     case 'BED_TAKEN': return t('lodge.bedTaken');
     case 'NO_AVAILABILITY': return t('stay.noAvailability');
     case 'NO_LODGING': return t('stay.noLodging');
-    case 'INVALID_FIELDS': return t('stay.invalid');
+    case 'INVALID_FIELDS': return t('lodge.invalid');
     case 'RATE_LIMITED': return t('visitor.busy');
     default: return t('stay.failed');
   }
@@ -147,8 +147,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
     const box = el('details', { class: 'glodge-plan', id: 'lodgePlanBox', 'data-feedback-id': 'guests.visitante.alojate.plano', 'data-feedback-label': 'Ver las camas en el plano' },
       el('summary', null, icon('pin', 16), ' ', t('lodge.planOpen')), inner) as HTMLDetailsElement;
     let done = false;
-    box.addEventListener('toggle', () => {
-      if (!box.open || done) return;
+    const load = () => {
       done = true;
       replace(inner, loading());
       void visitorPlans(code).then((data) => {
@@ -168,8 +167,13 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           },
         });
         replace(inner, map.element);
-      }).catch((error) => { done = false; replace(inner, whyNote('lodgePlanWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('lodge.planFailed'))); });
-    });
+      }).catch((error) => {
+        done = false;
+        replace(inner, whyNote('lodgePlanWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('lodge.planFailed')),
+          el('button', { type: 'button', class: 'ghost small', id: 'lodgePlanRetry', onclick: load }, t('common.retry')));
+      });
+    };
+    box.addEventListener('toggle', () => { if (box.open && !done) load(); });
     return box;
   };
 
@@ -189,7 +193,9 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
 
     const beds = async () => {
       picked = null;
-      if (!from.value || !to.value || to.value <= from.value) { replace(bedsHost, whyNote('lodgeBedsWhy', t('stay.invalid'))); return; }
+      // «Ir a pagar», apagado hasta tener la lista de camas de estas noches.
+      go.disabled = true;
+      if (!from.value || !to.value || to.value <= from.value) { replace(bedsHost, whyNote('lodgeBedsWhy', t('lodge.invalid'))); return; }
       replace(bedsHost, loading());
       try {
         const { value } = await publicBeds(code, from.value, to.value);
@@ -198,14 +204,14 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           el('input', { type: 'radio', name: 'lodgeBed', value: value_, ...(checked ? { checked: '' } : {}), onchange: () => { picked = value_ || null; } }), label);
         replace(bedsHost,
           el('p', { class: 'small', id: 'lodgePrice' }, value.price_night_cents !== null
-            ? t('lodge.price', { night: money(value.price_night_cents), total: money(value.price_night_cents * value.nights), nights: value.nights }) : ''),
+            ? t('lodge.price', { night: money(value.price_night_cents), total: money(value.price_night_cents * value.nights), nights: t('stay.nights', { count: value.nights }) }) : ''),
           free.length
             ? el('fieldset', { class: 'glodge-beds' }, el('legend', null, t('lodge.bedTitle')),
               radio('', el('strong', null, t('lodge.assign')), true),
               ...value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
                 el('p', { class: 'small glodge-room-name' }, r.name),
                 ...r.beds.filter((b) => b.free).map((b) => radio(b.id, b.label)))))
-            : whyNote('lodgeFull', t('stay.full', { nights: value.nights })));
+            : whyNote('lodgeFull', t('stay.full', { nights: t('stay.nights', { count: value.nights }) })));
         if (free.length) bedsHost.append(planBox(value));
         go.disabled = !free.length;
       } catch (error) {
