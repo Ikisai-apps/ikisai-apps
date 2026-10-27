@@ -22,3 +22,14 @@ test('invoices.register_purchase_quick en core.capabilities', async () => {
   assert.ok(row.anchors.includes('invoices.facturas.nueva'));
   await db.close();
 });
+
+test('0260: primer estimado de utilidad de Finance (core.usage_estimate, vg-39)', async () => {
+  const db = await createTestDatabase();
+  const rows = (await db.db.query<{ feature_id: string; frequency: string }>(`select feature_id, frequency from core.usage_estimates where app = 'invoices' order by feature_id`)).rows;
+  const by = new Map(rows.map((r) => [r.feature_id, r.frequency]));
+  assert.equal(by.get('invoices.facturas.nueva'), 'frequent');
+  assert.equal(by.get('invoices.gestoria'), 'rare_critical');
+  assert.equal(by.get('invoices.guia'), 'do_not_evaluate');
+  assert.ok(rows.every((r) => r.feature_id.startsWith('invoices.')));
+  await db.close();
+});
