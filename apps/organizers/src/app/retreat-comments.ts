@@ -5,17 +5,11 @@
  * puede ver. Aquí se quedan solo los de huéspedes, sobre el evento y de este retiro. Solo lectura: los gestiona Ikisai.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { L } from './i18n.ts';
 
 export interface FeedbackItem {
   id: string; code: string; reporterKind: string; subject: string; intent: string; category: string | null; message: string;
   scope: { reservation_id?: string; guest_id?: string } | null; createdAt: string;
 }
-
-/** Temas de «Cuéntanos qué tal» en Guests (`help.event.*`), por traducir con `t`. */
-export const COMMENT_TOPICS: Record<string, string> = {
-  schedule: L('Horarios'), organization: L('Organización'), activities: L('Actividades'), communication: L('Comunicación'), food: L('La comida'), other: L('Otra cosa'),
-};
 
 /** Los de huéspedes sobre el evento de este retiro, del más reciente al más antiguo. */
 export function retreatComments(items: readonly FeedbackItem[], reservationId: string): FeedbackItem[] {

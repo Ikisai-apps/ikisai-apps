@@ -4,13 +4,18 @@
  * falla), no sale.
  */
 import { el, replace } from '@ikisai/ui-kit';
-import { t } from '../app/i18n.ts';
+import { L, t } from '../app/i18n.ts';
 import type { PortalGuest } from '../app/api.ts';
 import { dayLabel } from '../app/labels.ts';
-import { COMMENT_TOPICS, loadGuestFeedback, retreatComments, type FeedbackItem } from '../app/retreat-comments.ts';
+import { loadGuestFeedback, retreatComments, type FeedbackItem } from '../app/retreat-comments.ts';
 import type { ViewContext } from './shell.ts';
 
 const SHOWN = 3;
+
+/** Temas de «Cuéntanos qué tal» en Guests (`help.event.*`), por traducir con `t`. */
+const COMMENT_TOPICS: Record<string, string> = {
+  schedule: L('Horarios'), organization: L('Organización'), activities: L('Actividades'), communication: L('Comunicación'), food: L('La comida'), other: L('Otra cosa'),
+};
 
 function comment(r: FeedbackItem, names: Map<string, string>): HTMLElement {
   const who = (r.scope?.guest_id && names.get(r.scope.guest_id.toLowerCase())) || t('Un asistente');
