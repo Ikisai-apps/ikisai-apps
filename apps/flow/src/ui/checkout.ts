@@ -1,6 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import * as kit from '@ikisai/ui-kit';
-import { confirmDialog, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, openSheet, renderQr, replace, toast } from '@ikisai/ui-kit';
 import { CHECKOUT_METHOD_LABELS, formatEuros, ORDER_STATUS_LABELS, PROCEDURES, TABLES, type CheckoutMethod } from '@ikisai/domain-flow';
 import { callProcedure, errorCode, flowActions, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -121,8 +120,9 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
     const address = m === 'btc_ln' ? settings?.lightning_address : settings?.bitcoin_address;
     if (!address) { toast('El encargado aún no ha puesto la dirección en el Inicio del flujo.'); return; }
     const payload = m === 'btc_ln' ? `lightning:${address}` : `bitcoin:${address}`;
-    const renderQr = (kit as unknown as Record<string, unknown>).renderQr as ((text: string, opts?: Record<string, unknown>) => HTMLElement) | undefined;
-    const qr = renderQr ? renderQr(payload, { size: 240, label: CHECKOUT_METHOD_LABELS[m] }) : el('code', { class: 'checkout-address' }, payload);
+    let qr: Element;
+    try { qr = renderQr(payload, { size: 240, label: CHECKOUT_METHOD_LABELS[m] }); }
+    catch { qr = el('code', { class: 'checkout-address' }, payload); } // no cabe en un QR: la dirección en texto
     const ok = await confirmDialog({ title: CHECKOUT_METHOD_LABELS[m], confirmLabel: 'Pagado',
       text: `Que pague ${formatEuros(total)} en su monedero (la cantidad la pone quien paga). Pulsa «Pagado» cuando lo veas recibido.`,
       body: el('div', { class: 'checkout-qr' }, qr, el('small', { class: 'muted' }, address)) });
