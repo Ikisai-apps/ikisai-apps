@@ -106,3 +106,22 @@ export function decorForPlan(rows: ReadonlyArray<DecorRow & { deleted_at?: strin
     id: r.id, planId: r.plan_id, iconId: r.icon_id, iconUrl: iconUrl(r.icon_id), cellX: r.cell_x, cellY: r.cell_y, scale: r.scale, size: r.size, rotation: r.rotation,
   }));
 }
+
+/**
+ * Curvas de nivel de la finca (VG, 27-10): cada banda con la cota de su altura (`elevation_m`, Recursos) y la diferencia
+ * con la siguiente subiendo. La altura se reconoce por su nombre al principio de la banda («Altura 3 · Albergue»).
+ */
+export interface ElevationLine extends EstateBand { elevation: number | null; toNext: number | null; label: string }
+const fmtM = (n: number) => `${Number.isInteger(n) ? n : n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} m`;
+export function elevationLines(bands: readonly EstateBand[], alturas: ReadonlyArray<{ name: string; elevation_m?: number | null }>): ElevationLine[] {
+  const fold = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const levelOf = (band: EstateBand) => alturas.find((a) => fold(band.name).startsWith(fold(a.name)))?.elevation_m ?? null;
+  const withLevel = bands.map((b) => ({ ...b, elevation: levelOf(b) }));
+  const sorted = withLevel.filter((b) => b.elevation !== null).sort((p, q) => p.elevation! - q.elevation!);
+  return withLevel.map((b) => {
+    const next = b.elevation === null ? null : sorted.find((x) => x.elevation! > b.elevation!) ?? null;
+    const toNext = next ? Math.round((next.elevation! - b.elevation!) * 10) / 10 : null;
+    const label = b.elevation === null ? `${b.name} · sin cota` : `${b.name} · ${fmtM(b.elevation)}${toNext !== null ? ` (+${fmtM(toNext)} hasta ${next!.name.split('·')[0]!.trim()})` : ''}`;
+    return { ...b, toNext, label };
+  });
+}

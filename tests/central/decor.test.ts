@@ -1,7 +1,7 @@
 /** Central · finca y decoración (encargo de VG del 27-10): reglas puras de `apps/central/src/app/decor.ts`. Datos ficticios. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DECOR_ITEMS, decorForPlan, decorOperations, estateMeta, gridOf, iconProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
+import { DECOR_ITEMS, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
 
 test('finca · escala, origen y alturas del SVG; sin escala, se pide al subir', () => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" data-meters-per-unit="0.25" data-origin-x="10" data-origin-y="20">
@@ -55,4 +55,14 @@ test('decoración · solo la capa general y viva de ese plano, con la URL de su 
     { id: 'd', revision: 2, plan_id: 'p1', icon_id: 'ic2', cell_x: 2, cell_y: 0, scale: 5, size: 1, rotation: 0, layer: 'general', deleted_at: '2026-10-27T00:00:00Z' },
   ];
   assert.deepEqual(decorForPlan(rows, 'p1', (id) => `/icon/${id}`), [{ id: 'a', planId: 'p1', iconId: 'ic1', iconUrl: '/icon/ic1', cellX: 0, cellY: 0, scale: 5, size: 1, rotation: 0 }]);
+});
+
+test('finca · curvas de nivel: cota de cada altura y lo que sube hasta la siguiente', () => {
+  const bands = [{ name: 'Altura 1 · Salas', y0: 0.8, y1: 0.9 }, { name: 'Altura 3 · Albergue', y0: 0.5, y1: 0.6 }, { name: 'Altura 5 · Depósito', y0: 0.1, y1: 0.2 }];
+  const alturas = [{ name: 'Altura 1', elevation_m: 12 }, { name: 'Altura 3', elevation_m: 30.5 }, { name: 'Altura 5', elevation_m: null }];
+  assert.deepEqual(elevationLines(bands, alturas).map((l) => [l.elevation, l.toNext, l.label]), [
+    [12, 18.5, 'Altura 1 · Salas · 12 m (+18,5 m hasta Altura 3)'],
+    [30.5, null, 'Altura 3 · Albergue · 30,5 m'],
+    [null, null, 'Altura 5 · Depósito · sin cota'],
+  ]);
 });
