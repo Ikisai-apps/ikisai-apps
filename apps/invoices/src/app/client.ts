@@ -1,7 +1,7 @@
 import { createSyncClient, type ApiError, type SyncClient, type SyncedRow, type TableName } from '@ikisai/sync-client';
 import {
   EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS, TABLES, domainMessage,
-  type AllocationRow, type CustomerRow, type ExpenseCategory, type IssuedAllocationRow, type IssuedFileRow, type TemplateLike, type IssuedInvoiceRow, type IssuedLineRow, type IssuedSeriesRow, type IssuedTaxLineRow, type ExportItemRow, type ExportRow, type InvoiceFileRow, type InvoiceLineRow, type InvoiceRow, type SupplierRow as DomainSupplierRow, type TaxLineRow,
+  type AllocationRow, type AppEntryRow, type CustomerRow, type ExpenseCategory, type IssuedAllocationRow, type IssuedFileRow, type TemplateLike, type IssuedInvoiceRow, type IssuedLineRow, type IssuedSeriesRow, type IssuedTaxLineRow, type ExportItemRow, type ExportRow, type InvoiceFileRow, type InvoiceLineRow, type InvoiceRow, type SupplierRow as DomainSupplierRow, type TaxLineRow,
 } from '@ikisai/domain-invoices';
 
 export const APP = 'invoices';
@@ -27,8 +27,10 @@ export const CUSTOMERS: TableName = TABLES.customers;
 export const SETTINGS: TableName = TABLES.settings;
 /** Memoria por proveedor (0230, 0234): en el dispositivo para «Artículos que recuerda» de Proveedores (tanda 27). */
 export const ITEM_LABELS: TableName = TABLES.itemLabels;
+// Ingresos y gastos que llegan de otras apps (0244, API.md §17)
+export const APP_ENTRIES: TableName = TABLES.appEntries;
 export const ALL_TABLES: TableName[] = [SUPPLIERS, INVOICES, INVOICE_FILES, INVOICE_LINES, TAX_LINES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS,
-  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS, SETTINGS, ITEM_LABELS];
+  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS, SETTINGS, ITEM_LABELS, APP_ENTRIES];
 
 /** Categorías de gasto (lista cerrada del dominio) y sus etiquetas. */
 export const CATEGORIES = EXPENSE_CATEGORIES;
@@ -57,6 +59,7 @@ export type LocalIssuedLine = Local<IssuedLineRow>;
 export type LocalIssuedTaxLine = Local<IssuedTaxLineRow>;
 export type LocalIssuedFile = Local<IssuedFileRow>;
 export type LocalIssuedAllocation = Local<IssuedAllocationRow>;
+export type LocalAppEntry = Local<AppEntryRow>;
 /** Compatibilidad con las vistas de la fase 0. */
 export type SupplierRow = LocalSupplier;
 

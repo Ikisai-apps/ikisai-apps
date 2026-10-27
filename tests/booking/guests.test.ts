@@ -211,7 +211,7 @@ test('recuentos · quien no ve huéspedes obtiene totales sin identificar', asyn
   assert.equal(summary.status, 200, JSON.stringify(summary.data));
   assert.deepEqual(summary.data, {
     eventId, total: 3, bySex: { H: 1, M: 1, X: 0, sinDato: 1 }, minors: 1, signed: 1,
-    dataStatus: { datos_revisados: 1, pendiente_datos: 2 }, sesStatus: { pendiente_envio: 3 },
+    dataStatus: { datos_revisados: 1, pendiente_datos: 2 }, mealGroups: [], sesStatus: { pendiente_envio: 3 },
   });
   assert.equal(JSON.stringify(summary.data).includes('Sintética'), false);
   assert.equal((await app.call('/api/v1/read/booking.guest_summary', { token: app.tokens.reader, body: { event_id: uuid() } })).status, 404);
@@ -233,7 +233,7 @@ test('proyección para Food · columnas del contrato, restricciones agregadas y 
   assert.deepEqual(Object.keys(row).sort(), [
     'event_id', 'event_code', 'reservation_code', 'title', 'event_type', 'start_date', 'end_date', 'arrival_time', 'departure_time',
     'guest_count', 'minors_count', 'meal_plan', 'menu_style', 'dietary_restrictions', 'event_revision',
-    'reservation_status', 'guest_count_is_final', 'requires_meals', 'meal_notes', 'reservation_id', 'carta_ids',
+    'reservation_status', 'guest_count_is_final', 'requires_meals', 'meal_notes', 'reservation_id', 'carta_ids', 'meal_groups',
   ].sort());
   assert.match(row.event_code, /^EVT_/); assert.match(row.reservation_code, /^RSV_/);
   assert.equal(row.guest_count, 20); assert.equal(row.guest_count_is_final, false); assert.equal(row.minors_count, 2);

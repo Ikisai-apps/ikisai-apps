@@ -4,6 +4,7 @@ import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
+import { mountAppEntries, mountEvent } from './app-entries.ts';
 import { startValidationConflictWatcher } from './invoices.ts';
 import { mountInvoices } from './invoice-list.ts';
 import { mergesAreOwn } from './undo.ts';
@@ -30,7 +31,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento'] },
   { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
   { hash: '#/compras', label: 'Compras', icon: 'cart' },
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
@@ -41,6 +42,9 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/': { title: 'Inicio', screen: 'invoices.inicio', mount: mountHome },
   '#/proveedores': { title: 'Proveedores', screen: 'invoices.proveedores', mount: mountSuppliers },
   '#/conflictos': { title: 'Conflictos', screen: 'invoices.conflictos', mount: mountConflicts },
+  // Ingresos y gastos de otras apps (0244, API.md §17)
+  '#/apuntes': { title: 'Ingresos y gastos de apps', screen: 'invoices.apuntes', mount: mountAppEntries },
+  '#/evento': { title: 'Evento', screen: 'invoices.evento', mount: mountEvent },
   '#/facturas': { title: 'Facturas', screen: 'invoices.facturas', mount: mountInvoices },
   '#/compras': { title: 'Compras', screen: 'invoices.compras', mount: mountPurchases },
   '#/gestoria': { title: 'Gestoría', screen: 'invoices.gestoria', mount: mountAccounting },

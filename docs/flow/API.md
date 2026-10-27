@@ -234,3 +234,35 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **`bread_ahead`:** unidades de preparación de los pedidos cobrados en los últimos `lookback_min` minutos (5), como mucho `per_order_cap` por pedido (4). `rate` = unidades / ventana; `expected` = `rate` × (`warmup_min` + `lead_min`) (1 + 1); descuento por tramos según `rate` (`tiers`: hasta 2, −60 %; hasta 8, −30 %; resto, 0 %); `target` = `floor(expected × (1 − pct/100))`. Salida: `{target, rate, window, units, pct}`.
 - **Textos y parámetros en la unidad** (`payload`: `metric`, `params`, `text`, `notice`, `notice_in`). El código del comportamiento no nombra productos. El owner cambia los parámetros numéricos desde la tarjeta (`flow.station_set_params`).
 - **Plantilla:** `flow.template_units` (`template_key`, `min_version`, `column_key`, `kind`, `label`, `payload`). «Nueva versión» añade las que tocan a su versión. La barra desde la v2 lleva el puesto «Pan» en Logística, con «Ahora deben estar calentándose N panes · r montaditos/min» y el aviso «Pan: N calentándose» en la cabecera de Preparación. La v1 no cambia.
+
+## 23. Gasto real y aviso de compra (migración `0909`, paso 3)
+
+- **`flow.template_column_patches`** (`template_key`, `min_version`, `column_key`, `config_patch`): «Nueva versión» los aplica a las columnas. La barra desde la v2 lleva `fresh_stock: true` en Ingredientes; la v1 no.
+- **Punto «fresco»** (con `fresh_stock`): al generar, por ingrediente, con capacidad = lo previsto en fresco por Food; empieza lleno. Reponer la nevera lo descuenta. Si baja de su umbral, se propone **«Comprar X»** (`payload.purchase = true`, al final de la columna, una sola abierta). Su botón de Tasks la pide como compra de un toque (cantidad y unidad de la propuesta). Al hacerla, fresco vuelve a su capacidad.
+- La reposición genérica (`propose_restock`) **solo se amplía**: sin punto «fresco» (la v1) hace exactamente lo de antes.
+- **Existencias** (`flow.stock_view({project_id})`, con el ámbito comprobado): por ingrediente, mesa, nevera y fresco (nivel y capacidad, en rojo bajo umbral) y lo consumido hoy (hora de Madrid). Se enseña en el Inicio del flujo cuando hay puntos de existencias.
+
+## 24. Cuenta del cliente y huéspedes (migración `0910`, paso 4)
+
+- **Solo v2**: la caja lleva `accounts: true` por plantilla (`template_column_patches`); la v1 no, y sus procedimientos solo se envuelven.
+- **`flow.accounts`** (`project_id`, `customer_id?`, `holder`, `status` open|settled, `opened_by`, `settled_at`, `settled_by`, `payment_id`): solo por procedimiento. Un cliente tiene como mucho una cuenta abierta.
+- **`open_account({project_id, holder?, customer_number?, account_id?})`**: a nombre de alguien o de un número de cliente (sin nombre, el corto del cliente o «Cliente N»). `ACCOUNT_ALREADY_OPEN`, `ACCOUNTS_DISABLED`.
+- **`charge_to_account({order_id, account_id, expected_revision})`**: como `confirm_payment` (precio cerrado, número de cobro de la misma secuencia —evento `paid` con `method: 'account'`— y unidades), sin dinero: `pay_method = 'account'`, `account_id`.
+- **`settle_account({account_id, method: cash|bizum|card, expected_revision?})`**: owner o quien la abrió (`SETTLE_FORBIDDEN`). Un pago `charge` único de la cuenta (`order_id` null, `account_id`) por la suma de sus pedidos vivos; sin pedidos, sin pago.
+- Pedidos a cuenta: con la cuenta abierta, `adjust_paid_order` y `reverse_payment` fallan con `ACCOUNT_OPEN`; liquidada, se corrigen (devolución como siempre) pero no se anulan (`ACCOUNT_SETTLED`).
+- **Resumen del día** (Food/Finance): lo cargado a cuenta se vende el día en que se liquida; el pago de la cuenta entra en el dinero de ese día; `sales_by_method.card` solo si hay tarjeta (Finance la recibe en `methods.card`). Con la v1, idéntico.
+- **Huéspedes** (decisión (c) de Core): `assign_guest_numbers({project_id, guests: [{guest_id, display_name}]})` (owner, idempotente) crea clientes `origin = 'guest'` con un token al azar; la app lo lanza desde el Inicio leyendo `booking.flow_guests_projection` del evento.
+- **`flow.portal_customer({reservation_id, guest_id})`** (lectura de Guests, `core.portal_in_scope`): `{number, carta_url, account_open}`. `carta_url = https://flow.ikisai.com/?invitacion=<cliente>.<caducidad>.<firma>` (10 min) solo si hay clave y su flujo atiende la carta; si no, `null`.
+- **Firma**: HMAC-SHA256 (`flow.hmac_sha256_hex`, RFC 2104 con `sha256()` de Postgres, sin pgcrypto) sobre `<cliente>.<caducidad>` con `flow.portal_key()`: el secreto `flow_portal_key` del Vault; en pruebas, el ajuste de sesión `flow.portal_key`; sin ninguno, `null`. `portal_key()` no se concede a anon ni authenticated.
+- **Canje** `POST public/invitation {invitation}` → `{token, number}`: valida (`flow_guest_link`), y el lote público rota el `token_hash` de ese cliente de huésped (el navegador anterior deja de valer). `404 INVITATION_INVALID`, `410 INVITATION_EXPIRED`. El lote público solo crea clientes `web` y de un cliente `guest` solo cambia el token.
+## 25. Check-in del evento (migración `0911`, paso 5)
+
+- **Comportamiento `guest_presence`** (`config.stage`: `arrival` | `bed` | `signature` | `departure`). Las columnas Llegada → Cama → Firma → Salida enseñan los huéspedes del evento ligado. Los datos salen de `booking.flow_guests_projection`: nombre corto, cama, noches, llegada, salida y firma. La app la lee por `GET checkin/:project/guests` cada 10 s con la pantalla visible. flow-api comprueba el ámbito del flujo y filtra por su evento, así que nadie ve los huéspedes de un evento que no es de sus flujos.
+- **Plantillas**: `flow.template_columns` (`template_key`, `version`, `label_base`, `key`, `label`, `behavior`, `config`, `position`) y `create_flow({template_key, project_id, name?, booking_event_id?, starts_on?, ends_on?})`, solo owner y desde la última versión de la plantilla. Ya existe la plantilla `checkin` v1. El editor de flujos (paso 6) las ampliará.
+- **Llegada y Salida**: `POST checkin/:project/guests/:guest/arrive|leave {undo?}`.
+  - flow-api comprueba tres cosas: rol editor u owner, que el flujo esté en el ámbito de la persona (`flow.checkin_target`) y que el huésped sea del evento del flujo.
+  - Luego llama a `booking.guest_arrive` / `booking.guest_leave` por booking-api con el token de la persona.
+  - Los errores de Booking llegan tal cual: `SES_ALREADY_REGISTERED`, `GUEST_ALREADY_LEFT`, `TEAM_GUEST`. Sin acceso a Booking, `NEEDS_ACCESS`. Sin evento ligado, `NO_BOOKING_EVENT`.
+- **Cama** («en su cama»): marca de Flow `flow.presence_marks`, solo por procedimiento: `mark_presence({project_id, guest_id, step: 'bed', undo?})`.
+- **Firma**: solo avisa. El parte se firma en Huéspedes y la tarjeta pasa sola a hecha.
+- La barra no cambia.
