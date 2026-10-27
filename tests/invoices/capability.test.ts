@@ -20,5 +20,14 @@ test('invoices.register_purchase_quick en core.capabilities', async () => {
   assert.ok('invoice_number' in row.input_schema.properties);
   assert.ok('receipt_kind' in row.input_schema.properties, '0247 la actualiza');
   assert.ok(row.anchors.includes('invoices.facturas.nueva'));
+  // 0258: qué lee y qué escribe (entity.prop = esquema.tabla.columna), para la cobertura de campos (núcleo 0111)
+  assert.ok(row.writes.includes('invoices.invoices.supplier_id') && row.writes.includes('invoices.allocations.target_id') && row.writes.includes('invoices.invoices.receipt_kind'));
+  assert.ok(row.reads.includes('invoices.suppliers.tax_id'));
+  // Cada columna declarada existe de verdad
+  for (const ref of [...row.reads, ...row.writes] as string[]) {
+    const [schema, table, column] = ref.split('.');
+    const found = await db.db.query(`select 1 from information_schema.columns where table_schema = $1 and table_name = $2 and column_name = $3`, [schema, table, column]);
+    assert.equal(found.rows.length, 1, ref);
+  }
   await db.close();
 });
