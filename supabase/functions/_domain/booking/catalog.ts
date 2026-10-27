@@ -13,6 +13,8 @@ export const TABLES = {
   staffAssignments: 'booking.staff_assignments',
   /** 0487: cobro del alojamiento a la carta. */
   walkinCharges: 'booking.walkin_charges',
+  /** 0489: peticiones de visitantes que llegan por el QR (BG18). */
+  visitorRequests: 'booking.visitor_requests',
   staffNeeds: 'booking.staff_needs',
   rates: 'booking.rates',
   conditions: 'booking.conditions',
@@ -63,6 +65,7 @@ export const PROCEDURES = {
   acceptProposal: 'booking.accept_proposal',
   /** 0486: llegada y salida desde Flow ({guest_id, undo?}). */
   guestArrive: 'booking.guest_arrive',
+  joinFromVisitor: 'booking.join_from_visitor',
   guestLeave: 'booking.guest_leave',
 } as const;
 

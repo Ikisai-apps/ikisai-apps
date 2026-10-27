@@ -131,6 +131,8 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Código público del evento (0488):** `public_code` para el QR de visitantes a ven.ikisai.com y la lectura pública `booking_event`; «QR de entrada» en la ficha (imprimir y regenerar). API.md §33; prueba en `public-code.test.ts`. El dibujo del QR espera a `renderQr` del kit.
 
+- **Visitante se apunta desde el QR (0489, BG18):** `visitor_requests` por lote público con el código del QR, y `join_from_visitor` para aceptar o descartar. Falta la ruta `public/join` (espera a `resolveVisitor` del kit). API.md §33; prueba en `visitor-join.test.ts`.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).

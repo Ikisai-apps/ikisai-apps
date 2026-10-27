@@ -1841,5 +1841,15 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - La sirve guests-api en `GET public/event?code=…`.
 - **URL del QR:** `https://ven.ikisai.com/e/<code>`.
 - **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El dibujo del QR lo pone `renderQr` del kit, pedido a UI-kit; mientras tanto se ve el hueco.
-- **Pendiente (BG18):** que un visitante se apunte, cuando Core cierre `core.visitors` y su vía de escritura.
+- **Un visitante se apunta (BG18, migración 0489; contrato C11 de Core).**
+  - Identidad y escritura:
+    - El visitante no tiene cuenta. Lleva un token de visitante (cabecera `X-Visitor`) que la Edge resuelve (`resolveVisitor`).
+    - Su petición es una fila de `booking.visitor_requests`, escrita en un lote público (`applyPublicOperations`).
+    - Lleva `via_code` (el código del QR, del que la base saca el evento; un `event_id` del cliente no cuenta), `visitor_id`, `name` y `note`, ambos opcionales.
+  - Reglas:
+    - En público solo se crea una petición pendiente, en un retiro vivo y visible para huéspedes, y una por visitante y evento.
+    - Nadie más crea peticiones.
+    - La decide el personal con `booking.join_from_visitor({request_id, decision: 'accept' | 'reject', name?})`. Al aceptar se crea la ficha de huésped, ligada a la petición (`guest_id`); repetir no crea otra.
+  - El visitante ve lo suyo con la lectura pública `booking_visitor_requests({visitor_id, event_code?})`, que la Edge llama con el `visitor_id` ya resuelto. Devuelve el estado, sin datos ajenos.
+  - **Pendiente:** la ruta `POST /api/v1/public/join` de booking-api (código, nombre y nota con `X-Visitor`), en cuanto el kit traiga `resolveVisitor` y las rutas `public/*` con el origen de ven.ikisai.com.
 
