@@ -90,8 +90,22 @@ test('guests · enlace no válido: pantalla clara, sin sesión @smoke', async ({
   await expect(page.locator('#entryTitle')).toHaveText('Este enlace no funciona');
   await expect(page.locator('#entryContact')).toContainText('ven@ikisai.com'); // correo de los huéspedes, nunca organiza@
   await expect(page).not.toHaveURL(/\/i\//);
+  // Nunca un callejón sin salida (VG, 28-10): con el enlace roto también salen los eventos abiertos.
+  await expect(page.locator('#openEvents')).toBeVisible();
   await page.goto(`${baseURL}/`);
   await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
+});
+
+test('guests · con sesión guardada, un enlace que ya no vale (la app instalada desde él) sigue con la sesión', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro del enlace instalado' });
+  const ana = await api.guest(event, { first_name: 'Ana' });
+  await page.goto(`${baseURL}/i/${await api.guestLink(reservation, ana, 'Ana')}`);
+  await page.locator('#privacyOk').click();
+  await expect(page.locator('#retreatTitle')).toBeVisible();
+  // Como una app instalada desde un enlace de un solo uso: vuelve a él al abrirse.
+  await page.goto(`${baseURL}/i/${'A'.repeat(43)}`);
+  await expect(page.locator('#retreatTitle')).toBeVisible();
+  await expect(page.locator('#entry')).toHaveCount(0);
 });
 
 test('guests · recorrido completo: aviso, procedencia, autoguardado, alimentación y firma @smoke', async ({ page }) => {
