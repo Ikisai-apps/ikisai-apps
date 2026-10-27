@@ -111,3 +111,33 @@ test('entrada: hijas con clave única, campos conocidos y hasta 100; el montaje 
   assert.equal(noProject.status, 422);
   assert.equal(noProject.body.error.details.field, 'project_ref');
 });
+
+test('ámbito (0347): el procedimiento, llamado directamente, exige editor u owner y la madre en el ámbito de quien escribe', async () => {
+  const list = [{ external_ref: 'mesas', title: 'Montar 12 mesas' }, { external_ref: 'sillas', title: 'Colocar 96 sillas' }];
+  const first = await setup(list);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const parent = first.body.taskId;
+  const member = async (role: string, scopes: unknown) => {
+    const id = await app.t.createUser();
+    await app.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('tasks', $1, $2, $3::jsonb)`, [id, role, JSON.stringify(scopes)]);
+    return id;
+  };
+  // Directo al núcleo, sin la Edge: lo que haría alguien con `allow_procedure` y el `parentRef` de una madre ajena.
+  const direct = (actor: string, children: unknown[]) => app.t.db.query(`select core.commit('tasks', $1::uuid, $2, 'd', null, $3::jsonb)`, [actor, `scope-${++seq}`,
+    JSON.stringify([{ op: 'call', procedure: 'tasks.request_children', args: { parentRef: 'booking:RES2026-80-MONTAJE', kind: 'booking.event_setup', children, create: false, retire: true } }])]);
+  const before = (await kids(parent)).filter((k) => !k.deleted_at).map((k) => [k.id, k.revision]).sort();
+
+  const outsider = await member('editor', [uuid()]);
+  await assert.rejects(direct(outsider, []), /FORBIDDEN/, 'una editora de otra área no retira las hijas');
+  await assert.rejects(direct(outsider, [{ ref: 'mesas', title: 'Cambiado' }]), /FORBIDDEN/, 'ni las pone al día');
+  const otherProject = await member('editor', { projects: { [TAB]: [uuid()] } });
+  await assert.rejects(direct(otherProject, []), /FORBIDDEN/, 'ni con otro proyecto de la misma área');
+  const reader = await member('reader', '*');
+  await assert.rejects(direct(reader, []), /FORBIDDEN/, 'ni una lectora');
+  assert.deepEqual((await kids(parent)).filter((k) => !k.deleted_at).map((k) => [k.id, k.revision]).sort(), before, 'nada cambió');
+
+  // Con el proyecto de la madre en su ámbito, sí.
+  const inProject = await member('editor', { projects: { [TAB]: [projectId] } });
+  const ok = await direct(inProject, [{ ref: 'mesas', title: 'Montar 12 mesas' }, { ref: 'sillas', title: 'Colocar 96 sillas' }]);
+  assert.equal(ok.rows.length, 1);
+});
