@@ -31,6 +31,8 @@ export interface FoodEvent {
   reservation_code: string | null;
   title: string;
   event_type: string | null;
+  /** Cartas de Food que Booking marca para unas jornadas abiertas (Booking 0484); vacío o ausente si no hay. */
+  carta_ids?: string[] | null;
   start_date: string;
   end_date: string;
   arrival_time: string | null;
@@ -64,6 +66,10 @@ export interface Menu extends SyncedColumns {
   kind?: MenuKind;
   /** Solo en la carta: «Barra · Evento de octubre». */
   name?: string | null;
+  /** Solo en la carta (1110): reparto de lo que se prepara, `{mesa, nevera, fresco}` en %; null = 30/20/50. */
+  prep_split?: { mesa: number; nevera: number; fresco: number } | null;
+  /** Solo en la carta (1110): asistentes esperados; si falta, las personas del evento. */
+  expected_attendance?: number | null;
   /** Solo en el de retiro. */
   event_id: string | null;
   source_event_revision: number | null;

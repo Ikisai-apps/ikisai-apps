@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  closedMenus,
+  closedMenus, isCartaMenu, type CartaLine,
   FOOD_PROCEDURES, HOUSE_MENU_ID, crossContext, undeclaredAllergens, undeclaredText, dishNotes, isSevere, verifiableSubject, type DishNotes, type ShoppingList, type Recipe, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type PreparationItem, type RecipeIngredient,
@@ -26,6 +26,7 @@ import { mountPreparation } from './menu-preparation.ts';
 import { mountShopping } from './menu-shopping.ts';
 import { MENU_STATUS_LABELS, SERVICE_LABELS, menuChip } from './events.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
+import { paintCartas } from './carta.ts';
 import { usage } from '../app/usage.ts';
 import { fb, fbRows, type FbMark } from './feedback.ts';
 import { onlineBinder } from './online.ts';
@@ -65,6 +66,10 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   let house: HouseToday = { exists: false, lines: [] };
   let suggestions: { pending: number } | null = null; // platos sugeridos (O3c): solo si hay alguno y se pueden revisar
   const houseHost = el('div', { id: 'houseMenu' });
+  // Las cartas (tanda 2 de la carta): su bloque, con «Nueva carta»; su vista es `#/cartas/<id>`.
+  const cartasHost = el('section', { 'data-feedback-id': 'food.menus.cartas', 'data-feedback-label': 'Cartas', id: 'cartasHost' });
+  let cartas: MenuRow[] = [];
+  let cartaLines: Array<Mirror<CartaLine>> = [];
   // «Lo próximo en grande» (tanda 27, MUELA-016): el retiro en curso o el siguiente, y los que vienen sin menú. La lista de
   // siempre (`#menuList`, con su orden) sigue debajo, completa.
   const nextHost = el('section', { 'data-feedback-id': 'food.menus.proximo', 'data-feedback-label': 'Lo próximo', id: 'menusNext' });
@@ -76,6 +81,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
     houseHost,
     nextHost,
     host,
+    cartasHost,
   );
 
   function paintNext(): void {
@@ -159,6 +165,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   function paint(): void {
     paintHouse();
     paintNext();
+    paintCartas(cartasHost, { client, cartas, lines: cartaLines, events: snapshot.events, navigate });
     const events = new Map(snapshot.events.map((e) => [e.event_id, e]));
     const rows = menus.filter((m) => !m.deleted_at && !isHouseMenu(m))
       .map((menu) => ({ menu, event: menu.event_id ? events.get(menu.event_id) : undefined }))
@@ -180,8 +187,11 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
 
   async function load(): Promise<void> {
     // La carta tiene su vista (PR 2 de la tanda de la carta): aquí, solo los menús cerrados.
-    const [rows, comments] = await Promise.all([client.list(T.menus).then((all) => closedMenus(all as MenuRow[])), client.list(T.menuComments) as Promise<CommentRow[]>]);
-    menus = rows;
+    const [all, comments, lines] = await Promise.all([client.list(T.menus) as Promise<MenuRow[]>, client.list(T.menuComments) as Promise<CommentRow[]>,
+      client.list(T.cartaLines) as Promise<Array<Mirror<CartaLine>>>]);
+    menus = closedMenus(all);
+    cartas = all.filter((m) => isCartaMenu(m));
+    cartaLines = lines;
     house = await loadHouseToday(client);
     fresh = new Map();
     for (const c of comments) if (c.status === 'nuevo' && !c.deleted_at) fresh.set(c.menu_id, (fresh.get(c.menu_id) ?? 0) + 1);
@@ -191,7 +201,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   void load();
   void houseSuggestionsSummary(client).then((s) => { suggestions = s; paintHouse(); });
   const offEvents = watchEvents(client, (next) => { snapshot = next; paint(); });
-  const offTables = [T.menus, T.menuComments, T.menuServices, T.menuItems].map((table) => client.onTable(table, () => void load()));
+  const offTables = [T.menus, T.menuComments, T.menuServices, T.menuItems, T.cartaLines].map((table) => client.onTable(table, () => void load()));
   return () => { offEvents(); offTables.forEach((off) => off()); };
 };
 

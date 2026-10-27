@@ -80,7 +80,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       node.querySelector('.qcard-sub')!.textContent = `${items || 'sin productos'} · ${formatEuros(orderTotal(data, o))}`;
       const state = o.status === 'open' ? 'Por cobrar'
         : o.status === 'delivered' ? (o.delivery_exception ? 'Entregado con excepción' : 'Entregado')
-        : p.prepPending ? `Preparando ${p.prepTotal - p.prepPending}/${p.prepTotal}` : p.undelivered ? 'Listo para entregar' : 'Todo entregado';
+        : p.prepPending ? `${data.completeOnDelivery.has(o.project_id) && kind === 'service' ? 'En cocina' : 'Preparando'} ${p.prepTotal - p.prepPending}/${p.prepTotal}` : p.undelivered ? 'Listo para entregar' : 'Todo entregado';
       node.querySelector('.qcard-state')!.textContent = o._pending ? `${state} · pendiente de confirmar` : state;
     }
 
