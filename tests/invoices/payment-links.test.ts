@@ -14,11 +14,13 @@ const stripe = createFakeStripe();
 let app: TestApp;
 let seq = 0;
 const RES = '5a1d0c2e-7b3f-4e8a-9c6d-2f4b8e1a3c50';
+const OTHER_RES = '6b2e1d3f-8c4a-4f9b-8d7e-3a5c9f2b4d61';
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
 
 test.before(async () => {
   app = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
-    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, payments: stripe }),
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, payments: stripe, workerKey: WORKER_KEY }),
   });
 });
 
@@ -85,3 +87,30 @@ test('F5: el portal del organizador ve el enlace abierto de cada factura sin cob
   const shown = (await money()).invoices.find((i: any) => i.id === id).payment_link;
   assert.deepEqual([shown.url, shown.provider], [created.data.url, 'stripe']);
 });
+
+test('«Pagar ahora» del portal (F5, worker de Organizers): solo dentro del ámbito y vuelve a Organizers', async () => {
+  const id = await issued(200);
+  const other = await issued(50);
+  await app.t.db.query(`insert into invoices.issued_allocations (issued_invoice_id, target_app, target_kind, target_id, target_label, allocated_amount) values ($1, 'booking', 'reservation', $2, 'Reserva', 200), ($3, 'booking', 'reservation', $4, 'Otra', 50)`,
+    [id, RES, other, OTHER_RES]);
+  const uid = (await app.t.db.query<{ u: string }>(`select user_id u from core.memberships where app = 'organizers' limit 1`)).rows[0]!.u;
+  const portal = (body: Record<string, unknown>, caller = 'organizers') => app.call('/api/v1/worker/payment-links/portal', { token: null, method: 'POST', body,
+    headers: { 'x-ikisai-worker-key': WORKER_KEY, 'x-ikisai-caller': caller } });
+  const ok = await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id, return_url: 'https://organizers.ikisai.com/#/retiro/x' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.match(ok.data.url, /^https:\/\/checkout\.stripe\.com\//);
+  const sent = stripe.requests.at(-1)!;
+  assert.deepEqual([sent.successUrl, sent.amountCents], ['https://organizers.ikisai.com/#/retiro/x', 22000]);
+  assert.equal((await links(id))[0]!.requested_from, 'portal');
+  // Una URL de vuelta ajena no se usa
+  await app.t.db.query(`update invoices.payment_links set status = 'cancelado' where issued_invoice_id = $1`, [id]);
+  await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id, return_url: 'https://ejemplo.invalid/robar' });
+  assert.equal(stripe.requests.at(-1)!.successUrl, 'https://organizers.ikisai.com/');
+  // Fuera de ámbito (factura de otra reserva u otra reserva) y otro llamante
+  for (const body of [{ actor: uid, reservation_id: RES, issued_invoice_id: other }, { actor: uid, reservation_id: OTHER_RES, issued_invoice_id: other }]) {
+    const res = await portal(body);
+    assert.deepEqual([res.status, res.data.error.code], [403, 'OUT_OF_SCOPE']);
+  }
+  assert.equal((await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id }, 'booking')).status, 403);
+});
+

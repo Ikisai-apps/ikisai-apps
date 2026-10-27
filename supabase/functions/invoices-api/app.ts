@@ -17,6 +17,8 @@ import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
 // Finance (antes Invoices): finance.ikisai.com es el dominio; invoices.ikisai.com y tramita.ikisai.com redirigen a él (301, fase C).
 export const INVOICES_ORIGINS = ['https://finance.ikisai.com', 'https://ikisai-invoices.pages.dev'];
+/** A dónde vuelve quien paga desde el portal del organizador (F5): solo a Organizers. */
+const ORGANIZERS_RETURN = ['https://organizers.ikisai.com', 'https://ikisai-organizers.pages.dev'];
 export const INVOICES_BUCKET = 'purchase-documents';
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
 
@@ -922,7 +924,21 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         return rereadDrive();
       },
     }],
-    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute],
+    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute, {
+      // «Pagar ahora» del portal (F5 de Organizers, API.md §19.3): el servidor de Organizers pide el enlace en nombre del
+      // organizador. Solo con `X-Ikisai-Caller: organizers`; el ámbito lo comprueba el SQL (portal_payment_scope).
+      method: 'POST', pattern: 'payment-links/portal', handler: async ({ request, json, invoke }) => {
+        if ((request.headers.get('x-ikisai-caller') ?? '').trim().toLowerCase() !== 'organizers') fail(403, 'CALLER_REJECTED', 'Solo el servidor de Organizers pide enlaces del portal.');
+        const body = (await json().catch(() => null)) as { actor?: unknown; reservation_id?: unknown; issued_invoice_id?: unknown; return_url?: unknown } | null;
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        for (const k of ['actor', 'reservation_id', 'issued_invoice_id'] as const) if (typeof body?.[k] !== 'string' || !uuid.test(body[k] as string)) fail(422, 'INVALID_ARGS', `Falta ${k}.`, { field: k });
+        await invoke('invoices.portal_payment_scope', { actor: body!.actor, reservation_id: body!.reservation_id, issued_invoice_id: body!.issued_invoice_id });
+        // Vuelta al portal: solo a Organizers (nunca a una URL que mande quien llama sin comprobar)
+        const back = typeof body!.return_url === 'string' && ORGANIZERS_RETURN.some((o) => (body!.return_url as string).startsWith(`${o}/`)) ? body!.return_url as string : `${ORGANIZERS_RETURN[0]}/`;
+        const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success: back, cancel: back });
+        return { url: out.url, provider: out.provider, expires_at: out.expires_at, amount: out.amount, reused: out.reused };
+      },
+    } satisfies WorkerRoute],
   });
   return withServerCaller(handler, base.workerKey);
 }

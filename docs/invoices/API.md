@@ -2170,3 +2170,19 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
 - **F5 de Organizers:** `portal_reservation_money` añade `payment_link: {url, provider, expires_at} | null` a cada factura: el abierto y vigente. **Leer no crea nada.** La acción del portal que lo crea al pulsar «Pagar ahora» va en la PR 3.
 - Pruebas: `tests/invoices/payment-links.test.ts`, con el Stripe falso.
 
+### 19.3 «Pagar ahora» desde el portal y ficha de la emitida (PR 3)
+
+- **Portal (F5, acordado con Organizers):** si la factura no trae `payment_link`, el servidor de Organizers llama a `POST invoices-api/api/v1/worker/payment-links/portal`.
+  - **Cabeceras:** `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: organizers`.
+  - **Cuerpo:** `{actor, reservation_id, issued_invoice_id, return_url?}`.
+  - **Antes de crear nada:** la acción de sistema `invoices.portal_payment_scope` (0256) comprueba lo mismo que F2: editor u owner del portal, reserva de su ámbito y factura de esa reserva. Si no, `403 OUT_OF_SCOPE`.
+  - **Respuesta:** `{url, provider, expires_at, amount, reused}`.
+  - **Vuelta:** `return_url` solo vale si es de Organizers (`https://organizers.ikisai.com/…`); si no, la portada del portal.
+- **Ficha de la emitida (Finance):** bloque «Pago en línea»:
+  - el enlace abierto, con caducidad, «Copiar» y «Compartir»;
+  - «Pagada en línea el…»;
+  - «Crear enlace de pago» (editor u owner, con red);
+  - los enlaces anteriores, caducados o cancelados.
+  - Sin red, lo dice.
+- **Pendiente (PR 4):** el webhook de Stripe y la conciliación diaria, que marcan la factura cobrada. Necesitan la cuenta de servicio `invoices` del núcleo (petición a Core del 28-10).
+
