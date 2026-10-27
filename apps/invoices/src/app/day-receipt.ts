@@ -53,12 +53,24 @@ export interface DayReceipt {
 const METHOD_LABELS: Record<string, string> = { cash: 'Metálico', bizum: 'Bizum', card: 'Tarjeta', bitcoin: 'Bitcoin', transfer: 'Transferencia' };
 export const methodLabel = (k: string): string => METHOD_LABELS[k] ?? k;
 
+/**
+ * Número de cobro: el que manda la app o, en un cobro suelto (`<app>:receipt:<id>`, como el de la caja de Flow), los 8
+ * primeros caracteres del id en mayúsculas, los mismos que la app pone en la descripción. Así un cobro nunca se imprime
+ * como «Ticket de ventas», que es el del día.
+ */
+export function receiptNumberOf(entry: Pick<ReceiptEntry, 'receipt_number' | 'source_ref'>): string | null {
+  const own = entry.receipt_number?.trim();
+  if (own) return own;
+  const m = /^[a-z_]+:receipt:([0-9a-zA-Z-]{8,})$/.exec(entry.source_ref ?? '');
+  return m ? m[1]!.slice(0, 8).toUpperCase() : null;
+}
+
 /** El justificante de un ingreso: ticket o factura simplificada, con su número de cobro si lo trae. */
 export function dayReceipt(entry: ReceiptEntry): DayReceipt {
   if (entry.kind !== 'income') throw new Error('Solo los ingresos tienen justificante de ventas.');
   if ((entry.nature ?? 'fiscal') !== 'fiscal') throw new Error('Un apunte de proceso no tiene justificante: no va a la gestoría.');
   const kind = entry.receipt_kind === 'invoice' ? 'invoice' : 'ticket';
-  const number = entry.receipt_number?.trim() || null;
+  const number = receiptNumberOf(entry);
   return {
     title: kind === 'invoice' ? 'Factura simplificada' : number ? 'Ticket de venta' : 'Ticket de ventas',
     number,
