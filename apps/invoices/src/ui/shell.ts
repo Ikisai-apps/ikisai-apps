@@ -5,6 +5,7 @@ import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountAppEntries, mountEvent, mountReceipt } from './app-entries.ts';
+import { mountCashCount } from './cash-count.ts';
 import { startValidationConflictWatcher } from './invoices.ts';
 import { mountInvoices } from './invoice-list.ts';
 import { mergesAreOwn } from './undo.ts';
@@ -31,7 +32,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento', '#/justificante'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento', '#/justificante', '#/arqueo'] },
   { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
   { hash: '#/compras', label: 'Compras', icon: 'cart' },
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
@@ -46,6 +47,7 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/apuntes': { title: 'Ingresos y gastos de apps', screen: 'invoices.apuntes', mount: mountAppEntries },
   '#/evento': { title: 'Evento', screen: 'invoices.evento', mount: mountEvent },
   '#/justificante': { title: 'Justificante', screen: 'invoices.justificante', mount: mountReceipt },
+  '#/arqueo': { title: 'Arqueo del día', screen: 'invoices.arqueo', mount: mountCashCount },
   '#/facturas': { title: 'Facturas', screen: 'invoices.facturas', mount: mountInvoices },
   '#/compras': { title: 'Compras', screen: 'invoices.compras', mount: mountPurchases },
   '#/gestoria': { title: 'Gestoría', screen: 'invoices.gestoria', mount: mountAccounting },
