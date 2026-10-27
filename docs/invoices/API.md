@@ -1925,7 +1925,7 @@ Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige 
 - **«Evento»** (`#/evento?id=<event_id>`): ingresos − gastos = resultado, **sin IVA**.
   - **Ingresos:** los apuntes de ingreso de apps del evento y lo asignado de las emitidas registradas.
   - **Gastos:** lo asignado de las recibidas validadas o archivadas y los gastos de apps.
-  - Las recibidas asignadas sin validar se dicen, pero no cuentan.
+  - Las recibidas asignadas sin validar (por ejemplo, una compra rápida sin justificante) cuentan como gasto de proceso, marcadas (27-10).
   - Cada movimiento abre su ficha.
   - El cálculo está en `app/app-entries-state.ts`.
 - **Gestoría:**
@@ -1976,6 +1976,14 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
   - el justificante, solo para lo fiscal;
   - la lista y la vista «Evento», con los dos tipos;
   - **valor por defecto** (Core, 27-10): `fiscal`, para lo que ya hay y para lo que llegue sin `nature`. Cuando Flow lo mande, el cierre del día irá como `process` y «Enviar a Finance» como `fiscal`.
+- **Ingresos y gastos: solo lo que tiene factura o ticket** (VG, 27-10, ampliación):
+  - `receipt_file_id` (documento de Finance ya verificado) y `receipt_number` (número de la factura o del ticket) en el apunte y en `record_app_entry`;
+  - un **gasto** sin `nature` es `fiscal` si trae justificante y `process` si no. Un gasto `fiscal` sin justificante da `422 RECEIPT_REQUIRED`;
+  - un **ingreso** sin `nature` sigue siendo `fiscal` (lo antiguo). Flow manda `nature: "process"` en el cierre del día desde el sábado;
+  - **de proceso a fiscal sí, al revés no:** adjuntar el justificante (al reenviar o en Finance, desde la ficha) pasa el apunte a fiscal. Volver a proceso da `409 NATURE_CHANGE`, y quitar el justificante de un gasto fiscal, `RECEIPT_REQUIRED`;
+  - lo que puso Finance (justificante, evento y notas) no lo borra un reenvío que no lo trae;
+  - **compra rápida** (§18): con `file_id` o `invoice_number`, `fiscal`; sin ellos, `process`. La factura no se valida sin su documento, así que no llega a la gestoría hasta tenerlo;
+  - **vista «Evento»:** las recibidas asignadas aún sin validar cuentan como gasto de proceso, marcadas.
 - **Para no contar dos veces en «Evento»** (Core, 27-10): cada cobro va en un solo apunte. El cierre de Flow excluye lo ya enviado como fiscal, y Finance no resta nada.
 
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
@@ -2002,6 +2010,7 @@ Ficha de capacidad para el catálogo del núcleo:
   "vat_rate": 21,                                     // opcional: 0, 4, 5, 10 o 21
   "description": "Hielo para la barra",               // hasta 120 caracteres, el objeto de la compra
   "file_id": "<uuid>",                                // opcional: foto o PDF de Finance ya verificado (core.files)
+  "invoice_number": "T-0042",                         // opcional: número de la factura o del ticket (hasta 64)
   "target": { "app": "booking", "kind": "event", "id": "<uuid>" },   // o { "app": "general", "kind": "unassigned" | "operating_expense" | "investment" }
   "notes": "Pagado con la caja de la barra"           // opcional, hasta 2000
 }
@@ -2011,7 +2020,7 @@ Ficha de capacidad para el catálogo del núcleo:
 
 ```json
 {
-  "invoice_id": "<uuid>", "code": "FVR_2026_012", "status": "pendiente_revision",
+  "invoice_id": "<uuid>", "code": "FVR_2026_012", "status": "pendiente_revision", "nature": "fiscal",
   "supplier": { "id": "<uuid>", "name": "Hielos del Sur", "created": true },
   "total": 36.3, "base": 30, "vat": 6.3,
   "target": { "app": "booking", "kind": "event", "id": "<uuid>", "label": "Eventos › Evento de octubre · 2026-10-30" },
@@ -2019,6 +2028,8 @@ Ficha de capacidad para el catálogo del núcleo:
   "summary": "FVR_2026_012 · Hielos del Sur · 36,30 € · Eventos › Evento de octubre · 2026-10-30"
 }
 ```
+
+**Fiscal o de proceso** (VG, 27-10): con justificante (`file_id` o `invoice_number`), `nature: "fiscal"`; sin él, `"process"`. Una compra de proceso cuenta en la vista «Evento» (marcada), pero no llega a la gestoría, porque una factura no se valida sin su documento original. Al adjuntarle el documento en Finance, sigue el camino de siempre.
 
 **Qué hace por dentro:** son operaciones de fila normales por el commit de siempre, con `beforeCommit`, riesgo de agentes y `core.commit`.
 - **Proveedor:** el del `id`. Si no hay `id`, el que ya existe con ese NIF o, sin NIF, con ese nombre (sin mayúsculas ni acentos). Si no existe ninguno, crea uno nuevo.
