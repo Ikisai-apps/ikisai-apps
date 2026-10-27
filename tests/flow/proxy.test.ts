@@ -30,3 +30,14 @@ test('proxy · reenvía X-Flow-Customer y X-Visitor; la IP la pone el proxy, no 
     assert.equal(seen!.get('origin'), 'https://flow.ikisai.com');
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('proxy · entradas (VG, 27-10): 301 desde /equipo a la raíz, /carta a ven y el enlace viejo de Guests a la carta', async () => {
+  const go = async (u: string) => { const r = await worker.fetch(new Request(u), env); return [r.status, r.headers.get('location')]; };
+  assert.deepEqual(await go('https://flow.ikisai.com/equipo'), [301, 'https://flow.ikisai.com/']);
+  assert.deepEqual(await go('https://flow.ikisai.com/equipo/?desde=central'), [301, 'https://flow.ikisai.com/?desde=central']);
+  assert.deepEqual(await go('https://flow.ikisai.com/carta'), [301, 'https://ven.ikisai.com/']);
+  assert.deepEqual(await go('https://flow.ikisai.com/?invitacion=abc&v=def'), [301, 'https://flow.ikisai.com/recorridos/carta?invitacion=abc&v=def']);
+  // La raíz (equipo) y la carta nueva se sirven sin redirigir.
+  assert.deepEqual(await go('https://flow.ikisai.com/'), [200, null]);
+  assert.deepEqual(await go('https://flow.ikisai.com/recorridos/carta?v=abc'), [200, null]);
+});

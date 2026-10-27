@@ -54,12 +54,12 @@ test.afterAll(async () => {
 
 async function enter(page: Page): Promise<void> {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${baseURL}/equipo`);
+  await page.goto(`${baseURL}/`);
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
-  await page.goto(`${baseURL}/equipo#/p/${board}/avance`);
+  await page.goto(`${baseURL}/#/p/${board}/avance`);
 }
 
 test('avance · caja general, discos, filtros y tarjeta con pasos que se marca hecha', async ({ page }) => {

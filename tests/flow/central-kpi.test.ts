@@ -30,7 +30,7 @@ test('flow · central_kpi_projection: ventas de ayer, cierres pendientes, pedido
   const before = await kpis();
   assert.deepEqual(Object.keys(before).sort(), ['flow.buffers_below_target', 'flow.day_closures_pending', 'flow.orders_unfinished_past', 'flow.sales_yesterday']);
   const s = before['flow.sales_yesterday'];
-  assert.deepEqual([s.unit, s.period, s.direction, s.link], ['eur', 'actual', 'up', 'https://flow.ikisai.com/equipo/#/']);
+  assert.deepEqual([s.unit, s.period, s.direction, s.link], ['eur', 'actual', 'up', 'https://flow.ikisai.com/#/']);
   for (const k of ['flow.day_closures_pending', 'flow.orders_unfinished_past', 'flow.buffers_below_target']) assert.equal(before[k].direction, 'down');
 
   const live = uuid(), pruebas = uuid();
