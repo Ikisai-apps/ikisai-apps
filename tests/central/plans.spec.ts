@@ -126,6 +126,10 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   expect(stored).toContain('Dormitorio_3');
   expect(stored).toContain('data-name="Salón"');
 
+  // Primero, las formas que ya trae el dibujo, cada una con su estancia (VG, 27-10); y el guardado, a la vista.
+  await expect(page.locator('#placeShapesHead')).toContainText('todas con su estancia');
+  await expect(page.locator('#placeShapes [data-shape-row]')).toHaveCount(2);
+  await expect(page.locator('#placeSaved')).toContainText('Guardado a las');
   // «Por revisar»: Recepción (la cama no: va con su habitación). Se pone en el plano y se mueve y estira con el teclado.
   await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 1');
   await page.locator('#placeReview').getByRole('button', { name: 'Poner Recepción en el plano' }).click();
@@ -151,6 +155,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await expect.poll(async () => (await shapeOf(ids.lounge)).s!.points[0]![0], { timeout: 5000 }).toBeCloseTo(0.3, 2);
   await page.locator('#placePlaced').getByRole('button', { name: 'Salón' }).click();
   const corner = page.locator('#placeEditor .ctl-placehandle').nth(2);
+  await corner.scrollIntoViewIfNeeded();
   const cb = (await corner.boundingBox())!;
   await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
   await page.mouse.down();
@@ -191,6 +196,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   // Estirar el dormitorio estira también la cama, solo en pantalla.
   await page.locator('#placePlaced').getByRole('button', { name: 'Dormitorio 3' }).click();
   const handle = page.locator('#placeEditor .ctl-placehandle').nth(2);
+  await handle.scrollIntoViewIfNeeded();
   const hb = (await handle.boundingBox())!;
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
   await page.mouse.down();
@@ -215,7 +221,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await expect.poll(async () => (await api.app.t.db.query<{ g: unknown }>(`select grid as g from resources.floor_plans where id = $1`, [plan.id])).rows[0]!.g).toEqual({ metersPerUnit: 0.05, originX: 0, originY: 0 });
   await expect(page.locator('#decorStage .map-box')).toBeVisible();
   await page.locator('#placeTabs [data-tab="estancias"]').click();
-  await expect(page.locator('#placeReviewHead')).toBeVisible();
+  await expect(page.locator('#placeShapesHead')).toBeVisible();
 
   // Imágenes del centro: el owner las sube por edificio (una silueta en PNG).
   await page.locator('#newCenterImage').click();
@@ -265,6 +271,9 @@ test('planos · un giro se coloca bien; lo que no se lee, «Por revisar» con el
   await expect(page.locator('#placeUnmatched')).not.toContainText('rect123');
   // La despensa no se coloca mal: va a «Por revisar» con el motivo.
   expect((await shapeOf(ids.pantry)).p).toBeNull();
+  // La forma que no es de ninguna estancia sale arriba, para elegir cuál es; lo que falta, en «¿Falta alguna?».
+  await expect(page.locator('#placeShapes [data-shape-row="Cuarto_de_calderas"]')).toContainText('Aún no es de ninguna estancia');
+  await page.locator('#placeMissing').evaluate((d) => { (d as HTMLDetailsElement).open = true; });
   const pantry = page.locator(`#placeReview [data-space="${ids.pantry}"]`);
   await expect(pantry).toContainText('No se ha colocado sola: el SVG la gira o la deforma de una manera que no se puede leer.');
   await expect(pantry.getByRole('button', { name: 'Poner Despensa en el plano' })).toHaveAccessibleDescription(/no se puede leer/);

@@ -118,6 +118,8 @@
 
 - 2026-10-27 · Camas con un solo modelo (VG, por Core y Central): en los tres planos de camas (Inicio «Tu habitación en el plano», Alojamiento y «Ver las camas en el plano» del visitante) la forma de cada cama sale de su disposición en Booking (`layout` de `portal_lodging` y `booking_public_beds`, Booking 1417) con `bedShape` del kit 0.69.9 sobre la forma de su habitación (`withBedLayouts` en `ui/plan.ts`), nunca de Recursos. Sin disposición, la cama no se pinta: queda la lista y «Aquí» va en su habitación. Las e2e siembran la disposición en Booking (`bedLayout`) y ya no dan forma a las camas en Recursos.
 
+- 2026-10-27 · ven.ikisai.com, única entrada pública (VG; diseño en `MUELA/equipo/feedback/guests/ENTRADA_VEN_RECORRIDOS.md`, de acuerdo con Flow): la página del evento abre con los recorridos «Pedir en la barra», «Tus datos» y «Alójate aquí», cada uno marcado al hacerlo. La carta de Flow se abre con el traspaso de la identidad (`?v=`, 0106) y vuelve con `?siguiente=datos|alojate`. «Alójate aquí» se ve en todo evento abierto con noches (recomendación de vg-48). Dirección y staff, como anónimos hasta que el núcleo ate el visitante al miembro. Prueba en `visitantes.spec.ts`.
+
 ## Pendiente
 
 - Tu cama en el plano también en el Inicio (con la habitación sin abrir), el Outsider y la Casa: Guests ya lee `room_layout` y `bed_layout` de la cama propia (`ownBedRoom` en `ui/plan.ts`); pedido a Booking en `portal_lodging.mine`, `portal_my_stays` y `default_bed`. Sin ellos, «Aquí» va en la habitación.

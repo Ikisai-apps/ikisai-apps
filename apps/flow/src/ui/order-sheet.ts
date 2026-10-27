@@ -178,7 +178,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
       replace(body, paidLines(),
         ...(refunds.length ? [el('section', { class: 'order-refunds' }, el('h3', null, 'Devoluciones pendientes'),
           ...refunds.map((r) => el('div', { class: 'order-refund' }, el('span', null, `${formatEuros(-r.amount_cents)} · ${r.method ? (CHECKOUT_METHOD_LABELS as Record<string, string>)[r.method] ?? SETTLE_METHOD_LABELS[r.method as 'cash'] : ''}`),
-            act({ class: 'secondary' }, 'Ya devuelto', async () => { try { await actions.confirmRefund(r.id); toast('Devolución confirmada.'); } catch (e) { toast(describeError(e)); } }))))] : []));
+            act({ class: 'ghost' }, 'Ya devuelto', async () => { try { await actions.confirmRefund(r.id); toast('Devolución confirmada.'); } catch (e) { toast(describeError(e)); } }))))] : []));
       replace(totalEl, `Cobrado: ${formatEuros(o.total_cents ?? 0)}`);
     }
     shape = nextShape;
@@ -211,7 +211,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
         } catch (error) { toast(describeError(error)); }
       });
       const cash = pay('cash'); const bizum = pay('bizum');
-      const onAccount = data?.accountsEnabled ? [act({ class: 'secondary', 'data-method': 'account' }, 'A cuenta', async () => {
+      const onAccount = data?.accountsEnabled ? [act({ class: 'ghost', 'data-method': 'account' }, 'A cuenta', async () => {
         if (!isOnline(client)) { toast('Cargar a cuenta necesita conexión.'); return; }
         const fresh = order();
         if (!fresh || !data) return;
@@ -232,7 +232,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
       replace(foot, el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'view'; correction = null; shape = ''; paint(); } }, 'Cancelar'), save('cash'), save('bizum'));
     } else {
       replace(foot,
-        el('button', { type: 'button', class: 'secondary', onclick: () => { sheet.close(); openDeliverySheet(client, o.id, { onClose: () => openOrderSheet(client, o.id) }); } }, 'Entrega'),
+        el('button', { type: 'button', class: 'ghost', onclick: () => { sheet.close(); openDeliverySheet(client, o.id, { onClose: () => openOrderSheet(client, o.id) }); } }, 'Entrega'),
         ...(accountOpen(o) ? [el('small', { class: 'muted' }, 'En una cuenta abierta: se corrige al liquidarla.')]
           : [el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'correct'; correction = { lines: new Map(), extra: new Map() }; shape = ''; paint(); } }, 'Corregir pedido')]),
         ...(o.status === 'paid' && moneyBack && !o.account_id ? [act({ class: 'ghost danger-text' }, 'Anular cobro', async () => {
