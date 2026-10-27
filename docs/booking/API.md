@@ -2118,3 +2118,5 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 - **Recepción:** «Devolver…» de un cobro `online` muestra lo que propone la política.
 - **Adaptador:** `refund(providerRef, cents, idempotencyKey?)` admite la clave.
 
+
+**La cama propia en el plano (migración 1421; petición de Guests, CAMA_PROPIA_PLANO.md):** `portal_lodging.mine`, `portal_my_stays.items[]` y `portal_my_stays.default_bed` llevan `room_layout: {cols, rows} | null` y `bed_layout: {x, y, rot} | null`, con la misma forma que la 1417. Son de la cama propia, nunca de la de otras personas; sin disposición, `null`.
