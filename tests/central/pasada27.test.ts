@@ -57,7 +57,9 @@ test('textos · el mapa «dónde se lee» coincide con lo que piden los common-t
 
 test('textos · dónde se lee cada clave y las claves que pide algún portal, sin repetir', () => {
   assert.deepEqual(textPlaces('contact.phone'), [{ portal: 'guests', screen: 'Ayuda y contacto' }, { portal: 'organizers', screen: 'Contacto' }]);
-  assert.deepEqual(textPlaces('organizers.quote_note'), []);
+  assert.deepEqual(textPlaces('organizers.quote_note'), [{ portal: 'organizers', screen: 'Diseño' }]);
+  // Un texto que ningún portal lee: el correo de proveedores.
+  assert.deepEqual(textPlaces('contact.suppliers.email'), []);
   const keys = portalTextKeys();
   assert.equal(keys.length, new Set(keys).size);
   assert.ok(keys.includes('portal.privacy') && keys.includes('payment.instructions'));
