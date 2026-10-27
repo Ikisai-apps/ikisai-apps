@@ -80,6 +80,8 @@ export function lodgingUnlocked(code: string): boolean {
 
 /** «Salir de este móvil»: el token, la lista de eventos y la caché del visitante. */
 export async function forgetVisitor(): Promise<void> {
+  // Revoca solo el token de este móvil (C11 v2); sin red o sin él, se borra igual aquí.
+  if (visitorToken()) await call('/api/v1/public/visitor/logout', { json: {} }).catch(() => undefined);
   try { store()?.removeItem(TOKEN_KEY); store()?.removeItem(EVENTS_KEY); store()?.removeItem(RENEWED_KEY); store()?.removeItem(LODGING_KEY); } catch { /* nada guardado */ }
   await cache.clearUser(CACHE_USER);
 }
@@ -123,6 +125,37 @@ export async function redeemHandoff(code: string): Promise<boolean> {
   if (!out.token) return false;
   try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
   return true;
+}
+
+// --- «Guarda tu acceso» (C11 v2, núcleo 0106): código de un solo uso al correo ------------------------------------------
+/** Pide el código al correo. El núcleo responde igual exista o no. */
+export async function sendEmailCode(email: string): Promise<void> {
+  await call('/api/v1/public/visitor/email', { json: { email } });
+}
+
+/**
+ * Canjea el código. Si el correo era nuevo, queda guardado con este visitante; si ya guardaba otro acceso, llega su token y
+ * este móvil pasa a él (`recovered`).
+ */
+export async function verifyEmailCode(email: string, code: string): Promise<{ recovered: boolean }> {
+  const out = await call<{ visitorId?: string; token?: string; recovered?: boolean; saved?: boolean }>('/api/v1/public/visitor/email/verify', { json: { email, code } });
+  if (out.token) {
+    try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
+    await cache.clearUser(CACHE_USER);
+    return { recovered: true };
+  }
+  return { recovered: out.recovered === true };
+}
+
+/** Quita el correo de este acceso. */
+export async function forgetEmail(): Promise<void> {
+  await call('/api/v1/public/visitor/email/forget', { json: {} });
+}
+
+/** Su acceso: si tiene correo guardado y su pista («v•••@g•••.com»). */
+export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null }> {
+  const out = await call<{ emailSaved?: boolean; emailHint?: string | null }>('/api/v1/public/visitor/me');
+  return { emailSaved: out.emailSaved === true, emailHint: typeof out.emailHint === 'string' ? out.emailHint : null };
 }
 
 /** Una llamada con visitante; si su token ya no vale (revocado o malo), se borra, se crea otro y se repite una vez. */

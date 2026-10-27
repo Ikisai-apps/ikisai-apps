@@ -17,6 +17,7 @@ import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
 import { languageSelect } from './language.ts';
 import { offersBlock } from './offers.ts';
+import { accessBox } from './visitor-access.ts';
 import { mountLodge } from './lodge.ts';
 import { stayBlock, stayRequestText } from './stay.ts';
 
@@ -280,7 +281,10 @@ export function renderVisitor(root: HTMLElement): () => void {
   }
 
   function footer(): HTMLElement {
+    // «Guarda tu acceso» (tarjeta 3): en «Mis eventos» y en cada evento; para recuperar el de otro móvil, el mismo correo.
+    const code = location.hash.match(EVENT)?.[1]?.toUpperCase() ?? null;
     return el('footer', { class: 'gvisitor-foot' },
+      accessBox(code, () => route()),
       el('p', { class: 'small' }, t('visitor.onlyHere')),
       visitorToken() ? el('button', { type: 'button', class: 'ghost', id: 'visitorForget', 'data-feedback-id': 'guests.visitante.movil.salir', 'data-feedback-label': 'Salir de este móvil',
         onclick: async () => { await forgetVisitor(); location.hash = LIST; route(); } }, icon('logout', 16), ' ', t('visitor.forget')) : null);
