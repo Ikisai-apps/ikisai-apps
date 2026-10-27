@@ -118,6 +118,8 @@ export interface PortalInvoice {
   withholding: number | string; total: number | string; status: 'emitida' | 'rectificada' | 'registrada'; collected: boolean; collected_at: string | null; has_document: boolean;
   /** Concepto del cobro (Finance #313): señal, saldo o extras; `general` o `null`, sin rótulo. */
   purpose?: 'senal' | 'saldo' | 'extras' | 'general' | null;
+  /** Fase 6 (petición F5 a Finance): enlace de pago de la pasarela para esta factura, si Finance lo ha creado. */
+  payment_link?: { url: string; provider?: string | null; expires_at?: string | null } | null;
 }
 export interface PortalMoney { reservation_id: string; currency: string; invoices: PortalInvoice[]; totals: { invoiced: number | string; collected: number | string; pending: number | string } }
 /** Copia congelada de una factura (F2) o los PDF guardados de una registrada (se abren con `portalFile`, K2). */

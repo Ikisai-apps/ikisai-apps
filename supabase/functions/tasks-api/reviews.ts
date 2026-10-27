@@ -9,6 +9,10 @@
  * - `POST reviews/result {itemId, result: ok|fail, value?, text?, fileId?}`: el resultado de un ítem
  *   (`tasks.review_item_result`, §46.3). Un fallo crea la correctiva y «volver a comprobar»; solo un nuevo «ok» verifica.
  *   Es la capacidad `tasks.review_item_result` del catálogo (Flow marca desde su lista de comprobación).
+ * - `POST reviews/open {reviewId, override?, note?}`: «Lista para abrir» (`tasks.review_open`, §46.4). Con críticos
+ *   pendientes, 409 `REVIEW_NOT_READY`, salvo una owner con el área entera, `override` y una nota.
+ * - `GET reviews/projection?reviewId=…|eventRef=…`: la revisión con sus zonas, ítems y totales
+ *   (`tasks.review_items_projection`); capacidad `tasks.review_projection`. También quien solo lee.
  */
 import { createSync, fail, type AppRoute, type Supabase } from '../_kit/mod.ts';
 
@@ -58,6 +62,25 @@ export function reviewRoutes(supabase: Supabase): AppRoute[] {
       return await call(ctx, 'tasks.review_item_result', {
         itemId: (body.itemId as string).toLowerCase(), result: body.result, value: body.value ?? null, text: body.text ?? null, fileId: typeof body.fileId === 'string' ? body.fileId.toLowerCase() : null,
       });
+    },
+  }, {
+    method: 'POST', pattern: 'reviews/open', handler: async ({ ctx, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Abrir una revisión necesita permiso de edición en Tasks.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
+      if (typeof body.reviewId !== 'string' || !UUID.test(body.reviewId)) invalid('reviewId', 'reviewId debe ser un uuid.');
+      if (body.override !== undefined && typeof body.override !== 'boolean') invalid('override', 'override es true o false.');
+      if (body.note !== undefined && body.note !== null && (typeof body.note !== 'string' || body.note.length > 2000)) invalid('note', 'note es texto de hasta 2000 caracteres.');
+      return await call(ctx, 'tasks.review_open', { reviewId: (body.reviewId as string).toLowerCase(), override: body.override === true, note: body.note ?? null });
+    },
+  }, {
+    method: 'GET', pattern: 'reviews/projection', handler: async ({ ctx, url }) => {
+      const reviewId = url.searchParams.get('reviewId'), eventRef = url.searchParams.get('eventRef');
+      if (reviewId !== null && !UUID.test(reviewId)) fail(422, 'INVALID_INPUT', 'reviewId debe ser un uuid.', { field: 'reviewId' });
+      if (eventRef !== null && !EVENT_REF.test(eventRef)) fail(422, 'INVALID_INPUT', 'eventRef va como <app>:<referencia>.', { field: 'eventRef' });
+      if (!reviewId && !eventRef) fail(422, 'INVALID_INPUT', 'Falta reviewId o eventRef.', { field: 'reviewId' });
+      return await supabase.rpc('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.review_items_projection',
+        p_args: reviewId ? { reviewId: reviewId.toLowerCase() } : { eventRef } });
     },
   }];
 }

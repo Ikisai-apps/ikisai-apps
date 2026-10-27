@@ -94,6 +94,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       chips: chip,
       pending: row._pending === true,
       deleted,
+      // Toda la fila abre la ficha (hallazgo F-MAQ-4); «Editar» sigue para quien lo busca.
+      ...(deleted ? {} : { label: `Abrir ${row.name}`, onClick: () => openEditor(row) }),
       actions: [deleted
         ? el('button', { 'data-feedback-id': 'food.maquinaria.papelera.restaurar', 'data-feedback-label': 'Restaurar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void commitSafely([{ op: 'restore', table: T.equipment, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurada.`) }, icon('restore', 18), 'Restaurar')
         : el('button', { 'data-feedback-id': 'food.maquinaria.lista.editar', 'data-feedback-label': 'Editar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar')],
@@ -106,7 +108,10 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   }
 
   function paint(): void {
-    const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    // Lo que necesita atención, arriba (hallazgo F-MAQ-1, decisión de Core del 27-10): averiado o fuera de servicio, luego
+    // limitado y luego operativo; dentro de cada grupo, por orden alfabético.
+    const urgency = (r: Row) => (r.status === 'averiado' || r.status === 'fuera_de_servicio' ? 0 : r.status === 'limitado' ? 1 : 2);
+    const sorted = [...rows].sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name, 'es'));
     const active = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     replace(list, ...active.map((r) => item(r, false)));

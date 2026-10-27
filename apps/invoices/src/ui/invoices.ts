@@ -19,7 +19,7 @@ import {
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
-import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
+import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, proposePurchaseRequest, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext } from './shell.ts';
@@ -1434,6 +1434,18 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
   const quantity = el('input', { 'data-feedback-id': 'invoices.facturas.asignar.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', id: 'allocQuantity', placeholder: line.quantity === null ? 'Sin cantidad' : `de ${Number(line.quantity)} ${line.unit ?? ''}` });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const appArea = el('div');
+  // La solicitud de compra abierta del mismo proveedor, si hay una sola (con red): se propone, no se elige sola.
+  const proposal = el('div', { id: 'allocProposal' });
+  if (navigator.onLine) {
+    const supplier = mirror.suppliers.find((s) => s.id === invoice.supplier_id);
+    void searchTargets(client, 'tasks', '', 'purchase_request').then((items) => {
+      const match = proposePurchaseRequest(items, [supplier?.name, (supplier as { label?: string | null } | undefined)?.label]);
+      if (!match) return;
+      replace(proposal, el('p', { class: 'hint' }, 'Solicitud de compra abierta de este proveedor: ',
+        el('button', { 'data-feedback-id': 'invoices.facturas.asignar.propuesta', 'data-feedback-label': 'Usar la solicitud propuesta', class: 'linkbtn', type: 'button', id: 'useProposal',
+          onclick: () => { app = 'tasks'; paintApp(); choice = match; chosen.textContent = `Destino: ${targetLabel(match)}`; paintResults([match], 'Propuesta'); } }, match.label)));
+    }).catch(() => undefined);
+  }
 
   function paintApp(): void {
     for (const b of Array.from(appButtons.querySelectorAll('button'))) b.classList.toggle('on', b.dataset.app === app);
@@ -1485,7 +1497,7 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
   openSheet({
     title: `Asignar «${lineName(line)}»`,
     meta: `${eur(rest)} sin asignar de ${eur(line.net_amount)}`,
-    body: el('div', null, appButtons, appArea, el('div', { class: 'row2' }, field('Importe (base, sin IVA)', amount), field('Cantidad', quantity)), error),
+    body: el('div', null, proposal, appButtons, appArea, el('div', { class: 'row2' }, field('Importe (base, sin IVA)', amount), field('Cantidad', quantity)), error),
     foot: [el('button', { 'data-feedback-id': 'invoices.facturas.asignar.volver', 'data-feedback-label': 'Volver', class: 'ghost', type: 'button', onclick: () => void finish(null) }, 'Volver'), save],
     initialFocus: amount,
   });

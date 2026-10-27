@@ -278,7 +278,7 @@ Lo hago yo entero (es pequeño): `supabase/functions/organizers-api` (índice y 
 | **3 · Formalización** | Fecha definitiva, propuesta aceptada, señal, saldo y facturas en solo lectura | Booking, Finance, Tasks (proyecto `AAAAMMDD-`) |
 | **4 · Experiencia de Guests** | Qué ve, hace y contrata el huésped (módulos y acciones fijos, con vista previa), programa, materiales propios, preguntas propias, menú de Food con comentarios | Organizers (configuración, materiales, preguntas), Booking (programa), Food (menú) |
 | **5 · Decisiones del huésped** | Alojamiento delegable (las habitaciones de 2–4 plazas con baño son un extra que Ikisai factura al organizador), ofertas del organizador y cartel en PDF o JPG | Booking (camas, reserva atómica), Organizers (ofertas) |
-| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea | Finance y pasarela |
+| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea. Decisión de VG del 27-10-2026: después del sábado; Finance crea un enlace de pago por factura (F5) y Organizers enseña «Pagar ahora» (`app/pay-link.ts`, sección «Pagar en línea» de Pagos, ya construida) | Finance y pasarela |
 
 PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versión de este documento:
 - importes y facturas: fases 3 y 6;
