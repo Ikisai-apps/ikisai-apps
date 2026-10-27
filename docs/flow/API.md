@@ -508,3 +508,11 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - **ven → carta:** `?v=<traspaso>`. La carta lo quita de la dirección y lo canjea (`POST public/visitor/handoff/redeem`) solo si el navegador no tiene visitante; liga a él su cliente web (`customer_visitor`), también tras el primer pedido.
   - **carta → ven:** tras enviar el pedido, «Tus datos» y, si el evento admite alojamiento, «Alójate aquí» abren `https://ven.ikisai.com/e/<código>?siguiente=datos|alojate&v=<traspaso nuevo>` (con `alojate`, también `?alojate`).
 - `GET public/menu` añade `eventCode`: el código público del evento del flujo, solo si Booking lo da como abierto.
+
+## 54. Pedido de prueba de un miembro (migración `0952`, con el núcleo `0115`)
+
+- Dirección y staff entran en ven.ikisai.com con su identidad (visitante atado a su cuenta, `POST public/visitor/as-member`) y pueden pedir desde la carta.
+- Un pedido cuyo cliente tiene un visitante de una persona del equipo (`core.visitor_member`) nace con `test_by` (quién) y `test_name` (su nombre). Una ampliación hereda la marca. La pone el trigger `flow.orders_member_test`; nadie la cambia (no es columna escribible).
+- No cuenta en caja ni en Finance: `flow.day_summary` (cierre, envío a Food y a Finance) y `flow.central_kpi_projection` lo dejan fuera. Se prepara y se entrega como cualquier otro.
+- Se ve: en Caja y Servicio, «Pedido de prueba (nombre)» en la tarjeta; en la carta, al enviarlo y en «Mis pedidos» (`testName` en `public/mine`).
+- Recomendación de vg-48 (VG aún no la ha contestado): si decide cobrarlo como a un huésped, se quita el filtro y la marca queda solo como aviso.
