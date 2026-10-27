@@ -235,7 +235,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const refreshToken = `ref-${randomUUID()}`;
     const user = users.find((u) => u.email === email)!;
     sessions.set(token, { userId: userIds.get(email)!, email, displayName: user.displayName ?? email, refreshToken, role: user.role });
-    return { token, refreshToken, expiresAt: Math.floor(Date.now() / 1000) + 3600, expiresIn: 3600 };
+    // Dos días: las pruebas que fijan el reloj de la página (cocina: las 11:20 de hoy) no deben ver la sesión caducada
+    // según a qué hora corra la CI (de madrugada, una hora contada desde la hora real ya «pasó» a las 11:20).
+    const ttl = 2 * 24 * 3600;
+    return { token, refreshToken, expiresAt: Math.floor(Date.now() / 1000) + ttl, expiresIn: ttl };
   }
 
   function authenticate(req: IncomingMessage) {

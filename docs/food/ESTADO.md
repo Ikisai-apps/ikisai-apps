@@ -68,6 +68,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 - **Rendimiento del ingrediente** (migración 1112; API.md §2.13): «1 tomate = 8 rodajas» en el ingrediente; las cuentas de la carta y la previsión para Flow (`prep_unit`, `prep_need_total`, `purchase_unit` y `yield`); la sección «Rendimiento» en Previsión. Prueba: `carta-rendimiento.test.ts`.
 
+- **Capacidades en el catálogo del núcleo** (migración 1113; API.md §2.14): `food.carta_prep`, `food.carta_prep_lines`, `food.event_offers`, `food.event_needs` y `food.use_carta_in_event`, con la ruta `POST carta/:id/use-in-event`. Prueba: `capability.test.ts`.
+
 ## Aceptación del usuario (6 de octubre de 2026)
 
 - Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.

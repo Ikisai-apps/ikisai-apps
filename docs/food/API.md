@@ -371,6 +371,22 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
 - **Estación en el recetario:** cada línea de ingrediente del formulario de receta tiene «Estación» (sin estación, o de 1 a 4).
 - **En la app:** la pestaña Previsión de la carta lleva la sección «Rendimiento de los ingredientes» con los que las recetas cuentan en piezas («1 unidad = 8 rodaja»). El plan de bandejas añade «24 rodaja = comprar 3 unidad».
 
+### 2.14 Capacidades de Food en el catálogo del núcleo (27-10-2026; migración 1113)
+
+Lo que Food ofrece a otras apps (Flow, Booking) con los permisos reales de la persona (núcleo 0097; rutas `read/<schema.fn>` desde la 0102):
+
+| Capacidad | Tipo | Ruta | Para qué |
+|---|---|---|---|
+| `food.carta_prep` | lectura | `GET read/food.carta_prep_totals_projection` | Previsión de la carta por ingrediente, con el rendimiento (§2.11, §2.13) |
+| `food.carta_prep_lines` | lectura | `GET read/food.carta_prep_projection` | Previsión por línea y componente |
+| `food.event_offers` | lectura | `GET read/food.event_offers_projection` | Ofertas de comida del evento, sin internas (§2.12) |
+| `food.event_needs` | lectura | `POST read/food.event_needs` | Lo que piden todas las ofertas de un evento, por ingrediente |
+| `food.use_carta_in_event` | ejecución | `POST carta/:id/use-in-event` | «Usar en otro evento»: copia la carta (líneas, precios, previsión y reparto; sin ventas) y, con evento, su oferta |
+
+- Todas son de riesgo bajo e idempotentes. Los roles son editor y owner; `event_needs` también lo puede usar el lector.
+- Los anclajes son los ids de feedback de cada pantalla.
+- **`POST carta/:id/use-in-event {requestId, eventId?, name?}`:** valida el evento y lee la carta con `food.carta_copy_source`. Hace un solo commit con ids estables por `requestId`, así que repetirlo devuelve la misma copia (`replayed: true`). Errores: `CARTA_NOT_FOUND` y `EVENT_NOT_FOUND`.
+
 ### 2.3 Compra, preparación y stock
 
 ```text
