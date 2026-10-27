@@ -2,14 +2,13 @@
 -- navegador ('browser') o de un servidor ('server': otra Edge con identidad de servicio, un lote de sistema o una migración).
 -- Lo usan los hooks de las apps para no fiarse de lo que el cliente declara (Recursos: `source_app` solo lo pone el servidor).
 --   - La Edge marca el origen al confirmar: `public.core_commit(..., p_origin)` (sobrecarga; la de 7 argumentos sigue valiendo).
---   - Sin marca, se deduce: rol `system` o requestId `system:*` / `migration:*` → server; lo demás, browser.
+--   - Sin marca, es `server`: el navegador solo llega a core.commit por `/commands`, y el kit marca ahí siempre; las Edges que
+--     llaman a `core_commit` directamente (Finance y Tasks hacia Recursos, lotes de sistema, migraciones) son servidor.
 
 create or replace function core.batch_origin() returns text language sql stable as $$
   select case
     when nullif(current_setting('core.origin', true), '') in ('server', 'browser') then current_setting('core.origin', true)
-    when nullif(current_setting('core.role', true), '') = 'system' then 'server'
-    when coalesce(core.current_request_id(), '') like 'system:%' or coalesce(core.current_request_id(), '') like 'migration:%' then 'server'
-    else 'browser' end
+    else 'server' end
 $$;
 
 create or replace function public.core_commit(p_app text, p_actor uuid, p_request_id text, p_digest text, p_expected_cursor bigint, p_operations jsonb, p_confirmation jsonb, p_origin text)

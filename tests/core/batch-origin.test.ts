@@ -35,11 +35,12 @@ test('0118 · batch_origin: browser en un lote de persona, server con clave de w
     assert.equal(r4.status, 200, await r4.clone().text());
     const rows = (await db.query<{ origin: string; request_id: string }>('select origin, request_id from public.test_origins order by id')).rows;
     assert.deepEqual(rows.map((r) => r.origin), ['browser', 'server', 'browser', 'server']);
-    // Migración (los lotes de migración solo llevan operaciones de fila): se deduce por el requestId.
-    await db.query(`select set_config('core.request_id', 'migration:test-origin', false)`);
-    assert.equal((await db.query<{ o: string }>('select core.batch_origin() o')).rows[0]!.o, 'server');
-    await db.query(`select set_config('core.request_id', '', false)`);
-    assert.equal((await db.query<{ o: string }>('select core.batch_origin() o')).rows[0]!.o, 'browser', 'fuera de un lote, browser');
+    // Sin marca (una Edge que llama a core_commit directamente, una migración): server. Solo /commands marca browser.
+    assert.equal((await db.query<{ o: string }>('select core.batch_origin() o')).rows[0]!.o, 'server', 'sin marca, server');
+    const r5 = await db.query<{ r: any }>(`select public.core_commit('booking', $1, 'o-5', 'x', null, $2::jsonb, null) r`, [app.users.editor, JSON.stringify([call])]).catch((e: any) => ({ rows: [{ r: { error: String(e?.message ?? e) } }] }));
+    void r5;
+    const last = (await db.query<{ origin: string }>('select origin from public.test_origins order by id desc limit 1')).rows[0];
+    assert.equal(last?.origin, 'server', 'core_commit de 7 argumentos (una Edge) es server');
   } finally {
     await app.close();
   }
