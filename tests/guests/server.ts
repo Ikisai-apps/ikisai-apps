@@ -7,6 +7,7 @@ import { createServer, type Server } from 'node:http';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { createGuestsApp, GUESTS_ORIGINS } from '../../supabase/functions/guests-api/app.ts';
+import { createFlowApp } from '../../supabase/functions/flow-api/app.ts';
 import { TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
 import { HOUSE_MENU_ID } from '../../supabase/functions/_domain/food/mod.ts';
 
@@ -15,6 +16,8 @@ export interface GuestsTestServer {
   booking: TestApp;
   /** Reserva confirmada (con su evento); `ses: false` la deja en modo operativo. Devuelve reserva y evento. */
   reservation(options: { title: string; start?: string; end?: string; ses?: boolean; arrival?: string }): Promise<{ id: string; event: string }>;
+  /** Liga la barra de Flow (v1, la que atiende la carta) a ese evento de Booking, para «Mi pedido» del visitante. */
+  linkBar(eventId: string): Promise<void>;
   /** Un lote de Booking como el personal (owner), p. ej. recepción cobrando (`booking.join_from_visitor` con `method`). */
   bookingCommit(operations: unknown[]): Promise<void>;
   /** Jornadas abiertas con alojamiento (Booking 0498/0499, como `openDays` de tests/booking): 2 camas y una tarifa de 20 € por persona y noche. */
@@ -86,6 +89,9 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
     createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!] }),
   });
   const guests = createGuestsApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, origins: [origin], release: 'test' });
+  // «Mi pedido» del visitante (Flow FL2, 0915): las rutas públicas de flow-api, como el worker de Pages.
+  const flow = createFlowApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, release: 'test' });
+  await booking.t.db.exec(`set flow.portal_key = 'clave-de-prueba-solo-para-pglite'`);
   let seq = 0;
   let offline = false;
   const organizerUsers = new Map<string, string>();
@@ -114,9 +120,12 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       headers.set('Origin', origin);
       // Como el worker de Pages (§9.19): `/api/booking/v1/public/*` va a las rutas públicas de booking-api.
       const toBooking = (req.url ?? '').startsWith('/api/booking/v1/public/');
-      const target = toBooking ? `${booking.supabase.url}/functions/v1/booking-api${(req.url ?? '').replace('/api/booking/v1/', '/api/v1/')}` : `${booking.supabase.url}/functions/v1/guests-api${req.url ?? '/'}`;
-      if (toBooking) headers.delete('authorization');
-      const response = await (toBooking ? booking.handler : guests)(new Request(target, {
+      const toFlow = (req.url ?? '').startsWith('/api/flow/v1/public/');
+      const target = toBooking ? `${booking.supabase.url}/functions/v1/booking-api${(req.url ?? '').replace('/api/booking/v1/', '/api/v1/')}`
+        : toFlow ? `${booking.supabase.url}/functions/v1/flow-api${(req.url ?? '').replace('/api/flow/v1/', '/api/v1/')}`
+        : `${booking.supabase.url}/functions/v1/guests-api${req.url ?? '/'}`;
+      if (toBooking || toFlow) headers.delete('authorization');
+      const response = await (toBooking ? booking.handler : toFlow ? flow : guests)(new Request(target, {
         method: req.method, headers, body: ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : Buffer.concat(chunks),
       }));
       res.writeHead(response.status, Object.fromEntries(response.headers));
@@ -226,6 +235,9 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       return menuId;
     },
     bookingCommit: (operations) => commit(operations),
+    async linkBar(eventId) {
+      await booking.t.db.query(`update flow.projects set booking_event_id = $1 where id = '0f10a000-0000-4000-8000-000000000001'`, [eventId]);
+    },
     async openDays(start, end, fields = {}) {
       const res = uuid(); const event = uuid(); const space = uuid(); const rate = uuid(); const room = `Albergue ${uuid().slice(0, 6)}`;
       await commit([

@@ -24,6 +24,7 @@ import { photoUrl } from '../app/photos.ts';
 import { usage } from '../app/usage.ts';
 import { openConsumptionSheet } from './consumption-sheet.ts';
 import { SERVICE_ICONS, SERVICE_LABELS } from './events.ts';
+import { recipeColor } from './recipe-medal.ts';
 import { methodStepsView } from './method-steps.ts';
 import { shareText } from './menu-preparation.ts';
 import { dayChoiceLabel, daySelector, openMoveSheet, purposeText, stepRow, type PrepRow } from './prep-row.ts';
@@ -72,9 +73,10 @@ export function dishSafety(notes: DishNotes | undefined): HTMLElement | null {
 
 /** El medallón del plato: iniciales al momento y la foto cuando llega (solo las ya descargadas, sin red). */
 export function dishMedal(client: Parameters<typeof photoUrl>[0], recipe: RecipeRow | undefined, size = 44): HTMLElement {
-  const medal = renderMedal({ name: recipe?.name ?? 'Plato', size });
+  const color = recipe ? recipeColor(recipe.category) : null;
+  const medal = renderMedal({ name: recipe?.name ?? 'Plato', color, size });
   const ref = recipe ? recipe.photo_thumb_file_id ?? recipe.photo_file_id : null;
-  if (ref) void photoUrl(client, ref).then((url) => { if (url && medal.isConnected) medal.replaceWith(renderMedal({ name: recipe?.name ?? 'Plato', image: url, size })); }).catch(() => undefined);
+  if (ref) void photoUrl(client, ref).then((url) => { if (url && medal.isConnected) medal.replaceWith(renderMedal({ name: recipe?.name ?? 'Plato', image: url, color, size })); }).catch(() => undefined);
   return medal;
 }
 

@@ -6,6 +6,7 @@ import {
   type PreparationItem, type RecipeIngredient,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createSortableList, el, formatDate, icon, listRow, openSheet, plural, renderCover, renderMoneyBreakdown, replace, toast, type Focus, type FocusItem, type Sheet, type Sortable } from '@ikisai/ui-kit';
+import { recipeMedal } from './recipe-medal.ts';
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, EQUIPMENT_STATUS_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
@@ -182,11 +183,19 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       .sort((a, b) => (a.event?.start_date ?? '9999').localeCompare(b.event?.start_date ?? '9999'));
     const gone = rows.filter(({ event }) => event && event.end_date < today)
       .sort((a, b) => b.event!.start_date.localeCompare(a.event!.start_date));
+    // Los avisos por revisar de cada menú, como en la tarjeta de arriba (F-MEN-4); solo mientras se puede validar.
+    const warningsChip = (menu: MenuRow, event: FoodEvent | undefined): HTMLElement | null => {
+      const graph = graphs.get(menu.id);
+      if (!event || !graph || (menu.status !== 'borrador' && menu.status !== 'revisar')) return null;
+      const count = menuWarnings(event, graph).filter((w) => w.requiresAck).length;
+      return count ? el('span', { class: 'chip warn menuwarnings' }, plural(count, 'aviso', 'avisos')) : null;
+    };
     const row = ({ menu, event }: (typeof rows)[number]) => listRow({
       id: menu.id,
       title: event?.title ?? 'Evento no disponible',
       meta: event ? [dateRange(event), guestsLabel(event), mealPlanLabel(event.meal_plan)] : ['Sin datos del evento en este dispositivo'],
       chips: [event ? menuChip(event, menu) : el('span', { class: 'chip' }, MENU_STATUS_LABELS[menu.status]),
+        warningsChip(menu, event),
         fresh.get(menu.id) ? el('span', { class: 'chip warn menucomments-new' }, newCommentsText(fresh.get(menu.id)!)) : null].filter((c): c is HTMLElement => c !== null),
       pending: menu._pending === true,
       label: `Abrir el menú de ${event?.title ?? 'este evento'}`,
@@ -778,7 +787,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           if (value !== Number(item.servings)) await commitSafely([{ op: 'update', table: T.menuItems, id: item.id, expectedRevision: item.revision, fields: { servings: value } }]);
         } });
       return el('div', { 'data-feedback-id': 'food.menu.platos.plato', 'data-feedback-label': 'Plato', class: 'dish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
-        el('span', { class: 'dishphoto' }, icon('chef', 20), img),
+        el('span', { class: 'dishphoto' }, recipe ? recipeMedal(recipe, 44) : icon('chef', 20), img),
         el('span', { class: 'dishname' }, el('strong', null, recipe?.name ?? 'Receta retirada'),
           recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null,
           recipe && isQuickPending(recipe, recipeLines) ? el('span', { class: 'chips' }, el('span', { class: 'chip warn quickchip' }, 'Rápida · por completar')) : null),
@@ -1049,7 +1058,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           const blocked = !house() && isQuickPending(recipe, recipeLines);
           if (blocked) {
             return el('li', null, el('div', { 'data-feedback-id': 'food.menu.platos.selector.rapida', 'data-feedback-label': 'Plato rápido por completar', class: 'recipecard disabled' },
-              el('span', { class: 'recipephoto' }, icon('chef', 30)),
+              el('span', { class: 'recipephoto' }, recipeMedal(recipe)),
               el('span', { class: 'recipebody' }, el('strong', null, recipe.name),
                 el('span', { class: 'recipemeta' }, 'Rápida: complétala (alérgenos e ingredientes) para usarla en un retiro.'),
                 el('a', { 'data-feedback-id': 'food.menu.platos.selector.completar', 'data-feedback-label': 'Completar en el Recetario', href: `#/recetario?receta=${recipe.id}`, class: 'linkbtn',
@@ -1061,7 +1070,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
               usage.track('food.menu.anadir_plato', ok ? 'success' : 'error');
               if (ok) await sheet?.close(true);
             } },
-            el('span', { class: 'recipephoto' }, icon('chef', 30), img),
+            el('span', { class: 'recipephoto' }, recipeMedal(recipe), img),
             el('span', { class: 'recipebody' }, el('strong', null, recipe.name),
               el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')),
               recipe.status === 'en_prueba' ? el('span', { class: 'chips' }, el('span', { class: 'chip' }, 'En prueba'), isQuickPending(recipe, recipeLines) ? el('span', { class: 'chip warn' }, 'Rápida') : null) : null)));

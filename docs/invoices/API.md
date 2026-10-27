@@ -2134,3 +2134,22 @@ Ficha de capacidad para el catálogo del núcleo:
 **Pruebas:** `tests/invoices/quick-purchase.test.ts`.
 
 **En el catálogo del núcleo** (0246, sobre la 0097 de Core): `core.register_capability` con esta ficha, los esquemas JSON de entrada y salida y las anclas `invoices.facturas.nueva`, `invoices.facturas.nueva.formulario` e `invoices.facturas.nueva.crear` (la alta manual de factura, lo más parecido en Finance). Prueba: `tests/invoices/capability.test.ts`.
+
+## 19. Pagos en línea (finance-18) · pasarela compartida
+
+Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_finance-18.md`: se cobra cada factura emitida; Stripe ahora y Redsys/Bizum después; enlace de 24 h. **Ningún dato de tarjeta pasa por Ikisai.**
+
+### 19.1 Adaptador compartido (`supabase/functions/_domain/payments/`, dueña Finance; lo usa también Booking)
+
+- `stripe.ts`:
+  - `createStripeGateway({ secretKey, fetch? })` → `PaymentGateway`:
+    - `createCheckout(req)`: Stripe Checkout con importe exacto en céntimos, `currency`, `description`, `metadata` (solo ids), `expiresAt` (de 30 min a 24 h; fuera de ese margen, `INVALID_EXPIRY`, y no se alarga solo), `successUrl`, `cancelUrl` e `idempotencyKey`;
+    - `getCheckout(id)` y `expireCheckout(id)`;
+    - `refund(paymentIntent, cents, idempotencyKey)`: devolución parcial o total.
+  - `verifyStripeSignature(body, header, secret)`: firma `Stripe-Signature` con 300 s de tolerancia.
+  - `normalizeStripeEvent(event)` → `{eventId, kind: paid | expired | refunded | failed | ignored, sessionId, paymentIntent, amountCents, refundedCents, currency, metadata}`.
+  - `defaultExpiry()`: 24 h.
+- `fake.ts`: `createFakeStripe()`, con el mismo contrato y sin red, para las pruebas. Además, `pay`, `failNext` y `webhook(id, type, secret)`, que da el cuerpo y la firma.
+- **Secretos:** la app los lee de su entorno y se los pasa (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Sin ellos, la app no conecta la pasarela.
+- Pruebas: `tests/invoices/payments-stripe.test.ts`.
+

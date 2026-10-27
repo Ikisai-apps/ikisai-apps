@@ -17,6 +17,8 @@ import { fb, fbIgnore, fbRows, type FbMark } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 
 export const MENU_STATUS_LABELS: Record<Menu['status'], string> = { borrador: 'Borrador', revisar: 'Por revisar', validado: 'Validado', cerrado: 'Cerrado' };
+/** El tipo de menú de Booking (`vegetariano`, `vegano`, `mixto`, `otro`), como se lee: «Vegetariano». */
+export const menuStyleLabel = (style: string | null | undefined): string => (style ? style.charAt(0).toUpperCase() + style.slice(1).replace(/_/g, ' ') : '—');
 export const SERVICE_LABELS: Record<ServiceType, string> = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', picnic: 'Picnic', merienda: 'Merienda', otro: 'Otro' };
 /** El icono de cada servicio, de los de comida del kit (K13): siempre al lado de su nombre, nunca solo. */
 export const SERVICE_ICONS: Record<ServiceType, IconName> = { desayuno: 'cup', comida: 'plate', cena: 'bowl', picnic: 'basket', merienda: 'cookie', otro: 'chefHat' };
@@ -162,17 +164,18 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const canCreate = !menu && !cancelled && !family && canWrite();
 
     const body = el('div', { 'data-feedback-id': 'food.eventos.ficha', 'data-feedback-label': 'Ficha del evento', class: 'ficha' },
+      // Lo que más importa en cocina, arriba (hallazgo F-EVT-4): las restricciones antes que los datos.
+      el('section', { 'data-feedback-id': 'food.eventos.ficha.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions' }, el('h4', null, 'Restricciones'),
+        restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
       el('dl', { 'data-feedback-id': 'food.eventos.ficha.datos', 'data-feedback-label': 'Datos del evento', class: 'kv' },
         el('dt', null, 'Fechas'), el('dd', null, dateRange(event)),
         el('dt', null, 'Personas'), el('dd', null, guestsLabel(event) + (event.minors_count ? ` · ${event.minors_count} menores` : '')),
         el('dt', null, 'Régimen'), el('dd', null, mealPlanLabel(event.meal_plan)),
-        el('dt', null, 'Tipo de menú'), el('dd', null, event.menu_style ?? '—'),
+        el('dt', null, 'Tipo de menú'), el('dd', null, menuStyleLabel(event.menu_style)),
         el('dt', null, 'Llegada y salida'), el('dd', null, `${shortTime(event.arrival_time) || '—'} · ${shortTime(event.departure_time) || '—'}`),
         el('dt', null, 'Códigos'), el('dd', { 'data-feedback-ignore': '' }, [event.event_code, event.reservation_code].filter(Boolean).join(' · ') || '—'),
       ),
       event.meal_notes ? el('p', { 'data-feedback-ignore': '' }, el('strong', null, 'Notas de alimentación: '), event.meal_notes) : null,
-      el('section', { 'data-feedback-id': 'food.eventos.ficha.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions' }, el('h4', null, 'Restricciones'),
-        restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
       cancelled ? el('p', null, el('span', { class: 'chip trash' }, 'La reserva está cancelada en Booking: no hace falta menú.')) : null,
       family && !cancelled ? el('div', { 'data-feedback-id': 'food.eventos.ficha.familiar', 'data-feedback-label': 'Evento familiar', class: 'banner notice', id: 'familyEvent', role: 'note' },
         el('div', null, el('strong', null, 'Evento familiar: come del menú de casa.'), ' No lleva menú propio. Sus personas se cuentan en el menú de casa de esos días.'),

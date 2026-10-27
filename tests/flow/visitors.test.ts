@@ -17,6 +17,7 @@ const uuid = () => crypto.randomUUID();
 let app: TestApp;
 let seq = 0;
 let code = '';
+let internalCode = '';
 let event = '';
 let visitor = '';
 
@@ -28,7 +29,9 @@ test.before(async () => {
   await app.t.db.query(`insert into booking.reservations (id, title, status, start_date, end_date, expected_guests, requires_meals, meal_plan_requested, menu_style_requested)
     values ($1, 'Encuentro de prueba', 'confirmada', '2026-10-30', '2026-11-01', 20, true, 'pension_completa', 'vegetariano')`, [reservation]);
   await app.t.db.query(`insert into booking.events (id, reservation_id) values ($1, $2)`, [event, reservation]);
-  code = (await app.t.db.query<{ code: string }>(`select code from booking.events where id = $1`, [event])).rows[0]!.code;
+  // El QR de ven.ikisai.com lleva el código público (Booking 0488); el interno (EVT_…) no sale fuera.
+  const codes = (await app.t.db.query<{ code: string; internal: string }>(`select public_code as code, code as internal from booking.events where id = $1`, [event])).rows[0]!;
+  code = codes.code; internalCode = codes.internal;
   await app.t.db.query(`update flow.projects set booking_event_id = $1 where id = $2`, [event, V1]);
 });
 test.after(async () => { await app.close(); });
@@ -49,6 +52,8 @@ test('visitantes · alta del visitante del kit y visitor_join: número una vez p
   assert.equal(first.status, 200, JSON.stringify(first.data));
   assert.ok(first.data.number >= 100); assert.deepEqual(first.data.orders, []); assert.equal(first.data.account_open, false);
   const again = await pub('visitor_join', { body: { event_code: code }, visitor });
+  // Mientras convivan, el código interno también lleva a la misma barra (0933).
+  assert.equal((await pub('visitor_join', { body: { event_code: internalCode }, visitor })).data.number, first.data.number);
   assert.equal(again.data.number, first.data.number);
   const rows = (await app.t.db.query<{ n: number }>(`select count(*)::int as n from flow.customers where origin = 'visitor'`)).rows[0]!.n;
   assert.equal(rows, 1);

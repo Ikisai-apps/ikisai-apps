@@ -36,6 +36,8 @@ export interface RequestContext {
   token: string;
   membership: Membership;
   bootstrap: Bootstrap;
+  /** El lote que se valida es un deshacer (`POST history/:cursor/undo`): las operaciones salen de `core.undo_plan`. */
+  undo?: boolean;
 }
 
 /** Hooks que cada app puede declarar. */
@@ -257,7 +259,19 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
 
   async function undoPlan(ctx: RequestContext, cursor: number) {
     if (isReadOnly(ctx.membership.role)) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    // Auditoría (27-10-2026): el plan lleva los valores anteriores de las filas, así que antes de darlo se mira el lote como
+    // en `history`. Si algún cambio no se ve (tabla no legible para su rol o fila fuera de su ámbito según `visible`), 404,
+    // igual que un cursor que no existe. Un lote ajeno solo lo deshace el owner de la app.
+    const batch = (await supabase.rpc<{ items: Array<{ cursor: number; actorId: string | null; changes: any[] }> }>('core_history', {
+      p_app: app, p_role: ctx.membership.role, p_before: cursor + 1, p_limit: 1,
+    })).items[0];
+    const hidden = () => fail(404, 'NOT_FOUND', messageFor('NOT_FOUND'), { cursor });
+    if (!batch || batch.cursor !== cursor) hidden();
+    if (hooks.visible && batch!.changes.some((c) => c.op !== 'call' && !hooks.visible!(c.table, c.after ?? c.before ?? {}, ctx))) hidden();
+    if (ctx.membership.role !== 'owner' && batch!.actorId !== ctx.user.id) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'), { reason: 'only the owner undoes batches of other people' });
     const plan = await supabase.rpc<{ cursor: number; operations: Operation[] }>('core_undo_plan', { p_app: app, p_cursor: cursor });
+    // El plan tiene una operación por cambio; si `history` dio menos, había cambios en tablas que su rol no lee.
+    if (plan.operations.length !== batch!.changes.length) hidden();
     return { ...plan, planHash: await sha256Hex(stable(plan.operations)) };
   }
 
@@ -265,7 +279,8 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     if (!body || typeof body.requestId !== 'string' || typeof body.planHash !== 'string') fail(422, 'INVALID_OPERATION', 'requestId y planHash son obligatorios.');
     const plan = await undoPlan(ctx, cursor);
     if (plan.planHash !== body.planHash) fail(409, 'UNDO_PLAN_CHANGED', messageFor('UNDO_PLAN_CHANGED'), { planHash: plan.planHash });
-    return commit(ctx, { requestId: body.requestId, operations: plan.operations, confirmationId: body.confirmationId ?? null }, { skipHooks: true });
+    // Pasa por `beforeCommit` como cualquier lote (ámbitos, campos inmutables, reglas de la app); `ctx.undo` lo distingue.
+    return commit({ ...ctx, undo: true }, { requestId: body.requestId, operations: plan.operations, confirmationId: body.confirmationId ?? null });
   }
 
   async function purgeDeleted(ctx: RequestContext, body: any) {
