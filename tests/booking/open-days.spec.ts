@@ -54,7 +54,7 @@ test('jornadas abiertas: alta con fechas (fecha definitiva) y confirmar sin prop
 
 test('jornadas abiertas: cartas de Food y «Alojar a alguien» en un paso; sin régimen de comidas', async ({ page }) => {
   const api = harness.api;
-  const res = api.serverInsert(RESERVATIONS, { title: 'Jornadas con barra', status: 'confirmada', start_date: inDays(0), end_date: inDays(2), expected_guests: 200, event_type: 'jornadas_abiertas', priority: 'media' });
+  const res = api.serverInsert(RESERVATIONS, { title: 'Jornadas con barra', status: 'confirmada', start_date: inDays(-1), end_date: inDays(3), expected_guests: 200, event_type: 'jornadas_abiertas', priority: 'media' });
   api.serverInsert(FINANCE, { id: res.id });
   const event = api.serverInsert(EVENTS, { reservation_id: res.id });
   const space = api.serverInsert(SPACES, { name: 'Albergue sintético', kind: 'habitacion', zone: 'Albergue', position: 1 });
@@ -82,11 +82,14 @@ test('jornadas abiertas: cartas de Food y «Alojar a alguien» en un paso; sin r
   await sheet.locator('#walkName').fill('Persona Suelta');
   await sheet.locator('#walkNights').fill('2');
   await expect(sheet.locator('#walkBed option')).toHaveText(['Albergue sintético · Cama 1']);
+  // «Desde» lo pone la app con su día (hora de Madrid); cerca de medianoche UTC no coincide con inDays(0)
+  const from = await sheet.locator('#walkFrom').inputValue();
+  const plusDays = (d: string, n: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
   await sheet.locator('#walkSave').click();
   await expect(sheet).toBeHidden();
   await expect.poll(() => api.rows(GUESTS).filter((g) => g.event_id === event.id).map((g) => g.first_name)).toEqual(['Persona Suelta']);
   const assignment = api.rows(ASSIGNMENTS).find((a) => a.event_id === event.id)!;
-  expect(assignment).toMatchObject({ bed_id: bed.id, persons: 1, from_date: inDays(0), to_date: inDays(2) });
+  expect(assignment).toMatchObject({ bed_id: bed.id, persons: 1, from_date: from, to_date: plusDays(from, 2) });
   await expect(walk.locator('#walkTonight')).toContainText('Persona Suelta');
 });
 
