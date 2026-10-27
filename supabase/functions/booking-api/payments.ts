@@ -35,17 +35,25 @@ export interface PaymentProvider {
   createIntent(input: PaymentIntentInput): Promise<PaymentIntent>;
   /** Comprueba la firma y traduce el aviso; `null` si no es válido o no interesa. */
   parseWebhook(request: Request): Promise<PaymentEvent | null>;
+  /** Devuelve parte o todo de un pago (1414). */
+  refund?(providerRef: string, cents: number): Promise<{ refundRef: string }>;
+  /** Estado de un intento, para conciliar avisos perdidos (1414). */
+  fetchStatus?(providerRef: string): Promise<{ status: 'pending' | 'paid' | 'failed' | 'expired'; feeCents?: number }>;
 }
 
 /**
  * Pasarela falsa para las pruebas: crea intentos con una URL de mentira y acepta avisos firmados con un secreto
  * compartido (`X-Fake-Signature`).
  */
-export function fakePaymentProvider(secret = 'secreto-de-pruebas'): PaymentProvider & { intents: PaymentIntentInput[] } {
+export function fakePaymentProvider(secret = 'secreto-de-pruebas'): PaymentProvider & { intents: PaymentIntentInput[]; refunds: Array<{ providerRef: string; cents: number }>; states: Map<string, 'pending' | 'paid' | 'failed' | 'expired'> } {
   const intents: PaymentIntentInput[] = [];
+  const refunds: Array<{ providerRef: string; cents: number }> = [];
+  const states = new Map<string, 'pending' | 'paid' | 'failed' | 'expired'>();
   return {
     name: 'fake',
-    intents,
+    intents, refunds, states,
+    async refund(providerRef, cents) { refunds.push({ providerRef, cents }); return { refundRef: `re_${refunds.length}` }; },
+    async fetchStatus(providerRef) { return { status: states.get(providerRef) ?? 'pending' }; },
     async createIntent(input) {
       intents.push(input);
       const ref = `pi_${intents.length}_${input.reference}`;

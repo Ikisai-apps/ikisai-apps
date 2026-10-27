@@ -67,8 +67,27 @@ declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | unde
 const systemInvoke = (supabase: Supabase): CalendarInvoke => (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args });
 
 /** Ruta de sistema para el planificador de Core: `POST /api/v1/worker/calendar/tick` con `X-Ikisai-Worker-Key`. */
-export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supabase?: Supabase, ses: BookingSesConfig = {}): WorkerRoute[] {
+export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supabase?: Supabase, ses: BookingSesConfig = {}, payments: PaymentProvider | null = null): WorkerRoute[] {
   return [{
+    // Venta en línea (1414): pregunta a la pasarela por los intentos pendientes de hace más de 10 minutos, por si se perdió
+    // un aviso, y aplica lo que diga (pagado, fallido o caducado). Sin pasarela, no hace nada.
+    method: 'POST', pattern: 'payments/reconcile',
+    handler: async ({ invoke }) => {
+      const fetchStatus = payments?.fetchStatus?.bind(payments);
+      if (!payments || !fetchStatus) return { checked: 0, applied: 0 };
+      if (supabase) await ensureServiceActor(supabase, 'booking');
+      const pending = (await invoke('booking.stay_payments_pending', { older_minutes: 10 })) as Array<{ provider: string; provider_ref: string }> | null;
+      let applied = 0;
+      for (const p of (pending ?? []).filter((x) => x.provider === payments.name)) {
+        const state = await fetchStatus(p.provider_ref).catch(() => null);
+        if (!state || state.status === 'pending') continue;
+        await invoke('booking.stay_payment_record', { action: 'event', provider: p.provider, provider_ref: p.provider_ref, event_id: `reconcile:${state.status}`, status: state.status,
+          ...(state.feeCents !== undefined ? { fee_cents: state.feeCents } : {}) });
+        applied++;
+      }
+      return { checked: (pending ?? []).length, applied };
+    },
+  }, {
     method: 'POST', pattern: 'calendar/tick',
     handler: async ({ invoke, json }) => {
       const body = await json().catch(() => ({}));
@@ -251,6 +270,34 @@ function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: st
  * «Montaje del evento» con una hija por cambio, la lista ENTERA (Tasks crea, actualiza o retira). Sin cambios y sin nada
  * mandado antes, no se crea la madre. Sin proyecto del retiro en Tasks todavía: 409 PROJECT_NOT_READY.
  */
+/**
+ * Venta en línea (1414): devolver por la pasarela el cobro de una noche pagada en línea. Solo editor u owner. Pide la
+ * devolución a la pasarela; la ficha anota después la devolución en el cobro (1403). El aviso `refunded` de la pasarela la
+ * anota en el pago (`stay_payments`).
+ */
+function onlineRefundRoutes(supabase: Supabase, payments: PaymentProvider | null): AppRoute[] {
+  return [{
+    method: 'POST', pattern: 'walkins/:id/refund/online',
+    handler: async ({ ctx, params, json }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura devuelve cobros.');
+      if (!payments?.refund) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const cents = Number(body.cents);
+      if (!Number.isInteger(cents) || cents <= 0) fail(422, 'INVALID_FIELDS', 'Importe no válido.', { field: 'cents' });
+      const pay = await supabase.rpc<any>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.stay_payment_for_charge', p_args: { charge_id: params.id ?? '' } });
+      if (!pay) fail(404, 'NOT_FOUND', 'Ese cobro no se pagó en línea.');
+      if (pay.provider !== payments!.name) fail(409, 'OTHER_PROVIDER', 'Ese pago es de otra pasarela.');
+      if (cents > Number(pay.amount_cents) - Number(pay.refunded_cents)) fail(422, 'INVALID_FIELDS', 'No se puede devolver más de lo pagado.', { field: 'cents' });
+      try {
+        const out = await payments!.refund!(String(pay.provider_ref), cents);
+        return { status: 'requested', refund_ref: out.refundRef, cents };
+      } catch {
+        fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo.');
+      }
+    },
+  }];
+}
+
 function montageRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] {
   return [{
     method: 'POST', pattern: 'montage/:reservationId/sync',
@@ -468,13 +515,14 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
   }];
 }
 
-export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch, workerKey: string | undefined = denoEnv('IKISAI_WORKER_KEY')): AppRoute[] {
+export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch, workerKey: string | undefined = denoEnv('IKISAI_WORKER_KEY'), payments: PaymentProvider | null = null): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
   // Archivos ajenos (logotipo de Central, firmas subidas desde Guests): siempre por la abstracción del kit (contrato §3.9)
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
     ...walkinRoutes(supabase, appsFetch, workerKey),
+    ...onlineRefundRoutes(supabase, payments),
     ...montageRoutes(supabase, ses),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
@@ -629,9 +677,9 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     // K3 para miembros: un archivo ajeno (justificante o firma de un huésped) solo lo lee por su id quien ve la fila que lo referencia
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: async (result) => { await calendarAfterCommit(supabase, calendar)(result); await cleaningAfterCommit(supabase, ses)(result); }, agentRisk: (operations) => bookingAgentRisk(operations) },
-    routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY')),
+    routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY'), payments ?? null),
     publicRoutes: bookingPublicRoutes(payments ?? null),
-    workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
+    workerRoutes: bookingWorkerRoutes(calendar, supabase, ses, payments ?? null),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,
   });
