@@ -1857,3 +1857,9 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
     - El lote lo firma el visitante y la base exige `core.current_visitor() = visitor_id`.
     - «Lo mío» lo sirve el kit en `GET public/booking_visitor_requests`. CORS, el kit.
 
+
+## 34. «Montaje» del evento (migración 0491; VG 27-10-2026, DECORACION_Y_FINCA.md)
+
+- **Decoración del evento:** la escribe la ficha en Recursos con la sesión de la persona (editor u owner de Booking): `POST /api/v1/resources/commands` con `resources.set_event_decor({event_id, put?, delete?})` (Recursos §2.7). Se lee con `resources.plans_with_decor({event_id})`, las dos capas sin resolver; lo que se dibuja lo resuelve `montage.resolveEventDecor`.
+- **Tareas:** `POST /api/v1/montage/:reservationId/sync` de booking-api (editor u owner, y miembro de Recursos para leer la decoración) manda a Tasks (`worker/requests/task`, Tasks §42) la madre «Montaje del evento» (`external_ref` `RES<código>-MONTAJE`, en el proyecto `RES<código>`) con una hija por cambio (`external_ref` = id de la fila de decoración; «Montar: …», «Retirar: …», «Sustituir: … por …»), siempre la lista ENTERA. Respuestas: `{status: 'sent', children, taskId}`; `{status: 'nothing'}` si no hay cambios y nunca se mandó; 409 `PROJECT_NOT_READY` si el proyecto del retiro aún no está en Tasks; 403 `NEEDS_ACCESS` sin Recursos.
+- **Lecturas y acciones:** `booking.montage_source({reservation_id})` (editor, owner) y `booking.montage_mark` (sistema), que anota en `booking.tasks_projects` la madre, cuántas hijas y cuándo.
