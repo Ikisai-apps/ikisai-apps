@@ -182,11 +182,19 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       .sort((a, b) => (a.event?.start_date ?? '9999').localeCompare(b.event?.start_date ?? '9999'));
     const gone = rows.filter(({ event }) => event && event.end_date < today)
       .sort((a, b) => b.event!.start_date.localeCompare(a.event!.start_date));
+    // Los avisos por revisar de cada menú, como en la tarjeta de arriba (F-MEN-4); solo mientras se puede validar.
+    const warningsChip = (menu: MenuRow, event: FoodEvent | undefined): HTMLElement | null => {
+      const graph = graphs.get(menu.id);
+      if (!event || !graph || (menu.status !== 'borrador' && menu.status !== 'revisar')) return null;
+      const count = menuWarnings(event, graph).filter((w) => w.requiresAck).length;
+      return count ? el('span', { class: 'chip warn menuwarnings' }, plural(count, 'aviso', 'avisos')) : null;
+    };
     const row = ({ menu, event }: (typeof rows)[number]) => listRow({
       id: menu.id,
       title: event?.title ?? 'Evento no disponible',
       meta: event ? [dateRange(event), guestsLabel(event), mealPlanLabel(event.meal_plan)] : ['Sin datos del evento en este dispositivo'],
       chips: [event ? menuChip(event, menu) : el('span', { class: 'chip' }, MENU_STATUS_LABELS[menu.status]),
+        warningsChip(menu, event),
         fresh.get(menu.id) ? el('span', { class: 'chip warn menucomments-new' }, newCommentsText(fresh.get(menu.id)!)) : null].filter((c): c is HTMLElement => c !== null),
       pending: menu._pending === true,
       label: `Abrir el menú de ${event?.title ?? 'este evento'}`,
