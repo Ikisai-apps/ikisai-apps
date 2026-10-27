@@ -19,7 +19,7 @@ select core.register_table('flow', 'flow', 'day_closures',
   '{reader,editor,owner}', '{editor,owner}', true);
 select core.allow_public_write('flow', 'flow.day_closures');
 
-delete from core.allowed_procedures where app = 'flow' and procedure = 'flow.mark_closure_sent';
+-- El permiso registrado lo retira el núcleo (`core.disallow_procedure`, pendiente): sin la función, la llamada falla igual.
 drop function if exists flow.mark_closure_sent(jsonb);
 
 revoke all on all functions in schema flow from public, anon, authenticated;
