@@ -14,6 +14,7 @@ import {
   onSaved,
   withGuideLink,
   announceSaved,
+  createGuide,
   createFeedbackProgressiveForm,
   openFeedbackCenter,
   createFeedbackReview,
@@ -1835,6 +1836,28 @@ const moreData = el('details', { id: 'guideMore' }, el('summary', null, 'Más da
 registerReveal('demo.guia', (id) => { if (id === 'demo.guia.matricula') moreData.open = true; });
 const guideHost = el('div', { id: 'guideHost' });
 const pointTo = (field: string, step: string) => { const p = createFieldPointer({ field, step, run: null }, { feedbackId: 'demo.guia.aviso' }); guideHost.replaceChildren(p.element); void p.point(); };
+// Guiado completo (0.67): la «ejecución» vive aquí en memoria; en una app la lee Flow.
+const guideRunDone = new Set<string>();
+const guideLog: string[] = [];
+const guideLogOut = el('output', { id: 'guideLogOut' }, '—');
+let demoGuide: ReturnType<typeof createGuide> | null = null;
+const startDemoGuide = () => {
+  demoGuide?.destroy();
+  guideRunDone.clear(); guideLog.length = 0; guideLogOut.textContent = '—';
+  demoGuide = createGuide({ feedbackId: 'demo.guia.completa', returnTo: { url: '#guiado', title: 'la muestra' },
+    load: async () => ({ id: 'demo-1', title: 'Alojar a alguien', mode: 'run', steps: [
+      { id: 'llegada', title: 'Pon la hora de llegada', explain: 'Así recepción sabe cuándo esperarle.', anchor: 'demo.guia.llegada', confirm: 'save', done: guideRunDone.has('llegada') },
+      { id: 'matricula', title: 'Apunta la matrícula', explain: 'Está en «Más datos». Si no viene en coche, sáltalo.', anchor: 'demo.guia.matricula', confirm: 'event', essential: false, done: guideRunDone.has('matricula') },
+      { id: 'repaso', title: 'Repasa la ficha', explain: 'Mira que la hora y la matrícula estén bien.', confirm: 'manual', done: guideRunDone.has('repaso') },
+    ] }),
+    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}`); guideLogOut.textContent = guideLog.join(', '); },
+    onSkipped: (s) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:saltado`); guideLogOut.textContent = guideLog.join(', '); },
+    onExit: () => { demoGuide = null; },
+  });
+  document.body.append(demoGuide.element);
+  void demoGuide.start();
+};
+
 const guideSection = section('guiado', 'Guiado: campo señalado', 'Nivel mínimo del Guiado: un enlace de otra app (withGuideLink) abre la pantalla con el campo señalado y una línea con el paso; el shell lo monta con `guide: true`. Guardar avisa con el id del campo, nunca con el valor.',
   el('div', { class: 'demo-row' },
     el('button', { type: 'button', class: 'ghost small', id: 'guidePointArrival', onclick: () => pointTo('demo.guia.llegada', 'Pon la hora a la que llega') }, 'Señalar la hora'),
@@ -1846,6 +1869,13 @@ const guideSection = section('guiado', 'Guiado: campo señalado', 'Nivel mínimo
     el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'primary', onclick: () => void guideSave.track('demo.guia.llegada', new Promise((r) => setTimeout(r, 30))) }, 'Guardar hora'), guideSave.element),
     moreData),
   el('p', null, 'Guardados: ', guideSavedOut),
+  el('h3', null, 'Guía completa'),
+  el('div', { class: 'demo-row' },
+    el('button', { type: 'button', class: 'primary', id: 'guideStart', onclick: startDemoGuide }, 'Empezar la guía «Alojar a alguien»'),
+    el('button', { type: 'button', class: 'ghost small', id: 'guideOutside', onclick: () => { guideRunDone.add('llegada'); void demoGuide?.refresh(); } }, 'Hacer la hora fuera de la guía')),
+  el('p', null, 'Confirmados: ', guideLogOut),
+  el('p', { class: 'hint' }, 'En una app, una línea en el shell: ', el('code', { style: 'overflow-wrap:anywhere' }, "createAppShell(root, { …, guide: { client, app: 'booking', feedbackId: 'booking.guia' } })"),
+    '. Con ?guia=<ejecución> lee los pasos de Flow (flow.guide_read) y confirma en Flow (flow.guide_confirm), sin valores; con ?campo=… señala el campo.'),
   el('p', { class: 'hint', style: 'overflow-wrap:anywhere' }, 'Enlace de ejemplo: ', el('code', { style: 'overflow-wrap:anywhere;word-break:break-all' }, withGuideLink('https://booking.ikisai.com/#/reservas/123', { field: 'booking.ficha.llegada', step: 'Pon la hora de llegada', from: 'flow', title: 'Flow', url: 'https://flow.ikisai.com/#/recepcion' }))),
 );
 
@@ -1978,7 +2008,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState, createGuide };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
