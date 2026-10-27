@@ -16,8 +16,9 @@ import { requestChange, reviewList } from './data.ts';
 /** Recuadro de firma: trazos con puntero (dedo, ratón o lápiz) y exportación PNG recortada a la firma (API.md §8). */
 export interface SignaturePad { element: HTMLElement; isEmpty(): boolean; clear(): void; toBlob(): Promise<Blob | null> }
 
-export function createSignaturePad(label: string): SignaturePad {
-  const canvas = el('canvas', { id: 'signaturePad', class: 'gpad', 'aria-label': label, role: 'img', 'data-feedback-ignore': '' }) as HTMLCanvasElement;
+export function createSignatureBox(label: string): SignaturePad {
+  const canvas = el('canvas', { id: 'signaturePad', class: 'gpad', 'aria-label': label, role: 'img', 'data-feedback-ignore': '',
+    ...fieldAttrs({ id: 'guests.firma.firma', type: 'signature', required: true, sensitivity: 'sensitive', confirm: 'event' }) }) as HTMLCanvasElement;
   const strokes: Array<Array<[number, number]>> = [];
   let drawing: Array<[number, number]> | null = null;
   const ratio = () => Math.max(1, Math.min(3, window.devicePixelRatio || 1));
@@ -123,7 +124,7 @@ export function mountSign(main: HTMLElement, ctx: GuestContext, base: string): (
     const signer = el('input', { id: 'signerName', type: 'text', maxlength: '200', autocomplete: 'name', 'data-feedback-ignore': '',
       ...fieldAttrs({ id: 'guests.firma.firmante', type: 'text', required: true, sensitivity: 'personal', confirm: 'event' }),
       value: own ? fullName : String(f.guardian_name ?? '') }) as HTMLInputElement;
-    const pad = createSignaturePad({ field: { id: 'guests.firma.firma', required: true, sensitivity: 'sensitive', confirm: 'event' } });
+    const pad = createSignatureBox(t('sign.pad'));
     const error = el('p', { class: 'ghint', id: 'signError', role: 'alert' });
     const submit = el('button', { type: 'button', class: 'primary wide', id: 'signSubmit', 'data-feedback-id': 'guests.firma.recuadro.firmar', 'data-feedback-label': 'Firmar',
       onclick: async () => {
