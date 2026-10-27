@@ -11,3 +11,4 @@ export * from './review.ts';
 export * from './attention.ts';
 export * from './house-doors.ts';
 export * from './scopes.ts';
+export * from './coverage.ts';

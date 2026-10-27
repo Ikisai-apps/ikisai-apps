@@ -68,6 +68,8 @@ export interface RecipeIngredient extends SyncedColumns {
   unit: Unit;
   position: number;
   notes: string | null;
+  /** Estación del montadito (1 Untar · 2 Colocar · 3 Dosificar · 4 Acabados; 1110). */
+  station?: number | null;
 }
 
 export interface Equipment extends SyncedColumns {

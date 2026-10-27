@@ -1,7 +1,7 @@
 /**
  * Uso semántico de funcionalidades (contrato §3.8, coordinacion/ampliacion/USO.md): rutas `usage*` en todas las apps.
  * Recibe totales diarios por dispositivo (el núcleo guarda el máximo: idempotente) y sirve la perspectiva «Uso» del Revisor,
- * solo al dueño del ecosistema. La persona solo cuenta si es interna, en producción y aceptó el aviso.
+ * solo al dueño del ecosistema, y el inventario de campos de UI-kit (`usage/inventory`). La persona solo cuenta si es interna, en producción y aceptó el aviso.
  */
 import { fail, messageFor } from './errors.ts';
 import type { Supabase } from './supabase.ts';
@@ -53,6 +53,13 @@ export function createUsage(supabase: Supabase, app: string) {
     return { items };
   }
 
+  /** Inventario de campos de UI-kit (P15, migración 0100): lo declarado en la última release y lo sin instrumentar. Solo owner de Central. */
+  async function inventory(ctx: RequestContext, params: URLSearchParams) {
+    const requested = params.get('app') ?? 'all';
+    if (requested !== 'all' && !/^[a-z][a-z0-9_]{1,30}$/.test(requested)) fail(422, 'INVALID_FILTER', 'app inválida.');
+    return supabase.rpc('core_field_inventory_read', { p_actor: ctx.user.id, p_app: requested });
+  }
+
   async function feature(ctx: RequestContext, id: string) {
     if (!FEATURE.test(id)) fail(404, 'NOT_FOUND', messageFor('NOT_FOUND'));
     const map = await teams(ctx);
@@ -91,5 +98,5 @@ export function createUsage(supabase: Supabase, app: string) {
     return supabase.rpc('core_usage_decide', { p_actor: ctx.user.id, p_feature: id, p_args: args });
   }
 
-  return { batch, consent, review, feature, decide };
+  return { batch, consent, review, inventory, feature, decide };
 }

@@ -1,14 +1,16 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { closedMenus, eventSnapshot, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
+import { closedMenus, isCartaMenu, eventSnapshot, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
+  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, isFamilyEvent, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
+import { cartaHash, openCopySheet, openNewCartaSheet } from './carta.ts';
+import { HOUSE_MENU_HASH } from '../app/house.ts';
 import { fb, fbIgnore, fbRows, type FbMark } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 
@@ -30,6 +32,7 @@ export function menuChip(event: FoodEvent, menu: Mirror<Menu> | undefined): HTML
     if (isMenuStale(menu, event)) return el('span', { class: 'chip alert' }, 'Menú desactualizado');
     return el('span', { class: menu.status === 'validado' || menu.status === 'cerrado' ? 'chip ok' : 'chip' }, `Menú: ${MENU_STATUS_LABELS[menu.status].toLowerCase()}`);
   }
+  if (isFamilyEvent(event)) return el('span', { class: 'chip ok' }, 'Menú de casa');
   if (noMealsInBooking(event)) return el('span', { class: 'chip trash' }, 'Sin comidas en Booking');
   return el('span', { class: 'chip' }, 'Sin menú');
 }
@@ -62,6 +65,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   );
 
   const menuOf = (event: FoodEvent) => menus.find((m) => m.event_id === event.event_id && !m.deleted_at);
+  // Las cartas (tanda 2 de la carta): la del evento, si la tiene, y las guardadas para reutilizarlas.
+  let cartas: Mirror<Menu>[] = [];
+  const cartaOf = (event: FoodEvent) => cartas.find((m) => m.event_id === event.event_id);
 
   function visible(): FoodEvent[] {
     const today = todayKey();
@@ -144,7 +150,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const open = el('button', { 'data-feedback-id': 'food.eventos.ficha.abrir_menu', 'data-feedback-label': 'Abrir menú', class: 'primary', type: 'button', id: 'openMenu', onclick: () => { void sheet?.close(true); navigate(`#/menus/${menu!.id}`); } }, 'Abrir menú');
     const close = el('button', { 'data-feedback-id': 'food.eventos.ficha.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar');
     const cancelled = isCancelled(event);
-    const canCreate = !menu && !cancelled && canWrite();
+    // Un evento familiar come del menú de casa: no se le crea menú propio (VG, 26-10).
+    const family = isFamilyEvent(event);
+    const canCreate = !menu && !cancelled && !family && canWrite();
 
     const body = el('div', { 'data-feedback-id': 'food.eventos.ficha', 'data-feedback-label': 'Ficha del evento', class: 'ficha' },
       el('dl', { 'data-feedback-id': 'food.eventos.ficha.datos', 'data-feedback-label': 'Datos del evento', class: 'kv' },
@@ -159,11 +167,16 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
       el('section', { 'data-feedback-id': 'food.eventos.ficha.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions' }, el('h4', null, 'Restricciones'),
         restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
       cancelled ? el('p', null, el('span', { class: 'chip trash' }, 'La reserva está cancelada en Booking: no hace falta menú.')) : null,
-      !menu && !cancelled && !canWrite() ? el('p', { class: 'muted' }, 'Tu cuenta es de solo lectura: el menú lo crea alguien de cocina.') : null,
+      family && !cancelled ? el('div', { 'data-feedback-id': 'food.eventos.ficha.familiar', 'data-feedback-label': 'Evento familiar', class: 'banner notice', id: 'familyEvent', role: 'note' },
+        el('div', null, el('strong', null, 'Evento familiar: come del menú de casa.'), ' No lleva menú propio. Sus personas se cuentan en el menú de casa de esos días.'),
+        el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.eventos.ficha.abrir_casa', 'data-feedback-label': 'Abrir el menú de casa', class: 'ghost', type: 'button', id: 'openHouseMenu',
+          onclick: () => { void sheet?.close(true); navigate(HOUSE_MENU_HASH); } }, 'Abrir el menú de casa'))) : null,
+      !menu && !cancelled && !family && !canWrite() ? el('p', { class: 'muted' }, 'Tu cuenta es de solo lectura: el menú lo crea alguien de cocina.') : null,
       canCreate && gap ? el('div', { 'data-feedback-id': 'food.eventos.ficha.aviso_comidas', 'data-feedback-label': 'Aviso de comidas', class: 'banner warn notice', id: 'mealsGap', role: 'note' },
         el('div', { 'data-feedback-ignore': '' }, el('strong', null, gap), ' Puedes crear el menú igualmente. Si este grupo come aquí, corrígelo también en Booking',
           event.reservation_code ? ` (reserva ${event.reservation_code})` : '', ' para que los datos coincidan.'),
         el('div', { class: 'btnrow' }, el('a', { 'data-feedback-id': 'food.eventos.ficha.abrir_booking', 'data-feedback-label': 'Abrir en Booking', class: 'ghost', href: bookingReservationUrl(event), target: '_blank', rel: 'noopener', id: 'openBooking' }, event.reservation_id ? 'Abrir la reserva en Booking' : 'Abrir Booking'))) : null,
+      cancelled ? null : cartaBlock(event),
       canCreate ? el('fieldset', { 'data-feedback-id': 'food.eventos.ficha.propuesta', 'data-feedback-label': 'Propuesta de servicios', class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
         el('label', { class: 'field' }, el('span', null, gap ? 'Proponer servicios como' : 'Régimen de la propuesta'), plan),
         picksHost,
@@ -180,6 +193,41 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     // El título del evento viene de Booking (nombre del grupo).
     const sheetTitle = sheet.panel.querySelector('.sheet-head h2');
     if (sheetTitle) fbIgnore(sheetTitle);
+  }
+
+  /** La carta del evento: abrirla, o elegir una guardada (se copia para este evento) o empezar una nueva. */
+  function cartaBlock(event: FoodEvent): HTMLElement {
+    const own = cartaOf(event);
+    const go = (hash: string) => { void sheet?.close(true); navigate(hash); };
+    // Jornadas abiertas: Booking marca qué cartas aplican (carta_ids, Booking 0484). Se enseñan con «Abrir».
+    const chosen = (event.carta_ids ?? []).map((id) => cartas.find((m) => m.id === id)).filter((m): m is Mirror<Menu> => !!m && m.id !== own?.id);
+    if (chosen.length) {
+      return el('section', { 'data-feedback-id': 'food.eventos.ficha.carta', 'data-feedback-label': 'Carta del evento', class: 'formblock', id: 'eventCarta' },
+        el('h4', null, chosen.length === 1 ? 'Carta elegida en Booking' : 'Cartas elegidas en Booking'),
+        el('ul', { class: 'plainlist' }, ...chosen.map((m) => el('li', null, el('button', { 'data-feedback-id': 'food.eventos.ficha.carta_abrir', 'data-feedback-label': 'Abrir la carta', class: 'ghost', type: 'button',
+          onclick: () => go(cartaHash(m.id)) }, m.name ?? 'Carta')))),
+        own ? el('p', null, 'Y su carta propia: ', el('button', { 'data-feedback-id': 'food.eventos.ficha.carta_abrir', 'data-feedback-label': 'Abrir la carta', class: 'ghost', type: 'button', onclick: () => go(cartaHash(own.id)) }, own.name ?? 'Carta')) : null);
+    }
+    if (own) {
+      return el('section', { 'data-feedback-id': 'food.eventos.ficha.carta', 'data-feedback-label': 'Carta del evento', class: 'formblock', id: 'eventCarta' },
+        el('h4', null, 'Carta'),
+        el('p', null, own.name ?? 'Carta'),
+        el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.eventos.ficha.carta_abrir', 'data-feedback-label': 'Abrir la carta', class: 'ghost', type: 'button', id: 'openCarta',
+          onclick: () => go(cartaHash(own.id)) }, 'Abrir la carta')));
+    }
+    if (!canWrite()) return el('section', { 'data-feedback-id': 'food.eventos.ficha.carta', 'data-feedback-label': 'Carta del evento', class: 'formblock', id: 'eventCarta' }, el('h4', null, 'Carta'), el('p', { class: 'muted' }, 'Sin carta.'));
+    const saved = [...cartas].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'es'));
+    const pick = el('select', { 'data-feedback-id': 'food.eventos.ficha.carta_elegir', 'data-feedback-label': 'Carta guardada', id: 'eventCartaPick', 'aria-label': 'Carta guardada' },
+      ...saved.map((m) => el('option', { value: m.id }, m.name ?? 'Carta')));
+    return el('section', { 'data-feedback-id': 'food.eventos.ficha.carta', 'data-feedback-label': 'Carta del evento', class: 'formblock', id: 'eventCarta' },
+      el('h4', null, 'Carta'),
+      el('p', { class: 'muted' }, 'Además del menú cerrado, el evento puede tener una carta con precio de venta (barra, jornadas abiertas).'),
+      saved.length ? el('label', { class: 'field' }, el('span', null, 'Usar una carta guardada'), pick) : null,
+      el('p', { class: 'btnrow' },
+        saved.length ? el('button', { 'data-feedback-id': 'food.eventos.ficha.carta_usar', 'data-feedback-label': 'Usar esta carta', class: 'ghost', type: 'button', id: 'useCarta',
+          onclick: () => { const source = saved.find((m) => m.id === pick.value); if (source) openCopySheet(client, source, snapshot.events, go, event); } }, 'Usar esta carta') : null,
+        el('button', { 'data-feedback-id': 'food.eventos.ficha.carta_nueva', 'data-feedback-label': 'Carta nueva', class: 'ghost', type: 'button', id: 'newEventCarta',
+          onclick: () => openNewCartaSheet(client, go, event.event_id) }, 'Carta nueva')));
   }
 
   async function createMenu(event: FoodEvent, services: ProposedService[]): Promise<void> {
@@ -201,7 +249,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   }
 
   async function loadMenus(): Promise<void> {
-    menus = closedMenus((await client.list(T.menus)) as Mirror<Menu>[]);
+    const all = (await client.list(T.menus)) as Mirror<Menu>[];
+    menus = closedMenus(all);
+    cartas = all.filter((m) => isCartaMenu(m) && !m.deleted_at);
     const [graphs, purchases] = await Promise.all([loadAllMenuGraphs(client), loadPurchases(client)]);
     totals = purchases.fetchedAt ? menuTotals(graphs, purchases.prices) : new Map();
     paint();

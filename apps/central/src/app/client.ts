@@ -21,6 +21,7 @@ export const T = {
   tradeKit: 'central.trade_kit',
   texts: 'central.texts',
   reviewScreens: 'central.review_screens',
+  coverageDecisions: 'central.coverage_decisions',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
