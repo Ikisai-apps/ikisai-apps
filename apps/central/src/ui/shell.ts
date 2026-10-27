@@ -224,7 +224,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
   fbMark(shell.header, 'central.cabecera', 'Cabecera');
-  // La silueta de cabecera que el owner elige en «Imágenes del centro» (Recursos 0816).
+  // La silueta de cabecera que el owner elige en «Imágenes del centro» (Recursos 0816): una lectura al arrancar.
   const offHeaderArt = mountHeaderArt(client, shell.header);
   const launcherButton = shell.header.querySelector('#appLauncher');
   if (launcherButton) fbMark(launcherButton, 'central.cabecera.menu', 'Menú');
