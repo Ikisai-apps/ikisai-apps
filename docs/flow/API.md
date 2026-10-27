@@ -411,3 +411,8 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - En flow-api, por IP (memoria de la instancia, freno de más): 10 altas de cliente cada 10 minutos y 30 pedidos por minuto. La IP la pone el proxy de Pages en `X-Ikisai-Client-Ip` desde `CF-Connecting-IP`.
 - Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
 - Prueba: `tests/flow/public-limits.test.ts`.
+
+## 40. El envío del cierre lo anota el servidor (FL9, migración `0927`)
+
+- `closures/:id/send/food` y `…/finance` anotan en el cierre `<target>_status` (`sent` o `error`), `_sent_at` y `_result` con el lote público del servidor, como los justificantes. El navegador ya no marca nada: `flow.mark_closure_sent` desaparece.
+- `flow.guard_closures` solo deja al lote público cambiar los campos de envío.

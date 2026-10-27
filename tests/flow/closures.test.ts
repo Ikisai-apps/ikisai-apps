@@ -135,13 +135,16 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
   // El mismo payload, el mismo requestId (idempotente en el núcleo de Finance).
   await app.call(`/api/v1/closures/${c.id}/send/finance`, { body: {} });
   assert.equal(calls[2]!.body.requestId, calls[1]!.body.requestId);
-  // Anotar el resultado.
-  await ok([call(PROCEDURES.markClosureSent, { closure_id: c.id, target: 'finance', status: 'sent', result: { status: 'created' } })], app.tokens.owner);
-  assert.equal((await row(TABLES.dayClosures, c.id)).finance_status, 'sent');
+  // El resultado lo anotó flow-api (FL9): enviado a Food y a Finance; el navegador no puede marcarlo.
+  const marked = await row(TABLES.dayClosures, c.id);
+  assert.equal(marked.finance_status, 'sent'); assert.equal(marked.food_status, 'sent');
+  assert.notEqual((await commit([call('flow.mark_closure_sent', { closure_id: c.id, target: 'finance', status: 'sent' })], app.tokens.owner)).status, 200);
+  assert.notEqual((await commit([{ op: 'update', table: TABLES.dayClosures, id: c.id, expectedRevision: marked.revision, fields: { finance_status: 'error' } }], app.tokens.owner)).status, 200);
   // Sin acceso a la otra app: el aviso lo dice.
   reply = () => Response.json({ error: { code: 'NO_MEMBERSHIP', message: 'x', details: null } }, { status: 403 });
   const denied = await app.call(`/api/v1/closures/${c.id}/send/food`, { body: {} });
   assert.equal(denied.status, 403); assert.equal(denied.data.error.code, 'NEEDS_ACCESS'); assert.match(denied.data.error.message, /Pide acceso a Food/);
+  assert.equal((await row(TABLES.dayClosures, c.id)).food_status, 'error'); // el fallo también queda anotado
   reply = () => Response.json({ results: [{ result: { status: 'created' } }] });
   // El modo pruebas ya no decide nada sobre Finance (VG 27-10): el resumen va siempre, como proceso.
   const p = await row(TABLES.projects, PROJECT);
