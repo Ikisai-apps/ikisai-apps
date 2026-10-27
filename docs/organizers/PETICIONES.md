@@ -139,3 +139,9 @@ Reglas de VG:
 Preguntas para VG (por Core):
 - Con «todos», ¿la dirección puede **escribir** en la experiencia y las ofertas de cualquier retiro, o solo verlas? Recomiendo verlo y escribirlo igual que un coorganizador (la regla dice «aparece como coorganizador»). Si es solo lectura, se marca en el ámbito.
 - ¿Los retiros cancelados siguen en «Cancelados» para siempre? Con B19 sí. Recomiendo que sí, porque es lo que pasa hoy mientras dura la sesión.
+
+## Comida que se ofrece (encargo de VG por Core, 27-10-2026)
+
+| Id | Para | Petición | Estado |
+|---|---|---|---|
+| Fd4 | Food | **Ofertas de comida para el portal:** `food.portal_offers({reservation_id, from?, to?})`, para Organizers y Guests y con el ámbito de `portal_in_scope` (con «todos», K8). Lleva:<ul><li>el menú cerrado y las cartas, con quién paga: `payer` vale `'organizador'` o `'huesped'`, y para el huésped, `charge_when` vale `'barra'` o `'cuenta'`;</li><li>días, servicios y lugar;</li><li>las líneas de la carta, con su precio de venta en céntimos con IVA, alérgenos y dietas.</li></ul>Lo interno (`audience = 'interna'`) y las líneas no disponibles no salen. `food.event_offers_projection` es la vista para Booking, no para portales | aceptada (Food, migración 1111) |
