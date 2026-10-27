@@ -222,11 +222,11 @@ FIELDS[TABLES.visitorRequests] = {
 FIELDS[TABLES.visitorRequests] = {
   ...FIELDS[TABLES.visitorRequests],
   from_date: { kind: 'date' }, to_date: { kind: 'date' }, persons: { kind: 'int', nullable: true, min: 1 }, rate_id: { kind: 'uuid', nullable: true },
-  total_cents: { kind: 'int', nullable: true, min: 0 }, pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: true },
+  total_cents: { kind: 'int', nullable: true, min: 0 }, pay_mode: { kind: 'enum', values: ['hold', 'pay_first', 'online'], nullable: true },
   hold_bed_ids: { kind: 'uuidList', max: 20 }, hold_until: { kind: 'timestamp' },
 };
 // 1403: devolución del cobro del alojamiento
-FIELDS[TABLES.walkinCharges] = { ...FIELDS[TABLES.walkinCharges], refund_cents: { kind: 'int', nullable: false, min: 0 }, refund_method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card'], nullable: true }, refunded_at: { kind: 'timestamp' } };
+FIELDS[TABLES.walkinCharges] = { ...FIELDS[TABLES.walkinCharges], refund_cents: { kind: 'int', nullable: false, min: 0 }, refund_method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card', 'online'], nullable: true }, refunded_at: { kind: 'timestamp' } };
 // 1402: la salida prevista que guarda guest_leave al liberar la cama (la pone el procedimiento)
 FIELDS[TABLES.roomAssignments] = { ...FIELDS[TABLES.roomAssignments], planned_to_date: { kind: 'date' } };
 // 1400: número corto de la solicitud (lo pone el servidor) y borrador del viajero
@@ -239,7 +239,7 @@ FIELDS[TABLES.stayTravelers] = {
   residence_country: text(3), phone: text(40), email: text(320), is_minor: { kind: 'bool' }, kinship: text(80),
 };
 // 0499: cómo se pagan las noches del QR en ese evento
-FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], lodging_pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: false }, lodging_hold_hours: { kind: 'int', nullable: false, min: 1 } };
+FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], lodging_pay_mode: { kind: 'enum', values: ['hold', 'pay_first', 'online'], nullable: false }, lodging_online_minutes: { kind: 'int', nullable: false, min: 5 }, lodging_hold_hours: { kind: 'int', nullable: false, min: 1 } };
 FIELDS[TABLES.walkinCharges] = {
   event_id: { kind: 'uuid' },
   assignment_id: { kind: 'uuid' },
@@ -247,7 +247,7 @@ FIELDS[TABLES.walkinCharges] = {
   nights: { kind: 'int', nullable: false, min: 1 },
   price_cents: { kind: 'int', nullable: false, min: 0 },
   amount_cents: { kind: 'int', nullable: false, min: 0 },
-  method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card'], nullable: true },
+  method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card', 'online'], nullable: true },
   paid_at: { kind: 'timestamp' },
   finance_entry_id: { kind: 'uuid', nullable: true },
   finance_sent_at: { kind: 'timestamp' },

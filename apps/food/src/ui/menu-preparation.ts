@@ -260,6 +260,8 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
       writable ? el('div', { 'data-feedback-id': 'food.menu.preparacion.acciones', 'data-feedback-label': 'Acciones de preparación', class: 'btnrow menuactions' },
         el('button', { 'data-feedback-id': 'food.menu.preparacion.anadir_paso', 'data-feedback-label': 'Añadir paso', class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, icon('plus', 18), 'Añadir paso'),
         !stale ? el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated || house ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
+      // Qué hace «Regenerar» con lo tuyo, junto al botón (hallazgo F-PRE-5).
+      writable && !stale && (generated || house) ? el('p', { class: 'muted', id: 'regenerateHint' }, 'Regenerar rehace solo la propuesta: tus pasos propios y lo ya hecho se quedan.') : null,
       choices.length > 1 || noDay.length ? daySelector(choices, day, (key) => { chosenDay.set(menuId, key); paint(); }) : null,
     );
     if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }

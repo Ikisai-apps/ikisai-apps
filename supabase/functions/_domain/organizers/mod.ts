@@ -10,6 +10,8 @@ export const TABLES = {
   questions: 'organizers.questions',
   answers: 'organizers.answers',
   offers: 'organizers.offers',
+  /** «Comentarios de tus asistentes» vistos por cada persona (0706): solo ids y la hora. */
+  commentReads: 'organizers.comment_reads',
 } as const;
 export const ALL_TABLES = Object.values(TABLES);
 
@@ -96,6 +98,8 @@ export const OWNED_TABLES: readonly string[] = [TABLES.materials, TABLES.questio
  */
 export function visibleRow(table: string, row: Record<string, unknown>, membership: { scopes?: unknown } | null | undefined, userId?: string | null): boolean {
   if (!table.startsWith('organizers.')) return true;
+  // Lo que ha leído cada persona es solo suyo (los coorganizadores no ven lo que lee la otra).
+  if (table === TABLES.commentReads) return !!userId && row.user_id === userId;
   if (userId && OWNED_TABLES.includes(table) && row.owner_id === userId) return true;
   return inReservationScope(membership, row.reservation_id);
 }
@@ -214,6 +218,11 @@ export function validateOperations(
     if (op.op === 'call') return { code: 'FORBIDDEN', message: 'Organizers no admite procedimientos en sus lotes.', details: {} };
     const table = op.table ?? '';
     if (table === TABLES.answers) return { code: 'FORBIDDEN', message: 'Las respuestas las escribe cada asistente desde su portal.', details: { table } };
+    if (table === TABLES.commentReads) {
+      const issue = commentReadProblem(op, membership, userId, mode);
+      if (issue) return issue;
+      continue;
+    }
     const spec = WRITABLE[table];
     if (!spec) return { code: 'INVALID_OPERATION', message: 'Tabla desconocida.', details: { table } };
     if (op.op === 'delete' || op.op === 'restore') continue;
@@ -251,6 +260,23 @@ export function validateOperations(
       }
     }
   }
+  return null;
+}
+
+/** `comment_reads` (0706): solo se añade la fila de quien lee, con cualquier acceso al retiro (también «todos»), y no cambia. */
+function commentReadProblem(op: DomainOperation, membership: { scopes?: unknown } | null | undefined, userId: string | null | undefined, mode: 'commit' | 'proposal'): Issue | null {
+  const table = TABLES.commentReads;
+  if (op.op !== 'insert') return { code: 'IMMUTABLE_FIELD', message: 'Una lectura no se cambia.', details: { table } };
+  if (mode === 'proposal') return { code: 'FORBIDDEN', message: 'Una lectura no se propone: la apunta quien lee.', details: { table } };
+  const fields = op.fields ?? {};
+  for (const key of Object.keys(fields)) {
+    if (!['reservation_id', 'report_id', 'user_id'].includes(key)) return { code: 'INVALID_FIELDS', message: `Campo ${key} no se puede escribir.`, details: { table, field: key } };
+  }
+  for (const key of ['reservation_id', 'report_id', 'user_id']) {
+    if (fieldProblem({ kind: 'uuid' }, fields[key]) || fields[key] === undefined || fields[key] === null) return { code: 'INVALID_FIELDS', message: `Campo ${key} es obligatorio.`, details: { table, field: key } };
+  }
+  if (!writeMode(membership, fields.reservation_id)) return { code: 'OUT_OF_SCOPE', message: 'Ese retiro no es tuyo.', details: { reservation_id: fields.reservation_id } };
+  if (userId && fields.user_id !== userId) return { code: 'INVALID_FIELDS', message: 'Campo user_id debe ser quien lee.', details: { table, field: 'user_id' } };
   return null;
 }
 

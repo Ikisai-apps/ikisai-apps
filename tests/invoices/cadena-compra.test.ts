@@ -51,7 +51,8 @@ const finance = (path: string, body?: unknown) => app.call(`/api/v1/${path}`, bo
 test.before(async () => {
   app = await createTestApp({ app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
     createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null } }) });
-  const base = { url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch };
+  // La clave de worker: Flow pide a Tasks desde su servidor (X-Ikisai-Worker-Key y X-Ikisai-Caller: flow; Tasks §45, #998).
+  const base = { url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch, workerKey: 'clave-de-worker-de-prueba' };
   // Tasks llega a Finance por el catálogo (#820): aquí, directo a la Edge de Finance de la misma base.
   tasksHandler = createTasksApp({ ...base, origins: [TASKS_ORIGINS[0]!], capabilities: {
     apiBaseOf: () => 'https://invoices.test',
