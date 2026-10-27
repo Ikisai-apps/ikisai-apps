@@ -181,7 +181,10 @@ begin
   if v_cur is null then perform core.fail('STAGE_NOT_READY', 409, jsonb_build_object('position', v_pos)); end if;
   select id into v_stage_id from flow.definition_stages where version_id = v.version_id and position = v_pos and deleted_at is null;
   for v_k in select jsonb_object_keys(v_vals) loop
-    if exists (select 1 from flow.definition_steps where stage_id = v_stage_id and deleted_at is null and mode <> 'ask' and (key = v_k or key like v_k || '.%')) then
+    -- Lo fijo o heredado no se toca ni por la misma clave, ni por debajo («currency.x») ni por encima («supplier» sobre
+    -- «supplier.name»). Por segmentos, sin LIKE (el «_» de las claves es comodín en LIKE).
+    if exists (select 1 from flow.definition_steps where stage_id = v_stage_id and deleted_at is null and mode <> 'ask'
+                and (key = v_k or starts_with(v_k, key || '.') or starts_with(key, v_k || '.'))) then
       perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'fixed or inherited step', 'key', v_k));
     end if;
   end loop;
