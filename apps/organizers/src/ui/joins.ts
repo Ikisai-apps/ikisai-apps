@@ -6,7 +6,7 @@
  *   a quien lo pidió su entrada en Guests, en el mismo paso; el mensaje lo ve la persona en su portal.
  * Necesita red: decidir no se encola.
  */
-import { el, openSheet, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, openSheet, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { t } from '../app/i18n.ts';
 import { dayLabel } from '../app/labels.ts';
@@ -42,7 +42,7 @@ export function renderJoinRequests(ctx: ViewContext, reservationId: string, data
 
   async function decide(j: JoinRequest, decision: 'aceptar' | 'descartar'): Promise<void> {
     const who = names(j.persons);
-    const comment = el('textarea', { id: 'join-comment', rows: '3', maxlength: '1000' }) as HTMLTextAreaElement;
+    const comment = el('textarea', { ...fieldAttrs({ id: 'organizers.asistentes.solicitud.comentario', label: 'Comentario a quien pide apuntarse', entity: 'booking.join_requests', prop: 'organizer_comment', type: 'text', sensitivity: 'internal' }), id: 'join-comment', rows: '3', maxlength: '1000' }) as HTMLTextAreaElement;
     const error = el('p', { class: 'error', role: 'alert', id: 'join-error' });
     const guests = data.guests.value.items.length;
     const seats = data.detail.value.final_guests ?? data.detail.value.expected_guests;

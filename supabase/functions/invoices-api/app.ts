@@ -61,6 +61,8 @@ export interface TargetInfo {
   archived: boolean;
   /** Último día del evento de Booking (tanda 27): «Compras» solo asigna de un toque si no había acabado en la fecha de la factura. */
   ends_on?: string | null;
+  /** Solicitud de compra de Tasks: la tienda, si Tasks la da (para proponer la del mismo proveedor). */
+  supplier?: string | null;
 }
 
 interface TasksTarget { kind: string; id: string; tabId: string | null; projectId: string | null; title: string; revision: number; deleted: boolean; archived: boolean; done?: boolean }
@@ -104,8 +106,9 @@ function createTargets(supabase: Supabase, options: InvoicesAppOptions) {
   async function listTasks(ctx: RequestContext, query: string, kind: string | null): Promise<TargetInfo[]> {
     if (kind === 'purchase_request') {
       // Modo lista de tasks.targets: solicitudes aprobadas, compradas o recibidas que esperan factura, visibles para el usuario.
-      const out = await tasksRead<{ items?: Array<{ id: string; title: string; revision: number; status?: string; estimatedAmount?: number | null }> }>(ctx, { kind: 'purchase_request', q: query, limit: 50 });
-      return (out.items ?? []).map((r) => ({ app: 'tasks' as const, kind: 'purchase_request', id: r.id, code: null, label: r.title, path: ['Compras'], revision: r.revision, archived: false }));
+      const out = await tasksRead<{ items?: Array<{ id: string; title: string; revision: number; status?: string; estimatedAmount?: number | null; supplierName?: string | null }> }>(ctx, { kind: 'purchase_request', q: query, limit: 50 });
+      return (out.items ?? []).map((r) => ({ app: 'tasks' as const, kind: 'purchase_request', id: r.id, code: null, label: r.title, path: ['Compras'], revision: r.revision, archived: false,
+        ...(typeof r.supplierName === 'string' && r.supplierName.trim() ? { supplier: r.supplierName.trim().slice(0, 200) } : {}) }));
     }
     const tree = await tasksRead<TasksTree>(ctx, {});
     const items: TargetInfo[] = [];

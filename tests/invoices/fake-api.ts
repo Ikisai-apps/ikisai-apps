@@ -100,6 +100,8 @@ export interface FakeApi {
   setEntity(entity: Record<string, unknown> | null): void;
   /** Lo que devuelve booking.reservation_invoice_source para una reserva (§14.8). */
   setReservationSource(id: string, source: Record<string, unknown> | null): void;
+  /** Lo que devuelve booking.event_reservations_for_invoices (Booking #909); null = la lectura aún no existe (404). */
+  setEventReservations(rows: Array<{ reservation_id: string; event_id: string; status: string | null }> | null): void;
   /** R4, PR 4: lo que devuelve `GET resource-links/preview` (null = 404) y los espacios de `GET resources/snapshot`. */
   setResourceLinks(preview: { rows: Array<Record<string, unknown>>; counts: Record<string, number>; digest: string } | null, spaces?: Array<Record<string, unknown>>): void;
   /** R4, PR 3: siembra filas del módulo Recursos (`resources.items`, `item_units`, `movements`, `spaces`…). */
@@ -144,6 +146,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let failVerify = false;
   let entity: Record<string, unknown> | null = null;
   const reservationSources = new Map<string, Record<string, unknown>>();
+  let eventReservations: Array<{ reservation_id: string; event_id: string; status: string | null }> | null = null;
   let linksPreview: { rows: Array<Record<string, unknown>>; counts: Record<string, number>; digest: string } | null = null;
   // Módulo Recursos (R4), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1): mínimo, sin
   // reglas de dominio (las prueba PGlite); solo lo que la app necesita para buscar, crear y enlazar artículos.
@@ -900,6 +903,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         textPosts.push({ fileId: docText[1]!, items: documentTexts.get(docText[1]!)!.items.length, fill: body.fill === true });
         return json(res, 200, { file_id: docText[1], items: documentTexts.get(docText[1]!)!.items.length, ...(body.fill === true ? { fill: { filled: false, reason: 'FAKE' } } : {}) });
       }
+      if (path === 'read/booking.event_reservations_for_invoices' && method === 'POST') {
+        if (!eventReservations) throw new Fault(404, 'NOT_FOUND', 'Lectura no registrada.');
+        const ids = new Set(((await readJson(req)).event_ids ?? []) as string[]);
+        return json(res, 200, eventReservations.filter((r) => ids.has(r.event_id)));
+      }
       if (path === 'read/booking.reservation_invoice_source' && method === 'POST') {
         const body = await readJson(req);
         const found = reservationSources.get(String(body.reservation_id ?? ''));
@@ -1012,6 +1020,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     resourceRows: (table) => Array.from(resStore.get(table)?.values() ?? []),
     resourceLinksApplied: () => [...linksApplied],
     setReservationSource(id, source) { if (source) reservationSources.set(id, source); else reservationSources.delete(id); },
+    setEventReservations(rows) { eventReservations = rows ? rows.map((r) => ({ ...r })) : null; },
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
     documentTextPosts: () => textPosts.map((t) => ({ ...t })),
     usageBatches: () => usageBatches.map((b) => ({ ...b })),

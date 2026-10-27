@@ -2,7 +2,7 @@
  * Alta y ficha de un asistente (API.md §9.4 y §9.5). Lo que escribió otra persona (el propio asistente o Ikisai) llega como
  * `true` y se muestra «Rellenado ✓», sin valor ni edición. Lo tecleado se guarda como borrador local hasta guardarlo.
  */
-import { confirmDialog, createSaveState, el, icon, renderChecks, replace, toast, type CheckItem } from '@ikisai/ui-kit';
+import { confirmDialog, createSaveState, el, fieldAttrs, icon, renderChecks, replace, toast, type CheckItem } from '@ikisai/ui-kit';
 import { t } from '../app/i18n.ts';
 import type { GuestList, PortalGuest, PortalLink, PortalRestriction, ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
@@ -75,7 +75,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
   function declarationBox(declared: boolean | undefined, onChecked?: () => void): Declaration {
     if (declared) return { element: null, needed: () => false, checked: () => false, show: () => undefined, hide: () => undefined };
     let needed = true;
-    const input = el('input', { type: 'checkbox', id: 'declaration', onchange: () => { if (input.checked) onChecked?.(); } }) as HTMLInputElement;
+    const input = el('input', { ...fieldAttrs({ id: 'organizers.asistente.declaracion', label: 'Declaración de conformidad', entity: 'booking.portal_declarations', prop: 'accepted_at', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', id: 'declaration', onchange: () => { if (input.checked) onChecked?.(); } }) as HTMLInputElement;
     // Textos de Central (declaración y protección de datos); la versión aceptada viaja con la acción.
     const privacy = commonText('portal.privacy');
     const element = el('div', { class: 'card orgdeclaration', id: 'declarationBox', 'data-feedback-id': 'organizers.asistentes.declaracion.aceptar', 'data-feedback-label': 'Declaración' },
@@ -390,25 +390,50 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
   };
 };
 
+/** Campos de la ficha del asistente por clave, para el inventario de Uso y cobertura (P15): literales, uno por campo. */
+const GUEST_FIELD_ATTRS: Partial<Record<string, Record<string, string | null>>> = {
+  first_name: fieldAttrs({ id: 'organizers.asistente.first_name', label: 'Nombre', entity: 'booking.guests', prop: 'first_name', sensitivity: 'personal' }),
+  last_name_1: fieldAttrs({ id: 'organizers.asistente.last_name_1', label: 'Primer apellido', entity: 'booking.guests', prop: 'last_name_1', sensitivity: 'personal' }),
+  last_name_2: fieldAttrs({ id: 'organizers.asistente.last_name_2', label: 'Segundo apellido', entity: 'booking.guests', prop: 'last_name_2', sensitivity: 'personal' }),
+  sex: fieldAttrs({ id: 'organizers.asistente.sex', label: 'Sexo', entity: 'booking.guests', prop: 'sex', sensitivity: 'personal' }),
+  birth_date: fieldAttrs({ id: 'organizers.asistente.birth_date', label: 'Fecha de nacimiento', entity: 'booking.guests', prop: 'birth_date', sensitivity: 'personal' }),
+  nationality: fieldAttrs({ id: 'organizers.asistente.nationality', label: 'Nacionalidad', entity: 'booking.guests', prop: 'nationality', sensitivity: 'personal' }),
+  guardian_name: fieldAttrs({ id: 'organizers.asistente.guardian_name', label: 'Persona responsable', entity: 'booking.guests', prop: 'guardian_name', sensitivity: 'personal' }),
+  kinship: fieldAttrs({ id: 'organizers.asistente.kinship', label: 'Parentesco', entity: 'booking.guests', prop: 'kinship', sensitivity: 'personal' }),
+  document_type: fieldAttrs({ id: 'organizers.asistente.document_type', label: 'Tipo de documento', entity: 'booking.guests', prop: 'document_type', sensitivity: 'personal' }),
+  document_number: fieldAttrs({ id: 'organizers.asistente.document_number', label: 'Número de documento', entity: 'booking.guests', prop: 'document_number', sensitivity: 'personal' }),
+  document_support_number: fieldAttrs({ id: 'organizers.asistente.document_support_number', label: 'Número de soporte', entity: 'booking.guests', prop: 'document_support_number', sensitivity: 'personal' }),
+  residence_address: fieldAttrs({ id: 'organizers.asistente.residence_address', label: 'Dirección', entity: 'booking.guests', prop: 'residence_address', sensitivity: 'personal' }),
+  residence_postal_code: fieldAttrs({ id: 'organizers.asistente.residence_postal_code', label: 'Código postal', entity: 'booking.guests', prop: 'residence_postal_code', sensitivity: 'personal' }),
+  residence_city: fieldAttrs({ id: 'organizers.asistente.residence_city', label: 'Localidad', entity: 'booking.guests', prop: 'residence_city', sensitivity: 'personal' }),
+  residence_country: fieldAttrs({ id: 'organizers.asistente.residence_country', label: 'País de residencia', entity: 'booking.guests', prop: 'residence_country', sensitivity: 'personal' }),
+  phone: fieldAttrs({ id: 'organizers.asistente.phone', label: 'Teléfono', entity: 'booking.guests', prop: 'phone', sensitivity: 'personal' }),
+  email: fieldAttrs({ id: 'organizers.asistente.email', label: 'Correo', entity: 'booking.guests', prop: 'email', sensitivity: 'personal' }),
+};
+const GUEST_OTHER_ATTRS: Partial<Record<string, Record<string, string | null>>> = {
+  nationality: fieldAttrs({ id: 'organizers.asistente.nationality_otro', label: 'Nacionalidad (otro país)', entity: 'booking.guests', prop: 'nationality', type: 'text', sensitivity: 'personal' }),
+  residence_country: fieldAttrs({ id: 'organizers.asistente.residence_country_otro', label: 'País de residencia (otro país)', entity: 'booking.guests', prop: 'residence_country', type: 'text', sensitivity: 'personal' }),
+};
+
 /** Un campo editable del formulario. `onInput` recibe el valor como texto. */
 function fieldInput(spec: FieldSpec, value: string, onInput: (value: string) => void, missing = false): HTMLElement {
   const id = `f-${spec.key}`;
   let control: HTMLElement;
   if (spec.type === 'select') {
-    control = el('select', { id, onchange: (e: Event) => onInput((e.target as HTMLSelectElement).value) },
+    control = el('select', { ...GUEST_FIELD_ATTRS[spec.key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id, onchange: (e: Event) => onInput((e.target as HTMLSelectElement).value) },
       el('option', { value: '' }, '—'), ...(spec.options ?? []).map(([v, label]) => el('option', { value: v, selected: v === value ? '' : null }, t(label))));
   } else if (spec.type === 'country') {
     const known = COUNTRY_CODES.includes(value);
-    const other = el('input', { type: 'text', id: `${id}-other`, maxlength: '3', placeholder: t('Código de tres letras (p. ej. JPN)'), hidden: !value || known ? true : null, value: known ? '' : value,
+    const other = el('input', { ...GUEST_OTHER_ATTRS[spec.key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ type: 'text', id: `${id}-other`, maxlength: '3', placeholder: t('Código de tres letras (p. ej. JPN)'), hidden: !value || known ? true : null, value: known ? '' : value,
       oninput: (e: Event) => onInput((e.target as HTMLInputElement).value.toUpperCase()) }) as HTMLInputElement;
-    const select = el('select', { id, onchange: (e: Event) => {
+    const select = el('select', { ...GUEST_FIELD_ATTRS[spec.key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id, onchange: (e: Event) => {
       const v = (e.target as HTMLSelectElement).value;
       other.hidden = v !== 'otro';
       if (v !== 'otro') onInput(v); else other.focus();
     } }, el('option', { value: '' }, '—'), ...countries().map(([code, label]) => el('option', { value: code, selected: code === value ? '' : null }, label)), el('option', { value: 'otro', selected: value && !known ? '' : null }, t('Otro país')));
     control = el('div', { class: 'orgcountry' }, select, other);
   } else {
-    control = el('input', { id, type: spec.type, value, autocomplete: 'off', oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
+    control = el('input', { ...GUEST_FIELD_ATTRS[spec.key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id, type: spec.type, value, autocomplete: 'off', oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
   }
   return el('label', { class: `field${missing ? ' orgfield-missing' : ''}`, 'data-field': spec.key, for: id },
     el('span', null, t(spec.label), missing ? el('em', null, ` · ${t('Falta')}`) : null), control, spec.hint ? el('span', { class: 'hint' }, t(spec.hint)) : null);
@@ -417,18 +442,18 @@ function fieldInput(spec: FieldSpec, value: string, onInput: (value: string) => 
 /** Fila de una restricción del organizador: tipo, a qué, gravedad (alergias e intolerancias) y nota para cocina. */
 function restrictionRow(r: PortalRestriction, onChange: (next: PortalRestriction | null) => void): HTMLElement {
   let current = { ...r };
-  const subject = el('input', { type: 'text', placeholder: t('A qué (p. ej. frutos secos)'), value: current.subject ?? '', class: 'r-subject',
+  const subject = el('input', { ...fieldAttrs({ id: 'organizers.asistente.restriccion.que', label: 'A qué (restricción)', entity: 'booking.dietary_restrictions', prop: 'subject', type: 'text', sensitivity: 'sensitive' }), type: 'text', placeholder: t('A qué (p. ej. frutos secos)'), value: current.subject ?? '', class: 'r-subject',
     oninput: (e: Event) => { current = { ...current, subject: (e.target as HTMLInputElement).value }; onChange(current); } }) as HTMLInputElement;
-  const severity = el('select', { class: 'r-severity', onchange: (e: Event) => { current = { ...current, severity: (e.target as HTMLSelectElement).value || null }; onChange(current); } },
+  const severity = el('select', { ...fieldAttrs({ id: 'organizers.asistente.restriccion.gravedad', label: 'Gravedad', entity: 'booking.dietary_restrictions', prop: 'severity', type: 'select', sensitivity: 'sensitive' }), class: 'r-severity', onchange: (e: Event) => { current = { ...current, severity: (e.target as HTMLSelectElement).value || null }; onChange(current); } },
     el('option', { value: '' }, t('Gravedad')), ...SEVERITIES.map((v) => el('option', { value: v, selected: v === current.severity ? '' : null }, severityLabel(v)))) as HTMLSelectElement;
-  const notes = el('input', { type: 'text', placeholder: t('Nota para cocina (opcional)'), value: current.kitchen_notes ?? '', class: 'r-notes',
+  const notes = el('input', { ...fieldAttrs({ id: 'organizers.asistente.restriccion.nota_cocina', label: 'Nota para cocina', entity: 'booking.dietary_restrictions', prop: 'kitchen_notes', type: 'text', sensitivity: 'sensitive' }), type: 'text', placeholder: t('Nota para cocina (opcional)'), value: current.kitchen_notes ?? '', class: 'r-notes',
     oninput: (e: Event) => { current = { ...current, kitchen_notes: (e.target as HTMLInputElement).value }; onChange(current); } });
   const sync = () => {
     subject.hidden = current.restriction_type !== 'otra' && !RESTRICTION_NEEDS_SUBJECT.has(current.restriction_type) && current.restriction_type !== 'preferencia';
     subject.placeholder = current.restriction_type === 'otra' || current.restriction_type === 'preferencia' ? t('Cuál (p. ej. sin cebolla)') : t('A qué (p. ej. frutos secos)');
     severity.hidden = !RESTRICTION_HAS_SEVERITY.has(current.restriction_type);
   };
-  const type = el('select', { class: 'r-type', 'aria-label': t('Tipo'), onchange: (e: Event) => { current = { ...current, restriction_type: (e.target as HTMLSelectElement).value }; sync(); onChange(current); } },
+  const type = el('select', { ...fieldAttrs({ id: 'organizers.asistente.restriccion.tipo', label: 'Tipo de restricción', entity: 'booking.dietary_restrictions', prop: 'restriction_type', type: 'select', sensitivity: 'sensitive' }), class: 'r-type', 'aria-label': t('Tipo'), onchange: (e: Event) => { current = { ...current, restriction_type: (e.target as HTMLSelectElement).value }; sync(); onChange(current); } },
     ...RESTRICTION_TYPES.map((v) => el('option', { value: v, selected: v === current.restriction_type ? '' : null }, restrictionLabel(v))));
   sync();
   return el('div', { class: 'orgrestriction' }, type, subject, severity, notes,

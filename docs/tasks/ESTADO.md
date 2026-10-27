@@ -1,6 +1,38 @@
 # Tasks · estado
 
-Actualizado: 26 de octubre de 2026 (tanda de feedback, RELEVO-001). **Desde el 26-10 desarrolla Tasks La Muela (`ux-tasks-e3`); Sevilla revisa.** Lo último en `main`: Plan de hoy con `tasks.day_plans` y el sol en cada tarea (#699, MUELA-095) y Compras R6 «Estantería» con envase y cuadre (#705, MUELA-094). Abajo, la tanda de feedback en curso; el resto es el histórico (el texto de la tanda 13 se conserva tal cual).
+Actualizado: 27 de octubre de 2026. **Desarrolla Tasks La Muela (`ux-tasks-e3`); Sevilla revisa.** Abajo, lo del 27-10 (encargos de Core y de VG para el sábado) y la tanda de feedback; el resto es el histórico.
+
+## 27-10-2026: lo que entró y lo que está en cola
+
+**En `main`:**
+- **Compra recibida → Finance** (#820, §44): `POST purchases/:id/finance`, con la foto o el PDF del justificante subidos de servidor a servidor. El resultado `finance_*` solo lo escribe el servidor.
+- **Seguridad:**
+  - #825: `request_children` comprueba rol y ámbito de la madre.
+  - #836: las fuentes de sistema (booking, feedback, core, invoices) solo entran por `worker/requests/task`.
+  - #852: `flow` y `food` solo valen desde su servidor, con `X-Ikisai-Caller` y la clave de worker (§45). Falta llenar `APP_SOURCES_REQUIRED` cuando cada app lo mande en producción.
+  - La auditoría de las ocho apps está en `MUELA/equipo/feedback/seguridad/AUDITORIA_RUTAS_27-10.md`, fuera del repo.
+- **Montaje de Booking:** prueba de contrato (#828).
+- **Compras desde Food:** `item_id` (#874, §39.6).
+- **Limpieza de cama** al salir un huésped (#933, §48).
+- **Revisión de apertura** (§46): plantillas y crear revisión (#895), resultado, correctiva y volver a comprobar (#931).
+- **Móvil:**
+  - #942: contraste en oscuro y toques de 44 px;
+  - #948: guiado mínimo del kit (`guia-ui.js`).
+
+**En cola**, con `--auto` y en cadena (cada PR lleva las anteriores; las migraciones entran en orden):
+- #966: revisión 4, lista para abrir y proyección para Flow (0351);
+- #967: «Trabajos de hoy» para Flow (0352, §47);
+- #968: reglas de entrada con oficio (0353);
+- #969: interfaz de la revisión de apertura;
+- #972: P7 de Central, `tasks.blocked` y `tasks.reviews_open` (0354, §49);
+- #975: plantillas de revisión en la app.
+- Aparte, #954: facetas de Filtros a 44 px y la actividad de Inicio sin cortar.
+
+**Decisiones de VG del 27-10:**
+- Abrir una revisión con críticos pendientes, solo una owner del área y con nota.
+- Críticos por defecto: agua caliente, electricidad, accesos, barandillas, extintores y agua.
+- «Trabajos de hoy» sale de los vencimientos y del ámbito. El Plan de hoy sigue privado: la opción de compartirlo está en el carril de VG.
+
 
 ## «Pedir a Tasks» desde Flow y «Compras del evento»
 

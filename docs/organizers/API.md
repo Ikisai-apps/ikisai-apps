@@ -265,7 +265,7 @@ Lo hago yo entero (es pequeño): `supabase/functions/organizers-api` (índice y 
 | **3 · Formalización** | Fecha definitiva, propuesta aceptada, señal, saldo y facturas en solo lectura | Booking, Finance, Tasks (proyecto `AAAAMMDD-`) |
 | **4 · Experiencia de Guests** | Qué ve, hace y contrata el huésped (módulos y acciones fijos, con vista previa), programa, materiales propios, preguntas propias, menú de Food con comentarios | Organizers (configuración, materiales, preguntas), Booking (programa), Food (menú) |
 | **5 · Decisiones del huésped** | Alojamiento delegable (las habitaciones de 2–4 plazas con baño son un extra que Ikisai factura al organizador), ofertas del organizador y cartel en PDF o JPG | Booking (camas, reserva atómica), Organizers (ofertas) |
-| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea | Finance y pasarela |
+| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea. Decisión de VG del 27-10-2026: después del sábado; Finance crea un enlace de pago por factura (F5) y Organizers enseña «Pagar ahora» (`app/pay-link.ts`, sección «Pagar en línea» de Pagos, ya construida) | Finance y pasarela |
 
 PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versión de este documento:
 - importes y facturas: fases 3 y 6;
@@ -751,3 +751,28 @@ Capacidad de lectura del catálogo (0097, migración 0704) para Flow 6 «Avance 
   - Caché por estado, en la memoria de la Edge: 60 s con la CI en marcha, 5 min abierta, 10 min fusionada y 24 h desplegada.
   - Con la cuota agotada devuelve lo último con `stale: true`; sin nada guardado, `429 RATE_LIMITED` y `retryAfter`.
 - **Código:** `_domain/organizers/github.ts`, sin dependencias, con `fetch`, el token y la hora inyectados. La prueba usa respuestas reales grabadas de la PR #847 (`tests/organizers/fixtures/github-847.json`).
+
+## 22. Indicadores para el panel de Dirección (P7 de Central, migración 0705)
+
+Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2 y `allow_read('central', …, 'view')`. Solo agregados y siempre `period = 'actual'`, en hora de Madrid. Lee `booking.guests_kpi_projection` (reservas confirmadas o en ejecución, con sus fechas), `core.portal_links` y `core.feedback_reports`.
+
+| Clave | Etiqueta | Fórmula | Sentido |
+|---|---|---|---|
+| `organizers.retreats_next_30d` | Retiros próximos con quien organiza dentro | Reservas que empiezan de hoy a hoy+30 con un enlace de Organizers sin revocar | up |
+| `organizers.retreats_without_access` | Retiros próximos sin acceso de quien organiza | Las mismas, sin ningún enlace de Organizers vivo | down |
+| `organizers.guest_comments_open_30d` | Comentarios de asistentes abiertos (30 días) | Informes de Guests sobre el retiro (`subject = event`, destino `organizer`) de los últimos 30 días que siguen `open` | down |
+| `organizers.guest_comments_unread_30d` | Comentarios de asistentes sin leer (30 días) | Los mismos que nadie con acceso de Organizers a ese retiro ha visto (`organizers.comment_reads`, 0706) | down |
+| `organizers.reports_sent_30d` | Informes enviados desde Organizers (30 días) | Informes con `origin_app = organizers` de los últimos 30 días | — |
+
+- **«Sin leer»:** desde la 0706 está `guest_comments_unread_30d`; `guest_comments_open_30d` sigue contando los abiertos.
+- **«Pagos pendientes de quien organiza»:** es de Finance (petición F4).
+
+## 23. Comentarios leídos y sin leer (migración 0706; diseño en `MUELA/equipo/feedback/organizers/COMENTARIOS_LEIDOS.md`)
+
+- **En el resumen del retiro:** en «Comentarios de tus asistentes», lo que esta persona no ha visto lleva «Nuevo» y el título dice cuántos. Un comentario cuenta como visto tras un segundo en pantalla (`IntersectionObserver`); la marca se queda hasta la próxima vez que se abre.
+- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora, sin purga.
+  - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
+  - No se cambia ni se borra (`IMMUTABLE_FIELD`).
+  - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.
+- **Cliente:** `app/comment-reads.ts` (`readIds`, `unreadOf`, `readOperations`, `markRead`). Sin red, se encola como el resto.
+

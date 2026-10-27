@@ -722,6 +722,8 @@ Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md
 | `invoices.unassigned` | Facturas recibidas sin asignar | `count` · `actual` · `down` | Recibidas no anuladas con alguna asignación viva a «Sin asignar» (`general/unassigned`). |
 | `invoices.vat_quarter` | IVA del trimestre (repercutido − soportado) | `eur` · `AAAATn` · sin sentido | Repercutido: `quota_total` de las emitidas del trimestre más el IVA de los ingresos fiscales de apps. Soportado: `calculated_vat` de las recibidas validadas con factura, por `declaration_date`, más el IVA de los gastos fiscales de apps con factura. Positivo: a ingresar. |
 
+**F4 de Organizers (migración 0254):** `invoices.organizer_reservations_pending` · «Retiros con facturas enviadas sin cobrar» · `count` · `actual` · `down`. Cuenta las reservas con alguna emitida (sin borradores ni anuladas) enviada a quien organiza (`sent_at`) y aún `pendiente`. Los vencimientos pasados del calendario de pagos son de Booking (B15). La vista pasa a 36 filas.
+
 «Apuntes por reenviar» no es de Finance: lo saben Booking y Flow (un cobro que cambió después de enviarse) y es indicador suyo.
 
 Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `?vista=emitidas`) y el gasto a `#/gestoria`. Cambiar el significado de una clave es crear otra.
@@ -2049,6 +2051,22 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
   - cuando Flow y Booking manden la prueba, cada una pasa a `APP_ENTRY_SOURCES_REQUIRED` (`invoices-api/app-entries-caller.ts`), y desde entonces, sin ella, `403 CALLER_REQUIRED`. Así el navegador ya no puede llamar.
 - **Para Flow y Booking:** añadid las dos cabeceras a la llamada que ya hacéis a `invoices-api/api/v1/commands`, sin más cambios, y avisad para hacerlas obligatorias.
 - **Pruebas:** `tests/invoices/app-entries.test.ts` («F1»).
+
+### 17.12 «Arqueo del día» (para cuadrar la caja; encargo de VG del 27-10)
+
+`#/arqueo?dia=AAAA-MM-DD` (por defecto, hoy en hora de Madrid). Se abre desde «Ingresos y gastos de apps». Usa los apuntes de ingreso de apps de ese día, fiscales y de proceso.
+- **Por medio** (Metálico, Bizum, Tarjeta, Bitcoin… y «Sin medio» si un cobro llega sin medios): lo cobrado (importes positivos de `methods`), lo devuelto (negativos, como manda Booking una devolución) y el neto a cuadrar.
+- **De dónde:** barra y caja (Flow), alojamiento en recepción (`booking:stay:…`) y otros.
+- **Totales:**
+  - cobrado;
+  - devoluciones aparte;
+  - el **efectivo que tiene que haber** (neto en metálico);
+  - las devoluciones pendientes de Flow (aún en caja);
+  - el **total a cuadrar**.
+- **Imprimible** como el ticket: «Imprimir / Guardar PDF». No es una factura ni un ticket.
+- **Sin red,** sale del espejo del dispositivo.
+- El cierre del día de Flow ya no lleva lo enviado antes como cobro fiscal, así que nada cuenta dos veces.
+- Lógica en `apps/invoices/src/app/cash-count.ts`, prueba en `tests/invoices/cash-count.test.ts`.
 
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 

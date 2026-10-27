@@ -5,7 +5,9 @@
 
 export const WALKIN_METHODS = ['cash', 'bizum', 'bitcoin', 'card'] as const;
 export type WalkinMethod = (typeof WALKIN_METHODS)[number];
-export const WALKIN_METHOD_LABELS: Record<WalkinMethod, string> = { cash: 'Efectivo', bizum: 'Bizum', bitcoin: 'Bitcoin', card: 'Tarjeta (datáfono)' };
+export const WALKIN_METHOD_LABELS: Record<WalkinMethod | 'online', string> = { cash: 'Efectivo', bizum: 'Bizum', bitcoin: 'Bitcoin', card: 'Tarjeta (datáfono)', online: 'En línea' };
+/** El cobro que llega pagado por la pasarela (1413): no se elige a mano en recepción. */
+export type ChargeMethod = WalkinMethod | 'online';
 
 interface RateLike {
   id: string; service?: string | null; unit?: string | null; amount?: number | string | null; active?: boolean | null;
@@ -28,10 +30,10 @@ export function walkinNightPrice(rates: readonly RateLike[], eventType: string, 
 }
 
 export interface WalkinForSend {
-  id: string; event_id: string; nights: number; price_cents: number; amount_cents: number; method: WalkinMethod | null;
+  id: string; event_id: string; nights: number; price_cents: number; amount_cents: number; method: ChargeMethod | null;
   paid_day: string | null; title: string; guest: string | null; space: string | null; bed: string | null;
   /** 1403: lo devuelto (céntimos) y con qué método; el apunte va por lo cobrado menos lo devuelto. */
-  refund_cents?: number | null; refund_method?: WalkinMethod | null;
+  refund_cents?: number | null; refund_method?: ChargeMethod | null;
 }
 
 /**

@@ -102,6 +102,13 @@ function personLabelOps(tabId,key){const m=teamPeople().find(x=>x.key===key);
   const family=inboxRows('tasks.families').find(f=>f.tab_id===tabId&&f.system_key==='person');if(!m||!family)return null;
   const id=uid(),position=(Math.max(0,...inboxRows('tasks.labels').filter(l=>l.family_id===family.id).map(l=>l.position||0))+1024);
   return {id,ops:[{op:'insert',table:'tasks.labels',id,fields:{tab_id:tabId,family_id:family.id,name:m.name,position}}]}}
+/* El oficio de la regla (0353, §48): lo que entra por ella lo lleva en sus oficios (p. ej. la limpieza de una cama, al
+   oficio Limpieza). Solo con los oficios de Central activos y su catálogo leído. */
+function routeTradeField(current,kind,suggest){if(typeof tradesMode!=='function'||!tradesMode())return '';const rows=tradeRows();if(!rows.length&&!current)return '';
+  // Regla nueva de limpieza de cama: se propone el oficio «Limpieza» por su nombre, sin ids fijos.
+  if(!current&&suggest&&kind==='booking.bed_cleaning')current=rows.find(r=>tradeNorm(r.name)==='limpieza')?.id??null;
+  return `<div class="field"><label for="routeTrade">Oficio</label><select id="routeTrade" data-feedback-id="tasks.regla_entrada.oficio" data-feedback-label="Oficio de la regla"><option value="">Sin oficio</option>${rows.map(r=>`<option value="${esc(r.id)}" ${r.id===current?'selected':''}>${esc(r.path||r.name)}</option>`).join('')}</select></div>`}
+function routeTradeValue(){const el=document.getElementById('routeTrade');return el?{trade_id:el.value||null}:{}}
 function destinationValue(){const tab_id=document.getElementById('destTab').value,project=document.getElementById('destProject').value||null;
   const inbox=inboxRows('tasks.projects').find(p=>p.tab_id===tab_id&&p.system==='inbox');
   let owner=document.getElementById('destOwner').value||null,labelOps=[];
@@ -138,12 +145,13 @@ function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;
     <div class="field"><label for="routeKind">Tipo</label><input id="routeKind" value="${esc(kind)}" placeholder="central.compliance_due" ${isNew?'':'disabled'} data-feedback-id="tasks.regla_entrada.tipo" data-feedback-label="Tipo de petición"></div>
     <div class="field"><label for="routeLabel">Nombre</label><input id="routeLabel" maxlength="100" value="${esc(label)}" placeholder="Vencimientos" data-feedback-id="tasks.regla_entrada.nombre" data-feedback-label="Nombre del tipo"></div>
     ${destinationFields(dest)}
+    ${routeTradeField(dest.trade_id??existing?.trade_id??null,kind,!existing&&!current)}
     ${KNOWN_KINDS.find(k=>k.kind===kind)?.areaOnly?'<p class="small muted" id="routeAreaOnly">Cada retiro confirmado crea aquí su propio proyecto (AAAAMMDD-título): de esta regla solo cuenta el área.</p>':''}
     <div class="actions"><button class="primary" id="routeSave" type="button" data-feedback-id="tasks.regla_entrada.guardar" data-feedback-label="Guardar regla">Guardar</button>${existing?'<button class="ghost danger-text" id="routeDelete" type="button" data-feedback-id="tasks.regla_entrada.quitar" data-feedback-label="Quitar regla">Quitar regla</button>':''}</div>`);
-  bindDestination(c=>routeSheet(document.getElementById('routeKind').value.trim(),{...c,kind_label:document.getElementById('routeLabel').value.trim()},isNew));
+  bindDestination(c=>routeSheet(document.getElementById('routeKind').value.trim(),{...c,kind_label:document.getElementById('routeLabel').value.trim(),...routeTradeValue()},isNew));
   document.getElementById('routeSave').onclick=()=>{const k=document.getElementById('routeKind').value.trim(),d=destinationValue();
     if(!/^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/.test(k))return toast('El tipo va como app.nombre, en minúsculas.');
-    if(!purchaseRun(data=>[...d.labelOps,...R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,...d.owner})],'Regla guardada.'))return;
+    if(!purchaseRun(data=>[...d.labelOps,...R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,...d.owner,...routeTradeValue()})],'Regla guardada.'))return;
     const waiting=R().pendingRequests(Sync.core.data,k).length;
     if(!waiting)return inboxDone();
     openSheet(`<h2 class="sheettitle">Regla guardada</h2><p>Hay ${waiting} ${waiting===1?'petición':'peticiones'} de este tipo esperando en «Por clasificar». ¿Las mueves también?</p><div class="actions"><button class="primary" id="routeWaiting" type="button" data-feedback-id="tasks.regla_guardada.mover_esperando" data-feedback-label="Mover también las que esperaban">Mover también ${waiting===1?'la que esperaba':`las ${waiting} que esperaban`}</button><button class="ghost" id="routeLater" type="button" data-feedback-id="tasks.regla_guardada.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);

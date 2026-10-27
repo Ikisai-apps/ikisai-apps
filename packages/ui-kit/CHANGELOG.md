@@ -1,5 +1,26 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.4 · 27 de octubre de 2026
+
+**La cáscara se aprieta sola en el móvil** (revisión a 390 px, `MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`).
+
+- **Título:** si «Ikisai {app}» no cabe junto a las herramientas, «Ikisai» se esconde a la vista, no al lector, y queda el nombre de la app. Guests («Ikisai Guests · Ana») se cortaba; en Organizers ayuda, aunque su conmutador ES/EN sigue comiendo ancho.
+- **Barra de abajo:** `NavItem.short` es el nombre corto («Cobro» por «Pedido y cobro»).
+  - Solo se usa si los nombres enteros no caben, como en las seis secciones de Flow a 390 px.
+  - El lector sigue diciendo el nombre entero.
+  - Sin `short`, la barra se queda como estaba.
+- Lo mide la propia cáscara al pintar y cuando cambia el ancho (`ResizeObserver`). El texto del título no cambia.
+- Pruebas: `tests/v76.spec.ts`.
+
+## 0.69.2 · 27 de octubre de 2026
+
+**Con el dedo, nada por debajo de 44 px.** Sale de la revisión móvil a 390 px (`MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`). Lo que más se repetía en las apps eran controles de 36 px.
+
+- En pantallas táctiles (`@media (pointer: coarse)`), `--tap-sm` pasa de 36 a 44 px. Eso sube `.small`, `.iconbtn.small` y los controles `.compact` (p. ej. los `select` de filtros). Con ratón, nada cambia.
+- `.tabpill`, `.linkbtn`, `.pl-tabs button` y `.space-quick-chip` pasan a 44 px de alto, y `.tabtool` a 44 × 44 px, en pantallas táctiles.
+- «¿Sin red?» del inicio de sesión (`.login summary`, en todas las apps) pasa de 28 a 44 px de alto en pantallas táctiles.
+- Arregla sin tocar las apps los toques señalados en Booking (calendario), Central (Inicio, Cumplimiento, Inventario), Finance (Facturas, Compras) y Food (filtros del Recetario).
+
 ## 0.69.1 · 27 de octubre de 2026
 
 **«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
