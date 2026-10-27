@@ -493,6 +493,16 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       line.setAttribute('data-contour-for', c.spaceId);
       line.setAttribute('aria-hidden', 'true');
       out.push(line);
+      // El nombre de la altura y su cota (o «sin cota»), en el ancla de la curva.
+      const a = rows.find((x) => x.id === c.spaceId);
+      const m = a ? elevationOf(a) : null;
+      const label = document.createElementNS(NS, 'text');
+      label.setAttribute('x', String(c.anchor[0] * w)); label.setAttribute('y', String(c.anchor[1] * h - r0 * 1.6));
+      label.setAttribute('class', 'ctl-contourlabel');
+      label.setAttribute('data-contour-label', c.spaceId);
+      label.setAttribute('font-size', String(Math.max(w, h) * 0.022));
+      label.textContent = `${c.name} · ${m === null ? 'sin cota' : `${String(m).replace('.', ',')} m`}`;
+      out.push(label);
       let pts = c.points.map(([x, y]) => [x, y] as [number, number]);
       pts.forEach((pt, i) => {
         const dot = document.createElementNS(NS, 'circle');

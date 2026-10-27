@@ -287,7 +287,13 @@ test('planos · la finca: escala y cotas del SVG, y sus curvas de nivel se ajust
   const FINCA = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" data-meters-per-unit="1">
     <path data-name="Parcela" d="M10 10 L390 10 L390 290 L10 290 Z"/>
     <path data-contour="Altura 1" d="M10 250 L200 240 L390 250"/>
+    <path data-contour="Altura 2" d="M10 200 C100 180 300 180 390 200"/>
+    <path data-contour="Altura 3" d="M10 150 C100 130 300 130 390 150"/>
+    <path data-contour="Altura 4" d="M10 100 c90 -20 290 -20 380 0"/>
+    <path data-contour="Altura 5" d="M10 50 C100 30 300 30 390 50"/>
   </svg>`;
+  const alturas = (await api.app.t.db.query<{ id: string; name: string }>(`select id, name from resources.spaces where kind = 'altura' and deleted_at is null order by name`)).rows;
+  const idOf = (n: number) => alturas.find((a) => a.name === `Altura ${n}`)!.id;
   await page.goto(`${baseURL}/#/entidad/planos`);
   await page.locator('#newPlan').click();
   await page.locator('#planKind').selectOption('estate');
@@ -299,8 +305,15 @@ test('planos · la finca: escala y cotas del SVG, y sus curvas de nivel se ajust
   await expect.poll(async () => (await estate())?.k ?? null).toBe('estate');
   const first = (await estate())!;
   expect(first.g).toEqual({ metersPerUnit: 1, originX: 0, originY: 0 });
-  // La cota de «Altura 1», en el punto medio de su curva (el del medio de tres).
-  expect(first.c).toEqual([{ spaceId: altura1, x: 0.5, y: 0.8 }]);
+  // La cota de cada altura, en el punto medio de su curva; las Bézier (absolutas o relativas), por su punto medio y no por los de control.
+  expect(first.c).toEqual([
+    { spaceId: altura1, x: 0.5, y: 0.8 }, { spaceId: idOf(2), x: 0.5, y: 0.6167 }, { spaceId: idOf(3), x: 0.5, y: 0.45 },
+    { spaceId: idOf(4), x: 0.5, y: 0.2833 }, { spaceId: idOf(5), x: 0.5, y: 0.1167 },
+  ]);
+  // En «Colocar», las cinco curvas con tres asas cada una y su nombre con la cota.
+  await expect(page.locator('#placeEditor [data-contour-point]')).toHaveCount(15);
+  await expect(page.locator('#placeEditor [data-contour-label]')).toHaveCount(5);
+  await expect(page.locator(`#placeEditor [data-contour-label="${idOf(2)}"]`)).toHaveText('Altura 2 · sin cota');
 
   // «Colocar» de la finca: la curva con sus puntos; con el teclado, el del medio baja y se guarda la curva entera.
   const mid = page.locator(`#placeEditor [data-contour-point="${altura1}:1"]`);

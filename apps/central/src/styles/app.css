@@ -412,4 +412,5 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 /* Curvas de nivel de la finca en «Colocar» (0815): la línea y sus puntos, que se arrastran. */
 .ctl-contour{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}
 .ctl-contourpt{fill:var(--paper);stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke;cursor:grab}
+.ctl-contourlabel{fill:var(--accent);font-weight:600;text-anchor:middle;paint-order:stroke;stroke:var(--paper);stroke-width:3px;pointer-events:none}
 .ctl-contourpt:focus-visible{outline:none;stroke:var(--ink);stroke-width:3}
