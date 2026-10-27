@@ -18,7 +18,7 @@ export const mountCashCount: ViewMount = (ctx) => {
   const asked = new URLSearchParams(location.hash.split('?')[1] ?? '').get('dia');
   const day = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today();
   const host = el('div', { id: 'cashCountPage', 'data-feedback-id': 'invoices.arqueo', 'data-feedback-label': 'Arqueo del día' });
-  const picker = el('input', { ...fieldAttrs({ id: 'invoices.arqueo.dia', label: 'Día', type: 'date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'cashCountDay', value: day, 'aria-label': 'Día del arqueo',
+  const picker = el('input', { ...fieldAttrs({ id: 'invoices.arqueo.dia', storage: 'none', label: 'Día', type: 'date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'cashCountDay', value: day, 'aria-label': 'Día del arqueo',
     onchange: (e: Event) => { const v = (e.target as HTMLInputElement).value; if (v) navigate(`#/arqueo?dia=${v}`); } }) as HTMLInputElement;
   replace(main, host);
 

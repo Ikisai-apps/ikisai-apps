@@ -1,6 +1,6 @@
 /** Utilidades compartidas por las vistas de Facturas (recibidas y emitidas). */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { el, fieldAttrs, toast, type FieldSpec } from '@ikisai/ui-kit';
+import { el, toast } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 
 /** Commit con aviso: con red, «guardado»; sin red, «se sincronizará». Los rechazos se cuentan en un aviso. */
@@ -21,10 +21,11 @@ export function field(label: string, control: HTMLElement, hint?: string): HTMLE
 
 /**
  * Desplegable. Para el inventario de campos, quien llama expande en `extra` las marcas del kit con la especificación literal
- * (así la lee el catálogo); `spec` sirve cuando la especificación llega ya hecha.
+ * (así la lee el catálogo; criterio de UI-kit, #1158).
  */
-export function select(id: string, options: Array<[string, string]>, value: string | null | undefined, extra: Record<string, unknown> = {}, spec?: FieldSpec): HTMLSelectElement {
-  return el('select', { ...fieldAttrs(spec), id, ...extra }, ...options.map(([v, label]) => el('option', { value: v, selected: (value ?? '') === v }, label)));
+export function select(id: string, options: Array<[string, string]>, value: string | null | undefined, extra: Record<string, unknown> = {}): HTMLSelectElement {
+  // @field-caller
+  return el('select', { id, ...extra }, ...options.map(([v, label]) => el('option', { value: v, selected: (value ?? '') === v }, label)));
 }
 
 export function block(title: string, summary: string, open: boolean, ...children: Array<HTMLElement | null>): HTMLElement {

@@ -42,7 +42,7 @@ export const mountAccounting: ViewMount = (ctx) => {
   const isOwner = role === 'owner';
 
   // --- Periodo: un toque -----------------------------------------------------------------------------------------------
-  const year = el('input', { ...fieldAttrs({ id: 'invoices.gestoria.periodo.ano', label: 'Año', type: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'number', 'aria-label': 'Año', id: 'periodYear', min: '2020', max: '2100', value: String(range.year), class: 'inv-year', onchange: () => setRange(kindOf(), Number(year.value) || range.year, range.quarter ?? 1) }) as HTMLInputElement;
+  const year = el('input', { ...fieldAttrs({ id: 'invoices.gestoria.periodo.ano', storage: 'none', label: 'Año', type: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'number', 'aria-label': 'Año', id: 'periodYear', min: '2020', max: '2100', value: String(range.year), class: 'inv-year', onchange: () => setRange(kindOf(), Number(year.value) || range.year, range.quarter ?? 1) }) as HTMLInputElement;
   const kindOf = (): RangeKind => (range.kind === 'year' ? 'year' : 'quarter');
   const stepYear = (delta: number) => { year.value = String((Number(year.value) || range.year) + delta); setRange(kindOf(), Number(year.value), range.quarter ?? 1); };
   const periods = el('div', { 'data-feedback-id': 'invoices.gestoria.periodo.trimestre', 'data-feedback-label': 'Trimestre o año', class: 'inv-boxes', role: 'group', 'aria-label': 'Periodo', id: 'periodPicker' });

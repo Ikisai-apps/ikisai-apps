@@ -248,7 +248,7 @@ async function save(client: SyncClient, entry: LocalAppEntry, fields: Record<str
 function openEventPicker(ctx: ViewContext, entry: LocalAppEntry, reload: () => void): void {
   const { client } = ctx;
   const results = el('ul', { class: 'plain', id: 'appEntryEvents', 'data-feedback-ignore': '' });
-  const input = el('input', { ...fieldAttrs({ id: 'invoices.apuntes.evento.buscar', label: 'Buscar el evento', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'appEntryEventSearch', placeholder: 'Buscar el evento', 'aria-label': 'Buscar el evento' }) as HTMLInputElement;
+  const input = el('input', { ...fieldAttrs({ id: 'invoices.apuntes.evento.buscar', storage: 'none', label: 'Buscar el evento', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'appEntryEventSearch', placeholder: 'Buscar el evento', 'aria-label': 'Buscar el evento' }) as HTMLInputElement;
   let seq = 0;
   const search = async () => {
     const mine = ++seq;

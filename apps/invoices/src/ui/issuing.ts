@@ -71,7 +71,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   const country = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.pais', label: 'País', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_country', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
   const addressNote = el('span', { class: 'hint', id: 'draftAddressNote' });
   // Directorio de clientes (ronda 46): buscar por nombre o NIF rellena NIF, tipo, país y domicilio fiscal.
-  const customerSearch = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.buscar_cliente', label: 'Buscar cliente guardado', type: 'search', sensitivity: 'personal', confirm: 'none' }), type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
+  const customerSearch = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.buscar_cliente', storage: 'none', label: 'Buscar cliente guardado', type: 'search', sensitivity: 'personal', confirm: 'none' }), type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
   const customerResults = el('div', { 'data-feedback-ignore': '', class: 'customer-results', id: 'draftCustomerResults' });
   function useCustomer(c: LocalCustomer): void {
     name.value = c.name; taxId.value = c.tax_id; if (c.kind) kind.value = c.kind;

@@ -373,7 +373,7 @@ export const mountHome: ViewMount = (ctx) => {
     try {
       const issued = await client.api<{ token: string }>('/agents', { json: { name: 'Claude · lectura de facturas', role: 'editor' } });
       const command = `claude mcp add --transport http ikisai-finance ${location.origin}/api/v1/mcp --header "Authorization: Bearer ${issued.token}"`;
-      const box = el('textarea', { ...fieldAttrs({ id: 'invoices.inicio.claude.comando', label: 'Comando para conectar Claude', type: 'text', sensitivity: 'sensitive', confirm: 'none' }), 'data-feedback-ignore': '', readonly: true, rows: '4', id: 'claudeCommand', style: 'width:100%;font-family:monospace' });
+      const box = el('textarea', { ...fieldAttrs({ id: 'invoices.inicio.claude.comando', storage: 'none', label: 'Comando para conectar Claude', type: 'text', sensitivity: 'sensitive', confirm: 'none' }), 'data-feedback-ignore': '', readonly: true, rows: '4', id: 'claudeCommand', style: 'width:100%;font-family:monospace' });
       box.value = command;
       openSheet({
         title: 'Conectar Claude',

@@ -66,7 +66,7 @@ export const mountSuppliers: ViewMount = ({ main, client, navigate }) => {
   let mirror: Mirror | null = null;
   let sheet: Sheet | null = null;
 
-  const search = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.buscar', label: 'Buscar proveedores', type: 'search', sensitivity: 'internal', confirm: 'none' }),type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.buscar', storage: 'none', label: 'Buscar proveedores', type: 'search', sensitivity: 'internal', confirm: 'none' }),type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   const list = el('div', { id: 'supplierList', 'data-feedback-id': 'invoices.proveedores.lista', 'data-feedback-label': 'Proveedores' });
   const chips = el('div', { class: 'inv-boxes', role: 'group', 'aria-label': 'Filtrar proveedores', id: 'supplierFilter', 'data-feedback-id': 'invoices.proveedores.filtro', 'data-feedback-label': 'Filtrar proveedores' });

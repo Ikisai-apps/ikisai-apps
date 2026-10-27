@@ -545,7 +545,7 @@ const CLAUDE_MESSAGE = 'Lee las facturas pendientes de Drive en Ikisai Finance y
  * instrucciones; el JSON vuelve compartido o pegado) o una sesión de Claude en el ordenador (el mensaje, listo para copiar).
  */
 function openReadWithAi(ctx: ViewContext, invoice: LocalInvoice, original: LocalInvoiceFile): void {
-  const message = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.leer_ia.mensaje', label: 'Mensaje para Claude', type: 'text', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', readonly: true, rows: '5', id: 'claudeMessage', style: 'width:100%' });
+  const message = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.leer_ia.mensaje', storage: 'none', label: 'Mensaje para Claude', type: 'text', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', readonly: true, rows: '5', id: 'claudeMessage', style: 'width:100%' });
   message.value = CLAUDE_MESSAGE;
   openSheet({
     title: 'Leer con IA',
@@ -1355,7 +1355,7 @@ async function copyPrompt(promptText: HTMLTextAreaElement): Promise<void> {
 }
 
 function promptTextArea(): HTMLTextAreaElement {
-  const promptText = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.prompt.texto', label: 'Prompt de extracción', type: 'text', sensitivity: 'internal', confirm: 'none' }), class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de extracción' });
+  const promptText = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.prompt.texto', storage: 'none', label: 'Prompt de extracción', type: 'text', sensitivity: 'internal', confirm: 'none' }), class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de extracción' });
   promptText.value = EXTRACTION_PROMPT;
   return promptText;
 }
@@ -1427,7 +1427,7 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
     ...[['general', 'General'], ['tasks', 'Tareas'], ['food', 'Cocina'], ['booking', 'Reservas']].map(([value, label]) => el('button', { ...ALLOC_APP_MARKS[value!], type: 'button', class: value === app ? 'on' : '', dataset: { app: value! }, onclick: () => { app = value!; choice = null; paintApp(); } }, label)),
   );
   const kindSelect = select('allocKind', kindsFor('general').map((k) => [k, KIND_LABELS[k] ?? k] as [string, string]), 'operating_expense', { ...fieldAttrs({ id: 'invoices.facturas.asignar.tipo', label: 'Tipo', type: 'select', entity: 'invoices.allocations', prop: 'target_kind', sensitivity: 'internal', confirm: 'none' }) });
-  const searchInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.asignar.buscar', label: 'Buscar destino', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'targetSearch', placeholder: 'Buscar destino…', autocomplete: 'off' });
+  const searchInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.asignar.buscar', storage: 'none', label: 'Buscar destino', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'targetSearch', placeholder: 'Buscar destino…', autocomplete: 'off' });
   const results = el('div', { id: 'targetResults' });
   const chosen = el('p', { class: 'hint', id: 'chosenTarget' });
   const amount = el('input', { ...fieldAttrs({ id: 'invoices.facturas.asignar.importe', label: 'Importe (base, sin IVA)', type: 'number', entity: 'invoices.allocations', prop: 'allocated_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'allocAmount', value: String(rest).replace('.', ',') });

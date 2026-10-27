@@ -47,7 +47,7 @@ export const mountInvoices: ViewMount = (ctx) => {
   const expanded = new Set<string>();
   let opened: string | null = null;
 
-  const search = el('input', { ...fieldAttrs({ id: 'invoices.facturas.buscar', label: 'Buscar facturas', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.facturas.buscar', storage: 'none', label: 'Buscar facturas', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   // Buzones (mismo id que el desplegable de antes): cada uno con su número y su importe; «Más» abre los demás.
   const boxes = el('div', { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Buzones', class: 'inv-boxes', role: 'group', 'aria-label': 'Buzones de facturas', id: 'invoiceFilter' });

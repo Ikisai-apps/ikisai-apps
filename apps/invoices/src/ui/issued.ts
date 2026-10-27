@@ -134,7 +134,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   let box: IssuedBox = 'por_cobrar';
   let moreOpen = false;
   let opened: { id: string; sheet: Sheet } | null = null;
-  const search = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.buscar', label: 'Buscar emitidas', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente, NIF, concepto o reserva', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.buscar', storage: 'none', label: 'Buscar emitidas', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente, NIF, concepto o reserva', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   // Buzones (mismo id que el desplegable de antes): Por cobrar · Cobradas · Borradores · Todas · Más
   const boxes = el('div', { 'data-feedback-id': 'invoices.emitidas.filtro', 'data-feedback-label': 'Buzones de emitidas', class: 'inv-boxes', role: 'group', 'aria-label': 'Buzones de emitidas', id: 'issuedFilter' });
@@ -559,7 +559,7 @@ function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, all
   let choice: TargetChoice | null = null;
   const kinds = el('div', { 'data-feedback-id': 'invoices.emitidas.asignar.tipo', 'data-feedback-label': 'Tipo de destino', class: 'segmented', role: 'tablist' }, ...([['reservation', 'Reserva'], ['event', 'Evento'], ['general', 'General']] as Array<[typeof kind, string]>).map(([value, label]) =>
     el('button', { ...ISSUED_KIND_MARKS[value], type: 'button', role: 'tab', class: value === kind ? 'on' : '', dataset: { kind: value }, onclick: () => { kind = value; choice = null; paintKind(); } }, label)));
-  const query = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.asignar.buscar', label: 'Buscar', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
+  const query = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.asignar.buscar', storage: 'none', label: 'Buscar', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
   const results = el('div', { id: 'issuedTargetResults' });
   const chosen = el('p', { class: 'hint', id: 'issuedChosenTarget' });
   const amount = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.asignar.importe', label: 'Importe', type: 'number', entity: 'invoices.issued_allocations', prop: 'allocated_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedAllocAmount', value: String(rest).replace('.', ',') });
@@ -636,7 +636,7 @@ function storeMapping(header: string[], mapping: IssuedCsvMapping): void {
 }
 
 function issuedChatgptSteps(onPaste: () => void): HTMLElement {
-  const promptText = el('textarea', { ...fieldAttrs({ id: 'invoices.emitidas.prompt.texto', label: 'Prompt de emitidas', type: 'text', sensitivity: 'internal', confirm: 'none' }), class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de emitidas' });
+  const promptText = el('textarea', { ...fieldAttrs({ id: 'invoices.emitidas.prompt.texto', storage: 'none', label: 'Prompt de emitidas', type: 'text', sensitivity: 'internal', confirm: 'none' }), class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de emitidas' });
   promptText.value = ISSUED_EXTRACTION_PROMPT;
   const copy = async () => {
     try { await navigator.clipboard.writeText(ISSUED_EXTRACTION_PROMPT); toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF de la factura.'); }
