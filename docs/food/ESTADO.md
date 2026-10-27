@@ -61,6 +61,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - **food-api** ajusta el stock de Recursos tras registrar las ventas (`carta.ts`) y ofrece `POST carta/stock` para reintentarlo.
   - **En la app**, las pantallas del menú cerrado no enseñan la carta.
   - **Prueba:** `carta.test.ts`.
+- **Ficha del evento** (27-10, F-EVT-4): las restricciones van lo primero, antes de los datos, y el tipo de menú se lee «Vegetariano», no `vegetariano`. Prueba: `menus.spec.ts`.
 - **La carta, tanda 2: su vista y el evento familiar** (API.md §2.10).
   - El bloque «Cartas» en Menús, con «Nueva carta».
   - `#/cartas/<id>`, con sus bloques, el precio, el coste, el margen y «Disponible».
