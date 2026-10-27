@@ -300,7 +300,9 @@ export function sendStay(code: string, input: { mode_id: string; from: string; t
 // --- «Alójate aquí» (VG, por Core: como la barra) -------------------------------------------------------------------
 /** Camas libres **todas** las noches `[from, to)` (Booking, `booking_public_beds`): nombres públicos, nunca huéspedes. */
 export interface PublicBeds {
-  rooms: Array<{ id: string; name: string; beds: Array<{ id: string; label: string; kind: string | null; free: boolean; resource_bed_id: string | null }> }>;
+  /** `layout` (Booking 1417): la habitación en cuadrantes y cada cama en ellos; null si no la hay. */
+  rooms: Array<{ id: string; name: string; layout: { cols: number; rows: number } | null;
+    beds: Array<{ id: string; label: string; kind: string | null; free: boolean; resource_bed_id: string | null; layout: { x: number; y: number; rot: number } | null }> }>;
   price_night_cents: number | null;
   nights: number;
 }
@@ -309,14 +311,18 @@ export function publicBeds(code: string, from: string, to: string): Promise<Load
   return readPublic('booking_public_beds', { event_code: code.toUpperCase(), from, to }, (raw) => {
     const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    const obj = (v: unknown) => (v && typeof v === 'object' ? v as Record<string, unknown> : null);
+    const num = (v: unknown) => typeof v === 'number';
+    const roomLayout = (v: unknown) => { const o = obj(v); return o && num(o.cols) && num(o.rows) ? { cols: o.cols as number, rows: o.rows as number } : null; };
+    const bedCell = (v: unknown) => { const o = obj(v); return o && num(o.x) && num(o.y) ? { x: o.x as number, y: o.y as number, rot: o.rot === 90 ? 90 : 0 } : null; };
     const rooms = (Array.isArray(r.rooms) ? r.rooms : []).flatMap((x) => {
       const room = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
       if (!str(room.id) || !str(room.name)) return [];
       const beds = (Array.isArray(room.beds) ? room.beds : []).flatMap((y) => {
         const b = (y && typeof y === 'object' ? y : {}) as Record<string, unknown>;
-        return str(b.id) && str(b.label) ? [{ id: b.id as string, label: b.label as string, kind: str(b.kind), free: b.free === true, resource_bed_id: str(b.resource_bed_id) }] : [];
+        return str(b.id) && str(b.label) ? [{ id: b.id as string, label: b.label as string, kind: str(b.kind), free: b.free === true, resource_bed_id: str(b.resource_bed_id), layout: bedCell(b.layout) }] : [];
       });
-      return [{ id: room.id as string, name: room.name as string, beds }];
+      return [{ id: room.id as string, name: room.name as string, layout: roomLayout(room.layout), beds }];
     });
     return { rooms, price_night_cents: typeof r.price_night_cents === 'number' ? r.price_night_cents : null, nights: typeof r.nights === 'number' ? r.nights : 0 };
   });

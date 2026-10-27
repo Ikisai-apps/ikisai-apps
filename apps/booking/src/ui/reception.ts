@@ -12,7 +12,7 @@
  * «Llega» y «Sale» son `guest_arrive` y `guest_leave`: la salida libera la cama y pide la limpieza (1402).
  */
 import type { SyncedRow } from '@ikisai/sync-client';
-import { createLanes, el, replace, toast, type Lane } from '@ikisai/ui-kit';
+import { announceSaved, createLanes, el, replace, toast, type Lane } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES, WALKIN_METHODS, WALKIN_METHOD_LABELS, canSeeGuests, missingForSes, type GuestLike } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, SPACES, VISITOR_REQUESTS, WALKINS, canWrite, describeError } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -60,13 +60,13 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
         el('button', { class: 'primary small', type: 'button', 'data-action': 'accept-online', 'data-feedback-id': 'booking.recepcion.alojar_pagado', 'data-feedback-label': 'Alojar (pagado en línea)', onclick: () => void accept(c, 'online') }, 'Alojar (pagado en línea)'))
       : c.kind === 'request'
       ? el('div', { class: 'row-actions' }, method,
-        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', 'data-feedback-id': 'booking.recepcion.cobrar', 'data-feedback-label': 'Cobrar y alojar', onclick: () => void accept(c, method.value) }, 'Cobrar y alojar'),
+        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', 'data-feedback-id': 'booking.recepcion.cobrar', 'data-feedback-label': 'Cobrar y alojar', onclick: (e: Event) => void accept(c, method.value, e.currentTarget as HTMLButtonElement) }, 'Cobrar y alojar'),
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', 'data-feedback-id': 'booking.recepcion.descartar', 'data-feedback-label': 'Descartar', onclick: () => void decide(c, 'reject') }, 'Descartar'))
       : el('div', { class: 'row-actions' },
         c.presencia.text === 'Llega hoy' || c.presencia.text === 'Sin llegada marcada'
-          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'arrive', 'data-feedback-id': 'booking.recepcion.llega', 'data-feedback-label': 'Llega', onclick: () => void presence(c, PROCEDURES.guestArrive, 'Llegada anotada.') }, 'Llega') : null,
+          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'arrive', 'data-feedback-id': 'booking.recepcion.llega', 'data-feedback-label': 'Llega', onclick: () => void presence(c, PROCEDURES.guestArrive, 'Llegada anotada.', 'booking.recepcion.llega') }, 'Llega') : null,
         c.presencia.text.startsWith('Dentro')
-          ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'leave', 'data-feedback-id': 'booking.recepcion.sale', 'data-feedback-label': 'Sale', onclick: () => void presence(c, PROCEDURES.guestLeave, 'Salida anotada: la cama queda libre y se pide su limpieza.') }, 'Sale') : null,
+          ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'leave', 'data-feedback-id': 'booking.recepcion.sale', 'data-feedback-label': 'Sale', onclick: () => void presence(c, PROCEDURES.guestLeave, 'Salida anotada: la cama queda libre y se pide su limpieza.', 'booking.recepcion.sale') }, 'Sale') : null,
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'file', 'data-feedback-id': 'booking.recepcion.ficha', 'data-feedback-label': 'Ficha', onclick: () => navigate(`#/huespedes/${c.eventId}`) }, 'Ficha'));
     return el('li', { class: 'row', dataset: { card: c.key, ...(c.number ? { number: String(c.number) } : {}) }, 'data-feedback-ignore': '' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, c.title)),
@@ -104,23 +104,28 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
     }
   }
 
-  async function accept(c: ReceptionCard, method: string): Promise<void> {
+  async function accept(c: ReceptionCard, method: string, button?: HTMLButtonElement): Promise<void> {
     if (busy || !c.requestId) return;
     busy = true;
+    // señal visible mientras se aloja (revisión móvil de UI-kit): el botón no admite otro toque
+    if (button) button.disabled = true;
     const started = Date.now() - 60_000;
     try {
       if (!(await run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision: 'accept', method } }], `Alojado el ${c.number}.`))) return;
+      // Guiado: alojado de verdad (la base lo ha aceptado)
+      announceSaved(method === 'online' ? 'booking.recepcion.alojar_pagado' : 'booking.recepcion.cobrar');
       // los cobros que acaba de crear este evento, ya cobrados: a Finance con la prueba de servidor
       const fresh = ((await client.list(WALKINS)) as Row[]).filter((x) => x.event_id === c.eventId && !x.deleted_at && x.paid_at && !x.finance_sent_at && Date.parse(x.created_at) >= started);
       for (const x of fresh) await sendWalkinToFinance(client, x);
     } finally {
       busy = false;
+      if (button) button.disabled = false;
     }
   }
   const decide = (c: ReceptionCard, decision: 'reject') => c.requestId
     ? run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision } }], `Solicitud ${c.number} descartada.`) : Promise.resolve(false);
-  const presence = (c: ReceptionCard, procedure: string, done: string) => c.guestId
-    ? run([{ op: 'call', procedure, args: { guest_id: c.guestId } }], done) : Promise.resolve(false);
+  const presence = (c: ReceptionCard, procedure: string, done: string, anchor: string) => c.guestId
+    ? run([{ op: 'call', procedure, args: { guest_id: c.guestId } }], done).then((ok) => { if (ok) announceSaved(anchor); return ok; }) : Promise.resolve(false);
 
   const offs = [VISITOR_REQUESTS, WALKINS, GUESTS, ASSIGNMENTS, TABLES.stayTravelers, TABLES.stayPayments].map((t) => client.onTable(t as never, () => void paint()));
   void paint();
