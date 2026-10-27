@@ -6,4 +6,4 @@ export function testFolders(root?: string): string[];
 export function ownerOf(file: string, apps: readonly string[]): { app: string; server: boolean } | null;
 export function dependents(app: string, server: boolean, folders: readonly string[], root?: string): string[];
 export function groups(folders: readonly string[], root?: string, split?: number, pack?: number): PgliteGroup[];
-export function plan(options?: { event?: string; files?: string[]; root?: string }): CiPlan;
+export function plan(options?: { event?: string; files?: string[]; root?: string; split?: number }): CiPlan;
