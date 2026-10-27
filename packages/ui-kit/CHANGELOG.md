@@ -1,5 +1,22 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.60.0 · 27 de octubre de 2026
+
+**`renderQr(text, { size, label, margin })`** → `SVGSVGElement` (petición de Booking, visión V0.2: el QR de entrada de visitantes que se imprime en la ficha del evento).
+- **Sin red y sin dependencias**: codificador propio (`src/print/qr.ts`) en modo byte UTF-8.
+  - Nivel de corrección M. Versiones 1 a 10, hasta 213 bytes; una URL corta como `https://ven.ikisai.com/e/AB12CD` sale en la versión 3.
+  - Se queda la máscara con menos penalización (reglas 1 a 4 de ISO/IEC 18004).
+  - Con un texto más largo lanza un error que dice cuánto cabe.
+- **Negro sobre blanco en los dos temas**, para imprimir: los colores van fijos en el SVG.
+  - `size` en px (por defecto 160).
+  - `margin` en módulos (por defecto 4, el de la norma).
+  - `role="img"` y `aria-label`, que es `label` o, si no se da, el propio texto.
+  - Clase `qr-code`.
+- **Pruebas** (`tests/v64.spec.ts`, con un lector propio en `tests/qr-read.ts` que no usa el codificador):
+  - se leen de vuelta textos de 1 a 213 bytes, con los síndromes Reed-Solomon a cero;
+  - la información de versión (7 a 10) coincide con la tabla de la norma, y las dos copias del formato son iguales;
+  - el SVG se lee desde su propio dibujo.
+
 ## 0.59.0 · 27 de octubre de 2026
 
 **Inventario semántico de campos** (visión V0.2, encargo de Core; la forma está acordada con Central para «Uso y cobertura»). Cada campo de un formulario declara qué es, nunca lo que se escribe en él: no se toca la telemetría de valores. Sin declarar nada, no cambia nada.
