@@ -479,6 +479,26 @@ El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es l
 
 Lee y escribe solo el owner.
 
+### 2.18 Fichas de agente (`central.agents`, `1520`; traspaso de Flow §8.3, decisión de VG del 27-10)
+
+La ficha no es una cuenta: se apoya en la cuenta de agente del núcleo (`core.profiles.kind = 'agent'`, claves en `core.agent_keys`) y añade quién responde por el agente, qué hace, en qué trabaja y quién le sigue. Los ámbitos (apps, proyectos y roles) se leen de `core.memberships`; no se copian. Las tarjetas y decisiones conservan su autoría (`core.changes`) cuando se nombra un sustituto. Revocar las claves no toca la ficha.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `code` | `text` | `AGT_AAAA_NNN`. |
+| `display_name` | `text not null` | 1–80. |
+| `user_id` | `uuid` | La cuenta de agente del núcleo; la base comprueba que es de agente. Una ficha viva por cuenta. |
+| `mission` | `text` | Hasta 500. Qué hace. |
+| `work_areas` | `text` | Hasta 300. Apps y repositorios en los que trabaja. |
+| `responsible_kind` | `text not null` | `person` (por defecto) o `service`. |
+| `responsible_person_id` | `uuid` | Solo con `person`. Ficha activa de Central; no se borra mientras responda (`PERSON_IN_USE`). |
+| `responsible_service` | `text` | Solo con `service`, 1–120: la entidad de servicio, sin persona detrás. |
+| `active` | `boolean` | `false` por defecto. Sin responsable no se activa. |
+| `successor_id` | `uuid` | El agente que le sigue. Nunca él mismo. |
+| `notes` | `text` | Hasta 500. |
+
+Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). El agente no cambia su ficha: lo que proponga irá por `core.proposals` cuando la pantalla lo admita.
+
 ## 3. Procedimientos y lecturas
 
 ### 3.1 Procedimientos (`call`)

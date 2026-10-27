@@ -13,6 +13,7 @@ import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES, DECISION_VOTES, DECISION_VOTES_TABLE } from './decisions.ts';
 import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
 import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
+import { AGENTS_TABLE, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
@@ -258,6 +259,21 @@ const SPECS: Record<string, TableSpec> = {
     required: ['key', 'title', 'body', 'kind'],
     immutable: ['key', 'lang'],
   },
+  [AGENTS_TABLE]: {
+    fields: {
+      display_name: { kind: 'text', min: 1, max: 80 },
+      user_id: { kind: 'uuid', nullable: true },
+      mission: { kind: 'text', max: 500, nullable: true },
+      work_areas: { kind: 'text', max: 300, nullable: true },
+      responsible_kind: { kind: 'enum', values: RESPONSIBLE_KINDS },
+      responsible_person_id: { kind: 'uuid', nullable: true },
+      responsible_service: { kind: 'text', min: 1, max: 120, nullable: true },
+      active: { kind: 'boolean' },
+      successor_id: { kind: 'uuid', nullable: true },
+      notes: { kind: 'text', max: 500, nullable: true },
+    },
+    required: ['display_name'],
+  },
   [KPI_TARGETS_TABLE]: {
     fields: {
       kpi: { kind: 'text', min: 3, max: 80, pattern: /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, patternText: 'clave «app.nombre»' },
@@ -457,6 +473,9 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     if (table === KPI_TARGETS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede fijar objetivos.', details: { index, table } };
     }
+    if (table === AGENTS_TABLE && actor.role !== 'owner') {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra Central cambia las fichas de agente.', details: { index, table } };
+    }
     if (table === ENTITY_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede cambiar los datos de la entidad.', details: { index, table } };
     }
@@ -473,6 +492,13 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede enlazar una cuenta.', details: { index, table, field: 'user_id' } };
     }
     const row = { ...(op.id && current ? current(table, op.id) ?? {} : {}), ...fields } as Record<string, unknown>;
+    if (table === AGENTS_TABLE) {
+      const kind = (row.responsible_kind ?? 'person') as ResponsibleKind;
+      if (kind === 'person' && row.responsible_service != null) return fieldIssue(index, table, 'responsible_service', 'solo con una entidad de servicio');
+      if (kind === 'service' && row.responsible_person_id != null) return fieldIssue(index, table, 'responsible_person_id', 'solo con una persona');
+      if (row.active === true && !hasResponsible(row as unknown as AgentRow)) return fieldIssue(index, table, 'active', 'sin responsable no se puede activar');
+      if (op.id && row.successor_id === op.id) return fieldIssue(index, table, 'successor_id', 'no puede sucederse a sí mismo');
+    }
     if (table === TABLES.personPrivate && typeof row.engaged_from === 'string' && typeof row.engaged_until === 'string' && row.engaged_until < row.engaged_from) {
       return fieldIssue(index, table, 'engaged_until', 'no puede ser anterior al inicio');
     }

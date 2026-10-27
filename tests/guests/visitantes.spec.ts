@@ -226,15 +226,18 @@ test('ENTRADA_PUBLICA · «Guarda tu acceso»: correo y código, y se recupera e
   await box.locator('#accessVerify').click();
   await expect(box.locator('#accessSaved')).toContainText('Guardado con');
 
-  // Otro móvil: el mismo correo recupera el acceso y lo pedido.
+  // Otro móvil, desde «Mis eventos» (vacía): el mismo correo recupera el acceso, la lista (núcleo 0107) y lo pedido.
   const other = await browser.newPage();
-  await other.goto(`${baseURL}/#/v/${code}`);
+  await other.goto(`${baseURL}/#/v`);
+  await expect(other.locator('#visitorEmpty')).toBeVisible();
   const box2 = other.locator('#visitorAccess');
   await box2.locator('summary').click();
   await box2.locator('#accessEmail').fill(email);
   await box2.locator('#accessSend').click();
   await box2.locator('#accessCode').fill('123456');
   await box2.locator('#accessVerify').click();
+  await expect(other.locator('#visitor-before')).toContainText('Jornada para guardar acceso');
+  await other.locator(`#visitor-before a[data-code="${code}"]`).click();
   await expect(other.locator('#visitorSent')).toContainText('Pendiente');
   await other.close();
 });
