@@ -204,7 +204,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
             prepares ? el('div', { class: 'toolbar' },
               el('button', { class: 'ghost small', type: 'button', 'aria-label': `Enlazar una decisión: ${i.label}`, 'data-feedback-id': 'central.semana.enlazar_decision', 'data-feedback-label': 'Enlazar una decisión', onclick: () => linkDecision(review, i) }, 'Decisión'),
               el('button', { class: 'ghost small', type: 'button', 'aria-label': `Pedir una tarea: ${i.label}`, 'data-feedback-id': 'central.semana.pedir_tarea', 'data-feedback-label': 'Pedir una tarea', onclick: () => askTask(review, i) }, 'Tarea en Tasks')) : null));
-      })) : el('p', { class: 'hint' }, 'Nada en crítico ni en atención esta semana.'));
+      })) : el('p', { class: 'hint', id: 'weeklyNothingRed' }, 'Esta semana no hay indicadores en atención; puedes anotar igual.'));
     } catch (e) {
       if (alive) replace(host, el('p', { class: 'formerror' }, navigator.onLine ? describeError(e) : 'El panel se lee con conexión. Sin él no se puede cerrar la revisión.'));
     }
