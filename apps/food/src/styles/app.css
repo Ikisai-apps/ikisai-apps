@@ -526,3 +526,5 @@
 .fd-orgreview-service h4{margin:10px 0 4px;font-size:var(--text-sm,.875rem);color:var(--muted)}
 .fd-orgreview-dishes{list-style:none;margin:0;padding:0}
 .fd-orgreview-dishes li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.fd-menustyle{display:flex;align-items:center;gap:6px}
+.fd-menustyle .icon{flex:none;color:var(--accent)}

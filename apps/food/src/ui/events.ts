@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { closedMenus, defaultOfferFields, isCartaMenu, eventSnapshot, type EventOffer, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
-import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type IconName, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, el, formatDate, icon, listRow, openSheet, replace, toast, type IconName, type Sheet } from '@ikisai/ui-kit';
 import { eventShoppingHash } from './event-shopping.ts';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
@@ -19,6 +19,8 @@ import { usage } from '../app/usage.ts';
 export const MENU_STATUS_LABELS: Record<Menu['status'], string> = { borrador: 'Borrador', revisar: 'Por revisar', validado: 'Validado', cerrado: 'Cerrado' };
 /** El tipo de menú de Booking (`vegetariano`, `vegano`, `mixto`, `otro`), como se lee: «Vegetariano». */
 export const menuStyleLabel = (style: string | null | undefined): string => (style ? style.charAt(0).toUpperCase() + style.slice(1).replace(/_/g, ' ') : '—');
+/** El icono del tipo de menú (K13), junto a su nombre: vegetariano el queso, vegano la hoja, mixto el muslo, otro el gorro (F-EVT-4). */
+const MENU_STYLE_ICONS: Partial<Record<string, IconName>> = { vegetariano: 'cheese', vegano: 'vegan', mixto: 'drumstick', otro: 'chefHat', pescetariano: 'fish' };
 export const SERVICE_LABELS: Record<ServiceType, string> = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', picnic: 'Picnic', merienda: 'Merienda', otro: 'Otro' };
 /** El icono de cada servicio, de los de comida del kit (K13): siempre al lado de su nombre, nunca solo. */
 export const SERVICE_ICONS: Record<ServiceType, IconName> = { desayuno: 'cup', comida: 'plate', cena: 'bowl', picnic: 'basket', merienda: 'cookie', otro: 'chefHat' };
@@ -171,7 +173,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
         el('dt', null, 'Fechas'), el('dd', null, dateRange(event)),
         el('dt', null, 'Personas'), el('dd', null, guestsLabel(event) + (event.minors_count ? ` · ${event.minors_count} menores` : '')),
         el('dt', null, 'Régimen'), el('dd', null, mealPlanLabel(event.meal_plan)),
-        el('dt', null, 'Tipo de menú'), el('dd', null, menuStyleLabel(event.menu_style)),
+        el('dt', null, 'Tipo de menú'), el('dd', { class: 'fd-menustyle' }, event.menu_style && MENU_STYLE_ICONS[event.menu_style] ? icon(MENU_STYLE_ICONS[event.menu_style]!, 18) : null, menuStyleLabel(event.menu_style)),
         el('dt', null, 'Llegada y salida'), el('dd', null, `${shortTime(event.arrival_time) || '—'} · ${shortTime(event.departure_time) || '—'}`),
         el('dt', null, 'Códigos'), el('dd', { 'data-feedback-ignore': '' }, [event.event_code, event.reservation_code].filter(Boolean).join(' · ') || '—'),
       ),
