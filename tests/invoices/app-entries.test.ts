@@ -210,7 +210,7 @@ test('0245: un gasto es fiscal solo con justificante; al adjuntarlo pasa a fisca
   const hielo = await record(expense('hielo'));
   assert.equal(hielo.nature, 'process');
   // Un gasto fiscal sin justificante, no
-  await rejected([call('invoices.record_app_entry', expense('vasos', { nature: 'fiscal' }))], 'RECEIPT_REQUIRED');
+  await rejected([call('invoices.record_app_entry', expense('vasos', { nature: 'fiscal' }))], 'INVOICE_REQUIRED');
   // Con el número del ticket al reenviar, pasa a fiscal
   const withTicket = await record(expense('hielo', { receipt_number: 'T-77' }));
   assert.deepEqual([withTicket.status, withTicket.nature], ['replaced', 'fiscal']);
@@ -228,8 +228,40 @@ test('0245: un gasto es fiscal solo con justificante; al adjuntarlo pasa a fisca
   await ok([update(servilletas.entry_id, row.revision, { receipt_number: 'F-2026-118' })], app.tokens.editor);
   row = await entry(servilletas.entry_id);
   assert.deepEqual([row.nature, row.receipt_number], ['fiscal', 'F-2026-118']);
-  await rejected([update(servilletas.entry_id, row.revision, { receipt_number: null })], 'RECEIPT_REQUIRED');
+  await rejected([update(servilletas.entry_id, row.revision, { receipt_number: null })], 'INVOICE_REQUIRED');
   const summary = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { from: '2026-12-21', to: '2026-12-21' } })).data;
   assert.equal(Number(summary.expense.count), 2, 'los dos gastos con justificante');
+});
+
+test('0247: un gasto con ticket se registra, pero no es fiscal; con factura sí, y su IVA cuenta como soportado', async () => {
+  const expense = (ref: string, extra: Record<string, unknown> = {}) => ({ source_app: 'flow', source_ref: `flow:project:${PROJECT}:${ref}`, kind: 'expense', entry_date: '2026-12-22',
+    description: `Compra · ${ref}`, amount_cents: 1210, tax_rate: 21, methods: { cash: 1210 }, ...extra });
+  const ticket = await record(expense('limones', { receipt_number: 'T-9', receipt_kind: 'ticket' }));
+  assert.deepEqual([ticket.nature, ticket.receipt_kind], ['process', 'ticket']);
+  await rejected([call('invoices.record_app_entry', expense('limones', { receipt_kind: 'ticket', nature: 'fiscal' }))], 'INVOICE_REQUIRED');
+  // Llega la factura: pasa a fiscal; una factura no vuelve a ser ticket
+  const invoice = await record(expense('limones', { receipt_number: 'F-31', receipt_kind: 'invoice' }));
+  assert.deepEqual([invoice.status, invoice.nature, invoice.receipt_kind], ['replaced', 'fiscal', 'invoice']);
+  await rejected([call('invoices.record_app_entry', expense('limones', { receipt_kind: 'ticket' }))], 'NATURE_CHANGE', 409);
+  // Un ingreso con ticket sigue siendo fiscal (la venta va al IVA repercutido)
+  const sale = await record({ ...expense('venta', { kind: 'income', receipt_number: 'TK-1', receipt_kind: 'ticket' }) });
+  assert.equal(sale.nature, 'fiscal');
+  const summary = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { from: '2026-12-22', to: '2026-12-22' } })).data;
+  assert.deepEqual([Number(summary.expense.count), Number(summary.expense.quota)], [1, 2.1], 'solo el gasto con factura, con su IVA');
+});
+
+test('0247: un ticket registrado como factura recibida queda fuera del resumen fiscal y de la entrega', async () => {
+  const supplier = uuid();
+  await ok([{ op: 'insert', table: 'invoices.suppliers', id: supplier, fields: { name: 'Frutería del Mercado' } }]);
+  const id = uuid();
+  await ok([{ op: 'insert', table: 'invoices.invoices', id, fields: { supplier_id: supplier, invoice_date: '2027-01-05', object: 'Fruta', receipt_kind: 'ticket' } }]);
+  const row = (await app.call('/api/v1/snapshot?tables=invoices.invoices')).data.tables[0].rows.find((r: any) => r.id === id);
+  assert.equal(row.receipt_kind, 'ticket');
+  const fiscal = (await app.t.db.query<{ s: any }>(`select invoices.fiscal_summary_for('2027-01-01', '2027-03-31') s`)).rows[0]!.s;
+  assert.equal(Number(fiscal.invoices.pendiente_datos) + Number(fiscal.invoices.pendiente_revision), 0, 'el ticket no cuenta');
+  // Pendiente, se corrige a factura y entonces cuenta
+  await ok([{ op: 'update', table: 'invoices.invoices', id, expectedRevision: row.revision, fields: { receipt_kind: 'invoice' } }]);
+  const after = (await app.t.db.query<{ s: any }>(`select invoices.fiscal_summary_for('2027-01-01', '2027-03-31') s`)).rows[0]!.s;
+  assert.equal(Number(after.invoices.pendiente_datos) + Number(after.invoices.pendiente_revision), 1);
 });
 

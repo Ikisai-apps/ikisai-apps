@@ -28,7 +28,7 @@ export interface EntryLike {
 
 export interface AllocationLike { id: string; invoice_line_id: string; target_app: string; target_kind: string; target_id: string | null; target_label: string | null; allocated_amount: number; deleted_at: string | null }
 export interface LineLike { id: string; invoice_id: string; deleted_at: string | null }
-export interface InvoiceLike { id: string; code: string | null; status: string; object: string | null; invoice_date: string | null; supplier_id: string; deleted_at: string | null }
+export interface InvoiceLike { id: string; code: string | null; status: string; object: string | null; invoice_date: string | null; supplier_id: string; deleted_at: string | null; receipt_kind?: string | null }
 export interface IssuedAllocationLike { id: string; issued_invoice_id: string; target_app: string; target_kind: string; target_id: string | null; target_label: string | null; allocated_amount: number; deleted_at: string | null }
 export interface IssuedLike { id: string; full_number: string | null; status: string; description: string | null; issue_date: string | null; deleted_at: string | null }
 
@@ -96,7 +96,8 @@ export function eventResults(src: EventSources): EventResult[] {
     const invoice = invoiceById.get(lineById.get(a.invoice_line_id)?.invoice_id ?? '');
     if (!invoice || invoice.status === 'anulada') continue;
     const r = of(a.target_id, a.target_label);
-    const pending = !COUNTED_RECEIVED.has(invoice.status);
+    // Sin validar o con ticket (0247: no va a la gestoría): gasto de proceso, marcado
+    const pending = !COUNTED_RECEIVED.has(invoice.status) || invoice.receipt_kind === 'ticket';
     if (pending) {
       const seen = pendingSeen.get(a.target_id) ?? new Set<string>();
       if (!seen.has(invoice.id)) { seen.add(invoice.id); r.pendingInvoices += 1; }

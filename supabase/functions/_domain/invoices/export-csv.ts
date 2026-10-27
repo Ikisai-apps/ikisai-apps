@@ -218,7 +218,8 @@ export function taxesCsv(manifest: ExportManifest): string {
       ...at.income.quota_by_rate.map((g) => ['iva_repercutido_apps', rate(g.rate), money(g.base), money(g.quota)] as Cell[]),
       ['base_ingresos_apps', null, money(at.income.base), null],
       ['iva_repercutido_apps_total', null, null, money(at.income.quota)],
-      ['gastos_apps_total', null, money(at.expense.base), money(at.expense.total)],
+      // Gastos de apps con factura (0247): su IVA es soportado, venga de la app que venga
+      ['iva_soportado_apps_total', null, money(at.expense.base), money(at.expense.quota)],
     );
   }
   return csvRows(['tipo', 'tasa', 'base', 'importe'], rows);

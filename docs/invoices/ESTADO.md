@@ -154,6 +154,7 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 - **Ingresos y gastos de otras apps** (encargo de VG del 26-10-2026, plazo jueves 29; API.md §17):
   - PR 1 (`invoices/app-entries`): migración 0244 con `invoices.app_entries`, `invoices.record_app_entry` (idempotente por `source_ref`, `ENTRY_LOCKED` si ya está entregado) y todos los apuntes en el resumen y la entrega (`ingresos_gastos_apps.csv`). Sin «facturado sí/no» (decisión de VG del 26-10). El formato está acordado con Flow.
   - PR 2 (`invoices/app-entries-ui`): «Ingresos y gastos de apps» (`#/apuntes`), la vista «Evento» (`#/evento`) con el resultado sin IVA, la herramienta en Inicio y la tarjeta en Gestoría (API.md §17.4).
+- **Factura o ticket** (0247, API.md §17.8): a la gestoría y al IVA soportado solo van las facturas; los tickets se registran, pero no son deducibles. El «Justificante del día» es un ticket.
 - **Apuntes fiscales y de proceso** (0245, API.md §17.7): `nature` por apunte. Solo lo fiscal va a la gestoría, al IVA y al justificante; lo de proceso se ve y cuenta en «Evento». Por defecto, fiscal.
 - **Capacidad «Registrar compra rápida»** (V0.2, API.md §18): `POST /api/v1/purchases/quick`, idempotente por `requestId`, al evento o a un destino general, con la ficha para el catálogo del núcleo.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
@@ -161,8 +162,6 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 ## Pendiente
 
 - **Ingresos de Flow:** que Flow llame a `invoices.record_app_entry` desde su «Cierre del día» (formato acordado; API.md §17.2) y probar el recorrido entero antes del evento del 31-10.
-- **Duda fiscal (VG → gestoría):** si los gastos que lleguen de otras apps dan IVA soportado (PETICIONES.md, 26-10). Hoy van aparte.
-- **Justificante del día** (API.md §17.5): sin numeración fiscal hasta que la gestoría diga ticket o factura simplificada (PETICIONES.md, 27-10). El hueco de la serie está preparado.
 - **Liquidaciones de Flow** (API.md §17.6): Flow las incluye en el cierre del día en que se cobran y no manda apuntes aparte (27-10). El formato aparte queda disponible, pero sin uso.
 - Aceptación manual en Android: la hace el usuario con facturas reales del negocio; sus incidencias llegan por el buzón de Core.
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.

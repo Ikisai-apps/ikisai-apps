@@ -18,6 +18,7 @@ test('invoices.register_purchase_quick en core.capabilities', async () => {
   assert.ok(row.output_schema.required.includes('summary'));
   assert.ok(row.output_schema.required.includes('nature'));
   assert.ok('invoice_number' in row.input_schema.properties);
+  assert.ok('receipt_kind' in row.input_schema.properties, '0247 la actualiza');
   assert.ok(row.anchors.includes('invoices.facturas.nueva'));
   await db.close();
 });

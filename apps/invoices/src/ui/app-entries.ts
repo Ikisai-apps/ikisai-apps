@@ -55,6 +55,10 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
   // Justificante (0245): con él, un apunte de proceso pasa a fiscal y va a la gestoría (el único sentido permitido)
   const receiptFile = el('input', { type: 'file', id: 'appEntryReceiptFile', accept: ACCEPT_ATTR }) as HTMLInputElement;
   const receiptNumber = el('input', { type: 'text', id: 'appEntryReceiptNumber', maxlength: '64', value: entry.receipt_number ?? '', placeholder: 'Número de la factura o del ticket' }) as HTMLInputElement;
+  // 0247: factura o ticket. Un gasto con ticket se registra, pero no es deducible ni va a la gestoría.
+  const receiptKind = el('select', { id: 'appEntryReceiptKind', 'data-feedback-id': 'invoices.apuntes.ficha.tipo_justificante', 'data-feedback-label': 'Factura o ticket' },
+    el('option', { value: 'invoice', selected: (entry.receipt_kind ?? 'invoice') === 'invoice' }, 'Factura'),
+    el('option', { value: 'ticket', selected: entry.receipt_kind === 'ticket', disabled: entry.receipt_kind === 'invoice' }, 'Ticket')) as HTMLSelectElement;
   const linkButton = canEdit ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.enlazar_evento', 'data-feedback-label': 'Enlazar con un evento', class: 'ghost', type: 'button', id: 'appEntryLinkEvent',
     onclick: () => openEventPicker(ctx, entry, reload) }, icon('calendar', 16), entry.event_id ? 'Cambiar el evento' : 'Enlazar con un evento') : null;
   const linkReason = el('div', { class: 'inv-reason' });
@@ -78,7 +82,7 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
             onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/evento?id=${entry.event_id}`); } }, eventLabel(event, entry.event_id))
           : 'Sin evento'),
         el('dt', null, 'Tipo'), el('dd', { id: 'appEntryNature' }, isFiscal(entry) ? 'Fiscal: va a la gestoría y al IVA' : 'De proceso: informativo, no va a la gestoría'),
-        el('dt', null, 'Justificante'), el('dd', { id: 'appEntryReceiptInfo' }, entry.receipt_number ? `Nº ${entry.receipt_number}` : null,
+        el('dt', null, 'Justificante'), el('dd', { id: 'appEntryReceiptInfo' }, entry.receipt_kind ? `${entry.receipt_kind === 'ticket' ? 'Ticket' : 'Factura'} ` : null, entry.receipt_number ? `Nº ${entry.receipt_number}` : null,
           entry.receipt_file_id ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.ver_justificante', 'data-feedback-label': 'Ver el justificante', class: 'linkbtn', type: 'button',
             onclick: () => void openFile(client, entry.receipt_file_id!).catch((e) => toast(describeError(e))) }, ' Ver el documento') : null,
           !entry.receipt_number && !entry.receipt_file_id ? 'Sin justificante' : null),
@@ -90,7 +94,10 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
         : null,
       canEdit ? el('p', { class: 'btnrow' }, linkButton) : null, linkReason,
       canEdit ? el('fieldset', { class: 'field', id: 'appEntryReceiptForm' }, el('legend', null, 'Justificante'),
-        isFiscal(entry) ? null : el('p', { class: 'hint' }, 'Con su factura o su ticket pasa a fiscal y va a la gestoría. No se puede deshacer.'),
+        isFiscal(entry) ? null : el('p', { class: 'hint' }, entry.kind === 'expense'
+          ? 'Con su factura pasa a fiscal: va a la gestoría y su IVA cuenta como soportado. Con ticket se registra, pero no es deducible. No se puede deshacer.'
+          : 'Con su factura o su ticket pasa a fiscal y va a la gestoría. No se puede deshacer.'),
+        el('label', { class: 'field' }, el('span', null, 'Tipo'), receiptKind),
         el('label', { class: 'field' }, el('span', null, 'Foto o PDF'), receiptFile),
         el('label', { class: 'field' }, el('span', null, 'Número'), receiptNumber)) : null,
       canEdit ? el('label', { class: 'field' }, el('span', null, 'Notas'), notes) : el('p', null, entry.notes ?? '')),
@@ -103,6 +110,7 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
         if (n !== (entry.notes ?? null)) fields.notes = n;
         const number = receiptNumber.value.trim() || null;
         if (number !== (entry.receipt_number ?? null)) fields.receipt_number = number;
+        if ((number || receiptFile.files?.length || entry.receipt_file_id || entry.receipt_number) && receiptKind.value !== (entry.receipt_kind ?? 'invoice')) fields.receipt_kind = receiptKind.value;
         const file = receiptFile.files?.[0];
         if (file) {
           try { fields.receipt_file_id = (await stageDocument(client, file)).marker; } catch (error) { toast(describeError(error)); return; }
@@ -142,9 +150,8 @@ async function openDayReceipt(ctx: ViewContext, entry: LocalAppEntry): Promise<v
   const view = createPrintView({
     brand: { appName: 'Finance', markIcon: 'invoice', line: entity?.legal_name ?? MISSING_ENTITY },
     title: r.title,
-    subtitle: r.number ?? undefined,
     meta: [shortDate(r.date), r.description],
-    draft: r.number ? false : 'SIN NUMERACIÓN FISCAL',
+    draft: 'TICKET',
     intro: body,
     sections: [],
     notes: r.notice,

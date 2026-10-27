@@ -124,7 +124,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total', 'totals_delta',
     'source', 'import_sha256', 'import_meta', 'notes', 'drive_file_id', 'drive_url',
     'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original', 'declared_period', 'delivered_elsewhere',
-    'payment_source',
+    'payment_source', 'receipt_kind',
   ],
   'invoices.invoice_files': ['invoice_id', 'file_id', 'original_filename', 'page_order', 'kind', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.invoice_lines': [
@@ -157,7 +157,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.item_labels': ['label', 'item_id', 'item_factor'],
   'invoices.settings': ['key', 'value'],
   // Lo demás lo escribe `invoices.record_app_entry` (0244); en Finance solo el evento y las notas.
-  'invoices.app_entries': ['event_id', 'notes', 'receipt_file_id', 'receipt_number'],
+  'invoices.app_entries': ['event_id', 'notes', 'receipt_file_id', 'receipt_number', 'receipt_kind'],
 };
 
 /** Columnas comunes del contrato §2.1. */
@@ -182,8 +182,14 @@ export interface SupplierRow extends SyncedColumns {
   notes: string | null;
 }
 
+/** 0247 (VG, 27-10): a la gestoría y al IVA soportado solo van las facturas; un ticket se registra, pero no es deducible. */
+export const RECEIPT_KINDS = ['invoice', 'ticket'] as const;
+export type ReceiptKind = (typeof RECEIPT_KINDS)[number];
+
 export interface InvoiceRow extends SyncedColumns {
   code: string | null;
+  /** 0247: `ticket` queda fuera del resumen fiscal y de la entrega. Sin valor (filas antiguas), factura. */
+  receipt_kind?: ReceiptKind;
   supplier_id: string;
   /** Puede quedar vacía al crearla (0223): se lee del PDF o se escribe después; sin ella no se valida. */
   invoice_date: string | null;
@@ -316,6 +322,8 @@ export interface AppEntryRow extends SyncedColumns {
   /** 0245: justificante (documento de Finance y número de la factura o del ticket). Con él, un apunte de proceso pasa a fiscal. */
   receipt_file_id: string | null;
   receipt_number: string | null;
+  /** 0247: factura o ticket. Un gasto solo es fiscal con factura. */
+  receipt_kind: ReceiptKind | null;
   received_by: string | null;
   received_at: string;
   notes: string | null;

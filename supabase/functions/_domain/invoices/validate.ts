@@ -6,7 +6,7 @@
 import { decimalsOf, isFiniteNumber } from './money.ts';
 import {
   DEDUCTIBILITIES, EXPENSE_CATEGORIES, EXPORT_STATUSES, FILE_KINDS, FILE_MIMES, INVOICE_SOURCES, INVOICE_STATUSES, INVOICE_KINDS, ITEM_TYPES, PAYMENT_METHODS, PAYMENT_SOURCES,
-  PAYMENT_STATUSES, TABLES, TARGET_APPS, TARGET_KINDS, TAX_TYPES, WRITABLE, type InvoicesTable,
+  PAYMENT_STATUSES, RECEIPT_KINDS, TABLES, TARGET_APPS, TARGET_KINDS, TAX_TYPES, WRITABLE, type InvoicesTable,
 } from './types.ts';
 import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS, ISSUED_STATUSES, RECIPIENT_KINDS, SERIES_MODES, ISSUED_PURPOSES } from './issued.ts';
 import { validIssuedNumberFormat } from './verifactu.ts';
@@ -164,6 +164,7 @@ export function validateInvoiceFields(fields: Fields, op: 'insert' | 'update', {
   oneOf(fields, 'payment_status', PAYMENT_STATUSES, { nullable: false });
   oneOf(fields, 'payment_method', PAYMENT_METHODS);
   oneOf(fields, 'payment_source', PAYMENT_SOURCES);
+  oneOf(fields, 'receipt_kind', RECEIPT_KINDS, { nullable: false });
   oneOf(fields, 'source', INVOICE_SOURCES, { nullable: false });
   oneOf(fields, 'invoice_kind', INVOICE_KINDS, { nullable: false });
   uuid(fields, 'rectifies_invoice_id');
@@ -515,6 +516,7 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
       uuid(fields, 'event_id', { nullable: true });
       if (has(fields, 'receipt_file_id') && fields.receipt_file_id !== null && !isBlobMarker(fields.receipt_file_id)) uuid(fields, 'receipt_file_id');
       text(fields, 'receipt_number', { max: 64 });
+      oneOf(fields, 'receipt_kind', RECEIPT_KINDS);
       return text(fields, 'notes', { max: 2000 });
     default: return;
   }
@@ -548,6 +550,7 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   ENTRY_LOCKED: 'Este apunte ya está en una entrega a la gestoría: no se puede sustituir.',
   NATURE_CHANGE: 'Un apunte fiscal no vuelve a ser de proceso.',
   RECEIPT_REQUIRED: 'Un gasto fiscal necesita su factura o su ticket.',
+  INVOICE_REQUIRED: 'Un gasto con ticket se registra, pero no es deducible ni va a la gestoría: para eso hace falta la factura.',
   ENTITY_MISSING: 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.',
   ALLOCATIONS_EXCEED_INVOICE: 'Lo asignado supera la base de la factura.',
   INVOICE_NOT_IMPORTABLE: 'Esta factura ya tiene datos; importa sobre una factura vacía.',

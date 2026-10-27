@@ -93,7 +93,8 @@ export interface FiscalSummaryInput {
 export function fiscalSummary(input: FiscalSummaryInput, range: DateRange): FiscalSummary {
   const today = input.today ?? new Date().toISOString().slice(0, 10);
   // Por periodo de declaración (0228): una factura atrasada cuenta en el trimestre en que se declara.
-  const live = input.invoices.filter((i) => !i.deleted_at && inRange(declarationDate(i), range));
+  // 0247: los tickets no son deducibles: fuera del resumen fiscal (como en `invoices.fiscal_summary_for`).
+  const live = input.invoices.filter((i) => !i.deleted_at && (i.receipt_kind ?? 'invoice') === 'invoice' && inRange(declarationDate(i), range));
   const counts: Record<InvoiceStatus, number> = { pendiente_datos: 0, pendiente_revision: 0, validada: 0, archivada: 0, anulada: 0 };
   for (const inv of live) counts[inv.status] += 1;
   const summed = live.filter((i) => SUMMED_STATUSES.includes(i.status));
