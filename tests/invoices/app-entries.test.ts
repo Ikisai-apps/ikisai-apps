@@ -155,3 +155,23 @@ test('entrega a la gestoría: los apuntes van en el manifest y el CSV; entregada
   // Las notas sí se pueden escribir
   await ok([update(row.id, row.revision, { notes: 'Revisado con la caja del día' })]);
 });
+
+test('liquidación de cuenta de cliente (pago único que cierra varios pedidos): cabe en el modelo, con el desglose por pedido', async () => {
+  const PAYMENT = '0c2f7d2a-5b1e-4f3a-9d6c-1e2f3a4b5c6d';
+  const settlement = {
+    source_app: 'flow', source_ref: `flow:settlement:${PAYMENT}`, kind: 'income', entry_date: '2026-11-01', description: 'Cuenta del cliente 112 · liquidación',
+    amount_cents: 3600, tax_rate: 10, methods: { bizum: 3600 },
+    detail: [
+      { code: 'P 14', name: 'Pedido 14', quantity: 1, amount_cents: 2100, order_id: '1d6e2c5a-7f3b-4a8e-9c1d-2b3a4c5d6e7f' },
+      { code: 'P 31', name: 'Pedido 31', quantity: 1, amount_cents: 1500, order_id: '2e7f3d6b-8a4c-4b9f-8d2e-3c4b5d6e7f80' },
+    ],
+  };
+  const first = await record(settlement);
+  assert.equal(first.status, 'created');
+  const row = await entry(first.entry_id);
+  assert.equal(row.detail.length, 2);
+  assert.equal(row.detail[1].order_id, '2e7f3d6b-8a4c-4b9f-8d2e-3c4b5d6e7f80', 'la referencia del pedido se guarda tal cual');
+  assert.equal((await record(settlement)).status, 'unchanged');
+  // El desglose por pedido tiene que sumar lo cobrado
+  await rejected([call('invoices.record_app_entry', { ...settlement, amount_cents: 3700, methods: { bizum: 3700 } })], 'INVALID_ARGS');
+});

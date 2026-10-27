@@ -51,6 +51,9 @@ export const READS = {
   /** Para Flow (0480): el evento, y su personal con nombre corto. */
   eventProjection: 'booking.event_projection',
   eventStaffProjection: 'booking.event_staff_projection',
+  flowGuestsProjection: 'booking.flow_guests_projection',
+  /** Para Flow: los huéspedes de un evento de su ámbito ({event_id}). */
+  flowGuestsOf: 'booking.flow_guests_of',
 } as const;
 
 export const PROCEDURES = {
@@ -58,6 +61,9 @@ export const PROCEDURES = {
   newProposalVersion: 'booking.new_proposal_version',
   sendProposal: 'booking.send_proposal',
   acceptProposal: 'booking.accept_proposal',
+  /** 0486: llegada y salida desde Flow ({guest_id, undo?}). */
+  guestArrive: 'booking.guest_arrive',
+  guestLeave: 'booking.guest_leave',
 } as const;
 
 /** Tipos de reserva (0482, VG 26-10-2026): retiro (la actividad principal), jornadas abiertas (venta y alojamiento a la carta) y familiar (de la casa). */

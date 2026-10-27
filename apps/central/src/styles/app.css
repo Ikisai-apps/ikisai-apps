@@ -391,3 +391,10 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-placeside .agentrow button{min-height:var(--tap,46px)}
 .ctl-placeside .linkbtn{min-height:var(--tap,46px)}
 .ctl-placeside .linkbtn.on{font-weight:800}
+
+/* Revisión › Uso y cobertura (V0.2, 27-10): una función por fila, su estado y la decisión de una persona. */
+.ctl-cov{display:flex;flex-direction:column;gap:4px;padding:10px 0;min-width:0}
+.ctl-covhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ctl-cov .muted.small{overflow-wrap:anywhere}
+.ctl-covdecide{flex-wrap:wrap;margin-top:4px}
+.ctl-covdecide button{min-height:var(--tap,46px)}
