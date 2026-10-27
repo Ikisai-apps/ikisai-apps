@@ -64,7 +64,9 @@ function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerF
     const id = `${prefix}${f.key}`;
     const input = f.key === 'document_type'
       ? el('select', { id, class: 'input', ...f.mark }, el('option', { value: '' }, '—'), ...DOCUMENT_TYPES.map((d) => el('option', { value: d }, d))) as HTMLSelectElement
-      : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}), ...f.mark }) as HTMLInputElement;
+      : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}),
+        // El número de documento, sin corrector ni mayúsculas automáticas a medias (la letra del DNI o el NIE).
+        ...(f.key === 'document_number' ? { autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' } : {}), ...f.mark }) as HTMLInputElement;
     inputs.set(f.key, input);
     return el('label', { class: 'field', for: id }, el('span', null, t(`lodge.f.${f.key}`)), input);
   });
@@ -186,9 +188,9 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
     const first = event.starts_on && event.starts_on > today ? event.starts_on : today;
     const last = event.ends_on ?? addDays(first, 1);
     const from = el('input', { type: 'date', id: 'lodgeFrom', class: 'input', value: first, min: first, max: last,
-      ...fieldAttrs({ id: 'guests.visitante.alojate.llegada', entity: 'booking.visitor_requests', prop: 'from', type: 'date', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
+      ...fieldAttrs({ id: 'guests.visitante.alojate.llegada', entity: 'booking.visitor_requests', prop: 'from_date', type: 'date', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
     const to = el('input', { type: 'date', id: 'lodgeTo', class: 'input', value: addDays(first, 1), min: addDays(first, 1), max: addDays(last, 1),
-      ...fieldAttrs({ id: 'guests.visitante.alojate.salida', entity: 'booking.visitor_requests', prop: 'to', type: 'date', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
+      ...fieldAttrs({ id: 'guests.visitante.alojate.salida', entity: 'booking.visitor_requests', prop: 'to_date', type: 'date', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
     from.addEventListener('change', () => { to.min = addDays(from.value, 1); if (to.value <= from.value) to.value = addDays(from.value, 1); void beds(); });
     to.addEventListener('change', () => void beds());
     const bedsHost = el('div', { id: 'lodgeBeds', 'aria-live': 'polite' });
@@ -212,7 +214,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           el('p', { class: 'small', id: 'lodgePrice' }, value.price_night_cents !== null
             ? t('lodge.price', { night: money(value.price_night_cents), total: money(value.price_night_cents * value.nights), nights: t('stay.nights', { count: value.nights }) }) : ''),
           free.length
-            ? el('fieldset', { class: 'glodge-beds', ...fieldAttrs({ id: 'guests.visitante.alojate.cama', entity: 'booking.visitor_requests', prop: 'bed_id', type: 'select', required: false, sensitivity: 'internal', confirm: 'event' }) }, el('legend', null, t('lodge.bedTitle')),
+            ? el('fieldset', { class: 'glodge-beds', ...fieldAttrs({ id: 'guests.visitante.alojate.cama', entity: 'booking.visitor_requests', prop: 'hold_bed_ids', type: 'select', required: false, sensitivity: 'internal', confirm: 'event' }) }, el('legend', null, t('lodge.bedTitle')),
               radio('', el('strong', null, t('lodge.assign')), true),
               ...value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
                 el('p', { class: 'small glodge-room-name' }, r.name),
@@ -221,7 +223,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         if (free.length) bedsHost.append(planBox(value));
         go.disabled = !free.length;
       } catch (error) {
-        replace(bedsHost, whyNote('lodgeBedsWhy', lodgeError(error)));
+        replace(bedsHost, whyNote('lodgeBedsWhy', lodgeError(error)), el('button', { type: 'button', class: 'ghost small', id: 'lodgeBedsRetry', onclick: () => void beds() }, t('common.retry')));
         go.disabled = true;
       }
     };

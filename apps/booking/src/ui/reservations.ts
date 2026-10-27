@@ -9,6 +9,7 @@ import {
   DATE_OPTIONS, EVENT_TYPE_LABELS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, RESERVATIONS, ASSIGNMENTS, PORTAL_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, today,
   type ReservationRow,
 } from '../app/client.ts';
+import { settleBatch } from '../app/settle.ts';
 import { PHASE_COLORS, loadExperiences, onSesPending, resetSesWatch, requestBlock, type ExperienceSet, type ReservationView } from '../app/experience.ts';
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
@@ -371,7 +372,10 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       }
       try {
         save.disabled = true;
-        await client.commit(operations);
+        const { requestId } = await client.commit(operations);
+        // Guiado: solo cuando la base la ha aceptado (sin red, como pendiente)
+        const rejected = navigator.onLine ? await settleBatch(client, requestId) : null;
+        if (rejected) return showError(describeError(rejected.error));
         guard.dirtyEditor = false;
         await sheet?.close(true);
         announceSaved('booking.reservas.alta.guardar', { pending: !navigator.onLine });
