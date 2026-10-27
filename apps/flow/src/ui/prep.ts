@@ -1,4 +1,4 @@
-import { confirmDialog, el, icon, openSheet, renderMedal, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, icon, openSheet, renderMedal, replace, toast } from '@ikisai/ui-kit';
 import { nextUnitStatus, PROCEDURES, UNIT_STATUS_LABELS, type UnitStatus } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { productMedal } from './sheets-common.ts';
@@ -173,7 +173,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
       if (!u) return;
       const params = (u.payload?.params ?? {}) as Record<string, unknown>;
       const inputs = Object.entries(params).filter(([, v]) => typeof v === 'number')
-        .map(([k, v]) => [k, el('input', { type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
+        .map(([k, v]) => [k, el('input', { ...fieldAttrs({ id: 'flow.preparacion.ingrediente', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
       const sheet = openSheet({ title: `Parámetros · ${u.label ?? ''}`,
         body: el('div', { class: 'station-params' }, ...inputs.map(([k, input]) => el('label', null, el('span', null, k), input))),
         foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
@@ -187,7 +187,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
     function editQty(id: string): void {
       const u = data?.units.find((x) => x.id === id);
       if (!u || u.payload?.qty === undefined) return;
-      const input = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: String(u.payload.qty), 'aria-label': `Cantidad (${u.payload.unit ?? ''})` });
+      const input = el('input', { ...fieldAttrs({ id: 'flow.preparacion.cantidad', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: String(u.payload.qty), 'aria-label': `Cantidad (${u.payload.unit ?? ''})` });
       const sheet = openSheet({ title: u.label ?? 'Cantidad', meta: u.payload.unit ? `En ${u.payload.unit}` : undefined, body: el('div', null, input),
         foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
           const qty = Number(input.value);
@@ -278,8 +278,8 @@ export function mountQueue(kind: QueueKind): ViewMount {
     }
 
     function taskForm(): HTMLElement {
-      const input = el('input', { type: 'text', name: 'task', maxlength: '120', placeholder: 'Reponer tomate, traer pan…', 'aria-label': 'Nueva tarea', autocomplete: 'off' });
-      const priority = el('input', { type: 'checkbox', name: 'priority' });
+      const input = el('input', { ...fieldAttrs({ id: 'flow.preparacion.nueva_tarea', entity: 'flow.units', prop: 'label', type: 'text' }), type: 'text', name: 'task', maxlength: '120', placeholder: 'Reponer tomate, traer pan…', 'aria-label': 'Nueva tarea', autocomplete: 'off' });
+      const priority = el('input', { ...fieldAttrs({ id: 'flow.preparacion.prioridad', entity: 'flow.units', prop: 'priority', type: 'checkbox' }), type: 'checkbox', name: 'priority' });
       const form = el('form', { class: 'task-form', onsubmit: async (e: Event) => {
         e.preventDefault();
         const label = input.value.trim();

@@ -155,7 +155,8 @@ test('carta · en Menús, su vista con precio y disponibilidad, y «Nueva carta�
     await page.locator('#cartaNewName').fill('Carta del domingo');
     await page.locator('#cartaNewSave').click();
     await expect(page.locator('#cartaTitle')).toHaveText('Carta del domingo');
-    expect(api.rows('food.menus').some((m) => m.kind === 'carta' && m.name === 'Carta del domingo')).toBe(true);
+    // El título sale del espejo local; la fila llega al servidor con el lote, un poco después.
+    await expect.poll(() => api.rows('food.menus').some((m) => m.kind === 'carta' && m.name === 'Carta del domingo')).toBe(true);
   });
 });
 

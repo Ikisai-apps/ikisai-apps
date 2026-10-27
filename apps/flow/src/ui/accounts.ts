@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { formatEuros, SETTLE_METHOD_LABELS, type SettleMethod } from '@ikisai/domain-flow';
 import { flowActions, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -18,8 +18,8 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
   const isOwner = client.bootstrap()?.membership.role === 'owner';
   let data: FlowData | null = null;
   const list = el('div', { class: 'accounts-list', role: 'list' });
-  const holder = el('input', { type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', autocomplete: 'off' });
-  const number = el('input', { type: 'text', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Nº de cliente (opcional)', 'aria-label': 'Número de cliente', autocomplete: 'off' });
+  const holder = el('input', { ...fieldAttrs({ id: 'flow.cuentas.titular', entity: 'flow.accounts', prop: 'holder', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', autocomplete: 'off' });
+  const number = el('input', { ...fieldAttrs({ id: 'flow.cuentas.numero_cliente', entity: 'flow.customers', prop: 'number', type: 'text' }), type: 'text', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Nº de cliente (opcional)', 'aria-label': 'Número de cliente', autocomplete: 'off' });
   const openButton = busyButton({ class: 'primary' }, 'Abrir cuenta', async () => {
     if (!isOnline(client)) { toast('Abrir una cuenta necesita conexión.'); return; }
     const customer = number.value.replace(/\D/g, '');
@@ -94,7 +94,7 @@ export async function chooseAccount(client: SyncClient, data: FlowData, customer
   });
   if (picked !== 'new') return picked;
   const customer = customerId ? data.customers.get(customerId) ?? null : null;
-  const input = el('input', { type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', value: customer?.display_name ?? '' });
+  const input = el('input', { ...fieldAttrs({ id: 'flow.cliente.nombre', entity: 'flow.customers', prop: 'display_name', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', value: customer?.display_name ?? '' });
   const ok = await confirmDialog({ title: 'Abrir cuenta', text: customer ? `Del cliente ${customer.number}.` : 'A nombre de quien paga al final.', body: input, confirmLabel: 'Abrir y cargar' });
   if (!ok) return null;
   if (!input.value.trim() && !customer) { toast('Pon a nombre de quién.'); return null; }

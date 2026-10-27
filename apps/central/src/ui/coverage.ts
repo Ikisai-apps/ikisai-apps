@@ -38,7 +38,8 @@ export const mountCoverage: ViewMount = ({ main, client, usage }) => {
     el('a', { href: '#/revision', class: 'backlink', 'data-feedback-id': 'central.uso.volver', 'data-feedback-label': 'Volver a Revisión' }, '← Revisión'),
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.uso.cabecera', 'data-feedback-label': 'Cabecera de Uso y cobertura' },
       el('div', null, el('h2', null, 'Uso y cobertura'),
-        el('p', null, 'Cada función y campo de las apps: cuánto se usa en 30 días, quién lo usa y en qué recorridos participa. El estado solo informa; decides tú.'))),
+        el('p', null, 'Cada función y campo de las apps: cuánto se usa en 30 días, quién lo usa y en qué recorridos participa. El estado solo informa; decides tú.')),
+      el('a', { class: 'linkbtn', href: '#/revision/campos', id: 'openFieldCoverage', 'data-feedback-id': 'central.uso.campos', 'data-feedback-label': 'Cobertura de campos' }, 'Cobertura de campos')),
     note, chips, host);
 
   const rows = () => coverageRows(sources, (id) => journeys.get(id) ?? [], decisions, REVIEW_APPS as readonly string[]);

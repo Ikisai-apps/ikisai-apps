@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, createQuantityField, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, createQuantityField, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { TABLES, type DeliveryIdent } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
@@ -28,7 +28,7 @@ export function openDeliverySheet(client: SyncClient, orderId: string, options: 
   const linesEl = el('div', { class: 'delivery-lines' });
   const identEl = el('fieldset', { class: 'delivery-ident' }, el('legend', null, 'Identificación del cliente'),
     ...IDENTS.map(([value, label]) => el('label', { class: 'chip-radio' },
-      el('input', { type: 'radio', name: 'ident', value, checked: value === ident, onchange: () => { ident = value; } }), el('span', null, label))));
+      el('input', { ...fieldAttrs({ id: 'flow.entrega.identificacion', entity: 'flow.orders', prop: 'delivery_ident', type: 'radio' }), type: 'radio', name: 'ident', value, checked: value === ident, onchange: () => { ident = value; } }), el('span', null, label))));
   const deliverButton = busyButton({ class: 'primary' }, 'Menú entregado', deliver);
   const allButton = busyButton({ class: 'primary', hidden: 'hidden' }, 'Dar por hecho y entregar', deliverAll);
   const reopenButton = busyButton({ class: 'ghost' }, 'Reabrir entrega', reopen);
@@ -45,7 +45,7 @@ export function openDeliverySheet(client: SyncClient, orderId: string, options: 
   function lineRow(lineId: string): HTMLElement {
     const line = data!.linesByOrder.get(orderId)!.find((l) => l.id === lineId)!;
     const product = data!.products.get(line.product_id)!;
-    const field = createQuantityField({
+    const field = createQuantityField({ field: { id: 'flow.entrega.cantidad', entity: 'flow.order_lines', prop: 'delivered_qty', type: 'number' },
       label: `Entregado de ${product.name}`, name: `d-${line.id}`, value: line.delivered_qty, decimals: 0, min: 0, max: line.quantity, step: 1, disabled: !canEdit,
       onChange: (v) => void setDelivered(line.id, v.value ?? 0),
     });

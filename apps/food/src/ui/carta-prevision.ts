@@ -53,6 +53,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const split = prepSplitOf(menu.prep_split);
     const MARKS = { mesa: 'food.carta.prevision.reparto_mesa', nevera: 'food.carta.prevision.reparto_nevera', fresco: 'food.carta.prevision.reparto_fresco' } as const;
     const field = (key: 'mesa' | 'nevera' | 'fresco', label: string) => el('input', {
+      // Los tres porcentajes son un solo dato: el reparto de la carta.
+      'data-field-id': 'food.carta.prevision.reparto', 'data-field-entity': 'food.menus', 'data-field-prop': 'prep_split',
       'data-feedback-id': MARKS[key], 'data-feedback-label': label, id: `split-${key}`, type: 'number', inputmode: 'numeric',
       min: '0', max: '100', step: '1', value: String(split[key]), disabled: !canWrite, 'aria-label': `${label} (%)` }) as HTMLInputElement;
     const mesa = field('mesa', 'En bandeja, en mesa');
@@ -206,11 +208,11 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       { key: 'barra', label: 'Barra (bebidas y extras)', scopes: ['barra'] },
       { key: 'todo', label: 'Toda la carta', scopes: ['clasico', 'gourmet', 'barra'] },
     ] as const;
-    const group = el('select', { 'data-feedback-id': 'food.carta.prevision.rellenar_grupo', 'data-feedback-label': 'Qué líneas', id: 'fillGroup', 'aria-label': 'Qué líneas' },
+    const group = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.carta.prevision.rellenar_grupo', 'data-feedback-label': 'Qué líneas', id: 'fillGroup', 'aria-label': 'Qué líneas' },
       ...GROUPS.map((g) => el('option', { value: g.key }, g.label)));
-    const total = el('input', { 'data-feedback-id': 'food.carta.prevision.rellenar_total', 'data-feedback-label': 'Total esperado', id: 'fillTotal', type: 'number',
+    const total = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.carta.prevision.rellenar_total', 'data-feedback-label': 'Total esperado', id: 'fillTotal', type: 'number',
       inputmode: 'numeric', min: '0', step: '1', placeholder: '400' }) as HTMLInputElement;
-    const mode = el('select', { 'data-feedback-id': 'food.carta.prevision.rellenar_modo', 'data-feedback-label': 'Cómo repartir', id: 'fillMode', 'aria-label': 'Cómo repartir' },
+    const mode = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.carta.prevision.rellenar_modo', 'data-feedback-label': 'Cómo repartir', id: 'fillMode', 'aria-label': 'Cómo repartir' },
       el('option', { value: 'igual' }, 'A partes iguales'),
       el('option', { value: 'actual' }, 'Según la previsión que ya hay'));
     const preview = el('p', { class: 'muted', id: 'fillPreview' });
