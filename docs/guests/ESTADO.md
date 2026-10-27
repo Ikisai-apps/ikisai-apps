@@ -110,6 +110,8 @@
 
 - 2026-10-27 · Silueta de cabecera desde Central: bajo la portada del retiro, la silueta que Central marcó «Cabecera de: Guests» (`headerFor` de `resources.space_images`, Recursos 0816), decorativa, fundida con el papel (invertida en oscuro). Sin elegir, nada. Prueba en `modules.spec.ts`.
 
+- 2026-10-27 · Revisión móvil de UI-kit: a 390 px la cabecera ya no se corta (sin el nombre de la cuenta en móvil). Las barras cortas del calendario anual llevan el nombre en `title` y en el resumen mes a mes, y al tocarlas abren el retiro.
+
 ## Pendiente
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
