@@ -33,8 +33,8 @@ initAppUpdates({ isSafe: () => !busy(), enabled: import.meta.env.PROD });
 async function boot(): Promise<void> {
   // Visitantes por QR (§9.19): `/e/<código>` abre el portal del visitante, sin sesión ni datos.
   const visitor = visitorEntry(location.pathname, location.search);
-  // Desde la carta de Flow llega además `v`: el traspaso de la misma identidad de visitante (un solo uso; sin él o caducado,
-  // se sigue como visitante nuevo). La URL se limpia antes de canjearlo.
+  // Desde la carta de Flow llega además `v`: el traspaso de la misma identidad de visitante (un solo uso; sin él, caducado o
+  // si este móvil ya tiene la suya, se sigue como estaba). La URL se limpia antes de canjearlo.
   const handoff = visitor ? new URLSearchParams(location.search).get('v') : null;
   if (visitor) history.replaceState(null, '', `/${visitor}`);
   if (handoff) await redeemHandoff(handoff).catch(() => false);

@@ -114,10 +114,11 @@ export async function ensureVisitor(code: string | null): Promise<void> {
 
 /**
  * Traspaso de la identidad desde otra app (núcleo 0106; la carta de Flow enlaza a `/e/<código>?alojate&v=<código>`): canjea
- * el código de un solo uso y guarda su token como el de este móvil (es el mismo visitante; uno distinto se sustituye).
+ * el código de un solo uso y guarda su token como el de este móvil. Solo si este móvil aún no tiene identidad: un enlace
+ * con el código de otra persona no puede sustituir la suya (fijación de sesión); con una ya guardada, se ignora.
  */
 export async function redeemHandoff(code: string): Promise<boolean> {
-  if (!/^[0-9a-f]{64}$/i.test(code)) return false;
+  if (!/^[0-9a-f]{64}$/i.test(code) || visitorToken()) return false;
   const out = await call<{ visitorId?: string; token?: string }>('/api/v1/public/visitor/handoff/redeem', { json: { code }, visitor: false });
   if (!out.token) return false;
   try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
