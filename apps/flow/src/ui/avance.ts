@@ -16,6 +16,9 @@ import type { ViewMount } from './shell.ts';
  * 5. Hitos: numerados (número fijo aunque se filtre), ordenados por la urgencia de su paso pendiente más urgente (los completos
  *    al final); barra, «n de m», el primer paso sin hacer «bloquea»; pasos en cadena; leyenda que también filtra; tocar uno filtra.
  * 6. Carriles por agente (los vacíos no se pintan): urgencia → lo listo antes que lo «en espera» → hito y paso → orden.
+ *    Una tarjeta con hito está «para hacer» solo si todos los pasos anteriores de su hito (sin backlog) están hechos; con el
+ *    mismo número de paso no se bloquean. Con algún filtro, las bloqueadas van aparte, plegadas al final del carril, con
+ *    «bloqueada por: <tarjeta del paso que falta> (agente)»; sin filtros, todas, con «en espera».
  * Escribir: Pendiente / En curso / Hecha desde la tarjeta (`flow.board_card`; el carril lo decide el guard).
  */
 
@@ -259,7 +262,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
         c.note || c.ref ? el('div', { class: 'n' }, [c.note, c.ref].filter(Boolean).join(' · ')) : null,
         c.url ? el('div', { class: 'n' }, el('a', { href: c.url, target: '_blank', rel: 'noopener' }, `${c.urlText ?? 'Abrir'} ↗`)) : null,
         h ? el('div', { class: 'n avance-hito-line' }, `⛳ ${h.number}. ${h.title}${c.paso ? ` · paso ${c.paso}` : ''}`) : null,
-        c.waitsFor ? el('div', { class: 'n avance-wait' }, `⏳ en espera del paso ${c.waitsFor.paso ?? '?'} (${agentName(c.waitsFor.lane)})`) : null,
+        c.waitsFor ? el('div', { class: 'n avance-wait' }, `⏳ en espera · bloqueada por: «${c.waitsFor.title}» (${agentName(c.waitsFor.lane)})`) : null,
         c.steps.length ? (isOpen
           ? el(decision ? 'ul' : 'ol', { class: `avance-steps${decision ? ' is-decision' : ''}` }, ...c.steps.map((s) => el('li', null, s)))
           : el('div', { class: 'hint' }, decision ? 'Toca el título para ver las preguntas' : 'Toca el título para ver los pasos')) : null,
@@ -338,9 +341,16 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     const lanesData = groupLanes(sorted, {
       key: (c) => c.lane, order: visibleLanes, hideEmpty: true, title: (k) => agentName(k), emptyText: 'Nada.',
       mount: (body, items) => {
-        const pending = items.filter((c) => c.state !== 'hecho');
-        replace(body, el('p', { class: 'muted small' }, `${pending.filter((c) => c.state !== 'backlog').length} por hacer`),
-          ...pending.map(cardEl), ...items.filter((c) => c.state === 'hecho').map(cardEl));
+        // Con algún filtro, las bloqueadas por su hito no van en la lista: aparte, plegadas al final (VG, 27-10). Sin filtros,
+        // todas, con «en espera».
+        const split = anyFilter();
+        const pending = items.filter((c) => c.state !== 'hecho' && !(split && c.waitsFor));
+        const blocked = split ? items.filter((c) => c.state !== 'hecho' && c.waitsFor) : [];
+        replace(body, el('p', { class: 'muted small' }, `${pending.filter((c) => c.state !== 'backlog' && !c.waitsFor).length} por hacer`),
+          ...pending.map(cardEl),
+          ...items.filter((c) => c.state === 'hecho').map(cardEl),
+          blocked.length ? el('details', { class: 'avance-blocked', 'data-feedback-id': 'flow.avance.bloqueadas' },
+            el('summary', null, `Bloqueadas (${blocked.length})`), ...blocked.map(cardEl)) : null);
       },
     });
     if (!lanes) {
@@ -368,10 +378,13 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     hitos = hitoUnits.sort((a, b) => (a.payload?.orden ?? 0) - (b.payload?.orden ?? 0)).map((u, i) => {
       const steps = cards.filter((c) => c.hito === u.id).sort((a, b) => (a.paso ?? 0) - (b.paso ?? 0) || a.order - b.order);
       const live = steps.filter((s) => s.state !== 'backlog');
-      const blocker = live.find((s) => s.state !== 'hecho') ?? null;
-      if (blocker) {
-        blocker.blocks = true;
-        for (const s of live) if (s !== blocker && s.state !== 'hecho' && (s.paso ?? 0) > (blocker.paso ?? 0)) s.waitsFor = blocker;
+      // Una tarjeta está «para hacer» solo si todos los pasos anteriores de su hito (sin backlog) están hechos (VG, 27-10);
+      // los pasos con el mismo número no se bloquean entre sí. Bloquean los pendientes del paso más bajo.
+      const open = live.filter((s) => s.state !== 'hecho');
+      const minPaso = open.length ? Math.min(...open.map((s) => s.paso ?? 0)) : null;
+      for (const s of open) {
+        if ((s.paso ?? 0) === minPaso) s.blocks = true;
+        else s.waitsFor = open.find((b) => (b.paso ?? 0) < (s.paso ?? 0)) ?? null;
       }
       return { id: u.id, title: u.label ?? '', orden: u.payload?.orden ?? i + 1, doneAt: u.done_at ?? null, steps, number: i + 1 };
     });

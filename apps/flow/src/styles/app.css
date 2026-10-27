@@ -337,6 +337,8 @@
 .avance-hito-line{color:var(--ink)}
 .avance-wait{color:#b26a00;font-weight:600}
 .avance-card.is-waiting{opacity:.85}
+.avance-blocked{margin-top:8px}
+.avance-blocked>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600}
 .avance-card.is-mine{box-shadow:inset 0 0 0 2px var(--ink)}
 .avance-steps.is-decision{list-style:disc}
 /* Revisión de UI-kit (27-10): título-botón de la tarjeta, leyenda a 44 px en táctil. */
