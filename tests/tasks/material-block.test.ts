@@ -30,7 +30,7 @@ const byTask = (out: any, id: string) => out.tasks.find((t: any) => t.id === id)
 const sql = (q: string, v: unknown[] = []) => app.t.db.query(q, v);
 const entrada = (item: string, quantity: number) =>
   sql(`insert into resources.movements (item_id, space_id, quantity, kind) values ($1, $2, $3, 'entrada_manual')`, [item, ALMACEN, quantity]);
-const kpi = async () => Number((await sql(`select value from tasks.central_kpi_projection where kpi = 'tasks.blocked'`)).rows[0]!.value);
+const kpi = async () => Number(((await sql(`select value from tasks.central_kpi_projection where kpi = 'tasks.blocked'`)).rows[0] as { value: string }).value);
 
 test.before(async () => {
   app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin], workerKey: WORKER_KEY }) });
