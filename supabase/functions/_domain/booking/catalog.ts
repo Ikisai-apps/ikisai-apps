@@ -15,6 +15,8 @@ export const TABLES = {
   walkinCharges: 'booking.walkin_charges',
   /** 0489: peticiones de visitantes que llegan por el QR (BG18). */
   visitorRequests: 'booking.visitor_requests',
+  /** 1400: borrador de los datos del viajero de una solicitud de noches (datos personales: solo con el ámbito de huéspedes). */
+  stayTravelers: 'booking.stay_travelers',
   staffNeeds: 'booking.staff_needs',
   rates: 'booking.rates',
   conditions: 'booking.conditions',
