@@ -32,6 +32,8 @@ export interface EventOffer extends SyncedColumns {
   charge_when: OfferCharge | null;
   position: number;
   notes: string | null;
+  /** Visible para los visitantes por QR, sin ficha (Guests FD5); solo en las de huéspedes. */
+  public?: boolean;
 }
 
 /** Quién paga, como lo lee la cocina. */
@@ -48,9 +50,10 @@ export function offerGroupsText(offer: Pick<EventOffer, 'audience' | 'meal_group
 }
 
 /** Qué tiene de malo una oferta nueva o cambiada, o null. Las mismas reglas que la base (`event_offers_payer`). */
-export function offerProblem(fields: Partial<Pick<EventOffer, 'audience' | 'payer' | 'charge_when' | 'event_id' | 'meal_groups' | 'days' | 'services'>>): { field: string; message: string } | null {
+export function offerProblem(fields: Partial<Pick<EventOffer, 'audience' | 'payer' | 'charge_when' | 'event_id' | 'meal_groups' | 'days' | 'services' | 'public'>>): { field: string; message: string } | null {
   const audience = fields.audience ?? 'huespedes';
   if (audience === 'interna') {
+    if (fields.public) return { field: 'public', message: 'Una oferta interna no se enseña a los visitantes.' };
     if (fields.payer) return { field: 'payer', message: 'Una oferta interna no lleva quién paga.' };
     if (fields.charge_when) return { field: 'charge_when', message: 'Una oferta interna no se cobra.' };
   } else {

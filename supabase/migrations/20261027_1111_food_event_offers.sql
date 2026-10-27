@@ -9,7 +9,8 @@
 -- - dónde: `place` (texto) y, si se quiere, `space_id` (espacio de Recursos);
 -- - quién paga: 'organizador' o 'huesped' (excluyentes) y, si paga el huésped, cuándo se cobra: 'barra' o 'cuenta';
 -- - para quién: 'huespedes' o 'interna' (equipo, outsiders, familia). Las internas no las ven ni el organizador ni los
---   huéspedes: no salen por ningún portal ni en la lectura de Booking.
+--   huéspedes; llegan a Guests marcadas, para el equipo (matiz de VG), y nunca a Booking ni a Organizers;
+-- - `public`: visible para los visitantes por QR, sin ficha (Guests FD5); solo en las de huéspedes.
 -- El menú de casa es la oferta interna global (sin evento). Lo de hoy se convierte: cada menú de retiro con su evento es
 -- una oferta de huéspedes pagada por el organizador; cada carta con evento, de huéspedes pagada en barra.
 -- La compra sigue siendo una lista por menú o carta; `food.event_needs` suma por ingrediente todas las ofertas de un
@@ -39,12 +40,15 @@ create table food.event_offers (
   charge_when text check (charge_when is null or charge_when in ('barra', 'cuenta')),
   position numeric not null default 0,
   notes text check (notes is null or length(notes) <= 1000),
+  -- Visible para los visitantes por QR (Guests FD5): la activa quien hace la oferta; nunca en una interna.
+  public boolean not null default false,
   -- Las de huéspedes llevan quién paga; las internas no. Si paga el huésped, cuándo se cobra; si no, nada.
   constraint event_offers_payer check (
     (audience = 'interna' and payer is null and charge_when is null)
     or (audience = 'huespedes' and payer is not null and ((payer = 'huesped') = (charge_when is not null)))),
   -- Sin evento, solo una interna (el menú de casa).
-  constraint event_offers_event check (event_id is not null or audience = 'interna')
+  constraint event_offers_event check (event_id is not null or audience = 'interna'),
+  constraint event_offers_public check (not public or audience = 'huespedes')
 );
 create index event_offers_event_idx on food.event_offers (event_id, position) where deleted_at is null;
 create index event_offers_menu_idx on food.event_offers (menu_id) where deleted_at is null;
@@ -80,7 +84,7 @@ create trigger food_guard_event_offer before insert or update on food.event_offe
   for each row execute function food.guard_event_offer();
 
 select core.register_table('food', 'food', 'event_offers', array[
-  'event_id','menu_id','name','audience','meal_groups','days','services','place','space_id','payer','charge_when','position','notes']);
+  'event_id','menu_id','name','audience','meal_groups','days','services','place','space_id','payer','charge_when','position','notes','public']);
 
 -- ---------------------------------------------------------------------------
 -- 2. Lo de hoy, como ofertas (una sola vez)
@@ -120,7 +124,7 @@ select o.id as offer_id, o.event_id, o.name, o.meal_groups, o.days, o.services, 
        case when m.kind = 'carta' then 'carta' else 'cerrado' end as menu_kind, o.menu_id,
        null::integer as price_cents,
        case when m.kind = 'carta' then exists (select 1 from food.carta_lines l where l.menu_id = m.id and l.deleted_at is null and l.active) else true end as active,
-       o.position, o.revision as offer_revision
+       o.position, o.revision as offer_revision, o.public
   from food.event_offers o join food.menus m on m.id = o.menu_id and m.deleted_at is null
  where o.deleted_at is null and o.audience = 'huespedes' and o.event_id is not null;
 select core.allow_read('booking', 'food.event_offers_projection', 'view', '{reader,editor,owner}');
@@ -134,38 +138,41 @@ select core.allow_read('food', 'food.event_offers_projection', 'view', '{reader,
 -- validado o cerrado, como `food.portal_menu`). Nunca costes, cantidades, stock o ventas.
 -- Internas (matiz de VG del 27-10): llegan a Guests con `audience = 'interna'`, porque el equipo y los outsiders usan Ven;
 -- Guests las filtra por portal_role y grupo y nunca las enseña a huéspedes ni al organizador. A Organizers, nunca.
--- Las ofertas de una reserva que ve un portal, con lo que hace falta para pintarlas por día y servicio.
-create or replace function food.portal_offer_rows(p_reservation uuid, p_guests boolean)
+-- Las ofertas que ve quien lee, con lo que hace falta para pintarlas por día y servicio:
+-- - 'organizers': las de huéspedes de la reserva (también lo provisional);
+-- - 'guests': las de huéspedes de la reserva (un menú cerrado, solo validado o cerrado) y las internas, marcadas;
+-- - 'visitor': las de huéspedes marcadas `public` del evento (un menú cerrado, solo validado o cerrado).
+create or replace function food.offer_rows(p_mode text, p_reservation uuid, p_event uuid)
 returns table (offer_id uuid, event_id uuid, menu_id uuid, kind text, days date[], services text[], start_date date, end_date date,
                visible_dishes boolean, audience text)
 language plpgsql stable as $$
 begin
   return query
   select o.id, o.event_id, o.menu_id, case when m.kind = 'carta' then 'carta' else 'cerrado' end, o.days, o.services, e.start_date, e.end_date,
-         m.kind = 'carta' or (m.organizer_shared and (not p_guests or m.status in ('validado', 'cerrado'))) or o.audience = 'interna',
+         m.kind = 'carta' or o.audience = 'interna' or (m.organizer_shared and (p_mode = 'organizers' or m.status in ('validado', 'cerrado'))),
          o.audience
     from food.event_offers o
     join food.menus m on m.id = o.menu_id and m.deleted_at is null
     join booking.food_event_projection e on e.event_id = o.event_id
-   where o.deleted_at is null and e.reservation_id = p_reservation
-     and (o.audience = 'huespedes' or (p_guests and o.audience = 'interna'))
-     -- En Guests, un menú cerrado de huéspedes solo cuando cocina lo ha validado; la carta, siempre.
-     and (m.kind = 'carta' or not p_guests or o.audience = 'interna' or m.status in ('validado', 'cerrado'));
+   where o.deleted_at is null
+     and case p_mode
+           when 'organizers' then e.reservation_id = p_reservation and o.audience = 'huespedes'
+           when 'guests' then e.reservation_id = p_reservation and (o.audience = 'huespedes' or o.audience = 'interna')
+           when 'visitor' then e.event_id = p_event and o.audience = 'huespedes' and o.public
+           else false end
+     -- Fuera del organizador, un menú cerrado de huéspedes solo cuando cocina lo ha validado; la carta, siempre.
+     and (m.kind = 'carta' or p_mode = 'organizers' or o.audience = 'interna' or m.status in ('validado', 'cerrado'));
 end $$;
 
-create or replace function food.portal_offers(p jsonb)
+-- La respuesta común de `portal_offers` y `visitor_offers`: las ofertas y, por día y servicio, lo incluido y las cartas.
+create or replace function food.offers_payload(p_mode text, p_reservation uuid, p_event uuid, p_from date, p_to date)
 returns jsonb language plpgsql stable as $$
-declare
-  v_res uuid := food.portal_reservation(p); v_guests boolean := p->>'app' = 'guests';
-  v_from date; v_to date; v_offers jsonb; v_days jsonb;
+declare v_offers jsonb; v_days jsonb;
 begin
-  begin
-    v_from := nullif(p->'args'->>'from', '')::date;
-    v_to := nullif(p->'args'->>'to', '')::date;
-  exception when others then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('argument', 'from/to')); end;
-
   select coalesce(jsonb_agg(jsonb_build_object(
-      'offer_id', o.id, 'event_id', o.event_id, 'name', o.name, 'kind', t.kind, 'audience', o.audience, 'meal_groups', to_jsonb(o.meal_groups),
+      'offer_id', o.id, 'event_id', o.event_id, 'name', o.name, 'kind', t.kind, 'audience', o.audience,
+      -- Al visitante no le aplican los grupos.
+      'meal_groups', case when p_mode = 'visitor' then '[]'::jsonb else to_jsonb(o.meal_groups) end,
       'days', to_jsonb(o.days), 'services', to_jsonb(o.services), 'place', o.place, 'payer', o.payer, 'charge_when', o.charge_when,
       'provisional', t.kind = 'cerrado' and m.status in ('borrador', 'revisar'),
       'lines', case when t.kind = 'carta' then coalesce((select jsonb_agg(jsonb_build_object(
@@ -178,15 +185,15 @@ begin
        where l.menu_id = o.menu_id and l.deleted_at is null and l.active), '[]'::jsonb) end)
     order by o.position, o.created_at), '[]'::jsonb)
     into v_offers
-    from food.portal_offer_rows(v_res, v_guests) t join food.event_offers o on o.id = t.offer_id join food.menus m on m.id = t.menu_id;
+    from food.offer_rows(p_mode, p_reservation, p_event) t join food.event_offers o on o.id = t.offer_id join food.menus m on m.id = t.menu_id;
 
-  -- Por día y servicio: lo incluido de los menús cerrados (sus platos de ese día y servicio) y las cartas de ese día.
-  with days as (
-    select distinct d::date as date from food.portal_offer_rows(v_res, v_guests) t, generate_series(t.start_date, t.end_date, interval '1 day') d
-     where (v_from is null or d::date >= v_from) and (v_to is null or d::date <= v_to)),
+  with offer_set as (select * from food.offer_rows(p_mode, p_reservation, p_event)),
+  days as (
+    select distinct d::date as date from offer_set t, generate_series(t.start_date, t.end_date, interval '1 day') d
+     where (p_from is null or d::date >= p_from) and (p_to is null or d::date <= p_to)),
   slots as (
     select s.service_date as date, s.service_type as type, min(s.service_time) as time
-      from food.portal_offer_rows(v_res, v_guests) t join food.menu_services s on s.menu_id = t.menu_id and s.deleted_at is null
+      from offer_set t join food.menu_services s on s.menu_id = t.menu_id and s.deleted_at is null
      where t.kind = 'cerrado' and (t.days is null or s.service_date = any(t.days)) and (t.services is null or s.service_type = any(t.services))
        and s.service_date in (select date from days)
      group by 1, 2)
@@ -199,21 +206,52 @@ begin
                   order by s.position, i.position, i.created_at)
                 from food.menu_services s join food.menu_items i on i.service_id = s.id and i.deleted_at is null join food.recipes r on r.id = i.recipe_id
                where s.menu_id = t.menu_id and s.deleted_at is null and s.service_date = sl.date and s.service_type = sl.type), '[]'::jsonb) end))
-            from food.portal_offer_rows(v_res, v_guests) t
+            from offer_set t
            where t.kind = 'cerrado' and (t.days is null or sl.date = any(t.days)) and (t.services is null or sl.type = any(t.services))
              and exists (select 1 from food.menu_services s where s.menu_id = t.menu_id and s.deleted_at is null and s.service_date = sl.date and s.service_type = sl.type)), '[]'::jsonb))
           order by sl.time nulls last, array_position(array['desayuno','comida','merienda','picnic','cena','otro'], sl.type))
         from slots sl where sl.date = d.date), '[]'::jsonb),
-      'cartas', coalesce((select jsonb_agg(t.offer_id) from food.portal_offer_rows(v_res, v_guests) t
+      'cartas', coalesce((select jsonb_agg(t.offer_id) from offer_set t
          where t.kind = 'carta' and d.date between t.start_date and t.end_date and (t.days is null or d.date = any(t.days))), '[]'::jsonb))
     order by d.date), '[]'::jsonb)
     into v_days
     from days d
    where exists (select 1 from slots sl where sl.date = d.date)
-      or exists (select 1 from food.portal_offer_rows(v_res, v_guests) t where t.kind = 'carta' and d.date between t.start_date and t.end_date and (t.days is null or d.date = any(t.days)));
+      or exists (select 1 from offer_set t where t.kind = 'carta' and d.date between t.start_date and t.end_date and (t.days is null or d.date = any(t.days)));
 
-  return jsonb_build_object('reservation_id', v_res, 'offers', v_offers, 'days', v_days);
+  return jsonb_build_object('offers', v_offers, 'days', v_days);
 end $$;
+
+-- Organizers y Guests, con el ámbito de la reserva.
+create or replace function food.portal_offers(p jsonb)
+returns jsonb language plpgsql stable as $$
+declare v_res uuid := food.portal_reservation(p); v_from date; v_to date;
+begin
+  begin
+    v_from := nullif(p->'args'->>'from', '')::date;
+    v_to := nullif(p->'args'->>'to', '')::date;
+  exception when others then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('argument', 'from/to')); end;
+  return jsonb_build_object('reservation_id', v_res)
+    || food.offers_payload(case when p->>'app' = 'guests' then 'guests' else 'organizers' end, v_res, null, v_from, v_to);
+end $$;
+
+-- Visitantes por QR (Guests FD5): por el código del evento, solo las ofertas `public`. Con la forma de una lectura
+-- pública del núcleo (args directos); su registro lo decide Core.
+create or replace function food.visitor_offers(p_args jsonb)
+returns jsonb language plpgsql stable as $$
+declare v_event uuid; v_code text := btrim(coalesce(p_args->>'event_code', '')); v_from date; v_to date;
+begin
+  begin
+    v_from := nullif(p_args->>'from', '')::date;
+    v_to := nullif(p_args->>'to', '')::date;
+  exception when others then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('argument', 'from/to')); end;
+  if v_code = '' or length(v_code) > 40 then perform core.fail('EVENT_NOT_FOUND', 404, jsonb_build_object('event_code', v_code)); end if;
+  select e.event_id into v_event from booking.food_event_projection e where e.event_code = v_code limit 1;
+  -- Un código que no existe y uno sin ofertas públicas responden igual: no se sabe qué eventos hay.
+  if v_event is null then return jsonb_build_object('event_code', v_code, 'offers', '[]'::jsonb, 'days', '[]'::jsonb); end if;
+  return jsonb_build_object('event_code', v_code) || food.offers_payload('visitor', null, v_event, v_from, v_to);
+end $$;
+
 select core.allow_read('organizers', 'food.portal_offers', 'function', '{editor,owner}');
 select core.allow_read('guests', 'food.portal_offers', 'function', '{editor,owner}');
 

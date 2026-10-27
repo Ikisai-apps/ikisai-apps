@@ -193,6 +193,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       charge_when: { kind: 'enum', values: OFFER_CHARGES, nullable: true },
       position: { kind: 'number', min: -1e9, max: 1e9 },
       notes: { kind: 'text', max: 1000, nullable: true },
+      public: { kind: 'boolean' },
     },
   },
   // Ventas de la carta: solo las escribe food.record_carta_sales.

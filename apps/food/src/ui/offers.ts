@@ -69,11 +69,14 @@ export function openOfferSheet(args: { client: SyncClient; event: FoodEvent; men
   const charge = el('select', { 'data-feedback-id': 'food.eventos.oferta.cobro', 'data-feedback-label': 'Cuándo se cobra', id: 'offerCharge', 'aria-label': 'Cuándo se cobra' },
     el('option', { value: 'barra', selected: (offer?.charge_when ?? 'barra') === 'barra' }, 'En barra, al momento'),
     el('option', { value: 'cuenta', selected: offer?.charge_when === 'cuenta' }, 'A su cuenta, al final'));
+  const visible = el('input', { 'data-feedback-id': 'food.eventos.oferta.visitantes', 'data-feedback-label': 'Visible para visitantes', type: 'checkbox', id: 'offerPublic',
+    checked: offer?.public === true }) as HTMLInputElement;
   const payHost = el('div');
   function paintPay(): void {
     if (audience.value === 'interna') { replace(payHost, el('p', { class: 'muted' }, 'Interna: no la ven ni el organizador ni los huéspedes, y no se cobra.')); return; }
     replace(payHost, el('label', { class: 'field' }, el('span', null, 'Quién paga'), payer),
-      payer.value === 'huesped' ? el('label', { class: 'field' }, el('span', null, 'Cuándo se cobra'), charge) : null);
+      payer.value === 'huesped' ? el('label', { class: 'field' }, el('span', null, 'Cuándo se cobra'), charge) : null,
+      el('label', { class: 'checkline', for: visible.id }, visible, el('span', null, 'Visible para visitantes (QR), sin ficha de huésped')));
   }
   paintPay();
   if (!name.value && menu.value) {
@@ -97,6 +100,7 @@ export function openOfferSheet(args: { client: SyncClient; event: FoodEvent; men
         place: place.value.trim() || null,
         payer: internal ? null : payer.value,
         charge_when: internal || payer.value !== 'huesped' ? null : charge.value,
+        public: !internal && visible.checked,
       };
       const op: RowOperation = offer
         ? { op: 'update', table: T.eventOffers, id: offer.id, expectedRevision: offer.revision, fields }
@@ -156,6 +160,7 @@ export function offersBlock(args: { client: SyncClient; event: FoodEvent; menus:
       el('div', null, el('strong', null, o.name), el('span', { class: 'muted' }, ` · ${menuName(o)}`)),
       el('div', { class: 'muted' }, `${offerGroupsText(o)} · ${whenText(o)}${o.place ? ` · ${o.place}` : ''}`),
       el('div', null, el('span', { class: o.audience === 'interna' ? 'chip' : o.payer === 'organizador' ? 'chip ok' : 'chip warn' }, offerPayerText(o)),
+        o.public ? el('span', { class: 'chip' }, 'Visitantes (QR)') : null,
         canWrite ? el('button', { 'data-feedback-id': 'food.eventos.ficha.oferta_cambiar', 'data-feedback-label': 'Cambiar la oferta', class: 'ghost', type: 'button',
           onclick: () => openOfferSheet({ client, event, menus, offer: o, onDone: args.onChange }) }, 'Cambiar') : null))))
       : el('p', { class: 'muted' }, 'Sin ofertas todavía. Al crear el menú o la carta del evento, se añade su oferta.'),

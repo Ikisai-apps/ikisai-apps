@@ -120,6 +120,23 @@ test('portal · Organizers sin internas y con lo provisional; Guests con las int
   assert.deepEqual(equipo.options.map((o: any) => o.name), ['Curry de verduras'], 'la interna enseña sus platos');
 });
 
+test('visitantes por QR · solo las ofertas públicas del evento, sin grupos ni internas', async () => {
+  // El código del evento lo pone Booking al confirmar; el de prueba no lo trae.
+  const code = 'EVT_2026_901';
+  await q(`update booking.events set code = $2 where id = $1`, [event, code]);
+  const visitor = async (args: unknown) => (await q(`select food.visitor_offers($1::jsonb) as out`, [JSON.stringify(args)]))[0].out;
+  assert.deepEqual((await visitor({ event_code: code })).offers, [], 'nada es público por defecto');
+  const barra = (await q(`select id, revision from food.event_offers where name = 'Barra del retiro'`))[0];
+  await ok([{ op: 'update', table: 'food.event_offers', id: barra.id, expectedRevision: Number(barra.revision), fields: { public: true } }]);
+  const out = await visitor({ event_code: code });
+  assert.deepEqual(out.offers.map((o: any) => [o.name, o.meal_groups]), [['Barra del retiro', []]]);
+  assert.deepEqual(out.offers[0].lines.map((l: any) => l.price_cents), [300]);
+  assert.deepEqual(await visitor({ event_code: 'NO_EXISTE' }), { event_code: 'NO_EXISTE', offers: [], days: [] }, 'un código desconocido no dice nada');
+  // Una interna no puede ser pública.
+  const equipo = (await q(`select id, revision from food.event_offers where name = 'Equipo'`))[0];
+  await rejected([{ op: 'update', table: 'food.event_offers', id: equipo.id, expectedRevision: Number(equipo.revision), fields: { public: true } }], 'CONSTRAINT_VIOLATION');
+});
+
 test('lo que pide el evento · suma todas sus ofertas por ingrediente', async () => {
   // Menú: 20 raciones × 1 kg ÷ 10 = 2 kg; barra: 10 × 1 kg ÷ 10 = 1 kg; la interna repite el menú y no lo cuenta dos veces.
   const out = await app.call('/api/v1/read/food.event_needs', { body: { event_id: event } });
