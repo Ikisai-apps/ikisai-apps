@@ -90,6 +90,9 @@ const shapeOf = async (id: string) => (await api.app.t.db.query<{ p: string | nu
 
 test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, a mano y con el teclado', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  // Las camas, con un solo modelo (VG, 27-10): su sitio lo da Booking (booking.bed_layout_projection, #1017). Aquí, simulado:
+  // «Cama 1» en el cuadrante (0, 0) de un dormitorio de 4 × 4, a lo ancho.
+  await page.route('**/api/v1/beds/layout', (route) => route.fulfill({ json: { available: true, rows: [{ resource_bed_id: ids.bed, resource_space_id: ids.room, cols: 4, rows: 4, x: 0, y: 0, rot: 0, label: 'Cama 1' }] } }));
   await login(page);
   // Desde la Entidad (y el menú), «Planos del centro».
   await page.goto(`${baseURL}/#/entidad`);
@@ -106,7 +109,8 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   // El dibujo llega a Recursos (el aviso de «Dibujo subido» lo tapa enseguida el de lo colocado).
   await expect.poll(async () => (await api.app.t.db.query(`select 1 from resources.floor_plans where building_id = $1 and file_id is not null`, [ids.building])).rows.length).toBe(1);
   // Se colocan solas las dos que el SVG nombra (también la del grupo con transformación); el resto, «Por revisar».
-  await expect(page.getByText('2 estancias colocadas solas; 2 por revisar.')).toBeVisible();
+  // La cama no cuenta: va con su habitación.
+  await expect(page.getByText('2 estancias colocadas solas; 1 por revisar.')).toBeVisible();
   await expect.poll(async () => (await shapeOf(ids.room)).s).toEqual({ points: [[0.1, 0.2], [0.3, 0.2], [0.3, 0.5], [0.1, 0.5]] });
   await expect.poll(async () => (await shapeOf(ids.lounge)).s).toEqual({ points: [[0.4, 0.1], [0.7, 0.1], [0.7, 0.5], [0.4, 0.5]] });
   const plan = (await api.app.t.db.query<{ id: string; w: string; h: string; f: string | null }>(`select id, width as w, height as h, file_id as f from resources.floor_plans where building_id = $1`, [ids.building])).rows[0]!;
@@ -122,8 +126,8 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   expect(stored).toContain('Dormitorio_3');
   expect(stored).toContain('data-name="Salón"');
 
-  // «Por revisar»: Recepción y la cama. Recepción se pone en el plano y se mueve y estira con el teclado.
-  await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 2');
+  // «Por revisar»: Recepción (la cama no: va con su habitación). Se pone en el plano y se mueve y estira con el teclado.
+  await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 1');
   await page.locator('#placeReview').getByRole('button', { name: 'Poner Recepción en el plano' }).click();
   const desk = page.locator(`#placeEditor [data-space-id="${ids.desk}"]`);
   await expect(desk).toBeFocused();
@@ -134,7 +138,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.keyboard.press('Shift+ArrowDown');
   await expect.poll(async () => (await shapeOf(ids.desk)).s!.points[0]![0]).toBeCloseTo(before[0]![0]! + 0.02, 4);
   await expect.poll(async () => { const p = (await shapeOf(ids.desk)).s!.points; return p[2]![1]! - p[0]![1]!; }).toBeCloseTo(before[2]![1]! - before[0]![1]! + 0.01, 4);
-  await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 1');
+  await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 0');
 
   // Arrastrar con el ratón mueve la estancia; arrastrar una esquina la estira.
   const lounge = page.locator(`#placeEditor [data-space-id="${ids.lounge}"]`);
@@ -154,8 +158,8 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.mouse.up();
   await expect.poll(async () => { const pts = (await shapeOf(ids.lounge)).s!.points; return pts[1]![0]! - pts[0]![0]!; }, { timeout: 5000 }).toBeCloseTo(0.35, 2);
 
-  // El mapa de todas las apps las enseña ya: el dibujo con sus estancias.
-  await expect(page.locator('#plansMap .map-shape')).toHaveCount(3);
+  // El mapa de todas las apps las enseña ya: el dibujo con sus estancias y la cama dentro de su dormitorio.
+  await expect(page.locator('#plansMap .map-shape')).toHaveCount(4);
   // El dibujo con estancias encima no se quita, y el botón dice por qué.
   const removeBtn = page.locator(`#planList [data-plan="${plan.id}"]`).getByRole('button', { name: /^Quitar el dibujo/ });
   await expect(removeBtn).toBeDisabled();
@@ -165,24 +169,26 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.locator('#placePlaced').getByRole('button', { name: 'Recepción' }).click();
   await page.locator('#unplace').click();
   await expect.poll(async () => (await shapeOf(ids.desk)).p).toBeNull();
-  await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 2');
+  await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 1');
 
-  // Las camas acompañan a su habitación: la cama, dentro del dormitorio; al mover y estirar el dormitorio, va con él.
-  await page.locator('#placeReview').getByRole('button', { name: 'Poner Cama 1 en el plano' }).click();
-  await expect.poll(async () => (await shapeOf(ids.bed)).p).toBe(plan.id);
+  // Las camas salen donde las tiene Booking, dentro de su dormitorio, y van con él; no se tocan ni se guardan en Recursos.
+  const bed = page.locator(`#placeEditor [data-space-id="${ids.bed}"]`);
+  await expect(bed).toHaveClass(/bed/);
+  await expect(bed).not.toHaveAttribute('tabindex', /.*/);
+  await expect(page.locator('#placeBedsLink')).toHaveAttribute('href', 'https://booking.ikisai.com/#/espacios');
+  const topOf = async () => Number((await bed.getAttribute('points'))!.split(' ')[0]!.split(',')[1]);
   const roomBefore = (await shapeOf(ids.room)).s!.points;
-  const bedBefore = (await shapeOf(ids.bed)).s!.points;
+  const bedTop = await topOf();
   await page.locator(`#placeEditor [data-space-id="${ids.room}"]`).focus();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
-  await expect.poll(async () => (await shapeOf(ids.bed)).s!.points[0]![1]).toBeCloseTo(bedBefore[0]![1]! + 0.02, 4);
-  expect((await shapeOf(ids.room)).s!.points[0]![1]).toBeCloseTo(roomBefore[0]![1]! + 0.02, 4);
-  // Un solo «Deshacer» devuelve las dos a su sitio.
-  // (Los avisos con «Deshacer» de los arrastres de antes se apilan con este: se pulsa el suyo.)
+  await expect.poll(async () => (await shapeOf(ids.room)).s!.points[0]![1]).toBeCloseTo(roomBefore[0]![1]! + 0.02, 4);
+  expect(await topOf()).toBeGreaterThan(bedTop);
+  // Un solo «Deshacer» devuelve el dormitorio, y la cama con él.
   await page.locator('.ikisai-toast .toast-item').filter({ hasText: 'Movida «Dormitorio 3» con su cama.' }).getByRole('button', { name: 'Deshacer' }).click();
   await expect.poll(async () => (await shapeOf(ids.room)).s!.points).toEqual(roomBefore);
-  await expect.poll(async () => (await shapeOf(ids.bed)).s!.points).toEqual(bedBefore);
-  // Estirar con el ratón el dormitorio estira también la cama (la misma escala desde la misma esquina).
+  await expect.poll(topOf).toBeCloseTo(bedTop, 1);
+  // Estirar el dormitorio estira también la cama, solo en pantalla.
   await page.locator('#placePlaced').getByRole('button', { name: 'Dormitorio 3' }).click();
   const handle = page.locator('#placeEditor .ctl-placehandle').nth(2);
   const hb = (await handle.boundingBox())!;
@@ -191,9 +197,9 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.mouse.move(hb.x + hb.width / 2 + stage.width * 0.2, hb.y + hb.height / 2, { steps: 5 });
   await page.mouse.up();
   await expect.poll(async () => { const p = (await shapeOf(ids.room)).s!.points; return p[1]![0]! - p[0]![0]!; }, { timeout: 5000 }).toBeCloseTo(0.4, 2);
-  const bedW = (bedBefore[1]![0]! - bedBefore[0]![0]!) * 2;
-  await expect.poll(async () => { const p = (await shapeOf(ids.bed)).s!.points; return p[1]![0]! - p[0]![0]!; }, { timeout: 5000 }).toBeCloseTo(bedW, 2);
   await expect(page.locator('.ikisai-toast')).toContainText('Estirada «Dormitorio 3» con su cama.');
+  // La cama nunca se ha escrito en Recursos: su sitio es de Booking.
+  expect(await shapeOf(ids.bed)).toEqual({ p: null, s: null });
   // El rótulo lleva el halo de la pieza del kit sobre el dibujo.
   const halo = await page.locator('#placeEditor .ctl-placelabel').first().evaluate((n) => { const cs = getComputedStyle(n); return { order: cs.paintOrder, stroke: cs.stroke }; });
   expect(halo.order).toContain('stroke');
@@ -233,6 +239,12 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.locator('#header-central').selectOption({ index: 1 });
   await expect.poll(header).toEqual(['central']);
   await expect(page.locator(`#centerImageList [data-space="${ids.building}"]`)).toContainText('Alzado norte');
+
+  // Enlace profundo de las tarjetas: `?colocar=` con el nombre del edificio (sin tildes ni mayúsculas) abre «Colocar».
+  await page.goto(`${baseURL}/#/`);
+  await page.goto(`${baseURL}/#/entidad/planos?colocar=albergue%20de%20prueba`);
+  await expect(page.locator('#placeEditor')).toBeVisible();
+  await expect(page.locator('#placeEditor h3')).toContainText('Colocar · Albergue de prueba');
 });
 
 test('planos · un giro se coloca bien; lo que no se lee, «Por revisar» con el motivo; sin red, apagado con su motivo', async ({ page, context }) => {

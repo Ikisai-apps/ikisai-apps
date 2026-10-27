@@ -17,3 +17,7 @@ html.dark .tkr-first{color:#f0a08c}
 .tkr-pending{margin:0 0 8px;padding-left:18px}
 .tkr-newrow{margin:0 0 8px}
 .tkr-newrow button{min-height:44px}
+.tkr-newrow{gap:8px}
+.tkr-zone{margin:12px 0 4px;font-size:14px}
+.tkr-expected{gap:8px;flex-wrap:wrap}
+.tkr-expected .field{flex:1 1 120px}

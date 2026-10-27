@@ -42,6 +42,8 @@ export interface AppConfig extends SupabaseConfig {
   admin?: boolean;
   /** Recuperación de contraseña por correo; sin indicarlo, IKISAI_PASSWORD_RECOVERY=1. */
   passwordRecovery?: boolean;
+  /** Entrada con código por correo de los portales (0108); si no se indica, IKISAI_EMAIL_CODE=1. */
+  emailCode?: boolean;
   /** Almacenamiento: R2 y proveedor por defecto. Sin indicarlo, se lee de los secretos R2_* e IKISAI_STORAGE_PROVIDER. */
   storage?: { r2?: R2Config | null; defaultProvider?: ProviderName };
   /** Solo central-api: worker del feedback (`worker/feedback/tick`), que envía a Tasks lo operativo y copia el estado de las tareas. */
@@ -401,7 +403,20 @@ export function createApp(config: AppConfig): AppHandler {
       const recoveryOn = config.passwordRecovery ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_PASSWORD_RECOVERY') === '1');
       // permanentAccount: «Guarda tu acceso» de los portales (Google y código por correo), cuando haya Workspace.
       const permanentOn = (globalThis as any).Deno?.env?.get?.('IKISAI_PORTAL_ACCOUNTS') === '1';
-      if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn });
+      // Código por correo (0108, decisión de VG del 27-10-2026): se enciende por app con `emailCode` o con IKISAI_EMAIL_CODE=1
+      // cuando Auth tenga el correo propio (el SMTP por defecto de Supabase manda muy pocos y solo al equipo del proyecto).
+      const emailCodeOn = config.emailCode ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_EMAIL_CODE') === '1');
+      if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn, emailCode: emailCodeOn });
+      if (path === '/api/v1/auth/email-code' && request.method === 'POST') {
+        if (!emailCodeOn) fail(503, 'EMAIL_CODE_DISABLED', messageFor('EMAIL_CODE_DISABLED'));
+        return json(await auth.sendEmailCode(config.app, await readJson(), clientIp(request)));
+      }
+      if (path === '/api/v1/auth/email-code/verify' && request.method === 'POST') {
+        if (!emailCodeOn) fail(503, 'EMAIL_CODE_DISABLED', messageFor('EMAIL_CODE_DISABLED'));
+        const { userId, ...tokens } = await auth.verifyEmailCode(config.app, await readJson(), clientIp(request));
+        const pass = await sso.issueForUser(userId).catch(() => null);
+        return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
+      }
       // Contacto público (portales, C1): sin sesión, para las pantallas de enlace no válido o caducado. Los textos de tipo
       // `contacto` de Central («Textos y contacto», editables por el owner), registrados como lectura pública `contact`
       // (core.allow_public_read); cacheable 5 minutos. Sin datos personales.

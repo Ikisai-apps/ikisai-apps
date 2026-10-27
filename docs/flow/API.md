@@ -447,7 +447,26 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Procedimiento `flow.board_card({project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?})` (`tipo`, el oficio: arreglo · funcion · prueba · decision · ajuste, en payload; `order`, el orden en el carril, en `idx`): sin `card_id` (o uno nuevo) crea; con uno que existe cambia solo lo dado (`prio`/`flag`/campos de payload a `null` los quitan). `done` pone `done_at`; volver de `done` lo quita. Una recurrente nunca lleva urgencia. `url` solo https; hasta 30 pasos de 300.
 - Capacidad `flow.board_card` (`POST board-card`, editor, owner u outsider): idempotente por `requestId` (recibo del núcleo por persona); devuelve `{card_id, created, replayed}`. El carril lo decide el guard (`403 LANE_FORBIDDEN`).
 
-## 45. Clases de actividad (flow-19, migración `0942`)
+## 45. Recorridos por tramos (flow-14, migración `0939`)
+
+- `flow.definition_stages (version_id, position 1..20, kind capability|record|handoff, capability?, title, explain?, target_app?, target_anchor?)`. Los pasos cuelgan del tramo (`stage_id`) y ganan `input_type` (text · number · boolean · choice · photo, con `options`), `mode` (ask · fixed · from), `fixed_value` y `default_from` (`stages[N].values|result.<ruta>`).
+- «Registrar compra» (0919) es ahora un tramo `capability` con sus 8 pasos (mismos ids).
+- `flow.publish_version({version_id})` (owner): tramos 1..n, pasos en los tramos `capability`/`record`, tipo en los `record`, `default_from` hacia tramos anteriores, como mucho 20 tramos y 100 pasos (`422 JOURNEY_INVALID`). Lo publicado no se toca (`409 VERSION_PUBLISHED`); la versión publicada anterior se retira.
+- Ejecución por tramos (de quien la hace, en borrador):
+  - `start_stage({execution_id, position})`: exige los anteriores cerrados (`409 STAGE_NOT_READY`); pone lo fijo y lo heredado (servidor) y devuelve esos valores; retoma un tramo en error con lo ya respondido; uno cerrado no se repite (`STAGE_FINISHED`).
+  - `save_stage_values({execution_id, position, values})`: no deja cambiar lo fijo ni lo heredado.
+  - `finish_stage({execution_id, position, status done|error|skipped|practiced, result?, receipt_id?, error?})`: `practiced` solo en aprender; un tramo `capability` no se da por hecho en aprender; `skipped` solo sin pasos esenciales. El último tramo cierra la ejecución (`done` o `practiced`) y su `result` junta los de cada tramo.
+- `journey_steps_projection` añade `stage` y `stage_kind`; la app sale de la capacidad del tramo (o `flow` en los tramos de registro).
+
+## 46. Guiado: `flow.guide_read` y `flow.guide_confirm` (flow-23, migración `0940`)
+
+- `POST guide-read {execution_id, app}` (capacidad `flow.guide_read`): `{id, title, mode, status, steps: [{id, title, explain, anchor, route, confirm, done, essential, app, stage}]}`.
+  - Solo quien hace la ejecución (si no, `404`). Pasos de esa `app` (primer segmento del anclaje) y los propios de Flow (`app: null`: sin anclaje).
+  - `route` y `confirm` salen de la lectura por id de campo del núcleo (`core_field_lookup`, 0109); sin ella, `route: null` y `confirm: 'manual'`.
+  - `done`: recibo de la app con `how` `save` o `event` y sin `pending`; en los pasos propios de Flow, su valor en el tramo o el tramo cerrado.
+- `POST guide-confirm {requestId, execution_id, step_id, how: save|event|manual|none, pending?}` (capacidad `flow.guide_confirm`): deja recibo en `flow.guide_receipts` (sin valores), idempotente por `requestId`. Un ensayo (`learn`) no confirma nada.
+
+## 47. Clases de actividad (flow-19, migración `0942`)
 
 - `flow.units.class`: `operation` (la de siempre), `objective` (criterios de aceptación; se cumple con todos verificados, nunca por un toque), `station` (continua: no se termina; todo `kind = station` lo es) y `result` (hecho verificable con `result_link {app, kind, id}`). `parent_id` para las unidades que dependen de otra. La clase no cambia una vez creada.
 - Reglas en un trigger, también dentro de procedimientos: `OBJECTIVE_NOT_MET`, `STATION_NEVER_DONE`, `RESULT_NOT_VERIFIED`.

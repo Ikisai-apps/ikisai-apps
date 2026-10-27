@@ -26,6 +26,11 @@ export interface AuthService {
   recover(body: unknown, redirectTo: string): Promise<{ sent: true }>;
   /** Canjea el enlace del correo (token_hash de un solo uso) y fija la contraseña nueva; devuelve una sesión. */
   resetPassword(body: unknown): Promise<SessionTokens & { userId: string }>;
+  /** Portales (0108): manda un código de un solo uso al correo si es de una cuenta que podría entrar por su enlace en `app`.
+   *  Responde igual exista o no, y no crea cuentas. */
+  sendEmailCode(app: string, body: unknown, ip?: string | null): Promise<{ sent: true }>;
+  /** Canjea ese código por una sesión; solo para la misma cuenta que podía recibirlo. */
+  verifyEmailCode(app: string, body: unknown, ip?: string | null): Promise<SessionTokens & { userId: string }>;
 }
 
 export interface SessionTokens {
@@ -160,5 +165,61 @@ export function createAuth(supabase: Supabase): AuthService {
     return { ...session, userId: who.id };
   }
 
-  return { identity, login, refresh, logout, changePassword, recover, resetPassword };
+  const emailOf = (body: any): string => {
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
+    return email;
+  };
+  const allowedUser = (app: string, email: string) => supabase.rpc<string | null>('core_email_code_user', { p_app: app, p_email: email });
+
+  // Límite de intentos (0110): cuenta uno y dice si cabe. Si el núcleo no responde, no cabe (cerrado por defecto).
+  const within = async (key: string, limit: number, seconds: number): Promise<boolean> => {
+    try {
+      return (await supabase.rpc<boolean>('core_rate_hit', { p_key: key, p_limit: limit, p_window_seconds: seconds })) === true;
+    } catch (error: any) {
+      if (error?.code === 'BACKEND_UNAVAILABLE') throw error;
+      return false;
+    }
+  };
+
+  async function sendEmailCode(app: string, body: any, ip: string | null = null): Promise<{ sent: true }> {
+    const email = emailOf(body);
+    // Límites: 5 envíos por correo y hora, 20 por IP y hora. Pasado el límite se responde igual y no se envía nada.
+    const allowed = (await within(`email-code:send:${app}:${email}`, 5, 3600)) && (!ip || await within(`email-code:send:ip:${ip}`, 20, 3600));
+    // Una sesión de Auth vale en todas las apps: el código solo va a una cuenta de portal con un enlace vigente en esta app.
+    // La comprobación y el envío siguen en segundo plano para que el tiempo de respuesta no diga si el correo existe.
+    const work = (async () => {
+      try {
+        if (allowed && await allowedUser(app, email)) await supabase.remote('/auth/v1/otp', { method: 'POST', body: { email, create_user: false } });
+      } catch { /* nada que distinga un correo de otro (tampoco el límite de envíos de Auth) */ }
+    })();
+    const runtime = (globalThis as any).EdgeRuntime;
+    if (runtime && typeof runtime.waitUntil === 'function') runtime.waitUntil(work); else await work;
+    return { sent: true };
+  }
+
+  async function verifyEmailCode(app: string, body: any, ip: string | null = null): Promise<SessionTokens & { userId: string }> {
+    const email = emailOf(body);
+    const code = typeof body?.code === 'string' ? body.code.replace(/\s+/g, '') : '';
+    if (!/^\d{6,10}$/.test(code)) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    // Fuerza bruta: 6 intentos por correo cada 15 minutos (cualquier resultado) y 40 por IP; el séptimo es 429 aunque acierte.
+    if (!(await within(`email-code:verify:${app}:${email}`, 6, 900)) || (ip && !(await within(`email-code:verify:ip:${ip}`, 40, 900)))) {
+      fail(429, 'RATE_LIMITED', messageFor('RATE_LIMITED'));
+    }
+    const user = await allowedUser(app, email);
+    if (!user) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    let result: any;
+    try {
+      result = await supabase.remote('/auth/v1/verify', { method: 'POST', body: { type: 'email', email, token: code } });
+    } catch (error: any) {
+      if (error?.code === 'BACKEND_UNAVAILABLE') throw error;
+      fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    }
+    const session = tokens(result);
+    const who = await identity(session.token);
+    if (who.id !== user) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    return { ...session, userId: who.id };
+  }
+
+  return { identity, login, refresh, logout, changePassword, recover, resetPassword, sendEmailCode, verifyEmailCode };
 }
