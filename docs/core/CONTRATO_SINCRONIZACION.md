@@ -215,7 +215,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - El worker `files/gc` de central-api, diario, marca los huérfanos de más de 2 días. Borra del proveedor y de `core.files` los que siguen sin referencia a los 30 días, salvo que alguna vez fueran `legal` o `permanent`. Antes de borrar vuelve a comprobarlo.
 - **Medición (migración `0073`):** cada semana, `core.storage_snapshot()` guarda los tamaños de la base, los esquemas, `core.changes` y los objetos por bucket lógico y proveedor. Los umbrales están en `core.storage_thresholds`. `GET admin/storage` (owner de Central) devuelve el estado actual, el nivel de cada límite (`ok | warn | critical`) y medio año de historial.
 
-### 3.11 El lector vota (migración `0100`, tanda 27; decisión del usuario del 19-10-2026)
+### 3.11 El lector vota (migración `0099`, tanda 27; decisión del usuario del 19-10-2026)
 
 - **El lector escribe solo donde la app lo abre a propósito**, igual que el outsider:
   - **tablas:** con `reader` en `writable_roles` (`core.register_table`). Hoy solo `central.decision_votes` y `food.suggestion_votes`. El resto sigue con `'{editor,owner}'` por defecto;
