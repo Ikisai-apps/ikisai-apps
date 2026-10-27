@@ -342,7 +342,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - En Caja, «Ficha del cliente» al buscar su número: todos sus pedidos con casillas, «Pagar (n)» y «Entregar (n)».
   - En la ficha de un pedido abierto, «Pagar».
   - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
-  - Tras pagar: Imprimir factura y Enviar por correo (aún sin función), Enviar a Finance y Cerrar.
+  - Tras pagar: Enviar a Finance; después, Imprimir factura abre el justificante de Finance (`https://finance.ikisai.com/#/justificante?ref=flow:receipt:<id>`, Finance #817). Enviar por correo aún no tiene función. Cerrar.
 
 ## 31. Recipientes y rendimiento (migración `0918`)
 
