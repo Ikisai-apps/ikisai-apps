@@ -9,6 +9,9 @@ test('data-field-none y NOT_A_FIELD sacan el control de «sin instrumentar»; un
     "el('input', { type: 'search', 'aria-label': 'Buscar', ...NOT_A_FIELD })",
     "el('select', { 'data-field-none': '', 'aria-label': 'Filtrar' })",
     "el('input', { type: 'text', 'aria-label': 'Nombre' })",
+    '// ayudante genérico: el campo lo declara quien llama (@field-caller)',
+    "const box = (mark: object) => el('input', { type: 'text', 'aria-label': 'Ayudante', ...mark });",
+    "const box2 = (mark: object) => el('textarea', { 'aria-label': 'Ayudante 2', ...mark }); // @field-caller",
   ].join('\n');
   const html = '<input type="checkbox" data-field-none aria-label="Elegir fila"><textarea aria-label="Nota"></textarea>';
   const a = extractFields(code, 'apps/demo/src/x.ts', 'demo');

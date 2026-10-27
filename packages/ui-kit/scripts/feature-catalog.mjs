@@ -436,10 +436,14 @@ export function extractFields(text, file = '', app = null) {
   }
 
   // 4. Sin declarar: `el('input'|'select'|'textarea', …)`, `<input …>` y campos del kit sin `field`. Los controles que no son
-  // datos (buscadores, filtros, selección de filas) se excluyen con `data-field-none` (o `...NOT_A_FIELD` del kit).
+  // datos (buscadores, filtros, selección de filas) se excluyen con `data-field-none` (o `...NOT_A_FIELD` del kit). Un ayudante
+  // genérico que recibe los atributos de quien lo llama (`...mark`) lleva `@field-caller` en un comentario de esa línea o de la
+  // anterior: el campo se declara (y se cuenta) en la llamada.
+  const lines = text.split('\n');
+  const byCaller = (i) => { const n = at(i) - 1; return /@field-caller\b/.test(lines[n] ?? '') || /@field-caller\b/.test(lines[n - 1] ?? ''); };
   for (const m of text.matchAll(/\bel\(\s*['"](input|select|textarea)['"]/g)) {
     const attrs = splitArgs(text, text.indexOf('(', m.index))?.[1] ?? '';
-    if (/data-field-id|fieldAttrs\s*\(|data-field-none|\bNOT_A_FIELD\b/.test(attrs) || enclosingCall(text, m.index) === 'markField') continue;
+    if (/data-field-id|fieldAttrs\s*\(|data-field-none|\bNOT_A_FIELD\b/.test(attrs) || enclosingCall(text, m.index) === 'markField' || byCaller(m.index)) continue;
     const a = attrLiterals(attrs);
     const type = fieldTypeOf(m[1], a.type);
     if (m[1] === 'input' && SKIP_INPUT_TYPES.has(type)) continue;
