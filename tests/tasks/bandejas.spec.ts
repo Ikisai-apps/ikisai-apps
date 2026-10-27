@@ -9,7 +9,8 @@
  * Nombres inventados. Capturas en `coordinacion/tasks/t31-capturas/` (zona3-*).
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, E2E_WORKER_KEY, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { simulateServiceIdentity } from './fixtures.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const state: any, navigateView: any, Sync: any, render: any;
@@ -36,11 +37,27 @@ test.afterAll(async () => { await ownerContext?.close(); await readerContext?.cl
 
 const go = (page: Page, view: string) => page.evaluate((v) => navigateView(v), view);
 const sync = async (page: Page) => { await page.evaluate(() => (window as any).syncNow?.()); await settled(page); };
+/** Lo que pide otra app. Booking y Feedback son fuentes de sistema: entran por `worker/requests/task` con su identidad de
+ *  servicio (simulada aquí la primera vez), como en producción; las demás, por la ruta de personas. */
+const SYSTEM = new Set(['booking', 'feedback']);
 const ask = async (key: string, body: Record<string, unknown>) => {
-  const res = await server.app.call('/api/v1/requests/task', { body });
-  expect(res.status, JSON.stringify(res.data)).toBe(200);
-  ids[key] = res.data.task?.id ?? res.data.id ?? res.data.requestId;
-  return res.data;
+  const source = String(body.source);
+  if (!SYSTEM.has(source)) {
+    const res = await server.app.call('/api/v1/requests/task', { body });
+    expect(res.status, JSON.stringify(res.data)).toBe(200);
+    ids[key] = res.data.task?.id ?? res.data.id ?? res.data.requestId;
+    return res.data;
+  }
+  const exists = (await server.app.t.db.query(`select 1 from core.profiles where service_name = $1`, [source])).rows.length;
+  if (!exists) await simulateServiceIdentity(server.app.t.db, crypto.randomUUID(), source);
+  const ref = String(body.external_ref);
+  const extra = source === 'feedback' ? { external_url: `https://tasks.ikisai.com/#/feedback/${ref}`, on_behalf_of: { kind: 'guest', report_code: ref } } : {};
+  const res = await server.app.handler(new Request('http://localhost/api/v1/worker/requests/task', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': E2E_WORKER_KEY }, body: JSON.stringify({ ...body, ...extra }) }));
+  const data = await res.json() as any;
+  expect(res.status, JSON.stringify(data)).toBe(200);
+  ids[key] = data.taskId;
+  return data;
 };
 const request = async (ref: string) => (await server.rows('tasks.requests')).find((r: any) => r.external_ref === ref);
 const taskRow = async (id: string | undefined) => (await server.rows('tasks.tasks')).find((t: any) => t.id === id);

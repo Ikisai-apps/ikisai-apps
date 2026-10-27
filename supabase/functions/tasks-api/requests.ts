@@ -71,6 +71,9 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       };
       const source = text('source', 31, true)!;
       if (!SOURCE.test(source)) invalid('source', 'source es el id de la app que pide, en minúsculas (p. ej. central).');
+      // Las fuentes de sistema (Booking, Feedback, Core, Finance) solo entran por `worker/requests/task`, con su identidad de
+      // servicio: así nadie se adelanta a una de sus referencias (p. ej. `booking:RES…-MONTAJE`), que luego tomarían por suya.
+      if (Object.hasOwn(SYSTEM_SOURCES, source)) invalid('source', `${source} pide por worker/requests/task, no por esta ruta.`);
       const reference = text('external_ref', 150, true)!.trim();
       const title = text('title', 500, true)!.trim();
       const note = text('note', 20000);
