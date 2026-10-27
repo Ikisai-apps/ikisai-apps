@@ -4,7 +4,7 @@ import { describeError } from '../app/client.ts';
 import { productMedal } from './sheets-common.ts';
 import { callProcedure, errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
 import { generateIngredientTasks } from '../app/ingredients.ts';
-import { askTasks } from '../app/links.ts';
+import { askTasks, quickPurchase } from '../app/links.ts';
 import { customerNumber, fillMetricText, loadStationMetrics, watchData, type FlowData, type StationMetric, type Unit } from '../app/data.ts';
 import { loadPeople, personName } from '../app/people.ts';
 import { createStableList } from './stable-list.ts';
@@ -103,7 +103,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
           el('span', { class: 'qcard-state' })),
         el('button', { type: 'button', class: 'iconbtn qcard-edit', hidden: true, 'aria-label': 'Revisar la cantidad', onclick: () => editQty(u.id) }, icon('edit', 18)),
         el('button', { type: 'button', class: 'iconbtn qcard-params', hidden: true, 'aria-label': 'Parámetros del puesto', onclick: () => editParams(u.id) }, icon('settings', 18)),
-        el('button', { type: 'button', class: 'iconbtn qcard-tasks', hidden: true, 'aria-label': 'Pedir a Tasks', onclick: () => { const x = data?.units.find((y) => y.id === u.id); if (x) askTasks(client, x); } }, icon('tasks', 18)),
+        el('button', { type: 'button', class: 'iconbtn qcard-tasks', hidden: true, 'aria-label': 'Pedir a Tasks', onclick: () => { const x = data?.units.find((y) => y.id === u.id); if (!x) return; if (x.payload?.purchase) void quickPurchase(client, x); else askTasks(client, x); } }, icon('tasks', 18)),
         el('p', { class: 'qcard-notice', role: 'status', hidden: true }),
       );
       return node;
@@ -140,7 +140,9 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const edit = node.querySelector<HTMLButtonElement>('.qcard-edit')!;
       edit.hidden = !(canEdit && u.kind === 'task' && u.payload?.qty !== undefined && (status === 'proposed' || status === 'pending'));
       const role = client.bootstrap()?.membership.role;
-      node.querySelector<HTMLButtonElement>('.qcard-tasks')!.hidden = !(u.kind === 'task' && !u.payload?.external && status !== 'done' && (role === 'editor' || role === 'owner'));
+      const tasksButton = node.querySelector<HTMLButtonElement>('.qcard-tasks')!;
+      tasksButton.hidden = !(u.kind === 'task' && !u.payload?.external && status !== 'done' && (role === 'editor' || role === 'owner'));
+      tasksButton.setAttribute('aria-label', u.payload?.purchase ? 'Pedir la compra a Tasks' : 'Pedir a Tasks');
       node.querySelector<HTMLButtonElement>('.qcard-params')!.hidden = !(u.kind === 'station' && role === 'owner');
       const main = node.querySelector<HTMLButtonElement>('.qcard-main')!;
       main.disabled = !canEdit || status === 'cancelled' || inFlight.has(u.id);

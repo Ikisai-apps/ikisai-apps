@@ -50,6 +50,34 @@ export async function chooseTasksProject(client: SyncClient, project: Project): 
   } catch (error) { toast(describeError(error)); }
 }
 
+/**
+ * «Dar número a los huéspedes» (owner, 0910): lee los huéspedes del evento en Booking (`booking.flow_guests_projection`,
+ * solo nombre corto) y les da número de cliente en este flujo. Idempotente: quien ya tenía número lo conserva.
+ */
+export async function assignGuestNumbers(client: SyncClient, project: Project): Promise<void> {
+  if (!isOnline(client)) { toast('Necesita conexión.'); return; }
+  if (!project.booking_event_id) { toast('Liga antes el flujo a su evento de Booking.'); return; }
+  try {
+    const out = await client.api<{ rows: Array<{ guest_id: string; display_name: string | null }> }>('/read/booking.flow_guests_projection', {
+      method: 'POST', json: { where: { event_id: project.booking_event_id }, limit: 1000 } });
+    const guests = (out.rows ?? []).map((g) => ({ guest_id: g.guest_id, display_name: g.display_name }));
+    if (!guests.length) { toast('Booking no tiene huéspedes en ese evento.'); return; }
+    const res = await callProcedure<{ created: number; updated: number }>(client, PROCEDURES.assignGuestNumbers, { project_id: project.id, guests });
+    toast(res.created ? `${res.created} huéspedes con número nuevo (${guests.length} en total).` : `Los ${guests.length} huéspedes ya tenían número.`);
+  } catch (error) { toast(describeError(error)); }
+}
+
+/** «Comprar X»: la compra a Tasks de un toque, con su cantidad y unidad. */
+export async function quickPurchase(client: SyncClient, unit: Unit): Promise<void> {
+  if (!isOnline(client)) { toast('Pedir a Tasks necesita conexión.'); return; }
+  try {
+    const out = await client.api<{ link: { app: string; kind: string; id: string; status?: string } }>(`/units/${unit.id}/tasks`, {
+      method: 'POST', json: { type: 'purchase', quantity: unit.payload?.qty, unit: unit.payload?.unit } });
+    await callProcedure(client, PROCEDURES.unitLinkExternal, { unit_id: unit.id, link: out.link });
+    toast('Compra pedida en Tasks.');
+  } catch (error) { toast(describeError(error)); }
+}
+
 /** «Pedir a Tasks» desde una tarea: tarea, o compra con cantidad. */
 export function askTasks(client: SyncClient, unit: Unit): void {
   const qty = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: unit.payload?.qty !== undefined ? String(unit.payload.qty) : '', 'aria-label': 'Cantidad' });
