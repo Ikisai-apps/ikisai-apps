@@ -1,5 +1,15 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.1 · 27 de octubre de 2026
+
+**«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
+
+- **Carriles:** `createLanes` agrupados por persona, oficio o espacio con `groupLanes`.
+- **Contenido de cada carril:** un `createProjection` del Plan de hoy de Tasks (`tasks.review_projection`) con «Hecha» (`tasks.complete`) como acción.
+- **Guiado:** el título de cada tarjeta abre la tarea en Tasks con el Guiado (`withGuideLink`, `?guia=`) y «Volver a Trabajos de hoy».
+- **Cliente:** es de mentira; las capacidades de Tasks están pendientes.
+- Sin cambios en la API del kit. Pruebas: `tests/v74.spec.ts`, a 390 px y en escritorio.
+
 ## 0.69.0 · 27 de octubre de 2026
 
 **Proyección** (`createProjection`, `src/pieces/projection.ts`; encargo de Core, diseño en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Es un carril que pinta las filas leídas de otra app y tiene una acción por fila que invoca una capacidad del catálogo. Con ella, «Trabajos de hoy», «Recepción» o «Avance por aplicaciones» son composiciones. No copia datos.
