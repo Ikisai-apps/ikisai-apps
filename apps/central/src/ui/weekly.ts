@@ -41,11 +41,17 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
     };
   }
 
-  async function commit(operations: RowOperation[], done: string, op: 'central.semana.empezar' | 'central.semana.guardar' | 'central.semana.cerrar'): Promise<boolean> {
+  // Cada llamada lleva su id de uso literal (el catálogo de la publicación solo recoge literales: kit 0.18.2).
+  const send = {
+    empezar: (ops: RowOperation[]) => usage.run('central.semana.empezar', () => client.commit(ops)),
+    guardar: (ops: RowOperation[]) => usage.run('central.semana.guardar', () => client.commit(ops)),
+    cerrar: (ops: RowOperation[]) => usage.run('central.semana.cerrar', () => client.commit(ops)),
+  };
+  async function commit(operations: RowOperation[], done: string, how: keyof typeof send): Promise<boolean> {
     const issue = validateOperations(operations, membership);
     if (issue) { toast(issue.message); return false; }
     try {
-      await usage.run(op, () => client.commit(operations));
+      await send[how](operations);
       toast(done);
       await paint();
       return true;
@@ -65,7 +71,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
     if (!review) {
       replace(current, head, prepares
         ? el('div', null, el('p', { class: 'hint' }, 'Aún no se ha empezado la revisión de esta semana.'),
-          el('button', { class: 'primary', type: 'button', id: 'weeklyStart', 'data-feedback-id': 'central.semana.empezar', 'data-feedback-label': 'Empezar la revisión', onclick: () => void commit([{ op: 'insert', table: T.weeklyReviews, id: crypto.randomUUID(), fields: { week } }], 'Revisión empezada.', 'central.semana.empezar') }, 'Empezar la de esta semana'))
+          el('button', { class: 'primary', type: 'button', id: 'weeklyStart', 'data-feedback-id': 'central.semana.empezar', 'data-feedback-label': 'Empezar la revisión', onclick: () => void commit([{ op: 'insert', table: T.weeklyReviews, id: crypto.randomUUID(), fields: { week } }], 'Revisión empezada.', 'empezar') }, 'Empezar la de esta semana'))
         : el('p', { class: 'hint' }, 'Aún no se ha empezado la revisión de esta semana. La preparan quien administra Central y quien tiene el ámbito de Dirección.'));
       return;
     }
@@ -83,7 +89,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
         return el('label', { class: 'check' }, box, el('span', null, p.display_name));
       }));
     const picked = () => [...attendees.querySelectorAll<HTMLInputElement>('input:checked')].map((b) => b.value);
-    const save = prepares ? el('button', { class: 'ghost', type: 'button', id: 'weeklySave', 'data-feedback-id': 'central.semana.guardar', 'data-feedback-label': 'Guardar notas', onclick: () => void commit([{ op: 'update', table: T.weeklyReviews, id: review.id, expectedRevision: Number(review.revision), fields: { summary: summary.value.trim() || null, attendee_ids: picked() } }], 'Notas guardadas.', 'central.semana.guardar') }, 'Guardar') : null;
+    const save = prepares ? el('button', { class: 'ghost', type: 'button', id: 'weeklySave', 'data-feedback-id': 'central.semana.guardar', 'data-feedback-label': 'Guardar notas', onclick: () => void commit([{ op: 'update', table: T.weeklyReviews, id: review.id, expectedRevision: Number(review.revision), fields: { summary: summary.value.trim() || null, attendee_ids: picked() } }], 'Notas guardadas.', 'guardar') }, 'Guardar') : null;
     const close = prepares ? el('button', { class: 'primary', type: 'button', id: 'weeklyClose', 'data-feedback-id': 'central.semana.cerrar', 'data-feedback-label': 'Cerrar la revisión', onclick: () => void doClose(review, summary.value, picked()) }, 'Cerrar la revisión') : null;
     replace(current, head,
       el('h4', { class: 'sectionlabel' }, 'Paso 1 · Lo que está en crítico o en atención'), red,
@@ -127,7 +133,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
         review_id: review.id, app: i.app, kpi: i.kpi, label: i.label.slice(0, 80), period: i.period, value: i.value, unit: i.unit, target: i.target, state: i.state, note: notes.get(i.kpi)?.trim() || null,
       } })),
     ];
-    if (await commit(operations, 'Revisión cerrada.', 'central.semana.cerrar')) notes.clear();
+    if (await commit(operations, 'Revisión cerrada.', 'cerrar')) notes.clear();
   }
 
   function paintHistory(closed: Review[], items: Item[], people: Person[]): void {
