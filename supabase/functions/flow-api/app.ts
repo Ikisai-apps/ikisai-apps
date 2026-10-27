@@ -178,14 +178,15 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
       },
     },
     {
-      // Apunte de ingresos del día en Finance (invoices.record_app_entry, idempotente por source_ref). En modo pruebas, no.
+      // Apunte de ingresos del día en Finance (invoices.record_app_entry, idempotente por source_ref). Decisión de VG del
+      // 27-10: el cierre es un apunte de PROCESO (informativo), nunca fiscal; lo fiscal es la factura de la caja. Por eso ya
+      // no hay «modo pruebas» para Finance: el resumen se manda siempre, como `nature: 'process'`.
       method: 'POST', pattern: 'closures/:id/send/finance', handler: async ({ ctx, params }) => {
         const { closure: c, project } = await closure(ctx, params.id ?? '');
-        if (project.test_mode) return { status: 'skipped_test_mode', result: null };
         const [y, m, d] = c.day.split('-');
         const sourceRef = `flow:project:${project.id}:${c.day}`;
         const args = {
-          source_app: 'flow', source_ref: sourceRef, kind: 'income', entry_date: c.day,
+          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'process', entry_date: c.day,
           description: `${project.name} · ${d}-${m}-${y}`,
           amount_cents: c.data.sales_cents, tax_rate: 10,
           methods: { cash: c.data.sales_by_method.cash, bizum: c.data.sales_by_method.bizum, ...(c.data.sales_by_method.card ? { card: c.data.sales_by_method.card } : {}) },

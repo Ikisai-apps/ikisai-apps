@@ -72,6 +72,7 @@ export function screenItems(isAdmin: boolean, navigate: (hash: string) => void):
     ...(isAdmin ? [
       ['Cuentas', '#/accesos', 'accesos permisos'], ['Alta de cuenta', '#/accesos/alta', 'accesos nueva'],
       ['Agentes', '#/accesos/agentes', 'claves ia'], ['Registro de accesos', '#/accesos/registro', 'auditoria'],
+      ['Uso y cobertura', '#/revision/uso', 'uso campos funciones cobertura recorridos'],
     ] as Array<[string, string, string]> : []),
   ];
   return screens.map(([text, hash, keywords]) => ({ group: 'Pantallas', text, keywords, hint: 'Pantalla', run: () => navigate(hash) }));
@@ -192,6 +193,7 @@ export function menuSections(data: MenuData, isAdmin: boolean, userId: string | 
   sections.push({ key: 'revision', label: 'Revisión', icon: 'check', summary: data.review.total ? `${data.review.done} de ${data.review.total} pasadas` : 'avance y comentarios',
     badge: data.review.toAct ? { text: String(data.review.toAct), tone: 'warn' } : null, rows: [
       { label: 'Avance de las pantallas', sub: data.review.total ? `${data.review.done} de ${data.review.total} pasadas a Sevilla` : 'pantallas y comentarios', icon: 'check', href: '#/revision', feedbackId: 'central.menu.revision.avance' },
+      ...(isAdmin ? [{ label: 'Uso y cobertura', sub: 'qué se usa, qué nadie usa y qué no se mide', icon: 'eye', href: '#/revision/uso', feedbackId: 'central.menu.revision.uso' }] : []),
       ...(data.review.toAct ? [{ label: 'Lo que te toca', sub: plural(data.review.toAct, 'pantalla por valorar', 'pantallas por valorar'), icon: 'star', count: { text: String(data.review.toAct), tone: 'warn' as const }, href: '#/revision?toca', feedbackId: 'central.menu.revision.toca' }] : []),
     ] });
   return sections;

@@ -158,22 +158,22 @@ export const mountPeople: ViewMount = (ctx) => {
   const trashList = el('ul', { class: 'list', 'aria-label': 'Personas en la papelera', 'data-feedback-id': 'central.personas.papelera.lista', 'data-feedback-label': 'Personas en la papelera' });
   const trashLabel = el('summary', { class: 'sectionlabel ctl-trashhead', 'data-feedback-id': 'central.personas.papelera.cabecera', 'data-feedback-label': 'Papelera de personas' }, 'Papelera ', el('span', { class: 'count' }, '0'));
   const trash = el('details', { id: 'peopleTrash', 'data-feedback-id': 'central.personas.papelera', 'data-feedback-label': 'Papelera', hidden: true }, trashLabel, trashList);
-  const search = el('input', { type: 'search', id: 'peopleSearch', 'data-feedback-id': 'central.personas.buscar', 'data-feedback-label': 'Buscar persona', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar persona',
+  const search = el('input', { type: 'search', id: 'peopleSearch', 'data-field-id': 'central.persona.people_search', 'data-feedback-id': 'central.personas.buscar', 'data-feedback-label': 'Buscar persona', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar persona',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
-  const relationFilter = el('select', { id: 'peopleRelation', 'aria-label': 'Relación', 'data-feedback-id': 'central.personas.filtro_relacion', 'data-feedback-label': 'Filtro por relación', onchange: (e: Event) => { relation = (e.target as HTMLSelectElement).value; paint(); } },
+  const relationFilter = el('select', { id: 'peopleRelation', 'data-field-id': 'central.persona.people_relation', 'aria-label': 'Relación', 'data-feedback-id': 'central.personas.filtro_relacion', 'data-feedback-label': 'Filtro por relación', onchange: (e: Event) => { relation = (e.target as HTMLSelectElement).value; paint(); } },
     ...options(RELATIONS, RELATION_LABELS, '', 'Todas las relaciones'));
   // Nivel de casa en chips (085); «Sin nivel», solo para dirección.
   const levelChips = el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Nivel de casa', id: 'peopleLevels', hidden: true });
   // Oficio (P1): filtra por un oficio y todo lo que cuelga de él. Sin oficios, no se ve (la pantalla queda como antes).
-  const tradeFilter = el('select', { id: 'peopleTrade', 'aria-label': 'Oficio', hidden: true, 'data-feedback-id': 'central.personas.filtro_oficio', 'data-feedback-label': 'Filtro por oficio', onchange: (e: Event) => { trade = (e.target as HTMLSelectElement).value; paint(); } },
+  const tradeFilter = el('select', { id: 'peopleTrade', 'data-field-id': 'central.persona.people_trade', 'aria-label': 'Oficio', hidden: true, 'data-feedback-id': 'central.personas.filtro_oficio', 'data-feedback-label': 'Filtro por oficio', onchange: (e: Event) => { trade = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los oficios')) as HTMLSelectElement;
   // Solo antes de aplicar el nivel por primera vez: la vista previa para dirección.
   const levelsNote = el('div', { 'data-feedback-id': 'central.personas.aviso_nivel', 'data-feedback-label': 'Aviso del nivel de casa' });
   // Equipo, dentro de «Filtros» (se conserva: cruza equipo con oficio y nivel, que el tablero no hace).
-  const teamFilter = el('select', { id: 'peopleTeam', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
+  const teamFilter = el('select', { id: 'peopleTeam', 'data-field-id': 'central.persona.people_team', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los equipos')) as HTMLSelectElement;
   const fabLabel = el('span', null, 'Nueva persona');
-  const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
+  const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-field-id': 'central.persona.people_inactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
   const filtersPanel = el('div', { class: 'ctl-filters', id: 'peopleFilters', hidden: true, 'data-feedback-id': 'central.personas.filtros', 'data-feedback-label': 'Filtros' }, relationFilter, tradeFilter, teamFilter, inactive);
   const filtersToggle = el('button', { type: 'button', class: 'ghost', id: 'peopleFiltersToggle', 'aria-expanded': 'false', 'aria-controls': 'peopleFilters', 'data-feedback-id': 'central.personas.filtros_abrir', 'data-feedback-label': 'Abrir los filtros',
     onclick: () => { filtersOpen = !filtersOpen; filtersPanel.hidden = !filtersOpen; filtersToggle.setAttribute('aria-expanded', String(filtersOpen)); } }, icon('filter', 16), el('span', { class: 'ctl-filtercount' }, 'Filtros'));
@@ -412,14 +412,14 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   const { client } = ctx;
   let sheet: Sheet | null = null;
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.editar.error', 'data-feedback-label': 'Error del formulario' });
-  const name = el('input', { id: 'p-name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', required: true, value: person?.display_name ?? '' }) as HTMLInputElement;
-  const initials = el('input', { id: 'p-initials', 'data-feedback-ignore': '', type: 'text', maxlength: '4', autocomplete: 'off', value: person?.initials ?? '' }) as HTMLInputElement;
-  const relation = el('select', { id: 'p-relation' }, ...options(RELATIONS, RELATION_LABELS, person?.relation ?? 'equipo')) as HTMLSelectElement;
+  const name = el('input', { id: 'p-name', 'data-field-id': 'central.persona.name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', required: true, value: person?.display_name ?? '' }) as HTMLInputElement;
+  const initials = el('input', { id: 'p-initials', 'data-field-id': 'central.persona.initials', 'data-feedback-ignore': '', type: 'text', maxlength: '4', autocomplete: 'off', value: person?.initials ?? '' }) as HTMLInputElement;
+  const relation = el('select', { id: 'p-relation', 'data-field-id': 'central.persona.relation' }, ...options(RELATIONS, RELATION_LABELS, person?.relation ?? 'equipo')) as HTMLSelectElement;
   const levelsOn = houseLevelsOn;
   // «Área principal» sin las funciones de dirección (las sustituye el nivel), salvo la que ya tenga la ficha.
   const areas = levelsOn ? BASE_ROLES.filter((r) => !DIRECTION_BASE_ROLES.includes(r) || r === person?.base_role) : BASE_ROLES;
-  const baseRole = el('select', { id: 'p-role' }, ...options(areas, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
-  const houseLevel = el('select', { id: 'p-level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : defaults.level ?? 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
+  const baseRole = el('select', { id: 'p-role', 'data-field-id': 'central.persona.role' }, ...options(areas, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
+  const houseLevel = el('select', { id: 'p-level', 'data-field-id': 'central.persona.p_level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : defaults.level ?? 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
   // O4: qué accesos da o quita el nivel elegido, antes de guardar.
   const levelHint = el('p', { class: 'muted small', id: 'p-level-hint', 'aria-live': 'polite', 'data-feedback-id': 'central.persona.editar.aviso_nivel', 'data-feedback-label': 'Qué da el nivel de casa' });
   const paintLevelHint = () => {
@@ -441,11 +441,11 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   houseLevel.addEventListener('change', paintLevelDoors);
   paintLevelHint();
   paintLevelDoors();
-  const coverage = el('select', { id: 'p-coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
-  const availability = el('select', { id: 'p-availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
-  const notes = el('textarea', { id: 'p-notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
+  const coverage = el('select', { id: 'p-coverage', 'data-field-id': 'central.persona.coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
+  const availability = el('select', { id: 'p-availability', 'data-field-id': 'central.persona.availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
+  const notes = el('textarea', { id: 'p-notes', 'data-field-id': 'central.persona.p_notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
   notes.value = person?.availability_notes ?? '';
-  const committed = el('input', { type: 'checkbox', id: 'p-committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
+  const committed = el('input', { type: 'checkbox', id: 'p-committed', 'data-field-id': 'central.persona.committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
 
   const values = (): Record<string, unknown> => {
     const common = { display_name: name.value.trim(), initials: text(initials.value), base_role: baseRole.value, availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked };
@@ -706,7 +706,7 @@ export function mountPerson(personId: string): ViewMount {
       const taken = new Set(data.capabilities.filter((x) => x.person_id === person.id).map((x) => x.trade_id));
       const tree = tradeTree(data.trades).filter((x) => c ? x.trade.id === c.trade_id : !taken.has(x.trade.id));
       if (!c && !tree.length) { toast(data.trades.some((t) => !t.deleted_at) ? 'Ya tiene todos los oficios del catálogo.' : 'Todavía no hay oficios: créalos en Personas › Oficios.'); return; }
-      const tradeSelect = el('select', { id: 'pt-trade', disabled: !!c }, ...tree.map((x) => el('option', { value: x.trade.id }, `${'· '.repeat(x.depth)}${x.trade.name}`))) as HTMLSelectElement;
+      const tradeSelect = el('select', { id: 'pt-trade', 'data-field-id': 'central.persona.trade', disabled: !!c }, ...tree.map((x) => el('option', { value: x.trade.id }, `${'· '.repeat(x.depth)}${x.trade.name}`))) as HTMLSelectElement;
       // Lo heredado del padre es el mínimo (1510): la estrella no baja de ahí y un aviso lo dice antes de guardar.
       const minOf = () => inheritedLevel(data.trades, data.capabilities, person.id, c?.trade_id ?? tradeSelect.value);
       let level = Math.max(c?.level ?? 1, minOf()?.level ?? 0);
@@ -725,7 +725,7 @@ export function mountPerson(personId: string): ViewMount {
       };
       tradeSelect.addEventListener('change', paintMin);
       paintMin();
-      const note = el('input', { id: 'pt-note', type: 'text', maxlength: '300', value: c?.note ?? '', placeholder: 'Por ejemplo: solo instalaciones pequeñas' }) as HTMLInputElement;
+      const note = el('input', { id: 'pt-note', 'data-field-id': 'central.persona.note', type: 'text', maxlength: '300', value: c?.note ?? '', placeholder: 'Por ejemplo: solo instalaciones pequeñas' }) as HTMLInputElement;
       const save = el('button', { class: 'primary', type: 'button', id: 'savePersonTrade', 'data-feedback-id': 'central.persona.oficios.editor.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
         const min = minOf();
         const fields = { level: Math.max(level, min?.level ?? 0), note: note.value.trim() || null };
@@ -797,7 +797,7 @@ export function mountPerson(personId: string): ViewMount {
       // Sin cuenta: correo para dársela ahora (los accesos de outsider llegan solos al enlazarla) y, como hoy, otros accesos opcionales.
       let catalog: Awaited<ReturnType<typeof admin.catalog>> = [];
       if (navigator.onLine) { try { catalog = await admin.catalog(); } catch { catalog = []; } }
-      const email = el('input', { id: 'co-email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
+      const email = el('input', { id: 'co-email', 'data-field-id': 'central.persona.co_email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
       const selects = new Map<string, HTMLSelectElement>();
       const rows = catalog.filter((app) => app.id !== 'guests' && app.id !== 'tasks').map((app) => {
         const s = el('select', { id: `co-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
@@ -857,7 +857,7 @@ export function mountPerson(personId: string): ViewMount {
     /** «Quitar de outsider» (decisión del usuario): se pregunta a qué nivel pasa, con «Sin nivel» por defecto. No se borra nada. */
     function openRemoveOutsider(person: Person): void {
       let sheet: Sheet | null = null;
-      const target = el('select', { id: 'ro-level', 'aria-label': 'Pasa a' },
+      const target = el('select', { id: 'ro-level', 'data-field-id': 'central.persona.ro_level', 'aria-label': 'Pasa a' },
         el('option', { value: '' }, 'Sin nivel (fuera del directorio)'), el('option', { value: 'staff' }, HOUSE_LEVEL_LABELS.staff)) as HTMLSelectElement;
       const submit = el('button', { class: 'primary', type: 'button', id: 'removeOutsiderSubmit', 'data-feedback-id': 'central.persona.outsider.quitar_confirmar', 'data-feedback-label': 'Quitar', onclick: async () => {
         const lv = (target.value || null) as HouseLevel | null;
@@ -1094,11 +1094,11 @@ export function mountPerson(personId: string): ViewMount {
       const legal = input('pp-legal', priv?.legal_name, { maxlength: '160', 'data-feedback-ignore': '' });
       const phone = input('pp-phone', priv?.phone, { maxlength: '32', type: 'tel', 'data-feedback-ignore': '' });
       const email = input('pp-email', priv?.email, { maxlength: '320', type: 'email', 'data-feedback-ignore': '' });
-      const engagement = el('select', { id: 'pp-engagement' }, ...options(ENGAGEMENTS, ENGAGEMENT_LABELS, priv?.engagement, 'Sin indicar')) as HTMLSelectElement;
+      const engagement = el('select', { id: 'pp-engagement', 'data-field-id': 'central.persona.engagement' }, ...options(ENGAGEMENTS, ENGAGEMENT_LABELS, priv?.engagement, 'Sin indicar')) as HTMLSelectElement;
       const from = input('pp-from', priv?.engaged_from, { type: 'date', 'data-feedback-id': 'central.persona.contacto.editar.desde', 'data-feedback-label': 'Desde' });
       const until = input('pp-until', priv?.engaged_until, { type: 'date', 'data-feedback-id': 'central.persona.contacto.editar.hasta', 'data-feedback-label': 'Hasta' });
       const emergency = input('pp-emergency', priv?.emergency_contact, { maxlength: '160', placeholder: 'Nombre y teléfono', 'data-feedback-ignore': '' });
-      const notes = el('textarea', { id: 'pp-notes', 'data-feedback-ignore': '', rows: '3', maxlength: '1000' }) as HTMLTextAreaElement;
+      const notes = el('textarea', { id: 'pp-notes', 'data-field-id': 'central.persona.pp_notes', 'data-feedback-ignore': '', rows: '3', maxlength: '1000' }) as HTMLTextAreaElement;
       notes.value = priv?.notes ?? '';
       const values = (): Record<string, unknown> => ({
         legal_name: text(legal.value), phone: text(phone.value), email: text(email.value)?.toLowerCase() ?? null, engagement: engagement.value || null,
@@ -1144,19 +1144,19 @@ export function mountPerson(personId: string): ViewMount {
       let staged: Blob | null = null;
       let stagedName = '';
       const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.documentacion.editar.error', 'data-feedback-label': 'Error del formulario' });
-      const kind = el('select', { id: 'r-kind' }, ...options(RECORD_KINDS, { documento: 'Documento', formacion: 'Formación' }, record?.kind ?? 'documento')) as HTMLSelectElement;
-      const type = el('select', { id: 'r-type' }) as HTMLSelectElement;
+      const kind = el('select', { id: 'r-kind', 'data-field-id': 'central.persona.kind' }, ...options(RECORD_KINDS, { documento: 'Documento', formacion: 'Formación' }, record?.kind ?? 'documento')) as HTMLSelectElement;
+      const type = el('select', { id: 'r-type', 'data-field-id': 'central.persona.type' }) as HTMLSelectElement;
       const fillTypes = () => replace(type, ...options(recordTypesFor(kind.value as RecordKind), RECORD_TYPE_LABELS, record?.kind === kind.value ? record.record_type : recordTypesFor(kind.value as RecordKind)[0]));
       fillTypes();
-      const title = el('input', { id: 'r-title', type: 'text', maxlength: '120', value: record?.title ?? '' }) as HTMLInputElement;
+      const title = el('input', { id: 'r-title', 'data-field-id': 'central.persona.title', type: 'text', maxlength: '120', value: record?.title ?? '' }) as HTMLInputElement;
       const titleField = el('label', { class: 'field', 'data-feedback-id': 'central.persona.documentacion.editar.campo_titulo', 'data-feedback-label': 'Título' }, el('span', null, 'Título'), title);
-      const status = el('select', { id: 'r-status' }, ...options(RECORD_STATUSES, RECORD_STATUS_LABELS, record?.status ?? 'pendiente')) as HTMLSelectElement;
-      const issued = el('input', { id: 'r-issued', type: 'date', value: record?.issued_on ?? '' }) as HTMLInputElement;
-      const expires = el('input', { id: 'r-expires', type: 'date', value: record?.expires_on ?? '' }) as HTMLInputElement;
-      const reviewed = el('input', { id: 'r-reviewed', type: 'date', value: record?.reviewed_on ?? '' }) as HTMLInputElement;
-      const notes = el('textarea', { id: 'r-notes', 'data-feedback-ignore': '', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
+      const status = el('select', { id: 'r-status', 'data-field-id': 'central.persona.status' }, ...options(RECORD_STATUSES, RECORD_STATUS_LABELS, record?.status ?? 'pendiente')) as HTMLSelectElement;
+      const issued = el('input', { id: 'r-issued', 'data-field-id': 'central.persona.issued', type: 'date', value: record?.issued_on ?? '' }) as HTMLInputElement;
+      const expires = el('input', { id: 'r-expires', 'data-field-id': 'central.persona.expires', type: 'date', value: record?.expires_on ?? '' }) as HTMLInputElement;
+      const reviewed = el('input', { id: 'r-reviewed', 'data-field-id': 'central.persona.reviewed', type: 'date', value: record?.reviewed_on ?? '' }) as HTMLInputElement;
+      const notes = el('textarea', { id: 'r-notes', 'data-field-id': 'central.persona.r_notes', 'data-feedback-ignore': '', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
       notes.value = record?.notes ?? '';
-      const fileInput = el('input', { id: 'r-file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.persona.documentacion.editar.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
+      const fileInput = el('input', { id: 'r-file', 'data-field-id': 'central.persona.file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.persona.documentacion.editar.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
       const fileState = el('span', { class: 'muted small', id: 'r-file-state', 'data-feedback-id': 'central.persona.documentacion.editar.estado_archivo', 'data-feedback-label': 'Estado del archivo' }, record?.file_id ? 'Tiene archivo adjunto.' : 'Sin archivo.');
       const syncTitle = () => { titleField.hidden = !FREE_RECORD_TYPES.includes(type.value); };
       syncTitle();
@@ -1239,7 +1239,7 @@ export function mountPerson(personId: string): ViewMount {
       try { catalog = await admin.catalog(); } catch (e) { toast(describeError(e)); return; }
       let sheet: Sheet | null = null;
       const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.cuenta.dar.error', 'data-feedback-label': 'Error del formulario' });
-      const email = el('input', { id: 'ga-email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
+      const email = el('input', { id: 'ga-email', 'data-field-id': 'central.persona.ga_email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
       const selects = new Map<string, HTMLSelectElement>();
       const rows = catalog.map((app) => {
         const s = el('select', { id: `ga-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
@@ -1305,7 +1305,7 @@ export function mountPerson(personId: string): ViewMount {
       const free = accounts.filter((a) => a.kind !== 'agent' && !linked.has(a.userId));
       if (!free.length) { toast('No hay cuentas sin enlazar. Usa «Dar cuenta».'); return; }
       let sheet: Sheet | null = null;
-      const select = el('select', { id: 'la-account', 'data-feedback-ignore': '' }, ...free.map((a) => el('option', { value: a.userId }, `${a.displayName || a.email} · ${a.email ?? ''}`))) as HTMLSelectElement;
+      const select = el('select', { id: 'la-account', 'data-field-id': 'central.persona.account', 'data-feedback-ignore': '' }, ...free.map((a) => el('option', { value: a.userId }, `${a.displayName || a.email} · ${a.email ?? ''}`))) as HTMLSelectElement;
       const submit = el('button', { class: 'primary', type: 'button', id: 'linkSubmit', 'data-feedback-id': 'central.persona.cuenta.enlazar_hoja.enviar', 'data-feedback-label': 'Enlazar', onclick: async () => {
         const fresh = data.people.find((p) => p.id === person.id) ?? person;
         if (await commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: select.value } }], 'Cuenta enlazada.')) {

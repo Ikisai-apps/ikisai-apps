@@ -42,6 +42,8 @@ export const flowActions = (client: SyncClient) => ({
   createExtension: (parentOrderId: string, lines: Array<{ product_id: string; quantity: number }>) =>
     callProcedure<{ order_id: string }>(client, PROCEDURES.createExtension, { parent_order_id: parentOrderId, order_id: crypto.randomUUID(), lines }),
   confirmRefund: (paymentId: string) => callProcedure(client, PROCEDURES.confirmRefund, { payment_id: paymentId }),
+  deliverAll: (orderId: string, ident: string, revision: number) =>
+    callProcedure<{ completed_units: number }>(client, PROCEDURES.deliverAll, { order_id: orderId, ident, expected_revision: revision }),
   openAccount: (projectId: string, holder: string, customerNumber: string | null) =>
     callProcedure<{ account_id: string; holder: string }>(client, PROCEDURES.openAccount, { project_id: projectId, holder, ...(customerNumber ? { customer_number: customerNumber } : {}) }),
   chargeToAccount: (orderId: string, accountId: string, revision: number) =>
