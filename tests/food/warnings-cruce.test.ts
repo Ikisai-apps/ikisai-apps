@@ -141,3 +141,19 @@ test('cruce · Recetario «Lleva X / Sin X»: lo sin revisar se marca y nunca sa
   assert.equal(allergenPresence(recipe({ id: 'otra', name: 'Arroz', allergens_checked: false }), 'frutos_de_cascara', context), 'sin_revisar');
   assert.equal(allergenPresence(recipe({ id: 'otra', name: 'Arroz' }), 'frutos_de_cascara', context), 'no_declara');
 });
+
+test('maquinaria · una receta del menú que necesita una máquina averiada o fuera de servicio avisa, sin pedir aceptación (F-MAQ-2)', () => {
+  const machines = (status: string) => ({
+    equipment: [{ id: 'abatidor', name: 'Abatidor', status, deleted_at: null }, { id: 'horno', name: 'Horno', status: 'operativo', deleted_at: null }],
+    recipe_equipment: [{ recipe_id: 'r', equipment_id: 'abatidor', deleted_at: null }, { recipe_id: 'r', equipment_id: 'horno', deleted_at: null }],
+  });
+  const broken = menuWarnings(group(), { ...oneDish({ name: 'Crema fría' }), ...machines('averiado') } as MenuGraph);
+  assert.deepEqual(broken.filter((w) => w.kind === 'maquinaria').map((w) => [w.key, w.requiresAck, w.text]),
+    [['maquinaria|r|abatidor', false, '«Crema fría» necesita Abatidor (averiado).']]);
+  const out = menuWarnings(group(), { ...oneDish({ name: 'Crema fría' }), ...machines('fuera_de_servicio') } as MenuGraph);
+  assert.equal(out.find((w) => w.kind === 'maquinaria')!.text, '«Crema fría» necesita Abatidor (fuera de servicio).');
+  // Limitada no avisa, y sin la maquinaria en el grafo (la Edge al validar) tampoco: validar no cambia.
+  assert.equal(menuWarnings(group(), { ...oneDish({ name: 'Crema fría' }), ...machines('limitado') } as MenuGraph).filter((w) => w.kind === 'maquinaria').length, 0);
+  assert.equal(menuWarnings(group(), oneDish({ name: 'Crema fría' })).filter((w) => w.kind === 'maquinaria').length, 0);
+  assert.deepEqual(requiredAcknowledgements(broken), requiredAcknowledgements(menuWarnings(group(), oneDish({ name: 'Crema fría' }))));
+});
