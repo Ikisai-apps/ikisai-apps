@@ -4,7 +4,7 @@
 --   (`parent_id`) con `payload.paso`. Está cumplido cuando todas sus hijas que no son backlog están hechas (y hay al menos
 --   una): entonces queda `done` con `done_at`; si se reabre, vuelve a `pending` y se borra. Lo recalcula `board_card` al
 --   escribir (por el registro del núcleo, para que llegue a los móviles), nunca un trigger a escondidas.
--- - Historial: `flow.board_history` guarda fotos {t, hecho, pr, curso, pend, backlog, total} del proyecto cuando cambian
+-- - Historial: `flow.board_history` guarda fotos {taken_at, hecho, pr, curso, pend, backlog, total} del proyecto cuando cambian
 --   los recuentos (como mucho una cada 10 min) o, sin cambios, cada 6 h. Las escribe el servidor al escribir una tarjeta.
 -- - `flow.import_board(p_project, p_payload)` (solo service_role): carga hitos, tarjetas e historial exportados del artefacto,
 --   idempotente por id, por el registro del núcleo (`core.apply_migration_operations`) en lotes de 400.
@@ -30,7 +30,8 @@ create table flow.board_history (
   updated_by uuid references auth.users(id),
   deleted_at timestamptz,
   project_id uuid not null references flow.projects(id),
-  t timestamptz not null,
+  -- `taken_at`, no `t`: el snapshot del núcleo usa `t` de alias de fila y una columna con ese nombre lo rompe.
+  taken_at timestamptz not null,
   hecho integer not null default 0 check (hecho >= 0),
   pr integer not null default 0 check (pr >= 0),
   curso integer not null default 0 check (curso >= 0),
@@ -38,8 +39,8 @@ create table flow.board_history (
   backlog integer not null default 0 check (backlog >= 0),
   total integer not null default 0 check (total >= 0)
 );
-create unique index board_history_uidx on flow.board_history (project_id, t) where deleted_at is null;
-select core.register_table('flow', 'flow', 'board_history', array['project_id','t','hecho','pr','curso','pend','backlog','total'], '{reader,editor,owner,outsider}', '{editor,owner,outsider}', true);
+create unique index board_history_uidx on flow.board_history (project_id, taken_at) where deleted_at is null;
+select core.register_table('flow', 'flow', 'board_history', array['project_id','taken_at','hecho','pr','curso','pend','backlog','total'], '{reader,editor,owner,outsider}', '{editor,owner,outsider}', true);
 create trigger flow_guard before insert or update on flow.board_history for each row execute function flow.guard_marks();
 create trigger flow_scope before insert or update on flow.board_history for each row execute function flow.guard_scope();
 
@@ -65,11 +66,11 @@ $$;
 create or replace function flow.board_snapshot(p jsonb, p_project uuid) returns void language plpgsql as $$
 declare v_now jsonb := flow.board_counts(p_project); h flow.board_history; v_same boolean;
 begin
-  select * into h from flow.board_history where project_id = p_project and deleted_at is null order by t desc limit 1;
+  select * into h from flow.board_history where project_id = p_project and deleted_at is null order by taken_at desc limit 1;
   v_same := h.id is not null and h.hecho = (v_now->>'hecho')::int and h.pr = (v_now->>'pr')::int and h.curso = (v_now->>'curso')::int
             and h.pend = (v_now->>'pend')::int and h.backlog = (v_now->>'backlog')::int and h.total = (v_now->>'total')::int;
-  if h.id is null or (not v_same and h.t < now() - interval '10 minutes') or (v_same and h.t < now() - interval '6 hours') then
-    perform flow.ins(p, 'flow.board_history', jsonb_build_object('project_id', p_project, 't', now()) || v_now);
+  if h.id is null or (not v_same and h.taken_at < now() - interval '10 minutes') or (v_same and h.taken_at < now() - interval '6 hours') then
+    perform flow.ins(p, 'flow.board_history', jsonb_build_object('project_id', p_project, 'taken_at', now()) || v_now);
   end if;
 end $$;
 
@@ -367,9 +368,9 @@ begin
   -- 4. Historial (sin repetir fotos ya cargadas).
   v_ops := '[]'::jsonb;
   for x in select * from jsonb_array_elements(coalesce(p_payload->'history', '[]'::jsonb)) loop
-    if not exists (select 1 from flow.board_history where project_id = p_project and t = (x->>'t')::timestamptz and deleted_at is null) then
+    if not exists (select 1 from flow.board_history where project_id = p_project and taken_at = (x->>'t')::timestamptz and deleted_at is null) then
       v_ops := v_ops || jsonb_build_object('op', 'insert', 'table', 'flow.board_history', 'id', gen_random_uuid(), 'fields', jsonb_build_object(
-        'project_id', p_project, 't', x->>'t', 'hecho', coalesce((x->>'hecho')::int, 0), 'pr', coalesce((x->>'pr')::int, 0), 'curso', coalesce((x->>'curso')::int, 0),
+        'project_id', p_project, 'taken_at', x->>'t', 'hecho', coalesce((x->>'hecho')::int, 0), 'pr', coalesce((x->>'pr')::int, 0), 'curso', coalesce((x->>'curso')::int, 0),
         'pend', coalesce((x->>'pend')::int, 0), 'backlog', coalesce((x->>'backlog')::int, 0), 'total', coalesce((x->>'total')::int, 0)));
       v_hist := v_hist + 1;
     end if;

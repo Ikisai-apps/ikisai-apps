@@ -37,7 +37,7 @@ test.after(async () => { await app.close(); });
 function commit(operations: unknown[], token = app.tokens.owner) { return app.call('/api/v1/commands', { token, body: { requestId: `bi-${++seq}-${uuid()}`, operations } }); }
 const unit = async (id: string) => (await app.t.db.query<any>(`select * from flow.units where id = $1`, [id])).rows[0];
 const importBoard = async () => (await app.t.db.query<{ out: any }>(`select flow.import_board($1, $2::jsonb) as out`, [BOARD, JSON.stringify(payload)])).rows[0]!.out;
-const history = async () => (await app.t.db.query<any>(`select * from flow.board_history where project_id = $1 order by t`, [BOARD])).rows;
+const history = async () => (await app.t.db.query<any>(`select * from flow.board_history where project_id = $1 order by taken_at`, [BOARD])).rows;
 
 test('avance · importar: hitos, tarjetas con paso e historial; un hito con todo hecho (sin contar backlog) queda cumplido', async () => {
   const out = await importBoard();
@@ -77,6 +77,10 @@ test('avance · al hacer el último paso el hito se cumple; al reabrirlo, vuelve
   const e1 = (await app.t.db.query<any>(`select * from flow.executions where id = $1`, [h1.execution_id])).rows[0];
   assert.equal(e1.status, 'done'); assert.deepEqual(e1.stages.map((x: any) => x.status), ['done', 'done']);
   assert.equal((await history()).length, before + 1);
+  // El snapshot del núcleo las entrega como filas con id (con una columna `t`, salían como fechas sueltas y el espejo local fallaba).
+  const snap = await app.call('/api/v1/snapshot?tables=flow.board_history');
+  const rows = snap.data.tables[0].rows as any[];
+  assert.ok(rows.length > 0 && rows.every((r) => typeof r === 'object' && typeof r.id === 'string' && typeof r.taken_at === 'string'), JSON.stringify(rows).slice(0, 200));
   r = await commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: BOARD, card_id: C2, lane_key: 'booking', status: 'pending' } }]);
   assert.equal(r.status, 200, JSON.stringify(r.data));
   h1 = await unit(H1);
