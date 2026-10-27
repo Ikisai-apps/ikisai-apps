@@ -268,8 +268,8 @@
 .avance-chip strong{font:700 13px/1 var(--font-sans,inherit);white-space:nowrap}
 .avance-chip .de{font-weight:500;font-size:10.5px;opacity:.75}
 .avance-chip small{grid-column:1/3;font:500 10px/1.1 var(--font-sans,inherit);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.avance-chip[aria-pressed="true"]{background:var(--c);color:#fff;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
-.avance-chip[aria-pressed="true"] .g{color:#fff}
+.avance-chip[aria-pressed="true"]{background:color-mix(in srgb,var(--c) 22%,var(--paper,var(--surface)));color:var(--ink);box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+.avance-chip[aria-pressed="true"] .g{color:var(--ink)}
 .avance-chip.is-off{opacity:.35}
 .avance-chip.is-off[aria-pressed="true"]{opacity:1}
 .avance-card{position:relative;display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;background:var(--paper,var(--surface));border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0;cursor:pointer;margin:0 0 6px}
@@ -339,3 +339,9 @@
 .avance-card.is-waiting{opacity:.85}
 .avance-card.is-mine{box-shadow:inset 0 0 0 2px var(--ink)}
 .avance-steps.is-decision{list-style:disc}
+/* Revisión de UI-kit (27-10): título-botón de la tarjeta, leyenda a 44 px en táctil. */
+.avance-card-title{all:unset;display:block;font-weight:600;overflow-wrap:anywhere;cursor:pointer;min-height:24px}
+.avance-card-title:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.avance-card.is-hecho .avance-card-title{text-decoration:line-through;color:var(--muted)}
+@media (pointer:coarse){.avance-legend-item{min-height:44px}}
+.avance-disc .in svg{width:24px;height:24px}

@@ -89,8 +89,12 @@ test('avance · caja general, discos, filtros y tarjeta con pasos que se marca h
   // La tarjeta de Víctor despliega sus pasos y se marca hecha.
   await page.locator('.avance-disc', { hasText: 'Víctor' }).click();
   const victor = page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first();
-  await victor.click();
-  await expect(victor.locator('.avance-steps li')).toHaveCount(2);
-  await victor.getByRole('button', { name: 'Hecha' }).click();
+  await victor.locator('.avance-card-title').click();
+  await expect(page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first().locator('.avance-steps li')).toHaveCount(2);
+  await page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first().getByRole('button', { name: 'Hecha' }).click();
+  // Nota opcional al cerrar (VG).
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Nota (opcional)').fill('Probado en el móvil');
+  await dialog.getByRole('button', { name: 'Hecha' }).click();
   await expect(page.locator('.avance-card.is-hecho', { hasText: 'Probar el alojamiento' })).toBeVisible({ timeout: 15_000 });
 });
