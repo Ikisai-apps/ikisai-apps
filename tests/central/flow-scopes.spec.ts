@@ -18,7 +18,8 @@ let api: CentralTestServer;
 let server: PreviewServer;
 let baseURL: string;
 let daniUser: string;
-const ids = { dani: crypto.randomUUID(), boda: crypto.randomUUID() };
+let olgaUser: string;
+const ids = { dani: crypto.randomUUID(), olga: crypto.randomUUID(), boda: crypto.randomUUID() };
 const BARRA = '0f10a000-0000-4000-8000-000000000001'; // proyecto sembrado por Flow (0900)
 
 test.beforeAll(async () => {
@@ -44,6 +45,14 @@ test.beforeAll(async () => {
   const linked = await api.app.call('/api/v1/commands', { body: { requestId: 'flow-scopes-link', operations: [
     { op: 'update', table: 'central.people', id: ids.dani, expectedRevision: rev, fields: { user_id: daniUser } }] } });
   if (linked.status !== 200) throw new Error(JSON.stringify(linked.data));
+  // Un outsider con cuenta: el nivel le da Flow como outsider (0095), sin proyectos.
+  const olga = await api.app.call('/api/v1/admin/invite', { body: { email: 'olga-flow@example.invalid', displayName: 'Olga Ficticia', memberships: [] } });
+  if (olga.status !== 200) throw new Error(JSON.stringify(olga.data));
+  olgaUser = olga.data.userId as string;
+  const olgaSeed = await api.app.call('/api/v1/commands', { body: { requestId: 'flow-scopes-olga', operations: [
+    { op: 'insert', table: 'central.people', id: ids.olga, fields: { display_name: 'Olga Ficticia', relation: 'colaborador', base_role: 'otro', house_level: 'outsider', availability: 'segun_calendario', user_id: olgaUser } },
+  ] } });
+  if (olgaSeed.status !== 200) throw new Error(JSON.stringify(olgaSeed.data));
   process.env.VITE_API_PROXY = api.url;
   await buildCentralApp();
   server = await preview({
@@ -107,4 +116,18 @@ test('alta · Flow + proyecto en un paso: marcar el proyecto le da Flow · Edito
   await expect.poll(async () => (await api.app.t.db.query<{ u: string | null }>(`select user_id as u from central.people where display_name = 'Lola Ficticia' and deleted_at is null`)).rows[0]?.u ?? null).not.toBeNull();
   const lola = (await api.app.t.db.query<{ u: string }>(`select user_id as u from central.people where display_name = 'Lola Ficticia' and deleted_at is null`)).rows[0]!.u;
   await expect.poll(async () => await flowScopes(lola)).toEqual({ role: 'editor', scopes: { projects: [BARRA] } });
+});
+
+test('ficha · al outsider también se le cambian los proyectos de Flow (P14), sin tocar su rol', async ({ page }) => {
+  expect(await flowScopes(olgaUser)).toMatchObject({ role: 'outsider' });
+  await login(page);
+  await page.goto(`${baseURL}/#/personas/${ids.olga}`);
+  const block = page.locator('#blockFlow');
+  await expect(block).toContainText('En Flow es outsider.');
+  await block.locator('#editFlowProjects').click();
+  const sheet = page.getByRole('dialog', { name: 'Proyectos de Flow' });
+  await sheet.getByRole('checkbox', { name: await barraName() }).check();
+  await sheet.getByRole('button', { name: 'Guardar' }).click();
+  await expect.poll(async () => await flowScopes(olgaUser)).toEqual({ role: 'outsider', scopes: { projects: [BARRA] } });
+  await expect(block.locator(`#flowScope [data-project="${BARRA}"]`)).toHaveText(await barraName());
 });

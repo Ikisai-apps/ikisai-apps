@@ -446,7 +446,7 @@ organizers.offers           §16.2
 | Preguntas | Organizers | responder | Crea preguntas (texto, opción, varias, sí/no, número, fecha) y ve las respuestas con el nombre visible de cada asistente |
 | Alojamiento | Booking (B17) | ver · preferencia · elegir | Fase 5 (§16.1) |
 | Información práctica | Central (texto común) y materiales | ver | Elige si se ve; el texto es de Ikisai |
-| Comentarios del retiro | Núcleo (feedback, destino `organizer`) | — | Bandeja de los comentarios de sus huéspedes (pendiente de la fase posterior del feedback) |
+| Comentarios del retiro | Núcleo (feedback, destino `organizer`) | ver | «Comentarios de tus asistentes» en el resumen del retiro: lo que cuentan en Guests sobre el retiro (tema, quién, cuándo y mensaje), de `GET feedback?app=guests` filtrado por retiro (`app/retreat-comments.ts`). Solo lectura; lo del lugar y lo de la app no llega, lo atiende Ikisai |
 
 Lo obligatorio de Ikisai (datos del registro, firma, alimentación y aviso legal) no aparece en esta tabla: Guests lo muestra siempre.
 

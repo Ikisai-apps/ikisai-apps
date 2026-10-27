@@ -158,6 +158,17 @@ Sin red, el cliente puede sumar `movements` de su espejo.
   - `item_costs` cuenta los contrarios.
 - **Lectura desde otras apps:** sus migraciones pueden leer `items`, `item_kinds`, `item_units`, `lots`, `movements`, `movement_costs`, `stock_levels` e `item_costs`, como los espacios.
 
+## 3.1 EPI y lo que pide cada máquina (migración 0813, R3 de Tasks)
+
+- **Tipo `epi`** («EPI»; se cuenta, no se gasta). Cada EPI guarda en `attributes.body_parts` qué protege: una o varias de `head`, `eyes`, `ears`, `mouth_nose`, `hands`, `feet`, `legs`, `knees`, `body`, `harness`, sin repetir.
+- **`resources.item_links`** `{item_id, linked_item_id, kind: 'requires_ppe', position, notes}`: la máquina o herramienta `item_id` pide el EPI `linked_item_id`. Hay un vínculo vivo por pareja y tipo, y nunca va de un artículo a sí mismo. Lo escriben editor y owner, como los artículos.
+- **Validación** (`resources.check_item_links`):
+  - los dos artículos existen;
+  - el ligado es un EPI y el que lo pide no;
+  - las partes del cuerpo son de la lista;
+  - un EPI que una máquina pide no puede cambiar de tipo hasta que se quite el vínculo (`ITEM_IN_USE`).
+- Para qué sirve: la «Vista de trabajo» de Tasks (FB_2026_071) enseña los EPI de las máquinas de cada paso.
+
 ## 4. Lo que viene
 
 - **R1, segunda parte:** migración inicial con vista previa: zonas de Tasks («Zona: Espacio») y espacios y camas de Booking, cada zona en su altura.
