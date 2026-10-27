@@ -435,3 +435,9 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 ## 42. Huéspedes solo del evento (FL12, migración `0935`)
 
 - `assign_guest_numbers` y `mark_presence` preguntan a Booking por el núcleo (`core.read` de `booking.flow_guests_of`, con el ámbito de quien actúa) y fallan con `422 GUEST_NOT_IN_EVENT` si algún `guest_id` no es de ese evento. Un flujo sin evento no tiene huéspedes: `409 NO_BOOKING_EVENT`.
+
+## 43. «Avance por aplicaciones»: tarjetas como unidades (migración `0937`)
+
+- `flow.units` gana `lane_key` (carril: el agente), `prio` (`urgente` | `importante` | `secundario` | `opcional`) y `board_flag` (`pr` | `backlog`), indexadas por proyecto. Tipos nuevos `card` y `recurring` (en servicio: cuenta como hecha, sin urgencia). Estado: `pending` · `in_progress` · `done`; nunca `cancelled`. Título hasta 300.
+- Las tarjetas solo se escriben por procedimiento (`flow.board_card`, siguiente paso). `flow.guard_board` comprueba el carril: owner, todos; editor u outsider, los de `scopes.lanes` de su membresía y con el proyecto en su ámbito (`403 LANE_FORBIDDEN`).
+- Plantilla `avance` v1: una columna `avance` («Avance»).
