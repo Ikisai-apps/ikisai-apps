@@ -1827,3 +1827,19 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - «Alojamiento a la carta» enseña «Cobrado» y «Pendiente», y cada cobro con su estado: pendiente, cobrado sin enviar o en Finance.
   - Acciones: «Cobrar…» y «Enviar a Finance».
 
+## 33. Código público del evento y QR de visitantes (migración 0488; VG, visión V0.2; BG17 y BG19 de Guests)
+
+- **`booking.events.public_code`:** 10 caracteres del alfabeto `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (sin 0/O ni 1/I/L).
+  - Al azar con aleatorio fuerte (`gen_random_uuid` en la base, `crypto.getRandomValues` en «Regenerar») y único.
+  - Lo pone un trigger al crear el evento, y la migración lo rellena en los que ya hay.
+  - «Regenerar» es un update normal: el QR anterior deja de valer. La base y el dominio comprueban el formato.
+- **Lectura pública `booking_event`** (`core.allow_public_read`, función `booking.public_event`):
+  - Recibe `{code}`, en mayúsculas o minúsculas.
+  - Devuelve `{code, name, starts_on, ends_on, kind, status ('abierto' | 'cerrado'), joinable, summary}`: `summary` solo si el retiro es visible para huéspedes, y `joinable` si además está vivo.
+  - Código desconocido, cancelado, perdido o borrado: `null`.
+  - Sin precio, organizador, huéspedes ni ids internos.
+  - La sirve guests-api en `GET public/event?code=…`.
+- **URL del QR:** `https://ven.ikisai.com/e/<code>`.
+- **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El dibujo del QR lo pone `renderQr` del kit, pedido a UI-kit; mientras tanto se ve el hueco.
+- **Pendiente (BG18):** que un visitante se apunte, cuando Core cierre `core.visitors` y su vía de escritura.
+

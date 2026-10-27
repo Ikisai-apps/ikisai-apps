@@ -5,9 +5,9 @@
  * - Familiar: sin propuesta, cobro, tarifas ni alojamiento; come del menú de casa de Food.
  */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
-import { el, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, walkinNightPrice } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shortDay, today } from '../app/client.ts';
+import { confirmDialog, el, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, newPublicCode, visitorUrl, walkinNightPrice } from '@ikisai/domain-booking';
+import { ASSIGNMENTS, EVENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shortDay, today } from '../app/client.ts';
 import type { FieldSpec } from './form.ts';
 import type { LodgingData } from './lodging.ts';
 
@@ -278,3 +278,39 @@ export function renderOffers(o: { client: SyncClient; eventId: string }): HTMLEl
   void load();
   return host;
 }
+
+/**
+ * «QR de entrada» (0488, VG V0.2): el código público del evento para que los visitantes entren a ven.ikisai.com, con
+ * «Imprimir» y «Regenerar» (el QR anterior deja de valer). El dibujo del QR lo pondrá el kit (renderQr, petición a UI-kit);
+ * mientras, la URL y el código en grande.
+ */
+export function renderPublicCode(o: { client: SyncClient; event: Row; editable: boolean; run: (ops: RowOperation[], message: string) => Promise<boolean> }): HTMLElement {
+  const code = typeof o.event.public_code === 'string' ? o.event.public_code : null;
+  const url = code ? visitorUrl(code) : null;
+  const regenerate = async () => {
+    if (!(await confirmDialog({ title: code ? 'Regenerar el código' : 'Generar el código', text: code ? 'El QR impreso dejará de valer: tendrás que imprimir el nuevo.' : 'Se crea el código público del evento para su QR de entrada.', confirmLabel: code ? 'Regenerar' : 'Generar' }))) return;
+    await o.run([{ op: 'update', table: EVENTS, id: o.event.id, expectedRevision: o.event.revision, fields: { public_code: newPublicCode() } }], code ? 'Código regenerado: imprime el QR nuevo.' : 'Código creado.');
+  };
+  const card = el('article', { class: 'card', id: 'blockPublicCode', 'data-feedback-id': 'booking.reserva.qr', 'data-feedback-label': 'QR de entrada' },
+    el('div', { class: 'cardhead' }, el('h3', null, 'QR de entrada')),
+    code ? [
+      el('div', { class: 'bk-qr', id: 'publicQr', role: 'img', 'aria-label': `QR de ${url}` }, el('span', { class: 'hint' }, 'QR')),
+      el('p', { class: 'bk-qr-code', id: 'publicCode', 'data-feedback-ignore': '' }, code),
+      el('p', { class: 'hint', id: 'publicUrl', 'data-feedback-ignore': '' }, url),
+      el('p', { class: 'hint' }, 'Para los visitantes: abren el evento en ven.ikisai.com sin cuenta. Solo ven el nombre, las fechas y si se pueden apuntar.'),
+    ] : el('p', { class: 'hint', id: 'publicCodeEmpty' }, 'Este evento aún no tiene código público.'),
+    el('div', { class: 'btnrow' },
+      code ? el('button', { class: 'ghost small', type: 'button', id: 'printPublicCode', 'data-feedback-id': 'booking.reserva.qr.imprimir', 'data-feedback-label': 'Imprimir el QR', onclick: () => printCard(card) }, 'Imprimir') : null,
+      o.editable ? el('button', { class: 'ghost small', type: 'button', id: 'regeneratePublicCode', 'data-feedback-id': 'booking.reserva.qr.regenerar', 'data-feedback-label': 'Regenerar el código', onclick: () => void regenerate() }, code ? 'Regenerar' : 'Generar código') : null));
+  return card;
+}
+
+/** Imprime solo esa tarjeta (la clase `bk-print-only` oculta el resto en @media print). */
+function printCard(card: HTMLElement): void {
+  document.body.classList.add('bk-print-one');
+  card.classList.add('bk-print-target');
+  const done = () => { document.body.classList.remove('bk-print-one'); card.classList.remove('bk-print-target'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  window.print();
+}
+

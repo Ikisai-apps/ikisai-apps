@@ -45,3 +45,14 @@ export function walkinFinanceEntry(c: WalkinForSend) {
     event_id: c.event_id,
   };
 }
+
+/** Código público del evento (0488): 10 caracteres sin ambigüedades (sin 0/O ni 1/I/L). */
+export const PUBLIC_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const PUBLIC_CODE_PATTERN = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/;
+/** Un código nuevo con aleatorio fuerte («Regenerar»). */
+export function newPublicCode(random: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n))): string {
+  return Array.from(random(10), (b) => PUBLIC_CODE_ALPHABET[b % PUBLIC_CODE_ALPHABET.length]).join('');
+}
+/** La URL del QR de entrada de visitantes (acordada con Guests). */
+export const visitorUrl = (code: string): string => `https://ven.ikisai.com/e/${code}`;
+
