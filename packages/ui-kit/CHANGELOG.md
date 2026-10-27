@@ -1,5 +1,17 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.65.0 · 27 de octubre de 2026
+
+**Carriles por cualquier clave** (traspaso de Flow v03, §12; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`). `groupLanes(items, { key, title?, order?, hideEmpty?, noneTitle?, emptyText?, card | mount })` (`src/pieces/lanes-group.ts`) devuelve los `lanes` de `createLanes` agrupados por persona, agente, fase, espacio u objetivo. `createLanes` no cambia.
+
+- La clave es el id del carril, así que al cambiar de agrupación con `setLanes` se conserva el carril elegido si sigue existiendo.
+- Orden:
+  - `order` fija carriles en ese orden, aunque estén vacíos (`hideEmpty` los quita);
+  - los demás van detrás, ordenados por título;
+  - lo que no tiene clave va al final, en «Sin asignar» (`LANE_NONE`).
+- Dentro de cada carril, una `card(item)` por elemento, o `mount(body, items, key)` para montarlo a mano. Un carril vacío dice «Nada aquí» y en «Lado a lado» se pliega.
+- Demo: «Carriles por cualquier clave», con «Agrupar por» persona, fase o espacio. Pruebas: `tests/v69.spec.ts`.
+
 ## 0.64.0 · 27 de octubre de 2026
 
 **Piezas genéricas para el catálogo de Flow** (encargo de Core; cómo las monta Flow en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Ninguna guarda nada por su cuenta: solo registran a través de la app.
