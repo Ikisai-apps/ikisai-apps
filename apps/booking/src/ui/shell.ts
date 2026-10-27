@@ -18,6 +18,7 @@ import { mountSpaces } from './spaces.ts';
 import { mountRates } from './rates.ts';
 import { mountSes } from './ses.ts';
 import { mountStays } from './stays.ts';
+import { mountReception } from './reception.ts';
 import { mountProposalEditor } from './proposalEditor.ts';
 import { mountProposalDocument } from './proposalDoc.ts';
 import { fbMark } from './feedback.ts';
@@ -56,6 +57,8 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> 
   '#/tarifas': { title: 'Tarifas y condiciones', slug: 'tarifas', mount: mountRates },
   '#/ses': { title: 'SES.HOSPEDAJES', slug: 'ses', mount: mountSes },
   '#/estancias': { title: 'Estancias', slug: 'estancias', mount: mountStays },
+  // alojamiento como la barra (VG 27-10-2026): solicitudes del QR por número
+  '#/recepcion': { title: 'Recepción', slug: 'recepcion', mount: mountReception },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -142,6 +145,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         ...(canRead(client, STAYS) ? [row('Estancias', '#/estancias', 'booking.menu.estancias')] : []),
       ] },
       { key: 'huespedes', label: 'Huéspedes', icon: 'people', summary: 'Huéspedes y lo que queda por resolver', rows: [
+        ...(canWrite(client) ? [row('Recepción', '#/recepcion', 'booking.menu.recepcion')] : []),
         row('Huéspedes', '#/huespedes', 'booking.menu.huespedes'), row('Por resolver', PENDING, 'booking.menu.pendientes'),
         ...(canRead(client, SES_SETTINGS) ? [row('SES.HOSPEDAJES', '#/ses', 'booking.menu.ses')] : []),
       ] },

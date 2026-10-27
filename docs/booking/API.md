@@ -1964,3 +1964,33 @@ El visitante, desde «Alójate aquí»:
   - `descartada`.
 - **`booking_stay_drafts`** (solo servidor) da los ids y las revisiones de los borradores del visitante, para actualizarlos.
 
+## 39. «Recepción» del alojamiento como la barra (migración 1401; VG 27-10-2026)
+
+- **Pantalla `#/recepcion`** (menú Huéspedes → Recepción; editor y owner):
+  - lista las solicitudes de noches pendientes por número, con buscador;
+  - cada una muestra noches, personas, cama, total, si la plaza sigue retenida y qué falta por persona (solo con el ámbito de huéspedes);
+  - acciones: «Cobrar y alojar», con el método (Bizum, efectivo, Bitcoin o tarjeta), y «Descartar».
+- **`booking.join_from_visitor({request_id, decision: 'accept', method?})`** hace en un lote, para una solicitud `stay`:
+  - una ficha por persona con su borrador (`stay_travelers`, que se borra). Sin borrador, la primera lleva el nombre de la solicitud y el resto quedan como «Acompañante n de …»;
+  - las camas con las fechas, en este orden: las retenidas si el bloqueo sigue vivo; las elegidas si siguen libres; si no, las libres ahora. Si no queda ninguna, 409 `NO_AVAILABILITY` y no se crea nada;
+  - un cobro por cama: noches × precio de la tarifa × personas de la cama. Con `method` queda cobrado; sin él, pendiente.
+  - repetirla no duplica nada.
+- **Finance:** después del gesto, la pantalla manda cada cobro con `sendWalkinToFinance`, que va con las cabeceras de servidor (#867).
+- **Bitcoin:** `walkin_charges.method` admite `bitcoin`, que a Finance va con la clave `bitcoin`, igual que la caja de Flow.
+- **`booking.visitor_claim({visitor_id, request_id})`** (sistema) devuelve `{guest_id, reservation_id}` de una solicitud aceptada de ese visitante. Es para «Tu ficha está lista» en Guests.
+
+## 40. La salida libera la cama y pide la limpieza (migración 1402; VG 27-10-2026)
+
+- **`booking.guest_leave`**, además de anotar `left_at`:
+  - acorta cada asignación viva del huésped que seguía después de hoy (hora de Madrid) para que termine hoy, con al menos una noche;
+  - guarda la salida prevista en `room_assignments.planned_to_date`;
+  - la cama queda libre esa misma noche;
+  - devuelve `freed: [{assignment_id, bed_id}]`.
+- **Deshacer** (`undo: true`) devuelve la salida prevista. Si otra persona ya ocupa la cama, el lote falla con `BED_OVERBOOKED` y no cambia nada.
+- **Limpieza:** booking-api (`afterCommit`) pide a Tasks, por `worker/requests/task`, una tarea por asignación liberada:
+  - tipo `booking.bed_cleaning`, `external_ref` `LIMP-<id de asignación>`, título «Limpiar <habitación> · <cama>» y `due` hoy;
+  - sin datos de la persona;
+  - si Tasks falla, la salida queda hecha igualmente.
+
+  Los datos salen de `booking.cleaning_source` (sistema). **Pendiente de Tasks:** aceptar el tipo `booking.bed_cleaning`.
+

@@ -3,9 +3,9 @@
  * Booking manda a Finance (`invoices.record_app_entry`) al cobrar. Sin DOM ni red.
  */
 
-export const WALKIN_METHODS = ['cash', 'bizum', 'card'] as const;
+export const WALKIN_METHODS = ['cash', 'bizum', 'bitcoin', 'card'] as const;
 export type WalkinMethod = (typeof WALKIN_METHODS)[number];
-export const WALKIN_METHOD_LABELS: Record<WalkinMethod, string> = { cash: 'Efectivo', bizum: 'Bizum', card: 'Tarjeta (datáfono)' };
+export const WALKIN_METHOD_LABELS: Record<WalkinMethod, string> = { cash: 'Efectivo', bizum: 'Bizum', bitcoin: 'Bitcoin', card: 'Tarjeta (datáfono)' };
 
 interface RateLike {
   id: string; service?: string | null; unit?: string | null; amount?: number | string | null; active?: boolean | null;

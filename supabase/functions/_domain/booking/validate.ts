@@ -225,6 +225,8 @@ FIELDS[TABLES.visitorRequests] = {
   total_cents: { kind: 'int', nullable: true, min: 0 }, pay_mode: { kind: 'enum', values: ['hold', 'pay_first'], nullable: true },
   hold_bed_ids: { kind: 'uuidList', max: 20 }, hold_until: { kind: 'timestamp' },
 };
+// 1402: la salida prevista que guarda guest_leave al liberar la cama (la pone el procedimiento)
+FIELDS[TABLES.roomAssignments] = { ...FIELDS[TABLES.roomAssignments], planned_to_date: { kind: 'date' } };
 // 1400: número corto de la solicitud (lo pone el servidor) y borrador del viajero
 FIELDS[TABLES.visitorRequests] = { ...FIELDS[TABLES.visitorRequests], number: { kind: 'int', nullable: true, min: 1 } };
 FIELDS[TABLES.stayTravelers] = {
@@ -243,7 +245,7 @@ FIELDS[TABLES.walkinCharges] = {
   nights: { kind: 'int', nullable: false, min: 1 },
   price_cents: { kind: 'int', nullable: false, min: 0 },
   amount_cents: { kind: 'int', nullable: false, min: 0 },
-  method: { kind: 'enum', values: ['cash', 'bizum', 'card'], nullable: true },
+  method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card'], nullable: true },
   paid_at: { kind: 'timestamp' },
   finance_entry_id: { kind: 'uuid', nullable: true },
   finance_sent_at: { kind: 'timestamp' },
