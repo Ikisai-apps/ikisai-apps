@@ -304,9 +304,12 @@ test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, n
   const square = (x: number, y: number, s: number): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
   const { ids } = await api.floorPlan([
     { name: 'Habitación de las jornadas', kind: 'habitacion', points: square(0.1, 0.1, 0.6) },
-    { name: 'Cama 1', kind: 'cama', parent: 'Habitación de las jornadas', points: square(0.15, 0.15, 0.15), refs: [`booking.bed:${byLabel['Cama 1']}`], attributes: { bed_kind: 'individual' } },
-    { name: 'Cama 2', kind: 'cama', parent: 'Habitación de las jornadas', points: square(0.45, 0.15, 0.15), refs: [`booking.bed:${byLabel['Cama 2']}`], attributes: { bed_kind: 'individual' } },
+    { name: 'Cama 1', kind: 'cama', parent: 'Habitación de las jornadas', refs: [`booking.bed:${byLabel['Cama 1']}`], attributes: { bed_kind: 'individual' } },
+    { name: 'Cama 2', kind: 'cama', parent: 'Habitación de las jornadas', refs: [`booking.bed:${byLabel['Cama 2']}`], attributes: { bed_kind: 'individual' } },
   ]);
+  // Su sitio, en Booking (un solo modelo): `booking_public_beds` no da la habitación de Recursos, así que va por la de la cama.
+  const space = (await api.booking.t.db.query<{ space_id: string }>('select space_id from booking.beds where id = $1', [byLabel['Cama 1']])).rows[0]!.space_id;
+  await api.bedLayout(space, { cols: 4, rows: 4 }, [[byLabel['Cama 1']!, { x: 0, y: 0, rot: 0 }], [byLabel['Cama 2']!, { x: 2, y: 2, rot: 0 }]]);
   // La pareja que lee Booking (`booking.beds.resource_id`, la de `booking_public_beds`).
   for (const label of ['Cama 1', 'Cama 2']) await api.booking.t.db.query('update booking.beds set resource_id = $1 where id = $2', [ids[label], byLabel[label]]);
 

@@ -125,7 +125,7 @@ test('caracterización · compra por menú: una lista viva por menú, con todos 
 });
 
 test('caracterización · indicadores de Central: las tres claves y sus valores con los menús de retiro de arriba', async () => {
-  const kpis = (await app.t.db.query<{ kpi: string; value: string }>(`select kpi, value from food.central_kpi_projection order by kpi`)).rows;
+  const kpis = (await app.t.db.query<{ kpi: string; value: string }>(`select kpi, value from food.central_kpi_projection where kpi in ('food.events_without_menu_30d', 'food.menus_unvalidated_30d', 'food.shopping_lists_open') order by kpi`)).rows;
   // Dos menús en borrador de eventos en los próximos 30 días, una lista abierta y ningún evento sin menú.
   assert.deepEqual(kpis.map((k) => `${k.kpi}=${Number(k.value)}`), ['food.events_without_menu_30d=0', 'food.menus_unvalidated_30d=2', 'food.shopping_lists_open=1']);
 });

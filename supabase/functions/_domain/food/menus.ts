@@ -215,3 +215,22 @@ export function proposeServices(event: Pick<FoodEvent, 'start_date' | 'end_date'
   });
   return out;
 }
+
+/**
+ * El retiro en contexto para el Recetario (hallazgo F-REC-4): el menú de retiro (ni casa ni carta) con el servicio más
+ * cercano de hoy en adelante, sus recetas y si ya está en curso (tiene servicios antes de hoy o hoy). Sin ninguno, null.
+ */
+export function retreatInContext(
+  menus: Array<Pick<Menu, 'id' | 'kind'> & { deleted_at?: string | null }>,
+  services: Array<{ id: string; menu_id: string; service_date: string; deleted_at?: string | null }>,
+  items: Array<{ service_id: string; recipe_id: string; deleted_at?: string | null }>,
+  today: string,
+): { menuId: string; recipeIds: Set<string>; inCourse: boolean } | null {
+  const retreats = new Set(menus.filter((m) => !m.deleted_at && m.kind !== 'casa' && m.kind !== 'carta').map((m) => m.id));
+  const live = services.filter((s) => !s.deleted_at && retreats.has(s.menu_id));
+  const next = live.filter((s) => s.service_date >= today).sort((a, b) => a.service_date.localeCompare(b.service_date))[0];
+  if (!next) return null;
+  const own = new Set(live.filter((s) => s.menu_id === next.menu_id).map((s) => s.id));
+  const recipeIds = new Set(items.filter((i) => !i.deleted_at && own.has(i.service_id)).map((i) => i.recipe_id));
+  return { menuId: next.menu_id, recipeIds, inCourse: live.some((s) => s.menu_id === next.menu_id && s.service_date <= today) };
+}

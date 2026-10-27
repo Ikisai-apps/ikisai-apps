@@ -3,7 +3,7 @@
  * El mismo código corre en el cliente antes de encolar y en la Edge (`beforeCommit`). Solo ve las
  * operaciones y los ámbitos del actor: las reglas que dependen del estado viven en el hook SQL.
  */
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, IMMUTABLE, REVIEW_ANSWERS, REVIEW_ZONES, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, DELIVERABLE_STATUSES, IMMUTABLE, PHASE_STATUSES, REVIEW_ANSWERS, REVIEW_ZONES, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
 import { allAccess, canProject, fullTab, type Scopes } from './scopes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -109,6 +109,10 @@ const ownerPeople = { owner_person_id: nullable(uuid('INVALID_OWNER')), owner_ho
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
 
+const unitOnly: Check = (_v, field) => reject(422, 'INVALID_UNITS', 'Las unidades solo se marcan con su acción (tasks/unit-step).', { field });
+const unitCount: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 100) reject(422, 'INVALID_UNITS', 'Las unidades son un número entero de 1 a 100.', { field });
+};
 const reviewOnly: Check = (_v, field) => reject(422, 'INVALID_REVIEW', 'La revisión y sus resultados solo se escriben desde sus acciones.', { field });
 
 /** Lo esperado de un ítem de revisión (0348): {count} en una cantidad, {unit, min?, max?} en una lectura (el tipo lo cruza el hook). */
@@ -204,9 +208,38 @@ const RULES: Record<TableName, TableRules> = {
       external_url: nullable(externalUrl),
       external_on_behalf: nullable(oneOf(['internal', 'organizer', 'guest'], 'INVALID_FIELDS', 'Origen del reporte desconocido.')),
       steps_in_order: flag('INVALID_FLAG'), step_free: flag('INVALID_FLAG'),
+      // Fase (0356): una viva del mismo proyecto y solo en una madre; lo comprueba el hook tasks.validate_phases.
+      phase_id: nullable(uuid('INVALID_PHASE')),
+      // Unidades (0360): solo en una madre; lo comprueba el hook tasks.validate_units.
+      unit_count: nullable(unitCount),
+      // Entregable (0361): uno vivo del mismo proyecto y solo en una madre; lo comprueba el hook tasks.validate_deliverables.
+      deliverable_id: nullable(uuid('INVALID_DELIVERABLE')),
       ...ownerPeople,
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
+  },
+  // Fases del proyecto (0356, §51). Cerrar con tareas abiertas pide nota y borrar una con tareas vivas no se puede: lo
+  // comprueba el hook tasks.validate_phases.
+  // Entregables (0361, §57). Su espacio vivo en Recursos y no borrar uno con tareas: el hook tasks.validate_deliverables.
+  'tasks.project_deliverables': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), name: text(1, 200, 'INVALID_DELIVERABLE', 'El entregable necesita un nombre de hasta 200 caracteres.'),
+      quantity: nullable((v, field) => { if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v >= 1e9) reject(422, 'INVALID_DELIVERABLE', 'La cantidad es un número mayor que 0.', { field }); }),
+      status: oneOf(DELIVERABLE_STATUSES, 'INVALID_DELIVERABLE', 'Estado de entregable desconocido.'), space_id: nullable(uuid('INVALID_SPACE')), note: shortText(2000), position,
+    },
+    required: ['tab_id', 'project_id', 'name', 'position'],
+  },
+  'tasks.project_phases': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), name: text(1, 120, 'INVALID_PHASE', 'La fase necesita un nombre de hasta 120 caracteres.'), position,
+      status: oneOf(PHASE_STATUSES, 'INVALID_PHASE', 'Estado de fase desconocido.'), start: nullable(date), due: nullable(date), closed_note: shortText(2000),
+    },
+    required: ['tab_id', 'project_id', 'name', 'position'],
+  },
+  // Unidades hechas (0360, §55): solo tasks.unit_step las crea o borra; seguir a su tarea (área y proyecto) sí se puede.
+  'tasks.task_units': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: unitOnly, unit: unitOnly, done_by: unitOnly, marked_at: unitOnly },
+    required: [],
   },
   'tasks.project_labels': {
     fields: { tab_id: uuid(), project_id: uuid(), label_id: uuid('INVALID_LABELS') },

@@ -1870,6 +1870,10 @@ textarea.ask-input{min-height:110px;resize:vertical;font:inherit;font-size:17px}
 .guia-ring[hidden]{display:none}
 .guia-bubble{position:fixed;z-index:var(--z-sheet);left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));max-height:48vh;overflow:auto;display:grid;gap:8px;padding:12px 14px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);color:var(--ink);box-shadow:0 12px 32px rgba(0,0,0,.22)}
 .guia-bubble[hidden],.guia-pill[hidden]{display:none}
+/* Móvil escribiendo: tira arriba, bajo la cabecera (el campo se lleva a 72px de ella). */
+.guia-bubble.guia-compact{bottom:auto;max-height:none;gap:2px;padding:6px 10px 6px 14px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.guia-compact :is(.guia-hide,.guia-bar,.guia-explain,.guia-live,.guia-actions,.guia-foot){display:none}
+.guia-compact .guia-title{font-family:inherit;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 @media(min-width:720px){.guia-bubble{left:auto;right:20px;bottom:20px;width:360px}.guia-pill{bottom:20px!important;right:20px!important}}
 .guia-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .guia-meta{margin:0;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
@@ -2286,3 +2290,29 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .cov-use{color:var(--muted)}
 .cov-flags{display:flex;flex-wrap:wrap;gap:6px}
 .cov-empty{margin:0}
+.cov-viewbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.cov-viewbar:empty{display:none}
+.cov-lead{margin:0;font-weight:700}
+.cov-summary[hidden],.cov-group[hidden]{display:none}
+.cov-app{display:grid;gap:8px}
+.cov-apptitle{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:var(--text-md,1rem)}
+.cov-cand{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--paper)}
+.cov-cand[data-decision="retire"]{border-color:var(--alert)}
+.cov-candhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 10px}
+.cov-screen{overflow-wrap:anywhere}
+.cov-meta{font-size:var(--text-sm);color:var(--muted)}
+.cov-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.cov-actions[aria-busy="true"]{opacity:.6}
+.cov-declare{justify-self:start;min-height:var(--tap)}
+.cov-fields>summary{min-height:var(--tap);display:flex;align-items:center;font-size:var(--text-sm);font-weight:700;color:var(--accent-deep);cursor:pointer}
+.cov-fields .cov-list{padding:0}
+/* K23: en táctil y sin panel del día, el día entero es el objetivo y sus eventos van en una hoja (src/calendar/calendar.ts). */
+.calendar.cal-touchday[data-view="month"] .cal-event{pointer-events:none}
+.cal-sheet-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.cal-sheet-event{--event-color:var(--accent);display:grid;gap:2px;width:100%;min-height:46px;padding:8px 12px;border:0;border-left:4px solid var(--event-color);border-radius:10px;background:color-mix(in srgb,var(--event-color) 14%,var(--paper));color:var(--ink);font:inherit;text-align:left;align-content:center}
+button.cal-sheet-event{cursor:pointer}
+.cal-sheet-title{font-weight:700;overflow-wrap:anywhere}
+.cal-sheet-meta{font-size:var(--text-xs);color:var(--muted)}
+/* K19: en oscuro, el texto de los eventos con menos color de capa (45 %) para pasar de 4,5:1 (antes 3,7–4,5). */
+:root[data-theme="dark"] .cal-event{color:color-mix(in srgb,var(--event-color) 45%,var(--ink))}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .cal-event{color:color-mix(in srgb,var(--event-color) 45%,var(--ink))}}

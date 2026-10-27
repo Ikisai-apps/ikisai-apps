@@ -19,7 +19,7 @@ import { formatDate, localeTag, t } from '../app/i18n.ts';
 import type { Lodging } from '../app/portal.ts';
 import { failure, fbIgnore, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
-import { findSpace, loadPlans, portalMap } from './plan.ts';
+import { findSpace, loadPlans, portalMap, withBedLayouts } from './plan.ts';
 import type { PortalPlans } from '../app/portal.ts';
 
 const DEBOUNCE = 800;
@@ -409,7 +409,8 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
       if (space && space.kind !== 'cama' && !toRoom.has(space.id)) { toRoom.set(space.id, room.space_id); toSpace.set(room.space_id, space.id); }
     }
     if (!toRoom.size) return;
-    plansData = loaded.value;
+    // Las camas, con su disposición en Booking (camas con un solo modelo).
+    plansData = withBedLayouts(loaded.value, data().rooms);
     const map = portalMap(loaded.value, {
       mode: 'map',
       label: t('lodging.mapLabel'),
