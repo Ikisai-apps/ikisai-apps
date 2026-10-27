@@ -46,7 +46,7 @@ async function guest(event: string, fields: Record<string, unknown>): Promise<st
 }
 /** El personal de Booking emite el enlace del huésped; se canjea en Guests. */
 async function guestSession(reservation_id: string, guest_id: string, name: string): Promise<string> {
-  const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.editor, body: { app: 'guests', scope: { reservation_id, guest_id }, person: { name } } });
+  const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.owner, body: { app: 'guests', scope: { reservation_id, guest_id }, person: { name } } });
   assert.equal(link.status, 200, JSON.stringify(link.data));
   assert.match(link.data.url, /^https:\/\/guests\.ikisai\.com\/i\/[A-Za-z0-9_-]{43}$/);
   const session = await call('/api/v1/auth/link', { body: { token: link.data.url.split('/i/')[1] } });
