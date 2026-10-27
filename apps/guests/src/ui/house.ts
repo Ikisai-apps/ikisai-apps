@@ -20,7 +20,7 @@ import { backLink, centralText, fbMark, staleNote } from './common.ts';
 import { contactCard, placeCard } from './guide.ts';
 import { todayMadrid } from './home.ts';
 import { stayText } from './outsider.ts';
-import { verEnPlano } from './plan.ts';
+import { ownBedRoom, verEnPlano } from './plan.ts';
 
 /** La estancia en la que está hoy (día de Madrid, el de salida incluido), o null. Función pura. */
 export function duringOf(stays: Stay[], today = todayMadrid()): Stay | null {
@@ -112,7 +112,7 @@ export function mountHouse(main: HTMLElement, options: HouseOptions): () => void
         : el('p', { class: 'card gcard muted', id: 'infoSoon' }, t('info.soon')),
       el('section', { class: 'gsec ghouse-plan', id: 'o-plano', 'aria-labelledby': 'o-planoH' },
         el('h3', { class: 'gsec-head', id: 'o-planoH' }, t('house.plan')),
-        verEnPlano({ place: bedText || null, whole: true, spaceId: bedStay ? bedStay.resource_bed_id ?? bedStay.resource_space_id ?? null : data?.default_bed ? data.default_bed.resource_bed_id ?? data.default_bed.resource_space_id ?? null : null, match: bedStay ? { space: bedStay.space_name, bed: bedStay.bed_label } : data?.default_bed ? { space: data.default_bed.space_name, bed: data.default_bed.bed_label } : null, label: t('house.planWhere'), id: 'oiPlan', reads: options.reads, mark: (n) => fbMark(n, 'guests.outsider.casa.plano', 'El plano de la casa') })),
+        verEnPlano({ place: bedText || null, whole: true, spaceId: bedStay ? bedStay.resource_bed_id ?? bedStay.resource_space_id ?? null : data?.default_bed ? data.default_bed.resource_bed_id ?? data.default_bed.resource_space_id ?? null : null, match: bedStay ? { space: bedStay.space_name, bed: bedStay.bed_label } : data?.default_bed ? { space: data.default_bed.space_name, bed: data.default_bed.bed_label } : null, label: t('house.planWhere'), id: 'oiPlan', reads: options.reads, rooms: ownBedRoom(bedStay ?? data?.default_bed), mark: (n) => fbMark(n, 'guests.outsider.casa.plano', 'El plano de la casa') })),
       placeCard({ reads: options.reads }),
       contactCard(Boolean(now)));
   }

@@ -2290,6 +2290,22 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .cov-use{color:var(--muted)}
 .cov-flags{display:flex;flex-wrap:wrap;gap:6px}
 .cov-empty{margin:0}
+.cov-viewbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.cov-viewbar:empty{display:none}
+.cov-lead{margin:0;font-weight:700}
+.cov-summary[hidden],.cov-group[hidden]{display:none}
+.cov-app{display:grid;gap:8px}
+.cov-apptitle{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:var(--text-md,1rem)}
+.cov-cand{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--paper)}
+.cov-cand[data-decision="retire"]{border-color:var(--alert)}
+.cov-candhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 10px}
+.cov-screen{overflow-wrap:anywhere}
+.cov-meta{font-size:var(--text-sm);color:var(--muted)}
+.cov-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.cov-actions[aria-busy="true"]{opacity:.6}
+.cov-declare{justify-self:start;min-height:var(--tap)}
+.cov-fields>summary{min-height:var(--tap);display:flex;align-items:center;font-size:var(--text-sm);font-weight:700;color:var(--accent-deep);cursor:pointer}
+.cov-fields .cov-list{padding:0}
 /* K23: en táctil y sin panel del día, el día entero es el objetivo y sus eventos van en una hoja (src/calendar/calendar.ts). */
 .calendar.cal-touchday[data-view="month"] .cal-event{pointer-events:none}
 .cal-sheet-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}

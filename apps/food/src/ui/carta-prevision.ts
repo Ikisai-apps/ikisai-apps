@@ -95,7 +95,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const total = live.reduce((n, l) => n + (l.expected_units ?? 0), 0);
     const people = attendance();
     // Asistentes: al cambiarlos, las líneas con «por persona» recalculan su total (en el mismo lote).
-    const guests = el('input', { 'data-feedback-id': 'food.carta.prevision.asistentes', 'data-feedback-label': 'Asistentes esperados', id: 'cartaAttendance', type: 'number',
+    const guests = el('input', { 'data-field-id': 'food.carta.prevision.asistentes', 'data-field-entity': 'food.menus', 'data-field-prop': 'expected_attendance', 'data-feedback-id': 'food.carta.prevision.asistentes', 'data-feedback-label': 'Asistentes esperados', id: 'cartaAttendance', type: 'number',
       inputmode: 'numeric', min: '0', step: '1', disabled: !canWrite, class: 'carta-units', 'aria-label': 'Asistentes esperados',
       value: current.expected_attendance === null || current.expected_attendance === undefined ? '' : String(current.expected_attendance),
       placeholder: eventGuests ? String(eventGuests) : '',
@@ -116,7 +116,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       } }) as HTMLInputElement;
     const row = (line: Mirror<CartaLine>) => {
       const save = (fields: Record<string, unknown>) => usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields }]));
-      const perPerson = el('input', { 'data-feedback-id': 'food.carta.prevision.por_persona', 'data-feedback-label': 'Consumo por persona', type: 'number', inputmode: 'decimal',
+      const perPerson = el('input', { 'data-field-id': 'food.carta.prevision.por_persona', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'per_person', 'data-feedback-id': 'food.carta.prevision.por_persona', 'data-feedback-label': 'Consumo por persona', type: 'number', inputmode: 'decimal',
         min: '0', step: '0.01', disabled: !canWrite, id: `perperson-${line.id}`, 'aria-label': `Por persona de ${nameOf(line)}`, class: 'carta-units',
         value: line.per_person === null || line.per_person === undefined ? '' : String(Number(line.per_person)),
         onchange: async () => {
@@ -126,7 +126,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
           // Con asistentes, el total sale de ahí (hacia arriba: máximos a cubrir); sin ellos, solo se guarda el «por persona».
           await save(value !== null && people !== null ? { per_person: value, expected_units: unitsFromPerPerson(value, people) } : { per_person: value });
         } }) as HTMLInputElement;
-      const units = el('input', { 'data-feedback-id': 'food.carta.prevision.unidades_linea', 'data-feedback-label': 'Unidades a cubrir de la línea', type: 'number', inputmode: 'numeric',
+      const units = el('input', { 'data-field-id': 'food.carta.prevision.unidades_linea', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'expected_units', 'data-feedback-id': 'food.carta.prevision.unidades_linea', 'data-feedback-label': 'Unidades a cubrir de la línea', type: 'number', inputmode: 'numeric',
         min: '0', step: '1', value: line.expected_units === null || line.expected_units === undefined ? '' : String(line.expected_units), disabled: !canWrite,
         id: `expected-${line.id}`, 'aria-label': `Unidades esperadas de ${nameOf(line)}`, class: 'carta-units',
         onchange: async () => {
@@ -170,13 +170,13 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     // Lo que se compra por piezas (el pan) no necesita rendimiento: 1 pan = 1 pan (1116).
     const byPiece = (g: Mirror<Ingredient>) => ['ud', 'uds', 'unidad'].includes(String((g.item_id ? items.get(g.item_id)?.base_unit : '') ?? '').trim().toLowerCase());
     const row = (g: Mirror<Ingredient>) => {
-      const purchase = el('select', { 'data-feedback-id': 'food.carta.prevision.rendimiento_compra', 'data-feedback-label': 'Unidad de compra', id: `yield-purchase-${g.id}`,
+      const purchase = el('select', { 'data-field-id': 'food.carta.prevision.rendimiento_compra', 'data-field-entity': 'food.ingredients', 'data-field-prop': 'purchase_unit', 'data-feedback-id': 'food.carta.prevision.rendimiento_compra', 'data-feedback-label': 'Unidad de compra', id: `yield-purchase-${g.id}`,
         'aria-label': `Cómo se compra ${g.name}`, disabled: !canWrite },
         ...(['unidad', 'paquete', 'manojo', 'kg', 'g', 'l', 'ml'] as const).filter((u) => (UNITS as readonly string[]).includes(u)).map((u) => el('option', { value: u, selected: (g.purchase_unit ?? 'unidad') === u }, u))) as HTMLSelectElement;
-      const amount = el('input', { 'data-feedback-id': 'food.carta.prevision.rendimiento_cantidad', 'data-feedback-label': 'Piezas por unidad de compra', type: 'number', inputmode: 'decimal',
+      const amount = el('input', { 'data-field-id': 'food.carta.prevision.rendimiento_cantidad', 'data-field-entity': 'food.ingredients', 'data-field-prop': 'yield', 'data-feedback-id': 'food.carta.prevision.rendimiento_cantidad', 'data-feedback-label': 'Piezas por unidad de compra', type: 'number', inputmode: 'decimal',
         min: '0', step: '0.5', id: `yield-n-${g.id}`, class: 'carta-units', 'aria-label': `Cuántas salen de ${g.name}`, disabled: !canWrite,
         value: g.yield === null || g.yield === undefined ? '' : String(Number(g.yield)) }) as HTMLInputElement;
-      const prep = el('input', { 'data-feedback-id': 'food.carta.prevision.rendimiento_pieza', 'data-feedback-label': 'Unidad de preparación', type: 'text', maxlength: '30',
+      const prep = el('input', { 'data-field-id': 'food.carta.prevision.rendimiento_pieza', 'data-field-entity': 'food.ingredients', 'data-field-prop': 'prep_unit', 'data-feedback-id': 'food.carta.prevision.rendimiento_pieza', 'data-feedback-label': 'Unidad de preparación', type: 'text', maxlength: '30',
         id: `yield-prep-${g.id}`, class: 'carta-units', 'aria-label': `Unidad de preparación de ${g.name}`, placeholder: 'rodaja', disabled: !canWrite, value: g.prep_unit ?? '' }) as HTMLInputElement;
       const save = el('button', { 'data-feedback-id': 'food.carta.prevision.rendimiento_guardar', 'data-feedback-label': 'Guardar el rendimiento', class: 'ghost', type: 'button', id: `yield-save-${g.id}`,
         onclick: async () => {

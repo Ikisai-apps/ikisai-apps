@@ -42,9 +42,9 @@ test('un aviso perdido se concilia con la pasarela; la devolución en línea la 
 
   // la pasarela lo cobró, pero su aviso no llegó: la conciliación (intentos de hace más de 10 min) lo aplica
   gateway.states.set(ref, 'paid');
-  assert.deepEqual(await reconcile(), { checked: 0, applied: 0 }, 'aún reciente');
+  assert.deepEqual(await reconcile(), { checked: 0, applied: 0, expired: 0 }, 'aún reciente');
   // (sin esperar 10 minutos: el worker admite la antigüedad mínima; 0 = todos los pendientes)
-  assert.deepEqual(await reconcile({ older_minutes: 0 }), { checked: 1, applied: 1 });
+  assert.deepEqual(await reconcile({ older_minutes: 0 }), { checked: 1, applied: 1, expired: 0 });
   assert.equal((await app.t.db.query<{ s: string }>(`select status s from booking.stay_payments where provider_ref = $1`, [ref])).rows[0]!.s, 'paid');
 
   // alojado con «online» y devuelto en parte por la pasarela

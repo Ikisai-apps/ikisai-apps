@@ -463,7 +463,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - `POST guide-read {execution_id, app}` (capacidad `flow.guide_read`): `{id, title, mode, status, steps: [{id, title, explain, anchor, route, confirm, done, essential, app, stage}]}`.
   - Solo quien hace la ejecución (si no, `404`). Pasos de esa `app` (primer segmento del anclaje) y los propios de Flow (`app: null`: sin anclaje).
   - `route` y `confirm` salen de la lectura por id de campo del núcleo (`core_field_lookup`, 0109); sin ella, `route: null` y `confirm: 'manual'`.
-  - `done`: recibo de la app con `how` `save` o `event` y sin `pending`; en los pasos propios de Flow, su valor en el tramo o el tramo cerrado.
+  - `done`: recibo de la app sin `pending` (desde `0949`, también `manual` o `none`: «Hecho», «Siguiente», «Saltar», para que no vuelva a salir pendiente al releer); en los pasos propios de Flow, su valor en el tramo o el tramo cerrado. Cerrar un tramo «ir a otra app» sigue pidiendo `save` o `event`.
 - `POST guide-confirm {requestId, execution_id, step_id, how: save|event|manual|none, pending?}` (capacidad `flow.guide_confirm`): deja recibo en `flow.guide_receipts` (sin valores), idempotente por `requestId`. Un ensayo (`learn`) no confirma nada.
 
 ## 47. Clases de actividad (flow-19, migración `0942`)
@@ -483,3 +483,14 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   2. liga su cliente web a ese visitante (`POST public/customer_visitor`, con `X-Flow-Customer` y `X-Visitor`): una vez, solo un cliente web sin visitante y solo con el visitante que firma el lote;
   3. pide el código de traspaso (`POST public/visitor/handoff`, núcleo 0106: 5 min, un uso, misma IP) y abre `https://ven.ikisai.com/e/<código>?alojate&v=<código de traspaso>`.
 - `customers_visitor_check`: un cliente web puede tener visitante; uno de huésped, no.
+
+## 49. Indicadores para Central (P7, migración `0950`)
+
+`flow.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2 (`core.allow_read('central', …, 'view')`; ni `anon` ni `authenticated`). Solo agregados de los flujos activos y fuera del modo pruebas; fechas en hora de Madrid; `period = 'actual'`; enlace a la lista de flujos (`https://flow.ikisai.com/equipo/#/`).
+
+| Clave | Unidad | Sentido | Fórmula |
+|---|---|---|---|
+| `flow.sales_yesterday` | `eur` | `up` | Suma de los pagos de ayer (de pedidos y de cuentas: cobros, devoluciones y ajustes) / 100. |
+| `flow.day_closures_pending` | `count` | `down` | Días de los últimos 30 (sin hoy) con algún pago y sin `flow.day_closures`, por flujo. |
+| `flow.orders_unfinished_past` | `count` | `down` | Pedidos `paid` (cobrados sin entregar) cobrados antes de hoy. |
+| `flow.buffers_below_target` | `count` | `down` | Mesas y neveras con `capacity > 0` y `level < capacity × threshold_pct / 100`. |

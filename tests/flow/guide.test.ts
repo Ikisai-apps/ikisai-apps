@@ -99,3 +99,24 @@ test('guiado · un tramo «ir a otra app» se cierra cuando la app destino lo co
   e = (await app.t.db.query<any>(`select status, stages from flow.executions where id = $1`, [ex])).rows[0];
   assert.equal(e.stages[0].status, 'done'); assert.equal(e.status, 'done');
 });
+
+test('guiado · «Hecho» o «Saltar» (manual/none) deja el paso hecho al releer, pero no cierra el tramo «ir a otra app» (0949)', async () => {
+  const D = uuid(), V = uuid(), H = uuid(), STEP = uuid();
+  assert.equal((await commit([
+    ins(TABLES.definitions, D, { key: 'pedir_a_mano', name: 'Pedir a mano' }),
+    ins(TABLES.definitionVersions, V, { definition_id: D, version: 1, status: 'draft' }),
+    ins(TABLES.definitionStages, H, { version_id: V, position: 1, kind: 'handoff', title: 'Crea la compra en Tasks', target_app: 'tasks', target_anchor: 'tasks.compras.nueva' }),
+    ins(TABLES.definitionSteps, STEP, { version_id: V, stage_id: H, position: 1, key: 'compra', title: 'Crea la compra', anchor: 'tasks.compras.nueva', essential: true }),
+  ])).status, 200);
+  assert.equal((await commit([call(PROCEDURES.publishVersion, { version_id: V })])).status, 200);
+  const ex = uuid();
+  await commit([call(PROCEDURES.startExecution, { execution_id: ex, version_id: V, mode: 'run' })], app.tokens.editor);
+  await commit([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor);
+  const done = async () => (await read({ execution_id: ex, app: 'tasks' })).data.steps.find((s: any) => s.id === STEP).done;
+  await confirm({ requestId: `m-${ex}-p`, execution_id: ex, step_id: STEP, how: 'none', pending: true });
+  assert.equal(await done(), false); // pendiente: aún no
+  await confirm({ requestId: `m-${ex}-ok`, execution_id: ex, step_id: STEP, how: 'manual' });
+  assert.equal(await done(), true);
+  const e = (await app.t.db.query<any>(`select status, stages from flow.executions where id = $1`, [ex])).rows[0];
+  assert.equal(e.stages[0].status, 'draft');
+});

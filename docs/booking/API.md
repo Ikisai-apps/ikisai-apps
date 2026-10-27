@@ -2131,6 +2131,19 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 
 **La cama propia en el plano (migración 1421; petición de Guests, CAMA_PROPIA_PLANO.md):** `portal_lodging.mine`, `portal_my_stays.items[]` y `portal_my_stays.default_bed` llevan `room_layout: {cols, rows} | null` y `bed_layout: {x, y, rot} | null`, con la misma forma que la 1417. Son de la cama propia, nunca de la de otras personas; sin disposición, `null`.
 
+**Stripe (migración 1420; VG con Finance: Stripe ahora, Redsys/Bizum después):**
+- **Adaptador:** `stripeBookingProvider` (`booking-api/payments.ts`) envuelve la pasarela compartida de Finance (`_domain/payments/stripe.ts`). En `index.ts` solo se conecta si existen `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`; sin ellos, `PAYMENTS_OFF`.
+- **La sesión de Checkout:**
+  - importe del servidor en `eur` y `metadata: {app: 'booking', reference: 'booking-stay-<id>'}`;
+  - vuelta a `ven.ikisai.com/e/<código>?pago=<id>` (al cancelar en Stripe, `&cancelado=1`);
+  - caducidad mínima de 31 minutos, porque Stripe no deja menos.
+- **Retención y sesión:** la cama se guarda 20 minutos (VG). El worker `payments/reconcile` caduca a mano (`expireCheckout`) las sesiones cuya retención ya venció y lo anota como `expired` (respuesta `{checked, applied, expired}`).
+- **Webhook `POST public/payments/stripe`** (`Stripe-Signature`):
+  - firma mala: 400;
+  - avisos de otra app de la misma cuenta (`metadata.app` distinto de `booking`) o sin interés: 200 `{ignored: true}`;
+  - `paid` guarda el pago de Stripe (`stay_payments.provider_payment_ref`, `pi_…`). Por él se casa `charge.refunded`, que no trae la sesión.
+- **Devoluciones:** `refund` busca el pago de la sesión y devuelve con la clave de idempotencia recibida (o con una nueva).
+
 ## 46. Guiado de Flow en Booking (prueba del alojamiento; VG 27-10-2026)
 
 Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): con `?guia=<ejecución>` lee los pasos de Flow (`flow.guide_read`) y los confirma (`flow.guide_confirm`) por su Edge, nunca con valores. Con `?campo=` señala el anclaje. Los pasos con `confirm: 'event'` avanzan cuando Booking avisa (`announceSaved`) de que la base ha guardado de verdad.
