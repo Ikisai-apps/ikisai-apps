@@ -11,6 +11,7 @@ import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-ap
 import { requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import * as montage from '../../supabase/functions/_domain/booking/montage.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const WORKER_KEY = 'clave-de-worker-de-prueba';
@@ -140,4 +141,34 @@ test('ámbito (0347): el procedimiento, llamado directamente, exige editor u own
   const inProject = await member('editor', { projects: { [TAB]: [projectId] } });
   const ok = await direct(inProject, [{ ref: 'mesas', title: 'Montar 12 mesas' }, { ref: 'sillas', title: 'Colocar 96 sillas' }]);
   assert.equal(ok.rows.length, 1);
+});
+
+test('contrato con Booking: la petición que arma montageRequest crea la madre y una hija por objeto; quitar un objeto la retira', async () => {
+  // La misma función que usa booking-api (POST reservas/:id/montaje), con datos sintéticos.
+  const project = await worker('project', { source: 'booking', kind: 'booking.retreat_project', external_ref: 'RES2026-82', date: '2026-12-05', title: 'Retiro de prueba' });
+  assert.equal(project.status, 200, JSON.stringify(project.body));
+  const reservation = { id: uuid(), code: '2026-82', title: 'Retiro de prueba', start_date: '2026-12-05' };
+  const names = montage.namesFrom({ icons: [{ id: 'mesa', name: 'Mesa redonda' }, { id: 'silla', name: 'Silla' }, { id: 'atril', name: 'Atril' }], plans: [{ id: 'plan-a', label: 'Salón' }] });
+  const changes: montage.MontageChange[] = [
+    { id: uuid(), planId: 'plan-a', op: 'add', iconId: 'mesa', replacesIconId: null },
+    { id: uuid(), planId: 'plan-a', op: 'remove', iconId: null, replacesIconId: 'atril' },
+    { id: uuid(), planId: 'plan-a', op: 'replace', iconId: 'silla', replacesIconId: 'mesa' },
+  ];
+  const sent = await worker('task', montage.montageRequest(reservation, changes, names));
+  assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  assert.equal(sent.body.taskId, await requestTaskId('booking:RES2026-82-MONTAJE'));
+  assert.deepEqual(sent.body.childrenCounts, { created: 3, updated: 0, retired: 0 });
+  const parent = (await rows('tasks.tasks')).find((t) => t.id === sent.body.taskId);
+  assert.deepEqual([parent.project_id, parent.title, parent.due], [project.body.projectId, 'Montaje del evento', '2026-12-05']);
+  const made = await kids(sent.body.taskId);
+  assert.equal(made.length, 3, 'una hija por objeto');
+  for (const c of changes) assert.ok(made.some((k) => k.external_ref === `booking:RES2026-82-MONTAJE/${c.id}`), c.id);
+  assert.ok(made.every((k) => k.project_id === project.body.projectId && k.title.endsWith('(Salón)')));
+
+  // Booking reenvía la lista entera sin el atril: su hija se retira y las otras siguen.
+  const again = await worker('task', montage.montageRequest(reservation, [changes[0]!, changes[2]!], names));
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.deepEqual(again.body.childrenCounts, { created: 0, updated: 0, retired: 1 });
+  const atril = (await kids(sent.body.taskId)).find((k) => k.external_ref.endsWith(changes[1]!.id));
+  assert.ok(atril.deleted_at, 'el objeto quitado, a la papelera');
 });
