@@ -37,6 +37,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - **Inicio:** tarjeta «Hoy en casa».
   - **Compra y Preparación del menú de casa** (O3b, 14 de octubre de 2026): por los días que se eligen al generarlas, «Del … al …» con «Esta semana» y «La que viene». Hay una lista por rango, sin solaparse, y chips para abrir las anteriores. La preparación enseña y regenera solo los pasos de esos días.
   - **Platos sugeridos** (O3c, 14 de octubre de 2026): las personas de fuera con nivel `outsider` proponen desde Guests un plato para un día y un servicio (`plato_casa`). En Food, «Platos sugeridos» en Menús y un aviso en el menú de casa; al aprobar, el plato entra en ese día (con la receta del mismo nombre o una rápida por completar).
+  - **Decidir por lotes** (27-10, F-SUG-5): «Elegir varias» en «Para decidir» marca varias y las aprueba o descarta juntas, cada una con su comentario y su receta parecida, con un solo «Deshacer» de 5 s para todas; las de un día pasado solo se pueden descartar. Prueba: `house-suggestion.spec.ts`.
   - Pruebas: `house.test.ts`, `house-planning.test.ts` y `house-suggestion.test.ts` (PGlite), y `house.spec.ts` y `house-suggestion.spec.ts` (Playwright, con capturas a 390 px si se pide `FOOD_CAPTURAS`).
 - **Receta parecida, por el nombre** (27-10, F-SUG-3): en «Usar receta parecida», arriba hasta cinco recetas que comparten palabras del nombre del plato sugerido (sin acentos ni palabras vacías; a igualdad, la de la categoría del servicio), `similarRecipes` en `house.ts`. Pruebas: `domain.test.ts` y `house-suggestion.spec.ts`.
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
@@ -71,6 +72,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - «Usar en otro evento» y la carta en la ficha del evento, incluidas las que marca Booking en jornadas abiertas.
   - El evento familiar come del menú de casa.
   - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
+  - **Iconos de comida del kit** (K13, ui-kit 0.69.10, línea de Core del 27-10): cada bloque de la carta lleva el suyo (Clásicos, plato; Gourmet, gorro; Barra, vaso) y en Cocina cada servicio el de su momento (`SERVICE_ICONS` en `events.ts`), siempre junto al nombre.
 
 - **Previsión de la carta: modelo y lecturas** (migración 1110; API.md §2.11). Unidades esperadas, reparto mesa/nevera/fresco, estación por ingrediente, conversiones sin inventar (rodajas incluidas), `food.carta_prep_projection` y `food.carta_prep_totals_projection` para Flow, y la lista de la compra de una carta. Prueba: `carta-prevision.test.ts`. **Su pantalla:** las pestañas Previsión (reparto, unidades esperadas y plan de bandejas imprimible) y Compra de la carta. Prueba: `carta.spec.ts`.
 

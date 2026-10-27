@@ -495,6 +495,34 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       return { redirect_url: intent!.redirectUrl, expires_at: item!.hold_until, reused: false };
     },
   }, {
+    // Cancelar noches pagadas en línea (1419; política de VG): sin `confirm`, solo dice cuánto se devolvería; con `confirm`,
+    // pide la devolución a la pasarela y después suelta la cama. Repetirlo no devuelve dos veces.
+    method: 'POST', pattern: 'stay/cancel',
+    handler: async ({ json, visitor, supabase }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
+      const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_cancel', p_args: { ...args, request_id: requestId, visitor_id: visitor!.id } });
+      await ensureServiceActor(supabase, 'booking');
+      const quote = await invoke({ action: 'quote' });
+      if (quote?.replayed) return { status: 'cancelada', replayed: true };
+      const preview = { percent: quote.percent, tier: quote.tier, paid_cents: quote.paid_cents, refund_cents: quote.refund_cents, full_until: quote.full_until, half_until: quote.half_until };
+      if (body.confirm !== true) return { status: 'quote', ...preview };
+      if (Number(quote.refund_cents) > 0 && (!payments?.refund || payments.name !== quote.provider)) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
+      // el importe queda fijado en la base antes de tocar la pasarela; la clave hace que repetir no devuelva dos veces
+      const claim = await invoke({ action: 'claim' });
+      const cents = Number(claim.refund_cents);
+      if (cents > 0) {
+        try {
+          await payments!.refund!(String(claim.provider_ref), cents, `booking-stay-cancel-${requestId}`);
+        } catch {
+          fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo. Vuelve a intentarlo: no se devolverá dos veces.');
+        }
+      }
+      const out = await invoke({ action: 'apply' });
+      return { status: 'cancelada', ...preview, refund_cents: cents, replayed: out?.replayed ?? false };
+    },
+  }, {
     // El aviso de la pasarela (webhook firmado; sin sesión ni visitante). Cada aviso cuenta una vez.
     method: 'POST', pattern: 'payments/:provider',
     handler: async ({ request, params, supabase }) => {

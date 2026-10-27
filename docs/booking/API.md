@@ -2100,3 +2100,21 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 - Si no puede alojar (por ejemplo, la cama ya no está libre), el pago queda anotado (`accepted: false`) y recepción lo ve como «Pagado en línea».
 - El envoltorio de B7 deja pasar la llamada de sistema (`core.is_system_call()`) solo para aceptar `online`; el personal sigue necesitando el ámbito de huéspedes.
 
+**Cancelar noches pagadas en línea (migración 1419; política de VG, vg-38):**
+- **Política:**
+  - 100 % hasta 7 días antes de la llegada; 50 % hasta 48 h antes; nada después.
+  - Si la casa cancela el evento (`cancelada` o `perdida`), siempre el 100 %.
+  - La llegada cuenta desde las 00:00 (Europe/Madrid) del primer día, y lo ya devuelto se descuenta.
+  - La calculan `booking.stay_cancel_quote_of` en la base y `stayCancelPercent` y `stayCancelRefund` en el dominio, con el mismo resultado.
+- **El visitante** ve en su solicitud `cancel: {percent, tier, paid_cents, refund_cents, full_until, half_until}`, solo si pagó en línea y no ha cancelado.
+- **`POST public/stay/cancel {stay_id, confirm?}`** (X-Visitor):
+  - Sin `confirm`, devuelve la propuesta (`status: 'quote'`).
+  - Con `confirm: true`:
+    1. reserva el importe en el pago (`claim`, con el pago bloqueado);
+    2. pide la devolución a la pasarela con la clave de idempotencia `booking-stay-cancel-<id>`;
+    3. cancela: la solicitud queda `descartada`; si ya estaba alojado, se borran sus fichas y camas y lo devuelto se anota en sus cobros (`refund_method: 'online'`). El apunte de Finance queda por reenviar.
+  - Repetirlo, también a la vez, no devuelve dos veces.
+  - Errores: sin pago en línea, 409 `NOT_PAID_ONLINE`; si ya llegó, 409 `ALREADY_ARRIVED`; si la solicitud es de otro visitante, 404; sin pasarela, 503 `PAYMENTS_OFF`.
+- **Recepción:** «Devolver…» de un cobro `online` muestra lo que propone la política.
+- **Adaptador:** `refund(providerRef, cents, idempotencyKey?)` admite la clave.
+
