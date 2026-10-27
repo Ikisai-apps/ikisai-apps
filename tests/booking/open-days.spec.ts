@@ -80,6 +80,9 @@ test('jornadas abiertas: cartas de Food y «Alojar a alguien» en un paso; sin r
   await walk.locator('#walkIn').click();
   const sheet = page.getByRole('dialog', { name: 'Alojar a alguien' });
   await sheet.locator('#walkName').fill('Persona Suelta');
+  // lo mínimo para SES desde el alta: apellido y contacto (con @, correo)
+  await sheet.locator('#walkSurname').fill('Sintética');
+  await sheet.locator('#walkContact').fill('suelta@example.invalid');
   await sheet.locator('#walkNights').fill('2');
   await expect(sheet.locator('#walkBed option')).toHaveText(['Albergue sintético · Cama 1']);
   await sheet.locator('#walkPrice').fill('25');
@@ -90,6 +93,7 @@ test('jornadas abiertas: cartas de Food y «Alojar a alguien» en un paso; sin r
   await sheet.locator('#walkSave').click();
   await expect(sheet).toBeHidden();
   await expect.poll(() => api.rows(GUESTS).filter((g) => g.event_id === event.id).map((g) => g.first_name)).toEqual(['Persona Suelta']);
+  expect(api.rows(GUESTS).find((g) => g.event_id === event.id)).toMatchObject({ last_name_1: 'Sintética', email: 'suelta@example.invalid' });
   const assignment = api.rows(ASSIGNMENTS).find((a) => a.event_id === event.id)!;
   expect(assignment).toMatchObject({ bed_id: bed.id, persons: 1, from_date: from, to_date: plusDays(from, 2) });
   await expect(walk.locator('#walkTonight')).toContainText('Persona Suelta');
