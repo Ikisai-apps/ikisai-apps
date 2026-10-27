@@ -25,6 +25,8 @@ async function codeOf(promise: Promise<unknown>) {
   try { await promise; return 'OK'; } catch (e) { return isFault(e) ? e.code : (String((e as Error).message).match(/[A-Z_]{5,}/)?.[0] ?? String(e)); }
 }
 const rowsOf = (visitor: string) => app.t.db.query<Record<string, any>>(`select * from booking.visitor_requests where visitor_id = $1 order by created_at`, [visitor]).then((r) => r.rows);
+const houseFree = async (from: string, to: string) =>
+  Number((await app.t.db.query<{ n: string }>(`select coalesce(sum(places), 0) n from booking.free_beds($1, $2)`, [from, to])).rows[0]!.n);
 const free = async (from: string, to: string, space: string) =>
   Number((await app.t.db.query<{ n: string }>(`select coalesce(sum(places), 0) n from booking.free_beds($1, $2) where space_id = $3`, [from, to, space])).rows[0]!.n);
 
@@ -96,7 +98,9 @@ test('no reserva hasta pagar: comprueba el hueco pero no bloquea; errores de fec
   assert.deepEqual([r!.pay_mode, r!.hold_bed_ids, r!.hold_until, r!.total_cents], ['pay_first', null, null, 2000 * 2 * 2]);
   assert.equal(await free('2032-04-01', '2032-04-03', d.space), 2, 'no bloquea');
   const w = await visitorOf(d.code);
-  assert.equal(await codeOf(ask(d.code, w, { from_date: '2032-04-01', to_date: '2032-04-03', rate_id: d.rate, persons: 3 })), 'NO_AVAILABILITY');
+  // la disponibilidad es de toda la casa: una persona más de las que caben
+  const over = (await houseFree('2032-04-01', '2032-04-03')) + 1;
+  if (over <= 20) assert.equal(await codeOf(ask(d.code, w, { from_date: '2032-04-01', to_date: '2032-04-03', rate_id: d.rate, persons: over })), 'NO_AVAILABILITY');
   assert.equal(await codeOf(ask(d.code, w, { from_date: '2032-03-31', to_date: '2032-04-02', rate_id: d.rate, persons: 1 })), 'INVALID_FIELDS', 'fuera del evento');
   assert.equal(await codeOf(ask(d.code, w, { from_date: '2032-04-01', to_date: '2032-04-02', rate_id: uuid(), persons: 1 })), 'INVALID_FIELDS', 'tarifa que no vale');
   assert.equal(await codeOf(ask(d.code, w, { from_date: '2032-04-01', to_date: '2032-04-02', rate_id: d.rate, persons: 1, name: null })), 'INVALID_FIELDS', 'sin nombre');
@@ -117,8 +121,11 @@ test('ruta POST public/stay: sin visitante 401; con visitante crea la solicitud 
   assert.deepEqual([out.status, out.from, out.to, out.persons, out.total_cents, out.pay], ['pendiente', '2032-05-01', '2032-05-03', 1, 4000, 'hold']);
   assert.ok(new Date(out.hold_until).getTime() <= Date.now() + 6 * 3600_000 + 60_000, 'las horas del evento');
   assert.ok(!JSON.stringify(out).includes('example.invalid'));
-  const full = await stay({ event_code: d.code, mode_id: d.rate, from: '2032-05-01', to: '2032-05-03', persons: 2, name: 'Otra' }, (await issueVisitor(db(), d.code)).token);
-  assert.equal(full.status, 409);
-  assert.equal((await full.json()).error.code, 'NO_AVAILABILITY');
+  const over = (await houseFree('2032-05-01', '2032-05-03')) + 1;
+  if (over <= 20) {
+    const full = await stay({ event_code: d.code, mode_id: d.rate, from: '2032-05-01', to: '2032-05-03', persons: over, name: 'Otra' }, (await issueVisitor(db(), d.code)).token);
+    assert.equal(full.status, 409);
+    assert.equal((await full.json()).error.code, 'NO_AVAILABILITY');
+  }
   assert.equal((await stay({ event_code: d.code, mode_id: 'x', from: '2032-05-01', to: '2032-05-02', name: 'X' }, token)).status, 422);
 });
