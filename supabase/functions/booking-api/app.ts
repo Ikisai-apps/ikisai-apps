@@ -138,6 +138,36 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
  * `afterCommit`: empuja la cola de las reservas tocadas por el lote. En la Edge va en segundo plano
  * (`EdgeRuntime.waitUntil`) para no retrasar la respuesta; el guardado nunca depende de Google.
  */
+/**
+ * Alojamiento libre, tarjeta 4 (1402): cuando una salida libera camas (`guest_leave` acorta la asignación y guarda la
+ * salida prevista en `planned_to_date`), se pide su limpieza a Tasks (`worker/requests/task`, tipo `booking.bed_cleaning`,
+ * una por asignación, idempotente por `external_ref`). Nunca bloquea la salida: si Tasks falla, la salida queda hecha.
+ */
+export function cleaningAfterCommit(supabase: Supabase, ses: BookingSesConfig) {
+  return async (result: CommitResult): Promise<void> => {
+    const items = result.changes
+      .filter((c) => c.table === TABLES.roomAssignments && c.id && c.after?.planned_to_date && c.after?.bed_id && !c.after?.deleted_at)
+      .map((c) => ({ assignment_id: c.id }));
+    if (!items.length) return;
+    const post = ses.tasksPost === null ? undefined : ses.tasksPost ?? createTasksPost(ses.env ?? denoEnv, fetch, supabase.base);
+    if (!post) return;
+    const work = (async () => {
+      const source = await systemInvoke(supabase)('booking.cleaning_source', { items }) as { items?: Array<{ assignment_id: string; bed: string; room: string }> } | null;
+      if (!source?.items?.length) return;
+      await ensureServiceActor(supabase, 'booking');
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+      for (const item of source.items) {
+        await post('requests/task', {
+          source: 'booking', kind: 'booking.bed_cleaning', external_ref: `LIMP-${item.assignment_id}`,
+          title: `Limpiar ${item.room} · ${item.bed}`.slice(0, 120), note: 'Salida del huésped: la cama queda libre desde hoy.', due: today,
+        }).catch(() => undefined);
+      }
+    })().then(() => undefined, () => undefined);
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(work);
+    else await work;
+  };
+}
+
 export function calendarAfterCommit(supabase: Supabase, calendar: BookingCalendarConfig) {
   return async (result: CommitResult): Promise<void> => {
     if (!calendar.adapter || !calendar.syncOnCommit) return;
@@ -547,7 +577,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     origins: base.origins ?? BOOKING_ORIGINS,
     // K3 para miembros: un archivo ajeno (justificante o firma de un huésped) solo lo lee por su id quien ve la fila que lo referencia
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
-    hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
+    hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: async (result) => { await calendarAfterCommit(supabase, calendar)(result); await cleaningAfterCommit(supabase, ses)(result); }, agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY')),
     publicRoutes: bookingPublicRoutes(),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
