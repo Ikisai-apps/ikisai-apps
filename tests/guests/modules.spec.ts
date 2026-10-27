@@ -330,7 +330,8 @@ function drawing(file: string): { width: number; height: number; rooms: Array<{ 
   const text = readFileSync(path.join(here, 'fixtures/planos', file), 'utf8');
   const [, width, height] = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(text)!.map(Number);
   const rooms = [...text.matchAll(/data-name="([^"]+)" d="([^"]+)"/g)].map(([, name, d]) => ({
-    name: name!,
+    // Los dibujos traen espacios duros («Hab\u00a01»): el nombre, con espacios normales.
+    name: name!.replace(/\u00a0/g, ' '),
     points: [...d!.matchAll(/([\d.]+) ([\d.]+)/g)].map(([, x, y]) => [Number(x) / width!, Number(y) / height!] as [number, number]),
   }));
   return { width: width!, height: height!, rooms };
