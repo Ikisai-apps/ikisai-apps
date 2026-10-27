@@ -1,5 +1,21 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.5 · 27 de octubre de 2026
+
+**`testing/mobile-audit.ts`: la revisión móvil en las pruebas de cada app.** Es la herramienta de la revisión a 390 px del 27-10, ahora como ayuda común, igual que `testing/feedback-smoke.ts`. No toca nada: mide la pantalla que se ve.
+
+- `mobileAudit(page, { kinds?, ignore?, minTarget? })` devuelve una lista de hallazgos `{ kind, sel, text, detail }`. Tipos:
+  - `desborde` (fuera de los contenedores con scroll propio);
+  - `toque` (menos de 44 px; las casillas cuentan con su etiqueta, y los enlaces dentro de un párrafo no cuentan);
+  - `cortado`;
+  - `contraste`: WCAG AA en oscuro; cambia a oscuro y vuelve a claro.
+- `formatFindings(found)` da una línea por hallazgo para el mensaje de `expect`.
+- Ya trae los arreglos de la revisión:
+  - colores `color(srgb …)` leídos bien;
+  - lo escondido para el lector (`.vh`, cajas de 1 px) no cuenta como cortado ni como toque.
+- Uso: `expect(await mobileAudit(page, { kinds: ['desborde', 'toque'] }), …).toEqual([])` en el humo de la app.
+- Pruebas: `tests/v77.spec.ts`.
+
 ## 0.69.1 · 27 de octubre de 2026
 
 **«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
