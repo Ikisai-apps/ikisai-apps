@@ -2254,6 +2254,12 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - Flow lo pinta con la pieza «lista de comprobación» del kit (#872) y marca con `tasks.review_item_result` (§46.3).
 - **Pruebas:** `tests/tasks/review-open.test.ts`.
 
+## 47. «Trabajos de hoy» para Flow (migración `0352`, `tasks-api/today.ts`; encargo de Core, 27-10-2026)
+
+- **`GET today/projection?date=&projectId=`** (lectura `tasks.today_projection`, también la capacidad del mismo nombre; reader, editor, owner y outsider, en su ámbito). Devuelve `{date, items}`: lo que vence ese día o antes y sigue abierto, más lo hecho ese día. Cada ítem trae proyecto, madre, prioridad, vencimiento, estado, `overdue`, `blocked` (por una dependencia o por el paso anterior sin hacer) y los ids de personas, oficios y espacios. El Plan de hoy (`day_plans`) no entra: es privado por persona (decisión de VG, §38).
+- **`POST tasks/complete {taskId, requestId?}`** (capacidad `tasks.complete`, editor u owner): marca hecha una tarea que la persona ve y responde `{taskId, done, changed, revision}`. Si ya estaba hecha, `changed: false`; no marca sus hijas.
+- **Pruebas:** `tests/tasks/today.test.ts`.
+
 ## 48. Limpieza de cama al salir un huésped (Booking #907; tarjeta tasks-24, 27-10-2026)
 
 - **Qué pide Booking:** por `worker/requests/task`, `{source: 'booking', kind: 'booking.bed_cleaning', external_ref: 'LIMP-<asignación>', title, due?, note?, priority?, external_url?}`, sin `project_ref` (si lo trae, 422). La referencia tiene que empezar por `LIMP-`.
