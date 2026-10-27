@@ -172,3 +172,15 @@
 .qcard-params{position:absolute;right:8px;bottom:6px}
 .station-params{display:grid;gap:8px}
 .station-params label{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center}
+
+/* Existencias (Inicio del flujo) */
+.flow-stock{margin:0 0 14px}
+.stock-table td.stock-low{color:var(--alert,#b3261e);font-weight:700}
+
+/* Cuentas del cliente (caja v2) y aviso del enlace de Guests en la carta */
+.accounts-new{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.accounts-new input{flex:1 1 140px;min-width:0}
+.accounts-list{display:grid;gap:8px}
+.account-card{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.account-card .qcard-text{flex:1;min-width:0}
+.carta-notice{margin:0 16px 10px;padding:10px 12px;border-radius:10px;background:var(--surface-2,#f2efe9)}

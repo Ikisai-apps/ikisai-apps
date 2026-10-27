@@ -1,6 +1,8 @@
 -- Ikisai Booking · llegada y salida de huéspedes desde Flow (VG 27-10-2026, acordado con Flow): Llegada → Cama → Firma
 -- → Salida en el móvil de recepción.
--- - `booking.flow_guests_projection` (Flow: reader, editor y owner): una fila por huésped vivo de un evento vivo, sin el de
+-- - `booking.flow_guests_of({event_id})` (Flow: reader, editor, owner y outsider; decisión de Core): los huéspedes de UN
+--   evento, y solo si ese evento está en el ámbito de la persona en Flow (`core.reader_in_scope`, 0098). Usa la vista
+--   `booking.flow_guests_projection`, que no se abre a Flow: una fila por huésped vivo de un evento vivo, sin el de
 --   muestra ni los anonimizados. Lleva nombre corto, `portal_role`, su cama asignada, sus noches (las de la asignación o
 --   las de la reserva), `arrived_at`, `left_at` y si firmó. Sin documento, contacto ni datos de SES.
 -- - `booking.guest_arrive` y `booking.guest_leave` ({guest_id, undo?}), procedimientos de Booking: Flow los llama por
@@ -47,8 +49,22 @@ where g.deleted_at is null and not g.preview and g.anonymized_at is null;
 
 revoke all on booking.flow_guests_projection from public, anon, authenticated;
 grant select on booking.flow_guests_projection to service_role;
-select core.allow_read('flow', 'booking.flow_guests_projection', 'view', '{reader,editor,owner}');
 select core.allow_read('booking', 'booking.flow_guests_projection', 'view');
+
+-- Flow lee los huéspedes de un evento concreto de su ámbito, nunca todos.
+create or replace function booking.flow_guests_of(p jsonb)
+returns jsonb language plpgsql stable as $$
+declare v_event uuid;
+begin
+  begin v_event := (p->'args'->>'event_id')::uuid; exception when others then v_event := null; end;
+  if v_event is null then perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('field', 'event_id')); end if;
+  if not core.reader_in_scope(p->>'app', (p->>'actor')::uuid, 'booking_event', v_event::text) then
+    perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'event not in scope', 'event_id', v_event));
+  end if;
+  return jsonb_build_object('items', coalesce((
+    select jsonb_agg(to_jsonb(f) order by f.display_name, f.guest_id) from booking.flow_guests_projection f where f.event_id = v_event), '[]'::jsonb));
+end $$;
+select core.allow_read('flow', 'booking.flow_guests_of', 'function', '{reader,editor,owner,outsider}');
 
 -- Estado que devuelven los dos procedimientos.
 create or replace function booking.guest_presence(p_guest uuid)
