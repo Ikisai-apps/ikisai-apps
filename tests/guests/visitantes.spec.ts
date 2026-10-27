@@ -226,15 +226,48 @@ test('ENTRADA_PUBLICA · «Guarda tu acceso»: correo y código, y se recupera e
   await box.locator('#accessVerify').click();
   await expect(box.locator('#accessSaved')).toContainText('Guardado con');
 
-  // Otro móvil: el mismo correo recupera el acceso y lo pedido.
+  // Otro móvil, desde «Mis eventos» (vacía): el mismo correo recupera el acceso, la lista (núcleo 0107) y lo pedido.
   const other = await browser.newPage();
-  await other.goto(`${baseURL}/#/v/${code}`);
+  await other.goto(`${baseURL}/#/v`);
+  await expect(other.locator('#visitorEmpty')).toBeVisible();
   const box2 = other.locator('#visitorAccess');
   await box2.locator('summary').click();
   await box2.locator('#accessEmail').fill(email);
   await box2.locator('#accessSend').click();
   await box2.locator('#accessCode').fill('123456');
   await box2.locator('#accessVerify').click();
+  await expect(other.locator('#visitor-before')).toContainText('Jornada para guardar acceso');
+  await other.locator(`#visitor-before a[data-code="${code}"]`).click();
   await expect(other.locator('#visitorSent')).toContainText('Pendiente');
   await other.close();
+});
+
+test('ENTRADA_PUBLICA · «Tu ficha está lista» y «Unir este móvil a mi ficha»: sin emparejar por nombre', async ({ page }) => {
+  const r = await api.reservation({ title: 'Retiro con apuntarme', start: day(8), end: day(9) });
+  await api.booking.t.db.query('update booking.reservations set guests_visible = true where id = $1', [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+  await page.goto(`${baseURL}/e/${code}`);
+  await page.locator('#visitorEnter').click();
+  await page.locator('#visitorName').fill('Iria');
+  await page.locator('#visitorJoin').click();
+  await expect(page.locator('#visitorSent')).toContainText('Pendiente');
+  // Sin aceptar, no hay ficha que reclamar.
+  await expect(page.locator('#visitorSent .gclaim')).toHaveCount(0);
+
+  // El personal la acepta: Booking crea la ficha y la liga a la petición.
+  const request = (await api.booking.t.db.query<{ id: string }>(`select id from booking.visitor_requests where event_id = $1 and kind = 'join' order by created_at desc limit 1`, [r.event])).rows[0]!.id;
+  await api.bookingCommit([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: request, decision: 'accept' } }]);
+  await page.reload();
+  await page.locator(`#visitorSent .gclaim[data-request="${request}"]`).click();
+  // Entra en su ficha con el enlace de un solo uso (aviso de datos de la primera entrada).
+  await expect(page.locator('#privacyOk')).toBeVisible();
+  await page.locator('#privacyOk').click();
+  await expect(page.locator('#retreatTitle')).toBeVisible();
+  // En el portal del huésped, este móvil (que fue visitante) puede unirse a la ficha y deshacerlo.
+  const link = page.locator('#visitorLink');
+  await expect(link).toBeVisible();
+  await link.locator('#visitorLinkGo').click();
+  await expect(link.locator('#visitorLinked')).toBeVisible();
+  await link.locator('#visitorUnlink').click();
+  await expect(link.locator('#visitorLinkGo')).toBeVisible();
 });

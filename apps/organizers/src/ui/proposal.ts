@@ -8,7 +8,7 @@
  * - Precio: siempre «precio medio por persona · el total entre N personas», nunca un «por persona» suelto.
  * - Los botones que avisan a Ikisai necesitan red (`bindOnline`).
  */
-import { bindOnline, confirmDialog, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { bindOnline, confirmDialog, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import type { PortalProposal, PortalRequest } from '../app/api.ts';
 import { describeError } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
@@ -76,7 +76,7 @@ export function renderProposal(ctx: ViewContext, reservationId: string): HTMLEle
   }
 
   function commentSheet(proposalId: string | null): void {
-    const area = el('textarea', { id: 'commentText', rows: '5', maxlength: '2000', placeholder: t('Escribe tu comentario o tu pregunta sobre la propuesta.') }) as HTMLTextAreaElement;
+    const area = el('textarea', { ...fieldAttrs({ id: 'organizers.propuesta.comentario', label: 'Comentario sobre la propuesta', entity: 'booking.portal_requests', prop: 'message', type: 'text', sensitivity: 'internal' }), id: 'commentText', rows: '5', maxlength: '2000', placeholder: t('Escribe tu comentario o tu pregunta sobre la propuesta.') }) as HTMLTextAreaElement;
     const sendButton = el('button', { type: 'button', class: 'primary', id: 'sendComment', onclick: async () => {
       const text = area.value.trim();
       if (!text) { area.focus(); return; }
@@ -198,7 +198,7 @@ export function renderProposal(ctx: ViewContext, reservationId: string): HTMLEle
     const foot = (label: string, x: string, y: string, change: string) => el('tr', { class: 'orgcompare-foot' }, el('th', { scope: 'row' }, label), el('td', { class: 'num' }, x), el('td', { class: 'num' }, y), el('td', { class: 'num' }, change));
     const diff = (x: number | null, y: number | null) => (x === null || y === null ? '' : changeText(Math.round((x - y) * 100) / 100));
     const picker = others.length >= 2 ? el('label', { class: 'field' }, el('span', null, t('Comparar con')),
-      el('select', { id: 'compareWith', onchange: (e: Event) => { compareWith = Number((e.target as HTMLSelectElement).value); paint(); (host.querySelector('#compareWith') as HTMLElement | null)?.focus(); } },
+      el('select', { ...fieldAttrs({ id: 'organizers.propuesta.comparar', label: 'Comparar con', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'compareWith', onchange: (e: Event) => { compareWith = Number((e.target as HTMLSelectElement).value); paint(); (host.querySelector('#compareWith') as HTMLElement | null)?.focus(); } },
         ...others.map((p) => el('option', { value: String(p.version), selected: p === b ? '' : null }, t('Versión {n}', { n: p.version }))))) : null;
     return el('section', { id: 'proposalCompare', class: 'card orgcard' }, heading, picker,
       el('div', { role: 'region', tabindex: '0', 'aria-label': t('Versión {a} frente a versión {b}', { a: a.version, b: b.version }), class: 'orgscrollx' },

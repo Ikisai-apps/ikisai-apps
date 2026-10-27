@@ -8,7 +8,7 @@
  * Lo propio vive en el espejo local (`app/own.ts`): se guarda solo, también sin red, y la cola lo envía al volver. Cambiar
  * de apartado no vuelve a montar la ficha del retiro (evento `org-exp-section` desde `shell.ts`).
  */
-import { compressImage, confirmDialog, createSaveState, el, icon, openSheet, renderSteps, replace, toast, type Child, type IconName, type StepItem } from '@ikisai/ui-kit';
+import { compressImage, confirmDialog, createSaveState, el, fieldAttrs, icon, openSheet, renderSteps, replace, toast, type Child, type IconName, type StepItem } from '@ikisai/ui-kit';
 import type { RowOperation } from '@ikisai/sync-client';
 import { answerText, MATERIAL_MAX_BYTES, sensitiveQuestion, toCsv } from '../../../../supabase/functions/_domain/organizers/mod.ts';
 import type { ReservationStatus } from '../app/api.ts';
@@ -58,6 +58,18 @@ type RoomsRead = Exclude<SectionsInput['rooms'], null | { error: string }>;
 
 interface ChoiceOption { value: string; label: string }
 
+
+/** Interruptores y «cuándo lo ven» de la experiencia, para el inventario de Uso y cobertura (P15): literales, uno por campo. */
+const EXP_FIELDS: Partial<Record<string, Record<string, string | null>>> = {
+  program_visible: fieldAttrs({ id: 'organizers.experiencia.program_visible', label: 'Programa visible', entity: 'organizers.experiences', prop: 'program_visible', type: 'toggle', sensitivity: 'internal' }),
+  menu_visible: fieldAttrs({ id: 'organizers.experiencia.menu_visible', label: 'Menú visible', entity: 'organizers.experiences', prop: 'menu_visible', type: 'toggle', sensitivity: 'internal' }),
+  lodging_visible: fieldAttrs({ id: 'organizers.experiencia.lodging_visible', label: 'Alojamiento visible', entity: 'organizers.experiences', prop: 'lodging_visible', type: 'toggle', sensitivity: 'internal' }),
+  materials_visible: fieldAttrs({ id: 'organizers.experiencia.materials_visible', label: 'Materiales visibles', entity: 'organizers.experiences', prop: 'materials_visible', type: 'toggle', sensitivity: 'internal' }),
+  questions_visible: fieldAttrs({ id: 'organizers.experiencia.questions_visible', label: 'Preguntas visibles', entity: 'organizers.experiences', prop: 'questions_visible', type: 'toggle', sensitivity: 'internal' }),
+  map_visible: fieldAttrs({ id: 'organizers.experiencia.map_visible', label: 'Plano visible', entity: 'organizers.experiences', prop: 'map_visible', type: 'toggle', sensitivity: 'internal' }),
+  program_window: fieldAttrs({ id: 'organizers.experiencia.program_window', label: 'Cuándo ven el programa', entity: 'organizers.experiences', prop: 'program_window', type: 'select', sensitivity: 'internal' }),
+  menu_window: fieldAttrs({ id: 'organizers.experiencia.menu_window', label: 'Cuándo ven el menú', entity: 'organizers.experiences', prop: 'menu_window', type: 'select', sensitivity: 'internal' }),
+};
 export function renderExperience(ctx: ViewContext, reservationId: string, status?: ReservationStatus): HTMLElement {
   const saves = createSaveState({ savedMs: 4000 });
   const modulesHost = el('div', { id: 'expModulesHost' });
@@ -141,14 +153,14 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     for (const off of modulesBound.splice(0)) off();
     const s = sections();
     const value = (key: string, fallback: unknown) => (exp && exp[key] !== undefined && exp[key] !== null ? exp[key] : fallback);
-    const windowSelect = (key: string) => el('select', { id: `exp-${key}`, 'aria-label': t('Cuándo lo ven'),
+    const windowSelect = (key: string) => el('select', { ...EXP_FIELDS[key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id: `exp-${key}`, 'aria-label': t('Cuándo lo ven'),
       onchange: (e: Event) => void setExperience({ [key]: (e.target as HTMLSelectElement).value }).then(paintModules) }, ...options(WINDOWS, value(key, 'always')));
     /** La casilla de siempre, fuera del botón de la fila (con Espacio se marca sin abrir el apartado). */
     const moduleRow = (key: string, windowKey?: string) => {
       const on = value(key, false) === true;
       return el('div', { class: 'orgmodule', 'data-module': key },
         el('label', { class: 'field check' },
-          el('input', { type: 'checkbox', id: `exp-${key}`, checked: on ? '' : null, onchange: (e: Event) => { void setExperience({ [key]: (e.target as HTMLInputElement).checked }).then(paintModules); } }),
+          el('input', { ...EXP_FIELDS[key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ type: 'checkbox', id: `exp-${key}`, checked: on ? '' : null, onchange: (e: Event) => { void setExperience({ [key]: (e.target as HTMLInputElement).checked }).then(paintModules); } }),
           el('span', null, t('Lo ven tus asistentes'))),
         on && windowKey ? el('label', { class: 'field orgmodule-window' }, el('span', null, t('Cuándo lo ven')), windowSelect(windowKey)) : null);
     };
@@ -192,7 +204,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
       replace(nextBox, renderSteps({ items: keys.map(item), readyText: t('Lo que preparas les llega a su enlace.') }));
     }
 
-    const message = el('textarea', { id: 'exp-message', rows: '3', maxlength: '1000', placeholder: t('Os esperamos en Ikisai…'),
+    const message = el('textarea', { ...fieldAttrs({ id: 'organizers.experiencia.mensaje', label: 'Mensaje a tus asistentes', entity: 'organizers.experiences', prop: 'organizer_message', type: 'text', sensitivity: 'internal' }), id: 'exp-message', rows: '3', maxlength: '1000', placeholder: t('Os esperamos en Ikisai…'),
       oninput: (e: Event) => {
         const text = (e.target as HTMLTextAreaElement).value;
         if (messageTimer) clearTimeout(messageTimer);
@@ -203,7 +215,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
       el('p', { class: 'muted small' }, t('Lo verán al abrir su enlace. Opcional.')),
       fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), message)),
       el('label', { class: 'field' }, el('span', null, t('Idioma del mensaje')),
-        el('select', { id: 'exp-message-lang', onchange: (e: Event) => void setExperience({ message_lang: (e.target as HTMLSelectElement).value }) },
+        el('select', { ...fieldAttrs({ id: 'organizers.experiencia.idioma_mensaje', label: 'Idioma del mensaje', entity: 'organizers.experiences', prop: 'message_lang', type: 'select', sensitivity: 'internal' }), id: 'exp-message-lang', onchange: (e: Event) => void setExperience({ message_lang: (e.target as HTMLSelectElement).value }) },
           el('option', { value: 'es', selected: value('message_lang', 'es') === 'es' ? '' : null }, 'Español'),
           el('option', { value: 'en', selected: value('message_lang', 'es') === 'en' ? '' : null }, 'English')))), 'organizers.experiencia.mensaje', 'Mensaje de bienvenida');
 
@@ -243,7 +255,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
   }
 
   // --- Materiales -----------------------------------------------------------------------------------------------------
-  const fileInput = el('input', { type: 'file', accept: 'application/pdf,image/png,image/jpeg,image/webp', hidden: '', id: 'expUploadInput', onchange: () => void upload() }) as HTMLInputElement;
+  const fileInput = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.subir_archivo', label: 'Subir archivo', entity: 'organizers.materials', prop: 'file_id', type: 'file', sensitivity: 'internal' }), type: 'file', accept: 'application/pdf,image/png,image/jpeg,image/webp', hidden: '', id: 'expUploadInput', onchange: () => void upload() }) as HTMLInputElement;
 
   async function upload(): Promise<void> {
     const file = fileInput.files?.[0];
@@ -315,13 +327,13 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
 
   function editMaterial(row: Row | null, newKind: 'link' | 'text' = 'link'): void {
     const kind = row ? String(row.kind) : newKind;
-    const title = el('input', { type: 'text', id: 'mat-title', maxlength: '160', required: '', value: String(row?.title ?? '') }) as HTMLInputElement;
-    const description = el('textarea', { id: 'mat-description', rows: '2', maxlength: '1000' }, String(row?.description ?? '')) as HTMLTextAreaElement;
-    const url = el('input', { type: 'url', id: 'mat-url', maxlength: '600', placeholder: 'https://', value: String(row?.url ?? '') }) as HTMLInputElement;
-    const body = el('textarea', { id: 'mat-body', rows: '6', maxlength: '4000' }, String(row?.body ?? '')) as HTMLTextAreaElement;
-    const published = el('input', { type: 'checkbox', id: 'mat-published', checked: row?.published ? '' : null }) as HTMLInputElement;
-    const windowSel = el('select', { id: 'mat-window' }, ...options(WINDOWS, row?.window ?? 'always')) as HTMLSelectElement;
-    const logo = el('input', { type: 'checkbox', id: 'mat-logo', checked: row?.is_logo ? '' : null }) as HTMLInputElement;
+    const title = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.material.titulo', label: 'Título del material', entity: 'organizers.materials', prop: 'title', type: 'text', sensitivity: 'internal' }), type: 'text', id: 'mat-title', maxlength: '160', required: '', value: String(row?.title ?? '') }) as HTMLInputElement;
+    const description = el('textarea', { ...fieldAttrs({ id: 'organizers.experiencia.material.descripcion', label: 'Descripción del material', entity: 'organizers.materials', prop: 'description', type: 'text', sensitivity: 'internal' }), id: 'mat-description', rows: '2', maxlength: '1000' }, String(row?.description ?? '')) as HTMLTextAreaElement;
+    const url = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.material.url', label: 'Enlace del material', entity: 'organizers.materials', prop: 'url', type: 'url', sensitivity: 'internal' }), type: 'url', id: 'mat-url', maxlength: '600', placeholder: 'https://', value: String(row?.url ?? '') }) as HTMLInputElement;
+    const body = el('textarea', { ...fieldAttrs({ id: 'organizers.experiencia.material.texto', label: 'Texto del material', entity: 'organizers.materials', prop: 'body', type: 'text', sensitivity: 'internal' }), id: 'mat-body', rows: '6', maxlength: '4000' }, String(row?.body ?? '')) as HTMLTextAreaElement;
+    const published = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.material.publicado', label: 'Material publicado', entity: 'organizers.materials', prop: 'published', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', id: 'mat-published', checked: row?.published ? '' : null }) as HTMLInputElement;
+    const windowSel = el('select', { ...fieldAttrs({ id: 'organizers.experiencia.material.cuando', label: 'Cuándo se ve el material', entity: 'organizers.materials', prop: 'window', type: 'select', sensitivity: 'internal' }), id: 'mat-window' }, ...options(WINDOWS, row?.window ?? 'always')) as HTMLSelectElement;
+    const logo = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.material.logo', label: 'Es el logotipo', entity: 'organizers.materials', prop: 'is_logo', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', id: 'mat-logo', checked: row?.is_logo ? '' : null }) as HTMLInputElement;
     const error = el('p', { class: 'error', role: 'alert', id: 'mat-error' });
     const fileId = row ? fileIdOf(row.file_id) : null;
     const sheet = openSheet({
@@ -399,15 +411,15 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
 
   function editQuestion(row: Row | null): void {
     const answered = row ? answers.some((a) => a.question_id === row.id) : false;
-    const type = el('select', { id: 'q-type', disabled: answered ? '' : null, onchange: () => paintOptions() }, ...options(TYPES, row?.type ?? 'text')) as HTMLSelectElement;
-    const text = el('input', { type: 'text', id: 'q-label', maxlength: '300', required: '', value: String(row?.label ?? ''), oninput: () => warn() }) as HTMLInputElement;
-    const help = el('input', { type: 'text', id: 'q-help', maxlength: '600', value: String(row?.help ?? ''), oninput: () => warn() }) as HTMLInputElement;
-    const opts = el('textarea', { id: 'q-options', rows: '4', placeholder: t('Una opción por línea'), disabled: answered ? '' : null },
+    const type = el('select', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.tipo', label: 'Tipo de pregunta', entity: 'organizers.questions', prop: 'type', type: 'select', sensitivity: 'internal' }), id: 'q-type', disabled: answered ? '' : null, onchange: () => paintOptions() }, ...options(TYPES, row?.type ?? 'text')) as HTMLSelectElement;
+    const text = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.texto', label: 'Pregunta', entity: 'organizers.questions', prop: 'label', type: 'text', sensitivity: 'internal' }), type: 'text', id: 'q-label', maxlength: '300', required: '', value: String(row?.label ?? ''), oninput: () => warn() }) as HTMLInputElement;
+    const help = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.ayuda', label: 'Ayuda de la pregunta', entity: 'organizers.questions', prop: 'help', type: 'text', sensitivity: 'internal' }), type: 'text', id: 'q-help', maxlength: '600', value: String(row?.help ?? ''), oninput: () => warn() }) as HTMLInputElement;
+    const opts = el('textarea', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.opciones', label: 'Opciones de la pregunta', entity: 'organizers.questions', prop: 'options', type: 'text', sensitivity: 'internal' }), id: 'q-options', rows: '4', placeholder: t('Una opción por línea'), disabled: answered ? '' : null },
       ((row?.options as ChoiceOption[] | undefined) ?? []).map((o) => o.label).join('\n')) as HTMLTextAreaElement;
     const optsField = el('label', { class: 'field' }, el('span', null, t('Opciones (una por línea, de 2 a 12)')), opts);
-    const required = el('input', { type: 'checkbox', id: 'q-required', checked: row?.required ? '' : null }) as HTMLInputElement;
-    const published = el('input', { type: 'checkbox', id: 'q-published', checked: row?.published ? '' : null }) as HTMLInputElement;
-    const closes = el('input', { type: 'date', id: 'q-closes', value: String(row?.closes_at ?? '') }) as HTMLInputElement;
+    const required = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.obligatoria', label: 'Pregunta obligatoria', entity: 'organizers.questions', prop: 'required', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', id: 'q-required', checked: row?.required ? '' : null }) as HTMLInputElement;
+    const published = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.publicada', label: 'Pregunta publicada', entity: 'organizers.questions', prop: 'published', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', id: 'q-published', checked: row?.published ? '' : null }) as HTMLInputElement;
+    const closes = el('input', { ...fieldAttrs({ id: 'organizers.experiencia.pregunta.cierre', label: 'Cierre de la pregunta', entity: 'organizers.questions', prop: 'closes_at', type: 'date', sensitivity: 'internal' }), type: 'date', id: 'q-closes', value: String(row?.closes_at ?? '') }) as HTMLInputElement;
     const sensitive = el('p', { class: 'banner warn small', id: 'q-sensitive', hidden: '' }, t('Parece que preguntas por salud, alergias o documentos. Eso ya lo pide Ikisai a cada asistente con su consentimiento: mejor no lo preguntes aquí.'));
     const error = el('p', { class: 'error', role: 'alert', id: 'q-error' });
     const paintOptions = () => { optsField.hidden = !['choice', 'multi'].includes(type.value); };
@@ -487,7 +499,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
       body: el('div', { id: 'libraryBody' },
         items.length
           ? el('div', { class: 'orgitems' }, ...items.map((r) => el('label', { class: 'field check', 'data-library': r.id },
-            el('input', { type: 'checkbox', onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) picked.add(r.id); else picked.delete(r.id); } }),
+            el('input', { ...fieldAttrs({ id: 'organizers.experiencia.biblioteca.elegir', label: 'Elegir de tu biblioteca', type: 'toggle', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) picked.add(r.id); else picked.delete(r.id); } }),
             el('span', null, el('strong', null, String(r.title ?? r.label)),
               el('span', { class: 'muted small' }, ` · ${isMaterial ? t(KINDS[String(r.kind)] ?? '') : label(TYPES, r.type)}${r.is_logo ? ` · ${t('Logotipo')}` : ''}`)))))
           : el('p', { class: 'muted' }, t('No hay nada más que traer de tus otros retiros.')),
