@@ -1846,3 +1846,86 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
 - **La vista previa entera se guarda** (`counts` y `rows`, no solo la cifra de «por decidir»). Se vuelve a pedir al recuperar la red, tras «Aplicar» y al cambiar el interruptor, aquí o en otro dispositivo.
 - **«Apagar»:** diálogo de peligro, sin «Deshacer», con el texto completo: «Las facturas que valides dejan de entrar en el inventario y la app vuelve a verse como antes. Mientras esté apagado, ni las compras que se reciban en Tasks ni las facturas que anules o rectifiques se cuadran con el inventario, y una compra puede contarse dos veces. Al volver a encenderlo, todo se cuadra. Lo que ya entró se queda.»
 - **No cambia:** la vista previa, «Aplicar» (que no enciende el interruptor), el sitio habitual, «Encender», lo que pasa sin red, los ids y que solo la vea el owner.
+
+## 17. Ingresos y gastos de otras apps (encargo de VG del 26-10-2026 · migración 0244)
+
+Finance recibe apuntes de otras apps. El primero son las ventas de la barra de Flow del evento del 31-10. VG decidió:
+- todo apunte que llega a Finance es real: entra en el IVA y en la entrega a la gestoría. No hay «facturar o no» (decisión del 26-10, tras la duda del IVA de las ventas sin factura);
+- lo que no debe contar no se envía: Flow tiene «modo pruebas» por proyecto y en ese modo no manda nada;
+- el resultado del evento se entiende desde Finance.
+
+### 17.1 Tabla `invoices.app_entries`
+
+Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige la app de origen con otro envío.
+
+| Columna | Qué es |
+|---|---|
+| `source_app`, `source_ref` | App de origen (`core.apps`) y su clave, que empieza por `<app>:`. Flow manda `flow:project:<uuid>:<AAAA-MM-DD>`. Única entre los vivos. |
+| `kind` | `income` o `expense`. |
+| `entry_date`, `description` | Fecha del apunte (da el trimestre) y concepto. |
+| `amount_cents` | Importe con IVA incluido, en céntimos. Es el dinero que se ha movido. |
+| `tax_rate`, `tax_cents`, `net_cents` | Tipo de IVA (10 en la barra). El neto lo calcula Finance redondeado al céntimo (`round(importe × 100 / (100 + tipo))`) y la cuota es el resto, así que siempre suman el importe. |
+| `pending_refunds_cents` | Devoluciones pendientes de confirmar en la otra app: no restan del importe. |
+| `methods` | `{cash, bizum, …}` en céntimos. Si viene, suma el importe. |
+| `detail` | `[{code?, name, quantity, amount_cents}]`. Si viene, su suma más las devoluciones pendientes es el importe. |
+| `event_id` | Evento de Booking (referencia, sin FK). Lo manda la otra app o se enlaza en Finance. |
+| `received_by`, `received_at` | Quién lo envió por última vez y cuándo. |
+| `notes` | Notas de Finance. |
+
+**En Finance** solo se escriben `event_id` y `notes`. Si se intenta otra cosa:
+- `APP_ENTRY_PROCEDURE_ONLY`, al crear un apunte o cambiar lo que viene de la otra app;
+- `APP_ENTRY_NOT_DELETABLE`, al borrarlo.
+
+### 17.2 `invoices.record_app_entry` (lo llama la otra app)
+
+`POST /api/v1/commands` de `invoices-api`, con la sesión de quien cierra (editor u owner en Finance):
+
+```json
+{ "requestId": "flow:<source_ref>:<sha256 del payload>",
+  "operations": [{ "op": "call", "procedure": "invoices.record_app_entry", "args": {
+    "source_app": "flow", "source_ref": "flow:project:<uuid>:2026-10-31", "kind": "income", "entry_date": "2026-10-31",
+    "description": "Barra · Evento de octubre · 31-10", "amount_cents": 123450, "tax_rate": 10, "pending_refunds_cents": 200,
+    "methods": { "cash": 80000, "bizum": 43450 },
+    "detail": [{ "code": "A", "name": "Montadito clásico A", "quantity": 100, "amount_cents": 70000 }],
+    "event_id": null } }] }
+```
+
+- **Idempotente por (`source_app`, `source_ref`):**
+  - la primera vez crea el apunte (`created`);
+  - después lo sustituye (`replaced`) o, si los datos son los mismos, no hace nada (`unchanged`).
+- **Lo que no toca nunca:** las notas ni el evento enlazado en Finance (si llega `event_id` nulo).
+- **Resultado:** `{entry_id, status, revision, tax_cents, net_cents}`.
+- **Errores:**
+  - `INVALID_ARGS` (422), con `details.field`;
+  - `FORBIDDEN` (403);
+  - `ENTRY_LOCKED` (409): el apunte ya está en una entrega entregada a la gestoría y los datos cambian.
+- `tax_cents` y `net_cents` son opcionales; si llegan, tienen que coincidir con el cálculo de Finance.
+- Un agente necesita aprobación (`agent_confirmation` por defecto).
+
+### 17.3 Resumen fiscal y entrega a la gestoría
+
+- **Lectura `invoices.app_entries_summary`** (`{year, quarter}` o `{from, to}`): devuelve, en euros,
+  - `income` (los ingresos: base, cuota, total, `quota_by_rate` y `by_app`);
+  - `expense` (los gastos).
+- **Entrega:** todos los apuntes del periodo van en el manifest (`app_entries`, `app_entry_count`, `app_entries_totals`) y en `ingresos_gastos_apps.csv`.
+  - `resumen_impuestos.csv` añade el IVA repercutido de las apps por tipo (`iva_repercutido_apps`), su base y los gastos de apps.
+  - Una entrega solo con apuntes no está vacía.
+  - La entrega queda desactualizada si un apunte incluido cambia o si aparece uno nuevo del periodo.
+- La regla fiscal de los gastos de apps (si dan IVA soportado) está pendiente de la gestoría (PETICIONES.md, 26-10).
+
+### 17.4 Pantallas (PR 2)
+
+- **«Ingresos y gastos de apps»** (`#/apuntes`). Se entra desde la herramienta «Ingresos de apps» de Inicio (`#toolAppEntries`). Su pista dice lo ingresado o «Nada todavía».
+  - **Cifras:** ingresos, gastos, sin evento y eventos.
+  - **Resultado por evento:** cada evento abre su vista.
+  - **Apuntes por mes.** Sin «facturado sí/no»: todo apunte es real (decisión de VG del 26-10).
+  - **La ficha:** total, base, IVA, devoluciones pendientes, medios, desglose, evento, recibido y referencia. Desde ella se enlaza un evento de Booking (con red) y se escriben las notas.
+- **«Evento»** (`#/evento?id=<event_id>`): ingresos − gastos = resultado, **sin IVA**.
+  - **Ingresos:** los apuntes de ingreso de apps del evento y lo asignado de las emitidas registradas.
+  - **Gastos:** lo asignado de las recibidas validadas o archivadas y los gastos de apps.
+  - Las recibidas asignadas sin validar se dicen, pero no cuentan.
+  - Cada movimiento abre su ficha.
+  - El cálculo está en `app/app-entries-state.ts`.
+- **Gestoría:**
+  - el ticket suma al saldo de IVA (orientativo) el IVA repercutido de los apuntes de apps;
+  - «Todo el detalle» lleva la tarjeta «Ingresos y gastos de apps» (`#appEntriesSummary`), con la misma cuenta que `invoices.app_entries_summary_for`.

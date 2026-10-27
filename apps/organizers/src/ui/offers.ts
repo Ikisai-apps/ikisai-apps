@@ -323,7 +323,7 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
         timers.delete(row.id);
         pendingExpected.delete(row.id);
         const current = (await rowsOf(ctx.client, TABLES.offers, reservationId)).find((r) => r.id === row.id) ?? row;
-        await ctx.usage.run('organizers.ofertas.quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.offers, id: current.id, expectedRevision: current.revision }]));
+        await ctx.usage.run('organizers.ofertas.quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.offers, id: current.id, expectedRevision: current.revision }], [current]));
         await sheet.close(true);
         await load();
       } catch (e) { error.textContent = describeError(e); }

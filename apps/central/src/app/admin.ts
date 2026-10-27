@@ -4,7 +4,7 @@
  * dispositivo: lleva correos) para pintarla sin red mientras dure la sesión.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import type { HouseGrant } from '@ikisai/domain-central';
+import { FLOW_PROJECTS_READ, type FlowProject, type HouseGrant } from '@ikisai/domain-central';
 import { offlineError } from './client.ts';
 
 /** `outsider` (núcleo 0092) no se da a mano: lo deriva el nivel de casa de Personas. */
@@ -86,14 +86,22 @@ export const EVENT_LABELS: Record<string, string> = {
   proposal_approved: 'Propuesta aprobada',
   proposal_rejected: 'Propuesta rechazada',
   proposal_consumed: 'Propuesta aplicada',
+  proposal_revoked: 'Propuesta revocada',
   password_reset: 'Contraseña temporal nueva',
   account_disabled: 'Cuenta desactivada',
   account_enabled: 'Cuenta reactivada',
   display_name_changed: 'Nombre de la cuenta cambiado',
 };
 
+/** Tono de cada evento en el registro (X1 de Tasks, el de su `ACCESS_EVENTS`): lo que se da, en verde; lo que se quita o se rechaza, en rojo. */
+export const EVENT_TONES: Record<string, 'ok' | 'alert'> = {
+  key_issued: 'ok', key_revoked: 'alert', member_invited: 'ok',
+  proposal_approved: 'ok', proposal_rejected: 'alert', proposal_consumed: 'ok', proposal_revoked: 'alert',
+  account_disabled: 'alert', account_enabled: 'ok',
+};
+
 export function createAdminApi(client: SyncClient) {
-  const memory: { accounts?: { at: string; items: Account[] }; catalog?: CatalogApp[]; agents?: { at: string; items: AgentKey[] }; grants?: HouseGrant[] } = {};
+  const memory: { accounts?: { at: string; items: Account[] }; catalog?: CatalogApp[]; agents?: { at: string; items: AgentKey[] }; grants?: HouseGrant[]; flowProjects?: FlowProject[] } = {};
 
   async function call<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
     if (!navigator.onLine) throw offlineError();
@@ -119,6 +127,15 @@ export function createAdminApi(client: SyncClient) {
       memory.grants = out.items;
       return out.items;
     },
+    /** Proyectos de Flow (`flow.projects_projection`, la abre Flow a Central) para los ámbitos de la ficha y el alta. */
+    async flowProjects(): Promise<FlowProject[]> {
+      const out = await call<{ rows: FlowProject[] }>(`/read/${FLOW_PROJECTS_READ}`, { method: 'POST', json: { limit: 500 } });
+      memory.flowProjects = out.rows;
+      return out.rows;
+    },
+    /** «Aplicar accesos» de la ficha (`1515`): el núcleo aplica el nivel vigente de la ficha a su cuenta. Solo owners de Central. */
+    applyHouseLevel: (personId: string) =>
+      call<{ personId: string; userId: string; level: string | null; changes: Array<{ app: string; from: string | null; to: string | null }> }>('/invoke/central.apply_house_level', { method: 'POST', json: { personId } }),
     setMembership: (body: { app: string; userId: string; role: Role | null; scopes?: unknown; displayName?: string }) =>
       call<AccountMembership | { removed: true }>('/admin/memberships', { method: 'POST', json: body }),
     invite: (body: { email: string; displayName?: string; memberships: Array<{ app: string; role: Role; scopes?: unknown }> }) =>
@@ -145,7 +162,7 @@ export function createAdminApi(client: SyncClient) {
       return call<{ items: AccessEvent[]; hasMore: boolean; nextBefore: number | null }>(`/admin/access-log?${q}`);
     },
     clear(): void {
-      delete memory.accounts; delete memory.catalog; delete memory.agents; delete memory.grants;
+      delete memory.accounts; delete memory.catalog; delete memory.agents; delete memory.grants; delete memory.flowProjects;
     },
   };
 }

@@ -108,3 +108,27 @@ test('la otra mitad: una tarea con `requests/task` en el proyecto de la barra, y
   const projects = tree.data.tabs.flatMap((t: any) => t.projects).filter((p: any) => !p.system && p.status !== 'archived' && !p.deleted).map((p: any) => p.id);
   assert.deepEqual(projects, [BARRA]);
 });
+
+test('procedencia (0342): app, referencia y enlace de vuelta; inmutables; el enlace solo en ikisai.com', async () => {
+  const url = 'https://flow.ikisai.com/equipo/#/p/00000000-0000-4000-8000-000000000001/logistica';
+  const res = await ask({ source: 'flow', external_ref: 'unit-src', title: 'Limones', quantity: 2, unit: 'kg', project_id: BARRA, external_url: url });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.equal(res.data.purchase.externalUrl, url);
+  const row = (await rows('tasks.purchase_requests')).find((r) => r.id === res.data.purchase.id);
+  assert.deepEqual([row.source_app, row.source_ref, row.source_url], ['flow', 'unit-src', url]);
+  // No cambia después del alta (ni la app, ni la referencia, ni el enlace).
+  for (const fields of [{ source_app: 'otra' }, { source_ref: 'otra' }, { source_url: 'https://central.ikisai.com/' }]) {
+    const now = (await rows('tasks.purchase_requests')).find((r) => r.id === row.id);
+    const upd = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: row.id, expectedRevision: now.revision, fields }]);
+    assert.equal(upd.status, 422, JSON.stringify(upd.data));
+  }
+  // El enlace de vuelta tiene que ser https en ikisai.com.
+  const bad = await ask({ source: 'flow', external_ref: 'unit-src-2', title: 'Limones', project_id: BARRA, external_url: 'https://ejemplo.com/' });
+  assert.equal(bad.status, 422);
+  assert.equal(bad.data.error.details.field, 'external_url');
+  // Sin procedencia, como cualquier compra de la interfaz: las columnas quedan vacías.
+  const plain = crypto.randomUUID();
+  assert.equal((await commit([{ op: 'insert', table: 'tasks.purchase_requests', id: plain, fields: { tab_id: TAB, project_id: BARRA, title: 'Papel', position: 1 } }])).status, 200);
+  const p = (await rows('tasks.purchase_requests')).find((r) => r.id === plain);
+  assert.deepEqual([p.source_app, p.source_ref, p.source_url], [null, null, null]);
+});

@@ -15,10 +15,12 @@ import type { ReservationStatus } from '../app/api.ts';
 import { describeError, errorCode } from '../app/client.ts';
 import { MODULE_OF, sectionsOf, stepsOf, type SectionKey, type SectionsInput, type SectionState, type SectionStateName } from '../app/experience-state.ts';
 import { L, t } from '../app/i18n.ts';
-import { fileIdOf, libraryOf, nextPosition, rowsOf, save, TABLES, watch, type Row } from '../app/own.ts';
+import { fileIdOf, libraryOf, nextPosition, proposes, rowsOf, save, TABLES, watch, type Row } from '../app/own.ts';
+import { uploadNow } from '../app/upload-now.ts';
 import { fbIgnore, fbMark, loading, needsNet, section } from './common.ts';
 import { renderLodging } from './lodging.ts';
 import { renderMenu, type PortalMenu } from './menu.ts';
+import { renderFoodOffers } from './food-offers.ts';
 import { renderProgram, type PortalProgram } from './program.ts';
 import { typing } from './offers.ts';
 import type { ViewContext } from './shell.ts';
@@ -258,11 +260,15 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
         toast(t('Solo se pueden subir PDF e imágenes PNG, JPG o WebP.')); return;
       }
       if (blob.size > MATERIAL_MAX_BYTES) { toast(t('El archivo pasa de 15 MB. Prueba con uno más ligero.')); return; }
-      const sha = await ctx.client.stageBlob(blob, { filename: name, mime });
+      // Quien organiza lo encola (se sube al volver la red). Dirección, que propone (0703), lo sube ya: la propuesta lleva el
+      // archivo verificado, porque una sugerencia no viaja con la cola de subidas.
+      const fileRef = proposes(ctx.client, reservationId)
+        ? await uploadNow(ctx.client, blob, { filename: name, mime })
+        : { $blob: await ctx.client.stageBlob(blob, { filename: name, mime }) };
       const id = crypto.randomUUID();
       const title = file.name.replace(/\.[^.]+$/, '').slice(0, 160) || t('Documento');
       await track(() => ctx.usage.run('organizers.experiencia.material_subir', () => save(ctx.client, [{ op: 'insert', table: TABLES.materials, id,
-        fields: { reservation_id: reservationId, owner_id: ctx.userId, kind: 'file', title, file_id: { $blob: sha }, published: false, window: 'always', position: nextPosition(materials) } }])));
+        fields: { reservation_id: reservationId, owner_id: ctx.userId, kind: 'file', title, file_id: fileRef, published: false, window: 'always', position: nextPosition(materials) } }])));
       await read();
       paintMaterials();
       const row = materials.find((m) => m.id === id);
@@ -360,7 +366,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     async function remove(): Promise<void> {
       if (!row || !(await confirmDialog({ title: t('¿Quitar este material?'), text: t('Tus asistentes dejarán de verlo.'), confirmLabel: t('Quitar'), danger: true }))) return;
       try {
-        await ctx.usage.run('organizers.experiencia.material_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.materials, id: row.id, expectedRevision: row.revision }]));
+        await ctx.usage.run('organizers.experiencia.material_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.materials, id: row.id, expectedRevision: row.revision }], [row]));
         await sheet.close(true);
         await read(); paintMaterials();
       } catch (e) { error.textContent = describeError(e); }
@@ -453,7 +459,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     async function remove(): Promise<void> {
       if (!row || !(await confirmDialog({ title: t('¿Quitar esta pregunta?'), text: answered ? t('Ya tiene respuestas: dejarás de verlas aquí.') : t('Tus asistentes dejarán de verla.'), confirmLabel: t('Quitar'), danger: true }))) return;
       try {
-        await ctx.usage.run('organizers.experiencia.pregunta_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.questions, id: row.id, expectedRevision: row.revision }]));
+        await ctx.usage.run('organizers.experiencia.pregunta_quitar', () => save(ctx.client, [{ op: 'delete', table: TABLES.questions, id: row.id, expectedRevision: row.revision }], [row]));
         await sheet.close(true);
         await read(); paintQuestions();
       } catch (e) { error.textContent = describeError(e); }
@@ -590,7 +596,12 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
     questionsHost.hidden = current !== 'preguntas';
     let title: string | null = null;
     if (current === 'programa') { other = renderProgram(ctx, reservationId); title = L('Programa'); }
-    else if (current === 'menu') { other = renderMenu(ctx, reservationId); title = L('Menú'); }
+    // Menú: primero lo que ofrece Food (menú incluido y cartas, con quién paga) y debajo el menú día a día.
+    else if (current === 'menu') {
+      const menu = renderMenu(ctx, reservationId) as HTMLElement & { destroy?: () => void };
+      other = Object.assign(el('div', null, renderFoodOffers(ctx, reservationId), menu), { destroy: () => menu.destroy?.() });
+      title = L('Menú');
+    }
     else if (current === 'alojamiento') { other = renderLodging(ctx, reservationId, () => exp, setExperience); title = L('Alojamiento'); }
     replace(otherHost, title ? el('h3', { class: 'orgexp-title' }, t(title)) : null, other);
     // Al volver a la portada desde un apartado, sus cifras se vuelven a calcular.

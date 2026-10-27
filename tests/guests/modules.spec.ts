@@ -94,8 +94,11 @@ test('guests · sin configuración del organizador: como la fase 1, solo el Resu
 test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitación y materiales sin conexión', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro en marcha', start: day(0), end: day(2) });
   const leo = await api.guest(event, { first_name: 'Leo' });
-  // Reloj fijo a mediodía de Madrid (10:00 UTC = 12:00 en verano, 11:00 en invierno): la prueba no depende de la hora.
-  await page.clock.setFixedTime(new Date(`${day(0)}T10:00:00Z`));
+  // Reloj fijo a mediodía de Madrid, en verano y en invierno (10:00 UTC solo es mediodía en verano: desde el cambio de hora
+  // del 25-10 salía «Quedan 2 h 30 min»).
+  const utcNoon = new Date(`${day(0)}T12:00:00Z`);
+  const madridHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', hourCycle: 'h23' }).format(utcNoon));
+  await page.clock.setFixedTime(new Date(utcNoon.getTime() - (madridHour - 12) * 3_600_000));
   await api.experience(reservation, ALL_MODULES);
   const item = (d: string, starts_at: string, ends_at: string | null, title: string, place_text: string | null, public_note: string | null = null) =>
     api.organizerInvoke(reservation, 'booking.portal_program_save', { item: { id: crypto.randomUUID(), day: d, starts_at, ends_at, title, place_text, public_note, internal_note: 'nota interna', kind: 'actividad' } });

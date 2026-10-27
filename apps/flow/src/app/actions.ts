@@ -1,5 +1,5 @@
 import type { ApiError, SyncClient } from '@ikisai/sync-client';
-import { PROCEDURES } from '@ikisai/domain-flow';
+import { PROCEDURES, type SettleMethod } from '@ikisai/domain-flow';
 
 /**
  * Procedimientos de Flow (API.md §3) contra el servidor, sin pasar por la cola offline: cobrar, corregir, entregar y tocar
@@ -42,6 +42,12 @@ export const flowActions = (client: SyncClient) => ({
   createExtension: (parentOrderId: string, lines: Array<{ product_id: string; quantity: number }>) =>
     callProcedure<{ order_id: string }>(client, PROCEDURES.createExtension, { parent_order_id: parentOrderId, order_id: crypto.randomUUID(), lines }),
   confirmRefund: (paymentId: string) => callProcedure(client, PROCEDURES.confirmRefund, { payment_id: paymentId }),
+  openAccount: (projectId: string, holder: string, customerNumber: string | null) =>
+    callProcedure<{ account_id: string; holder: string }>(client, PROCEDURES.openAccount, { project_id: projectId, holder, ...(customerNumber ? { customer_number: customerNumber } : {}) }),
+  chargeToAccount: (orderId: string, accountId: string, revision: number) =>
+    callProcedure<{ pay_seq: number; total_cents: number; units: number }>(client, PROCEDURES.chargeToAccount, { order_id: orderId, account_id: accountId, expected_revision: revision }),
+  settleAccount: (accountId: string, method: SettleMethod, revision: number) =>
+    callProcedure<{ total_cents: number; orders: number }>(client, PROCEDURES.settleAccount, { account_id: accountId, method, expected_revision: revision }),
 });
 
 export type FlowActions = ReturnType<typeof flowActions>;

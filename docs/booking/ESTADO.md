@@ -113,8 +113,17 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 - **Fase 5 de los portales (§23.1, migración 0460):** alojamiento delegable: inventario del retiro, ajustes y habitaciones abiertas (solo con baño), elección atómica de cama (`BED_TAKEN`, `CHOICE_CLOSED`, `NOT_OFFERED`), petición con aprobación, reparto del organizador y preferencias de compañeros.
 
 - **Flow, hito 1 (26-10-2026, encargo de VG; migración 0480):** `booking.event_projection` (evento con nombre, tipo, estado, fechas y aforo) y `booking.event_staff_projection` (turnos con cuenta, ficha de Central y nombre corto), abiertas a Flow (API.md §28). Pruebas en `tests/booking/flow-projections.test.ts`. Siguiente: «Servicio de barra» en la ficha, leyendo `flow.booking_service_projection`.
+- **Reglas de acceso a los portales (26-10-2026, encargo de VG; migración 0481):**
+  - enlaces sin caducidad, y la conservación ya no revoca;
+  - organizador y personal con cuenta como huéspedes de su retiro (`portal_role`, `portal_access_run` con tick);
+  - dirección con «todos»: coorganizador, se apunta y elige cualquier cama.
+  - Detalle en API.md §29; pruebas en `tests/booking/portal-access.test.ts` y `portal.test.ts`.
 
 - **Tipos de reserva (26-10-2026, encargo de VG; migración 0482):** retiro, jornadas abiertas y familiar, con el mapeo de los valores viejos (también en las tarifas). API.md §30. Siguiente: el alta y la ficha según el tipo.
+
+- **Tipos de reserva, hito 2 (migración 0484):** la ficha según el tipo. Jornadas abiertas: cartas de Food y «Alojar a alguien»; familiar: sin dinero ni alojamiento y con menú de casa. API.md §30; pruebas en `tests/booking/open-days.spec.ts`.
+
+- **Servicio de barra (Flow):** la ficha del evento enseña los cierres del día de Flow (`flow.booking_service_projection`): pedidos, ventas por método, devoluciones pendientes, horas punta y lo más vendido. API.md §28.3; prueba en `open-days.spec.ts`.
 
 ## Pendiente
 

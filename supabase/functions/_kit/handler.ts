@@ -14,6 +14,9 @@ import { createFeedback, createFeedbackWorker } from './feedback.ts';
 import { createUsage } from './usage.ts';
 import { createFilesGc } from './files-gc.ts';
 import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
+import { applyPublicOperations, type PublicOperation } from './public-write.ts';
+import { isPublicOrigin, issueVisitor, publicReadWithVisitor, resolveVisitor, type Visitor } from './visitors.ts';
+import { createCapabilities, type CapabilitiesOptions } from './capabilities.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -44,6 +47,34 @@ export interface AppConfig extends SupabaseConfig {
   feedbackWorker?: boolean;
   /** Booking y Organizers: montan `portal-links` para emitir y gestionar enlaces de los portales (contrato §3.6). */
   portalIssuer?: boolean;
+  /**
+   * Rutas públicas propias (C11): `/api/v1/public/<pattern>`, sin sesión, con el visitante de `X-Visitor` resuelto y la
+   * escritura pública de la propia app a mano (`apply`). Van antes de la lectura pública genérica `GET public/<nombre>`.
+   */
+  publicRoutes?: PublicRoute[];
+  /** Catálogo de capacidades (0097): transporte y bases de API de las apps dueñas (pruebas). */
+  capabilities?: CapabilitiesOptions;
+}
+
+export interface PublicRequest {
+  request: Request;
+  url: URL;
+  params: Record<string, string>;
+  json(): Promise<any>;
+  /** El visitante de la cabecera `X-Visitor`, o null si no la trae (la ruta decide si lo exige con VISITOR_REQUIRED). */
+  visitor: Visitor | null;
+  /** Lote público de la propia app (tablas de core.allow_public_write), firmado por el visitante si lo hay. */
+  apply(operations: PublicOperation[]): Promise<{ cursor: number; results: unknown[] }>;
+  /** Lectura pública registrada (core.allow_public_read), con el visitor_id del visitante si lo hay. */
+  read(name: string, args?: Record<string, unknown>): Promise<unknown>;
+  supabase: ReturnType<typeof createSupabase>;
+}
+
+export interface PublicRoute {
+  method: string;
+  /** Patrón relativo a `/api/v1/public/`, por ejemplo `join`. */
+  pattern: string;
+  handler: (req: PublicRequest) => Promise<unknown | Response>;
 }
 
 export interface WorkerRequest {
@@ -116,6 +147,7 @@ export function createApp(config: AppConfig): AppHandler {
   const suggestions = createSuggestions(supabase, config.app, sync.validateOperations, config.hooks ?? {});
   const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
+  const capabilities = createCapabilities(supabase, config.app, config.capabilities ?? {});
   const mcpCore = (ctx: RequestContext): McpCore => ({
     commit: (body) => sync.commit(ctx, body),
     prepare: (body) => agents.prepare(ctx, body),
@@ -148,6 +180,10 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'read/:name', handler: ({ ctx, params, url }) => sync.read(ctx, params.name ?? '', readArgs(url.searchParams)) },
     { method: 'POST', pattern: 'read/:name', handler: async ({ ctx, params, json }) => sync.read(ctx, params.name ?? '', await json()) },
     { method: 'POST', pattern: 'invoke/:name', handler: async ({ ctx, params, json }) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return sync.invoke(ctx.user.id, params.name ?? '', await json()); } },
+    // Catálogo de capacidades (0097): lo que esta persona puede invocar en otras apps, la invocación con su token y sus recibos.
+    { method: 'GET', pattern: 'capabilities', handler: ({ ctx }) => capabilities.list(ctx) },
+    { method: 'GET', pattern: 'capabilities/receipts', handler: ({ ctx, url }) => capabilities.receipts(ctx, url.searchParams) },
+    { method: 'POST', pattern: 'capabilities/:id/invoke', handler: async ({ ctx, params, json }) => capabilities.invoke(ctx, params.id ?? '', (await json()) as Record<string, unknown>) },
     // Cerrar sesión: esta app y el pase de sesión única del dispositivo; `{everywhere: true}` cierra todas las sesiones y pases.
     { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => {
       let everywhere = false;
@@ -262,6 +298,7 @@ export function createApp(config: AppConfig): AppHandler {
     workerRoutes.push({ method: 'POST', pattern: 'files/gc', handler: () => filesGc.tick() });
   }
   const compiledWorkers = workerRoutes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
+  const compiledPublic = (config.publicRoutes ?? []).map((route) => ({ ...route, matcher: compile(route.pattern) }));
   // Módulos del núcleo sin app propia (`resources`: espacios e inventario, RECURSOS.md §3): cada Edge los sirve en
   // `/api/v1/<módulo>/…` con su propia sincronización. La pertenencia la deriva el núcleo de las apps de origen.
   const modules = new Map<string, { sync: ReturnType<typeof createSync>; routes: Array<{ method: string; pattern: string; handler: (req: RouteRequest) => Promise<unknown>; matcher: (path: string) => Record<string, string> | null }> }>(MODULES.map((name) => {
@@ -293,20 +330,23 @@ export function createApp(config: AppConfig): AppHandler {
 
   return async (request: Request): Promise<Response> => {
     const origin = request.headers.get('origin');
+    // Las rutas `public/*` (lecturas y escrituras públicas, visitantes) las pide cualquier portal del proyecto, no solo la propia app.
+    const isPublicPath = /\/api\/v1\/public\//.test(new URL(request.url).pathname.replace(prefix, ''));
+    const originOk = !!origin && (origins.has(origin) || (isPublicPath && isPublicOrigin(origin)));
     const headers: Record<string, string> = {
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',
       Vary: 'Origin',
       'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'authorization,apikey,content-type',
+      'Access-Control-Allow-Headers': 'authorization,apikey,content-type,x-visitor',
     };
-    if (origin && origins.has(origin)) headers['Access-Control-Allow-Origin'] = origin;
+    if (originOk) headers['Access-Control-Allow-Origin'] = origin!;
     const json = (out: unknown, status = 200) => out instanceof WithHeaders
       ? new Response(JSON.stringify(out.body), { status: out.status, headers: { ...headers, ...out.extra } })
       : new Response(JSON.stringify(out), { status, headers });
     try {
-      if (origin && !origins.has(origin)) fail(403, 'ORIGIN_REJECTED', messageFor('ORIGIN_REJECTED'));
+      if (origin && !originOk) fail(403, 'ORIGIN_REJECTED', messageFor('ORIGIN_REJECTED'));
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
       const url = new URL(request.url);
       const path = url.pathname.replace(prefix, '');
@@ -366,6 +406,33 @@ export function createApp(config: AppConfig): AppHandler {
         const audience = AUDIENCES.includes(asked) ? asked : (AUDIENCES.includes(config.app) ? config.app : 'organizers');
         const items = await supabase.rpc<unknown[] | null>('core_public_read', { p_name: 'contact', p_args: { lang, audience } });
         return json(withHeaders({ lang, audience, items: Array.isArray(items) ? items : [] }, { 'Cache-Control': 'public, max-age=300' }));
+      }
+      // Visitantes (C11): alta sin datos; el token solo se enseña aquí y viaja luego en `X-Visitor`.
+      if (path === '/api/v1/public/visitor' && request.method === 'POST') {
+        const body = await readJson() as { eventCode?: unknown; event_code?: unknown };
+        const code = body.eventCode ?? body.event_code;
+        return json(await issueVisitor(supabase, typeof code === 'string' ? code : null));
+      }
+      if (path.startsWith('/api/v1/public/')) {
+        const relative = path.slice('/api/v1/public/'.length);
+        const visitor = await resolveVisitor(supabase, request);
+        const read = (name: string, args: Record<string, unknown> = {}) => publicReadWithVisitor(supabase, name, args, visitor);
+        for (const route of compiledPublic) {
+          if (route.method !== request.method) continue;
+          const params = route.matcher(relative);
+          if (!params) continue;
+          const result = await route.handler({ request, url, params, json: readJson, visitor, supabase, read,
+            apply: (operations) => applyPublicOperations(supabase, config.app, operations, visitor?.id ?? null) });
+          return result instanceof Response ? result : json(result);
+        }
+        // Lectura pública expuesta al navegador (core.allow_public_read(nombre, fn, true)), por su nombre y con los parámetros
+        // de la consulta como args. El dato es público por decisión de la app dueña, así que la sirve cualquier Edge; con
+        // visitante, sin caché. Las lecturas no expuestas (las que piden las Edges con argumentos propios) dan 404.
+        if (request.method === 'GET' && /^[a-z][a-z_]{1,40}$/.test(relative)) {
+          const out = await publicReadWithVisitor(supabase, relative, Object.fromEntries(url.searchParams), visitor, { fromClient: true });
+          return json(visitor ? out : withHeaders(out, { 'Cache-Control': 'public, max-age=30' }));
+        }
+        fail(404, 'NOT_FOUND', 'Ruta pública desconocida.');
       }
       if (path === '/api/v1/auth/recover' && request.method === 'POST') {
         if (!recoveryOn) fail(503, 'RECOVERY_DISABLED', messageFor('RECOVERY_DISABLED'));
