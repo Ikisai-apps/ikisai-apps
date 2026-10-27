@@ -348,7 +348,6 @@ export const EN: Dictionary = {
   'Ikisai ha cambiado las fechas que te propone. Te enseñamos las nuevas.': 'Ikisai has changed the dates it is offering you. Here are the new ones.',
   'En opción': 'On hold',
   'Ocupado': 'Taken',
-  'Lo que marques son posibilidades: Ikisai confirmará la fecha definitiva.': 'What you mark are possibilities: Ikisai will confirm the final date.',
   'Fecha definitiva': 'Final date',
   'Ikisai ya ha fijado la fecha de tu retiro. Si necesitas cambiarla, escríbenos desde «Ayuda y sugerencias».': 'Ikisai has already set the date of your retreat. If you need to change it, write to us from “Help and suggestions”.',
   'Fechas que te propone Ikisai': 'Dates offered by Ikisai',
@@ -383,7 +382,6 @@ export const EN: Dictionary = {
   'de los que IVA ({n} %)': 'of which VAT ({n} %)',
   'Señal para reservar': 'Deposit to book',
   'Se aplica el mínimo por retiro de {importe} (el cálculo daba {calculado}).': 'The minimum per retreat of {importe} applies (the calculation came to {calculado}).',
-  'Precio orientativo. La propuesta definitiva te la envía Ikisai.': 'Approximate price. Ikisai will send you the final proposal.',
   'Gastos (Ikisai y otros)': 'Costs (Ikisai and others)',
   'Margen': 'Margin',
   'Punto de equilibrio': 'Break-even point',
@@ -450,7 +448,6 @@ export const EN: Dictionary = {
   'Lo que has enviado a Ikisai': 'What you have sent to Ikisai',
   'Aún no tienes propuesta': 'You do not have a proposal yet',
   'Cuando el equipo de Ikisai te envíe la propuesta, la verás aquí. Mientras, puedes escribirnos.': 'When the Ikisai team sends you the proposal, you will see it here. In the meantime, you can write to us.',
-  'La aceptación la cierra el equipo de Ikisai contigo. Si te encaja, pulsa «Quiero confirmar».': 'The Ikisai team finalises the acceptance with you. If it suits you, press “I want to confirm”.',
 
   // Pagos y facturas (fase 3)
   'Pagos': 'Payments',

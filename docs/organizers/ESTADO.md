@@ -107,6 +107,7 @@
 
 - 2026-10-27 · **Propuestas del equipo con archivos** (VG por Core): dirección sube el archivo del material al momento (`app/upload-now.ts`) y la propuesta lleva su `file_id`. Quien organiza lo lee al aceptarla. Prueba en `team-proposals.test.ts`.
 - 2026-10-27 · **Comida que se ofrece** (VG por Core; Food Fd4, `food.portal_offers`, migración 1111): en Experiencia › Menú, el menú cerrado y las cartas con quién paga, cuándo, dónde y sus líneas con precio; lo interno no se ve (API.md §20). Prueba en `food-offers.test.ts`.
+- 2026-10-27 · **Notas de Central en Fechas, Diseño y Propuesta** (X2, central 0590): `organizers.dates_note`, `organizers.quote_note` y `organizers.proposal_note` se leen de Central como los demás textos comunes, con reserva en los dos idiomas.
 
 ## Pendiente
 
@@ -115,10 +116,9 @@
 - Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
-- Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.
 - Puntos abiertos que decide el usuario: API.md §13.
 - Bandeja «Comentarios del retiro» (fase posterior del feedback).
 
 ## Bloqueos
 
-- La PR de la PWA depende de la #278 de Core (`loginWithLink`): no compila sin ella.
+- Ninguno.
