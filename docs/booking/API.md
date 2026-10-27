@@ -2157,8 +2157,10 @@ Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): c
 | Confirmarlo (crea el evento y su número público) | `#/reservas/<id>` | `booking.reserva.acciones.confirmar` | `event` |
 | Buscar el número en recepción | `#/recepcion` | `booking.recepcion.buscar` | `manual` |
 | Cobrar y alojar | `#/recepcion` | `booking.recepcion.cobrar` (o `booking.recepcion.alojar_pagado` si se pagó en línea) | `event` (aceptado por la base) |
-| Completar los datos | `#/huespedes/<evento>` | `booking.huespedes.ficha.guardar` | `event` (al guardar la ficha) |
+| Completar los datos | `#/huespedes/<evento>/<huésped>` (abre su ficha) | un campo de la ficha, p. ej. `booking.huespedes.ficha.document_number` | `event` (al guardar la ficha; avisa la hoja y cada campo cambiado) |
 | Llega | `#/recepcion` | `booking.recepcion.llega` | `event` |
 | Sale (libera la cama y pide la limpieza) | `#/recepcion` | `booking.recepcion.sale` | `event` |
 
-Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` al guardar.
+Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` y `<feedbackId>.<campo>` por cada campo cambiado, y lo hace cuando la base lo ha aceptado (sin red, como pendiente). Los campos llevan `data-field-*` con entidad y columna (`booking.guests` y `document_number`), así que entran en el inventario.
+
+En Recepción, en el móvil (pestañas), el Guiado abre el carril del botón que busca (`registerReveal('booking.recepcion')`). El buscador se guarda en la pestaña, así que, si se ha buscado el número antes, el paso señala la ficha de esa persona. Lo pagado en línea confirma también `booking.recepcion.cobrar`.

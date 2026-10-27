@@ -75,8 +75,9 @@ function resolve(hash: string): { title: string; slug: string; mount: ViewMount;
     const id = proposal[1]!.toLowerCase();
     return proposal[2] ? { title: 'Propuesta', slug: 'propuesta', mount: mountProposalDocument(id), base: '#/reservas' } : { title: 'Propuesta', slug: 'propuesta', mount: mountProposalEditor(id), base: '#/reservas' };
   }
-  const guests = new RegExp(`^#/huespedes/(${UUID})$`, 'i').exec(hash);
-  if (guests) return { title: 'Huéspedes', slug: 'huespedes', mount: mountGuests(guests[1]!.toLowerCase()), base: '#/huespedes' };
+  // `#/huespedes/<evento>/<huésped>` abre además la ficha de ese huésped (recepción y el Guiado)
+  const guests = new RegExp(`^#/huespedes/(${UUID})(?:/(${UUID}))?$`, 'i').exec(hash);
+  if (guests) return { title: 'Huéspedes', slug: 'huespedes', mount: mountGuests(guests[1]!.toLowerCase(), guests[2]?.toLowerCase() ?? null), base: '#/huespedes' };
   return { ...ROUTES['#/']!, base: '#/' };
 }
 
