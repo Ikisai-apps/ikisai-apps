@@ -619,3 +619,6 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .gvisitor-sent{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .gvisitor-foot{margin:24px 0 0;display:grid;gap:8px}
 .gvisitor-foot button,#visitorEnter,#visitorJoin,#visitorLeave{min-height:46px}
+/* Revisión móvil de UI-kit (27-10): a 390 px «Ikisai Guests · nombre» no cabía en la cabecera (121 px en 108). En móvil se
+   quita el nombre de la cuenta (sale en el menú y, con la familia, en el selector de personas). */
+@media (max-width:420px){#shellSubtitle{display:none}}
