@@ -1990,7 +1990,7 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
   - `https://finance.ikisai.com/#/justificante?ref=<source_ref>`, con la clave de la app codificada en la URL (`encodeURIComponent`), para que Flow no tenga que guardar ids.
 - **Qué enseña:**
   - el emisor (datos del centro, de Central, con red);
-  - el número de cobro (`receipt_number` del apunte; lo pone la app, no es una serie de Finance). Sin él, en un cobro suelto (`<app>:receipt:<id>`), los 8 primeros caracteres del id en mayúsculas, así nunca sale como «Ticket de ventas» del día;
+  - el número de cobro (`receipt_number` del apunte; lo pone la app, no es una serie de Finance). Sin él, en un cobro suelto (`<app>:receipt:<id>`, o el alojamiento de recepción `booking:stay:<id>`), los 8 primeros caracteres del id en mayúsculas, así nunca sale como «Ticket de ventas» del día;
   - la fecha y las líneas (`detail`);
   - los medios de cobro (Metálico, Bizum, Tarjeta, Bitcoin… y cualquier clave de `methods` tal cual);
   - la base, el IVA incluido y el total.
