@@ -761,7 +761,18 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 | `organizers.retreats_next_30d` | Retiros próximos con quien organiza dentro | Reservas que empiezan de hoy a hoy+30 con un enlace de Organizers sin revocar | up |
 | `organizers.retreats_without_access` | Retiros próximos sin acceso de quien organiza | Las mismas, sin ningún enlace de Organizers vivo | down |
 | `organizers.guest_comments_open_30d` | Comentarios de asistentes abiertos (30 días) | Informes de Guests sobre el retiro (`subject = event`, destino `organizer`) de los últimos 30 días que siguen `open` | down |
+| `organizers.guest_comments_unread_30d` | Comentarios de asistentes sin leer (30 días) | Los mismos que nadie con acceso de Organizers a ese retiro ha visto (`organizers.comment_reads`, 0706) | down |
 | `organizers.reports_sent_30d` | Informes enviados desde Organizers (30 días) | Informes con `origin_app = organizers` de los últimos 30 días | — |
 
-- **«Sin leer»:** Organizers no guarda qué ha leído quien organiza, así que el indicador cuenta los comentarios abiertos.
+- **«Sin leer»:** desde la 0706 está `guest_comments_unread_30d`; `guest_comments_open_30d` sigue contando los abiertos.
 - **«Pagos pendientes de quien organiza»:** es de Finance (petición F4).
+
+## 23. Comentarios leídos y sin leer (migración 0706; diseño en `MUELA/equipo/feedback/organizers/COMENTARIOS_LEIDOS.md`)
+
+- **En el resumen del retiro:** en «Comentarios de tus asistentes», lo que esta persona no ha visto lleva «Nuevo» y el título dice cuántos. Un comentario cuenta como visto tras un segundo en pantalla (`IntersectionObserver`); la marca se queda hasta la próxima vez que se abre.
+- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora, sin purga.
+  - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
+  - No se cambia ni se borra (`IMMUTABLE_FIELD`).
+  - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.
+- **Cliente:** `app/comment-reads.ts` (`readIds`, `unreadOf`, `readOperations`, `markRead`). Sin red, se encola como el resto.
+

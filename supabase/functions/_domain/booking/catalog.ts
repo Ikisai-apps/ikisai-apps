@@ -17,6 +17,8 @@ export const TABLES = {
   visitorRequests: 'booking.visitor_requests',
   /** 1400: borrador de los datos del viajero de una solicitud de noches (datos personales: solo con el ámbito de huéspedes). */
   stayTravelers: 'booking.stay_travelers',
+  /** 1413: intentos de pago en línea de las solicitudes de noches (solo los escribe el sistema). */
+  stayPayments: 'booking.stay_payments',
   staffNeeds: 'booking.staff_needs',
   rates: 'booking.rates',
   conditions: 'booking.conditions',

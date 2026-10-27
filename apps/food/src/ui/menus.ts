@@ -7,7 +7,7 @@ import {
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createSortableList, el, formatDate, icon, listRow, openSheet, plural, renderCover, renderMoneyBreakdown, replace, toast, type Focus, type FocusItem, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
-import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
+import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, EQUIPMENT_STATUS_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
   familyGuestsOn,
   dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
@@ -708,7 +708,11 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           el('td', null, names.get(line.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(line.quantity)), el('td', null, UNIT_LABELS[line.unit])))))
           : el('p', { class: 'muted' }, 'La receta no tiene ingredientes.'),
         recipe.allergens.length ? el('p', { class: 'warnline' }, `Alérgenos: ${recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ')}`) : null,
-        required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => `${n.quantity_required} × ${machines.get(n.equipment_id)?.name ?? 'máquina retirada'}`).join(', ')) : null,
+        required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => {
+          // Con su estado si no está operativa (hallazgo F-MAQ-2): la cocina ve en el menú lo que puede fallar.
+          const m = machines.get(n.equipment_id);
+          return `${n.quantity_required} × ${m?.name ?? 'máquina retirada'}${m && m.status !== 'operativo' ? ` (${EQUIPMENT_STATUS_LABELS[m.status].toLowerCase()})` : ''}`;
+        }).join(', ')) : null,
         prep ? el('p', { class: 'cookprep' }, el('strong', null, 'Antelación: '), prep) : null,
         methodStepsView(recipe),
         recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null,

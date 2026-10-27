@@ -114,6 +114,7 @@
 - 2026-10-27 · **Guiado mínimo del kit** (0.68, #949): `guide` en la cáscara (`?campo=` y `?paso=`) y `registerReveal` por pestaña de la ficha del retiro.
 - 2026-10-27 · **Evidencia de GitHub para Flow** (`organizers.github_evidence`, 0704, #927; API.md §21): `GET github/evidence`, solo para el personal; espera el `GITHUB_TOKEN` de solo lectura de la Edge (carril de VG).
 - 2026-10-27 · **Indicadores para Dirección** (P7 de Central, 0705, #959; API.md §22): retiros próximos con y sin acceso de quien organiza, comentarios de asistentes abiertos e informes enviados. Los pagos pendientes, a Finance (F4).
+- 2026-10-27 · **Comentarios leídos y sin leer** (línea de Core; 0706; API.md §23): «Nuevo» en lo que quien organiza no ha visto, con `organizers.comment_reads`, y el KPI `guest_comments_unread_30d` para Dirección. Pruebas en `retreat-comments.test.ts`.
 
 ## Pendiente
 
