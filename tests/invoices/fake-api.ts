@@ -914,6 +914,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (!found) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
         return json(res, 200, found);
       }
+      if (path === 'read/invoices.payment_links_of' && method === 'POST') return json(res, 200, { items: [] });
       if (path === 'read/invoices.vf_records_of' && method === 'POST') {
         const body = await readJson(req);
         return json(res, 200, { records: vfRecords.filter((r) => r.issued_invoice_id === body.issued_invoice_id), settings: { sending: 'apagado', locked_until: null } });

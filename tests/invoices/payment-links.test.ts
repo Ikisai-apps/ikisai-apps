@@ -14,11 +14,14 @@ const stripe = createFakeStripe();
 let app: TestApp;
 let seq = 0;
 const RES = '5a1d0c2e-7b3f-4e8a-9c6d-2f4b8e1a3c50';
+const OTHER_RES = '6b2e1d3f-8c4a-4f9b-8d7e-3a5c9f2b4d61';
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
+const WHSEC = 'whsec_prueba_sintetica';
 
 test.before(async () => {
   app = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
-    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, payments: stripe }),
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, payments: stripe, workerKey: WORKER_KEY, paymentsWebhookSecret: WHSEC }),
   });
 });
 
@@ -85,3 +88,91 @@ test('F5: el portal del organizador ve el enlace abierto de cada factura sin cob
   const shown = (await money()).invoices.find((i: any) => i.id === id).payment_link;
   assert.deepEqual([shown.url, shown.provider], [created.data.url, 'stripe']);
 });
+
+test('«Pagar ahora» del portal (F5, worker de Organizers): solo dentro del ámbito y vuelve a Organizers', async () => {
+  const id = await issued(200);
+  const other = await issued(50);
+  await app.t.db.query(`insert into invoices.issued_allocations (issued_invoice_id, target_app, target_kind, target_id, target_label, allocated_amount) values ($1, 'booking', 'reservation', $2, 'Reserva', 200), ($3, 'booking', 'reservation', $4, 'Otra', 50)`,
+    [id, RES, other, OTHER_RES]);
+  const uid = (await app.t.db.query<{ u: string }>(`select user_id u from core.memberships where app = 'organizers' limit 1`)).rows[0]!.u;
+  const portal = (body: Record<string, unknown>, caller = 'organizers') => app.call('/api/v1/worker/payment-links/portal', { token: null, method: 'POST', body,
+    headers: { 'x-ikisai-worker-key': WORKER_KEY, 'x-ikisai-caller': caller } });
+  const ok = await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id, return_url: 'https://organizers.ikisai.com/#/retiro/x/pagos?pago=ok&factura=f' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.match(ok.data.url, /^https:\/\/checkout\.stripe\.com\//);
+  const sent = stripe.requests.at(-1)!;
+  assert.deepEqual([sent.successUrl, sent.amountCents], ['https://organizers.ikisai.com/#/retiro/x/pagos?pago=ok&factura=f', 22000]);
+  assert.equal(sent.cancelUrl, 'https://organizers.ikisai.com/#/retiro/x/pagos?pago=cancelado&factura=f', 'quien cancela no vuelve con «pago=ok»');
+  assert.equal((await links(id))[0]!.requested_from, 'portal');
+  // Una URL de vuelta ajena no se usa
+  await app.t.db.query(`update invoices.payment_links set status = 'cancelado' where issued_invoice_id = $1`, [id]);
+  await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id, return_url: 'https://ejemplo.invalid/robar' });
+  assert.equal(stripe.requests.at(-1)!.successUrl, 'https://organizers.ikisai.com/');
+  // Fuera de ámbito (factura de otra reserva u otra reserva) y otro llamante
+  for (const body of [{ actor: uid, reservation_id: RES, issued_invoice_id: other }, { actor: uid, reservation_id: OTHER_RES, issued_invoice_id: other }]) {
+    const res = await portal(body);
+    assert.deepEqual([res.status, res.data.error.code], [403, 'OUT_OF_SCOPE']);
+  }
+  assert.equal((await portal({ actor: uid, reservation_id: RES, issued_invoice_id: id }, 'booking')).status, 403);
+});
+
+const hook = (body: string, signature: string) => app.call('/api/v1/public/payments/stripe', { token: null, method: 'POST', body: JSON.parse(body), headers: { 'stripe-signature': signature } });
+const invoiceRow = async (id: string) => (await app.t.db.query<Record<string, any>>(`select payment_status, paid_at::text paid_at, payment_method from invoices.issued_invoices where id = $1`, [id])).rows[0]!;
+
+test('PR 4 · aviso de Stripe: el pago marca la factura cobrada (Finance sistema); repetido no hace nada; firma mala, 400', async () => {
+  const id = await issued(50);
+  const created = await link(id);
+  const sessionId = stripe.requests.length ? [...stripe.sessions.values()].find((x) => x.url === created.data.url)!.id : '';
+  stripe.pay(sessionId);
+  const { body, signature } = await stripe.webhook(sessionId, 'checkout.session.completed', WHSEC);
+  const bad = await hook(body, signature.replace(/v1=(.)/, (_m, c: string) => `v1=${c === '0' ? '1' : '0'}`));
+  assert.equal(bad.status, 400);
+  assert.equal((await invoiceRow(id)).payment_status, 'pendiente', 'sin firma válida no cambia nada');
+  const ok = await hook(body, signature);
+  assert.deepEqual([ok.status, ok.data.outcome], [200, 'applied'], JSON.stringify(ok.data));
+  const row = await invoiceRow(id);
+  assert.deepEqual([row.payment_status, row.payment_method], ['cobrada', 'tarjeta']);
+  assert.ok(row.paid_at);
+  assert.equal((await links(id))[0]!.status, 'pagado');
+  const hist = await app.t.db.query<{ name: string }>(`select p.display_name name from core.changes c join core.profiles p on p.user_id = c.actor_id where c.row_id = $1 order by c.cursor desc limit 1`, [id]);
+  assert.equal(hist.rows[0]?.name, 'Finance (sistema)', 'el historial dice quién lo cobró');
+  assert.equal((await hook(body, signature)).data.outcome, 'duplicate');
+});
+
+test('PR 4 · importe distinto o factura ya cobrada a mano: no se toca, queda para revisar; caducado: se cierra', async () => {
+  const id = await issued(80);
+  const created = await link(id);
+  const sid = [...stripe.sessions.values()].find((x) => x.url === created.data.url)!.id;
+  stripe.pay(sid, 100);
+  const w = await stripe.webhook(sid, 'checkout.session.completed', WHSEC);
+  assert.equal((await hook(w.body, w.signature)).data.outcome, 'mismatch');
+  assert.equal((await invoiceRow(id)).payment_status, 'pendiente');
+  const review = (await app.call('/api/v1/read/invoices.payment_events_review', { body: {} })).data.items as Array<Record<string, any>>;
+  assert.ok(review.some((r) => r.issued_invoice_id === id && r.outcome === 'mismatch' && /Importe pagado/.test(r.detail)));
+  // Otro enlace que caduca en Stripe
+  const id2 = await issued(30);
+  const c2 = await link(id2);
+  const sid2 = [...stripe.sessions.values()].find((x) => x.url === c2.data.url)!.id;
+  await stripe.expireCheckout(sid2);
+  const e = await stripe.webhook(sid2, 'checkout.session.expired', WHSEC);
+  assert.equal((await hook(e.body, e.signature)).data.outcome, 'applied');
+  assert.equal((await links(id2))[0]!.status, 'caducado');
+});
+
+test('PR 4 · conciliación: cobra lo pagado sin aviso y cierra en la pasarela lo cancelado', async () => {
+  const id = await issued(40);
+  const c = await link(id);
+  const sid = [...stripe.sessions.values()].find((x) => x.url === c.data.url)!.id;
+  stripe.pay(sid); // el aviso se perdió
+  const id2 = await issued(60);
+  const c2 = await link(id2);
+  const sid2 = [...stripe.sessions.values()].find((x) => x.url === c2.data.url)!.id;
+  const row2 = (await app.t.db.query<{ revision: number }>(`select revision from invoices.issued_invoices where id = $1`, [id2])).rows[0]!;
+  await commit([{ op: 'update', table: 'invoices.issued_invoices', id: id2, expectedRevision: Number(row2.revision), fields: { payment_status: 'cobrada', paid_at: '2026-10-22', payment_method: 'efectivo' } }]);
+  const run = await app.call('/api/v1/worker/payments/reconcile', { token: null, method: 'POST', body: {}, headers: { 'x-ikisai-worker-key': WORKER_KEY } });
+  assert.equal(run.status, 200, JSON.stringify(run.data));
+  assert.ok(run.data.paid >= 1 && run.data.closed >= 1, JSON.stringify(run.data));
+  assert.equal((await invoiceRow(id)).payment_status, 'cobrada');
+  assert.equal(stripe.sessions.get(sid2)!.status, 'expired', 'el cancelado ya no se puede pagar en Stripe');
+});
+

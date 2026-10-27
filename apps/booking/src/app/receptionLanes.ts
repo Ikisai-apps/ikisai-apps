@@ -12,7 +12,7 @@ export const LANES: ReadonlyArray<{ key: LaneKey; title: string; short: string }
   { key: 'entradas', title: 'Entradas de hoy', short: 'Entradas' },
   { key: 'estancia', title: 'En estancia', short: 'Dentro' },
   { key: 'salidas', title: 'Salidas y limpieza', short: 'Salidas' },
-  { key: 'excepciones', title: 'Excepciones', short: 'Excepc.' },
+  { key: 'excepciones', title: 'Excepciones', short: 'Avisos' },
 ];
 
 export type Tone = 'ok' | 'warn' | 'alert' | '';

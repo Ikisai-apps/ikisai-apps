@@ -430,10 +430,12 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       const travelers = travelersOf(body.traveler, persons);
       const name = text(body.name, 120) ?? text(travelers[0]?.first_name, 120);
       if (!name) fail(422, 'INVALID_FIELDS', 'Falta el nombre.', { field: 'name' });
+      // 1418: «Pagar ahora» (`online`) o «Pagar en recepción» (`on_site`), si el evento deja las dos; sin `pay`, el del evento
+      const pay = body.pay === undefined || body.pay === null ? null : body.pay === 'online' ? 'online' : body.pay === 'on_site' ? 'hold' : fail(422, 'INVALID_FIELDS', 'Pago: online u on_site.', { field: 'pay' });
       const id = crypto.randomUUID();
       await apply([
         { op: 'insert', table: TABLES.visitorRequests, id, fields: {
-          via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200), note: text(body.note, 500),
+          via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200) ?? text(body.email, 200), note: text(body.note, 500), ...(pay ? { pay_mode: pay } : {}),
           from_date: date(body.from, 'from'), to_date: date(body.to, 'to'), persons, rate_id: mode, ...(beds.length ? { hold_bed_ids: [...new Set(beds)] } : {}),
         } },
         ...travelers.map((fields, i) => ({ op: 'insert' as const, table: TABLES.stayTravelers, id: crypto.randomUUID(), fields: { ...fields, request_id: id, position: i + 1 } })),
@@ -493,6 +495,34 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       }
       await invoke({ action: 'open', request_id: requestId, provider: payments!.name, provider_ref: intent!.providerRef, amount_cents: Number(item!.total_cents), redirect_url: intent!.redirectUrl });
       return { redirect_url: intent!.redirectUrl, expires_at: item!.hold_until, reused: false };
+    },
+  }, {
+    // Cancelar noches pagadas en línea (1419; política de VG): sin `confirm`, solo dice cuánto se devolvería; con `confirm`,
+    // pide la devolución a la pasarela y después suelta la cama. Repetirlo no devuelve dos veces.
+    method: 'POST', pattern: 'stay/cancel',
+    handler: async ({ json, visitor, supabase }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
+      const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_cancel', p_args: { ...args, request_id: requestId, visitor_id: visitor!.id } });
+      await ensureServiceActor(supabase, 'booking');
+      const quote = await invoke({ action: 'quote' });
+      if (quote?.replayed) return { status: 'cancelada', replayed: true };
+      const preview = { percent: quote.percent, tier: quote.tier, paid_cents: quote.paid_cents, refund_cents: quote.refund_cents, full_until: quote.full_until, half_until: quote.half_until };
+      if (body.confirm !== true) return { status: 'quote', ...preview };
+      if (Number(quote.refund_cents) > 0 && (!payments?.refund || payments.name !== quote.provider)) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
+      // el importe queda fijado en la base antes de tocar la pasarela; la clave hace que repetir no devuelva dos veces
+      const claim = await invoke({ action: 'claim' });
+      const cents = Number(claim.refund_cents);
+      if (cents > 0) {
+        try {
+          await payments!.refund!(String(claim.provider_ref), cents, `booking-stay-cancel-${requestId}`);
+        } catch {
+          fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo. Vuelve a intentarlo: no se devolverá dos veces.');
+        }
+      }
+      const out = await invoke({ action: 'apply' });
+      return { status: 'cancelada', ...preview, refund_cents: cents, replayed: out?.replayed ?? false };
     },
   }, {
     // El aviso de la pasarela (webhook firmado; sin sesión ni visitante). Cada aviso cuenta una vez.

@@ -2311,3 +2311,30 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
   - `decompose`: quitar una fase del modelo la manda a la papelera y suelta sus tareas en el mismo guardado.
 - **Papelera:** las fases de los proyectos y áreas en la papelera van a ella después de sus tareas, y la purga las borra.
 - **Pruebas:** `tests/tasks/phases.test.ts`.
+
+## 52. La producción de un proyecto (migración `0357`; «Proyectos y producción» 7.2)
+
+`GET projects/production?projectId=…` es la capacidad `tasks.project_production` (lectura). Pueden leerla reader, editor, owner y outsider, este último solo en los proyectos que se le abren. Si quien lee no ve el proyecto, o el proyecto no existe, da 404.
+
+- **`project`:** `{id, tabId, title, status, due}`.
+- **`phases`:** `{id, name, position, status, start, due, closedNote, total, open, done, blocked, nextTaskId}`.
+  - `total`, `open` y `done` cuentan las madres.
+  - `blocked` cuenta el trabajo bloqueado.
+  - `nextTaskId` es la primera tarea de trabajo sin hacer y sin bloquear, por orden de madre y de paso.
+- **`tasks`:** `{id, parentId, phaseId, title, done, doneAt, priority, due, position, container, trades, spaces, people, materials, purchases, blocked: {by, ids}}`.
+  - Los pasos llevan la fase de su madre.
+  - Un contenedor está hecho cuando lo están todos sus pasos.
+  - `blocked.by` vale `dependency` (una dependencia sin hacer), `step` (el paso anterior de una cadena en orden) o `null`. El material se añade en la 7.3.
+- **`lanes`:** `byTrade`, `bySpace`, `byPerson` (persona o `level:<nivel>`) y `byPhase` (`none` = sin fase), cada uno con `{open, done}`. Cuentan solo tareas de trabajo (no contenedores) y solo llevan ids: los nombres los pone quien lee.
+- **`next`:** `[{phaseId, taskId}]`, la siguiente acción de cada fase.
+- **El cálculo de bloqueo y fase** está en `tasks.production_rows(proyecto)`, que es la misma regla que «hoy» (§47).
+- **Pruebas:** `tests/tasks/production.test.ts`.
+
+## 56. Acciones de la revisión semanal de Dirección (Central, decisión de VG en vg-41)
+
+- **Cómo llegan:** Central manda `central.weekly_action` por `POST requests/task`, con el token de la persona, igual que `central.compliance_due` (§20). La ruta ya admitía cualquier `central.<nombre>`, así que el servidor no cambia.
+- **Dónde quedan:** sin área, en «Por clasificar». Una regla de entrada las lleva a su proyecto.
+- **Repetir:** con la misma `external_ref` devuelve la misma petición.
+- **Estado de vuelta:** por `tasks.targets`, como los vencimientos.
+- **En la app:** «Gestionar entradas» las conoce como «Central · Revisión semanal» y propone el proyecto de Dirección.
+- **Pruebas:** `tests/tasks/central-weekly.test.ts`.
