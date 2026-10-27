@@ -2071,3 +2071,21 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
 - Errores: con hijas General, 422 `LABEL_HAS_GENERAL_CHILDREN` (primero ellas). Si no es una General viva, 422 `INVALID_OPERATION`. Si el área no existe, 404.
 - Interfaz: «Solo de un área…» en el editor de una etiqueta General. Se elige el área, que viene marcada con la que más la usa o con la actual, y la hoja dice en qué otras áreas queda una copia.
 - Pruebas: `tests/tasks/general-to-area.test.ts`.
+
+## 41. «Vista de trabajo» de la tarea (FB_2026_071; VG eligió «Mesa de trabajo» el 27-10-2026)
+
+- **Dónde:** en las tareas principales, la baldosa ancha «Vista de trabajo» de la ficha «Portada y foco». Abre la mesa en foco, con «‹ Portada» (`apps/tasks/public/trabajo-ui.js`, clases `tkw-`).
+- **«Todo»** (añadido de VG; marcado al entrar): la lista completa de lo que necesita la tarea y sus pasos, con sus materiales de `tasks.task_materials`. Se agrupa así:
+  - máquinas y herramientas (artículos no consumibles);
+  - EPI: los puestos a mano y los que piden esas máquinas (`resources.item_links`, `requires_ppe`, migración 0813), con la parte del cuerpo de `attributes.body_parts`;
+  - materiales, con las cantidades sumadas.
+
+  Al tocar un paso, la lista se queda con lo de ese paso; «Todo» vuelve a la lista completa.
+- **«Preparar antes de empezar»** (añadido de VG; plegado por defecto): el carro como lista que se marca, con los EPI por parte del cuerpo y quién los pide. Lo marcado se recuerda solo en el dispositivo (`localStorage`).
+- **Pasos:**
+  - las hijas, «en orden» con «Pasos en orden» (`steps_in_order`) y «En cualquier momento» (`step_free`, 0320);
+  - «Hecho», «+ Paso», «Fuera de orden» o «Volver a la cadena», y «Abrir el paso»;
+  - el mismo modelo y los mismos guardados que «Tareas hijas».
+- **EPI:** se leen de `GET /api/v1/resources/snapshot?tables=resources.item_links` al abrir la mesa, como mucho una vez por minuto. Sin la tabla o sin red, la mesa sale sin EPI. El tipo `epi` cuenta como equipo, no se gasta.
+- **Lectura:** quien solo lee ve la mesa sin «+ Paso», sin «Fuera de orden» y con «Hecho» desactivado.
+- **Pruebas:** `tests/tasks/trabajo.spec.ts`.
