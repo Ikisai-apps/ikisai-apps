@@ -135,6 +135,12 @@ Diseño en `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`; forma acordad
   - `resources.plans_with_decor` (miembros de Recursos: Central y Booking): lo mismo con las dos capas sin resolver (`layer`, `eventId`, `op`, `replacesItemId`). Con `{event_id}`, la general y la de ese evento.
 - **Pruebas:** `tests/resources/decor-estate.test.ts`.
 
+## 2.8 Tipo de cama y silueta de cabecera en los portales (migración 0816, 27-10-2026)
+
+- **`bedKind`** en cada cama de `portal_plans` y `plans_with_decor` que tenga `attributes.bed_kind` (`individual` · `doble` · `litera` · `sofa_cama`): el mapa del kit pinta su icono (`bedIcons`). Ningún otro atributo sale.
+- **`space_images.header_for`** (`text[]`, por defecto vacío): apps de las que esa silueta es la cabecera (`central`, `guests`, `organizers`). Solo en `kind = 'silueta'`, sin repetidas y una imagen viva por app; para cambiarla, el mismo lote la quita de la anterior (`409 HEADER_TAKEN` si no). La escribe el owner. Las lecturas dan `headerFor` en cada imagen; cada portal toma la suya.
+- **Pruebas:** `tests/resources/decor-estate.test.ts`.
+
 ## 3. Inventario (fase R3, migración 0802)
 
 Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de artículo, solo el owner. Huéspedes, organizadores y outsiders no lo ven.
