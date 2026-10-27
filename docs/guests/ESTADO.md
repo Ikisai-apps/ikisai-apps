@@ -99,6 +99,8 @@
 
 ## Pendiente
 
+- **«Tus ofertas de hoy» (API.md §9.18):** construido con su prueba de nodo; la de Playwright, cuando FD3 (Food) y BG16 (Booking #748) estén en `main`. «A cuenta» con número, cuando Flow publique FL1.
+
 - **Encargo de VG del 26-10 (plazo 29-10), API.md §9.17:** «Mis retiros», acceso que no caduca, dirección («todos») y etiqueta de equipo. Modelo de pantallas en la PR en borrador; código en la misma PR, con la #725 de Booking ya en main. G-B1 y G-B2 decididas por Core según la recomendación (a falta de VG).
 
 - «Mis tareas» (TK1), cuando Tasks lo publique.

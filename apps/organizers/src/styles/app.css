@@ -380,3 +380,13 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgproposal-changes{margin:0;padding-left:18px;display:grid;gap:2px}
 .orgproposal-item{display:grid;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
 .orgproposal-item p{margin:0}
+/* Comida que se ofrece (food.portal_offers): menú cerrado y cartas, con quién paga */
+.orgfoodoffers{display:grid;gap:10px;margin-bottom:16px}
+.orgfoodoffer{display:grid;gap:6px}
+.orgfoodoffer-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}
+.orgfoodoffer-head h4,.orgfoodoffer p{margin:0}
+.orgfoodoffer-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.orgfoodoffer-list li{display:grid;gap:2px}
+.orgfoodoffer-line{display:flex;gap:6px;align-items:baseline}
+.orgfoodoffer-code{font-weight:700;color:var(--muted)}
+.orgfoodoffer-price{margin-left:auto;font-weight:700;white-space:nowrap}

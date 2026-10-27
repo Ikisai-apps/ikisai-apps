@@ -4,6 +4,7 @@ Actualizado: 26 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), direct
 
 ## Hecho
 
+- v0.58.0: peticiones K1–K3 de Tasks: `Stat.selected` (`aria-pressed`), la barra inferior en la app instalada (`standalone: 'flush' | 'autohide' | 'both'`, `--tabbar-offset`) y «Mis reportes» (`openFeedbackCenter({ scope: 'mine' })`).
 - v0.57.1: icono de Flow (`board`) en el lanzador; antes salía `grid`, como Central.
 - v0.56.0: `labelJoin` en `createSpaceMap` y `openLabel` por tarjeta en `createFocus`.
 - v0.57.0: la pieza «envase» (`Envase`), `renderTile` con varios mandos y la estantería `createShelves` (MUELA-093 y 094); el asa de `createSortableList` a 46 × 46 (MUELA-095).

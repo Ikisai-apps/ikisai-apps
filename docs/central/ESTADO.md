@@ -116,6 +116,7 @@
   - Reglas puras en `_domain/central/house-doors.ts`. Pruebas en `outsider.test.ts` y `people-outsider.spec.ts`.
   - Con la tabla del núcleo 0095 (#723, P13): dirección propietaria de las seis internas y «todos» en los portales; staff, editor de Tasks, Food y Flow; outsider, también Flow.
   - Pasada única para quien ya tenía nivel (`1516`, #733): le llegan Flow, los portales y el «todos» de dirección.
+- 2026-10-27 · **Proyectos de Flow en la ficha y en el alta** (encargo de VG; `scopes.projects`, Flow 0902 y 0906): bloque «Proyectos de Flow» con «Cambiar» y «Deshacer», y en el alta Flow + proyecto en un paso. Reglas en `_domain/central/scopes.ts`; pruebas `scopes.test.ts` y `flow-scopes.spec.ts`. El outsider, sin editar hasta P14.
 
 ## Pendiente
 

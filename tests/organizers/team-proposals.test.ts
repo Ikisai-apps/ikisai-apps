@@ -5,6 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { createOrganizersApp, ORGANIZERS_ORIGINS } from '../../supabase/functions/organizers-api/app.ts';
@@ -132,4 +133,24 @@ test('organizers · descartar no cambia nada, y sin el nivel «dirección» no s
 
   const notDire = await suggest(otra.token, R3, [{ op: 'insert', table: TABLES.offers, id: uuid(), fields: { reservation_id: R3, name: 'X', price: 1 } }]);
   assert.equal(notDire.status, 403);
+});
+
+test('organizers · dirección propone un material con archivo: lo sube antes y quien organiza lo lee al aceptarlo', async () => {
+  const bytes = new TextEncoder().encode('%PDF-1.4 guía del retiro');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const ticket = await org('/api/v1/uploads', { token: dire.token, body: { filename: 'guia.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256 } });
+  assert.equal(ticket.status, 200, JSON.stringify(ticket.data));
+  booking.supabase.storage.set(ticket.data.path, bytes);
+  assert.equal((await org(`/api/v1/uploads/${ticket.data.id}/verify`, { token: dire.token, body: {} })).status, 200);
+  const id = uuid();
+  const sent = await suggest(dire.token, R1, [{ op: 'insert', table: TABLES.materials, id, fields: { reservation_id: R1, owner_id: dire.id, kind: 'file', title: 'Guía', file_id: ticket.data.id, published: false, window: 'always', position: 2 } }]);
+  assert.equal(sent.status, 200, JSON.stringify(sent.data));
+  // Antes de aceptar, el archivo no es de su retiro: no lo lee (K3).
+  assert.equal(code(await org(`/api/v1/files/${ticket.data.id}`, { token: ana.token })), 'FILE_NOT_FOUND');
+  const fixed = sent.data.operations.map((op: any) => ({ ...op, fields: { ...op.fields, owner_id: ana.id } }));
+  const approved = await org(`/api/v1/suggestions/${sent.data.id}/approve`, { token: ana.token, body: { operations: fixed } });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  const file = await org(`/api/v1/files/${ticket.data.id}`, { token: ana.token });
+  assert.equal(file.status, 200, JSON.stringify(file.data));
+  assert.equal(file.data.filename, 'guia.pdf');
 });
