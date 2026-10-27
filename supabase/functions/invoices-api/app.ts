@@ -9,6 +9,8 @@ import {
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
 import { createQuickPurchase } from './quick-purchase.ts';
+import { createPaymentLinks } from './payment-links.ts';
+import type { PaymentGateway } from '../_domain/payments/stripe.ts';
 import { checkAppEntrySources, withServerCaller } from './app-entries-caller.ts';
 import { createGoogleDriveApi, READER_VERSION, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
 import type { PdfTextItem } from '../_domain/invoices/mod.ts';
@@ -22,6 +24,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256 = /^[0-9a-f]{64}$/;
 
 export interface InvoicesAppOptions {
+  /** Pasarela de pago (finance-18): Stripe si hay `STRIPE_SECRET_KEY` (index.ts); en las pruebas, el falso. Sin ella, PAYMENTS_OFF. */
+  payments?: PaymentGateway | null;
   /** Base de la API de Tareas (`https://tasks.ikisai.com` o la función `tasks-api` directa en QA). */
   tasksApiBase?: string;
   /** Transporte hacia la API de Tareas (inyectable en pruebas). */
@@ -876,6 +880,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
   // Capacidad «Registrar compra rápida» (API.md §18): operaciones de fila por el commit de siempre, con hooks y riesgo.
   const quickSync = createSync(supabase, 'invoices', hooks);
   const idOf = keyedStableUuid(base.workerKey);
+  const paymentLinks = createPaymentLinks(supabase, base.payments ?? null);
   const registerQuickPurchase = createQuickPurchase({ supabase, commit: (ctx, body) => quickSync.commit(ctx, body), allRows: <T,>(ctx: RequestContext, table: string) => allRows<T>(supabase, ctx, table), stableUuid: idOf });
   const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { uuid: idOf, readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
     notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
@@ -900,6 +905,13 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
       method: 'GET', pattern: 'resource-links/preview', handler: ({ ctx }) => {
         if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner ve la vista previa del enlace con Recursos.');
         return supabase.rpc('core_read', { p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_links_preview', p_args: {} });
+      },
+    }, {
+      // Enlace de pago de una emitida (finance-18, API.md §19.2): el abierto o uno nuevo de 24 h. Editor u owner.
+      method: 'POST', pattern: 'issued/:id/payment-link', handler: async ({ ctx, params }) => {
+        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Crear un enlace de pago necesita permiso de edición en Finance.');
+        if (!/^[0-9a-f-]{36}$/i.test(params.id ?? '')) fail(422, 'INVALID_OPERATION', 'Factura inválida.');
+        return paymentLinks.ensure(String(params.id).toLowerCase(), ctx.user.id, 'finance');
       },
     }, {
       method: 'POST', pattern: 'resource-links/apply', handler: async ({ ctx, json }) => applyResourceLinks(supabase, ctx, (await json()) as { digest?: unknown; space_id?: unknown } | null),

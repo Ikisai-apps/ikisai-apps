@@ -71,6 +71,10 @@ test('los ítems: de una plantilla viva de su misma área, con zona y tipo conoc
     { answer: 'quantity', expected: { unit: 'kg' } },
     { answer: 'quantity', expected: { count: 2.5 } },
     { answer: 'check', expected: { count: 1 } },
+    // Texto donde va un número: nunca llega a pintarse en value="…" de la ficha del ítem.
+    { answer: 'quantity', expected: { count: '"><img src=x onerror=alert(1)>' } },
+    { answer: 'reading', expected: { unit: '°C', min: '"><b>' } },
+    { answer: 'reading', expected: { unit: '°C', max: '1' } },
   ]) {
     // La forma la descarta ya la Edge (INVALID_REVIEW); el cruce con el tipo, el hook (INVALID_FIELDS).
     assert.match(await code([item(uuid(), tpl, TAB, bad)]), /^422 INVALID_(FIELDS|REVIEW)$/, JSON.stringify(bad));
