@@ -121,6 +121,7 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   if (target.parent_id !== undefined && target.parent_id !== task.parent_id) fields.parent_id = target.parent_id;
   // Fase (0356): es de su proyecto y solo de una madre. El trigger tasks.task_phase_follow hace lo mismo en el servidor.
   if (task.phase_id && (changesProject || (fields.parent_id ?? null) !== null)) fields.phase_id = null;
+  if (task.deliverable_id && (changesProject || (fields.parent_id ?? null) !== null)) fields.deliverable_id = null;
   const ops: Operation[] = Object.keys(fields).length ? [update('tasks.tasks', task, fields)] : [];
   if (!changesProject) return ops;
   const moved = new Set([task.id, ...children.map((c) => c.id)]);
