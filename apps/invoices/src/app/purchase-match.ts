@@ -2,8 +2,10 @@
 
 export interface PurchaseRequestChoice { kind: string; archived: boolean; supplier?: string | null }
 
+/** Sin tildes, en minúsculas, solo letras y números, y sin la forma societaria final (SL, SLU, SA). */
 const normName = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-  .replace(/(s\.?\s?l\.?u?|s\.?\s?a\.?|sociedad limitada|sociedad anonima)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  .replace(/[^a-z0-9]+/g, ' ').trim()
+  .replace(/\s+(s\s?l\s?u|s\s?l|s\s?a|sociedad limitada|sociedad anonima)$/, '').trim();
 
 /**
  * Propuesta al asignar una línea (ESTADO.md, nota de Core del 8-10): la solicitud de compra abierta del mismo proveedor,
