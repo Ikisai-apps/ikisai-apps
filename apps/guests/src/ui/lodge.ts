@@ -64,7 +64,9 @@ function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerF
     const id = `${prefix}${f.key}`;
     const input = f.key === 'document_type'
       ? el('select', { id, class: 'input', ...f.mark }, el('option', { value: '' }, '—'), ...DOCUMENT_TYPES.map((d) => el('option', { value: d }, d))) as HTMLSelectElement
-      : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}), ...f.mark }) as HTMLInputElement;
+      : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}),
+        // El número de documento, sin corrector ni mayúsculas automáticas a medias (la letra del DNI o el NIE).
+        ...(f.key === 'document_number' ? { autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' } : {}), ...f.mark }) as HTMLInputElement;
     inputs.set(f.key, input);
     return el('label', { class: 'field', for: id }, el('span', null, t(`lodge.f.${f.key}`)), input);
   });
@@ -221,7 +223,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         if (free.length) bedsHost.append(planBox(value));
         go.disabled = !free.length;
       } catch (error) {
-        replace(bedsHost, whyNote('lodgeBedsWhy', lodgeError(error)));
+        replace(bedsHost, whyNote('lodgeBedsWhy', lodgeError(error)), el('button', { type: 'button', class: 'ghost small', id: 'lodgeBedsRetry', onclick: () => void beds() }, t('common.retry')));
         go.disabled = true;
       }
     };

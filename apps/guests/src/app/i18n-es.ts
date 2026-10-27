@@ -910,6 +910,8 @@ export const ES: Dictionary = {
   'stay.noAvailability': 'Ya no queda sitio esas noches. Mira otras fechas.',
   'visitor.tabs': 'Secciones del evento',
   'visitor.tabEvent': 'El evento',
+  'visitor.guideDone': 'Hecho.',
+  'visitor.asMemberNoApps': 'Entras como {name}. Lo que pidas se marca como prueba.',
   'visitor.asMember': 'Entras como {name} · {apps}. Lo que pidas se marca como prueba.',
   'visitor.memberSomeone': 'miembro del equipo',
   'visitor.routes': 'Qué puedes hacer aquí',
