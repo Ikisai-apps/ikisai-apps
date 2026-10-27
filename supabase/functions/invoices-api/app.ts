@@ -28,6 +28,8 @@ const SHA256 = /^[0-9a-f]{64}$/;
 export interface InvoicesAppOptions {
   /** Pasarela de pago (finance-18): Stripe si hay `STRIPE_SECRET_KEY` (index.ts); en las pruebas, el falso. Sin ella, PAYMENTS_OFF. */
   payments?: PaymentGateway | null;
+  /** Secreto de la firma del webhook de Stripe (`STRIPE_WEBHOOK_SECRET`); sin él, el webhook responde 503. */
+  paymentsWebhookSecret?: string | null;
   /** Base de la API de Tareas (`https://tasks.ikisai.com` o la función `tasks-api` directa en QA). */
   tasksApiBase?: string;
   /** Transporte hacia la API de Tareas (inyectable en pruebas). */
@@ -937,11 +939,13 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         // cancelado → `cancel_url`, o la misma con `pago=ok` cambiado por `pago=cancelado` (revisión de Organizers, 28-10).
         const ours = (u: unknown): u is string => typeof u === 'string' && ORGANIZERS_RETURN.some((o) => u.startsWith(`${o}/`));
         const success = ours(body!.return_url) ? body!.return_url : `${ORGANIZERS_RETURN[0]}/`;
-        const cancel = ours(body!.cancel_url) ? body!.cancel_url : success.replace(/([?&])pago=ok/, '$1pago=cancelado');
+        const cancel = ours(body!.cancel_url) ? body!.cancel_url : success.replace(/([?&])pago=ok(?=&|$)/, '$1pago=cancelado');
         const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success, cancel });
         return { url: out.url, provider: out.provider, expires_at: out.expires_at, amount: out.amount, reused: out.reused };
       },
-    } satisfies WorkerRoute],
+    } satisfies WorkerRoute, { method: 'POST', pattern: 'payments/reconcile', handler: () => paymentLinks.reconcile() } satisfies WorkerRoute],
+    // Aviso de la pasarela (finance-18, API.md §19.4): sin sesión; vale solo con la firma de Stripe.
+    publicRoutes: [{ method: 'POST', pattern: 'payments/stripe', handler: ({ request }) => paymentLinks.webhook(request, base.paymentsWebhookSecret ?? null) }],
   });
   return withServerCaller(handler, base.workerKey);
 }

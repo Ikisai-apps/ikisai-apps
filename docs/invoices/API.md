@@ -2185,5 +2185,22 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
   - «Crear enlace de pago» (editor u owner, con red);
   - los enlaces anteriores, caducados o cancelados.
   - Sin red, lo dice.
-- **Pendiente (PR 4):** el webhook de Stripe y la conciliación diaria, que marcan la factura cobrada. Necesitan la cuenta de servicio `invoices` del núcleo (petición a Core del 28-10).
+
+### 19.4 Aviso de Stripe y conciliación (migración 0259, PR 4)
+
+- **Webhook:** `POST invoices-api/api/v1/public/payments/stripe`, sin sesión.
+  - Vale solo con la firma `Stripe-Signature` (`STRIPE_WEBHOOK_SECRET`, tolerancia de 300 s); sin ella, `400` y nada cambia. Sin secreto configurado, `503`.
+  - Los avisos de cobros de otra app (`metadata.app` distinto de `invoices`) se ignoran con `200`.
+- **`invoices.payment_event_apply`** (acción de sistema, idempotente por evento):
+  - `paid`: el enlace pasa a `pagado` y la factura a `cobrada` (fecha del pago en Madrid, medio `tarjeta`), con `core.apply_system_operations` como «Finance (sistema)» (núcleo 0112). Queda en el historial y se sincroniza.
+  - Si la factura ya no estaba por cobrar o el importe no coincide, no se toca: `mismatch`, para revisarlo.
+  - `expired`: el enlace pasa a `caducado`.
+  - `refunded`: se registra; se refleja con una rectificativa.
+- **Conciliación:** `worker/payments/reconcile`, cada hora y solo si hay enlaces abiertos o cancelados sin cerrar.
+  - Pregunta a Stripe por cada abierto y cobra lo pagado aunque se perdiera el aviso.
+  - Caduca en Stripe los cancelados (`gateway_closed_at`), para que nadie pague uno cancelado.
+- **Revisión:** `invoices.payment_events_review` (editor u owner): los avisos `mismatch` o `unknown` y las devoluciones, sin datos de quien paga.
+- **Puesta en marcha** (Core pide a VG):
+  - `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en la Edge de Finance;
+  - el endpoint del webhook dado de alta en Stripe con los eventos `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `charge.refunded`.
 

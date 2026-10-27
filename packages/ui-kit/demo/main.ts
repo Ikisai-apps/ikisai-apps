@@ -1853,7 +1853,7 @@ const startDemoGuide = () => {
       { id: 'matricula', title: 'Apunta la matrícula', explain: 'Está en «Más datos». Si no viene en coche, sáltalo.', anchor: 'demo.guia.matricula', confirm: 'event', essential: false, done: guideRunDone.has('matricula') },
       { id: 'repaso', title: 'Repasa la ficha', explain: 'Mira que la hora y la matrícula estén bien.', confirm: 'manual', done: guideRunDone.has('repaso') },
     ] }),
-    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}`); guideLogOut.textContent = guideLog.join(', '); },
+    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}${info.pending ? ' (pendiente)' : ''}`); guideLogOut.textContent = guideLog.join(', '); },
     onSkipped: (s) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:saltado`); guideLogOut.textContent = guideLog.join(', '); },
     onExit: () => { demoGuide = null; },
   });
@@ -2116,7 +2116,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, renderCoverage, createItemPicker, createFieldPointer, registerReveal, revealAnchor, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, renderCoverage, createItemPicker, createFieldPointer, registerReveal, revealAnchor, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection, createCalendar };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

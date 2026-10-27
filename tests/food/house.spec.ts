@@ -170,7 +170,9 @@ test('menú de casa · por semanas, «+ Comida» y plato rápido; en un retiro, 
     await page.goto(`${baseURL}/#/recetario`);
     const cards = page.locator('#recipeGrid .recipecard');
     await expect(cards.filter({ hasText: 'Gazpacho' })).toContainText('Rápida · por completar');
+    await page.locator('#openFilters').click();
     await page.locator('#filterStatus').selectOption('rapida');
+    await page.locator('#filtersDone').click();
     await expect(cards.locator('strong')).toHaveText(['Gazpacho']);
   });
 

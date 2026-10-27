@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
   COMMERCIAL_STAGES, EVENT_TYPES, PHASES, PHASE_LABELS, TABLES, canHoldStatus, commercialStageLabel, dayNumber, foldText, missingForConfirmation, nextText, nights, validateFields,
   type CommercialStage, type Phase, type ReservationStatus,
@@ -374,6 +374,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         await client.commit(operations);
         guard.dirtyEditor = false;
         await sheet?.close(true);
+        announceSaved('booking.reservas.alta.guardar', { pending: !navigator.onLine });
         toast(navigator.onLine ? 'Reserva guardada.' : 'Guardada en este dispositivo. Se enviará al reconectar.');
       } catch (e) {
         showError(describeError(e));

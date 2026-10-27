@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { convert, ingredientKey, outputUnit, round3, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
+import { convert, ingredientKey, outputUnit, retreatInContext, round3, similarRecipes, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
 
 const RECIPE = '11111111-1111-4111-8111-111111111111';
 const INGREDIENT = '22222222-2222-4222-8222-222222222222';
@@ -151,3 +151,37 @@ test('coste · media de los últimos 3 meses; si no hay, la última compra con a
   assert.deepEqual(menuTotals(new Map([['m', graph]]), prices).get('m'), { total: 4.05, missing: 0, stale: 1 });
 });
 
+test('platos sugeridos · las recetas parecidas: palabras del nombre en común, luego la categoría del servicio (F-SUG-3)', () => {
+  const r = (id: string, name: string, category: 'principal' | 'desayuno' | 'postre') => ({ id, name, category });
+  const recipes = [
+    r('1', 'Lentejas estofadas', 'principal'), r('2', 'Lentejas con verduras', 'principal'), r('3', 'Crema de calabaza', 'principal'),
+    r('4', 'Tostadas de lentejas', 'desayuno'), r('5', 'Verduras al horno', 'principal'), r('6', 'Arroz con leche', 'postre'),
+  ];
+  // «con» y «de» no cuentan; sin acentos; la que comparte dos palabras va primera; a igualdad, la de la categoría de la comida.
+  assert.deepEqual(similarRecipes('Lentejas con verdúras', 'comida', recipes).map((x) => x.id), ['2', '1', '5', '4']);
+  // En el desayuno sube la de desayuno.
+  assert.deepEqual(similarRecipes('lentejas', 'desayuno', recipes).map((x) => x.id), ['4', '2', '1']);
+  assert.deepEqual(similarRecipes('Gazpacho', 'comida', recipes), []);
+  assert.deepEqual(similarRecipes('de la', 'comida', recipes), []);
+  assert.equal(similarRecipes('lentejas', 'comida', recipes, 2).length, 2);
+});
+
+test('recetario · el retiro en contexto: el del servicio más cercano de hoy en adelante, sin casa ni carta (F-REC-4)', () => {
+  const menus = [{ id: 'casa', kind: 'casa' as const }, { id: 'carta', kind: 'carta' as const }, { id: 'otono' }, { id: 'invierno' }, { id: 'borrado', deleted_at: '2026-10-01' }];
+  const services = [
+    { id: 's-casa', menu_id: 'casa', service_date: '2026-10-27' }, { id: 's-carta', menu_id: 'carta', service_date: '2026-10-27' },
+    { id: 's-otono-1', menu_id: 'otono', service_date: '2026-10-26' }, { id: 's-otono-2', menu_id: 'otono', service_date: '2026-10-28' },
+    { id: 's-invierno', menu_id: 'invierno', service_date: '2026-12-01' }, { id: 's-borrado', menu_id: 'borrado', service_date: '2026-10-27' },
+  ];
+  const items = [
+    { service_id: 's-otono-1', recipe_id: 'curry' }, { service_id: 's-otono-2', recipe_id: 'tarta' }, { service_id: 's-otono-2', recipe_id: 'quitada', deleted_at: '2026-10-20' },
+    { service_id: 's-casa', recipe_id: 'gazpacho' }, { service_id: 's-invierno', recipe_id: 'sopa' },
+  ];
+  const now = retreatInContext(menus, services, items, '2026-10-27')!;
+  assert.equal(now.menuId, 'otono');
+  assert.deepEqual([...now.recipeIds].sort(), ['curry', 'tarta']);
+  assert.equal(now.inCourse, true);
+  const later = retreatInContext(menus, services, items, '2026-10-29')!;
+  assert.deepEqual([later.menuId, [...later.recipeIds], later.inCourse], ['invierno', ['sopa'], false]);
+  assert.equal(retreatInContext(menus, services, items, '2026-12-02'), null);
+});

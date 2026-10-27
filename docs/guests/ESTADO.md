@@ -116,6 +116,8 @@
 
 - 2026-10-27 · «Mi pedido» del visitante, en uso con Flow FL2 (0915): «Abrir la carta» le da su número, que se conserva al volver. Prueba de punta a punta con flow-api en el servidor de pruebas de Guests (`linkBar`).
 
+- 2026-10-27 · Camas con un solo modelo (VG, por Core y Central): en los tres planos de camas (Inicio «Tu habitación en el plano», Alojamiento y «Ver las camas en el plano» del visitante) la forma de cada cama sale de su disposición en Booking (`layout` de `portal_lodging` y `booking_public_beds`, Booking 1417) con `bedShape` del kit 0.69.9 sobre la forma de su habitación (`withBedLayouts` en `ui/plan.ts`), nunca de Recursos. Sin disposición, la cama no se pinta: queda la lista y «Aquí» va en su habitación. Las e2e siembran la disposición en Booking (`bedLayout`) y ya no dan forma a las camas en Recursos.
+
 ## Pendiente
 
 

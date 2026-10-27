@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  STATION_LABELS,
+  STATION_LABELS, retreatInContext,
   PREP_UNITS, allergenPresence, ingredientNeeds, needText, nextRecipeService, pendingConsumption, readableQuantity, serviceShares, stockText, weekdayLong,
   type Consumption, type IngredientNeed, type Menu, type MenuGraph, type MenuItem, type MenuService, crossContext, undeclaredAllergens, undeclaredText, type CrossContext, foodUnitFromBase, formatMethodSteps, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
@@ -102,19 +102,54 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   const trash = el('details', { 'data-feedback-id': 'food.recetario.papelera', 'data-feedback-label': 'Papelera', id: 'trash' }, trashLabel, trashList);
   const fab = el('button', { 'data-feedback-id': 'food.recetario.nueva', 'data-feedback-label': 'Nueva receta', class: 'fab', type: 'button', id: 'newRecipe', onclick: () => openEditor(null) }, icon('plus'), 'Nueva receta');
 
-  replace(
-    main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Recetario'), el('p', null, 'Las recetas de la casa, con su foto, sus ingredientes y sus alérgenos.'))),
-    offline,
-    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
-    el('div', { 'data-feedback-id': 'food.recetario.filtros', 'data-feedback-label': 'Filtros', class: 'filters' },
+  // Filtros en una fila de chips (hallazgo F-REC-2, línea de Core del 27-10): «Filtrar» abre la hoja con los cuatro
+  // selectores; cada filtro puesto sale como chip con su ×, y «Quitar filtros» los quita todos.
+  const filtersBox =
+    el('div', { 'data-feedback-id': 'food.recetario.filtros', 'data-feedback-label': 'Filtros', class: 'filters fd-filtersheet' },
       select('filterCategory', 'Categoría', RECIPE_CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]]), 'category', { 'data-feedback-id': 'food.recetario.filtros.categoria', 'data-feedback-label': 'Filtrar por categoría' }),
       select('filterDiet', 'Dieta', DIET_TAGS.map((d) => [d, DIET_LABELS[d]]), 'diet', { 'data-feedback-id': 'food.recetario.filtros.dieta', 'data-feedback-label': 'Filtrar por dieta' }),
       // Tanda 27 (010 y regla de VG): «Filtrar por alérgeno», con «Lleva X» (lo de siempre) y «Sin X»; nunca «apto».
       select('filterAllergen', 'Filtrar por alérgeno', ALLERGENS.map((a) => [a, ALLERGEN_LABELS[a]]), 'allergen', { 'data-feedback-id': 'food.recetario.filtros.alergeno', 'data-feedback-label': 'Filtrar por alérgeno' }),
       allergenMode,
       select('filterStatus', 'Estado', [...RECIPE_STATUSES.map((s): [string, string] => [s, RECIPE_STATUS_LABELS[s]]), [QUICK_FILTER, 'Rápidas por completar']], 'status', { 'data-feedback-id': 'food.recetario.filtros.estado', 'data-feedback-label': 'Filtrar por estado' }),
-    ),
+    );
+  const filterBar = el('div', { 'data-feedback-id': 'food.recetario.filtros.fila', 'data-feedback-label': 'Filtros puestos', class: 'chips fd-filterbar', id: 'recipeFilters' });
+  let filterSheet: Sheet | null = null;
+  const FILTER_NAMES: Record<'category' | 'diet' | 'allergen' | 'status', string> = { category: 'Categoría', diet: 'Dieta', allergen: 'Alérgeno', status: 'Estado' };
+  const selectOf = (key: keyof typeof FILTER_NAMES) => filtersBox.querySelector<HTMLSelectElement>(`#${{ category: 'filterCategory', diet: 'filterDiet', allergen: 'filterAllergen', status: 'filterStatus' }[key]}`)!;
+  const clearFilter = (key: keyof typeof FILTER_NAMES) => { filter[key] = ''; selectOf(key).value = ''; if (key === 'allergen') { filter.allergenMode = 'lleva'; allergenMode.value = 'lleva'; } paint(); };
+  function paintFilterBar(shown: number): void {
+    const active = (Object.keys(FILTER_NAMES) as Array<keyof typeof FILTER_NAMES>).filter((k) => filter[k]);
+    const text = (k: keyof typeof FILTER_NAMES) => {
+      const option = selectOf(k).selectedOptions[0]?.textContent ?? filter[k];
+      return k === 'allergen' ? `${filter.allergenMode === 'sin' ? 'Sin' : 'Lleva'} ${option.toLowerCase()}` : `${FILTER_NAMES[k]}: ${option}`;
+    };
+    replace(filterBar,
+      el('button', { 'data-feedback-id': 'food.recetario.filtros.abrir', 'data-feedback-label': 'Filtrar', class: active.length ? 'filterchip on' : 'filterchip', type: 'button', id: 'openFilters',
+        'aria-haspopup': 'dialog', onclick: () => openFilters() }, icon('filter', 16), active.length ? `Filtrar · ${active.length}` : 'Filtrar'),
+      ...active.map((k) => el('button', { 'data-feedback-id': 'food.recetario.filtros.quitar_uno', 'data-feedback-label': 'Quitar este filtro', class: 'filterchip on', type: 'button', 'data-filter': k,
+        'aria-label': `Quitar el filtro ${text(k)}`, onclick: () => clearFilter(k) }, text(k), ' ×')),
+      active.length > 1 ? el('button', { 'data-feedback-id': 'food.recetario.filtros.quitar', 'data-feedback-label': 'Quitar filtros', class: 'linkbtn', type: 'button', id: 'clearFilters',
+        onclick: () => { for (const k of active) { filter[k] = ''; selectOf(k).value = ''; } filter.allergenMode = 'lleva'; allergenMode.value = 'lleva'; paint(); } }, 'Quitar filtros') : null);
+    const done = filterSheet?.foot?.querySelector<HTMLButtonElement>('#filtersDone');
+    if (done) done.textContent = shown === 1 ? 'Ver 1 receta' : `Ver ${shown} recetas`;
+  }
+  function openFilters(): void {
+    filterSheet = openSheet({
+      title: 'Filtrar recetas',
+      body: filtersBox,
+      foot: el('button', { 'data-feedback-id': 'food.recetario.filtros.ver', 'data-feedback-label': 'Ver las recetas', class: 'primary', type: 'button', id: 'filtersDone', onclick: () => void filterSheet?.close() }, 'Ver las recetas'),
+      onClose: () => { filterSheet = null; },
+    });
+    paint();
+  }
+
+  replace(
+    main,
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Recetario'), el('p', null, 'Las recetas de la casa, con su foto, sus ingredientes y sus alérgenos.'))),
+    offline,
+    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
+    filterBar,
     host,
     trash,
     fab,
@@ -158,7 +193,17 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const live = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     const visible = live.filter(matches);
-    replace(grid, ...visible.map(card));
+    paintFilterBar(visible.length);
+    // Arriba, las recetas del retiro en curso o del próximo (hallazgo F-REC-4, línea de Core del 27-10); debajo, el resto.
+    // Solo con un retiro en contexto que tenga alguna a la vista; dentro de cada grupo, por orden alfabético.
+    const retreat = retreatInContext(planning.menus, planning.services, planning.items, todayKey());
+    const inRetreat = retreat ? visible.filter((r) => retreat.recipeIds.has(r.id)) : [];
+    const rest = visible.filter((r) => !inRetreat.includes(r));
+    const groupLabel = (text: string, id: string) => el('li', { class: 'sectionlabel fd-gridlabel', id, role: 'presentation' }, text);
+    replace(grid, ...(inRetreat.length
+      ? [groupLabel(retreat!.inCourse ? 'En este retiro' : 'En el próximo retiro', 'recipesRetreat'), ...inRetreat.map(card),
+        rest.length ? groupLabel('Las demás', 'recipesRest') : null, ...rest.map(card)]
+      : visible.map(card)));
     replace(host, live.length === 0 ? empty : visible.length === 0 ? emptyFiltered : grid);
     replace(trashList, ...deleted.map((r) => fb(listRow({
       id: r.id, title: r.name, meta: [tagLine(r)], pending: r._pending === true, deleted: true,
@@ -176,7 +221,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const plans = Promise.all([
       client.list(T.menus) as Promise<Array<Mirror<Menu>>>, client.list(T.menuServices) as Promise<Array<Mirror<MenuService>>>,
       client.list(T.menuItems) as Promise<Array<Mirror<MenuItem>>>, client.list(T.consumptions) as Promise<Array<Mirror<Consumption>>>,
-    ]).then(([menus, services, items, consumptions]) => { planning = { menus, services, items, consumptions }; }).catch(() => undefined);
+    ]).then(([menus, services, items, consumptions]) => { planning = { menus, services, items, consumptions }; if (recipes.length) paint(); }).catch(() => undefined);
     // La ficha que se abre antes de que lleguen el inventario y los menús se repinta al llegar (no se queda sin cifras).
     void Promise.all([stock, plans]).then(refreshCard);
     [recipes, ingredients, lines, equipment, needs] = await Promise.all([
