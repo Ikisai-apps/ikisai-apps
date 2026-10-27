@@ -1874,6 +1874,6 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - `null`: todo se cumple.
 
   `guests` cuenta lo mismo que `booking.flow_guests_projection`. Solo devuelve cuentas.
-- **Flujo enlazado:** que exista un `flow.projects` con `booking_event_id` lo tiene que publicar Flow. Booking no lee el schema flow. La ficha lee `flow.booking_event_flows_projection` (`event_id`, `project_id`, abierta a Booking) y, mientras no exista, muestra «Sin comprobar» en vez de «Listo».
+- **Flujo enlazado:** que exista un `flow.projects` con `booking_event_id` lo tiene que publicar Flow. Booking no lee el schema flow. Flow lo publica en `flow.booking_event_flows_projection` (Flow 0922, #845: `event_id`, `project_id`, `name`; abierta a Booking). Si no se puede leer, la ficha muestra «Sin comprobar» en vez de «Listo».
 - **Ámbito:** cada persona de Flow necesita además el flujo en su ámbito (`flow.in_scope`, 0916). Eso se mira en Flow.
 - **Texto:** `flowReadyLine(readiness, flujos)` del dominio.

@@ -1,7 +1,7 @@
 /**
  * «Listo para Flow» en la ficha del evento (Core, 27-10-2026): si Flow verá los huéspedes del evento y, si no, qué falla,
  * en una línea. Lee `booking.flow_readiness` (0492) y los flujos enlazados que publica Flow
- * (`flow.booking_event_flows_projection`); si Flow aún no la publica, lo dice en vez de dar un «sí» a ciegas.
+ * (`flow.booking_event_flows_projection`, Flow 0922); si no se puede leer, lo dice en vez de dar un «sí» a ciegas.
  * Una lectura por evento y visita (como «Servicio de barra»), con red.
  */
 import type { SyncClient } from '@ikisai/sync-client';
