@@ -128,6 +128,10 @@ begin
   if e.id is not null and e.nature = 'fiscal' and v_nature = 'process' then perform core.fail('NATURE_CHANGE', 409, jsonb_build_object('id', e.id, 'source_ref', v_ref, 'nature', e.nature)); end if;
   -- El justificante que ya tenía (puesto aquí o en Finance) se queda si el reenvío no lo trae.
   v_receipt_file := coalesce(v_receipt_file, e.receipt_file_id); v_receipt_number := coalesce(v_receipt_number, e.receipt_number);
+  -- De proceso a fiscal solo con su justificante (VG, 27-10): pedir fiscal sin él, no.
+  if e.id is not null and e.nature = 'process' and v_nature = 'fiscal' and v_receipt_file is null and v_receipt_number is null then
+    perform core.fail('NATURE_CHANGE', 409, jsonb_build_object('id', e.id, 'source_ref', v_ref, 'nature', e.nature, 'reason', 'process becomes fiscal only with its invoice or ticket'));
+  end if;
   -- Naturaleza: la que mande la app; sin ella, la que ya tenía si era fiscal; si no, un gasto es fiscal con justificante y
   -- de proceso sin él, y un ingreso, fiscal (lo antiguo).
   v_nature := coalesce(v_nature, case when e.nature = 'fiscal' then 'fiscal'
