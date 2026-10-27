@@ -188,6 +188,8 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - Lo genera el kit al compilar (`dist/feature-catalog.json`, con los `data-feedback-id` y los `usage.run` del código).
   - `release.yml` lo sube con `scripts/usage_catalog_ingest.py`, que llama a `core.usage_catalog_ingest`: altas, etiquetas y funciones retiradas.
   - `GEN: <id>` en un commit publicado sube la generación de esa función (`core.usage_bump_generation`).
+  - **Inventario de campos** (ui-kit 0.59, migración `0099`): el mismo script sube `fields` y `fieldsUninstrumented` a `core.ingest_field_inventory(app, release, fields, uninstrumented)`. Guarda la primera release en que se vio cada `fieldId` (`since`), retira lo que ya no se declara y rehace la foto de lo sin instrumentar. Solo metadatos del código, nunca valores.
+  - `GET usage/inventory?app=all|<app>` → `{fields, fieldsUninstrumented}` (lo activo en la última release), solo para el owner de Central (403 al resto).
 - **`POST usage/batch {deviceId, items}`:**
   - Recibe los totales del día por dispositivo; el núcleo guarda el máximo por clave, así que es idempotente sin recibos.
   - Solo admite funciones de la propia app y días de los últimos 14.
