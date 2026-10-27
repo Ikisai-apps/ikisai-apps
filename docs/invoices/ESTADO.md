@@ -169,7 +169,7 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
-- **Mejora (nota de Core, 8-10-2026):** Compras no será un área de Tasks; las facturas se asignan a la **solicitud de compra** (destino `tasks/purchase_request`, 0208), que ya sabe su área y su proyecto. Al asignar una línea, proponer de forma automática la solicitud abierta de ese mismo proveedor (si hay una sola). Haría falta que Tasks publique, o que la lectura `invoices.supplier_options` complemente, las solicitudes abiertas por proveedor preferente.
+- **Mejora (nota de Core, 8-10-2026; hecha en Finance el 27-10, falta que Tasks dé `supplierName`, PETICIONES):** Compras no será un área de Tasks; las facturas se asignan a la **solicitud de compra** (destino `tasks/purchase_request`, 0208), que ya sabe su área y su proyecto. Al asignar una línea, proponer de forma automática la solicitud abierta de ese mismo proveedor (si hay una sola). Haría falta que Tasks publique, o que la lectura `invoices.supplier_options` complemente, las solicitudes abiertas por proveedor preferente.
 
 ## Bloqueos
 
