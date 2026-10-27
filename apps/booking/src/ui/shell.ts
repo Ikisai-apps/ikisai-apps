@@ -167,8 +167,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     returnTo: { feedbackId: 'booking.cabecera.volver_app' },
-    // Guiado mínimo (kit 0.68): ?campo= señala un campo del inventario y ?paso= explica, con «Volver a…»
-    guide: { feedbackId: 'booking.guia' },
+    // Guiado (kit 0.68): ?campo= señala un campo del inventario y ?paso= explica, con «Volver a…»; con ?guia=<ejecución>, la
+    // guía completa de Flow (flow.guide_read y flow.guide_confirm por la Edge de Booking). Los pasos avanzan con el aviso de
+    // guardado de verdad (`announceSaved`, sin valores): alta y confirmación de la reserva, la ficha y Recepción.
+    guide: { feedbackId: 'booking.guia', client, app: 'booking' },
     search: { onOpen: () => palette.open(), label: 'Buscar en Booking…', feedbackId: 'booking.cabecera.buscar' },
     menu: {
       // En el ordenador, columna fija de 316 px (y la navegación abajo); en el móvil, el cajón. Desde el kit 0.50 (P11) la
