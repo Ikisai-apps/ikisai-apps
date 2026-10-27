@@ -739,6 +739,14 @@ El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora
   - **Completar mis datos:** está disponible mientras no esté alojado (`POST public/stay/traveler`).
   - **Caducada:** se dice, y se puede pedir otra vez.
   - **Reservar antes de venir:** la solicitud anterior, con `hold` o `pay_first`, queda plegada como opción secundaria.
+- **«Guarda tu acceso» del visitante** (tarjeta 3; núcleo C11 v2, 0106). Es un bloque plegado en «Mis eventos» y en cada evento.
+  - **Guardar:** con un correo, opcional, y el código de un solo uso que llega a ese correo, el acceso de este móvil queda guardado (`public/visitor/email` y `email/verify`).
+  - **Recuperar:** en otro móvil, el mismo correo recupera el acceso. Si el correo ya guardaba otro, este móvil pasa a él.
+  - **Lo que se enseña:** solo la pista del correo (`public/visitor/me`) y «Quitar el correo». El núcleo nunca dice si un correo existe.
+  - **Salir de este móvil:** también revoca el token de este móvil (`public/visitor/logout`).
+- **Vínculo visitante ↔ huésped** (tarjeta 4; núcleo 0106 con `booking.visitor_claim`). Nunca se empareja por el nombre.
+  - **«Tu ficha está lista: entrar»:** sale en una petición aceptada que ya tiene ficha. `public/visitor/claim` une este visitante a la ficha y da un enlace de un solo uso.
+  - **«Unir este móvil a mi ficha»:** sale en el Inicio del huésped si el móvil también entró como visitante. Usa `POST /api/v1/visitor-link` con la sesión y el `X-Visitor` de este mismo móvil, y «Deshacer» usa `DELETE`. «Ahora no» lo esconde en este móvil.
 - **Pruebas:** `visitantes.spec.ts`.
 
 ## 10. Offline
