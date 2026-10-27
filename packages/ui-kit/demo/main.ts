@@ -1853,7 +1853,7 @@ const startDemoGuide = () => {
       { id: 'matricula', title: 'Apunta la matrícula', explain: 'Está en «Más datos». Si no viene en coche, sáltalo.', anchor: 'demo.guia.matricula', confirm: 'event', essential: false, done: guideRunDone.has('matricula') },
       { id: 'repaso', title: 'Repasa la ficha', explain: 'Mira que la hora y la matrícula estén bien.', confirm: 'manual', done: guideRunDone.has('repaso') },
     ] }),
-    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}`); guideLogOut.textContent = guideLog.join(', '); },
+    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}${info.pending ? ' (pendiente)' : ''}`); guideLogOut.textContent = guideLog.join(', '); },
     onSkipped: (s) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:saltado`); guideLogOut.textContent = guideLog.join(', '); },
     onExit: () => { demoGuide = null; },
   });

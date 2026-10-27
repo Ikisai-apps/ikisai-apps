@@ -1870,6 +1870,10 @@ textarea.ask-input{min-height:110px;resize:vertical;font:inherit;font-size:17px}
 .guia-ring[hidden]{display:none}
 .guia-bubble{position:fixed;z-index:var(--z-sheet);left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));max-height:48vh;overflow:auto;display:grid;gap:8px;padding:12px 14px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);color:var(--ink);box-shadow:0 12px 32px rgba(0,0,0,.22)}
 .guia-bubble[hidden],.guia-pill[hidden]{display:none}
+/* Móvil escribiendo: tira arriba, bajo la cabecera (el campo se lleva a 72px de ella). */
+.guia-bubble.guia-compact{bottom:auto;max-height:none;gap:2px;padding:6px 10px 6px 14px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.guia-compact :is(.guia-hide,.guia-bar,.guia-explain,.guia-live,.guia-actions,.guia-foot){display:none}
+.guia-compact .guia-title{font-family:inherit;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 @media(min-width:720px){.guia-bubble{left:auto;right:20px;bottom:20px;width:360px}.guia-pill{bottom:20px!important;right:20px!important}}
 .guia-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .guia-meta{margin:0;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
