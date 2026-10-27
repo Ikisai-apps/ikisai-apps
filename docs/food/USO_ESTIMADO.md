@@ -14,7 +14,7 @@ UX-Food, 27-10-2026. Encargo de Core sobre la decisión de VG: cada app da un pr
   - `direccion`;
   - `sala`: barra y servicio.
 - **Es una estimación**, no una decisión: la decisión es de Dirección.
-- **Cómo llega al núcleo:** `core.usage_catalog_ingest` no lee estos campos; hoy solo los pone `core.usage_decide`, que es del dueño del ecosistema. Este archivo es el dato. El cauce para cargarlo lo decide Core.
+- **Cómo llega al núcleo:** la migración `20261028_1121_food_usage_estimate.sql` lo carga con `core.usage_estimate` (0113). Se aplica mientras Dirección no haya decidido, y también a las funcionalidades que entren después por el catálogo. Si se cambia esta tabla, se cambia también esa migración, o se añade otra.
 
 | Funcionalidad | Qué es | Audiencia | Frecuencia |
 |---|---|---|---|

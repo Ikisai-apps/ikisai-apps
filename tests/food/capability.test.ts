@@ -67,6 +67,13 @@ test('inventario · cada campo de Food que declara `entity` y `prop` apunta a un
   for (const f of declared) assert.ok(columns.has(f), `${f} no es una columna de Food`);
 });
 
+test('uso · el primer estimado de Food (1121): las 46 funcionalidades de USO_ESTIMADO.md, con frecuencia y equipos', async () => {
+  const rows = await q(`select feature_id, frequency, audience from core.usage_estimates where app = 'food' order by feature_id`);
+  assert.equal(rows.length, 46);
+  assert.ok(rows.every((r) => ['frequent', 'normal', 'occasional', 'rare_critical'].includes(r.frequency) && r.audience.teams.length > 0));
+  assert.deepEqual(rows.find((r) => r.feature_id === 'food.maquinaria.avisar_averia'), { feature_id: 'food.maquinaria.avisar_averia', frequency: 'rare_critical', audience: { teams: ['cocina'] } });
+});
+
 test('ejecución · «Usar en otro evento» copia la carta y crea su oferta; repetir devuelve la misma copia', async () => {
   const call = () => app.call(`/api/v1/carta/${carta}/use-in-event`, { body: { requestId: 'flow-copia-1', eventId: event, name: 'Barra de las jornadas' } });
   const first = await call();
