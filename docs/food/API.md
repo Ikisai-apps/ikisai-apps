@@ -363,6 +363,13 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
 - **`food.event_needs({event_id})`** (Food, `POST read/food.event_needs`): lo que piden todas las ofertas de un evento, sumado por ingrediente (menús: raciones; cartas: unidades a cubrir). Las listas de la compra siguen siendo una por menú o carta; la lista única por evento queda para más adelante (decisión de Core).
 - **En la app** (`ui/offers.ts`): la ficha del evento lleva el bloque «Ofertas de comida». Cada oferta enseña qué, para quién, cuándo, dónde y quién paga, con «Cambiar», «Añadir una oferta» (en una hoja; los grupos se sugieren con los `meal_groups` de Booking) y «Lo que pide el evento».
 
+### 2.13 Rendimiento del ingrediente (27-10-2026, encargo de VG; migración 1112)
+
+- **En el ingrediente de Food:** `purchase_unit` (cómo se compra), `prep_unit` (cómo se cuenta en las recetas: «rodaja», «rebanada») y `yield` (cuántas unidades de preparación da una de compra: 1 tomate = 8 rodajas). `prep_unit` y `yield` van juntos o no van. Es conocimiento de cocina y vale para todos los eventos.
+- **Cuentas:** una línea de receta en «unidad» de un ingrediente con rendimiento cuenta piezas de preparación. Para el inventario se pasa así: piezas ÷ rendimiento, en la unidad de compra, y después la conversión del artículo (`food.recipe_qty_to_base`). Sin rendimiento, todo sigue como antes, con la nota y la conversión «rodaja» incluidas. Lo usan el consumo de las ventas, la previsión y la compra de la carta.
+- **Para Flow:** a `carta_prep_projection` se le añaden al final `prep_unit`, `prep_per_unit`, `prep_need_total` (en unidades de preparación), `purchase_unit` y `yield`. A `carta_prep_totals_projection`, `prep_unit` y `prep_need_total` (solo si todas sus líneas cuentan en la misma unidad), `purchase_unit` y `yield`. Comprar = `ceil(prep_need_total ÷ yield)` (`purchaseFromPrep`).
+- **En la app:** la pestaña Previsión de la carta lleva la sección «Rendimiento de los ingredientes» con los que las recetas cuentan en piezas («1 unidad = 8 rodaja»). El plan de bandejas añade «24 rodaja = comprar 3 unidad».
+
 ### 2.3 Compra, preparación y stock
 
 ```text

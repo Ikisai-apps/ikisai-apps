@@ -66,6 +66,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 - **Ofertas de comida por evento** (migración 1111; API.md §2.12): `food.event_offers`, la conversión de lo de hoy, `food.event_offers_projection` para Booking, `food.portal_offers` para Organizers y Guests (las internas solo a Guests, marcadas), `food.event_needs` y el bloque «Ofertas de comida» en la ficha del evento. Prueba: `offers.test.ts`.
 
+- **Rendimiento del ingrediente** (migración 1112; API.md §2.13): «1 tomate = 8 rodajas» en el ingrediente; las cuentas de la carta y la previsión para Flow (`prep_unit`, `prep_need_total`, `purchase_unit` y `yield`); la sección «Rendimiento» en Previsión. Prueba: `carta-rendimiento.test.ts`.
+
 ## Aceptación del usuario (6 de octubre de 2026)
 
 - Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.

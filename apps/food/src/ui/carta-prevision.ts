@@ -11,7 +11,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
   CARTA_SCOPE_LABELS, STATION_LABELS, cartaAttendance, cartaLinesInOrder, formatAmount, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperations,
-  type CartaLine, type CartaPrepTotal, type Menu, type Recipe, type ResourceItem,
+  purchaseFromPrep, UNITS, type CartaLine, type CartaPrepTotal, type Ingredient, type Menu, type Recipe, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { el, replace, toast } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
@@ -40,7 +40,10 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
   const splitHost = el('section', { 'data-feedback-id': 'food.carta.prevision.reparto', 'data-feedback-label': 'Reparto', class: 'card formblock', id: 'prepSplit' });
   const unitsHost = el('section', { 'data-feedback-id': 'food.carta.prevision.unidades', 'data-feedback-label': 'Unidades esperadas', class: 'card formblock', id: 'expectedUnits' });
   const planHost = el('section', { 'data-feedback-id': 'food.carta.prevision.bandejas', 'data-feedback-label': 'Plan de bandejas', class: 'card', id: 'trayPlan' });
-  replace(host, splitHost, unitsHost, planHost);
+  const yieldHost = el('section', { 'data-feedback-id': 'food.carta.prevision.rendimiento', 'data-feedback-label': 'Rendimiento de los ingredientes', class: 'card formblock', id: 'yieldHost' });
+  replace(host, splitHost, unitsHost, yieldHost, planHost);
+  let ingredients: Array<Mirror<Ingredient>> = [];
+  let parts: Array<Mirror<RecipeIngredient>> = [];
 
   const nameOf = (line: CartaLine) => line.name || (line.recipe_id ? recipes.get(line.recipe_id)?.public_name || recipes.get(line.recipe_id)?.name : undefined)
     || (line.item_id ? items.get(line.item_id)?.name : undefined) || 'Sin nombre';
@@ -149,6 +152,43 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       }));
   }
 
+  /**
+   * Rendimiento (1112): de los ingredientes de esta carta que las recetas cuentan en piezas («2 unidad» de tomate), cuántas
+   * piezas de preparación da una de compra (1 tomate = 8 rodajas). Vale para todos los eventos: se guarda en el ingrediente.
+   */
+  function paintYield(): void {
+    if (!menu) return;
+    const recipeIds = new Set(cartaLinesInOrder(lines, menu.id).map((l) => l.recipe_id).filter((id): id is string => !!id));
+    const counted = new Set(parts.filter((p) => !p.deleted_at && recipeIds.has(p.recipe_id) && p.unit === 'unidad').map((p) => p.ingredient_id));
+    const list = ingredients.filter((g) => counted.has(g.id) && !g.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    if (!list.length) { replace(yieldHost); yieldHost.hidden = true; return; }
+    yieldHost.hidden = false;
+    const row = (g: Mirror<Ingredient>) => {
+      const purchase = el('select', { 'data-feedback-id': 'food.carta.prevision.rendimiento_compra', 'data-feedback-label': 'Unidad de compra', id: `yield-purchase-${g.id}`,
+        'aria-label': `Cómo se compra ${g.name}`, disabled: !canWrite },
+        ...(['unidad', 'paquete', 'manojo', 'kg', 'g', 'l', 'ml'] as const).filter((u) => (UNITS as readonly string[]).includes(u)).map((u) => el('option', { value: u, selected: (g.purchase_unit ?? 'unidad') === u }, u))) as HTMLSelectElement;
+      const amount = el('input', { 'data-feedback-id': 'food.carta.prevision.rendimiento_cantidad', 'data-feedback-label': 'Piezas por unidad de compra', type: 'number', inputmode: 'decimal',
+        min: '0', step: '0.5', id: `yield-n-${g.id}`, class: 'carta-units', 'aria-label': `Cuántas salen de ${g.name}`, disabled: !canWrite,
+        value: g.yield === null || g.yield === undefined ? '' : String(Number(g.yield)) }) as HTMLInputElement;
+      const prep = el('input', { 'data-feedback-id': 'food.carta.prevision.rendimiento_pieza', 'data-feedback-label': 'Unidad de preparación', type: 'text', maxlength: '30',
+        id: `yield-prep-${g.id}`, class: 'carta-units', 'aria-label': `Unidad de preparación de ${g.name}`, placeholder: 'rodaja', disabled: !canWrite, value: g.prep_unit ?? '' }) as HTMLInputElement;
+      const save = el('button', { 'data-feedback-id': 'food.carta.prevision.rendimiento_guardar', 'data-feedback-label': 'Guardar el rendimiento', class: 'ghost', type: 'button', id: `yield-save-${g.id}`,
+        onclick: async () => {
+          const n = amount.value.trim() === '' ? null : Number(amount.value.replace(',', '.'));
+          const unit = prep.value.trim() || null;
+          if ((n === null) !== (unit === null) || (n !== null && !(n > 0))) { toast('Escribe cuántas salen y de qué (8 rodajas), o deja los dos vacíos.'); return; }
+          const fields = { purchase_unit: purchase.value as Unit, prep_unit: unit, yield: n };
+          if (await usage.run('food.carta.prevision.rendimiento', () => commit(client, [{ op: 'update', table: T.ingredients, id: g.id, expectedRevision: g.revision, fields }]))) toast(`${g.name}: rendimiento guardado.`);
+        } }, 'Guardar');
+      return el('li', { class: 'carta-yieldrow' }, el('strong', null, g.name),
+        el('span', { class: 'carta-yieldeq' }, '1', purchase, '=', amount, prep), canWrite ? save : null);
+    };
+    replace(yieldHost,
+      el('h3', null, 'Rendimiento de los ingredientes'),
+      el('p', { class: 'muted' }, 'Para los que las recetas cuentan en piezas: cuántas salen de una unidad de compra (1 tomate = 8 rodajas). Vale para todas las cartas y eventos, y con él la compra dice «3 tomates» y no «24 rodajas».'),
+      el('ul', { class: 'plainlist carta-units-list' }, ...list.map(row)));
+  }
+
   function paintPlan(): void {
     if (!menu) return;
     const print = el('button', { 'data-feedback-id': 'food.carta.prevision.imprimir', 'data-feedback-label': 'Imprimir el plan de bandejas', class: 'ghost', type: 'button', id: 'printTrays',
@@ -175,7 +215,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         el('tbody', null, ...ingredients.map((t) => el('tr', { class: t.convertible ? '' : 'carta-missing' },
           el('th', { scope: 'row' }, t.name),
           el('td', null, t.station ? `${t.station} · ${STATION_LABELS[t.station] ?? ''}` : '—'),
-          el('td', null, t.convertible ? formatAmount(t.need_total, t.unit) : 'falta la conversión'),
+          el('td', null, t.convertible ? formatAmount(t.need_total, t.unit) : 'falta la conversión',
+            purchaseFromPrep(t.prep_need_total, t.yield) !== null && t.prep_unit ? el('small', { class: 'muted carta-buy' }, ` · ${Number(t.prep_need_total).toLocaleString('es-ES')} ${t.prep_unit} = comprar ${purchaseFromPrep(t.prep_need_total, t.yield)} ${t.purchase_unit ?? 'unidad'}`) : null),
           el('td', null, amount(t, t.mesa)), el('td', null, amount(t, t.nevera)), el('td', null, amount(t, t.fresco)))))) : el('p', { class: 'muted' }, 'Sin unidades esperadas todavía.'),
       extras.length ? el('div', null, el('div', { class: 'sectionlabel' }, 'Bebidas y extras'),
         el('ul', { class: 'plainlist' }, ...extras.map((t) => el('li', null, el('strong', null, t.name), ': ', t.convertible ? formatAmount(t.need_total, t.unit) : 'falta la conversión')))) : null,
@@ -205,12 +246,14 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       client.list(T.recipes, { includeDeleted: true }) as Promise<Array<Mirror<Recipe>>>,
       resources.list(R.items).catch(() => []) as unknown as Promise<Array<Mirror<ResourceItem>>>,
     ]);
+    [ingredients, parts] = await Promise.all([client.list(T.ingredients) as Promise<Array<Mirror<Ingredient>>>, client.list(T.recipeIngredients) as Promise<Array<Mirror<RecipeIngredient>>>]);
     menu = row && !row.deleted_at ? row : null;
     lines = allLines;
     recipes = new Map(allRecipes.map((r) => [r.id, r]));
     items = new Map(allItems.map((i) => [i.id, i]));
     paintSplit();
     paintUnits();
+    paintYield();
     paintPlan();
   }
 
@@ -220,6 +263,6 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     if (guests !== eventGuests) { eventGuests = guests; paintUnits(); }
   });
   // Tras guardar (o sincronizar) unidades o reparto, el plan se vuelve a pedir al servidor.
-  const offs = [T.menus, T.cartaLines, T.recipeIngredients].map((table) => client.onTable(table, () => void load().then(loadTotals)));
+  const offs = [T.menus, T.cartaLines, T.recipeIngredients, T.ingredients].map((table) => client.onTable(table, () => void load().then(loadTotals)));
   return () => { offEvents(); offs.forEach((off) => off()); document.body.classList.remove('print-trays'); };
 }

@@ -91,6 +91,9 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       preferred_supplier: { kind: 'text', max: 120, nullable: true },
       active: { kind: 'boolean' },
       item_id: { kind: 'uuid', nullable: true },
+      purchase_unit: { kind: 'enum', values: UNITS, nullable: true },
+      prep_unit: { kind: 'text', max: 30, nullable: true },
+      yield: { kind: 'number', min: 0, exclusiveMin: true, max: 100000, nullable: true },
     },
   },
   'food.recipe_ingredients': {
@@ -430,6 +433,13 @@ export function validateOperation(op: DomainOperation): Issue | null {
       ? offerProblem(fields as Parameters<typeof offerProblem>[0])
       : offerProblem({ audience: 'interna', meal_groups: fields.meal_groups as string[] | undefined, days: fields.days as string[] | null | undefined, services: fields.services as never });
     if (problem) return issue('INVALID_FIELDS', problem.message, { table: op.table, field: problem.field });
+  }
+  if (op.table === 'food.ingredients' && ('prep_unit' in fields || 'yield' in fields)) {
+    // Rendimiento: la unidad de preparación y cuántas da una de compra, las dos o ninguna.
+    const prep = typeof fields.prep_unit === 'string' && fields.prep_unit.trim() !== '';
+    if (('prep_unit' in fields) !== ('yield' in fields) || prep !== (fields.yield !== null && fields.yield !== undefined)) {
+      return issue('INVALID_FIELDS', 'El rendimiento lleva la unidad de preparación y cuántas salen de una de compra.', { table: op.table, field: 'yield' });
+    }
   }
   if (op.table === 'food.menus' && 'prep_split' in fields) {
     const problem = prepSplitProblem(fields.prep_split);
