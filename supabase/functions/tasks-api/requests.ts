@@ -236,6 +236,15 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       if (!project?.tabId || project.deleted) fail(404, 'NOT_FOUND', 'No existe ese proyecto o no lo puedes ver.', { field: 'project_id' });
       if (project!.archived) fail(422, 'PROJECT_ARCHIVED', 'Ese proyecto está archivado: elige uno abierto.', { field: 'project_id' });
       const tabId = project!.tabId!;
+      // La tarea (opcional; 7.3, «Pedir» lo que le falta): viva, del mismo proyecto y que quien pide la vea.
+      const rawTask = body.task_id;
+      if (rawTask !== undefined && rawTask !== null && (typeof rawTask !== 'string' || !UUID.test(rawTask))) invalid('task_id', 'task_id debe ser un uuid.');
+      let taskId: string | null = null;
+      if (typeof rawTask === 'string') {
+        const task = await target('task', rawTask.toLowerCase());
+        if (!task || task.deleted || (task as { projectId?: string }).projectId !== projectId) fail(404, 'NOT_FOUND', 'Esa tarea no existe, no la ves o no es de ese proyecto.', { field: 'task_id' });
+        taskId = rawTask.toLowerCase();
+      }
 
       const externalRef = `${source}:${reference}`;
       const id = await requestPurchaseId(externalRef);
@@ -251,7 +260,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       };
       const shape = (r: Record<string, unknown>) => ({
         kind: 'purchase_request', id: r.id, tabId: r.tab_id, projectId: r.project_id, title: r.title, status: r.status,
-        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, itemId: r.item_id ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
+        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, itemId: r.item_id ?? null, taskId: r.task_id ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
         externalUrl: r.source_url ?? null,
       });
       // Lo que ya hay con esa referencia solo se devuelve si es del mismo proyecto que se pide (ya comprobado como visible
@@ -267,7 +276,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
 
       const lastPosition = Math.max(0, ...all.filter((r) => r.tab_id === tabId && !r.deleted_at).map((r) => Number(r.position) || 0));
       const fields: Record<string, unknown> = {
-        tab_id: tabId, project_id: projectId, title,
+        tab_id: tabId, project_id: projectId, task_id: taskId, title,
         note: [`Pedida desde ${source} · ${reference}`, note?.trim()].filter(Boolean).join('\n'),
         item_id: item?.id ?? null, quantity, unit: unit ?? (item ? item.base_unit ?? null : null), priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
         // Procedencia (0342): agrupa «Compras del evento» en Suministros y da el enlace de vuelta. Inmutable.

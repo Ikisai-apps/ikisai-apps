@@ -1,7 +1,7 @@
 /** Fase 6 (pagos en línea, petición F5): qué enlaces de pago de Finance enseña Organizers. Puro, sin red. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clearPending, markPending, payableInvoices, payLinkOf, payState, pendingOf, PENDING_MS, returnOf } from '../../apps/organizers/src/app/pay-link.ts';
+import { clearPending, markPending, payableInvoices, payLinkOf, payOnDemand, payState, pendingOf, PENDING_MS, returnOf } from '../../apps/organizers/src/app/pay-link.ts';
 import type { PortalInvoice } from '../../apps/organizers/src/app/api.ts';
 
 const NOW = Date.parse('2026-11-02T10:00:00Z');
@@ -67,3 +67,13 @@ test('pago en curso · la vuelta de la pasarela se lee del final de la ruta', ()
   assert.deepEqual(returnOf('#/retiro/x/pagos?pago=ok&factura=<script>'), { outcome: 'ok', invoiceId: null });
 });
 
+
+test('pagar en línea · sin enlace se pide al pulsar: solo la emitida sin cobrar, con importe y sin enlace vigente', () => {
+  assert.equal(payOnDemand(invoice({ payment_link: null }), NOW), true);
+  assert.equal(payOnDemand(invoice({ payment_link: { url: 'https://checkout.stripe.com/x', expires_at: '2026-11-01T00:00:00Z' } }), NOW), true, 'caducado: se pide otro');
+  assert.equal(payOnDemand(invoice(), NOW), false, 'con enlace vigente, se usa ese');
+  for (const [why, over] of [['cobrada', { collected: true }], ['rectificada', { status: 'rectificada' as const }],
+    ['registrada (otra herramienta)', { status: 'registrada' as const }], ['a cero', { total: 0 }]] as const) {
+    assert.equal(payOnDemand(invoice({ payment_link: null, ...over } as Partial<PortalInvoice>), NOW), false, why);
+  }
+});

@@ -24,8 +24,7 @@ end $$;
 create or replace function core.visitor_member(p_visitor uuid) returns uuid language sql stable as $$
   select v.auth_user_id from core.visitors v
    where v.id = p_visitor and v.revoked_at is null and v.auth_user_id is not null
-     -- mismo filtro que visitor_member_link: solo personas con rol de equipo; un outsider (huésped con cuenta de portal) no es miembro
-     and exists (select 1 from core.memberships m where m.user_id = v.auth_user_id and m.role in ('reader', 'editor', 'owner'))
+     and exists (select 1 from core.memberships m where m.user_id = v.auth_user_id)
      and not exists (select 1 from core.profiles p where p.user_id = v.auth_user_id and p.kind = 'service')
 $$;
 
