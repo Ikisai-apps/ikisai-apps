@@ -97,7 +97,8 @@ test('visitante: a los 6 meses del fin del evento se borran su nombre, su contac
   // el evento acabó hace más de 6 meses
   await app.t.db.query(`update booking.reservations set start_date = '2020-01-01', end_date = '2020-01-03' where id = $1`, [res]);
   assert.equal((await app.t.db.query<{ v: boolean }>(`select booking.retention_has_work() v`)).rows[0]!.v, true);
-  await app.t.db.query(`select booking.retention_run('{"args":{"limit":100}}'::jsonb)`);
+  // como el tick: una acción del sistema (sin actor)
+  await app.t.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.retention_run', p_args: { limit: 100 } });
   const row = (await app.t.db.query<{ name: string | null; contact: string | null; note: string | null; status: string }>(`select name, contact, note, status from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
   assert.deepEqual(row, { name: null, contact: null, note: null, status: 'pendiente' });
 });
