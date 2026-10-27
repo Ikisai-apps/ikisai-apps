@@ -126,8 +126,8 @@ test('ficha · al outsider también se le cambian los proyectos de Flow (P14), s
   await expect(block).toContainText('En Flow es outsider.');
   await block.locator('#editFlowProjects').click();
   const sheet = page.getByRole('dialog', { name: 'Proyectos de Flow' });
-  await sheet.getByRole('checkbox', { name: /Barra · Evento de octubre/ }).check();
+  await sheet.getByRole('checkbox', { name: await barraName() }).check();
   await sheet.getByRole('button', { name: 'Guardar' }).click();
   await expect.poll(async () => await flowScopes(olgaUser)).toEqual({ role: 'outsider', scopes: { projects: [BARRA] } });
-  await expect(block.locator(`#flowScope [data-project="${BARRA}"]`)).toHaveText('Barra · Evento de octubre');
+  await expect(block.locator(`#flowScope [data-project="${BARRA}"]`)).toHaveText(await barraName());
 });
