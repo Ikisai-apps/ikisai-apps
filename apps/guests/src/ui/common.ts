@@ -21,6 +21,11 @@ export function staleNote(at: string): HTMLElement {
   return el('p', { class: 'banner warn', role: 'status', id: 'staleNote' }, icon('offline', 18), ' ', t('common.stale', { time: timeLabel(at) }));
 }
 
+/** Por qué algo no se ve (sin plano, sin cama, acceso renovado…): una línea en vez de un hueco en blanco. */
+export function whyNote(id: string, text: string): HTMLElement {
+  return el('p', { class: 'small gwhy', role: 'status', id }, icon('warn', 14), ' ', text);
+}
+
 export function loading(): HTMLElement {
   return el('p', { class: 'muted', role: 'status' }, t('common.loading'));
 }
