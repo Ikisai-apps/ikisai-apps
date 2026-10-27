@@ -18,12 +18,15 @@ const TAB = uuid(), BARRA = uuid(), PRIVADO = uuid(), VIEJO = uuid();
 let app: TestApp;
 let seq = 0;
 
-const ask = (body: Record<string, unknown>, token?: string) => app.call('/api/v1/requests/purchase', { token, body });
+const WORKER_KEY = 'clave-de-worker-de-prueba';
+// Flow y Food piden desde su servidor (§45): la clave de worker y X-Ikisai-Caller, además del token de la persona.
+const appProof = (body: Record<string, unknown>): Record<string, string> => ['flow', 'food'].includes(String(body.source)) ? { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': String(body.source) } : {};
+const ask = (body: Record<string, unknown>, token?: string) => app.call('/api/v1/requests/purchase', { token, body, headers: appProof(body) });
 const rows = async (table: string) => (await app.call(`/api/v1/snapshot?tables=${table}&includeDeleted=1&limit=2000`)).data.tables[0].rows as any[];
 const commit = (operations: Operation[], token?: string) => app.call('/api/v1/commands', { token, body: { requestId: `seed-${++seq}`, operations } });
 
 test.before(async () => {
-  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin] }) });
+  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin], workerKey: WORKER_KEY }) });
   await commit(createTabOps({ id: TAB, name: 'Eventos', position: 1024 }));
   await commit([
     { op: 'insert', table: 'tasks.projects', id: BARRA, fields: { tab_id: TAB, title: 'Montaje de la barra', position: 2048 } },
@@ -99,7 +102,7 @@ test('alcance, archivo, roles y entrada: lo que no vale no entra', async () => {
 });
 
 test('la otra mitad: una tarea con `requests/task` en el proyecto de la barra, y la lista de proyectos abiertos', async () => {
-  const res = await app.call('/api/v1/requests/task', { token: app.tokens.editor, body: { source: 'flow', kind: 'flow.logistics', kind_label: 'Logística de la barra', external_ref: 'unit-789', title: 'Reponer vasos', project_id: BARRA } });
+  const res = await app.call('/api/v1/requests/task', { token: app.tokens.editor, headers: appProof({ source: 'flow' }), body: { source: 'flow', kind: 'flow.logistics', kind_label: 'Logística de la barra', external_ref: 'unit-789', title: 'Reponer vasos', project_id: BARRA } });
   assert.equal(res.status, 200, JSON.stringify(res.data));
   assert.equal(res.data.task.id, await requestTaskId('flow:unit-789'));
   assert.equal(res.data.task.projectId, BARRA);

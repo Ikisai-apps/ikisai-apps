@@ -2176,7 +2176,7 @@ Es el hueco que Finance encontró en la cadena de compra de la barra: lo que se 
 
 - **La prueba:** dos cabeceras, `X-Ikisai-Worker-Key` (la misma `IKISAI_WORKER_KEY` de todas las Edges) y `X-Ikisai-Caller: flow | food`. Un navegador no tiene la clave.
 - **Con la prueba:** `source` tiene que ser la app que llama. Si no, 422 `INVALID_INPUT` en el campo `source`.
-- **Sin la prueba:** hoy se acepta como hasta ahora. Cuando Flow y Food manden la prueba, cada una pasa a `APP_SOURCES_REQUIRED` (`tasks-api/requests.ts`) y, sin ella, 403 `CALLER_REQUIRED`.
+- **Sin la prueba:** desde el 27-10-2026, `flow` y `food` están en `APP_SOURCES_REQUIRED` (`tasks-api/requests.ts`): sin ella, 403 `CALLER_REQUIRED`. Flow (#870) y Food (#862) ya la mandan en producción. Las demás fuentes de app, como hasta ahora.
 - Las fuentes de sistema (`booking`, `feedback`, `core`, `invoices`) no valen aquí, con o sin prueba: van por `worker/requests/task` (§19.2).
 - **Para Flow y Food:** añadid las dos cabeceras a las llamadas de servidor a servidor que ya hacéis a `requests/task` y `requests/purchase`, sin más cambios. Avisad a Tasks al publicarlo para hacerlas obligatorias.
 - **Pruebas:** `tests/tasks/requests.test.ts` («fuentes de app»).

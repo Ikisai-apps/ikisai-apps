@@ -54,7 +54,11 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
   function card(c: ReceptionCard): HTMLElement {
     const method = el('select', { class: 'small', 'aria-label': `Cómo paga ${c.title}`, 'data-feedback-id': 'booking.recepcion.metodo', 'data-feedback-label': 'Método de cobro' },
       WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
-    const actions = !writable ? null : c.kind === 'request'
+    const paidOnline = c.cobro.text.startsWith('Pagado en línea');
+    const actions = !writable ? null : c.kind === 'request' && paidOnline
+      ? el('div', { class: 'row-actions' },
+        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept-online', 'data-feedback-id': 'booking.recepcion.alojar_pagado', 'data-feedback-label': 'Alojar (pagado en línea)', onclick: () => void accept(c, 'online') }, 'Alojar (pagado en línea)'))
+      : c.kind === 'request'
       ? el('div', { class: 'row-actions' }, method,
         el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', 'data-feedback-id': 'booking.recepcion.cobrar', 'data-feedback-label': 'Cobrar y alojar', onclick: () => void accept(c, method.value) }, 'Cobrar y alojar'),
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', 'data-feedback-id': 'booking.recepcion.descartar', 'data-feedback-label': 'Descartar', onclick: () => void decide(c, 'reject') }, 'Descartar'))
@@ -72,15 +76,16 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
   }
 
   async function paint(): Promise<void> {
-    const [requests, events, reservations, beds, spaces, guests, assignments, charges, drafts] = await Promise.all([
+    const [requests, events, reservations, beds, spaces, guests, assignments, charges, drafts, payments] = await Promise.all([
       client.list(VISITOR_REQUESTS), client.list(EVENTS), client.list(RESERVATIONS), client.list(BEDS), client.list(SPACES),
       seesGuests ? client.list(GUESTS) : Promise.resolve([] as SyncedRow[]), client.list(ASSIGNMENTS), client.list(WALKINS),
       seesGuests ? client.list(TABLES.stayTravelers as never).catch(() => [] as SyncedRow[]) : Promise.resolve([] as SyncedRow[]),
+      client.list(TABLES.stayPayments as never).catch(() => [] as SyncedRow[]),
     ]);
     cards = receptionCards({
       today: madridToday(), now: Date.now(), seesGuests,
       requests: requests as Row[], events: events as Row[], reservations: reservations as Row[], beds: beds as Row[], spaces: spaces as Row[],
-      guests: guests as Row[], assignments: assignments as Row[], charges: charges as Row[], drafts: drafts as Row[],
+      guests: guests as Row[], assignments: assignments as Row[], charges: charges as Row[], drafts: drafts as Row[], payments: payments as Row[],
     }, (g) => missingForSes(g as GuestLike));
     lanes.setLanes(lanesOf());
     for (const l of LANES) renderLane(l.key);
@@ -117,7 +122,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
   const presence = (c: ReceptionCard, procedure: string, done: string) => c.guestId
     ? run([{ op: 'call', procedure, args: { guest_id: c.guestId } }], done) : Promise.resolve(false);
 
-  const offs = [VISITOR_REQUESTS, WALKINS, GUESTS, ASSIGNMENTS, TABLES.stayTravelers].map((t) => client.onTable(t as never, () => void paint()));
+  const offs = [VISITOR_REQUESTS, WALKINS, GUESTS, ASSIGNMENTS, TABLES.stayTravelers, TABLES.stayPayments].map((t) => client.onTable(t as never, () => void paint()));
   void paint();
   return () => { offs.forEach((off) => off()); lanes.destroy(); };
 };

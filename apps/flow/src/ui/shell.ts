@@ -61,7 +61,8 @@ interface FlowColumn { key: string; label: string; behavior: ColumnBehavior; pos
 
 /**
  * Nombres cortos para la barra inferior (revisión móvil de UI-kit, 27-10): con seis secciones a 390 px, los nombres largos
- * se cortaban («Prepara…», «Ingredie…»). El nombre completo sigue en el título de la pantalla y del carril.
+ * se cortaban («Prepara…», «Ingredie…»). Van en `short` del kit: la barra los usa si no caben y el lector sigue diciendo el
+ * nombre entero.
  */
 const NAV_SHORT: Record<string, string> = { order: 'Caja', prep: 'Cocina', ingredients: 'Ingred.', service: 'Entrega', logistics: 'Logística' };
 const NAV_MAX = 9;
@@ -80,7 +81,8 @@ function navFor(projectId: string, columns: FlowColumn[], short: boolean): NavIt
     ...columns.map((c) => {
       const view = COLUMN_VIEWS[c.key];
       const hash = `${base}/${view?.slug ?? c.key}`;
-      return { hash, label: short ? navLabel(c.key, c.label) : c.label, icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
+      // Nombre entero siempre (lo dice el lector); el corto, para la barra cuando no cabe (kit 0.69.4, `short`).
+      return { hash, label: c.label, ...(short ? { short: navLabel(c.key, c.label) } : {}), icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
     }),
   ];
 }

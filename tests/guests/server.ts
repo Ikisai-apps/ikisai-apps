@@ -18,7 +18,7 @@ export interface GuestsTestServer {
   /** Un lote de Booking como el personal (owner), p. ej. recepción cobrando (`booking.join_from_visitor` con `method`). */
   bookingCommit(operations: unknown[]): Promise<void>;
   /** Jornadas abiertas con alojamiento (Booking 0498/0499, como `openDays` de tests/booking): 2 camas y una tarifa de 20 € por persona y noche. */
-  openDays(start: string, end: string, fields?: Record<string, unknown>): Promise<{ id: string; event: string; code: string; rate: string }>;
+  openDays(start: string, end: string, fields?: Record<string, unknown>): Promise<{ id: string; event: string; code: string; rate: string; room: string }>;
   /** Huésped dado de alta por el personal (procedencia «staff»). */
   guest(event: string, fields: Record<string, unknown>): Promise<string>;
   /** Alergia, intolerancia o preferencia de un huésped, como la registra el personal en Booking. */
@@ -227,16 +227,16 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
     },
     bookingCommit: (operations) => commit(operations),
     async openDays(start, end, fields = {}) {
-      const res = uuid(); const event = uuid(); const space = uuid(); const rate = uuid();
+      const res = uuid(); const event = uuid(); const space = uuid(); const rate = uuid(); const room = `Albergue ${uuid().slice(0, 6)}`;
       await commit([
         { op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Jornadas sintéticas', event_type: 'jornadas_abiertas', status: 'pre_reservada', start_date: start, end_date: end, expected_guests: 100, guests_visible: true, ...fields } },
-        { op: 'insert', table: TABLES.spaces, id: space, fields: { name: `Albergue ${uuid().slice(0, 6)}`, kind: 'habitacion' } },
+        { op: 'insert', table: TABLES.spaces, id: space, fields: { name: room, kind: 'habitacion' } },
         ...[1, 2].map((n) => ({ op: 'insert', table: TABLES.beds, id: uuid(), fields: { space_id: space, label: `Cama ${n}`, capacity: 1 } })),
         { op: 'insert', table: 'booking.rates', id: rate, fields: { name: 'Cama en el albergue', layer: 'por_persona', unit: 'persona_noche', amount: 20, service: 'alojamiento', event_types: ['jornadas_abiertas'], valid_from: start, valid_to: end } },
       ]);
       await commit([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: res, event_id: event, from_status: 'pre_reservada' } }]);
       const code = (await booking.t.db.query<{ c: string }>('select public_code c from booking.events where id = $1', [event])).rows[0]!.c;
-      return { id: res, event, code, rate };
+      return { id: res, event, code, rate, room };
     },
     async floorPlan(spaces, drawing) {
       const db = booking.t.db;
