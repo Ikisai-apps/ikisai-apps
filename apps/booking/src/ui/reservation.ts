@@ -14,6 +14,7 @@ import { onSesPending, sesCandidates, takeRequestedBlock } from '../app/experien
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import { createFichaLayout } from './fichaLayout.ts';
 import { ASSIGNMENTS, BEDS, DATE_OPTIONS, VISITOR_REQUESTS, WALKINS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
+import { settleBatch } from '../app/settle.ts';
 import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../app/joins.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
@@ -242,7 +243,9 @@ export function mountReservation(id: string): ViewMount {
         try {
           const { requestId } = await client.commit([{ op: 'call', procedure: PROCEDURES.confirmReservation, args: { reservation_id: id, event_id: crypto.randomUUID(), from_status: reservation!.status } }]);
           setConfirmMark({ reservationId: id, requestId });
-          announceSaved('booking.reserva.acciones.confirmar', { pending: !navigator.onLine });
+          // Guiado: cuando la base ha creado el evento (sin red, como pendiente)
+          if (!navigator.onLine) announceSaved('booking.reserva.acciones.confirmar', { pending: true });
+          else void settleBatch(client, requestId).then((rejected) => { if (!rejected) announceSaved('booking.reserva.acciones.confirmar'); });
           toast(navigator.onLine ? 'Confirmación enviada.' : 'Confirmación pendiente de enviar. Se enviará al reconectar.');
           void paint();
         } catch (error) {

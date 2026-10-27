@@ -228,12 +228,12 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gwhy{display:flex;align-items:flex-start;gap:6px;margin:6px 0;color:var(--muted)}
 .gwhy svg{flex:none;margin-top:2px}
 .gplan-host{display:block;flex-basis:100%}
-.gplan>summary,.glodge-plan>summary,#lodgeLater>summary,#lodgeComplete>summary,.gaccess>summary{display:flex;align-items:center;gap:6px;min-height:46px;font-weight:600;color:var(--accent-deep,var(--ink));list-style:none;cursor:pointer}
-.gplan>summary::-webkit-details-marker,.glodge-plan>summary::-webkit-details-marker,#lodgeLater>summary::-webkit-details-marker,#lodgeComplete>summary::-webkit-details-marker,.gaccess>summary::-webkit-details-marker{display:none}
+.gplan>summary,.glodge-plan>summary,#lodgeLater>summary,#lodgeComplete>summary,.gaccess>summary,#visitorLeaveBox>summary{display:flex;align-items:center;gap:6px;min-height:46px;font-weight:600;color:var(--accent-deep,var(--ink));list-style:none;cursor:pointer}
+.gplan>summary::-webkit-details-marker,.glodge-plan>summary::-webkit-details-marker,#lodgeLater>summary::-webkit-details-marker,#lodgeComplete>summary::-webkit-details-marker,.gaccess>summary::-webkit-details-marker,#visitorLeaveBox>summary::-webkit-details-marker{display:none}
 /* Los desplegables sin icono ni pista llevan un chevron (como .gmeal-fold): sin marcador nativo no se vería que se abren. */
-#lodgeLater>summary,#lodgeComplete>summary,.gaccess>summary{position:relative;padding-right:30px}
-#lodgeLater>summary::after,#lodgeComplete>summary::after,.gaccess>summary::after{content:'';position:absolute;right:6px;top:50%;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-70%) rotate(45deg)}
-#lodgeLater[open]>summary::after,#lodgeComplete[open]>summary::after,.gaccess[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
+#lodgeLater>summary,#lodgeComplete>summary,.gaccess>summary,#visitorLeaveBox>summary{position:relative;padding-right:30px}
+#lodgeLater>summary::after,#lodgeComplete>summary::after,.gaccess>summary::after,#visitorLeaveBox>summary::after{content:'';position:absolute;right:6px;top:50%;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-70%) rotate(45deg)}
+#lodgeLater[open]>summary::after,#lodgeComplete[open]>summary::after,.gaccess[open]>summary::after,#visitorLeaveBox[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
 .gplan-label{min-width:0}
 .gplan-hint{margin-left:auto;padding:2px 10px;border-radius:999px;border:1px solid currentColor;font-size:var(--text-xs,.75rem);white-space:nowrap}
 .gplan[open] .gplan-hint{font-weight:800}
@@ -651,3 +651,12 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 /* Revisión móvil de UI-kit (27-10): a 390 px «Ikisai Guests · nombre» no cabía en la cabecera (121 px en 108). En móvil se
    quita el nombre de la cuenta (sale en el menú y, con la familia, en el selector de personas). */
 @media (max-width:420px){#shellSubtitle{display:none}}
+
+/* Recorridos del evento (ven.ikisai.com): una fila por recorrido, con su marca de hecho. */
+.gvisitor-routes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.gvisitor-route-go{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface,transparent);color:inherit;font:inherit;font-weight:600;text-align:left;text-decoration:none;cursor:pointer}
+.gvisitor-route-go>span:nth-child(2){flex:1}
+.gvisitor-route-mark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:2px solid var(--line)}
+.gvisitor-route[data-done] .gvisitor-route-mark{border-color:var(--accent-deep,var(--ink));color:var(--accent-deep,var(--ink))}
+.gvisitor-member:empty{display:none}
+.gvisitor-member{margin:0 16px}

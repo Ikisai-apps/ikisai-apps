@@ -357,3 +357,5 @@
 .avance-card.is-hecho .avance-card-title{text-decoration:line-through;color:var(--muted)}
 @media (pointer:coarse){.avance-legend-item{min-height:44px}}
 .avance-disc .in svg{width:24px;height:24px}
+.order-card.is-test .qcard-title{color:var(--warn-ink,#7a5414)}
+.carta-test{color:var(--warn-ink,#7a5414);font-weight:600;margin:4px 0}

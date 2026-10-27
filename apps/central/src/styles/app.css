@@ -432,3 +432,7 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .topbar .ctl-headart{filter:invert(1);mix-blend-mode:screen}}
 :root[data-theme="dark"] .topbar .ctl-headart{filter:invert(1);mix-blend-mode:screen}
 @media (max-width:600px){.topbar .ctl-headart{opacity:.12;max-width:60%}}
+.ctl-placeghost{fill:color-mix(in srgb,var(--warn) 12%,transparent);stroke:var(--warn-ink);stroke-width:2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}
+.ctl-placemissing{margin:12px 0}
+.ctl-placemissing summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600}
+#placeShapes select{min-height:var(--tap,46px);max-width:100%}

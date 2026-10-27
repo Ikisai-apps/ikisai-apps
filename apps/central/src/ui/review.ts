@@ -317,14 +317,14 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
     const ro = !isAdmin;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.revision.pantalla.error', 'data-feedback-label': 'Error del formulario' });
     const input = (id: string, value: unknown, attrs: Record<string, string> = {}) => el('input', { id, type: 'text', value: value == null ? '' : String(value), disabled: ro, ...attrs }) as HTMLInputElement;
-    const appSel = el('select', { id: 'rs-app', 'data-field-id': 'central.revision.app', disabled: ro || s !== null }, ...REVIEW_APPS.map((a) => el('option', { value: a, selected: (s?.app ?? 'central') === a }, appName(a)))) as HTMLSelectElement;
+    const appSel = el('select', { id: 'rs-app', 'data-field-id': 'central.revision.app', 'data-field-entity': 'central.review_screens', 'data-field-prop': 'app', disabled: ro || s !== null }, ...REVIEW_APPS.map((a) => el('option', { value: a, selected: (s?.app ?? 'central') === a }, appName(a)))) as HTMLSelectElement;
     const name = input('rs-name', s?.name, { maxlength: '120' });
-    const step = el('select', { id: 'rs-step', 'data-field-id': 'central.revision.step', disabled: ro }, ...REVIEW_STEPS.map((k, i) => el('option', { value: k, selected: (s?.step ?? 'sin') === k }, `${i} · ${stepName(k)}`))) as HTMLSelectElement;
+    const step = el('select', { id: 'rs-step', 'data-field-id': 'central.revision.step', 'data-field-entity': 'central.review_screens', 'data-field-prop': 'step', disabled: ro }, ...REVIEW_STEPS.map((k, i) => el('option', { value: k, selected: (s?.step ?? 'sin') === k }, `${i} · ${stepName(k)}`))) as HTMLSelectElement;
     const url = input('rs-url', s?.url, { type: 'url', maxlength: '500', placeholder: 'https://…', 'data-feedback-ignore': '' });
     const route = input('rs-route', s?.route, { maxlength: '200', placeholder: '#/cumplimiento' });
     const prefix = input('rs-prefix', s?.feedback_prefix, { maxlength: '120', placeholder: 'central.cumplimiento' });
     const handoff = input('rs-handoff', s?.handoff, { maxlength: '60', placeholder: 'MUELA-027' });
-    const noteArea = el('textarea', { id: 'rs-note', 'data-field-id': 'central.revision.note', rows: '3', maxlength: '2000', disabled: ro }) as HTMLTextAreaElement;
+    const noteArea = el('textarea', { id: 'rs-note', 'data-field-id': 'central.revision.note', 'data-field-entity': 'central.review_screens', 'data-field-prop': 'note', rows: '3', maxlength: '2000', disabled: ro }) as HTMLTextAreaElement;
     noteArea.value = s?.note ?? '';
     const values = (): Record<string, unknown> => ({
       app: appSel.value, name: name.value.trim(), step: step.value, url: url.value.trim() || null, route: route.value.trim() || null,

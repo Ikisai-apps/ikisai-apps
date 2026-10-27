@@ -117,11 +117,12 @@ class PublicError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly details: unknown = null) { super(message); }
 }
 
-async function call<T>(path: string, init: { method?: string; json?: unknown; visitor?: boolean } = {}): Promise<T> {
+async function call<T>(path: string, init: { method?: string; json?: unknown; visitor?: boolean; bearer?: string } = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (init.json !== undefined) headers['Content-Type'] = 'application/json';
   const token = init.visitor === false ? null : visitorToken();
   if (token) headers['X-Visitor'] = token;
+  if (init.bearer) headers.Authorization = `Bearer ${init.bearer}`;
   let res: Response;
   try {
     res = await fetch(path, { method: init.method ?? (init.json === undefined ? 'GET' : 'POST'), headers, ...(init.json !== undefined ? { body: JSON.stringify(init.json) } : {}) });
@@ -146,6 +147,24 @@ export async function ensureVisitor(code: string | null): Promise<void> {
  * el código de un solo uso y guarda su token como el de este móvil. Solo si este móvil aún no tiene identidad: un enlace
  * con el código de otra persona no puede sustituir la suya (fijación de sesión); con una ya guardada, se ignora.
  */
+/**
+ * Traspaso de esta identidad a otro dominio (C11 v2, 0106): un código de 5 minutos, un uso y atado a la IP, que la carta de
+ * Flow canjea con `?v=` (solo si aún no tiene visitante). Sin identidad o si falla, `null` y se abre sin traspaso.
+ */
+export async function createHandoff(): Promise<string | null> {
+  if (!visitorToken()) return null;
+  try {
+    const out = await call<{ code?: string }>('/api/v1/public/visitor/handoff', { method: 'POST', json: {} });
+    return typeof out.code === 'string' && /^[0-9a-f]{64}$/i.test(out.code) ? out.code : null;
+  } catch { return null; }
+}
+
+/** La URL con `v=<traspaso>` añadido (si lo hay). */
+export function withHandoff(url: string, code: string | null): string {
+  if (!code) return url;
+  try { const u = new URL(url); u.searchParams.set('v', code); return u.toString(); } catch { return url; }
+}
+
 export async function redeemHandoff(code: string): Promise<boolean> {
   if (!/^[0-9a-f]{64}$/i.test(code) || visitorToken()) return false;
   const out = await call<{ visitorId?: string; token?: string }>('/api/v1/public/visitor/handoff/redeem', { json: { code }, visitor: false });
@@ -190,11 +209,32 @@ export async function forgetEmail(): Promise<void> {
 }
 
 /** Su acceso: si tiene correo guardado y su pista («v•••@g•••.com»). */
-export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null; eventCodes: string[] }> {
-  const out = await call<{ emailSaved?: boolean; emailHint?: string | null; eventCodes?: unknown }>('/api/v1/public/visitor/me');
+export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null; eventCodes: string[]; member: VisitorMember | null }> {
+  const out = await call<{ emailSaved?: boolean; emailHint?: string | null; eventCodes?: unknown; member?: unknown }>('/api/v1/public/visitor/me');
   return { emailSaved: out.emailSaved === true, emailHint: typeof out.emailHint === 'string' ? out.emailHint : null,
     // Los eventos de este visitante, el más reciente primero (núcleo 0107).
-    eventCodes: Array.isArray(out.eventCodes) ? out.eventCodes.filter((c): c is string => typeof c === 'string' && EVENT_CODE.test(c)) : [] };
+    eventCodes: Array.isArray(out.eventCodes) ? out.eventCodes.filter((c): c is string => typeof c === 'string' && EVENT_CODE.test(c)) : [],
+    member: asMember(out.member) };
+}
+
+/** Quién es, si el visitante está atado a un miembro (núcleo 0115): dirección o staff. */
+export interface VisitorMember { userId: string; displayName: string | null; apps: Array<{ app: string; role: string }> }
+function asMember(raw: unknown): VisitorMember | null {
+  const m = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+  if (!m || typeof m.userId !== 'string') return null;
+  const apps = Array.isArray(m.apps) ? m.apps.flatMap((a) => (a && typeof a === 'object' && typeof (a as Record<string, unknown>).app === 'string'
+    ? [{ app: (a as Record<string, string>).app!, role: String((a as Record<string, unknown>).role ?? '') }] : [])) : [];
+  return { userId: m.userId, displayName: typeof m.displayName === 'string' && m.displayName ? m.displayName : null, apps };
+}
+
+/**
+ * Dirección o staff con su pase en este móvil (núcleo 0115): ata el visitante a su cuenta (`POST public/visitor/as-member`,
+ * con su sesión y `X-Visitor`). Si su cuenta ya tenía visitante en otro móvil, se recupera aquel. Un huésped (sin pertenencia
+ * de reader, editor u owner) recibe 403 y sigue como visitante.
+ */
+export async function bindMember(bearer: string): Promise<void> {
+  const out = await call<{ token?: string; recovered?: boolean }>('/api/v1/public/visitor/as-member', { json: {}, bearer });
+  if (out.recovered && out.token) { try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento */ } }
 }
 
 /** Una llamada con visitante; si su token ya no vale (revocado o malo), se borra, se crea otro y se repite una vez. */

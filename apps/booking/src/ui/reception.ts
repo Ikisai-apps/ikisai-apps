@@ -12,7 +12,7 @@
  * «Llega» y «Sale» son `guest_arrive` y `guest_leave`: la salida libera la cama y pide la limpieza (1402).
  */
 import type { SyncedRow } from '@ikisai/sync-client';
-import { announceSaved, createLanes, el, replace, toast, type Lane } from '@ikisai/ui-kit';
+import { announceSaved, createLanes, el, registerReveal, replace, toast, type Lane } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES, WALKIN_METHODS, WALKIN_METHOD_LABELS, canSeeGuests, missingForSes, type GuestLike } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, SPACES, VISITOR_REQUESTS, WALKINS, canWrite, describeError } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -28,17 +28,26 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
   const writable = canWrite(client);
   const boot = client.bootstrap();
   const seesGuests = boot ? canSeeGuests(boot.membership) : false;
+  // El filtro va en memoria (no relee las tablas en cada tecla) y se guarda en la pestaña: al volver de la ficha, o en el
+  // Guiado, sigue señalando la misma ficha (los botones de cada ficha comparten anclaje y la guía señala el primero visible).
+  const SEARCH_KEY = 'booking-recepcion-buscar';
   const search = el('input', { id: 'receptionSearch', type: 'search', placeholder: 'Número o nombre', autocomplete: 'off', 'aria-label': 'Buscar por número o nombre',
-    'data-feedback-id': 'booking.recepcion.buscar', 'data-feedback-label': 'Buscar', oninput: () => void paint() }) as HTMLInputElement;
+    'data-feedback-id': 'booking.recepcion.buscar', 'data-feedback-label': 'Buscar', oninput: () => { remember(); rerender(); } }) as HTMLInputElement;
+  try { search.value = sessionStorage.getItem(SEARCH_KEY) ?? ''; } catch { /* sin almacenamiento */ }
+  const remember = () => { try { sessionStorage.setItem(SEARCH_KEY, search.value); } catch { /* sin almacenamiento */ } };
   let cards: ReceptionCard[] = [];
   let busy = false;
+  let state: 'loading' | 'ready' | 'error' = 'loading';
   const bodies = new Map<LaneKey, HTMLElement>();
 
   const renderLane = (key: LaneKey) => {
     const body = bodies.get(key);
     if (!body) return;
     const mine = laneCards(cards, key, search.value);
-    replace(body, mine.length ? el('ul', { class: 'list', dataset: { lane: key } }, mine.map(card))
+    if (state === 'loading') return void replace(body, el('p', { class: 'hint', dataset: { laneLoading: key } }, 'Cargando…'));
+    if (state === 'error') return void replace(body, el('p', { class: 'hint', dataset: { laneError: key } }, 'No se ha podido cargar. ',
+      el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'booking.recepcion.reintentar', 'data-feedback-label': 'Reintentar', onclick: () => void paint() }, 'Reintentar')));
+    replace(body, mine.length ? el('ul', { class: 'list reception-list', dataset: { lane: key } }, mine.map(card))
       : el('p', { class: 'hint', dataset: { laneEmpty: key } }, key === 'confirmar' ? 'Nadie esperando con número.' : 'Nada aquí ahora.'));
   };
   const lanesOf = (): Lane[] => LANES.map((l) => {
@@ -57,17 +66,17 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
     const paidOnline = c.cobro.text.startsWith('Pagado en línea');
     const actions = !writable ? null : c.kind === 'request' && paidOnline
       ? el('div', { class: 'row-actions' },
-        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept-online', 'data-feedback-id': 'booking.recepcion.alojar_pagado', 'data-feedback-label': 'Alojar (pagado en línea)', onclick: () => void accept(c, 'online') }, 'Alojar (pagado en línea)'))
+        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept-online', 'data-feedback-id': 'booking.recepcion.alojar_pagado', 'data-feedback-label': 'Alojar (pagado en línea)', onclick: (e: Event) => void accept(c, 'online', e.currentTarget as HTMLButtonElement) }, 'Alojar (pagado en línea)'))
       : c.kind === 'request'
       ? el('div', { class: 'row-actions' }, method,
         el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', 'data-feedback-id': 'booking.recepcion.cobrar', 'data-feedback-label': 'Cobrar y alojar', onclick: (e: Event) => void accept(c, method.value, e.currentTarget as HTMLButtonElement) }, 'Cobrar y alojar'),
-        el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', 'data-feedback-id': 'booking.recepcion.descartar', 'data-feedback-label': 'Descartar', onclick: () => void decide(c, 'reject') }, 'Descartar'))
+        el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', 'data-feedback-id': 'booking.recepcion.descartar', 'data-feedback-label': 'Descartar', onclick: (e: Event) => void decide(c, 'reject', e.currentTarget as HTMLButtonElement) }, 'Descartar'))
       : el('div', { class: 'row-actions' },
         c.presencia.text === 'Llega hoy' || c.presencia.text === 'Sin llegada marcada'
-          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'arrive', 'data-feedback-id': 'booking.recepcion.llega', 'data-feedback-label': 'Llega', onclick: () => void presence(c, PROCEDURES.guestArrive, 'Llegada anotada.', 'booking.recepcion.llega') }, 'Llega') : null,
+          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'arrive', 'data-feedback-id': 'booking.recepcion.llega', 'data-feedback-label': 'Llega', onclick: (e: Event) => void presence(c, PROCEDURES.guestArrive, 'Llegada anotada.', 'booking.recepcion.llega', e.currentTarget as HTMLButtonElement) }, 'Llega') : null,
         c.presencia.text.startsWith('Dentro')
-          ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'leave', 'data-feedback-id': 'booking.recepcion.sale', 'data-feedback-label': 'Sale', onclick: () => void presence(c, PROCEDURES.guestLeave, 'Salida anotada: la cama queda libre y se pide su limpieza.', 'booking.recepcion.sale') }, 'Sale') : null,
-        el('button', { class: 'ghost small', type: 'button', 'data-action': 'file', 'data-feedback-id': 'booking.recepcion.ficha', 'data-feedback-label': 'Ficha', onclick: () => navigate(`#/huespedes/${c.eventId}`) }, 'Ficha'));
+          ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'leave', 'data-feedback-id': 'booking.recepcion.sale', 'data-feedback-label': 'Sale', onclick: (e: Event) => void presence(c, PROCEDURES.guestLeave, 'Salida anotada: la cama queda libre y se pide su limpieza.', 'booking.recepcion.sale', e.currentTarget as HTMLButtonElement) }, 'Sale') : null,
+        el('button', { class: 'ghost small', type: 'button', 'data-action': 'file', 'data-feedback-id': 'booking.recepcion.ficha', 'data-feedback-label': 'Ficha', onclick: () => navigate(c.guestId ? `#/huespedes/${c.eventId}/${c.guestId}` : `#/huespedes/${c.eventId}`) }, 'Ficha'));
     return el('li', { class: 'row', dataset: { card: c.key, ...(c.number ? { number: String(c.number) } : {}) }, 'data-feedback-ignore': '' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, c.title)),
       el('div', { class: 'row-meta reception-indicators' }, chip('Plaza', c.plaza), ' ', chip('Cobro', c.cobro), ' ', chip('Datos', c.docs), ' ', chip('Presencia', c.presencia)),
@@ -75,7 +84,14 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
       actions);
   }
 
+  const rerender = () => { lanes.setLanes(lanesOf()); for (const l of LANES) renderLane(l.key); };
+
   async function paint(): Promise<void> {
+    try { await load(); state = 'ready'; } catch { state = 'error'; }
+    rerender();
+  }
+
+  async function load(): Promise<void> {
     const [requests, events, reservations, beds, spaces, guests, assignments, charges, drafts, payments] = await Promise.all([
       client.list(VISITOR_REQUESTS), client.list(EVENTS), client.list(RESERVATIONS), client.list(BEDS), client.list(SPACES),
       seesGuests ? client.list(GUESTS) : Promise.resolve([] as SyncedRow[]), client.list(ASSIGNMENTS), client.list(WALKINS),
@@ -87,8 +103,6 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
       requests: requests as Row[], events: events as Row[], reservations: reservations as Row[], beds: beds as Row[], spaces: spaces as Row[],
       guests: guests as Row[], assignments: assignments as Row[], charges: charges as Row[], drafts: drafts as Row[], payments: payments as Row[],
     }, (g) => missingForSes(g as GuestLike));
-    lanes.setLanes(lanesOf());
-    for (const l of LANES) renderLane(l.key);
   }
 
   async function run(operations: unknown[], done: string): Promise<boolean> {
@@ -113,7 +127,9 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
     try {
       if (!(await run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision: 'accept', method } }], `Alojado el ${c.number}.`))) return;
       // Guiado: alojado de verdad (la base lo ha aceptado)
-      announceSaved(method === 'online' ? 'booking.recepcion.alojar_pagado' : 'booking.recepcion.cobrar');
+      // los dos caminos confirman el mismo paso: lo pagado en línea avisa también con el anclaje de «Cobrar y alojar»
+      announceSaved('booking.recepcion.cobrar');
+      if (method === 'online') announceSaved('booking.recepcion.alojar_pagado');
       // los cobros que acaba de crear este evento, ya cobrados: a Finance con la prueba de servidor
       const fresh = ((await client.list(WALKINS)) as Row[]).filter((x) => x.event_id === c.eventId && !x.deleted_at && x.paid_at && !x.finance_sent_at && Date.parse(x.created_at) >= started);
       for (const x of fresh) await sendWalkinToFinance(client, x);
@@ -122,12 +138,29 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
       if (button) button.disabled = false;
     }
   }
-  const decide = (c: ReceptionCard, decision: 'reject') => c.requestId
-    ? run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision } }], `Solicitud ${c.number} descartada.`) : Promise.resolve(false);
-  const presence = (c: ReceptionCard, procedure: string, done: string, anchor: string) => c.guestId
-    ? run([{ op: 'call', procedure, args: { guest_id: c.guestId } }], done).then((ok) => { if (ok) announceSaved(anchor); return ok; }) : Promise.resolve(false);
+  /** Una acción cada vez, con el botón desactivado mientras va (un doble toque no manda dos llamadas). */
+  async function once(button: HTMLButtonElement | undefined, work: () => Promise<boolean>): Promise<boolean> {
+    if (busy) return false;
+    busy = true;
+    if (button) button.disabled = true;
+    try { return await work(); } finally { busy = false; if (button) button.disabled = false; }
+  }
+  const decide = (c: ReceptionCard, decision: 'reject', button?: HTMLButtonElement) => c.requestId
+    ? once(button, () => run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision } }], `Solicitud ${c.number} descartada.`)) : Promise.resolve(false);
+  const presence = (c: ReceptionCard, procedure: string, done: string, anchor: string, button?: HTMLButtonElement) => c.guestId
+    ? once(button, () => run([{ op: 'call', procedure, args: { guest_id: c.guestId } }], done).then((ok) => { if (ok) announceSaved(anchor); return ok; })) : Promise.resolve(false);
+
+  // 1: en el móvil (pestañas) solo se monta un carril; el Guiado pide el del botón que busca
+  const LANE_OF: Record<string, LaneKey> = { cobrar: 'confirmar', alojar_pagado: 'confirmar', descartar: 'confirmar', metodo: 'confirmar', llega: 'entradas', sale: 'estancia', ficha: 'estancia' };
+  const offReveal = registerReveal('booking.recepcion', (id) => {
+    const lane = LANE_OF[id.split('.')[2] ?? ''];
+    if (!lane) return;
+    // «Sale» puede estar en «En estancia» o en «Salidas»: si no hay ninguna ficha con salida en el primero, el segundo
+    const target = lane === 'estancia' && !laneCards(cards, 'estancia', search.value).length ? 'salidas' : lane;
+    lanes.select(target, false);
+  });
 
   const offs = [VISITOR_REQUESTS, WALKINS, GUESTS, ASSIGNMENTS, TABLES.stayTravelers, TABLES.stayPayments].map((t) => client.onTable(t as never, () => void paint()));
   void paint();
-  return () => { offs.forEach((off) => off()); lanes.destroy(); };
+  return () => { offReveal(); offs.forEach((off) => off()); lanes.destroy(); };
 };
