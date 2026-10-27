@@ -281,6 +281,23 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(page.locator('.preprow strong')).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']);
   });
 
+  await test.step('«Lo mío» (F-PRE-2): solo mis pasos, recordado en el dispositivo; sin pasos míos, no sale', async () => {
+    await expect(page.locator('#preparationMine')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Editar: Sacar el pan del congelador' }).click();
+    const edit = page.getByRole('dialog', { name: 'Editar paso' });
+    await edit.getByLabel('Responsable').fill('prueba'); // el nombre de la sesión, sin mayúsculas
+    await page.locator('#saveStep').click();
+    await expect(edit).toBeHidden();
+    await page.locator('#preparationMine').click();
+    await expect(page.locator('#preparationMine')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.preprow strong')).toHaveText(['Sacar el pan del congelador']);
+    await page.reload();
+    await expect(page.locator('#preparationMine')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.preprow strong')).toHaveText(['Sacar el pan del congelador']);
+    await page.locator('#preparationMine').click();
+    await expect(page.locator('.preprow strong')).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']);
+  });
+
   await test.step('cambia la hora de la cena: la propuesta avisa y regenerar respeta lo hecho y lo propio', async () => {
     await tab(page, 'Menú');
     await page.getByLabel('Hora de Cena').fill('21:00');

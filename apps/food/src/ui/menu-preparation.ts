@@ -2,7 +2,7 @@ import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
   FOOD_PROCEDURES, isOverdue, isStale, localDayKey, nextStep, prepStats, preparationSources, shareOut, stepDay, stepService, validateOperations, type MenuService,
 } from '@ikisai/domain-food';
-import { confirmDialog, createSortableList, el, formatDate, icon, openSheet, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
+import { confirmDialog, createSortableList, el, foldText, formatDate, icon, openSheet, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { T, describeError } from '../app/client.ts';
 import { longDay, shortTime } from '../app/events.ts';
@@ -19,6 +19,11 @@ interface RegenerateResult { inserted: number; updated: number; deleted: number;
 
 /** El día elegido de cada menú, mientras dura la sesión (volver a la pestaña no lo pierde). */
 const chosenDay = new Map<string, string>();
+
+/** «Lo mío» (hallazgo F-PRE-2): recordado por dispositivo; sin almacenamiento, apagado. */
+const MINE_KEY = 'food.preparacion.lo_mio';
+const readMine = (): boolean => { try { return localStorage.getItem(MINE_KEY) === '1'; } catch { return false; } };
+const writeMine = (on: boolean): void => { try { if (on) localStorage.setItem(MINE_KEY, '1'); else localStorage.removeItem(MINE_KEY); } catch { /* sin almacenamiento */ } };
 
 /** «3 de 4 listos», «12 pasos · Marga 7 · Tomás 5». */
 const readyText = (rows: PrepRow[]) => `${rows.filter((r) => r.done).length} de ${rows.length} ${rows.length === 1 ? 'listo' : 'listos'}`;
@@ -42,6 +47,14 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
   const dayLists = new Map<string, Sortable<PrepRow>>();
   const listSigs = new Map<string, string>();
   let shape = '';
+  // «Lo mío»: el responsable es mi nombre o mi nombre de pila, sin mayúsculas ni acentos.
+  let mine = readMine();
+  let mineOn = false;
+  const myNames = (): string[] => {
+    const full = foldText(client.bootstrap()?.profile.displayName?.trim() ?? '');
+    return full ? [full, full.split(/\s+/)[0]!] : [];
+  };
+  const isMine = (step: PrepRow): boolean => { const who = foldText(step.responsible?.trim() ?? ''); return !!who && myNames().includes(who); };
   const top = el('div');
   const listsHost = el('div', { 'data-feedback-id': 'food.menu.preparacion.dias', 'data-feedback-label': 'Pasos por día', id: 'preparationDays' });
   const rowSig = (rows: PrepRow[]) => rows.map((r) => `${r.id}:${r.revision}:${r.position}:${r._pending ? 1 : 0}`).join(',');
@@ -157,7 +170,8 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
   }
 
   function blockList(key: string, label: string, rows: PrepRow[], render: (row: PrepRow) => HTMLElement): HTMLElement {
-    if (!canWrite() || rows.length < 2) return el('ul', { 'data-feedback-id': 'food.menu.preparacion.lista', 'data-feedback-label': 'Pasos del servicio', class: 'preplist' }, ...rows.map((row) => el('li', null, render(row))));
+    // Con «Lo mío» no se ordena: faltan los pasos de los demás.
+    if (!canWrite() || mineOn || rows.length < 2) return el('ul', { 'data-feedback-id': 'food.menu.preparacion.lista', 'data-feedback-label': 'Pasos del servicio', class: 'preplist' }, ...rows.map((row) => el('li', null, render(row))));
     const list = createSortableList<PrepRow>({
       items: rows,
       key: (row) => row.id,
@@ -239,11 +253,14 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
     const sorted = sortSteps(steps);
     const doneCount = sorted.filter((s) => s.done).length;
     const day = currentDay();
-    const ofDay = sorted.filter((s) => (dayOf(s) ?? '') === day);
-    const noDay = sorted.filter((s) => !dayOf(s));
+    const anyMine = sorted.some(isMine);
+    mineOn = mine && anyMine;
+    const shown = mineOn ? sorted.filter(isMine) : sorted;
+    const ofDay = shown.filter((s) => (dayOf(s) ?? '') === day);
+    const noDay = shown.filter((s) => !dayOf(s));
     const next = nextStep(sorted, dayOf, now);
     const choices = days().map((d) => {
-      const rows = sorted.filter((s) => dayOf(s) === d);
+      const rows = shown.filter((s) => dayOf(s) === d);
       const late = rows.filter((s) => isOverdue(s, d, now)).length;
       return { key: d, label: dayChoiceLabel(d, today), sub: `${rows.filter((s) => s.done).length}/${rows.length}${late ? ` · ${late} ${late === 1 ? 'atrasado' : 'atrasados'}` : ''}`, alert: late > 0 };
     });
@@ -263,13 +280,15 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
       // Qué hace «Regenerar» con lo tuyo, junto al botón (hallazgo F-PRE-5).
       writable && !stale && (generated || house) ? el('p', { class: 'muted', id: 'regenerateHint' }, 'Regenerar rehace solo la propuesta: tus pasos propios y lo ya hecho se quedan.') : null,
       choices.length > 1 || noDay.length ? daySelector(choices, day, (key) => { chosenDay.set(menuId, key); paint(); }) : null,
+      anyMine ? el('div', { class: 'chips fd-minebar' }, el('button', { 'data-feedback-id': 'food.menu.preparacion.lo_mio', 'data-feedback-label': 'Lo mío', class: mineOn ? 'filterchip on' : 'filterchip', type: 'button',
+        id: 'preparationMine', 'aria-pressed': String(mineOn), onclick: () => { mine = !mineOn; writeMine(mine); paint(); } }, 'Lo mío')) : null,
     );
     if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }
     bindNet();
 
     // Estructura (día, bloques y qué pasos hay en cada uno). Si no cambia, solo se actualizan las filas de cada lista.
     const parts = blocks(ofDay);
-    const shapeNow = JSON.stringify({ writable, day, next: next?.id ?? null, blocks: parts.map((b) => [b.key, b.rows.length > 1 ? b.rows.map((r) => r.id).sort() : rowSig(b.rows)]) });
+    const shapeNow = JSON.stringify({ writable, mineOn, day, next: next?.id ?? null, blocks: parts.map((b) => [b.key, b.rows.length > 1 ? b.rows.map((r) => r.id).sort() : rowSig(b.rows)]) });
     const dayStats = prepStats(ofDay, dayOf, now);
     const statsNode = () => { const node = prepStatsView(dayStats, day ? `Cifras del ${longDay(day)}` : 'Cifras de los pasos sin día', 'food.menu.preparacion.dia.cifras'); node.classList.add('fd-daystats'); return node; };
     if (writable && shapeNow === shape) {

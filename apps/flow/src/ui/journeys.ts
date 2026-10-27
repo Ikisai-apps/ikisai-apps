@@ -86,6 +86,9 @@ function setPath(target: Record<string, any>, path: string, value: unknown): voi
 }
 /** La web de cada app (`invoices` es Finance). El enlace profundo con el campo señalado llegará con el inventario del núcleo. */
 const appUrl = (app: string) => `https://${app === 'invoices' ? 'finance' : app}.ikisai.com/`;
+/** Pantalla de cada anclaje conocido (prefijo → ruta de la app), para abrir el «ir a otra app» donde está el control. */
+const ANCHOR_ROUTES: Array<[string, string]> = [['booking.recepcion', '#/recepcion']];
+const routeOf = (anchor: string | null) => (anchor ? ANCHOR_ROUTES.find(([p]) => anchor === p || anchor.startsWith(`${p}.`))?.[1] ?? '' : '');
 const APP_NAMES: Record<string, string> = { invoices: 'Finance', tasks: 'Tasks', booking: 'Booking', food: 'Food', central: 'Central', guests: 'Guests', organizers: 'Organizers', flow: 'Flow' };
 const appName = (app: string) => APP_NAMES[app] ?? app;
 
@@ -138,7 +141,7 @@ export async function runJourney(client: SyncClient, j: Journey, mode: 'learn' |
     const app = stage.target_app ?? 'flow';
     const back = encodeURIComponent(location.href);
     // `guia`: la ejecución, para que el Guiado del kit en la otra app lea sus pasos (`flow.guide_read`) y confirme.
-    const url = `${appUrl(app)}?desde=flow&volver=${back}&titulo=Flow&guia=${executionId}${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}`;
+    const url = `${appUrl(app)}?desde=flow&volver=${back}&titulo=Flow&guia=${executionId}${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}${routeOf(stage.target_anchor)}`;
     replace(host, el('div', { class: 'journey-handoff', 'data-feedback-id': `flow.recorrido.${j.def.key}.tramo${stage.position}` },
       el('h3', null, stage.title),
       stage.explain ? el('p', null, stage.explain) : null,

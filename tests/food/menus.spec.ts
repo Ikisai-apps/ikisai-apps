@@ -216,6 +216,16 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     expect(text).not.toMatch(/\brac\./);
     expect(text).not.toContain('alergia a pistacho');
     expect(text).not.toContain('personas');
+    // F-ORG-4: «Revisar», lo mismo en una columna y sin fotos; se vuelve a la hoja para imprimir.
+    await page.getByRole('button', { name: 'Revisar', exact: true }).click();
+    const review = page.locator('#organizerReview');
+    await expect(review).toBeVisible();
+    await expect(sheet).toBeHidden();
+    await expect(review).toContainText('Curry suave de temporada');
+    await expect(review).toContainText('Frutos de cáscara');
+    await expect(review.locator('img')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Hoja', exact: true }).click();
+    await expect(sheet).toBeVisible();
     // Como al pulsar «Imprimir»: el kit marca el documento y solo queda la hoja.
     await page.evaluate(() => document.documentElement.classList.add('printing'));
     await page.emulateMedia({ media: 'print' });
