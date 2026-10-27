@@ -84,7 +84,7 @@ test('NIF con mal dígito, empresa sin domicilio, cobro ajeno o inexistente y ot
   const entry = (await app.t.db.query<{ id: string }>(`select id from invoices.app_entries where source_ref = $1`, [source])).rows[0]!.id;
   const manual = await app.call('/api/v1/commands', { body: { requestId: `ei-${++seq}`, operations: [{ op: 'insert', table: 'invoices.issued_invoices', id: uuid(),
     fields: { series_code: 'F', status: 'borrador', issue_date: '2026-10-31', description: 'A mano', from_entry_id: entry } }] } });
-  assert.equal(manual.data.error?.code, 'ENTRY_INVOICE_PROCEDURE_ONLY', JSON.stringify(manual.data));
+  assert.equal(manual.data.error?.code, 'INVALID_FIELDS', JSON.stringify(manual.data)); // el servidor no acepta la columna del cliente (y el SQL tampoco)
 });
 
 test('descartar el borrador deja volver a pedirla; una factura de un cobro no suma en el resumen ni en los KPIs', async () => {
