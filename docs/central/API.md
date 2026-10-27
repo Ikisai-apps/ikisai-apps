@@ -520,6 +520,8 @@ Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y
 | `state` | `text not null` | `critico` o `atencion`. |
 | `note` | `text` | Hasta 300. |
 
+**Acciones** (`central.weekly_actions`, `1523`; VG, vg-41): mientras la revisión está abierta, cada indicador puede acabar en una decisión vigente (`kind = 'decision'`, `decision_id`) o en una tarea de Tasks (`kind = 'task'`). La tarea la pide `POST weekly/:id/task {requestId, code, kpi, label, title, note?, due?}` con el kind `central.weekly_action`, el token de la persona y la referencia `RSM_…:requestId` (idempotente). Su estado vuelve por `requirements/tasks-status`. La revisión siguiente enseña cómo van las acciones de la anterior. Mismo permiso que la revisión; con la revisión cerrada, `REVIEW_CLOSED`.
+
 Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque puede llevar importes. La foto también se borra del dispositivo al cerrar sesión. Pantalla: `#/direccion/semana`, desde el panel de Dirección.
 
 ## 3. Procedimientos y lecturas

@@ -13,7 +13,7 @@ import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES, DECISION_VOTES, DECISION_VOTES_TABLE } from './decisions.ts';
 import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
 import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
-import { WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
+import { WEEKLY_ACTIONS_TABLE, WEEKLY_ACTION_KINDS, WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
 import { AGENTS_TABLE, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
@@ -269,6 +269,21 @@ const SPECS: Record<string, TableSpec> = {
     },
     required: ['week'],
   },
+  [WEEKLY_ACTIONS_TABLE]: {
+    fields: {
+      review_id: { kind: 'uuid' },
+      kpi: { kind: 'text', min: 3, max: 80, pattern: /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, patternText: 'clave «app.nombre»' },
+      label: { kind: 'text', min: 1, max: 80 },
+      kind: { kind: 'enum', values: WEEKLY_ACTION_KINDS },
+      decision_id: { kind: 'uuid', nullable: true },
+      task_target_id: { kind: 'uuid', nullable: true },
+      task_external_ref: { kind: 'text', min: 3, max: 120, nullable: true },
+      task_label: { kind: 'text', max: 500, nullable: true },
+      task_revision: { kind: 'number', nullable: true },
+    },
+    required: ['review_id', 'kpi', 'label', 'kind'],
+    immutable: ['review_id'],
+  },
   [WEEKLY_ITEMS_TABLE]: {
     fields: {
       review_id: { kind: 'uuid' },
@@ -499,7 +514,7 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     if (table === KPI_TARGETS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede fijar objetivos.', details: { index, table } };
     }
-    if ((table === WEEKLY_REVIEWS_TABLE || table === WEEKLY_ITEMS_TABLE) && !canPrepareReview(actor)) {
+    if ((table === WEEKLY_REVIEWS_TABLE || table === WEEKLY_ITEMS_TABLE || table === WEEKLY_ACTIONS_TABLE) && !canPrepareReview(actor)) {
       return { code: 'FORBIDDEN', message: 'Preparan la revisión semanal quien administra Central y quien tiene el ámbito de Dirección.', details: { index, table } };
     }
     if (table === AGENTS_TABLE && actor.role !== 'owner') {
@@ -521,6 +536,10 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede enlazar una cuenta.', details: { index, table, field: 'user_id' } };
     }
     const row = { ...(op.id && current ? current(table, op.id) ?? {} : {}), ...fields } as Record<string, unknown>;
+    if (table === WEEKLY_ACTIONS_TABLE && op.op === 'insert') {
+      if (row.kind === 'decision' && (typeof row.decision_id !== 'string' || row.task_target_id != null)) return fieldIssue(index, table, 'decision_id', 'elige una decisión');
+      if (row.kind === 'task' && (typeof row.task_target_id !== 'string' || row.decision_id != null)) return fieldIssue(index, table, 'task_target_id', 'la tarea la crea Tasks');
+    }
     if (table === AGENTS_TABLE) {
       const kind = (row.responsible_kind ?? 'person') as ResponsibleKind;
       if (kind === 'person' && row.responsible_service != null) return fieldIssue(index, table, 'responsible_service', 'solo con una entidad de servicio');
