@@ -105,3 +105,26 @@ test('familiar: sin propuesta, cobro ni alojamiento; «Menú de casa (Food)»', 
   await expect(page.locator('#blockProposal, #blockFinance, #financeExtract, #blockCosts, #blockLodging, #blockWalkIn')).toHaveCount(0);
 });
 
+test('servicio de barra: los cierres del día de Flow en la ficha del evento (pedidos, ventas, puntas y lo más vendido)', async ({ page }) => {
+  const api = harness.api;
+  const res = api.serverInsert(RESERVATIONS, { title: 'Jornadas con cierre', status: 'en_ejecucion', start_date: inDays(-1), end_date: inDays(1), expected_guests: 200, event_type: 'jornadas_abiertas', priority: 'media' });
+  api.serverInsert(FINANCE, { id: res.id });
+  const event = api.serverInsert(EVENTS, { reservation_id: res.id });
+  api.setBarService([
+    { event_id: event.id, day: inDays(-1), data: { orders: 87, sales_cents: 104550, sales_by_method: { cash: 60000, bizum: 44550 }, refunds_pending_cents: 350,
+      peak_hours: [{ hour: 13, orders: 30 }, { hour: 14, orders: 41 }, { hour: 21, orders: 12 }, { hour: 22, orders: 4 }],
+      units_by_product: [{ scope: 'clasico', code: 'A', name: 'Montadito de lomo', units: 64 }, { scope: 'barra', code: 'α', name: 'Caña', units: 120 }] } },
+    { event_id: 'otro-evento', day: inDays(-1), data: { orders: 1, sales_cents: 100 } },
+  ]);
+  await login(page, harness.baseURL);
+  await page.goto(`${harness.baseURL}/#/reservas/${res.id}`);
+  const bar = page.locator('#blockBarService');
+  await expect(bar.locator('#barServiceDays li')).toHaveCount(1);
+  await expect(bar).toContainText('87 pedidos');
+  await expect(bar).toContainText('1045,50');
+  await expect(bar).toContainText('Bizum 445,50');
+  await expect(bar).toContainText('Devoluciones pendientes 3,50');
+  await expect(bar).toContainText('Horas punta: 13 h (30) · 14 h (41) · 21 h (12)');
+  await expect(bar).toContainText('Lo más vendido: α Caña × 120 · A Montadito de lomo × 64');
+});
+

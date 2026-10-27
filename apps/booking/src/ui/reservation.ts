@@ -1,6 +1,7 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
 import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderWalkIn, specsFor } from './eventKinds.ts';
+import { renderBarService } from './barService.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
@@ -136,6 +137,8 @@ export function mountReservation(id: string): ViewMount {
     const host = el('div');
     replace(main, host);
 
+    // «Servicio de barra» (Flow): una lectura por evento y visita, no una por repintado.
+    let barService: { eventId: string; element: HTMLElement } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
       try {
         await client.commit(operations);
@@ -514,6 +517,8 @@ export function mountReservation(id: string): ViewMount {
         ] : null,
       ]);
 
+      if (liveEvent && seesFinance && (!barService || barService.eventId !== liveEvent.id)) barService = { eventId: liveEvent.id, element: renderBarService({ client, eventId: liveEvent.id }) };
+      const barCard = liveEvent && seesFinance ? barService!.element : null;
       const portalRequestsCard = portalData && editable ? renderPortalRequests({ data: portalData, proposals: proposalData?.proposals ?? [], run }) : null;
       const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
 
@@ -678,7 +683,7 @@ export function mountReservation(id: string): ViewMount {
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
         layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
           // familiar: sin propuesta, cobro ni coste
-          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs], {
+          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard], {
           writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
         }, requested),

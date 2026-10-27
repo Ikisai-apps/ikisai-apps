@@ -123,6 +123,8 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Tipos de reserva, hito 2 (migración 0484):** la ficha según el tipo. Jornadas abiertas: cartas de Food y «Alojar a alguien»; familiar: sin dinero ni alojamiento y con menú de casa. API.md §30; pruebas en `tests/booking/open-days.spec.ts`.
 
+- **Servicio de barra (Flow):** la ficha del evento enseña los cierres del día de Flow (`flow.booking_service_projection`): pedidos, ventas por método, devoluciones pendientes, horas punta y lo más vendido. API.md §28.3; prueba en `open-days.spec.ts`.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
