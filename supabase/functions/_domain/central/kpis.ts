@@ -13,6 +13,8 @@ export const KPI_SOURCES: ReadonlyArray<{ app: string; projection: string }> = [
   { app: 'booking', projection: 'booking.central_kpi_projection' },
   // Guests (#876, docs/guests/API.md §9.20): portal, firmas y partes SES; su lectura es solo para el owner de Central.
   { app: 'guests', projection: 'guests.central_kpi_projection' },
+  // Organizers (#959, 0705): retiros próximos, accesos de quien organiza, comentarios e informes.
+  { app: 'organizers', projection: 'organizers.central_kpi_projection' },
   { app: 'invoices', projection: 'invoices.central_kpi_projection' },
   { app: 'tasks', projection: 'tasks.central_kpi_projection' },
   { app: 'food', projection: 'food.central_kpi_projection' },
@@ -34,6 +36,8 @@ export const KPI_SECTIONS: ReadonlyArray<{ title: string; kpis: readonly string[
   // Guests (#876): el portal y las firmas de los huéspedes, y los partes de viajeros (SES).
   { title: 'Portal y firmas', kpis: ['guests.portal_entered_pct', 'guests.portal_entered', 'guests.signatures_pending', 'guests.retreats_signatures_pending', 'guests.signatures_done'] },
   { title: 'Partes de viajeros', kpis: ['guests.retreats_ses_pending', 'guests.ses_sent_30d'] },
+  // Organizers (#959): primero lo que falta (accesos y comentarios abiertos), después la actividad.
+  { title: 'Quien organiza', kpis: ['organizers.retreats_without_access', 'organizers.guest_comments_open_30d', 'organizers.retreats_next_30d', 'organizers.reports_sent_30d'] },
 ];
 
 /** Tema de una clave y su posición en el panel (`null` si no tiene). */

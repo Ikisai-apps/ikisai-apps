@@ -10,6 +10,7 @@ import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
 import { mountEditor } from './editor.ts';
+import { mountAvance } from './avance.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
@@ -51,6 +52,8 @@ const COLUMN_VIEWS: Record<string, ColumnView> = {
   bed: { slug: 'cama', icon: 'bed', mount: mountPresence('bed') },
   signature: { slug: 'firma', icon: 'edit', mount: mountPresence('signature') },
   departure: { slug: 'salida', icon: 'logout', mount: mountPresence('departure') },
+  // «Avance por aplicaciones» (0937): su propia pantalla de carriles por agente.
+  avance: { slug: 'avance', icon: 'board', mount: mountAvance },
 };
 const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check', quick_steps: 'board', free_task: 'list', guest_presence: 'guest' };
 
@@ -212,7 +215,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offBadges?.(); offBadges = null; lastPrepPending = null;
     if (!projectId) { columns = []; boardable = false; shell.setNav([]); return; }
     columns = await loadColumns(projectId);
-    boardable = (await loadProjects(client)).some((p) => p.id === projectId && !p.frozen);
+    // El Avance ya trae sus carriles (por agente): no va dentro del tablero de columnas.
+    boardable = (await loadProjects(client)).some((p) => p.id === projectId && !p.frozen) && !columns.some((c) => c.key === 'avance');
     if (currentProject !== projectId) return;
     // La v1 congelada no cambia (VG: «Barra · v1» se congela); los nombres cortos, en lo que no está congelado.
     shell.setNav(navFor(projectId, columns, boardable));

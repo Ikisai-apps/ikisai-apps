@@ -2200,7 +2200,7 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
   - las de la casa, solo una owner (hook `tasks.validate_review_templates`, con el rol con el que empezó el lote);
   - las de un área, owner o editor con el área entera (`tasks.validate_batch`).
   - Las leen todos los que ven el área (las de la casa, cualquiera con acceso a Tasks).
-- **Siembra:** la plantilla de la casa «Revisión de apertura», con un ítem genérico por zona más «Observaciones generales». Son críticos el agua caliente (lectura ≥ 50 °C), la electricidad, las cámaras (≤ 5 °C), los accesos, las barandillas, los extintores y el cloro del agua (0,2–1 ppm). Los ids son fijos y no hay datos reales.
+- **Siembra:** la plantilla de la casa «Revisión de apertura», con un ítem genérico por zona más «Observaciones generales». Son críticos, como decidió VG el 27-10, el agua caliente (lectura ≥ 50 °C), la electricidad, los accesos, las barandillas, los extintores y el cloro del agua (0,2–1 ppm). Las cámaras (≤ 5 °C) se leen, pero no bloquean la apertura (0351). Los ids son fijos y no hay datos reales.
 - **Pruebas:** `tests/tasks/review-templates.test.ts`.
 
 ### 46.2 Crear una revisión (migración `0349`, `tasks-api/reviews.ts`)
@@ -2239,6 +2239,20 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - **La revisión:** pasa a `ready` cuando todos sus críticos están en `ok` o `verified`, y vuelve a `open` si alguno deja de estarlo. Una ya abierta (`opened`) se queda así.
 - **Responde** `{itemId, state, reviewId, reviewStatus, correctiveTaskId, recheckTaskId}`.
 - **Pruebas:** `tests/tasks/review-results.test.ts`.
+
+### 46.4 «Lista para abrir» y la proyección para Flow (migración `0351`; capacidad `tasks.review_projection`)
+
+- **`POST reviews/open {reviewId, override?, note?}`** (procedimiento `tasks.review_open`):
+  - con todos los críticos en `ok` o `verified`, editor u owner con el proyecto en su ámbito; queda `opened` con quién y cuándo;
+  - con críticos pendientes, 409 `REVIEW_NOT_READY` con la lista en `details.pending`;
+  - para abrir igualmente, solo una owner con el área entera, `override: true` y una nota (decisión de VG, 27-10). Queda `open_override`, la nota y lo que faltaba (`pending_at_open`);
+  - repetir con una ya abierta devuelve lo que hay.
+- **`GET reviews/projection?reviewId=…` o `?eventRef=…`** (lectura `tasks.review_items_projection`; también para quien solo lee): la revisión que quien lee ve; con `eventRef`, la más reciente de ese evento. Devuelve `{review, zones, totals}`:
+  - `review`: `{id, projectId, tabId, title, eventRef, status, ready, openedAt, openedBy, override, openNote, pendingAtOpen}`;
+  - `zones`: `[{zone, label, items: [{id, taskId, title, answer, expected, critical, instructions, state, value, text, fileId, checkedBy, checkedAt, firstFailure, corrective, recheck}]}]`. `corrective` y `recheck` llevan `{taskId, done, deleted}` o `null`;
+  - `totals`: `{items, critical, criticalDone, done, failed, pending}`.
+- Flow lo pinta con la pieza «lista de comprobación» del kit (#872) y marca con `tasks.review_item_result` (§46.3).
+- **Pruebas:** `tests/tasks/review-open.test.ts`.
 
 ## 48. Limpieza de cama al salir un huésped (Booking #907; tarjeta tasks-24, 27-10-2026)
 
