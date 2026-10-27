@@ -217,7 +217,7 @@ test('enlaces · «Pedir a Tasks»: proyecto elegido una vez, tarea o compra con
   const bought = await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'purchase', quantity: 3, unit: 'kg' } });
   assert.equal(bought.data.link.kind, 'purchase_request');
   assert.equal(calls[1]!.body.quantity, 3); assert.equal(calls[1]!.body.unit, 'kg');
-  assert.equal(calls[1]!.body.external_url, `https://flow.ikisai.com/equipo#/p/${PROJECT}/logistica`);
+  assert.equal(calls[1]!.body.external_url, `https://flow.ikisai.com/#/p/${PROJECT}/logistica`);
   // El lector no pide; sin acceso a Tasks, «Pide acceso a Tasks»; proyecto que ya no vale, elegir otro.
   assert.equal((await app.call(`/api/v1/units/${unitId}/tasks`, { token: app.tokens.reader, body: { type: 'task' } })).status, 403);
   reply = () => Response.json({ error: { code: 'FORBIDDEN', message: 'x', details: null } }, { status: 403 });

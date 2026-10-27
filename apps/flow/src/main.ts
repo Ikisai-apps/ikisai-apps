@@ -12,16 +12,25 @@ if (!root) throw new Error('Falta el contenedor #app');
 applyTheme();
 
 /**
- * Entradas separadas (FLOW-DIR-001 §8): `flow.ikisai.com/` abre la carta pública, sin login ni espejo local; el área del
- * personal va en `/equipo` (login del kit, menú común, PWA).
+ * Entradas (decisión de VG, 27-10; MUELA/equipo/feedback/flow/URLS_ENTRADA.md): `flow.ikisai.com/` es la entrada del equipo
+ * (login del kit, menú común, PWA), como el resto de apps. La carta pública sigue aquí, en `/recorridos/carta`, pero se llega
+ * desde ven.ikisai.com (la única entrada pública), con la identidad de visitante en los dos sentidos.
+ * Las URL antiguas las redirige el worker con 301 (`public/_worker.js`); aquí se repite para el servidor de desarrollo y por si
+ * una página vieja quedó en caché: `/equipo…` → `/`, `/carta` → ven.ikisai.com, `/?invitacion=` → la carta.
  */
-export const STAFF_PATH = '/equipo';
-const isStaff = location.pathname === STAFF_PATH || location.pathname.startsWith(`${STAFF_PATH}/`);
+export const CARTA_PATH = '/recorridos/carta';
+const path = location.pathname.replace(/\/+$/, '') || '/';
+const params = new URLSearchParams(location.search);
 
-if (isStaff) {
+if (path === '/equipo' || path.startsWith('/equipo/')) {
+  history.replaceState(null, '', `/${location.search}${location.hash}`);
   startStaffApp(root);
-} else {
+} else if (path === '/carta') {
+  location.replace('https://ven.ikisai.com/');
+} else if (path === CARTA_PATH || (path === '/' && params.has('invitacion'))) {
   mountCarta(root);
+} else {
+  startStaffApp(root);
 }
 
 function startStaffApp(root: HTMLElement): void {
