@@ -11,6 +11,7 @@
  */
 import { createApp, createSupabase, ensureServiceActor, fail, type AppConfig } from '../_kit/mod.ts';
 import { MATERIAL_MAX_BYTES, MATERIAL_MIME, proposalVisible, validateOperations, visibleRow } from '../_domain/organizers/mod.ts';
+import { githubEvidence, GithubError, parseRef, type EvidenceStore } from '../_domain/organizers/github.ts';
 
 export const ORGANIZERS_ORIGINS = ['https://organizers.ikisai.com', 'https://ikisai-organizers.pages.dev'];
 
@@ -19,15 +20,37 @@ export const ORGANIZERS_ORIGINS = ['https://organizers.ikisai.com', 'https://iki
 // fila viva que lo referencia. El único campo de archivo es `materials.file_id`, registrado en 0700.
 export const ORGANIZERS_UPLOADS = { bucket: 'organizers-materials', allowedMime: MATERIAL_MIME, maxBytes: MATERIAL_MAX_BYTES, membersK3: true };
 
-export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'portalIssuer' | 'uploads' | 'hooks' | 'workerRoutes'> & Partial<Pick<AppConfig, 'origins'>>) {
+/** `organizers.github_evidence` (0704): token de solo lectura de la Edge (GITHUB_TOKEN); en las pruebas, `fetch` y caché propios. */
+export interface OrganizersGithub { token?: string | null; fetch?: typeof fetch; store?: EvidenceStore }
+
+export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'portalIssuer' | 'uploads' | 'hooks' | 'workerRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { github?: OrganizersGithub }) {
   const supabase = createSupabase(base);
+  const { github, ...config } = base;
+  const githubToken = github && 'token' in github ? github.token ?? null : ((globalThis as any).Deno?.env?.get?.('GITHUB_TOKEN') ?? null);
   return createApp({
-    ...base,
+    ...config,
     app: 'organizers',
     slug: 'organizers-api',
     origins: base.origins ?? ORGANIZERS_ORIGINS,
     portalIssuer: true,
     uploads: ORGANIZERS_UPLOADS,
+    routes: [...(config.routes ?? []), {
+      // Evidencia de GitHub de una tarjeta de Flow (capacidad del catálogo, 0704). Solo el personal de Organizers: owner o
+      // editor sin `scopes.grants` (quien organiza un retiro es editor con grants y no la ve).
+      method: 'GET', pattern: 'github/evidence',
+      handler: async ({ ctx, url }) => {
+        const role = ctx.membership.role;
+        const portal = Array.isArray((ctx.membership.scopes as { grants?: unknown } | null)?.grants);
+        if (!(role === 'owner' || (role === 'editor' && !portal))) fail(403, 'FORBIDDEN', 'Solo el equipo de Ikisai ve la evidencia de GitHub.');
+        try {
+          return await githubEvidence(parseRef(url.searchParams), { fetch: github?.fetch ?? fetch, token: githubToken, store: github?.store },
+            { fresh: url.searchParams.get('fresh') === '1' });
+        } catch (error) {
+          if (error instanceof GithubError) fail(error.status, error.code, error.message, error.retryAfter ? { retryAfter: error.retryAfter } : null);
+          throw error;
+        }
+      },
+    }],
     workerRoutes: [{
       method: 'POST', pattern: 'retention/tick',
       handler: async () => {

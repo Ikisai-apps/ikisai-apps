@@ -1,0 +1,141 @@
+{
+ "_": "Respuestas reales de GitHub del 27-10-2026 para la PR #847 (repo público), recortadas a lo que lee github.ts.",
+ "responses": {
+  "https://api.github.com/repos/Ikisai-apps/ikisai-apps/pulls/847": {
+   "etag": "\"c6ab24fa093fd224e21ef330c33b7cd2b30c1e897505a0baa030c5e66b186f69\"",
+   "body": {
+    "number": 847,
+    "title": "organizers: «Abrir PDF» de una factura registrada (K2)",
+    "html_url": "https://github.com/Ikisai-apps/ikisai-apps/pull/847",
+    "state": "closed",
+    "created_at": "2026-10-27T09:52:24Z",
+    "merged_at": "2026-10-27T11:29:20Z",
+    "merge_commit_sha": "3da907f7d8dae7e49ef6bc0b10fb858c4a64451c",
+    "user": {
+     "login": "VGCif"
+    },
+    "merged_by": {
+     "login": "VGCif"
+    },
+    "head": {
+     "ref": "organizers/k2-abrir-pdf",
+     "sha": "cdd9814dca29b9b907386bf884eaa38c37930dd7"
+    }
+   }
+  },
+  "https://api.github.com/repos/Ikisai-apps/ikisai-apps/commits/cdd9814dca29b9b907386bf884eaa38c37930dd7/check-runs?per_page=100": {
+   "etag": "W/\"7fa5dd22b7200bffbe102e8fc2d9ea5380083ff65a95dfef3ec5d1b73f34ed61\"",
+   "body": {
+    "check_runs": [
+     {
+      "name": "Lint de migraciones, typecheck y pruebas PGlite",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122162883239"
+     },
+     {
+      "name": "PGlite · organizers",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161965057"
+     },
+     {
+      "name": "Pruebas del ui-kit · ${{ matrix.shard }}/3",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161899479"
+     },
+     {
+      "name": "Lint de migraciones y typecheck",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161899086"
+     },
+     {
+      "name": "PGlite · core",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161898994"
+     },
+     {
+      "name": "Prefijos de clases (kit, v45)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161898895"
+     },
+     {
+      "name": "PGlite · central",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161898768"
+     },
+     {
+      "name": "Qué ha cambiado",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161897879"
+     },
+     {
+      "name": "Playwright · organizers",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Ikisai-apps/ikisai-apps/actions/runs/40490164028/job/122161896719"
+     }
+    ]
+   }
+  },
+  "https://api.github.com/repos/Ikisai-apps/ikisai-apps/pulls/847/files?per_page=100": {
+   "etag": "W/\"e60485018754e76607b16896958f53b386b277bff48bdb0fbab7a510f6b5fc21\"",
+   "body": [
+    {
+     "filename": "apps/organizers/src/app/api.ts"
+    },
+    {
+     "filename": "apps/organizers/src/app/i18n-en.ts"
+    },
+    {
+     "filename": "apps/organizers/src/ui/payments.ts"
+    },
+    {
+     "filename": "docs/organizers/API.md"
+    },
+    {
+     "filename": "docs/organizers/ESTADO.md"
+    },
+    {
+     "filename": "docs/organizers/PETICIONES.md"
+    },
+    {
+     "filename": "tests/organizers/portal.spec.ts"
+    }
+   ]
+  },
+  "https://api.github.com/repos/Ikisai-apps/ikisai-apps/compare/3da907f7d8dae7e49ef6bc0b10fb858c4a64451c...released": {
+   "etag": "W/\"d59b1f0fb40a07396a0d6ea4c437869efcdf87b17d22a12def74bdf3f96bc93b\"",
+   "body": {
+    "status": "ahead"
+   }
+  },
+  "https://organizers.ikisai.com/version.json": {
+   "etag": null,
+   "body": {
+    "release": "v0.1.0-build.856",
+    "commit": "96d46bd45c6e07e17c44a2156371b4b85628214d"
+   }
+  },
+  "https://api.github.com/repos/Ikisai-apps/ikisai-apps/compare/3da907f7d8dae7e49ef6bc0b10fb858c4a64451c...96d46bd45c6e07e17c44a2156371b4b85628214d": {
+   "etag": "W/\"c0c3297c118c4480759232c2942d3707b3e9e15b8041854cfca9eed811ae966f\"",
+   "body": {
+    "status": "ahead"
+   }
+  },
+  "https://api.github.com/repos/Ikisai-apps/ikisai-apps/pulls?state=all&per_page=10&head=Ikisai-apps%3Aorganizers%2Fk2-abrir-pdf": {
+   "etag": "W/\"c643ccbeeeeb07394dba9cdc1d25fa383964958531b1889a7af8dc14f507c5d8\"",
+   "body": [
+    {
+     "number": 847
+    }
+   ]
+  }
+ }
+}

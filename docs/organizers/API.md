@@ -732,3 +732,22 @@ En Experiencia › Menú, encima del menú día a día, el bloque «Comida que s
 - **Lo interno no se ve:** Food no lo devuelve y Organizers, además, descarta lo que llegue con `audience = 'interna'`.
 - **Sin la lectura** (Food sin publicar) o con un fallo sin copia guardada, el bloque no sale. Sin red, la última copia con su aviso.
 - **Reglas puras** en `app/food-offers.ts` (`visibleOffers`, `payerText`, `whenText`, `priceText` y `linesByScope`), con su prueba `food-offers.test.ts`. Id de feedback: `organizers.menu.ofertas`.
+
+## 21. Evidencia de GitHub para Flow (`organizers.github_evidence`, encargo de Core, 27-10-2026)
+
+Capacidad de lectura del catálogo (0097, migración 0704) para Flow 6 «Avance por aplicaciones». El diseño está en `MUELA/equipo/feedback/organizers/GITHUB_EVIDENCE.md`.
+- **Ruta:** `GET github/evidence` con exactamente una referencia: `pr`, `branch`, `card` (la PR lleva «Tarjeta: <id>» en su descripción) o `sha`. Con `fresh=1` se salta la caché.
+- **Quién:** solo el personal de Organizers, es decir, owner o editor sin `scopes.grants`. Quien organiza un retiro recibe 403.
+- **Salida:** para cada PR (hasta 5), por separado:
+  - `ci`: la comprobación obligatoria y lo que esté en rojo;
+  - `merge`;
+  - `release`: si el commit fusionado está en el tag `released`;
+  - `apps`: con la regla de `release_matrix.py`;
+  - `deploy`: el `version.json` de cada app y si contiene la fusión.
+
+  Además, `summary`: el paso más avanzado demostrado (`sin_pr`, `pr_abierta`, `ci_verde`, `fusionada`, `publicada` o `desplegada`). Nunca dice «aceptada».
+- **GitHub:** solo desde la Edge, con el secreto `GITHUB_TOKEN`, de solo lectura, que da de alta VG; sin él, `503 GITHUB_UNAVAILABLE`.
+  - Cada GET guarda su ETag: con `If-None-Match`, un 304 no gasta cuota.
+  - Caché por estado, en la memoria de la Edge: 60 s con la CI en marcha, 5 min abierta, 10 min fusionada y 24 h desplegada.
+  - Con la cuota agotada devuelve lo último con `stale: true`; sin nada guardado, `429 RATE_LIMITED` y `retryAfter`.
+- **Código:** `_domain/organizers/github.ts`, sin dependencias, con `fetch`, el token y la hora inyectados. La prueba usa respuestas reales grabadas de la PR #847 (`tests/organizers/fixtures/github-847.json`).
