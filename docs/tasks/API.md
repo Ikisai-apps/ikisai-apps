@@ -2281,3 +2281,12 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - **`tasks.reviews_open`** («Revisiones de apertura sin cerrar»): revisiones (§46) sin abrir (`open` o `ready`), de proyectos vivos.
 
 Las demás claves no cambian: `tasks.open`, `tasks.overdue` (vencidas), `tasks.purchase_requests_open` (compras pedidas sin recibir), `tasks.supplies_below_min` y `tasks.requests_pending`. **Pruebas:** `tests/tasks/kpis-p7.test.ts`.
+
+## 50. Los procedimientos se defienden solos (migración `0355`; autoauditoría del 27-10-2026)
+
+Aunque la Edge no deja llamarlos desde `commands`, cada procedimiento comprueba lo suyo en el SQL:
+- **`tasks.import_rows`**: solo la propietaria con acceso a toda la app, como la ruta de importación.
+- **`tasks.request_task`**: editor u owner. Una referencia de una fuente de sistema (`booking`, `feedback`, `core`, `invoices`), o `projectRef` u `onBehalfOf`, solo con la identidad de servicio de esa fuente (`tasks.system_source`, `tasks.actor_is_service`).
+- **`tasks.request_project`**: solo la identidad de servicio de su fuente. El proyecto existente se busca por su referencia.
+- **En la Edge:** `purchases/:id/finance`, `requests/task` y `requests/purchase` no los usan los agentes (403); los agentes van por `commands`, con su revisión de riesgo.
+- **Pruebas:** `tests/tasks/procedures-guard.test.ts`.
