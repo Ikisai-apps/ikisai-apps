@@ -472,6 +472,14 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
       },
     },
     {
+      // Cobertura (0946): anclajes de los pasos publicados y reglas de Flow, para el Revisor de Central. Solo metadatos.
+      method: 'POST', pattern: 'anchor-coverage', handler: async ({ ctx, json }) => {
+        const body = (await json().catch(() => ({}))) ?? {};
+        const app = typeof body.app === 'string' && /^[a-z][a-z0-9_]{1,30}$/.test(body.app) ? body.app : null;
+        return supabase.rpc('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.anchor_coverage_read', p_args: app ? { app } : {} });
+      },
+    },
+    {
       // Guiado (0940): los pasos de una ejecución que tocan a una app, con ruta y confirmación de cada anclaje (lectura por id de
       // campo del núcleo, 0109). Solo quien hace la ejecución. Sin la lectura del núcleo, sin ruta (el kit dice «no lo encuentro»).
       method: 'POST', pattern: 'guide-read', handler: async ({ ctx, json }) => {
