@@ -175,7 +175,8 @@ test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y dat
   const beds = page.locator('#lodgeBeds');
   await expect(beds.getByLabel('Asignadme una')).toBeChecked();
   await expect(page.locator('#lodgePrice')).toContainText(/20,00.*la noche/);
-  await beds.getByLabel('Cama 1').check();
+  // Las camas libres son de toda la casa (la base de pruebas la comparten otras pruebas): la de su habitación.
+  await beds.locator('.glodge-room', { hasText: d.room }).getByLabel('Cama 1', { exact: true }).check();
   // Solo el nombre es obligatorio; el documento, no.
   await page.locator('#lodgeGo').click();
   await expect(page.locator('#lodge_first_name')).toBeFocused();
@@ -283,6 +284,8 @@ test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, n
     { name: 'Cama 1', kind: 'cama', parent: 'Habitación de las jornadas', points: square(0.15, 0.15, 0.15), refs: [`booking.bed:${byLabel['Cama 1']}`], attributes: { bed_kind: 'individual' } },
     { name: 'Cama 2', kind: 'cama', parent: 'Habitación de las jornadas', points: square(0.45, 0.15, 0.15), refs: [`booking.bed:${byLabel['Cama 2']}`], attributes: { bed_kind: 'individual' } },
   ]);
+  // La pareja que lee Booking (`booking.beds.resource_id`, la de `booking_public_beds`).
+  for (const label of ['Cama 1', 'Cama 2']) await api.booking.t.db.query('update booking.beds set resource_id = $1 where id = $2', [ids[label], byLabel[label]]);
 
   // Sin `X-Visitor`, la ruta no da el plano.
   const anonymous = await page.request.get(`${baseURL}/api/v1/public/plans?event_code=${d.code}`);
