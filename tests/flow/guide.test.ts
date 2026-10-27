@@ -79,3 +79,23 @@ test('guiado · un paso propio de Flow queda hecho con su valor en el tramo; un 
   await commit([call(PROCEDURES.startExecution, { execution_id: learn, version_id: VER, mode: 'learn' })], app.tokens.editor);
   assert.notEqual((await confirm({ requestId: 'ensayo', execution_id: learn, step_id: STEP_BOOKING, how: 'save' })).status, 200);
 });
+
+test('guiado · un tramo «ir a otra app» se cierra cuando la app destino lo confirma, no al abrir el enlace', async () => {
+  const D = uuid(), V = uuid(), H = uuid(), STEP = uuid();
+  assert.equal((await commit([
+    ins(TABLES.definitions, D, { key: 'pedir_en_tasks', name: 'Pedir en Tasks' }),
+    ins(TABLES.definitionVersions, V, { definition_id: D, version: 1, status: 'draft' }),
+    ins(TABLES.definitionStages, H, { version_id: V, position: 1, kind: 'handoff', title: 'Crea la compra en Tasks', target_app: 'tasks', target_anchor: 'tasks.compras.nueva' }),
+    ins(TABLES.definitionSteps, STEP, { version_id: V, stage_id: H, position: 1, key: 'compra', title: 'Crea la compra', anchor: 'tasks.compras.nueva', essential: true }),
+  ])).status, 200);
+  assert.equal((await commit([call(PROCEDURES.publishVersion, { version_id: V })])).status, 200);
+  const ex = uuid();
+  await commit([call(PROCEDURES.startExecution, { execution_id: ex, version_id: V, mode: 'run' })], app.tokens.editor);
+  await commit([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor);
+  await confirm({ requestId: `h-${ex}-p`, execution_id: ex, step_id: STEP, how: 'save', pending: true });
+  let e = (await app.t.db.query<any>(`select status, stages from flow.executions where id = $1`, [ex])).rows[0];
+  assert.equal(e.stages[0].status, 'draft'); // pendiente: aún no
+  await confirm({ requestId: `h-${ex}-ok`, execution_id: ex, step_id: STEP, how: 'event' });
+  e = (await app.t.db.query<any>(`select status, stages from flow.executions where id = $1`, [ex])).rows[0];
+  assert.equal(e.stages[0].status, 'done'); assert.equal(e.status, 'done');
+});

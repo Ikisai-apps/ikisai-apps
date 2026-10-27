@@ -57,7 +57,7 @@ select core.allow_read('flow', 'flow.guide_steps_read', 'function', '{reader,edi
 
 -- args = { execution_id, step_id, how, pending }. Recibo, nunca valores.
 create or replace function flow.guide_confirm(p jsonb) returns jsonb language plpgsql as $$
-declare v flow.executions; v_step uuid := flow.arg_uuid(p, 'step_id'); v_how text := p->'args'->>'how'; v_id uuid;
+declare v flow.executions; v_step uuid := flow.arg_uuid(p, 'step_id'); v_how text := p->'args'->>'how'; v_id uuid; v_pos int; v_last int; v_stages jsonb;
 begin
   perform flow.proc_begin();
   select * into v from flow.executions where id = flow.arg_uuid(p, 'execution_id') and deleted_at is null;
@@ -69,6 +69,18 @@ begin
   end if;
   v_id := flow.ins(p, 'flow.guide_receipts', jsonb_build_object('execution_id', v.id, 'step_id', v_step, 'how', v_how,
     'pending', coalesce((p->'args'->>'pending')::boolean, false)));
+  -- Un tramo «ir a otra app» se cierra cuando la app destino confirma la acción (decisión de Core, 27-10): su paso con anclaje
+  -- confirmado con `save` o `event`, sin `pending`. No al abrir el enlace.
+  select st.position into v_pos from flow.definition_steps s join flow.definition_stages st on st.id = s.stage_id
+   where s.id = v_step and st.kind = 'handoff';
+  if v_pos is not null and v_how in ('save', 'event') and not coalesce((p->'args'->>'pending')::boolean, false)
+     and exists (select 1 from jsonb_array_elements(v.stages) x where (x->>'position')::int = v_pos and x->>'status' = 'draft') then
+    select max(position) into v_last from flow.definition_stages where version_id = v.version_id and deleted_at is null;
+    v_stages := (select jsonb_agg(case when (x->>'position')::int = v_pos then x || jsonb_build_object('status', 'done', 'receipt_id', v_id, 'at', now()) else x end
+                   order by (x->>'position')::int) from jsonb_array_elements(v.stages) x);
+    perform flow.upd(p, 'flow.executions', v.id, v.revision, jsonb_build_object('stages', v_stages,
+      'status', case when v_pos = v_last then 'done' else v.status end, 'finished_at', case when v_pos = v_last then now() else v.finished_at end));
+  end if;
   perform flow.proc_end();
   return jsonb_build_object('ok', true, 'receipt_id', v_id);
 end $$;
