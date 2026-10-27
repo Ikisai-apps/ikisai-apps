@@ -229,7 +229,11 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gwhy svg{flex:none;margin-top:2px}
 .gplan-host{display:block;flex-basis:100%}
 .gplan>summary,.glodge-plan>summary,#lodgeLater>summary,#lodgeComplete>summary,.gaccess>summary{display:flex;align-items:center;gap:6px;min-height:46px;font-weight:600;color:var(--accent-deep,var(--ink));list-style:none;cursor:pointer}
-.gplan>summary::-webkit-details-marker{display:none}
+.gplan>summary::-webkit-details-marker,.glodge-plan>summary::-webkit-details-marker,#lodgeLater>summary::-webkit-details-marker,#lodgeComplete>summary::-webkit-details-marker,.gaccess>summary::-webkit-details-marker{display:none}
+/* Los desplegables sin icono ni pista llevan un chevron (como .gmeal-fold): sin marcador nativo no se vería que se abren. */
+#lodgeLater>summary,#lodgeComplete>summary,.gaccess>summary{position:relative;padding-right:30px}
+#lodgeLater>summary::after,#lodgeComplete>summary::after,.gaccess>summary::after{content:'';position:absolute;right:6px;top:50%;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-70%) rotate(45deg)}
+#lodgeLater[open]>summary::after,#lodgeComplete[open]>summary::after,.gaccess[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
 .gplan-label{min-width:0}
 .gplan-hint{margin-left:auto;padding:2px 10px;border-radius:999px;border:1px solid currentColor;font-size:var(--text-xs,.75rem);white-space:nowrap}
 .gplan[open] .gplan-hint{font-weight:800}
