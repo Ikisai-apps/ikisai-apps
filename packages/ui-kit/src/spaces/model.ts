@@ -21,6 +21,8 @@ export interface SpaceRow {
   /** Dibujo en el que está (`resources.floor_plans`) y su forma en él (`createSpaceMap`). */
   planId?: string | null;
   planShape?: { points: Array<[number, number]> } | null;
+  /** La forma no se mueve a mano: sale de otro sitio (las camas, de su disposición en Booking; `bed-layout.ts`). */
+  shapeLocked?: boolean;
   /** Cambio local aún sin confirmar por el servidor (lo marca la fuente). */
   pending?: boolean;
 }

@@ -20,6 +20,7 @@ import { kt } from '../i18n/i18n.ts';
 import { toast } from '../toast.ts';
 import type { SpaceAttribute, SpaceKind, SpaceRow, SpaceSource } from './model.ts';
 import type { FloorPlan, FloorPlanSource } from './map.ts';
+import { applyBedLayouts, type BedLayout } from './bed-layout.ts';
 
 const SPACES = 'resources.spaces' as TableName;
 const KINDS = 'resources.space_kinds' as TableName;
@@ -88,6 +89,12 @@ export function kindFromRow(row: SyncedRow): SpaceKind {
 export interface SyncSpaceSourceOptions {
   /** Rechazo del servidor de un lote de esta fuente, con su mensaje tal cual. Por defecto, un aviso del kit. */
   onError?: (message: string, code: string) => void;
+  /**
+   * Disposición de las camas (`booking.bed_layout_projection`, con `bedLayoutFromRow`). Con ella, cada cama toma la forma
+   * derivada de su habitación y queda fija (`shapeLocked`); las que no tienen disposición no se pintan. Lista o fuente que
+   * avisa de cambios.
+   */
+  bedLayouts?: BedLayout[] | { list(): BedLayout[] | Promise<BedLayout[]>; subscribe?(listener: (layouts: BedLayout[]) => void): () => void };
 }
 
 export function createSyncSpaceSource(client: SyncClient, options: SyncSpaceSourceOptions = {}): SpaceSource & {
@@ -104,7 +111,12 @@ export function createSyncSpaceSource(client: SyncClient, options: SyncSpaceSour
   const report = options.onError ?? ((message: string) => toast(kt('No se ha guardado: {message}', { message })));
 
   const remember = (rows: SyncedRow[]) => { latest.clear(); rows.forEach((r) => latest.set(r.id, r)); };
-  const read = async () => { const rows = await client.list(SPACES); remember(rows); return rows.map(spaceFromRow); };
+  const layoutsOpt = options.bedLayouts;
+  let layouts: BedLayout[] | null = Array.isArray(layoutsOpt) ? layoutsOpt : null;
+  const loadLayouts = async () => { if (layoutsOpt && !Array.isArray(layoutsOpt)) layouts = await layoutsOpt.list(); return layouts; };
+  /** Con disposiciones, las camas toman la forma de su habitación; sin ellas, las filas tal cual. */
+  const withBeds = (spaces: SpaceRow[]) => (layoutsOpt ? applyBedLayouts(spaces, layouts ?? []) : spaces);
+  const read = async () => { const rows = await client.list(SPACES); remember(rows); await loadLayouts(); return withBeds(rows.map(spaceFromRow)); };
   const revision = async (id: string) => (latest.get(id) ?? await client.get(SPACES, id))?.revision ?? 0;
 
   async function commit(operations: RowOperation[]): Promise<void> {
@@ -134,7 +146,13 @@ export function createSyncSpaceSource(client: SyncClient, options: SyncSpaceSour
   return {
     list: read,
     subscribe(listener) {
-      return client.onTable(SPACES, (rows) => { remember(rows.filter((r) => !r.deleted_at)); listener(rows.filter((r) => !r.deleted_at).map(spaceFromRow)); });
+      let last: SpaceRow[] | null = null;
+      const off = client.onTable(SPACES, (rows) => { remember(rows.filter((r) => !r.deleted_at)); last = rows.filter((r) => !r.deleted_at).map(spaceFromRow); listener(withBeds(last)); });
+      // Si cambia la disposición de las camas, se vuelve a pintar con las mismas filas.
+      const offLayouts = layoutsOpt && !Array.isArray(layoutsOpt) && layoutsOpt.subscribe
+        ? layoutsOpt.subscribe((next) => { layouts = next; if (last) listener(withBeds(last)); })
+        : null;
+      return () => { off(); offLayouts?.(); };
     },
     async create(row) { await commit([{ op: 'insert', table: SPACES, id: row.id, fields: spaceToFields(row) }]); },
     async createMany(rows) { await commit(rows.map((row) => ({ op: 'insert' as const, table: SPACES, id: row.id, fields: spaceToFields(row) }))); },
