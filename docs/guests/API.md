@@ -707,6 +707,18 @@ El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora
 | FD5 | Food | lectura pública `food_visitor_offers` con `event_code`, solo ofertas `public` | en #758 |
 | FL2 | Flow | `flow.visitor_join` (acción) y `flow.visitor_customer` (lectura), con `flow.customers.visitor_id` | tras C11 |
 
+### 9.20 Indicadores para Dirección (P7 de Central, encargo de Core del 27-10-2026; migración 0601)
+
+`guests.central_kpi_projection`, con el contrato de Central (`docs/central/API.md` §7.2). Solo la lee el owner de Central (`core.allow_read('central', …, '{owner}')`). Son agregados de `booking.guests_kpi_projection`, que publica Booking: una fila por reserva confirmada o en ejecución, sin nombres. No cuentan la huésped de muestra ni las fichas de equipo. Todas las claves son `period = 'actual'`, con «hoy» en Madrid.
+
+- **Retiros de ahora:** los que no han terminado y empiezan en los próximos 30 días.
+  - `guests.portal_entered_pct` (`pct`, ↑) y `guests.portal_entered` (`persons`, ↑): los que han entrado al portal, es decir, han aceptado el aviso de protección de datos (`privacy_ack_at`).
+  - `guests.signatures_done` (↑) y `guests.signatures_pending` (↓), en `persons`: partes firmados y sin firmar.
+  - `guests.retreats_signatures_pending` (`count`, ↓): retiros con algún parte sin firmar.
+- **Retiros recientes:** los que empezaron en los últimos 30 días.
+  - `guests.ses_sent_30d` (`persons`, ↑): partes enviados a SES.
+  - `guests.retreats_ses_pending` (`count`, ↓): retiros con llegadas sin comunicar.
+- **Pruebas:** `tests/guests/kpis.test.ts`.
 ### 9.21 Entrada pública sin invitación ni QR (ENTRADA_PUBLICA.md, tarjeta 1; VG por Core, 27-10-2026)
 
 - **Pantalla de entrada sin sesión y «Mis eventos» vacío:** muestran «Eventos abiertos», sacados de la lectura pública de Booking `booking_public_events`. Son los eventos abiertos al público y los retiros con «Apuntarme». Cada uno lleva su tipo en texto, «Apuntarme» si se puede y «Con alojamiento» si ofrece noches.
