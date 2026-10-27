@@ -155,6 +155,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await expect.poll(async () => (await shapeOf(ids.lounge)).s!.points[0]![0], { timeout: 5000 }).toBeCloseTo(0.3, 2);
   await page.locator('#placePlaced').getByRole('button', { name: 'Salón' }).click();
   const corner = page.locator('#placeEditor .ctl-placehandle').nth(2);
+  await corner.scrollIntoViewIfNeeded();
   const cb = (await corner.boundingBox())!;
   await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
   await page.mouse.down();
@@ -195,6 +196,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   // Estirar el dormitorio estira también la cama, solo en pantalla.
   await page.locator('#placePlaced').getByRole('button', { name: 'Dormitorio 3' }).click();
   const handle = page.locator('#placeEditor .ctl-placehandle').nth(2);
+  await handle.scrollIntoViewIfNeeded();
   const hb = (await handle.boundingBox())!;
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
   await page.mouse.down();
