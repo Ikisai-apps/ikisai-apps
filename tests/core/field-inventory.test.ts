@@ -1,4 +1,4 @@
-/** Inventario de campos (P15, migración 0099, contrato §3.8): carga por release que conserva `since`, retirada, foto de lo sin instrumentar y `GET usage/inventory` solo para el owner de Central. Datos sintéticos. */
+/** Inventario de campos (P15, migración 0100, contrato §3.8): carga por release que conserva `since`, retirada, foto de lo sin instrumentar y `GET usage/inventory` solo para el owner de Central. Datos sintéticos. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';

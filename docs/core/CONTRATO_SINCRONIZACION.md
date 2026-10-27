@@ -188,7 +188,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - Lo genera el kit al compilar (`dist/feature-catalog.json`, con los `data-feedback-id` y los `usage.run` del código).
   - `release.yml` lo sube con `scripts/usage_catalog_ingest.py`, que llama a `core.usage_catalog_ingest`: altas, etiquetas y funciones retiradas.
   - `GEN: <id>` en un commit publicado sube la generación de esa función (`core.usage_bump_generation`).
-  - **Inventario de campos** (ui-kit 0.59, migración `0099`): el mismo script sube `fields` y `fieldsUninstrumented` a `core.ingest_field_inventory(app, release, fields, uninstrumented)`. Guarda la primera release en que se vio cada `fieldId` (`since`), retira lo que ya no se declara y rehace la foto de lo sin instrumentar. Solo metadatos del código, nunca valores.
+  - **Inventario de campos** (ui-kit 0.59, migración `0100`): el mismo script sube `fields` y `fieldsUninstrumented` a `core.ingest_field_inventory(app, release, fields, uninstrumented)`. Guarda la primera release en que se vio cada `fieldId` (`since`), retira lo que ya no se declara y rehace la foto de lo sin instrumentar. Solo metadatos del código, nunca valores.
   - `GET usage/inventory?app=all|<app>` → `{fields, fieldsUninstrumented}` (lo activo en la última release), solo para el owner de Central (403 al resto).
 - **`POST usage/batch {deviceId, items}`:**
   - Recibe los totales del día por dispositivo; el núcleo guarda el máximo por clave, así que es idempotente sin recibos.
@@ -215,7 +215,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - El worker `files/gc` de central-api, diario, marca los huérfanos de más de 2 días. Borra del proveedor y de `core.files` los que siguen sin referencia a los 30 días, salvo que alguna vez fueran `legal` o `permanent`. Antes de borrar vuelve a comprobarlo.
 - **Medición (migración `0073`):** cada semana, `core.storage_snapshot()` guarda los tamaños de la base, los esquemas, `core.changes` y los objetos por bucket lógico y proveedor. Los umbrales están en `core.storage_thresholds`. `GET admin/storage` (owner de Central) devuelve el estado actual, el nivel de cada límite (`ok | warn | critical`) y medio año de historial.
 
-### 3.11 El lector vota (migración `0099`, tanda 27; decisión del usuario del 19-10-2026)
+### 3.11 El lector vota (migración `0100`, tanda 27; decisión del usuario del 19-10-2026)
 
 - **El lector escribe solo donde la app lo abre a propósito**, igual que el outsider:
   - **tablas:** con `reader` en `writable_roles` (`core.register_table`). Hoy solo `central.decision_votes` y `food.suggestion_votes`. El resto sigue con `'{editor,owner}'` por defecto;

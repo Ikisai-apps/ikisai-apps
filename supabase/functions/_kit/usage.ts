@@ -53,7 +53,7 @@ export function createUsage(supabase: Supabase, app: string) {
     return { items };
   }
 
-  /** Inventario de campos de UI-kit (P15, migración 0099): lo declarado en la última release y lo sin instrumentar. Solo owner de Central. */
+  /** Inventario de campos de UI-kit (P15, migración 0100): lo declarado en la última release y lo sin instrumentar. Solo owner de Central. */
   async function inventory(ctx: RequestContext, params: URLSearchParams) {
     const requested = params.get('app') ?? 'all';
     if (requested !== 'all' && !/^[a-z][a-z0-9_]{1,30}$/.test(requested)) fail(422, 'INVALID_FILTER', 'app inválida.');
