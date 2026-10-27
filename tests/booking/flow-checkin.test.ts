@@ -38,13 +38,13 @@ test('flow_guests_projection: huéspedes del evento con cama y noches, nombre co
   const reader = await t.createUser();
   await t.db.query(`insert into core.memberships (app, user_id, role) values ('flow', $1, 'reader')`, [reader]);
   // Flow solo ve los huéspedes de un evento de su ámbito (core.reader_in_scope; aquí, un resolutor de prueba)
-  await t.db.exec(`create table if not exists public.test_flow_scope (actor uuid, event_id text);
-    create or replace function public.test_flow_scope_has(p_actor uuid, p_kind text, p_id text) returns boolean language sql stable as $$
-      select exists (select 1 from public.test_flow_scope where actor = p_actor and event_id = p_id) $$;
-    select core.allow_scope_resolver('flow', 'booking_event', 'public.test_flow_scope_has');`);
+  await t.db.exec(`create table if not exists booking.test_flow_scope (actor uuid, event_id text);
+    create or replace function booking.test_in_scope(p_actor uuid, p_kind text, p_id text) returns boolean language sql stable as $$
+      select p_kind = 'booking_event' and exists (select 1 from booking.test_flow_scope where actor = p_actor and event_id = p_id) $$;
+    select core.allow_scope_resolver('flow', 'booking.test_in_scope');`);
   const guestsOf = (actor: string, ev: string) => t.rpc('core_read', { p_app: 'flow', p_actor: actor, p_name: READS.flowGuestsOf, p_args: { event_id: ev } }) as Promise<any>;
   assert.equal(await code(guestsOf(reader, event)), 'FORBIDDEN', 'sin el evento en su ámbito');
-  await t.db.query(`insert into public.test_flow_scope values ($1, $2)`, [reader, event]);
+  await t.db.query(`insert into booking.test_flow_scope values ($1, $2)`, [reader, event]);
   assert.equal(await code(t.rpc('core_read', { p_app: 'flow', p_actor: reader, p_name: READS.flowGuestsProjection, p_args: { where: { event_id: event } } })), 'INVALID_OPERATION', 'la vista no está abierta a Flow');
   const rows = (await guestsOf(reader, event)).items;
   assert.deepEqual(rows.map((r: any) => [r.display_name, r.space_name, r.bed_label, r.from_date, r.to_date, r.arrived_at, r.left_at, r.signed, r.portal_role]), [
