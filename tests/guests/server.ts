@@ -41,7 +41,9 @@ export interface GuestsTestServer {
   /** Carta del evento (`kind = 'carta'`) con sus líneas (una receta por línea); devuelve el id del menú. */
   carta(event: string, name: string, lines: Array<{ code: string; name: string; price: number; allergens?: string[] }>): Promise<string>;
   /** Mapa de zonas de Recursos (MUELA-024): un edificio con un dibujo (sin archivo: la capa sobre papel) y sus espacios con forma. */
-  floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points: Array<[number, number]>; refs?: string[] }>): Promise<{ planId: string; ids: Record<string, string> }>;
+  /** Con `drawing`, el dibujo es un archivo verificado de Recursos de ese tamaño (la Edge lo firma). */
+  floorPlan(spaces: Array<{ name: string; kind?: string; parent?: string; points: Array<[number, number]>; refs?: string[]; attributes?: Record<string, unknown> }>,
+    drawing?: { width: number; height: number; mime: string }): Promise<{ planId: string; fileId: string | null; ids: Record<string, string> }>;
   /** Servicios del menú de casa de Food (FD2, `food.portal_house_menu`). */
   houseMenu(services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; allergens?: string[]; allergensChecked?: boolean }> }>): Promise<void>;
   /** El lugar en Central: dirección del lugar (sin domicilio fiscal en los portales) y, si se pide, un plano verificado. */
@@ -219,17 +221,22 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       }
       return menuId;
     },
-    async floorPlan(spaces) {
+    async floorPlan(spaces, drawing) {
       const db = booking.t.db;
       const building = (await db.query<{ id: string }>(`insert into resources.spaces (kind, name) values ('edificio', $1) returning id`, [`Casa ${uuid().slice(0, 8)}`])).rows[0]!.id;
-      const planId = (await db.query<{ id: string }>(`insert into resources.floor_plans (building_id, floor, width, height) values ($1, 'Planta baja', 1000, 700) returning id`, [building])).rows[0]!.id;
+      const fileId = drawing
+        ? (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status, hash_verified) values ('resources', 'resources-plans', $1, 'plano', $2, 9000, $3, 'verified', true) returning id`,
+          [`resources/${uuid()}`, drawing.mime, uuid().replace(/-/g, '').repeat(2)])).rows[0]!.id
+        : null;
+      const planId = (await db.query<{ id: string }>(`insert into resources.floor_plans (building_id, floor, file_id, width, height) values ($1, 'Planta baja', $2, $3, $4) returning id`,
+        [building, fileId, drawing?.width ?? 1000, drawing?.height ?? 700])).rows[0]!.id;
       const ids: Record<string, string> = {};
       for (const [i, s] of spaces.entries()) {
         // `refs` (`booking.space:<id>`, `booking.bed:<id>`): la pareja de Booking, que da `resource_space_id` en sus lecturas (#680).
-        ids[s.name] = (await db.query<{ id: string }>(`insert into resources.spaces (parent_id, kind, name, position, plan_id, plan_shape, source_refs) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-          [s.parent ? ids[s.parent] : building, s.kind ?? 'sala', s.name, i, planId, JSON.stringify({ points: s.points }), s.refs ?? []])).rows[0]!.id;
+        ids[s.name] = (await db.query<{ id: string }>(`insert into resources.spaces (parent_id, kind, name, position, plan_id, plan_shape, source_refs, attributes) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+          [s.parent ? ids[s.parent] : building, s.kind ?? 'sala', s.name, i, planId, JSON.stringify({ points: s.points }), s.refs ?? [], JSON.stringify(s.attributes ?? {})])).rows[0]!.id;
       }
-      return { planId, ids };
+      return { planId, fileId, ids };
     },
     async houseMenu(services) {
       const db = booking.t.db;

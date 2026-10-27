@@ -105,6 +105,8 @@
 
 - 2026-10-28 · **Finca y decoración en el portal** (API.md §9.16): la finca con sus alturas y cotas, la decoración general, las camas con su icono y la bajada de la finca al edificio; sin decoración al elegir cama.
 
+- 2026-10-27 · «Ver en el plano» con los dibujos reales del Albergue y de Salas (`tests/guests/fixtures/planos`, trazados sin cotas ni datos del pliego): cada cama con el icono de su tipo (`bedKind` de Recursos 0816, que antes no llegaba al mapa) y prueba en el móvil (390 px) en `modules.spec.ts`.
+
 ## Pendiente
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
