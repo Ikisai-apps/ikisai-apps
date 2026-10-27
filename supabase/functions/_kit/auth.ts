@@ -26,6 +26,11 @@ export interface AuthService {
   recover(body: unknown, redirectTo: string): Promise<{ sent: true }>;
   /** Canjea el enlace del correo (token_hash de un solo uso) y fija la contraseña nueva; devuelve una sesión. */
   resetPassword(body: unknown): Promise<SessionTokens & { userId: string }>;
+  /** Portales (0108): manda un código de un solo uso al correo si es de una cuenta que podría entrar por su enlace en `app`.
+   *  Responde igual exista o no, y no crea cuentas. */
+  sendEmailCode(app: string, body: unknown): Promise<{ sent: true }>;
+  /** Canjea ese código por una sesión; solo para la misma cuenta que podía recibirlo. */
+  verifyEmailCode(app: string, body: unknown): Promise<SessionTokens & { userId: string }>;
 }
 
 export interface SessionTokens {
@@ -160,5 +165,45 @@ export function createAuth(supabase: Supabase): AuthService {
     return { ...session, userId: who.id };
   }
 
-  return { identity, login, refresh, logout, changePassword, recover, resetPassword };
+  const emailOf = (body: any): string => {
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
+    return email;
+  };
+  const allowedUser = (app: string, email: string) => supabase.rpc<string | null>('core_email_code_user', { p_app: app, p_email: email });
+
+  async function sendEmailCode(app: string, body: any): Promise<{ sent: true }> {
+    const email = emailOf(body);
+    // Una sesión de Auth vale en todas las apps: el código solo va a una cuenta de portal con un enlace vigente en esta app.
+    if (await allowedUser(app, email)) {
+      try {
+        await supabase.remote('/auth/v1/otp', { method: 'POST', body: { email, create_user: false } });
+      } catch (error: any) {
+        // Como en `recover`, nada que distinga un correo de otro (tampoco el límite de envíos de Auth), salvo la red caída.
+        if (error?.code === 'BACKEND_UNAVAILABLE') throw error;
+      }
+    }
+    return { sent: true };
+  }
+
+  async function verifyEmailCode(app: string, body: any): Promise<SessionTokens & { userId: string }> {
+    const email = emailOf(body);
+    const code = typeof body?.code === 'string' ? body.code.replace(/\s+/g, '') : '';
+    if (!/^\d{6,10}$/.test(code)) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    const user = await allowedUser(app, email);
+    if (!user) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    let result: any;
+    try {
+      result = await supabase.remote('/auth/v1/verify', { method: 'POST', body: { type: 'email', email, token: code } });
+    } catch (error: any) {
+      if (error?.code === 'BACKEND_UNAVAILABLE') throw error;
+      fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    }
+    const session = tokens(result);
+    const who = await identity(session.token);
+    if (who.id !== user) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
+    return { ...session, userId: who.id };
+  }
+
+  return { identity, login, refresh, logout, changePassword, recover, resetPassword, sendEmailCode, verifyEmailCode };
 }

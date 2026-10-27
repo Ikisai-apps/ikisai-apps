@@ -382,12 +382,17 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-planrow{align-items:flex-start}
 .ctl-planactions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .ctl-planactions button{min-height:var(--tap,46px)}
-.ctl-place{display:grid;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);gap:14px;align-items:start;margin:0 0 16px}
-.ctl-placestage{border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden}
+.ctl-place{display:grid;grid-template-columns:minmax(0,3fr) minmax(240px,1fr);gap:24px;align-items:start;margin:0 0 24px}
+.ctl-placestage{border-radius:16px;background:var(--paper);overflow:hidden;box-shadow:0 0 0 1px color-mix(in srgb,var(--line) 60%,transparent)}
 .ctl-placesvg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
 .ctl-placepaper{fill:var(--paper-2)}
 .ctl-placeshape{fill:color-mix(in srgb,var(--accent) 22%,transparent);stroke:var(--accent-deep,var(--accent));stroke-width:2;vector-effect:non-scaling-stroke;cursor:move}
-.ctl-placeshape.bed{fill:color-mix(in srgb,var(--ok,var(--accent)) 30%,transparent)}
+.ctl-placeshape.bed{fill:color-mix(in srgb,var(--muted) 28%,transparent);stroke:color-mix(in srgb,var(--muted) 70%,transparent);stroke-width:1;cursor:default;pointer-events:none}
+.ctl-placebeds{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 12px;color:var(--muted)}
+.ctl-placebeds a{min-height:var(--tap,46px);display:inline-flex;align-items:center}
+.ctl-placehelp{margin:0 0 12px}
+.ctl-placestep{margin:8px 0 4px;font-weight:700;font-size:var(--text-lg,1.0625rem)}
+.ctl-placehelp summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;color:var(--muted);font-weight:600}
 .ctl-placeshape.on{fill:color-mix(in srgb,var(--warn) 30%,transparent);stroke:var(--warn-ink);stroke-width:3}
 .ctl-placeshape:focus-visible{outline:none;stroke:var(--ink);stroke-width:4}
 .ctl-placelabel{fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none;font-weight:700;paint-order:stroke;stroke:var(--paper);stroke-linejoin:round}
