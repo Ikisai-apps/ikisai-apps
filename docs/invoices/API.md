@@ -2170,3 +2170,37 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
 - **F5 de Organizers:** `portal_reservation_money` añade `payment_link: {url, provider, expires_at} | null` a cada factura: el abierto y vigente. **Leer no crea nada.** La acción del portal que lo crea al pulsar «Pagar ahora» va en la PR 3.
 - Pruebas: `tests/invoices/payment-links.test.ts`, con el Stripe falso.
 
+### 19.3 «Pagar ahora» desde el portal y ficha de la emitida (PR 3)
+
+- **Portal (F5, acordado con Organizers):** si la factura no trae `payment_link`, el servidor de Organizers llama a `POST invoices-api/api/v1/worker/payment-links/portal`.
+  - **Cabeceras:** `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: organizers`.
+  - **Cuerpo:** `{actor, reservation_id, issued_invoice_id, return_url?, cancel_url?}`.
+  - **Antes de crear nada:** la acción de sistema `invoices.portal_payment_scope` (0256) comprueba lo mismo que F2: editor u owner del portal, reserva de su ámbito y factura de esa reserva. Si no, `403 OUT_OF_SCOPE`.
+  - **Respuesta:** `{url, provider, expires_at, amount, reused}`.
+  - **Vuelta:** `return_url` (pagado) y `cancel_url` (cancelado) solo valen si son de Organizers (`https://organizers.ikisai.com/…`). Sin `cancel_url`, es la de `return_url` con `pago=ok` cambiado por `pago=cancelado`, y si no vale ninguna, la portada del portal. Que Stripe conserve el fragmento (`#/…`) se comprueba en la puesta en marcha con la clave de pruebas; si no lo conserva, Organizers acepta `?vuelta=` fuera del fragmento.
+  - **Quién llama:** `X-Ikisai-Caller` no autentica, porque la clave de worker es la misma en todas las Edges: quien la tenga puede decir «organizers» y elegir `actor`. Lo que protege es el ámbito (0256: la persona tiene que ser editora u owner del portal y la factura de su reserva), así que no se puede pagar ni ver nada fuera de él.
+- **Ficha de la emitida (Finance):** bloque «Pago en línea»:
+  - el enlace abierto, con caducidad, «Copiar» y «Compartir»;
+  - «Pagada en línea el…»;
+  - «Crear enlace de pago» (editor u owner, con red);
+  - los enlaces anteriores, caducados o cancelados.
+  - Sin red, lo dice.
+
+### 19.4 Aviso de Stripe y conciliación (migración 0259, PR 4)
+
+- **Webhook:** `POST invoices-api/api/v1/public/payments/stripe`, sin sesión.
+  - Vale solo con la firma `Stripe-Signature` (`STRIPE_WEBHOOK_SECRET`, tolerancia de 300 s); sin ella, `400` y nada cambia. Sin secreto configurado, `503`.
+  - Los avisos de cobros de otra app (`metadata.app` distinto de `invoices`) se ignoran con `200`.
+- **`invoices.payment_event_apply`** (acción de sistema, idempotente por evento):
+  - `paid`: el enlace pasa a `pagado` y la factura a `cobrada` (fecha del pago en Madrid, medio `tarjeta`), con `core.apply_system_operations` como «Finance (sistema)» (núcleo 0112). Queda en el historial y se sincroniza.
+  - Si la factura ya no estaba por cobrar o el importe no coincide, no se toca: `mismatch`, para revisarlo.
+  - `expired`: el enlace pasa a `caducado`.
+  - `refunded`: se registra; se refleja con una rectificativa.
+- **Conciliación:** `worker/payments/reconcile`, cada hora y solo si hay enlaces abiertos o cancelados sin cerrar.
+  - Pregunta a Stripe por cada abierto y cobra lo pagado aunque se perdiera el aviso.
+  - Caduca en Stripe los cancelados (`gateway_closed_at`), para que nadie pague uno cancelado.
+- **Revisión:** `invoices.payment_events_review` (editor u owner): los avisos `mismatch` o `unknown` y las devoluciones, sin datos de quien paga.
+- **Puesta en marcha** (Core pide a VG):
+  - `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en la Edge de Finance;
+  - el endpoint del webhook dado de alta en Stripe con los eventos `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `charge.refunded`.
+
