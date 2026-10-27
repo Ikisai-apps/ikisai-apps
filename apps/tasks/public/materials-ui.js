@@ -50,7 +50,11 @@ function bindMaterials(taskId){const run=(build,msg)=>{if(purchaseRun(build,msg)
   /* FB_2026_057: elegir no añade (falta la cantidad); el botón dice qué se va a añadir y, si se guarda la tarea con algo elegido
      sin añadir, se añade entonces (materialPendingAdd), en vez de perderse sin aviso. */
   const paintAdd=pick=>{if(!add)return;const it=pick?.itemId?inventoryItem(pick.itemId):null;add.textContent=it?`Añadir «${it.name}» a la tarea`:'Añadir';add.classList.toggle('primary',!!it);add.classList.toggle('ghost',!it)};
-  if(host&&src){materialPicker=IkisaiKit.createItemPicker({label:'Añadir material o equipo',source:src.items,spaces:src.spaces,quantity:true,create:true,feedbackId:'tasks.tarea.materiales.elegir',onChange:paintAdd});host.append(materialPicker.element)}
+  /* FB_2026_056 (VG: «solo ordenar el selector»; kit 0.62, K4): lo del kit de los oficios de la tarea sale primero y marcado.
+     Recursos no cambia. */
+  const live=id=>{const it=inventoryItem(id);return !it||(!it.deleted_at&&it.active!==false)};
+  const suggested=Sync.core?.tradeKit?.length?M().kitSuggestions(purchasesData(),taskId,Sync.core.tradeKit,live).map(k=>k.itemId):[];
+  if(host&&src){materialPicker=IkisaiKit.createItemPicker({label:'Añadir material o equipo',source:src.items,spaces:src.spaces,quantity:true,create:true,suggested,suggestedLabel:'Del kit del oficio',feedbackId:'tasks.tarea.materiales.elegir',onChange:paintAdd});host.append(materialPicker.element)}
   else if(host)host.innerHTML='<p class="small muted">El inventario no está disponible ahora mismo.</p>';
   if(add)add.onclick=()=>{if(!materialPendingAdd(taskId))toast('Elige un artículo del inventario.')};
   const kit=document.getElementById('materialKit');if(kit)kit.onclick=()=>{const live=id=>{const it=inventoryItem(id);return !it||(!it.deleted_at&&it.active!==false)};
