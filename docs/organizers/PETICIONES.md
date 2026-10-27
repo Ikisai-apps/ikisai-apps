@@ -10,7 +10,7 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | B2 | Booking | `declared` en `booking.portal_guests` | hecha (#277) |
 | B3 | Booking | `portal_add_guest` idempotente ante un reintento con el mismo `guest_id` | hecha (#277) |
 | B4 | Booking | (opcional) restricciones de cocina del grupo sin huésped, para el modo `ninguno` | aplazada |
-| B5 | Booking | Campos booleanos en `portal_guests` (`is_minor`). Hoy `true` significa a la vez «rellenado por otro» y «vale `true`», y el `false` por defecto sale como rellenado. Propuesta: en los booleanos, el valor si lo escribió el organizador y `null` si nunca se escribió | abierta |
+| B5 | Booking | Campos booleanos en `portal_guests` (`is_minor`). Hoy `true` significa a la vez «rellenado por otro» y «vale `true`», y el `false` por defecto sale como rellenado. Propuesta: en los booleanos, el valor si lo escribió el organizador y `null` si nunca se escribió | hecha (Booking #770, 0490: `null` si nadie lo contestó). Organizers no lee ni escribe `is_minor` (lo que falta lo da Booking), así que no cambia nada aquí |
 | B11 | Booking | Coorganizadores: lectura `booking.portal_organizers({reservation_id})` con los nombres para mostrar de quienes organizan el retiro, sin correo ni teléfono | hecha (#284; en la ficha del retiro) |
 | C1 | Core | `sync-client`: `loginWithLink(token)` | hecha (#278) |
 | C2 | Core | `portal-links`: reutilizar la cuenta del huésped y `replace: true` al reenviar | hecha (#278) |
