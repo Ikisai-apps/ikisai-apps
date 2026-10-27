@@ -14,7 +14,6 @@ import { receiptRoutes } from './receipts.ts';
 import { financeRoutes } from './finance.ts';
 import { reviewRoutes } from './reviews.ts';
 import { todayRoutes } from './today.ts';
-import { productionRoutes } from './production.ts';
 
 export const TASKS_ORIGINS = ['https://tasks.ikisai.com', 'https://ikisai-tasks.pages.dev'];
 export const TASKS_BUCKET = 'ikisai-files';
@@ -166,7 +165,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       // O1 (0098): quien revisa solo ve, previsualiza y decide las propuestas cuyo destino está en sus ámbitos.
       suggestionVisible: (suggestion, ctx) => suggestionVisibleFor(suggestion, effectiveScopes(ctx.membership)),
     },
-    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase, { workerKey: base.workerKey }), ...peopleRoutes(supabase), ...tradeRoutes(supabase), ...receiptRoutes(supabase), ...financeRoutes(supabase, storage, base.capabilities), ...reviewRoutes(supabase), ...todayRoutes(supabase), ...productionRoutes(supabase)],
+    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase, { workerKey: base.workerKey }), ...peopleRoutes(supabase), ...tradeRoutes(supabase), ...receiptRoutes(supabase), ...financeRoutes(supabase, storage, base.capabilities), ...reviewRoutes(supabase), ...todayRoutes(supabase)],
     workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes(supabase)],
     mcpTools: tasksMcpTools(),
   })));
