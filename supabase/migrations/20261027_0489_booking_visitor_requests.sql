@@ -21,18 +21,22 @@ create table booking.visitor_requests (
   -- el código público del QR por el que llegó (de él sale el evento en un lote público)
   via_code text check (via_code is null or char_length(via_code) <= 20),
   visitor_id uuid not null,
+  -- 'join': quiere apuntarse; 'contact': solo deja un dato («Déjanos un dato»), sin apuntarse
+  kind text not null default 'join' check (kind in ('join', 'contact')),
   name text check (name is null or char_length(name) between 1 and 120),
   -- correo o teléfono, opcional, solo para avisarle de esta petición (dato personal: no va con la nota)
   contact text check (contact is null or char_length(contact) <= 200),
   note text check (note is null or char_length(note) <= 500),
-  status text not null default 'pendiente' check (status in ('pendiente', 'aceptada', 'descartada')),
+  status text not null default 'pendiente' check (status in ('pendiente', 'aceptada', 'descartada', 'atendida')),
   guest_id uuid references booking.guests(id),
   decided_at timestamptz,
-  constraint visitor_requests_accepted_guest check ((status = 'aceptada') = (guest_id is not null))
+  constraint visitor_requests_accepted_guest check ((status = 'aceptada') = (guest_id is not null)),
+  constraint visitor_requests_contact_kind check (kind = 'join' or (contact is not null and status in ('pendiente', 'atendida', 'descartada'))),
+  constraint visitor_requests_join_kind check (kind = 'contact' or status <> 'atendida')
 );
 create index visitor_requests_event_idx on booking.visitor_requests (event_id, created_at) where deleted_at is null;
-create unique index visitor_requests_one_pending on booking.visitor_requests (event_id, visitor_id) where status = 'pendiente' and deleted_at is null;
-select core.register_table('booking', 'booking', 'visitor_requests', array['event_id','via_code','visitor_id','name','contact','note','status','guest_id','decided_at'],
+create unique index visitor_requests_one_pending on booking.visitor_requests (event_id, visitor_id, kind) where status = 'pendiente' and deleted_at is null;
+select core.register_table('booking', 'booking', 'visitor_requests', array['event_id','via_code','visitor_id','kind','name','contact','note','status','guest_id','decided_at'],
   '{editor,owner}', '{editor,owner}');
 select core.allow_public_write('booking', 'booking.visitor_requests');
 
@@ -50,7 +54,8 @@ begin
     new.event_id := (select e.id from booking.events e where e.public_code = new.via_code and e.deleted_at is null);
     select rr.* into r from booking.events e join booking.reservations rr on rr.id = e.reservation_id
      where e.id = new.event_id and e.deleted_at is null and rr.deleted_at is null;
-    if r.id is null or r.archived_at is not null or not r.guests_visible or r.status not in ('pre_reservada', 'confirmada', 'en_ejecucion') then
+    -- dejar un dato vale en cualquier evento vivo; apuntarse, solo si es visible para huéspedes
+    if r.id is null or r.archived_at is not null or r.status not in ('pre_reservada', 'confirmada', 'en_ejecucion') or (new.kind = 'join' and not r.guests_visible) then
       perform core.fail('RESERVATION_NOT_OPEN', 422, jsonb_build_object('event_id', new.event_id));
     end if;
     new.name := nullif(btrim(new.name), '');
@@ -84,6 +89,17 @@ begin
   if v_req.id is null then perform core.fail('NOT_FOUND', 404, jsonb_build_object('table', 'booking.visitor_requests', 'id', v_args->>'request_id')); end if;
   if v_req.status <> 'pendiente' then return jsonb_build_object('request_id', v_req.id, 'status', v_req.status, 'guest_id', v_req.guest_id); end if;
   perform set_config('booking.visitor_procedure', 'on', true);
+  if v_req.kind = 'contact' and v_args->>'decision' in ('done', 'reject') then
+    perform core.apply_row_op(p->>'app', (p->>'actor')::uuid, p->>'role', p->>'requestId', (p->>'cursor')::bigint,
+      jsonb_build_object('op', 'update', 'table', 'booking.visitor_requests', 'id', v_req.id, 'expectedRevision', v_req.revision,
+        'fields', jsonb_build_object('status', case when v_args->>'decision' = 'done' then 'atendida' else 'descartada' end, 'decided_at', now())));
+    perform set_config('booking.visitor_procedure', '', true);
+    return jsonb_build_object('request_id', v_req.id, 'status', case when v_args->>'decision' = 'done' then 'atendida' else 'descartada' end, 'guest_id', null);
+  end if;
+  if v_req.kind = 'contact' then
+    perform set_config('booking.visitor_procedure', '', true);
+    perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('field', 'decision', 'reason', 'un dato se atiende o se descarta'));
+  end if;
   if v_args->>'decision' = 'accept' then
     v_name := left(coalesce(nullif(btrim(v_args->>'name'), ''), v_req.name, 'Visitante'), 120);
     v_guest := gen_random_uuid();
@@ -108,7 +124,7 @@ select core.allow_procedure('booking', 'booking.join_from_visitor');
 -- Lo del visitante (la Edge pasa su visitor_id ya resuelto): sus peticiones, con el evento por su código público.
 create or replace function booking.visitor_requests_of(p jsonb)
 returns jsonb language sql stable as $$
-  select jsonb_build_object('items', coalesce(jsonb_agg(jsonb_build_object('event_code', e.public_code, 'name', q.name, 'status', q.status,
+  select jsonb_build_object('items', coalesce(jsonb_agg(jsonb_build_object('event_code', e.public_code, 'kind', q.kind, 'name', q.name, 'status', q.status,
              'created_at', q.created_at, 'decided_at', q.decided_at) order by q.created_at desc), '[]'::jsonb))
     from booking.visitor_requests q join booking.events e on e.id = q.event_id
    where q.deleted_at is null and q.visitor_id = nullif(p->>'visitor_id', '')::uuid

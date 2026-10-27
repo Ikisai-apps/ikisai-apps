@@ -321,17 +321,19 @@ function printCard(card: HTMLElement): void {
 export function renderVisitorRequests(o: { requests: Row[]; editable: boolean; run: (ops: RowOperation[], message: string) => Promise<boolean> }): HTMLElement | null {
   const pending = o.requests.filter((r) => r.status === 'pendiente' && !r.deleted_at).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   if (pending.length === 0) return null;
-  const decide = (r: Row, decision: 'accept' | 'reject') => void o.run([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: r.id, decision } }],
-    decision === 'accept' ? 'Visitante apuntado: ya tiene su ficha de huésped.' : 'Petición descartada.');
+  const decide = (r: Row, decision: 'accept' | 'reject' | 'done') => void o.run([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: r.id, decision } }],
+    decision === 'accept' ? 'Visitante apuntado: ya tiene su ficha de huésped.' : decision === 'done' ? 'Dato atendido.' : 'Petición descartada.');
   return el('article', { class: 'card', id: 'blockVisitorRequests', 'data-feedback-id': 'booking.reserva.visitantes', 'data-feedback-label': 'Visitantes que piden apuntarse' },
-    el('div', { class: 'cardhead' }, el('h3', null, 'Visitantes que piden apuntarse'), el('span', { class: 'chip alert' }, String(pending.length))),
+    el('div', { class: 'cardhead' }, el('h3', null, 'Visitantes del QR'), el('span', { class: 'chip alert' }, String(pending.length))),
     el('ul', { class: 'list', id: 'visitorRequestList' }, pending.map((r) => el('li', { class: 'row', dataset: { request: r.id }, 'data-feedback-ignore': '' },
-      el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.name || 'Visitante sin nombre')),
+      el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.name || 'Visitante sin nombre'), r.kind === 'contact' ? el('span', { class: 'chip' }, 'Deja un dato') : el('span', { class: 'chip warn' }, 'Quiere apuntarse')),
       r.contact ? el('div', { class: 'row-meta' }, `Contacto: ${r.contact}`) : null,
       r.note ? el('div', { class: 'row-meta' }, r.note) : null,
       el('div', { class: 'row-meta' }, `Por el QR · ${shortDay(String(r.created_at).slice(0, 10))}`),
       o.editable ? el('div', { class: 'row-actions' },
-        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', onclick: () => decide(r, 'accept') }, 'Aceptar'),
+        r.kind === 'contact'
+          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'done', onclick: () => decide(r, 'done') }, 'Atendido')
+          : el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', onclick: () => decide(r, 'accept') }, 'Aceptar'),
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', onclick: () => decide(r, 'reject') }, 'Descartar')) : null))));
 }
 

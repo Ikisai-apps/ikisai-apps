@@ -71,6 +71,14 @@ test('visitante: no en retiros no visibles ni con un código desconocido; en pú
   const req = (await app.t.db.query<{ id: string; revision: string }>(`select id, revision from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
   await assert.rejects(applyPublicOperations(db(), 'booking', [{ op: 'update', table: TABLES.visitorRequests, id: req.id, expectedRevision: Number(req.revision), fields: { name: 'Otro' } }]));
   assert.equal((await commit([{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { event_id: open.event, visitor_id: uuid() } }])).status, 422);
+  // «Déjanos un dato»: vale en un retiro no visible, exige el contacto y se atiende (no se acepta)
+  const dataVisitor = uuid();
+  await failsWith(ask(hidden.code, dataVisitor, { kind: 'contact' }), 'contact');
+  await ask(hidden.code, dataVisitor, { kind: 'contact', contact: 'visitante@example.invalid', note: 'Avisadme de la próxima' });
+  const dato = (await app.t.db.query<{ id: string }>(`select id from booking.visitor_requests where visitor_id = $1`, [dataVisitor])).rows[0]!;
+  assert.equal((await commit([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: dato.id, decision: 'accept' } }])).status, 422);
+  const done = await ok([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: dato.id, decision: 'done' } }]);
+  assert.equal(done.data.results[0].result.status, 'atendida');
   const rejected = await ok([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: req.id, decision: 'reject' } }]);
   assert.deepEqual([rejected.data.results[0].result.status, rejected.data.results[0].result.guest_id], ['descartada', null]);
 });
