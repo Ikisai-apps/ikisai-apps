@@ -446,3 +446,12 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 
 - Procedimiento `flow.board_card({project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?})` (`tipo`, el oficio: arreglo · funcion · prueba · decision · ajuste, en payload; `order`, el orden en el carril, en `idx`): sin `card_id` (o uno nuevo) crea; con uno que existe cambia solo lo dado (`prio`/`flag`/campos de payload a `null` los quitan). `done` pone `done_at`; volver de `done` lo quita. Una recurrente nunca lleva urgencia. `url` solo https; hasta 30 pasos de 300.
 - Capacidad `flow.board_card` (`POST board-card`, editor, owner u outsider): idempotente por `requestId` (recibo del núcleo por persona); devuelve `{card_id, created, replayed}`. El carril lo decide el guard (`403 LANE_FORBIDDEN`).
+
+## 45. Clases de actividad (flow-19, migración `0942`)
+
+- `flow.units.class`: `operation` (la de siempre), `objective` (criterios de aceptación; se cumple con todos verificados, nunca por un toque), `station` (continua: no se termina; todo `kind = station` lo es) y `result` (hecho verificable con `result_link {app, kind, id}`). `parent_id` para las unidades que dependen de otra. La clase no cambia una vez creada.
+- Reglas en un trigger, también dentro de procedimientos: `OBJECTIVE_NOT_MET`, `STATION_NEVER_DONE`, `RESULT_NOT_VERIFIED`.
+- Procedimientos (editor u owner, en su ámbito):
+  - `add_objective({unit_id, project_id, column_key?, label, criteria: [texto], parent_id?})`;
+  - `verify_criterion({unit_id, criterion_id, verified?, evidence?})`: con todos verificados el objetivo queda hecho y verificado; desverificar lo reabre;
+  - `record_result({unit_id, project_id, column_key?, label, link: {app, kind, id}, parent_id?})`: hecho y verificado por quien lo anota.
