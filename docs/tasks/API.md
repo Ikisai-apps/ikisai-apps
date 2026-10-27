@@ -2345,6 +2345,33 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **«Pedir»:** `POST requests/purchase` acepta `task_id`, una tarea viva del mismo proyecto que quien pide ve; si no, da 404. La compra queda ligada a la tarea y la respuesta lleva `taskId` e `itemId`. La capacidad `tasks.request_purchase` declara ahora `item_id` y `task_id`.
 - **Pruebas:** `tests/tasks/material-block.test.ts`.
 
+## 54. La entrevista de diseño (migración `0359`; «Proyectos y producción» 7.4)
+
+`POST projects/design` es la capacidad `tasks.project_design`, para editor u owner con el área entera. Crea en un solo lote el proyecto entero que sale de una entrevista (la hace Flow). Cuerpo:
+
+```
+{ designId (uuid), tabId, title, objective?, due?,
+  phases: [{key, name, start?, due?}],
+  tasks: [{key, phase?, title, note?, due?, priority?, inOrder?,
+           steps?: [{title, note?, free?}], trades?: [uuid], spaces?: [uuid],
+           people?: [{personId} | {houseLevel}], materials?: [{itemId, quantity}], dependsOn?: [key]}] }
+```
+
+- **Ids:** salen de `designId` y de cada `key`. Repetir devuelve `{projectId, created: false}` sin tocar nada.
+- **Respuesta:** `{projectId, created: true, phases, tasks, steps}`.
+- **Comprobaciones (422 sin crear nada):**
+  - claves `[A-Za-z0-9_-]{1,40}`, únicas;
+  - la fase de cada tarea existe;
+  - `dependsOn` nombra otras tareas del diseño y no hace ciclos;
+  - nombres y títulos no vacíos;
+  - prioridad, personas, materiales y fechas bien formados;
+  - como mucho 30 fases, 200 tareas y 1000 pasos;
+  - oficios, espacios, personas y artículos vivos (los hooks de siempre).
+- **No pide compras:** eso es «Pedir» desde la producción (§53).
+- **Unidades y entregables:** llegan en 7.5.
+- **Agentes:** van por `commands` (403 aquí).
+- **Pruebas:** `tests/tasks/project-design.test.ts`.
+
 ## 55. Unidades repetidas (migración `0360`; «Proyectos y producción» 7.5; decisión de VG en vg-37: opción A)
 
 - **`tasks.tasks.unit_count`** (1–100, opcional): va solo en la madre (en un paso da 422 `INVALID_UNITS`). Cada paso se hace tantas veces como diga, y también la madre misma si no tiene pasos.
