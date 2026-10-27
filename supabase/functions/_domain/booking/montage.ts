@@ -30,28 +30,41 @@ export function eventChanges(rows: readonly DecorRow[], eventId: string): Montag
     .sort((a, b) => rank[a.op] - rank[b.op] || a.id.localeCompare(b.id));
 }
 
-/** Una tarea para Tasks: la padre del evento y una hija por cambio. */
-export interface MontageTask { external_ref: string; parent_external_ref: string | null; title: string; note: string | null; due: string | null }
-
 const VERB = { add: 'Montar', remove: 'Retirar', replace: 'Sustituir' } as const;
 
+/** Nombres para los títulos, a partir de `plans_with_decor` (iconos y planos). */
+export interface MontageNames { icon: (id: string | null) => string; plan: (id: string) => string }
+
+/** La referencia de la reserva en Tasks (la misma que el proyecto del retiro, B13). */
+export const reservationRef = (code: string): string => `RES${code.replace(/[^A-Za-z0-9_.:-]/g, '')}`;
+
 /**
- * Las tareas de montaje de un evento: una padre «Montaje del evento» y una hija por cambio. `external_ref` estable (el
- * código del evento y el id de la fila del cambio): pedir dos veces no duplica, y un cambio que se deshace deja de estar
- * en la lista (quien llama retira la hija que sobra). Sin cambios, ninguna.
+ * La petición a Tasks (docs/tasks/API.md §42, `worker/requests/task`): la madre «Montaje del evento» en el proyecto de la
+ * reserva y una hija por cambio, con la lista ENTERA cada vez (Tasks crea, actualiza o retira). `external_ref` estable:
+ * el de la reserva para la madre y el id de la fila del cambio para cada hija.
  */
-export function montageTasks(
-  event: { code: string; title: string; start_date: string | null },
-  changes: readonly MontageChange[],
-  names: { icon: (id: string | null) => string; plan: (id: string) => string },
-): MontageTask[] {
-  if (changes.length === 0) return [];
-  const parent = `${event.code}-MONTAJE`;
-  const children = changes.map((c): MontageTask => {
-    const what = c.op === 'replace' ? `${names.icon(c.replacesIconId)} por ${names.icon(c.iconId)}`
-      : c.op === 'remove' ? names.icon(c.replacesIconId) : names.icon(c.iconId);
-    return { external_ref: `${parent}-${c.id}`, parent_external_ref: parent, title: `${VERB[c.op]}: ${what} (${names.plan(c.planId)})`.slice(0, 500), note: null, due: event.start_date };
-  });
-  return [{ external_ref: parent, parent_external_ref: null, title: `Montaje del evento · ${event.title}`.slice(0, 500),
-    note: `${children.length} ${children.length === 1 ? 'cambio' : 'cambios'} sobre la decoración general.`, due: event.start_date }, ...children];
+export function montageRequest(reservation: { id: string; code: string; title: string; start_date: string | null }, changes: readonly MontageChange[], names: MontageNames) {
+  const project = reservationRef(reservation.code);
+  const due = reservation.start_date ? String(reservation.start_date).slice(0, 10) : undefined;
+  return {
+    source: 'booking', kind: 'booking.event_setup', external_ref: `${project}-MONTAJE`, project_ref: project,
+    title: 'Montaje del evento',
+    note: `${reservation.title}: ${changes.length} ${changes.length === 1 ? 'cambio' : 'cambios'} sobre la decoración general.`.slice(0, 1000),
+    ...(due ? { due } : {}),
+    external_url: `https://booking.ikisai.com/#/reservas/${reservation.id}`,
+    children: changes.map((c) => {
+      const what = c.op === 'replace' ? `${names.icon(c.replacesIconId)} por ${names.icon(c.iconId)}`
+        : c.op === 'remove' ? names.icon(c.replacesIconId) : names.icon(c.iconId);
+      return { external_ref: c.id, title: `${VERB[c.op]}: ${what} (${names.plan(c.planId)})`.slice(0, 120), ...(due ? { due } : {}) };
+    }),
+  };
 }
+
+/** Nombres de iconos y planos a partir de lo que devuelve `resources.plans_with_decor`. */
+export function namesFrom(out: { icons?: Array<{ id: string; name?: string | null }>; plans?: Array<{ id: string; label?: string | null; buildingId?: string | null; floor?: string | number | null }>; spaces?: Array<{ id: string; name?: string | null }> }): MontageNames {
+  const icons = new Map((out.icons ?? []).map((i) => [i.id, i.name ?? 'objeto']));
+  const spaces = new Map((out.spaces ?? []).map((sp) => [sp.id, sp.name ?? '']));
+  const plans = new Map((out.plans ?? []).map((pl) => [pl.id, pl.label || [pl.buildingId ? spaces.get(pl.buildingId) : null, pl.floor !== null && pl.floor !== undefined ? `planta ${pl.floor}` : null].filter(Boolean).join(' · ') || 'plano']));
+  return { icon: (id) => (id ? icons.get(id) ?? 'objeto' : 'objeto'), plan: (id) => plans.get(id) ?? 'plano' };
+}
+

@@ -21,16 +21,20 @@ test('montaje · lo que se dibuja para el evento: la general con sus cambios, si
   assert.deepEqual(montage.resolveEventDecor(rows, 'ev-sin-cambios').map((r) => r.id).sort(), ['g-mesa', 'g-planta']);
 });
 
-test('montaje · tareas: padre por evento y una hija por cambio, con referencias estables; sin cambios, ninguna', () => {
-  const event = { code: 'EVT_2026_031', title: 'Carrera sintética', start_date: '2026-10-30' };
-  const names = { icon: (id: string | null) => ({ planta: 'Planta', mesa: 'Mesa larga', atril: 'Atril', 'planta-grande': 'Planta grande' } as Record<string, string>)[id ?? ''] ?? 'objeto', plan: () => 'Albergue' };
-  const tasks = montage.montageTasks(event, montage.eventChanges(rows, EV), names);
-  assert.deepEqual(tasks.map((t) => [t.external_ref, t.parent_external_ref, t.title]), [
-    ['EVT_2026_031-MONTAJE', null, 'Montaje del evento · Carrera sintética'],
-    ['EVT_2026_031-MONTAJE-e-atril', 'EVT_2026_031-MONTAJE', 'Montar: Atril (Albergue)'],
-    ['EVT_2026_031-MONTAJE-e-cambia-planta', 'EVT_2026_031-MONTAJE', 'Sustituir: Planta por Planta grande (Albergue)'],
-    ['EVT_2026_031-MONTAJE-e-quita-mesa', 'EVT_2026_031-MONTAJE', 'Retirar: Mesa larga (Albergue)'],
+test('montaje · petición a Tasks (§42): madre en el proyecto de la reserva y una hija por cambio, con referencias estables', () => {
+  const reservation = { id: 'r-80', code: '2026-80', title: 'Carrera sintética', start_date: '2026-10-30' };
+  const names = montage.namesFrom({
+    icons: [{ id: 'planta', name: 'Planta' }, { id: 'mesa', name: 'Mesa larga' }, { id: 'atril', name: 'Atril' }, { id: 'planta-grande', name: 'Planta grande' }],
+    plans: [{ id: 'plan-a', buildingId: 'alb', floor: 0 }], spaces: [{ id: 'alb', name: 'Albergue' }],
+  });
+  const req = montage.montageRequest(reservation, montage.eventChanges(rows, EV), names);
+  assert.deepEqual([req.source, req.kind, req.external_ref, req.project_ref, req.due, req.external_url],
+    ['booking', 'booking.event_setup', 'RES2026-80-MONTAJE', 'RES2026-80', '2026-10-30', 'https://booking.ikisai.com/#/reservas/r-80']);
+  assert.deepEqual(req.children.map((c) => [c.external_ref, c.title]), [
+    ['e-atril', 'Montar: Atril (Albergue · planta 0)'],
+    ['e-cambia-planta', 'Sustituir: Planta por Planta grande (Albergue · planta 0)'],
+    ['e-quita-mesa', 'Retirar: Mesa larga (Albergue · planta 0)'],
   ]);
-  assert.ok(tasks.every((t) => t.due === '2026-10-30'));
-  assert.deepEqual(montage.montageTasks(event, montage.eventChanges(rows, 'ev-sin-cambios'), names), []);
+  assert.ok(req.children.every((c) => /^[A-Za-z0-9_.:-]{1,100}$/.test(c.external_ref) && c.title.length <= 120));
+  assert.deepEqual(montage.montageRequest(reservation, montage.eventChanges(rows, 'ev-sin-cambios'), names).children, []);
 });
