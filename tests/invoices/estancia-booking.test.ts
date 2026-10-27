@@ -50,3 +50,33 @@ test('cobro de alojamiento de recepción: entra como ticket, una sola vez, aunqu
   const spoofed = await send('booking:walkin:estancia-falsa', { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': 'flow' });
   assert.deepEqual([spoofed.status, spoofed.data.error.code], [403, 'SOURCE_MISMATCH']);
 });
+
+test('devolución del alojamiento (Booking 1403): el reenvío reduce el mismo apunte, sin crear otro', async () => {
+  const stay = 'b8d4f0e2-0000-4000-8000-000000000043';
+  const base = walkinFinanceEntry({ id: stay, event_id: EVENT, nights: 2, price_cents: 3500, amount_cents: 7000, method: 'cash',
+    paid_day: '2026-10-31', title: 'Fin de semana de octubre', guest: null, space: 'Casa grande', bed: 'Cama 4' });
+  const send = (args: Record<string, unknown>, requestId: string) => app.call('/api/v1/commands', {
+    headers: { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': 'booking' },
+    body: { requestId, operations: [{ op: 'call', procedure: 'invoices.record_app_entry', args }] } });
+  const first = await send(base, 'booking:walkin:dev-1');
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const entryId = first.data.results[0].result.entry_id;
+  // La forma que manda Booking con devolución (1403): lo cobrado menos lo devuelto; el método de la devolución en negativo
+  // y una línea negativa, para que métodos y desglose sumen el importe
+  const refund = (cents: number, method = 'bizum') => ({ ...base, description: `${base.description} · con devolución`, amount_cents: 7000 - cents,
+    methods: method === 'cash' ? { cash: 7000 - cents } : { cash: 7000, [method]: -cents },
+    detail: [...base.detail, { code: 'devolucion', name: 'Devolución', quantity: 1, amount_cents: -cents }] });
+  const partial = await send(refund(3500), 'booking:walkin:dev-2');
+  assert.equal(partial.status, 200, JSON.stringify(partial.data));
+  assert.deepEqual([partial.data.results[0].result.status, partial.data.results[0].result.entry_id], ['replaced', entryId]);
+  const rows = async () => (await app.t.db.query<Record<string, any>>(`select * from invoices.app_entries where source_ref = $1 and deleted_at is null`, [`booking:stay:${stay}`])).rows;
+  let live = await rows();
+  assert.equal(live.length, 1, 'un solo apunte por cobro');
+  assert.deepEqual([Number(live[0]!.amount_cents), Number(live[0]!.net_cents) + Number(live[0]!.tax_cents)], [3500, 3500]);
+  // Devolución completa en metálico: el apunte queda a cero, el mismo
+  const full = await send(refund(7000, 'cash'), 'booking:walkin:dev-3');
+  assert.equal(full.status, 200, JSON.stringify(full.data));
+  live = await rows();
+  assert.deepEqual([live.length, Number(live[0]!.amount_cents), live[0]!.id], [1, 0, entryId]);
+});
+
