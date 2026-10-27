@@ -410,3 +410,41 @@ test('fichas: «Pedir 1 bote de 15 l» crea la solicitud con la tarea; − y + s
   await owner.locator('#consumeLater').click();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('«Compras del evento» en Suministros: lo pedido desde Flow, por proyecto, con «Ver en Flow ›»; con artículo, al recibir entra en el inventario', async () => {
+  const project = await owner.evaluate(() => { const p = (window as any).tab().projects.find((x: any) => !x.system && x.status !== 'archived' && !x.deleted); return { id: p.id, title: p.title }; });
+  const asked = await owner.evaluate((pid) => Sync.core.api('/requests/purchase', { method: 'POST', json: { source: 'flow', external_ref: 'unit-e2e-1', title: 'Masilla del evento', quantity: 3, unit: 'ud', project_id: pid, external_url: 'https://flow.ikisai.com/equipo/' } }), project.id);
+  expect(asked.created).toBe(true);
+  const id = asked.purchase.id as string;
+  await sync(owner);
+  await go(owner, 'supplies');
+  const box = owner.locator('#tcrEvent');
+  await expect(box).toBeVisible();
+  await expect(box.locator('#tcrEventTitle')).toContainText('Compras del evento');
+  await expect(box.locator('.tcr-eventproject')).toContainText(project.title);
+  const row = box.locator(`[data-event-purchase="${id}"]`);
+  await expect(row).toContainText('Masilla del evento');
+  await expect(row).toContainText('Sin artículo del inventario');
+  await expect(row.locator('.tcr-eventlink')).toHaveText('Ver en Flow ›');
+  expect(await row.locator('.tcr-eventlink').getAttribute('href')).toContain('flow.ikisai.com');
+  await expect(row.locator('[data-event-item]')).toBeVisible();
+  // El artículo (lo que hace «Usar este artículo» de la hoja): desde ahí, al recibirla entra en el inventario.
+  expect(await owner.evaluate(([r, item]) => (window as any).tcrEventSetItem(r, item), [id, MASILLA])).toBe(true);
+  await expect(owner.locator(`#tcrEvent [data-event-purchase="${id}"]`)).toContainText('Al recibirla entra en el inventario: Masilla');
+  const before = await stock(MASILLA);
+  // Lo siguiente, con los pasos de siempre: aprobar, comprada y ha llegado (con su confirmación).
+  await owner.locator(`#tcrEvent [data-event-step="${id}"]`).click();
+  await expect.poll(async () => (await req(id)).status).toBe('approved');
+  await owner.locator(`#tcrEvent [data-event-step="${id}"]`).click();
+  await expect.poll(async () => (await req(id)).status).toBe('purchased');
+  await owner.locator(`#tcrEvent [data-event-step="${id}"]`).click();
+  await owner.locator('#tcrReceiveOk').click();
+  await expect.poll(async () => (await req(id)).status).toBe('received');
+  await expect.poll(() => stock(MASILLA)).toBe(before + 3);
+  await expect(owner.locator(`#tcrEvent [data-event-purchase="${id}"]`)).toContainText('Entró en el inventario: Masilla');
+  // La lectora la ve, sin mandos.
+  await sync(reader);
+  await go(reader, 'supplies');
+  await expect(reader.locator(`#tcrEvent [data-event-purchase="${id}"] [data-event-step], #tcrEvent [data-event-purchase="${id}"] [data-event-item]`)).toHaveCount(0);
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});

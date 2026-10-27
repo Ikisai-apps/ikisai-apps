@@ -77,14 +77,14 @@ test('flow · health y bootstrap con las 9 tablas de Flow', async () => {
 test('flow · carta pública sin sesión: 13 productos activos del §8, sin pedidos ni personas; origen ajeno 403', async () => {
   const res = await app.call('/api/v1/public/menu', { token: null });
   assert.equal(res.status, 200, JSON.stringify(res.data));
-  assert.equal(res.data.project, 'Barra · Evento de octubre');
+  assert.equal(res.data.project, 'Barra · v1');
   assert.equal(res.data.products.length, 13);
   const byKey = new Map(res.data.products.map((p: any) => [`${p.scope}:${p.code}`, p]));
   assert.equal((byKey.get('clasico:A') as any).name, 'Serrano');
   assert.equal((byKey.get('clasico:A') as any).priceCents, 250);
   assert.equal((byKey.get('barra:A') as any).name, 'Agua, botella pequeña');
   assert.equal((byKey.get('gourmet:δ') as any).priceCents, 300);
-  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['code', 'description', 'id', 'imageKey', 'name', 'position', 'priceCents', 'scope']);
+  assert.deepEqual(Object.keys(res.data.products[0]).sort(), ['allergens', 'allergensChecked', 'code', 'description', 'id', 'imageKey', 'name', 'position', 'priceCents', 'scope']);
   assert.equal((byKey.get('clasico:A') as any).imageKey, 'montaditos/serrano');
   assert.equal((byKey.get('gourmet:γ') as any).imageKey, 'montaditos/cabra_dulce');
   assert.equal((byKey.get('barra:D') as any).imageKey, 'barra/cafe_infusion');

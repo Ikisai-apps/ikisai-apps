@@ -77,3 +77,71 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | K7 | Core | **Cuenta de servicio `organizers`** en `core.service_grants` (`displayName` «Organizers (sistema)», sin pertenencias), para que `worker/retention/tick` firme con `apply_system_operations` el borrado de las respuestas a los 6 meses (B18). Hoy `ensureServiceActor(supabase, 'organizers')` falla con `unknown service`. La prueba de `experience.test.ts` la simula en su base hasta que esté en main | alta |
 
 K6 (#334), B18 (#335) y K7 (#353): hechas y aplicadas en Organizers (#339).
+
+## Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped» (encargo de VG por Core, 26-10-2026; plazo: jueves 29)
+
+Reglas de VG:
+- el acceso a Organizers no caduca: el organizador ve sus retiros pasados y los que está montando;
+- al recibir acceso a Organizers recibe también Guests y aparece como huésped de su retiro (lo hace Booking);
+- dirección figura como coorganizadora de cualquier evento y puede entrar en Organizers viéndolo así.
+
+**Lo que hay hoy (revisado en `main` 95a1f1e):**
+- El cliente de Organizers **no borra nada al terminar el evento**: la caché solo se borra al cerrar sesión o al entrar otra persona (`onSessionEnd`), y los retiros terminados ya salen en «Pasados».
+- El permiso por reserva (`scopes.grants`) tampoco caduca en el servidor.
+- Lo que corta el acceso está en dos sitios:
+  - **El enlace.** `booking.portal_link_valid_until` lo da por bueno hasta el fin de la reserva más 3 días (90 días desde el alta si no hay fecha) y lo da por caducado (`null`) si la reserva está cancelada o perdida. En un móvil nuevo, tras «Cerrar sesión» o con el navegador limpio, el organizador ya no puede volver a entrar (`LINK_EXPIRED`), porque la cuenta permanente sigue pendiente de Workspace.
+  - **El pase común** (`ikisai_sso`, 30 días). Solo se emite al canjear un enlace, al entrar con contraseña y al recuperar la contraseña, y solo se alarga al usarse en `auth/sso`. Renovar la sesión de Organizers (`auth/refresh`) no lo toca. Un organizador que solo usa Organizers lo pierde a los 30 días, y entonces «Verlo como huésped» le llevaría a la pantalla de entrada de Guests.
+
+| Id | Para | Petición | Prioridad |
+|---|---|---|---|
+| B19 | Booking | **Enlace de organizador sin caducidad.** Un resolutor propio para `organizers` (`core.allow_portal_resolver('organizers', 'booking.portal_organizer_link_valid_until')`) que devuelva `'infinity'` mientras la reserva exista, también terminada, cancelada o perdida. Solo `null` si se borró. Guests sigue con el resolutor de hoy. Revocar sigue siendo lo que corta un enlace (`portal-links/:id/revoke`, `core.portal_revoke_scope`). El núcleo ya lo admite: `core.portal_link_resolve` compara con `now()` | alta |
+| B20 | Booking | **Ámbito «todos» para dirección.** Booking define su forma (propuesta: una entrada `{"all": true}` en `scopes.grants` de `organizers`) y quién la da. Con ese ámbito:<ul><li>`booking.portal_reservations` devuelve todas las reservas no borradas;</li><li>el resto de lecturas y acciones de portal de Booking (`portal_in_scope`) las aceptan;</li><li>cada elemento de `portal_reservations` lleva `as: 'organizer' \| 'coorganizer'`. `coorganizer` significa que la reserva se ve por «todos» y no por un permiso propio, y con eso Organizers pinta la vista de coorganizadora.</li></ul>Hoy `booking.portal_in_scope` solo llama a `core.portal_in_scope` (ver K8) | alta |
+| B21 | Booking | **El organizador como huésped de su retiro.** Al dar acceso a Organizers, Booking da también el de Guests (pertenencia `editor` con `{reservation_id, guest_id}`) y crea al organizador como huésped. Para el botón, `portal_reservations` añade a cada reserva `as_guest_id` (el `guest_id` del propio organizador en ella, o `null`). Organizers enseña «Verlo como huésped» solo si no es `null` | alta |
+| K8 | Core | **`core.portal_in_scope` con «todos».** Que dé verdadero para cualquier reserva si la pertenencia del actor al portal tiene la entrada de B20. Solo en `organizers`: en Guests el huésped sigue mandando. Que una pertenencia con «todos» no pueda salir de un enlace de portal (`portal-links`): solo la da quien decida Booking o Central | alta |
+| K9 | Core | **El pase común sigue vivo mientras se use una app.** Que `auth/refresh` alargue el pase del dispositivo (o emita uno si no lo hay), igual que `auth/sso`. Así, «Verlo como huésped» abre Guests con la misma cuenta aunque el organizador lleve más de 30 días usando solo Organizers | alta |
+| Gu1 | Guests | **Entrar en un retiro concreto.** Formato del enlace para abrir Guests en la ficha de un retiro cuando la cuenta tiene varios (propuesta: `https://guests.ikisai.com/#/r/<reservation_id>`, o el `guest_id`). Es el equivalente, para la sesión común, del «por enlace, ese retiro» de C10. Sin sesión en Guests, la entrada por pase (`auth/sso`) tiene que respetar esa ruta | alta |
+
+**Lo que hace Organizers (en este territorio y en la PR #718):**
+1. Entrada y textos. El error de enlace caducado deja de decir «si tu retiro sigue en marcha»: con B19 solo deja de valer un enlace revocado o el de un retiro borrado. Ahora dice «Este enlace ya no está activo» y que con uno nuevo se vuelven a ver todos los retiros, también los pasados.
+2. Ámbito «todos» en lo propio: `hasAllReservations` e `inReservationScope` en `_domain/organizers`, que usan `visibleRow` y `validateOperations` (prueba en `tests/organizers/scope.test.ts`). El gancho de la base de datos (`organizers.validate_batch`, 0700) ya pregunta a `core.portal_in_scope('organizers', …)`: con K8 queda cubierto, sin migración propia. Un coorganizador con «todos» lee y escribe la experiencia y las ofertas de cualquier retiro.
+3. Mis retiros con «todos»:
+   - la lista completa, con un buscador por título o código (sin acentos ni mayúsculas) y la marca «Coorganizas» cuando `as = 'coorganizer'`;
+   - con «todos» no se abre sola la ficha;
+   - las portadas de esos retiros se piden al buscar o al abrir su grupo.
+
+   La ficha es la misma, con la línea «Lo ves desde dirección de Ikisai: coorganizas todos los retiros.»
+4. «Verlo como huésped» en la cabecera de la ficha (`#viewAsGuest`), solo con `as_guest_id` y si el catálogo de apps (`GET apps`) incluye `guests`. Abre Guests en otra pestaña con la ruta de Gu1 (de momento la propuesta `#/r/<reservation_id>`, en un solo sitio: `app/guest-view.ts`), sin otro inicio de sesión.
+
+**Respuesta de Booking (26-10):**
+- Le encajan `as` (`'organizer' | 'coorganizer'`), `as_guest_id` y «todos» como `{"all": true}` en `scopes.grants`. El `{"all": true}` lo concede Core por el nivel de dirección, y Booking lo acepta en sus comprobaciones.
+- B19 se hace como se pidió y vale también para Guests (regla 1 de VG).
+- B21: la ficha de huésped del organizador lleva `booking.guests.portal_role = 'organizer'`. La crea la conciliación `booking.portal_access_sync` después de cada permiso de Organizers.
+- Todo va en la migración 0481, en una PR aparte.
+
+**Respuesta de Core (26-10):** K8 y K9 van en la migración 0095 y en el `_kit`.
+
+**Respuesta de Guests (26-10, Gu1):** confirmada `https://guests.ikisai.com/#/r/<reservation_id>`, en minúsculas. Ya está en main: abre la familia del retiro, o la ficha si la cuenta solo tiene una persona; sobrevive a la entrada por pase común. Con «todos», Guests deja recorrer el retiro sin ficha (en su tanda).
+
+**Respuestas de VG (26-10, por Core):**
+- Dirección ve todos los retiros, pasados y futuros.
+- Los cancelados se quedan en «Cancelados» para siempre.
+- Dirección edita la experiencia y las ofertas de cualquier retiro como coorganizadora, **pero el cambio queda como «propuesta del equipo de Ikisai»** y quien organiza la acepta o la descarta desde su ficha. Se hace con las sugerencias del núcleo (contrato §3.10), en la migración 0703:
+  - El gancho de ámbito pide **permiso propio** para escribir en `organizers.*`. Con solo «todos» responde `SUGGESTION_REQUIRED`. Si dirección también organiza ese retiro, escribe directo.
+  - El tipo de sugerencia `propuesta_equipo` (experiencias, materiales, preguntas y ofertas) solo lo envía quien tiene el nivel de casa «dirección». `detail.reservation_id` dice de qué retiro es.
+  - `suggestionVisible`: la ven, previsualizan y deciden solo quienes tienen permiso propio sobre ese retiro. Dirección no decide las suyas; las sigue con `scope=mine` y puede retirarlas.
+  - En el cliente, lo que cambia dirección se junta en un borrador por retiro (`app/proposal-draft.ts`) que las pantallas ven encima del espejo. Se envía de una vez, como una sola sugerencia, desde «Propuesta para quien organiza». Así no sale una por campo ni se llega al límite de 30 pendientes.
+  - Quien organiza ve «Propuestas del equipo de Ikisai» con lo que cambia cada una, y los botones «Aceptar» y «Descartar». Al aceptar, lo nuevo en materiales y preguntas pasa a su biblioteca (`owner_id`).
+  - Archivos: desde el 27-10, por orden de VG, una propuesta puede llevar archivos. Dirección los sube al momento y la propuesta lleva su `file_id` (API.md §19.3).
+  - Programa y Alojamiento (dentro de Experiencia) son datos operativos de Booking, y dirección es propietaria de Booking: con «todos» se escriben directo, sin propuesta (Core, 26-10).
+
+**K8 y K9:** fusionadas en la #723 (Core, 26-10).
+
+Preguntas para VG (por Core):
+- Con «todos», ¿la dirección puede **escribir** en la experiencia y las ofertas de cualquier retiro, o solo verlas? Recomiendo verlo y escribirlo igual que un coorganizador (la regla dice «aparece como coorganizador»). Si es solo lectura, se marca en el ámbito.
+- ¿Los retiros cancelados siguen en «Cancelados» para siempre? Con B19 sí. Recomiendo que sí, porque es lo que pasa hoy mientras dura la sesión.
+
+## Comida que se ofrece (encargo de VG por Core, 27-10-2026)
+
+| Id | Para | Petición | Estado |
+|---|---|---|---|
+| Fd4 | Food | **Ofertas de comida para el portal:** `food.portal_offers({reservation_id, from?, to?})`, para Organizers y Guests y con el ámbito de `portal_in_scope` (con «todos», K8). Lleva:<ul><li>el menú cerrado y las cartas, con quién paga: `payer` vale `'organizador'` o `'huesped'`, y para el huésped, `charge_when` vale `'barra'` o `'cuenta'`;</li><li>días, servicios y lugar;</li><li>las líneas de la carta, con su precio de venta en céntimos con IVA, alérgenos y dietas.</li></ul>Lo interno (`audience = 'interna'`) y las líneas no disponibles no salen. `food.event_offers_projection` es la vista para Booking, no para portales | aceptada (Food, migración 1111) |

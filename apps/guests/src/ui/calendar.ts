@@ -470,6 +470,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
       calendar.element),
     el('section', { class: 'gcalendar-list', 'aria-labelledby': 'calendarListTitle' },
       el('h3', { id: 'calendarListTitle' }, t('calendar.list')),
+      el('p', null, el('a', { class: 'glink-inline', href: '#/retiros', id: 'calendarAllRetreats', 'data-feedback-id': 'guests.calendario.retiros.abrir', 'data-feedback-label': 'Abrir Mis retiros' }, t('calendar.toRetreats'))),
       list.length
         ? fbIgnore(el('div', { class: 'gcards', id: 'calendarList' }, ...list.map((r) => el('a', {
           class: 'card gcard glink', href: actions.href(r), dataset: { reservation: r.reservation_id },
