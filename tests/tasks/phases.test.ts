@@ -98,7 +98,7 @@ test('una fase con tareas vivas no se borra; soltándolas en el mismo lote, sí'
   const del = async (): Promise<Operation> => ({ op: 'delete', table: 'tasks.project_phases', id: fase, expectedRevision: (await row('tasks.project_phases', fase)).revision });
   assert.equal(await code([await del()]), '422 PHASE_NOT_EMPTY');
   assert.equal(await code([await update('tasks.tasks', t, { phase_id: null }), await del()]), '200 OK');
-  assert.ok((await row('tasks.project_phases', fase)).deleted_at);
+  assert.equal(await row('tasks.project_phases', fase), undefined, 'en la papelera (snapshot no la trae)');
 });
 
 test('el modelo de la interfaz: fases calculadas, los pasos heredan la de su madre y quitar una fase suelta sus tareas', async () => {
@@ -110,8 +110,9 @@ test('el modelo de la interfaz: fases calculadas, los pasos heredan la de su mad
   assert.deepEqual([barnizar.name, barnizar.total, barnizar.open, barnizar.done], ['Barnizar', 1, 0, true], 'la madre está hecha porque lo está su paso');
   assert.equal(obra.tasks.find((t) => t.id === paso)!.phaseId, fase, 'el paso hereda la fase al leer');
   assert.equal((await row('tasks.tasks', paso)).phase_id, null, 'pero no la guarda');
-  // Guardar el modelo tal cual no cambia nada.
-  assert.deepEqual(decompose(await data(), tabs), []);
+  // Guardar el modelo tal cual no toca fases ni la fase de ninguna tarea.
+  const same = decompose(await data(), tabs).flat();
+  assert.deepEqual(same.filter((o) => o.table === 'tasks.project_phases' || (o.fields && 'phase_id' in o.fields)), []);
   // Una fase nueva desde el modelo y una tarea a ella.
   const nueva = uuid();
   obra.phases!.push({ id: nueva, name: 'Embalar', order: 7168, status: 'pending', start: '', due: '2026-12-01', closedNote: '', version: 0 });
@@ -124,7 +125,7 @@ test('el modelo de la interfaz: fases calculadas, los pasos heredan la de su mad
   obra = tabs.find((t) => t.id === TAB)!.projects.find((p) => p.id === OBRA)!;
   obra.phases = obra.phases!.filter((p) => p.id !== nueva);
   for (const batch of decompose(await data(), tabs)) assert.equal(await code(batch), '200 OK');
-  assert.ok((await row('tasks.project_phases', nueva)).deleted_at);
+  assert.equal(await row('tasks.project_phases', nueva), undefined, 'en la papelera');
   assert.equal((await row('tasks.tasks', madre)).phase_id, null);
 });
 
