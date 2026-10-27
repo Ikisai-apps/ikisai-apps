@@ -14,6 +14,7 @@ let app: TestApp;
 let counter = 0;
 const PROJECT = '7d1c1a52-3f0e-4c55-9b7a-0c6a3e7f2b10';
 const REF = `flow:project:${PROJECT}:2026-10-31`;
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
 const update = (id: string, expectedRevision: number, fields: Record<string, unknown>) => ({ op: 'update', table: 'invoices.app_entries', id, expectedRevision, fields });
 
@@ -49,7 +50,7 @@ const record = async (args: Record<string, unknown>, token?: string) => (await o
 test.before(async () => {
   app = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
-    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null } }),
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, workerKey: WORKER_KEY }),
   });
 });
 test.after(async () => { await app.close(); });
@@ -278,3 +279,41 @@ test('0247: un ticket registrado como factura recibida queda fuera del resumen f
   assert.equal(Number(after.invoices.pendiente_datos) + Number(after.invoices.pendiente_revision), 1);
 });
 
+test('F1 (0250): por worker, el origen lo fija quien llama y se escribe con su cuenta de servicio', async () => {
+  const worker = (body: unknown, caller = 'flow', key = WORKER_KEY) => app.call('/api/v1/worker/app-entries', { token: null, method: 'POST', body,
+    headers: { ...(key ? { 'x-ikisai-worker-key': key } : {}), ...(caller ? { 'x-ikisai-caller': caller } : {}) } });
+  // Hasta que Core dé a «Flow (sistema)» y «Booking (sistema)» su pertenencia a Finance, la prueba se la pone.
+  const send = async (body: unknown, caller = 'flow') => {
+    let res = await worker(body, caller);
+    if (res.status === 403 && !['CALLER_REJECTED', 'SOURCE_MISMATCH'].includes(res.data?.error?.code)) {
+      await app.t.db.query(`insert into core.memberships (app, user_id, role) select 'invoices', core.service_actor($1), 'editor' where core.service_actor($1) is not null
+        on conflict (app, user_id) do nothing`, [caller]);
+      res = await worker(body, caller);
+    }
+    return res;
+  };
+  const ref = `flow:project:${PROJECT}:2027-02-01`;
+  const body: Record<string, unknown> = barDay({ source_ref: ref, entry_date: '2027-02-01', nature: 'process' });
+  delete body.source_app;
+  assert.equal((await worker(body, 'flow', '')).status, 401, 'sin la clave');
+  const wrongCaller = await worker(body, 'tasks');
+  assert.deepEqual([wrongCaller.status, wrongCaller.data.error.code], [403, 'CALLER_REJECTED']);
+  const spoofed = await worker({ ...body, source_app: 'booking' });
+  assert.deepEqual([spoofed.status, spoofed.data.error.code], [403, 'SOURCE_MISMATCH']);
+  const otherRef = await worker({ ...body, source_ref: 'booking:stay:x1' });
+  assert.deepEqual([otherRef.status, otherRef.data.error.field ?? otherRef.data.error.details?.field], [422, 'source_ref']);
+
+  const created = await send(body);
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  assert.deepEqual([created.data.status, created.data.nature], ['created', 'process']);
+  const row = await entry(created.data.entry_id);
+  const flowActor = (await app.t.db.query<{ id: string }>(`select core.service_actor('flow') id`)).rows[0]!.id;
+  assert.deepEqual([row.source_app, row.updated_by], ['flow', flowActor], 'escrito por «Flow (sistema)»');
+  assert.equal((await send(body)).data.status, 'unchanged', 'repetir no cambia nada');
+
+  // En el SQL: la cuenta de servicio de Booking no escribe apuntes de Flow, aunque se salte la ruta
+  await send({ source_ref: 'booking:stay:b-1', kind: 'income', entry_date: '2027-02-01', description: 'Estancia', amount_cents: 1100, tax_rate: 10 }, 'booking');
+  const bookingActor = (await app.t.db.query<{ id: string }>(`select core.service_actor('booking') id`)).rows[0]!.id;
+  assert.ok(bookingActor);
+  await assert.rejects(app.t.db.query(`select invoices.record_app_entry($1::jsonb)`, [JSON.stringify({ app: 'invoices', actor: bookingActor, role: 'editor', args: { ...body, source_app: 'flow' } })]), /SOURCE_MISMATCH/);
+});

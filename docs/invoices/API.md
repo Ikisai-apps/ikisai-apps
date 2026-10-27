@@ -2018,6 +2018,22 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
   - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
 - **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
 
+### 17.10 Envío por worker: el origen lo fija el servidor (seguridad F1, migración 0250)
+
+`POST <invoices-api>/api/v1/worker/app-entries`, de Edge a Edge. Va a la Edge directa, nunca al proxy de Pages.
+- **Cabeceras:** `X-Ikisai-Worker-Key: <IKISAI_WORKER_KEY>`, `X-Ikisai-Caller: flow | booking` y `Content-Type: application/json`.
+- **Cuerpo:** los argumentos de `record_app_entry` (§17.2, §17.7, §17.8), sin `source_app`. Si viene, tiene que ser el llamante; si no, `403 SOURCE_MISMATCH`. `source_ref` empieza por `<llamante>:`. `request_id` es opcional (`[A-Za-z0-9_.:-]{1,120}`, idempotencia del lote); sin él, sale del contenido.
+- **Respuesta 200:** lo que devuelve `record_app_entry`: `{entry_id, status: created | replaced | unchanged, revision, nature, receipt_kind, tax_cents, net_cents}`.
+- **Errores:**
+  - `401` sin clave;
+  - `403 CALLER_REJECTED` con otro llamante;
+  - `403 SOURCE_MISMATCH`;
+  - los `422` y `409` de §17.
+- **Quién escribe:** la cuenta de servicio del llamante («Flow (sistema)», «Booking (sistema)»), por el commit con los hooks de Finance. En el SQL, una cuenta de servicio solo escribe apuntes de su app.
+- **Fases:**
+  - fase 1 (0250): una persona editora todavía puede llamar a `record_app_entry`;
+  - fase 2, en cuanto Flow y Booking envíen por aquí: solo cuentas de servicio.
+
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
 Ficha de capacidad para el catálogo del núcleo:

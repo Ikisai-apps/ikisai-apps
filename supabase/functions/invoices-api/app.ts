@@ -9,6 +9,7 @@ import {
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
 import { createQuickPurchase } from './quick-purchase.ts';
+import { appEntriesWorkerRoute } from './app-entries-worker.ts';
 import { createGoogleDriveApi, READER_VERSION, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
 import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
@@ -890,7 +891,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         return rereadDrive();
       },
     }],
-    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute],
+    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute, appEntriesWorkerRoute(supabase, hooks)],
   });
 }
 
