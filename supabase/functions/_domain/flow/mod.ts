@@ -133,3 +133,4 @@ export const FLOW_ERRORS: Record<string, string> = {
 export * from './menu.ts';
 export * from './scope.ts';
 export * from './carta-sync.ts';
+export * from './metrics.ts';

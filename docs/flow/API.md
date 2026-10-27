@@ -276,3 +276,14 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - Sin la config, `INVALID_OPERATION`: la v1 entrega con `deliver_order` como siempre.
 - **App**: en la ficha de entrega de la v2, con algo en cocina, aparece «Dar por hecho y entregar». En Servicio, esas tarjetas dicen «En cocina x/y». En Preparación, lo terminado desde entrega desaparece solo.
 - **Resolutor de ámbito**: `flow.in_scope(actor, kind, id)`, registrado con `core.allow_scope_resolver`. Con `kind = 'booking_event'`, es verdadero si la persona tiene en su ámbito algún flujo de ese evento. Booking lo usa en `booking.flow_guests_of`.
+
+## 27. Pan v2 (migración `0913`)
+
+- **Métrica `bread_v2`** del puesto «Pan». Desde la 0913 la lleva la v2 por plantilla, y también el «Pan» de las versiones ya creadas y no congeladas, conservando sus parámetros. `bread_ahead` (0908) no cambia.
+- **Firme**: montaditos cobrados con su unidad aún sin hacer (pendiente o en curso), multiplicados por `bread_per_unit` (1 por defecto).
+- **Prevista**: ritmo × (`warmup_min` + `lead_min`), con el descuento de los tramos (`tiers`, por ritmo) aplicado solo a la prevista.
+  - El ritmo son las unidades de los pedidos cobrados en `lookback_min` (5), con un máximo de `per_order_cap` (4) por pedido.
+  - Se suaviza con la ventana larga `smooth_min` (15) y el peso `smooth_weight` (0,3). Sin suavizado, 7 en 5 min = 1,4/min.
+- **target** = mín(`machine_capacity`, firme + ⌊prevista⌋). Devuelve `target`, `firm`, `forecast`, `rate`, `pct`, `units`, `window`, `machine_capacity` y `hysteresis`. Sin conteo manual.
+- **Histéresis** (`hysteresis`, 2 panes): la app (`steadyMetrics`) solo cambia la cifra mostrada si se mueve al menos eso, o si quedaría por debajo de lo firme.
+- El owner cambia los parámetros desde la tarjeta del puesto, como en la 0908.

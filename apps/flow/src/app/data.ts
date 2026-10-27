@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { TABLES, type OrderStatus, type PayMethod, type SettleMethod, type UnitStatus } from '@ikisai/domain-flow';
+import { steadyMetrics, TABLES, type OrderStatus, type PayMethod, type SettleMethod, type UnitStatus } from '@ikisai/domain-flow';
 
 /**
  * Datos del personal leídos del espejo local (docs/flow/API.md §2). Todo en memoria por pantalla: una barra tiene pocos
@@ -187,6 +187,8 @@ export async function loadStationMetrics(client: SyncClient, projectId: string):
     return new Map((out ?? []).map((m) => [m.unit_id, m]));
   } catch { return new Map(); }
 }
+
+export { steadyMetrics };
 
 /** «Ahora deben estar calentándose {target} …» con los valores de la métrica. */
 export function fillMetricText(template: string | undefined, metric: StationMetric | undefined): string {
