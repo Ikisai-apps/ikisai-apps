@@ -7,8 +7,8 @@
 export const AGENTS_TABLE = 'central.agents';
 
 /** Ids del Avance de Flow (1524): el proyecto y el carril, tal como los usa Flow en sus enlaces. */
-export const FLOW_PROJECT_ID = /^[A-Za-z0-9_-]{1,64}$/;
-export const FLOW_LANE_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+export const FLOW_PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const FLOW_LANE_ID = /^[a-z][a-z0-9_]{1,30}$/;
 
 /** El carril del agente en el Avance de Flow, o `null` si falta el proyecto o el carril. */
 export function flowLaneUrl(a: { flow_project?: string | null; flow_lane?: string | null }): string | null {
