@@ -61,6 +61,9 @@ create table tasks.review_items (
   checked_by uuid references auth.users(id),
   checked_at timestamptz,
   first_failure jsonb,
+  -- La foto del primer fallo, en su propia columna (campo de archivo): así no la recoge la limpieza de huérfanos cuando
+  -- un «ok» posterior trae otra foto.
+  first_failure_file_id uuid,
   corrective_task_id uuid references tasks.tasks(id),
   recheck_task_id uuid references tasks.tasks(id)
 );
@@ -71,8 +74,9 @@ create trigger tasks_guard_immutable before update on tasks.review_items for eac
 
 select core.register_table('tasks', 'tasks', 'reviews', array['tab_id','project_id','template_id','title','event_ref','status','opened_at','opened_by','open_override','open_note','pending_at_open']);
 select core.register_table('tasks', 'tasks', 'review_items', array['tab_id','project_id','review_id','task_id','template_item_id','zone','title','answer','expected','critical','instructions','position',
-  'state','value','text','file_id','checked_by','checked_at','first_failure','corrective_task_id','recheck_task_id']);
+  'state','value','text','file_id','checked_by','checked_at','first_failure','first_failure_file_id','corrective_task_id','recheck_task_id']);
 select core.register_file_field('tasks', 'tasks', 'review_items', 'file_id', 'operational');
+select core.register_file_field('tasks', 'tasks', 'review_items', 'first_failure_file_id', 'operational');
 
 -- El nombre de cada zona, para las tareas madre.
 create or replace function tasks.review_zone_label(p_zone text)

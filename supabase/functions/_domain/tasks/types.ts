@@ -155,7 +155,7 @@ export interface ReviewItemRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; review_id: Uuid; task_id: Uuid; template_item_id: Uuid | null; zone: string; title: string;
   answer: ReviewAnswer; expected: ReviewExpected; critical: boolean; instructions: string; position: number;
   state: ReviewItemState; value: number | null; text: string | null; file_id: Uuid | null; checked_by: Uuid | null; checked_at: string | null;
-  first_failure: Record<string, unknown> | null; corrective_task_id: Uuid | null; recheck_task_id: Uuid | null;
+  first_failure: Record<string, unknown> | null; first_failure_file_id: Uuid | null; corrective_task_id: Uuid | null; recheck_task_id: Uuid | null;
 }
 export interface ReviewTemplateItemRow extends BaseRow {
   tab_id: Uuid | null; template_id: Uuid; zone: ReviewZone; trade_id: Uuid | null; title: string; instructions: string;
@@ -225,7 +225,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.review_templates': ['tab_id', 'name', 'note', 'active', 'position'],
   'tasks.review_template_items': ['tab_id', 'template_id', 'zone', 'trade_id', 'title', 'instructions', 'answer', 'expected', 'critical', 'position'],
   'tasks.reviews': ['tab_id', 'project_id', 'template_id', 'title', 'event_ref', 'status', 'opened_at', 'opened_by', 'open_override', 'open_note', 'pending_at_open'],
-  'tasks.review_items': ['tab_id', 'project_id', 'review_id', 'task_id', 'template_item_id', 'zone', 'title', 'answer', 'expected', 'critical', 'instructions', 'position', 'state', 'value', 'text', 'file_id', 'checked_by', 'checked_at', 'first_failure', 'corrective_task_id', 'recheck_task_id'],
+  'tasks.review_items': ['tab_id', 'project_id', 'review_id', 'task_id', 'template_item_id', 'zone', 'title', 'answer', 'expected', 'critical', 'instructions', 'position', 'state', 'value', 'text', 'file_id', 'checked_by', 'checked_at', 'first_failure', 'first_failure_file_id', 'corrective_task_id', 'recheck_task_id'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */

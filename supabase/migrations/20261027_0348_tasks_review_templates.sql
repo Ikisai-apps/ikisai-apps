@@ -58,7 +58,7 @@ select core.register_table('tasks', 'tasks', 'review_template_items', array['tab
 -- Lo esperado según el tipo: {count} (entero ≥ 0) en una cantidad; {unit, min?, max?} en una lectura (min ≤ max); nada en el resto.
 create or replace function tasks.review_expected_ok(p_answer text, p_expected jsonb)
 returns boolean language sql immutable as $$
-  select case p_answer
+  select coalesce(case p_answer
     when 'quantity' then (select bool_and(k = 'count') from jsonb_object_keys(p_expected) k) is not false
       and (not p_expected ? 'count' or (jsonb_typeof(p_expected->'count') = 'number' and (p_expected->>'count')::numeric >= 0 and (p_expected->>'count')::numeric = trunc((p_expected->>'count')::numeric)))
     when 'reading' then (select bool_and(k in ('unit', 'min', 'max')) from jsonb_object_keys(p_expected) k) is not false
@@ -66,7 +66,7 @@ returns boolean language sql immutable as $$
       and (not p_expected ? 'min' or jsonb_typeof(p_expected->'min') = 'number')
       and (not p_expected ? 'max' or jsonb_typeof(p_expected->'max') = 'number')
       and (not (p_expected ? 'min' and p_expected ? 'max') or (p_expected->>'min')::numeric <= (p_expected->>'max')::numeric)
-    else p_expected = '{}'::jsonb end
+    else p_expected = '{}'::jsonb end, false)
 $$;
 
 create or replace function tasks.validate_review_templates(p jsonb)
