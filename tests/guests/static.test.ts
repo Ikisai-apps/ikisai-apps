@@ -122,7 +122,7 @@ test('guests · cada data-feedback-id escrito en un el(...) lleva su data-feedba
 test('guests · la raíz de cada id es una pantalla conocida', () => {
   const roots = new Set(collectIds().map((f) => f.id.split('.')[1]));
   const allowed = new Set(['entrada', 'aviso', 'inicio', 'datos', 'alimentacion', 'firma', 'info', 'ayuda', 'acceso', 'app', 'cuenta', 'cabecera',
-    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'retiros', 'calendario', 'outsider', 'visitante']);
+    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'retiros', 'calendario', 'outsider', 'visitante', 'guia']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 

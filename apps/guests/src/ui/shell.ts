@@ -584,7 +584,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   // «Completar mis datos»…) o lo es, se abre. Las hojas y las pestañas de Guests tienen su propia ruta (el enlace ya lleva a ella).
   const offReveal = registerReveal('guests', (id) => {
     const q = CSS.escape(id);
-    const node = document.querySelector<HTMLElement>(`[data-field-id="${q}"], [data-feedback-id="${q}"]`);
+    // El selector se arma con los nombres de atributo (el catálogo de ids no lo confunde con un id literal).
+    const node = document.querySelector<HTMLElement>(['data-field-id', 'data-feedback-id'].map((attr) => `[${attr}="${q}"]`).join(', '));
     for (let d = node?.closest('details') ?? null; d; d = d.parentElement?.closest('details') ?? null) (d as HTMLDetailsElement).open = true;
   });
 
