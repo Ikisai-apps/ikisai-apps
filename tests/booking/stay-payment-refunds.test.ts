@@ -43,8 +43,10 @@ test('un aviso perdido se concilia con la pasarela; la devolución en línea la 
   // la pasarela lo cobró, pero su aviso no llegó: la conciliación (intentos de hace más de 10 min) lo aplica
   gateway.states.set(ref, 'paid');
   assert.deepEqual(await reconcile(), { checked: 0, applied: 0 }, 'aún reciente');
-  // (la guarda de stay_payments solo deja escribir al sistema: la prueba envejece el intento como sistema)
-  await app.t.db.exec(`select set_config('core.role', 'system', false); update booking.stay_payments set created_at = now() - interval '11 minutes' where provider_ref = '${ref}'; select set_config('core.role', '', false);`);
+  // (la guarda de stay_payments solo deja escribir a la cuenta de servicio de Booking en un lote: la prueba lo imita)
+  await app.t.db.exec(`select set_config('core.request_id', 'prueba-envejecer', false), set_config('core.actor', core.service_actor('booking')::text, false);
+    update booking.stay_payments set created_at = now() - interval '11 minutes' where provider_ref = '${ref}';
+    select set_config('core.request_id', '', false), set_config('core.actor', '', false);`);
   assert.deepEqual(await reconcile(), { checked: 1, applied: 1 });
   assert.equal((await app.t.db.query<{ s: string }>(`select status s from booking.stay_payments where provider_ref = $1`, [ref])).rows[0]!.s, 'paid');
 
