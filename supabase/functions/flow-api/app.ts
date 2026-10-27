@@ -38,6 +38,7 @@ const PUBLIC_IP_LIMITS: Record<'customer' | 'orders', { max: number; windowMs: n
 const PUBLIC_MESSAGES: Record<string, string> = {
   RATE_LIMITED: 'Demasiados intentos seguidos. Espera un momento y vuelve a probar.',
   TOO_MANY_OPEN_ORDERS: 'Tienes varios pedidos sin cobrar: pásate por la barra antes de pedir más.',
+  MENU_CLOSED: 'La barra no está abierta ahora mismo.',
 };
 export function createIpLimiter(now: () => number = Date.now) {
   const hits = new Map<string, number[]>();
