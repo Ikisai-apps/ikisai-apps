@@ -2254,9 +2254,39 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - Flow lo pinta con la pieza «lista de comprobación» del kit (#872) y marca con `tasks.review_item_result` (§46.3).
 - **Pruebas:** `tests/tasks/review-open.test.ts`.
 
+### 46.5 En la app (`revision-ui.js`)
+
+- **En Proyectos:** «+ Revisión de apertura» crea una desde una plantilla (de la casa o del área), con nombre, fecha y, opcionalmente, el evento.
+- **En el proyecto de una revisión:** la banda con los críticos verificados, los ítems y los fallos, y «Abrir». Con críticos pendientes, la lista de lo que falta; solo una owner abre igualmente y con nota.
+- **En la ficha de un ítem:** «Comprobación», con las instrucciones, lo esperado, el valor, la foto o la observación, y «Está bien» o «Falla». Debajo, el primer fallo y los enlaces a «Arreglar» y «Volver a comprobar». Quien solo lee lo ve sin controles.
+- **Pruebas:** `tests/tasks/revision.spec.ts`.
+
+## 47. «Trabajos de hoy» para Flow (migración `0352`, `tasks-api/today.ts`; encargo de Core, 27-10-2026)
+
+- **`GET today/projection?date=&projectId=`** (lectura `tasks.today_projection`, también la capacidad del mismo nombre; reader, editor, owner y outsider, en su ámbito). Devuelve `{date, items}`: lo que vence ese día o antes y sigue abierto, más lo hecho ese día. Cada ítem trae proyecto, madre, prioridad, vencimiento, estado, `overdue`, `blocked` (por una dependencia o por el paso anterior sin hacer) y los ids de personas, oficios y espacios. El Plan de hoy (`day_plans`) no entra: es privado por persona (decisión de VG, §38).
+- **`POST tasks/complete {taskId, requestId?}`** (capacidad `tasks.complete`, editor u owner): marca hecha una tarea que la persona ve y responde `{taskId, done, changed, revision}`. Si ya estaba hecha, `changed: false`; no marca sus hijas.
+- **Pruebas:** `tests/tasks/today.test.ts`.
+
 ## 48. Limpieza de cama al salir un huésped (Booking #907; tarjeta tasks-24, 27-10-2026)
 
 - **Qué pide Booking:** por `worker/requests/task`, `{source: 'booking', kind: 'booking.bed_cleaning', external_ref: 'LIMP-<asignación>', title, due?, note?, priority?, external_url?}`, sin `project_ref` (si lo trae, 422). La referencia tiene que empezar por `LIMP-`.
 - **Dónde va:** la regla del usuario para `booking.bed_cleaning` («Gestionar entradas», con la sugerencia del proyecto «Limpieza»). Sin regla, a «Por clasificar». El tipo sale como «Limpieza · Salida de huésped». Repetir con la misma referencia devuelve la misma tarea.
 - **Asignarla por oficio** (limpieza) necesita que la regla lleve oficio: va en una migración aparte, detrás de las de la revisión de apertura. Mientras, la regla puede llevar responsable (persona o nivel de casa).
 - **Pruebas:** `tests/tasks/bed-cleaning.test.ts`.
+
+## 49. P7 de Central: dos indicadores más (migración `0354`; contrato en `docs/central/API.md` §7.2)
+
+`tasks.central_kpi_projection` (§21) suma dos claves, las dos `count`, `actual` y `down`:
+- **`tasks.blocked`** («Tareas bloqueadas»): tareas pendientes que esperan a una dependencia sin hacer o al paso anterior de una madre con pasos en orden (la misma regla que `blocked` en §47).
+- **`tasks.reviews_open`** («Revisiones de apertura sin cerrar»): revisiones (§46) sin abrir (`open` o `ready`), de proyectos vivos.
+
+Las demás claves no cambian: `tasks.open`, `tasks.overdue` (vencidas), `tasks.purchase_requests_open` (compras pedidas sin recibir), `tasks.supplies_below_min` y `tasks.requests_pending`. **Pruebas:** `tests/tasks/kpis-p7.test.ts`.
+
+## 50. Los procedimientos se defienden solos (migración `0355`; autoauditoría del 27-10-2026)
+
+Aunque la Edge no deja llamarlos desde `commands`, cada procedimiento comprueba lo suyo en el SQL:
+- **`tasks.import_rows`**: solo la propietaria con acceso a toda la app, como la ruta de importación.
+- **`tasks.request_task`**: editor u owner. Una referencia de una fuente de sistema (`booking`, `feedback`, `core`, `invoices`), o `projectRef` u `onBehalfOf`, solo con la identidad de servicio de esa fuente (`tasks.system_source`, `tasks.actor_is_service`).
+- **`tasks.request_project`**: solo la identidad de servicio de su fuente. El proyecto existente se busca por su referencia.
+- **En la Edge:** `purchases/:id/finance`, `requests/task` y `requests/purchase` no los usan los agentes (403); los agentes van por `commands`, con su revisión de riesgo.
+- **Pruebas:** `tests/tasks/procedures-guard.test.ts`.

@@ -70,6 +70,8 @@ export function financeRoutes(supabase: Supabase, storage: StorageAccess, option
   return [{
     method: 'POST', pattern: 'purchases/:id/finance', handler: async ({ ctx, params }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Registrar una compra en Finance necesita permiso de edición en Tasks.');
+      // Un agente no registra en Finance: la factura se crearía allí antes de su revisión de riesgo en Tasks (autoauditoría 27-10).
+      if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente no registra compras en Finance.');
       const id = (params.id ?? '').toLowerCase();
       if (!UUID.test(id)) fail(404, 'NOT_FOUND', 'Esa compra no existe o no la ves.');
       const row = await read(ctx, id);
