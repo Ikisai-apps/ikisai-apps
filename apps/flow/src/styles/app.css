@@ -131,6 +131,8 @@
 .flows{display:grid;gap:12px}
 @media (min-width:720px){.flows{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .flow-card.is-closed{opacity:.6}
+/* Mínimo táctil de 44 px en la tarjeta del flujo (revisión móvil 27-10): el botón del título, aunque no haya portada. */
+.flow-card .cover-titlebtn{min-height:44px;display:inline-flex;align-items:center}
 .flow-carousel{margin:0 0 14px}
 .flow-testmode{margin:0 0 12px}
 .flow-testmode-switch{display:flex;gap:8px;align-items:center;padding:10px 12px;border:1px dashed var(--line);border-radius:12px}
@@ -160,7 +162,8 @@
 .flow-tasks-qty{display:flex;gap:8px}
 .flow-tasks-qty input{flex:1;min-width:0}
 .flow-version{align-items:center}
-.flow-public-switch{display:inline-flex;align-items:center;gap:6px}
+.flow-public-switch{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:0 4px;cursor:pointer}
+.flow-public-switch input{width:22px;height:22px}
 .guide-pdf{display:grid;place-items:center;gap:4px;width:200px;height:140px;border-radius:12px;background:var(--paper-2)}
 .guide-pdf.small{width:64px;height:64px;font-weight:700}
 .flow-docs-admin{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
