@@ -66,6 +66,10 @@ export interface Menu extends SyncedColumns {
   kind?: MenuKind;
   /** Solo en la carta: «Barra · Evento de octubre». */
   name?: string | null;
+  /** Solo en la carta (1110): reparto de lo que se prepara, `{mesa, nevera, fresco}` en %; null = 30/20/50. */
+  prep_split?: { mesa: number; nevera: number; fresco: number } | null;
+  /** Solo en la carta (1110): asistentes esperados; si falta, las personas del evento. */
+  expected_attendance?: number | null;
   /** Solo en el de retiro. */
   event_id: string | null;
   source_event_revision: number | null;
