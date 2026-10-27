@@ -202,6 +202,7 @@ FIELDS[TABLES.beds] = {
   active: { kind: 'bool' },
   position: { kind: 'number' },
   cell: { kind: 'cell' },
+  team_bed: { kind: 'bool' },
 };
 FIELDS[TABLES.roomAssignments] = {
   event_id: { kind: 'uuid' },
@@ -373,6 +374,8 @@ FIELDS[TABLES.eventExtraBeds] = {
   status: choice(['active', 'requested', 'release_requested'], false),
 };
 FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], guests_visible: { kind: 'bool' }, public_summary: text(500) };
+// 0484: las cartas de Food que aplican a la reserva (jornadas abiertas)
+FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], food_carta_ids: { kind: 'uuidList', max: 20 } };
 FIELDS[TABLES.stays] = {
   kind: choice(STAY_KINDS, false),
   account_id: { kind: 'uuid' },

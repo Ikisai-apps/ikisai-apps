@@ -1,10 +1,11 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { confirmDialog, createQuantityField, el, openSheet, replace, toast } from '@ikisai/ui-kit';
-import { formatEuros, groupMenu, ORDER_STATUS_LABELS, PAY_METHOD_LABELS, TABLES, type MenuProduct, type PayMethod } from '@ikisai/domain-flow';
+import { formatEuros, groupMenu, ORDER_STATUS_LABELS, PAY_METHOD_LABELS, SETTLE_METHOD_LABELS, TABLES, type MenuProduct, type PayMethod } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
 import { customerNumber, orderTotal, watchData, type FlowData, type Order, type Product } from '../app/data.ts';
 import { askReason, busyButton, productMedal } from './sheets-common.ts';
+import { accountLabel, chooseAccount } from './accounts.ts';
 import { openDeliverySheet } from './delivery-sheet.ts';
 
 /**
@@ -15,6 +16,8 @@ import { openDeliverySheet } from './delivery-sheet.ts';
  * - Cobrado: lo cobrado con su precio, «Entrega» (la misma ficha que Servicio, y al cerrarla se vuelve aquí), «Corregir
  *   pedido» (bajar cantidades → devolución pendiente; añadir → ampliación con su propio cobro), «Anular cobro» y
  *   devoluciones pendientes por confirmar.
+ * - Con cuentas (v2, 0910): «A cuenta» lo carga a una cuenta abierta (o abre una). Mientras la cuenta está abierta, el
+ *   pedido no se corrige ni se anula; liquidada, se corrige pero no se anula (su dinero está en el pago de la cuenta).
  */
 export function openOrderSheet(client: SyncClient, orderId: string): void {
   const actions = flowActions(client);
@@ -160,7 +163,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
     const number = customerNumber(data, o);
     const parent = o.parent_id ? data.orders.find((x) => x.id === o.parent_id) : null;
     replace(head, [o.pay_seq ? `Pedido ${o.pay_seq}` : 'Pedido sin cobrar', number ? `cliente ${number}` : o.origin === 'public' ? 'desde la carta' : 'en caja',
-      parent ? `ampliación del ${parent.pay_seq ?? 'pedido'}` : '', ORDER_STATUS_LABELS[o.status], o.pay_method ? PAY_METHOD_LABELS[o.pay_method] : ''].filter(Boolean).join(' · '));
+      parent ? `ampliación del ${parent.pay_seq ?? 'pedido'}` : '', ORDER_STATUS_LABELS[o.status], methodLabel(o)].filter(Boolean).join(' · '));
     // El cuerpo se rehace solo si cambia su forma (estado, modo, líneas): así no se pierde el foco en un «− n +».
     const nextShape = `${o.status}|${mode}|${lines().map((l) => `${l.id}:${l.quantity}:${l.delivered_qty}`).join(',')}`;
     if (o.status === 'open') {
@@ -173,12 +176,18 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
       const refunds = (data.paymentsByOrder.get(o.id) ?? []).filter((p) => p.kind === 'refund' && !p.settled_at);
       replace(body, paidLines(),
         ...(refunds.length ? [el('section', { class: 'order-refunds' }, el('h3', null, 'Devoluciones pendientes'),
-          ...refunds.map((r) => el('div', { class: 'order-refund' }, el('span', null, `${formatEuros(-r.amount_cents)} · ${r.method ? PAY_METHOD_LABELS[r.method] : ''}`),
+          ...refunds.map((r) => el('div', { class: 'order-refund' }, el('span', null, `${formatEuros(-r.amount_cents)} · ${r.method ? SETTLE_METHOD_LABELS[r.method] : ''}`),
             act({ class: 'secondary' }, 'Ya devuelto', async () => { try { await actions.confirmRefund(r.id); toast('Devolución confirmada.'); } catch (e) { toast(describeError(e)); } }))))] : []));
       replace(totalEl, `Cobrado: ${formatEuros(o.total_cents ?? 0)}`);
     }
     shape = nextShape;
     paintFoot(o);
+  }
+
+  function methodLabel(o: Order): string {
+    if (o.pay_method !== 'account') return o.pay_method ? PAY_METHOD_LABELS[o.pay_method] : '';
+    const a = data?.accounts.find((x) => x.id === o.account_id);
+    return a ? `a cuenta: ${accountLabel(data!, a)}${a.status === 'settled' ? ' (liquidada)' : ''}` : 'a cuenta';
   }
 
   function paintFoot(o: Order): void {
@@ -201,22 +210,38 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
         } catch (error) { toast(describeError(error)); }
       });
       const cash = pay('cash'); const bizum = pay('bizum');
-      cash.disabled = bizum.disabled = empty || lines().some((l) => l._pending);
-      replace(foot, cash, bizum);
+      const onAccount = data?.accountsEnabled ? [act({ class: 'secondary', 'data-method': 'account' }, 'A cuenta', async () => {
+        if (!isOnline(client)) { toast('Cargar a cuenta necesita conexión.'); return; }
+        const fresh = order();
+        if (!fresh || !data) return;
+        const accountId = await chooseAccount(client, data, fresh.customer_id);
+        if (!accountId) return;
+        try {
+          const out = await actions.chargeToAccount(fresh.id, accountId, order()?.revision ?? fresh.revision);
+          toast(`A cuenta: pedido ${out.pay_seq}, ${formatEuros(out.total_cents)}.`);
+        } catch (error) { toast(describeError(error)); }
+      })] : [];
+      for (const b of [cash, bizum, ...onAccount]) b.disabled = empty || lines().some((l) => l._pending);
+      replace(foot, cash, bizum, ...onAccount);
     } else if (mode === 'correct') {
       const save = (method: PayMethod) => act({ class: 'primary' }, `Guardar (${PAY_METHOD_LABELS[method].toLowerCase()})`, () => saveCorrection(method));
       replace(foot, el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'view'; correction = null; shape = ''; paint(); } }, 'Cancelar'), save('cash'), save('bizum'));
     } else {
       replace(foot,
         el('button', { type: 'button', class: 'secondary', onclick: () => { sheet.close(); openDeliverySheet(client, o.id, { onClose: () => openOrderSheet(client, o.id) }); } }, 'Entrega'),
-        el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'correct'; correction = { lines: new Map(), extra: new Map() }; shape = ''; paint(); } }, 'Corregir pedido'),
-        ...(o.status === 'paid' && moneyBack ? [act({ class: 'ghost danger-text' }, 'Anular cobro', async () => {
+        ...(accountOpen(o) ? [el('small', { class: 'muted' }, 'En una cuenta abierta: se corrige al liquidarla.')]
+          : [el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'correct'; correction = { lines: new Map(), extra: new Map() }; shape = ''; paint(); } }, 'Corregir pedido')]),
+        ...(o.status === 'paid' && moneyBack && !o.account_id ? [act({ class: 'ghost danger-text' }, 'Anular cobro', async () => {
           const reason = await askReason('Anular el cobro', 'Se anota la devolución de lo cobrado y se cancelan los montaditos sin terminar. El cobro original no se borra.', 'Anular cobro', true);
           if (!reason) return;
           const fresh = order();
           try { await actions.reversePayment(o.id, reason, fresh?.revision ?? o.revision); toast('Cobro anulado.'); } catch (error) { toast(describeError(error)); }
         })] : []));
     }
+  }
+
+  function accountOpen(o: Order): boolean {
+    return !!o.account_id && data?.accounts.find((a) => a.id === o.account_id)?.status === 'open';
   }
 
   const offData = watchData(client, (d) => { data = d; paint(); });

@@ -106,7 +106,7 @@ test('retiros visibles para huéspedes: título, fechas y resumen, sin precio', 
   const huesped = await app.t.createUser();
   await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('guests', $1, 'editor')`, [huesped]);
   const out = await read('guests', huesped, 'booking.portal_open_retreats', { from: '2032-03-01', to: '2032-04-01' });
-  assert.deepEqual(out.items, [{ reservation_id: open, title: 'Retiro abierto', start_date: '2032-03-05', end_date: '2032-03-07', summary: 'Meditación y paseos.', joined: false, request: null }]);
+  assert.deepEqual(out.items, [{ reservation_id: open, title: 'Retiro abierto', start_date: '2032-03-05', end_date: '2032-03-07', summary: 'Meditación y paseos.', status: 'pre_reservada', joinable: true, joined: false, request: null }]);
   const tooLong = await commit([{ op: 'update', table: TABLES.reservations, id: open, expectedRevision: 1, fields: { public_summary: 'x'.repeat(501) } }]);
   assert.equal(tooLong.status, 422);
 });

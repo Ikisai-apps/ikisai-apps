@@ -386,7 +386,8 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
       el('div', { class: 'pagehead' }, el('h2', null, t('lodging.title'))),
       family ? familyBlock() : null,
       head(person, open, shown),
-      person.data.preferences ? preferenceBox(person) : null,
+      person.data.team && !open && !myBed ? el('p', { class: 'card gcard', id: 'lodgingTeam' }, icon('bed', 18), ' ', t('lodging.team')) : null,
+      person.data.preferences && !person.data.team ? preferenceBox(person) : null,
       choice,
       !choice && shown && myBed ? roomBlock(shown, open) : null);
   }

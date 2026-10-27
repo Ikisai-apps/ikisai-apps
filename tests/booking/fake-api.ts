@@ -174,6 +174,10 @@ export interface FakeApi {
   setCostRows(rows: FakeCostRow[]): void;
   /** Emitidas de Finance por reserva (`POST /read/invoices.reservation_movements`, #643); `reservation_collected` las suma. */
   setMovements(rows: Array<Record<string, unknown>>): void;
+  /** Cartas de Food (`GET /read/food.booking_carta_projection`, 0484). */
+  setCartas(rows: Array<{ carta_id: string; name: string; active: boolean; items_count: number | null; event_id: string | null }>): void;
+  /** Cierres del día de Flow (`GET /read/flow.booking_service_projection`, filtrados por `where[event_id]`). */
+  setBarService(rows: Array<{ event_id: string; day: string; data: Record<string, unknown>; updated_at?: string }>): void;
   /** Hace que esa lectura responda con el estado HTTP indicado (`null` la restablece). */
   failCosts(status: number | null): void;
   /** Fija lo que devolverá `GET /calendar/status`. */
@@ -542,6 +546,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const calendarRetries: string[] = [];
   let costRows: FakeCostRow[] = [];
   let movementRows: Array<Record<string, unknown>> = [];
+  let cartaRows: Array<Record<string, unknown>> = [];
+  let barRows: Array<Record<string, unknown>> = [];
   let costFailure: number | null = null;
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
@@ -554,6 +560,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const linkValidUntil = (link: FakePortalLink): string | null => {
     if (link.revokedAt) return null;
     const reservation = data.get('booking.reservations')?.get(link.reservationId);
+    // 0481: vale mientras la reserva exista
+    if (reservation && !reservation.deleted_at) return 'infinity';
     const end = typeof reservation?.end_date === 'string' ? Date.parse(`${reservation.end_date}T23:59:59Z`) + 3 * 86_400_000 : null;
     const extended = link.extendedUntil ? Date.parse(link.extendedUntil) : null;
     const best = Math.max(end ?? -Infinity, extended ?? -Infinity);
@@ -669,12 +677,19 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           return { reservation_id: id, invoiced: mine.reduce((t, r) => t + Number(r.total), 0), collected: mine.filter((r) => r.collected).reduce((t, r) => t + Number(r.total), 0), last_collected_at: null };
         }));
       }
+      if (path === 'read/food.booking_carta_projection' && method === 'GET') return json(res, 200, { rows: cartaRows, total: cartaRows.length });
+      if (path === 'read/flow.booking_service_projection' && method === 'GET') {
+        const event = url.searchParams.get('where[event_id]');
+        const rows = barRows.filter((r) => event === null || r.event_id === event);
+        return json(res, 200, { rows, total: rows.length });
+      }
       if (path === 'read/invoices.booking_cost_projection' && method === 'GET') {
         if (costFailure !== null) throw new Fault(costFailure, costFailure === 403 ? 'FORBIDDEN' : 'VALIDATION', 'Lectura no permitida.', {});
         const target = url.searchParams.get('where[target_id]');
         const rows = costRows.filter((row) => target === null || row.target_id === target);
         return json(res, 200, { rows, total: rows.length });
       }
+      if (path === 'invoke/booking.portal_access_run' && method === 'POST') return json(res, 200, { created: 0, removed: 0 });
       if (path === 'portal-links' || path.startsWith('portal-links/')) {
         if (portalRole === 'reader') throw new Fault(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura gestiona enlaces.');
         if (path === 'portal-links' && method === 'POST') {
@@ -890,6 +905,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     suggestionDecisions: () => [...suggestionDecisions],
     setCostRows: (rows) => { costRows = rows; },
     setMovements: (rows) => { movementRows = rows; },
+    setCartas: (rows) => { cartaRows = rows; },
+    setBarService: (rows) => { barRows = rows; },
     failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),

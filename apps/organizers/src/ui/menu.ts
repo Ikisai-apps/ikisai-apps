@@ -30,7 +30,7 @@ const COMMENT_STATUS: Record<string, string> = { nuevo: L('Enviado'), visto: L('
  * Alérgenos declarados por cocina, siempre con su nombre. Si cocina no ha revisado la receta (`allergens_checked`), se dice:
  * una lista vacía sin revisar no significa «no tiene».
  */
-export function allergensLine(d: Dish): HTMLElement | null {
+export function allergensLine(d: Pick<Dish, 'allergens' | 'allergens_checked'>): HTMLElement | null {
   const names = (d.allergens ?? []).map(allergenName);
   const unchecked = d.allergens_checked !== true;
   if (!names.length && !unchecked) return null;

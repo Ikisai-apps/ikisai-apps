@@ -567,3 +567,33 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .ghelp-picked{display:flex;align-items:center;gap:6px;margin:0;padding:8px 12px;border-radius:14px;border:2px solid var(--accent-deep);font-weight:700}
 .gplan-backup{margin-top:8px}
 .gplan-backup>summary{cursor:pointer;font-size:var(--text-sm,.875rem);font-weight:700;min-height:44px;display:flex;align-items:center}
+
+/* «Mis retiros» (§9.17) */
+.gretreats{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.gretreats-group{margin:0 0 18px}
+.gretreats-group h3{margin:0 0 8px;font-size:1rem}
+.gretreat{display:flex;align-items:center;gap:12px;margin:0;min-height:46px;color:inherit;text-decoration:none}
+.gretreat-text{display:grid;gap:4px;flex:1;min-width:0}
+.gretreat-off{opacity:.8}
+.gretreats-all{margin-top:24px}
+.gretreats-all .input{width:100%;min-height:46px;margin:0 0 12px}
+.grole-fact{align-items:center}
+.gprogram{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
+#directionJoin{min-height:46px;margin:0 0 16px}
+.gwho{border:0;margin:12px 0 0;padding:0;display:grid;gap:6px}
+.gwho-row{display:flex;align-items:center;gap:8px;min-height:46px}
+
+/* «Tus ofertas de hoy» (§9.18) */
+.goffers{margin:0 0 12px}
+.goffers h3{margin:0 0 10px}
+.goffer-service{margin:0 0 12px}
+.goffer-service h4,.goffer-cartas{margin:0 0 6px;font-size:.95rem}
+.goffer{margin:0 0 10px}
+.goffer-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 4px}
+.goffer-options,.goffer-lines{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.goffer-options li,.goffer-lines li{display:grid;gap:2px}
+.goffer-line{display:flex;align-items:baseline;gap:8px}
+.goffer-code{font-weight:600;min-width:1.5em}
+.goffer-price{margin-left:auto;white-space:nowrap}
+.goffer-account{display:grid;gap:8px;margin-top:8px}
+.goffer-open{min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:6px}

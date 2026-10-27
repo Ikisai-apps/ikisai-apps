@@ -284,6 +284,9 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-cell.none{color:var(--muted);font-weight:400}
 .ctl-cell.role-owner{background:var(--accent-soft,var(--paper-2));border-color:var(--accent)}
 .ctl-cell.derived{border-style:dashed}
+/* Portales (26-10): el alcance en palabras, no la letra del rol. */
+.ctl-cell.portal:not(.none){font-weight:600;font-size:.82rem;padding:0 8px}
+.ctl-portaltag{display:block;font-weight:400;font-size:.75rem;color:var(--muted)}
 .ctl-cell.lone{box-shadow:inset 0 0 0 2px var(--warn)}
 .ctl-cell:focus-visible,.ctl-cell:hover{border-color:var(--accent)}
 .ctl-cellmark{font-weight:400}
