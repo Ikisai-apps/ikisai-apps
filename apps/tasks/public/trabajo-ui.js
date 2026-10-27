@@ -44,7 +44,7 @@ function tkwStepLine(id){const n=tkwNeeds([id]);const bits=[...n.equip.map(x=>x.
 function tkwPrepKey(id){return 'tkw-prep:'+id}
 function tkwPrepGet(id){try{return new Set(JSON.parse(localStorage.getItem(tkwPrepKey(id))||'[]'))}catch{return new Set()}}
 function tkwPrepSet(id,set){try{localStorage.setItem(tkwPrepKey(id),JSON.stringify([...set]))}catch{}}
-function tkwPrepHtml(id,n,open){const got=tkwPrepGet(id),box=(k,label,extra='')=>`<label class="checkline tkw-check"><input data-field-id="tasks.editor_tarea.trabajo.preparar.marcar" type="checkbox" data-tkw-prep="${esc(k)}" ${got.has(k)?'checked':''} data-feedback-id="tasks.editor_tarea.trabajo.preparar.marcar" data-feedback-label="Marcar preparado"><span>${esc(label)}${extra}</span></label>`;
+function tkwPrepHtml(id,n,open){const got=tkwPrepGet(id),box=(k,label,extra='')=>`<label class="checkline tkw-check"><input data-field-id="tasks.editor_tarea.trabajo.preparar.marcar" data-field-storage="device" type="checkbox" data-tkw-prep="${esc(k)}" ${got.has(k)?'checked':''} data-feedback-id="tasks.editor_tarea.trabajo.preparar.marcar" data-feedback-label="Marcar preparado"><span>${esc(label)}${extra}</span></label>`;
   const parts=TKW_PART_ORDER.map(k=>[k,n.ppe.filter(x=>tkwPartsOf(x.item).includes(k))]).filter(([,l])=>l.length);
   const loose=n.ppe.filter(x=>!tkwPartsOf(x.item).length);
   const keys=[...n.equip.map(x=>'i:'+x.item.id),...n.ppe.map(x=>'i:'+x.item.id),...n.mats.map(x=>'i:'+x.item.id)],left=keys.filter(k=>!got.has(k)).length;
