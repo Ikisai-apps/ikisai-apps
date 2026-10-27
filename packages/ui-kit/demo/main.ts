@@ -8,6 +8,7 @@ import {
   markField,
   renderQr,
   createLanes,
+  groupLanes,
   createFeedbackProgressiveForm,
   openFeedbackCenter,
   createFeedbackReview,
@@ -1796,9 +1797,31 @@ const checklist = createChecklist({ label: 'Apertura del albergue', feedbackId: 
   checked: { luces: { by: 'Luis', at: '2026-10-27T08:05:00' } },
   onToggle: async (id, on) => { await new Promise((r) => setTimeout(r, 30)); clistLog.push(`${id}:${on ? 'sí' : 'no'}`); clistOut.textContent = clistLog.join(', '); },
 });
+const groupWork = [
+  { id: 't1', text: 'Revisar la ducha 3', who: 'Ana', phase: 'hoy', place: 'Albergue' },
+  { id: 't2', text: 'Cloro de la piscina', who: 'Luis', phase: 'hoy', place: 'Piscina' },
+  { id: 't3', text: 'Cambiar sábanas Hab 2', who: 'Ana', phase: 'manana', place: 'Albergue' },
+  { id: 't4', text: 'Leña para la cúpula', who: null, phase: 'hoy', place: 'Salas' },
+  { id: 't5', text: 'Pedir pan', who: 'Marta', phase: 'hecho', place: null },
+];
+const groupBy = {
+  who: { key: (t: typeof groupWork[number]) => t.who },
+  phase: { key: (t: typeof groupWork[number]) => t.phase, order: ['hoy', 'manana', 'semana', 'hecho'], title: (k: string) => ({ hoy: 'Hoy', manana: 'Mañana', semana: 'Esta semana', hecho: 'Hecho' } as Record<string, string>)[k] ?? k },
+  place: { key: (t: typeof groupWork[number]) => t.place },
+};
+const groupCard = (t: typeof groupWork[number]) => el('div', { class: 'card', style: 'padding:10px 12px' }, t.text);
+const groupedLanes = createLanes({ label: 'Trabajo agrupado', feedbackId: 'demo.agrupar.carriles', view: 'side', lanes: groupLanes(groupWork, { ...groupBy.who, card: groupCard }) });
+const groupPick = el('div', { class: 'demo-row', role: 'group', 'aria-label': 'Agrupar por', id: 'groupPick' },
+  ...(['who', 'phase', 'place'] as const).map((k) => el('button', { type: 'button', class: 'ghost small', dataset: { group: k }, 'aria-pressed': String(k === 'who'),
+    onclick: (e: Event) => {
+      for (const b of groupPick.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b === e.currentTarget));
+      groupedLanes.setLanes(groupLanes(groupWork, { ...groupBy[k], card: groupCard }));
+    } }, { who: 'Persona', phase: 'Fase', place: 'Espacio' }[k])));
+
 const genericSection = section('genericas', 'Piezas genéricas (formulario libre y lista)', 'Para el catálogo de piezas de Flow: un formulario que sale de un esquema (pregunta a pregunta, revisión y «Registrar») y una lista de comprobación con quién y cuándo.',
   el('h3', null, 'Formulario libre'), el('div', { id: 'freeFormHost' }, freeForm.element, el('p', null, 'Registrado: ', formOut)),
   el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
+  el('h3', null, 'Carriles por cualquier clave'), el('p', null, 'Agrupar por: '), groupPick, el('div', { id: 'groupLanesHost' }, groupedLanes.element),
 );
 
 const piecesB2Section = section('piecesb2', 'Piezas comunes (lote B2)', 'MUELA-075: paso a paso con lo siguiente en grande, una cosa cada vez (con «Deshacer»), votar deslizando (con botones y flechas) y pregunta a pregunta (solo lo que falta).',
@@ -1924,7 +1947,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, createItemPicker };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

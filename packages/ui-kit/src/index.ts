@@ -66,6 +66,7 @@ export { createVoteDeck, type Vote, type VoteDeck, type VoteDeckOptions, type Vo
 export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type TimelineLane, type TimelineOptions } from './pieces/timeline.ts';
 export { renderTray, renderTrayRow, type TrayAction, type TrayRow, type TrayGroup, type TrayOptions } from './pieces/tray.ts';
 export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
+export { groupLanes, LANE_NONE, type GroupLanesOptions } from './pieces/lanes-group.ts';
 export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion, type StepRenderContext } from './pieces/step-form.ts';
 export { createFreeForm, freeFormProblems, type FreeForm, type FreeFormAnswer, type FreeFormAnswers, type FreeFormKind, type FreeFormOptions, type FreeFormQuestion, type FreeFormSchema } from './pieces/free-form.ts';

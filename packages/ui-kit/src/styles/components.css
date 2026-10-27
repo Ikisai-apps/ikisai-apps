@@ -1849,6 +1849,9 @@ textarea.ask-input{min-height:110px;resize:vertical;font:inherit;font-size:17px}
 .fform-error:empty{display:none}
 /* Lista de comprobación (src/pieces/checklist.ts) */
 .clist-box{display:grid;gap:10px}
+/* Carriles agrupados (src/pieces/lanes-group.ts) */
+.lanes-group{display:grid;gap:8px}
+.lanes-groupempty{margin:0}
 .clist-head{display:grid;gap:6px}
 .clist-summary{margin:0;font-weight:700}
 .clist-summary[data-complete="true"] .clist-rest{color:var(--ok)}
