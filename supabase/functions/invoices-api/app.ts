@@ -954,6 +954,11 @@ function createLectorFill(supabase: Supabase, hooks: AppHooks): FillFromText {
       readerVersion: READER_VERSION, at: new Date().toISOString(), newId: () => `${invoice.id.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`, invoices,
     });
     if (r.duplicateOf) return { filled: false, reason: 'DUPLICATE', invoice_id: invoice.id, duplicate_of: r.duplicateOf.code ?? r.duplicateOf.id, message: `Ya está importada como ${r.duplicateOf.code ?? 'otra factura'}: anula este borrador.` };
+    // F7 (auditoría del 27-10): el texto lo manda una persona y lo escribe «Lector (sistema)»; en el resumen queda quién lo pidió.
+    for (const op of r.ops as unknown as Array<{ table?: string; fields?: { import_meta?: { reading?: Record<string, unknown> } } }>) {
+      const meta = op.table === TABLES.invoices ? op.fields?.import_meta : undefined;
+      if (meta?.reading && typeof meta.reading === 'object') meta.reading.requested_by = user.user.id;
+    }
     try { await sync.commit(c, { requestId: `lector-${invoice.id}-${invoice.revision}`, operations: r.ops as unknown as Operation[] }); } catch (error) {
       return { filled: false, reason: isFault(error) ? error.code : 'ERROR', invoice_id: invoice.id };
     }
