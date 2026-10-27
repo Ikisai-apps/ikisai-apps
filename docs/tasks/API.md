@@ -2092,7 +2092,7 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
 
 ## 42. «Pedir a Tasks» con hijas: el «Montaje del evento» de Booking (encargo de Core, 27-10-2026)
 
-`POST worker/requests/task` (§22.2, clave de worker) admite `children`: las tareas hijas de la que se pide, cada una con su clave estable. Lo resuelve `tasks.request_children` (migración `0344`), en el mismo lote de servicio y con historial.
+`POST worker/requests/task` (§22.2, clave de worker) admite `children`: las tareas hijas de la que se pide, cada una con su clave estable. Lo resuelve `tasks.request_children` (migración `0344`) con la identidad de servicio y con historial. Primero, en un lote, se pone al día y se retira. Después, cada hija nueva entra en su propio lote, porque la procedencia de una tarea se fija una por lote. Si algo falla a medias, repetir la petición lo completa.
 
 - **Tipo nuevo `booking.event_setup`** («Montaje del evento»): como `booking.retreat_extra`, necesita `project_ref` (la reserva) y va al proyecto de esa reserva. Si el proyecto aún no existe, 409 `PROJECT_NOT_READY`: primero `requests/project`. Al reenviarlo con la madre abierta, toma el título y la nota nuevos (`updated`).
 - **Forma:**
