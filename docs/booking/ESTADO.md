@@ -145,7 +145,8 @@ Actualizado: 27 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
   - **Salida** (1402): libera la cama y pide la limpieza a Tasks (`booking.bed_cleaning`, Tasks #933).
   - **Ajustes y devoluciones** (1403): un solo apunte en Finance por cobro.
   - **Visitante solo de jornada** (1404): sin SES.
-  - **Prueba de punta a punta:** `tests/booking/lodging-weekend-e2e.test.ts`.
+  - **Pruebas:** de punta a punta (`tests/booking/lodging-weekend-e2e.test.ts`) y de carga del sábado (`tests/booking/lodging-load.test.ts`: 30 a la vez por la última cama y dos recepciones con el mismo número).
+  - **Resumen del modelo:** API §44.
 - **Seguridad (auditoría del 27-10):**
   - B2: lecturas de huéspedes con ámbito (0494).
   - B3: `flow_guests_projection` cerrada (0495).

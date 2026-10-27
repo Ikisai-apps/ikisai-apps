@@ -108,7 +108,10 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   }
 
   function paint(): void {
-    const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    // Lo que necesita atención, arriba (hallazgo F-MAQ-1, decisión de Core del 27-10): averiado o fuera de servicio, luego
+    // limitado y luego operativo; dentro de cada grupo, por orden alfabético.
+    const urgency = (r: Row) => (r.status === 'averiado' || r.status === 'fuera_de_servicio' ? 0 : r.status === 'limitado' ? 1 : 2);
+    const sorted = [...rows].sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name, 'es'));
     const active = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     replace(list, ...active.map((r) => item(r, false)));
