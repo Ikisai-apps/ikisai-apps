@@ -50,14 +50,15 @@ export function createPortalLinks(supabase: Supabase, issuerApp: string) {
     // Autoriza antes de crear la cuenta (la función SQL vuelve a comprobarlo todo en la transacción).
     if (isReadOnly(ctx.membership.role)) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (issuerApp === 'organizers' && app !== 'guests') fail(403, 'FORBIDDEN', 'Un organizador solo genera enlaces de huésped.');
+    // Solo reutiliza por correo cuentas de portal; el de alguien del personal da PORTAL_EMAIL_STAFF (0103, B1).
     const userId = await userFor(person, app, clean);
-    // `replace`: el enlace nuevo deja sin efecto los anteriores de ese huésped (reenvío).
-    if (app === 'guests' && body?.replace === true) await supabase.rpc('core_portal_revoke_guest_links', { p_scope: clean });
     const token = newPass();
     const link = await supabase.rpc<any>('core_portal_link_issue', {
       p_issuer_app: issuerApp, p_actor: ctx.user.id, p_app: app, p_user: userId, p_digest: await sha256Hex(token), p_scope: clean,
       p_label: typeof body.label === 'string' ? body.label : name || null, p_display_name: name || null,
     });
+    // `replace`: el enlace nuevo deja sin efecto los anteriores de ese huésped (reenvío). Después de que el SQL haya autorizado (B6).
+    if (app === 'guests' && body?.replace === true) await supabase.rpc('core_portal_revoke_guest_links', { p_scope: clean, p_keep: link.linkId });
     return { ...link, url: `https://${PORTAL_DOMAINS[app]}/i/${token}`, shownOnce: true };
   }
 
