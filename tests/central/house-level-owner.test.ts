@@ -66,6 +66,7 @@ test('C1 · un editor no se pone «dirección» en su propia ficha: ni por la Ed
   // que los hooks; la base mira el rol con el que empezó el lote.
   // (Con otro editor que aún no tiene ficha: una cuenta solo puede estar en una.)
   const second = await app.t.createUser();
+  await app.t.db.query(`insert into core.profiles (user_id, display_name) values ($1, 'Segundo Editor')`, [second]);
   await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('central', $1, 'editor')`, [second]);
   await assert.rejects(
     app.t.rpc('core_commit', { p_app: 'central', p_actor: second, p_request_id: `c1-link-${uuid()}`, p_digest: 'c1-link', p_expected_cursor: null,
