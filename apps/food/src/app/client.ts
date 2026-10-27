@@ -27,6 +27,9 @@ export const T = {
   suggestionVotes: 'food.suggestion_votes',
   /** Avisos a Tasks de las máquinas que fallan (tanda 27): los escribe la Edge al avisar. */
   equipmentNotices: 'food.equipment_notices',
+  /** La carta (1109): sus líneas y lo vendido por día (esto último solo lo escribe Flow con `food.record_carta_sales`). */
+  cartaLines: 'food.carta_lines',
+  cartaSales: 'food.carta_sales',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
@@ -92,7 +95,10 @@ export function describeError(error: unknown): string {
     case 'INVALID_FILE': return 'La foto no se pudo enlazar. Vuelve a elegirla.';
     case 'BLOB_MISSING': return 'La foto ya no está en este dispositivo. Vuelve a elegirla.';
     case 'MENU_LOCKED': return 'El menú está validado: reábrelo para cambiarlo.';
-    case 'MENU_EXISTS': return (e?.details as { kind?: string } | undefined)?.kind === 'casa' ? 'El menú de casa ya existe.' : 'Este evento ya tiene un menú.';
+    case 'MENU_EXISTS': return (e?.details as { kind?: string } | undefined)?.kind === 'casa' ? 'El menú de casa ya existe.' : (e?.details as { kind?: string } | undefined)?.kind === 'carta' ? 'Este evento ya tiene una carta.' : 'Este evento ya tiene un menú.';
+    case 'CARTA_MENU': return 'Una carta no tiene servicios ni se valida: se edita en su propia vista.';
+    case 'CARTA_NOT_FOUND': return 'La carta ya no existe.';
+    case 'LINE_NOT_IN_CARTA': return 'Esa línea no es de esta carta.';
     case 'HOUSE_MENU': return 'El menú de casa siempre está abierto: no se valida, no se cierra ni se borra.';
     case 'QUICK_RECIPE_IN_RETREAT': return 'Es un plato rápido por completar: complétalo (alérgenos e ingredientes) en el Recetario para usarlo en un retiro.';
     case 'MENU_EMPTY': return 'Añade al menos un plato antes de validar.';
