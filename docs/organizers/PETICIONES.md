@@ -10,7 +10,7 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | B2 | Booking | `declared` en `booking.portal_guests` | hecha (#277) |
 | B3 | Booking | `portal_add_guest` idempotente ante un reintento con el mismo `guest_id` | hecha (#277) |
 | B4 | Booking | (opcional) restricciones de cocina del grupo sin huésped, para el modo `ninguno` | aplazada |
-| B5 | Booking | Campos booleanos en `portal_guests` (`is_minor`). Hoy `true` significa a la vez «rellenado por otro» y «vale `true`», y el `false` por defecto sale como rellenado. Propuesta: en los booleanos, el valor si lo escribió el organizador y `null` si nunca se escribió | abierta |
+| B5 | Booking | Campos booleanos en `portal_guests` (`is_minor`). Hoy `true` significa a la vez «rellenado por otro» y «vale `true`», y el `false` por defecto sale como rellenado. Propuesta: en los booleanos, el valor si lo escribió el organizador y `null` si nunca se escribió | hecha (Booking #770, 0490: `null` si nadie lo contestó). Organizers no lee ni escribe `is_minor` (lo que falta lo da Booking), así que no cambia nada aquí |
 | B11 | Booking | Coorganizadores: lectura `booking.portal_organizers({reservation_id})` con los nombres para mostrar de quienes organizan el retiro, sin correo ni teléfono | hecha (#284; en la ficha del retiro) |
 | C1 | Core | `sync-client`: `loginWithLink(token)` | hecha (#278) |
 | C2 | Core | `portal-links`: reutilizar la cuenta del huésped y `replace: true` al reenviar | hecha (#278) |
@@ -37,7 +37,7 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | B14 | Booking | **Detalle para el diseño:** que `portal_reservation_detail` incluya `event_type` (la calculadora lo necesita para las tarifas por tipo; hoy usa «retiro»), `special_setup`, `technical_support`, `organizer_notes`, `revision` y `dates_definitive`, para pintar el borrador tal como está y no pisar nada | hecha (#310) |
 | T3 | Tasks | Peticiones de sistema «Fechas posibles marcadas por un organizador» (B8) y «Quiere confirmar» o «Comentario sobre la propuesta» (B12), que lanza Booking, con regla de enrutado al área comercial | media |
 | Fd1 | Food | Para el diseño basta con la orientación del menú de Booking (`menu_style`). Opcional: `food.portal_sample_menu({style})`, un menú de ejemplo público por orientación (platos con su nombre y descripción públicos, sin cantidades) para enseñarlo al interesado | baja |
-| X2 | Central | Textos `organizers.dates_note` («Ikisai confirmará la fecha definitiva; lo que marques son posibilidades.»), `organizers.quote_note` (IVA incluido, mínimo, precio orientativo) y `organizers.proposal_note` («Para confirmar, pulsa «Quiero confirmar» y el equipo de Ikisai te contactará»), en los dos idiomas | media |
+| X2 | Central | Textos `organizers.dates_note` («Ikisai confirmará la fecha definitiva; lo que marques son posibilidades.»), `organizers.quote_note` (IVA incluido, mínimo, precio orientativo) y `organizers.proposal_note` («Para confirmar, pulsa «Quiero confirmar» y el equipo de Ikisai te contactará»), en los dos idiomas | hecha (central 0590; la app los lee desde el 27-10: Fechas, Diseño y Propuesta) |
 | K1 | Core | Comprobación de ámbito de portal reutilizable por cualquier app (`core.portal_in_scope(portal, actor, reservation_id, guest_id)`), para que Finance y Food filtren sus lecturas de portal sin depender de una función de Booking | alta |
 
 ## Fase 3 · Formalización
@@ -50,9 +50,25 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | F2 | Finance | Descarga del PDF de una factura desde el portal (URL firmada de corta duración), solo dentro del ámbito | en parte (#307): la copia congelada sí; el PDF guardado necesita la ruta firmada `portal-files` (Core) |
 | F3 | Finance | Instrucciones de pago a Ikisai (IBAN, concepto y Bizum) como textos de Central o ajuste de Finance, en los dos idiomas | hecha (#308, texto `payment.instructions` de Central) |
 | B15 | Booking | **Lo contratado para el portal:** total contratado, señal requerida y pagada según Booking, forma de pago y vencimientos (de `reservation_finance` y la propuesta aceptada), para que Organizers muestre el saldo como contratado − cobrado (Finance) | hecha (#312) |
-| K2 | Core | **Ruta `portal-files`** en `organizers-api`: repite la lectura F2 con la sesión del portal y firma solo un `file_id` que esa lectura devuelva (PDF guardado de una factura registrada) | media |
+| K2 | Core | **Ruta `portal-files`** en `organizers-api`: repite la lectura F2 con la sesión del portal y firma solo un `file_id` que esa lectura devuelva (PDF guardado de una factura registrada) | reabierta el 27-10 (VG: no se aparca nada): ver «K2 · propuesta» debajo |
 | T1 | Tasks | **Proyecto por retiro por petición de sistema:** crear de forma idempotente (por `external_ref` = reserva) el proyecto `AAAAMMDD-<título>` en el área que fija la regla del owner, y renombrarlo si cambian la fecha o el título | alta |
 | T2 | Tasks | Tareas de los extras contratados dentro de ese proyecto, idempotentes por línea (`external_ref` = línea de la propuesta) | media |
+
+### K2 · propuesta (27-10-2026)
+
+Por qué no lo hace Organizers solo:
+- los PDF guardados son archivos de la app `invoices`, y `core_file_get` exige ser miembro de esa app;
+- una función de Organizers que leyera `invoices.issued_invoice_files` sería una referencia a otro schema, que el lint no admite.
+
+Reparto propuesto:
+- **Finance (o Core):** `public.invoices_portal_invoice_file(p_actor, p_reservation_id, p_issued_invoice_id, p_file_id)`, solo para `service_role`, sin `allow_read`, para que el cliente nunca vea el bucket ni la ruta:
+  - repite la comprobación de `invoices.portal_invoice_document`: `core.portal_in_scope('organizers', …)` y que la factura sea de la reserva;
+  - comprueba que el `file_id` sea uno de sus `issued_invoice_files` vivos;
+  - devuelve la fila de `core.files` (`bucket`, `path`, `storage_provider`, `filename`, `mime`, `status`).
+- **Organizers:**
+  - en `organizers-api`, `GET invoices/:invoiceId/files/:fileId?reservation_id=…`: llama a esa función y firma con `createStorage` durante 10 minutos, como los planos de `guests-api`;
+  - en la app, cambiar «Pídenosla» por «Abrir PDF»;
+  - una prueba PGlite que cubra que se abre dentro del ámbito y no fuera.
 
 ## Fases 4 y 5 · Experiencia de Guests y decisiones del huésped (G2 en API.md §15 y §16)
 
@@ -62,7 +78,7 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | B17 | Booking | **Alojamiento delegable:** (a) lectura `portal_rooms` del inventario del evento: habitaciones con capacidad, baño, si es de 2–4 plazas con baño y su extra, camas libres y asignaciones con el `display_name`; (b) acción del organizador para asignar o quitar una cama a un huésped; (c) `booking.portal_room_settings` (habitaciones abiertas a elegir, con suplemento y modo de aprobación) con acción del organizador; (d) aprobar o rechazar una plaza pendiente; (e) el suplemento como extra facturable al organizador. `portal_choose_bed` la pide Guests | alta |
 | Fd2 | Food | **Menú para los portales:** lectura `food.portal_menu({reservation_id})` para `organizers` y `guests`. Días, servicios y platos con su nombre y descripción públicos, dietas y alérgenos, y la marca «provisional»; sin cantidades ni datos internos | alta |
 | Fd3 | Food | **Comentarios del organizador sobre el menú:** acción `food.portal_menu_comment({reservation_id, menu_item_id?, kind: 'prefiero_que_no' \| 'comentario', message?})` y lectura de los propios con su estado. Cocina los ve en Food | media |
-| X3 | Central | Textos `portal.menu_note` («El menú puede cambiar para adaptarse a alergias e intolerancias») y `portal.practical` (información práctica general de Ikisai), en los dos idiomas. La dirección de la Entidad, legible para el cartel | media |
+| X3 | Central | Textos `portal.menu_note` («El menú puede cambiar para adaptarse a alergias e intolerancias») y `portal.practical` (información práctica general de Ikisai), en los dos idiomas. La dirección de la Entidad, legible para el cartel | hecha (central 0596: `portal.menu_note` en el menú, `portal.practical` y la dirección en `central.portal_place_projection`) |
 | K3 | Core | **Archivos de un portal con ámbito:** que `files/:id` de un portal compruebe la visibilidad de la fila que referencia el archivo (los campos ya están declarados con `register_file_field`), para que un organizador no abra los materiales de otro retiro. Si no, una ruta propia de `organizers-api` | alta |
 | K4 | Core | **Escritura de Guests en Organizers:** que `core.apply_portal_operations('organizers', ops)` funcione dentro de una acción de Organizers registrada para el portal `guests` (respuestas a las preguntas), con el huésped como actor y su ámbito `{reservation_id, guest_id}` | alta |
 | K5 | Core | Alta del schema `organizers` en la publicación, bucket `organizers-materials` y `uploads` en `organizers-api` (imágenes ≤ 5 MB recomprimidas, PDF ≤ 15 MB) | media |

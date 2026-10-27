@@ -13,6 +13,7 @@ import { createSaveState, el, replace, toast, type CheckItem } from '@ikisai/ui-
 import type { DraftFields, ExtraRequest, PortalDates, PortalProposal, PortalRates, ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
+import { commonText } from '../app/common-texts.ts';
 import { designChecks, readyVerdict, type DesignCheckTarget } from '../app/design-checks.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import { dateRange } from '../app/labels.ts';
@@ -208,7 +209,7 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
       average ? el('p', { class: 'muted', id: 'quoteAverage' }, average) : null,
       q.minimumApplied && q.minimum !== null ? el('p', { class: 'banner info', id: 'quoteMinimum' }, t('Se aplica el mínimo por retiro de {importe} (el cálculo daba {calculado}).', { importe: money(q.minimum), calculado: money(q.total) })) : null,
       versusProposal(q),
-      el('p', { class: 'muted small' }, t('Precio orientativo. La propuesta definitiva te la envía Ikisai.')));
+      el('p', { class: 'muted small' }, commonText('organizers.quote_note').body));
     paintMargin();
   }
 

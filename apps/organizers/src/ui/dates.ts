@@ -11,6 +11,7 @@
 import { createSaveState, el, replace, toast, type CheckItem } from '@ikisai/ui-kit';
 import type { DateOption, DatePreference, PortalDates, PortalProposal, ReservationDetail, Weekend } from '../app/api.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
+import { commonText } from '../app/common-texts.ts';
 import { designChecks, designStateOf, readyVerdict, type DesignCheckTarget } from '../app/design-checks.ts';
 import { i18n, t } from '../app/i18n.ts';
 import { DRAFT_STATUSES } from '../app/journey.ts';
@@ -110,7 +111,7 @@ export function renderDates(ctx: ViewContext, reservationId: string, detail: Res
   }
 
   function paint(dates: PortalDates, weekends: Weekend[], staleAt: string | null): void {
-    const note = el('p', { class: 'muted small', id: 'datesNote' }, t('Lo que marques son posibilidades: Ikisai confirmará la fecha definitiva.'));
+    const note = el('p', { class: 'muted small', id: 'datesNote' }, commonText('organizers.dates_note').body);
     paintReady(dates);
     const ready = fbMark(section(draft ? t('Cómo vas') : t('Tus fechas'), { id: 'datesVerdict' }, readyHost), 'organizers.fechas.veredicto', 'Veredicto de las fechas');
     if (dates.mode === 'fixed' && dates.definitive) {
