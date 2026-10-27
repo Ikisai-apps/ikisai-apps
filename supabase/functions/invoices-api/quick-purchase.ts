@@ -107,7 +107,7 @@ export function createQuickPurchase(deps: { supabase: Supabase; commit: Commit; 
     if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Registrar una compra necesita permiso de edición en Finance.');
     const input = parseQuickPurchase(body);
     const seed = (part: string) => deps.stableUuid(`quick-purchase:${ctx.user.id}:${input.requestId}:${part}`);
-    const [invoiceId, lineId, taxId, fileLinkId, allocationId, newSupplierId] = await Promise.all(['invoice', 'line', 'tax', 'file', 'allocation', 'supplier'].map(seed));
+    const [invoiceId, lineId, taxId, fileLinkId, allocationId, newSupplierId] = await Promise.all(['invoice', 'line', 'tax', 'file', 'allocation', 'supplier'].map(seed)) as [string, string, string, string, string, string];
 
     // Proveedor: por id; si no, el que ya existe con ese NIF o ese nombre; si no hay, uno nuevo (el de esta petición, si ya se creó).
     const suppliers = await deps.allRows<{ id: string; name: string; label: string | null; tax_id: string | null; deleted_at: string | null }>(ctx, TABLES.suppliers);
