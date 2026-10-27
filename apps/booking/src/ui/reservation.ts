@@ -1,5 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
+import { createMontage } from './montage.ts';
 import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderPublicCode, renderVisitorRequests, renderWalkIn, specsFor } from './eventKinds.ts';
 import { renderBarService } from './barService.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
@@ -141,6 +142,8 @@ export function mountReservation(id: string): ViewMount {
     let barService: { eventId: string; element: HTMLElement } | null = null;
     // «Ofertas de comida» (Food): igual, una lectura por evento y visita.
     let offers: { eventId: string; element: HTMLElement } | null = null;
+    // «Montaje» (VG 27-10-2026): se conserva entre repintados; se rehace si cambia el evento o el permiso
+    let montageCard: { key: string; card: ReturnType<typeof createMontage> } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
       try {
         await client.commit(operations);
@@ -693,6 +696,11 @@ export function mountReservation(id: string): ViewMount {
           // familiar: sin propuesta, cobro ni coste
           family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard,
           liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null,
+          liveEvent ? (() => {
+            const key = `${liveEvent.id}:${editable}`;
+            if (montageCard?.key !== key) { montageCard?.card.destroy(); montageCard = { key, card: createMontage({ client, reservationId: id, event: liveEvent, editable, wide }) }; }
+            return montageCard.card.element;
+          })() : null,
           renderVisitorRequests({ requests: visitorRequests, editable, run })], {
           writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
@@ -712,7 +720,7 @@ export function mountReservation(id: string): ViewMount {
     if (writable && canRead(client, DATE_OPTIONS)) offs.push(client.onTable(DATE_OPTIONS, () => void paint()));
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, PORTAL_REQUESTS, EXTRA_REQUESTS, RATES]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
     offs.push(onLogos(() => void paint()), onSesPending(() => void paint()));
-    return () => { layout.destroy(); offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
+    return () => { montageCard?.card.destroy(); layout.destroy(); offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
   };
 }
 

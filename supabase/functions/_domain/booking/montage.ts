@@ -30,7 +30,7 @@ export function eventChanges(rows: readonly DecorRow[], eventId: string): Montag
     .sort((a, b) => rank[a.op] - rank[b.op] || a.id.localeCompare(b.id));
 }
 
-const VERB = { add: 'Montar', remove: 'Retirar', replace: 'Sustituir' } as const;
+const VERB = { add: 'Montar', remove: 'Retirar', replace: 'Sustituir', move: 'Mover' } as const;
 
 /** Nombres para los títulos, a partir de `plans_with_decor` (iconos y planos). */
 export interface MontageNames { icon: (id: string | null) => string; plan: (id: string) => string }
@@ -53,9 +53,11 @@ export function montageRequest(reservation: { id: string; code: string; title: s
     ...(due ? { due } : {}),
     external_url: `https://booking.ikisai.com/#/reservas/${reservation.id}`,
     children: changes.map((c) => {
-      const what = c.op === 'replace' ? `${names.icon(c.replacesIconId)} por ${names.icon(c.iconId)}`
+      // sustituir una pieza por la misma en otro sitio o girada es moverla
+      const moved = c.op === 'replace' && c.iconId === c.replacesIconId;
+      const what = c.op === 'replace' && !moved ? `${names.icon(c.replacesIconId)} por ${names.icon(c.iconId)}`
         : c.op === 'remove' ? names.icon(c.replacesIconId) : names.icon(c.iconId);
-      return { external_ref: c.id, title: `${VERB[c.op]}: ${what} (${names.plan(c.planId)})`.slice(0, 120), ...(due ? { due } : {}) };
+      return { external_ref: c.id, title: `${VERB[moved ? 'move' : c.op]}: ${what} (${names.plan(c.planId)})`.slice(0, 120), ...(due ? { due } : {}) };
     }),
   };
 }
@@ -68,3 +70,36 @@ export function namesFrom(out: { icons?: Array<{ id: string; name?: string | nul
   return { icon: (id) => (id ? icons.get(id) ?? 'objeto' : 'objeto'), plan: (id) => plans.get(id) ?? 'plano' };
 }
 
+/** Un cambio del plano tal como lo avisa el kit (`createSpaceMap({ decorEdit })`). */
+export interface MapDecorChange {
+  type: 'add' | 'move' | 'rotate' | 'remove';
+  item: { id: string; planId: string; iconId?: string | null; cellX: number; cellY: number; scale: number; size: 1 | 4; rotation: number };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Los argumentos de `resources.set_event_decor` para un cambio del plano del evento (Recursos §2.7): poner un objeto
+ * nuevo es `add`; mover, girar o quitar una pieza general es `replace` o `remove` sobre ella; y mover o quitar algo del
+ * evento cambia o borra su fila. `null` si el cambio no toca nada que se conozca.
+ */
+export function eventDecorArgs(rows: ReadonlyArray<DecorRow & { revision?: number }>, eventId: string, change: MapDecorChange) {
+  const it = change.item;
+  const cells = { plan_id: it.planId, cell_x: it.cellX, cell_y: it.cellY, scale: it.scale, size: it.size, rotation: it.rotation };
+  const own = rows.find((r) => r.id === it.id && r.layer === 'event' && r.eventId === eventId);
+  const general = rows.find((r) => r.id === it.id && r.layer === 'general');
+  const mine = (fields: Record<string, unknown>) => ({ id: own!.id, ...(own!.revision !== undefined ? { expectedRevision: own!.revision } : {}), ...fields });
+  if (change.type === 'add') {
+    if (!it.iconId) return null;
+    return { event_id: eventId, put: [{ ...(UUID.test(it.id) ? { id: it.id } : {}), ...cells, icon_id: it.iconId, op: 'add' }] };
+  }
+  if (change.type === 'remove') {
+    if (own?.op === 'add') return { event_id: eventId, delete: [own.id] };
+    if (own) return { event_id: eventId, put: [mine({ ...cells, icon_id: own.iconId, op: 'remove', replaces_item_id: own.replacesItemId })] };
+    if (general) return { event_id: eventId, put: [{ ...cells, icon_id: general.iconId, op: 'remove', replaces_item_id: general.id }] };
+    return null;
+  }
+  if (own) return { event_id: eventId, put: [mine({ ...cells, icon_id: own.iconId, op: own.op, replaces_item_id: own.replacesItemId })] };
+  if (general) return { event_id: eventId, put: [{ ...cells, icon_id: general.iconId, op: 'replace', replaces_item_id: general.id }] };
+  return null;
+}
