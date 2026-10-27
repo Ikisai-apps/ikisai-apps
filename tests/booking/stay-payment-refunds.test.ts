@@ -22,8 +22,8 @@ async function ok(operations: unknown[]) { const res = await commit(operations);
 const db = () => createSupabase({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch });
 const post = (path: string, body: unknown, token: string) => app.handler(new Request(`${app.supabase.url}/functions/v1/booking-api/api/v1/public/${path}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://guests.ikisai.com', 'X-Visitor': token }, body: JSON.stringify(body) }));
-const reconcile = async () => (await app.handler(new Request(`${app.supabase.url}/functions/v1/booking-api/api/v1/worker/payments/reconcile`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: '{}' }))).json();
+const reconcile = async (body: Record<string, unknown> = {}) => (await app.handler(new Request(`${app.supabase.url}/functions/v1/booking-api/api/v1/worker/payments/reconcile`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }))).json();
 
 test('un aviso perdido se concilia con la pasarela; la devolución en línea la pide la pasarela y no pasa de lo pagado', async () => {
   const res = uuid(); const event = uuid(); const space = uuid(); const bed = uuid();
@@ -43,11 +43,8 @@ test('un aviso perdido se concilia con la pasarela; la devolución en línea la 
   // la pasarela lo cobró, pero su aviso no llegó: la conciliación (intentos de hace más de 10 min) lo aplica
   gateway.states.set(ref, 'paid');
   assert.deepEqual(await reconcile(), { checked: 0, applied: 0 }, 'aún reciente');
-  // (la guarda de stay_payments solo deja escribir a la cuenta de servicio de Booking en un lote: la prueba lo imita)
-  await app.t.db.exec(`select set_config('core.request_id', 'prueba-envejecer', false), set_config('core.actor', core.service_actor('booking')::text, false);
-    update booking.stay_payments set created_at = now() - interval '11 minutes' where provider_ref = '${ref}';
-    select set_config('core.request_id', '', false), set_config('core.actor', '', false);`);
-  assert.deepEqual(await reconcile(), { checked: 1, applied: 1 });
+  // (sin esperar 10 minutos: el worker admite la antigüedad mínima; 0 = todos los pendientes)
+  assert.deepEqual(await reconcile({ older_minutes: 0 }), { checked: 1, applied: 1 });
   assert.equal((await app.t.db.query<{ s: string }>(`select status s from booking.stay_payments where provider_ref = $1`, [ref])).rows[0]!.s, 'paid');
 
   // alojado con «online» y devuelto en parte por la pasarela

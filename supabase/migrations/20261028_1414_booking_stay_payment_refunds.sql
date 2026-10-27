@@ -12,7 +12,7 @@ returns jsonb language sql stable as $$
   select coalesce(jsonb_agg(jsonb_build_object('provider', sp.provider, 'provider_ref', sp.provider_ref) order by sp.created_at), '[]'::jsonb)
     from booking.stay_payments sp
    where sp.status = 'pending' and sp.deleted_at is null
-     and sp.created_at < now() - make_interval(mins => greatest(coalesce((p->'args'->>'older_minutes')::integer, 10), 1))
+     and sp.created_at < now() - make_interval(mins => least(greatest(coalesce((p->'args'->>'older_minutes')::integer, 10), 0), 1440))
    limit 100
 $$;
 select core.allow_read('booking', 'booking.stay_payments_pending', 'action', '{}');

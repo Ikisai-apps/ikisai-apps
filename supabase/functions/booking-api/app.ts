@@ -72,11 +72,13 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
     // Venta en línea (1414): pregunta a la pasarela por los intentos pendientes de hace más de 10 minutos, por si se perdió
     // un aviso, y aplica lo que diga (pagado, fallido o caducado). Sin pasarela, no hace nada.
     method: 'POST', pattern: 'payments/reconcile',
-    handler: async ({ invoke }) => {
+    handler: async ({ invoke, json }) => {
+      const body = await json().catch(() => ({}));
+      const older = Number.isInteger(body?.older_minutes) ? Math.min(Math.max(body.older_minutes, 0), 1440) : 10;
       const fetchStatus = payments?.fetchStatus?.bind(payments);
       if (!payments || !fetchStatus) return { checked: 0, applied: 0 };
       if (supabase) await ensureServiceActor(supabase, 'booking');
-      const pending = (await invoke('booking.stay_payments_pending', { older_minutes: 10 })) as Array<{ provider: string; provider_ref: string }> | null;
+      const pending = (await invoke('booking.stay_payments_pending', { older_minutes: older })) as Array<{ provider: string; provider_ref: string }> | null;
       let applied = 0;
       for (const p of (pending ?? []).filter((x) => x.provider === payments.name)) {
         const state = await fetchStatus(p.provider_ref).catch(() => null);
