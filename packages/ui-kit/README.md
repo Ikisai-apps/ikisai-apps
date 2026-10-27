@@ -122,6 +122,7 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
   - `fbMark(nodo, 'booking.reserva.guardar', 'Guardar')`;
   - `usage.run('booking.reserva.guardar', fn)` / `usage.track('…')` para operaciones.
   Un id construido en ejecución (`${…}`, concatenación, variable) no entra: sale en `dynamic` con su archivo y línea.
+- **Código QR** (0.60): `renderQr(text, { size, label, margin })` → SVG negro sobre blanco también en oscuro (para imprimir), `role="img"` y `aria-label` (`label` o el texto). Nivel M, modo byte, hasta 213 bytes; sin red ni dependencias.
 - **Inventario de campos** (0.59; lo lee el mismo catálogo, que lo publica en `fields` y `fieldsUninstrumented`). Cada campo declara qué es, nunca su valor: `{ id: '<app>.<pantalla>.<campo>', entity, prop, type, required: true | false | 'si…', permission, sensitivity: 'public' | 'internal' | 'personal' | 'sensitive', since, route }`, siempre con literales.
   - Campos del kit: la opción `field` (`createDateField({ …, field: { id: 'booking.reserva.entrada', entity: 'booking.reservations', prop: 'check_in' } })`); el tipo y «obligatorio» los ponen ellos.
   - `createStepForm({ feedbackId })`: cada pregunta se marca sola como `<feedbackId>.<id>`; `field` en la pregunta añade lo demás.
