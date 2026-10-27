@@ -597,3 +597,14 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .goffer-price{margin-left:auto;white-space:nowrap}
 .goffer-account{display:grid;gap:8px;margin-top:8px}
 .goffer-open{min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+
+/* Portal del visitante (§9.19) */
+.gvisitor-shell{min-height:100vh;background:var(--paper);color:var(--ink)}
+.gvisitor-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.gvisitor-brand{display:inline-flex;align-items:center;gap:8px;min-height:46px;color:inherit;text-decoration:none}
+.gvisitor{padding:16px;max-width:720px;margin:0 auto}
+.gvisitor .field{display:grid;gap:4px;margin:0 0 12px}
+.gvisitor .field .input{min-height:46px}
+.gvisitor-sent{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.gvisitor-foot{margin:24px 0 0;display:grid;gap:8px}
+.gvisitor-foot button,#visitorEnter,#visitorJoin,#visitorLeave{min-height:46px}

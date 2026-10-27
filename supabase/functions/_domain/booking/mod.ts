@@ -15,5 +15,6 @@ export * from './stays.ts';
 export * from './sesRules.ts';
 export * from './priceCalendar.ts';
 export * from './experience.ts';
+export * from './walkin.ts';
 /** «Monta el dormitorio» (tanda 36): cuadrantes y camas. */
 export * as dorm from './dormLayout.ts';

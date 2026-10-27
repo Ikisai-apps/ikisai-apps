@@ -157,7 +157,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.item_labels': ['label', 'item_id', 'item_factor'],
   'invoices.settings': ['key', 'value'],
   // Lo demás lo escribe `invoices.record_app_entry` (0244); en Finance solo el evento y las notas.
-  'invoices.app_entries': ['event_id', 'notes'],
+  'invoices.app_entries': ['event_id', 'notes', 'receipt_file_id', 'receipt_number'],
 };
 
 /** Columnas comunes del contrato §2.1. */
@@ -301,6 +301,8 @@ export interface AppEntryRow extends SyncedColumns {
   /** Clave de la otra app, p. ej. `flow:project:<uuid>:2026-10-31`; única por app entre los vivos. */
   source_ref: string;
   kind: 'income' | 'expense';
+  /** 0245 (decisión de VG del 27-10): `fiscal` va a la gestoría, al IVA y al justificante; `process` es informativo. */
+  nature: 'fiscal' | 'process';
   entry_date: string;
   description: string;
   amount_cents: number;
@@ -311,6 +313,9 @@ export interface AppEntryRow extends SyncedColumns {
   methods: Record<string, number>;
   detail: Array<{ code?: string | null; name: string; quantity: number; amount_cents: number }>;
   event_id: string | null;
+  /** 0245: justificante (documento de Finance y número de la factura o del ticket). Con él, un apunte de proceso pasa a fiscal. */
+  receipt_file_id: string | null;
+  receipt_number: string | null;
   received_by: string | null;
   received_at: string;
   notes: string | null;

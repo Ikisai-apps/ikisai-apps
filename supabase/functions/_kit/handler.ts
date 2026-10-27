@@ -306,7 +306,7 @@ export function createApp(config: AppConfig): AppHandler {
     const moduleSync = createSync(supabase, name, {});
     // Recursos: los dibujos del mapa de zonas (resources.floor_plans), solo imágenes; los sube el owner (escritura de la tabla).
     const moduleUploads = name === 'resources'
-      ? createUploads(supabase, name, { bucket: 'resources-plans', maxBytes: 10 * 1024 * 1024, allowedMime: ['image/svg+xml', 'image/png', 'image/jpeg'] }, storage)
+      ? createUploads(supabase, name, { bucket: 'resources-plans', maxBytes: 10 * 1024 * 1024, allowedMime: ['image/svg+xml', 'image/png', 'image/jpeg', 'image/gif', 'image/webp'] }, storage)
       : null;
     const moduleRoutes: Array<{ method: string; pattern: string; handler: (req: RouteRequest) => Promise<unknown> }> = [
       ...(moduleUploads ? [

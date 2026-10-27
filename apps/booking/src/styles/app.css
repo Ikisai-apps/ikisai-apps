@@ -355,3 +355,15 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .bk-dorm { --bed-extra: #f6e3bf; --bed-extra-line: #9a6412; --bed-free: #d7ecc9; --bed-free-line: #4f8a33; --bed-occ: #d3e2f6; --bed-occ-line: #2f62a3; --bed-pick: #2f7d22; --bed-pick-line: #1d5214; --bed-pick-ink: #fff; }
 :root[data-theme='dark'] .bk-dorm { --bed-extra: #4a3514; --bed-extra-line: #e3b25e; --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .bk-dorm { --bed-extra: #4a3514; --bed-extra-line: #e3b25e; --bed-free: #29401f; --bed-free-line: #8cc46c; --bed-occ: #1f3550; --bed-occ-line: #8db5e8; --bed-pick: #7cc95f; --bed-pick-line: #b5e79f; --bed-pick-ink: #10200a; } }
+
+/* QR de entrada (0488): el código en grande y, al imprimir, solo esa tarjeta en blanco y negro. */
+.bk-qr { width: 180px; height: 180px; display: grid; place-items: center; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.bk-qr svg { width: 100%; height: 100%; }
+.bk-qr-code { margin: 6px 0 0; font-size: 1.6rem; font-weight: 800; letter-spacing: 0.12em; font-variant-numeric: tabular-nums; }
+@media print {
+  body.bk-print-one * { visibility: hidden; }
+  body.bk-print-one .bk-print-target, body.bk-print-one .bk-print-target * { visibility: visible; color: #000 !important; background: #fff !important; }
+  body.bk-print-one .bk-print-target { position: absolute; inset: 0 auto auto 0; border: 0; box-shadow: none; }
+  body.bk-print-one .bk-print-target .btnrow { display: none; }
+}
+

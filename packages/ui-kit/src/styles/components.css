@@ -1192,6 +1192,9 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .item-change{min-height:44px;padding:0 6px}
 .item-kind{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--hover);color:var(--muted)}
 .item-stock{font-size:var(--text-xs);color:var(--muted)}
+.item-suggested{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+.item-complete-host:empty{display:none}
+.item-complete{display:block;min-height:32px;padding:4px 2px;font-size:var(--text-sm);text-align:left}
 .item-stock.low{color:var(--warn);font-weight:700}
 .item-pending{font-size:11px;font-weight:800;color:var(--warn)}
 .item-result.archived{opacity:.6}
@@ -2060,6 +2063,33 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 /* La elegida ampliada (`focus`): el contorno de la habitación marcado; las camas, grandes. */
 .map-room.map-focus{fill:transparent;stroke:var(--accent-deep);stroke-width:3px}
 .map-zoom{max-height:52vh}
+/* Retícula, decoración, camas con icono, alturas y cotas (0.63). */
+.map-grid{pointer-events:none}
+.map-grid-line{stroke:var(--line);opacity:.8}
+.map-decor{pointer-events:none}
+.map-decor-hit{fill:transparent;pointer-events:all;cursor:copy}
+.map-decor-edit .map-deco{pointer-events:all;cursor:grab}
+.map-deco:focus{outline:none}
+.map-deco-sel{fill:none;stroke:var(--accent-deep);stroke-width:2.5px;stroke-dasharray:6 3;vector-effect:non-scaling-stroke}
+.map-deco:focus-visible .map-deco-img{outline:3px solid var(--accent);outline-offset:2px}
+.map-deco:focus-visible:not(.map-deco-on) .map-deco-img{filter:drop-shadow(0 0 2px var(--accent))}
+.map-bedicon{fill:none;stroke:var(--ink);opacity:.5;pointer-events:none;stroke-linejoin:round}
+.map-bedicon.map-off{opacity:.25}
+.map-band-line{stroke:var(--muted);stroke-dasharray:8 6;opacity:.7;vector-effect:non-scaling-stroke}
+.map-band-txt,.map-contour-txt,.map-contour-diff{font-family:var(--sans);fill:var(--ink);font-weight:700;paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round}
+.map-contour-diff{fill:var(--muted);font-weight:600}
+.map-contour-dot{fill:var(--accent-deep)}
+.map-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-width:0}
+.map-crumbs-list{display:flex;flex-wrap:wrap;align-items:center;gap:4px;list-style:none;margin:0;padding:0;font-size:var(--text-sm)}
+.map-crumbs-list li+li::before{content:'›';color:var(--muted);margin-right:4px}
+.map-crumb-here{font-weight:700}
+.map-decorbar{display:grid;gap:8px;margin-bottom:10px}
+.map-decorbar[hidden]{display:none}
+.map-decor-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.map-decor-seg{max-width:100%;overflow-x:auto}
+.map-decor-icon{display:inline-flex;align-items:center;gap:6px}
+.map-decor-icon img{width:24px;height:24px;object-fit:contain}
+.map-decor-actions{display:flex;gap:6px}
 .map-ring{fill:none;stroke:var(--accent-deep);stroke-width:4px;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .map-labels text{pointer-events:none;font-family:var(--sans);text-anchor:middle;paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round}
 .map-room-txt{fill:var(--ink);font-weight:700}

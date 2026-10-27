@@ -276,3 +276,70 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - Sin la config, `INVALID_OPERATION`: la v1 entrega con `deliver_order` como siempre.
 - **App**: en la ficha de entrega de la v2, con algo en cocina, aparece «Dar por hecho y entregar». En Servicio, esas tarjetas dicen «En cocina x/y». En Preparación, lo terminado desde entrega desaparece solo.
 - **Resolutor de ámbito**: `flow.in_scope(actor, kind, id)`, registrado con `core.allow_scope_resolver`. Con `kind = 'booking_event'`, es verdadero si la persona tiene en su ámbito algún flujo de ese evento. Booking lo usa en `booking.flow_guests_of`.
+
+## 27. Pan v2 (migración `0913`)
+
+- **Métrica `bread_v2`** del puesto «Pan». Desde la 0913 la lleva la v2 por plantilla, y también el «Pan» de las versiones ya creadas y no congeladas, conservando sus parámetros. `bread_ahead` (0908) no cambia.
+- **Firme**: montaditos cobrados con su unidad aún sin hacer (pendiente o en curso), multiplicados por `bread_per_unit` (1 por defecto).
+- **Prevista**: ritmo × (`warmup_min` + `lead_min`), con el descuento de los tramos (`tiers`, por ritmo) aplicado solo a la prevista.
+  - El ritmo son las unidades de los pedidos cobrados en `lookback_min` (5), con un máximo de `per_order_cap` (4) por pedido.
+  - Se suaviza con la ventana larga `smooth_min` (15) y el peso `smooth_weight` (0,3). Sin suavizado, 7 en 5 min = 1,4/min.
+- **target** = mín(`machine_capacity`, firme + ⌊prevista⌋). Devuelve `target`, `firm`, `forecast`, `rate`, `pct`, `units`, `window`, `machine_capacity` y `hysteresis`. Sin conteo manual.
+- **Histéresis** (`hysteresis`, 2 panes): la app (`steadyMetrics`) solo cambia la cifra mostrada si se mueve al menos eso, o si quedaría por debajo de lo firme.
+- El owner cambia los parámetros desde la tarjeta del puesto, como en la 0908.
+
+## 28. Editor de flujos (migración `0914`)
+
+- **Piezas**: cada columna es una pieza conocida, con comportamiento y config base fijos (`flow.piece_behavior`, `flow.piece_config`; en el dominio, `PIECES`). Opciones booleanas por pieza:
+
+  | Pieza | Comportamiento | Opción |
+  |---|---|---|
+  | `order` | `inspect_confirm` | `accounts` |
+  | `prep` | `quick_steps` | — |
+  | `ingredients` | `quick_steps` | `fresh_stock` |
+  | `service` | `inspect_confirm` | `complete_on_delivery` |
+  | `logistics` | `free_task` | — |
+  | `arrival`, `bed`, `signature`, `departure` | `guest_presence` | — |
+
+  Cada pieza va una sola vez por flujo, con un máximo de 12. Las vistas son las de siempre.
+- **`create_flow({project_id, template_key?, columns?: [{key, label?, options?}], name?, booking_event_id?, starts_on?, ends_on?})`**, solo owner. Sustituye al de la 0911.
+  - Se crea desde una plantilla, desde columnas o con ambas; si se dan columnas, mandan ellas.
+  - La versión es la siguiente de esa plantilla en ese evento.
+  - Desde plantilla, se aplican los ajustes de plantilla que le toquen.
+- **`save_template({project_id, template_key, label_base})`**, solo owner: guarda las columnas del flujo como versión nueva de la plantilla. Se siembra la plantilla `barra` v1 con las columnas de «Barra · v1»; `checkin` v1 ya existía. Así la barra y el check-in se reconstruyen desde el editor.
+- **App** (solo owner):
+  - «Nuevo flujo» (`#/nuevo`): se elige una plantilla o en blanco, el nombre y el evento de Booking.
+  - «Columnas del flujo» (`#/p/<id>/editor`): nombres, orden, opciones, añadir o quitar piezas y «Guardar como plantilla». Editar es escritura normal del owner sobre `flow.columns`; la v1 congelada no cambia (`FLOW_FROZEN`).
+  - La portada y los documentos se ponen en el Inicio del flujo, como hasta ahora.
+
+## 29. Visitantes por QR (migración `0915`, FL2)
+
+- **`flow.customers.visitor_id`** (origen `visitor`): un cliente por visitante y flujo. El flujo es el del evento de Booking, por su `event_code`, que atiende la carta pública.
+- **`POST public/visitor_join {event_code}`**: ruta pública del kit, con `X-Visitor` obligatorio.
+  - Crea o encuentra su cliente, por el lote público firmado por el visitante, y devuelve «Mi pedido».
+  - Errores: `401 VISITOR_REQUIRED` y `404 NO_FLOW`.
+- **`flow_visitor_customer({event_code})`**: lectura pública expuesta al navegador, con el `visitor_id` que pone el kit (el del cliente se descarta).
+  - Devuelve `{number, carta_url, account_open, orders: [{number, status, summary, preparing}]}`.
+  - Sin visitante, o si aún no se ha unido: `number` null y sin pedidos.
+- **Enlaces a la carta, de huésped y de visitante**: `<cliente>.<caducidad>.<revisión>.<firma>`.
+  - El canje rota el token y sube la revisión: son de un solo uso (`410 INVITATION_USED`) y caducan a los 10 min.
+  - Los enlaces de huésped de tres partes (0910) valen hasta caducar.
+- **Guarda del lote público**: un cliente nuevo es `web`, o `visitor` con el visitante del propio lote (`core.current_visitor()`). De un cliente de huésped o de visitante solo cambia el token.
+- «Soy el 142» sigue funcionando sin visitante.
+
+## 30. Caja profunda (migración `0917`, «C»)
+
+- **Interruptor**: config de Caja `deep_checkout`. La v2 la lleva por plantilla, y también las versiones de barra ya creadas y no congeladas. La v1 cobra como siempre.
+- **`pay_orders({order_ids, method, unify, revisions?})`**: paga varios pedidos abiertos del mismo flujo.
+  - Métodos: `cash`, `bizum`, `card`, `btc_ln` y `btc_chain`.
+  - Cada pedido se cobra con su número de cobro y sus unidades (`flow.charge_order`).
+  - Con `unify`, un justificante para todos; sin él, uno por pedido. Sin la config, `INVALID_OPERATION`.
+- **`flow.receipts`** (`method`, `total_cents`, `order_ids`, `customer_id`, `finance_status`…) y `payments.receipt_id`. Solo por procedimiento. El estado del envío (`finance_status`) lo anota flow-api con la respuesta de Finance, por el lote público del servidor, que el navegador no puede usar. La guarda solo deja cambiar ahí los campos de envío. Así nadie marca como enviado un cobro que no ha ido.
+- **«Enviar a Finance»**: `POST receipts/:id/send/finance` → `invoices.record_app_entry` con `nature: 'fiscal'`, `source_ref flow:receipt:<id>` y el detalle de sus líneas. Bitcoin va como método `bitcoin`.
+- **Cierre del día**: va siempre a Finance como `nature: 'process'` (VG 27-10). Excluye lo ya enviado como fiscal (`flow.fiscal_of_day`): importe, métodos y detalle. Un cobro va en un solo apunte. Lo cobrado en Bitcoin que no ha ido como fiscal sale como método `bitcoin`.
+- **`flow.project_settings`** (`lightning_address`, `bitcoin_address`): escribe solo el owner, desde «Cobro con Bitcoin» en el Inicio; leen editor y owner. Las direcciones nunca van en el repo.
+- **App**:
+  - En Caja, «Ficha del cliente» al buscar su número: todos sus pedidos con casillas, «Pagar (n)» y «Entregar (n)».
+  - En la ficha de un pedido abierto, «Pagar».
+  - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
+  - Tras pagar: Imprimir factura y Enviar por correo (aún sin función), Enviar a Finance y Cerrar.

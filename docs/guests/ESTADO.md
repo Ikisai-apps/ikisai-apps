@@ -97,18 +97,18 @@
 
 - 2026-10-20 · **Ids de Recursos y camas en el plano** (API.md §9.16): se casa por `resource_space_id` y `resource_bed_id` de Booking (#680), con el nombre solo de respaldo; en Alojamiento, la habitación ampliada con sus camas encima (kit 0.54). Prueba en `modules.spec.ts`.
 
+- 2026-10-27 · **Acceso que no caduca, «Mis retiros», dirección y fichas de equipo** (API.md §9.17, #730): «Mis retiros» con el estado de la reserva y los cancelados en solo lectura; dirección («todos») con todos los retiros, la vista sin ficha y «Apuntarme» con «¿Con quién?»; etiqueta «Organizas · Equipo · Dirección», sin datos de registro ni firma (G-B2), «Tu ficha de equipo no llega a cocina» (G-B1) y «La cama te la asigna el equipo». Pruebas en `accesos.spec.ts`; `modules.spec.ts` fija el mediodía de Madrid también en invierno.
+
+- 2026-10-27 · **«Tus ofertas de hoy» en el Menú** (API.md §9.18, #754 y #778): `food.portal_offers` cruzado por `meal_group`, internas solo para el equipo, «Incluido · De pago · A cuenta», cruce de alergias por persona (G13) y la carta «a cuenta» de Flow con su número y la cuenta abierta. Pruebas en `offers.test.ts` y `ofertas.spec.ts`.
+
+- 2026-10-27 · **Portal del visitante por QR** (API.md §9.19, #766 y #778): `/e/<código>` sin sesión ni datos (kit de visitantes, #775), el evento, sus ofertas públicas, «Apuntarme» y «Déjanos un dato» en booking-api, «Mis eventos» de este móvil y «Salir de este móvil»; el worker reenvía `X-Visitor`. Prueba en `visitantes.spec.ts`. Pendiente: «Mi pedido» de cada visitante (Flow FL2) y, en la v2, recuperar por correo y pasar a otro móvil.
+
 ## Pendiente
 
-- **Visitantes por QR (API.md §9.19):** modelo de pantallas hecho; el código, cuando estén C11 (Core), BG17–BG19 (Booking), FD5 (Food) y FL2 (Flow).
+- «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
 
-- **«Tus ofertas de hoy» (API.md §9.18):** construido con su prueba de nodo; la de Playwright, cuando FD3 (Food) y BG16 (Booking #748) estén en `main`. «A cuenta» con número, cuando Flow publique FL1.
-
-- **Encargo de VG del 26-10 (plazo 29-10), API.md §9.17:** «Mis retiros», acceso que no caduca, dirección («todos») y etiqueta de equipo. Modelo de pantallas en la PR en borrador; código en la misma PR, con la #725 de Booking ya en main. G-B1 y G-B2 decididas por Core según la recomendación (a falta de VG).
-
-- «Mis tareas» (TK1), cuando Tasks lo publique.
-
-- Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
+- Visitantes, v2: recuperar el acceso por correo y pasarlo a otro móvil (C11, más adelante).
 
 ## Bloqueos
 
-- Ninguno para la fase 1. Mientras no exista el contacto público (C1), la pantalla de enlace no válido usa el contacto de reserva o la última copia guardada.
+- Ninguno.

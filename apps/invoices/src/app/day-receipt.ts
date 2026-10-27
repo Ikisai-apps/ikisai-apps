@@ -13,6 +13,8 @@ export interface ReceiptEntry {
   source_app: string;
   source_ref: string;
   kind: 'income' | 'expense';
+  /** 0245: el justificante es solo de lo fiscal. Sin valor, fiscal. */
+  nature?: 'fiscal' | 'process';
   entry_date: string;
   description: string;
   amount_cents: number;
@@ -51,6 +53,7 @@ export const methodLabel = (k: string): string => METHOD_LABELS[k] ?? k;
 /** El justificante de un ingreso. `number` solo con serie (cuando la gestoría diga factura simplificada). */
 export function dayReceipt(entry: ReceiptEntry, numbering: { series: { code: string } | null; number: string | null } = { series: DAY_RECEIPT_SERIES, number: null }): DayReceipt {
   if (entry.kind !== 'income') throw new Error('Solo los ingresos tienen justificante de ventas.');
+  if ((entry.nature ?? 'fiscal') !== 'fiscal') throw new Error('Un apunte de proceso no tiene justificante: no va a la gestoría.');
   const numbered = !!numbering.series && !!numbering.number;
   return {
     title: numbered ? `Factura simplificada ${numbering.number}` : 'Justificante de ventas',

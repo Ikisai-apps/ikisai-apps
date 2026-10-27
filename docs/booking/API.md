@@ -1805,4 +1805,55 @@ Hito 2 (migración 0484): la ficha según el tipo (`apps/booking/src/ui/eventKin
     - Son idempotentes y devuelven `{guest_id, arrived_at, left_at, revision}`; `undo` deshace.
     - Errores: `SES_ALREADY_REGISTERED` (deshacer la llegada de quien ya está comunicado), `GUEST_ALREADY_LEFT` (deshacer la llegada de quien ya salió), `TEAM_GUEST` (las fichas de equipo no marcan llegada), `PREVIEW_READ_ONLY` y `NOT_FOUND`.
   - `booking.guests.left_at`, con `left_at >= arrived_at`.
+- **Ofertas de comida** (Food #758): en la ficha, en Comidas y junto a las cartas, «Ofertas de comida (Food)».
+  - Lee `GET read/food.event_offers_projection?where[event_id]=…`.
+  - Por oferta: nombre, carta o menú cerrado, para qué grupos (o todos), qué días y servicios, dónde y quién paga (y cuándo).
+  - Solo lee, con red, y lo hace una vez por visita.
+
+## 32. Cobro del alojamiento a la carta (migración 0487; VG 27-10-2026)
+
+En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noche, se cobra en el momento o queda pendiente, y lo cobrado va a Finance.
+- **Precio por noche:** `walkinNightPrice` toma la primera tarifa activa de servicio «alojamiento» por persona y noche que vale para el tipo y el día. Sin tarifa, se escribe a mano.
+- **`booking.walkin_charges`** (editor y owner): un cobro por asignación de cama.
+  - Campos: `nights`, `price_cents` y `amount_cents`, con `amount_cents = nights × price_cents` (base y dominio).
+  - Cobro: `method` (`cash`, `bizum` o `card`, el datáfono externo) y `paid_at`, siempre juntos.
+  - Resultado del envío: `finance_entry_id` y `finance_sent_at`, o `finance_error`.
+- **Envío a Finance:** `POST /api/v1/walkins/:id/send/finance` de booking-api, con la sesión de la persona, llama a `invoices.record_app_entry` de invoices-api.
+  - Datos del apunte: `source_app 'booking'`, `source_ref 'booking:stay:<id>'`, `kind 'income'`, fecha del cobro (Madrid), IVA del 10 %, `methods` con el método y `detail` con las noches y la cama.
+  - Es idempotente en Finance por `source_ref`.
+  - Errores: `NOT_PAID` (409), `NEEDS_ACCESS` (403, «Pide acceso a Finance») y `APP_UNAVAILABLE` (503).
+  - La app anota el resultado en el cobro.
+- **En la ficha:**
+  - «Alojamiento a la carta» enseña «Cobrado» y «Pendiente», y cada cobro con su estado: pendiente, cobrado sin enviar o en Finance.
+  - Acciones: «Cobrar…» y «Enviar a Finance».
+
+## 33. Código público del evento y QR de visitantes (migración 0488; VG, visión V0.2; BG17 y BG19 de Guests)
+
+- **`booking.events.public_code`:** 10 caracteres del alfabeto `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (sin 0/O ni 1/I/L).
+  - Al azar con aleatorio fuerte (`gen_random_uuid` en la base, `crypto.getRandomValues` en «Regenerar») y único.
+  - Lo pone un trigger al crear el evento, y la migración lo rellena en los que ya hay.
+  - «Regenerar» es un update normal: el QR anterior deja de valer. La base y el dominio comprueban el formato.
+- **Lectura pública `booking_event`** (`core.allow_public_read`, función `booking.public_event`):
+  - Recibe `{code}`, en mayúsculas o minúsculas.
+  - Devuelve `{code, name, starts_on, ends_on, kind, status ('abierto' | 'cerrado'), joinable, summary}`: `summary` solo si el retiro es visible para huéspedes, y `joinable` si además está vivo.
+  - Código desconocido, cancelado, perdido o borrado: `null`.
+  - Sin precio, organizador, huéspedes ni ids internos.
+  - La sirve guests-api en `GET public/event?code=…`.
+- **URL del QR:** `https://ven.ikisai.com/e/<code>`.
+- **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El QR lo dibuja `renderQr` del kit (0.60, #773).
+- **Un visitante se apunta (BG18, migración 0489; contrato C11 de Core).**
+  - Identidad y escritura:
+    - El visitante no tiene cuenta. Lleva un token de visitante (cabecera `X-Visitor`) que la Edge resuelve (`resolveVisitor`).
+    - Su petición es una fila de `booking.visitor_requests`, escrita en un lote público (`applyPublicOperations`).
+    - Lleva `via_code` (el código del QR, del que la base saca el evento; un `event_id` del cliente no cuenta), `visitor_id`, `kind` (`join` para apuntarse; `contact` para «Déjanos un dato», con `contact` obligatorio y en cualquier evento vivo) y `name`, `contact` y `note`, opcionales (`contact` aparte de la nota: es un dato personal).
+  - Reglas:
+    - En público solo se crea una petición pendiente, en un retiro vivo y visible para huéspedes, y una por visitante y evento.
+    - Nadie más crea peticiones.
+    - La decide el personal con `booking.join_from_visitor({request_id, decision: 'accept' | 'reject' | 'done', name?})`. Al aceptar (`join`) se crea la ficha de huésped, ligada a la petición (`guest_id`); repetir no crea otra. Un dato (`contact`) se atiende (`done`) o se descarta.
+  - Conservación: el nombre, el contacto y la nota se borran a los 6 meses del fin del evento, en la misma vuelta de la conservación (§20; acordado con Core).
+  - El visitante ve lo suyo con la lectura pública `booking_visitor_requests({visitor_id, event_code?})`, que la Edge llama con el `visitor_id` ya resuelto. Devuelve el estado, sin datos ajenos.
+  - **Ruta** `POST /api/v1/public/join` de booking-api (`publicRoutes` del kit, C11), con la cabecera `X-Visitor`. Recibe `{event_code?, kind?, name?, contact?, note?}`; sin `event_code` toma el del token.
+    - Respuestas: sin visitante, 401 `VISITOR_REQUIRED`. Con él, devuelve la petición `{event_code, kind, name, status, created_at}`; si ya tenía una pendiente del mismo tipo, esa.
+    - El lote lo firma el visitante y la base exige `core.current_visitor() = visitor_id`.
+    - «Lo mío» lo sirve el kit en `GET public/booking_visitor_requests`. CORS, el kit.
 

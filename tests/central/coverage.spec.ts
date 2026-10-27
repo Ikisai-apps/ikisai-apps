@@ -57,8 +57,8 @@ test('uso y cobertura · desde Revisión; estado por función, filtro y «Retira
   await page.locator('#openCoverage').click();
   await expect(page).toHaveURL(/#\/revision\/uso$/);
   await expect(page.getByRole('heading', { name: 'Uso y cobertura' })).toBeVisible();
-  // Sin el inventario de UI-kit todavía, lo dice; lo medido sale igual.
-  await expect(page.locator('#coverageNote')).toContainText('El inventario de campos aún no llega');
+  // Con el inventario del núcleo (P15, #783) leído: ni aviso de carga ni de que falte.
+  await expect(page.locator('#coverageNote')).toHaveText('');
   const used = page.locator('.ctl-cov[data-feature="tasks.lista.filtro"]');
   const nobody = page.locator('.ctl-cov[data-feature="tasks.lista.exportar"]');
   await expect(used).toHaveAttribute('data-state', 'usado_fuera');

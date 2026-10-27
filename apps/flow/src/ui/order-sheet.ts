@@ -1,11 +1,12 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { confirmDialog, createQuantityField, el, openSheet, replace, toast } from '@ikisai/ui-kit';
-import { formatEuros, groupMenu, ORDER_STATUS_LABELS, PAY_METHOD_LABELS, SETTLE_METHOD_LABELS, TABLES, type MenuProduct, type PayMethod } from '@ikisai/domain-flow';
+import { formatEuros, groupMenu, ORDER_STATUS_LABELS, PAY_METHOD_LABELS, SETTLE_METHOD_LABELS, CHECKOUT_METHOD_LABELS, TABLES, type MenuProduct, type PayMethod } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
 import { customerNumber, orderTotal, watchData, type FlowData, type Order, type Product } from '../app/data.ts';
 import { askReason, busyButton, productMedal } from './sheets-common.ts';
 import { accountLabel, chooseAccount } from './accounts.ts';
+import { openPaySheet } from './checkout.ts';
 import { openDeliverySheet } from './delivery-sheet.ts';
 
 /**
@@ -176,7 +177,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
       const refunds = (data.paymentsByOrder.get(o.id) ?? []).filter((p) => p.kind === 'refund' && !p.settled_at);
       replace(body, paidLines(),
         ...(refunds.length ? [el('section', { class: 'order-refunds' }, el('h3', null, 'Devoluciones pendientes'),
-          ...refunds.map((r) => el('div', { class: 'order-refund' }, el('span', null, `${formatEuros(-r.amount_cents)} · ${r.method ? SETTLE_METHOD_LABELS[r.method] : ''}`),
+          ...refunds.map((r) => el('div', { class: 'order-refund' }, el('span', null, `${formatEuros(-r.amount_cents)} · ${r.method ? (CHECKOUT_METHOD_LABELS as Record<string, string>)[r.method] ?? SETTLE_METHOD_LABELS[r.method as 'cash'] : ''}`),
             act({ class: 'secondary' }, 'Ya devuelto', async () => { try { await actions.confirmRefund(r.id); toast('Devolución confirmada.'); } catch (e) { toast(describeError(e)); } }))))] : []));
       replace(totalEl, `Cobrado: ${formatEuros(o.total_cents ?? 0)}`);
     }
@@ -185,7 +186,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
   }
 
   function methodLabel(o: Order): string {
-    if (o.pay_method !== 'account') return o.pay_method ? PAY_METHOD_LABELS[o.pay_method] : '';
+    if (o.pay_method !== 'account') return o.pay_method ? (CHECKOUT_METHOD_LABELS as Record<string, string>)[o.pay_method] ?? PAY_METHOD_LABELS[o.pay_method as 'cash'] : '';
     const a = data?.accounts.find((x) => x.id === o.account_id);
     return a ? `a cuenta: ${accountLabel(data!, a)}${a.status === 'settled' ? ' (liquidada)' : ''}` : 'a cuenta';
   }
@@ -221,8 +222,11 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
           toast(`A cuenta: pedido ${out.pay_seq}, ${formatEuros(out.total_cents)}.`);
         } catch (error) { toast(describeError(error)); }
       })] : [];
-      for (const b of [cash, bizum, ...onAccount]) b.disabled = empty || lines().some((l) => l._pending);
-      replace(foot, cash, bizum, ...onAccount);
+      // Caja profunda (v2, 0917): «Pagar» abre la pantalla de pago (metálico, Bizum, tarjeta, Bitcoin).
+      const deep = data?.deepCheckout.has(o.project_id)
+        ? [el('button', { type: 'button', class: 'primary', onclick: () => { sheet.close(); openPaySheet(client, o.project_id, [o.id]); } }, 'Pagar')] as HTMLButtonElement[] : null;
+      for (const b of [cash, bizum, ...onAccount, ...(deep ?? [])]) b.disabled = empty || lines().some((l) => l._pending);
+      if (deep) replace(foot, ...deep, ...onAccount); else replace(foot, cash, bizum, ...onAccount);
     } else if (mode === 'correct') {
       const save = (method: PayMethod) => act({ class: 'primary' }, `Guardar (${PAY_METHOD_LABELS[method].toLowerCase()})`, () => saveCorrection(method));
       replace(foot, el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'view'; correction = null; shape = ''; paint(); } }, 'Cancelar'), save('cash'), save('bizum'));

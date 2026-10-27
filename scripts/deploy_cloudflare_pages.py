@@ -65,7 +65,9 @@ def ensure_dist(app):
 
 
 def commit_hash():
-  sha = os.environ.get('GITHUB_SHA')
+  # IKISAI_COMMIT: el commit que publica la release por lotes (fijado en su plan). GITHUB_SHA, en un cron, es la cabeza de
+  # main al empezar el run, y GitHub no deja sobrescribirlo.
+  sha = os.environ.get('IKISAI_COMMIT') or os.environ.get('GITHUB_SHA')
   if sha:
     return sha
   try:

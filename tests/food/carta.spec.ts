@@ -185,3 +185,20 @@ test('ofertas · la ficha del evento las enseña y deja añadir otra', async ({ 
   await page.locator('#offerSave').click();
   await expect.poll(() => api.rows('food.event_offers').find((o) => o.name === 'Equipo de cocina')).toMatchObject({ event_id: FAMILY, audience: 'interna', meal_groups: ['Equipo'], payer: null, charge_when: null });
 });
+
+test('ofertas · la ficha del evento las enseña y deja añadir otra', async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page);
+  await page.goto(`${baseURL}/#/eventos`);
+  await page.locator('#eventList, .list').getByText('Visita de la familia').first().click();
+  const block = page.locator('#eventOffers');
+  await expect(block).toContainText('Barra familiar');
+  await expect(block).toContainText('Familia');
+  await expect(block).toContainText('Paga el huésped, en barra');
+  await page.locator('#addOffer').click();
+  await page.locator('#offerName').fill('Equipo de cocina');
+  await page.locator('#offerAudience').selectOption('interna');
+  await page.locator('#offerGroups').fill('Equipo');
+  await page.locator('#offerSave').click();
+  await expect.poll(() => api.rows('food.event_offers').find((o) => o.name === 'Equipo de cocina')).toMatchObject({ event_id: FAMILY, audience: 'interna', meal_groups: ['Equipo'], payer: null, charge_when: null });
+});

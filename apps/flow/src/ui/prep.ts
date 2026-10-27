@@ -5,7 +5,7 @@ import { productMedal } from './sheets-common.ts';
 import { callProcedure, errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
 import { generateIngredientTasks } from '../app/ingredients.ts';
 import { askTasks, quickPurchase } from '../app/links.ts';
-import { customerNumber, fillMetricText, loadStationMetrics, watchData, type FlowData, type StationMetric, type Unit } from '../app/data.ts';
+import { customerNumber, fillMetricText, loadStationMetrics, steadyMetrics, watchData, type FlowData, type StationMetric, type Unit } from '../app/data.ts';
 import { loadPeople, personName } from '../app/people.ts';
 import { createStableList } from './stable-list.ts';
 import type { ViewMount } from './shell.ts';
@@ -157,7 +157,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
     let metrics = new Map<string, StationMetric>();
     async function refreshMetrics(): Promise<void> {
       if (!ctx.projectId || !data?.units.some((u) => u.kind === 'station')) { noticeEl.hidden = true; return; }
-      metrics = await loadStationMetrics(client, ctx.projectId);
+      metrics = steadyMetrics(metrics, await loadStationMetrics(client, ctx.projectId));
       for (const u of units()) if (u.kind === 'station') repaintOne(u);
       // Aviso pequeño en la cabecera de las columnas que lo pidan (notice_in).
       const notes = data!.units.filter((u) => u.kind === 'station' && (u.payload?.notice_in ?? []).includes(kind))
