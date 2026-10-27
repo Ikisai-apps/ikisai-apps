@@ -9,6 +9,7 @@ import {
   renderQr,
   createLanes,
   groupLanes,
+  createProjection,
   createFieldPointer,
   registerReveal,
   onSaved,
@@ -1879,9 +1880,36 @@ const guideSection = section('guiado', 'Guiado: campo señalado', 'Nivel mínimo
   el('p', { class: 'hint', style: 'overflow-wrap:anywhere' }, 'Enlace de ejemplo: ', el('code', { style: 'overflow-wrap:anywhere;word-break:break-all' }, withGuideLink('https://booking.ikisai.com/#/reservas/123', { field: 'booking.ficha.llegada', step: 'Pon la hora de llegada', from: 'flow', title: 'Flow', url: 'https://flow.ikisai.com/#/recepcion' }))),
 );
 
+// Proyección (0.69): «Recepción» leyendo de Booking con un cliente de mentira (en una app, su SyncClient).
+const demoArrivals = [
+  { id: 'r1', name: 'Ana Ruiz', room: 'Hab 2', time: '17:00', status: 'expected' },
+  { id: 'r2', name: 'Luis Gil', room: 'Hab 4', time: '18:30', status: 'expected' },
+  { id: 'r3', name: 'Marta Sanz', room: 'Hab 1', time: '12:10', status: 'arrived' },
+];
+const projCalls: string[] = [];
+const projOut = el('output', { id: 'projOut' }, '—');
+const demoBooking = { api: async <T,>(path: string, init?: { json?: any }): Promise<T> => {
+  await new Promise((r) => setTimeout(r, 40));
+  projCalls.push(path.replace('/capabilities/', '').replace('/invoke', '')); projOut.textContent = projCalls.join(', ');
+  if (path.includes('booking.arrivals_today')) return { result: { arrivals: demoArrivals.map((a) => ({ ...a })) } } as T;
+  if (path.includes('booking.check_in')) {
+    if (init?.json?.reservation_id === 'r2') throw Object.assign(new Error('forbidden'), { status: 403, code: 'NEEDS_ACCESS' });
+    const a = demoArrivals.find((x) => x.id === init?.json?.reservation_id); if (a) a.status = 'arrived';
+    return { result: { id: a?.id, replayed: false } } as T;
+  }
+  throw new Error('404');
+} };
+const projection = createProjection({ label: 'Llegadas de hoy', client: demoBooking, appName: 'Booking', feedbackId: 'demo.recepcion.llegadas', refreshMs: 0,
+  read: { capability: 'booking.arrivals_today', input: () => ({ day: '2026-10-27' }) },
+  rows: (r) => ((r as { arrivals: typeof demoArrivals }).arrivals).map((a) => ({ id: a.id, title: a.name, meta: [a.room, a.time], chip: a.status === 'arrived' ? { text: 'Ha llegado', tone: 'ok' as const } : { text: 'Por llegar' }, href: `#/reservas/${a.id}`, data: { status: a.status } })),
+  action: { label: 'Ya ha llegado', capability: 'booking.check_in', input: (row) => ({ reservation_id: row.id }), when: (row) => row.data?.status === 'expected' },
+  empty: 'No llega nadie más hoy',
+});
+
 const genericSection = section('genericas', 'Piezas genéricas (formulario libre y lista)', 'Para el catálogo de piezas de Flow: un formulario que sale de un esquema (pregunta a pregunta, revisión y «Registrar») y una lista de comprobación con quién y cuándo.',
   el('h3', null, 'Formulario libre'), el('div', { id: 'freeFormHost' }, freeForm.element, el('p', null, 'Registrado: ', formOut)),
   el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
+  el('h3', null, 'Proyección (Recepción, leyendo de Booking)'), el('div', { id: 'projHost', class: 'card', style: 'padding:6px 14px' }, projection.element), el('p', null, 'Llamadas: ', projOut),
   el('h3', null, 'Carriles por cualquier clave'), el('p', null, 'Agrupar por: '), groupPick, el('div', { id: 'groupLanesHost' }, groupedLanes.element),
 );
 
@@ -2008,7 +2036,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState, createGuide };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

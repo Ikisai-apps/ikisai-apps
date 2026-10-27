@@ -1,5 +1,21 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.0 · 27 de octubre de 2026
+
+**Proyección** (`createProjection`, `src/pieces/projection.ts`; encargo de Core, diseño en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Es un carril que pinta las filas leídas de otra app y tiene una acción por fila que invoca una capacidad del catálogo. Con ella, «Trabajos de hoy», «Recepción» o «Avance por aplicaciones» son composiciones. No copia datos.
+
+- **Lectura:** `read` es una capacidad invocada con el cliente de la app y el token de la persona, y `rows(result)` la convierte en filas `{ id, title, meta, chip, href, data }`.
+  - Se vuelve a leer cada `refreshMs`, al volver a la pestaña, al recuperar la red y tras cada acción.
+  - Las filas se validan (ids, títulos) y los enlaces solo pueden ser internos o de `*.ikisai.com`.
+- **Acción por fila** (`action: { label, capability, input, when?, confirm? }`):
+  - es idempotente (`requestId` estable por fila y acción) y dice «Haciendo…» mientras dura;
+  - **no se marca como hecha en local**: se vuelve a leer y manda la app dueña;
+  - los errores se dicen en palabras («Tu cuenta no puede hacer esto en Booking», «Booking no responde ahora mismo»);
+  - `confirm` pregunta antes.
+- **Sin red:** la última lectura, con «Sin conexión: puede no estar al día» y sin acciones.
+- `onCount(n)` es para el recuento del carril (`createLanes` / `groupLanes`).
+- Demo: «Proyección (Recepción, leyendo de Booking)». Pruebas: `tests/v73.spec.ts`.
+
 ## 0.68.0 · 27 de octubre de 2026
 
 **Guiado, tanda 3: el shell monta la guía leyendo la ejecución de Flow.** Contrato aprobado por Core el 27-10; la parte de Flow está pendiente.
