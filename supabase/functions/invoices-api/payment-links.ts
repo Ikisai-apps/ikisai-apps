@@ -6,7 +6,7 @@
  * La tabla y las reglas están en SQL (0255: acciones de sistema `payment_link_prepare` y `payment_link_save`); aquí solo
  * se habla con la pasarela (`_domain/payments`).
  */
-import { fail, type Supabase } from '../_kit/mod.ts';
+import { ensureServiceActor, fail, type Supabase } from '../_kit/mod.ts';
 import { defaultExpiry, normalizeStripeEvent, PaymentGatewayError, verifyStripeSignature, type PaymentGateway } from '../_domain/payments/stripe.ts';
 
 export interface PaymentLink { id: string; url: string; provider: string; provider_ref: string; amount: number; expires_at: string }
@@ -23,6 +23,10 @@ const FINANCE = 'https://finance.ikisai.com';
 export function createPaymentLinks(supabase: Supabase, gateway: PaymentGateway | null, options: PaymentLinksOptions = {}) {
   const now = options.now ?? Date.now;
   const invoke = <T>(name: string, args: Record<string, unknown>) => supabase.rpc<T>('core_invoke', { p_app: 'invoices', p_actor: null, p_name: name, p_args: args });
+  // «Finance (sistema)» (núcleo 0112): la cuenta con la que `payment_event_apply` marca la factura cobrada. Se registra la
+  // primera vez (core.apply_system_operations la necesita) y se recuerda.
+  let serviceReady: Promise<string> | null = null;
+  const ensureService = () => (serviceReady ??= ensureServiceActor(supabase, 'invoices').catch((error) => { serviceReady = null; throw error; }));
 
   /** El enlace abierto de la factura o uno nuevo. `requestedBy`: quien lo pide (persona de Finance o del portal). */
   async function ensure(issuedInvoiceId: string, requestedBy: string | null, from: 'finance' | 'portal', urls?: { success: string; cancel: string }): Promise<PaymentLink & { reused: boolean }> {
@@ -70,6 +74,7 @@ export function createPaymentLinks(supabase: Supabase, gateway: PaymentGateway |
       return Response.json({ error: { code: error instanceof PaymentGatewayError ? error.code : 'SIGNATURE_INVALID' } }, { status: 400 });
     }
     const e = normalizeStripeEvent(event);
+    await ensureService();
     // Solo lo que es de Finance (los cobros de Booking llevan su propia `app` en metadatos y van a su webhook)
     if (e.metadata.app && e.metadata.app !== 'invoices') return Response.json({ received: true, outcome: 'ignored' });
     const out = await invoke<{ outcome: string }>('invoices.payment_event_apply', {
@@ -85,6 +90,7 @@ export function createPaymentLinks(supabase: Supabase, gateway: PaymentGateway |
    */
   async function reconcile(): Promise<{ checked: number; paid: number; closed: number; errors: number }> {
     if (!gateway) return { checked: 0, paid: 0, closed: 0, errors: 0 };
+    await ensureService();
     const { items } = await invoke<{ items: Array<{ provider: string; provider_ref: string; status: string }> }>('invoices.payment_links_to_check', { limit: 50 });
     let paid = 0; let closed = 0; let errors = 0;
     for (const l of items) {
