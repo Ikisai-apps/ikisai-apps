@@ -157,4 +157,7 @@ test('sábado · la carta de octubre con su previsión de partida no sale vacía
     else assert.ok(t.missing && t.note, `${t.name}: motivo`);
   }
   assert.ok(totals.some((t) => t.convertible && Number(t.prep_need_total) > 0), 'Flow recibe al menos un ingrediente para sus puntos');
+  // El pan se compra por piezas: sin rendimiento no hay aviso (1116).
+  const pan = (await q(`select convertible, yield_missing, note from food.carta_prep_totals_projection where menu_id = $1 and component_key = $2`, [CARTA, PAN]))[0];
+  assert.deepEqual([pan.convertible, pan.yield_missing, pan.note], [true, false, null]);
 });
