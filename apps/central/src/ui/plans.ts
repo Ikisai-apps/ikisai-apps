@@ -18,7 +18,7 @@
  * - **Finca y decoración** (encargo de VG del 27-10; Recursos 0814, kit 0.63):
  *   - el mapa empieza en el dibujo de la finca (si lo hay) y baja a cada edificio con su miga (`drill`); enseña la
  *     decoración general (solo ver) y las cotas de las alturas en sus curvas de nivel;
- *   - al subir un dibujo se elige «Edificio o exterior» o «Finca». De la finca se leen la escala (`data-meters-per-unit`) y
+ *   - al subir un dibujo se elige «Edificio o exterior» o «Finca» (cuelga de un exterior raíz). De la finca se leen la escala (`data-meters-per-unit`) y
  *     dónde va la cota de cada altura: el punto medio de su curva de nivel (`<path data-contour="Altura N">`, convención de
  *     Core con UI-kit). Las bandas no se guardan, porque el SVG ya dibuja las curvas;
  *   - «Colocar» tiene dos pestañas: Estancias (lo de siempre) y **Decoración** (la pieza del kit con `decorEdit`: icono,
@@ -53,7 +53,7 @@ type IconRow = { id: string; revision: number; name: string; category: string; f
 type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; deleted_at?: string | null };
 const WIDE = '(min-width: 900px)';
 /** Lo que no se coloca: lo que contiene estancias (alturas, edificios y exteriores). */
-const CONTAINERS = new Set(['altura', 'edificio', 'exterior', 'finca']);
+const CONTAINERS = new Set(['altura', 'edificio', 'exterior']);
 /** El aviso del SVG con contenido activo (el servidor lo rechaza, #694; aquí no debería llegar, porque se sube limpio). */
 const ACTIVE_SVG = 'El SVG lleva contenido activo. Guárdalo limpio desde tu programa de dibujo.';
 /** Cuántos nombres del SVG sin estancia se dicen; del resto, «+N más». */
@@ -146,7 +146,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   const index = () => indexSpaces(rows);
   const planName = (p: FloorPlan) => [rows.find((s) => s.id === p.buildingId)?.name ?? 'Edificio', p.floor].filter(Boolean).join(' · ');
   const inside = (p: FloorPlan) => {
-    if (isEstate(p)) return rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior'));
+    if (isEstate(p)) return rows.filter((s) => s.active && s.id !== p.buildingId && (s.kind === 'edificio' || s.kind === 'exterior'));
     const idx = index(); return rows.filter((s) => s.active && !CONTAINERS.has(s.kind) && (s.id === p.buildingId || spacePath(idx, s.id).startsWith(`${spacePath(idx, p.buildingId)} › `)));
   };
   const placedOn = (p: FloorPlan) => rows.filter((s) => s.planId === p.id && validShape(s.planShape));
@@ -320,7 +320,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const estateNow = plan ? isEstate(plan) : false;
     const kind = el('select', { id: 'planKind', 'data-field-id': 'central.planos.plan_kind', 'aria-label': 'Tipo de dibujo' },
       el('option', { value: 'building' }, 'Edificio o exterior'), el('option', { value: 'estate' }, 'Finca (el plano de todo el centro)')) as HTMLSelectElement;
-    const buildingsOf = (k: string) => rows.filter((s) => s.active && (k === 'estate' ? s.kind === 'finca' : (s.kind === 'edificio' || s.kind === 'exterior'))).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    // La finca cuelga de un exterior raíz (Recursos 0814); un edificio o exterior, de lo demás.
+    const buildingsOf = (k: string) => rows.filter((s) => s.active && (k === 'estate' ? s.kind === 'exterior' && !s.parentId : (s.kind === 'edificio' || s.kind === 'exterior'))).sort((a, b) => a.name.localeCompare(b.name, 'es'));
     const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'aria-label': 'Edificio' }) as HTMLSelectElement;
     const fillBuildings = () => replace(building, ...buildingsOf(kind.value).map((b) => el('option', { value: b.id }, spacePath(index(), b.id))));
     fillBuildings();
@@ -344,7 +345,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       const blob: Blob = svgText !== null ? new Blob([svgText], { type: 'image/svg+xml' }) : f;
       const size = await imageSize(blob, svgText);
       if (!size) { error.textContent = 'No se ha podido leer el dibujo. Prueba con otro archivo.'; return; }
-      if (!plan && !building.value) { error.textContent = kind.value === 'estate' ? 'Falta el espacio «Finca» en Recursos.' : 'Elige el edificio.'; return; }
+      if (!plan && !building.value) { error.textContent = kind.value === 'estate' ? 'Falta un exterior raíz en Recursos (la finca).' : 'Elige el edificio.'; return; }
       const estate = plan ? estateNow : kind.value === 'estate';
       const meta = svgText !== null ? estateMeta(svgText) : null;
       const typed = Number(scale.value.replace(',', '.'));

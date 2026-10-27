@@ -890,7 +890,7 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
 
 #### Finca y decoración (encargo de VG del 27-10; Recursos 0814, kit 0.63)
 - **El mapa** empieza en el dibujo de la finca, si lo hay, y baja a cada edificio con su miga (`drill`). Enseña la decoración general, solo para ver (también en el móvil), y la cota de cada altura en su curva de nivel. La etiqueta sale de `floor_plans.contours`: la posición la guarda el dibujo; el nombre y los metros, la altura.
-- **Subir** (owner, ordenador): se elige «Edificio o exterior» o «Finca». La finca cuelga del espacio de tipo `finca` y se guarda con `kind: 'estate'`.
+- **Subir** (owner, ordenador): se elige «Edificio o exterior» o «Finca». La finca cuelga de un exterior raíz (sin padre) y se guarda con `kind: 'estate'`.
   - Del SVG se leen la escala (`data-meters-per-unit`, y `data-origin-x`/`-y` si los trae) → `grid`.
   - Se lee también la cota de cada altura: en el punto medio de su curva `<path data-contour="Altura N">` → `contours`.
   - La escala también se puede escribir a mano. En la finca se colocan solos los edificios con `data-name`.
