@@ -1840,7 +1840,6 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - Sin precio, organizador, huéspedes ni ids internos.
   - La sirve guests-api en `GET public/event?code=…`.
 - **URL del QR:** `https://ven.ikisai.com/e/<code>`.
-<<<<<<< HEAD
 - **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El QR lo dibuja `renderQr` del kit (0.60, #773).
 - **Un visitante se apunta (BG18, migración 0489; contrato C11 de Core).**
   - Identidad y escritura:
@@ -1857,8 +1856,4 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
     - Respuestas: sin visitante, 401 `VISITOR_REQUIRED`. Con él, devuelve la petición `{event_code, kind, name, status, created_at}`; si ya tenía una pendiente del mismo tipo, esa.
     - El lote lo firma el visitante y la base exige `core.current_visitor() = visitor_id`.
     - «Lo mío» lo sirve el kit en `GET public/booking_visitor_requests`. CORS, el kit.
-=======
-- **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El QR lo dibuja `renderQr` del kit (0.60, #773).
-- **Pendiente (BG18):** que un visitante se apunte, cuando Core cierre `core.visitors` y su vía de escritura.
->>>>>>> booking/public-code
 
