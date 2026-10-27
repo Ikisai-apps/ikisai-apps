@@ -64,6 +64,7 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
     const status = data.menu?.status;
     const writable = canWrite() && !!navigate;
     const go = (label: string, hash: string, feedbackId: string) => (writable ? { label, onClick: () => navigate!(hash), feedbackId } : null);
+    const withClick = <T extends { onClick: () => void }>(action: T | null, onClick: () => void): T | null => (action ? { ...action, onClick } : null);
     // Compartir (hallazgo F-ORG-3): lleva a la pestaña Menú con «Portal del organizador» abierto y el botón señalado.
     const goShare = async () => {
       navigate!(`#/menus/${menuId}`);
@@ -88,7 +89,7 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
       { tone: 'warn', ok: !noPublic.length, text: 'Nombre y descripción para el organizador (opcional)', detail: noPublic.length ? `sin presentación: ${names(noPublic)}` : null,
         action: noPublic.length ? go('Escribirla en el Recetario', `#/recetario?receta=${noPublic[0]!.id}`, 'food.menu.organizador.comprobar.presentacion') : null },
       { tone: 'warn', ok: data.menu?.organizer_shared === true, text: 'Compartido con el organizador', detail: data.menu?.organizer_shared ? null : 'aún no lo ve en su portal',
-        action: data.menu?.organizer_shared || !writable ? null : { label: 'Compartir en la pestaña Menú', onClick: () => void goShare(), feedbackId: 'food.menu.organizador.comprobar.compartir' } },
+        action: data.menu?.organizer_shared ? null : withClick(go('Compartir en la pestaña Menú', `#/menus/${menuId}`, 'food.menu.organizador.comprobar.compartir'), () => void goShare()) },
     ];
     return tonedChecks(items, { verdict: verdictText(items, 'Lista para enviar'), label: 'Antes de enviar', feedbackId: 'food.menu.organizador.comprobaciones', feedbackLabel: 'Comprobaciones antes de enviar' });
   }
