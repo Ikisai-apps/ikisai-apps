@@ -201,6 +201,21 @@ export function allergyCount(list: DietaryRestriction[] | null | undefined): num
   return (list ?? []).filter((r) => r.type === 'alergia' || r.type === 'intolerancia').reduce((sum, r) => sum + (r.servings && r.servings > 0 ? r.servings : 1), 0);
 }
 
+/**
+ * Las restricciones del grupo en personas, para la fila de Eventos (hallazgo F-EVT-1): «1 con alergia · 2 veganos». Las
+ * alergias y las intolerancias, primero y sumadas por tipo; el resto, por tipo con su plural.
+ */
+export function restrictionSummary(list: DietaryRestriction[] | null | undefined): string {
+  const people = new Map<string, number>();
+  for (const r of sortedRestrictions(list)) people.set(r.type, (people.get(r.type) ?? 0) + (r.servings && r.servings > 0 ? r.servings : 1));
+  return [...people].map(([type, n]) => {
+    if (type === 'alergia') return `${n} con alergia`;
+    if (type === 'intolerancia') return `${n} con intolerancia`;
+    const [one, many] = RESTRICTION_PLURAL[type] ?? [type, type];
+    return `${n} ${n === 1 ? one : many}`;
+  }).join(' · ');
+}
+
 /** Las alergias e intolerancias, primero. */
 export function sortedRestrictions(list: DietaryRestriction[] | null | undefined): DietaryRestriction[] {
   const weight = (r: DietaryRestriction) => (r.type === 'alergia' ? 0 : r.type === 'intolerancia' ? 1 : r.type === 'preferencia' || r.type === 'otra' ? 3 : 2);
