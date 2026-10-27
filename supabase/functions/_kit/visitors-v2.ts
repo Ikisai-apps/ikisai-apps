@@ -18,11 +18,16 @@ export function newVisitorToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** IP del cliente tal como la pasa el proxy (Cloudflare o el nuestro); null si no viene. Solo sirve para el freno. */
+/**
+ * IP del cliente según el proxy: la que pone nuestro proxy (X-Ikisai-Client-Ip), la de Cloudflare, o la ÚLTIMA de X-Forwarded-For (la
+ * añade el proxy más cercano; las primeras las puede escribir el cliente). Null si no hay ninguna. Sirve para frenos y para atar
+ * el traspaso al móvil; nunca para autorizar.
+ */
 export function clientIp(request: Request): string | null {
-  const raw = request.headers.get('x-ikisai-client-ip') ?? request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for');
-  const first = raw?.split(',')[0]?.trim() ?? '';
-  return first && first.length <= 64 ? first : null;
+  const own = request.headers.get('x-ikisai-client-ip') ?? request.headers.get('cf-connecting-ip');
+  const forwarded = request.headers.get('x-forwarded-for')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  const ip = (own ?? forwarded[forwarded.length - 1] ?? '').trim();
+  return ip && ip.length <= 64 ? ip : null;
 }
 
 function cleanEmail(value: unknown): string {
@@ -125,16 +130,20 @@ export async function claimVisitor(supabase: Supabase, request: Request, body: u
 /** D · traspaso entre dominios: código de un solo uso (5 minutos) que el otro dominio canjea por un token propio del mismo visitante. */
 export async function createVisitorHandoff(supabase: Supabase, request: Request): Promise<{ code: string; validUntil: string }> {
   const visitor = await requireVisitor(supabase, request);
+  const ip = clientIp(request);
+  if (!ip) fail(400, 'INVALID_OPERATION', 'No se puede identificar este móvil; el traspaso necesita la IP del proxy.');
   const code = newVisitorToken();
-  const validUntil = await supabase.rpc<string>('core_visitor_handoff_create', { p_visitor: visitor.id, p_code_hash: await sha256Hex(code), p_ip: clientIp(request) });
+  const validUntil = await supabase.rpc<string>('core_visitor_handoff_create', { p_visitor: visitor.id, p_code_hash: await sha256Hex(code), p_ip: ip });
   return { code, validUntil };
 }
 
 export async function redeemVisitorHandoff(supabase: Supabase, request: Request, body: unknown): Promise<{ visitorId: string; token: string }> {
   const code = typeof (body as any)?.code === 'string' ? (body as any).code : '';
   if (!/^[0-9a-f]{64}$/.test(code)) fail(401, 'CODE_INVALID', messageFor('CODE_INVALID'));
-  // Mismo móvil, otro dominio: la IP tiene que coincidir con la que pidió el código (contra la fijación de identidad).
-  const visitorId = await supabase.rpc<string | null>('core_visitor_handoff_redeem', { p_code_hash: await sha256Hex(code), p_ip: clientIp(request) });
+  // Mismo móvil, otro dominio: la IP tiene que coincidir con la que pidió el código (contra la fijación de identidad); sin IP, no hay canje.
+  const ip = clientIp(request);
+  if (!ip) fail(401, 'CODE_INVALID', messageFor('CODE_INVALID'));
+  const visitorId = await supabase.rpc<string | null>('core_visitor_handoff_redeem', { p_code_hash: await sha256Hex(code), p_ip: ip });
   if (!visitorId) fail(401, 'CODE_INVALID', messageFor('CODE_INVALID'));
   const token = newVisitorToken();
   await supabase.rpc('core_visitor_token_add', { p_visitor: visitorId, p_token_hash: await sha256Hex(token) });

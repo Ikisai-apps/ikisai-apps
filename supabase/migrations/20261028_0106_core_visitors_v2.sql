@@ -232,7 +232,7 @@ begin
   for r in select app, procedure from core.visitor_claim_resolvers order by app loop
     perform set_config('core.visitor', p_visitor::text, true);
     begin
-      execute format('select %s($1)', r.procedure) into v_out using jsonb_build_object('request_id', p_request);
+      execute format('select %s($1)', r.procedure) into v_out using jsonb_build_object('request_id', p_request, 'visitor_id', p_visitor);
     exception when others then
       perform set_config('core.visitor', '', true);
       raise;
@@ -314,7 +314,8 @@ begin
   if (select count(*) from core.visitor_handoffs where visitor_id = p_visitor and created_at > now() - interval '1 minute') >= 10 then
     perform core.fail('RATE_LIMITED', 429, jsonb_build_object('reason', 'too many handoffs'));
   end if;
-  insert into core.visitor_handoffs (visitor_id, code_hash, ip) values (p_visitor, p_code_hash, nullif(p_ip, '')) returning expires_at into v_until;
+  if coalesce(p_ip, '') = '' then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'handoff needs the client ip')); end if;
+  insert into core.visitor_handoffs (visitor_id, code_hash, ip) values (p_visitor, p_code_hash, p_ip) returning expires_at into v_until;
   return v_until;
 end $$;
 
@@ -325,7 +326,7 @@ returns uuid language plpgsql as $$
 declare v_visitor uuid;
 begin
   update core.visitor_handoffs set used_at = now()
-   where code_hash = p_code_hash and used_at is null and expires_at > now() and (ip is null or p_ip is null or ip = p_ip)
+   where code_hash = p_code_hash and used_at is null and expires_at > now() and ip is not null and p_ip is not null and ip = p_ip
    returning visitor_id into v_visitor;
   return v_visitor;
 end $$;
@@ -381,3 +382,6 @@ returns void language sql as $$
   delete from core.allowed_procedures where app = p_app and procedure = p_procedure
 $$;
 revoke all on function core.disallow_procedure(text, text) from public, anon, authenticated;
+
+-- Booking resuelve las reclamaciones de sus peticiones aceptadas (booking.visitor_claim llega con la 1401 de Booking).
+select core.allow_visitor_claim('booking', 'booking.visitor_claim');

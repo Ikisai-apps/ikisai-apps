@@ -26,6 +26,8 @@ for (const file of files) {
   const schema = match[3];
   // Un id de capacidad ("invoices.register_purchase_quick") dentro de un JSON no es una referencia a otro schema (catálogo 0097).
   const sql = fs.readFileSync(path.join(DIR, file), 'utf8').replace(/--[^\n]*/g, '').replace(/"(id|capability|capabilityId)"\s*:\s*"[a-z]+\.[a-z0-9_]+"/g, '"$1": ""');
+  // current_setting('core.actor') y compañía son variables de sesión del núcleo, no referencias a otro schema (falso positivo visto en Booking 0493 y Flow 0925).
+  sql = sql.replace(/current_setting\(\s*'core\.[a-z_]+'\s*(,\s*true\s*)?\)/g, 'current_setting()');
   for (const other of SCHEMAS.filter((s) => s !== schema)) {
     const refs = [...sql.matchAll(new RegExp(`\\b${other}\\.([a-z_][a-z0-9_]*)`, 'g'))].map((m) => `${other}.${m[1]}`);
     for (const ref of new Set(refs)) {
