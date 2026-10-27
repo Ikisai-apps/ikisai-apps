@@ -9,7 +9,7 @@
  * - la franja de un enlace de otra app dice de dónde viene.
  */
 import { linkedItem, linksEnabled } from '../app/resources.ts';
-import { closeSheet, el, icon, openSheet, renderGroups as renderWorstGroups, renderList, renderTile, replace, type ListRowSpec } from '@ikisai/ui-kit';
+import { closeSheet, el, fieldAttrs, icon, openSheet, renderGroups as renderWorstGroups, renderList, renderTile, replace, type ListRowSpec } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { purchaseItems, type PurchaseFilters, type PurchaseGroup, type PurchaseItemsResult } from '@ikisai/domain-invoices';
 import { ALLOCATIONS, categoryLabel, type LocalInvoice, type LocalInvoiceLine } from '../app/client.ts';
@@ -47,23 +47,23 @@ export const mountPurchases: ViewMount = (ctx) => {
   let query = '';
   let groupFilter: Partial<PurchaseFilters> = {};
 
-  const rangeKind = el('select', { 'data-feedback-id': 'invoices.compras.periodo.tipo', 'data-feedback-label': 'Tipo de periodo', 'aria-label': 'Tipo de periodo', onchange: () => { setRange(); } }, el('option', { value: 'quarter', selected: true }, 'Trimestre'), el('option', { value: 'month' }, 'Mes'), el('option', { value: 'year' }, 'Año'));
-  const year = el('input', { 'data-feedback-id': 'invoices.compras.periodo.ano', 'data-feedback-label': 'Año', type: 'number', 'aria-label': 'Año', min: '2020', max: '2100', value: String(range.year), style: 'width:5.5em', onchange: () => setRange() });
-  const part = el('select', { 'data-feedback-id': 'invoices.compras.periodo.parte', 'data-feedback-label': 'Periodo', 'aria-label': 'Periodo', onchange: () => setRange() });
-  const validatedToggle = el('label', { class: 'check' }, el('input', { 'data-feedback-id': 'invoices.compras.filtros.solo_validadas', 'data-feedback-label': 'Solo validadas', type: 'checkbox', checked: true, id: 'onlyValidated', onchange: (e: Event) => { validatedOnly = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo validadas'));
-  const search = el('input', { 'data-feedback-id': 'invoices.compras.filtros.buscar', 'data-feedback-label': 'Buscar compras', type: 'search', placeholder: 'Artículo, proveedor, código', 'aria-label': 'Buscar compras', oninput: () => { query = search.value; paint(); } });
+  const rangeKind = el('select', { ...fieldAttrs({ id: 'invoices.compras.periodo.tipo', label: 'Tipo de periodo', type: 'select', sensitivity: 'internal', confirm: 'none' }),'aria-label': 'Tipo de periodo', onchange: () => { setRange(); } }, el('option', { value: 'quarter', selected: true }, 'Trimestre'), el('option', { value: 'month' }, 'Mes'), el('option', { value: 'year' }, 'Año'));
+  const year = el('input', { ...fieldAttrs({ id: 'invoices.compras.periodo.ano', label: 'Año', type: 'number', sensitivity: 'internal', confirm: 'none' }),type: 'number', 'aria-label': 'Año', min: '2020', max: '2100', value: String(range.year), style: 'width:5.5em', onchange: () => setRange() });
+  const part = el('select', { ...fieldAttrs({ id: 'invoices.compras.periodo.parte', label: 'Periodo', type: 'select', sensitivity: 'internal', confirm: 'none' }),'aria-label': 'Periodo', onchange: () => setRange() });
+  const validatedToggle = el('label', { class: 'check' }, el('input', { ...fieldAttrs({ id: 'invoices.compras.filtros.solo_validadas', label: 'Solo validadas', type: 'toggle', sensitivity: 'internal', confirm: 'none' }),type: 'checkbox', checked: true, id: 'onlyValidated', onchange: (e: Event) => { validatedOnly = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo validadas'));
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.compras.filtros.buscar', label: 'Buscar compras', type: 'search', sensitivity: 'internal', confirm: 'none' }),type: 'search', placeholder: 'Artículo, proveedor, código', 'aria-label': 'Buscar compras', oninput: () => { query = search.value; paint(); } });
   // Filtros del handoff: destino (retiro = booking/event, ingrediente = food/ingredient, …), tipo de artículo y «sin asignar».
   let targetFilter = '';
   let itemTypeFilter = '';
   // R4: con el enlace con Recursos encendido, filtro por artículo (de varios proveedores a la vez)
   let itemFilter = '';
-  const itemSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.articulo', 'data-feedback-label': 'Filtrar por artículo', id: 'purchaseItem', 'aria-label': 'Filtrar por artículo', onchange: () => { itemFilter = itemSelect.value; paint(); } });
+  const itemSelect = el('select', { ...fieldAttrs({ id: 'invoices.compras.filtros.articulo', label: 'Filtrar por artículo', type: 'select', sensitivity: 'internal', confirm: 'none' }),id: 'purchaseItem', 'aria-label': 'Filtrar por artículo', onchange: () => { itemFilter = itemSelect.value; paint(); } });
   let unassignedFilter = false;
   const TARGET_OPTIONS: Array<[string, string]> = [['', 'Cualquier destino'], ['booking:event', 'Retiro (evento de Reservas)'], ['booking:reservation', 'Reserva'], ['food:ingredient', 'Ingrediente'], ['food:equipment', 'Maquinaria'], ['tasks:project', 'Proyecto de Tareas'], ['tasks:task', 'Tarea'], ['tasks:area', 'Área de Tareas'], ['general:investment', 'Inversión (general)'], ['general:operating_expense', 'Gasto de explotación (general)']];
-  const targetSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.destino', 'data-feedback-label': 'Filtrar por destino', id: 'purchaseTarget', 'aria-label': 'Filtrar por destino', onchange: () => { targetFilter = targetSelect.value; paint(); } }, ...TARGET_OPTIONS.map(([v, l]) => el('option', { value: v }, l)));
-  const itemTypeSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.tipo_articulo', 'data-feedback-label': 'Filtrar por tipo de artículo', id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
+  const targetSelect = el('select', { ...fieldAttrs({ id: 'invoices.compras.filtros.destino', label: 'Filtrar por destino', type: 'select', sensitivity: 'internal', confirm: 'none' }),id: 'purchaseTarget', 'aria-label': 'Filtrar por destino', onchange: () => { targetFilter = targetSelect.value; paint(); } }, ...TARGET_OPTIONS.map(([v, l]) => el('option', { value: v }, l)));
+  const itemTypeSelect = el('select', { ...fieldAttrs({ id: 'invoices.compras.filtros.tipo_articulo', label: 'Filtrar por tipo de artículo', type: 'select', sensitivity: 'internal', confirm: 'none' }),id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
     el('option', { value: '' }, 'Cualquier artículo'), ...Object.entries(ITEM_TYPE_LABELS).map(([v, l]) => el('option', { value: v }, l)));
-  const unassignedToggle = el('label', { class: 'check' }, el('input', { 'data-feedback-id': 'invoices.compras.filtros.sin_asignar', 'data-feedback-label': 'Solo sin asignar', type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
+  const unassignedToggle = el('label', { class: 'check' }, el('input', { ...fieldAttrs({ id: 'invoices.compras.filtros.sin_asignar', label: 'Solo sin asignar', type: 'toggle', sensitivity: 'internal', confirm: 'none' }),type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
   const pendingCount = el('span', { class: 'count', id: 'pendingCount' }, '0');
   const tabs = el('div', { 'data-feedback-id': 'invoices.compras.vista', 'data-feedback-label': 'Vista', class: 'segmented inv-tabs-scroll', role: 'tablist' }, ...([['pending', 'Por asignar'], ['category', 'Categoría'], ['target', 'Destino'], ['supplier', 'Proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
     el('button', { ...TAB_MARKS[value], type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; linkOrigin = null; paint(); } }, label, value === 'pending' ? [' ', pendingCount] : null)));

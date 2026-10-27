@@ -17,7 +17,7 @@
  *   Manifest, la huella y la otra acción) en «Más»;
  * - sin red, lo que la necesita (preparar y descargar) se apaga con su motivo junto al botón (`bindOnline`).
  */
-import { bindOnline, confirmDialog, closeSheet, el, icon, openSheet, renderList, renderStages, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
+import { bindOnline, confirmDialog, closeSheet, el, fieldAttrs, icon, openSheet, renderList, renderStages, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
 import { INCOME_CATEGORY_LABELS, fiscalSummary, issuedSummary, periodOfDate, type FiscalSummary } from '@ikisai/domain-invoices';
 import { APP_ENTRIES, categoryLabel as categoryName, describeError, type LocalAppEntry, type LocalExport } from '../app/client.ts';
 import { DEDUCTIBILITY_LABELS, TAX_TYPE_LABELS, workingQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, type Mirror, type RangeKind } from '../app/data.ts';
@@ -42,7 +42,7 @@ export const mountAccounting: ViewMount = (ctx) => {
   const isOwner = role === 'owner';
 
   // --- Periodo: un toque -----------------------------------------------------------------------------------------------
-  const year = el('input', { 'data-feedback-id': 'invoices.gestoria.periodo.ano', 'data-feedback-label': 'Año', type: 'number', 'aria-label': 'Año', id: 'periodYear', min: '2020', max: '2100', value: String(range.year), class: 'inv-year', onchange: () => setRange(kindOf(), Number(year.value) || range.year, range.quarter ?? 1) }) as HTMLInputElement;
+  const year = el('input', { ...fieldAttrs({ id: 'invoices.gestoria.periodo.ano', label: 'Año', type: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'number', 'aria-label': 'Año', id: 'periodYear', min: '2020', max: '2100', value: String(range.year), class: 'inv-year', onchange: () => setRange(kindOf(), Number(year.value) || range.year, range.quarter ?? 1) }) as HTMLInputElement;
   const kindOf = (): RangeKind => (range.kind === 'year' ? 'year' : 'quarter');
   const stepYear = (delta: number) => { year.value = String((Number(year.value) || range.year) + delta); setRange(kindOf(), Number(year.value), range.quarter ?? 1); };
   const periods = el('div', { 'data-feedback-id': 'invoices.gestoria.periodo.trimestre', 'data-feedback-label': 'Trimestre o año', class: 'inv-boxes', role: 'group', 'aria-label': 'Periodo', id: 'periodPicker' });
@@ -371,7 +371,7 @@ export const mountAccounting: ViewMount = (ctx) => {
   }
 
   async function markDelivered(e: LocalExport): Promise<void> {
-    const to = el('input', { 'data-feedback-id': 'invoices.gestoria.entregas.como_se_entrego', 'data-feedback-label': 'Cómo se entregó', type: 'text', maxlength: '300', placeholder: 'Correo a la gestoría el 7 de abril' });
+    const to = el('input', { ...fieldAttrs({ id: 'invoices.gestoria.entregas.como_se_entrego', label: 'Cómo se entregó', type: 'text', entity: 'invoices.exports', prop: 'delivered_to', sensitivity: 'internal', confirm: 'none' }), type: 'text', maxlength: '300', placeholder: 'Correo a la gestoría el 7 de abril' });
     const ok = await confirmDialog({ title: `Marcar ${e.code} como entregada`, text: el('label', { class: 'field' }, el('span', null, 'Cómo se entregó'), to), confirmLabel: 'Entregada' });
     if (!ok) return;
     try { await client.commit([{ op: 'call', procedure: 'invoices.mark_delivered', args: { export_id: e.id, expectedRevision: e.revision, delivered_to: to.value.trim() || null } }]); toast('Entrega marcada como entregada.'); } catch (error) { toast(describeError(error)); }

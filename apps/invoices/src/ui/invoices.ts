@@ -3,7 +3,7 @@
  * alta con documento, importación del JSON `ikisai.invoice.v1`, validar, anular, archivar.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, fieldAttrs, icon, openSheet, renderList, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
@@ -236,8 +236,8 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   }
   async function togglePaid(): Promise<void> {
     if (invoice.payment_status === 'pagada') { await payChange({ payment_status: 'pendiente', paid_at: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.', 'Vuelve a estar pagada.'); return; }
-    const date = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.pago.fecha', 'data-feedback-label': 'Fecha de pago', type: 'date', value: invoice.paid_at ?? invoice.invoice_date ?? '', id: 'paidAt' });
-    const method = select('paidMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, PAYMENT_METHOD_LABELS[m] ?? m] as [string, string])], invoice.payment_method, { 'data-feedback-id': 'invoices.facturas.ficha.pago.metodo', 'data-feedback-label': 'Método de pago' });
+    const date = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.pago.fecha', label: 'Fecha de pago', type: 'date', entity: 'invoices.invoices', prop: 'paid_at', sensitivity: 'internal', confirm: 'none' }), type: 'date', value: invoice.paid_at ?? invoice.invoice_date ?? '', id: 'paidAt' });
+    const method = select('paidMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, PAYMENT_METHOD_LABELS[m] ?? m] as [string, string])], invoice.payment_method, { ...fieldAttrs({ id: 'invoices.facturas.ficha.pago.metodo', label: 'Método de pago', type: 'select', entity: 'invoices.invoices', prop: 'payment_method', sensitivity: 'internal', confirm: 'none' }) });
     const ok = await confirmDialog({ title: 'Marcar como pagada', text: el('div', null, field('Fecha de pago', date), field('Método', method)), confirmLabel: 'Marcar pagada' });
     if (!ok) return;
     if (!date.value) { toast('Indica la fecha de pago.'); return; }
@@ -245,7 +245,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   }
 
   async function annul(): Promise<void> {
-    const reason = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.anular.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'annulReason', maxlength: '500', placeholder: 'Duplicada, abono, error…' });
+    const reason = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.anular.motivo', label: 'Motivo', type: 'text', entity: 'invoices.invoices', prop: 'annulled_reason', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'annulReason', maxlength: '500', placeholder: 'Duplicada, abono, error…' });
     const ok = await confirmDialog({ title: `¿Anular ${invoice.code ?? 'esta factura'}?`, text: el('div', null, el('p', null, 'La factura se conserva fuera de los resúmenes y de la gestoría. Sus asignaciones pasan a la papelera.'), field('Motivo', reason)), confirmLabel: 'Anular', danger: true });
     if (!ok) return;
     if (!reason.value.trim()) { toast('Indica el motivo de la anulación.'); return; }
@@ -303,7 +303,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   );
 
   // --- Documento -----------------------------------------------------------
-  const fileInput = el('input', { type: 'file', accept: ACCEPT_ATTR, multiple: true, hidden: true, id: 'addFiles',
+  const fileInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.documento.archivos', label: 'Añadir documento', type: 'file', entity: 'invoices.invoice_files', prop: 'file_id', sensitivity: 'internal', confirm: 'none' }), type: 'file', accept: ACCEPT_ATTR, multiple: true, hidden: true, id: 'addFiles',
     onchange: async () => {
       try {
         const staged = await pickFiles(fileInput, client);
@@ -438,23 +438,23 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   }
 
   // --- Pago y fiscal -------------------------------------------------------
-  const category = select('invCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], invoice.expense_category, { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.categoria', 'data-feedback-label': 'Categoría de gasto', disabled: !editable, onchange: () => void update({ expense_category: category.value || null }) });
-  const investment = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.inversion', 'data-feedback-label': 'Es inversión', type: 'checkbox', id: 'invInvestment', checked: invoice.is_investment, disabled: !editable, onchange: () => void update({ is_investment: investment.checked }) });
-  const deductibility = select('invDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), invoice.deductibility, { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.deducibilidad', 'data-feedback-label': 'Deducibilidad', disabled: !canEdit || invoice.status === 'anulada', onchange: () => void update({ deductibility: deductibility.value as Deductibility }) });
-  const invDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.fecha', 'data-feedback-label': 'Fecha de la factura', type: 'date', id: 'invDate', value: invoice.invoice_date ?? '', disabled: !editable, onchange: () => void update({ invoice_date: invDate.value || null }) });
+  const category = select('invCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], invoice.expense_category, { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.categoria', label: 'Categoría de gasto', type: 'select', entity: 'invoices.invoices', prop: 'expense_category', sensitivity: 'internal', confirm: 'none' }), disabled: !editable, onchange: () => void update({ expense_category: category.value || null }) });
+  const investment = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.inversion', label: 'Es inversión', type: 'toggle', entity: 'invoices.invoices', prop: 'is_investment', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', id: 'invInvestment', checked: invoice.is_investment, disabled: !editable, onchange: () => void update({ is_investment: investment.checked }) });
+  const deductibility = select('invDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), invoice.deductibility, { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.deducibilidad', label: 'Deducibilidad', type: 'select', entity: 'invoices.invoices', prop: 'deductibility', sensitivity: 'internal', confirm: 'none' }), disabled: !canEdit || invoice.status === 'anulada', onchange: () => void update({ deductibility: deductibility.value as Deductibility }) });
+  const invDate = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.fecha', label: 'Fecha de la factura', type: 'date', entity: 'invoices.invoices', prop: 'invoice_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'invDate', value: invoice.invoice_date ?? '', disabled: !editable, onchange: () => void update({ invoice_date: invDate.value || null }) });
   const kind = select('invKind', [['ordinaria', 'Factura ordinaria'], ['rectificativa', 'Rectificativa (abono o devolución)']], invoice.invoice_kind ?? 'ordinaria',
-    { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.tipo', 'data-feedback-label': 'Tipo de factura', disabled: !editable, onchange: () => void update({ invoice_kind: kind.value }) });
+    { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.tipo', label: 'Tipo de factura', type: 'select', entity: 'invoices.invoices', prop: 'invoice_kind', sensitivity: 'internal', confirm: 'none' }), disabled: !editable, onchange: () => void update({ invoice_kind: kind.value }) });
   // 0247 (VG, 27-10): un ticket se registra, pero no es deducible ni va a la gestoría. Validada, ya no vuelve a ser ticket.
   const receiptKind = select('invReceiptKind', [['invoice', 'Factura'], ['ticket', 'Ticket (no deducible, no va a la gestoría)']], invoice.receipt_kind ?? 'invoice',
-    { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.justificante', 'data-feedback-label': 'Factura o ticket', disabled: !editable || ((invoice.receipt_kind ?? 'invoice') === 'invoice' && (invoice.status === 'validada' || invoice.status === 'archivada')),
+    { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.justificante', label: 'Factura o ticket', type: 'select', entity: 'invoices.invoices', prop: 'receipt_kind', sensitivity: 'internal', confirm: 'none' }), disabled: !editable || ((invoice.receipt_kind ?? 'invoice') === 'invoice' && (invoice.status === 'validada' || invoice.status === 'archivada')),
       onchange: () => void update({ receipt_kind: receiptKind.value }) });
-  const rectNumber = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.rectifica_numero', 'data-feedback-label': 'Número de la factura que rectifica', type: 'text', id: 'invRectNumber', maxlength: '64',
+  const rectNumber = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.rectifica_numero', label: 'Número de la factura que rectifica', type: 'text', entity: 'invoices.invoices', prop: 'rectifies_number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'invRectNumber', maxlength: '64',
     value: invoice.rectifies_number ?? '', disabled: !editable, onchange: () => void update({ rectifies_number: rectNumber.value.trim() || null }) });
   const candidates = mirror.invoices.filter((o) => !o.deleted_at && o.status !== 'anulada' && o.id !== invoice.id && o.supplier_id === invoice.supplier_id && (o.invoice_kind ?? 'ordinaria') === 'ordinaria')
     .sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? ''));
   const rectOriginal = select('invRectOriginal', [['', 'Sin enlazar'], ...candidates.map((o) => [o.id, `nº ${o.invoice_number ?? '—'} · ${shortDate(o.invoice_date)} · ${eur(o.calculated_total)}`] as [string, string])], invoice.rectifies_invoice_id ?? '',
-    { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.rectifica_original', 'data-feedback-label': 'Factura original', disabled: !editable, onchange: () => void update({ rectifies_invoice_id: rectOriginal.value || null }) });
-  const withoutOriginal = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.sin_original', 'data-feedback-label': 'No tengo la original', type: 'checkbox', id: 'invWithoutOriginal', checked: !!invoice.rectification_without_original, disabled: !editable,
+    { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.rectifica_original', label: 'Factura original', type: 'select', entity: 'invoices.invoices', prop: 'rectifies_invoice_id', sensitivity: 'internal', confirm: 'none' }), disabled: !editable, onchange: () => void update({ rectifies_invoice_id: rectOriginal.value || null }) });
+  const withoutOriginal = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.sin_original', label: 'No tengo la original', type: 'toggle', entity: 'invoices.invoices', prop: 'rectification_without_original', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', id: 'invWithoutOriginal', checked: !!invoice.rectification_without_original, disabled: !editable,
     onchange: () => void update({ rectification_without_original: withoutOriginal.checked }) });
   const rectFields = invoice.invoice_kind === 'rectificativa' ? el('div', { id: 'rectFields' },
     el('div', { class: 'row2' }, field('Rectifica a la factura nº', rectNumber, 'Tal como lo imprime el proveedor: la app la enlaza sola cuando esté.'), field('Factura original', rectOriginal)),
@@ -468,7 +468,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     for (let i = 0; i < 4; i++) { q += 1; if (q > 4) { q = 1; y += 1; } periodOptions.push([`${y}T${q}`, `${q}T ${y} (atrasada)`]); }
   }
   if (invoice.declared_period && !periodOptions.some(([v]) => v === invoice.declared_period)) periodOptions.push([invoice.declared_period, quarterName(invoice.declared_period)]);
-  const periodSelect = select('invDeclaredPeriod', periodOptions, invoice.declared_period ?? '', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.periodo', 'data-feedback-label': 'Se declara en',
+  const periodSelect = select('invDeclaredPeriod', periodOptions, invoice.declared_period ?? '', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.periodo', label: 'Se declara en', type: 'select', entity: 'invoices.invoices', prop: 'declared_period', sensitivity: 'internal', confirm: 'none' }),
     disabled: !canEdit || ['validada', 'archivada', 'anulada'].includes(invoice.status) && invoice.status !== 'validada', onchange: () => void update({ declared_period: periodSelect.value || null }) });
   const delivered = (date: string) => mirror.exports.some((e) => !e.deleted_at && e.from_date <= date && date <= e.to_date);
   const askLate = canEdit && !invoice.declared_period && !!ownPeriod && ownPeriod < workingPeriod() && invoice.status !== 'anulada' && invoice.status !== 'archivada' && !delivered(invoice.invoice_date!);
@@ -496,10 +496,10 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('button', { 'data-feedback-id': 'invoices.facturas.ficha.deshacer_ya_pasada', 'data-feedback-label': 'Deshacer «ya pasada a la gestoría»', class: 'linkbtn', type: 'button', id: 'undoDeliveredElsewhere',
         onclick: () => void update({ declared_period: null, delivered_elsewhere: false }, 'Vuelve a contar para las entregas.') }, 'Deshacer')));
   }
-  const dueDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.vencimiento', 'data-feedback-label': 'Vencimiento', type: 'date', id: 'invDue', value: invoice.due_date ?? '', disabled: !editable, onchange: () => void update({ due_date: dueDate.value || null }) });
-  const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'invSourceTotal', value: invoice.source_total === null ? '' : String(Number(invoice.source_total)).replace('.', ','), disabled: !editable, placeholder: 'Total impreso en la factura',
+  const dueDate = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.vencimiento', label: 'Vencimiento', type: 'date', entity: 'invoices.invoices', prop: 'due_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'invDue', value: invoice.due_date ?? '', disabled: !editable, onchange: () => void update({ due_date: dueDate.value || null }) });
+  const sourceTotal = el('input', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.total_documento', label: 'Total del documento', type: 'number', entity: 'invoices.invoices', prop: 'source_total', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'invSourceTotal', value: invoice.source_total === null ? '' : String(Number(invoice.source_total)).replace('.', ','), disabled: !editable, placeholder: 'Total impreso en la factura',
     onchange: () => { const v = parseAmount(sourceTotal.value); if (sourceTotal.value.trim() && v === null) { toast('Importe inválido.'); return; } void update({ source_total: v }); } });
-  const notes = el('textarea', { 'data-feedback-ignore': '', id: 'invNotes', rows: '2', disabled: !canEdit }); notes.value = invoice.notes ?? '';
+  const notes = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.ficha.fiscal.notas', label: 'Notas', type: 'text', entity: 'invoices.invoices', prop: 'notes', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'invNotes', rows: '2', disabled: !canEdit }); notes.value = invoice.notes ?? '';
   notes.addEventListener('change', () => void update({ notes: notes.value.trim() || null }));
   // Abierto si falta algo suyo para validar: al volver a pintarse la ficha, lo que falta sigue a la vista.
   const fiscalMissing = missing.some((m) => (withEditor ? m === 'rectified_invoice' || m === 'rectification_sign' : m !== 'original_file' && m !== 'lines_or_taxes'));
@@ -545,7 +545,7 @@ const CLAUDE_MESSAGE = 'Lee las facturas pendientes de Drive en Ikisai Finance y
  * instrucciones; el JSON vuelve compartido o pegado) o una sesión de Claude en el ordenador (el mensaje, listo para copiar).
  */
 function openReadWithAi(ctx: ViewContext, invoice: LocalInvoice, original: LocalInvoiceFile): void {
-  const message = el('textarea', { 'data-feedback-ignore': '', readonly: true, rows: '5', id: 'claudeMessage', style: 'width:100%' });
+  const message = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.leer_ia.mensaje', label: 'Mensaje para Claude', type: 'text', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', readonly: true, rows: '5', id: 'claudeMessage', style: 'width:100%' });
   message.value = CLAUDE_MESSAGE;
   openSheet({
     title: 'Leer con IA',
@@ -627,14 +627,14 @@ function allocationLabel(a: LocalAllocation): string {
 // Formularios de artículo e impuesto
 // ---------------------------------------------------------------------------
 function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalInvoiceLine | null, count: number): HTMLElement {
-  const description = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'lineDescription', required: true, maxlength: '500', value: line?.description ?? '' });
-  const label = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'lineLabel', maxlength: '120', placeholder: 'Opcional: cómo lo llamas tú', value: line?.label ?? '' });
-  const quantity = el('input', { 'data-feedback-id': 'invoices.facturas.articulo.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', id: 'lineQuantity', value: line?.quantity === null || line?.quantity === undefined ? '' : String(Number(line.quantity)) });
-  const unit = el('input', { 'data-feedback-id': 'invoices.facturas.articulo.unidad', 'data-feedback-label': 'Unidad', type: 'text', id: 'lineUnit', maxlength: '16', value: line?.unit ?? '' });
-  const unitPrice = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'lineUnitPrice', value: line?.unit_price === null || line?.unit_price === undefined ? '' : String(Number(line.unit_price)) });
-  const net = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'lineNet', required: true, value: line ? String(Number(line.net_amount)) : '' });
-  const vatRate = select('lineVat', [['', 'Sin IVA'], ['0', '0 %'], ['4', '4 %'], ['10', '10 %'], ['21', '21 %']], line?.vat_rate === null || line?.vat_rate === undefined ? '' : String(Number(line.vat_rate)), { 'data-feedback-id': 'invoices.facturas.articulo.iva', 'data-feedback-label': 'IVA' });
-  const itemType = select('lineType', [['', 'Tipo de artículo'], ...ITEM_TYPES.map((t) => [t, ITEM_TYPE_LABELS[t] ?? t] as [string, string])], line?.item_type, { 'data-feedback-id': 'invoices.facturas.articulo.tipo', 'data-feedback-label': 'Tipo de artículo' });
+  const description = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.descripcion', label: 'Descripción', type: 'text', entity: 'invoices.invoice_lines', prop: 'description', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'lineDescription', required: true, maxlength: '500', value: line?.description ?? '' });
+  const label = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.nombre_propio', label: 'Mi nombre', type: 'text', entity: 'invoices.invoice_lines', prop: 'label', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'lineLabel', maxlength: '120', placeholder: 'Opcional: cómo lo llamas tú', value: line?.label ?? '' });
+  const quantity = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.cantidad', label: 'Cantidad', type: 'number', entity: 'invoices.invoice_lines', prop: 'quantity', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'decimal', id: 'lineQuantity', value: line?.quantity === null || line?.quantity === undefined ? '' : String(Number(line.quantity)) });
+  const unit = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.unidad', label: 'Unidad', type: 'text', entity: 'invoices.invoice_lines', prop: 'unit', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'lineUnit', maxlength: '16', value: line?.unit ?? '' });
+  const unitPrice = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.precio_unitario', label: 'Precio unitario', type: 'number', entity: 'invoices.invoice_lines', prop: 'unit_price', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'lineUnitPrice', value: line?.unit_price === null || line?.unit_price === undefined ? '' : String(Number(line.unit_price)) });
+  const net = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.base', label: 'Base (sin IVA)', type: 'number', entity: 'invoices.invoice_lines', prop: 'net_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'lineNet', required: true, value: line ? String(Number(line.net_amount)) : '' });
+  const vatRate = select('lineVat', [['', 'Sin IVA'], ['0', '0 %'], ['4', '4 %'], ['10', '10 %'], ['21', '21 %']], line?.vat_rate === null || line?.vat_rate === undefined ? '' : String(Number(line.vat_rate)), { ...fieldAttrs({ id: 'invoices.facturas.articulo.iva', label: 'IVA', type: 'select', entity: 'invoices.invoice_lines', prop: 'vat_rate', sensitivity: 'internal', confirm: 'none' }) });
+  const itemType = select('lineType', [['', 'Tipo de artículo'], ...ITEM_TYPES.map((t) => [t, ITEM_TYPE_LABELS[t] ?? t] as [string, string])], line?.item_type, { ...fieldAttrs({ id: 'invoices.facturas.articulo.tipo', label: 'Tipo de artículo', type: 'select', entity: 'invoices.invoice_lines', prop: 'item_type', sensitivity: 'internal', confirm: 'none' }) });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const autoNet = () => { const q = parseAmount(quantity.value); const p = parseAmount(unitPrice.value); if (q !== null && p !== null && !net.value.trim()) net.value = String(Math.round(q * p * 100) / 100); };
   quantity.addEventListener('input', autoNet); unitPrice.addEventListener('input', autoNet);
@@ -719,7 +719,7 @@ function stockText(l: LocalInvoiceLine): string {
 }
 
 function labelForm(client: SyncClient, line: LocalInvoiceLine, done: () => void): HTMLElement {
-  const input = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'labelInput', maxlength: '120', value: line.label ?? '', placeholder: line.description, 'aria-label': 'Mi nombre' });
+  const input = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.mi_nombre.texto', label: 'Mi nombre', type: 'text', entity: 'invoices.invoice_lines', prop: 'label', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'labelInput', maxlength: '120', value: line.label ?? '', placeholder: line.description, 'aria-label': 'Mi nombre' });
   const form = el('form', { 'data-feedback-id': 'invoices.facturas.articulo.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'inv-form', novalidate: true, onsubmit: async (e: Event) => {
     e.preventDefault();
     const value = input.value.trim() || null;
@@ -735,10 +735,10 @@ function labelForm(client: SyncClient, line: LocalInvoiceLine, done: () => void)
 }
 
 function renderTaxForm(client: SyncClient, invoice: LocalInvoice, tax: LocalTaxLine | null, count: number): HTMLElement {
-  const type = select('taxType', TAX_TYPES.map((t) => [t, TAX_TYPE_LABELS[t] ?? t] as [string, string]), tax?.tax_type ?? 'iva', { 'data-feedback-id': 'invoices.facturas.impuesto.tipo', 'data-feedback-label': 'Tipo de impuesto' });
-  const rate = el('input', { 'data-feedback-id': 'invoices.facturas.impuesto.tasa', 'data-feedback-label': 'Tasa', type: 'text', inputmode: 'decimal', id: 'taxRate', value: tax?.rate === null || tax?.rate === undefined ? '' : String(Number(tax.rate)) });
-  const base = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'taxBase', value: tax?.taxable_base === null || tax?.taxable_base === undefined ? '' : String(Number(tax.taxable_base)) });
-  const amount = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'taxAmount', required: true, value: tax ? String(Number(tax.amount)) : '' });
+  const type = select('taxType', TAX_TYPES.map((t) => [t, TAX_TYPE_LABELS[t] ?? t] as [string, string]), tax?.tax_type ?? 'iva', { ...fieldAttrs({ id: 'invoices.facturas.impuesto.tipo', label: 'Tipo de impuesto', type: 'select', entity: 'invoices.tax_lines', prop: 'tax_type', sensitivity: 'internal', confirm: 'none' }) });
+  const rate = el('input', { ...fieldAttrs({ id: 'invoices.facturas.impuesto.tasa', label: 'Tasa', type: 'number', entity: 'invoices.tax_lines', prop: 'rate', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'decimal', id: 'taxRate', value: tax?.rate === null || tax?.rate === undefined ? '' : String(Number(tax.rate)) });
+  const base = el('input', { ...fieldAttrs({ id: 'invoices.facturas.impuesto.base', label: 'Base', type: 'number', entity: 'invoices.tax_lines', prop: 'taxable_base', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'taxBase', value: tax?.taxable_base === null || tax?.taxable_base === undefined ? '' : String(Number(tax.taxable_base)) });
+  const amount = el('input', { ...fieldAttrs({ id: 'invoices.facturas.impuesto.importe', label: 'Importe', type: 'number', entity: 'invoices.tax_lines', prop: 'amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'taxAmount', required: true, value: tax ? String(Number(tax.amount)) : '' });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const auto = () => { const b = parseAmount(base.value); const r = parseAmount(rate.value); if (b !== null && r !== null && !amount.value.trim()) amount.value = String(Math.round(b * r) / 100); };
   base.addEventListener('input', auto); rate.addEventListener('input', auto);
@@ -773,15 +773,15 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const { client } = ctx;
   const suppliers = supplierOptions(mirror.suppliers);
   // Incidencia de la aceptación (V1): el proveedor se crea aquí mismo, sin ir a Inicio › Proveedores.
-  const supplier = select('newSupplier', [['', 'Elige proveedor'], ...suppliers, [NEW_SUPPLIER, '+ Nuevo proveedor…']], suppliers.length ? null : NEW_SUPPLIER, { 'data-feedback-ignore': '' });
-  const supplierName = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'newSupplierName', maxlength: '160', placeholder: 'Nombre del proveedor', autocomplete: 'organization' });
-  const supplierTaxId = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'newSupplierTaxId', maxlength: '32', placeholder: 'Opcional', autocapitalize: 'characters' });
+  const supplier = select('newSupplier', [['', 'Elige proveedor'], ...suppliers, [NEW_SUPPLIER, '+ Nuevo proveedor…']], suppliers.length ? null : NEW_SUPPLIER, { ...fieldAttrs({ id: 'invoices.facturas.nueva.proveedor', label: 'Proveedor', type: 'select', entity: 'invoices.invoices', prop: 'supplier_id', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '' });
+  const supplierName = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.proveedor_nombre', label: 'Nombre del proveedor', type: 'text', entity: 'invoices.suppliers', prop: 'name', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'newSupplierName', maxlength: '160', placeholder: 'Nombre del proveedor', autocomplete: 'organization' });
+  const supplierTaxId = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.proveedor_nif', label: 'NIF', type: 'text', entity: 'invoices.suppliers', prop: 'tax_id', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'newSupplierTaxId', maxlength: '32', placeholder: 'Opcional', autocapitalize: 'characters' });
   const supplierFields = el('div', { class: 'row2 new-supplier', id: 'newSupplierFields' }, field('Nombre del proveedor', supplierName), field('NIF', supplierTaxId));
   const syncSupplierFields = () => { supplierFields.hidden = supplier.value !== NEW_SUPPLIER; };
   supplier.addEventListener('change', () => { syncSupplierFields(); if (supplier.value === NEW_SUPPLIER) supplierName.focus(); });
   syncSupplierFields();
-  const date = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.fecha', 'data-feedback-label': 'Fecha', type: 'date', id: 'newDate' });
-  const object = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.objeto', 'data-feedback-label': 'Objeto', type: 'text', id: 'newObject', maxlength: '120', placeholder: 'Opcional: alimentos retiro yoga' });
+  const date = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.fecha', label: 'Fecha', type: 'date', entity: 'invoices.invoices', prop: 'invoice_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'newDate' });
+  const object = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.objeto', label: 'Objeto', type: 'text', entity: 'invoices.invoices', prop: 'object', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'newObject', maxlength: '120', placeholder: 'Opcional: alimentos retiro yoga' });
   // FB_2026_026: artículos opcionales al crear la factura a mano (descripción, base sin IVA y tipo).
   type ArticleRow = { description: HTMLInputElement; amount: HTMLInputElement; rate: HTMLSelectElement };
   const articles: ArticleRow[] = [];
@@ -789,18 +789,18 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const addArticle = () => {
     const n = articles.length + 1;
     const row: ArticleRow = {
-      description: el('input', { 'data-feedback-ignore': '', type: 'text', maxlength: '500', placeholder: 'Artículo', 'aria-label': `Artículo ${n}` }),
-      amount: el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base del artículo ${n}` }),
-      rate: select('', [['21', 'IVA 21 %'], ['10', 'IVA 10 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']], '21', { 'data-feedback-ignore': '', 'aria-label': `IVA del artículo ${n}` }),
+      description: el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.articulo', label: 'Artículo', type: 'text', entity: 'invoices.invoice_lines', prop: 'description', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', maxlength: '500', placeholder: 'Artículo', 'aria-label': `Artículo ${n}` }),
+      amount: el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.articulo_base', label: 'Base', type: 'number', entity: 'invoices.invoice_lines', prop: 'net_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base del artículo ${n}` }),
+      rate: select('', [['21', 'IVA 21 %'], ['10', 'IVA 10 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']], '21', { ...fieldAttrs({ id: 'invoices.facturas.nueva.articulo_iva', label: 'IVA del artículo', type: 'select', entity: 'invoices.invoice_lines', prop: 'vat_rate', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', 'aria-label': `IVA del artículo ${n}` }),
     };
     articles.push(row);
     articlesHost.appendChild(el('div', { class: 'row3 manual-row' }, row.description, row.amount, row.rate));
     row.description.focus();
   };
   const addArticleButton = el('button', { 'data-feedback-id': 'invoices.facturas.nueva.anadir_articulo', 'data-feedback-label': '+ Añadir artículo', class: 'linkbtn', type: 'button', id: 'newAddArticle', onclick: addArticle }, '+ Añadir artículo');
-  const number = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.numero', 'data-feedback-label': 'Número de factura', type: 'text', id: 'newNumber', maxlength: '64', placeholder: 'Opcional' });
-  const total = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'newTotal', placeholder: 'Opcional, con IVA' });
-  const files = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.documentos', 'data-feedback-label': 'PDF o fotos', type: 'file', id: 'newFiles', accept: ACCEPT_ATTR, multiple: true });
+  const number = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.numero', label: 'Número de factura', type: 'text', entity: 'invoices.invoices', prop: 'invoice_number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'newNumber', maxlength: '64', placeholder: 'Opcional' });
+  const total = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.total', label: 'Total del documento', type: 'number', entity: 'invoices.invoices', prop: 'source_total', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'newTotal', placeholder: 'Opcional, con IVA' });
+  const files = el('input', { ...fieldAttrs({ id: 'invoices.facturas.nueva.documentos', label: 'PDF o fotos', type: 'file', entity: 'invoices.invoice_files', prop: 'file_id', sensitivity: 'internal', confirm: 'none' }), type: 'file', id: 'newFiles', accept: ACCEPT_ATTR, multiple: true });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const save = el('button', { 'data-feedback-id': 'invoices.facturas.nueva.crear', 'data-feedback-label': 'Crear factura', class: 'primary', type: 'submit', id: 'saveInvoice', form: 'newInvoiceForm' }, 'Crear factura');
   // Incidencia de la aceptación (V1): en cuanto hay documento, el camino manual con ChatGPT a la vista, siempre
@@ -1129,10 +1129,10 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   const { client } = ctx;
   let document: ImportDocument | null = null;
   let errors: SchemaError[] = [];
-  const textarea = el('textarea', { 'data-feedback-ignore': '', id: 'importJson', rows: '6', placeholder: 'Pega aquí el resultado de ChatGPT (el JSON o la respuesta entera)…', spellcheck: 'false' });
-  const jsonFile = el('input', { 'data-feedback-id': 'invoices.facturas.importar.archivo', 'data-feedback-label': 'Cargar archivo', type: 'file', accept: 'application/json,.json,text/plain,.txt', id: 'importFile' });
+  const textarea = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.importar.json', label: 'JSON', type: 'text', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'importJson', rows: '6', placeholder: 'Pega aquí el resultado de ChatGPT (el JSON o la respuesta entera)…', spellcheck: 'false' });
+  const jsonFile = el('input', { ...fieldAttrs({ id: 'invoices.facturas.importar.archivo', label: 'Cargar archivo', type: 'file', sensitivity: 'internal', confirm: 'none' }), type: 'file', accept: 'application/json,.json,text/plain,.txt', id: 'importFile' });
   const sourceNote = el('div', { id: 'sourceCheck' });
-  const docs = el('input', { 'data-feedback-id': 'invoices.facturas.importar.documentos', 'data-feedback-label': 'Documentos', type: 'file', accept: ACCEPT_ATTR, multiple: true, id: 'importDocs' });
+  const docs = el('input', { ...fieldAttrs({ id: 'invoices.facturas.importar.documentos', label: 'Documentos', type: 'file', sensitivity: 'internal', confirm: 'none' }), type: 'file', accept: ACCEPT_ATTR, multiple: true, id: 'importDocs' });
   if (options.files?.length) {
     const transfer = new DataTransfer();
     for (const file of options.files) transfer.items.add(file);
@@ -1187,27 +1187,27 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
       ...(chosenDefault ? [] : [['__new__', `Crear proveedor «${doc.invoice.supplier_name}»`] as [string, string]]),
       ...supplierOptions(mirror.suppliers).map(([id, name]) => { const m = matches.find((x) => x.supplier.id === id); return [id, m ? `${name} · coincide por ${m.by === 'tax_id' ? 'NIF' : m.by === 'alias' ? 'alias' : 'nombre'}` : name] as [string, string]; }),
       ...(chosenDefault ? [['__new__', `Crear proveedor «${doc.invoice.supplier_name}»`] as [string, string]] : []),
-    ], chosenDefault?.id ?? '__new__', { 'data-feedback-ignore': '' });
+    ], chosenDefault?.id ?? '__new__', { ...fieldAttrs({ id: 'invoices.facturas.importar.proveedor', label: 'Proveedor', type: 'select', entity: 'invoices.invoices', prop: 'supplier_id', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '' });
     const supplierFor = () => (supplierSelect && supplierSelect.value !== '__new__' ? mirror.supplierById.get(supplierSelect.value) ?? null : null);
     const proposal = () => proposeImport(doc, supplierFor(), {
       object: objectInput?.value || null, invoice_date: dateInput?.value || null,
       expense_category: (categorySelect?.value || null) as never, is_investment: investmentInput ? investmentInput.checked : null, deductibility: (deductibilitySelect?.value || null) as Deductibility | null,
     });
     const first = proposeImport(doc, supplierFor());
-    objectInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.objeto', 'data-feedback-label': 'Objeto', type: 'text', id: 'importObject', value: target?.object ?? first.object, maxlength: '120' });
+    objectInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.importar.objeto', label: 'Objeto', type: 'text', entity: 'invoices.invoices', prop: 'object', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'importObject', value: target?.object ?? first.object, maxlength: '120' });
     // Fecha (decisión de Core, ronda 35): si la escrita al subir no coincide con la del documento, se marca y se ofrece
     // la del documento; se preselecciona solo si la escrita era la de hoy por defecto.
     // El día de creación en hora local (el «hoy» que vio el usuario al subirla), no en UTC.
     const createdOn = target?.created_at ? new Date(target.created_at).toLocaleDateString('sv-SE') : null;
     const dateChoice = importDateChoice(target?.invoice_date, createdOn, doc.invoice.invoice_date);
-    dateInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.fecha', 'data-feedback-label': 'Fecha', type: 'date', id: 'importDate', value: target ? dateChoice.value : first.invoice_date });
-    categorySelect = select('importCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], target?.expense_category ?? first.expense_category, { 'data-feedback-id': 'invoices.facturas.importar.categoria', 'data-feedback-label': 'Categoría' });
-    investmentInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.inversion', 'data-feedback-label': 'Es inversión', type: 'checkbox', id: 'importInvestment', checked: target?.is_investment ?? first.is_investment });
+    dateInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.importar.fecha', label: 'Fecha', type: 'date', entity: 'invoices.invoices', prop: 'invoice_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'importDate', value: target ? dateChoice.value : first.invoice_date });
+    categorySelect = select('importCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], target?.expense_category ?? first.expense_category, { ...fieldAttrs({ id: 'invoices.facturas.importar.categoria', label: 'Categoría', type: 'select', entity: 'invoices.invoices', prop: 'expense_category', sensitivity: 'internal', confirm: 'none' }) });
+    investmentInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.importar.inversion', label: 'Es inversión', type: 'toggle', entity: 'invoices.invoices', prop: 'is_investment', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', id: 'importInvestment', checked: target?.is_investment ?? first.is_investment });
     // Rectificativa (0227): detectada al leer el PDF o por el documento (nota o total negativo); el usuario la confirma.
     const detected = prefill?.rectification ?? detectRectification({ document: doc });
-    kindSelect = select('importKind', [['ordinaria', 'Factura ordinaria'], ['rectificativa', 'Rectificativa (abono o devolución)']], detected.isRectification ? 'rectificativa' : 'ordinaria', { 'data-feedback-id': 'invoices.facturas.importar.tipo', 'data-feedback-label': 'Tipo de factura' });
-    rectNumberInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.rectifica', 'data-feedback-label': 'Rectifica a la factura nº', type: 'text', id: 'importRectNumber', maxlength: '64', value: detected.number ?? '' });
-    deductibilitySelect = select('importDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), first.deductibility, { 'data-feedback-id': 'invoices.facturas.importar.deducibilidad', 'data-feedback-label': 'Deducibilidad' });
+    kindSelect = select('importKind', [['ordinaria', 'Factura ordinaria'], ['rectificativa', 'Rectificativa (abono o devolución)']], detected.isRectification ? 'rectificativa' : 'ordinaria', { ...fieldAttrs({ id: 'invoices.facturas.importar.tipo', label: 'Tipo de factura', type: 'select', entity: 'invoices.invoices', prop: 'invoice_kind', sensitivity: 'internal', confirm: 'none' }) });
+    rectNumberInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.importar.rectifica', label: 'Rectifica a la factura nº', type: 'text', entity: 'invoices.invoices', prop: 'rectifies_number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'importRectNumber', maxlength: '64', value: detected.number ?? '' });
+    deductibilitySelect = select('importDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), first.deductibility, { ...fieldAttrs({ id: 'invoices.facturas.importar.deducibilidad', label: 'Deducibilidad', type: 'select', entity: 'invoices.invoices', prop: 'deductibility', sensitivity: 'internal', confirm: 'none' }) });
     const recalc = recalculate(doc.lines.map((l) => ({ quantity: l.quantity ?? null, unit_price: l.unit_price ?? null, discount_amount: l.discount_amount ?? 0, net_amount: l.net_amount, vat_rate: l.vat_rate ?? null, vat_amount: l.vat_amount ?? null })), doc.taxes.map((t) => ({ tax_type: t.tax_type, rate: t.rate ?? null, taxable_base: t.taxable_base ?? null, amount: t.amount })), doc.document_totals);
     const duplicate = mirror.invoices.find((i) => !i.deleted_at && i.status !== 'anulada' && i.id !== target?.id && supplierFor() && i.supplier_id === supplierFor()!.id && doc.invoice.invoice_number && (i.invoice_number ?? '').toLowerCase() === doc.invoice.invoice_number.toLowerCase());
     const row = (label: string, calc: number, declared: number) => el('tr', { class: Math.abs(toCents(calc) - toCents(declared)) > 2 ? 'bad' : '' }, el('td', null, label), el('td', { class: 'num' }, eur(calc)), el('td', { class: 'num' }, eur(declared)), el('td', { class: 'num' }, eur(fromCents(toCents(declared) - toCents(calc)))));
@@ -1355,7 +1355,7 @@ async function copyPrompt(promptText: HTMLTextAreaElement): Promise<void> {
 }
 
 function promptTextArea(): HTMLTextAreaElement {
-  const promptText = el('textarea', { class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de extracción' });
+  const promptText = el('textarea', { ...fieldAttrs({ id: 'invoices.facturas.prompt.texto', label: 'Prompt de extracción', type: 'text', sensitivity: 'internal', confirm: 'none' }), class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de extracción' });
   promptText.value = EXTRACTION_PROMPT;
   return promptText;
 }
@@ -1426,12 +1426,12 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
   const appButtons = el('div', { class: 'segmented', role: 'tablist' },
     ...[['general', 'General'], ['tasks', 'Tareas'], ['food', 'Cocina'], ['booking', 'Reservas']].map(([value, label]) => el('button', { ...ALLOC_APP_MARKS[value!], type: 'button', class: value === app ? 'on' : '', dataset: { app: value! }, onclick: () => { app = value!; choice = null; paintApp(); } }, label)),
   );
-  const kindSelect = select('allocKind', kindsFor('general').map((k) => [k, KIND_LABELS[k] ?? k] as [string, string]), 'operating_expense', { 'data-feedback-id': 'invoices.facturas.asignar.tipo', 'data-feedback-label': 'Tipo' });
-  const searchInput = el('input', { 'data-feedback-id': 'invoices.facturas.asignar.buscar', 'data-feedback-label': 'Buscar destino', type: 'search', id: 'targetSearch', placeholder: 'Buscar destino…', autocomplete: 'off' });
+  const kindSelect = select('allocKind', kindsFor('general').map((k) => [k, KIND_LABELS[k] ?? k] as [string, string]), 'operating_expense', { ...fieldAttrs({ id: 'invoices.facturas.asignar.tipo', label: 'Tipo', type: 'select', entity: 'invoices.allocations', prop: 'target_kind', sensitivity: 'internal', confirm: 'none' }) });
+  const searchInput = el('input', { ...fieldAttrs({ id: 'invoices.facturas.asignar.buscar', label: 'Buscar destino', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'targetSearch', placeholder: 'Buscar destino…', autocomplete: 'off' });
   const results = el('div', { id: 'targetResults' });
   const chosen = el('p', { class: 'hint', id: 'chosenTarget' });
-  const amount = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'allocAmount', value: String(rest).replace('.', ',') });
-  const quantity = el('input', { 'data-feedback-id': 'invoices.facturas.asignar.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', id: 'allocQuantity', placeholder: line.quantity === null ? 'Sin cantidad' : `de ${Number(line.quantity)} ${line.unit ?? ''}` });
+  const amount = el('input', { ...fieldAttrs({ id: 'invoices.facturas.asignar.importe', label: 'Importe (base, sin IVA)', type: 'number', entity: 'invoices.allocations', prop: 'allocated_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'allocAmount', value: String(rest).replace('.', ',') });
+  const quantity = el('input', { ...fieldAttrs({ id: 'invoices.facturas.asignar.cantidad', label: 'Cantidad', type: 'number', entity: 'invoices.allocations', prop: 'allocated_quantity', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'decimal', id: 'allocQuantity', placeholder: line.quantity === null ? 'Sin cantidad' : `de ${Number(line.quantity)} ${line.unit ?? ''}` });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const appArea = el('div');
   // La solicitud de compra abierta del mismo proveedor, si hay una sola (con red): se propone, no se elige sola.

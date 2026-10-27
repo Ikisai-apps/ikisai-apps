@@ -8,7 +8,7 @@
  * - en cada factura, el recorrido mini con su frase, las dos etiquetas más graves y «+n», y «Confirmar pago» con «Deshacer»;
  * - se ven 8 proveedores y 3 facturas de cada uno; la búsqueda mira todas.
  */
-import { closeSheet, el, icon, listRow, renderGroups, renderStages, replace, toast } from '@ikisai/ui-kit';
+import { closeSheet, el, fieldAttrs, icon, listRow, renderGroups, renderStages, replace, toast } from '@ikisai/ui-kit';
 import { INVOICES, type LocalInvoice } from '../app/client.ts';
 import { eur, loadMirror, onAnyTable, shortDate, supplierName, todayIso, type Mirror } from '../app/data.ts';
 import { extractionQueue } from '../app/extract.ts';
@@ -47,7 +47,7 @@ export const mountInvoices: ViewMount = (ctx) => {
   const expanded = new Set<string>();
   let opened: string | null = null;
 
-  const search = el('input', { 'data-feedback-id': 'invoices.facturas.buscar', 'data-feedback-label': 'Buscar facturas', type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.facturas.buscar', label: 'Buscar facturas', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   // Buzones (mismo id que el desplegable de antes): cada uno con su número y su importe; «Más» abre los demás.
   const boxes = el('div', { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Buzones', class: 'inv-boxes', role: 'group', 'aria-label': 'Buzones de facturas', id: 'invoiceFilter' });

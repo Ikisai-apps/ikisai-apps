@@ -8,7 +8,7 @@
  * Lo que viene de la otra app no se edita aquí: si estaba mal, lo corrige la app de origen con otro envío.
  * Solo piezas del kit; el lector ve todo sin botones de escritura.
  */
-import { bindOnline, closeSheet, createPrintView, el, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
+import { bindOnline, closeSheet, createPrintView, el, fieldAttrs, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
 import { APP_ENTRIES, ISSUED_ALLOCATIONS, ISSUED_INVOICES, describeError, type LocalAppEntry } from '../app/client.ts';
 import { eur, loadMirror, monthLabel, onAnyTable, shortDate } from '../app/data.ts';
 import { appName, entriesTotals, eventResults, isFiscal, knownEventIds, liveEntries, type EventReservation, type EventResult, type EventSources } from '../app/app-entries-state.ts';
@@ -72,12 +72,12 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
   const { client, navigate } = ctx;
   const canEdit = (client.bootstrap()?.membership.role ?? 'reader') !== 'reader';
   const event = entry.event_id ? data.events.find((r) => r.eventId === entry.event_id) : undefined;
-  const notes = el('textarea', { id: 'appEntryNotes', rows: '3', maxlength: '2000' }, entry.notes ?? '') as HTMLTextAreaElement;
+  const notes = el('textarea', { ...fieldAttrs({ id: 'invoices.apuntes.ficha.notas', label: 'Notas', type: 'text', entity: 'invoices.app_entries', prop: 'notes', sensitivity: 'internal', confirm: 'none' }), id: 'appEntryNotes', rows: '3', maxlength: '2000' }, entry.notes ?? '') as HTMLTextAreaElement;
   // Justificante (0245): con él, un apunte de proceso pasa a fiscal y va a la gestoría (el único sentido permitido)
-  const receiptFile = el('input', { type: 'file', id: 'appEntryReceiptFile', accept: ACCEPT_ATTR }) as HTMLInputElement;
-  const receiptNumber = el('input', { type: 'text', id: 'appEntryReceiptNumber', maxlength: '64', value: entry.receipt_number ?? '', placeholder: 'Número de la factura o del ticket' }) as HTMLInputElement;
+  const receiptFile = el('input', { ...fieldAttrs({ id: 'invoices.apuntes.ficha.justificante_archivo', label: 'Foto o PDF', type: 'file', entity: 'invoices.app_entries', prop: 'receipt_file_id', sensitivity: 'internal', confirm: 'none' }), type: 'file', id: 'appEntryReceiptFile', accept: ACCEPT_ATTR }) as HTMLInputElement;
+  const receiptNumber = el('input', { ...fieldAttrs({ id: 'invoices.apuntes.ficha.numero_justificante', label: 'Número de la factura o del ticket', type: 'text', entity: 'invoices.app_entries', prop: 'receipt_number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'appEntryReceiptNumber', maxlength: '64', value: entry.receipt_number ?? '', placeholder: 'Número de la factura o del ticket' }) as HTMLInputElement;
   // 0247: factura o ticket. Un gasto con ticket se registra, pero no es deducible ni va a la gestoría.
-  const receiptKind = el('select', { id: 'appEntryReceiptKind', 'data-feedback-id': 'invoices.apuntes.ficha.tipo_justificante', 'data-feedback-label': 'Factura o ticket' },
+  const receiptKind = el('select', { ...fieldAttrs({ id: 'invoices.apuntes.ficha.tipo_justificante', label: 'Factura o ticket', type: 'select', entity: 'invoices.app_entries', prop: 'receipt_kind', sensitivity: 'internal', confirm: 'none' }), id: 'appEntryReceiptKind' },
     el('option', { value: 'invoice', selected: (entry.receipt_kind ?? 'invoice') === 'invoice' }, 'Factura'),
     el('option', { value: 'ticket', selected: entry.receipt_kind === 'ticket', disabled: entry.receipt_kind === 'invoice' }, 'Ticket')) as HTMLSelectElement;
   const linkButton = canEdit ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.enlazar_evento', 'data-feedback-label': 'Enlazar con un evento', class: 'ghost', type: 'button', id: 'appEntryLinkEvent',
@@ -248,7 +248,7 @@ async function save(client: SyncClient, entry: LocalAppEntry, fields: Record<str
 function openEventPicker(ctx: ViewContext, entry: LocalAppEntry, reload: () => void): void {
   const { client } = ctx;
   const results = el('ul', { class: 'plain', id: 'appEntryEvents', 'data-feedback-ignore': '' });
-  const input = el('input', { type: 'search', id: 'appEntryEventSearch', placeholder: 'Buscar el evento', 'aria-label': 'Buscar el evento' }) as HTMLInputElement;
+  const input = el('input', { ...fieldAttrs({ id: 'invoices.apuntes.evento.buscar', label: 'Buscar el evento', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'appEntryEventSearch', placeholder: 'Buscar el evento', 'aria-label': 'Buscar el evento' }) as HTMLInputElement;
   let seq = 0;
   const search = async () => {
     const mine = ++seq;
