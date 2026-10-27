@@ -263,7 +263,9 @@ export async function myStay(code: string): Promise<VisitorStay | null> {
   if (!visitorToken()) return null;
   const out = await withVisitor(code, () => call<Record<string, unknown> | null>(`/api/v1/public/booking_visitor_stay?event_code=${encodeURIComponent(code.toUpperCase())}`));
   if (!out || typeof out.id !== 'string') return null;
-  const bed = out.bed && typeof out.bed === 'object' ? out.bed as { room?: unknown; label?: unknown } : null;
+  // `bed` (la primera) o, si no viene, la primera de `beds`.
+  const first = out.bed ?? (Array.isArray(out.beds) ? out.beds[0] : null);
+  const bed = first && typeof first === 'object' ? first as { room?: unknown; label?: unknown } : null;
   return {
     // `stay_status` (Booking): por_pagar · caducada · pagada · alojado · salida · descartada.
     id: out.id, number: out.number == null ? null : String(out.number), status: String(out.stay_status ?? out.status ?? ''),
