@@ -124,10 +124,9 @@ test('personas · enlazar una cuenta lo impone también la base: un editor con �
     p_operations: [{ op: 'update', table: PEOPLE, id: personId, expectedRevision: { 'sql-link-4': 2, 'sql-link-5': 3, 'sql-link-4b': 4 }[sql], fields: { user_id: sql === 'sql-link-5' ? null : app.users.reader } }] });
   await owner('sql-link-4');
   await owner('sql-link-5');
-  // Borrar y restaurar una persona enlazada no cambia la cuenta: el editor puede.
+  // Borrar o restaurar una persona enlazada cambia lo que puede su cuenta (nivel de casa, C1 del 27-10): solo el owner.
   await owner('sql-link-4b');
-  await call([{ op: 'delete', table: PEOPLE, id: personId, expectedRevision: 5 }], 'sql-link-6');
-  await call([{ op: 'restore', table: PEOPLE, id: personId, expectedRevision: 6 }], 'sql-link-7');
+  await assert.rejects(call([{ op: 'delete', table: PEOPLE, id: personId, expectedRevision: 5 }], 'sql-link-6'), (error: any) => error.code === 'FORBIDDEN');
 });
 
 test('archivos · un registro con archivo verificado; la URL solo para quien ve los datos reservados', async () => {

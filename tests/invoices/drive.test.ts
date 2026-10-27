@@ -355,3 +355,23 @@ test('lectura parcial (fase 0): un PDF de Drive con texto sin fecha ni IVA queda
   assert.equal(after.invoice_number, 'PAR-77-MANO', 'la relectura no pisa lo escrito a mano');
   assert.equal(after.supplier_id, inv.supplier_id);
 });
+
+test('F2 (0251): drive_file_id y drive_url solo los escribe «Drive (sistema)», ni por la API ni en la base', async () => {
+  const fromDrive = (await rows('invoices.invoices')).find((i) => i.drive_file_id && !i.deleted_at && String(i.status).startsWith('pendiente'))!;
+  assert.ok(fromDrive, 'hay una factura importada de Drive (pruebas anteriores)');
+  const commit = (operations: unknown[]) => app.call('/api/v1/commands', { body: { requestId: `f2-${Math.random().toString(36).slice(2)}`, operations } });
+  const supplier = (await rows('invoices.suppliers')).find((s) => !s.deleted_at)!;
+  const forged = await commit([{ op: 'insert', table: 'invoices.invoices', id: crypto.randomUUID(), fields: { supplier_id: supplier.id, object: 'Falsa', drive_file_id: 'drv-ajeno' } }]);
+  assert.deepEqual([forged.status, forged.data.error.code], [403, 'DRIVE_FIELDS']);
+  const relinked = await commit([{ op: 'update', table: 'invoices.invoices', id: fromDrive.id, expectedRevision: fromDrive.revision, fields: { drive_url: 'https://ejemplo.invalid/x' } }]);
+  assert.deepEqual([relinked.status, relinked.data.error.code], [403, 'DRIVE_FIELDS']);
+  // En la base, aunque alguien se saltara la Edge: una persona no lo cambia
+  const person = (await app.t.db.query<{ u: string }>(`select user_id u from core.memberships where app = 'invoices' and role = 'owner' limit 1`)).rows[0]!.u;
+  await app.t.db.query(`select set_config('core.actor', $1, false)`, [person]);
+  try {
+    await assert.rejects(app.t.db.query(`update invoices.invoices set drive_file_id = 'drv-ajeno' where id = $1`, [fromDrive.id]), /DRIVE_FIELDS/);
+  } finally { await app.t.db.query(`select set_config('core.actor', '', false)`); }
+  // Lo demás de la factura, como siempre
+  const fresh = (await rows('invoices.invoices')).find((i) => i.id === fromDrive.id)!;
+  assert.equal((await commit([{ op: 'update', table: 'invoices.invoices', id: fresh.id, expectedRevision: fresh.revision, fields: { notes: 'Revisada' } }])).status, 200);
+});

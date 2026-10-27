@@ -409,6 +409,11 @@ export function mountReservation(id: string): ViewMount {
             specs: [
               { key: 'guests_visible', label: 'Visible para huéspedes', type: 'check', hint: 'Lo ven en Guests con el título, las fechas y el resumen. Nunca el precio.' },
               { key: 'public_summary', label: 'Resumen público', type: 'textarea', max: 500, optional: true },
+              // jornadas abiertas (0499): cómo se pagan las noches que se piden por el QR
+              ...(isOpenDays(reservation.event_type) ? [
+                { key: 'lodging_pay_mode', label: 'Noches por el QR', type: 'select' as const, options: [['hold', 'Reserva la plaza unas horas y se paga en recepción'], ['pay_first', 'No reserva hasta pagar']] as Array<[string, string]> },
+                { key: 'lodging_hold_hours', label: 'Horas que se guarda la plaza', type: 'number' as const },
+              ] : []),
             ] }) }, 'Editar') : null),
         el('p', { id: 'openRetreatState' }, el('span', { class: `chip${visible ? ' ok' : ''}` }, visible ? 'Visible' : 'No visible'),
           visible && !['pre_reservada', 'confirmada', 'en_ejecucion'].includes(reservation.status) ? el('span', { class: 'hint' }, ' · se verá cuando esté en pre-reserva o confirmada') : null),

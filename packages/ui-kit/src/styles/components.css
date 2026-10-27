@@ -1827,6 +1827,60 @@ button.cover-main:focus-visible{outline:3px solid #fff;outline-offset:-6px;borde
 .ask-done{display:grid;gap:8px}
 .ask-donetitle{margin:0;font-family:var(--serif);font-size:var(--text-xl);display:flex;align-items:center}
 .ask-donetitle:focus{outline:none}
+.ask-ok .ask-skip{min-height:var(--tap)}
+textarea.ask-input{min-height:110px;resize:vertical;font:inherit;font-size:17px}
+/* Formulario libre (src/pieces/free-form.ts) */
+.fform-box{display:grid;gap:10px}
+.fform-title{margin:0;font-family:var(--serif);font-size:var(--text-xl)}
+.fform-title:focus{outline:none}
+.fform-review{margin:0;display:grid}
+.fform-row{display:grid;gap:2px;padding:10px 0;border-bottom:1px solid var(--line)}
+.fform-row dt{font-size:var(--text-sm);color:var(--muted);font-weight:700}
+.fform-opt{font-weight:400}
+.fform-row dd{margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fform-answer{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-line}
+.fform-row[data-empty="true"] .fform-answer{color:var(--muted);font-style:italic}
+.fform-change{min-height:var(--tap)}
+.fform-thumb{width:56px;height:56px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--line)}
+.fform-photofield{display:grid;gap:10px}
+.fform-photo img{display:block;max-width:100%;max-height:240px;border-radius:var(--radius-sm);border:1px solid var(--line)}
+.fform-photostatus{margin:0;min-height:1.2em}
+.fform-error{margin:0}
+.fform-error:empty{display:none}
+/* Lista de comprobación (src/pieces/checklist.ts) */
+.clist-box{display:grid;gap:10px}
+/* Guiado (src/guide/) */
+.guia-callout{display:flex;align-items:center;gap:8px;margin:6px 12px 0;padding:6px 6px 6px 12px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--ink)}
+.guia-icon{flex:none;display:inline-flex;color:var(--accent-deep)}
+.guia-body{flex:1;min-width:0;display:grid;gap:2px}
+.guia-text{font-weight:700;overflow-wrap:anywhere}
+.guia-status{font-size:var(--text-xs);color:var(--muted)}
+.guia-status:empty{display:none}
+.guia-again{flex:none;min-height:var(--tap)}
+.guia-close{flex:none}
+.guia-pulse{outline:3px solid var(--accent);outline-offset:3px;animation:guia-pulse 1.1s ease-out 2}
+@keyframes guia-pulse{0%{outline-offset:10px;outline-color:transparent}60%{outline-offset:3px;outline-color:var(--accent)}100%{outline-offset:3px;outline-color:var(--accent)}}
+@media (prefers-reduced-motion:reduce){.guia-pulse{animation:none}}
+/* Carriles agrupados (src/pieces/lanes-group.ts) */
+.lanes-group{display:grid;gap:8px}
+.lanes-groupempty{margin:0}
+.clist-head{display:grid;gap:6px}
+.clist-summary{margin:0;font-weight:700}
+.clist-summary[data-complete="true"] .clist-rest{color:var(--ok)}
+.clist-list{list-style:none;margin:0;padding:0;display:grid}
+.clist-item{display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:2px;align-items:center;min-height:var(--tap);padding:8px 0;border-bottom:1px solid var(--line)}
+.clist-item:last-child{border-bottom:0}
+.clist-check{width:26px;height:26px;margin:0;accent-color:var(--accent);cursor:pointer}
+.clist-check:disabled{cursor:default}
+.clist-text{display:grid;gap:2px;font-weight:600;cursor:pointer;min-height:var(--tap);align-content:center}
+.clist-item[data-done="true"] .clist-text{color:var(--muted)}
+.clist-hint{font-weight:400;font-size:var(--text-xs);color:var(--muted)}
+.clist-meta{grid-column:2;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:var(--text-xs);color:var(--muted)}
+.clist-tag{padding:1px 8px;border-radius:999px;border:1px solid var(--line);font-weight:700}
+.clist-req{border-color:var(--accent);color:var(--ink)}
+.clist-foot{min-height:1.2em;display:grid;gap:4px}
+.clist-error{margin:0}
+.clist-error:empty{display:none}
 @media (prefers-reduced-motion:reduce){.queue-card,.vote-card,.vote-stamp{transition:none}}
 
 /* --- Piezas comunes, lote B3 (MUELA-075, 0.45) ------------------------------------------------------------------ */

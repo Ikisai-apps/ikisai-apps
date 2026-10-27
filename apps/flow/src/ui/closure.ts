@@ -1,7 +1,7 @@
 import { el, replace, toast } from '@ikisai/ui-kit';
 import { formatEuros, PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
-import { callProcedure, errorCode, isOnline } from '../app/actions.ts';
+import { callProcedure, isOnline } from '../app/actions.ts';
 import { loadProjects, type Project } from '../app/data.ts';
 import { busyButton } from './sheets-common.ts';
 import type { ViewMount } from './shell.ts';
@@ -53,19 +53,12 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
 
   async function send(c: Closure, target: 'food' | 'finance'): Promise<void> {
     if (!isOnline(client)) { toast('Enviar necesita conexión.'); return; }
-    let status = 'sent'; let result: unknown = null;
+    // El resultado (enviado o error) lo anota flow-api en el cierre (FL9); aquí solo se avisa y se sincroniza.
     try {
-      const out = await client.api<{ status: string; result: unknown }>(`/closures/${c.id}/send/${target}`, { method: 'POST', json: {} });
-      status = out.status; result = out.result;
+      await client.api<{ status: string; result: unknown }>(`/closures/${c.id}/send/${target}`, { method: 'POST', json: {} });
       toast(target === 'food' ? 'Enviado a Food.' : 'Enviado a Finance como apunte de proceso.');
-    } catch (error) {
-      status = 'error'; result = { code: errorCode(error), message: describeError(error) };
-      toast(describeError(error));
-    }
-    try {
-      await callProcedure(client, PROCEDURES.markClosureSent, { closure_id: c.id, target, status, result });
-      await client.sync();
     } catch (error) { toast(describeError(error)); }
+    try { await client.sync(); } catch { /* el pull periódico lo traerá */ }
     await paint();
   }
 

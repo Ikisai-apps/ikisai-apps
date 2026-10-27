@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID as uuid } from 'node:crypto';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
-import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
+import { createInvoicesApp, keyedStableUuid, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
 
 let app: TestApp;
 let EVENT: string;
@@ -20,12 +20,13 @@ async function ok(body: Record<string, unknown>, token?: string) {
 async function rows(table: string): Promise<Array<Record<string, any>>> {
   return (await app.call(`/api/v1/snapshot?tables=${table}`)).data.tables[0].rows;
 }
-async function uploadFile(content: string) {
+async function uploadFile(content: string, token?: string) {
+  const as = token ? { token } : {};
   const bytes = new TextEncoder().encode(content);
   const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
-  const ticket = await app.call('/api/v1/uploads', { body: { filename: 'ticket.jpg', mime: 'image/jpeg', size: bytes.byteLength, sha256: sha } });
+  const ticket = await app.call('/api/v1/uploads', { body: { filename: 'ticket.jpg', mime: 'image/jpeg', size: bytes.byteLength, sha256: sha }, ...as });
   app.supabase.storage.set(ticket.data.path, bytes);
-  await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {} });
+  await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {}, ...as });
   return ticket.data.id as string;
 }
 
@@ -42,7 +43,8 @@ test.before(async () => {
 test.after(async () => { await app.close(); });
 
 test('compra al evento con proveedor nuevo, IVA conocido y foto; repetirla devuelve lo mismo sin duplicar', async () => {
-  const fileId = await uploadFile('foto del ticket del hielo');
+  // La foto la sube quien registra la compra (F4: solo se adjunta lo propio o lo ya enlazado)
+  const fileId = await uploadFile('foto del ticket del hielo', app.tokens.editor);
   const body = { requestId: 'flow-hielo-31', supplier: { name: 'Hielos del Sur', tax_id: 'B00000000' }, date: '2026-10-31', total: 36.3, vat_rate: 21,
     description: 'Hielo para la barra', file_id: fileId, target: { app: 'booking', kind: 'event', id: EVENT } };
   const first = await ok(body, app.tokens.editor);
@@ -126,4 +128,13 @@ test('permiso y validación: el lector no registra; cada error dice su campo', a
   const missing = await quick({ ...valid, requestId: 'x-2', target: { app: 'booking', kind: 'event', id: uuid() } });
   assert.equal(missing.status, 422);
   assert.equal(missing.data.error.code, 'TARGET_NOT_FOUND');
+});
+
+test('F5: los ids de la compra rápida llevan un secreto del servidor; sin él no se adivinan desde el usuario y el requestId', async () => {
+  const seed = 'quick-purchase:usuario:req-1:invoice';
+  const a = keyedStableUuid('secreto-a'); const b = keyedStableUuid('secreto-b'); const plain = keyedStableUuid(undefined);
+  assert.equal(await a(seed), await a(seed), 'estable con el mismo secreto (idempotente)');
+  assert.notEqual(await a(seed), await b(seed));
+  assert.notEqual(await a(seed), await plain(seed), 'distinto del SHA-256 sin secreto');
+  assert.match(await a(seed), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });

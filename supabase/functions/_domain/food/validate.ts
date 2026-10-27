@@ -323,10 +323,12 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       vote: { kind: 'enum', values: ['keep', 'drop'] },
     },
   },
-  // Aviso de avería que salió a Tasks (tanda 27, 1104). Lo escribe la Edge al avisar; nada cambia después.
+  // Aviso de avería que salió a Tasks (tanda 27, 1104). Lo escribe solo el servidor al avisar (auditoría FO3, 1119):
+  // desde el cliente, ningún campo.
   'food.equipment_notices': {
     required: ['equipment_id', 'notified_on', 'equipment_status', 'task_id'],
     insertOnly: ['equipment_id', 'notified_on', 'equipment_status', 'task_id'],
+    reserved: ['equipment_id', 'notified_on', 'equipment_status', 'task_id', 'request_status'],
     fields: {
       equipment_id: { kind: 'uuid' },
       notified_on: { kind: 'date' },

@@ -38,6 +38,7 @@ const PUBLIC_IP_LIMITS: Record<'customer' | 'orders', { max: number; windowMs: n
 const PUBLIC_MESSAGES: Record<string, string> = {
   RATE_LIMITED: 'Demasiados intentos seguidos. Espera un momento y vuelve a probar.',
   TOO_MANY_OPEN_ORDERS: 'Tienes varios pedidos sin cobrar: pásate por la barra antes de pedir más.',
+  MENU_CLOSED: 'La barra no está abierta ahora mismo.',
 };
 export function createIpLimiter(now: () => number = Date.now) {
   const hits = new Map<string, number[]>();
@@ -104,12 +105,22 @@ async function checkFiles(supabase: Supabase, operations: Operation[], ctx: Requ
 const COLUMN_SLUGS: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica' };
 
 interface ClosureForSend {
-  closure: { id: string; project_id: string; day: string; data: DayData };
+  closure: { id: string; revision: number; project_id: string; day: string; data: DayData };
   project: { id: string; name: string; test_mode: boolean; food_menu_id: string | null; booking_event_id: string | null };
 }
 interface DayData {
   orders: number; sales_cents: number; sales_by_method: { cash: number; bizum: number; card?: number }; refunds_pending_cents: number;
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
+}
+
+/**
+ * Cabeceras de servicio de Flow (auditoría 27-10, FL1 y FL2): Finance y Tasks reservan `source_app`/`source: 'flow'` a
+ * quien llega con la clave de worker y `X-Ikisai-Caller: flow`. Van además del token de la persona, que sigue decidiendo.
+ * Solo a esas dos apps, que son las que las piden.
+ */
+const SERVICE_IDENTITY_APPS = new Set(['invoices-api', 'tasks-api']);
+export function serviceHeaders(workerKey: string | undefined, slug: string): Record<string, string> {
+  return workerKey && SERVICE_IDENTITY_APPS.has(slug) ? { 'X-Ikisai-Worker-Key': workerKey, 'X-Ikisai-Caller': 'flow' } : {};
 }
 
 /** Llamada a un procedimiento de otra app por su API, con el token de la persona (su acceso decide). */
@@ -121,7 +132,7 @@ function appCaller(base: FlowBase, options: FlowAppOptions) {
     try {
       res = await transport(apiOf(slug), {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', ...serviceHeaders(base.workerKey, slug) },
         body: JSON.stringify({ requestId, operations: [{ op: 'call', procedure, args }] }),
         signal: AbortSignal.timeout(15_000),
       });
@@ -182,7 +193,7 @@ function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 /**
  * Envíos del Cierre del día (contratos con Food y Finance del 26-10): desde aquí, con la sesión de la persona, a la API de
  * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
- * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
+ * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el servidor (lote público, solo los campos de envío; FL9).
  */
 function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions, publicWrite: PublicWriter): AppRoute[] {
   const callApp = appCaller(base, options);
@@ -196,6 +207,21 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 
   const digest = async (value: unknown) => (await sha256Hex(JSON.stringify(value))).slice(0, 24);
 
+  /** Envía y anota el resultado en el cierre (enviado o error). El navegador no puede marcarlo (0927). */
+  async function sendAndMark(c: ClosureForSend['closure'], target: 'food' | 'finance', send: () => Promise<unknown>) {
+    const mark = (status: string, result: unknown) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.dayClosures, id: c.id, expectedRevision: c.revision,
+      fields: { [`${target}_status`]: status, [`${target}_sent_at`]: new Date().toISOString(), [`${target}_result`]: result } }]);
+    let result: unknown;
+    try {
+      result = await send();
+    } catch (error) {
+      await mark('error', { code: isFault(error) ? error.code : 'ERROR' }).catch(() => undefined);
+      throw error;
+    }
+    await mark('sent', result ?? null);
+    return { status: 'sent', result };
+  }
+
   return [
     {
       // Ventas por línea de la carta de Food (food.record_carta_sales, idempotente por carta y día).
@@ -204,8 +230,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
         if (!project.food_menu_id) fail(409, 'NO_FOOD_MENU', 'Este flujo no está ligado a una carta de Food: actualiza la carta desde Food primero.');
         const lines = c.data.units_by_product.filter((u) => u.source_line_id).map((u) => ({ line_id: u.source_line_id, quantity: u.units }));
         const args = { menu_id: project.food_menu_id, day: c.day, lines };
-        const result = await callApp(ctx, 'food-api', 'Food', `flow:food:${c.id}:${await digest(args)}`, 'food.record_carta_sales', args);
-        return { status: 'sent', result };
+        const requestId = `flow:food:${c.id}:${await digest(args)}`;
+        return sendAndMark(c, 'food', () => callApp(ctx, 'food-api', 'Food', requestId, 'food.record_carta_sales', args));
       },
     },
     {
@@ -239,8 +265,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
         };
-        const result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
-        return { status: 'sent', result };
+        const requestId = `flow:${sourceRef}:${await digest(args)}`;
+        return sendAndMark(c, 'finance', () => callApp(ctx, 'invoices-api', 'Finance', requestId, 'invoices.record_app_entry', args));
       },
     },
     {
@@ -291,16 +317,25 @@ interface ReceiptForSend {
  * «Pedir a Tasks» (contrato de Tasks §39): con la sesión de la persona, a la API de Tasks, como Central. Quien pide tiene
  * que ser editor u owner de Tasks y ver el proyecto. Tasks no avisa de cambios: el estado se consulta al enseñarlo.
  */
-function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
+function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: string | undefined, publicWrite: PublicWriter): AppRoute[] {
   const transport = options.appsFetch ?? fetch;
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const base = (options.tasksApiBase ?? env('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
+
+  /**
+   * Anota en la unidad lo que Tasks creó (FL6, 0931): el servidor, con el lote público que solo cambia `payload.external`.
+   * El navegador ya no puede marcar una unidad como pedida.
+   */
+  async function linkUnit(unit: { id: string; revision: number; payload?: Record<string, unknown> | null }, link: Record<string, unknown>): Promise<void> {
+    const payload = { ...(unit.payload ?? {}), external: { ...link, at: new Date().toISOString() } };
+    await publicWrite(supabase, APP, [{ op: 'update', table: TABLES.units, id: unit.id, expectedRevision: unit.revision, fields: { payload } }]);
+  }
 
   async function tasks<T>(ctx: RequestContext, path: string, body: unknown): Promise<T> {
     let res: Response;
     try {
       res = await transport(`${base}/api/v1/${path}`, {
-        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', ...serviceHeaders(workerKey, 'tasks-api') },
         body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
       });
     } catch {
@@ -344,13 +379,17 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
             external_url: `${FLOW_ORIGINS[0]}/equipo#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
             ...(Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: typeof body.unit === 'string' ? body.unit.slice(0, 20) : undefined } : {}),
           });
-          return { created: out.created, link: { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status } };
+          const link = { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status };
+          await linkUnit(found.unit, link);
+          return { created: out.created, link };
         }
         const out = await tasks<{ created: boolean; task: { id: string; done?: boolean } }>(ctx, 'requests/task', {
           source: 'flow', kind: 'flow.logistics', kind_label: 'Logística de la barra', external_ref: found.unit.id,
           title: String(found.unit.label ?? '').slice(0, 300), note, project_id: found.project.tasks_project_id, priority,
         });
-        return { created: out.created, link: { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' } };
+        const link = { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' };
+        await linkUnit(found.unit, link);
+        return { created: out.created, link };
       },
     },
     {
@@ -414,12 +453,17 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
         if (typeof body.project_id !== 'string' || !UUID.test(body.project_id)) fail(422, 'INVALID_OPERATION', 'project_id inválido.');
         const label = typeof body.label === 'string' ? body.label.trim().slice(0, 120) : '';
         if (!label) fail(422, 'INVALID_OPERATION', 'Falta el texto de la tarea.');
-        // El id sale de la persona y del requestId: repetir la petición no crea otra tarea.
-        const h = await sha256Hex(`${ctx.user.id}:${requestId}`);
-        const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
-        const operations = [{ op: 'insert', table: TABLES.units, id, fields: { project_id: body.project_id, column_key: 'logistics', kind: 'task', label, priority: body.priority === true } }];
-        const out = await supabase.rpc<{ replayed?: boolean }>('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
-          p_digest: await sha256Hex(JSON.stringify(operations)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        // Lo que declara la capacidad: editor u owner, y el proyecto en su ámbito (FL7).
+        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede crear tareas de Logística.');
+        const access = await supabase.rpc<{ in_scope?: boolean } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.project_access_read', p_args: { project_id: body.project_id } });
+        if (!access?.in_scope) fail(403, 'PROJECT_OUT_OF_SCOPE', 'Ese flujo no está en tu ámbito.');
+        // Id aleatorio (nadie puede ocuparlo antes); repetir la petición devuelve la misma tarea por el recibo del núcleo,
+        // que es de la persona y del requestId.
+        const fields = { project_id: body.project_id, column_key: 'logistics', kind: 'task', label, priority: body.priority === true };
+        const operations = [{ op: 'insert', table: TABLES.units, id: crypto.randomUUID(), fields }];
+        const out = await supabase.rpc<{ replayed?: boolean; results?: Array<{ id?: string }> }>('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(fields)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        const id = out?.results?.[0]?.id ?? operations[0]!.id;
         return { id, replayed: !!out?.replayed };
       },
     },
@@ -431,9 +475,13 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
-    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
+    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership),
+      // FL3: los `call` del historial (argumentos y resultado: nombres de huéspedes, titulares de cuentas…) solo los ve el
+      // owner y quien hizo la llamada; los demás miembros no los reciben.
+      visibleCall: (change, ctx) => ctx.membership.role === 'owner' || change.actorId === ctx.user.id,
+      beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 
   const ipAllowed = createIpLimiter();
   async function handlePublic(request: Request, route: string): Promise<Response> {

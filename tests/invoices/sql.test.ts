@@ -639,6 +639,10 @@ test('plantillas: solo se escriben al validar una factura de ese proveedor; el o
   assert.equal(again.status, 200);
   let text = await read('invoices.document_text', { file_id: doc.file_id });
   assert.equal(text.status, 200); assert.equal(text.data.items[0].str, 'Otra lectura'); assert.equal(text.data.sha256, doc.sha256);
+  // F6: otra persona no sustituye el texto guardado de un documento que no subió (responde, pero no lo guarda)
+  const other = await app.call(`/api/v1/documents/${doc.file_id}/text`, { token: app.tokens.editor, body: { items: [{ str: 'Texto inventado', page: 1, x: 1, y: 1 }] } });
+  assert.deepEqual([other.status, other.data.saved], [200, false]);
+  assert.equal((await read('invoices.document_text', { file_id: doc.file_id })).data.items[0].str, 'Otra lectura');
   assert.equal((await read('invoices.document_text', { file_id: doc.file_id }, app.tokens.reader)).status, 403);
   assert.equal((await app.call(`/api/v1/documents/${doc.file_id}/text`, { token: app.tokens.reader, body: { items: [] } })).status, 403);
   assert.equal((await app.call(`/api/v1/documents/${uuid()}/text`, { body: { items: [] } })).status, 422);
@@ -1134,4 +1138,17 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   await app.t.db.query(`update core.memberships set role = 'reader' where app = 'organizers' and user_id = $1`, [uid]);
   await assert.rejects(portalFile(pdfR.file_id), /FILE_NOT_FOUND/);
   await app.t.db.query(`update core.memberships set role = 'editor' where app = 'organizers' and user_id = $1`, [uid]);
+});
+
+test('F4 (0252): se adjunta un documento propio o uno ya enlazado a algo de Finance; el de otra persona sin enlazar, no', async () => {
+  const supplier = await newSupplier('Papelería F4', { slug: 'papeleria_f4' });
+  const mine = uuid(); const theirs = uuid();
+  await ok([insert('invoices.invoices', mine, { supplier_id: supplier, invoice_date: '2026-10-20', object: 'Folios' }),
+    insert('invoices.invoices', theirs, { supplier_id: supplier, invoice_date: '2026-10-21', object: 'Sobres' })]);
+  const ownerFile = await uploadFile('%PDF del owner F4');
+  // Otra persona (editora) no adjunta el documento suelto del owner
+  await rejected([insert('invoices.invoice_files', uuid(), { invoice_id: theirs, original_filename: 'x.pdf', ...ownerFile })], 'FILE_NOT_YOURS', 403, app.tokens.editor);
+  // El owner sí; y una vez enlazado, la editora puede adjuntarlo a otra factura (lo ve en la primera)
+  await ok([insert('invoices.invoice_files', uuid(), { invoice_id: mine, original_filename: 'folios.pdf', ...ownerFile })]);
+  await ok([insert('invoices.invoice_files', uuid(), { invoice_id: theirs, original_filename: 'sobres.pdf', ...ownerFile })], app.tokens.editor);
 });

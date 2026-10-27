@@ -108,3 +108,22 @@ test('§9.19 · nunca en blanco: un evento que ya no abre y un acceso de visitan
   await expect(page.locator('#visitorLeaveBox')).toBeVisible();
   await expect(page.locator('#visitorRenewed')).toHaveCount(0);
 });
+
+test('ENTRADA_PUBLICA · sin invitación ni QR: ven.ikisai.com enseña los eventos abiertos y se entra como visitante', async ({ page }) => {
+  const r = await api.reservation({ title: 'Jornada abierta de la finca', start: day(6), end: day(6) });
+  await api.booking.t.db.query(`update booking.reservations set guests_visible = true, event_type = 'jornadas_abiertas' where id = $1`, [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+
+  await page.goto(`${baseURL}/`);
+  const open = page.locator('#openEvents');
+  const card = open.locator(`a[data-code="${code}"]`);
+  await expect(card).toContainText('Jornada abierta de la finca');
+  await expect(card).toContainText('Jornadas abiertas');
+  // Mirar no crea identidad: solo al «Entrar».
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).toBeNull();
+  await card.click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Jornada abierta de la finca');
+  await page.locator('#visitorEnter').click();
+  await expect(page.locator('#visitorLeaveBox')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).not.toBeNull();
+});

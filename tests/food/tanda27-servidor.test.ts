@@ -186,3 +186,24 @@ test('maquinaria · status_since cambia solo con el estado; el aviso a Tasks que
   // Un aviso no se escribe con datos inválidos.
   assert.equal((await commit([{ op: 'insert', table: 'food.equipment_notices', id: uuid(), fields: { equipment_id: oven, notified_on: day(0), equipment_status: 'operativo', task_id: 't' } }])).status, 422);
 });
+
+test('seguridad FO3 · los avisos de avería solo los escribe el servidor (1119)', async () => {
+  const mixer = uuid();
+  assert.equal((await commit([{ op: 'insert', table: 'food.equipment', id: mixer, fields: { name: 'Amasadora', status: 'averiado' } }])).status, 200);
+  const fake = { equipment_id: mixer, notified_on: day(0), equipment_status: 'averiado', task_id: 'tarea-inventada' };
+  // Por la API: la validación ya no admite estos campos desde el cliente.
+  const res = await commit([{ op: 'insert', table: 'food.equipment_notices', id: uuid(), fields: fake }]);
+  assert.equal(res.status, 422, JSON.stringify(res.data));
+  assert.equal(res.data.error.code, 'INVALID_FIELDS');
+  // Por debajo, sin la Edge: el núcleo como un editor también lo rechaza.
+  await assert.rejects(app.t.rpc('core_commit', {
+    p_app: 'food', p_actor: app.users.editor, p_request_id: `t27-fo3-${uuid()}`, p_digest: 'fo3', p_expected_cursor: null,
+    p_operations: [{ op: 'insert', table: 'food.equipment_notices', id: uuid(), fields: fake }], p_confirmation: null,
+  }), /FORBIDDEN/);
+  assert.equal((await q(`select count(*)::int n from food.equipment_notices where equipment_id = $1`, [mixer]))[0].n, 0);
+  // El aviso de verdad lo anota la cuenta de servicio `food`.
+  const out = await app.call(`/api/v1/equipment/${mixer}/fault`, { token: app.tokens.editor, body: { name: 'Amasadora', status: 'averiado' } });
+  assert.deepEqual([out.status, out.data.recorded], [200, true]);
+  const [notice] = await q(`select n.updated_by, p.service_name from food.equipment_notices n join core.profiles p on p.user_id = n.updated_by where n.equipment_id = $1`, [mixer]);
+  assert.equal(notice.service_name, 'food');
+});

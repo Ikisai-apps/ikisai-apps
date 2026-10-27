@@ -8,6 +8,12 @@ import {
   markField,
   renderQr,
   createLanes,
+  groupLanes,
+  createFieldPointer,
+  registerReveal,
+  onSaved,
+  withGuideLink,
+  announceSaved,
   createFeedbackProgressiveForm,
   openFeedbackCenter,
   createFeedbackReview,
@@ -130,6 +136,8 @@ import {
   createVoteDeck,
   createStepForm,
   StepFormInvalid,
+  createFreeForm,
+  createChecklist,
   renderTimeline,
   renderHourAgenda,
   renderTray,
@@ -1769,6 +1777,84 @@ const askForm = createStepForm({ label: 'Tus datos', feedbackId: 'demo.datos.pre
     askOut.textContent = askAnswers.join(', ');
   } });
 const askHost = el('div', { id: 'askHost' }, askForm.element, el('p', null, 'Respuestas: ', askOut));
+// --- Piezas genéricas para Flow: formulario libre y lista de comprobación (0.64) -------------------------------
+const formOut = el('output', { id: 'freeFormOut' }, '—');
+const freeForm = createFreeForm({ label: 'Revisión de la piscina', feedbackId: 'demo.piscina.revision',
+  schema: { version: 1, questions: [
+    { id: 'cloro', label: '¿Cuánto cloro marca?', kind: 'number', unit: 'ppm', min: 0, max: 10, required: true, hint: 'Lo normal: entre 1 y 3' },
+    { id: 'limpia', label: '¿Está limpia el agua?', kind: 'yesno', required: true },
+    { id: 'estado', label: '¿Cómo está la depuradora?', kind: 'choice', required: true, options: [{ value: 'bien', label: 'Bien' }, { value: 'ruido', label: 'Hace ruido' }, { value: 'parada', label: 'Parada' }] },
+    { id: 'foto', label: 'Foto del agua', kind: 'photo' },
+    { id: 'nota', label: '¿Algo más?', kind: 'text', multiline: true },
+  ] },
+  onPhoto: async (blob) => { await new Promise((r) => setTimeout(r, 30)); return `demo-foto-${blob.size}`; },
+  onSubmit: async (answers) => { await new Promise((r) => setTimeout(r, 30)); formOut.textContent = JSON.stringify(answers); },
+});
+const clistOut = el('output', { id: 'checklistOut' }, '—');
+const clistLog: string[] = [];
+const checklist = createChecklist({ label: 'Apertura del albergue', feedbackId: 'demo.apertura.lista', who: () => 'Ana',
+  items: [
+    { id: 'luces', text: 'Encender las luces de fuera' },
+    { id: 'agua', text: 'Abrir la llave del agua', hint: 'En el cuarto de calderas' },
+    { id: 'banos', text: 'Revisar papel y jabón en los baños' },
+    { id: 'flores', text: 'Flores en el comedor', required: false },
+  ],
+  checked: { luces: { by: 'Luis', at: '2026-10-27T08:05:00' } },
+  onToggle: async (id, on) => { await new Promise((r) => setTimeout(r, 30)); clistLog.push(`${id}:${on ? 'sí' : 'no'}`); clistOut.textContent = clistLog.join(', '); },
+});
+const groupWork = [
+  { id: 't1', text: 'Revisar la ducha 3', who: 'Ana', phase: 'hoy', place: 'Albergue' },
+  { id: 't2', text: 'Cloro de la piscina', who: 'Luis', phase: 'hoy', place: 'Piscina' },
+  { id: 't3', text: 'Cambiar sábanas Hab 2', who: 'Ana', phase: 'manana', place: 'Albergue' },
+  { id: 't4', text: 'Leña para la cúpula', who: null, phase: 'hoy', place: 'Salas' },
+  { id: 't5', text: 'Pedir pan', who: 'Marta', phase: 'hecho', place: null },
+];
+const groupBy = {
+  who: { key: (t: typeof groupWork[number]) => t.who },
+  phase: { key: (t: typeof groupWork[number]) => t.phase, order: ['hoy', 'manana', 'semana', 'hecho'], title: (k: string) => ({ hoy: 'Hoy', manana: 'Mañana', semana: 'Esta semana', hecho: 'Hecho' } as Record<string, string>)[k] ?? k },
+  place: { key: (t: typeof groupWork[number]) => t.place },
+};
+const groupCard = (t: typeof groupWork[number]) => el('div', { class: 'card', style: 'padding:10px 12px' }, t.text);
+const groupedLanes = createLanes({ label: 'Trabajo agrupado', feedbackId: 'demo.agrupar.carriles', view: 'side', lanes: groupLanes(groupWork, { ...groupBy.who, card: groupCard }) });
+const groupPick = el('div', { class: 'demo-row', role: 'group', 'aria-label': 'Agrupar por', id: 'groupPick' },
+  ...(['who', 'phase', 'place'] as const).map((k) => el('button', { type: 'button', class: 'ghost small', dataset: { group: k }, 'aria-pressed': String(k === 'who'),
+    onclick: (e: Event) => {
+      for (const b of groupPick.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b === e.currentTarget));
+      groupedLanes.setLanes(groupLanes(groupWork, { ...groupBy[k], card: groupCard }));
+    } }, { who: 'Persona', phase: 'Fase', place: 'Espacio' }[k])));
+
+// --- Guiado, nivel mínimo: campo señalado (0.66) --------------------------------------------------------------
+const guideSave = createSaveState();
+const guideSaved: string[] = [];
+const guideSavedOut = el('output', { id: 'guideSavedOut' }, '—');
+onSaved((id, info) => { if (id.startsWith('demo.guia.')) { guideSaved.push(`${id}${info.pending ? ' (pendiente)' : ''}`); guideSavedOut.textContent = guideSaved.join(', '); } });
+const arrival = el('input', { id: 'guideArrival', type: 'time', ...fieldAttrs({ id: 'demo.guia.llegada', entity: 'booking.stays', prop: 'arrival_time', confirm: 'save', label: 'Hora de llegada' }) });
+const plate = el('input', { id: 'guidePlate', type: 'text', ...fieldAttrs({ id: 'demo.guia.matricula', entity: 'booking.stays', prop: 'car_plate', confirm: 'event', validator: 'matricula', sensitivity: 'personal', label: 'Matrícula' }) });
+const moreData = el('details', { id: 'guideMore' }, el('summary', null, 'Más datos'), el('label', { for: 'guidePlate' }, 'Matrícula'), plate,
+  el('button', { type: 'button', class: 'ghost small', onclick: () => announceSaved('demo.guia.matricula') }, 'Guardar matrícula'));
+registerReveal('demo.guia', (id) => { if (id === 'demo.guia.matricula') moreData.open = true; });
+const guideHost = el('div', { id: 'guideHost' });
+const pointTo = (field: string, step: string) => { const p = createFieldPointer({ field, step, run: null }, { feedbackId: 'demo.guia.aviso' }); guideHost.replaceChildren(p.element); void p.point(); };
+const guideSection = section('guiado', 'Guiado: campo señalado', 'Nivel mínimo del Guiado: un enlace de otra app (withGuideLink) abre la pantalla con el campo señalado y una línea con el paso; el shell lo monta con `guide: true`. Guardar avisa con el id del campo, nunca con el valor.',
+  el('div', { class: 'demo-row' },
+    el('button', { type: 'button', class: 'ghost small', id: 'guidePointArrival', onclick: () => pointTo('demo.guia.llegada', 'Pon la hora a la que llega') }, 'Señalar la hora'),
+    el('button', { type: 'button', class: 'ghost small', id: 'guidePointPlate', onclick: () => pointTo('demo.guia.matricula', 'Apunta la matrícula') }, 'Señalar la matrícula (escondida)'),
+    el('button', { type: 'button', class: 'ghost small', id: 'guidePointMissing', onclick: () => pointTo('demo.guia.no_existe', 'Un campo que no está') }, 'Señalar uno que no está')),
+  guideHost,
+  el('div', { class: 'card', style: 'display:grid;gap:8px;padding:14px' },
+    el('label', { for: 'guideArrival' }, 'Hora de llegada'), arrival,
+    el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'primary', onclick: () => void guideSave.track('demo.guia.llegada', new Promise((r) => setTimeout(r, 30))) }, 'Guardar hora'), guideSave.element),
+    moreData),
+  el('p', null, 'Guardados: ', guideSavedOut),
+  el('p', { class: 'hint', style: 'overflow-wrap:anywhere' }, 'Enlace de ejemplo: ', el('code', { style: 'overflow-wrap:anywhere;word-break:break-all' }, withGuideLink('https://booking.ikisai.com/#/reservas/123', { field: 'booking.ficha.llegada', step: 'Pon la hora de llegada', from: 'flow', title: 'Flow', url: 'https://flow.ikisai.com/#/recepcion' }))),
+);
+
+const genericSection = section('genericas', 'Piezas genéricas (formulario libre y lista)', 'Para el catálogo de piezas de Flow: un formulario que sale de un esquema (pregunta a pregunta, revisión y «Registrar») y una lista de comprobación con quién y cuándo.',
+  el('h3', null, 'Formulario libre'), el('div', { id: 'freeFormHost' }, freeForm.element, el('p', null, 'Registrado: ', formOut)),
+  el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
+  el('h3', null, 'Carriles por cualquier clave'), el('p', null, 'Agrupar por: '), groupPick, el('div', { id: 'groupLanesHost' }, groupedLanes.element),
+);
+
 const piecesB2Section = section('piecesb2', 'Piezas comunes (lote B2)', 'MUELA-075: paso a paso con lo siguiente en grande, una cosa cada vez (con «Deshacer»), votar deslizando (con botones y flechas) y pregunta a pregunta (solo lo que falta).',
   el('h3', null, 'Paso a paso'), stepsHost,
   el('h3', null, 'Una cosa cada vez'), queueHost,
@@ -1892,7 +1978,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, createItemPicker };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
@@ -1903,5 +1989,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, genericSection, guideSection, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

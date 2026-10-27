@@ -48,6 +48,8 @@ export const MESSAGES: Record<string, string> = {
   FILE_MISMATCH: 'El archivo subido no coincide con lo declarado.',
   LAST_OWNER: 'La app se quedaría sin ninguna persona propietaria.',
   LINK_INVALID: 'El enlace no es válido o ha sido revocado. Pide uno nuevo.',
+  CODE_INVALID: 'El código no es válido o ha caducado. Pide otro.',
+  PORTAL_EMAIL_STAFF: 'Ese correo es de una cuenta del personal, no de un portal. Emite el enlace sin correo o con otro correo.',
   FEEDBACK_RATE_LIMITED: 'Has enviado muchos comentarios hoy. Prueba mañana o avisa por otra vía si es urgente.',
   FEEDBACK_TOO_MANY_ATTACHMENTS: 'Como mucho tres imágenes por comentario.',
   FEEDBACK_MESSAGE_TOO_LONG: 'El comentario es demasiado largo.',

@@ -388,7 +388,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **`create_flow` desde plantilla**: la versión del flujo nunca queda por debajo de la de la plantilla. Se siembra `barra` v2 (columnas de la v1 con los ajustes de la v2) y se añaden las unidades de plantilla (el puesto «Pan»). Así, «Nuevo flujo» → Barra en un evento nuevo nace como una v2 completa.
 - **Capacidades de Flow** en el catálogo del núcleo:
   - `flow.day_summary`: `POST day-summary {project_id, day}`, solo owner y con el ámbito comprobado. Devuelve el resumen del día (`flow.day_summary`).
-  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Es idempotente: el id sale de la persona y del `requestId`, y repetir devuelve `replayed: true`.
+  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Comprueba el rol (editor u owner) y que el proyecto esté en el ámbito de quien llama (`flow.project_access_read`, 0924; si no, `403 PROJECT_OUT_OF_SCOPE`). El id es aleatorio y es idempotente por persona y `requestId` (recibo del núcleo): repetir devuelve la misma tarea con `replayed: true`.
 - **Prueba de extremo a extremo**: `tests/flow/servicio-sabado.test.ts`. Los huecos que encuentra van en `docs/flow/PETICIONES.md` (S1…).
 
 ## 35. Número de cobro y ticket hacia Finance (migración `0921`)
@@ -411,3 +411,23 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - En flow-api, por IP (memoria de la instancia, freno de más): 10 altas de cliente cada 10 minutos y 30 pedidos por minuto. La IP la pone el proxy de Pages en `X-Ikisai-Client-Ip` desde `CF-Connecting-IP`.
 - Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
 - Prueba: `tests/flow/public-limits.test.ts`.
+
+## 38. Identidad de servicio ante Finance y Tasks (FL1, FL2)
+
+- Las llamadas de flow-api a Finance (`invoices-api /api/v1/commands`, `invoices.record_app_entry`: cierre del día y justificantes) y a Tasks (`requests/task`, `requests/purchase`) llevan, además del token de la persona, `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY` del entorno de la Edge) y `X-Ikisai-Caller: flow`.
+- Con eso, Finance y Tasks reservan `source_app`/`source: 'flow'` a Flow (Finance: `403 SOURCE_MISMATCH` si no coincide).
+- A Food y a Booking no se les manda la clave.
+
+## 39. Ligar un flujo a un evento exige acceso en Booking (FL4, migración `0925`)
+
+- Al fijar o cambiar `flow.projects.booking_event_id` (por `create_flow`, «Nueva versión» o editando el proyecto), quien lo hace tiene que ver el evento en Booking (`booking.event_projection`) y ser miembro de Booking o estar en el personal de ese evento (`booking.event_staff_projection`). Si no, `403 EVENT_NOT_ACCESSIBLE`.
+- Sin actor (sistema), no se comprueba. Prueba: `tests/flow/event-access.test.ts`.
+
+## 40. El envío del cierre lo anota el servidor (FL9, migración `0927`)
+
+- `closures/:id/send/food` y `…/finance` anotan en el cierre `<target>_status` (`sent` o `error`), `_sent_at` y `_result` con el lote público del servidor, como los justificantes. El navegador ya no marca nada: `flow.mark_closure_sent` desaparece.
+- `flow.guard_closures` solo deja al lote público cambiar los campos de envío.
+
+## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
+
+- En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).

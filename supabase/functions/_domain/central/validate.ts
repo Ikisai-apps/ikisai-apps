@@ -338,6 +338,29 @@ const fieldIssue = (index: number, table: string, field: string, reason: string)
  * Valida un lote de Central. `current` (opcional) da la fila actual por id para comprobar coherencias en un update
  * cuando el cliente solo envía parte de los campos (en la Edge no hace falta: lo garantizan los check de PostgreSQL).
  */
+/**
+ * Nivel de casa de una ficha con cuenta (auditoría 27-10, C1): cambiar `house_level` o `active`, o borrar o restaurar
+ * la ficha, cambia lo que esa cuenta puede hacer en las apps del nivel (`central.sync_house_level`). Solo el owner de
+ * Central. Aquí, las operaciones de quien no es owner que habría que mirar; la Edge pregunta cuáles de esas fichas tienen
+ * cuenta (`central.people_with_account`) y `accountGuardIssue` decide. La base lo impone igual
+ * (`central.check_house_level_change`, 1518).
+ */
+export const ACCOUNT_GUARDED_FIELDS = ['house_level', 'active'] as const;
+export function accountGuardTargets(operations: readonly DomainOperation[], actor: Actor): Array<{ index: number; id: string }> {
+  if (actor.role === 'owner') return [];
+  const out: Array<{ index: number; id: string }> = [];
+  for (const [index, op] of operations.entries()) {
+    if (op.table !== TABLES.people || typeof op.id !== 'string') continue;
+    const fields = op.fields ?? {};
+    if (op.op === 'delete' || op.op === 'restore' || (op.op === 'update' && ACCOUNT_GUARDED_FIELDS.some((f) => f in fields))) out.push({ index, id: op.id });
+  }
+  return out;
+}
+export function accountGuardIssue(targets: ReadonlyArray<{ index: number; id: string }>, withAccount: ReadonlySet<string>): Issue | null {
+  const hit = targets.find((t) => withAccount.has(t.id));
+  return hit ? { code: 'FORBIDDEN', message: 'Solo quien administra Central cambia el nivel, la actividad o el borrado de una ficha con cuenta.', details: { index: hit.index, table: TABLES.people, field: 'house_level' } } : null;
+}
+
 export function validateOperations(operations: readonly DomainOperation[], actor: Actor, current?: (table: string, id: string) => Record<string, unknown> | undefined): Issue | null {
   for (const [index, op] of operations.entries()) {
     if (op.op === 'call') {

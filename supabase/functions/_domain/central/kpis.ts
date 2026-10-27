@@ -11,6 +11,8 @@ export const KPI_SOURCES: ReadonlyArray<{ app: string; projection: string }> = [
   // Módulo común (R7, migración 0805 de Core): espacios e inventario, junto a Central como en el boceto aprobado.
   { app: 'resources', projection: 'resources.central_kpi_projection' },
   { app: 'booking', projection: 'booking.central_kpi_projection' },
+  // Guests (#876, docs/guests/API.md §9.20): portal, firmas y partes SES; su lectura es solo para el owner de Central.
+  { app: 'guests', projection: 'guests.central_kpi_projection' },
   { app: 'invoices', projection: 'invoices.central_kpi_projection' },
   { app: 'tasks', projection: 'tasks.central_kpi_projection' },
   { app: 'food', projection: 'food.central_kpi_projection' },
@@ -29,6 +31,9 @@ export const KPI_SECTIONS: ReadonlyArray<{ title: string; kpis: readonly string[
   { title: 'Espacios', kpis: ['resources.spaces_active', 'resources.bed_places', 'resources.bed_extra_places', 'resources.bookable_rooms_without_beds', 'resources.spaces_without_code'] },
   { title: 'Inventario', kpis: ['resources.stock_value', 'resources.items_below_min', 'resources.lots_expiring_30d', 'resources.lots_expired',
     'resources.items_stock_without_cost', 'resources.items_negative_stock', 'resources.machines_down'] },
+  // Guests (#876): el portal y las firmas de los huéspedes, y los partes de viajeros (SES).
+  { title: 'Portal y firmas', kpis: ['guests.portal_entered_pct', 'guests.portal_entered', 'guests.signatures_pending', 'guests.retreats_signatures_pending', 'guests.signatures_done'] },
+  { title: 'Partes de viajeros', kpis: ['guests.retreats_ses_pending', 'guests.ses_sent_30d'] },
 ];
 
 /** Tema de una clave y su posición en el panel (`null` si no tiene). */

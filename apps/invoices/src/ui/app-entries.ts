@@ -11,7 +11,7 @@
 import { bindOnline, closeSheet, createPrintView, el, formatDate, icon, listRow, openSheet, renderGroups, renderStats, replace, toast } from '@ikisai/ui-kit';
 import { APP_ENTRIES, ISSUED_ALLOCATIONS, ISSUED_INVOICES, describeError, type LocalAppEntry } from '../app/client.ts';
 import { eur, loadMirror, monthLabel, onAnyTable, shortDate } from '../app/data.ts';
-import { appName, entriesTotals, eventResults, isFiscal, liveEntries, type EventResult, type EventSources } from '../app/app-entries-state.ts';
+import { appName, entriesTotals, eventResults, isFiscal, knownEventIds, liveEntries, type EventReservation, type EventResult, type EventSources } from '../app/app-entries-state.ts';
 import { rememberTarget, searchTargets, type TargetChoice } from '../app/targets.ts';
 import { dayReceipt, methodLabel } from '../app/day-receipt.ts';
 import { MISSING_ENTITY, fetchEntity, issuerLines } from './issued.ts';
@@ -20,9 +20,27 @@ import type { SyncClient } from '@ikisai/sync-client';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 const fromCents = (c: number) => eur(c / 100);
-interface Data { entries: LocalAppEntry[]; events: EventResult[] }
+/** `lodging`: si se pudo leer de Booking qué reservas son de cada evento (sin ello, el alojamiento facturado a reservas no suma). */
+interface Data { entries: LocalAppEntry[]; events: EventResult[]; lodging: 'ok' | 'cached' | 'unavailable' }
 
-async function loadData(client: SyncClient): Promise<Data> {
+const RESERVATIONS_KEY = 'ikisai-invoices-event-reservations';
+/** Reserva → evento de Booking (#909), con la última respuesta guardada en el dispositivo para verlo sin red. */
+async function eventReservations(client: SyncClient, eventIds: string[]): Promise<{ rows: EventReservation[]; state: Data['lodging'] }> {
+  if (!eventIds.length) return { rows: [], state: 'ok' };
+  let cached: EventReservation[] = [];
+  try { cached = JSON.parse(localStorage.getItem(RESERVATIONS_KEY) ?? '[]') as EventReservation[]; } catch { /* sin almacenamiento local */ }
+  try {
+    const rows = await client.api<EventReservation[]>('/read/booking.event_reservations_for_invoices', { json: { event_ids: eventIds.slice(0, 200) } });
+    const list = Array.isArray(rows) ? rows : [];
+    try { localStorage.setItem(RESERVATIONS_KEY, JSON.stringify([...cached.filter((x) => !eventIds.includes(x.event_id)), ...list])); } catch { /* sin almacenamiento local */ }
+    return { rows: list, state: 'ok' };
+  } catch {
+    const rows = cached.filter((x) => eventIds.includes(x.event_id));
+    return { rows, state: rows.length ? 'cached' : 'unavailable' };
+  }
+}
+
+async function loadData(client: SyncClient, alsoEvent?: string): Promise<Data> {
   const [entries, m, issuedAllocations, issued] = await Promise.all([
     client.list(APP_ENTRIES) as unknown as Promise<LocalAppEntry[]>,
     loadMirror(client),
@@ -30,8 +48,11 @@ async function loadData(client: SyncClient): Promise<Data> {
     client.list(ISSUED_INVOICES, { includeDeleted: true }) as unknown as Promise<EventSources['issued']>,
   ]);
   const live = liveEntries(entries);
-  const events = eventResults({ entries: live, allocations: m.allocations, lines: m.lines, invoices: m.invoices, issuedAllocations, issued });
-  return { entries: live, events };
+  const ids = knownEventIds({ entries: live, allocations: m.allocations, issuedAllocations });
+  if (alsoEvent && !ids.includes(alsoEvent)) ids.push(alsoEvent);
+  const reservations = await eventReservations(client, ids);
+  const events = eventResults({ entries: live, allocations: m.allocations, lines: m.lines, invoices: m.invoices, issuedAllocations, issued, reservations: reservations.rows });
+  return { entries: live, events, lodging: reservations.state };
 }
 
 /** Rótulo de un evento: el de las asignaciones o, sin él, el recordado al enlazar. */
@@ -361,11 +382,20 @@ export const mountEvent: ViewMount = (ctx) => {
         { value: fromCents(r.expenseCents), label: 'gastos', hint: `facturas ${fromCents(r.invoiceExpenseCents)} · apps ${fromCents(r.appExpenseCents)}` },
         { value: fromCents(r.resultCents), label: 'resultado', tone: r.resultCents >= 0 ? 'ok' : 'alert' },
       ], { label: 'Resultado del evento' })),
+      el('h3', { class: 'sectionlabel' }, 'Alojamiento y barra'),
+      el('div', { id: 'eventBalance' }, renderStats([
+        { value: fromCents(r.balance.lodgingInvoicedCents), label: 'alojamiento facturado', hint: `cobrado ${fromCents(r.balance.lodgingCollectedCents)} · por cobrar ${fromCents(r.balance.lodgingInvoicedCents - r.balance.lodgingCollectedCents)}`,
+          tone: r.balance.lodgingInvoicedCents > r.balance.lodgingCollectedCents ? 'warn' : undefined },
+        { value: fromCents(r.balance.stayCents), label: 'alojamiento en recepción', hint: 'cobrado al momento' },
+        { value: fromCents(r.balance.barCents), label: 'barra', hint: 'cobrado (Flow)' },
+      ], { label: 'Alojamiento y barra' })),
+      d.lodging === 'unavailable' ? el('p', { class: 'hint', id: 'eventLodgingMissing' }, 'Sin conexión con Booking: el alojamiento facturado a las reservas de este evento no está sumado. Vuelve a abrirlo con red.')
+        : d.lodging === 'cached' ? el('p', { class: 'hint', id: 'eventLodgingCached' }, 'Reservas del evento de la última vez que hubo red con Booking.') : null,
       r.pendingInvoices ? el('p', { class: 'hint', id: 'eventPending' }, `${r.pendingInvoices} factura${r.pendingInvoices === 1 ? '' : 's'} asignada${r.pendingInvoices === 1 ? '' : 's'} al evento aún sin validar: cuenta${r.pendingInvoices === 1 ? '' : 'n'} como gasto de proceso hasta tener su justificante y validarse.`) : null,
       el('h3', { class: 'sectionlabel' }, 'Movimientos'),
       el('ul', { class: 'list', id: 'eventMoves', 'aria-label': 'Movimientos del evento' }, ...r.moves.map((m) => {
         const li = listRow({
-          id: `${m.kind}-${m.id}`, title: m.title, meta: [shortDate(m.date), KIND[m.kind], m.process ? 'De proceso' : ''].filter(Boolean),
+          id: `${m.kind}-${m.id}`, title: m.title, meta: [shortDate(m.date), KIND[m.kind], m.lodging ? 'Alojamiento (reserva)' : '', m.process ? 'De proceso' : ''].filter(Boolean),
           chips: [el('span', { class: `chip ${m.sign > 0 ? 'ok' : ''}` }, `${m.sign > 0 ? '+' : '−'}${fromCents(m.cents)}`)],
           onClick: () => open(m), label: `Abrir ${m.title}`,
         });
@@ -376,7 +406,7 @@ export const mountEvent: ViewMount = (ctx) => {
   }
 
   async function load(): Promise<void> {
-    paint(await loadData(client));
+    paint(await loadData(client, id || undefined));
   }
   void load();
   return onAnyTable(client, () => void load());

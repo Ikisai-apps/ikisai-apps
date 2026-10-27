@@ -15,23 +15,26 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 export const PORTAL_DOMAINS: Record<string, string> = { organizers: 'organizers.ikisai.com', guests: 'guests.ikisai.com' };
 
+/** Cuenta de Auth de una persona de portal: por correo (solo cuentas de portal, 0103) o, en huéspedes, por su ficha; si no, nueva. */
+export async function portalUserFor(supabase: Supabase, person: { name?: string; email?: string | null }, app: string, scope: Record<string, unknown>): Promise<string> {
+  const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
+  if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320)) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
+  // Misma persona: por correo (en la base, no en la primera página de Auth) o, en huéspedes, por su reserva y su huésped.
+  const existing = await supabase.rpc<string | null>('core_portal_find_user', { p_app: app, p_scope: scope, p_email: email });
+  if (existing) return existing;
+  // Sin contraseña: se entra por enlace y, después, con la cuenta permanente (Google o código por correo).
+  const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
+  const password = btoa(String.fromCharCode(...bytes));
+  const created = await supabase.remote('/auth/v1/admin/users', {
+    service: true, method: 'POST',
+    body: { email: email ?? `p-${crypto.randomUUID()}@portales.ikisai.com`, password, email_confirm: true, user_metadata: { portal: true, name: person.name ?? null } },
+  });
+  if (typeof created?.id !== 'string') fail(502, 'AUTH_ADMIN_FAILED', messageFor('AUTH_ADMIN_FAILED'));
+  return created.id;
+}
+
 export function createPortalLinks(supabase: Supabase, issuerApp: string) {
-  async function userFor(person: { name?: string; email?: string | null }, app: string, scope: Record<string, unknown>): Promise<string> {
-    const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
-    if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320)) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
-    // Misma persona: por correo (en la base, no en la primera página de Auth) o, en huéspedes, por su reserva y su huésped.
-    const existing = await supabase.rpc<string | null>('core_portal_find_user', { p_app: app, p_scope: scope, p_email: email });
-    if (existing) return existing;
-    // Sin contraseña: se entra por enlace y, después, con la cuenta permanente (Google o código por correo).
-    const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
-    const password = btoa(String.fromCharCode(...bytes));
-    const created = await supabase.remote('/auth/v1/admin/users', {
-      service: true, method: 'POST',
-      body: { email: email ?? `p-${crypto.randomUUID()}@portales.ikisai.com`, password, email_confirm: true, user_metadata: { portal: true, name: person.name ?? null } },
-    });
-    if (typeof created?.id !== 'string') fail(502, 'AUTH_ADMIN_FAILED', messageFor('AUTH_ADMIN_FAILED'));
-    return created.id;
-  }
+  const userFor = (person: { name?: string; email?: string | null }, app: string, scope: Record<string, unknown>) => portalUserFor(supabase, person, app, scope);
 
   async function issue(ctx: RequestContext, body: any) {
     if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
@@ -50,14 +53,15 @@ export function createPortalLinks(supabase: Supabase, issuerApp: string) {
     // Autoriza antes de crear la cuenta (la función SQL vuelve a comprobarlo todo en la transacción).
     if (isReadOnly(ctx.membership.role)) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (issuerApp === 'organizers' && app !== 'guests') fail(403, 'FORBIDDEN', 'Un organizador solo genera enlaces de huésped.');
+    // Solo reutiliza por correo cuentas de portal; el de alguien del personal da PORTAL_EMAIL_STAFF (0103, B1).
     const userId = await userFor(person, app, clean);
-    // `replace`: el enlace nuevo deja sin efecto los anteriores de ese huésped (reenvío).
-    if (app === 'guests' && body?.replace === true) await supabase.rpc('core_portal_revoke_guest_links', { p_scope: clean });
     const token = newPass();
     const link = await supabase.rpc<any>('core_portal_link_issue', {
       p_issuer_app: issuerApp, p_actor: ctx.user.id, p_app: app, p_user: userId, p_digest: await sha256Hex(token), p_scope: clean,
       p_label: typeof body.label === 'string' ? body.label : name || null, p_display_name: name || null,
     });
+    // `replace`: el enlace nuevo deja sin efecto los anteriores de ese huésped (reenvío). Después de que el SQL haya autorizado (B6).
+    if (app === 'guests' && body?.replace === true) await supabase.rpc('core_portal_revoke_guest_links', { p_scope: clean, p_keep: link.linkId });
     return { ...link, url: `https://${PORTAL_DOMAINS[app]}/i/${token}`, shownOnce: true };
   }
 

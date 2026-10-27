@@ -1,5 +1,61 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.66.0 · 27 de octubre de 2026
+
+**Guiado, tanda 1: anclajes semánticos y campo señalado.** Es el nivel mínimo y el primer paso del Guiado completo que decidió VG el 27-10; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`.
+
+- **Anclajes** (`src/guide/anchors.ts`): un anclaje es un id del inventario (`data-field-id` o `data-feedback-id`), nunca un selector.
+  - `findAnchor(id)` devuelve el nodo, solo si se ve: un `<details>` cerrado o `display: none` no cuentan.
+  - `registerReveal(prefijo, fn)`: la app enseña lo escondido (abrir una hoja, cambiar de pestaña).
+  - `revealAnchor(id)` pide que se enseñe y espera a que aparezca; si no aparece, devuelve `null`.
+  - `pointAt(nodo)` lo trae a la vista, le da el foco y lo resalta.
+- **Confirmación de guardado, sin valores:**
+  - `FieldSpec` gana `confirm` (`'save' | 'event' | 'none'`) y `validator` (un nombre, no código). Van a `data-field-confirm`/`-validator` y al catálogo; solo aparecen si se declaran, así que los catálogos de siempre no cambian.
+  - `createSaveState` avisa solo cuando la clave es un id de campo (`confirm: 'save'`). Para el resto está `announceSaved(id)`. Se escucha con `onSaved(fn)`.
+  - El aviso lleva solo el id y si quedó en cola sin red.
+- **Enlace** (`src/guide/link.ts`): `withGuideLink(url, { field, step, run, from, title })` es la convención de «Volver a…» más `campo`, `paso` y `guia`. `readGuideLink()` lo lee al llegar, lo guarda en la pestaña y limpia la URL.
+- **Shell:** `createAppShell({ guide: true })` monta el Guiado en una línea e implica `returnTo`.
+  - Al llegar con `?campo=…&paso=…`, una línea arriba explica el paso y el campo queda señalado.
+  - Hay «Ver el campo» y «Cerrar». Si no encuentra el campo, lo dice.
+  - El texto del paso se pinta como texto, nunca como HTML.
+- Clases con el prefijo nuevo `guia-` (`guide-` ya lo usa una app). Demo: «Guiado: campo señalado». Pruebas: `tests/v70.spec.ts`.
+
+## 0.65.0 · 27 de octubre de 2026
+
+**Carriles por cualquier clave** (traspaso de Flow v03, §12; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`). `groupLanes(items, { key, title?, order?, hideEmpty?, noneTitle?, emptyText?, card | mount })` (`src/pieces/lanes-group.ts`) devuelve los `lanes` de `createLanes` agrupados por persona, agente, fase, espacio u objetivo. `createLanes` no cambia.
+
+- La clave es el id del carril, así que al cambiar de agrupación con `setLanes` se conserva el carril elegido si sigue existiendo.
+- Orden:
+  - `order` fija carriles en ese orden, aunque estén vacíos (`hideEmpty` los quita);
+  - los demás van detrás, ordenados por título;
+  - lo que no tiene clave va al final, en «Sin asignar» (`LANE_NONE`).
+- Dentro de cada carril, una `card(item)` por elemento, o `mount(body, items, key)` para montarlo a mano. Un carril vacío dice «Nada aquí» y en «Lado a lado» se pliega.
+- Demo: «Carriles por cualquier clave», con «Agrupar por» persona, fase o espacio. Pruebas: `tests/v69.spec.ts`.
+
+## 0.64.0 · 27 de octubre de 2026
+
+**Piezas genéricas para el catálogo de Flow** (encargo de Core; cómo las monta Flow en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Ninguna guarda nada por su cuenta: solo registran a través de la app.
+
+- **Formulario libre** (`createFreeForm`, `src/pieces/free-form.ts`): las preguntas salen de un esquema JSON y se contestan una a una sobre `createStepForm`.
+  - Tipos: texto (o `multiline`), número (con coma o punto, `min`, `max`, `unit`), sí/no, opción y foto.
+  - Las opcionales llevan «Saltar» y responden `null`; las obligatorias no avanzan vacías.
+  - Al final, una revisión con «Cambiar» en cada respuesta y «Registrar». `onSubmit(answers)` recibe `{ id: texto | número | booleano | valor | ref de foto | null }`.
+  - Foto: el kit la recomprime y `onPhoto(blob)` la sube y devuelve su referencia.
+  - `value` retoma un borrador y no repregunta lo contestado. `freeFormProblems(schema)` valida el esquema.
+- **Lista de comprobación** (`createChecklist`, `src/pieces/checklist.ts`): ítems con casilla, la etiqueta «Obligatoria» u «Opcional» y «Hecho por Ana · 10:42».
+  - Arriba, «3 de 5 hechas · faltan 2 obligatorias» con su barra.
+  - `onToggle(id, checked, { by, at })`: si falla, la marca vuelve atrás y lo dice.
+  - `summary()` y `checklistSummary()` devuelven `{ done, total, requiredDone, requiredTotal, complete }`; `onComplete` avisa al completar las obligatorias. También tiene `readOnly`.
+- `createStepForm`:
+  - `kind: 'custom'` con `render(ctx)`, para un control propio;
+  - `skip: true`, que añade «Saltar»;
+  - `multiline` e `inputAttrs` en las preguntas de texto.
+  - Sin estas opciones funciona como antes. La marca `saltar` solo se cataloga si la llamada usa `skip`.
+- Marcas nuevas en el catálogo:
+  - `createFreeForm`: `preguntas`, `foto`, `cambiar`, `registrar` y `nuevo`;
+  - `createChecklist`: `item`.
+- Demo: sección «Piezas genéricas». Pruebas: `tests/v68.spec.ts`.
+
 ## 0.63.0 · 27 de octubre de 2026
 
 **Decoración y finca en `createSpaceMap`** (encargo de VG del 27-10, `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`). Las formas de los datos se han acordado con Guests (Recursos), Central («Colocar» → Decoración) y Core (el SVG de la finca). Sin las opciones nuevas, el mapa se comporta como antes.

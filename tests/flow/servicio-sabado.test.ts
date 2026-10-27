@@ -26,6 +26,8 @@ const KEY = 'clave-de-prueba-solo-para-pglite';
 const uuid = () => crypto.randomUUID();
 const RESERVATION = uuid(), EVENT = uuid(), BARRA = uuid(), LLEGADAS = uuid();
 const GUESTS = [uuid(), uuid()];
+/** Clave de worker compartida (sintética): Finance exige a Flow su identidad de servicio (FL1, #870/#878). */
+const WORKER_KEY = 'clave-worker-de-prueba-sabado';
 let app: TestApp;
 let food: Handler, finance: Handler, booking: Handler;
 let seq = 0;
@@ -40,9 +42,9 @@ test.before(async () => {
     const [handler, origin] = url.includes('/food-api/') ? [food, FOOD_ORIGINS[0]!] : url.includes('/invoices-api/') ? [finance, INVOICES_ORIGINS[0]!] : [booking, BOOKING_ORIGINS[0]!];
     return handler(new Request(url, { method: init?.method, body: init?.body, headers: { ...(init?.headers as Record<string, string>), Origin: origin } }));
   }) as typeof fetch;
-  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, { appsFetch }) });
+  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN], workerKey: WORKER_KEY }, { appsFetch }) });
   food = createFoodApp({ ...base(), origins: [FOOD_ORIGINS[0]!] } as never) as unknown as Handler;
-  finance = createInvoicesApp({ ...base(), origins: [INVOICES_ORIGINS[0]!], drive: { api: null } } as never) as unknown as Handler;
+  finance = createInvoicesApp({ ...base(), origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, workerKey: WORKER_KEY } as never) as unknown as Handler;
   booking = createBookingApp({ ...base(), origins: [BOOKING_ORIGINS[0]!] } as never) as unknown as Handler;
   // La misma persona: owner en Flow (ya), Food y Finance; editora en Booking (llegadas y salidas).
   for (const [a, role] of [['food', 'owner'], ['invoices', 'owner'], ['booking', 'editor']]) {

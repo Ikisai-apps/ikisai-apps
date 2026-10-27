@@ -258,6 +258,20 @@ export function validateTaxLineFields(fields: Fields, op: 'insert' | 'update'): 
   text(fields, 'notes', { max: 2000 });
 }
 
+/**
+ * Seguridad F3 (auditoría del 27-10): el destino se cambia entero. `target_id`, `target_code` o `target_revision` sin
+ * `target_app` y `target_kind` no se aceptan, así el hook vuelve a resolverlo siempre con el token de la persona.
+ */
+function targetTogether(fields: Fields): void {
+  const partial = ['target_id', 'target_code', 'target_revision'].some((k) => has(fields, k));
+  if ((partial || has(fields, 'target_app') || has(fields, 'target_kind')) && !(has(fields, 'target_app') && has(fields, 'target_kind'))) {
+    domainFail('INVALID_FIELDS', 'El destino se cambia entero: target_app, target_kind y target_id juntos.', { field: 'target_app' });
+  }
+  if (has(fields, 'target_app') && fields.target_app !== 'general' && (!has(fields, 'target_id') || typeof fields.target_id !== 'string' || !fields.target_id.trim())) {
+    domainFail('INVALID_FIELDS', 'Indica el destino.', { field: 'target_id' });
+  }
+}
+
 export function validTargetPair(targetApp: unknown, targetKind: unknown): boolean {
   return typeof targetApp === 'string' && typeof targetKind === 'string' && (TARGET_KINDS[targetApp as keyof typeof TARGET_KINDS] ?? []).includes(targetKind);
 }
@@ -271,6 +285,7 @@ export function validateAllocationFields(fields: Fields, op: 'insert' | 'update'
   }
   uuid(fields, 'invoice_line_id');
   oneOf(fields, 'target_app', TARGET_APPS, { nullable: false });
+  targetTogether(fields);
   if (has(fields, 'target_app') || has(fields, 'target_kind')) {
     if (has(fields, 'target_app') && has(fields, 'target_kind') && !validTargetPair(fields.target_app, fields.target_kind)) {
       domainFail('INVALID_FIELDS', 'El tipo de destino no corresponde a esa aplicación.', { field: 'target_kind', allowed: TARGET_KINDS });
@@ -455,6 +470,7 @@ export function validateIssuedAllocationFields(fields: Fields, op: 'insert' | 'u
   if (op === 'insert') required(fields, ['issued_invoice_id', 'target_app', 'target_kind', 'target_label', 'allocated_amount']);
   uuid(fields, 'issued_invoice_id');
   oneOf(fields, 'target_app', ['booking', 'general'], { nullable: false });
+  targetTogether(fields);
   if (has(fields, 'target_app') && has(fields, 'target_kind') && !(ISSUED_TARGET_KINDS[String(fields.target_app)] ?? []).includes(String(fields.target_kind))) {
     domainFail('INVALID_FIELDS', 'El tipo de destino no corresponde a esa aplicación.', { field: 'target_kind' });
   }
@@ -550,8 +566,10 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   ENTRY_LOCKED: 'Este apunte ya está en una entrega a la gestoría: no se puede sustituir.',
   NATURE_CHANGE: 'Un apunte fiscal no vuelve a ser de proceso.',
   RECEIPT_REQUIRED: 'Un gasto fiscal necesita su factura o su ticket.',
+  DRIVE_FIELDS: 'El origen en Google Drive solo lo pone la importación de Drive.',
   SOURCE_MISMATCH: 'El apunte es de otra app: cada app solo envía los suyos.',
   CALLER_REQUIRED: 'Los apuntes de otra app solo llegan desde su servidor.',
+  FILE_NOT_YOURS: 'Ese documento lo subió otra persona y aún no está en ninguna factura: súbelo tú.',
   RECEIPT_KIND_REQUIRED: 'Con número o archivo de justificante, la app tiene que decir si es factura o ticket.',
   INVOICE_REQUIRED: 'Un gasto con ticket se registra, pero no es deducible ni va a la gestoría: para eso hace falta la factura.',
   ENTITY_MISSING: 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.',

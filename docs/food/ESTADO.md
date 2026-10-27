@@ -75,6 +75,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 - **Lista de la compra única por evento** (encargo de Core del 28-10; migración 1117; API.md §2.15): suma el menú y las cartas del evento por tienda y pasillo, avisa de lo que no tiene lista, compra desde aquí o pide a Tasks (`tasks.request_purchase`) y marca lo que Tasks ha comprado.
 - **Compra a Tasks con artículo** (opción A de Core; Tasks #874): Food manda el `item_id` de cada fila y Tasks apunta la entrada de stock al recibir. Prueba de punta a punta con la Tasks real (`tests/food/event-shopping-e2e.test.ts`).
 - **Seguridad FO2** (auditoría del 27-10; Tasks #852): las peticiones a Tasks llevan la clave de worker y `X-Ikisai-Caller: food`.
+- **Seguridad FO1** (auditoría del 27-10; migración 1118): las ofertas de visitante, por el código público del evento y sin `event_id`. Necesita que Booking añada `public_code` a `booking.food_event_projection`.
+- **Seguridad FO3** (auditoría del 27-10; migración 1119): los avisos de avería (`food.equipment_notices`) solo los escribe la cuenta de servicio `food`.
 
 ## Aceptación del usuario (6 de octubre de 2026)
 

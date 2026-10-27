@@ -142,6 +142,13 @@ test('beforeCommit: destinos de Tareas con el token del usuario (etiqueta, revis
   const t = uuid();
   const res2 = await ok([insert('invoices.allocations', t, { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'task', target_id: TASK, target_label: 'x', allocated_amount: 5 })]);
   assert.equal(res2.changes.find((c: any) => c.id === t).after.target_label, 'Comprar semillas');
+  // F3 (auditoría del 27-10): reapuntar solo con target_id (a un proyecto que no se ve) no vale; entero, se vuelve a resolver
+  const tRow = res2.changes.find((c: any) => c.id === t).after;
+  const reaim = (fields: Record<string, unknown>) => ({ op: 'update', table: 'invoices.allocations', id: t, expectedRevision: tRow.revision, fields });
+  await rejected([reaim({ target_id: FORBIDDEN_PROJECT })], 'INVALID_FIELDS');
+  await rejected([reaim({ target_kind: 'project', target_id: FORBIDDEN_PROJECT })], 'INVALID_FIELDS');
+  await rejected([reaim({ target_revision: 9 })], 'INVALID_FIELDS');
+  await rejected([reaim({ target_app: 'tasks', target_kind: 'project', target_id: FORBIDDEN_PROJECT, target_label: 'x' })], 'TARGET_FORBIDDEN');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'task', target_id: DELETED_TASK, target_label: 'x', allocated_amount: 1 })], 'TARGET_NOT_FOUND');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'project', target_id: uuid(), target_label: 'x', allocated_amount: 1 })], 'TARGET_NOT_FOUND');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'project', target_id: FORBIDDEN_PROJECT, target_label: 'x', allocated_amount: 1 })], 'TARGET_FORBIDDEN');
@@ -396,9 +403,13 @@ test('MCP §15.1: la sesión de Claude lista los borradores de Drive con su PDF 
   const file = await uploadFile('%PDF borrador de drive', 'Factura escaneada.pdf');
   await ok([
     insert('invoices.suppliers', placeholder, { name: 'Sin identificar (Drive)', slug: 'sin_identificar_mcp' }),
-    insert('invoices.invoices', draft, { supplier_id: placeholder, invoice_date: null, object: 'Factura escaneada', drive_file_id: 'drv-mcp-1', drive_url: 'https://drive.google.com/file/d/drv-mcp-1/view' }),
+    insert('invoices.invoices', draft, { supplier_id: placeholder, invoice_date: null, object: 'Factura escaneada' }),
     insert('invoices.invoice_files', uuid(), { invoice_id: draft, original_filename: 'Factura escaneada.pdf', page_order: 1, kind: 'original', file_id: file.id, mime_type: 'application/pdf', size_bytes: file.size, sha256: file.sha }),
   ]);
+  // El origen Drive solo lo pone «Drive (sistema)» (F2, 0251): aquí se simula su importación directamente en la base.
+  await app.t.db.query(`alter table invoices.invoices disable trigger invoices_drive_fields_guard`);
+  await app.t.db.query(`update invoices.invoices set drive_file_id = 'drv-mcp-1', drive_url = 'https://drive.google.com/file/d/drv-mcp-1/view' where id = $1`, [draft]);
+  await app.t.db.query(`alter table invoices.invoices enable trigger invoices_drive_fields_guard`);
   const listed = await tool('invoices_pending_drafts', {}, agent);
   assert.equal(listed.isError, undefined, JSON.stringify(listed));
   const item = listed.structuredContent.items.find((i: any) => i.invoice_id === draft);

@@ -587,6 +587,39 @@ test('organizers · factura emitida desde Finance: la copia congelada se pinta e
   await expect(page.locator('#printPage')).toBeVisible();
 });
 
+test('organizers · factura registrada con su PDF guardado: «Abrir PDF» lo abre en otra pestaña (K2, portal-files)', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con factura registrada', confirm: true });
+  const invoice = crypto.randomUUID(); const file = crypto.randomUUID();
+  // Lecturas de Finance simuladas; el resolutor de `portal-files` (0249) tiene su prueba en tests/invoices/sql.test.ts.
+  await page.route('**/api/v1/read/invoices.portal_reservation_money', (route) => route.fulfill({ json: {
+    reservation_id: reservation, currency: 'EUR', totals: { invoiced: 500, collected: 0, pending: 500 },
+    invoices: [{ id: invoice, number: '2026-0011', issue_date: '2026-10-20', type: 'F2', rectifies: null, base: 500, tax: 0, withholding: 0, total: 500, status: 'registrada', collected: false, collected_at: null, has_document: true, purpose: 'senal' }],
+  } }));
+  await page.route('**/api/v1/read/invoices.portal_invoice_document', (route) => route.fulfill({ json: {
+    id: invoice, number: '2026-0011', issue_date: '2026-10-20', status: 'registrada', document: null,
+    files: [{ file_id: file, filename: 'senal.pdf', mime: 'application/pdf', size: 1234 }],
+  } }));
+  let asked = '';
+  await page.route('**/api/v1/portal-files/*', (route) => {
+    asked = new URL(route.request().url()).pathname.split('/').pop()!;
+    return route.fulfill({ json: { id: file, url: 'https://storage.example.invalid/senal.pdf?token=x', mime: 'application/pdf', filename: 'senal.pdf', size: 1234, expiresAt: new Date(Date.now() + 300_000).toISOString() } });
+  });
+  // Chromium sin ventana descarga los PDF en lugar de mostrarlos (la pestaña se queda en about:blank): se mira la petición.
+  let opened = '';
+  await page.context().route('https://storage.example.invalid/**', (route) => { opened = route.request().url(); return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4' }); });
+  await enter(page, await api.organizerLink([reservation], 'registrada@example.invalid', 'Rosa'));
+  await page.locator('#tab-pagos').click();
+  await page.locator('#moneyStatement li.mb-doc .mb-open').first().click();
+  const sheet = page.locator('#invoiceFiles');
+  await expect(sheet).toContainText('Esta factura se hizo con otra herramienta');
+  await expect(page.locator('#askInvoice')).toHaveCount(0);
+  const popup = page.waitForEvent('popup');
+  await sheet.getByRole('button', { name: 'Abrir PDF' }).click();
+  await popup;
+  await expect.poll(() => opened).toBe('https://storage.example.invalid/senal.pdf?token=x');
+  expect(asked).toBe(file);
+});
+
 test('organizers · experiencia (fase 4): qué ven los asistentes, mensaje, enlace publicado y pregunta con aviso de datos sensibles @smoke', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con experiencia', confirm: true });
   await enter(page, await api.organizerLink([reservation], 'experiencia@example.invalid', 'Irene'));

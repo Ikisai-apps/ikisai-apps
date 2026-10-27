@@ -35,5 +35,14 @@ class ReleaseMatrixTest(unittest.TestCase):
     self.assertIn('tasks', apps)
 
 
+  def test_un_workflow_que_no_publica_no_marca_apps(self):
+    apps, _ = affected(['.github/workflows/checks.yml', 'apps/invoices/src/app/day-receipt.ts'])
+    self.assertEqual(apps, {'invoices'})
+
+  def test_release_yml_sigue_marcando_todas(self):
+    apps, _ = affected(['.github/workflows/release.yml'])
+    self.assertIn('organizers', apps)
+    self.assertIn('booking', apps)
+
 if __name__ == '__main__':
   unittest.main()

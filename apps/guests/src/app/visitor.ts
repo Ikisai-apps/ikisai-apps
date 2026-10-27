@@ -19,6 +19,8 @@ export const EVENT_CODE = /^[A-HJKMNP-Z2-9]{10}$/i;
 export interface PublicEvent {
   code: string; name: string; starts_on: string | null; ends_on: string | null;
   kind: 'retiro' | 'jornadas_abiertas' | 'familiar' | string; status: 'abierto' | 'cerrado' | string; joinable: boolean; summary: string | null;
+  /** Ofrece noches (alojamiento a la carta). */
+  lodging?: boolean;
 }
 export interface VisitorRequest {
   event_code: string; kind: 'join' | 'contact'; name: string | null; status: 'pendiente' | 'aceptada' | 'atendida' | 'descartada' | string;
@@ -120,12 +122,21 @@ function asEvent(raw: unknown): PublicEvent | null {
   if (!e || typeof e.code !== 'string' || typeof e.name !== 'string') return null;
   const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
   return { code: e.code, name: e.name, starts_on: day(e.starts_on), ends_on: day(e.ends_on), kind: String(e.kind ?? 'retiro'),
-    status: String(e.status ?? 'cerrado'), joinable: e.joinable === true, summary: typeof e.summary === 'string' && e.summary.trim() ? e.summary : null };
+    status: String(e.status ?? 'cerrado'), joinable: e.joinable === true, summary: typeof e.summary === 'string' && e.summary.trim() ? e.summary : null,
+    lodging: e.lodging === true };
 }
 
 /** El evento del QR (Booking BG19, lectura pública `booking_event`); null si el código no es de ningún evento. */
 export function publicEvent(code: string): Promise<Loaded<PublicEvent | null>> {
   return readPublic('booking_event', { code: code.toUpperCase() }, asEvent);
+}
+
+/** Los eventos abiertos al público (Booking, `booking_public_events`): la raíz de ven.ikisai.com sin QR ni invitación. */
+export function publicEvents(): Promise<Loaded<PublicEvent[]>> {
+  return readPublic('booking_public_events', {}, (raw) => {
+    const list = Array.isArray(raw) ? raw : Array.isArray((raw as { items?: unknown[] } | null)?.items) ? (raw as { items: unknown[] }).items : [];
+    return list.map(asEvent).filter((e): e is PublicEvent => Boolean(e));
+  });
 }
 
 /** Sus ofertas públicas (Food FD5, `food_visitor_offers`), sin cruzar: la forma de `food.portal_offers`. */

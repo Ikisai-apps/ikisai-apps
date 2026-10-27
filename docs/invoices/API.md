@@ -1990,7 +1990,7 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
   - `https://finance.ikisai.com/#/justificante?ref=<source_ref>`, con la clave de la app codificada en la URL (`encodeURIComponent`), para que Flow no tenga que guardar ids.
 - **Qué enseña:**
   - el emisor (datos del centro, de Central, con red);
-  - el número de cobro (`receipt_number` del apunte; lo pone la app, no es una serie de Finance). Sin él, en un cobro suelto (`<app>:receipt:<id>`), los 8 primeros caracteres del id en mayúsculas, así nunca sale como «Ticket de ventas» del día;
+  - el número de cobro (`receipt_number` del apunte; lo pone la app, no es una serie de Finance). Sin él, en un cobro suelto (`<app>:receipt:<id>`, o el alojamiento de recepción `booking:stay:<id>`), los 8 primeros caracteres del id en mayúsculas, así nunca sale como «Ticket de ventas» del día;
   - la fecha y las líneas (`detail`);
   - los medios de cobro (Metálico, Bizum, Tarjeta, Bitcoin… y cualquier clave de `methods` tal cual);
   - la base, el IVA incluido y el total.
@@ -2017,6 +2017,14 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
   - **Ingreso con ticket:** fiscal. La venta va al IVA repercutido.
   - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
 - **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
+
+### 17.11 «Evento»: alojamiento y barra (finance-15)
+
+- **Alojamiento de un retiro:** se factura a su reserva. Con la lectura de Booking `booking.event_reservations_for_invoices {event_ids}` (reserva → evento, #909), las emitidas a las reservas del evento suman en él y se ve lo facturado, lo cobrado (`payment_status = cobrada`) y lo que falta por cobrar.
+- **Alojamiento de recepción** (`booking:stay:…`) **y barra** (Flow): son cobros y van como cobrados. Un cobro con devolución es un solo apunte, por lo cobrado menos lo devuelto (Booking 1403).
+- **Sin red con Booking:**
+  - se usan las reservas de la última vez y la vista lo dice;
+  - si nunca las hubo, el alojamiento a reservas no suma y la vista avisa.
 
 ### 17.10 El origen solo vale desde el servidor de la app (seguridad F1, auditoría del 27-10; el modelo de Tasks §45)
 

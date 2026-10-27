@@ -414,3 +414,11 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-contourpt{fill:var(--paper);stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke;cursor:grab}
 .ctl-contourlabel{fill:var(--accent);font-weight:600;text-anchor:middle;paint-order:stroke;stroke:var(--paper);stroke-width:3px;pointer-events:none}
 .ctl-contourpt:focus-visible{outline:none;stroke:var(--ink);stroke-width:3}
+.ctl-headerpicks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 16px;margin:8px 0 4px}
+.ctl-headerpicks .sectionlabel,.ctl-headerpicks .hint{grid-column:1/-1;margin:0}
+/* Silueta de cabecera (Recursos 0816): de fondo a la derecha, detrás de los botones (z-index negativo dentro de la cabecera). */
+.topbar .ctl-headart{position:absolute;right:12px;bottom:0;height:calc(100% - 4px);max-width:45%;object-fit:contain;object-position:right bottom;opacity:.18;mix-blend-mode:multiply;pointer-events:none;user-select:none;z-index:-1}
+.topbar .ctl-headart[hidden]{display:none}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .topbar .ctl-headart{filter:invert(1);mix-blend-mode:screen}}
+:root[data-theme="dark"] .topbar .ctl-headart{filter:invert(1);mix-blend-mode:screen}
+@media (max-width:600px){.topbar .ctl-headart{opacity:.12;max-width:60%}}
