@@ -1999,6 +1999,7 @@ El visitante, desde «Alójate aquí»:
 ## 41. Ajustes y devoluciones del cobro del alojamiento (migración 1403; VG 27-10-2026)
 
 - **Ajuste:** en «Alojamiento a la carta», «Ajustar…» cambia las noches o el precio por noche, y el importe vuelve a ser noches × precio.
+- **Ampliar o cambiar la estancia** (aceptación C): «Ampliar…» cambia en un lote las noches y la cama de la asignación, y las noches y el importe de su cobro. La lista solo ofrece camas libres todas esas noches, y el servidor lo vuelve a comprobar con `BED_OVERBOOKED` o `BED_HELD`: si falla, no cambia nada. Si el cobro ya estaba en Finance, queda por reenviar y se reenvía. La diferencia de dinero se cobra o se devuelve aparte.
 - **Devolución:** «Devolver…» guarda `walkin_charges.refund_cents` (hasta lo cobrado), `refund_method` y `refunded_at`. Con 0 se quita.
 - **Un solo apunte en Finance por cobro** (`booking:stay:<id del cobro>`): `walkinFinanceEntry` lo manda por lo cobrado menos lo devuelto.
   - El método de la devolución va en negativo y el desglose lleva una línea «Devolución» negativa, así que métodos y desglose suman el importe.
@@ -2068,4 +2069,25 @@ Resumen del modelo, con los detalles en §36 a §43. Las pruebas que lo cubren:
 **6. Quien solo viene de día** (§42): sin noches no va a SES ni se le pide el documento. Si luego duerme, sí.
 
 **Para Central** (§18): «Camas libres esta noche» y «Solicitudes de noches por pagar».
+
+## 45. Venta de noches en línea, base (migración 1413; booking-22, apagada por defecto)
+
+Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasarela concreta está pendiente de VG (vg-38). Hasta que haya una y un evento ponga `lodging_pay_mode = 'online'`, no cambia nada.
+
+- **Modo `online` por evento:** la solicitud retiene la cama `lodging_online_minutes` (20 por defecto) mientras se paga. `booking_public_lodging` da `pay: 'online'` y `hold_minutes`.
+- **`POST public/stay/pay {stay_id | request_id}`** (con X-Visitor) devuelve `{redirect_url, expires_at, reused}`.
+  - El importe es el de la solicitud, el que calculó el servidor.
+  - Un solo intento vivo por solicitud: repetir devuelve el mismo.
+  - Sin pasarela, 503 `PAYMENTS_OFF`. Si la retención ha caducado, 409 `HOLD_EXPIRED`.
+- **`POST public/payments/:provider`** es el aviso de la pasarela: webhook firmado, sin sesión.
+  - El adaptador comprueba la firma; si no es válida, 400 `INVALID_SIGNATURE`.
+  - Cada aviso cuenta una vez (`last_event_id`). Un pago desconocido se acusa sin efecto.
+- **`booking.stay_payments`:** un intento por fila (proveedor, referencia, importe, estado, `paid_at`, `fee_cents`, devoluciones y `redirect_url`). Solo la escribe el sistema, con `booking.stay_payment_record` (acción de sistema por `core.apply_system_operations`); el disparador rechaza cualquier otra escritura.
+- **Pagado:**
+  - la retención se alarga hasta la salida;
+  - el visitante ve `stay_status = 'pagada'` y `paid_online: true`;
+  - Recepción ve «Pagado en línea» y aloja con «Alojar (pagado en línea)», es decir, `join_from_visitor({accept, method: 'online'})`. Solo vale con el pago confirmado; si no, 409 `NOT_PAID_ONLINE`.
+- **El cobro y la devolución** admiten el método `online`.
+- **Adaptador** (`supabase/functions/booking-api/payments.ts`): `createIntent` y `parseWebhook`. Hay uno falso para las pruebas (`fakePaymentProvider`), y el real llega con la decisión de pasarela. Se configura con `createBookingApp({ payments })`.
+- **Pendiente de Core:** que el servidor aloje solo al confirmarse el pago, sin recepción. Necesita que la cuenta de servicio de Booking pueda escribir en Booking (`core.service_grants`), o un camino de sistema que admita el procedimiento.
 
