@@ -41,7 +41,7 @@ function tkdvSheet(id){const p=project();if(!p)return;const d=id?tkdvList(p).fin
     if(!d){p.deliverables||=[];p.deliverables.push({id:crypto.randomUUID(),name,quantity,status:'todo',spaceId:null,note,order:Math.max(0,...p.deliverables.map(x=>Number(x.order)||0))+1024,version:0});
       if(tkdvSave(p,'Entregable creado.'))closeSheet();return}
     Object.assign(d,{name,quantity,note,status:$('tkdvStatus').value});if(tkdvSave(p,'Entregable guardado.'))closeSheet()};
-  $('tkdvDel').onclick=()=>{p.deliverables=(p.deliverables||[]).filter(x=>x.id!==d.id);
+  const del=$('tkdvDel');if(del)del.onclick=()=>{p.deliverables=(p.deliverables||[]).filter(x=>x.id!==d.id);
     for(const t of p.tasks||[])if(t.deliverableId===d.id){t.deliverableId=null;touch(t)}
     if(tkdvSave(p,tasks.length?`Entregable quitado: ${tasks.length===1?'su tarea queda':`sus ${tasks.length} tareas quedan`} sin entregable.`:'Entregable quitado.'))closeSheet()}}
 
