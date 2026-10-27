@@ -220,6 +220,8 @@ select core.register_capability($cap${
     "required": ["projectId", "created"],
     "properties": { "projectId": { "type": "string", "format": "uuid" }, "created": { "type": "boolean" }, "phases": { "type": "integer" }, "tasks": { "type": "integer" }, "steps": { "type": "integer" } }
   },
+  "reads": [],
+  "writes": ["tasks.project_phases.due", "tasks.project_phases.name", "tasks.project_phases.position", "tasks.project_phases.start", "tasks.projects.due", "tasks.projects.note", "tasks.projects.tab_id", "tasks.projects.title", "tasks.task_dependencies.depends_on_id", "tasks.task_materials.item_id", "tasks.task_materials.quantity", "tasks.task_people.house_level", "tasks.task_people.person_id", "tasks.task_spaces.space_id", "tasks.task_trades.trade_id", "tasks.tasks.due", "tasks.tasks.note", "tasks.tasks.parent_id", "tasks.tasks.phase_id", "tasks.tasks.position", "tasks.tasks.priority", "tasks.tasks.step_free", "tasks.tasks.steps_in_order", "tasks.tasks.title"],
   "anchors": ["tasks.fases.nueva"],
   "since": "0.1.0"
 }$cap$::jsonb);
