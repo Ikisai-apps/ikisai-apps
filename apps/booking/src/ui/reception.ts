@@ -12,7 +12,7 @@
  * «Llega» y «Sale» son `guest_arrive` y `guest_leave`: la salida libera la cama y pide la limpieza (1402).
  */
 import type { SyncedRow } from '@ikisai/sync-client';
-import { announceSaved, createLanes, el, openSheet, registerReveal, replace, toast, type Lane, type Sheet } from '@ikisai/ui-kit';
+import { announceSaved, createLanes, el, fieldAttrs, openSheet, registerReveal, replace, toast, type Lane, type Sheet } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES, WALKIN_METHODS, WALKIN_METHOD_LABELS, canSeeGuests, missingForSes, type GuestLike } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, SPACES, VISITOR_REQUESTS, WALKINS, canWrite, describeError } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -38,7 +38,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
   // El filtro va en memoria (no relee las tablas en cada tecla) y se guarda en la pestaña: al volver de la ficha, o en el
   // Guiado, sigue señalando la misma ficha (los botones de cada ficha comparten anclaje y la guía señala el primero visible).
   const SEARCH_KEY = 'booking-recepcion-buscar';
-  const search = el('input', { id: 'receptionSearch', type: 'search', placeholder: 'Número o nombre', autocomplete: 'off', 'aria-label': 'Buscar por número o nombre',
+  const search = el('input', { id: 'receptionSearch', ...fieldAttrs({ id: 'booking.recepcion.buscar', label: 'Buscar', confirm: 'none' }), type: 'search', placeholder: 'Número o nombre', autocomplete: 'off', 'aria-label': 'Buscar por número o nombre',
     'data-feedback-id': 'booking.recepcion.buscar', 'data-feedback-label': 'Buscar', oninput: () => { remember(); rerender(); } }) as HTMLInputElement;
   try { search.value = sessionStorage.getItem(SEARCH_KEY) ?? ''; } catch { /* sin almacenamiento */ }
   const remember = () => { try { sessionStorage.setItem(SEARCH_KEY, search.value); } catch { /* sin almacenamiento */ } };
@@ -68,7 +68,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
     search, lanes.element));
 
   function card(c: ReceptionCard): HTMLElement {
-    const method = el('select', { class: 'small', 'aria-label': `Cómo paga ${c.title}`, 'data-feedback-id': 'booking.recepcion.metodo', 'data-feedback-label': 'Método de cobro' },
+    const method = el('select', { class: 'small', ...fieldAttrs({ id: 'booking.recepcion.metodo', entity: 'booking.walkin_charges', prop: 'method', label: 'Método de cobro', confirm: 'event' }), 'aria-label': `Cómo paga ${c.title}`, 'data-feedback-id': 'booking.recepcion.metodo', 'data-feedback-label': 'Método de cobro' },
       WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
     const paidOnline = c.cobro.text.startsWith('Pagado en línea');
     const actions = !writable ? null : c.kind === 'request' && paidOnline
