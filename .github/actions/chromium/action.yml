@@ -1,0 +1,34 @@
+name: Instalar Chromium (con caché)
+description: >-
+  Chromium de Playwright y sus paquetes del sistema, con caché por versión de Playwright. Sin caché, ~25 s por job y, con el
+  mirror apt de Azure lento, hasta 9 min 37 s (27-10, run 40475209816). Con caché, no baja nada de la red: el navegador sale
+  de ~/.cache/ms-playwright y apt instala los .deb guardados en ~/.cache/apt-pw. Necesita npm ci antes (npx playwright).
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      run: echo "playwright=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+    # Una sola entrada por versión (~300 MB): las PR la leen de main y no guardan la suya.
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/ms-playwright
+          ~/.cache/apt-pw
+        key: chromium-${{ runner.os }}-${{ steps.version.outputs.playwright }}
+    - shell: bash
+      run: |
+        # apt guarda y busca los .deb en ~/.cache/apt-pw (la caché de arriba) en lugar de /var/cache/apt/archives.
+        mkdir -p ~/.cache/apt-pw/partial
+        printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+          "$HOME/.cache/apt-pw" | sudo tee /etc/apt/apt.conf.d/99ikisai-chromium > /dev/null
+        # Cada intento, como mucho 4 min; lo ya bajado se queda en la caché de apt y el siguiente sigue desde ahí.
+        ok=false
+        for i in 1 2 3; do
+          if timeout 240 npx playwright install --with-deps chromium; then ok=true; break; fi
+          echo "::warning::Chromium, intento $i sin terminar"
+        done
+        # Para que actions/cache pueda leer lo que dejó apt (root).
+        sudo chown -R "$(id -u):$(id -g)" ~/.cache/apt-pw
+        rm -rf ~/.cache/apt-pw/partial ~/.cache/apt-pw/lock
+        $ok
