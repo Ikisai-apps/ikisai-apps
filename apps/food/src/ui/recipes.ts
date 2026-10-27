@@ -497,12 +497,12 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
 
     // Antelación: sin indicar, en el momento (0) o número + unidad antes del servicio.
     const prepParts = prepToParts(recipe?.prep_minutes);
-    const prepMode = el('select', { 'data-feedback-id': 'food.recetario.formulario.antelacion_modo', 'data-feedback-label': 'Tipo de antelación', id: 'r-prep-mode', 'aria-label': 'Antelación',
+    const prepMode = el('select', { 'data-field-id': 'food.recetario.formulario.antelacion_modo', 'data-field-entity': 'food.recipes', 'data-field-prop': 'prep_minutes', 'data-feedback-id': 'food.recetario.formulario.antelacion_modo', 'data-feedback-label': 'Tipo de antelación', id: 'r-prep-mode', 'aria-label': 'Antelación',
       onchange: () => { paintPrep(); if (prepMode.value === 'antes') prep.focus(); } },
     ...([['sin', 'Sin indicar'], ['momento', 'En el momento'], ['antes', 'Antes del servicio']] as const).map(([value, label]) => el('option', { value, selected: prepParts.mode === value }, label)));
     const prep = input('r-prep', prepParts.amount != null ? formatQuantity(prepParts.amount) : '', { 'data-field-id': 'food.recetario.formulario.antelacion', 'data-field-entity': 'food.recipes', 'data-field-prop': 'prep_minutes', 'data-feedback-id': 'food.recetario.formulario.antelacion', 'data-feedback-label': 'Antelación', inputmode: 'decimal', 'aria-label': 'Tiempo de antelación', placeholder: 'Ej.: 2', class: 'compact' });
     const PREP_UNIT_LABELS: Record<PrepUnit, string> = { minutos: 'minutos', horas: 'horas', dias: 'días' };
-    const prepUnit = el('select', { 'data-feedback-id': 'food.recetario.formulario.antelacion_unidad', 'data-feedback-label': 'Unidad de antelación', id: 'r-prep-unit', 'aria-label': 'Unidad de antelación', class: 'compact' },
+    const prepUnit = el('select', { 'data-field-id': 'food.recetario.formulario.antelacion_unidad', 'data-field-entity': 'food.recipes', 'data-field-prop': 'prep_minutes', 'data-feedback-id': 'food.recetario.formulario.antelacion_unidad', 'data-feedback-label': 'Unidad de antelación', id: 'r-prep-unit', 'aria-label': 'Unidad de antelación', class: 'compact' },
       ...PREP_UNITS.map((u) => el('option', { value: u, selected: prepParts.unit === u }, PREP_UNIT_LABELS[u])));
     const prepAmount = el('span', { class: 'prepamount' }, prep, prepUnit, el('span', { class: 'muted' }, 'antes'));
     const paintPrep = () => { prepAmount.hidden = prepMode.value !== 'antes'; };
