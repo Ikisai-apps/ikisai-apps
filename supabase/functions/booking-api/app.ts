@@ -430,10 +430,12 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       const travelers = travelersOf(body.traveler, persons);
       const name = text(body.name, 120) ?? text(travelers[0]?.first_name, 120);
       if (!name) fail(422, 'INVALID_FIELDS', 'Falta el nombre.', { field: 'name' });
+      // 1418: «Pagar ahora» (`online`) o «Pagar en recepción» (`on_site`), si el evento deja las dos; sin `pay`, el del evento
+      const pay = body.pay === undefined || body.pay === null ? null : body.pay === 'online' ? 'online' : body.pay === 'on_site' ? 'hold' : fail(422, 'INVALID_FIELDS', 'Pago: online u on_site.', { field: 'pay' });
       const id = crypto.randomUUID();
       await apply([
         { op: 'insert', table: TABLES.visitorRequests, id, fields: {
-          via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200), note: text(body.note, 500),
+          via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200) ?? text(body.email, 200), note: text(body.note, 500), ...(pay ? { pay_mode: pay } : {}),
           from_date: date(body.from, 'from'), to_date: date(body.to, 'to'), persons, rate_id: mode, ...(beds.length ? { hold_bed_ids: [...new Set(beds)] } : {}),
         } },
         ...travelers.map((fields, i) => ({ op: 'insert' as const, table: TABLES.stayTravelers, id: crypto.randomUUID(), fields: { ...fields, request_id: id, position: i + 1 } })),

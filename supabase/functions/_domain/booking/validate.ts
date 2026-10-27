@@ -239,7 +239,7 @@ FIELDS[TABLES.stayTravelers] = {
   residence_country: text(3), phone: text(40), email: text(320), is_minor: { kind: 'bool' }, kinship: text(80),
 };
 // 0499: cómo se pagan las noches del QR en ese evento
-FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], lodging_pay_mode: { kind: 'enum', values: ['hold', 'pay_first', 'online'], nullable: false }, lodging_online_minutes: { kind: 'int', nullable: false, min: 5 }, lodging_hold_hours: { kind: 'int', nullable: false, min: 1 } };
+FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], lodging_pay_mode: { kind: 'enum', values: ['hold', 'pay_first', 'online'], nullable: false }, lodging_online_minutes: { kind: 'int', nullable: false, min: 5 }, lodging_hold_hours: { kind: 'int', nullable: false, min: 1 }, lodging_pay_on_site: { kind: 'bool' } };
 FIELDS[TABLES.walkinCharges] = {
   event_id: { kind: 'uuid' },
   assignment_id: { kind: 'uuid' },
