@@ -37,7 +37,12 @@ test('código público: al confirmar, 10 caracteres sin ambigüedades y único; 
   const fresh = newPublicCode();
   await commit([{ op: 'update', table: 'booking.events', id: a.event, expectedRevision: Number((await t.db.query<{ r: string }>(`select revision r from booking.events where id = $1`, [a.event])).rows[0]!.r), fields: { public_code: fresh } }]);
   assert.equal(await read(a.code), null, 'el QR anterior deja de valer');
-  assert.equal((await read(fresh)).name, 'Carrera sintética');
+  // B9 (1406): el código lo pone el servidor, no el que manda el cliente
+  const stored = (await t.db.query<{ c: string }>(`select public_code c from booking.events where id = $1`, [a.event])).rows[0]!.c;
+  assert.match(stored, PUBLIC_CODE_PATTERN);
+  assert.notEqual(stored, fresh, 'el del cliente no cuenta');
+  assert.equal(await read(fresh), null);
+  assert.equal((await read(stored)).name, 'Carrera sintética');
   await assert.rejects(t.db.query(`update booking.events set public_code = 'abc' where id = $1`, [a.event]));
   await t.close();
 });
