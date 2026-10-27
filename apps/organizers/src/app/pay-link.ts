@@ -20,6 +20,14 @@ export function payLinkOf(invoice: PortalInvoice, now: number = Date.now()): str
   return url.toString();
 }
 
+/**
+ * «Pagar ahora» sin enlace (F5, Finance §19.3): una emitida sin cobrar, con importe y sin enlace vigente, cuyo enlace se pide
+ * al pulsar (`POST payments/link`). Finance vuelve a comprobar si se puede cobrar (`409 PAYMENT_NOT_ALLOWED`).
+ */
+export function payOnDemand(invoice: PortalInvoice, now: number = Date.now()): boolean {
+  return invoice.status === 'emitida' && !invoice.collected && Number(invoice.total) > 0 && payLinkOf(invoice, now) === null;
+}
+
 /** Las facturas con enlace de pago vigente, en el orden de Finance. */
 export function payableInvoices(invoices: PortalInvoice[], now: number = Date.now()): Array<{ invoice: PortalInvoice; url: string }> {
   return invoices.flatMap((invoice) => { const url = payLinkOf(invoice, now); return url ? [{ invoice, url }] : []; });
