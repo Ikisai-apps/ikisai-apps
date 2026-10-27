@@ -211,7 +211,7 @@ test('recuentos · quien no ve huéspedes obtiene totales sin identificar', asyn
   assert.equal(summary.status, 200, JSON.stringify(summary.data));
   assert.deepEqual(summary.data, {
     eventId, total: 3, bySex: { H: 1, M: 1, X: 0, sinDato: 1 }, minors: 1, signed: 1,
-    dataStatus: { datos_revisados: 1, pendiente_datos: 2 }, sesStatus: { pendiente_envio: 3 },
+    dataStatus: { datos_revisados: 1, pendiente_datos: 2 }, mealGroups: [], sesStatus: { pendiente_envio: 3 },
   });
   assert.equal(JSON.stringify(summary.data).includes('Sintética'), false);
   assert.equal((await app.call('/api/v1/read/booking.guest_summary', { token: app.tokens.reader, body: { event_id: uuid() } })).status, 404);
