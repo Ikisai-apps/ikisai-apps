@@ -5,11 +5,14 @@
  *   `resource_id`); sin dibujo o sin formas, la pieza enseña la lista equivalente.
  * - Al tocar una estancia, su ficha: medallón, ruta, tipo y plazas; «Datos del espacio» plegados y «Monta el dormitorio»
  *   abierto. Sin plano, la ficha se abre desde el nombre en la lista de siempre.
+ * - Se empieza en la finca y se baja al edificio y al dormitorio tocando (`drill`, kit 0.63), sin decoración (VG,
+ *   27-10-2026: «Espacios y camas» sin decoración; la decoración es del «Montaje»).
  */
 import { createSyncClient, type SyncClient, type SyncedRow } from '@ikisai/sync-client';
-import { createSpaceMap, createSyncSpaceSource, el, plural, renderMedal, replace, type FloorPlan, type SpaceMap, type SpaceRow, type SpaceSource } from '@ikisai/ui-kit';
+import { createSpaceMap, createSyncSpaceSource, el, plural, renderMedal, replace, type FloorPlan, type SpaceMap, type SpaceRow } from '@ikisai/ui-kit';
 import { extraCapacity, spaceCapacity } from '@ikisai/domain-booking';
 import { label } from '../app/labels.ts';
+import { bookingMapRows, estatePlanId, FLOOR_PLANS, staticSource } from './bedMap.ts';
 import { createDormitorio } from './dormitorio.ts';
 
 type Row = SyncedRow & Record<string, any>;
@@ -30,8 +33,6 @@ export interface SpaceCardOptions {
   /** Abre la hoja de siempre para editar los datos del espacio. */
   edit: (space: Row) => void;
 }
-
-const MAP_KIND: Record<string, string> = { habitacion: 'habitacion', sala: 'sala', zona_exterior: 'exterior', otro: 'otro' };
 
 /** Camas ocupadas esta noche: asignaciones vivas de reservas en marcha, con sus noches [entrada, salida). */
 export function occupiedTonight(assignments: Row[], events: Row[], reservations: Row[], today: string): Set<string> {
@@ -62,37 +63,20 @@ export function createSpaceCard(o: SpaceCardOptions) {
   let destroyed = false;
 
   /** Fuente del plano: los espacios de Booking con la forma de su pareja en Recursos. Solo se lee (no se edita desde aquí). */
-  const source: SpaceSource = {
-    list: () => mapRows,
-    subscribe: (listener: (rows: SpaceRow[]) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
-    create: async () => { throw new Error('Los espacios se crean desde «Nuevo espacio».'); },
-    createMany: async () => { throw new Error('Los espacios se crean desde «Nuevo espacio».'); },
-    update: async () => { throw new Error('Los espacios se editan desde su ficha.'); },
-    archive: async () => { throw new Error('Los espacios se quitan desde su ficha.'); },
-    restore: async () => { throw new Error('Los espacios se recuperan desde su ficha.'); },
-  } as unknown as SpaceSource;
+  const source = staticSource(() => mapRows, listeners);
 
-  async function buildRows(): Promise<{ rows: SpaceRow[]; plans: FloorPlan[] }> {
-    const shapes = new Map<string, { planId: string | null; planShape: SpaceRow['planShape'] }>();
+  async function buildRows(): Promise<{ rows: SpaceRow[]; plans: FloorPlan[]; estate: string | null }> {
+    let resourceRows: SpaceRow[] = [];
     let plans: FloorPlan[] = [];
+    let estate: string | null = null;
     if (resources) {
       try {
-        for (const r of await resources.source.list()) shapes.set(r.id, { planId: r.planId ?? null, planShape: r.planShape ?? null });
+        resourceRows = await resources.source.list();
         plans = await resources.source.plans.list();
+        estate = estatePlanId(await resources.client.list(FLOOR_PLANS));
       } catch { /* sin Recursos: la lista equivalente */ }
     }
-    const of = (rid: unknown) => (typeof rid === 'string' ? shapes.get(rid) : undefined);
-    const rows: SpaceRow[] = [
-      ...data.spaces.map((s): SpaceRow => ({
-        id: s.id, parentId: null, kind: MAP_KIND[s.kind] ?? 'otro', name: String(s.name), publicName: s.public_name ?? null, code: s.code ?? null,
-        position: Number(s.position) || 0, active: s.active !== false, notes: null, attributes: {}, planId: of(s.resource_id)?.planId ?? null, planShape: of(s.resource_id)?.planShape ?? null,
-      })),
-      ...data.beds.map((b): SpaceRow => ({
-        id: b.id, parentId: b.space_id, kind: 'cama', name: String(b.label), publicName: null, code: null,
-        position: Number(b.position) || 0, active: b.active !== false, notes: null, attributes: {}, planId: of(b.resource_id)?.planId ?? null, planShape: of(b.resource_id)?.planShape ?? null,
-      })),
-    ];
-    return { rows, plans };
+    return { rows: bookingMapRows(resourceRows, data.spaces, data.beds), plans, estate };
   }
 
   /** Recursos solo se abre si algo está enlazado (o con los espacios en Recursos): sin enlaces no hay formas que leer. */
@@ -108,7 +92,7 @@ export function createSpaceCard(o: SpaceCardOptions) {
 
   async function paintMap(): Promise<void> {
     ensureResources();
-    const { rows, plans } = await buildRows();
+    const { rows, plans, estate } = await buildRows();
     if (destroyed) return;
     mapRows = rows;
     const withShape = rows.some((r) => r.planShape);
@@ -119,7 +103,7 @@ export function createSpaceCard(o: SpaceCardOptions) {
     }
     if (!map) {
       map = createSpaceMap({
-        source, plans, label: 'Plano de los espacios', feedbackId: 'booking.espacios.plano',
+        source, plans, label: 'Plano de los espacios', feedbackId: 'booking.espacios.plano', drill: true, showDecor: false, ...(estate ? { plan: estate } : {}),
         planUrl: (fileId) => `/api/v1/resources/files/${fileId}`,
         layer: (s) => {
           if (s.kind !== 'cama') return null;
@@ -127,7 +111,8 @@ export function createSpaceCard(o: SpaceCardOptions) {
           if (!bed || bed.active === false) return { state: 'off', label: 'Inactiva' };
           return data.occupied.has(bed.id) ? { state: 'occupied', label: 'Ocupada esta noche' } : { state: selected === bed.space_id ? 'picked' : 'free', label: 'Libre esta noche' };
         },
-        onPick: (s) => pick(s.kind === 'cama' ? (s.parentId ?? s.id) : s.id),
+        // la finca, los edificios y las plantas son de Recursos: solo bajan, no abren ficha
+        onPick: (s) => { const id = s.kind === 'cama' ? (s.parentId ?? s.id) : s.id; if (data.spaces.some((x) => x.id === id)) pick(id); },
         selected,
       });
       replace(mapHost, el('h3', { class: 'sectionlabel' }, 'Plano'), map.element);

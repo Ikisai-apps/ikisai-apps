@@ -2122,3 +2122,42 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
   - Si la madre no está abierta (hecha, descartada o en la papelera), las hijas no se tocan y llega `children: null`.
   - `children` también vale con los demás tipos de las fuentes de sistema. La madre, reenviada, toma el título y la nota nuevos mientras esté abierta.
 - **Pruebas:** `tests/tasks/requests-children.test.ts`.
+
+## 43. Lo que Tasks ofrece en el catálogo de capacidades (contrato §8, migración 0345; encargo de Core, 27-10-2026)
+
+Para que el editor y los recorridos de Flow (u otra app) lo ofrezcan desde el catálogo y lo invoquen con el token de la persona (`POST capabilities/<id>/invoke`):
+
+| Capacidad | Tipo | Ruta | Roles | Riesgo | Idempotente | Qué hace |
+|---|---|---|---|---|---|---|
+| `tasks.request_task` | execute | `POST requests/task` | editor, owner | bajo | sí (`source:external_ref`) | Una tarea pedida desde otra app (§19–§20), con `children` (§42) |
+| `tasks.request_purchase` | execute | `POST requests/purchase` | editor, owner | bajo | sí (`source:external_ref`) | Una solicitud de compra en un proyecto (§39) |
+| `tasks.projects_open` | read | `GET requests/projects` | editor, owner | bajo | sí | `{projects: [{id, title, tabId, tabName}]}`: los proyectos abiertos que ve la persona, sin «Entrada», sin archivados y sin papelera |
+
+- Los esquemas de entrada y salida y los anclajes (ids de feedback de las pantallas donde ya existe cada cosa) van en la migración.
+- **`requests/task` con hijas, también con el token de la persona:** mismas reglas que §42. Solo si la tarea está viva, sin hacer y con proyecto; pendiente de clasificar, llega `children: null` y las hijas esperan al próximo envío.
+- **`GET requests/projects`** es nueva. El catálogo no admite rutas con punto, como `read/tasks.targets`. Lee `tasks.targets` y lo aplana.
+- **Pruebas:** `tests/tasks/capabilities.test.ts`.
+
+## 44. La compra recibida se registra en Finance (encargo de Core del 27-10-2026; Finance, `docs/invoices/API.md` §18 y §5)
+
+Es el hueco que Finance encontró en la cadena de compra de la barra: lo que se compra y se recibe en Tasks tiene que llegar a Finance.
+
+- **En la solicitud** (migración `0346`):
+  - lo pagado con IVA (`paid_total`);
+  - el justificante: `receipt_kind` (`invoice` | `ticket`), `invoice_number` y la foto o el PDF (`receipt_file_id`, archivo de Tasks registrado con `core.register_file_field`);
+  - el resultado: `finance_status` (`pending` | `registered` | `needs_access` | `failed`), `finance_invoice_id`, `finance_code` y `finance_error`.
+- **`POST purchases/:id/finance`** (`tasks-api/finance.ts`), con el token de la persona (editor u owner en Tasks):
+  1. Lee la solicitud (`tasks.purchase_finance`, solo si la ve). Tiene que estar recibida, con lo pagado y con tienda; si no, 422 `NOT_READY` o `SUPPLIER_REQUIRED`. Si ya está registrada, devuelve lo que hay.
+  2. Comprueba la capacidad `invoices.register_purchase_quick`. Sin acceso a Finance, `needs_access`: queda para después y nada se bloquea.
+  3. Con foto, sube esos mismos bytes a Finance, de servidor a servidor y sin cabecera Origin (`uploads`, PUT y `uploads/:id/verify`), y usa el `file_id` de Finance.
+  4. Invoca la capacidad con:
+     - `requestId: tasks-purchase-<id>` (idempotente: repetir devuelve lo mismo);
+     - el proveedor por su nombre, la fecha de la recepción, el total, la descripción (el título), `receipt_kind`, `invoice_number`;
+     - el destino `general/unassigned` (la oficina lo asigna en Finance);
+     - las notas `Compra de Tasks <id> · <proyecto>`.
+  5. Responde `{status, invoiceId, code, nature, url, error?}` y deja el resultado en la solicitud. La ficha en Finance está en `https://finance.ikisai.com/#/facturas/<invoice_id>`.
+- **En la app:**
+  - **Al recibir:** «¿Ha llegado?» lleva un bloque opcional «Para Finance»: tienda si falta, pagado, ticket o factura, número y foto o PDF. La foto se sube en ese momento. Con lo pagado, tras recibir, se registra sola y el aviso dice el código con «Ver en Finance».
+  - **En la ficha de una compra recibida:** «En Finance: FVR_… · Ver en Finance ›»; o «Pendiente de registrar en Finance», con el motivo, los campos y «Registrar en Finance».
+  - Con ticket, o sin justificante, la compra queda «de proceso» en Finance y no va a la gestoría; con factura y su documento, «fiscal».
+- **Pruebas:** `tests/tasks/purchase-finance.test.ts`. Usa las Edges reales de Tasks y Finance sobre la misma base y cubre: sin acceso, registro con foto, repetición, sin lo pagado, lectora, ajena, y ticket sin foto.

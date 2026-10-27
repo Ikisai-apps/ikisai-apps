@@ -5,6 +5,7 @@ import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extr
 import { ASSIGNMENTS, BEDS, EVENTS, EXTRA_BEDS, RESERVATIONS, SPACES, STAYS, canRead, describeError, shortDay } from '../app/client.ts';
 import { guard } from '../app/guard.ts';
 import { settleBatch } from '../app/settle.ts';
+import { createBedPlan } from './bedMap.ts';
 
 type Row = SyncedRow & Record<string, any>;
 
@@ -155,6 +156,36 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
     sheet.setFootHidden(!!assignment && !guard.dirtyEditor);
   }
 
+  /** Elegir la cama en el plano (VG, 27-10-2026): se baja de la finca al edificio y al dormitorio, sin decoración. */
+  let bedPlan: ReturnType<typeof createBedPlan> | null = null;
+  const nightsNow = () => assignmentNights({ from_date: read().from_date, to_date: read().to_date }, reservation as any);
+  const planFold = data.spaces.some((s) => s.resource_id)
+    ? el('details', { class: 'bk-fold', id: 'assignPlan', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.plano', 'data-feedback-label': 'Elegir en el plano',
+      ontoggle: (e: Event) => {
+        const fold = e.currentTarget as HTMLDetailsElement;
+        if (!fold.open || bedPlan) return;
+        bedPlan = createBedPlan({
+          client, spaces: spaceOptions, beds: data.beds, label: 'Plano para elegir cama', feedbackId: 'booking.reserva.alojamiento.plano_mapa',
+          layer: (sp) => {
+            if (sp.kind !== 'cama') return null;
+            const bed = data.beds.find((b) => b.id === sp.id);
+            if (!bed || bed.active === false) return { state: 'off', label: 'Inactiva' };
+            const nights = nightsNow();
+            if (nights && bedConflicts(bed.id, nights, others as any, assignment?.id).length) return { state: 'occupied', label: 'Ocupada esas noches' };
+            return { state: bedSelect.value === bed.id ? 'picked' : 'free', label: bedSelect.value === bed.id ? 'Elegida' : 'Libre' };
+          },
+          onPickBed: (bed) => {
+            spaceSelect.value = bed.space_id;
+            fillBeds(bed.id);
+            refresh();
+            toast(`${bed.label} elegida.`);
+          },
+        });
+        fold.append(bedPlan.element);
+      } },
+      el('summary', null, 'Elegir en el plano'))
+    : null;
+
   const showError = (message: string): void => { error.hidden = false; error.textContent = message; };
   const save = el('button', { class: 'primary', type: 'button', id: 'saveRow', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
   let sheet: Sheet;
@@ -217,7 +248,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
     body: el('form', { 'data-feedback-id': 'booking.reserva.alojamiento.hoja', 'data-feedback-label': 'Asignar alojamiento', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
       el('div', { class: 'rowform' },
         spaceOptions.length === 0 ? el('p', { class: 'hint' }, 'No hay espacios activos. Créalos en «Espacios y camas».') : null,
-        field('Espacio', spaceSelect, 'espacio'), field('Cama', bedSelect, 'cama', 'Opcional. Sin cama concreta solo cuenta para la ocupación de la habitación.'),
+        field('Espacio', spaceSelect, 'espacio'), field('Cama', bedSelect, 'cama', 'Opcional. Sin cama concreta solo cuenta para la ocupación de la habitación.'), planFold,
         seesGuests ? field('Huésped', guestSelect, 'huesped', 'Para un grupo, déjalo en «Ninguno» y escribe su nombre.') : null,
         field('Nombre del grupo', group, 'grupo'), field('Personas', persons, 'personas'),
         el('div', { class: 'sectionlabel formsection' }, 'Fechas propias (opcional)'),
@@ -227,7 +258,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
     foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet.close() }, 'Cancelar')),
     footHidden: !!assignment,
     beforeClose: () => !guard.dirtyEditor || confirm('Hay cambios sin guardar. ¿Cerrar sin guardar?'),
-    onClose: () => { guard.dirtyEditor = false; },
+    onClose: () => { guard.dirtyEditor = false; bedPlan?.destroy(); },
     initialFocus: spaceSelect,
   });
   refresh();

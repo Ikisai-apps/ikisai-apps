@@ -1,6 +1,6 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, sha256Hex, type AppConfig, type AppRoute, type PublicRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
-import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations, walkinFinanceEntry, type WalkinForSend } from '../_domain/booking/mod.ts';
+import { bookingAgentRisk, canSeeGuests, montage, TABLES, validateOperations, walkinFinanceEntry, type WalkinForSend } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
@@ -211,6 +211,48 @@ function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch): AppRoute[] {
 }
 
 /**
+ * «Montaje» del evento (0491): la ficha escribe la decoración del evento en Recursos (`resources.set_event_decor`) y
+ * después llama aquí. Se lee la decoración con la persona (tiene que ser miembro de Recursos) y se manda a Tasks la madre
+ * «Montaje del evento» con una hija por cambio, la lista ENTERA (Tasks crea, actualiza o retira). Sin cambios y sin nada
+ * mandado antes, no se crea la madre. Sin proyecto del retiro en Tasks todavía: 409 PROJECT_NOT_READY.
+ */
+function montageRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] {
+  return [{
+    method: 'POST', pattern: 'montage/:reservationId/sync',
+    handler: async ({ ctx, params }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura cambia el montaje.');
+      const out = await supabase.rpc<{ source: { reservation: { id: string; code: string | null; title: string; start_date: string | null }; event_id: string | null; project_id: string | null; montage_synced_at: string | null } | null }>(
+        'core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.montage_source', p_args: { reservation_id: params.reservationId ?? '' } });
+      const source = out?.source ?? null;
+      if (!source || !source.event_id) fail(404, 'NOT_FOUND', 'Esa reserva no tiene evento.');
+      if (!source.reservation.code || !source.project_id) fail(409, 'PROJECT_NOT_READY', 'El proyecto del retiro aún no está en Tasks: el montaje se manda cuando exista.');
+      let decor: Parameters<typeof montage.namesFrom>[0] & { decor?: montage.DecorRow[] };
+      try {
+        decor = await supabase.rpc('core_read', { p_app: 'resources', p_actor: ctx.user.id, p_name: 'resources.plans_with_decor', p_args: { event_id: source.event_id } });
+      } catch {
+        fail(403, 'NEEDS_ACCESS', 'Pide acceso a Recursos: tu cuenta no puede leer la decoración.', { app: 'resources' });
+      }
+      const changes = montage.eventChanges(decor.decor ?? [], source.event_id);
+      if (!changes.length && !source.montage_synced_at) return { status: 'nothing', children: 0 };
+      const post = ses.tasksPost === null ? undefined : ses.tasksPost ?? createTasksPost(ses.env ?? denoEnv, fetch, supabase.base);
+      if (!post) fail(503, 'APP_UNAVAILABLE', 'Tasks no está conectado.');
+      const body = montage.montageRequest({ ...source.reservation, code: source.reservation.code }, changes, montage.namesFrom(decor));
+      let res: { status: number; data: any };
+      try {
+        await ensureServiceActor(supabase, 'booking');
+        res = await post('requests/task', body);
+      } catch {
+        fail(503, 'APP_UNAVAILABLE', 'Tasks no responde ahora mismo. Inténtalo más tarde.');
+      }
+      if (res.status === 409) fail(409, res.data?.error?.code ?? 'PROJECT_NOT_READY', 'El proyecto del retiro aún no está en Tasks: el montaje se manda cuando exista.');
+      if (res.status >= 400) fail(422, res.data?.error?.code ?? 'APP_REJECTED', res.data?.error?.message ?? 'Tasks no ha aceptado el montaje.', { app: 'tasks' });
+      await systemInvoke(supabase)('booking.montage_mark', { reservation_id: source.reservation.id, task_id: res.data?.taskId ?? null, children: changes.length });
+      return { status: 'sent', children: changes.length, taskId: res.data?.taskId ?? null };
+    },
+  }];
+}
+
+/**
  * C11 (BG18): un visitante del QR pide apuntarse o deja un dato: `POST /api/v1/public/join` con la cabecera X-Visitor.
  * El evento sale del código del QR (`event_code`, o el del token del visitante); el lote lo firma el visitante y la base
  * comprueba el resto (0489). Si ya tenía una pendiente de ese tipo, la devuelve. «Lo mío» lo sirve el kit
@@ -248,6 +290,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
     ...walkinRoutes(supabase, appsFetch),
+    ...montageRoutes(supabase, ses),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
       // Todos los roles: es la imagen del retiro, no un dato personal. URL firmada de corta duración; el `sha256` deja al

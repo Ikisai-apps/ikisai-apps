@@ -1,15 +1,16 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, el, openFeedbackCenter, replace, toast,
-  type LauncherCatalog, type NavItem,
+  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, openFeedbackCenter, replace, toast,
+  type Lanes, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
-import { watchData, type FlowData } from '../app/data.ts';
+import { loadProjects, watchData, type FlowData } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
 import { mountEditor } from './editor.ts';
+import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
@@ -161,6 +162,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   let currentProject: string | null = null;
   let columns: FlowColumn[] = [];
+  /** Carriles (VG 27-10; createLanes del kit): en los flujos no congelados las columnas van en un tablero con dos vistas
+      intercambiables, pestañas o lado a lado, recordada en el dispositivo. La v1 congelada sigue con una columna por pantalla. */
+  let boardable = false;
+  let board: { projectId: string; lanes: Lanes } | null = null;
   let offBadges: (() => void) | null = null;
   let lastPrepPending: number | null = null;
 
@@ -174,8 +179,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     if (projectId === currentProject) return;
     currentProject = projectId;
     offBadges?.(); offBadges = null; lastPrepPending = null;
-    if (!projectId) { columns = []; shell.setNav([]); return; }
+    if (!projectId) { columns = []; boardable = false; shell.setNav([]); return; }
     columns = await loadColumns(projectId);
+    boardable = (await loadProjects(client)).some((p) => p.id === projectId && !p.frozen);
     if (currentProject !== projectId) return;
     shell.setNav(navFor(projectId, columns));
     offBadges = watchData(client, (d) => paintBadges(projectId, d), projectId);
@@ -199,7 +205,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const projectId = m ? m[1]! : null;
     await enterProject(projectId);
     let entry: { title: string; slug: string; mount: ViewMount };
-    if (!projectId && hash === '#/nuevo') entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
+    if (!projectId && hash === '#/recorridos') entry = { title: 'Recorridos', slug: 'recorridos', mount: mountJourneys };
+    else if (!projectId && hash === '#/nuevo') entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
     else if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };
     else if (m![2] === 'cierre') entry = { title: 'Cierre del día', slug: 'cierre', mount: mountClosure };
@@ -207,7 +214,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     else {
       const column = columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m![2]);
       const view = column ? COLUMN_VIEWS[column.key] : undefined;
-      entry = view && column ? { title: column.label, slug: view.slug, mount: view.mount } : { title: 'Inicio', slug: 'inicio', mount: mountHome };
+      if (view && column && boardable && board?.projectId === projectId) {
+        // Ya en el tablero de este flujo: solo se elige el carril (no se vuelve a montar nada).
+        board.lanes.select(column.key);
+        shell.setRoute(hash);
+        document.title = `${column.label} · Ikisai Flow`;
+        return;
+      }
+      entry = view && column
+        ? { title: column.label, slug: view.slug, mount: boardable ? (vctx: ViewContext) => mountBoard(vctx, column.key) : view.mount }
+        : { title: 'Inicio', slug: 'inicio', mount: mountHome };
     }
     unmountView?.();
     unmountView = null;
@@ -221,6 +237,22 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     paintBanners(client.status());
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
+  }
+
+  /** El tablero de carriles de un flujo: cada carril monta la vista de su columna, una vez, al verse por primera vez. */
+  function mountBoard(vctx: ViewContext, selected: string): () => void {
+    const projectId = vctx.projectId!;
+    const lanes = createLanes({
+      label: 'Columnas del flujo', storageKey: 'flow-board', selected, feedbackId: 'flow.tablero',
+      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body }) })),
+      onSelect: (id) => {
+        const h = `#/p/${projectId}/${COLUMN_VIEWS[id]?.slug ?? id}`;
+        if (location.hash !== h) { history.replaceState(null, '', h); shell.setRoute(h); }
+      },
+    });
+    vctx.main.append(lanes.element);
+    board = { projectId, lanes };
+    return () => { lanes.destroy(); board = null; };
   }
 
   const offStatus = client.onStatus((status) => {
