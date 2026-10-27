@@ -107,7 +107,12 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       ...(deleted ? {} : { label: `Abrir ${row.name}`, onClick: () => openEditor(row) }),
       actions: [deleted
         ? el('button', { 'data-feedback-id': 'food.maquinaria.papelera.restaurar', 'data-feedback-label': 'Restaurar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void commitSafely([{ op: 'restore', table: T.equipment, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurada.`) }, icon('restore', 18), 'Restaurar')
-        : el('button', { 'data-feedback-id': 'food.maquinaria.lista.editar', 'data-feedback-label': 'Editar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar')],
+        : el('button', { 'data-feedback-id': 'food.maquinaria.lista.editar', 'data-feedback-label': 'Editar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar'),
+        // En «Falla», avisar a Tasks desde la fila, sin abrir la ficha (hallazgo F-MAQ-3): el mismo aviso, uno por máquina y día.
+        !deleted && journeyOf(row).stage === 'falla' && canWrite()
+          ? el('button', { 'data-feedback-id': 'food.maquinaria.lista.avisar', 'data-feedback-label': 'Avisar a Tasks', class: 'linkbtn fd-rowfault', type: 'button', 'aria-label': `Avisar a Tasks de ${row.name}`,
+              onclick: (event: Event) => void reportFault(row, event.currentTarget as HTMLButtonElement, '') }, 'Avisar a Tasks')
+          : null].filter((a): a is HTMLButtonElement => a !== null),
     });
     // La máquina que falla lleva su recorrido pequeño, a todo el ancho; el chip del estado sigue en el título.
     if (!deleted && row.status !== 'operativo') node.append(el('div', { 'data-feedback-id': 'food.maquinaria.lista.recorrido', 'data-feedback-label': 'Recorrido', class: 'fd-journey' }, journey(row, true)));

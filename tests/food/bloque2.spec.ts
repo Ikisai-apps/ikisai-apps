@@ -119,6 +119,8 @@ test('Inicio · lo ya caducado primero, lo bajo mínimo con «A la compra» y la
 test('ficha de receta · el próximo servicio, la cantidad de la receta debajo y «Hay bastante» solo sin dudas', async ({ page }) => {
   await login(page);
   await page.goto(`${baseURL}/#/recetario`);
+  // F-REC-3: sin foto, la tarjeta lleva el medallón con las iniciales sobre el color de su categoría.
+  await expect(page.locator('#recipeGrid .recipecard', { hasText: 'Crema de calabaza' }).locator('.recipephoto .medal-initials')).toHaveText('CC');
   await page.locator('#recipeGrid .recipecard', { hasText: 'Crema de calabaza' }).click();
   const ficha = page.getByRole('dialog', { name: 'Crema de calabaza' });
   await expect(ficha.locator('.cover-stats')).toContainText(', comida · 24 raciones');
@@ -160,6 +162,12 @@ test('Maquinaria · un solo «Dónde está», el stock antes de guardar y el avi
   await capture(page, 'b2-03-maquinaria-ficha');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+  // F-MAQ-3: la averiada se avisa a Tasks desde la fila, sin abrir la ficha.
+  const fromRow = page.waitForRequest((r) => r.url().includes(`/equipment/${chiller}/fault`));
+  await rows.filter({ hasText: 'Abatidor' }).getByRole('button', { name: 'Avisar a Tasks de Abatidor' }).click();
+  expect((await fromRow).postDataJSON().location).toBe('Cocina › Office');
+  await expect(page.getByRole('dialog', { name: 'Editar máquina' })).toBeHidden();
+  await expect(rows.filter({ hasText: 'Horno' }).getByRole('button', { name: /Avisar a Tasks/ })).toHaveCount(0);
   await rows.filter({ hasText: 'Abatidor' }).getByRole('button', { name: 'Editar Abatidor' }).click();
   const fault = page.waitForRequest((r) => r.url().includes(`/equipment/${chiller}/fault`));
   await page.locator('#reportFault').click();

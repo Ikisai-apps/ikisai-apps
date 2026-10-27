@@ -28,10 +28,11 @@ function saveCustomer(value: CustomerId | null): void {
   try { if (value) localStorage.setItem(KEY, JSON.stringify(value)); else localStorage.removeItem(KEY); } catch { /* sin almacenamiento: dura lo que la página */ }
 }
 
-async function call<T>(path: string, init: RequestInit & { customer?: CustomerId | null } = {}): Promise<T> {
+async function call<T>(path: string, init: RequestInit & { customer?: CustomerId | null; visitor?: string | null } = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (init.body) headers['Content-Type'] = 'application/json';
   if (init.customer) headers[HEADER] = init.customer.token;
+  if (init.visitor) headers['X-Visitor'] = init.visitor;
   let res: Response;
   try { res = await fetch(`/api/v1/public/${path}`, { ...init, headers }); } catch { throw new PublicApiError(0, 'NETWORK', 'No hay conexión.'); }
   const data = await res.json().catch(() => ({})) as any;
@@ -87,4 +88,29 @@ export async function myOrders(): Promise<{ number: number | null; orders: MyOrd
     if (error instanceof PublicApiError && error.code === 'CUSTOMER_UNKNOWN') { saveCustomer(null); return null; }
     throw error;
   }
+}
+
+/**
+ * «Alójate aquí» (0936): pasa a este móvil a ven.ikisai.com, pestaña de alojamiento, sin pedir datos.
+ * 1. Un visitante del kit para este navegador (si no lo tiene ya).
+ * 2. Su cliente web de la carta se liga a ese visitante, para que «Mi pedido» siga a la misma persona allí.
+ * 3. Un código de traspaso de un solo uso (5 min, misma IP), que ven.ikisai.com canjea.
+ */
+const VISITOR_KEY = 'ikisai-flow-visitante';
+
+function readVisitor(): string | null {
+  try { const v = localStorage.getItem(VISITOR_KEY); return v && /^[0-9a-f]{64}$/.test(v) ? v : null; } catch { return null; }
+}
+
+export async function lodgingLink(eventCode: string): Promise<string> {
+  let visitor = readVisitor();
+  if (!visitor) {
+    const out = await call<{ token: string }>('visitor', { method: 'POST', body: JSON.stringify({ eventCode }) });
+    visitor = out.token;
+    try { localStorage.setItem(VISITOR_KEY, visitor); } catch { /* sin almacenamiento: vale para este traspaso */ }
+  }
+  const customer = readCustomer();
+  if (customer) await call('customer_visitor', { method: 'POST', body: '{}', customer, visitor }).catch(() => undefined); // si no se liga, se sigue
+  const { code } = await call<{ code: string }>('visitor/handoff', { method: 'POST', body: '{}', visitor });
+  return `https://ven.ikisai.com/e/${encodeURIComponent(eventCode)}?alojate&v=${encodeURIComponent(code)}`;
 }

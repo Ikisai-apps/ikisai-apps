@@ -465,3 +465,21 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - `route` y `confirm` salen de la lectura por id de campo del núcleo (`core_field_lookup`, 0109); sin ella, `route: null` y `confirm: 'manual'`.
   - `done`: recibo de la app con `how` `save` o `event` y sin `pending`; en los pasos propios de Flow, su valor en el tramo o el tramo cerrado.
 - `POST guide-confirm {requestId, execution_id, step_id, how: save|event|manual|none, pending?}` (capacidad `flow.guide_confirm`): deja recibo en `flow.guide_receipts` (sin valores), idempotente por `requestId`. Un ensayo (`learn`) no confirma nada.
+
+## 47. Clases de actividad (flow-19, migración `0942`)
+
+- `flow.units.class`: `operation` (la de siempre), `objective` (criterios de aceptación; se cumple con todos verificados, nunca por un toque), `station` (continua: no se termina; todo `kind = station` lo es) y `result` (hecho verificable con `result_link {app, kind, id}`). `parent_id` para las unidades que dependen de otra. La clase no cambia una vez creada.
+- Reglas en un trigger, también dentro de procedimientos: `OBJECTIVE_NOT_MET`, `STATION_NEVER_DONE`, `RESULT_NOT_VERIFIED`.
+- Procedimientos (editor u owner, en su ámbito):
+  - `add_objective({unit_id, project_id, column_key?, label, criteria: [texto], parent_id?})`;
+  - `verify_criterion({unit_id, criterion_id, verified?, evidence?})`: con todos verificados el objetivo queda hecho y verificado; desverificar lo reabre;
+  - `record_result({unit_id, project_id, column_key?, label, link: {app, kind, id}, parent_id?})`: hecho y verificado por quien lo anota.
+
+## 48. «Alójate aquí» en la carta pública (migración `0936`)
+
+- `GET public/menu` añade `lodging: {eventCode}` (código público del evento) solo si el evento del flujo admite alojamiento según `booking_public_events`; si Booking no responde, `null`.
+- Al tocar «Alójate aquí», la carta:
+  1. obtiene un visitante del kit si no lo tiene (`POST public/visitor`, se guarda en el navegador);
+  2. liga su cliente web a ese visitante (`POST public/customer_visitor`, con `X-Flow-Customer` y `X-Visitor`): una vez, solo un cliente web sin visitante y solo con el visitante que firma el lote;
+  3. pide el código de traspaso (`POST public/visitor/handoff`, núcleo 0106: 5 min, un uso, misma IP) y abre `https://ven.ikisai.com/e/<código>?alojate&v=<código de traspaso>`.
+- `customers_visitor_check`: un cliente web puede tener visitante; uno de huésped, no.

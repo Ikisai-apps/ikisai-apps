@@ -1,6 +1,6 @@
 import { crossContext, undeclaredAllergens, type FoodEvent, type Recipe } from '@ikisai/domain-food';
 import { tonedChecks, verdictText, type ToneCheck } from './checks.ts';
-import { createPrintView, el, replace, type PrintItem, type PrintPageSpec, type PrintSection, type PrintView } from '@ikisai/ui-kit';
+import { createPrintView, el, pointAt, replace, revealAnchor, type PrintItem, type PrintPageSpec, type PrintSection, type PrintView } from '@ikisai/ui-kit';
 import { ALLERGEN_LABELS, DIET_LABELS } from '../app/client.ts';
 import { dateRange, longDay, shortTime, watchEvents, type EventsSnapshot } from '../app/events.ts';
 import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
@@ -23,6 +23,29 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
   let version = 0;
   const checksHost = el('div', { class: 'fd-checkshost' });
   const intro = el('p', { class: 'muted tabhead' });
+  // «Revisar» (hallazgo F-ORG-4): lo mismo que la hoja, en una columna y sin fotos, para repasarlo en el móvil.
+  let mode: 'hoja' | 'revisar' = 'hoja';
+  const reviewHost = el('div', { 'data-feedback-id': 'food.menu.organizador.revisar', 'data-feedback-label': 'Revisar en una columna', class: 'fd-orgreview', id: 'organizerReview', hidden: true });
+  const modeButton = (key: typeof mode, label: string, feedbackId: string) => el('button', { 'data-feedback-id': feedbackId, 'data-feedback-label': label, type: 'button', 'data-mode': key,
+    'aria-pressed': String(mode === key), class: mode === key ? 'on' : '', onclick: () => { mode = key; showMode(); } }, label);
+  const modes = el('div', { class: 'segmented fd-orgmodes', role: 'group', 'aria-label': 'Cómo verla' },
+    modeButton('hoja', 'Hoja', 'food.menu.organizador.modo.hoja'), modeButton('revisar', 'Revisar', 'food.menu.organizador.modo.revisar'));
+  function showMode(): void {
+    for (const b of modes.querySelectorAll<HTMLButtonElement>('button')) { const on = b.dataset.mode === mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+    if (view) view.element.hidden = mode !== 'hoja';
+    reviewHost.hidden = mode !== 'revisar';
+  }
+
+  /** La vista compacta: día, servicio y cada plato con sus etiquetas en texto; sin fotos ni columnas. */
+  function review(page: PrintPageSpec): HTMLElement[] {
+    const dish = (item: PrintItem) => el('li', null, el('strong', null, item.title),
+      item.chips?.length ? el('span', { class: 'chips' }, ...item.chips.map((chip) => el('span', { class: chip.kind === 'alert' ? 'chip alert' : chip.kind === 'ok' ? 'chip ok' : 'chip' }, chip.text))) : null);
+    return (page.sections ?? []).map((section) => el('section', { class: 'fd-orgreview-day' },
+      el('h3', null, section.title),
+      ...(section.groups ?? []).map((group) => el('div', { class: 'fd-orgreview-service' },
+        el('h4', null, [group.title, group.subtitle].filter(Boolean).join(' · ')),
+        group.items.length ? el('ul', { class: 'fd-orgreview-dishes' }, ...group.items.map(dish)) : el('p', { class: 'muted' }, group.empty ?? 'Por definir')))));
+  }
 
   /**
    * Veredicto y comprobaciones (tanda 27; MUELA-043 con 068 §5): alérgenos revisados y menú validado (rojo); fotos,
@@ -41,6 +64,14 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
     const status = data.menu?.status;
     const writable = canWrite() && !!navigate;
     const go = (label: string, hash: string, feedbackId: string) => (writable ? { label, onClick: () => navigate!(hash), feedbackId } : null);
+    const withClick = <T extends { onClick: () => void }>(action: T | null, onClick: () => void): T | null => (action ? { ...action, onClick } : null);
+    // Compartir (hallazgo F-ORG-3): lleva a la pestaña Menú con «Portal del organizador» abierto y el botón señalado.
+    const goShare = async () => {
+      navigate!(`#/menus/${menuId}`);
+      for (const until = Date.now() + 4000; Date.now() < until && !document.getElementById('shareMenu');) await new Promise((r) => setTimeout(r, 50));
+      const node = await revealAnchor('food.menu.organizador_portal.compartir');
+      if (node) pointAt(node);
+    };
     const names = (list: Array<{ name: string }>) => list.slice(0, 3).map((r) => r.name).join(', ') + (list.length > 3 ? '…' : '');
     const items: ToneCheck[] = [
       { tone: 'alert', ok: !unreviewed.length, text: 'Alérgenos revisados',
@@ -58,7 +89,7 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
       { tone: 'warn', ok: !noPublic.length, text: 'Nombre y descripción para el organizador (opcional)', detail: noPublic.length ? `sin presentación: ${names(noPublic)}` : null,
         action: noPublic.length ? go('Escribirla en el Recetario', `#/recetario?receta=${noPublic[0]!.id}`, 'food.menu.organizador.comprobar.presentacion') : null },
       { tone: 'warn', ok: data.menu?.organizer_shared === true, text: 'Compartido con el organizador', detail: data.menu?.organizer_shared ? null : 'aún no lo ve en su portal',
-        action: data.menu?.organizer_shared ? null : go('Compartir en la pestaña Menú', `#/menus/${menuId}`, 'food.menu.organizador.comprobar.compartir') },
+        action: data.menu?.organizer_shared ? null : withClick(go('Compartir en la pestaña Menú', `#/menus/${menuId}`, 'food.menu.organizador.comprobar.compartir'), () => void goShare()) },
     ];
     return tonedChecks(items, { verdict: verdictText(items, 'Lista para enviar'), label: 'Antes de enviar', feedbackId: 'food.menu.organizador.comprobaciones', feedbackLabel: 'Comprobaciones antes de enviar' });
   }
@@ -124,6 +155,8 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
     const page = await spec(data, event);
     if (current !== version) return; // llegó otro cambio mientras se cargaban las fotos
     replace(checksHost, checks(data));
+    // Como la hoja: los títulos y platos no viajan en el reporte.
+    replace(reviewHost, fbIgnore(el('div', null, ...review(page))));
     intro.textContent = page.draft ? 'El menú no está validado: la hoja sale marcada como borrador.' : 'Esta es la hoja para enviar al organizador. No incluye cantidades ni notas internas.';
     if (view) { view.update(page); fbIgnore(view.page); }
     else {
@@ -136,8 +169,9 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
         fb(printButton, { feedbackId: 'food.menu.organizador.imprimir', feedbackLabel: 'Imprimir / Guardar PDF' });
         printButton.addEventListener('click', () => usage.track('food.organizador.imprimir'));
       }
-      replace(host, checksHost, intro, view.element);
+      replace(host, checksHost, intro, modes, view.element, reviewHost);
     }
+    showMode();
   }
 
   void load();

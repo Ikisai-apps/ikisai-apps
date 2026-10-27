@@ -4,7 +4,8 @@
  * y secciones. Nada de selectores CSS.
  * - `findAnchor(id)`: el nodo con ese id, primero como campo y luego como feedback.
  * - `registerReveal(prefijo, fn)`: la app enseña lo que está escondido (una hoja cerrada, una pestaña). `revealAnchor(id)`
- *   llama a la del prefijo más largo y espera a que el anclaje aparezca.
+ *   abre solo los `<details>` cerrados que lo contienen; si no basta, llama a la del prefijo más largo con `(id, nodo)`
+ *   (el nodo aunque esté escondido: la app no tiene que buscarlo por id) y espera a que el anclaje aparezca.
  * - `announceSaved(id)` y `onSaved(fn)`: el aviso de que ese campo se guardó de verdad (`confirm: 'event'`). Para los que
  *   guardan con `createSaveState` usando el id del campo como clave, el aviso sale solo (`confirm: 'save'`).
  *   **Nunca lleva valores**: solo el id.
@@ -35,7 +36,8 @@ function visible(node: HTMLElement): boolean {
   return getComputedStyle(node).visibility !== 'hidden';
 }
 
-type Reveal = (id: string) => void | Promise<void>;
+/** `node`: el anclaje aunque esté escondido (o `null` si aún no existe), para no tener que buscarlo por id en la app. */
+type Reveal = (id: string, node: HTMLElement | null) => void | Promise<void>;
 const reveals = new Map<string, Reveal>();
 
 /** La app sabe enseñar los anclajes de `prefix` (`booking.ficha`): abre la hoja, cambia de pestaña… Devuelve cómo quitarlo. */
@@ -51,9 +53,23 @@ export function registerReveal(prefix: string, reveal: Reveal): () => void {
 export async function revealAnchor(id: string, options: { timeoutMs?: number; root?: ParentNode } = {}): Promise<HTMLElement | null> {
   const found = findAnchor(id, options.root);
   if (found) return found;
+  // Escondido en la página: los `<details>` cerrados que lo contienen se abren solos (sin código en la app).
+  const hidden = hiddenAnchor(id, options.root);
+  if (hidden) {
+    for (let d = hidden.closest('details'); d; d = d.parentElement?.closest('details') ?? null) if (!d.open) d.open = true;
+    const now = findAnchor(id, options.root);
+    if (now) return now;
+  }
   const prefix = [...reveals.keys()].filter((p) => id === p || id.startsWith(`${p}.`)).sort((a, b) => b.length - a.length)[0];
-  if (prefix) { try { await reveals.get(prefix)!(id); } catch { /* la app no pudo; se sigue esperando por si aparece */ } }
+  if (prefix) { try { await reveals.get(prefix)!(id, hidden); } catch { /* la app no pudo; se sigue esperando por si aparece */ } }
   return waitForAnchor(id, options.timeoutMs ?? 4000, options.root);
+}
+
+/** El nodo del anclaje aunque no se vea (dentro de una hoja o un pliegue cerrados). */
+function hiddenAnchor(id: string, root: ParentNode = document): HTMLElement | null {
+  if (!ANCHOR_ID.test(id)) return null;
+  const q = CSS.escape(id);
+  return root.querySelector<HTMLElement>(`[data-field-id="${q}"]`) ?? root.querySelector<HTMLElement>(`[data-feedback-id="${q}"]`);
 }
 
 /** Espera a que el anclaje aparezca (la pantalla llega tarde tras cargar datos). */
