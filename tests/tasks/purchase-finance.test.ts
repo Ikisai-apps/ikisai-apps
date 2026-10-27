@@ -101,7 +101,7 @@ test('sin lo pagado no se registra; quien solo lee no puede; una ajena no existe
 
 test('el resultado de Finance no lo fija la app, y el justificante tiene que ser un archivo propio', async () => {
   const row = await purchase(VASOS);
-  const spoof = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: VASOS, expectedRevision: Number(row.revision), fields: { finance_status: 'registered' } }]);
+  const spoof = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: VASOS, expectedRevision: Number(row.revision), fields: { finance_status: 'failed', finance_error: 'x' } }]);
   assert.equal(spoof.status, 422, JSON.stringify(spoof.data));
   // Ni llamando al procedimiento del servidor por `commands`: los `call` solo los hace la Edge.
   const call = await commit([{ op: 'call', procedure: 'tasks.purchase_finance_set', args: { id: VASOS, status: 'registered', invoiceId: uuid() } } as Operation]);
