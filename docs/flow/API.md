@@ -411,3 +411,9 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - En flow-api, por IP (memoria de la instancia, freno de más): 10 altas de cliente cada 10 minutos y 30 pedidos por minuto. La IP la pone el proxy de Pages en `X-Ikisai-Client-Ip` desde `CF-Connecting-IP`.
 - Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
 - Prueba: `tests/flow/public-limits.test.ts`.
+
+## 38. Identidad de servicio ante Finance y Tasks (FL1, FL2)
+
+- Las llamadas de flow-api a Finance (`invoices-api /api/v1/commands`, `invoices.record_app_entry`: cierre del día y justificantes) y a Tasks (`requests/task`, `requests/purchase`) llevan, además del token de la persona, `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY` del entorno de la Edge) y `X-Ikisai-Caller: flow`.
+- Con eso, Finance y Tasks reservan `source_app`/`source: 'flow'` a Flow (Finance: `403 SOURCE_MISMATCH` si no coincide).
+- A Food y a Booking no se les manda la clave.

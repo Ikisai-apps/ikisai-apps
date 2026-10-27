@@ -122,17 +122,29 @@ test('portal · Organizers sin internas y con lo provisional; Guests con las int
   assert.deepEqual(equipo.options.map((o: any) => o.name), ['Curry de verduras'], 'la interna enseña sus platos');
 });
 
-test('visitantes por QR · solo las ofertas públicas del evento, sin grupos ni internas', async () => {
-  // El código del evento lo pone Booking al confirmar; el de prueba no lo trae.
-  const code = 'EVT_2026_901';
-  await q(`update booking.events set code = $2 where id = $1`, [event, code]);
+test('visitantes por QR · solo las ofertas públicas del evento, por su código público, sin grupos, internas ni event_id', async () => {
+  // El código secuencial del evento (EVT_<año>_<nnn>) ya no abre nada (auditoría FO1, 1118): se podía recorrer.
+  const sequential = 'EVT_2026_901';
+  await q(`update booking.events set code = $2 where id = $1`, [event, sequential]);
   const visitor = async (args: unknown) => (await q(`select food.visitor_offers($1::jsonb) as out`, [JSON.stringify(args)]))[0].out;
+  const code = (await q(`select public_code from booking.events where id = $1`, [event]))[0].public_code as string;
+  assert.match(code, /^[A-Z2-9]{10}$/);
+  // Food lee de Booking solo su proyección: aquí se le añade `public_code` como lo hará Booking (la búsqueda se activa sola).
+  const hasColumn = (await q(`select 1 from information_schema.columns where table_schema = 'booking' and table_name = 'food_event_projection' and column_name = 'public_code'`)).length > 0;
+  if (!hasColumn) {
+    const def = String((await q(`select pg_get_viewdef('booking.food_event_projection'::regclass) as d`))[0].d).replace(/;\s*$/, '');
+    await q(`create or replace view booking.food_event_projection as select v.*, b.public_code from (${def}) v left join booking.events b on b.id = v.event_id`);
+  }
   assert.deepEqual((await visitor({ event_code: code })).offers, [], 'nada es público por defecto');
   const barra = (await q(`select id, revision from food.event_offers where name = 'Barra del retiro'`))[0];
   await ok([{ op: 'update', table: 'food.event_offers', id: barra.id, expectedRevision: Number(barra.revision), fields: { public: true } }]);
-  const out = await visitor({ event_code: code });
+  const out = await visitor({ event_code: code.toLowerCase() });
   assert.deepEqual(out.offers.map((o: any) => [o.name, o.meal_groups]), [['Barra del retiro', []]]);
   assert.deepEqual(out.offers[0].lines.map((l: any) => l.price_cents), [300]);
+  assert.equal(JSON.stringify(out).includes(event), false, 'la respuesta no lleva el id del evento');
+  assert.ok(out.offers.every((o: any) => !('event_id' in o)));
+  assert.deepEqual((await visitor({ code })).offers.map((o: any) => o.name), ['Barra del retiro'], 'también como `code`');
+  assert.deepEqual(await visitor({ event_code: sequential }), { event_code: sequential, offers: [], days: [] }, 'el código secuencial no encuentra nada');
   assert.deepEqual(await visitor({ event_code: 'NO_EXISTE' }), { event_code: 'NO_EXISTE', offers: [], days: [] }, 'un código desconocido no dice nada');
   // Lectura pública del núcleo: registrada y servida por core_public_read (la ruta HTTP es del kit).
   assert.deepEqual(await q(`select procedure from core.public_reads where name = 'food_visitor_offers'`), [{ procedure: 'food.visitor_offers' }]);
