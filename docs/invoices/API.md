@@ -1929,3 +1929,35 @@ Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige 
 - **Gestoría:**
   - el ticket suma al saldo de IVA (orientativo) el IVA repercutido de los apuntes de apps;
   - «Todo el detalle» lleva la tarjeta «Ingresos y gastos de apps» (`#appEntriesSummary`), con la misma cuenta que `invoices.app_entries_summary_for`.
+
+### 17.5 «Justificante del día» (encargo de VG del 27-10)
+
+- Es la hoja imprimible de un **ingreso** de otra app. Se abre con «Justificante» en la ficha del apunte (`#appEntryReceipt`) y se imprime o se guarda en PDF con la vista de impresión del kit.
+- Lleva:
+  - el emisor, que sale de Central con red; sin red, avisa de que faltan sus datos;
+  - la fecha y el concepto;
+  - el desglose, por producto o, en una liquidación, por pedido;
+  - los totales por medio de cobro;
+  - la base, el IVA incluido, las devoluciones pendientes y el total.
+- **Sin numeración fiscal:**
+  - mientras la gestoría no diga si es ticket o factura simplificada, se titula «Justificante de ventas», lleva la marca «SIN NUMERACIÓN FISCAL» y dice que no es factura ni ticket;
+  - **el hueco para la serie está preparado:** `DAY_RECEIPT_SERIES` en `app/day-receipt.ts`. Con una serie de simplificadas y un número, el documento pasa a ser «Factura simplificada <número>»;
+  - numerar de verdad (dar y guardar el número en el servidor) irá en una migración propia cuando llegue la respuesta (PETICIONES.md, 27-10).
+- El modelo está en `app/day-receipt.ts` y se prueba con `tests/invoices/day-receipt.test.ts`.
+
+### 17.6 Liquidaciones de cuentas de cliente (Flow)
+
+Una liquidación es un pago único que cierra varios pedidos de un cliente. Va por el mismo `invoices.record_app_entry`, **sin nada nuevo en el modelo**:
+- `source_ref`: `flow:settlement:<id del pago>`, un apunte por liquidación;
+- `entry_date`: el día del pago;
+- `detail`: una línea por pedido, `{code: 'P 14', name: 'Pedido 14', quantity: 1, amount_cents, order_id}`. Las claves de más, como `order_id`, se guardan tal cual;
+- `methods`: el medio del pago, como siempre;
+- el desglose más las devoluciones pendientes suman el importe.
+
+**Lo que hace Flow (27-10): opción «solo en el cierre».** Una liquidación es un pago más del día en que se cobra:
+- entra en el «Cierre del día» de ese día, con su dinero por medio de cobro;
+- lo vendido «a cuenta» va en el desglose de ese día, con su precio cerrado;
+- Flow no manda apuntes `flow:settlement:…` aparte, así que nada se cuenta dos veces.
+El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan otra cosa.
+
+**Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
