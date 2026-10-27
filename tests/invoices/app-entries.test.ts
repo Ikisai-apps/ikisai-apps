@@ -19,8 +19,11 @@ const WORKER_KEY = 'clave-de-worker-de-pruebas';
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
 const update = (id: string, expectedRevision: number, fields: Record<string, unknown>) => ({ op: 'update', table: 'invoices.app_entries', id, expectedRevision, fields });
 
+/** Un `record_app_entry` llega desde el servidor de su app (F1, §17.10): la prueba de origen va con su `source_app`. */
 function commit(operations: unknown[], token?: string) {
-  return app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations }, ...(token ? { token } : {}) });
+  const entry = (operations as Array<{ procedure?: string; args?: { source_app?: string } }>).find((o) => o.procedure === 'invoices.record_app_entry');
+  const headers = entry?.args?.source_app ? { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': entry.args.source_app } : {};
+  return app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations }, headers, ...(token ? { token } : {}) });
 }
 async function ok(operations: unknown[], token?: string) {
   const res = await commit(operations, token);
@@ -291,10 +294,11 @@ test('F1 (API.md §17.10): con la clave de worker y X-Ikisai-Caller, source_app 
   // Quien llama es Booking y dice ser Flow: no
   const forged = await send(day('2027-02-02'), proof('booking'));
   assert.deepEqual([forged.status, forged.data.error.code], [403, 'SOURCE_MISMATCH']);
-  // Otra clave u otra app no son prueba: hoy se acepta como antes (aún no es obligatoria)
+  // Otra clave u otra app no son prueba
   assert.equal(serverCaller(new Request('http://x', { headers: proof('flow', 'otra') }), WORKER_KEY), null);
   assert.equal(serverCaller(new Request('http://x', { headers: proof('tasks') }), WORKER_KEY), null);
-  assert.equal((await send(day('2027-02-03'), proof('flow', 'otra'))).status, 200);
+  const noProof = await send(day('2027-02-03'), proof('flow', 'otra'));
+  assert.deepEqual([noProof.status, noProof.data.error.code], [403, 'CALLER_REQUIRED'], 'obligatoria para flow y booking');
   // Cuando sea obligatoria: sin prueba, 403 CALLER_REQUIRED; con la suya, sí
   const required = new Set(['flow', 'booking']);
   const ops = [call('invoices.record_app_entry', { source_app: 'flow' })] as never;
