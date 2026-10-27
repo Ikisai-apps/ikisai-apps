@@ -204,6 +204,8 @@ FIELDS[TABLES.beds] = {
   cell: { kind: 'cell' },
   team_bed: { kind: 'bool' },
 };
+// 0488: código público del evento (QR de visitantes)
+FIELDS[TABLES.events] = { ...FIELDS[TABLES.events], public_code: text(10, false) };
 FIELDS[TABLES.walkinCharges] = {
   event_id: { kind: 'uuid' },
   assignment_id: { kind: 'uuid' },
@@ -603,6 +605,7 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
   }
 
   if (table === TABLES.beds && typeof fields.capacity === 'number' && fields.capacity > 2) issues.push(invalid(table, 'capacity', 'admite como máximo 2 personas'));
+  if (table === TABLES.events && 'public_code' in fields && !(typeof fields.public_code === 'string' && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/.test(fields.public_code))) issues.push(invalid(table, 'public_code', 'debe tener 10 caracteres del alfabeto del código público'));
   if (table === TABLES.walkinCharges && typeof fields.nights === 'number' && typeof fields.price_cents === 'number' && typeof fields.amount_cents === 'number'
     && fields.amount_cents !== fields.nights * fields.price_cents) issues.push(invalid(table, 'amount_cents', 'debe ser noches × precio por noche'));
 
