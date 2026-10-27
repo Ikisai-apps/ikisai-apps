@@ -1725,6 +1725,15 @@ Una fila por turno no cancelado de un evento de `event_projection`: `event_id`, 
 ### 28.3 Servicio de barra (decisión de Core del 26-10-2026)
 
 Flow guarda sus cierres del día en su schema y publica `flow.booking_service_projection`, abierta a Booking con `core.allow_read`. Booking la lee y la ficha del evento la enseña en «Servicio de barra». No hay tabla ni procedimiento en `booking.*` para esto.
+
+En la ficha, «Servicio de barra» (`#blockBarService`, pestaña Dinero, solo quien ve importes y con red) lee `GET read/flow.booking_service_projection?where[event_id]=…` (`event_id`, `day`, `data`, `updated_at`; Flow #735). Por cada día cerrado:
+- pedidos;
+- ventas, con efectivo y Bizum aparte;
+- devoluciones pendientes;
+- las tres horas punta;
+- los cinco productos más vendidos.
+
+Con más de un día, también el total. Booking no guarda copia.
 ## 29. Reglas de acceso a los portales (migración 0481; encargo de VG del 26-10-2026, plan aprobado por Core y respuestas de VG)
 
 1. **Sin caducidad.** `booking.portal_link_valid_until` devuelve `infinity` mientras la reserva exista: también terminada, cancelada o perdida, que se ve en solo lectura. Devuelve null solo si está borrada o no existe.

@@ -647,6 +647,62 @@ Lo que le toca a cada persona, por día y servicio, de la lectura de portal de F
 - **Sin red:** las ofertas, de la caché como el menú; «Abrir la carta» necesita red.
 - **Pruebas:** `tests/guests/offers.test.ts` (cruce, internas, modos, precio y enlace). La de Playwright llega cuando FD3 esté en `main`.
 
+### 9.19 Visitantes por QR: ven.ikisai.com sin invitación (encargo de VG por Core, 27-10-2026)
+
+VG aprueba `ven.ikisai.com` como puerta pública **sin invitación**. Quien escanea el QR de un evento entra como **visitante**: una identidad anónima del núcleo (`core.visitors`, contrato C11 de Core, migración 0096), con su token en el móvil y **ningún dato al entrar**.
+
+**Contrato C11 (Core, 27-10)**
+- **Token aparte, no sesión:** `POST /api/v1/public/visitor {event_code?}` → `{visitorId, token}`. El token se guarda en `localStorage` del portal (`ikisai-visitor`) y va en la cabecera `X-Visitor` en cada llamada pública. Sin bootstrap, sin ámbitos ni pertenencias: **un visitante nunca es miembro de nada**.
+- **Escrituras, en la API del dueño:** cada app abre su escritura pública (`core.allow_public_write`) y la sirve en su propia Edge (`POST /api/v1/public/<nombre>`); el kit resuelve `X-Visitor` y la app pone `visitor_id` en la fila. `guests-api` no escribe en tablas de otros.
+- **Lecturas, públicas con argumentos** (`event_code`), sin ámbito; las de «lo mío» reciben el `visitor_id` que resuelve el kit (`publicReadWithVisitor`), nunca el token. Como las lecturas registradas son globales, `guests-api` las sirve en sus rutas `public/…`.
+- **Recuperación por correo y paso a otro móvil:** v2, no para el sábado.
+
+**Reglas fuertes**
+- Un visitante **nunca ve a otros** visitantes ni huéspedes.
+- **Nunca se liga a un huésped de Booking por el nombre**; solo por un vínculo consentido: su enlace de invitación (`/i/<token>`) o un «Apuntarme» que acepta el personal.
+- Lo que deja (nombre, correo, teléfono) es **voluntario**, con su para qué escrito al lado.
+- Repo público: ejemplos y fixtures con nombres sintéticos y `example.invalid`.
+
+#### Entrada (`/e/<código>`)
+
+1. `main.ts` reconoce `/e/<código>` (10 caracteres, BG17; vale en mayúsculas o minúsculas), lo quita de la URL antes de pintar y abre `#/v/<CÓDIGO>`.
+2. El evento sale de `GET public/event?code=…` (`guests-api`, hecho; lectura pública `booking_event`, BG19). Si el código no es de ningún evento: «Este código no es de ningún evento abierto», con el contacto público y sin decir si existió.
+3. **Identidad de visitante:** con token en el móvil, se usa; si no, al tocar «Entrar» se crea (`POST public/visitor {event_code}`), sin pedir nada. Si el móvil tiene además una sesión de huésped, conviven: el evento se ve como visitante salvo que use «Ya tengo invitación».
+4. El código se añade a la lista de **«Mis eventos» de este móvil** (`localStorage`, solo códigos; se borra con «Salir de este móvil»).
+
+#### Evento del visitante (`#/v/<código>`)
+
+- **Cabecera:** nombre, fechas, tipo («Retiro», «Jornadas abiertas», «Familiar»), estado («Abierto», «Cerrado») y el resumen público. Nada de precios ni del organizador.
+- **Qué hay para comer** (FD5, lectura pública `food_visitor_offers` con `event_code`; `guests-api` la sirve en `GET public/offers?code=…`): solo las ofertas que quien las hace marca «Visible para visitantes (QR)», por día y servicio, con la pieza de §9.18 (`offersBlock`) y su línea de alérgenos. Sin restricciones de la persona, no hay cruce personal; sí el aviso «Si tienes alergias, pregunta en cocina».
+- **«Mi pedido»** (Flow, FL2): «Pedir número» o «Abrir la carta» llama a `flow.visitor_join({event_code})` (acción de Flow con `X-Visitor`: crea o encuentra su cliente, sin cuenta) y abre su `carta_url` de un solo uso; «Mi pedido» se pinta con la lectura `flow.visitor_customer` (`{number, carta_url, account_open, orders}`, con el `visitor_id` del kit). Sin número todavía: «Aún no tienes número: lo tendrás al abrir la carta». Con cuenta abierta, «Tienes una cuenta abierta»; si no, «Si quieres pagar al final, pide en caja que te abran una cuenta».
+- **«Apuntarme»** (si `joinable`, BG18): `POST /api/v1/public/join` de **booking-api** (tabla `booking.visitor_requests`, de Booking) con `{event_code, name, contact?}`: «¿Cómo te llamamos?», obligatorio solo aquí; correo o teléfono, opcionales y con su para qué. Queda «Pedido · pendiente» hasta que el personal lo acepta (`booking.join_from_visitor`), y entonces la ficha queda ligada a este visitante por esa petición. Lo pendiente sale de la lectura de «lo mío» de Booking (con el `visitor_id` del kit). Booking tiene que admitir el origen de Guests en esa ruta.
+- **«Déjanos un dato»** (opcional, sin apuntarse): el correo para avisarle de la próxima jornada, con su para qué; va a la misma tabla de Booking como petición sin «apuntarme» (lo confirma Booking).
+- **«Ya tengo invitación»:** abrir su enlace personal (`/i/<token>`). Es el vínculo consentido con su ficha de huésped.
+
+#### «Mis eventos» (`#/v`)
+
+- Los eventos de la lista de este móvil, por momento (en curso, próximos y pasados, la pieza de «Mis retiros», §9.17), cada uno releído con `public/event`, con su estado y el de su «Apuntarme».
+
+#### Salir y, en la v2, guardar y mover
+
+- **Salir de este móvil:** borra el token, la lista de eventos y la caché del visitante.
+- **v2:** recuperar por correo (enlace) y pasar a otro móvil con un código de un solo uso (C11, más adelante). Hasta entonces, la pantalla dice que el acceso vive solo en ese móvil.
+
+#### Sin red
+
+El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora de los datos. Entrar, apuntarse, dejar un dato y «Abrir la carta» necesitan red.
+
+#### Lo que necesita Guests
+
+| Id | De | Qué | Estado |
+|---|---|---|---|
+| C11 | Core | `core.visitors`, `POST public/visitor`, `X-Visitor`, `resolveVisitor`, `publicReadWithVisitor` | contrato fijado; PR core/visitantes (0096) |
+| BG17 | Booking | `booking.events.public_code` | en #767 (0488) |
+| BG18 | Booking | `POST public/join` en booking-api (`booking.visitor_requests`), su «lo mío» y `join_from_visitor`; origen de Guests admitido | tras C11 |
+| BG19 | Booking | lectura pública `booking_event` | en #767 (0488); `GET public/event` hecho |
+| FD5 | Food | lectura pública `food_visitor_offers` con `event_code`, solo ofertas `public` | en #758 |
+| FL2 | Flow | `flow.visitor_join` (acción) y `flow.visitor_customer` (lectura), con `flow.customers.visitor_id` | tras C11 |
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:

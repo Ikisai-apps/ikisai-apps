@@ -168,7 +168,7 @@ export function rsRemainder(data: readonly number[], degree: number): number[] {
   for (let i = 0; i < degree; i++) {
     for (let j = 0; j < degree; j++) {
       divisor[j] = gfMul(divisor[j]!, root);
-      if (j + 1 < degree) divisor[j] ^= divisor[j + 1]!;
+      if (j + 1 < degree) divisor[j] = divisor[j]! ^ divisor[j + 1]!;
     }
     root = gfMul(root, 0x02);
   }
@@ -176,7 +176,7 @@ export function rsRemainder(data: readonly number[], degree: number): number[] {
   for (const b of data) {
     const factor = b ^ result.shift()!;
     result.push(0);
-    for (let i = 0; i < degree; i++) result[i] ^= gfMul(divisor[i]!, factor);
+    for (let i = 0; i < degree; i++) result[i] = result[i]! ^ gfMul(divisor[i]!, factor);
   }
   return result;
 }
