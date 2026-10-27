@@ -211,6 +211,15 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       const rawQuantity = body.quantity;
       if (rawQuantity !== undefined && rawQuantity !== null && (typeof rawQuantity !== 'number' || !Number.isFinite(rawQuantity) || rawQuantity <= 0 || rawQuantity >= 1e9)) invalid('quantity', 'quantity es un número mayor que 0.');
       const quantity = typeof rawQuantity === 'number' ? Math.round(rawQuantity * 1000) / 1000 : null;
+      // El artículo de Recursos (opcional; Food, lista de la compra, #848): al recibirla, Tasks apunta la entrada de stock con
+      // su coste, como en cualquier compra suya con artículo (receiptEntryOperation). Sin unidad, la base del artículo.
+      const rawItem = body.item_id;
+      if (rawItem !== undefined && rawItem !== null && (typeof rawItem !== 'string' || !UUID.test(rawItem))) invalid('item_id', 'item_id debe ser un uuid (artículo de Recursos).');
+      let item: { id: string; base_unit?: string; active?: boolean } | null = null;
+      if (typeof rawItem === 'string') {
+        item = (await supabase.rpc<{ item?: { id: string; base_unit?: string; active?: boolean } | null }>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.supply_item', p_args: { itemId: rawItem.toLowerCase() } }))?.item ?? null;
+        if (!item || item.active === false) fail(404, 'NOT_FOUND', 'Ese artículo no existe en Recursos o no está activo.', { field: 'item_id' });
+      }
       // El enlace de vuelta a la app que pide (Flow: la unidad), solo https en ikisai.com (§39.5, migración 0342).
       const externalUrl = text('external_url', 500);
       if (externalUrl !== undefined && !ORIGIN_URL.test(externalUrl)) invalid('external_url', 'external_url debe ser https en ikisai.com.');
@@ -238,7 +247,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       };
       const shape = (r: Record<string, unknown>) => ({
         kind: 'purchase_request', id: r.id, tabId: r.tab_id, projectId: r.project_id, title: r.title, status: r.status,
-        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
+        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, itemId: r.item_id ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
         externalUrl: r.source_url ?? null,
       });
       // Lo que ya hay con esa referencia solo se devuelve si es del mismo proyecto que se pide (ya comprobado como visible
@@ -256,7 +265,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       const fields: Record<string, unknown> = {
         tab_id: tabId, project_id: projectId, title,
         note: [`Pedida desde ${source} · ${reference}`, note?.trim()].filter(Boolean).join('\n'),
-        quantity, unit, priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
+        item_id: item?.id ?? null, quantity, unit: unit ?? (item ? item.base_unit ?? null : null), priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
         // Procedencia (0342): agrupa «Compras del evento» en Suministros y da el enlace de vuelta. Inmutable.
         source_app: source, source_ref: reference, source_url: externalUrl ?? null,
       };
