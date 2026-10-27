@@ -252,7 +252,17 @@ begin
   return jsonb_build_object('event_code', v_code) || food.offers_payload('visitor', null, v_event, v_from, v_to);
 end $$;
 
-select core.allow_public_read('food_visitor_offers', 'food.visitor_offers');
+-- Expuesta al navegador a propósito (revisión de seguridad de #775, core 0096: tercer argumento). Si esta migración se
+-- aplica antes que la 0096, se registra con la firma de dos argumentos y Core la marca después.
+do $$
+begin
+  if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'core' and p.proname = 'allow_public_read' and p.pronargs = 3) then
+    execute $q$select core.allow_public_read('food_visitor_offers', 'food.visitor_offers', true)$q$;
+  else
+    perform core.allow_public_read('food_visitor_offers', 'food.visitor_offers');
+  end if;
+end $$;
 select core.allow_read('organizers', 'food.portal_offers', 'function', '{editor,owner}');
 select core.allow_read('guests', 'food.portal_offers', 'function', '{editor,owner}');
 
