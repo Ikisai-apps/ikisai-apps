@@ -383,5 +383,4 @@ returns void language sql as $$
 $$;
 revoke all on function core.disallow_procedure(text, text) from public, anon, authenticated;
 
--- Booking resuelve las reclamaciones de sus peticiones aceptadas (booking.visitor_claim llega con la 1401 de Booking).
-select core.allow_visitor_claim('booking', 'booking.visitor_claim');
+-- El resolutor de Booking (booking.visitor_claim) lo registra la propia Booking en su migración con core.allow_visitor_claim.
