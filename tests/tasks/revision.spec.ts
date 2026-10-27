@@ -87,3 +87,27 @@ test('la lectora ve la comprobación sin controles que guarden', async () => {
   await expect(reader.locator('#tkrCheck')).toBeVisible();
   await expect(reader.locator('#tkrOk, #tkrFail')).toHaveCount(0);
 });
+
+test('plantillas: la de la casa con sus ítems; una nueva del área con un ítem de lectura', async () => {
+  await owner.evaluate(async ([t]) => { await syncNow(); state.activeTab = t; state.view = 'projects'; render(); }, [ID.ikisai]);
+  await settled(owner);
+  await owner.locator('#tkrTpls').click();
+  const sheet = owner.locator('#sheet');
+  await expect(sheet).toContainText('Revisión de apertura');
+  await sheet.locator('[data-tkr-tpl]', { hasText: 'Revisión de apertura' }).click();
+  await expect(sheet).toContainText('Agua caliente en las duchas');
+  await expect(sheet).toContainText('crítico');
+  await sheet.locator('#tkrTplBack').click();
+  await sheet.locator('#tkrTplNew').click();
+  await expect.poll(async () => (await server.rows('tasks.review_templates')).some((t: any) => t.name === 'Plantilla nueva' && t.tab_id === ID.ikisai)).toBe(true);
+  await expect(sheet.locator('#tkrItemNew')).toBeVisible();
+  await sheet.locator('#tkrItemNew').click();
+  await sheet.locator('#tkrIZone').selectOption('cocina');
+  await sheet.locator('#tkrITitle').fill('Temperatura del lavavajillas');
+  await sheet.locator('#tkrIAnswer').selectOption('reading');
+  await sheet.locator('#tkrIUnit').fill('°C');
+  await sheet.locator('#tkrIMin').fill('80');
+  await sheet.locator('#tkrISave').click();
+  await expect.poll(async () => (await server.rows('tasks.review_template_items')).find((i: any) => i.title === 'Temperatura del lavavajillas')?.expected).toEqual({ unit: '°C', min: 80 });
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
