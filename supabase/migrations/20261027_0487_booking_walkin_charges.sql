@@ -36,6 +36,24 @@ select core.register_table('booking', 'booking', 'walkin_charges',
   array['event_id','assignment_id','guest_id','nights','price_cents','amount_cents','method','paid_at','finance_entry_id','finance_sent_at','finance_error'],
   '{editor,owner}', '{editor,owner}');
 
+-- El cobro sigue a su asignación: el evento y el huésped son siempre los de la asignación (se fijan al crear y no se
+-- cambian), para que nadie apunte un cobro a otro evento ni ligue un huésped que no ve.
+create or replace function booking.walkin_charge_follow()
+returns trigger language plpgsql as $$
+declare a booking.room_assignments;
+begin
+  select * into a from booking.room_assignments where id = new.assignment_id;
+  if a.id is null then perform core.fail('NOT_FOUND', 404, jsonb_build_object('table', 'booking.room_assignments', 'id', new.assignment_id)); end if;
+  if tg_op = 'UPDATE' and new.assignment_id is distinct from old.assignment_id then
+    perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('table', 'booking.walkin_charges', 'field', 'assignment_id', 'reason', 'no se cambia'));
+  end if;
+  new.event_id := a.event_id;
+  new.guest_id := a.guest_id;
+  return new;
+end $$;
+create trigger walkin_charges_follow before insert or update on booking.walkin_charges
+  for each row execute function booking.walkin_charge_follow();
+
 -- Para la Edge: el cobro con lo que va al apunte de Finance.
 create or replace function booking.walkin_charge_for_send(p jsonb)
 returns jsonb language plpgsql stable as $$

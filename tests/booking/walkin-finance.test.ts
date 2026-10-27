@@ -63,6 +63,17 @@ test('envío a Finance: apunte con source_ref booking:stay:<id>, la sesión de l
   assert.deepEqual({ ...call.args, description: undefined }, { ...walkinFinanceEntry({ id: charge, event_id: event, nights: 2, price_cents: 2500, amount_cents: 5000, method: 'cash', paid_day: '2031-10-30', title: 'Jornadas', guest: 'Ana S.', space: 'Albergue', bed: 'Cama 3' }), description: undefined });
   assert.equal(call.args.source_ref, `booking:stay:${charge}`);
   assert.deepEqual(call.args.methods, { cash: 5000 });
+  // un editor que no ve huéspedes manda el apunte sin el nombre
+  const plain = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('booking', $1, 'editor')`, [plain]);
+  const plainToken = app.supabase.tokenFor(plain);
+  const before = sent.length;
+  const noName = await app.call(`/api/v1/walkins/${charge}/send/finance`, { token: plainToken, body: {} });
+  assert.equal(noName.status, 200, JSON.stringify(noName.data));
+  assert.ok(!String(sent[before]!.body.operations[0].args.description).includes('Ana'));
+  // el cobro toma el evento y el huésped de su asignación
+  const row = (await app.t.db.query<{ event_id: string; guest_id: string }>(`select event_id, guest_id from booking.walkin_charges where id = $1`, [charge])).rows[0]!;
+  assert.deepEqual([row.event_id, row.guest_id], [event, guest]);
   financeStatus = 403;
   assert.equal((await send()).data?.error?.code, 'NEEDS_ACCESS');
   // un lector no envía

@@ -189,7 +189,8 @@ function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch): AppRoute[] {
       const charge = out?.charge ?? null;
       if (!charge) fail(404, 'NOT_FOUND', 'Ese cobro no existe.');
       if (!charge.method || !charge.paid_day) fail(409, 'NOT_PAID', 'Todavía no está cobrado: cóbralo antes de enviarlo a Finance.');
-      const args = walkinFinanceEntry(charge);
+      // el nombre del huésped solo sale si quien envía puede verlo (API.md §5.1)
+      const args = walkinFinanceEntry(canSeeGuests(ctx.membership) ? charge : { ...charge, guest: null });
       let res: Response;
       try {
         res = await appsFetch(commandsOf('invoices-api'), {
