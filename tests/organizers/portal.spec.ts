@@ -8,6 +8,7 @@ import { preview, type PreviewServer } from 'vite';
 import { freePort } from '../../packages/test-kit/src/net.ts';
 import { buildOrganizersApp, ORGANIZERS_VITE_CONFIG, startOrganizersServer, type OrganizersTestServer } from './server.ts';
 import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { formatFindings, mobileAudit } from '../../packages/ui-kit/testing/mobile-audit.ts';
 
 const configFile = ORGANIZERS_VITE_CONFIG;
 
@@ -578,6 +579,45 @@ test('organizers · pagos todo pagado: nada por pagar y «Cómo pagar» plegado 
   await expect(how).toContainText('Por transferencia');
   expect(await how.evaluate((node) => [node.tagName, (node as HTMLDetailsElement).open])).toEqual(['DETAILS', false]);
   expect(await how.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('#moneyTotals')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+});
+
+test('organizers · pago en línea (PAGO_EN_CURSO.md): «Pagar ahora» → «Pago en curso», vuelta con ?pago=ok y, cobrada, desaparece', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con pago en línea', confirm: true });
+  const invoice = crypto.randomUUID();
+  let collected = false;
+  // Lectura de Finance simulada, con el enlace de pago de F5 (Stripe Checkout).
+  await page.route('**/api/v1/read/invoices.portal_reservation_money', (route) => route.fulfill({ json: {
+    reservation_id: reservation, currency: 'EUR', totals: { invoiced: 500, collected: collected ? 500 : 0, pending: collected ? 0 : 500 },
+    invoices: [{ id: invoice, number: 'F2026-0042', issue_date: '2026-10-20', type: 'F1', rectifies: null, base: 500, tax: 0, withholding: 0, total: 500,
+      status: 'emitida', collected, collected_at: collected ? '2026-10-27T10:00:00Z' : null, has_document: false, purpose: 'senal',
+      payment_link: collected ? null : { url: 'https://checkout.stripe.com/c/pay/cs_test_x', provider: 'stripe', expires_at: '2099-01-01T00:00:00Z' } }],
+  } }));
+  // La pasarela no se abre de verdad.
+  await page.context().route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>pasarela</p>' }));
+  await enter(page, await api.organizerLink([reservation], 'pago-linea@example.invalid', 'Paula'));
+  await page.locator('#tab-pagos').click();
+  const row = page.locator(`#payOnline li:has(a[data-invoice="${invoice}"])`);
+  await expect(row).toHaveAttribute('data-pay-state', 'pagar');
+  const popup = page.waitForEvent('popup');
+  await row.getByRole('link', { name: 'Pagar ahora' }).click();
+  await (await popup).close();
+  await expect(row).toHaveAttribute('data-pay-state', 'en_curso');
+  await expect(row.locator('.orgpay-pending')).toHaveText('Pago en curso');
+  await expect(row.getByRole('link', { name: 'Volver a la pasarela' })).toBeVisible();
+
+  // Vuelta de la pasarela: el aviso, y la URL sin lo de «?».
+  const base = page.url().split('#')[0];
+  await page.goto('about:blank');
+  await page.goto(`${base}#/retiro/${reservation}/pagos?pago=ok&factura=${invoice}`);
+  await expect(page.locator('.toast.show')).toContainText('Hemos recibido tu pago');
+  await expect.poll(() => page.url()).not.toContain('pago=ok');
+  await expect(page.locator(`#payOnline li:has(a[data-invoice="${invoice}"])`)).toHaveAttribute('data-pay-state', 'en_curso');
+
+  // Finance lo da por cobrado: «Pagar en línea» desaparece.
+  collected = true;
+  await page.reload();
+  await expect(page.locator('#moneyStatement')).toBeVisible();
+  await expect(page.locator('#payOnline')).toHaveCount(0);
 });
 
 test('organizers · factura emitida desde Finance: la copia congelada se pinta e imprime con la página del kit', async ({ page }) => {
@@ -1237,3 +1277,48 @@ test('organizers · guarda tu acceso: botón compacto en Mis retiros y en la fic
   await expect(page.locator('#accessSheet')).toBeVisible();
   await context.close();
 });
+
+// Revisión móvil del kit (#980, testing/mobile-audit.ts) en cada PR: a 390 px, sin desborde, sin toques de menos de 44 px
+// y sin textos cortados, en Mis retiros, el resumen del retiro y Pagos (la revisión del 27-10 encontró la cabecera «Ikis…»).
+test('organizers · revisión móvil a 390 px: Mis retiros, resumen y Pagos sin desborde, toques pequeños ni textos cortados @smoke', async ({ page }) => {
+  const a = await api.reservation({ title: 'Retiro móvil uno', confirm: true });
+  const b = await api.draftReservation({ title: 'Retiro móvil dos', status: 'negociacion' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enter(page, await api.organizerLink([a, b], 'movil@example.invalid', 'Rocío'));
+  const audit = async (where: string) => {
+    const found = await mobileAudit(page, { kinds: ['desborde', 'toque', 'cortado'] });
+    expect(found, `${where}
+${formatFindings(found)}`).toEqual([]);
+  };
+  await expect(page.locator('.orgretreat').first()).toBeVisible();
+  await audit('Mis retiros');
+  await page.locator('.orgretreat', { hasText: 'Retiro móvil uno' }).first().click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro móvil uno');
+  await audit('Resumen del retiro');
+  await page.locator('#tab-pagos').click();
+  await expect(page.locator('#payments')).toBeVisible();
+  await audit('Pagos');
+});
+
+// Guiado mínimo (kit 0.68) con el inventario de campos (P15, #979): `?campo=` lleva al campo, lo enfoca y lo resalta. En
+// tres pantallas: Diseño, el mismo campo pedido desde el resumen (registerReveal cambia de pestaña) y Experiencia.
+test('organizers · Guiado: ?campo= señala el campo en Diseño, desde el resumen (cambia de pestaña) y en Experiencia @smoke', async ({ page }) => {
+  const draft = await api.draftReservation({ title: 'Retiro guiado', status: 'negociacion' });
+  const confirmed = await api.reservation({ title: 'Retiro guiado confirmado', confirm: true });
+  await enter(page, await api.organizerLink([draft, confirmed], 'guiado@example.invalid', 'Gala'));
+  await expect(page.locator('.orgretreat').first()).toBeVisible();
+  const pointed = async (hash: string, selector: string) => {
+    // El Guiado lee `?campo=` al montar la cáscara: una carga nueva, no solo un cambio de hash (la sesión sigue guardada).
+    await page.goto('about:blank');
+    await page.goto(`${baseURL}/${hash}`);
+    const field = page.locator(selector);
+    await expect(field).toBeFocused();
+    await expect(field).toHaveClass(/guia-pulse/);
+    expect(new URL(page.url()).hash).not.toContain('campo=');
+  };
+  await pointed(`#/retiro/${draft}/diseno?campo=organizers.diseno.expected_guests`, '#d-expected_guests');
+  await pointed(`#/retiro/${draft}?campo=organizers.diseno.organizer_notes`, '#d-organizer_notes');
+  await expect(page.locator('#tab-diseno')).toHaveClass(/on/);
+  await pointed(`#/retiro/${confirmed}/experiencia?campo=organizers.experiencia.mensaje`, '#exp-message');
+});
+

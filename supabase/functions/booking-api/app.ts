@@ -507,7 +507,7 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
           action: 'event', provider: payments!.name, provider_ref: event!.providerRef, event_id: event!.eventId, status: event!.status,
           ...(event!.refundedCents !== undefined ? { refunded_cents: event!.refundedCents } : {}), ...(event!.feeCents !== undefined ? { fee_cents: event!.feeCents } : {}),
         } });
-        return { ok: true, status: out?.status ?? null, replayed: out?.replayed ?? false };
+        return { ok: true, status: out?.status ?? null, replayed: out?.replayed ?? false, accepted: out?.accepted ?? false };
       } catch (error) {
         // un pago que no es nuestro: se acusa recibo para que la pasarela no insista
         if ((error as { code?: string } | null)?.code === 'NOT_FOUND') return { ok: true, ignored: true };

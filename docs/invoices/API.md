@@ -2134,3 +2134,39 @@ Ficha de capacidad para el catálogo del núcleo:
 **Pruebas:** `tests/invoices/quick-purchase.test.ts`.
 
 **En el catálogo del núcleo** (0246, sobre la 0097 de Core): `core.register_capability` con esta ficha, los esquemas JSON de entrada y salida y las anclas `invoices.facturas.nueva`, `invoices.facturas.nueva.formulario` e `invoices.facturas.nueva.crear` (la alta manual de factura, lo más parecido en Finance). Prueba: `tests/invoices/capability.test.ts`.
+
+## 19. Pagos en línea (finance-18) · pasarela compartida
+
+Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_finance-18.md`: se cobra cada factura emitida; Stripe ahora y Redsys/Bizum después; enlace de 24 h. **Ningún dato de tarjeta pasa por Ikisai.**
+
+### 19.1 Adaptador compartido (`supabase/functions/_domain/payments/`, dueña Finance; lo usa también Booking)
+
+- `stripe.ts`:
+  - `createStripeGateway({ secretKey, fetch? })` → `PaymentGateway`:
+    - `createCheckout(req)`: Stripe Checkout con importe exacto en céntimos, `currency`, `description`, `metadata` (solo ids), `expiresAt` (de 30 min a 24 h; fuera de ese margen, `INVALID_EXPIRY`, y no se alarga solo), `successUrl`, `cancelUrl` e `idempotencyKey`;
+    - `getCheckout(id)` y `expireCheckout(id)`;
+    - `refund(paymentIntent, cents, idempotencyKey)`: devolución parcial o total.
+  - `verifyStripeSignature(body, header, secret)`: firma `Stripe-Signature` con 300 s de tolerancia.
+  - `normalizeStripeEvent(event)` → `{eventId, kind: paid | expired | refunded | failed | ignored, sessionId, paymentIntent, amountCents, refundedCents, currency, metadata}`.
+  - `defaultExpiry()`: 24 h.
+- `fake.ts`: `createFakeStripe()`, con el mismo contrato y sin red, para las pruebas. Además, `pay`, `failNext` y `webhook(id, type, secret)`, que da el cuerpo y la firma.
+- **Secretos:** la app los lee de su entorno y se los pasa (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Sin ellos, la app no conecta la pasarela.
+- Pruebas: `tests/invoices/payments-stripe.test.ts`.
+
+### 19.2 Enlaces de pago de las emitidas (migración 0255, PR 2)
+
+- **Qué se cobra:** cada emitida no borrada, ni borrador ni anulada ni rectificada, aún `pendiente` y con total > 0. El importe es el **total de la factura**; lo pone el servidor.
+- **Tablas internas,** sin roles: `invoices.payment_links` (como mucho uno `abierto` por factura) y `invoices.payment_events` (avisos, PR 3). Las escriben solo acciones de sistema:
+  - `payment_link_prepare`: la factura, el enlace abierto vigente (si quedan más de 10 min) y `attempt`. Los vencidos pasan a `caducado`.
+  - `payment_link_save`: comprueba el importe (`PAYMENT_AMOUNT_MISMATCH`).
+  - `payment_link_close`.
+- **Cancelación:** al anular, rectificar, borrar o marcar «cobrada» a mano, los abiertos pasan a `cancelado` (trigger). La sesión de Stripe la caduca la conciliación (PR 3).
+- **`POST issued/:id/payment-link`** (editor u owner): devuelve `{id, url, provider, provider_ref, amount, expires_at, reused}`. Reutiliza el abierto o crea una sesión de Checkout de 24 h. La clave de idempotencia es por factura, importe e intento.
+- **Errores:**
+  - `409 PAYMENT_NOT_ALLOWED`: la factura no se puede cobrar;
+  - `503 PAYMENTS_OFF`: no hay `STRIPE_SECRET_KEY`;
+  - `502/503 PAYMENT_GATEWAY`: falla la pasarela.
+- **Lectura `invoices.payment_links_of {issued_invoice_id}`** (lector, editor y owner): los enlaces con su estado. La URL solo sale si está abierto.
+- **F5 de Organizers:** `portal_reservation_money` añade `payment_link: {url, provider, expires_at} | null` a cada factura: el abierto y vigente. **Leer no crea nada.** La acción del portal que lo crea al pulsar «Pagar ahora» va en la PR 3.
+- Pruebas: `tests/invoices/payment-links.test.ts`, con el Stripe falso.
+

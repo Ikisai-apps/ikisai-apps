@@ -125,3 +125,21 @@ test('tramos · «Compra recibida»: el título y la referencia de Tasks salen d
   const s2 = await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 2 })], app.tokens.editor);
   assert.deepEqual(s2.values, { title: 'Hielo para la barra', external_ref: '0f10a000-0000-4000-8000-0000000000f1', source: 'recorridos' });
 });
+
+test('tramos · «Alojamiento libre · recepción»: cuatro tramos «ir a Booking», cada uno a su control de Recepción', async () => {
+  const VERSION = '0f10a000-0000-4000-8000-00000000d301';
+  assert.equal((await rows(TABLES.definitionVersions)).find((x) => x.id === VERSION).status, 'published');
+  const stages = (await rows(TABLES.definitionStages)).filter((s) => s.version_id === VERSION).sort((a, b) => a.position - b.position);
+  assert.deepEqual(stages.map((s) => `${s.kind}:${s.target_app}:${s.target_anchor}`), [
+    'handoff:booking:booking.recepcion.buscar', 'handoff:booking:booking.recepcion.ficha', 'handoff:booking:booking.recepcion.cobrar', 'handoff:booking:booking.recepcion.llega']);
+  const steps = (await rows(TABLES.definitionSteps)).filter((s) => s.version_id === VERSION);
+  assert.equal(steps.length, 4); assert.ok(steps.every((s) => s.anchor === stages.find((st) => st.id === s.stage_id).target_anchor));
+  // Se recorre con «Hecho» aunque Booking aún no confirme por el Guiado.
+  const ex = uuid();
+  await ok([call(PROCEDURES.startExecution, { execution_id: ex, version_id: VERSION, mode: 'run' })], app.tokens.editor);
+  for (const p of [1, 2, 3, 4]) {
+    await ok([call(PROCEDURES.startStage, { execution_id: ex, position: p })], app.tokens.editor);
+    await ok([call(PROCEDURES.finishStage, { execution_id: ex, position: p, status: 'done' })], app.tokens.editor);
+  }
+  assert.equal((await rows(TABLES.executions)).find((x) => x.id === ex).status, 'done');
+});

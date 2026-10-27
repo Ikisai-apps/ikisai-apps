@@ -6,6 +6,7 @@ import {
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
+import { recipeMedal } from './recipe-medal.ts';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -101,19 +102,54 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   const trash = el('details', { 'data-feedback-id': 'food.recetario.papelera', 'data-feedback-label': 'Papelera', id: 'trash' }, trashLabel, trashList);
   const fab = el('button', { 'data-feedback-id': 'food.recetario.nueva', 'data-feedback-label': 'Nueva receta', class: 'fab', type: 'button', id: 'newRecipe', onclick: () => openEditor(null) }, icon('plus'), 'Nueva receta');
 
-  replace(
-    main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Recetario'), el('p', null, 'Las recetas de la casa, con su foto, sus ingredientes y sus alérgenos.'))),
-    offline,
-    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
-    el('div', { 'data-feedback-id': 'food.recetario.filtros', 'data-feedback-label': 'Filtros', class: 'filters' },
+  // Filtros en una fila de chips (hallazgo F-REC-2, línea de Core del 27-10): «Filtrar» abre la hoja con los cuatro
+  // selectores; cada filtro puesto sale como chip con su ×, y «Quitar filtros» los quita todos.
+  const filtersBox =
+    el('div', { 'data-feedback-id': 'food.recetario.filtros', 'data-feedback-label': 'Filtros', class: 'filters fd-filtersheet' },
       select('filterCategory', 'Categoría', RECIPE_CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]]), 'category', { 'data-feedback-id': 'food.recetario.filtros.categoria', 'data-feedback-label': 'Filtrar por categoría' }),
       select('filterDiet', 'Dieta', DIET_TAGS.map((d) => [d, DIET_LABELS[d]]), 'diet', { 'data-feedback-id': 'food.recetario.filtros.dieta', 'data-feedback-label': 'Filtrar por dieta' }),
       // Tanda 27 (010 y regla de VG): «Filtrar por alérgeno», con «Lleva X» (lo de siempre) y «Sin X»; nunca «apto».
       select('filterAllergen', 'Filtrar por alérgeno', ALLERGENS.map((a) => [a, ALLERGEN_LABELS[a]]), 'allergen', { 'data-feedback-id': 'food.recetario.filtros.alergeno', 'data-feedback-label': 'Filtrar por alérgeno' }),
       allergenMode,
       select('filterStatus', 'Estado', [...RECIPE_STATUSES.map((s): [string, string] => [s, RECIPE_STATUS_LABELS[s]]), [QUICK_FILTER, 'Rápidas por completar']], 'status', { 'data-feedback-id': 'food.recetario.filtros.estado', 'data-feedback-label': 'Filtrar por estado' }),
-    ),
+    );
+  const filterBar = el('div', { 'data-feedback-id': 'food.recetario.filtros.fila', 'data-feedback-label': 'Filtros puestos', class: 'chips fd-filterbar', id: 'recipeFilters' });
+  let filterSheet: Sheet | null = null;
+  const FILTER_NAMES: Record<'category' | 'diet' | 'allergen' | 'status', string> = { category: 'Categoría', diet: 'Dieta', allergen: 'Alérgeno', status: 'Estado' };
+  const selectOf = (key: keyof typeof FILTER_NAMES) => filtersBox.querySelector<HTMLSelectElement>(`#${{ category: 'filterCategory', diet: 'filterDiet', allergen: 'filterAllergen', status: 'filterStatus' }[key]}`)!;
+  const clearFilter = (key: keyof typeof FILTER_NAMES) => { filter[key] = ''; selectOf(key).value = ''; if (key === 'allergen') { filter.allergenMode = 'lleva'; allergenMode.value = 'lleva'; } paint(); };
+  function paintFilterBar(shown: number): void {
+    const active = (Object.keys(FILTER_NAMES) as Array<keyof typeof FILTER_NAMES>).filter((k) => filter[k]);
+    const text = (k: keyof typeof FILTER_NAMES) => {
+      const option = selectOf(k).selectedOptions[0]?.textContent ?? filter[k];
+      return k === 'allergen' ? `${filter.allergenMode === 'sin' ? 'Sin' : 'Lleva'} ${option.toLowerCase()}` : `${FILTER_NAMES[k]}: ${option}`;
+    };
+    replace(filterBar,
+      el('button', { 'data-feedback-id': 'food.recetario.filtros.abrir', 'data-feedback-label': 'Filtrar', class: active.length ? 'filterchip on' : 'filterchip', type: 'button', id: 'openFilters',
+        'aria-haspopup': 'dialog', onclick: () => openFilters() }, icon('filter', 16), active.length ? `Filtrar · ${active.length}` : 'Filtrar'),
+      ...active.map((k) => el('button', { 'data-feedback-id': 'food.recetario.filtros.quitar_uno', 'data-feedback-label': 'Quitar este filtro', class: 'filterchip on', type: 'button', 'data-filter': k,
+        'aria-label': `Quitar el filtro ${text(k)}`, onclick: () => clearFilter(k) }, text(k), ' ×')),
+      active.length > 1 ? el('button', { 'data-feedback-id': 'food.recetario.filtros.quitar', 'data-feedback-label': 'Quitar filtros', class: 'linkbtn', type: 'button', id: 'clearFilters',
+        onclick: () => { for (const k of active) { filter[k] = ''; selectOf(k).value = ''; } filter.allergenMode = 'lleva'; allergenMode.value = 'lleva'; paint(); } }, 'Quitar filtros') : null);
+    const done = filterSheet?.foot?.querySelector<HTMLButtonElement>('#filtersDone');
+    if (done) done.textContent = shown === 1 ? 'Ver 1 receta' : `Ver ${shown} recetas`;
+  }
+  function openFilters(): void {
+    filterSheet = openSheet({
+      title: 'Filtrar recetas',
+      body: filtersBox,
+      foot: el('button', { 'data-feedback-id': 'food.recetario.filtros.ver', 'data-feedback-label': 'Ver las recetas', class: 'primary', type: 'button', id: 'filtersDone', onclick: () => void filterSheet?.close() }, 'Ver las recetas'),
+      onClose: () => { filterSheet = null; },
+    });
+    paint();
+  }
+
+  replace(
+    main,
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Recetario'), el('p', null, 'Las recetas de la casa, con su foto, sus ingredientes y sus alérgenos.'))),
+    offline,
+    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
+    filterBar,
     host,
     trash,
     fab,
@@ -147,7 +183,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     if (ref && !navigator.onLine) void photoUrl(client, ref).then((url) => { if (!url) missing.hidden = false; });
     return el('li', null,
       el('button', { 'data-feedback-id': 'food.recetario.tarjetas.tarjeta', 'data-feedback-label': 'Tarjeta de receta', class: 'recipecard', type: 'button', 'data-id': recipe.id, 'data-pending': String(recipe._pending === true), 'aria-label': `Abrir ${recipe.name}`, onclick: () => openCard(recipe) },
-        el('span', { class: 'recipephoto' }, icon('chef', 30), img, missing),
+        el('span', { class: 'recipephoto' }, recipeMedal(recipe), img, missing),
         el('span', { class: 'recipebody' }, el('strong', { title: recipe.name }, recipe.name), el('span', { class: 'recipemeta' }, tagLine(recipe)), el('span', { class: 'chips' }, ...chips)),
       ));
   }
@@ -157,6 +193,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const live = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     const visible = live.filter(matches);
+    paintFilterBar(visible.length);
     replace(grid, ...visible.map(card));
     replace(host, live.length === 0 ? empty : visible.length === 0 ? emptyFiltered : grid);
     replace(trashList, ...deleted.map((r) => fb(listRow({

@@ -308,6 +308,11 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-revoked summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--muted)}
 .agentrow.alert{border-left:4px solid var(--alert);padding-left:8px}
 .agentrow.warn{border-left:4px solid var(--warn);padding-left:8px}
+.ctl-agentcards{margin:0 0 20px}
+.ctl-agentcardshead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ctl-agentcardshead h3{margin:0}
+.ctl-agentcards .agentrow button{min-height:var(--tap,46px)}
+.ctl-agentactive{display:flex;align-items:center;gap:10px;min-height:var(--tap,46px)}
 /* Registro · «Lo grave» arriba y la línea de tiempo por persona, con día y hora en cada línea. */
 .ctl-grave{margin:0 0 12px}
 .ctl-grave:empty{display:none}

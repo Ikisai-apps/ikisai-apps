@@ -13,6 +13,8 @@ import { install } from '../app/install.ts';
 import { dateRange, isCancelled, statusLabel, STATUS_TONE } from '../app/labels.ts';
 import { countdownText, groupRetreats, isCoorganizer, matchesRetreat, phaseOf, showsCountdown, STAGES, stageKeyOf, toDoOf, todayMadrid } from '../app/journey.ts';
 import { createCoverLoader } from '../app/covers.ts';
+import { loadGuestFeedback } from '../app/retreat-comments.ts';
+import { allReadIds, unreadByReservation } from '../app/comment-reads.ts';
 import { proposalReservation } from '../../../../supabase/functions/_domain/organizers/mod.ts';
 import { failure, loading, staleNote } from './common.ts';
 import type { ViewMount } from './shell.ts';
@@ -148,6 +150,22 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
     }
   }
 
+  /**
+   * Comentarios de asistentes sin ver (0706, COMENTARIOS_LEIDOS.md): el número en la tarjeta de su retiro, como las
+   * propuestas. Cada persona, lo suyo. Necesita red para los comentarios; sin ella, sin marca.
+   */
+  async function markComments(): Promise<void> {
+    const [items, read] = await Promise.all([loadGuestFeedback(client), allReadIds(client, userId)]).catch(() => [[], new Set<string>()] as const);
+    if (!alive) return;
+    const counts = unreadByReservation(items, read);
+    for (const [id, card] of cards) {
+      const n = counts.get(id.toLowerCase()) ?? 0;
+      const chips = card.node.querySelector('.chips');
+      chips?.querySelector('.orgunread')?.remove();
+      if (n) chips?.append(el('span', { class: 'chip warn orgunread' }, n === 1 ? t('1 comentario nuevo') : t('{n} comentarios nuevos', { n })));
+    }
+  }
+
   async function load(): Promise<void> {
     replace(host, loading());
     try {
@@ -179,6 +197,7 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
         fold('past', groups.past, today),
         fold('cancelled', groups.cancelled, today));
       void markProposals();
+      void markComments();
     } catch (error) {
       if (alive) replace(host, failure(error, () => void load()));
     }
