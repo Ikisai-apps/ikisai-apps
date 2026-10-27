@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1511 741" width="1511" height="741">
+  <title>Albergue · planta baja</title>
+  <desc>Dibujo trazado de los planos de la cesión (geometría simplificada, sin cotas ni datos del documento). Cada estancia lleva data-name con su nombre en Recursos; Central la coloca sola.</desc>
+  <rect width="1511" height="741" fill="#f6f3ec"/>
+  <g id="estancias">
+    <path data-name="Almacén" d="M72.9 103.0L226.4 103.0L226.4 259.0L72.9 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Cuarto Calderas" d="M226.4 103.0L335.6 103.0L335.6 259.0L226.4 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Baño Mujeres" d="M335.6 103.0L553.9 103.0L553.9 259.0L335.6 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Baño Hombres" d="M553.9 103.0L751.6 103.0L751.6 259.0L553.9 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Baño minusválidos" d="M751.6 103.0L863.4 103.0L863.4 259.0L751.6 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Prepasillo" d="M863.4 103.0L944.0 103.0L944.0 259.0L863.4 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Baño apartamento" d="M944.0 103.0L1002.5 103.0L1002.5 194.0L944.0 194.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Oficina" d="M1002.5 103.0L1145.5 103.0L1145.5 194.0L1002.5 194.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path d="M944.0 194.0L1145.5 194.0L1145.5 259.0L944.0 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Despensa" d="M1145.5 103.0L1256.0 103.0L1256.0 170.6L1145.5 170.6Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Bar" d="M1145.5 170.6L1256.0 170.6L1256.0 259.0L1145.5 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Cocina" d="M1256.0 103.0L1438.1 103.0L1438.1 259.0L1256.0 259.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Pasillo" d="M112.0 259.0L1145.5 259.0L1145.5 272.0L961.0 272.0L961.0 337.0L755.5 337.0L755.5 317.5L112.0 317.5Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Hab 4" d="M114.7 317.5L229.0 317.5L229.0 571.0L114.7 571.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Hab 3" d="M229.0 317.5L335.6 317.5L335.6 571.0L229.0 571.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Hab 2" d="M335.6 317.5L543.7 317.5L543.7 571.0L335.6 571.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Hab 1" d="M543.7 317.5L751.6 317.5L751.6 571.0L543.7 571.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Apartamento" d="M755.5 337.0L961.0 337.0L961.0 571.0L755.5 571.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Hab 5" d="M961.0 272.0L1145.5 272.0L1145.5 571.0L961.0 571.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Comedor" d="M1145.5 272.0L1386.0 272.0L1386.0 668.5L1145.5 668.5Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Porche" d="M755.5 577.5L1145.5 577.5L1145.5 688.0L755.5 688.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+  </g>
+  <g id="mobiliario" aria-hidden="true">
+    <path d="M556.6 369.5L593.0 369.5L593.0 408.5L556.6 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M593.0 369.5L629.3 369.5L629.3 408.5L593.0 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M665.8 369.5L702.2 369.5L702.2 408.5L665.8 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M702.2 369.5L738.7 369.5L738.7 408.5L702.2 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M556.6 434.5L593.0 434.5L593.0 473.5L556.6 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M593.0 434.5L629.3 434.5L629.3 473.5L593.0 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M665.8 434.5L702.2 434.5L702.2 473.5L665.8 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M702.2 434.5L738.7 434.5L738.7 473.5L702.2 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M556.6 499.5L593.0 499.5L593.0 538.5L556.6 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M593.0 499.5L629.3 499.5L629.3 538.5L593.0 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M665.8 499.5L702.2 499.5L702.2 538.5L665.8 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M702.2 499.5L738.7 499.5L738.7 538.5L702.2 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M348.6 369.5L384.9 369.5L384.9 408.5L348.6 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M384.9 369.5L421.4 369.5L421.4 408.5L384.9 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M457.8 369.5L494.1 369.5L494.1 408.5L457.8 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M494.1 369.5L530.6 369.5L530.6 408.5L494.1 408.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M348.6 434.5L384.9 434.5L384.9 473.5L348.6 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M384.9 434.5L421.4 434.5L421.4 473.5L384.9 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M457.8 434.5L494.1 434.5L494.1 473.5L457.8 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M494.1 434.5L530.6 434.5L530.6 473.5L494.1 473.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M348.6 499.5L384.9 499.5L384.9 538.5L348.6 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M384.9 499.5L421.4 499.5L421.4 538.5L384.9 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M457.8 499.5L494.1 499.5L494.1 538.5L457.8 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M494.1 499.5L530.6 499.5L530.6 538.5L494.1 538.5Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M241.9 454.0L282.3 454.0L282.3 493.0L241.9 493.0Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M282.3 454.0L322.6 454.0L322.6 493.0L282.3 493.0Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M241.9 513.8L282.3 513.8L282.3 552.8L241.9 552.8Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M282.3 513.8L322.6 513.8L322.6 552.8L282.3 552.8Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M127.6 454.0L167.9 454.0L167.9 493.0L127.6 493.0Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M167.9 454.0L208.1 454.0L208.1 493.0L167.9 493.0Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M127.6 513.8L167.9 513.8L167.9 552.8L127.6 552.8Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+    <path d="M167.9 513.8L208.1 513.8L208.1 552.8L167.9 552.8Z" fill="#e9eee6" stroke="#8a9a85" stroke-width="1.5"/>
+  </g>
+  <g id="rotulos" aria-hidden="true" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#5f6b62">
+    <text x="149.6" y="187.0" text-anchor="middle">Almacén</text>
+    <text x="281.0" y="187.0" text-anchor="middle">Lavandería</text>
+    <text x="444.8" y="187.0" text-anchor="middle">Aseos femeninos</text>
+    <text x="652.8" y="187.0" text-anchor="middle">Aseos masculinos</text>
+    <text x="807.5" y="187.0" text-anchor="middle">Aseo adaptado</text>
+    <text x="903.7" y="187.0" text-anchor="middle">Portería</text>
+    <text x="973.3" y="154.5" text-anchor="middle">Aseo</text>
+    <text x="1074.0" y="154.5" text-anchor="middle">Oficina</text>
+    <text x="1044.8" y="232.5" text-anchor="middle">Recepción</text>
+    <text x="1200.8" y="142.8" text-anchor="middle">Despensa</text>
+    <text x="1200.8" y="220.8" text-anchor="middle">Barra</text>
+    <text x="1347.0" y="187.0" text-anchor="middle">Cocina</text>
+    <text x="628.8" y="304.0" text-anchor="middle">Pasillo</text>
+    <text x="171.8" y="339.5" text-anchor="middle">Dormitorio 4</text>
+    <text x="282.3" y="339.5" text-anchor="middle">Dormitorio 3</text>
+    <text x="439.6" y="339.5" text-anchor="middle">Dormitorio 2</text>
+    <text x="647.6" y="339.5" text-anchor="middle">Dormitorio 1</text>
+    <text x="858.2" y="460.0" text-anchor="middle">Salón</text>
+    <text x="1053.2" y="427.5" text-anchor="middle">Sala de recepción</text>
+    <text x="1265.8" y="476.3" text-anchor="middle">Comedor</text>
+    <text x="950.5" y="638.8" text-anchor="middle">Porche</text>
+  </g>
+</svg>

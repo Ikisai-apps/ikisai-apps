@@ -53,10 +53,10 @@ function readsOf(reads: PortalReads) {
 // --- El mapa de zonas ------------------------------------------------------------------------------------------------
 const norm = (s: string | null | undefined) => (s ?? '').trim().toLocaleLowerCase('es');
 
-/** Filas del kit desde la lectura del portal (solo nombres públicos). */
+/** Filas del kit desde la lectura del portal (solo nombres públicos y, en las camas, su tipo para el icono). */
 export function toRows(spaces: PortalSpace[]): SpaceRow[] {
   return spaces.map((s) => ({ id: s.id, parentId: s.parentId, kind: s.kind, name: s.name, publicName: null, code: null, position: s.position ?? 0,
-    active: true, notes: null, attributes: {}, planId: s.planId, planShape: s.planShape }));
+    active: true, notes: null, attributes: s.bedKind ? { bed_kind: s.bedKind } : {}, planId: s.planId, planShape: s.planShape }));
 }
 
 /** El espacio del sitio: por id o, si no, por nombre (habitación y cama dentro), solo si la coincidencia es única. Pura. */

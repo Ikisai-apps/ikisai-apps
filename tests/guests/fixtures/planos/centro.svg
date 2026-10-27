@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1453 1073" width="1453" height="1073">
+  <title>Centro de interpretación (Salas) · planta baja</title>
+  <desc>Dibujo trazado de los planos de la cesión (geometría simplificada, sin cotas ni datos del documento). Cada estancia lleva data-name con su nombre en Recursos; Central la coloca sola.</desc>
+  <rect width="1453" height="1073" fill="#f6f3ec"/>
+  <g id="estancias">
+    <path data-name="Taller" d="M619.0 103.0L840.0 103.0L840.0 499.5L619.0 499.5Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Multiusos" d="M86.0 636.0L456.6 636.0L456.6 867.4L86.0 867.4Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Museo" d="M993.4 636.0L1366.5 636.0L1366.5 867.4L993.4 867.4Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Cúpula" d="M612.5 506.0L833.5 506.0L989.6 636.0L989.6 867.4L840.0 1019.5L606.1 1019.5L456.6 867.4L456.6 636.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path d="M970.0 339.6L1132.5 506.0L989.6 642.5L840.0 493.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+    <path data-name="Baño" d="M495.5 343.5L619.0 480.0L456.6 642.5L309.6 506.0Z" fill="#ffffff" stroke="#3b4a3e" stroke-width="3"/>
+  </g>
+  <g id="rotulos" aria-hidden="true" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#5f6b62">
+    <text x="729.5" y="307.3" text-anchor="middle">Taller</text>
+    <text x="271.3" y="757.7" text-anchor="middle">Sala de formación</text>
+    <text x="1180.0" y="757.7" text-anchor="middle">Sala de interpretación</text>
+    <text x="723.1" y="768.8" text-anchor="middle">Hall de información</text>
+    <text x="986.3" y="497.0" text-anchor="middle">Almacén</text>
+    <text x="464.3" y="499.0" text-anchor="middle">Aseos</text>
+  </g>
+</svg>
