@@ -47,7 +47,7 @@ export function estateMeta(svg: string): EstateMeta {
   // Curvas de nivel (convención de Core con UI-kit, 27-10): un trazado por altura, con coordenadas absolutas.
   const contours: EstateContour[] = [];
   if (vh > 0 && vw > 0) {
-    for (const m of svg.matchAll(/<path[^>]*\sdata-contour\s*=\s*(["'])([^"']+)[^>]*>/gi)) {
+    for (const m of svg.matchAll(/<path\b[^>]*\sdata-contour\s*=\s*(["'])([^"']+)\1[^>]*>/gi)) {
       const coords = ((attr(m[0], 'd') ?? '').match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
       const points: Array<[number, number]> = [];
       for (let i = 0; i + 1 < coords.length; i += 2) points.push([round4((coords[i]! - vx) / vw), round4((coords[i + 1]! - vy) / vh)]);
@@ -63,9 +63,9 @@ export function estateMeta(svg: string): EstateMeta {
   if (vh > 0) {
     // Una banda por altura: `data-band="…"` o `data-name="Altura N…"` (el SVG de Core), en un rectángulo o un trazado
     // con coordenadas absolutas. Su alto es el de la forma.
-    for (const m of svg.matchAll(/<(rect|path|polygon)[^>]*>/gi)) {
+    for (const m of svg.matchAll(/<(rect|path|polygon)\b[^>]*>/gi)) {
       const tag = m[0];
-      const name = (attr(tag, 'data-band') ?? (/^altura/i.test(attr(tag, 'data-name') ?? '') ? attr(tag, 'data-name') : null))?.trim();
+      const name = (attr(tag, 'data-band') ?? (/^altura\b/i.test(attr(tag, 'data-name') ?? '') ? attr(tag, 'data-name') : null))?.trim();
       if (!name) continue;
       let top: number | null = null; let bottom: number | null = null;
       if (m[1]!.toLowerCase() === 'rect') {

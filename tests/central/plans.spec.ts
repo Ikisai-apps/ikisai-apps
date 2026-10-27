@@ -203,7 +203,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await expect(page.locator('#placeEditor')).toContainText('necesita su escala');
   await expect(page.locator('#decorIcons')).toHaveCount(0);
   await expect(page.locator('#placeEditor')).toContainText('Aún no hay iconos');
-  await page.locator('#decorPlanScale').fill('0,05');
+  await page.locator('#decorPlanScale').fill('0.05');
   await page.locator('#saveDecorScale').click();
   await expect.poll(async () => (await api.app.t.db.query<{ g: unknown }>(`select grid as g from resources.floor_plans where id = $1`, [plan.id])).rows[0]!.g).toEqual({ metersPerUnit: 0.05, originX: 0, originY: 0 });
   await expect(page.locator('#decorStage .map-box')).toBeVisible();
