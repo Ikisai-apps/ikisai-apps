@@ -65,6 +65,17 @@ export async function submitOrder(lines: Array<{ productId: string; quantity: nu
   }
 }
 
+/**
+ * Canje del enlace de Guests (`?invitacion=…`, 0910): este navegador pasa a ser el cliente del huésped, con su número.
+ * El enlace caduca a los 10 minutos y cada canje deja sin valor el token anterior.
+ */
+export async function redeemInvitation(invitation: string): Promise<CustomerId> {
+  const out = await call<{ token: string; number: number | null }>('invitation', { method: 'POST', body: JSON.stringify({ invitation }) });
+  const value = { token: out.token, number: out.number };
+  saveCustomer(value);
+  return value;
+}
+
 export async function myOrders(): Promise<{ number: number | null; orders: MyOrder[] } | null> {
   const customer = readCustomer();
   if (!customer) return null;
