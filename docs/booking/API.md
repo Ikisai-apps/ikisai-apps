@@ -2164,3 +2164,5 @@ Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): c
 Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` y `<feedbackId>.<campo>` por cada campo cambiado, y lo hace cuando la base lo ha aceptado (sin red, como pendiente). Los campos llevan `data-field-*` con entidad y columna (`booking.guests` y `document_number`), así que entran en el inventario.
 
 En Recepción, en el móvil (pestañas), el Guiado abre el carril del botón que busca (`registerReveal('booking.recepcion')`). El buscador se guarda en la pestaña, así que, si se ha buscado el número antes, el paso señala la ficha de esa persona. Lo pagado en línea confirma también `booking.recepcion.cobrar`.
+
+**Horario de servicio en `booking.event_projection` (migración 1425; petición de Flow, vg-48):** `service_hours jsonb` = `[{day, starts_at, ends_at}]` (`HH:MM`, hora de Madrid). Cada día va con el primer inicio y el último fin de su programa (`program_items` con hora; sin fin, cuenta el inicio). Los días sin programa con hora no salen, y sin ninguno, `null`. Para Flow, lo que se pide fuera de ese horario es un pedido de prueba.
