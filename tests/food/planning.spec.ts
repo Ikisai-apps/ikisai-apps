@@ -108,7 +108,7 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await page.goto(`${baseURL}/#/`);
     await expect(page.locator('#upcoming .eventcard', { hasText: 'Retiro Test' })).toContainText('6,88 € · 0,31 € por persona · faltan precios');
     await page.goto(`${baseURL}/#/eventos`);
-    await expect(page.locator('#eventList .row', { hasText: 'Retiro Test' })).toContainText('≈ 7 €+');
+    await expect(page.locator('#eventList .row', { hasText: 'Retiro Test' })).toContainText('≈ 7 € · faltan precios');
     await page.goto(`${baseURL}/#/recetario`);
     await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
     const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
