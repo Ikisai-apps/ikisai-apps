@@ -5,6 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { seedBookingEvent } from './booking-event.ts';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
@@ -27,6 +28,7 @@ test.before(async () => {
     return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, { appsFetch }) });
+  await seedBookingEvent(app.t.db, EVENT, [app.users.owner]);
   // booking.flow_guests_of sintético (misma forma y la misma comprobación de ámbito que la de Booking, 0486), con datos inventados.
   await app.t.db.exec(`create or replace function booking.flow_guests_of(p jsonb) returns jsonb language plpgsql stable as $f$
     declare v_event uuid := (p->'args'->>'event_id')::uuid;
