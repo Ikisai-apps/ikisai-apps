@@ -2128,3 +2128,5 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
   - Un modo que el evento no deja responde 422 `PAY_MODE_NOT_ALLOWED`.
 - Antes de pagar en línea hace falta un correo: el de `contact` (o `email` suelto en `public/stay`) o el del borrador del primer viajero (`public/stay/traveler`). Sin correo, `public/stay/pay` responde 422 `EMAIL_REQUIRED`. Los datos de SES se completan al llegar o desde el enlace.
 
+
+**La cama propia en el plano (migración 1421; petición de Guests, CAMA_PROPIA_PLANO.md):** `portal_lodging.mine`, `portal_my_stays.items[]` y `portal_my_stays.default_bed` llevan `room_layout: {cols, rows} | null` y `bed_layout: {x, y, rot} | null`, con la misma forma que la 1417. Son de la cama propia, nunca de la de otras personas; sin disposición, `null`.
