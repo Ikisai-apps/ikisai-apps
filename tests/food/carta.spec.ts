@@ -92,6 +92,8 @@ test('carta · en Menús, su vista con precio y disponibilidad, y «Nueva carta�
     await expect(page.locator('#carta-barra')).toContainText('Barra · 1');
     await expect(page.locator(`#carta-line-${serrano}`)).toContainText('Serrano');
     await expect(page.locator(`#carta-line-${serrano}`)).toContainText('Alérgenos sin revisar');
+    // Sin previsión, la carta lo dice: Flow no podría preparar existencias.
+    await expect(page.locator('#cartaNoPrevision')).toContainText('Sin previsión');
   });
 
   await test.step('precio y disponibilidad llegan al servidor', async () => {
@@ -105,6 +107,14 @@ test('carta · en Menús, su vista con precio y disponibilidad, y «Nueva carta�
 
   await test.step('Previsión: unidades esperadas, reparto y plan de bandejas', async () => {
     await page.locator('nav.menutabs a[data-tab="prevision"]').click();
+    // «Rellenar previsión»: 50 montaditos repartidos entre los de la carta (aquí, solo el Serrano).
+    await expect(page.locator('#previsionEmpty')).toBeVisible();
+    await page.locator('#fillPrevision').click();
+    await page.locator('#fillTotal').fill('50');
+    await expect(page.locator('#fillPreview')).toContainText('A Serrano: 50');
+    await page.locator('#fillSave').click();
+    await expect.poll(() => line(serrano).expected_units).toBe(50);
+    await expect(page.locator('#previsionEmpty')).toHaveCount(0);
     // Por persona × asistentes = total (hacia arriba), y al revés; los dos se guardan.
     await page.locator('#cartaAttendance').fill('199');
     await page.locator('#cartaAttendance').press('Tab');
