@@ -210,7 +210,8 @@ const KIT_CHILDREN_WHEN = {
 export function extractFeatures(text, file = '') {
   const features = [];
   const dynamic = [];
-  const attr = /(?:data-feedback-id|feedbackId)['"]?\s*[:=]\s*(?:(['"])([^'"]*)\1|(`)([^`]*)`|([^\s,}>]+))/g;
+  // `[:=]` sin `==`: `dataset.feedbackId === id` es una comparación, no un id.
+  const attr = /(?:data-feedback-id|feedbackId)['"]?\s*(?::|=(?!=))\s*(?:(['"])([^'"]*)\1|(`)([^`]*)`|([^\s,}>]+))/g;
   for (const m of text.matchAll(attr)) {
     const raw = m[2] ?? m[4];
     const tail = text.slice(m.index + m[0].length, m.index + m[0].length + 3);
@@ -235,6 +236,12 @@ export function extractFeatures(text, file = '') {
     const callText = at ? spanAt(text, at.open) ?? '' : '';
     const when = call ? KIT_CHILDREN_WHEN[call] : null;
     const children = call && KIT_CHILDREN[call] ? KIT_CHILDREN[call].filter(([suffix]) => !when?.[suffix] || when[suffix].test(callText)) : null;
+    // `createAppShell({ guide: { feedbackId } })`: el aviso del paso y sus botones (`src/guide/point.ts`).
+    if (call === 'createAppShell' && /\bguide\s*:\s*\{[^{}]*$/.test(before.slice(-120))) {
+      features.push({ id: raw, label: 'Paso del recorrido', kind: 'section', file, line: lineOf(text, m.index) });
+      for (const [suffix, label] of [['ver', 'Ver el campo'], ['cerrar', 'Cerrar el aviso']]) features.push({ id: `${raw}.${suffix}`, label, kind: 'button', file, line: lineOf(text, m.index) });
+      continue;
+    }
     if (children) {
       features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta', createLanes: 'Carriles', createFreeForm: 'Formulario libre', createChecklist: 'Lista de comprobación', createProjection: 'Proyección' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
