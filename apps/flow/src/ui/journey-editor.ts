@@ -4,13 +4,14 @@ import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
 import { busyButton } from './sheets-common.ts';
+import { loadJourneyVersion, runJourney } from './journeys.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
  * Editor de recorridos (flow-14, 0939; owner). `#/recorridos/nuevo` y `#/recorridos/<clave>/editar`.
  * - Nombre y una lista de tramos: capacidad del catálogo (sus campos, cada uno «preguntar / fijo / desde un tramo
  *   anterior»), registro (preguntas con tipo) o ir a otra app (app y pantalla).
- * - «Guardar borrador» escribe la versión en borrador; «Publicar» la valida en el servidor (`publish_version`) y la deja
+ * - «Guardar borrador» escribe la versión en borrador; «Probar» la ensaya (nada se registra); «Publicar» la valida en el servidor (`publish_version`) y la deja
  *   inmutable. Editar algo publicado crea un borrador nuevo (versión siguiente) con sus tramos y pasos copiados.
  * - Todo texto que ve la persona es dato; la clave técnica del campo solo se enseña aquí.
  */
@@ -132,6 +133,13 @@ export function mountJourneyEditor(key: string | null): ViewMount {
           k === 'capability' ? 'Añadir tramo de capacidad' : k === 'record' ? 'Añadir tramo de registro' : 'Añadir «ir a otra app»'))),
         el('div', { class: 'flow-actions' },
           busyButton({ class: 'secondary' }, 'Guardar borrador', async () => { await save(); }),
+          // Probar = ensayar el borrador tal como está (nada se registra fuera).
+          busyButton({ class: 'secondary' }, 'Probar', async () => {
+            const v = await save(); if (!v) return;
+            const j = await loadJourneyVersion(client, v);
+            if (!j) { toast('Guarda al menos un tramo para probarlo.'); return; }
+            await runJourney(client, j, 'learn');
+          }),
           busyButton({ class: 'primary' }, 'Publicar', async () => { const v = await save(); if (v) await publish(v); })));
     }
 

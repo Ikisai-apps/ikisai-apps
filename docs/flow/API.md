@@ -474,3 +474,9 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - `add_objective({unit_id, project_id, column_key?, label, criteria: [texto], parent_id?})`;
   - `verify_criterion({unit_id, criterion_id, verified?, evidence?})`: con todos verificados el objetivo queda hecho y verificado; desverificar lo reabre;
   - `record_result({unit_id, project_id, column_key?, label, link: {app, kind, id}, parent_id?})`: hecho y verificado por quien lo anota.
+
+## 48. Recorridos: probar un borrador y «hacerlo de verdad» (flow-14, migración `0945`)
+
+- `start_execution({execution_id, version_id, mode, practice_of?})`: el owner puede ensayar (`learn`) una versión en borrador («Probar» en el editor); ejecutar (`run`) sigue pidiendo una versión publicada.
+- «Hacerlo de verdad»: al terminar un ensayo de una versión publicada, una ejecución `run` nueva con `practice_of` = el ensayo (propio, terminado y de esa versión; si no, `422`). `start_stage` parte de lo respondido en ese tramo del ensayo; lo fijo y lo heredado lo vuelve a poner el servidor.
+- El enlace de «ir a otra app» lleva `guia=<ejecución>` para el Guiado del kit (`flow.guide_read`).

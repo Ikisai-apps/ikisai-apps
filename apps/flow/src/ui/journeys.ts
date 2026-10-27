@@ -27,6 +27,20 @@ interface Capability { id: string; title: string; allowed: boolean; input?: Reco
 interface BookingEvent { event_id: string; name: string; starts_on: string }
 interface Journey { def: Definition; version: Version; stages: Array<{ stage: Stage; steps: Step[] }> }
 
+/** Un recorrido por la versión (también un borrador, para «Probar» desde el editor). */
+export async function loadJourneyVersion(client: SyncClient, versionId: string): Promise<Journey | null> {
+  const [defs, versions, stages, steps] = await Promise.all([client.list(TABLES.definitions), client.list(TABLES.definitionVersions),
+    client.list(TABLES.definitionStages), client.list(TABLES.definitionSteps)]);
+  const live = <T extends { deleted_at: string | null }>(rows: unknown[]) => (rows as T[]).filter((r) => !r.deleted_at);
+  const version = live<Version>(versions).find((v) => v.id === versionId);
+  const def = version ? live<Definition>(defs).find((d) => d.id === version.definition_id) : undefined;
+  if (!version || !def) return null;
+  const allSteps = live<Step>(steps);
+  const own = live<Stage>(stages).filter((s) => s.version_id === version.id).sort((a, b) => a.position - b.position)
+    .map((stage) => ({ stage, steps: allSteps.filter((s) => s.stage_id === stage.id).sort((a, b) => a.position - b.position) }));
+  return own.length ? { def, version, stages: own } : null;
+}
+
 async function loadJourneys(client: SyncClient): Promise<Journey[]> {
   const [defs, versions, stages, steps] = await Promise.all([client.list(TABLES.definitions), client.list(TABLES.definitionVersions),
     client.list(TABLES.definitionStages), client.list(TABLES.definitionSteps)]);
@@ -75,7 +89,7 @@ const appUrl = (app: string) => `https://${app === 'invoices' ? 'finance' : app}
 const APP_NAMES: Record<string, string> = { invoices: 'Finance', tasks: 'Tasks', booking: 'Booking', food: 'Food', central: 'Central', guests: 'Guests', organizers: 'Organizers', flow: 'Flow' };
 const appName = (app: string) => APP_NAMES[app] ?? app;
 
-async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run'): Promise<void> {
+export async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run', practiceOf: string | null = null): Promise<void> {
   if (!isOnline(client)) { toast('Los recorridos necesitan conexión.'); return; }
   let caps: Capability[] = [];
   try { caps = (await client.api<{ items: Capability[] }>('/capabilities')).items; } catch { caps = []; }
@@ -89,7 +103,7 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
     try { events = ((await client.api<{ rows: BookingEvent[] }>('/read/booking.event_projection?limit=200')).rows ?? []).sort((a, b) => a.starts_on.localeCompare(b.starts_on)); } catch { events = []; }
   }
   const executionId = crypto.randomUUID();
-  try { await callProcedure(client, PROCEDURES.startExecution, { execution_id: executionId, version_id: j.version.id, mode }); }
+  try { await callProcedure(client, PROCEDURES.startExecution, { execution_id: executionId, version_id: j.version.id, mode, ...(practiceOf ? { practice_of: practiceOf } : {}) }); }
   catch (error) { toast(describeError(error)); return; }
 
   const host = el('div', { class: 'journey' });
@@ -99,7 +113,17 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
 
   async function startStage(index: number): Promise<void> {
     const entry = j.stages[index];
-    if (!entry) { toast(mode === 'learn' ? 'Practicado. En «Ejecutar» se registraría de verdad.' : 'Recorrido terminado.'); sheet.close(); return; }
+    if (!entry) {
+      if (mode === 'run' || j.version.status !== 'published') { toast(mode === 'learn' ? 'Ensayo terminado.' : 'Recorrido terminado.'); sheet.close(); return; }
+      // Tras un ensayo: hacerlo de verdad, con lo ya respondido como punto de partida (D2: ejecución real enlazada a la práctica).
+      replace(progress, 'Ensayo terminado');
+      replace(host, el('div', { class: 'journey-done' },
+        el('p', null, 'No se ha registrado nada. ¿Lo haces ahora de verdad? Empezarás con lo que has respondido y podrás corregirlo.'),
+        el('div', { class: 'flow-actions' },
+          el('button', { type: 'button', class: 'ghost', onclick: () => sheet.close() }, 'Ahora no'),
+          busyButton({ class: 'primary' }, 'Hacerlo de verdad', async () => { sheet.close(); await runJourney(client, j, 'run', executionId); }))));
+      return;
+    }
     const { stage } = entry;
     replace(progress, j.stages.length > 1 ? `Tramo ${index + 1} de ${j.stages.length} · ${stage.title}` : stage.title);
     let prefilled: Record<string, any> = {};
@@ -113,7 +137,8 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
     const { stage } = j.stages[index]!;
     const app = stage.target_app ?? 'flow';
     const back = encodeURIComponent(location.href);
-    const url = `${appUrl(app)}?desde=flow&volver=${back}&titulo=Flow${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}`;
+    // `guia`: la ejecución, para que el Guiado del kit en la otra app lea sus pasos (`flow.guide_read`) y confirme.
+    const url = `${appUrl(app)}?desde=flow&volver=${back}&titulo=Flow&guia=${executionId}${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}`;
     replace(host, el('div', { class: 'journey-handoff', 'data-feedback-id': `flow.recorrido.${j.def.key}.tramo${stage.position}` },
       el('h3', null, stage.title),
       stage.explain ? el('p', null, stage.explain) : null,
