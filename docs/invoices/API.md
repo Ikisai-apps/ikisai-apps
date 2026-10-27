@@ -2018,6 +2018,14 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
   - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
 - **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
 
+### 17.11 «Evento»: alojamiento y barra (finance-15)
+
+- **Alojamiento de un retiro:** se factura a su reserva. Con la lectura de Booking `booking.event_reservations_for_invoices {event_ids}` (reserva → evento, #909), las emitidas a las reservas del evento suman en él y se ve lo facturado, lo cobrado (`payment_status = cobrada`) y lo que falta por cobrar.
+- **Alojamiento de recepción** (`booking:stay:…`) **y barra** (Flow): son cobros y van como cobrados. Un cobro con devolución es un solo apunte, por lo cobrado menos lo devuelto (Booking 1403).
+- **Sin red con Booking:**
+  - se usan las reservas de la última vez y la vista lo dice;
+  - si nunca las hubo, el alojamiento a reservas no suma y la vista avisa.
+
 ### 17.10 El origen solo vale desde el servidor de la app (seguridad F1, auditoría del 27-10; el modelo de Tasks §45)
 
 `record_app_entry` sigue llegando por `/api/v1/commands` con el token de la persona, así que cuentan su rol y su ámbito. Pero `source_app` solo es de esa app si la llamada viene de su servidor.
