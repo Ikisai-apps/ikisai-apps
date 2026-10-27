@@ -1890,3 +1890,26 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
 - **Flujo enlazado:** que exista un `flow.projects` con `booking_event_id` lo tiene que publicar Flow. Booking no lee el schema flow. Flow lo publica en `flow.booking_event_flows_projection` (Flow 0922, #845: `event_id`, `project_id`, `name`; abierta a Booking). Si no se puede leer, la ficha muestra «Sin comprobar» en vez de «Listo».
 - **Ámbito:** cada persona de Flow necesita además el flujo en su ámbito (`flow.in_scope`, 0916). Eso se mira en Flow.
 - **Texto:** `flowReadyLine(readiness, flujos)` del dominio.
+
+## 36. Alojamiento libre · oferta pública de noches (migración 0498; VG 27-10-2026)
+
+Lecturas públicas para Guests (`ven.ikisai.com`). Los nombres y las formas están acordados con Guests. Se leen desde el navegador (`client: true`). No sacan nunca camas concretas, huéspedes ni aforo interno.
+
+- **`booking_public_events`** (sin argumentos) devuelve `{items: [{code, name, kind, status, joinable, starts_on, ends_on, summary, lodging}]}`.
+  - Entran los eventos vivos, visibles para huéspedes (`guests_visible`), con código público, sin terminar y de tipo jornadas abiertas, familiar o retiro.
+  - `lodging` es `true` en jornadas abiertas que tienen alguna tarifa de alojamiento por persona y noche.
+- **`booking_public_lodging({event_code, from, to, persons})`** devuelve `{event, from, to, nights, persons, modes, available, rules_text}`.
+  - Cada modo es `{id, name, includes, price_night_cents, total_cents, max_persons, available, fits}`.
+  - Las modalidades son las tarifas de alojamiento por persona y noche que valen para el tipo de reserva y para todas las noches de `[from, to)`.
+  - `available` son las plazas de camas libres todas esas noches, con un tope de 20.
+  - Errores:
+    - `NOT_FOUND`: el evento no existe o no es público;
+    - `NO_LODGING`: el evento no es de jornadas abiertas;
+    - `INVALID_FIELDS`: fechas fuera del evento, `to` no posterior a `from`, más de 31 noches, o personas fuera de 1 a 20.
+- **`booking.free_beds(desde, hasta)`** da las camas libres en todo el intervalo. Una cama está libre si:
+  - está activa, no es supletoria ni de equipo, y pertenece a una estancia activa y reservable;
+  - no tiene ninguna asignación de un evento vivo que se solape;
+  - no tiene ninguna estancia de outsider o staff que se solape.
+
+  Una sola cama para todo el intervalo. La usan también la solicitud y el bloqueo (tarjeta 2).
+
