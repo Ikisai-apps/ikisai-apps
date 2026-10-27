@@ -327,3 +327,22 @@ test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, n
   // Sin datos de nadie en el plano.
   await expect(box).not.toContainText('Noa');
 });
+
+test('«Alójate aquí» · Guiado de Flow en ven.ikisai.com: señala el campo, explica el paso, avisa al guardar y vuelve a la guía', async ({ page }) => {
+  const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  const back = 'https://flow.ikisai.com/#/guia';
+  const guide = new URLSearchParams({ campo: 'guests.visitante.alojate.viajero.first_name', paso: 'Escribe tu nombre', desde: 'flow', volver: back, titulo: 'la guía' });
+  await page.goto(`${baseURL}/e/${d.code}?alojate&${guide}`);
+  // La línea del paso arriba y el campo señalado (con su ancla del inventario); la URL, limpia.
+  await expect(page.locator('.guia-callout')).toContainText('Escribe tu nombre');
+  const name = page.locator('#lodge_first_name');
+  await expect(name).toHaveAttribute('data-field-id', 'guests.visitante.alojate.viajero.first_name');
+  await expect(name).toBeFocused();
+  await expect(page).not.toHaveURL(/campo=/);
+  await expect(page.locator('.return-link')).toHaveAttribute('href', back);
+  // Al guardar con «Ir a pagar», se confirma el paso.
+  await name.fill('Noa');
+  await page.locator('#lodgeGo').click();
+  await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
+  await expect(page.getByText('Hecho. Puedes volver a la guía.')).toBeVisible();
+});

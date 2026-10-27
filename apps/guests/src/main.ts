@@ -1,6 +1,6 @@
 import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
-import { applyTheme, initAppUpdates } from '@ikisai/ui-kit';
+import { applyTheme, initAppUpdates, readGuideLink, readReturnTo } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createGuestApi } from './app/api.ts';
 import { onLocaleChange } from './app/i18n.ts';
@@ -36,7 +36,8 @@ async function boot(): Promise<void> {
   // Desde la carta de Flow llega además `v`: el traspaso de la misma identidad de visitante (un solo uso; sin él, caducado o
   // si este móvil ya tiene la suya, se sigue como estaba). La URL se limpia antes de canjearlo.
   const handoff = visitor ? new URLSearchParams(location.search).get('v') : null;
-  if (visitor) history.replaceState(null, '', `/${visitor}`);
+  // El Guiado de Flow llega con `?campo=…&paso=…&volver=…`: se guardan en la pestaña antes de limpiar la URL.
+  if (visitor) { readReturnTo(); readGuideLink(); history.replaceState(null, '', `/${visitor}`); }
   if (handoff) await redeemHandoff(handoff).catch(() => false);
   const match = location.pathname.match(/^\/i\/([^/?#]*)\/?$/);
   if (match) {
