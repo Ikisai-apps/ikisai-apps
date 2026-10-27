@@ -7,7 +7,7 @@ import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
-declare const state: any, render: any, openTaskEditor: any, syncNow: any;
+declare const state: any, render: any, openTaskEditor: any, syncNow: any, closeSheet: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -19,7 +19,7 @@ const projectId = crypto.randomUUID(), taskId = crypto.randomUUID();
 test.describe.configure({ mode: 'serial' });
 
 const showProject = async (page: Page) => {
-  await page.evaluate(async ([t, p]) => { await syncNow(); state.taskScope = 'area'; state.activeTab = t; state.filters = {}; state.search = ''; state.view = 'project'; state.currentProject = p; render(); }, [ID.ikisai, projectId]);
+  await page.evaluate(async ([t, p]) => { await syncNow(); closeSheet(); state.taskScope = 'area'; state.activeTab = t; state.filters = {}; state.search = ''; state.view = 'project'; state.currentProject = p; render(); }, [ID.ikisai, projectId]);
   await settled(page);
 };
 const phases = async () => (await server.rows('tasks.project_phases')).filter((p: any) => p.project_id === projectId && !p.deleted_at);
