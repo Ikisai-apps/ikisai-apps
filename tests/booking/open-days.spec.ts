@@ -202,3 +202,22 @@ test('ofertas de comida de Food en la ficha del evento, junto a las cartas', asy
   await expect(list.nth(1)).toContainText('Carta');
 });
 
+test('visitantes que piden apuntarse por el QR: el personal los acepta desde la ficha', async ({ page }) => {
+  const api = harness.api;
+  const res = api.serverInsert(RESERVATIONS, { title: 'Jornadas con visitantes', status: 'confirmada', start_date: inDays(2), end_date: inDays(4), expected_guests: 80, event_type: 'jornadas_abiertas', priority: 'media', guests_visible: true });
+  api.serverInsert(FINANCE, { id: res.id });
+  const event = api.serverInsert(EVENTS, { reservation_id: res.id, public_code: 'ABCDEFGH23' });
+  api.serverInsert('booking.visitor_requests', { event_id: event.id, visitor_id: '00000000-0000-4000-8000-0000000000a1', name: 'Visitante Sintética', note: 'Vengo con mi hija', status: 'pendiente', via_code: 'ABCDEFGH23' });
+  await login(page, harness.baseURL);
+  await page.goto(`${harness.baseURL}/#/reservas/${res.id}`);
+  await expect(page.locator('#publicCode')).toHaveText('ABCDEFGH23');
+  await expect(page.locator('#publicUrl')).toHaveText('https://ven.ikisai.com/e/ABCDEFGH23');
+  await expect(page.locator('#publicQr svg[role="img"]')).toHaveAttribute('aria-label', 'QR de entrada de visitantes');
+  const card = page.locator('#blockVisitorRequests');
+  await expect(card).toContainText('Visitante Sintética');
+  await expect(card).toContainText('Vengo con mi hija');
+  await card.getByRole('button', { name: 'Aceptar' }).click();
+  await expect.poll(() => api.rows('booking.visitor_requests')[0]!.status).toBe('aceptada');
+  await expect.poll(() => api.rows(GUESTS).some((g) => g.event_id === event.id && g.first_name === 'Visitante Sintética')).toBe(true);
+});
+

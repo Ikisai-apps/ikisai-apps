@@ -206,6 +206,18 @@ FIELDS[TABLES.beds] = {
 };
 // 0488: código público del evento (QR de visitantes)
 FIELDS[TABLES.events] = { ...FIELDS[TABLES.events], public_code: text(10, false) };
+FIELDS[TABLES.visitorRequests] = {
+  event_id: { kind: 'uuid' },
+  via_code: text(20),
+  visitor_id: { kind: 'uuid' },
+  kind: { kind: 'enum', values: ['join', 'contact'], nullable: false },
+  name: text(120),
+  contact: text(200),
+  note: text(500),
+  status: { kind: 'enum', values: ['pendiente', 'aceptada', 'descartada', 'atendida'], nullable: false },
+  guest_id: { kind: 'uuid', nullable: true },
+  decided_at: { kind: 'timestamp' },
+};
 FIELDS[TABLES.walkinCharges] = {
   event_id: { kind: 'uuid' },
   assignment_id: { kind: 'uuid' },

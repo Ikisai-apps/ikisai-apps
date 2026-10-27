@@ -403,6 +403,18 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (op.op === 'call') {
         // Versión mínima de booking.confirm_reservation: estado confirmado y evento operativo, una sola vez.
         const call = op as unknown as { procedure?: string; args?: Record<string, string> };
+        if (call.procedure === 'booking.join_from_visitor') {
+          // Versión mínima (0489): aceptar crea la ficha de huésped; descartar, solo el estado.
+          const requests = stagedTable('booking.visitor_requests');
+          const request = requests.get(call.args?.request_id ?? '');
+          if (!request) throw new Fault(404, 'NOT_FOUND', 'La petición no existe.');
+          const accept = call.args?.decision === 'accept';
+          const guestId = accept ? randomUUID() : null;
+          if (guestId) stagedTable('booking.guests').set(guestId, <FakeRow><unknown>{ ...(COLUMN_DEFAULTS['booking.guests'] ?? {}), ...(SERVER_COLUMNS['booking.guests'] ?? {}), id: guestId, event_id: request.event_id, first_name: request.name ?? 'Visitante', revision: 1, created_at: nowIso(), updated_at: nowIso(), deleted_at: null });
+          requests.set(request.id as string, { ...request, status: accept ? 'aceptada' : 'descartada', guest_id: guestId, decided_at: nowIso(), revision: Number(request.revision) + 1 });
+          results.push({ op: 'call', procedure: call.procedure, result: { request_id: request.id, status: accept ? 'aceptada' : 'descartada', guest_id: guestId } });
+          return;
+        }
         if (call.procedure !== 'booking.confirm_reservation') throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index });
         const reservations = stagedTable('booking.reservations');
         const events = stagedTable('booking.events');

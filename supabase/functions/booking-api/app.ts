@@ -1,5 +1,5 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
-import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, sha256Hex, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, sha256Hex, type AppConfig, type AppRoute, type PublicRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations, walkinFinanceEntry, type WalkinForSend } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
@@ -210,6 +210,37 @@ function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch): AppRoute[] {
   }];
 }
 
+/**
+ * C11 (BG18): un visitante del QR pide apuntarse o deja un dato: `POST /api/v1/public/join` con la cabecera X-Visitor.
+ * El evento sale del código del QR (`event_code`, o el del token del visitante); el lote lo firma el visitante y la base
+ * comprueba el resto (0489). Si ya tenía una pendiente de ese tipo, la devuelve. «Lo mío» lo sirve el kit
+ * (`GET public/booking_visitor_requests`).
+ */
+export function bookingPublicRoutes(): PublicRoute[] {
+  const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
+  return [{
+    method: 'POST', pattern: 'join',
+    handler: async ({ json, visitor, apply, read }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const code = text(body.event_code, 20) ?? visitor.eventCode ?? null;
+      if (!code) fail(422, 'INVALID_FIELDS', 'Falta el código del evento.', { field: 'event_code' });
+      const kind = body.kind === 'contact' ? 'contact' : 'join';
+      const fields = { via_code: code, visitor_id: visitor.id, kind, name: text(body.name, 120), contact: text(body.contact, 200), note: text(body.note, 500) };
+      try {
+        await apply([{ op: 'insert', table: TABLES.visitorRequests, id: crypto.randomUUID(), fields }]);
+      } catch (error) {
+        // una pendiente del mismo tipo para ese evento: se devuelve la que hay
+        const sqlstate = (error as { details?: { sqlstate?: string } } | null)?.details?.sqlstate;
+        if (sqlstate !== '23505') throw error;
+      }
+      const mine = await read('booking_visitor_requests', { event_code: code }) as { items?: Array<Record<string, unknown>> } | null;
+      const item = (mine?.items ?? []).find((i) => i.kind === kind) ?? null;
+      return item ? { event_code: item.event_code, kind: item.kind, name: item.name, status: item.status, created_at: item.created_at } : null;
+    },
+  }];
+}
+
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
@@ -359,7 +390,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   ];
 }
 
-export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig; appsFetch?: typeof fetch }) {
+export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads' | 'publicRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig; appsFetch?: typeof fetch }) {
   const { calendar = {}, ses = {}, appsFetch = fetch, ...config } = base;
   const supabase = createSupabase(config);
   return createApp({
@@ -371,6 +402,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar, ses, appsFetch),
+    publicRoutes: bookingPublicRoutes(),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,

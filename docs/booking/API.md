@@ -1841,5 +1841,19 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - La sirve guests-api en `GET public/event?code=…`.
 - **URL del QR:** `https://ven.ikisai.com/e/<code>`.
 - **Ficha, «QR de entrada»** (pestaña Resumen): el código en grande, la URL, «Imprimir» (solo esa tarjeta, en blanco y negro) y «Regenerar». El QR lo dibuja `renderQr` del kit (0.60, #773).
-- **Pendiente (BG18):** que un visitante se apunte, cuando Core cierre `core.visitors` y su vía de escritura.
+- **Un visitante se apunta (BG18, migración 0489; contrato C11 de Core).**
+  - Identidad y escritura:
+    - El visitante no tiene cuenta. Lleva un token de visitante (cabecera `X-Visitor`) que la Edge resuelve (`resolveVisitor`).
+    - Su petición es una fila de `booking.visitor_requests`, escrita en un lote público (`applyPublicOperations`).
+    - Lleva `via_code` (el código del QR, del que la base saca el evento; un `event_id` del cliente no cuenta), `visitor_id`, `kind` (`join` para apuntarse; `contact` para «Déjanos un dato», con `contact` obligatorio y en cualquier evento vivo) y `name`, `contact` y `note`, opcionales (`contact` aparte de la nota: es un dato personal).
+  - Reglas:
+    - En público solo se crea una petición pendiente, en un retiro vivo y visible para huéspedes, y una por visitante y evento.
+    - Nadie más crea peticiones.
+    - La decide el personal con `booking.join_from_visitor({request_id, decision: 'accept' | 'reject' | 'done', name?})`. Al aceptar (`join`) se crea la ficha de huésped, ligada a la petición (`guest_id`); repetir no crea otra. Un dato (`contact`) se atiende (`done`) o se descarta.
+  - Conservación: el nombre, el contacto y la nota se borran a los 6 meses del fin del evento, en la misma vuelta de la conservación (§20; acordado con Core).
+  - El visitante ve lo suyo con la lectura pública `booking_visitor_requests({visitor_id, event_code?})`, que la Edge llama con el `visitor_id` ya resuelto. Devuelve el estado, sin datos ajenos.
+  - **Ruta** `POST /api/v1/public/join` de booking-api (`publicRoutes` del kit, C11), con la cabecera `X-Visitor`. Recibe `{event_code?, kind?, name?, contact?, note?}`; sin `event_code` toma el del token.
+    - Respuestas: sin visitante, 401 `VISITOR_REQUIRED`. Con él, devuelve la petición `{event_code, kind, name, status, created_at}`; si ya tenía una pendiente del mismo tipo, esa.
+    - El lote lo firma el visitante y la base exige `core.current_visitor() = visitor_id`.
+    - «Lo mío» lo sirve el kit en `GET public/booking_visitor_requests`. CORS, el kit.
 

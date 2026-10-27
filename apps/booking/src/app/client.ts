@@ -20,6 +20,7 @@ export const PROPOSAL_LINES: TableName = TABLES.proposalLines;
 export const SES_SETTINGS: TableName = TABLES.sesSettings;
 export const DATE_OPTIONS: TableName = TABLES.dateOptions;
 export const WALKINS: TableName = TABLES.walkinCharges;
+export const VISITOR_REQUESTS: TableName = TABLES.visitorRequests;
 export const DATE_BLOCKS: TableName = TABLES.dateBlocks;
 export const EXTRA_REQUESTS: TableName = TABLES.extraRequests;
 export const PORTAL_REQUESTS: TableName = TABLES.portalRequests;
