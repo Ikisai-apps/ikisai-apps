@@ -2273,3 +2273,11 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - **Dónde va:** la regla del usuario para `booking.bed_cleaning` («Gestionar entradas», con la sugerencia del proyecto «Limpieza»). Sin regla, a «Por clasificar». El tipo sale como «Limpieza · Salida de huésped». Repetir con la misma referencia devuelve la misma tarea.
 - **Asignarla por oficio** (limpieza) necesita que la regla lleve oficio: va en una migración aparte, detrás de las de la revisión de apertura. Mientras, la regla puede llevar responsable (persona o nivel de casa).
 - **Pruebas:** `tests/tasks/bed-cleaning.test.ts`.
+
+## 49. P7 de Central: dos indicadores más (migración `0354`; contrato en `docs/central/API.md` §7.2)
+
+`tasks.central_kpi_projection` (§21) suma dos claves, las dos `count`, `actual` y `down`:
+- **`tasks.blocked`** («Tareas bloqueadas»): tareas pendientes que esperan a una dependencia sin hacer o al paso anterior de una madre con pasos en orden (la misma regla que `blocked` en §47).
+- **`tasks.reviews_open`** («Revisiones de apertura sin cerrar»): revisiones (§46) sin abrir (`open` o `ready`), de proyectos vivos.
+
+Las demás claves no cambian: `tasks.open`, `tasks.overdue` (vencidas), `tasks.purchase_requests_open` (compras pedidas sin recibir), `tasks.supplies_below_min` y `tasks.requests_pending`. **Pruebas:** `tests/tasks/kpis-p7.test.ts`.
