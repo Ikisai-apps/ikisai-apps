@@ -159,6 +159,9 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const comment = comments.get(s.id)?.trim() || undefined;
     const recipeId = similar.get(s.id);
     const operations = decision === 'approve' && recipeId ? houseDishWithRecipe(s.operations, recipeId) as RowOperation[] | null : null;
+    const dish = argsOf(s);
+    // Aprobada como plato rápido nuevo: se ofrece completarlo al momento (hallazgo F-SUG-2).
+    const quick = decision === 'approve' && !recipeId && !!dish && !known(dish);
     let sent = false;
     const send = async () => {
       if (sent) return;
@@ -168,11 +171,17 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
         await usage.run(decision === 'approve' ? 'food.menus.sugeridos.aprobar' : 'food.menus.sugeridos.descartar',
           () => client.decideSuggestion(s.id, decision, { ...(comment ? { comment } : {}), ...(operations ? { operations } : {}) }));
         // Lo aplica el servidor: se trae en seguida para que el plato ya esté en el menú de casa al abrirlo.
-        if (decision === 'approve') void client.sync().catch(() => undefined);
+        if (decision === 'approve') await client.sync().catch(() => undefined);
       } catch (failure) {
         toast(describeError(failure));
+        await load();
+        return;
       }
       await load();
+      const created = quick ? known(dish!) : undefined;
+      if (created) toastWithAction(`«${created.name}» está en el menú de casa como plato rápido: faltan sus alérgenos e ingredientes.`, {
+        label: 'Completar la receta', onClick: () => navigate(`#/recetario?receta=${created.id}`),
+      }, 10_000);
     };
     const timer = setTimeout(() => void send(), UNDO_MS);
     waiting.set(s.id, { timer, send });
@@ -212,7 +221,12 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const names = new Map(recipes.map((r) => [r.id, r.name]));
     const lines = houseServices.filter((s) => s.service_date === day)
       .sort((a, b) => Number(a.position) - Number(b.position))
-      .map((s) => `${SERVICE_LABELS[s.service_type]}: ${houseItems.filter((i) => i.service_id === s.id).map((i) => names.get(i.recipe_id) ?? '—').join(', ') || 'sin platos'}`);
+      .map((s) => {
+        const dishes = houseItems.filter((i) => i.service_id === s.id);
+        // Cuántos comen (hallazgo F-SUG-1): la mayor ración de sus platos, como en el coste por servicio.
+        const people = Math.max(0, ...dishes.map((i) => Number(i.servings) || 0));
+        return `${SERVICE_LABELS[s.service_type]}: ${dishes.map((i) => names.get(i.recipe_id) ?? '—').join(', ') || 'sin platos'}${people ? ` (comen ${people})` : ''}`;
+      });
     return lines.length ? lines.join(' · ') : 'Ese día no hay nada en el menú de casa.';
   }
 

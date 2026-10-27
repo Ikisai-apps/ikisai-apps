@@ -6,7 +6,9 @@
  * - Solo una o varias apps (apps/<x>, <x>-api, _domain/<x>, domain-<x>, migraciones *_<x>_*, tests/<x>, docs/<x>): las
  *   pruebas de esas apps y las de las carpetas que dependen de ellas. Si cambia su servidor (API, dominio, migraciones), son
  *   dependientes las carpetas cuyo código o migraciones nombran su schema (`booking.portal_reservations`) o importan su
- *   API, su dominio o su app; si solo cambia su cliente o sus pruebas, las que importan `apps/<x>/`.
+ *   API, su dominio o su app; si solo cambia su cliente o sus pruebas, las que importan `apps/<x>/`. Las de las apps
+ *   tocadas van en sus grupos de siempre; las dependientes, todas juntas en UN solo grupo («dependientes»), en serie: una
+ *   PR de Flow o de Booking pedía 8 jobs y, con unas 30 PR abiertas y 20 runners, la release esperaba (27-10-2026, Core).
  * - Cualquier otra cosa (kit, sync-client, test-kit, _kit, núcleo, CI, scripts, dependencias) y fuera de una PR: todas.
  *
  * Salida: grupos para la matriz de PGlite, uno por carpeta grande y las pequeñas juntas, para que el tiempo sea el del
@@ -117,10 +119,12 @@ export function plan({ event = 'pull_request', files = [], root = ROOT } = {}) {
     if (!owner) return all;
     touched.set(owner.app, touched.get(owner.app) || owner.server);
   }
-  const chosen = new Set(touched.keys());
-  for (const [app, server] of touched) for (const dep of dependents(app, server, folders, root)) chosen.add(dep);
-  const list = folders.filter((f) => chosen.has(f));
-  return { code: true, full: false, folders: list, groups: groups(list, root) };
+  const deps = new Set();
+  for (const [app, server] of touched) for (const dep of dependents(app, server, folders, root)) if (!touched.has(dep)) deps.add(dep);
+  const own = folders.filter((f) => touched.has(f));
+  const others = folders.filter((f) => deps.has(f));
+  const extra = others.length ? [{ name: 'dependientes', folders: others.join(' ') }] : [];
+  return { code: true, full: false, folders: [...own, ...others].sort(), groups: [...groups(own, root), ...extra] };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
