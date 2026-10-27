@@ -6,7 +6,7 @@
  */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { confirmDialog, el, openSheet, plural, renderQr, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, newPublicCode, visitorUrl, walkinNightPrice } from '@ikisai/domain-booking';
+import { PROCEDURES, WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, newPublicCode, visitorUrl, walkinNightPrice } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, EVENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shortDay, today } from '../app/client.ts';
 import type { FieldSpec } from './form.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -328,7 +328,7 @@ function printCard(card: HTMLElement): void {
 export function renderVisitorRequests(o: { requests: Row[]; editable: boolean; run: (ops: RowOperation[], message: string) => Promise<boolean> }): HTMLElement | null {
   const pending = o.requests.filter((r) => r.status === 'pendiente' && !r.deleted_at).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   if (pending.length === 0) return null;
-  const decide = (r: Row, decision: 'accept' | 'reject' | 'done') => void o.run([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: r.id, decision } }],
+  const decide = (r: Row, decision: 'accept' | 'reject' | 'done') => void o.run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: r.id, decision } }],
     decision === 'accept' ? 'Visitante apuntado: ya tiene su ficha de huésped.' : decision === 'done' ? 'Dato atendido.' : 'Petición descartada.');
   return el('article', { class: 'card', id: 'blockVisitorRequests', 'data-feedback-id': 'booking.reserva.visitantes', 'data-feedback-label': 'Visitantes que piden apuntarse' },
     el('div', { class: 'cardhead' }, el('h3', null, 'Visitantes del QR'), el('span', { class: 'chip alert' }, String(pending.length))),

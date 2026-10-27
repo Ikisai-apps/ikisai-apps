@@ -19,6 +19,8 @@ test.after(async () => { await app.close(); });
 const commit = (operations: unknown[]) => app.call('/api/v1/commands', { body: { requestId: `vj-${++seq}-${uuid()}`, operations } });
 async function ok(operations: unknown[]) { const res = await commit(operations); assert.equal(res.status, 200, JSON.stringify(res.data)); return res; }
 const db = () => createSupabase({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch });
+/** Un visitante de verdad (core.visitors), como el que emite el kit al entrar por el QR. */
+const visitorOf = async (code: string | null = null) => (await issueVisitor(db(), code)).visitorId;
 const ask = (code: string, visitor: string, fields: Record<string, unknown> = {}) =>
   applyPublicOperations(db(), 'booking', [{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { via_code: code, visitor_id: visitor, ...fields } }], visitor);
 async function failsWith(promise: Promise<unknown>, codeText: string) {
@@ -34,7 +36,7 @@ async function retreat(visible: boolean) {
 
 test('visitante: pide apuntarse con el código del QR; solo una pendiente; el personal acepta y se crea su ficha', async () => {
   const { event, code } = await retreat(true);
-  const visitor = uuid();
+  const visitor = await visitorOf(code);
   // el event_id que mande el cliente no cuenta: el evento sale del código
   await ask(code.toLowerCase(), visitor, { name: '  Marta  ', note: 'Vengo con mi hija', event_id: uuid() });
   const req = (await app.t.db.query<{ id: string; event_id: string; name: string; status: string }>(`select id, event_id, name, status from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
@@ -44,7 +46,7 @@ test('visitante: pide apuntarse con el código del QR; solo una pendiente; el pe
   // lo que ve el visitante de lo suyo
   const mine = await app.t.rpc('core_public_read', { p_name: 'booking_visitor_requests', p_args: { visitor_id: visitor } }) as any;
   assert.deepEqual(mine.items.map((i: any) => [i.event_code, i.status]), [[code, 'pendiente']]);
-  assert.deepEqual((await app.t.rpc('core_public_read', { p_name: 'booking_visitor_requests', p_args: { visitor_id: uuid() } }) as any).items, []);
+  assert.deepEqual((await app.t.rpc('core_public_read', { p_name: 'booking_visitor_requests', p_args: { visitor_id: await visitorOf() } }) as any).items, []);
 
   // el personal no puede «aceptar» cambiando la fila a mano; con el procedimiento, sí
   const rev = Number((await app.t.db.query<{ r: string }>(`select revision r from booking.visitor_requests where id = $1`, [req.id])).rows[0]!.r);
@@ -62,19 +64,19 @@ test('visitante: pide apuntarse con el código del QR; solo una pendiente; el pe
 
 test('visitante: no en retiros no visibles ni con un código desconocido; en público no cambia ni decide nada; el personal no crea peticiones', async () => {
   const hidden = await retreat(false);
-  await failsWith(ask(hidden.code, uuid()), 'RESERVATION_NOT_OPEN');
-  await failsWith(ask('ZZZZZZZZZZ', uuid()), 'RESERVATION_NOT_OPEN');
+  await failsWith(ask(hidden.code, await visitorOf(hidden.code)), 'RESERVATION_NOT_OPEN');
+  await failsWith(ask('ZZZZZZZZZZ', await visitorOf()), 'RESERVATION_NOT_OPEN');
   const open = await retreat(true);
-  await failsWith(ask(open.code, uuid(), { status: 'aceptada' }), 'INVALID_FIELDS');
-  const visitor = uuid();
+  await failsWith(ask(open.code, await visitorOf(open.code), { status: 'aceptada' }), 'INVALID_FIELDS');
+  const visitor = await visitorOf(code);
   await ask(open.code, visitor);
   const req = (await app.t.db.query<{ id: string; revision: string }>(`select id, revision from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
   await assert.rejects(applyPublicOperations(db(), 'booking', [{ op: 'update', table: TABLES.visitorRequests, id: req.id, expectedRevision: Number(req.revision), fields: { name: 'Otro' } }], visitor));
   // un visitante no escribe a nombre de otro
-  await failsWith(applyPublicOperations(db(), 'booking', [{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { via_code: open.code, visitor_id: uuid() } }], uuid()), 'FORBIDDEN');
+  await failsWith(applyPublicOperations(db(), 'booking', [{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { via_code: open.code, visitor_id: await visitorOf(open.code) } }], await visitorOf(open.code)), 'FORBIDDEN');
   assert.equal((await commit([{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { event_id: open.event, visitor_id: uuid() } }])).status, 422);
   // «Déjanos un dato»: vale en un retiro no visible, exige el contacto y se atiende (no se acepta)
-  const dataVisitor = uuid();
+  const dataVisitor = await visitorOf(hidden.code);
   await failsWith(ask(hidden.code, dataVisitor, { kind: 'contact' }), 'contact');
   await ask(hidden.code, dataVisitor, { kind: 'contact', contact: 'visitante@example.invalid', note: 'Avisadme de la próxima' });
   const dato = (await app.t.db.query<{ id: string }>(`select id from booking.visitor_requests where visitor_id = $1`, [dataVisitor])).rows[0]!;
@@ -90,7 +92,7 @@ test('visitante: a los 6 meses del fin del evento se borran su nombre, su contac
   await ok([{ op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Pasado sintético', event_type: 'jornadas_abiertas', status: 'pre_reservada', start_date: '2031-10-30', end_date: '2031-11-01', expected_guests: 20, guests_visible: true } }]);
   await ok([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: res, event_id: event, from_status: 'pre_reservada' } }]);
   const code = (await app.t.db.query<{ c: string }>(`select public_code c from booking.events where id = $1`, [event])).rows[0]!.c;
-  const visitor = uuid();
+  const visitor = await visitorOf(code);
   await ask(code, visitor, { kind: 'contact', name: 'Persona', contact: 'persona@example.invalid', note: 'Nota' });
   // el evento acabó hace más de 6 meses
   await app.t.db.query(`update booking.reservations set start_date = '2020-01-01', end_date = '2020-01-03' where id = $1`, [res]);
