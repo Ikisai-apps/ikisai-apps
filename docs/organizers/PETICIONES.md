@@ -50,9 +50,25 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | F2 | Finance | Descarga del PDF de una factura desde el portal (URL firmada de corta duración), solo dentro del ámbito | en parte (#307): la copia congelada sí; el PDF guardado necesita la ruta firmada `portal-files` (Core) |
 | F3 | Finance | Instrucciones de pago a Ikisai (IBAN, concepto y Bizum) como textos de Central o ajuste de Finance, en los dos idiomas | hecha (#308, texto `payment.instructions` de Central) |
 | B15 | Booking | **Lo contratado para el portal:** total contratado, señal requerida y pagada según Booking, forma de pago y vencimientos (de `reservation_finance` y la propuesta aceptada), para que Organizers muestre el saldo como contratado − cobrado (Finance) | hecha (#312) |
-| K2 | Core | **Ruta `portal-files`** en `organizers-api`: repite la lectura F2 con la sesión del portal y firma solo un `file_id` que esa lectura devuelva (PDF guardado de una factura registrada) | media |
+| K2 | Core | **Ruta `portal-files`** en `organizers-api`: repite la lectura F2 con la sesión del portal y firma solo un `file_id` que esa lectura devuelva (PDF guardado de una factura registrada) | reabierta el 27-10 (VG: no se aparca nada): ver «K2 · propuesta» debajo |
 | T1 | Tasks | **Proyecto por retiro por petición de sistema:** crear de forma idempotente (por `external_ref` = reserva) el proyecto `AAAAMMDD-<título>` en el área que fija la regla del owner, y renombrarlo si cambian la fecha o el título | alta |
 | T2 | Tasks | Tareas de los extras contratados dentro de ese proyecto, idempotentes por línea (`external_ref` = línea de la propuesta) | media |
+
+### K2 · propuesta (27-10-2026)
+
+Por qué no lo hace Organizers solo:
+- los PDF guardados son archivos de la app `invoices`, y `core_file_get` exige ser miembro de esa app;
+- una función de Organizers que leyera `invoices.issued_invoice_files` sería una referencia a otro schema, que el lint no admite.
+
+Reparto propuesto:
+- **Finance (o Core):** `public.invoices_portal_invoice_file(p_actor, p_reservation_id, p_issued_invoice_id, p_file_id)`, solo para `service_role`, sin `allow_read`, para que el cliente nunca vea el bucket ni la ruta:
+  - repite la comprobación de `invoices.portal_invoice_document`: `core.portal_in_scope('organizers', …)` y que la factura sea de la reserva;
+  - comprueba que el `file_id` sea uno de sus `issued_invoice_files` vivos;
+  - devuelve la fila de `core.files` (`bucket`, `path`, `storage_provider`, `filename`, `mime`, `status`).
+- **Organizers:**
+  - en `organizers-api`, `GET invoices/:invoiceId/files/:fileId?reservation_id=…`: llama a esa función y firma con `createStorage` durante 10 minutos, como los planos de `guests-api`;
+  - en la app, cambiar «Pídenosla» por «Abrir PDF»;
+  - una prueba PGlite que cubra que se abre dentro del ámbito y no fuera.
 
 ## Fases 4 y 5 · Experiencia de Guests y decisiones del huésped (G2 en API.md §15 y §16)
 

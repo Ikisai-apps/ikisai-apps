@@ -113,7 +113,7 @@
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
-- Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
+- Fase 3: abrir el PDF de una factura registrada. K2 está reabierta con propuesta en PETICIONES: Finance o Core da la función de servicio y Organizers hace la ruta y el botón.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Puntos abiertos que decide el usuario: API.md §13.
