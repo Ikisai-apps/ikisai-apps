@@ -297,7 +297,7 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const past = !!a && a.date < todayKey();
     const t = tally(current.id);
     const mine = myVote(current.id);
-    const comment = el('textarea', { 'data-feedback-id': 'food.menus.sugeridos.comentario', 'data-feedback-label': 'Comentario', id: 'suggestionComment', rows: '2', maxlength: '500', placeholder: 'Opcional: lo verá quien lo propuso' }) as HTMLTextAreaElement;
+    const comment = el('textarea', { 'data-field-id': 'food.menus.sugeridos.comentario', 'data-field-entity': 'core.suggestions', 'data-field-prop': 'comment', 'data-feedback-id': 'food.menus.sugeridos.comentario', 'data-feedback-label': 'Comentario', id: 'suggestionComment', rows: '2', maxlength: '500', placeholder: 'Opcional: lo verá quien lo propuso' }) as HTMLTextAreaElement;
     comment.value = comments.get(current.id) ?? '';
     comment.addEventListener('input', () => comments.set(current.id, comment.value));
     const options = recipes.filter((r) => r.status !== 'archivada').sort((x, y) => x.name.localeCompare(y.name, 'es'));

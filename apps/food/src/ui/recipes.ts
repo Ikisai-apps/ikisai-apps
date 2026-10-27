@@ -451,10 +451,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   function openEditor(recipe: RecipeRow | null): void {
     const recipeId = recipe?.id ?? crypto.randomUUID();
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+    // Ayudantes: el campo lo declara quien llama (@field-caller).
     const input = (id: string, value: string | null, attrs: Record<string, unknown> = {}) => el('input', { id, type: 'text', value: value ?? '', ...attrs });
-    const area = (id: string, value: string | null, rows: number, mark: Mark) => { const node = el('textarea', { ...mark, id, rows: String(rows) }); node.value = value ?? ''; return node; };
+    const area = (id: string, value: string | null, rows: number, mark: Mark) => { // @field-caller const node = el('textarea', { ...mark, id, rows: String(rows) }); node.value = value ?? ''; return node; };
     const field = (label: string, control: HTMLElement, hint?: string) => el('label', { class: 'field' }, el('span', null, label), control, hint ? el('span', { class: 'hint' }, hint) : null);
-    const check = (id: string, label: string, checked: boolean, mark: Mark) => { const box = el('input', { ...mark, id, type: 'checkbox', checked }); return { box, node: el('label', { class: 'checkline' }, box, el('span', null, label)) }; };
+    const check = (id: string, label: string, checked: boolean, mark: Mark) => { // @field-caller const box = el('input', { ...mark, id, type: 'checkbox', checked }); return { box, node: el('label', { class: 'checkline' }, box, el('span', null, label)) }; };
 
     // Foto
     let newPhoto: PreparedPhoto | null = null;
