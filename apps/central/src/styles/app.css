@@ -438,3 +438,10 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 #placeShapes select{min-height:var(--tap,46px);max-width:100%}
 .ctl-itemtrade{margin:12px 0}
 .ctl-itemtrade select{min-height:var(--tap,46px);max-width:100%}
+.ctl-covhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ctl-covsummary{font-weight:700;margin:4px 0}
+.ctl-covhead .linkbtn{min-height:var(--tap,46px)}
+.ctl-covapp{margin:16px 0}
+.ctl-covgroup{display:grid;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.ctl-covgroup .toolbar button{min-height:var(--tap,46px)}
+.ctl-covfields summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;color:var(--muted)}
