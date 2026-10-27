@@ -227,7 +227,7 @@ const RULES: Record<TableName, TableRules> = {
   },
   // Unidades hechas (0360, §55): solo tasks.unit_step las crea o borra; seguir a su tarea (área y proyecto) sí se puede.
   'tasks.task_units': {
-    fields: { tab_id: uuid(), project_id: uuid(), task_id: unitOnly, unit: unitOnly, done_by: unitOnly, done_at: unitOnly },
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: unitOnly, unit: unitOnly, done_by: unitOnly, marked_at: unitOnly },
     required: [],
   },
   'tasks.project_labels': {

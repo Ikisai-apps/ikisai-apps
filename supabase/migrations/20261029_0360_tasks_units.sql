@@ -4,7 +4,7 @@
 -- add_validate_hook, apply_row_op, allow_procedure, register_capability y fail.
 -- - tasks.tasks.unit_count (1–100, opcional): en una madre, cuántas unidades se hacen («4 marcos»). Sus pasos (o ella
 --   misma, si no tiene pasos) se marcan unidad a unidad. Un paso no lo lleva (INVALID_UNITS).
--- - tasks.task_units: una fila por unidad hecha de una tarea de trabajo (`task_id`, `unit` 1…n, `done_by`, `done_at`).
+-- - tasks.task_units: una fila por unidad hecha de una tarea de trabajo (`task_id`, `unit` 1…n, `done_by`, `marked_at`).
 --   Deshacer es borrarla. La visibilidad es la de su tarea (`tab_id` y `project_id` desnormalizados, que la siguen al
 --   moverla). Solo la escribe tasks.unit_step (marcador `tasks.unit_write`); seguir a su tarea, convertir un área y vaciar
 --   la papelera, también.
@@ -39,12 +39,12 @@ create table tasks.task_units (
   task_id uuid not null references tasks.tasks(id),
   unit int not null check (unit between 1 and 100),
   done_by uuid references auth.users(id),
-  done_at timestamptz not null default now()
+  marked_at timestamptz not null default now()
 );
 create unique index task_units_live_idx on tasks.task_units (task_id, unit) where deleted_at is null;
 create index task_units_project_idx on tasks.task_units (project_id);
 create trigger tasks_guard_immutable before update on tasks.task_units for each row execute function tasks.guard_immutable('task_id', 'unit');
-select core.register_table('tasks', 'tasks', 'task_units', array['tab_id','project_id','task_id','unit','done_by','done_at'],
+select core.register_table('tasks', 'tasks', 'task_units', array['tab_id','project_id','task_id','unit','done_by','marked_at'],
   '{reader,outsider,editor,owner}', '{editor,owner}');
 
 -- Cuántas unidades tiene una tarea de trabajo: las de su madre si es un paso; las suyas si es madre. Nulo = sin unidades.
@@ -131,7 +131,7 @@ begin
   select * into v_row from tasks.task_units where task_id = v_task.id and unit = v_unit and deleted_at is null;
   if v_done and v_row.id is null then
     perform core.apply_row_op(v_app, v_actor, v_role, v_req, v_cur, jsonb_build_object('op', 'insert', 'table', 'tasks.task_units', 'id', gen_random_uuid(),
-      'fields', jsonb_build_object('tab_id', v_task.tab_id, 'project_id', v_task.project_id, 'task_id', v_task.id, 'unit', v_unit, 'done_by', v_actor, 'done_at', now())));
+      'fields', jsonb_build_object('tab_id', v_task.tab_id, 'project_id', v_task.project_id, 'task_id', v_task.id, 'unit', v_unit, 'done_by', v_actor, 'marked_at', now())));
   elsif not v_done and v_row.id is not null then
     perform core.apply_row_op(v_app, v_actor, v_role, v_req, v_cur, jsonb_build_object('op', 'delete', 'table', 'tasks.task_units', 'id', v_row.id, 'expectedRevision', v_row.revision));
   end if;

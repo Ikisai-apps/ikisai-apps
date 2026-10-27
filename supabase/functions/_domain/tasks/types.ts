@@ -50,7 +50,7 @@ export interface TaskRow extends BaseRow {
   unit_count?: number | null;
 }
 /** Una unidad hecha de una tarea de trabajo (0360, §55). Solo la escribe `tasks.unit_step`; sigue a su tarea. */
-export interface TaskUnitRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; unit: number; done_by: Uuid | null; done_at: string }
+export interface TaskUnitRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; unit: number; done_by: Uuid | null; marked_at: string }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid | null; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
 export interface LabelRow extends BaseRow {
@@ -230,7 +230,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
   'tasks.task_comments': ['tab_id', 'project_id', 'task_id', 'body', 'file_id'],
   'tasks.task_materials': ['tab_id', 'project_id', 'task_id', 'item_id', 'quantity', 'note', 'consumed', 'position'],
-  'tasks.task_units': ['tab_id', 'project_id', 'task_id', 'unit', 'done_by', 'done_at'],
+  'tasks.task_units': ['tab_id', 'project_id', 'task_id', 'unit', 'done_by', 'marked_at'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'need_quantity', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position', 'source_app', 'source_ref', 'source_url', 'paid_total', 'receipt_kind', 'invoice_number', 'receipt_file_id', 'finance_status', 'finance_invoice_id', 'finance_code', 'finance_error'],
