@@ -937,7 +937,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         // cancelado → `cancel_url`, o la misma con `pago=ok` cambiado por `pago=cancelado` (revisión de Organizers, 28-10).
         const ours = (u: unknown): u is string => typeof u === 'string' && ORGANIZERS_RETURN.some((o) => u.startsWith(`${o}/`));
         const success = ours(body!.return_url) ? body!.return_url : `${ORGANIZERS_RETURN[0]}/`;
-        const cancel = ours(body!.cancel_url) ? body!.cancel_url : success.replace(/([?&])pago=ok/, '$1pago=cancelado');
+        const cancel = ours(body!.cancel_url) ? body!.cancel_url : success.replace(/([?&])pago=ok(?=&|$)/, '$1pago=cancelado');
         const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success, cancel });
         return { url: out.url, provider: out.provider, expires_at: out.expires_at, amount: out.amount, reused: out.reused };
       },
