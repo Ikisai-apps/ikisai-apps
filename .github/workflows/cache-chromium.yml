@@ -1,0 +1,27 @@
+name: Caché de Chromium
+# Deja en main la caché de Chromium y sus .deb (.github/actions/chromium) que leen los jobs de Playwright de las PR. Solo
+# hace falta cuando cambia la versión de Playwright (lockfile) o si GitHub la expulsa; a mano, workflow_dispatch.
+on:
+  push:
+    branches: [main]
+    paths: ['package-lock.json', '.github/actions/chromium/**', '.github/workflows/cache-chromium.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cache-chromium
+  cancel-in-progress: true
+jobs:
+  chromium:
+    name: Guardar Chromium en la caché de main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Instalar Chromium
+        uses: ./.github/actions/chromium
