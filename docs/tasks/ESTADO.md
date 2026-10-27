@@ -27,7 +27,12 @@ Clasificación de los 28 reportes aprobados y abiertos (`MUELA\equipo\UX-Tasks\F
 - **PR 3:** FB_2026_072 y 073: la revisión de «Sugerencias y QA» y el «Registro de accesos» pasan a Central, con enlace; antes, en PETICIONES, lo que aporta la vista de Tasks.
 - **Verificar (arreglados en #459):** FB_2026_034, 036, 038, 040 y 043.
 - **Sin actuar (VG):** FB_2026_062 (se deja abierto), 065 y 068 (errores al reportar).
-- **Pendiente de VG o de otros equipos:** FB_2026_035, 056, 066, 070 y 071 (replanteo, después del evento). El 075 ya está con el kit 0.58 (#753).
+- **Replanteos (VG, 27-10):**
+  - FB_2026_035: «Solo de un área», la vuelta de «Hacer General» (§40, migración 0343).
+  - FB_2026_056: ordenar el selector de materiales por el kit de los oficios de la tarea; Recursos no cambia (petición K4 al UI-kit).
+  - FB_2026_070: buscar suministros por palabras (petición K5 al UI-kit).
+  - FB_2026_071: «Vista de trabajo», primero una ronda de alternativas.
+  - FB_2026_066 es de Booking y Core. El 075 ya está con el kit 0.58 (#753).
 
 
 ## Hecho
