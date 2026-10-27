@@ -167,3 +167,10 @@ Preguntas para VG (por Core):
 | Id | Para | Petición | Estado |
 |---|---|---|---|
 | F4 | Finance | **«Retiros con pagos pendientes de quien organiza»** para el panel de Dirección: la clave `invoices.organizer_reservations_pending` (unidad `count`), en `invoices.central_kpi_projection`, que ya es de Finance. Cuenta las reservas con facturas enviadas sin cobrar o con vencimientos pasados, sin importes por persona. Organizers no lee el schema `invoices` (lint), y los demás indicadores de quien organiza ya están en `organizers.central_kpi_projection` (0705) | pedida |
+
+## Pagos en línea (fase 6; decisión de VG del 27-10-2026: después del sábado)
+
+| Id | Para | Petición | Estado |
+|---|---|---|---|
+| F5 | Finance | **Enlace de pago por factura** en `invoices.portal_reservation_money`: en cada factura sin cobrar, `payment_link: {url, provider, expires_at}` o `null`. Lo crea Finance (Stripe Payment Links o Redsys del banco) y lo da por caducado cuando deje de valer. Organizers solo enseña «Pagar ahora» si la URL es `https` de una pasarela conocida (`buy.stripe.com`, `checkout.stripe.com`, `sis.redsys.es`, `sis-t.redsys.es`; para otra, se añade a `app/pay-link.ts`). Ningún dato de tarjeta pasa por Ikisai; lo cobrado lo sigue registrando Finance (y, si la pasarela avisa, Finance lo marca solo) | pedida; Organizers listo (sin enlaces, no se ve nada) |
+
