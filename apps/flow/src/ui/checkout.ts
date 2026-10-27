@@ -59,7 +59,7 @@ export function openCustomerSheet(client: SyncClient, projectId: string, number:
     const toPay = sel.filter((o) => o.status === 'open');
     const toDeliver = sel.filter((o) => o.status === 'paid');
     replace(foot,
-      busyButton({ class: 'secondary', ...(toDeliver.length ? {} : { disabled: 'disabled' }) }, `Entregar (${toDeliver.length})`, () => deliver(toDeliver)),
+      busyButton({ class: 'ghost', ...(toDeliver.length ? {} : { disabled: 'disabled' }) }, `Entregar (${toDeliver.length})`, () => deliver(toDeliver)),
       busyButton({ class: 'primary', ...(toPay.length ? {} : { disabled: 'disabled' }) }, `Pagar (${toPay.length})`, async () => { openPaySheet(client, projectId, toPay.map((o) => o.id)); }));
   }
 
@@ -165,7 +165,7 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
           onclick: () => window.open(`https://finance.ikisai.com/#/justificante?ref=${encodeURIComponent(`flow:receipt:${r.receipt_id}`)}`, '_blank', 'noopener') }, 'Imprimir ticket'),
         el('button', { type: 'button', class: 'ghost', disabled: true, title: 'Pronto' }, 'Enviar por correo'),
         sent.has(r.receipt_id) ? el('span', { class: 'muted small' }, 'Enviado a Finance')
-          : busyButton({ class: 'secondary' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));
+          : busyButton({ class: 'ghost' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));
   }
   async function sendToFinance(id: string): Promise<void> {
     // El estado del envío lo anota flow-api con la respuesta de Finance.

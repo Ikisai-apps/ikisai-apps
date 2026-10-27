@@ -91,7 +91,7 @@
 .order-refund{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0}
 .flow-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .flow-actions button[hidden]{display:none}
-.flow-nav{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px 0}
+.flow-nav{display:flex;flex-wrap:nowrap;gap:8px;align-items:center;padding:4px 16px;position:sticky;top:0;z-index:5;background:var(--bg,var(--surface))}
 .flow-nav[hidden]{display:none}
 .flow-nav button{min-height:44px}
 .sheet-foot .flow-nav{padding:0;justify-content:space-between}
@@ -135,7 +135,8 @@
 /* Flujos (pantalla inicial del personal) y carrusel del Inicio de un flujo */
 .flows{display:grid;gap:12px}
 @media (min-width:720px){.flows{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.flow-card.is-closed{opacity:.6}
+/* Cerrado: el estado va en la píldora; solo se apaga la imagen (los datos mantienen el contraste). */
+.flow-card.is-closed img{opacity:.6}
 /* Mínimo táctil de 44 px en la tarjeta del flujo (revisión móvil 27-10): el botón del título, aunque no haya portada. */
 .flow-card .cover-titlebtn{min-height:44px;display:inline-flex;align-items:center}
 .flow-carousel{margin:0 0 14px}
@@ -236,7 +237,7 @@
 .journey-values dd{margin:0;display:flex;gap:8px;align-items:center;justify-content:space-between}
 
 /* Tablero de carriles (createLanes): la altura disponible bajo la cabecera y sobre la barra */
-.app-main .lanes{--lanes-height:calc(100dvh - 180px)}
+.app-main .lanes{--lanes-height:calc(100dvh - 180px - var(--flow-nav-h, 0px))}
 
 /* «Avance por aplicaciones» (0937–0938): copiado de la página del artefacto v94 con los tokens del kit. */
 .avance{display:grid;gap:10px}
@@ -300,8 +301,6 @@
 .flow-entry-title{margin:0 0 6px;font-size:1rem;color:var(--muted)}
 .flow-entry-group>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--muted)}
 .flow-card-facts{list-style:none;margin:6px 2px 0;padding:0;display:grid;gap:2px;font-size:13px;color:var(--muted)}
-.flow-card-facts li.is-urgent{color:#c0392b;font-weight:600}
-.flow-card-facts li.is-blocked{color:#b26a00;font-weight:600}
 
 /* Avance para la mudanza (0947): cabecera, gráfico, fichas en dos filas, hitos y leyenda. */
 .avance-updated{margin:0;text-align:right}
@@ -357,5 +356,7 @@
 .avance-card.is-hecho .avance-card-title{text-decoration:line-through;color:var(--muted)}
 @media (pointer:coarse){.avance-legend-item{min-height:44px}}
 .avance-disc .in svg{width:24px;height:24px}
+.flow-card-facts li.is-urgent{color:var(--alert);font-weight:600}
+.flow-card-facts li.is-blocked{color:var(--warn-ink,#7a5414);font-weight:600}
 .order-card.is-test .qcard-title{color:var(--warn-ink,#7a5414)}
 .carta-test{color:var(--warn-ink,#7a5414);font-weight:600;margin:4px 0}
