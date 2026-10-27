@@ -171,7 +171,32 @@ export function createFeedback(supabase: Supabase, app: string, storage: Storage
     return { report: await supabase.rpc('core_feedback_act', { p_actor: ctx.user.id, p_id: id, p_action: action, p_args: args }) };
   }
 
-  return { uploads, create, list, tree, get, act };
+  /**
+   * Respuestas de la casa a un informe (0117, RESPUESTAS_CASA.md): contesta editor u owner de Booking (o el dueño del
+   * ecosistema), nunca una cuenta de portal; las ve quien escribió el informe y quien puede verlo.
+   */
+  const replies = {
+    mine: (ctx: RequestContext) => supabase.rpc('core_feedback_replies_mine', { p_actor: ctx.user.id }),
+    read: (ctx: RequestContext, body: any) => {
+      const ids = Array.isArray(body?.ids) ? body.ids.filter((id: unknown) => typeof id === 'string' && UUID.test(id)).slice(0, 200) : [];
+      return supabase.rpc('core_feedback_replies_read', { p_actor: ctx.user.id, p_ids: ids });
+    },
+    of: (ctx: RequestContext, id: string) => {
+      if (!UUID.test(id)) fail(404, 'OUT_OF_SCOPE', messageFor('OUT_OF_SCOPE'));
+      return supabase.rpc('core_feedback_replies_of', { p_actor: ctx.user.id, p_report: id });
+    },
+    create: (ctx: RequestContext, id: string, body: any) => {
+      if (!UUID.test(id)) fail(404, 'OUT_OF_SCOPE', messageFor('OUT_OF_SCOPE'));
+      if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+      // Sin recortar: una respuesta más larga se rechaza entera (no se manda a medias).
+      const message = typeof body?.message === 'string' ? body.message.trim() : '';
+      if (!message) fail(422, 'INVALID_FIELDS', 'Escribe la respuesta.', { field: 'message' });
+      if (message.length > 2000) fail(422, 'INVALID_FIELDS', 'La respuesta puede tener como mucho 2000 caracteres.', { field: 'message', max: 2000 });
+      return supabase.rpc('core_feedback_reply', { p_actor: ctx.user.id, p_report: id, p_message: message });
+    },
+  };
+
+  return { uploads, create, list, tree, get, act, replies };
 }
 
 // ---------------------------------------------------------------------------
