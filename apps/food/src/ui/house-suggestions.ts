@@ -14,7 +14,7 @@
  * Las sugerencias necesitan red: sin conexión, la pantalla lo dice y la entrada de Menús no aparece.
  */
 import {
-  HOUSE_DISH_SUGGESTION_KIND, HOUSE_MENU_ID, houseDishWithRecipe, voteRequest, voteTally,
+  HOUSE_DISH_SUGGESTION_KIND, HOUSE_MENU_ID, houseDishWithRecipe, similarRecipes, voteRequest, voteTally,
   type MenuItem, type MenuService, type Recipe, type ServiceType, type SuggestionVote,
 } from '@ikisai/domain-food';
 import type { RowOperation, Suggestion, SyncClient } from '@ikisai/sync-client';
@@ -251,9 +251,14 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     comment.value = comments.get(current.id) ?? '';
     comment.addEventListener('input', () => comments.set(current.id, comment.value));
     const options = recipes.filter((r) => r.status !== 'archivada').sort((x, y) => x.name.localeCompare(y.name, 'es'));
+    // Arriba, las más parecidas por el nombre (hallazgo F-SUG-3); debajo, el resto por orden alfabético, sin repetirlas.
+    const close = a ? similarRecipes(a.name, a.service, options.filter((r) => r.id !== known(a)?.id)) : [];
+    const option = (r: (typeof options)[number]) => el('option', { value: r.id, selected: similar.get(current.id) === r.id }, r.name);
     const pick = el('select', { 'data-feedback-id': 'food.menus.sugeridos.receta_parecida', 'data-feedback-label': 'Usar receta parecida', id: 'similarRecipe' },
       el('option', { value: '' }, a && known(a) ? `La del Recetario: ${known(a)!.name}` : 'Nueva: plato rápido por completar'),
-      ...options.map((r) => el('option', { value: r.id, selected: similar.get(current.id) === r.id }, r.name))) as HTMLSelectElement;
+      ...(close.length
+        ? [el('optgroup', { label: 'Más parecidas' }, ...close.map(option)), el('optgroup', { label: 'Todas' }, ...options.filter((r) => !close.includes(r)).map(option))]
+        : options.map(option))) as HTMLSelectElement;
     pick.addEventListener('change', () => { if (pick.value) similar.set(current.id, pick.value); else similar.delete(current.id); });
     const voteButton = (vote: 'keep' | 'drop') => el('button', { type: 'button', class: 'ghost fd-myvote', 'aria-pressed': String(mine === vote),
       onclick: () => void sendVote(current, mine === vote ? null : vote) }, voteWord(vote));
