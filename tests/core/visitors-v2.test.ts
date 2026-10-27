@@ -50,6 +50,9 @@ test('v2 · un visitante guarda su acceso con un código al correo y lo recupera
   token2 = rec.data.token; assert.notEqual(token2, token1);
   const me = await pub('/api/v1/public/visitor/me', { visitor: token2 });
   assert.equal(me.data.emailSaved, true); assert.equal(me.data.emailHint, 'v•••@e•••.invalid'); assert.equal(me.data.devices, 2);
+  // «Mis eventos» se rehace desde el núcleo: el alta por QR cuenta, y Guests anota las visitas siguientes.
+  assert.equal((await pub('/api/v1/public/visitor/visit', { body: { eventCode: 'EVT_Y' }, visitor: token2 })).status, 200);
+  assert.deepEqual((await pub('/api/v1/public/visitor/me', { visitor: token2 })).data.eventCodes, ['EVT_Y', 'EVT_X']);
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from core.visitors where id = $1 and auth_user_id is not null`, [visitorId])).rows[0]!.n, 1);
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from core.visitor_email_requests`)).rows[0]!.n, 3, 'el núcleo guarda solo el hash del correo');
 });
@@ -62,6 +65,15 @@ test('v2 · salir de un móvil revoca solo ese token; el freno corta la sexta pe
   for (let i = 0; i < 2; i++) assert.equal((await pub('/api/v1/public/visitor/email', { body: { email: 'vero@example.invalid' } })).status, 200);
   const sixth = await pub('/api/v1/public/visitor/email', { body: { email: 'vero@example.invalid' } });
   assert.equal(sixth.status, 429); assert.equal(sixth.data.error.code, 'RATE_LIMITED');
+});
+
+test('v2 · freno por IP: la IP del proxy no da de alta más de 30 visitantes por hora', async () => {
+  const ipCall = () => app.call('/api/v1/public/visitor', { token: null, body: {}, origin: GUESTS, headers: { 'X-Ikisai-Client-Ip': '10.0.0.77' } });
+  let last = 0;
+  for (let i = 0; i < 30; i++) last = (await ipCall()).status;
+  assert.equal(last, 200);
+  const over = await ipCall();
+  assert.equal(over.status, 429); assert.equal(over.data.error.code, 'RATE_LIMITED');
 });
 
 test('v2 · traspaso entre dominios: un código de un solo uso da un token propio del mismo visitante en el otro dominio', async () => {

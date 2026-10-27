@@ -7,7 +7,7 @@ import {
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createSortableList, el, formatDate, icon, listRow, openSheet, plural, renderCover, renderMoneyBreakdown, replace, toast, type Focus, type FocusItem, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
-import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
+import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, EQUIPMENT_STATUS_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
   familyGuestsOn,
   dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
@@ -63,6 +63,11 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   let menus: MenuRow[] = [];
   let fresh = new Map<string, number>(); // comentarios nuevos del organizador por menú
   const list = el('ul', { class: 'list', id: 'menuList', 'aria-label': 'Menús' });
+  // Los pasados, aparte y plegados (hallazgo F-MEN-1, decisión de Core del 27-10 por el «hoy real»).
+  const pastList = el('ul', { class: 'list', id: 'menuListPast', 'aria-label': 'Menús pasados' });
+  const pastCount = el('span', { class: 'count' });
+  const past = el('details', { 'data-feedback-id': 'food.menus.pasados', 'data-feedback-label': 'Menús pasados', class: 'fd-past', id: 'menusPast' },
+    el('summary', null, 'Pasados (', pastCount, ')'), pastList);
   const host = el('div');
   let house: HouseToday = { exists: false, lines: [] };
   let suggestions: { pending: number } | null = null; // platos sugeridos (O3c): solo si hay alguno y se pueden revisar
@@ -72,7 +77,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   let cartas: MenuRow[] = [];
   let cartaLines: Array<Mirror<CartaLine>> = [];
   // «Lo próximo en grande» (tanda 27, MUELA-016): el retiro en curso o el siguiente, y los que vienen sin menú. La lista de
-  // siempre (`#menuList`, con su orden) sigue debajo, completa.
+  // siempre (`#menuList`, por cercanía, y los pasados aparte) sigue debajo.
   const nextHost = el('section', { 'data-feedback-id': 'food.menus.proximo', 'data-feedback-label': 'Lo próximo', id: 'menusNext' });
   let graphs = new Map<string, MenuGraph>();
   let prep: Array<Mirror<PreparationItem>> = [];
@@ -169,9 +174,15 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
     paintCartas(cartasHost, { client, cartas, lines: cartaLines, events: snapshot.events, navigate });
     const events = new Map(snapshot.events.map((e) => [e.event_id, e]));
     const rows = menus.filter((m) => !m.deleted_at && !isHouseMenu(m))
-      .map((menu) => ({ menu, event: menu.event_id ? events.get(menu.event_id) : undefined }))
-      .sort((a, b) => (b.event?.start_date ?? '').localeCompare(a.event?.start_date ?? ''));
-    replace(list, ...rows.map(({ menu, event }) => listRow({
+      .map((menu) => ({ menu, event: menu.event_id ? events.get(menu.event_id) : undefined }));
+    // Por cercanía: en curso y próximos, del más cercano al más lejano (los que no tienen datos del evento, al final);
+    // los pasados, del más reciente al más antiguo.
+    const today = todayKey();
+    const coming = rows.filter(({ event }) => !event || event.end_date >= today)
+      .sort((a, b) => (a.event?.start_date ?? '9999').localeCompare(b.event?.start_date ?? '9999'));
+    const gone = rows.filter(({ event }) => event && event.end_date < today)
+      .sort((a, b) => b.event!.start_date.localeCompare(a.event!.start_date));
+    const row = ({ menu, event }: (typeof rows)[number]) => listRow({
       id: menu.id,
       title: event?.title ?? 'Evento no disponible',
       meta: event ? [dateRange(event), guestsLabel(event), mealPlanLabel(event.meal_plan)] : ['Sin datos del evento en este dispositivo'],
@@ -180,9 +191,13 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       pending: menu._pending === true,
       label: `Abrir el menú de ${event?.title ?? 'este evento'}`,
       onClick: () => navigate(`#/menus/${menu.id}`),
-    })));
+    });
+    replace(list, ...coming.map(row));
+    replace(pastList, ...gone.map(row));
+    pastCount.textContent = String(gone.length);
     fbRows(list, { feedbackId: 'food.menus.lista', feedbackLabel: 'Menús' }, { feedbackId: 'food.menus.lista.menu', feedbackLabel: 'Menú' });
-    replace(host, rows.length ? list : el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay menús'),
+    fbRows(pastList, { feedbackId: 'food.menus.pasados.lista', feedbackLabel: 'Menús pasados' }, { feedbackId: 'food.menus.pasados.menu', feedbackLabel: 'Menú pasado' });
+    replace(host, rows.length ? el('div', null, coming.length ? list : null, gone.length ? past : null) : el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay menús'),
       'Abre un evento en Eventos y pulsa «Crear menú» en su ficha.', el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'food.menus.ir_eventos', 'data-feedback-label': 'Ir a Eventos', class: 'ghost', type: 'button', onclick: () => navigate('#/eventos') }, 'Ir a Eventos'))));
   }
 
@@ -693,7 +708,11 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           el('td', null, names.get(line.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(line.quantity)), el('td', null, UNIT_LABELS[line.unit])))))
           : el('p', { class: 'muted' }, 'La receta no tiene ingredientes.'),
         recipe.allergens.length ? el('p', { class: 'warnline' }, `Alérgenos: ${recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ')}`) : null,
-        required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => `${n.quantity_required} × ${machines.get(n.equipment_id)?.name ?? 'máquina retirada'}`).join(', ')) : null,
+        required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => {
+          // Con su estado si no está operativa (hallazgo F-MAQ-2): la cocina ve en el menú lo que puede fallar.
+          const m = machines.get(n.equipment_id);
+          return `${n.quantity_required} × ${m?.name ?? 'máquina retirada'}${m && m.status !== 'operativo' ? ` (${EQUIPMENT_STATUS_LABELS[m.status].toLowerCase()})` : ''}`;
+        }).join(', ')) : null,
         prep ? el('p', { class: 'cookprep' }, el('strong', null, 'Antelación: '), prep) : null,
         methodStepsView(recipe),
         recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null,

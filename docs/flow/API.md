@@ -431,3 +431,37 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 ## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
 
 - En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).
+
+## 42. Huéspedes solo del evento (FL12, migración `0935`)
+
+- `assign_guest_numbers` y `mark_presence` preguntan a Booking por el núcleo (`core.read` de `booking.flow_guests_of`, con el ámbito de quien actúa) y fallan con `422 GUEST_NOT_IN_EVENT` si algún `guest_id` no es de ese evento. Un flujo sin evento no tiene huéspedes: `409 NO_BOOKING_EVENT`.
+
+## 43. «Avance por aplicaciones»: tarjetas como unidades (migración `0937`)
+
+- `flow.units` gana `lane_key` (carril: el agente), `prio` (`urgente` | `importante` | `secundario` | `opcional`) y `board_flag` (`pr` | `backlog`), indexadas por proyecto. Tipos nuevos `card` y `recurring` (en servicio: cuenta como hecha, sin urgencia). Estado: `pending` · `in_progress` · `done`; nunca `cancelled`. Título hasta 300.
+- Las tarjetas solo se escriben por procedimiento (`flow.board_card`, siguiente paso). `flow.guard_board` comprueba el carril: owner, todos; editor u outsider, los de `scopes.lanes` de su membresía y con el proyecto en su ámbito (`403 LANE_FORBIDDEN`).
+- Plantilla `avance` v1: una columna `avance` («Avance»).
+
+## 44. «Avance»: `flow.board_card` y la capacidad del catálogo (migración `0938`)
+
+- Procedimiento `flow.board_card({project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?})` (`tipo`, el oficio: arreglo · funcion · prueba · decision · ajuste, en payload; `order`, el orden en el carril, en `idx`): sin `card_id` (o uno nuevo) crea; con uno que existe cambia solo lo dado (`prio`/`flag`/campos de payload a `null` los quitan). `done` pone `done_at`; volver de `done` lo quita. Una recurrente nunca lleva urgencia. `url` solo https; hasta 30 pasos de 300.
+- Capacidad `flow.board_card` (`POST board-card`, editor, owner u outsider): idempotente por `requestId` (recibo del núcleo por persona); devuelve `{card_id, created, replayed}`. El carril lo decide el guard (`403 LANE_FORBIDDEN`).
+
+## 45. Recorridos por tramos (flow-14, migración `0939`)
+
+- `flow.definition_stages (version_id, position 1..20, kind capability|record|handoff, capability?, title, explain?, target_app?, target_anchor?)`. Los pasos cuelgan del tramo (`stage_id`) y ganan `input_type` (text · number · boolean · choice · photo, con `options`), `mode` (ask · fixed · from), `fixed_value` y `default_from` (`stages[N].values|result.<ruta>`).
+- «Registrar compra» (0919) es ahora un tramo `capability` con sus 8 pasos (mismos ids).
+- `flow.publish_version({version_id})` (owner): tramos 1..n, pasos en los tramos `capability`/`record`, tipo en los `record`, `default_from` hacia tramos anteriores, como mucho 20 tramos y 100 pasos (`422 JOURNEY_INVALID`). Lo publicado no se toca (`409 VERSION_PUBLISHED`); la versión publicada anterior se retira.
+- Ejecución por tramos (de quien la hace, en borrador):
+  - `start_stage({execution_id, position})`: exige los anteriores cerrados (`409 STAGE_NOT_READY`); pone lo fijo y lo heredado (servidor) y devuelve esos valores; retoma un tramo en error con lo ya respondido; uno cerrado no se repite (`STAGE_FINISHED`).
+  - `save_stage_values({execution_id, position, values})`: no deja cambiar lo fijo ni lo heredado.
+  - `finish_stage({execution_id, position, status done|error|skipped|practiced, result?, receipt_id?, error?})`: `practiced` solo en aprender; un tramo `capability` no se da por hecho en aprender; `skipped` solo sin pasos esenciales. El último tramo cierra la ejecución (`done` o `practiced`) y su `result` junta los de cada tramo.
+- `journey_steps_projection` añade `stage` y `stage_kind`; la app sale de la capacidad del tramo (o `flow` en los tramos de registro).
+
+## 46. Guiado: `flow.guide_read` y `flow.guide_confirm` (flow-23, migración `0940`)
+
+- `POST guide-read {execution_id, app}` (capacidad `flow.guide_read`): `{id, title, mode, status, steps: [{id, title, explain, anchor, route, confirm, done, essential, app, stage}]}`.
+  - Solo quien hace la ejecución (si no, `404`). Pasos de esa `app` (primer segmento del anclaje) y los propios de Flow (`app: null`: sin anclaje).
+  - `route` y `confirm` salen de la lectura por id de campo del núcleo (`core_field_lookup`, 0109); sin ella, `route: null` y `confirm: 'manual'`.
+  - `done`: recibo de la app con `how` `save` o `event` y sin `pending`; en los pasos propios de Flow, su valor en el tramo o el tramo cerrado.
+- `POST guide-confirm {requestId, execution_id, step_id, how: save|event|manual|none, pending?}` (capacidad `flow.guide_confirm`): deja recibo en `flow.guide_receipts` (sin valores), idempotente por `requestId`. Un ensayo (`learn`) no confirma nada.

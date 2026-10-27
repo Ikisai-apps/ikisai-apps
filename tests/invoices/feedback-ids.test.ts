@@ -73,7 +73,7 @@ test('cada data-feedback-id escrito en un el(...) lleva su etiqueta, y cada marc
 
 test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', () => {
   const roots = new Set(collect().map((f) => f.id.split('.')[1]));
-  const allowed = new Set(['inicio', 'facturas', 'emitidas', 'compras', 'gestoria', 'proveedores', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'apuntes', 'evento', 'justificante']);
+  const allowed = new Set(['inicio', 'facturas', 'emitidas', 'compras', 'gestoria', 'proveedores', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'apuntes', 'evento', 'justificante', 'guia', 'arqueo']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 

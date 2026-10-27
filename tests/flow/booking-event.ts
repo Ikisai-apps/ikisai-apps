@@ -11,3 +11,8 @@ export async function seedBookingEvent(db: Db, eventId: string, members: string[
   await db.query(`insert into booking.events (id, reservation_id) values ($1, $2)`, [eventId, reservation]);
   for (const user of members) await db.query(`insert into core.memberships (app, user_id, role) values ('booking', $1, 'reader') on conflict do nothing`, [user]);
 }
+
+/** Huéspedes sintéticos de un evento de Booking: desde FL12 (0935) Flow solo numera y marca huéspedes del evento. */
+export async function seedBookingGuests(db: Db, eventId: string, guestIds: string[]): Promise<void> {
+  for (const id of guestIds) await db.query(`insert into booking.guests (id, event_id, first_name, last_name_1) values ($1, $2, 'Huésped', 'Prueba')`, [id, eventId]);
+}

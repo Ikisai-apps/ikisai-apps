@@ -132,10 +132,11 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
   const paid = charges.filter((c) => c.paid_at).reduce((sum, c) => sum + Number(c.amount_cents), 0);
   const pending = charges.filter((c) => !c.paid_at).reduce((sum, c) => sum + Number(c.amount_cents), 0);
 
-  function freeBeds(from: string, nights: number): Row[] {
+  /** Camas libres del evento todas las noches de [from, from + nights); `except` no cuenta (la propia asignación al ampliar). */
+  function freeBeds(from: string, nights: number, except?: string): Row[] {
     const range: [number, number] = [dayNumber(from)!, dayNumber(from)! + nights];
     const busy = new Set(o.data.assignments.filter((a) => {
-      if (!a.bed_id) return false;
+      if (!a.bed_id || a.id === except) return false;
       const n = assignmentNights(a as never, o.reservation as never);
       return n !== null && n[0] < range[1] && range[0] < n[1];
     }).map((a) => a.bed_id));
@@ -147,6 +148,10 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     const fromDefault = day < start ? start : day;
     const rate = walkinNightPrice(o.rates as never, String(o.reservation.event_type), fromDefault);
     const name = el('input', { id: 'walkName', type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
+    // lo mínimo para SES desde el alta (hueco 10 del inventario): apellido, contacto y si es menor; lo demás, en Huéspedes
+    const surname = el('input', { id: 'walkSurname', type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
+    const contact = el('input', { id: 'walkContact', type: 'text', maxlength: 320, autocomplete: 'off', inputmode: 'email', placeholder: 'Teléfono o correo' }) as HTMLInputElement;
+    const minor = el('input', { id: 'walkMinor', type: 'checkbox' }) as HTMLInputElement;
     const from = el('input', { id: 'walkFrom', type: 'date', value: fromDefault }) as HTMLInputElement;
     const nights = el('input', { id: 'walkNights', type: 'number', min: 1, max: 60, step: 1, value: '1', inputmode: 'numeric' }) as HTMLInputElement;
     const bed = el('select', { id: 'walkBed' }) as HTMLSelectElement;
@@ -177,7 +182,7 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       const guestId = crypto.randomUUID(); const assignmentId = crypto.randomUUID(); const chargeId = crypto.randomUUID();
       const method = pay.value || null;
       const ops: RowOperation[] = [
-        { op: 'insert', table: GUESTS, id: guestId, fields: { event_id: o.event.id, first_name: name.value.trim() } },
+        { op: 'insert', table: GUESTS, id: guestId, fields: { event_id: o.event.id, first_name: name.value.trim(), ...guestExtras() } },
         { op: 'insert', table: ASSIGNMENTS, id: assignmentId, fields: { event_id: o.event.id, space_id: chosen.space_id, bed_id: chosen.id, guest_id: guestId, persons: 1, from_date: from.value, to_date: to.toISOString().slice(0, 10) } },
         { op: 'insert', table: WALKINS, id: chargeId, fields: { event_id: o.event.id, assignment_id: assignmentId, guest_id: guestId, nights: n, price_cents: cents(), amount_cents: n * cents(), ...(method ? { method, paid_at: new Date().toISOString() } : {}) } },
       ];
@@ -193,11 +198,22 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       } catch (e) { show(describeError(e)); save.disabled = false; }
     }
     function show(text: string): void { error.hidden = false; error.textContent = text; }
+    /** Apellido, teléfono o correo (según lleve @) y menor, solo si se han puesto. */
+    function guestExtras(): Record<string, unknown> {
+      const c = contact.value.trim();
+      return {
+        ...(surname.value.trim() ? { last_name_1: surname.value.trim() } : {}),
+        ...(c ? (c.includes('@') ? { email: c.slice(0, 320) } : { phone: c.slice(0, 40) }) : {}),
+        ...(minor.checked ? { is_minor: true } : {}),
+      };
+    }
     const field = (text: string, control: HTMLElement, key: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reserva.alacarta.${key}`, 'data-feedback-label': text }, el('span', null, text), control);
     const sheet: Sheet = openSheet({
       title: 'Alojar a alguien',
       body: el('form', { 'data-feedback-id': 'booking.reserva.alacarta.hoja', 'data-feedback-label': 'Alojar a alguien', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
-        el('div', { class: 'rowform' }, field('Nombre', name, 'nombre'), field('Desde', from, 'desde'), field('Noches', nights, 'noches'), field('Cama', bed, 'cama'),
+        el('div', { class: 'rowform' }, field('Nombre', name, 'nombre'), field('Primer apellido', surname, 'apellido'), field('Teléfono o correo', contact, 'contacto'),
+          el('label', { class: 'field check', 'data-feedback-id': 'booking.reserva.alacarta.menor', 'data-feedback-label': 'Menor de edad' }, minor, el('span', null, 'Menor de edad')),
+          field('Desde', from, 'desde'), field('Noches', nights, 'noches'), field('Cama', bed, 'cama'),
           field('Precio por noche (€)', price, 'precio'), total, field('Cobro', pay, 'cobro'), error)),
       foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
       initialFocus: name,
@@ -221,6 +237,111 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: pay });
   }
 
+  /** Guarda un cambio del cobro y, si ya estaba en Finance, lo reenvía (el reenvío sustituye el apunte; 1403). */
+  async function saveCharge(charge: Row, fields: Record<string, unknown>, sheet: Sheet, button: HTMLButtonElement): Promise<void> {
+    button.disabled = true;
+    try {
+      const { requestId } = await o.client.commit([{ op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields }]);
+      const rejected = navigator.onLine ? await settleBatch(o.client, requestId) : null;
+      if (rejected) { toast(describeError(rejected.error)); button.disabled = false; return; }
+      await sheet.close(true);
+      const fresh = ((await o.client.list(WALKINS)) as Row[]).find((c) => c.id === charge.id);
+      if (fresh?.paid_at && !fresh.finance_sent_at && navigator.onLine && o.client.status().pendingCommands === 0) await sendWalkinToFinance(o.client, fresh);
+    } catch (e) { toast(describeError(e)); button.disabled = false; }
+  }
+
+  /** Ajustar noches o precio por noche: el importe vuelve a ser noches × precio. */
+  function adjust(charge: Row): void {
+    const nights = el('input', { id: 'adjustNights', type: 'number', min: 1, max: 60, step: 1, value: String(charge.nights), inputmode: 'numeric' }) as HTMLInputElement;
+    const price = el('input', { id: 'adjustPrice', type: 'number', min: 0, step: '0.01', value: (Number(charge.price_cents) / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
+    const ok = el('button', { class: 'primary', type: 'button', id: 'adjustSave', onclick: () => {
+      const n = Math.round(Number(nights.value)); const cents = Math.round(Number(price.value) * 100);
+      if (!Number.isInteger(n) || n < 1 || n > 60 || !Number.isFinite(cents) || cents < 0) return void toast('Revisa las noches y el precio.');
+      if (n * cents < Number(charge.refund_cents ?? 0)) return void toast('El importe no puede quedar por debajo de lo devuelto.');
+      void saveCharge(charge, { nights: n, price_cents: cents, amount_cents: n * cents }, sheet, ok);
+    } }, 'Guardar el ajuste') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({ title: 'Ajustar el cobro', body: el('div', null,
+      el('label', { class: 'field' }, el('span', null, 'Noches'), nights), el('label', { class: 'field' }, el('span', null, 'Precio por noche (€)'), price),
+      charge.finance_sent_at ? el('p', { class: 'hint' }, 'Ya está en Finance: al guardar se reenvía y sustituye el apunte.') : null),
+      foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: nights });
+  }
+
+  /** Devolver parte o todo lo cobrado: un solo apunte en Finance por lo cobrado menos lo devuelto. */
+  function refund(charge: Row): void {
+    const max = Number(charge.amount_cents);
+    const amount = el('input', { id: 'refundAmount', type: 'number', min: 0, step: '0.01', value: (Number(charge.refund_cents ?? 0) / 100 || max / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
+    const method = el('select', { id: 'refundMethod' }, WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
+    method.value = charge.refund_method ?? charge.method ?? 'cash';
+    const ok = el('button', { class: 'primary', type: 'button', id: 'refundSave', onclick: () => {
+      const cents = Math.round(Number(amount.value) * 100);
+      if (!Number.isFinite(cents) || cents < 0 || cents > max) return void toast(`La devolución va de 0 a ${euros(max)}.`);
+      // cobrado en línea (1414): la devolución la hace la pasarela; después se anota en el cobro
+      if (charge.method === 'online' && cents > Number(charge.refund_cents ?? 0)) {
+        ok.disabled = true;
+        void o.client.api(`/walkins/${encodeURIComponent(charge.id)}/refund/online`, { method: 'POST', json: { cents: cents - Number(charge.refund_cents ?? 0) } })
+          .then(() => saveCharge(charge, { refund_cents: cents, refund_method: 'online', refunded_at: new Date().toISOString() }, sheet, ok))
+          .catch((e) => { toast(describeError(e)); ok.disabled = false; });
+        return;
+      }
+      void saveCharge(charge, cents === 0 ? { refund_cents: 0, refund_method: null, refunded_at: null } : { refund_cents: cents, refund_method: method.value, refunded_at: new Date().toISOString() }, sheet, ok);
+    } }, 'Guardar la devolución') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({ title: 'Devolver', body: el('div', null,
+      el('label', { class: 'field' }, el('span', null, `Importe devuelto (de ${euros(max)})`), amount), el('label', { class: 'field' }, el('span', null, 'Cómo se devuelve'), method),
+      el('p', { class: 'hint' }, 'Con 0 se quita la devolución. En Finance queda un solo apunte por lo cobrado menos lo devuelto.')),
+      foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: amount });
+  }
+
+  /**
+   * Ampliar (o acortar) noches y cambiar de cama a quien ya está alojado (aceptación C del traspaso): la asignación y su cobro
+   * van en un lote. El servidor vuelve a comprobar que la cama está libre en todo el intervalo (`BED_OVERBOOKED`, `BED_HELD`).
+   * Si el cobro ya estaba en Finance, queda por reenviar (1403) y se reenvía.
+   */
+  function extend(charge: Row): void {
+    const a = assignmentOf.get(charge.assignment_id);
+    if (!a) return;
+    const from = String(a.from_date ?? o.reservation.start_date).slice(0, 10);
+    const until = String(o.reservation.end_date).slice(0, 10);
+    const maxNights = Math.max(1, dayNumber(until)! - dayNumber(from)!);
+    const nightsNow = Number(charge.nights) || 1;
+    const nights = el('input', { id: 'extendNights', type: 'number', min: 1, max: maxNights, step: 1, value: String(nightsNow), inputmode: 'numeric' }) as HTMLInputElement;
+    const bed = el('select', { id: 'extendBed' }) as HTMLSelectElement;
+    const note = el('p', { class: 'hint', id: 'extendNote' });
+    const fill = () => {
+      const n = Math.min(Math.max(Math.round(Number(nights.value)) || 1, 1), maxNights);
+      const free = freeBeds(from, n, a.id);
+      replace(bed, free.map((b) => el('option', { value: b.id }, `${b.label}${b.id === a.bed_id ? ' (la de ahora)' : ''}`)));
+      if (free.some((b) => b.id === a.bed_id)) bed.value = a.bed_id;
+      note.textContent = free.length ? `Salida el ${shortDay(new Date((dayNumber(from)! + n) * 86_400_000).toISOString().slice(0, 10))} · ${euros(n * Number(charge.price_cents))}`
+        : 'No queda ninguna cama libre todas esas noches.';
+      ok.disabled = !free.length;
+    };
+    nights.addEventListener('input', fill);
+    const ok = el('button', { class: 'primary', type: 'button', id: 'extendSave', onclick: async () => {
+      const n = Math.min(Math.max(Math.round(Number(nights.value)) || 1, 1), maxNights);
+      const target = o.data.beds.find((b) => b.id === bed.value);
+      if (!target) return;
+      ok.disabled = true;
+      try {
+        const to = new Date((dayNumber(from)! + n) * 86_400_000).toISOString().slice(0, 10);
+        const { requestId } = await o.client.commit([
+          { op: 'update', table: ASSIGNMENTS, id: a.id, expectedRevision: a.revision, fields: { to_date: to, bed_id: target.id, space_id: target.space_id } },
+          { op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields: { nights: n, amount_cents: n * Number(charge.price_cents) } },
+        ]);
+        const rejected = navigator.onLine ? await settleBatch(o.client, requestId) : null;
+        if (rejected) { toast(describeError(rejected.error)); ok.disabled = false; return; }
+        await sheet.close(true);
+        toast(n > nightsNow ? `Ampliado a ${plural(n, 'noche', 'noches')}.` : 'Estancia cambiada.');
+        const fresh = ((await o.client.list(WALKINS)) as Row[]).find((c) => c.id === charge.id);
+        if (fresh?.paid_at && !fresh.finance_sent_at && navigator.onLine && o.client.status().pendingCommands === 0) await sendWalkinToFinance(o.client, fresh);
+      } catch (e) { toast(describeError(e)); ok.disabled = false; }
+    } }, 'Guardar') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({ title: 'Ampliar o cambiar la estancia', body: el('div', null,
+      el('label', { class: 'field' }, el('span', null, `Noches desde el ${shortDay(from)}`), nights), el('label', { class: 'field' }, el('span', null, 'Cama'), bed), note,
+      charge.paid_at ? el('p', { class: 'hint' }, 'Ya está cobrado: la diferencia se cobra o se devuelve aparte con «Ajustar…» o «Devolver…».') : null),
+      foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: nights });
+    fill();
+  }
+
   const chargeRow = (c: Row) => {
     const a = assignmentOf.get(c.assignment_id);
     const state = !c.paid_at ? el('span', { class: 'chip warn' }, 'Pendiente')
@@ -229,8 +350,13 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     return el('li', { class: 'row', dataset: { charge: c.id }, 'data-feedback-ignore': '' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, guestName(guestOf.get(c.guest_id) ?? {} as Row)), el('span', { class: 'chip' }, euros(c.amount_cents)), state),
       el('div', { class: 'row-meta' }, `${plural(Number(c.nights), 'noche', 'noches')} × ${euros(c.price_cents)}${a ? ` · ${bedOf.get(a.bed_id)?.label ?? 'Sin cama'}` : ''}${c.finance_error && !c.finance_sent_at ? ` · ${c.finance_error}` : ''}`),
+      Number(c.refund_cents) > 0 ? el('div', { class: 'row-meta' }, `Devuelto ${euros(c.refund_cents)} (${WALKIN_METHOD_LABELS[c.refund_method as keyof typeof WALKIN_METHOD_LABELS] ?? c.refund_method})`) : null,
+      o.editable ? el('div', { class: 'row-actions' },
+        el('button', { class: 'ghost small', type: 'button', 'data-action': 'extend', 'data-feedback-id': 'booking.reserva.alacarta.ampliar', 'data-feedback-label': 'Ampliar o cambiar', onclick: () => extend(c) }, 'Ampliar…'),
+        el('button', { class: 'ghost small', type: 'button', 'data-action': 'adjust', 'data-feedback-id': 'booking.reserva.alacarta.ajustar', 'data-feedback-label': 'Ajustar cobro', onclick: () => adjust(c) }, 'Ajustar…'),
+        c.paid_at ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'refund', 'data-feedback-id': 'booking.reserva.alacarta.devolver', 'data-feedback-label': 'Devolver', onclick: () => refund(c) }, 'Devolver…') : null) : null,
       o.editable && !c.paid_at ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-action': 'collect', onclick: () => collect(c) }, 'Cobrar…')) : null,
-      o.editable && c.paid_at && !c.finance_sent_at ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-action': 'send', onclick: () => void sendWalkinToFinance(o.client, c) }, 'Enviar a Finance')) : null);
+      o.editable && c.paid_at && !c.finance_sent_at ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-action': 'send', onclick: () => void sendWalkinToFinance(o.client, c) }, c.finance_entry_id ? 'Reenviar a Finance' : 'Enviar a Finance')) : null);
   };
 
   return el('article', { class: 'card', id: 'blockWalkIn', 'data-feedback-id': 'booking.reserva.alacarta', 'data-feedback-label': 'Alojamiento a la carta' },

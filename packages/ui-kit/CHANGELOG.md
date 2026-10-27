@@ -1,5 +1,77 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.5 · 27 de octubre de 2026
+
+**`testing/mobile-audit.ts`: la revisión móvil en las pruebas de cada app.** Es la herramienta de la revisión a 390 px del 27-10, ahora como ayuda común, igual que `testing/feedback-smoke.ts`. No toca nada: mide la pantalla que se ve.
+
+- `mobileAudit(page, { kinds?, ignore?, minTarget? })` devuelve una lista de hallazgos `{ kind, sel, text, detail }`. Tipos:
+  - `desborde` (fuera de los contenedores con scroll propio);
+  - `toque` (menos de 44 px; las casillas cuentan con su etiqueta, y los enlaces dentro de un párrafo no cuentan);
+  - `cortado`;
+  - `contraste`: WCAG AA en oscuro; cambia a oscuro y vuelve a claro.
+- `formatFindings(found)` da una línea por hallazgo para el mensaje de `expect`.
+- Ya trae los arreglos de la revisión:
+  - el desborde se mide contra el ancho de la pantalla (`screen.width`): con emulación de móvil, Chrome aleja la página que desborda y agranda `innerWidth`, y antes no se veía;
+  - colores `color(srgb …)` leídos bien;
+  - lo escondido para el lector (`.vh`, cajas de 1 px) no cuenta como cortado ni como toque.
+- Uso: `expect(await mobileAudit(page, { kinds: ['desborde', 'toque'] }), …).toEqual([])` en el humo de la app.
+- Pruebas: `tests/v77.spec.ts`.
+
+## 0.69.6 · 27 de octubre de 2026
+
+**K24: «Sincronizado» del menú común a 44 px con el dedo** (`equipo/Revisor/KIT_PETICIONES.md`, abierta por Core el 27-10).
+
+- `.appmenu-sync` (la línea de sincronización bajo el perfil) medía 24 px de alto. En pantallas táctiles pasa a 44 px, igual que el resto de 0.69.2. Con ratón no cambia.
+- El conmutador «Señalar para comentar» del lanzador ya cumplía: es un interruptor dentro de una etiqueta entera, y se toca la etiqueta.
+- Pruebas: `tests/v78.spec.ts`.
+
+## 0.69.4 · 27 de octubre de 2026
+
+**La cáscara se aprieta sola en el móvil** (revisión a 390 px, `MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`).
+
+- **Título:** si «Ikisai {app}» no cabe junto a las herramientas, «Ikisai» se esconde a la vista, no al lector, y queda el nombre de la app. Guests («Ikisai Guests · Ana») se cortaba; en Organizers ayuda, aunque su conmutador ES/EN sigue comiendo ancho.
+- **Barra de abajo:** `NavItem.short` es el nombre corto («Cobro» por «Pedido y cobro»).
+  - Solo se usa si los nombres enteros no caben, como en las seis secciones de Flow a 390 px.
+  - El lector sigue diciendo el nombre entero.
+  - Sin `short`, la barra se queda como estaba.
+- Lo mide la propia cáscara al pintar y cuando cambia el ancho (`ResizeObserver`). El texto del título no cambia.
+- Pruebas: `tests/v76.spec.ts`.
+
+## 0.69.2 · 27 de octubre de 2026
+
+**Con el dedo, nada por debajo de 44 px.** Sale de la revisión móvil a 390 px (`MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`). Lo que más se repetía en las apps eran controles de 36 px.
+
+- En pantallas táctiles (`@media (pointer: coarse)`), `--tap-sm` pasa de 36 a 44 px. Eso sube `.small`, `.iconbtn.small` y los controles `.compact` (p. ej. los `select` de filtros). Con ratón, nada cambia.
+- `.tabpill`, `.linkbtn`, `.pl-tabs button` y `.space-quick-chip` pasan a 44 px de alto, y `.tabtool` a 44 × 44 px, en pantallas táctiles.
+- «¿Sin red?» del inicio de sesión (`.login summary`, en todas las apps) pasa de 28 a 44 px de alto en pantallas táctiles.
+- Arregla sin tocar las apps los toques señalados en Booking (calendario), Central (Inicio, Cumplimiento, Inventario), Finance (Facturas, Compras) y Food (filtros del Recetario).
+
+## 0.69.1 · 27 de octubre de 2026
+
+**«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
+
+- **Carriles:** `createLanes` agrupados por persona, oficio o espacio con `groupLanes`.
+- **Contenido de cada carril:** un `createProjection` del Plan de hoy de Tasks (`tasks.review_projection`) con «Hecha» (`tasks.complete`) como acción.
+- **Guiado:** el título de cada tarjeta abre la tarea en Tasks con el Guiado (`withGuideLink`, `?guia=`) y «Volver a Trabajos de hoy».
+- **Cliente:** es de mentira; las capacidades de Tasks están pendientes.
+- Sin cambios en la API del kit. Pruebas: `tests/v74.spec.ts`, a 390 px y en escritorio.
+
+## 0.69.0 · 27 de octubre de 2026
+
+**Proyección** (`createProjection`, `src/pieces/projection.ts`; encargo de Core, diseño en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Es un carril que pinta las filas leídas de otra app y tiene una acción por fila que invoca una capacidad del catálogo. Con ella, «Trabajos de hoy», «Recepción» o «Avance por aplicaciones» son composiciones. No copia datos.
+
+- **Lectura:** `read` es una capacidad invocada con el cliente de la app y el token de la persona, y `rows(result)` la convierte en filas `{ id, title, meta, chip, href, data }`.
+  - Se vuelve a leer cada `refreshMs`, al volver a la pestaña, al recuperar la red y tras cada acción.
+  - Las filas se validan (ids, títulos) y los enlaces solo pueden ser internos o de `*.ikisai.com`.
+- **Acción por fila** (`action: { label, capability, input, when?, confirm? }`):
+  - es idempotente (`requestId` estable por fila y acción) y dice «Haciendo…» mientras dura;
+  - **no se marca como hecha en local**: se vuelve a leer y manda la app dueña;
+  - los errores se dicen en palabras («Tu cuenta no puede hacer esto en Booking», «Booking no responde ahora mismo»);
+  - `confirm` pregunta antes.
+- **Sin red:** la última lectura, con «Sin conexión: puede no estar al día» y sin acciones.
+- `onCount(n)` es para el recuento del carril (`createLanes` / `groupLanes`).
+- Demo: «Proyección (Recepción, leyendo de Booking)». Pruebas: `tests/v73.spec.ts`.
+
 ## 0.68.0 · 27 de octubre de 2026
 
 **Guiado, tanda 3: el shell monta la guía leyendo la ejecución de Flow.** Contrato aprobado por Core el 27-10; la parte de Flow está pendiente.

@@ -6,7 +6,7 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { i18n, t } from '../app/i18n.ts';
 import { install } from '../app/install.ts';
-import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, replace, type AppMenuSection, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, registerReveal, replace, type AppMenuSection, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
 import { createPortalApi, type PortalApi, type PortalReservation } from '../app/api.ts';
 import { describeError } from '../app/client.ts';
 import { dateRange, isCancelled } from '../app/labels.ts';
@@ -98,6 +98,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         })),
       });
     }
+    // Idioma (revisión móvil del 27-10): en el móvil el selector ES | EN de la cabecera dejaba el título en «Ikis…», así que
+    // ahí se elige desde el menú; en pantallas anchas sigue también en la cabecera.
+    const LANGS: Record<string, string> = { es: 'Español', en: 'English' };
+    out.push({
+      key: 'idioma', label: t('Idioma'), icon: 'settings', summary: LANGS[i18n.locale()] ?? i18n.locale(),
+      rows: i18n.supported().map((locale) => ({
+        label: LANGS[locale] ?? locale, sub: locale === i18n.locale() ? t('En uso') : null,
+        onClick: () => i18n.setLocale(locale), feedbackId: 'organizers.menu.idioma.elegir',
+      })),
+    });
     const active = menuRetreats.filter((r) => !isCancelled(r.status));
     out.push({
       key: 'retiros', label: t('Mis retiros'), icon: 'calendar',
@@ -112,7 +122,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const shell = createAppShell(root, {
     appName: 'Organizers',
     markIcon: 'organizer',
-    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } })],
+    tools: [el('div', { class: 'orglang-head' }, createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } }))],
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
     navigate,
@@ -129,6 +139,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       feedbackId: 'organizers.menu',
     },
     returnTo: { feedbackId: 'organizers.cabecera.volver_app' },
+    // Guiado mínimo del kit (0.68): con `?campo=` señala el campo y con `?paso=` explica el paso y ofrece «Volver a…». Sin
+    // `client`, no lee nada de Flow.
+    guide: { feedbackId: 'organizers.guia' },
   });
   const logoutButton = shell.header.querySelector<HTMLElement>('#logoutButton');
   if (logoutButton) fbMark(logoutButton, 'organizers.cabecera.cerrar_sesion', 'Cerrar sesión');
@@ -167,7 +180,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   /** `force`: volver a montar aunque solo cambie el apartado de la Experiencia. */
   function route(force = false): void {
-    const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
+    // Lo que va tras «?» (la vuelta de la pasarela, `?pago=ok`) no es parte de la ruta: lo lee y lo limpia la pantalla.
+    const hash = (location.hash && location.hash !== '#' ? location.hash : '#/').split('?')[0]!;
     const guest = hash.match(GUEST);
     let retreat = hash.match(RETREAT);
     // Un apartado solo vale tras «experiencia» (`/asistentes/programa` no es una ruta): va a Mis retiros.
@@ -216,6 +230,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     window.scrollTo({ top: 0 });
   }
 
+  // Guiado: un campo de otra pestaña de la ficha del retiro abierto se enseña cambiando a esa pestaña (por la raíz de su id).
+  // (Raíz → pestaña; el prefijo se arma con `join` para que no cuente como un id de feedback.)
+  const TAB_OF: Record<string, string> = {
+    'retiro.resumen': 'resumen', fechas: 'fechas', diseno: 'diseno', propuesta: 'propuesta', pagos: 'pagos',
+    experiencia: 'experiencia', programa: 'experiencia', alojamiento: 'experiencia', ofertas: 'ofertas', asistentes: 'asistentes', cocina: 'cocina',
+  };
+  const offReveals = Object.entries(TAB_OF).map(([root, tab]) => registerReveal(['organizers', root].join('.'), () => {
+    if (!menuRetreat) return;
+    navigate(tab === 'resumen' ? `#/retiro/${menuRetreat.id}` : `#/retiro/${menuRetreat.id}/${tab}`);
+  }));
+
   const offStatus = client.onStatus(() => {
     if (!client.session()) ctx.onLogout();
   });
@@ -224,6 +249,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   route();
 
   return () => {
+    for (const off of offReveals) off();
     offStatus();
     offSessionEnd();
     usage.destroy();

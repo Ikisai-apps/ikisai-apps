@@ -65,7 +65,8 @@ async function writeChildren(internal: ReturnType<typeof createSync>, ctx: Param
  *   prueba (Core avisa a Flow y Food); mientras, se aceptan como hasta ahora.
  */
 export const APP_SOURCES: ReadonlySet<string> = new Set(['flow', 'food']);
-export const APP_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>([]);
+// Flow (#870) y Food (#862) mandan la prueba en producción desde el 27-10-2026 (lo comprobó Core Ops): ya es obligatoria.
+export const APP_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>(['flow', 'food']);
 
 function sameSecret(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -94,6 +95,8 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
   return [{
     method: 'POST', pattern: 'requests/task', handler: async ({ ctx, json, request }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir tareas necesita permiso de edición en Tasks.');
+      // Los agentes crean tareas por `commands`, con su revisión de riesgo; esta ruta es para otras apps (autoauditoría 27-10).
+      if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente crea tareas por commands.');
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
       const text = (field: string, max: number, required = false): string | undefined => {
@@ -187,6 +190,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
      */
     method: 'POST', pattern: 'requests/purchase', handler: async ({ ctx, json, request }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir compras necesita permiso de edición en Tasks.');
+      if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente pide compras por commands.');
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
       const text = (field: string, max: number, required = false): string | undefined => {

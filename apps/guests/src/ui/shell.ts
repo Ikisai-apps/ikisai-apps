@@ -120,6 +120,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let menuSections: AppMenuSection[] = [];
   const shell = createAppShell(root, {
     appName: 'Guests',
+    // Guiado mínimo (kit 0.69.3): con `?campo=` señala el campo y con `?paso=` explica y pone «Volver a…». Sin `client`: no
+    // lee nada de Flow. Los desplegables cerrados («Ver en el plano»…) los abre el kit al buscar el anclaje.
+    guide: { feedbackId: 'guests.cabecera.guia' },
     markIcon: 'guest',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],

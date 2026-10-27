@@ -476,6 +476,8 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       const queue = guests.filter((g) => g.data_status === 'datos_revisados' && g.ses_status === 'listo_para_envio');
       const reviewed = guests.filter((g) => g.data_status === 'datos_revisados' && g.ses_status === 'pendiente_envio');
       const completenessChips = (g: Row): Child[] => {
+        // visitante solo de jornada (1404): no duerme, no va a SES y no se le pide el documento
+        if (g.ses_status === 'no_aplica' && g.data_status === 'no_aplica') return [el('span', { class: 'chip', dataset: { chip: 'day-only' } }, 'Sin pernocta · sin SES')];
         const c = guestCompleteness(g as GuestLike, mode);
         return [c.complete
           ? el('span', { class: 'chip ok', dataset: { chip: 'complete' } }, 'Completo')

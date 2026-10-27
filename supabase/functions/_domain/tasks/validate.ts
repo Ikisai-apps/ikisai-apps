@@ -307,7 +307,7 @@ const RULES: Record<TableName, TableRules> = {
     fields: {
       kind: requestKind, kind_label: nullable(text(1, 100, 'INVALID_FIELDS', 'El nombre del tipo va de 1 a 100 caracteres.')),
       tab_id: uuid(), project_id: nullable(uuid()), owner_label_id: nullable(uuid('INVALID_OWNER')), position,
-      ...ownerPeople,
+      ...ownerPeople, trade_id: nullable(uuid('INVALID_TRADE')),
     },
     required: ['kind', 'tab_id'],
   },

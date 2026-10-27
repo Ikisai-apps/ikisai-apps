@@ -96,14 +96,23 @@ export async function forgetVisitorEmail(supabase: Supabase, request: Request): 
 /** B · lo que el visitante sabe de sí mismo; el correo solo como pista. */
 export async function visitorMe(supabase: Supabase, request: Request): Promise<Record<string, unknown>> {
   const visitor = await requireVisitor(supabase, request);
-  const me = await supabase.rpc<{ visitorId: string; emailSaved: boolean; authUserId: string | null; devices: number; guestIds: string[] } | null>('core_visitor_me', { p_visitor: visitor.id });
+  const me = await supabase.rpc<{ visitorId: string; emailSaved: boolean; authUserId: string | null; devices: number; guestIds: string[]; eventCodes?: string[] } | null>('core_visitor_me', { p_visitor: visitor.id });
   if (!me) fail(401, 'VISITOR_INVALID', messageFor('VISITOR_INVALID'));
   let hint: string | null = null;
   if (me.authUserId) {
     const account = await supabase.remote('/auth/v1/admin/users/' + me.authUserId, { service: true }).catch(() => null);
     hint = emailHint(typeof account?.email === 'string' ? account.email : null);
   }
-  return { visitorId: me.visitorId, emailSaved: me.emailSaved, emailHint: hint, devices: me.devices, guestIds: me.guestIds ?? [] };
+  return { visitorId: me.visitorId, emailSaved: me.emailSaved, emailHint: hint, devices: me.devices, guestIds: me.guestIds ?? [], eventCodes: me.eventCodes ?? [] };
+}
+
+/** B · «He estado en este evento»: Guests lo anota al entrar en un evento, y «Mis eventos» se rehace en otro móvil desde `me`. */
+export async function visitorVisit(supabase: Supabase, request: Request, body: unknown): Promise<{ ok: true }> {
+  const visitor = await requireVisitor(supabase, request);
+  const code = typeof (body as any)?.eventCode === 'string' ? (body as any).eventCode : '';
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(code)) fail(422, 'INVALID_OPERATION', 'eventCode inválido.');
+  await supabase.rpc('core_visitor_visit', { p_visitor: visitor.id, p_event_code: code });
+  return { ok: true };
 }
 
 /**

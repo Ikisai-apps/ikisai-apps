@@ -284,7 +284,9 @@ export const mountAppEntries: ViewMount = (ctx) => {
 
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Ingresos y gastos de apps'),
-      el('p', null, 'Lo que mandan otras apps, como las ventas de la barra de Flow. Todo es real: va al IVA y a la entrega a la gestoría.'))),
+      el('p', null, 'Lo que mandan otras apps, como las ventas de la barra de Flow. Todo es real: va al IVA y a la entrega a la gestoría.')),
+      el('button', { type: 'button', class: 'ghost', id: 'toCashCount', 'data-feedback-id': 'invoices.apuntes.arqueo', 'data-feedback-label': 'Arqueo del día',
+        onclick: () => navigate('#/arqueo') }, icon('euro', 18), 'Arqueo del día')),
     stats, eventsHost, listHost);
 
   function row(entry: LocalAppEntry, d: Data): HTMLLIElement {

@@ -13,7 +13,12 @@ export interface TargetChoice {
   archived: boolean;
   /** Último día del evento de Booking (tanda 27); null o ausente en los demás destinos. */
   ends_on?: string | null;
+  /** Solicitud de compra: la tienda, si Tasks la da. */
+  supplier?: string | null;
 }
+
+/** Propuesta de la solicitud de compra del mismo proveedor (sin dependencias, se prueba con node). */
+export { proposePurchaseRequest } from './purchase-match.ts';
 
 /** Regla de destino abierto del dominio (tanda 27). */
 export { targetOpenFor } from '@ikisai/domain-invoices';

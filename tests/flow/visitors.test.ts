@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { seedBookingGuests } from './booking-event.ts';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
@@ -17,13 +18,14 @@ let app: TestApp;
 let seq = 0;
 let code = '';
 let internalCode = '';
+let event = '';
 let visitor = '';
 
 test.before(async () => {
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }) });
   await app.t.db.exec(`set flow.portal_key = '${KEY}'`);
   // Un evento de Booking sintético, ligado a la barra v1 (que atiende la carta).
-  const reservation = uuid(); const event = uuid();
+  const reservation = uuid(); event = uuid();
   await app.t.db.query(`insert into booking.reservations (id, title, status, start_date, end_date, expected_guests, requires_meals, meal_plan_requested, menu_style_requested)
     values ($1, 'Encuentro de prueba', 'confirmada', '2026-10-30', '2026-11-01', 20, true, 'pension_completa', 'vegetariano')`, [reservation]);
   await app.t.db.query(`insert into booking.events (id, reservation_id) values ($1, $2)`, [event, reservation]);
@@ -101,6 +103,7 @@ test('visitantes · el lote público no crea clientes de otro visitante ni cambi
 
 test('visitantes · el enlace de huésped también es de un solo uso (portal_customer)', async () => {
   const guest = uuid(); const reservation = uuid();
+  await seedBookingGuests(app.t.db, event, [guest]); // FL12: huésped del evento
   await ok([call(PROCEDURES.assignGuestNumbers, { project_id: V1, guests: [{ guest_id: guest, display_name: 'Ana P.' }] })]);
   await app.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('guests', $1, 'editor', $2::jsonb)`,
     [app.users.reader, JSON.stringify({ grants: [{ reservation_id: reservation, guest_id: guest }] })]);
@@ -114,6 +117,7 @@ test('visitantes · el enlace de huésped también es de un solo uso (portal_cus
 
 test('visitantes · FL10: un enlace de tres partes (de antes de la 0915), aunque esté bien firmado y en plazo, no vale', async () => {
   const guest = uuid();
+  await seedBookingGuests(app.t.db, event, [guest]); // FL12: huésped del evento
   const out = await ok([call(PROCEDURES.assignGuestNumbers, { project_id: V1, guests: [{ guest_id: guest, display_name: 'Luis E.' }] })]);
   const customer = (await app.t.db.query<{ id: string }>(`select id from flow.customers where guest_id = $1`, [guest])).rows[0]!.id;
   assert.ok(out);

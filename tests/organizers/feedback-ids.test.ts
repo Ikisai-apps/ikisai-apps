@@ -14,7 +14,9 @@ const SRC = path.resolve(here, '../../apps/organizers/src');
 const PATTERN = /^organizers(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `organizers.…` que no son ids de feedback: claves de los textos comunes de Central. */
-const NOT_IDS = new Set(['organizers.declaration', 'organizers.dates_note', 'organizers.quote_note', 'organizers.proposal_note']);
+// Textos comunes de Central y tablas de Organizers (la `entity` de los campos del inventario, P15): no son ids de pantalla.
+const NOT_IDS = new Set(['organizers.declaration', 'organizers.dates_note', 'organizers.quote_note', 'organizers.proposal_note',
+  'organizers.experiences', 'organizers.materials', 'organizers.questions', 'organizers.answers', 'organizers.offers']);
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -61,7 +63,7 @@ test('organizers · cada data-feedback-id escrito en un el(...) lleva su data-fe
 
 test('organizers · la raíz de cada id es una pantalla conocida', () => {
   const roots = new Set(collect().map((f) => f.id.split('.')[1]));
-  const allowed = new Set(['entrada', 'retiros', 'retiro', 'fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'programa', 'menu', 'alojamiento', 'ofertas', 'asistentes', 'asistente', 'cocina', 'ayuda', 'acceso', 'cabecera', 'comun']);
+  const allowed = new Set(['entrada', 'retiros', 'retiro', 'fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'programa', 'menu', 'alojamiento', 'ofertas', 'asistentes', 'asistente', 'cocina', 'ayuda', 'acceso', 'cabecera', 'comun', 'guia']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 

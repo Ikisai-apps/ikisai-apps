@@ -57,6 +57,27 @@ test('organizers · enlace no válido: pantalla clara, sin sesión @smoke', asyn
   await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
 });
 
+test('organizers · sin el enlace, entra con un código por correo (0108) @smoke', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con código', confirm: true });
+  await api.organizerLink([reservation], 'codigo@example.invalid', 'Clara');
+  await page.goto(`${baseURL}/`);
+  const form = page.locator('#emailCode');
+  await expect(form).toContainText('¿No tienes el enlace a mano?');
+  await page.locator('#codeEmail').fill('codigo@example.invalid');
+  await page.locator('#codeSend').click();
+  await expect(page.locator('#codeStep')).toBeVisible();
+  await expect(page.locator('#codeSend')).toHaveText('Enviar otro código');
+  const mail = api.booking.supabase.lastEmailCode();
+  expect(mail?.email).toBe('codigo@example.invalid');
+  // Equivocado: aviso y se sigue en la entrada.
+  await page.locator('#codeInput').fill(mail!.code === '000000' ? '111111' : '000000');
+  await page.locator('#codeEnter').click();
+  await expect(page.locator('.toast.show')).toContainText('El código no es correcto o ha caducado');
+  await page.locator('#codeInput').fill(mail!.code);
+  await page.locator('#codeEnter').click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro con código');
+});
+
 test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, recordatorio y baja', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const reservation = await api.reservation({ title: 'Retiro de primavera', confirm: true });
@@ -295,13 +316,21 @@ test('organizers · en inglés: navegador en inglés, selector ES | EN y textos 
   await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
   await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Sign out');
 
-  // Cambio manual a español: se repinta y se recuerda en el dispositivo.
-  await page.locator('#langSelect [data-locale="es"]').click();
+  // Cambio manual a español: se repinta y se recuerda en el dispositivo. En el móvil (390 px) el selector de la cabecera
+  // no se ve, para que quepa el título: el idioma se elige en el menú.
+  await expect(page.locator('#langSelect')).toBeHidden();
+  const chooseLanguage = async (tile: string, name: string) => {
+    await page.locator('#appLauncher').click();
+    const drawer = page.locator('.appmenu-drawer');
+    await drawer.locator('.appmenu-tile', { hasText: tile }).click();
+    await drawer.getByRole('link', { name }).click();
+  };
+  await chooseLanguage('Language', 'Español');
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
   await expect(page.locator('#tab-asistentes')).toHaveText('Asistentes');
   await page.reload();
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
-  await page.locator('#langSelect [data-locale="en"]').click();
+  await chooseLanguage('Idioma', 'English');
   await page.locator('#tab-asistentes').click();
   await page.locator('#addGuest').click();
   await expect(page.locator('#declarationText')).toContainText('this information with the knowledge of my attendees');

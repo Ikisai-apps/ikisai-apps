@@ -36,7 +36,7 @@ export function routeFor(data: Dataset, kind: string): RequestRouteRow | null {
  * «Mover a…»: crea la tarea de una petición pendiente en un proyecto (con las etiquetas del proyecto, como al crear una
  * tarea en la app) y marca la petición como enrutada. La tarea conserva el origen: referencia, tipo y enlace.
  */
-export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { project_id: Uuid; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null }, how: 'manual' | 'rule' = 'manual', newId: NewId = randomId): Operation[] {
+export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { project_id: Uuid; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null; trade_id?: Uuid | null }, how: 'manual' | 'rule' = 'manual', newId: NewId = randomId): Operation[] {
   const request = live(data['tasks.requests']).find((r) => r.id === requestId);
   if (!request) reject(404, 'NOT_FOUND', 'No existe esa petición.', { id: requestId });
   if (request!.status !== 'pending') reject(422, 'INVALID_REQUEST', 'Esa petición ya no está por clasificar.', { id: requestId });
@@ -64,6 +64,11 @@ export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { pro
   const space = request!.space_id;
   if (space && !ops.some((o) => o.table === 'tasks.task_spaces' && o.fields?.space_id === space)) {
     ops.push({ op: 'insert', table: 'tasks.task_spaces', id: newId(), fields: { tab_id: project!.tab_id, project_id: project!.id, task_id: request!.id, space_id: space } });
+  }
+  // El oficio de la regla (0353), si el proyecto no lo traía ya: como lo hace `tasks.request_task`.
+  const trade = target.trade_id;
+  if (trade && !ops.some((o) => o.table === 'tasks.task_trades' && o.fields?.trade_id === trade)) {
+    ops.push({ op: 'insert', table: 'tasks.task_trades', id: newId(), fields: { tab_id: project!.tab_id, project_id: project!.id, task_id: request!.id, trade_id: trade } });
   }
   return [update('tasks.requests', request!, { status: 'routed', routed_by: how }), ...ops];
 }
@@ -123,7 +128,7 @@ export function routeTarget(data: Dataset, route: Pick<RequestRouteRow, 'tab_id'
 }
 
 /** Alta o cambio de la regla de un tipo (una viva por tipo). */
-export function saveRouteOps(data: Dataset, input: { kind: string; kind_label?: string | null; tab_id: Uuid; project_id?: Uuid | null; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null }, newId: NewId = randomId): Operation[] {
+export function saveRouteOps(data: Dataset, input: { kind: string; kind_label?: string | null; tab_id: Uuid; project_id?: Uuid | null; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null; trade_id?: Uuid | null }, newId: NewId = randomId): Operation[] {
   const fields: Record<string, unknown> = { kind_label: input.kind_label ?? null, tab_id: input.tab_id, project_id: input.project_id ?? null, owner_label_id: input.owner_label_id ?? null };
   if (!routeTarget(data, fields as Pick<RequestRouteRow, 'tab_id' | 'project_id'>)) reject(422, 'INVALID_ROUTE', 'El destino de la regla no existe o está archivado.');
   const existing = routeFor(data, input.kind);
@@ -131,6 +136,8 @@ export function saveRouteOps(data: Dataset, input: { kind: string; kind_label?: 
   if (input.owner_person_id !== undefined || input.owner_house_level !== undefined || existing?.owner_person_id || existing?.owner_house_level) {
     Object.assign(fields, { owner_person_id: input.owner_person_id ?? null, owner_house_level: input.owner_house_level ?? null });
   }
+  // El oficio (0353): solo si se pide o hay que vaciarlo.
+  if (input.trade_id !== undefined || existing?.trade_id) Object.assign(fields, { trade_id: input.trade_id ?? null });
   if (existing) {
     const changed = Object.fromEntries(Object.entries(fields).filter(([k, v]) => (existing as unknown as Record<string, unknown>)[k] !== v));
     return Object.keys(changed).length ? [update('tasks.request_routes', existing, changed)] : [];
@@ -154,7 +161,7 @@ export function routeWaitingOps(data: Dataset, kind: string, newId: NewId = rand
   let working = data;
   const ops: Operation[] = [];
   for (const request of pendingRequests(data, kind)) {
-    const batch = classifyRequestOps(working, request.id, { project_id: projectId!, owner_label_id: route!.owner_label_id, owner_person_id: route!.owner_person_id ?? null, owner_house_level: route!.owner_house_level ?? null }, 'rule', newId);
+    const batch = classifyRequestOps(working, request.id, { project_id: projectId!, owner_label_id: route!.owner_label_id, owner_person_id: route!.owner_person_id ?? null, owner_house_level: route!.owner_house_level ?? null, trade_id: route!.trade_id ?? null }, 'rule', newId);
     ops.push(...batch);
     // Las posiciones siguientes cuentan con las tareas que ya entran en este lote.
     const inserted = batch.find((o) => o.table === 'tasks.tasks')!;
