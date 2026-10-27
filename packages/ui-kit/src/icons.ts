@@ -64,6 +64,27 @@ const ICONS: Record<string, string> = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  // Comida (K13, 27-10): momentos (taza, cuenco, plato, hoja, tarta, cesta, galleta, vaso, tarro), colecciones (cronómetro, olla),
+  // «sin» (espiga, gota y almendra tachadas) y tipos de menú (hoja con nervios, queso, muslo, gorro, pescado). Del prototipo de Food.
+  cup: '<path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3.5c0 1.5 1 1.5 1 3M12 3.5c0 1.5 1 1.5 1 3"/>',
+  bowl: '<path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M8 11c0-2.5 1.5-4.2 3.5-4.7M13 11c.4-2 2-3.6 4-3.8"/>',
+  plate: '<circle cx="12" cy="13" r="6.5"/><circle cx="12" cy="13" r="3"/><path d="M3 4v5a1.5 1.5 0 0 0 3 0V4M4.5 9v11M21 4c-1.6 1-2.3 3-2.3 6H21v10"/>',
+  leaf: '<path d="M5 19C5 11 10 5 19 5c0 9-6 14-14 14z"/><path d="M5 19l8.5-8.5"/>',
+  cake: '<path d="M4 20h16v-8L6 6.5 4 9z"/><path d="M4 14h16"/><circle cx="8" cy="4" r="1.2"/>',
+  basket: '<path d="M3 10h18l-2 9.5H5z"/><path d="M8 10l3.5-6M16 10l-3.5-6M9 13.5v3M15 13.5v3"/>',
+  cookie: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9h.01M14.5 9.5h.01M9.5 14.5h.01M15 15h.01M12 12h.01"/>',
+  glass: '<path d="M6 4h12l-1.6 16H7.6z"/><path d="M6.6 9.5h10.8"/>',
+  jar: '<path d="M8 3h8v3H8z"/><path d="M7 6h10a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><path d="M5 12h14"/>',
+  timer: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 2.5h4M12 2.5V6M18.5 7l1.5-1.5"/>',
+  pot: '<path d="M4 10h16v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/><path d="M2 10h20M9 6.5c0-1.5 1-1.5 1-3M14 6.5c0-1.5 1-1.5 1-3"/>',
+  noGluten: '<path d="M12 21V8"/><path d="M12 8c-2-.5-3-2-3-4 2 .5 3 2 3 4zm0 0c2-.5 3-2 3-4-2 .5-3 2-3 4zM12 13c-2-.5-3-2-3-4 2 .5 3 2 3 4zm0 0c2-.5 3-2 3-4-2 .5-3 2-3 4z"/><path d="M4 4l16 16"/>',
+  noLactose: '<path d="M12 3.5c3 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-10z"/><path d="M4 4l16 16"/>',
+  noNuts: '<path d="M12 3c4 3 6 6.5 6 10a6 6 0 0 1-12 0c0-3.5 2-7 6-10z"/><path d="M12 7.5v9"/><path d="M4 4l16 16"/>',
+  vegan: '<path d="M5 19C5 10.5 10.5 5 19.5 4.5 19 13.5 13.5 19 5 19z"/><path d="M5 19l9-9M10.5 13.5h4M13 11V7.5"/>',
+  cheese: '<path d="M3 17.5 15.5 7.5 21 10.5v7z"/><path d="M3 17.5h18"/><circle cx="10" cy="15" r="1.3"/><circle cx="15.5" cy="13.3" r="1.3"/><circle cx="18.3" cy="15.6" r=".9"/>',
+  drumstick: '<path d="M18.2 4.3a5.4 5.4 0 0 1 1.5 7.4c-1.6 2.5-4.4 3-6.6 2.5l-4.4 4.4"/><path d="M18.2 4.3a5.4 5.4 0 0 0-7.4 1.5c-1.4 2.2-1 4.6.3 6.3l-4.4 4.4"/><circle cx="5.2" cy="18.8" r="1.7"/><circle cx="7.4" cy="20.6" r="1.4"/><circle cx="3.6" cy="16.6" r="1.4"/>',
+  chefHat: '<path d="M6 13.5a4 4 0 0 1 1.2-7.8 5 5 0 0 1 9.6 0A4 4 0 0 1 18 13.5"/><path d="M7 13.5h10V19H7z"/><path d="M7 16.3h10"/>',
+  fish: '<path d="M2.5 12c2.6-3.6 6.2-5.5 10-5.5 2.4 0 4.4.9 5.9 2.3L21.5 6v12l-3.1-2.8c-1.5 1.4-3.5 2.3-5.9 2.3-3.8 0-7.4-1.9-10-5.5z"/><circle cx="7.5" cy="11" r=".9"/><path d="M12.5 9.5c.8.7 1.2 1.5 1.2 2.5s-.4 1.8-1.2 2.5"/>',
 };
 
 export type IconName = keyof typeof ICONS | (string & {});
