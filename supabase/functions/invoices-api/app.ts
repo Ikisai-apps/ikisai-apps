@@ -859,8 +859,9 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
   const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
   // Capacidad «Registrar compra rápida» (API.md §18): operaciones de fila por el commit de siempre, con hooks y riesgo.
   const quickSync = createSync(supabase, 'invoices', hooks);
-  const registerQuickPurchase = createQuickPurchase({ supabase, commit: (ctx, body) => quickSync.commit(ctx, body), allRows: <T,>(ctx: RequestContext, table: string) => allRows<T>(supabase, ctx, table), stableUuid });
-  const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
+  const idOf = keyedStableUuid(base.workerKey);
+  const registerQuickPurchase = createQuickPurchase({ supabase, commit: (ctx, body) => quickSync.commit(ctx, body), allRows: <T,>(ctx: RequestContext, table: string) => allRows<T>(supabase, ctx, table), stableUuid: idOf });
+  const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { uuid: idOf, readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
     notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
   const handler = createApp({
     ...base,
@@ -869,7 +870,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     origins: base.origins ?? INVOICES_ORIGINS,
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
     hooks,
-    mcpTools: invoicesMcpTools(supabase, storage),
+    mcpTools: invoicesMcpTools(supabase, storage, idOf),
     routes: [...invoicesRoutes(supabase, targets, base.extractInvoice, storage, createLectorFill(supabase, hooks)), {
       method: 'POST', pattern: 'purchases/quick', handler: async ({ ctx, json }) => registerQuickPurchase(ctx, await json()),
     }, {
@@ -965,7 +966,7 @@ function createLectorFill(supabase: Supabase, hooks: AppHooks): FillFromText {
  * Lo que el tick de Drive usa del núcleo: la cuenta de servicio `drive` (editor en Finance) firma el lote con los hooks
  * de Finance, crea el archivo y guarda el texto; las acciones de sistema llevan el estado y el registro.
  */
-function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: AppHooks, drive: DriveApi | null, options: { readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; fetch?: typeof fetch; upload?: DriveUpload; notifyTasks?: DriveTickDeps['notifyTasks']; today?: () => string }) {
+function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: AppHooks, drive: DriveApi | null, options: { uuid?: (seed: string) => Promise<string>; readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; fetch?: typeof fetch; upload?: DriveUpload; notifyTasks?: DriveTickDeps['notifyTasks']; today?: () => string }) {
   const sync = createSync(supabase, 'invoices', hooks);
   let actor: Promise<RequestContext> | null = null;
   const ctx = () => (actor ??= (async () => {
@@ -1006,7 +1007,7 @@ function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: Ap
       await saveDocumentText(supabase, await ctx(), fileId, items.slice(0, MAX_TEXT_ITEMS).map((it) => ({ str: it.str.slice(0, 500), page: Math.trunc(it.page), x: num(it.x), y: num(it.y), w: num(it.w), h: num(it.h) })));
     },
     readPdf: options.readPdf ?? readPdfItemsServer,
-    uuid: stableUuid,
+    uuid: options.uuid ?? stableUuid,
     notifyTasks: options.notifyTasks,
     today: options.today,
     fileBytes: (fileId: string) => fileBytes(fileId),
@@ -1041,7 +1042,22 @@ const MCP_PERIOD = {
 
 /** Id estable derivado de un texto (forma de uuid v4) para que reintentar la misma importación sea idempotente. */
 async function stableUuid(seed: string): Promise<string> {
-  const hex = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return uuidFromDigest(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed))));
+}
+
+/**
+ * Seguridad F5 (auditoría del 27-10): los ids que salen de la persona y su `requestId` (compra rápida, importación) o de
+ * Drive llevan un secreto del servidor (HMAC con `IKISAI_WORKER_KEY`), así nadie que conozca esas semillas ocupa antes
+ * el id de otra persona. Sin secreto (local), SHA-256 como antes. Los ids de Recursos no cambian: ya existen filas con ellos.
+ */
+export function keyedStableUuid(secret: string | undefined): (seed: string) => Promise<string> {
+  if (!secret) return stableUuid;
+  const key = crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return async (seed) => uuidFromDigest(new Uint8Array(await crypto.subtle.sign('HMAC', await key, new TextEncoder().encode(seed))));
+}
+
+function uuidFromDigest(bytes: Uint8Array): string {
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
   const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
@@ -1067,7 +1083,7 @@ function iaProvenance(raw: unknown): Record<string, { method: string; text: stri
   return out;
 }
 
-export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = createStorage(supabase)): McpTool[] {
+export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = createStorage(supabase), idOf: (seed: string) => Promise<string> = stableUuid): McpTool[] {
   return [
     {
       // §15.1: una sesión de Claude (o cualquier agente editor) completa lo que llegó por Drive sin leer del todo.
@@ -1146,7 +1162,7 @@ export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = cr
         const rectifiesNumber = (typeof rectArg?.number === 'string' && rectArg.number.trim() ? rectArg.number.trim().slice(0, 64) : null) ?? detected.number;
         const sha = await importDocumentSha256(document);
         const [suppliers, invoices] = await Promise.all([allRows<SupplierRow>(supabase, ctx, TABLES.suppliers), allRows<InvoiceRow>(supabase, ctx, TABLES.invoices)]);
-        const invoiceId = typeof args.invoice_id === 'string' && UUID.test(args.invoice_id) ? args.invoice_id.toLowerCase() : await stableUuid(`invoice:${ctx.user.id}:${sha}`);
+        const invoiceId = typeof args.invoice_id === 'string' && UUID.test(args.invoice_id) ? args.invoice_id.toLowerCase() : await idOf(`invoice:${ctx.user.id}:${sha}`);
         const previous = findDuplicateImport(sha, invoices);
         if (previous) {
           if (previous.id === invoiceId) return { replayed: true, invoice_id: previous.id, code: previous.code, status: previous.status };
