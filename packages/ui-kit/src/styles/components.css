@@ -2105,3 +2105,32 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
   .map-mode-both:not(.map-noplan) .map-plan{display:grid}
 }
 @media (prefers-reduced-motion: reduce){.map-box *{transition:none!important;animation:none!important}}
+
+/* Carriles (createLanes, 0.61): «Pestañas» y «Lado a lado». */
+.lanes{display:grid;gap:10px;min-width:0;--lanes-height:min(72dvh,760px)}
+.lanes-bar{display:flex;align-items:center;gap:10px;min-width:0}
+.lanes-sum{flex:1;min-width:0;font-size:var(--text-sm);font-weight:650;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lanes-tabs{min-width:0;display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;padding:2px 2px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.lanes-tabs::-webkit-scrollbar{display:none}
+.lanes-tab{flex:0 0 auto;scroll-snap-align:center;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border:0;border-radius:var(--radius-pill);background:var(--paper-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line);font:inherit;font-size:var(--text-sm);font-weight:650;cursor:pointer;white-space:nowrap}
+.lanes-tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+.lanes-tab.lanes-tabempty:not([aria-selected="true"]){color:var(--muted)}
+.lanes-count{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:var(--radius-pill);background:var(--paper);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line);font-size:var(--text-xs);font-weight:700;font-variant-numeric:tabular-nums}
+.lanes-tab[aria-selected="true"] .lanes-count{background:color-mix(in srgb,var(--accent-ink) 22%,transparent);color:var(--accent-ink);box-shadow:none}
+.lanes-switch{flex:0 0 auto;display:inline-flex;padding:3px;border-radius:var(--radius-pill);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--line)}
+.lanes-mode{min-height:38px;padding:0 12px;border:0;border-radius:var(--radius-pill);background:transparent;color:var(--muted);font:inherit;font-size:var(--text-sm);font-weight:650;cursor:pointer;white-space:nowrap}
+.lanes-mode[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.lanes-panels{min-width:0}
+.lanes-body{min-width:0}
+.lanes-body[hidden]{display:none}
+.lanes-track{display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:6px;align-items:stretch;-webkit-overflow-scrolling:touch}
+.lanes-lane{flex:1 0 clamp(172px,calc(50vw - 22px),240px);max-height:var(--lanes-height);display:flex;flex-direction:column;min-width:0;scroll-snap-align:start;border-radius:var(--radius-md);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.lanes-headwrap{margin:0;font-size:inherit}
+.lanes-head{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:6px 12px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:var(--text-sm);font-weight:700;text-align:left;cursor:pointer}
+.lanes-head[aria-current="true"]{box-shadow:inset 0 -3px 0 var(--accent-deep)}
+.lanes-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lanes-lane > .lanes-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding:8px}
+.lanes-lane.lanes-mini{flex:0 0 44px;max-height:var(--lanes-height)}
+.lanes-unfold{flex:1;display:flex;align-items:flex-start;justify-content:center;width:44px;min-height:120px;padding:12px 0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:var(--text-sm);font-weight:650;cursor:pointer}
+.lanes-turned{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:calc(var(--lanes-height) - 32px)}
+.lanes-short{max-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
