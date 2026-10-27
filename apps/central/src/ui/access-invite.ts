@@ -61,13 +61,13 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
   } catch { /* sin equipos: solo el nombre */ }
 
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.accesos.alta.error', 'data-feedback-label': 'Error del alta' });
-  const email = el('input', { id: 'inviteEmail', 'data-feedback-ignore': '', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
-  const name = el('input', { id: 'inviteName', 'data-feedback-ignore': '', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
+  const email = el('input', { id: 'inviteEmail', 'data-field-id': 'central.accesos.invite_email', 'data-feedback-ignore': '', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
+  const name = el('input', { id: 'inviteName', 'data-field-id': 'central.accesos.invite_name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
   const nameHelp = el('span', { class: 'muted small' });
-  const level = el('select', { id: 'inviteLevel', 'aria-label': 'Nivel de casa' }, ...HOUSE_LEVELS.map((l) => el('option', { value: l, selected: l === 'staff' }, HOUSE_LEVEL_LABELS[l])),
+  const level = el('select', { id: 'inviteLevel', 'data-field-id': 'central.accesos.invite_level', 'aria-label': 'Nivel de casa' }, ...HOUSE_LEVELS.map((l) => el('option', { value: l, selected: l === 'staff' }, HOUSE_LEVEL_LABELS[l])),
     el('option', { value: '' }, 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
   const levelField = withLevels ? el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nivel', 'data-feedback-label': 'Nivel de casa' }, el('span', null, 'Nivel de casa'), level) : null;
-  const like = el('select', { id: 'inviteLike', 'aria-label': 'Como un compañero', 'data-feedback-ignore': '', onchange: () => applyLike() }, el('option', { value: '' }, 'Elegir a mano')) as HTMLSelectElement;
+  const like = el('select', { id: 'inviteLike', 'data-field-id': 'central.accesos.invite_like', 'aria-label': 'Como un compañero', 'data-feedback-ignore': '', onchange: () => applyLike() }, el('option', { value: '' }, 'Elegir a mano')) as HTMLSelectElement;
   const likeField = el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.como', 'data-feedback-label': 'Como un compañero' }, el('span', null, 'Con los accesos de'), like,
     el('span', { class: 'muted small' }, 'Copia Editor y Lector; Propietario y lo que da el nivel de casa no se copian.'));
   const appsHost = el('div', { id: 'inviteApps', 'data-feedback-id': 'central.accesos.alta.apps', 'data-feedback-label': 'Accesos iniciales por app' }, el('p', { class: 'muted' }, 'Cargando apps…'));

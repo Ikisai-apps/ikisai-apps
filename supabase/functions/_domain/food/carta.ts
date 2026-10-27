@@ -32,6 +32,10 @@ export interface CartaLine extends SyncedColumns {
   active: boolean;
   position: number;
   image_key: string | null;
+  /** Unidades que se esperan vender (previsión, 1110); null sin previsión. */
+  expected_units?: number | null;
+  /** Consumo por persona (1110): con los asistentes, da `expected_units`. */
+  per_person?: number | string | null;
 }
 
 export interface CartaSale extends SyncedColumns {
@@ -115,15 +119,19 @@ export function freeCartaCodes(lines: Array<Pick<CartaLine, 'menu_id' | 'scope' 
  */
 export function copyCartaOperations(args: {
   lines: CartaLine[]; sourceId: string; newId: string; name: string; eventId: string | null; newLineId: () => string;
+  /** El reparto de la carta de origen (1110), si lo tiene. */
+  prepSplit?: PrepSplit | null;
 }): Array<{ op: 'insert'; table: string; id: string; fields: Record<string, unknown> }> {
   const ops: Array<{ op: 'insert'; table: string; id: string; fields: Record<string, unknown> }> = [
-    { op: 'insert', table: 'food.menus', id: args.newId, fields: { kind: 'carta', name: args.name, ...(args.eventId ? { event_id: args.eventId } : {}) } },
+    { op: 'insert', table: 'food.menus', id: args.newId, fields: { kind: 'carta', name: args.name, ...(args.eventId ? { event_id: args.eventId } : {}), ...(args.prepSplit ? { prep_split: args.prepSplit } : {}) } },
   ];
   for (const l of cartaLinesInOrder(args.lines, args.sourceId)) {
     ops.push({ op: 'insert', table: 'food.carta_lines', id: args.newLineId(), fields: {
       menu_id: args.newId, ...(l.recipe_id ? { recipe_id: l.recipe_id } : { item_id: l.item_id }), scope: l.scope, code: l.code,
       // Lo que viene de la base puede llegar como texto (numeric): se pasa a número.
       name: l.name, description: l.description, sale_price_cents: Number(l.sale_price_cents), active: l.active, position: Number(l.position), image_key: l.image_key,
+      ...(l.expected_units !== undefined && l.expected_units !== null ? { expected_units: Number(l.expected_units) } : {}),
+      ...(l.per_person !== undefined && l.per_person !== null ? { per_person: Number(l.per_person) } : {}),
     } });
   }
   return ops;
@@ -141,4 +149,52 @@ export function parseEurosToCents(text: string): number | null {
 export function formatCents(cents: number | null | undefined): string {
   if (cents === null || cents === undefined || !Number.isFinite(cents)) return '—';
   return (cents / 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+/** Reparto de lo que se prepara (1110): en bandeja en mesa, en bandeja en nevera y en fresco, en %, suma 100. */
+export interface PrepSplit { mesa: number; nevera: number; fresco: number }
+export const DEFAULT_PREP_SPLIT: PrepSplit = { mesa: 30, nevera: 20, fresco: 50 };
+export const prepSplitOf = (value: unknown): PrepSplit => (prepSplitProblem(value) === null && value ? value as PrepSplit : DEFAULT_PREP_SPLIT);
+
+/** Qué tiene de malo un reparto, o null si vale (o si es null: el de por defecto). */
+export function prepSplitProblem(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return 'El reparto debe llevar mesa, nevera y fresco.';
+  const v = value as Record<string, unknown>;
+  if (Object.keys(v).some((k) => !['mesa', 'nevera', 'fresco'].includes(k))) return 'El reparto solo lleva mesa, nevera y fresco.';
+  const parts = [v.mesa, v.nevera, v.fresco];
+  if (parts.some((n) => typeof n !== 'number' || !Number.isFinite(n) || n < 0)) return 'Cada parte del reparto es un porcentaje (0 o más).';
+  return Math.abs((parts as number[]).reduce((a, b) => a + b, 0) - 100) < 1e-9 ? null : 'Mesa, nevera y fresco tienen que sumar 100 %.';
+}
+
+/** Fila de `food.carta_prep_projection` (1110): una por línea de carta y componente. */
+export interface CartaPrepRow {
+  menu_id: string; line_id: string; scope: CartaScope; code: CartaCode; ingredient_id: string | null; item_id: string | null; component_key: string;
+  name: string; unit: string; per_unit: number | string | null; expected_units: number; need_total: number | string | null;
+  mesa: number | string | null; nevera: number | string | null; fresco: number | string | null; station: number | null; convertible: boolean;
+  line_revision: number; menu_revision: number;
+}
+
+/** Fila de `food.carta_prep_totals_projection` (1110): una por componente, sumando las líneas. */
+export interface CartaPrepTotal {
+  menu_id: string; component_key: string; item_id: string | null; ingredient_id: string | null; name: string; unit: string;
+  need_total: number | string | null; mesa: number | string | null; nevera: number | string | null; fresco: number | string | null;
+  convertible: boolean; station: number | null;
+}
+
+export const STATION_LABELS: Record<number, string> = { 1: 'Untar', 2: 'Colocar', 3: 'Dosificar', 4: 'Acabados' };
+/**
+ * Unidades a cubrir y consumo por persona (ajuste de VG, 27-10): total = por persona × asistentes. La previsión trabaja
+ * con máximos a cubrir, así que el total se redondea hacia arriba; el «por persona» que sale de un total, a 3 decimales.
+ */
+export function unitsFromPerPerson(perPerson: number, attendance: number): number {
+  return Math.max(0, Math.ceil(perPerson * attendance - 1e-9));
+}
+export function perPersonFromUnits(units: number, attendance: number): number | null {
+  return attendance > 0 ? Math.round((units / attendance) * 1000) / 1000 : null;
+}
+/** Asistentes de una carta: los suyos o, si no, las personas de su evento. */
+export function cartaAttendance(menu: { expected_attendance?: number | null } | null, eventGuests: number | null | undefined): number | null {
+  if (menu?.expected_attendance !== null && menu?.expected_attendance !== undefined) return menu.expected_attendance;
+  return eventGuests ?? null;
 }
