@@ -141,6 +141,8 @@ export const FLOW_ERRORS: Record<string, string> = {
   SETTLE_FORBIDDEN: 'Solo quien abrió la cuenta o el encargado puede liquidarla.',
   INVITATION_INVALID: 'Ese enlace no vale. Pide uno nuevo en la app de huéspedes.',
   INVITATION_EXPIRED: 'Ese enlace ha caducado. Ábrelo otra vez desde la app de huéspedes.',
+  INVITATION_USED: 'Ese enlace ya se ha usado. Ábrelo otra vez desde la app de huéspedes.',
+  NO_FLOW: 'Este evento no tiene la barra abierta ahora mismo.',
   NO_BOOKING_EVENT: 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.',
   SES_ALREADY_REGISTERED: 'Su llegada ya está comunicada a SES: no se puede deshacer desde aquí.',
   GUEST_ALREADY_LEFT: 'Este huésped ya se ha ido: deshaz la salida antes.',
