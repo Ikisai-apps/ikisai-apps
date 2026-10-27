@@ -6,7 +6,7 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { i18n, t } from '../app/i18n.ts';
 import { install } from '../app/install.ts';
-import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, replace, type AppMenuSection, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, icon, registerReveal, replace, type AppMenuSection, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
 import { createPortalApi, type PortalApi, type PortalReservation } from '../app/api.ts';
 import { describeError } from '../app/client.ts';
 import { dateRange, isCancelled } from '../app/labels.ts';
@@ -139,6 +139,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       feedbackId: 'organizers.menu',
     },
     returnTo: { feedbackId: 'organizers.cabecera.volver_app' },
+    // Guiado mínimo del kit (0.68): con `?campo=` señala el campo y con `?paso=` explica el paso y ofrece «Volver a…». Sin
+    // `client`, no lee nada de Flow.
+    guide: { feedbackId: 'organizers.guia' },
   });
   const logoutButton = shell.header.querySelector<HTMLElement>('#logoutButton');
   if (logoutButton) fbMark(logoutButton, 'organizers.cabecera.cerrar_sesion', 'Cerrar sesión');
@@ -226,6 +229,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     window.scrollTo({ top: 0 });
   }
 
+  // Guiado: un campo de otra pestaña de la ficha del retiro abierto se enseña cambiando a esa pestaña (por la raíz de su id).
+  // (Raíz → pestaña; el prefijo se arma con `join` para que no cuente como un id de feedback.)
+  const TAB_OF: Record<string, string> = {
+    'retiro.resumen': 'resumen', fechas: 'fechas', diseno: 'diseno', propuesta: 'propuesta', pagos: 'pagos',
+    experiencia: 'experiencia', programa: 'experiencia', alojamiento: 'experiencia', ofertas: 'ofertas', asistentes: 'asistentes', cocina: 'cocina',
+  };
+  const offReveals = Object.entries(TAB_OF).map(([root, tab]) => registerReveal(['organizers', root].join('.'), () => {
+    if (!menuRetreat) return;
+    navigate(tab === 'resumen' ? `#/retiro/${menuRetreat.id}` : `#/retiro/${menuRetreat.id}/${tab}`);
+  }));
+
   const offStatus = client.onStatus(() => {
     if (!client.session()) ctx.onLogout();
   });
@@ -234,6 +248,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   route();
 
   return () => {
+    for (const off of offReveals) off();
     offStatus();
     offSessionEnd();
     usage.destroy();
