@@ -219,3 +219,10 @@
 .containers-list{display:grid;gap:8px}
 .containers-row{display:grid;grid-template-columns:1fr 64px auto 72px auto;gap:6px;align-items:center}
 .containers-row input{min-width:0}
+
+/* Recorridos */
+.journey-card{display:grid;gap:8px;padding:12px}
+.journey-review{margin-top:14px}
+.journey-values{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0 0 12px}
+.journey-values dt{font-weight:600}
+.journey-values dd{margin:0;display:flex;gap:8px;align-items:center;justify-content:space-between}
