@@ -580,6 +580,45 @@ test('organizers · pagos todo pagado: nada por pagar y «Cómo pagar» plegado 
   expect(await how.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('#moneyTotals')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
 });
 
+test('organizers · pago en línea (PAGO_EN_CURSO.md): «Pagar ahora» → «Pago en curso», vuelta con ?pago=ok y, cobrada, desaparece', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con pago en línea', confirm: true });
+  const invoice = crypto.randomUUID();
+  let collected = false;
+  // Lectura de Finance simulada, con el enlace de pago de F5 (Stripe Checkout).
+  await page.route('**/api/v1/read/invoices.portal_reservation_money', (route) => route.fulfill({ json: {
+    reservation_id: reservation, currency: 'EUR', totals: { invoiced: 500, collected: collected ? 500 : 0, pending: collected ? 0 : 500 },
+    invoices: [{ id: invoice, number: 'F2026-0042', issue_date: '2026-10-20', type: 'F1', rectifies: null, base: 500, tax: 0, withholding: 0, total: 500,
+      status: 'emitida', collected, collected_at: collected ? '2026-10-27T10:00:00Z' : null, has_document: false, purpose: 'senal',
+      payment_link: collected ? null : { url: 'https://checkout.stripe.com/c/pay/cs_test_x', provider: 'stripe', expires_at: '2099-01-01T00:00:00Z' } }],
+  } }));
+  // La pasarela no se abre de verdad.
+  await page.context().route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>pasarela</p>' }));
+  await enter(page, await api.organizerLink([reservation], 'pago-linea@example.invalid', 'Paula'));
+  await page.locator('#tab-pagos').click();
+  const row = page.locator(`#payOnline li:has(a[data-invoice="${invoice}"])`);
+  await expect(row).toHaveAttribute('data-pay-state', 'pagar');
+  const popup = page.waitForEvent('popup');
+  await row.getByRole('link', { name: 'Pagar ahora' }).click();
+  await (await popup).close();
+  await expect(row).toHaveAttribute('data-pay-state', 'en_curso');
+  await expect(row.locator('.orgpay-pending')).toHaveText('Pago en curso');
+  await expect(row.getByRole('link', { name: 'Volver a la pasarela' })).toBeVisible();
+
+  // Vuelta de la pasarela: el aviso, y la URL sin lo de «?».
+  const base = page.url().split('#')[0];
+  await page.goto('about:blank');
+  await page.goto(`${base}#/retiro/${reservation}/pagos?pago=ok&factura=${invoice}`);
+  await expect(page.locator('.toast.show')).toContainText('Hemos recibido tu pago');
+  await expect.poll(() => page.url()).not.toContain('pago=ok');
+  await expect(page.locator(`#payOnline li:has(a[data-invoice="${invoice}"])`)).toHaveAttribute('data-pay-state', 'en_curso');
+
+  // Finance lo da por cobrado: «Pagar en línea» desaparece.
+  collected = true;
+  await page.reload();
+  await expect(page.locator('#moneyStatement')).toBeVisible();
+  await expect(page.locator('#payOnline')).toHaveCount(0);
+});
+
 test('organizers · factura emitida desde Finance: la copia congelada se pinta e imprime con la página del kit', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con factura emitida', confirm: true });
   const invoice = crypto.randomUUID();
