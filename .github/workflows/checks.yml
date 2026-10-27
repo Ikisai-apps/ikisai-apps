@@ -42,9 +42,9 @@ jobs:
           #  · App tocada (su código, su API, su dominio, sus pruebas o sus migraciones): su suite completa.
           #  · Algo compartido (kit, sync-client, test-kit, _kit, CI, scripts, dependencias): solo las pruebas @smoke de
           #    cada app (la app que aún no tiene ninguna, completa). La suite entera de todas corre de noche.
-          # PGlite: scripts/ci_plan.mjs decide `pglite` (grupos de carpetas de tests/: solo las de las apps tocadas; con algo
-          # compartido o fuera de una PR, todas) y `code` (false en una PR solo de docs/, MUELA/, CODEOWNERS o *.md: sin
-          # npm ci, sin PGlite y sin Playwright; solo esta detección y la puerta).
+          # PGlite: scripts/ci_plan.mjs decide `pglite` (grupos de carpetas de tests/: la app tocada en sus grupos y las que
+          # dependen de ella juntas en un solo job «dependientes»; con algo compartido o fuera de una PR, todas) y `code`
+          # (false en una PR solo de docs/, MUELA/, CODEOWNERS o *.md: sin npm ci, sin PGlite y sin Playwright).
           apps="invoices booking food tasks central organizers guests flow"
           full=""; smoke=false; uikit=false; prefijos=false
           if [ "${{ github.event_name }}" = "pull_request" ]; then

@@ -30,18 +30,28 @@ test('ci por app · solo documentación: nada', () => {
     { code: false, full: false, folders: [], groups: [] });
 });
 
-test('ci por app · el cliente de una app: solo sus pruebas, aunque otra carpeta importe su app', () => {
+test('ci por app · el cliente de una app: sus pruebas y las que importan su app', () => {
   const root = fakeRepo();
   const out = plan({ root, files: ['apps/organizers/src/ui/retreats.ts', 'docs/organizers/API.md'] });
-  assert.deepEqual(out.folders, ['organizers']);
+  assert.deepEqual(out.folders, ['guests', 'organizers']);
   assert.equal(out.full, false);
+  // La tocada, en su grupo; las dependientes, todas en un solo grupo.
+  assert.deepEqual(out.groups, [{ name: 'organizers', folders: 'organizers' }, { name: 'dependientes', folders: 'guests' }]);
 });
 
-test('ci por app · el servidor de una app: solo sus pruebas, aunque otra carpeta nombre su schema', () => {
+test('ci por app · el servidor de una app: también las que nombran su schema (no una variable con su nombre)', () => {
   const root = fakeRepo();
-  assert.deepEqual(plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql'] }).folders, ['booking']);
+  assert.deepEqual(plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql'] }).folders, ['booking', 'food']);
   assert.deepEqual(plan({ root, files: ['supabase/functions/food-api/app.ts'] }).folders, ['food']);
-  assert.deepEqual(plan({ root, files: ['supabase/functions/food-api/app.ts', 'apps/organizers/a.ts'] }).folders, ['food', 'organizers']);
+  assert.deepEqual(plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql'] }).groups,
+    [{ name: 'booking', folders: 'booking' }, { name: 'dependientes', folders: 'food' }]);
+});
+
+test('ci por app · dos apps tocadas: cada una en su grupo, y una dependiente que también es tocada no se repite', () => {
+  const root = fakeRepo();
+  const out = plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql', 'apps/food/a.ts'] });
+  assert.deepEqual(out.folders, ['booking', 'food']);
+  assert.deepEqual(out.groups, [{ name: 'booking', folders: 'booking' }, { name: 'food', folders: 'food' }]);
 });
 
 test('ci por app · lo compartido y fuera de una PR: todas, la grande sola y las pequeñas juntas', () => {
