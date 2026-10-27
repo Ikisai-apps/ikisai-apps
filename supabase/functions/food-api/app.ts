@@ -16,6 +16,11 @@ export interface FoodAppOptions {
   /** Base de la API de Tasks para las peticiones de §6.1 (en pruebas, una falsa). */
   tasksApiBase?: string;
   tasksFetch?: typeof fetch;
+  /**
+   * Clave de worker (`IKISAI_WORKER_KEY`) para que Tasks sepa que la fuente `food` la manda el servidor de Food
+   * (auditoría FO2; Tasks #852, API §45). Si no se da, la de `base.workerKey`.
+   */
+  workerKey?: string;
 }
 
 const FAULT_STATUSES: Record<string, { title: string; priority: 'normal' | 'high' }> = {
@@ -157,7 +162,11 @@ function eventRoutes(events: EventReader): AppRoute[] {
   ];
 }
 
-/** Llamada a Tasks con el token de la persona (como Central, docs/tasks/API.md §19.6 y §20). */
+/**
+ * Llamada a Tasks con el token de la persona (como Central, docs/tasks/API.md §19.6 y §20) y la prueba de que viene del
+ * servidor de Food: `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: food` (auditoría FO2; Tasks #852). Un navegador no tiene la
+ * clave, así que nadie más puede pedir con `source: 'food'`.
+ */
 function createTasksClient(options: FoodAppOptions) {
   const base = (options.tasksApiBase ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
   const transport = options.tasksFetch ?? fetch;
@@ -166,7 +175,7 @@ function createTasksClient(options: FoodAppOptions) {
     try {
       response = await transport(`${base}/api/v1/${path}`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': options.workerKey ?? '', 'X-Ikisai-Caller': 'food' },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10_000),
       });
@@ -323,6 +332,8 @@ function tasksRoutes(supabase: Supabase, options: FoodAppOptions): AppRoute[] {
 }
 
 export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins' | 'uploads'>>, options: FoodAppOptions = {}) {
+  // La clave de worker también va en las llamadas a Tasks (FO2).
+  options = { ...options, workerKey: options.workerKey ?? base.workerKey };
   const supabase = createSupabase(base);
   const events = createEventReader(supabase);
   return createApp({

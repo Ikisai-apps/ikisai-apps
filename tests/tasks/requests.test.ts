@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
-import { requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
+import { checkAppSource, requestTaskId, serverCaller } from '../../supabase/functions/tasks-api/requests.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { classifyRequestOps, createTabOps, dismissRequestOps, emptyDataset, pendingRequests, routeWaitingOps, saveRouteOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
@@ -234,6 +234,28 @@ test('la ruta de personas no admite las fuentes de sistema: booking, feedback, c
   }
   assert.equal((await rows('tasks.tasks')).some((t) => t.title === 'Adelantarse a la app'), false);
   assert.equal((await ask({ source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-1', title: 'Hielo para la barra', tab_id: TAB })).status, 200, 'otra app, sí');
+});
+
+test('fuentes de app (flow, food): con la clave de worker y X-Ikisai-Caller, la fuente tiene que ser la de quien llama', async () => {
+  const proof = (caller: string, key = WORKER_KEY) => ({ 'X-Ikisai-Worker-Key': key, 'X-Ikisai-Caller': caller });
+  const send = (path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) => app.call(`/api/v1/requests/${path}`, { body, headers });
+  // Desde su servidor, con la persona: entra como siempre.
+  const flow = await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-1', title: 'Cubitera', tab_id: TAB }, proof('flow'));
+  assert.equal(flow.status, 200, JSON.stringify(flow.data));
+  const food = await send('purchase', { source: 'food', external_ref: 'LISTA-1', title: 'Harina', project_id: OBRA, quantity: 2 }, proof('food'));
+  assert.equal(food.status, 200, JSON.stringify(food.data));
+  // Quien llama es food y dice ser flow: no.
+  const forged = await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-2', title: 'x', tab_id: TAB }, proof('food'));
+  assert.deepEqual([forged.status, forged.data.error.details.field], [422, 'source']);
+  assert.equal((await send('purchase', { source: 'flow', external_ref: 'LISTA-2', title: 'x', project_id: OBRA }, proof('food'))).status, 422);
+  // Con otra clave no hay prueba: hoy se acepta como antes (aún no son obligatorias).
+  assert.equal(serverCaller(new Request('http://x', { headers: proof('flow', 'otra') }), WORKER_KEY), null);
+  assert.equal((await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-3', title: 'Hielo', tab_id: TAB }, proof('flow', 'otra'))).status, 200);
+  // Cuando la de una app sea obligatoria: sin prueba, 403 CALLER_REQUIRED; con la suya, sí.
+  const required = new Set(['flow']);
+  assert.throws(() => checkAppSource('flow', null, required), (e: any) => e.status === 403 && e.code === 'CALLER_REQUIRED');
+  assert.doesNotThrow(() => checkAppSource('flow', 'flow', required));
+  assert.doesNotThrow(() => checkAppSource('central', null, required), 'las demás, igual que siempre');
 });
 
 test('puente con Feedback (§22.2): worker/requests/task escribe como la identidad de servicio, con quién informó como metadato', async () => {
