@@ -509,10 +509,11 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - **carta → ven:** tras enviar el pedido, «Tus datos» y, si el evento admite alojamiento, «Alójate aquí» abren `https://ven.ikisai.com/e/<código>?siguiente=datos|alojate&v=<traspaso nuevo>` (con `alojate`, también `?alojate`).
 - `GET public/menu` añade `eventCode`: el código público del evento del flujo, solo si Booking lo da como abierto.
 
-## 54. Pedido de prueba de un miembro (migración `0952`, con el núcleo `0115`)
+## 54. Lo que pide un miembro desde la carta (migración `0952`, vg-48, con el núcleo `0115`)
 
 - Dirección y staff entran en ven.ikisai.com con su identidad (visitante atado a su cuenta, `POST public/visitor/as-member`) y pueden pedir desde la carta.
 - Un pedido cuyo cliente tiene un visitante de una persona del equipo (`core.visitor_member`) nace con `test_by` (quién) y `test_name` (su nombre). Una ampliación hereda la marca. La pone el trigger `flow.orders_member_test`; nadie la cambia (no es columna escribible).
-- No cuenta en caja ni en Finance: `flow.day_summary` (cierre, envío a Food y a Finance) y `flow.central_kpi_projection` lo dejan fuera. Se prepara y se entrega como cualquier otro.
-- Se ve: en Caja y Servicio, «Pedido de prueba (nombre)» en la tarjeta; en la carta, al enviarlo y en «Mis pedidos» (`testName` en `public/mine`).
-- Recomendación de vg-48 (VG aún no la ha contestado): si decide cobrarlo como a un huésped, se quita el filtro y la marca queda solo como aviso.
+- **Fuera del horario del evento** (`test_excluded = true`): es de prueba y no cuenta en caja ni en Finance. `flow.day_summary` (cierre, envíos a Food y Finance) y `flow.central_kpi_projection` lo dejan fuera. Aviso «Pedido de prueba (nombre)».
+- **Durante el evento:** cuenta como el de cualquier huésped. El resumen del día lo lista en `member_orders: [{order_id, name, amount_cents}]` (con su suma en `member_cents`) para que Finance reste su pago. Aviso «Pedido del equipo (nombre), se ajusta en Finance».
+- Horario (`flow.in_event_window(project, at)`): los días del evento de Booking ligado (`starts_on..ends_on`) o, sin evento, los del flujo, en hora de Madrid. Se afinará con las horas de servicio cuando Booking las publique.
+- Se prepara y se entrega como cualquier otro. En la carta: al enviarlo y en «Mis pedidos» (`testName`, `testExcluded` en `public/mine`).

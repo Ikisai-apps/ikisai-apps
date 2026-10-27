@@ -78,8 +78,8 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       node.querySelector('.order-badge')!.textContent = o.pay_seq ? String(o.pay_seq) : '·';
       const items = (data.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
       const account = o.account_id ? data.accounts.find((a) => a.id === o.account_id) : null;
-      // Pedido de prueba de un miembro (0952): se ve siempre y no cuenta en caja ni en Finance.
-      node.querySelector('.qcard-title')!.textContent = [o.test_by ? `Pedido de prueba (${o.test_name ?? 'equipo'})` : '', number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
+      // Pedido de un miembro (0952, vg-48): fuera del horario, de prueba (no cuenta); durante el evento, cuenta y Finance lo ajusta.
+      node.querySelector('.qcard-title')!.textContent = [o.test_by ? (o.test_excluded ? `Pedido de prueba (${o.test_name ?? 'equipo'})` : `Pedido del equipo (${o.test_name ?? 'equipo'}), se ajusta en Finance`) : '', number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
         account ? `a cuenta: ${accountLabel(data, account)}` : ''].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = `${items || 'sin productos'} · ${formatEuros(orderTotal(data, o))}`;
       const state = o.status === 'open' ? 'Por cobrar'
