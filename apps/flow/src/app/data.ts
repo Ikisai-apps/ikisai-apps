@@ -22,7 +22,9 @@ export interface Unit extends Row {
   idx: number; pay_seq: number | null; label: string | null; priority: boolean; status: UnitStatus; assigned_to: string | null; done_at: string | null; done_by: string | null;
   payload: { item_key?: string; name?: string; unit?: string; qty?: number; to?: string; from?: string | null; external?: { app: string; kind: string; id: string; status?: string | null };
     /** Puesto (kind 'station'): su métrica, parámetros y textos con {target} y {rate}. */
-    metric?: string; params?: Record<string, unknown>; text?: string; notice?: string; notice_in?: string[] } | null; source_ref: string | null;
+    metric?: string; params?: Record<string, unknown>; text?: string; notice?: string; notice_in?: string[];
+    /** «Comprar X» (fresco bajo umbral): se pide a Tasks como compra de un toque. */
+    purchase?: boolean } | null; source_ref: string | null;
 }
 export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null;
   template_key: string | null; template_version: number | null; frozen: boolean; serves_public: boolean; cover_file_id: string | null }
@@ -169,4 +171,15 @@ export function fillMetricText(template: string | undefined, metric: StationMetr
     const v = (metric.value as Record<string, unknown>)[k];
     return typeof v === 'number' ? new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(v) : String(v ?? '');
   });
+}
+
+/** Existencias por ingrediente (`flow.stock_view`): mesa, nevera y fresco, y lo consumido hoy. */
+export interface StockItem {
+  item_key: string; name: string; unit: string; consumed_today: number;
+  places: Partial<Record<'mesa' | 'nevera' | 'fresco', { level: number; capacity: number; threshold_pct: number }>>;
+}
+
+export async function loadStock(client: SyncClient, projectId: string): Promise<StockItem[]> {
+  try { return (await client.api<StockItem[] | null>('/read/flow.stock_view', { method: 'POST', json: { project_id: projectId } })) ?? []; }
+  catch { return []; }
 }

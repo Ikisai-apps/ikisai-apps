@@ -23,6 +23,7 @@ export const TABLES = {
   consumptionRules: 'flow.consumption_rules',
   projectDocuments: 'flow.project_documents',
   templateUnits: 'flow.template_units',
+  templateColumnPatches: 'flow.template_column_patches',
 } as const satisfies Record<string, `flow.${string}`>;
 
 /** Procedimientos `call` permitidos (API.md §3). */

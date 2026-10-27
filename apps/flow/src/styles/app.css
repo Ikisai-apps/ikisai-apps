@@ -172,3 +172,7 @@
 .qcard-params{position:absolute;right:8px;bottom:6px}
 .station-params{display:grid;gap:8px}
 .station-params label{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center}
+
+/* Existencias (Inicio del flujo) */
+.flow-stock{margin:0 0 14px}
+.stock-table td.stock-low{color:var(--alert,#b3261e);font-weight:700}

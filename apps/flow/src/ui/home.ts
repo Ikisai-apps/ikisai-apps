@@ -2,7 +2,7 @@ import { confirmDialog, createCoverCarousel, el, icon, openSheet, replace, toast
 import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
-import { loadProjects, projectDates, projectState, type Project } from '../app/data.ts';
+import { loadProjects, loadStock, projectDates, projectState, type Project, type StockItem } from '../app/data.ts';
 import { addDocument, coverUrl, loadCodeGuides, moveDocument, projectDocuments, removeDocument, setCover, type ProjectDocument } from '../app/documents.ts';
 import { chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
 import type { ViewMount } from './shell.ts';
@@ -23,7 +23,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
   const carouselHost = el('div', { class: 'flow-carousel' });
   const testHost = el('div', { class: 'flow-testmode' });
   const docsHost = el('section', { class: 'flow-docs', 'data-feedback-id': 'flow.inicio.guias', 'data-feedback-label': 'Guías' });
-  main.append(carouselHost, testHost, docsHost);
+  const stockHost = el('section', { class: 'flow-stock', 'data-feedback-id': 'flow.inicio.existencias', 'data-feedback-label': 'Existencias' });
+  main.append(carouselHost, testHost, stockHost, docsHost);
 
   const covers = new Map<string, string | null>();
   void loadProjects(client).then(async (projects) => {
@@ -176,6 +177,27 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     show(0);
   });
 
+  /** Existencias (paso 3): solo si el flujo tiene puntos de existencias. */
+  const fmt = (n: number, unit: string) => new Intl.NumberFormat('es-ES', { maximumFractionDigits: unit === 'ud' ? 0 : 2 }).format(n);
+  function place(item: StockItem, key: 'mesa' | 'nevera' | 'fresco'): HTMLElement {
+    const p = item.places[key];
+    if (!p) return el('td', { class: 'muted' }, '—');
+    const low = p.capacity > 0 && p.level < p.capacity * p.threshold_pct / 100;
+    return el('td', { class: low ? 'stock-low' : '' }, `${fmt(p.level, item.unit)} / ${fmt(p.capacity, item.unit)}`);
+  }
+  async function paintStock(): Promise<void> {
+    if (!projectId) return;
+    const items = await loadStock(client, projectId);
+    if (!items.length) { replace(stockHost); return; }
+    replace(stockHost, el('h2', { class: 'col-title' }, 'Existencias'),
+      el('table', { class: 'closure-products stock-table' },
+        el('thead', null, el('tr', null, el('th', null, 'Ingrediente'), el('th', null, 'Mesa'), el('th', null, 'Nevera'), el('th', null, 'Fresco'), el('th', null, 'Hoy'))),
+        el('tbody', null, ...items.map((i) => el('tr', null, el('td', null, `${i.name} (${i.unit})`), place(i, 'mesa'), place(i, 'nevera'), place(i, 'fresco'),
+          el('td', null, fmt(i.consumed_today, i.unit)))))));
+  }
+  void paintStock();
+  const offStock = [TABLES.buffers, TABLES.units].map((t) => client.onTable(t, () => void paintStock()));
+
   const off = client.onTable(TABLES.projects, () => { void loadProjects(client).then((ps) => paintTestMode(ps.find((p) => p.id === projectId) ?? null)); });
-  return off;
+  return () => { off(); offStock.forEach((f) => f()); };
 };
