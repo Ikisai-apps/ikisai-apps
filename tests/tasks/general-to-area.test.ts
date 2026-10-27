@@ -40,8 +40,8 @@ test.before(async () => {
     { op: 'insert', table: 'tasks.labels', id: VG_B, fields: { tab_id: B, family_id: fam.B!.person!, name: 'VG' } },
   ]);
   await ok([
-    { op: 'insert', table: 'tasks.tasks', id: T_A, fields: { tab_id: A, project_id: PA, title: 'Podar el seto' } },
-    { op: 'insert', table: 'tasks.tasks', id: T_B, fields: { tab_id: B, project_id: PB, title: 'Podar los frutales', owner_label_id: VG_B } },
+    { op: 'insert', table: 'tasks.tasks', id: T_A, fields: { tab_id: A, project_id: PA, title: 'Podar el seto', position: 1024 } },
+    { op: 'insert', table: 'tasks.tasks', id: T_B, fields: { tab_id: B, project_id: PB, title: 'Podar los frutales', position: 1024, owner_label_id: VG_B } },
     { op: 'insert', table: 'tasks.request_routes', id: ROUTE, fields: { kind: 'feedback.space.garden', tab_id: B, project_id: PB, owner_label_id: VG_B } },
   ]);
   await ok([
@@ -59,7 +59,7 @@ test.after(async () => { await app.close(); });
 test('una General vuelve a ser de un área: se queda en ella, y la otra área recupera su copia con todo lo suyo', async () => {
   const poda = (await rows('tasks.labels')).find((l) => l.tab_id === null && l.name === 'Poda' && !l.deleted_at)!;
   // También se usa en Taller, que nunca tuvo copia: allí nace una.
-  await ok([{ op: 'insert', table: 'tasks.tasks', id: T_C, fields: { tab_id: C, project_id: PC, title: 'Podar el olivo' } }]);
+  await ok([{ op: 'insert', table: 'tasks.tasks', id: T_C, fields: { tab_id: C, project_id: PC, title: 'Podar el olivo', position: 1024 } }]);
   await ok([{ op: 'insert', table: 'tasks.task_labels', id: uuid(), fields: { tab_id: C, project_id: PC, task_id: T_C, label_id: poda.id } }]);
 
   const res = await toArea(poda.id, A);
