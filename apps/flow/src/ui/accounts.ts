@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { formatEuros, SETTLE_METHOD_LABELS, type SettleMethod } from '@ikisai/domain-flow';
 import { flowActions, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -18,8 +18,8 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
   const isOwner = client.bootstrap()?.membership.role === 'owner';
   let data: FlowData | null = null;
   const list = el('div', { class: 'accounts-list', role: 'list' });
-  const holder = el('input', { type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', autocomplete: 'off' });
-  const number = el('input', { type: 'text', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Nº de cliente (opcional)', 'aria-label': 'Número de cliente', autocomplete: 'off' });
+  const holder = el('input', { ...fieldAttrs({ id: 'flow.cuentas.titular', entity: 'flow.accounts', prop: 'holder', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', autocomplete: 'off' });
+  const number = el('input', { ...fieldAttrs({ id: 'flow.cuentas.numero_cliente', entity: 'flow.customers', prop: 'number', type: 'text' }), type: 'text', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Nº de cliente (opcional)', 'aria-label': 'Número de cliente', autocomplete: 'off' });
   const openButton = busyButton({ class: 'primary' }, 'Abrir cuenta', async () => {
     if (!isOnline(client)) { toast('Abrir una cuenta necesita conexión.'); return; }
     const customer = number.value.replace(/\D/g, '');
@@ -45,7 +45,7 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
       return el('div', { class: 'qcard account-card', role: 'listitem' },
         el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, accountLabel(data!, a)),
           el('small', { class: 'qcard-sub muted' }, `${t.orders} ${t.orders === 1 ? 'pedido' : 'pedidos'} · ${formatEuros(t.cents)}`)),
-        canSettle ? busyButton({ class: 'secondary' }, 'Liquidar', () => settle(a, t.cents)) : el('small', { class: 'muted' }, 'La liquida quien la abrió'));
+        canSettle ? busyButton({ class: 'ghost' }, 'Liquidar', () => settle(a, t.cents)) : el('small', { class: 'muted' }, 'La liquida quien la abrió'));
     }));
   }
 
@@ -89,12 +89,12 @@ export async function chooseAccount(client: SyncClient, data: FlowData, customer
     let chosen: string | 'new' | null = null;
     const sheet = openSheet({ title: 'Cargar a cuenta', onClose: () => resolve(chosen),
       body: el('div', { class: 'flow-pick' },
-        ...open.map((a) => el('button', { type: 'button', class: 'secondary', onclick: () => { chosen = a.id; sheet.close(); } }, accountLabel(data, a))),
+        ...open.map((a) => el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = a.id; sheet.close(); } }, accountLabel(data, a))),
         el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = 'new'; sheet.close(); } }, 'Abrir cuenta nueva…')) });
   });
   if (picked !== 'new') return picked;
   const customer = customerId ? data.customers.get(customerId) ?? null : null;
-  const input = el('input', { type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', value: customer?.display_name ?? '' });
+  const input = el('input', { ...fieldAttrs({ id: 'flow.cliente.nombre', entity: 'flow.customers', prop: 'display_name', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', value: customer?.display_name ?? '' });
   const ok = await confirmDialog({ title: 'Abrir cuenta', text: customer ? `Del cliente ${customer.number}.` : 'A nombre de quien paga al final.', body: input, confirmLabel: 'Abrir y cargar' });
   if (!ok) return null;
   if (!input.value.trim() && !customer) { toast('Pon a nombre de quién.'); return null; }

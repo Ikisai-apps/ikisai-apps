@@ -1,6 +1,6 @@
 import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
-import { applyTheme, initAppUpdates } from '@ikisai/ui-kit';
+import { applyTheme, initAppUpdates, readGuideLink, readReturnTo } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createGuestApi } from './app/api.ts';
 import { onLocaleChange } from './app/i18n.ts';
@@ -36,7 +36,8 @@ async function boot(): Promise<void> {
   // Desde la carta de Flow llega además `v`: el traspaso de la misma identidad de visitante (un solo uso; sin él, caducado o
   // si este móvil ya tiene la suya, se sigue como estaba). La URL se limpia antes de canjearlo.
   const handoff = visitor ? new URLSearchParams(location.search).get('v') : null;
-  if (visitor) history.replaceState(null, '', `/${visitor}`);
+  // El Guiado de Flow llega con `?campo=…&paso=…&volver=…`: se guardan en la pestaña antes de limpiar la URL.
+  if (visitor) { readReturnTo(); readGuideLink(); history.replaceState(null, '', `/${visitor}`); }
   if (handoff) await redeemHandoff(handoff).catch(() => false);
   const match = location.pathname.match(/^\/i\/([^/?#]*)\/?$/);
   if (match) {
@@ -45,9 +46,9 @@ async function boot(): Promise<void> {
       const grant = (await client.loginWithLink(match[1] ?? '')).grant as { guest_id?: unknown } | null | undefined;
       linkedGuestId = typeof grant?.guest_id === 'string' ? grant.guest_id.toLowerCase() : null;
     } catch (error) {
+      // Sin callejón (VG, 28-10): una app instalada desde un enlace de un solo uso vuelve a él en cada arranque. Si ya hay
+      // sesión guardada, se sigue con ella; si no, la entrada dice que caducó y enseña los eventos abiertos.
       entryError = error;
-      show();
-      return;
     }
   }
   try {
@@ -55,6 +56,7 @@ async function boot(): Promise<void> {
   } catch (error) {
     console.warn('[guests] arranque sin red o sin sesión', error);
   }
+  if (entryError && client.session()) entryError = null;
   show();
 }
 
@@ -66,7 +68,7 @@ function show(): void {
   unmount = null;
   visitorMode = isVisitorHash(location.hash);
   if (visitorMode) {
-    unmount = renderVisitor(root!);
+    unmount = renderVisitor(root!, client);
     return;
   }
   if (!entryError && client.session()) {

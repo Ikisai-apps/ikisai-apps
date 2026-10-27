@@ -656,7 +656,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (required.length === 0) { await send(); return; }
 
       const boxes = required.map((w, index) => {
-        const box = el('input', { 'data-feedback-id': 'food.menu.validar.aviso', 'data-feedback-label': 'Aviso tenido en cuenta', type: 'checkbox', id: `ack-${index}`, onchange: () => { confirm.disabled = !boxes.every((b) => b.box.checked); } });
+        const box = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.menu.validar.aviso', 'data-feedback-label': 'Aviso tenido en cuenta', type: 'checkbox', id: `ack-${index}`, onchange: () => { confirm.disabled = !boxes.every((b) => b.box.checked); } });
         return { box, node: el('label', { class: 'checkline ackline', for: box.id }, box, el('span', { 'data-feedback-ignore': '' }, w.text)) };
       });
       const confirm = el('button', { 'data-feedback-id': 'food.menu.validar.confirmar', 'data-feedback-label': 'Validar menú', class: 'primary', type: 'button', id: 'confirmValidate', disabled: true,
@@ -1031,7 +1031,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     /** Selector de plato: el recetario visual, con las raciones del evento por defecto. */
     function pickRecipe(service: ServiceRow, count: number): void {
-      const search = el('input', { 'data-feedback-id': 'food.menu.platos.selector.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', placeholder: house() ? 'Buscar receta o escribir un plato nuevo' : 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill(),
+      const search = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.menu.platos.selector.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', placeholder: house() ? 'Buscar receta o escribir un plato nuevo' : 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill(),
         onkeydown: (ev: Event) => { if ((ev as KeyboardEvent).key === 'Enter') (quickHost.querySelector('button') as HTMLButtonElement | null)?.click(); } });
       const grid = el('ul', { 'data-feedback-id': 'food.menu.platos.selector', 'data-feedback-label': 'Selector de recetas', class: 'recipegrid picker', id: 'recipePicker' });
       const servings = defaultServings(service.service_date);

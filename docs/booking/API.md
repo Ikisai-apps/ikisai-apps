@@ -2143,6 +2143,9 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
   - avisos de otra app de la misma cuenta (`metadata.app` distinto de `booking`) o sin interés: 200 `{ignored: true}`;
   - `paid` guarda el pago de Stripe (`stay_payments.provider_payment_ref`, `pi_…`). Por él se casa `charge.refunded`, que no trae la sesión.
 - **Devoluciones:** `refund` busca el pago de la sesión y devuelve con la clave de idempotencia recibida (o con una nueva).
+**Capacidades en el catálogo (migración 1422; para Flow y el Guiado):** son rutas del personal con permiso de escritura y el ámbito de huéspedes, y declaran sus `reads` y `writes` (`entity.prop`, núcleo 0111).
+- `booking.accept_stay`, «Alojar en recepción»: `POST stays/:id/accept {method?, name?, requestId?}`. Es `join_from_visitor` con `accept`. Repetir con el mismo `requestId` devuelve lo mismo. Con `online` y sin pago confirmado, `NOT_PAID_ONLINE`.
+- `booking.cancel_stay_online`, «Cancelar noches pagadas en línea»: `POST stays/:id/cancel/online {confirm?}`. Es lo mismo que `public/stay/cancel` (1419), pero lo hace el personal (`booking.stay_cancel` con `by_staff`).
 
 ## 46. Guiado de Flow en Booking (prueba del alojamiento; VG 27-10-2026)
 
@@ -2154,8 +2157,35 @@ Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): c
 | Confirmarlo (crea el evento y su número público) | `#/reservas/<id>` | `booking.reserva.acciones.confirmar` | `event` |
 | Buscar el número en recepción | `#/recepcion` | `booking.recepcion.buscar` | `manual` |
 | Cobrar y alojar | `#/recepcion` | `booking.recepcion.cobrar` (o `booking.recepcion.alojar_pagado` si se pagó en línea) | `event` (aceptado por la base) |
-| Completar los datos | `#/huespedes/<evento>` | `booking.huespedes.ficha.guardar` | `event` (al guardar la ficha) |
+| Completar los datos | `#/huespedes/<evento>/<huésped>` (abre su ficha) | un campo de la ficha, p. ej. `booking.huespedes.ficha.document_number` | `event` (al guardar la ficha; avisa la hoja y cada campo cambiado) |
 | Llega | `#/recepcion` | `booking.recepcion.llega` | `event` |
 | Sale (libera la cama y pide la limpieza) | `#/recepcion` | `booking.recepcion.sale` | `event` |
 
-Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` al guardar.
+Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` y `<feedbackId>.<campo>` por cada campo cambiado, y lo hace cuando la base lo ha aceptado (sin red, como pendiente). Los campos llevan `data-field-*` con entidad y columna (`booking.guests` y `document_number`), así que entran en el inventario.
+
+En Recepción, en el móvil (pestañas), el Guiado abre el carril del botón que busca (`registerReveal('booking.recepcion')`). El buscador se guarda en la pestaña, así que, si se ha buscado el número antes, el paso señala la ficha de esa persona. Lo pagado en línea confirma también `booking.recepcion.cobrar`.
+
+**Horario de servicio en `booking.event_projection` (migración 1425; petición de Flow, vg-48):** `service_hours jsonb` = `[{day, starts_at, ends_at}]` (`HH:MM`, hora de Madrid). Cada día va con el primer inicio y el último fin de su programa (`program_items` con hora; sin fin, cuenta el inicio). Los días sin programa con hora no salen, y sin ninguno, `null`. Para Flow, lo que se pide fuera de ese horario es un pedido de prueba.
+
+## 47. Factura a petición de las noches (migración 1424; VG, vg-38; contrato con Finance)
+
+Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no guarda los datos fiscales: comprueba su forma (`checkInvoiceCustomer`) y los reenvía a Finance (`POST invoices-api/api/v1/worker/entry-invoice`, con `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: booking`). Va un cobro por petición (`source: booking:stay:<cobro>`), y el `request_id` sale del cobro y del destinatario, así que repetir lo mismo no pide dos veces.
+- **Destinatario (`customer`):**
+  - `name` y `tax_id` obligatorios;
+  - `id_type`: `NIF` por defecto, o `02` a `06`;
+  - `country` (ISO-2, `ES` por defecto) y `kind`: `particular` o `empresa`;
+  - `address {line, postal_code, city, province?, country}`, obligatoria para `empresa`.
+  - El NIF con dígito de control lo valida Finance (422 `TAX_ID_INVALID`).
+- **`POST public/stay/invoice {stay_id, customer}`** (X-Visitor):
+  - devuelve `{invoices: [{charge_id, status, full_number, pdf_url}]}` con los cobros cobrados y no devueltos del todo;
+  - un cobro que aún no está en Finance sale con `status: 'sin_apunte'`;
+  - sin nada cobrado, 409 `NOTHING_TO_INVOICE`.
+- **Recepción:** `POST walkins/:id/invoice {customer}` y `GET walkins/:id/invoice` (cómo va), para editor y owner.
+- **Estados (Finance, §17.13):**
+  - `pendiente` es el borrador que revisa Finance; `emitida` trae `issued_invoice_id` y `full_number`;
+  - también puede quedar `anulada` o `descartada`, y con `descartada` se puede volver a pedir;
+  - antes de pedir se mira si ya hay una, así que repetir no pide dos veces;
+  - `pdf_url` llega a `null` hasta que Finance tenga el PDF para quien no tiene sesión;
+  - `GET` sin petición: 404 `NOT_REQUESTED`.
+- **Apagado hasta que Finance tenga la ruta:** si Finance responde 404 sin código, 503 `INVOICES_OFF`.
+- `booking.stay_charges_of` (sistema) da los cobros de la solicitud aceptada, solo al visitante dueño.

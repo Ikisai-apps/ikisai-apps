@@ -36,8 +36,8 @@ export function openConsumptionSheet(input: ConsumptionSheetInput): Sheet | null
     const dish = items.find((i) => i.id === menuItemId)!;
     const recipe = recipes.find((r) => r.id === dish.recipe_id);
     const lines = consumptionLines(graph, menuItemId, inventory.items, inventory.conversions);
-    const done = el('input', { type: 'checkbox', checked: true, 'aria-label': `${recipe?.name ?? 'Plato'}: se hizo` }) as HTMLInputElement;
-    const inputs = lines.map((line) => el('input', { type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(line.quantity), 'aria-label': `${line.name} gastado en ${recipe?.name ?? 'el plato'}`, disabled: line.reason !== null }) as HTMLInputElement);
+    const done = el('input', { 'data-field-none': '', type: 'checkbox', checked: true, 'aria-label': `${recipe?.name ?? 'Plato'}: se hizo` }) as HTMLInputElement;
+    const inputs = lines.map((line) => el('input', { 'data-field-id': 'food.menu.consumo.cantidad', 'data-field-entity': 'resources.movements', 'data-field-prop': 'quantity', type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(line.quantity), 'aria-label': `${line.name} gastado en ${recipe?.name ?? 'el plato'}`, disabled: line.reason !== null }) as HTMLInputElement);
     const node = el('div', { 'data-feedback-id': 'food.menu.consumo.plato', 'data-feedback-label': 'Plato del consumo', class: 'consumedish' },
       el('label', { class: 'checkline' }, done, el('strong', null, recipe?.name ?? 'Plato'), el('span', { class: 'muted' }, ` · ${formatQuantity(dish.servings)} raciones`)),
       lines.length ? el('table', { class: 'ingredients' }, el('tbody', null, ...lines.map((line, index) => el('tr', null,

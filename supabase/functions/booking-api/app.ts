@@ -1,6 +1,6 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, sha256Hex, type AppConfig, type AppRoute, type PublicRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
-import { bookingAgentRisk, canSeeGuests, montage, TABLES, validateOperations, walkinFinanceEntry, type WalkinForSend } from '../_domain/booking/mod.ts';
+import { bookingAgentRisk, canSeeGuests, checkInvoiceCustomer, montage, TABLES, validateOperations, walkinFinanceEntry, type InvoiceCustomer, type WalkinForSend } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
@@ -242,9 +242,68 @@ const RETREAT_LOGO_BUCKET = 'organizers-materials';
  * `X-Ikisai-Worker-Key` (la `IKISAI_WORKER_KEY`) y `X-Ikisai-Caller: booking`; un navegador no tiene la clave, así que
  * nadie más puede apuntar con `source_app: 'booking'`.
  */
+/** Cómo llega Booking a Finance (`invoices-api`) como servidor: la clave de worker y quién llama. */
+export interface FinanceLink { base: string; appsFetch: typeof fetch; workerKey: string | undefined }
+
+/**
+ * Factura a petición de un cobro (vg-38; contrato con Finance, `docs/invoices/API.md` §17.13): `worker/entry-invoice` de
+ * Finance, uno por cobro (`booking:stay:<cobro>`). Los datos fiscales no se guardan en Booking. Finance deja la factura en
+ * borrador para revisar (`pendiente`) y la emite (`emitida`, con `issued_invoice_id` y `full_number`); si la descarta
+ * (`descartada`), se puede volver a pedir. Antes de pedir se mira si ya hay una: repetir no pide dos veces. Sin la ruta en
+ * Finance (404 sin código), `INVOICES_OFF`. El PDF para alguien sin sesión todavía no existe (`pdf_url: null`).
+ */
+async function requestEntryInvoice(link: FinanceLink, chargeId: string, customer: InvoiceCustomer | null) {
+  const url = `${link.base}/functions/v1/invoices-api/api/v1/worker/entry-invoice`;
+  const source = `booking:stay:${chargeId}`;
+  const headers = { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': link.workerKey ?? '', 'X-Ikisai-Caller': 'booking' };
+  const call = async (init: RequestInit & { url: string }) => {
+    let res: Response;
+    try {
+      res = await link.appsFetch(init.url, { ...init, headers, signal: AbortSignal.timeout(15_000) });
+    } catch {
+      fail(503, 'APP_UNAVAILABLE', 'Finance no responde ahora mismo. Inténtalo más tarde.');
+    }
+    return { res: res!, body: await res!.json().catch(() => ({})) as any };
+  };
+  const out = (b: any) => ({ charge_id: chargeId, status: b?.status ?? null, issued_invoice_id: b?.issued_invoice_id ?? null, full_number: b?.full_number ?? null, pdf_url: b?.pdf_url ?? null });
+  const reject = (res: Response, body: any): never => {
+    const code = body?.error?.code as string | undefined;
+    if (res.status === 404 && !code) fail(503, 'INVOICES_OFF', 'La factura a petición todavía no está activa.');
+    fail(res.status === 409 || res.status === 404 ? res.status : 422, code ?? 'APP_REJECTED', body?.error?.message ?? 'Finance no ha aceptado la petición de factura.', { details: body?.error?.details ?? null });
+  };
+  const current = await call({ url: `${url}?source=${encodeURIComponent(source)}`, method: 'GET' });
+  const notRequested = current.res.status === 404 && current.body?.error?.code === 'NOT_REQUESTED';
+  if (!customer) return current.res.ok ? out(current.body) : reject(current.res, current.body);
+  if (!current.res.ok && !notRequested) reject(current.res, current.body);
+  if (current.res.ok && current.body?.status !== 'descartada') return out(current.body);
+  // la primera vez, el id sale del cobro y del destinatario; tras un borrador descartado, uno nuevo
+  const hex = (await sha256Hex(`booking-invoice:${chargeId}:${JSON.stringify(customer)}${notRequested ? '' : `:${crypto.randomUUID()}`}`)).slice(0, 32);
+  const requestId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  const posted = await call({ url, method: 'POST', body: JSON.stringify({ request_id: requestId, source, customer }) });
+  if (posted.res.ok) return out(posted.body);
+  if (posted.body?.error?.code === 'ALREADY_REQUESTED') return out(posted.body.error.details);
+  return reject(posted.res, posted.body);
+}
+
 function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: string | undefined): AppRoute[] {
   const commandsOf = (slug: string) => `${supabase.base}/functions/v1/${slug}/api/v1/commands`;
+  const link: FinanceLink = { base: supabase.base, appsFetch, workerKey };
   return [{
+    // Factura a petición desde recepción (vg-38): el cobro tiene que estar ya en Finance. GET dice cómo va.
+    method: 'POST', pattern: 'walkins/:id/invoice',
+    handler: async ({ ctx, params, json }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura pide facturas.');
+      const checked = checkInvoiceCustomer(((await json().catch(() => ({}))) as Record<string, unknown>).customer);
+      if ('field' in checked) fail(422, 'INVALID_FIELDS', 'Revisa los datos de la factura.', { field: checked.field });
+      return requestEntryInvoice(link, uuidOrFail(params.id, 'id'), (checked as { customer: InvoiceCustomer }).customer);
+    },
+  }, {
+    method: 'GET', pattern: 'walkins/:id/invoice',
+    handler: async ({ ctx, params }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura consulta facturas.');
+      return requestEntryInvoice(link, uuidOrFail(params.id, 'id'), null);
+    },
+  }, {
     method: 'POST', pattern: 'walkins/:id/send/finance',
     handler: async ({ ctx, params }) => {
       if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura envía cobros a Finance.');
@@ -392,7 +451,7 @@ function stayOut(item: Record<string, unknown>) {
   };
 }
 
-export function bookingPublicRoutes(payments: PaymentProvider | null = null): PublicRoute[] {
+export function bookingPublicRoutes(payments: PaymentProvider | null = null, finance: Omit<FinanceLink, 'base'> | null = null): PublicRoute[] {
   const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
   return [{
     method: 'POST', pattern: 'join',
@@ -504,6 +563,30 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       return { redirect_url: intent!.redirectUrl, expires_at: item!.hold_until, reused: false };
     },
   }, {
+    // Factura a petición (vg-38): el visitante pide factura de sus noches ya cobradas, una por cobro. Los datos fiscales no
+    // se guardan en Booking; Finance valida el NIF (`TAX_ID_INVALID`). Si un cobro aún no está en Finance, se dice.
+    method: 'POST', pattern: 'stay/invoice',
+    handler: async ({ json, visitor, supabase }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      if (!finance) fail(503, 'INVOICES_OFF', 'La factura a petición todavía no está activa.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
+      const checked = checkInvoiceCustomer(body.customer);
+      if ('field' in checked) fail(422, 'INVALID_FIELDS', 'Revisa los datos de la factura.', { field: checked.field });
+      await ensureServiceActor(supabase, 'booking');
+      const out = await supabase.rpc<{ status: string; charges: Array<{ id: string; paid: boolean; sent: boolean; amount_cents: number; refund_cents: number }> }>('core_invoke',
+        { p_app: 'booking', p_actor: null, p_name: 'booking.stay_charges_of', p_args: { request_id: requestId, visitor_id: visitor!.id } });
+      const billable = (out?.charges ?? []).filter((c) => c.paid && c.refund_cents < c.amount_cents);
+      if (!billable.length) fail(409, 'NOTHING_TO_INVOICE', 'Todavía no hay nada cobrado que facturar.');
+      const link: FinanceLink = { base: supabase.base, ...finance! };
+      const invoices = [];
+      for (const c of billable) {
+        if (!c.sent) { invoices.push({ charge_id: c.id, status: 'sin_apunte', issued_invoice_id: null, full_number: null, pdf_url: null }); continue; }
+        invoices.push(await requestEntryInvoice(link, c.id, (checked as { customer: InvoiceCustomer }).customer));
+      }
+      return { invoices };
+    },
+  }, {
     // Cancelar noches pagadas en línea (1419; política de VG): sin `confirm`, solo dice cuánto se devolvería; con `confirm`,
     // pide la devolución a la pasarela y después suelta la cama. Repetirlo no devuelve dos veces.
     method: 'POST', pattern: 'stay/cancel',
@@ -511,25 +594,7 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
       const body = (await json().catch(() => ({}))) as Record<string, unknown>;
       const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
-      const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_cancel', p_args: { ...args, request_id: requestId, visitor_id: visitor!.id } });
-      await ensureServiceActor(supabase, 'booking');
-      const quote = await invoke({ action: 'quote' });
-      if (quote?.replayed) return { status: 'cancelada', replayed: true };
-      const preview = { percent: quote.percent, tier: quote.tier, paid_cents: quote.paid_cents, refund_cents: quote.refund_cents, full_until: quote.full_until, half_until: quote.half_until };
-      if (body.confirm !== true) return { status: 'quote', ...preview };
-      if (Number(quote.refund_cents) > 0 && (!payments?.refund || payments.name !== quote.provider)) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
-      // el importe queda fijado en la base antes de tocar la pasarela; la clave hace que repetir no devuelva dos veces
-      const claim = await invoke({ action: 'claim' });
-      const cents = Number(claim.refund_cents);
-      if (cents > 0) {
-        try {
-          await payments!.refund!(String(claim.provider_ref), cents, `booking-stay-cancel-${requestId}`);
-        } catch {
-          fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo. Vuelve a intentarlo: no se devolverá dos veces.');
-        }
-      }
-      const out = await invoke({ action: 'apply' });
-      return { status: 'cancelada', ...preview, refund_cents: cents, replayed: out?.replayed ?? false };
+      return cancelStayOnline(supabase, payments, requestId, { visitor_id: visitor!.id }, body.confirm === true);
     },
   }, {
     // El aviso de la pasarela (webhook firmado; sin sesión ni visitante). Cada aviso cuenta una vez.
@@ -557,6 +622,68 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
   }];
 }
 
+/**
+ * Cancelar noches pagadas en línea (1419), para el visitante (`public/stay/cancel`) y para el personal
+ * (`stays/:id/cancel/online`, 1422). El importe queda fijado en la base antes de tocar la pasarela, y la clave hace que
+ * repetir no devuelva dos veces.
+ */
+async function cancelStayOnline(supabase: Supabase, payments: PaymentProvider | null, requestId: string, who: { visitor_id: string } | { by_staff: true }, confirm: boolean) {
+  const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_cancel', p_args: { ...args, ...who, request_id: requestId } });
+  await ensureServiceActor(supabase, 'booking');
+  const quote = await invoke({ action: 'quote' });
+  if (quote?.replayed) return { status: 'cancelada', replayed: true };
+  const preview = { percent: quote.percent, tier: quote.tier, paid_cents: quote.paid_cents, refund_cents: quote.refund_cents, full_until: quote.full_until, half_until: quote.half_until };
+  if (!confirm) return { status: 'quote', ...preview };
+  if (Number(quote.refund_cents) > 0 && (!payments?.refund || payments.name !== quote.provider)) fail(503, 'PAYMENTS_OFF', 'La devolución en línea no está activa.');
+  const claim = await invoke({ action: 'claim' });
+  const cents = Number(claim.refund_cents);
+  if (cents > 0) {
+    try {
+      await payments!.refund!(String(claim.provider_ref), cents, `booking-stay-cancel-${requestId}`);
+    } catch {
+      fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela no ha aceptado la devolución ahora mismo. Vuelve a intentarlo: no se devolverá dos veces.');
+    }
+  }
+  const out = await invoke({ action: 'apply' });
+  return { status: 'cancelada', ...preview, refund_cents: cents, replayed: out?.replayed ?? false };
+}
+
+/**
+ * Las dos capacidades del catálogo (1422; para Flow y el Guiado): alojar una solicitud de noches y cancelar lo pagado en
+ * línea. Personal con permiso de escritura y con el ámbito de huéspedes.
+ */
+function staffStayRoutes(supabase: Supabase, payments: PaymentProvider | null): AppRoute[] {
+  const guard = (ctx: RequestContext, what: string) => {
+    if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', `Solo el personal con permiso de escritura puede ${what}.`);
+    if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', GUESTS_FORBIDDEN);
+  };
+  return [{
+    method: 'POST', pattern: 'stays/:id/accept',
+    handler: async ({ ctx, params, json }) => {
+      guard(ctx, 'alojar');
+      const requestId = uuidOrFail(params.id, 'id');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const method = body.method === undefined || body.method === null ? null : String(body.method);
+      if (method !== null && !['cash', 'bizum', 'bitcoin', 'card', 'online'].includes(method)) fail(422, 'INVALID_FIELDS', 'Método no válido.', { field: 'method' });
+      const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 120) : null;
+      const operations = [{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: requestId, decision: 'accept', ...(method ? { method } : {}), ...(name ? { name } : {}) } }];
+      const rid = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : `booking:accept:${requestId}`;
+      const out = await supabase.rpc<CommitResult>('core_commit', { p_app: 'booking', p_actor: ctx.user.id, p_request_id: rid, p_digest: await sha256Hex(JSON.stringify(operations)),
+        p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+      const first = out.results?.[0] as { result?: unknown } | undefined;
+      const result = (first?.result ?? first ?? {}) as { request_id?: string; status?: string; guest_id?: string | null };
+      return { request_id: result.request_id ?? requestId, status: result.status ?? null, guest_id: result.guest_id ?? null, replayed: out.replayed ?? false };
+    },
+  }, {
+    method: 'POST', pattern: 'stays/:id/cancel/online',
+    handler: async ({ ctx, params, json }) => {
+      guard(ctx, 'cancelar noches');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      return cancelStayOnline(supabase, payments, uuidOrFail(params.id, 'id'), { by_staff: true }, body.confirm === true);
+    },
+  }];
+}
+
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch, workerKey: string | undefined = denoEnv('IKISAI_WORKER_KEY'), payments: PaymentProvider | null = null): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
@@ -565,6 +692,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   return [
     ...walkinRoutes(supabase, appsFetch, workerKey),
     ...onlineRefundRoutes(supabase, payments),
+    ...staffStayRoutes(supabase, payments),
     ...montageRoutes(supabase, ses),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
@@ -720,7 +848,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: async (result) => { await calendarAfterCommit(supabase, calendar)(result); await cleaningAfterCommit(supabase, ses)(result); }, agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY'), payments ?? null),
-    publicRoutes: bookingPublicRoutes(payments ?? null),
+    publicRoutes: bookingPublicRoutes(payments ?? null, { appsFetch, workerKey: config.workerKey ?? denoEnv('IKISAI_WORKER_KEY') }),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses, payments ?? null),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,

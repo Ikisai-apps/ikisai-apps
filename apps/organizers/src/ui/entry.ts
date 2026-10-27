@@ -1,5 +1,5 @@
 /** Entrada sin sesión (API.md §9.1): enlace no válido o caducado, o nadie ha abierto todavía su enlace en este dispositivo. */
-import { createLanguageSelect, el, icon, replace, toast } from '@ikisai/ui-kit';
+import { createLanguageSelect, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { i18n, t } from '../app/i18n.ts';
 import { describeError, errorCode } from '../app/client.ts';
 import { contactLine } from '../app/common-texts.ts';
@@ -50,8 +50,11 @@ export function renderEntry(root: HTMLElement, options: EntryOptions = {}): () =
 
 /** «¿No tienes el enlace a mano?»: el correo del enlace; el código llega en unos minutos y vale una vez. */
 function codeForm(api: NonNullable<EntryOptions['emailCode']>): HTMLElement {
-  const email = el('input', { type: 'email', id: 'codeEmail', autocomplete: 'email', inputmode: 'email', required: true, value: typed.email }) as HTMLInputElement;
-  const code = el('input', { type: 'text', id: 'codeInput', autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: '12' }) as HTMLInputElement;
+  // Inventario de campos (P15): el correo es el de la cuenta de portal; el código no se guarda en ningún sitio.
+  const email = el('input', { type: 'email', id: 'codeEmail', autocomplete: 'email', inputmode: 'email', required: true, value: typed.email,
+    ...fieldAttrs({ id: 'organizers.entrada.codigo.correo', label: 'Tu correo', entity: 'auth.users', prop: 'email', type: 'email', required: true, sensitivity: 'personal' }) }) as HTMLInputElement;
+  const code = el('input', { type: 'text', id: 'codeInput', autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: '12',
+    ...fieldAttrs({ id: 'organizers.entrada.codigo.codigo', label: 'Código del correo', type: 'text', required: true, sensitivity: 'sensitive' }) }) as HTMLInputElement;
   const sendButton = el('button', { type: 'button', class: typed.sent ? 'ghost' : 'primary', id: 'codeSend', 'data-feedback-id': 'organizers.entrada.codigo.enviar', 'data-feedback-label': 'Enviarme un código' },
     typed.sent ? t('Enviar otro código') : t('Enviarme un código'));
   const enterButton = el('button', { type: 'button', class: 'primary', id: 'codeEnter', 'data-feedback-id': 'organizers.entrada.codigo.entrar', 'data-feedback-label': 'Entrar con el código' }, t('Entrar'));

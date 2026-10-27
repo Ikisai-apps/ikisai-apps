@@ -106,6 +106,7 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
 
     const byGroup = new Map<Group, Project[]>();
     for (const p of projects) { const g = groupOf(p, today); if (g === 'test' && !isOwner) continue; byGroup.set(g, [...(byGroup.get(g) ?? []), p]); }
+    if (!byGroup.size) { replace(host, el('p', { class: 'muted' }, 'Aún no tienes ningún flujo asignado. Pide acceso a Dirección.')); return; }
     replace(host, ...GROUPS.filter(([g]) => byGroup.get(g)?.length).map(([g, label]) => {
       const items = el('div', { class: 'flows', role: 'list', 'aria-label': label }, ...byGroup.get(g)!.map(card));
       return g === 'past'
@@ -114,7 +115,12 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
     }));
   }
 
-  const off = client.onTable(TABLES.projects, () => void paint());
-  void paint();
+  // Carga y error con «Reintentar» (revisión móvil de UI-kit): si falla, la pantalla no queda en blanco.
+  const load = () => paint().catch(() => replace(host,
+    el('p', { class: 'formerror', role: 'alert' }, 'No se han podido cargar los flujos.'),
+    el('button', { type: 'button', class: 'ghost', onclick: () => void load() }, 'Reintentar')));
+  replace(host, el('p', { class: 'muted' }, 'Cargando…'));
+  const off = client.onTable(TABLES.projects, () => void load());
+  void load();
   return off;
 };

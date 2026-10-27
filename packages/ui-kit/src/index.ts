@@ -72,7 +72,7 @@ export { createFieldPointer, type FieldPointer } from './guide/point.ts';
 export { createGuide, type Guide, type GuideConfirm, type GuideOptions, type GuideRun, type GuideStep } from './guide/guide.ts';
 export { flowGuideSource, safeRoute, sanitizeGuideRun, type GuideApiClient, type GuideSource } from './guide/flow-source.ts';
 export { createProjection, type Projection, type ProjectionAction, type ProjectionClient, type ProjectionOptions, type ProjectionRow } from './pieces/projection.ts';
-export { classifyCoverage, coverageFromCore, COVERAGE_CLASSES, renderCoverage, type CoreFieldCoverage, type Coverage, type CoverageClass, type CoverageField, type CoverageLink, type CoverageOptions, type CoverageRow, type CoverageUsage, type FlowCoverageStep } from './pieces/coverage.ts';
+export { classifyCoverage, coverageFromCore, COVERAGE_CLASSES, COVERAGE_DECISIONS, renderCoverage, type CoreFieldCoverage, type Coverage, type CoverageClass, type CoverageDecision, type CoverageGroup, type CoverageField, type CoverageLink, type CoverageOptions, type CoverageRow, type CoverageUsage, type FlowCoverageStep } from './pieces/coverage.ts';
 export { installScrollHints, SCROLL_HINT_SELECTOR, watchScrollHint } from './scroll-hint.ts';
 export { groupLanes, LANE_NONE, type GroupLanesOptions } from './pieces/lanes-group.ts';
 export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
@@ -119,7 +119,7 @@ export { createMovementForm, MOVEMENT_FORM_MARKS, type MovementForm, type Moveme
 export { createCountSession, COUNT_SESSION_MARKS, type CountSession, type CountSessionOptions, type CountDifference } from './items/count-session.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
-export { fieldAttrs, markField, fieldRequired, FIELD_CONFIRMS, FIELD_SENSITIVITIES, type FieldConfirm, type FieldSpec, type FieldSensitivity } from './fields/field-mark.ts';
+export { fieldAttrs, markField, fieldRequired, NOT_A_FIELD, FIELD_CONFIRMS, FIELD_STORAGES, type FieldStorage, FIELD_SENSITIVITIES, type FieldConfirm, type FieldSpec, type FieldSensitivity } from './fields/field-mark.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';
 export { createSignaturePad, type SignaturePad, type SignaturePadOptions } from './fields/signature.ts';
 export { createInstallPrompt, isAppInstalled, installPlatform, type InstallPrompt, type InstallPromptOptions, type InstallPlatform } from './shell/install.ts';

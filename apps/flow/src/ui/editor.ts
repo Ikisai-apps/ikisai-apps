@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { PIECES, PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -34,11 +34,11 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
     let event: BookingEvent | null = null;
     let templateKey: string | null = null;
     let fromTemplate = '';
-    const name = el('input', { type: 'text', maxlength: '120', placeholder: 'Nombre del flujo', 'aria-label': 'Nombre del flujo' });
+    const name = el('input', { ...fieldAttrs({ id: 'flow.editor.nombre', entity: 'flow.projects', prop: 'name', type: 'text' }), type: 'text', maxlength: '120', placeholder: 'Nombre del flujo', 'aria-label': 'Nombre del flujo' });
     const eventButton = el('button', { type: 'button', class: 'ghost', onclick: () => void chooseEvent() }, 'Ligar a un evento de Booking');
     const templates = el('div', { class: 'flow-pick editor-templates' });
     const list = el('div', { class: 'editor-columns', role: 'list', 'aria-label': 'Columnas' });
-    const add = el('select', { 'aria-label': 'Añadir columna', onchange: () => addPiece() });
+    const add = el('select', { ...fieldAttrs({ id: 'flow.editor.columna_nueva', entity: 'flow.columns', prop: 'key', type: 'select' }), 'aria-label': 'Añadir columna', onchange: () => addPiece() });
     const foot = el('div', { class: 'flow-actions' });
     main.append(
       el('h1', { class: 'col-title' }, mode === 'new' ? 'Nuevo flujo' : 'Columnas del flujo'),
@@ -55,11 +55,11 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
     function paint(): void {
       replace(list, ...rows.map((r, i) => {
         const piece = pieceOf(r.key);
-        const label = el('input', { type: 'text', maxlength: '60', value: r.label, 'aria-label': `Nombre de la columna ${i + 1}`, oninput: () => { r.label = label.value; } });
+        const label = el('input', { ...fieldAttrs({ id: 'flow.editor.columna_nombre', entity: 'flow.columns', prop: 'label', type: 'text' }), type: 'text', maxlength: '60', value: r.label, 'aria-label': `Nombre de la columna ${i + 1}`, oninput: () => { r.label = label.value; } });
         return el('div', { class: 'qcard editor-row', role: 'listitem' },
           el('div', { class: 'editor-row-main' }, label, el('small', { class: 'muted' }, `${piece?.label ?? r.key} · ${piece?.hint ?? ''}`),
             ...(piece?.options ?? []).map((o) => el('label', { class: 'editor-option' },
-              el('input', { type: 'checkbox', checked: r.options[o.key] === true, onchange: (e: Event) => { r.options[o.key] = (e.target as HTMLInputElement).checked; } }),
+              el('input', { ...fieldAttrs({ id: 'flow.editor.columna_opcion', type: 'checkbox' }), type: 'checkbox', checked: r.options[o.key] === true, onchange: (e: Event) => { r.options[o.key] = (e.target as HTMLInputElement).checked; } }),
               el('span', null, o.label)))),
           el('div', { class: 'editor-row-tools' },
             el('button', { type: 'button', class: 'ghost icon-button', 'aria-label': 'Subir', disabled: i === 0, onclick: () => move(i, -1) }, icon('chevronUp', 18)),
@@ -96,7 +96,7 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
       };
       replace(templates, ...[...latest.keys()].sort().map((k) => {
         const base = all.find((t) => t.template_key === k && t.version === latest.get(k))?.label_base ?? k;
-        return el('button', { type: 'button', class: 'secondary', 'data-key': k, onclick: () => pick(k) }, `${base} · v${latest.get(k)}`);
+        return el('button', { type: 'button', class: 'ghost', 'data-key': k, onclick: () => pick(k) }, `${base} · v${latest.get(k)}`);
       }), el('button', { type: 'button', class: 'ghost', 'data-key': '', onclick: () => pick(null) }, 'En blanco'));
       pick(latest.has('barra') ? 'barra' : null);
     }
@@ -155,8 +155,8 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
     }
 
     async function saveAsTemplate(): Promise<void> {
-      const key = el('input', { type: 'text', maxlength: '31', placeholder: 'clave (p. ej. barra)', 'aria-label': 'Clave de la plantilla', value: project?.template_key ?? '' });
-      const base = el('input', { type: 'text', maxlength: '80', placeholder: 'Nombre (p. ej. Barra)', 'aria-label': 'Nombre de la plantilla' });
+      const key = el('input', { ...fieldAttrs({ id: 'flow.editor.plantilla_clave', entity: 'flow.projects', prop: 'template_key', type: 'text' }), type: 'text', maxlength: '31', placeholder: 'clave (p. ej. barra)', 'aria-label': 'Clave de la plantilla', value: project?.template_key ?? '' });
+      const base = el('input', { ...fieldAttrs({ id: 'flow.editor.plantilla_nombre', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'Nombre (p. ej. Barra)', 'aria-label': 'Nombre de la plantilla' });
       const ok = await confirmDialog({ title: 'Guardar como plantilla', text: 'Sus columnas, nombres y opciones quedan como versión nueva de la plantilla.', body: el('div', { class: 'editor-head' }, key, base), confirmLabel: 'Guardar' });
       if (!ok) return;
       try {

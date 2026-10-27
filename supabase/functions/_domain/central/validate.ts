@@ -14,6 +14,7 @@ import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES, DECISION_VOTES, DE
 import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
 import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
 import { WEEKLY_ACTIONS_TABLE, WEEKLY_ACTION_KINDS, WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
+import { FIELD_GROUP_REVIEWS_TABLE, GROUP_DECISIONS, UTILITY_FREQUENCIES, canDeclareUtility } from './field-coverage.ts';
 import { AGENTS_TABLE, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
@@ -300,6 +301,19 @@ const SPECS: Record<string, TableSpec> = {
     required: ['review_id', 'app', 'kpi', 'label', 'period', 'unit', 'state'],
     immutable: ['review_id'],
   },
+  [FIELD_GROUP_REVIEWS_TABLE]: {
+    fields: {
+      app: { kind: 'text', min: 1, max: 40, pattern: /^[a-z][a-z0-9_]*$/, patternText: 'id de app' },
+      screen: { kind: 'text', min: 1, max: 160 },
+      decision: { kind: 'enum', values: GROUP_DECISIONS, nullable: true },
+      audience: { kind: 'text', min: 1, max: 60, nullable: true },
+      frequency: { kind: 'enum', values: UTILITY_FREQUENCIES, nullable: true },
+      fields_count: { kind: 'number', nullable: true },
+      note: { kind: 'text', max: 300, nullable: true },
+    },
+    required: ['app', 'screen'],
+    immutable: ['screen'],
+  },
   [AGENTS_TABLE]: {
     fields: {
       display_name: { kind: 'text', min: 1, max: 80 },
@@ -516,6 +530,9 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     }
     if ((table === WEEKLY_REVIEWS_TABLE || table === WEEKLY_ITEMS_TABLE || table === WEEKLY_ACTIONS_TABLE) && !canPrepareReview(actor)) {
       return { code: 'FORBIDDEN', message: 'Preparan la revisión semanal quien administra Central y quien tiene el ámbito de Dirección.', details: { index, table } };
+    }
+    if (table === FIELD_GROUP_REVIEWS_TABLE && !canDeclareUtility(actor)) {
+      return { code: 'FORBIDDEN', message: 'La cobertura de campos la revisa Dirección.', details: { index, table } };
     }
     if (table === AGENTS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra Central cambia las fichas de agente.', details: { index, table } };

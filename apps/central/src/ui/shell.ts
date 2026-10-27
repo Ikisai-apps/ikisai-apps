@@ -15,6 +15,7 @@ import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
 import { mountDecision, mountDecisions } from './decisions.ts';
 import { mountWeekly } from './weekly.ts';
+import { mountFieldCoverage } from './field-coverage.ts';
 import { mountReview } from './review.ts';
 import { mountCoverage } from './coverage.ts';
 import { EMPTY_MENU, loadMenuData, menuSections, recentRows, screenItems, type MenuData } from './menu.ts';
@@ -75,6 +76,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/direccion/semana': { title: 'Revisión semanal', slug: 'semana', mount: mountWeekly },
   '#/revision': { title: 'Revisión', slug: 'revision', mount: mountReview },
   '#/revision/uso': { title: 'Uso y cobertura', slug: 'uso', mount: mountCoverage, admin: true },
+  '#/revision/campos': { title: 'Cobertura de campos', slug: 'campos', mount: mountFieldCoverage },
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
   '#/personas/equipos': { title: 'Equipos', slug: 'equipos', mount: mountTeams },
   '#/personas/oficios': { title: 'Oficios', slug: 'oficios', mount: mountTrades },
@@ -101,6 +103,7 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'decision': fbMark(main, 'central.decision', 'Decisión'); break;
     case 'revision': fbMark(main, 'central.revision', 'Revisión'); break;
     case 'uso': fbMark(main, 'central.uso', 'Uso y cobertura'); break;
+    case 'campos': fbMark(main, 'central.campos', 'Cobertura de campos'); break;
     case 'personas': fbMark(main, 'central.personas', 'Personas'); break;
     case 'persona': fbMark(main, 'central.persona', 'Persona'); break;
     case 'equipos': fbMark(main, 'central.equipos', 'Equipos'); break;

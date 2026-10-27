@@ -1,6 +1,6 @@
 /** Formularios de fila: se describen con una lista de campos y solo viaja al servidor lo que cambia. */
 import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/sync-client';
-import { announceSaved, attachSuggestions, confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { announceSaved, attachSuggestions, confirmDialog, el, fieldAttrs, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { validateFields } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import { describeError } from '../app/client.ts';
@@ -75,7 +75,7 @@ export type FieldMark = (key: string) => Child;
  * `feedbackBase` (p. ej. `booking.reservas.alta`) da a cada campo el id `<base>.<clave>`; la etiqueta es la del campo.
  * Sin base no se marca nada (formularios de otras pantallas que ya marcan por su cuenta).
  */
-export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}, mark?: FieldMark, feedbackBase?: string): BuiltForm {
+export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}, mark?: FieldMark, feedbackBase?: string, entity?: string): BuiltForm {
   const listeners: Array<() => void> = [];
   const controls = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
   const multis = new Map<string, HTMLInputElement[]>();
@@ -89,8 +89,11 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
       wrap.hidden = !!control && control.value !== String(spec.showWhen!.value);
     }
   };
-  const fieldMarks = (spec: FieldSpec): Record<string, string> => feedbackBase
-    ? { 'data-feedback-id': `${feedbackBase}.${spec.key}`, 'data-feedback-label': spec.label.slice(0, 60), ...(spec.personal || spec.type === 'tel' || spec.type === 'email' ? { 'data-feedback-ignore': '' } : {}) }
+  // Inventario de campos (P15) y anclaje del Guiado: `data-field-*` con su entidad y columna; el aviso de guardado lo da la hoja
+  const fieldMarks = (spec: FieldSpec): Record<string, string | null> => feedbackBase
+    ? { ...fieldAttrs({ id: `${feedbackBase}.${spec.key}`, entity, prop: spec.key, type: spec.type, label: spec.label.slice(0, 60), confirm: 'event',
+        sensitivity: spec.personal || spec.type === 'tel' || spec.type === 'email' ? 'personal' : undefined }),
+      ...(spec.personal || spec.type === 'tel' || spec.type === 'email' ? { 'data-feedback-ignore': '' } : {}) }
     : {};
   const fire = () => { error.hidden = true; syncVisibility(); listeners.forEach((listener) => listener()); };
 
@@ -199,7 +202,7 @@ export interface RowSheetOptions {
 /** Hoja de alta o edición de una fila. Devuelve la hoja; el pie con `Guardar` solo aparece con cambios en una edición. */
 export function openRowSheet(options: RowSheetOptions): Sheet {
   const { client, row, table } = options;
-  const form = buildForm(options.specs, row, options.defaults, options.mark, options.feedbackId);
+  const form = buildForm(options.specs, row, options.defaults, options.mark, options.feedbackId, table);
   const fbAttrs = (suffix: string, label: string): Record<string, string> => (options.feedbackId ? { 'data-feedback-id': `${options.feedbackId}.${suffix}`, 'data-feedback-label': label } : {});
   const merged = () => ({ ...(row ?? {}), ...(options.insertFields ?? {}), ...form.values() });
   const extraHost = el('div');
@@ -210,15 +213,14 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
   async function commit(operations: RowOperation[], message: string): Promise<void> {
     try {
       save.disabled = true;
+      const changed = Object.keys(form.values());
       const { requestId } = await client.commit(operations);
-      if (options.settle) {
-        const rejected = await settleBatch(client, requestId);
-        if (rejected) return form.showError(describeError(rejected.error));
-      }
+      const rejected = options.settle || (options.feedbackId && navigator.onLine) ? await settleBatch(client, requestId) : null;
+      if (rejected) return form.showError(describeError(rejected.error));
       guard.dirtyEditor = false;
       await sheet.close(true);
-      // Guiado: el paso de esta hoja (`<feedbackId>.guardar`) se confirma con el guardado de verdad, sin valores
-      if (options.feedbackId) announceSaved(`${options.feedbackId}.guardar`, { pending: !navigator.onLine });
+      // Guiado: la hoja y sus campos se confirman cuando la base lo ha aceptado (sin red, como pendiente), nunca con valores
+      if (options.feedbackId) for (const id of [`${options.feedbackId}.guardar`, ...changed.map((k) => `${options.feedbackId}.${k}`)]) announceSaved(id, { pending: !navigator.onLine });
       toast(navigator.onLine ? message : `${message} Se enviará al reconectar.`);
     } catch (error) {
       form.showError(describeError(error));

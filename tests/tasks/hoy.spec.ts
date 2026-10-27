@@ -17,7 +17,7 @@ let page: Page;
 const errors: string[] = [];
 const id = () => crypto.randomUUID();
 const TAB = id(), JARDIN = id(), TALLER = id();
-const HUERTO = id(), TALLER_SPACE = id();
+const HUERTO = id(), PATIO = id(), ALBERGUE = id(), HAB3 = id();
 const JUNTA = id(), PERSIANA = id(), VALLA = id(), PASO1 = id(), PASO2 = id(), PASO3 = id(), PASO4 = id(), ESTANTE = id(), SETO = id(), RIEGO = id(), BANCO = id();
 /** El día en Madrid (como la app), con desplazamiento en días. */
 const madrid = (offset = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
@@ -60,12 +60,16 @@ test.beforeAll(async ({ browser }) => {
   // Su plan de ayer: el seto y una llamada sin hacer.
   await ok([{ op: 'insert', table: 'tasks.day_plans', id: id(), fields: { actor_id: server.app.users.owner, day: madrid(-1), reviewed: false,
     items: [{ id: id(), task_id: SETO, tab_id: TAB, position: 1024 }, { id: id(), text: 'Llamar al cerrajero', tab_id: null, position: 2048, done: false }] } }]);
-  // Filtro por espacio (encargo de VG, 27-10): la casa usa los espacios de Recursos; dos de una palabra, en cuatro tareas.
-  const altura = (await q(`select id from resources.spaces where name = 'Altura 1'`)).rows[0] as { id: string };
-  await q(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $3, 'edificio', 'Huerto', 1), ($2, $3, 'edificio', 'Taller', 2)`, [HUERTO, TALLER_SPACE, altura.id]);
+  // Filtro por espacio (encargo de VG, 27-10): la casa usa los espacios de Recursos. La altura 1 tiene dos cosas (Huerto y
+  // Patio): sale «Altura 1» y, dentro, las dos. La altura 3 tiene una sola (el Albergue, con la Hab 3): sale «Albergue».
+  const alt = async (name: string) => ((await q(`select id from resources.spaces where name = $1`, [name])).rows[0] as { id: string }).id;
+  const [alt1, alt3] = [await alt('Altura 1'), await alt('Altura 3')];
+  await q(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $3, 'edificio', 'Huerto', 1), ($2, $3, 'edificio', 'Patio', 2)`, [HUERTO, PATIO, alt1]);
+  await q(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $2, 'edificio', 'Albergue', 1)`, [ALBERGUE, alt3]);
+  await q(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $2, 'habitacion', 'Hab 3', 1)`, [HAB3, ALBERGUE]);
   await q(`insert into tasks.settings (key, value) values ('zone_source', to_jsonb('spaces'::text))`);
   const sp = (task: string, project: string, space: string) => ({ op: 'insert', table: 'tasks.task_spaces', id: id(), fields: { tab_id: TAB, project_id: project, task_id: task, space_id: space } });
-  await ok([sp(SETO, JARDIN, HUERTO), sp(RIEGO, JARDIN, HUERTO), sp(BANCO, TALLER, TALLER_SPACE), sp(ESTANTE, TALLER, TALLER_SPACE)]);
+  await ok([sp(SETO, JARDIN, HUERTO), sp(RIEGO, JARDIN, PATIO), sp(BANCO, TALLER, HAB3), sp(ESTANTE, TALLER, ALBERGUE)]);
   context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   page = await openApp(context, server, { errors });
   await page.evaluate((tab) => { state.taskScope = 'area'; state.activeTab = tab; state.view = 'today'; render(); }, TAB);
@@ -75,7 +79,7 @@ test.afterAll(async () => { await context?.close(); await server?.close(); });
 const plan = async (actor = server.app.users.owner, day = madrid()) => (await server.rows('tasks.day_plans')).find((p) => p.actor_id === actor && p.day === day && !p.deleted_at);
 const planTasks = async () => ((await plan())?.items ?? []).map((i: any) => i.task_id ?? i.text);
 const localPlan = () => page.evaluate(() => IkisaiTasks.dayPlans.dayPlanItems(Sync.core.dayPlan(isoDay(0))).map((i: any) => i.task_id ?? i.text)) as Promise<string[]>;
-declare const IkisaiTasks: any, isoDay: any;
+declare const IkisaiTasks: any, isoDay: any, spaceRows: any;
 const undoButton = (message: string) => page.locator('.ikisai-toast span', { hasText: message }).locator('xpath=following-sibling::button');
 const sync = async () => { await page.evaluate(() => syncNow()); await settled(page); };
 const go = (view: string, project?: string) => page.evaluate(([v, p]) => { state.view = v; state.currentProject = p || null; render(); }, [view, project ?? null]);
@@ -305,39 +309,60 @@ test('el outsider no tiene plan: ni la pestaña «Hoy» ni la pantalla, tampoco 
   await outsiderContext.close();
 });
 
-test('filtro por espacio arriba: un toque marca y otro desmarca, varios suman, ninguno o todos es todo, y se recuerda', async () => {
+test('filtro por espacio por el árbol: arriba la altura (o lo único que tiene), sus hijos al tocarla, «Sin espacio», y se recuerda', async () => {
   await go('today');
   await settled(page);
-  const chips = page.locator('#tkhSpaces [data-tkh-space]');
-  const huerto = page.locator(`[data-tkh-space="${HUERTO}"]`), taller = page.locator(`[data-tkh-space="${TALLER_SPACE}"]`);
-  await expect(chips).toHaveCount(2);
-  await expect(huerto).toContainText('Huerto');
-  await expect(huerto.locator('.tkh-space-n')).toHaveText(/^[1-9]\d*$/);
-  const take = page.locator('.tkh-take');
-  await expect(take).toContainText('Barnizar el banco');
-  // Huerto: solo lo del huerto.
-  await huerto.click();
-  await expect(huerto).toHaveAttribute('aria-pressed', 'true');
-  await expect(take).toContainText('Revisar el riego');
-  await expect(take).not.toContainText('Barnizar el banco');
+  const chip = (space: string, parent = '') => page.locator(`[data-tkh-space="${space}"][data-tkh-parent="${parent}"]`);
+  const view = page.locator('main.tkh');
+  const ALT1 = await page.evaluate(() => spaceRows().find((r: any) => r.name === 'Altura 1').id);
+  // Arriba: «Altura 1» (dos cosas dentro), «Albergue» (lo único de la altura 3) y «Sin espacio»; nada de Huerto, Patio ni Hab 3.
+  await expect(page.locator('#tkhSpaces [data-tkh-space]')).toHaveCount(3);
+  await expect(chip(ALT1)).toContainText('Altura 1');
+  await expect(chip(ALBERGUE)).toContainText('Albergue');
+  await expect(chip('__none')).toContainText('Sin espacio');
+  await expect(page.locator('#tkhSpaces')).not.toContainText('Huerto');
+  expect(await page.evaluate(() => document.getElementById('view')?.dataset.tkhHints)).toBe('1');
+  // La altura 1: lo del huerto y del patio, y debajo sus dos hijos.
+  await chip(ALT1).click();
+  await expect(chip(ALT1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(chip(ALT1)).toBeFocused();
+  await expect(chip(HUERTO, ALT1)).toBeVisible();
+  await expect(chip(PATIO, ALT1)).toBeVisible();
+  await expect(view).toContainText('Revisar el riego');
+  await expect(view).not.toContainText('Barnizar el banco');
+  await expect(page.locator('.tkh-filtering[role="status"]')).toContainText('Solo Altura 1');
+  // El hijo Huerto: solo lo del huerto; otra vez, vuelta a la altura.
+  await chip(HUERTO, ALT1).click();
+  await expect(chip(ALT1)).toContainText('Altura 1 › Huerto');
+  await expect(view).not.toContainText('Revisar el riego');
+  await chip(HUERTO, ALT1).click();
+  await expect(chip(ALT1)).not.toContainText('Huerto');
+  await expect(view).toContainText('Revisar el riego');
   // Se recuerda en el dispositivo.
   await page.reload();
   await settled(page);
   await go('today');
   await settled(page);
-  await expect(huerto).toHaveAttribute('aria-pressed', 'true');
-  await expect(take).not.toContainText('Barnizar el banco');
-  // Los dos marcados: se ve todo (son todos).
-  await taller.click();
-  await expect(take).toContainText('Barnizar el banco');
-  await expect(take).toContainText('Revisar el riego');
-  // Ninguno: todo.
-  await huerto.click();
-  await expect(take).not.toContainText('Revisar el riego');
-  await taller.click();
-  await expect(huerto).toHaveAttribute('aria-pressed', 'false');
-  await expect(taller).toHaveAttribute('aria-pressed', 'false');
-  await expect(take).toContainText('Revisar el riego');
-  await expect(take).toContainText('Barnizar el banco');
+  await expect(chip(ALT1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(view).not.toContainText('Barnizar el banco');
+  // El Albergue, también con su hijo (la Hab 3).
+  await chip(ALBERGUE).click();
+  await expect(chip(HAB3, ALBERGUE)).toBeVisible();
+  await expect(view).toContainText('Barnizar el banco');
+  // «Sin espacio» además: son todos los de arriba, se ve todo y no hay aviso.
+  await chip('__none').click();
+  await expect(page.locator('.tkh-filtering')).toHaveCount(0);
+  // Solo «Sin espacio»: ni lo del huerto ni lo del albergue.
+  await chip(ALT1).click();
+  await chip(ALBERGUE).click();
+  await expect(chip('__none')).toHaveAttribute('aria-pressed', 'true');
+  await expect(view).not.toContainText('Revisar el riego');
+  await expect(view).not.toContainText('Barnizar el banco');
+  await expect(page.locator('.tkh-filtering')).toContainText('Sin espacio: ponles uno');
+  // «Quitar filtro»: ninguno marcado y se ve todo.
+  await page.locator('.tkh-filtering [data-tkh-clear]').click();
+  await expect(page.locator('#tkhSpaces [aria-pressed="true"]')).toHaveCount(0);
+  await expect(view).toContainText('Revisar el riego');
+  await expect(view).toContainText('Barnizar el banco');
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

@@ -14,6 +14,7 @@ import { readOperations, unreadByReservation, unreadOf } from '../../apps/organi
 import { TABLES } from '../../supabase/functions/_domain/organizers/mod.ts';
 
 const uuid = () => crypto.randomUUID();
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
 let booking: TestApp;
 let organizers: (r: Request) => Promise<Response>;
 let seq = 0;
@@ -60,7 +61,7 @@ test.before(async () => {
     app: 'booking', slug: 'booking-api', origin: BOOKING_ORIGINS[0]!,
     createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!] }),
   });
-  organizers = createOrganizersApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, release: 'test', origins: [ORGANIZERS_ORIGINS[0]!] });
+  organizers = createOrganizersApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, release: 'test', origins: [ORGANIZERS_ORIGINS[0]!], workerKey: WORKER_KEY });
   R1 = await reservation('Retiro de Ana');
   R2 = await reservation('Retiro de otra');
   ana = await organizerSession(R1, 'ana-rc@example.invalid');
@@ -155,5 +156,35 @@ test('organizers · leídos: el KPI de Dirección cuenta los comentarios que nad
   const before = await unread();
   assert.equal((await commit(ana.token, [read(R1, fresh, ana.id)])).status, 200);
   assert.equal(await unread(), before - 1, 'leído por una persona del retiro: ya no cuenta');
+});
+
+test('organizers · leídos: la conservación borra las de más de 180 días o de un retiro terminado hace más de 90; nadie más', async () => {
+  const rows = async (user: string) => (await booking.t.db.query<{ id: string; report_id: string; deleted_at: string | null }>(
+    'select id, report_id, deleted_at from organizers.comment_reads where user_id = $1 order by read_at', [user])).rows;
+  const tick = async () => (await organizers(new Request(`${booking.supabase.url}/functions/v1/organizers-api/api/v1/worker/retention/tick`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: '{}' }))).json();
+  const has = async () => (await booking.t.db.query<{ v: boolean }>('select organizers.retention_has_work() v')).rows[0]!.v;
+  // Quien organiza no puede borrar su lectura: solo la conservación.
+  const own = (await rows(ana.id)).find((r) => !r.deleted_at)!;
+  const rev = (await booking.t.db.query<{ revision: number }>('select revision from organizers.comment_reads where id = $1', [own.id])).rows[0]!.revision;
+  const refused = await commit(ana.token, [{ op: 'delete', table: TABLES.commentReads, id: own.id, expectedRevision: Number(rev) }]);
+  assert.deepEqual([refused.status, refused.data.error.code], [422, 'IMMUTABLE_FIELD']);
+  assert.equal(await has(), false, 'todo es reciente y el retiro no ha terminado');
+
+  // Una lectura de Ana, de hace 181 días: se va. La de la otra organizadora (de su retiro, reciente) se queda.
+  await booking.t.db.query(`update organizers.comment_reads set read_at = now() - interval '181 days' where id = $1`, [own.id]);
+  const keptOther = (await rows(otra.id)).filter((r) => !r.deleted_at).length;
+  assert.equal(await has(), true);
+  const run = await tick();
+  assert.ok(run.reads >= 1, JSON.stringify(run));
+  assert.ok((await rows(ana.id)).find((r) => r.id === own.id)!.deleted_at, 'borrada (lote del sistema)');
+  assert.equal((await rows(otra.id)).filter((r) => !r.deleted_at).length, keptOther, 'las de otra no se tocan');
+
+  // El retiro de Ana terminó hace más de 90 días: se van todas sus lecturas de ese retiro.
+  await booking.t.db.query(`update booking.reservations set start_date = current_date - 100, end_date = current_date - 95 where id = $1`, [R1]);
+  assert.equal(await has(), true);
+  await tick();
+  assert.deepEqual((await booking.t.db.query(`select 1 from organizers.comment_reads where reservation_id = $1 and deleted_at is null`, [R1])).rows, []);
+  assert.equal(await has(), false);
 });
 

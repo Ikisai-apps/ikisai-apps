@@ -783,7 +783,9 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 ## 23. Comentarios leídos y sin leer (migración 0706; diseño en `MUELA/equipo/feedback/organizers/COMENTARIOS_LEIDOS.md`)
 
 - **En el resumen del retiro:** en «Comentarios de tus asistentes», lo que esta persona no ha visto lleva «Nuevo» y el título dice cuántos. Un comentario cuenta como visto tras un segundo en pantalla (`IntersectionObserver`); la marca se queda hasta la próxima vez que se abre.
-- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora, sin purga.
+- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora.
+  - **Conservación (0710):** se borra a los 180 días, o cuando el retiro terminó hace más de 90. Si el retiro está borrado, cancelado o perdido, a los 90 días de leerla.
+  - Va en la misma vuelta que las respuestas (`organizers.retention_run`, B18), en un lote del sistema, para que los dispositivos también borren su copia. Nadie más la borra.
   - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
   - No se cambia ni se borra (`IMMUTABLE_FIELD`).
   - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.
@@ -806,3 +808,33 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Pruebas:**
   - `tests/organizers/pay-now.test.ts`: las tres Edge sobre PGlite con el Stripe falso. Comprueba el importe, las URL de vuelta, la reutilización, la lectura del portal con el enlace, el ámbito y el apagado.
   - `pay-link.test.ts` y `portal.spec.ts`.
+
+## 25. Avisos por correo de comentarios nuevos (migración 0709; línea de Core del 28-10)
+
+- **Qué recibe quien organiza:** un correo, como mucho cada hora, con los comentarios de sus asistentes (Guests, sobre el retiro) que aún no ha visto (`comment_reads`, §23) y que llegaron después del último aviso.
+  - El correo dice por retiro cuántos hay y lleva el enlace a Mis retiros. Va en texto plano y en español.
+  - No lleva el texto de los comentarios, el nombre de los asistentes ni nada de otros retiros.
+- **Quién:** quien tiene un enlace de Organizers vivo con ese retiro en su ámbito (`core.portal_links` y `core.portal_in_scope`). Dirección con «todos» no lo recibe. La primera vez solo se avisa de lo de las últimas 24 horas.
+- **Cómo:**
+  - `organizers.comment_notices` guarda, por persona, el cursor y la hora del último aviso;
+  - `organizers.comment_notices_due` y `organizers.comment_notices_sent` son acciones de sistema;
+  - el tick `comment-notices/tick` corre cada 15 min, solo si `comment_notices_has_work()`;
+  - el worker lee el correo en Auth (admin) y los títulos con `booking.portal_reservations` como esa persona. Solo avanza el cursor de quien lo ha recibido; si el envío falla, se repite en la siguiente vuelta.
+- **Encendido:** `IKISAI_ORGANIZER_MAIL=1`, más el SMTP de la Edge: `IKISAI_SMTP_HOST`, `IKISAI_SMTP_PORT` (465), `IKISAI_SMTP_USER`, `IKISAI_SMTP_PASS` e `IKISAI_SMTP_FROM`.
+  - Son las mismas credenciales que VG ponga en Auth: el SMTP de Auth no manda correos sueltos.
+  - TLS desde el primer byte (465): la Edge de Supabase no deja salir por 25 ni 587.
+  - Apagado, el tick responde `{off: true}` y no envía nada.
+- **Pruebas:** `tests/organizers/comment-notices.test.ts`:
+  - el texto del correo, las cabeceras sin inyección y el diálogo SMTP con una conexión doble;
+  - el envío en PGlite: lo suyo sin leer, la espera de una hora, cada organizadora lo suyo y nada con el aviso apagado.
+
+## 26. La casa contesta (núcleo 0117; diseño en `MUELA/equipo/feedback/organizers/RESPUESTAS_CASA.md`)
+
+- **Qué ve quien organiza:** lo que escribe a Ikisai sobre su retiro («Ayuda y sugerencias») puede recibir respuesta de la casa, desde Booking (B22).
+  - En **Mis retiros**, la tarjeta del retiro lleva «N respuestas de Ikisai» con las que no ha visto.
+  - En **«Lo que me has enviado»**, cada informe muestra sus respuestas firmadas «Ikisai», con la fecha. Al enseñarlas, cuentan como vistas.
+- **Rutas del kit** (contrato §3.7): `GET feedback/replies` y `POST feedback/replies/read {ids}`. Las respuestas solo las escribe la casa (`POST feedback/:id/replies`).
+- **Cliente:** `app/replies.ts` (`loadReplies`, `unreadRepliesByReservation`, `repliesOf`, `markRepliesRead`).
+- **Sin correo todavía:** se sumará al aviso de la 0709 (§25) cuando se encienda.
+- **Pruebas:** `tests/core/feedback-replies.test.ts`.
+
