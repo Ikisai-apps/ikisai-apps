@@ -123,7 +123,7 @@ export function mountSign(main: HTMLElement, ctx: GuestContext, base: string): (
     const signer = el('input', { id: 'signerName', type: 'text', maxlength: '200', autocomplete: 'name', 'data-feedback-ignore': '',
       ...fieldAttrs({ id: 'guests.firma.firmante', type: 'text', required: true, sensitivity: 'personal', confirm: 'event' }),
       value: own ? fullName : String(f.guardian_name ?? '') }) as HTMLInputElement;
-    const pad = createSignaturePad({ label: t('sign.pad'), field: { id: 'guests.firma.firma', required: true, sensitivity: 'sensitive', confirm: 'event' } });
+    const pad = createSignaturePad({ field: { id: 'guests.firma.firma', required: true, sensitivity: 'sensitive', confirm: 'event' } });
     const error = el('p', { class: 'ghint', id: 'signError', role: 'alert' });
     const submit = el('button', { type: 'button', class: 'primary wide', id: 'signSubmit', 'data-feedback-id': 'guests.firma.recuadro.firmar', 'data-feedback-label': 'Firmar',
       onclick: async () => {
