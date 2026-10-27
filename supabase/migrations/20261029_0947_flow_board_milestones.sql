@@ -211,12 +211,25 @@ end $$;
 
 /**
  * Importar el tablero exportado del artefacto (solo service_role; Core lo ejecuta en producción). Idempotente por id.
+ * Con `p_project` null crea el flujo «Avance por aplicaciones» (plantilla `avance`, columna «Avance»; nombre en `p_payload.name`)
+ * y devuelve su id en `project_id`: para la segunda carga, se pasa ese id.
  * p_payload = { hitos: [{hito_id, title, orden, done_at?}], cards: [{card_id, lane_key, title, status, flag?, prio?, kind?, tipo?,
  *   order?, ref?, url?, url_text?, steps?, note?, hito_id?, paso?, done_at?}], history: [{t, hecho, pr, curso, pend, backlog, total}] }
  */
-create or replace function flow.import_board(p_project uuid, p_payload jsonb) returns jsonb language plpgsql as $$
+create or replace function flow.import_board(p_project_in uuid, p_payload jsonb) returns jsonb language plpgsql as $$
 declare v_ops jsonb := '[]'::jsonb; x jsonb; u flow.units; v_fields jsonb; v_status text; v_kind text; v_hitos int := 0; v_cards int := 0; v_hist int := 0;
+  p_project uuid := p_project_in;
 begin
+  if p_project is null then
+    p_project := gen_random_uuid();
+    perform flow.import_apply(jsonb_build_array(
+      jsonb_build_object('op', 'insert', 'table', 'flow.projects', 'id', p_project, 'fields', jsonb_build_object(
+        'name', left(coalesce(nullif(btrim(p_payload->>'name'), ''), 'Avance por aplicaciones'), 120), 'template_key', 'avance',
+        -- La versión siguiente libre (único por plantilla y evento).
+        'template_version', (select coalesce(max(template_version), 0) + 1 from flow.projects where template_key = 'avance' and booking_event_id is null and deleted_at is null))),
+      jsonb_build_object('op', 'insert', 'table', 'flow.columns', 'id', gen_random_uuid(), 'fields', jsonb_build_object(
+        'project_id', p_project, 'key', 'avance', 'label', 'Avance', 'behavior', 'free_task', 'position', 1, 'config', '{}'::jsonb))), 'proyecto');
+  end if;
   if not exists (select 1 from flow.columns where project_id = p_project and key = 'avance' and deleted_at is null) then
     perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'this flow has no board'));
   end if;
@@ -276,7 +289,7 @@ begin
     end if;
   end loop;
   if jsonb_array_length(v_ops) > 0 then perform flow.import_apply(v_ops, 'historial'); end if;
-  return jsonb_build_object('hitos', v_hitos, 'cards', v_cards, 'history', v_hist);
+  return jsonb_build_object('project_id', p_project, 'hitos', v_hitos, 'cards', v_cards, 'history', v_hist);
 end $$;
 
 revoke all on all functions in schema flow from public, anon, authenticated;

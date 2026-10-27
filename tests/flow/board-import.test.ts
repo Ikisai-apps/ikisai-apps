@@ -41,7 +41,7 @@ const history = async () => (await app.t.db.query<any>(`select * from flow.board
 
 test('avance · importar: hitos, tarjetas con paso e historial; un hito con todo hecho (sin contar backlog) queda cumplido', async () => {
   const out = await importBoard();
-  assert.deepEqual(out, { hitos: 2, cards: 4, history: 2 });
+  assert.deepEqual(out, { project_id: BOARD, hitos: 2, cards: 4, history: 2 });
   const h1 = await unit(H1); const h2 = await unit(H2);
   assert.equal(h1.class, 'objective'); assert.equal(h1.status, 'pending'); assert.equal(h1.payload.orden, 1);
   assert.equal(h2.status, 'done'); assert.equal(new Date(h2.done_at).toISOString(), '2026-10-27T18:00:00.000Z');
@@ -55,7 +55,7 @@ test('avance · importar: hitos, tarjetas con paso e historial; un hito con todo
 
 test('avance · importar otra vez no duplica nada', async () => {
   const before = (await app.t.db.query<{ n: number }>(`select count(*)::int n from flow.units where project_id = $1`, [BOARD])).rows[0]!.n;
-  assert.deepEqual(await importBoard(), { hitos: 2, cards: 4, history: 0 });
+  assert.deepEqual(await importBoard(), { project_id: BOARD, hitos: 2, cards: 4, history: 0 });
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from flow.units where project_id = $1`, [BOARD])).rows[0]!.n, before);
   assert.equal((await history()).length, 2);
 });
@@ -80,4 +80,14 @@ test('avance · al hacer el último paso el hito se cumple; al reabrirlo, vuelve
   // Nadie importa desde el navegador.
   const bad = await commit([{ op: 'call', procedure: 'flow.import_board', args: {} }]);
   assert.notEqual(bad.status, 200);
+});
+
+test('avance · sin proyecto, la importación crea el flujo «avance» (para hacerlo todo por SQL) y devuelve su id', async () => {
+  const out = (await app.t.db.query<{ out: any }>(`select flow.import_board(null, $1::jsonb) as out`, [JSON.stringify({ name: 'Avance por aplicaciones', cards: [
+    { card_id: uuid(), lane_key: 'victor', title: 'Probar la mudanza', status: 'pending' }] })])).rows[0]!.out;
+  assert.match(out.project_id, /^[0-9a-f-]{36}$/); assert.equal(out.cards, 1);
+  const p = (await app.t.db.query<any>(`select name, template_key from flow.projects where id = $1`, [out.project_id])).rows[0];
+  assert.deepEqual(p, { name: 'Avance por aplicaciones', template_key: 'avance' });
+  const cols = (await app.t.db.query<any>(`select key from flow.columns where project_id = $1 and deleted_at is null`, [out.project_id])).rows;
+  assert.deepEqual(cols.map((c: any) => c.key), ['avance']);
 });
