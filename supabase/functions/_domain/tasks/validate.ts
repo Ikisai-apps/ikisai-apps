@@ -142,6 +142,8 @@ const planItems: Check = (v, field) => {
 const KIND = /^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/;
 const URL_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ikisai\.com(\/|$)/;
 const requestKind = (v: unknown, f: string) => { if (typeof v !== 'string' || v.length > 100 || !KIND.test(v)) reject(422, 'INVALID_FIELDS', 'El tipo va como <app>.<nombre>, en minúsculas.', { field: f }); };
+const SOURCE_APP = /^[a-z][a-z0-9_-]{1,30}$/;
+const sourceApp = (v: unknown, f: string) => { if (typeof v !== 'string' || !SOURCE_APP.test(v)) reject(422, 'INVALID_FIELDS', 'La app de origen va en minúsculas (p. ej. flow).', { field: f }); };
 const externalUrl = (v: unknown, f: string) => { if (typeof v !== 'string' || v.length > 500 || !URL_ORIGIN.test(v)) reject(422, 'INVALID_FIELDS', 'El enlace de origen debe ser https en ikisai.com.', { field: f }); };
 
 const RULES: Record<TableName, TableRules> = {
@@ -274,6 +276,8 @@ const RULES: Record<TableName, TableRules> = {
       estimated_amount: nullable(amount), priority, status: oneOf(['requested', 'approved', 'purchased', 'received', 'rejected'], 'INVALID_STATUS', 'Estado de la solicitud desconocido.'),
       needs_invoice: flag('INVALID_FLAG'), repeat_days: nullable(repeatDays), due: nullable(date),
       supplier_id: nullable(supplierId), supplier_name: nullable(shortText(200)), position,
+      // Procedencia (0342): la app que pidió, su referencia y el enlace de vuelta; inmutables tras el alta.
+      source_app: nullable(sourceApp), source_ref: nullable(text(1, 150, 'INVALID_FIELDS', 'Referencia de origen inválida.')), source_url: nullable(externalUrl),
     },
     required: ['tab_id', 'title'],
   },

@@ -43,7 +43,7 @@ export function describeError(error: unknown, name?: string): string {
     case 'UNAUTHORIZED': return t('Tu acceso ha caducado. Abre de nuevo el enlace que te enviamos.');
     // Propuestas del equipo de Ikisai (0703).
     case 'SUGGESTION_REQUIRED': return t('Desde dirección, los cambios se proponen a quien organiza. Envíalos desde «Propuesta para quien organiza».');
-    case 'PROPOSAL_NO_FILES': return t('Una propuesta no lleva archivos. Pon un enlace o pide a quien organiza que lo suba.');
+    case 'PROPOSAL_NO_FILES': return t('Para proponer un archivo hace falta conexión: se sube al momento. Inténtalo con red.');
     case 'SUGGESTION_UNAVAILABLE': return t('Esa propuesta ya no está pendiente: alguien la ha decidido o retirado.');
     case 'TOO_MANY_SUGGESTIONS': return t('Hay demasiadas propuestas sin decidir. Espera a que quien organiza las revise.');
     case 'FEEDBACK_RATE_LIMITED': return t('Has enviado muchos comentarios hoy. Inténtalo mañana.');

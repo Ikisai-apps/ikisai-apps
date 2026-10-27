@@ -634,6 +634,19 @@ Revisado en `main` (830df42):
 
 **Pruebas:** `tests/guests/accesos.spec.ts` («Mis retiros», ficha de equipo y dirección).
 
+### 9.18 «Tus ofertas de hoy» en el Menú (encargo de VG por Core, 27-10-2026)
+
+Lo que le toca a cada persona, por día y servicio, de la lectura de portal de Food **`food.portal_offers`** (FD3, la misma para Guests y Organizers): `{reservation_id, offers: [{offer_id, name, kind: 'cerrado'|'carta', meal_groups, audience: 'huespedes'|'interna', days, services, place, payer, charge_when, lines}], days: [{date, services: [{type, time, included: [{offer_id, options}]}], cartas: [offer_id]}]}`.
+
+- **El cruce con la persona lo hace Guests** (`offersForGuest`, `app/offers.ts`): una ficha ve las ofertas cuyo `meal_groups` contiene su `meal_group` (Booking, BG16, en `portal_my_guest`) y las que no tienen grupos.
+- **Ofertas internas** (`audience: 'interna'`, decisión de VG por Core): solo a fichas de equipo asignadas (`portal_role` `staff` o `direccion`) de su grupo; nunca a un huésped ni al organizador. Llevan «Solo equipo».
+- **Modo** (de Food): `payer = 'organizador'` → «Incluido» (todas las líneas de esa carta); huésped con `charge_when = 'barra'` → «De pago», con su precio; huésped con `charge_when = 'cuenta'` → «A cuenta».
+- **Dónde:** en el Menú, bajo las pestañas de días, el bloque `#menuOffers` del día elegido («Tus ofertas de hoy» si es hoy): por servicio, lo incluido con sus opciones («Puedes elegir:»); después, «Además, en la carta» con las cartas del día (código, nombre y precio o «Incluido»). Un día con ofertas y sin menú también tiene pestaña. Con la familia junta, lo que no es de todos lleva «Para Ana».
+- **Seguridad alimentaria (G13):** cada opción y cada línea se cruzan con lo que indicó cada persona (`hitsOf` y `crossings` del Menú) y llevan su línea de alérgenos de #597. Nunca «apto».
+- **«A cuenta»:** «Abrir la carta» pide a Flow **`flow.portal_customer({reservation_id, guest_id})` → `{number, carta_url}`** (FL1): `carta_url` es un enlace de un solo uso que deja ese navegador como ese cliente, así que no se guarda en la caché y se pide en cada toque; se enseña «Tu número de cliente: N». Sin la lectura o sin respuesta, la carta pública `https://flow.ikisai.com/` y «Tu número te lo da la carta al pedir.». Solo enlaces `https`. El número ligado a una ficha es un dato personal: nunca en capturas ni en fixtures.
+- **Sin red:** las ofertas, de la caché como el menú; «Abrir la carta» necesita red.
+- **Pruebas:** `tests/guests/offers.test.ts` (cruce, internas, modos, precio y enlace). La de Playwright llega cuando FD3 esté en `main`.
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:
