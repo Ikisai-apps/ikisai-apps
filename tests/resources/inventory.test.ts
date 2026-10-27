@@ -11,6 +11,10 @@ let app: TestApp;
 let seq = 0;
 const commit = (operations: unknown[], token?: string) =>
   app.call('/api/v1/resources/commands', { token, body: { requestId: `inv-${++seq}`, operations } });
+/** Un lote de servidor (Finance o Tasks hacia Recursos): clave de worker y X-Ikisai-Caller (0118). */
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
+const serverCommit = (operations: unknown[], token?: string) =>
+  app.call('/api/v1/resources/commands', { token, body: { requestId: `inv-${++seq}`, operations }, headers: { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': 'invoices' } });
 const code = (res: { data: any }) => res.data?.error?.code ?? res.data?.code;
 const read = async (name: string, where: Record<string, unknown> = {}) =>
   (await app.call(`/api/v1/resources/read/${name}`, { body: { where } })).data;
@@ -24,7 +28,7 @@ let camara = '';
 test.before(async () => {
   app = await createTestApp({
     app: 'tasks', slug: 'tasks-api', origin: ORIGIN,
-    createHandler: (config) => createApp({ ...config, app: 'tasks', slug: 'tasks-api' }),
+    createHandler: (config) => createApp({ ...config, app: 'tasks', slug: 'tasks-api', workerKey: WORKER_KEY }),
   });
   const a3 = (await app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 3'`)).rows[0]!.id;
   const albergue = uuid(); despensa = uuid(); camara = uuid();
@@ -200,7 +204,7 @@ test('cuadre de entradas de Finance · idempotente por línea; el contrario usa 
     { op: 'insert', table: 'resources.items', id: te, fields: { name: 'Té', kind: 'bebida', base_unit: 'g' } },
   ], app.tokens.editor);
   const rec = (entries: unknown[], refs: string[] = []) =>
-    commit([{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: 'invoices', entries, refs } }], app.tokens.editor);
+    serverCommit([{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: 'invoices', entries, refs } }], app.tokens.editor);
   const line = { source_ref: 'line:A', item_id: cafe, space_id: despensa, quantity: 1000, unit_cost: 0.02 };
   const first = await rec([line]);
   assert.equal(first.status, 200, JSON.stringify(first.data));
