@@ -1,8 +1,9 @@
 -- Ikisai Flow · «Avance por aplicaciones», paso 2: `flow.board_card`, crear o cambiar una tarjeta del tablero.
--- args = { project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, ref?, url?, url_text?, steps?, note? }
+-- args = { project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note? }
 -- - Sin `card_id` (o uno que no existe), la crea; con uno que existe, cambia solo lo que se da (`prio`/`flag` a null los quita).
 -- - `status`: pending · in_progress · done; `flag`: pr · backlog (VG: «no ahora»); `kind`: card · recurring (sin urgencia).
--- - `ref` (número de PR…), `url` (https), `url_text`, `steps` (hasta 30 pasos) y `note` van en `payload`.
+-- - `ref` (número de PR…), `url` (https), `url_text`, `steps` (hasta 30 pasos), `note` y `tipo` (oficio: arreglo · funcion ·
+--   prueba · decision · ajuste) van en `payload`; `order` (orden dentro del carril) en `idx`.
 -- - El carril lo comprueba `flow.guard_board` (scopes.lanes; owner, todos). Lo usan la app (Dirección, Víctor) y la
 --   capacidad `flow.board_card` del catálogo (agentes, idempotente por requestId).
 create or replace function flow.board_card(p jsonb) returns jsonb language plpgsql as $$
@@ -37,20 +38,24 @@ begin
        or exists (select 1 from jsonb_array_elements(a->'steps') s where jsonb_typeof(s) <> 'string' or length(s #>> '{}') > 300)) then
     perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('field', 'steps'));
   end if;
+  if a ? 'tipo' and a->>'tipo' is not null and a->>'tipo' not in ('arreglo', 'funcion', 'prueba', 'decision', 'ajuste') then
+    perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('field', 'tipo'));
+  end if;
+  if a ? 'order' and a->>'order' is not null and a->>'order' !~ '^-?[0-9]{1,9}$' then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('field', 'order')); end if;
   if length(coalesce(a->>'ref', '')) > 40 or length(coalesce(a->>'url_text', '')) > 60 or length(coalesce(a->>'note', '')) > 1000 then
     perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('field', 'ref/url_text/note'));
   end if;
 
   -- Lo que va en payload: solo las claves que se dan (null las quita).
   v_payload := coalesce(v_c.payload, '{}'::jsonb);
-  v_payload := v_payload || coalesce((select jsonb_object_agg(k, a->k) from unnest(array['ref', 'url', 'url_text', 'steps', 'note']) k where a ? k), '{}'::jsonb);
+  v_payload := v_payload || coalesce((select jsonb_object_agg(k, a->k) from unnest(array['ref', 'url', 'url_text', 'steps', 'note', 'tipo']) k where a ? k), '{}'::jsonb);
   v_payload := jsonb_strip_nulls(v_payload);
 
   if v_c.id is null then
     if v_lane is null then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('field', 'lane_key')); end if;
     if v_title is null then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('field', 'title')); end if;
     v_id := flow.ins(p, 'flow.units', jsonb_build_object('project_id', v_project, 'column_key', 'avance', 'kind', v_kind, 'label', left(v_title, 300),
-      'lane_key', v_lane, 'prio', case when v_kind = 'recurring' then null else a->>'prio' end, 'board_flag', a->>'flag', 'status', v_status,
+      'lane_key', v_lane, 'prio', case when v_kind = 'recurring' then null else a->>'prio' end, 'board_flag', a->>'flag', 'status', v_status, 'idx', coalesce((a->>'order')::int, 0),
       'done_at', case when v_status = 'done' then now() end, 'done_by', case when v_status = 'done' then (p->>'actor')::uuid end, 'payload', v_payload),
       coalesce(v_id, gen_random_uuid()));
     perform flow.proc_end();
@@ -62,6 +67,7 @@ begin
   if v_lane is not null then v_fields := v_fields || jsonb_build_object('lane_key', v_lane); end if;
   if a ? 'prio' or v_kind = 'recurring' then v_fields := v_fields || jsonb_build_object('prio', case when v_kind = 'recurring' then null else a->>'prio' end); end if;
   if a ? 'flag' then v_fields := v_fields || jsonb_build_object('board_flag', a->>'flag'); end if;
+  if a ? 'order' then v_fields := v_fields || jsonb_build_object('idx', coalesce((a->>'order')::int, 0)); end if;
   if v_status = 'done' and v_c.status <> 'done' then v_fields := v_fields || jsonb_build_object('done_at', now(), 'done_by', (p->>'actor')::uuid);
   elsif v_status <> 'done' then v_fields := v_fields || jsonb_build_object('done_at', null, 'done_by', null);
   end if;
@@ -77,7 +83,7 @@ select core.register_capability(jsonb_build_object(
   'id', 'flow' || '.board_card', 'app', 'flow', 'kind', 'execute', 'title', 'Escribir una tarjeta del Avance',
   'description', 'Crea o cambia una tarjeta del tablero «Avance por aplicaciones» en el carril de quien la escribe (scopes.lanes). Idempotente por requestId.',
   'route', 'POST board-card', 'roles', jsonb_build_array('editor', 'owner', 'outsider'), 'risk', 'low', 'idempotent', true, 'reversible', true,
-  'input', '{"type":"object","required":["requestId","project_id","lane_key"],"properties":{"requestId":{"type":"string"},"project_id":{"type":"string","format":"uuid"},"card_id":{"type":"string","format":"uuid"},"lane_key":{"type":"string"},"title":{"type":"string","maxLength":300},"status":{"enum":["pending","in_progress","done"]},"prio":{"enum":["urgente","importante","secundario","opcional",null]},"flag":{"enum":["pr","backlog",null]},"kind":{"enum":["card","recurring"]},"ref":{"type":"string","maxLength":40},"url":{"type":"string","format":"uri"},"url_text":{"type":"string","maxLength":60},"steps":{"type":"array","maxItems":30,"items":{"type":"string","maxLength":300}},"note":{"type":"string","maxLength":1000}}}'::jsonb,
+  'input', '{"type":"object","required":["requestId","project_id","lane_key"],"properties":{"requestId":{"type":"string"},"project_id":{"type":"string","format":"uuid"},"card_id":{"type":"string","format":"uuid"},"lane_key":{"type":"string"},"title":{"type":"string","maxLength":300},"status":{"enum":["pending","in_progress","done"]},"prio":{"enum":["urgente","importante","secundario","opcional",null]},"flag":{"enum":["pr","backlog",null]},"kind":{"enum":["card","recurring"]},"ref":{"type":"string","maxLength":40},"url":{"type":"string","format":"uri"},"url_text":{"type":"string","maxLength":60},"steps":{"type":"array","maxItems":30,"items":{"type":"string","maxLength":300}},"note":{"type":"string","maxLength":1000},"tipo":{"enum":["arreglo","funcion","prueba","decision","ajuste",null]},"order":{"type":"integer"}}}'::jsonb,
   'output', '{"type":"object","properties":{"card_id":{"type":"string","format":"uuid"},"created":{"type":"boolean"},"replayed":{"type":"boolean"}}}'::jsonb,
   'anchors', jsonb_build_array('flow.avance'), 'since', '0938'));
 

@@ -453,7 +453,7 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
         const body = (await json().catch(() => ({}))) ?? {};
         const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
         if (!requestId) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
-        const KEYS = ['project_id', 'card_id', 'lane_key', 'title', 'status', 'prio', 'flag', 'kind', 'ref', 'url', 'url_text', 'steps', 'note'];
+        const KEYS = ['project_id', 'card_id', 'lane_key', 'title', 'status', 'prio', 'flag', 'kind', 'tipo', 'order', 'ref', 'url', 'url_text', 'steps', 'note'];
         const args: Record<string, unknown> = Object.fromEntries(KEYS.filter((k) => k in body).map((k) => [k, body[k]]));
         if (!args.card_id) args.card_id = crypto.randomUUID();
         const operations = [{ op: 'call', procedure: 'flow.board_card', args }];

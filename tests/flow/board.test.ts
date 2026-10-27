@@ -81,12 +81,14 @@ const boardCard = (args: Record<string, unknown>, token = app.tokens.owner) => c
 const unit = async (id: string) => (await app.t.db.query<any>(`select * from flow.units where id = $1`, [id])).rows[0];
 
 test('avance · board_card crea y cambia solo lo que se da; done pone la hora; null quita la urgencia', async () => {
-  const r = await boardCard({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'urgente', ref: '#943', url: 'https://example.invalid/pr/943', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
+  const r = await boardCard({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'urgente', tipo: 'prueba', order: 3, ref: '#943', url: 'https://example.invalid/pr/943', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   const id = r.data.results[0].result.card_id as string;
   let u = await unit(id);
   assert.equal(u.kind, 'card'); assert.equal(u.status, 'pending'); assert.equal(u.prio, 'urgente');
   assert.deepEqual(u.payload.steps, ['Abrir la carta', 'Tocar «Alójate aquí»']); assert.equal(u.payload.ref, '#943');
+  assert.equal(u.payload.tipo, 'prueba'); assert.equal(u.idx, 3);
+  assert.notEqual((await boardCard({ lane_key: 'victor', title: 'Oficio raro', tipo: 'magia' })).status, 200);
   assert.equal((await boardCard({ card_id: id, status: 'done', flag: 'pr' })).status, 200);
   u = await unit(id);
   assert.equal(u.status, 'done'); assert.ok(u.done_at); assert.equal(u.board_flag, 'pr'); assert.equal(u.prio, 'urgente'); assert.equal(u.label, 'Probar el alojamiento');
