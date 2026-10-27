@@ -1999,6 +1999,7 @@ El visitante, desde «Alójate aquí»:
 ## 41. Ajustes y devoluciones del cobro del alojamiento (migración 1403; VG 27-10-2026)
 
 - **Ajuste:** en «Alojamiento a la carta», «Ajustar…» cambia las noches o el precio por noche, y el importe vuelve a ser noches × precio.
+- **Ampliar o cambiar la estancia** (aceptación C): «Ampliar…» cambia en un lote las noches y la cama de la asignación, y las noches y el importe de su cobro. La lista solo ofrece camas libres todas esas noches, y el servidor lo vuelve a comprobar con `BED_OVERBOOKED` o `BED_HELD`: si falla, no cambia nada. Si el cobro ya estaba en Finance, queda por reenviar y se reenvía. La diferencia de dinero se cobra o se devuelve aparte.
 - **Devolución:** «Devolver…» guarda `walkin_charges.refund_cents` (hasta lo cobrado), `refund_method` y `refunded_at`. Con 0 se quita.
 - **Un solo apunte en Finance por cobro** (`booking:stay:<id del cobro>`): `walkinFinanceEntry` lo manda por lo cobrado menos lo devuelto.
   - El método de la devolución va en negativo y el desglose lleva una línea «Devolución» negativa, así que métodos y desglose suman el importe.
