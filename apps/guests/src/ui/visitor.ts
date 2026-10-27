@@ -5,7 +5,7 @@
  * es su cliente de Flow (FL2: `visitor_join` al tocar, `flow_visitor_customer` para pintar); sin Flow, la carta pública.
  * Un visitante nunca ve a otros.
  */
-import { clearGuideLink, clearReturnTo, createFieldPointer, currentGuideLink, currentReturnTo, el, icon, onSaved, replace, toast } from '@ikisai/ui-kit';
+import { clearGuideLink, clearReturnTo, createFieldPointer, createGuide, currentGuideLink, currentReturnTo, el, flowGuideSource, icon, onSaved, replace, toast, type GuideApiClient } from '@ikisai/ui-kit';
 import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
@@ -36,25 +36,43 @@ const requestText = (r: VisitorRequest) => (STATES.includes(r.status) ? t(`visit
 const ORDER_STATES = ['open', 'paid', 'delivered'];
 const orderText = (status: string) => (ORDER_STATES.includes(status) ? t(`visitor.ost.${status}`) : status);
 
-export function renderVisitor(root: HTMLElement): () => void {
+/** El cliente de la app, para el Guiado completo de Flow cuando en este móvil hay sesión de un miembro de Flow. */
+export type VisitorGuideClient = GuideApiClient & { session(): unknown };
+
+export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | null): () => void {
   let alive = true;
   let token = 0;
   const main = el('main', { class: 'gview gvisitor', id: 'visitor', tabindex: '-1', 'data-feedback-id': 'guests.visitante', 'data-feedback-label': 'Portal del visitante' });
-  // Guiado mínimo del kit (#948) sin la cáscara: el visitante no usa `createAppShell`, así que se monta aquí. El campo se
-  // señala tras cada pantalla; al guardar el campo del paso (`announceSaved`), se dice y se ofrece volver a la guía.
+  // Guiado del kit (#948) sin la cáscara: el visitante no usa `createAppShell`, así que se monta aquí.
+  // - Completo (`?guia=`) solo con sesión de un miembro de Flow en este móvil (p. ej. VG probando): lee y confirma los pasos
+  //   en Flow (`flow.guide_read` y `flow.guide_confirm`, por las capacidades de guests-api; confirmado por Flow, 27-10).
+  // - Mínimo para el visitante anónimo: el campo se señala tras cada pantalla y, al guardarlo (`announceSaved`), se dice y
+  //   se ofrece volver; el paso se cierra con «Hecho» en Flow.
   const origin = currentReturnTo();
   const link = currentGuideLink();
-  const pointer = link?.field ? createFieldPointer(link, { feedbackId: 'guests.visitante.cabecera.guia' }) : null;
+  const run = link?.run ?? null;
+  const source = run && client?.session() ? flowGuideSource(client, { app: 'guests' }) : null;
+  const guide = run && source
+    ? createGuide({
+      load: () => source.load(run),
+      onConfirmed: (step, info) => source.confirm(run, step, info),
+      onSkipped: source.skip ? (step) => source.skip!(run, step) : undefined,
+      navigate: (route) => { location.hash = route; },
+      feedbackId: 'guests.visitante.cabecera.guia',
+    })
+    : null;
+  const pointer = !guide && link?.field ? createFieldPointer(link, { feedbackId: 'guests.visitante.cabecera.guia' }) : null;
   const back = origin ? el('a', { class: 'return-link', href: origin.url, 'data-feedback-id': 'guests.visitante.cabecera.volver', 'data-feedback-label': 'Volver a la guía',
     onclick: () => { clearReturnTo(); clearGuideLink(); } }, icon('chevronLeft', 18), el('span', null, t('visitor.backTo', { place: origin.title ?? origin.from ?? t('visitor.backGuide') }))) : null;
-  const offSaved = link?.field ? onSaved((id) => { if (id === link.field) toast(t('visitor.guideSaved')); }) : null;
+  const offSaved = !guide && link?.field ? onSaved((id) => { if (id === link.field) toast(t('visitor.guideSaved')); }) : null;
   replace(root, el('div', { class: 'gvisitor-shell' },
     el('header', { class: 'gvisitor-top' },
       el('a', { class: 'gvisitor-brand', href: LIST, 'data-feedback-id': 'guests.visitante.cabecera.eventos', 'data-feedback-label': 'Mis eventos' },
         el('span', { class: 'mark', 'aria-hidden': 'true' }, icon('guest', 20)), el('strong', null, 'Ikisai')),
       languageSelect()),
     back, pointer?.element ?? null,
-    main));
+    main, guide?.element ?? null));
+  if (guide) queueMicrotask(() => void guide.start());
 
   const route = () => {
     const mine = ++token;
@@ -313,7 +331,7 @@ export function renderVisitor(root: HTMLElement): () => void {
   const onHash = () => { if (isVisitorHash(location.hash)) route(); };
   window.addEventListener('hashchange', onHash);
   route();
-  return () => { alive = false; offSaved?.(); window.removeEventListener('hashchange', onHash); replace(root); };
+  return () => { alive = false; offSaved?.(); guide?.destroy(); window.removeEventListener('hashchange', onHash); replace(root); };
 }
 
 function visitorError(error: unknown): string {

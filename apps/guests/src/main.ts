@@ -67,7 +67,7 @@ function show(): void {
   unmount = null;
   visitorMode = isVisitorHash(location.hash);
   if (visitorMode) {
-    unmount = renderVisitor(root!);
+    unmount = renderVisitor(root!, client);
     return;
   }
   if (!entryError && client.session()) {
