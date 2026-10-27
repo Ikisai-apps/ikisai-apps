@@ -98,6 +98,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         })),
       });
     }
+    // Idioma (revisión móvil del 27-10): en el móvil el selector ES | EN de la cabecera dejaba el título en «Ikis…», así que
+    // ahí se elige desde el menú; en pantallas anchas sigue también en la cabecera.
+    const LANGS: Record<string, string> = { es: 'Español', en: 'English' };
+    out.push({
+      key: 'idioma', label: t('Idioma'), icon: 'settings', summary: LANGS[i18n.locale()] ?? i18n.locale(),
+      rows: i18n.supported().map((locale) => ({
+        label: LANGS[locale] ?? locale, sub: locale === i18n.locale() ? t('En uso') : null,
+        onClick: () => i18n.setLocale(locale), feedbackId: 'organizers.menu.idioma.elegir',
+      })),
+    });
     const active = menuRetreats.filter((r) => !isCancelled(r.status));
     out.push({
       key: 'retiros', label: t('Mis retiros'), icon: 'calendar',
@@ -112,7 +122,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const shell = createAppShell(root, {
     appName: 'Organizers',
     markIcon: 'organizer',
-    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } })],
+    tools: [el('div', { class: 'orglang-head' }, createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } }))],
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
     navigate,

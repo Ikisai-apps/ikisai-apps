@@ -124,6 +124,8 @@ export const EN: Dictionary = {
   'No se ha podido cargar': 'Could not load',
   'Reintentar': 'Retry',
   'Entra con tu enlace': 'Sign in with your link',
+  'Idioma': 'Language',
+  'En uso': 'In use',
   'Para entrar, abre el enlace que te enviamos por correo o por WhatsApp.': 'To get in, open the link we sent you by email or WhatsApp.',
   'Este enlace ya no está activo': 'This link is no longer active',
   'Pídenos uno nuevo y volverás a ver todos tus retiros, también los pasados.': 'Ask us for a new one and you will see all your retreats again, past ones included.',
