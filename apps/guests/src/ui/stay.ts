@@ -113,7 +113,7 @@ export function stayBlock(event: PublicEvent, today: string, options: StayOption
     replace(asking);
     replace(result,
       el('p', { class: 'small', id: 'pubStayAvailable', role: 'status' },
-        l.available > 0 ? t('stay.available', { count: l.available, nights: l.nights }) : t('stay.full', { nights: l.nights })),
+        l.available > 0 ? t('stay.available', { count: l.available, nights: t('stay.nights', { count: l.nights }) }) : t('stay.full', { nights: t('stay.nights', { count: l.nights }) })),
       l.modes.length ? el('ul', { class: 'gstay-modes', id: 'pubStayModes' }, ...l.modes.map((m) => el('li', { class: `card gcard gstay-mode${m.fits ? '' : ' off'}`, dataset: { mode: m.id } },
         el('strong', null, m.name),
         m.includes ? el('span', { class: 'small' }, m.includes) : null,

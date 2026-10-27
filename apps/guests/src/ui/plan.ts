@@ -169,7 +169,8 @@ function centralPlan(reads: PortalReads, p: Place, box: HTMLElement, where: HTML
   replace(box, where, el('p', { class: 'small' }, t('plan.loading')));
   void reads.fileUrl(p.site_plan_file_id!).then(({ url }) => {
     replace(box, where, el('img', { class: 'gplan-img', src: url, alt: t('plan.alt', { name: p.name ?? t('plan.center') }), loading: 'lazy' }));
-  }).catch((error) => replace(box, where, el('p', { class: 'small' }, describeError(error))));
+  }).catch((error) => replace(box, where, el('p', { class: 'small' }, describeError(error)),
+    el('button', { type: 'button', class: 'ghost small', onclick: () => centralPlan(reads, p, box, where) }, t('common.retry'))));
 }
 
 /**
