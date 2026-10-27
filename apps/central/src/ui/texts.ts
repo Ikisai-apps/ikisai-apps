@@ -169,11 +169,11 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     const readOnly = !isAdmin;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
     const lang: TextLang = t?.lang ?? (base ? 'en' : 'es');
-    const key = el('input', { id: 'tx-key', 'data-field-id': 'central.textos.key', type: 'text', maxlength: '60', value: t?.key ?? base?.key ?? preset?.key ?? '', placeholder: 'portal.privacy', disabled: t !== null || base !== null || preset !== null || readOnly }) as HTMLInputElement;
+    const key = el('input', { id: 'tx-key', 'data-field-id': 'central.textos.key', 'data-field-entity': 'central.texts', 'data-field-prop': 'key', type: 'text', maxlength: '60', value: t?.key ?? base?.key ?? preset?.key ?? '', placeholder: 'portal.privacy', disabled: t !== null || base !== null || preset !== null || readOnly }) as HTMLInputElement;
     // Una traducción tiene el mismo tipo que su texto en español; solo se elige al crear el español.
-    const kind = el('select', { id: 'tx-kind', 'data-field-id': 'central.textos.kind', disabled: readOnly || lang !== 'es' }, ...TEXT_KINDS.map((k) => el('option', { value: k, selected: (t?.kind ?? base?.kind ?? preset?.kind ?? 'legal') === k }, TEXT_KIND_LABELS[k]))) as HTMLSelectElement;
-    const title = el('input', { id: 'tx-title', 'data-field-id': 'central.textos.title', type: 'text', maxlength: '160', value: t?.title ?? base?.title ?? preset?.title ?? '', disabled: readOnly }) as HTMLInputElement;
-    const body = el('textarea', { id: 'tx-body', 'data-field-id': 'central.textos.body', rows: '10', maxlength: '8000', disabled: readOnly }) as HTMLTextAreaElement;
+    const kind = el('select', { id: 'tx-kind', 'data-field-id': 'central.textos.kind', 'data-field-entity': 'central.texts', 'data-field-prop': 'kind', disabled: readOnly || lang !== 'es' }, ...TEXT_KINDS.map((k) => el('option', { value: k, selected: (t?.kind ?? base?.kind ?? preset?.kind ?? 'legal') === k }, TEXT_KIND_LABELS[k]))) as HTMLSelectElement;
+    const title = el('input', { id: 'tx-title', 'data-field-id': 'central.textos.title', 'data-field-entity': 'central.texts', 'data-field-prop': 'title', type: 'text', maxlength: '160', value: t?.title ?? base?.title ?? preset?.title ?? '', disabled: readOnly }) as HTMLInputElement;
+    const body = el('textarea', { id: 'tx-body', 'data-field-id': 'central.textos.body', 'data-field-entity': 'central.texts', 'data-field-prop': 'body', rows: '10', maxlength: '8000', disabled: readOnly }) as HTMLTextAreaElement;
     body.value = t?.body ?? base?.body ?? '';
     const preview = el('div', { id: 'tx-preview', class: 'textpreviewbox', 'data-feedback-id': 'central.textos.editar.vista_previa', 'data-feedback-label': 'Vista previa' });
     const versionNote = el('p', { class: 'note', id: 'tx-version' });

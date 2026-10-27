@@ -57,9 +57,9 @@ type PlanRow = { id: string; revision: number; kind?: string | null; grid?: unkn
 type IconRow = { id: string; revision: number; name: string; category: string; file_id: unknown; default_size: number; deleted_at?: string | null };
 /** Ids literales del selector de cabecera de cada app (así entran en el catálogo y en el inventario de campos). */
 const HEADER_MARKS: Record<HeaderApp, { label: Record<string, string>; select: Record<string, string> }> = {
-  central: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.central', 'data-feedback-label': 'Cabecera de Central' }, select: { 'data-field-id': 'central.planos.header_central' } },
-  guests: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.guests', 'data-feedback-label': 'Cabecera de Guests' }, select: { 'data-field-id': 'central.planos.header_guests' } },
-  organizers: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.organizers', 'data-feedback-label': 'Cabecera de Organizers' }, select: { 'data-field-id': 'central.planos.header_organizers' } },
+  central: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.central', 'data-feedback-label': 'Cabecera de Central' }, select: { 'data-field-id': 'central.planos.header_central', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'header_for' } },
+  guests: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.guests', 'data-feedback-label': 'Cabecera de Guests' }, select: { 'data-field-id': 'central.planos.header_guests', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'header_for' } },
+  organizers: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.organizers', 'data-feedback-label': 'Cabecera de Organizers' }, select: { 'data-field-id': 'central.planos.header_organizers', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'header_for' } },
 };
 type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; header_for?: string[] | null; deleted_at?: string | null };
 const WIDE = '(min-width: 900px)';
@@ -353,19 +353,19 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
     const estateNow = plan ? isEstate(plan) : false;
-    const kind = el('select', { id: 'planKind', 'data-field-id': 'central.planos.plan_kind', 'aria-label': 'Tipo de dibujo' },
+    const kind = el('select', { id: 'planKind', 'data-field-id': 'central.planos.plan_kind', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'kind', 'aria-label': 'Tipo de dibujo' },
       el('option', { value: 'building' }, 'Edificio o exterior'), el('option', { value: 'estate' }, 'Finca (el plano de todo el centro)')) as HTMLSelectElement;
     // La finca cuelga de un exterior raíz (Recursos 0814); un edificio o exterior, de lo demás.
     const buildingsOf = (k: string) => rows.filter((s) => s.active && (k === 'estate' ? s.kind === 'exterior' && !s.parentId : (s.kind === 'edificio' || s.kind === 'exterior'))).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'aria-label': 'Edificio' }) as HTMLSelectElement;
+    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'building_id', 'aria-label': 'Edificio' }) as HTMLSelectElement;
     const fillBuildings = () => replace(building, ...buildingsOf(kind.value).map((b) => el('option', { value: b.id }, spacePath(index(), b.id))));
     fillBuildings();
     kind.addEventListener('change', fillBuildings);
     // Escala: metros por unidad del dibujo. Del SVG si la trae (`data-meters-per-unit`); si no, se escribe (para decorar).
-    const scale = el('input', { id: 'planScale', 'data-field-id': 'central.planos.plan_scale', type: 'number', step: 'any', min: '0', inputmode: 'decimal', placeholder: 'Del SVG si la trae',
+    const scale = el('input', { id: 'planScale', 'data-field-id': 'central.planos.plan_scale', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'grid', type: 'number', step: 'any', min: '0', inputmode: 'decimal', placeholder: 'Del SVG si la trae',
       value: plan ? String(gridOfPlan(plan)?.metersPerUnit ?? '') : '' }) as HTMLInputElement;
-    const floor = el('input', { id: 'planFloor', 'data-field-id': 'central.planos.plan_floor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
-    const file = el('input', { id: 'planFile', 'data-field-id': 'central.planos.plan_file', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
+    const floor = el('input', { id: 'planFloor', 'data-field-id': 'central.planos.plan_floor', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'floor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
+    const file = el('input', { id: 'planFile', 'data-field-id': 'central.planos.plan_file', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'file_id', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'planSubmit', 'data-feedback-id': 'central.planos.subir.guardar', 'data-feedback-label': 'Guardar el dibujo', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];
@@ -829,7 +829,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     if (!side) return;
     for (const b of editorBinds.splice(0)) b();
     const grid = gridOfPlan(plan);
-    const scaleIn = el('input', { id: 'decorPlanScale', 'data-field-id': 'central.planos.decor_plan_scale', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: grid ? String(grid.metersPerUnit) : '', 'aria-describedby': 'decorScaleHelp' }) as HTMLInputElement;
+    const scaleIn = el('input', { id: 'decorPlanScale', 'data-field-id': 'central.planos.decor_plan_scale', 'data-field-entity': 'resources.floor_plans', 'data-field-prop': 'grid', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: grid ? String(grid.metersPerUnit) : '', 'aria-describedby': 'decorScaleHelp' }) as HTMLInputElement;
     const saveScale = el('button', { type: 'button', class: 'ghost small', id: 'saveDecorScale', 'data-feedback-id': 'central.planos.decoracion.guardar_escala', 'data-feedback-label': 'Guardar la escala', onclick: async () => {
       const v = Number(scaleIn.value.replace(',', '.'));
       if (!(v > 0)) { toast('La escala son los metros por unidad del dibujo: un número mayor que 0.'); return; }
@@ -880,11 +880,11 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   function openIconUpload(): void {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
-    const name = el('input', { id: 'iconName', 'data-field-id': 'central.planos.icon_name', type: 'text', maxlength: '80', placeholder: 'Planta grande' }) as HTMLInputElement;
-    const category = el('input', { id: 'iconCategory', 'data-field-id': 'central.planos.icon_category', type: 'text', maxlength: '40', placeholder: 'Plantas', list: 'iconCategories' }) as HTMLInputElement;
+    const name = el('input', { id: 'iconName', 'data-field-id': 'central.planos.icon_name', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'name', type: 'text', maxlength: '80', placeholder: 'Planta grande' }) as HTMLInputElement;
+    const category = el('input', { id: 'iconCategory', 'data-field-id': 'central.planos.icon_category', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'category', type: 'text', maxlength: '40', placeholder: 'Plantas', list: 'iconCategories' }) as HTMLInputElement;
     const cats = el('datalist', { id: 'iconCategories' }, ...[...new Set(icons.map((i) => i.category))].map((c) => el('option', { value: c })));
-    const size = el('select', { id: 'iconSize', 'data-field-id': 'central.planos.icon_size', 'aria-label': 'Tamaño por defecto' }, el('option', { value: '1' }, '1 celda (0,5 m en interior)'), el('option', { value: '4' }, '4 celdas (2×2, 1 m)')) as HTMLSelectElement;
-    const file = el('input', { id: 'iconFile', 'data-field-id': 'central.planos.icon_file', type: 'file', accept: ICON_ACCEPT }) as HTMLInputElement;
+    const size = el('select', { id: 'iconSize', 'data-field-id': 'central.planos.icon_size', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'default_size', 'aria-label': 'Tamaño por defecto' }, el('option', { value: '1' }, '1 celda (0,5 m en interior)'), el('option', { value: '4' }, '4 celdas (2×2, 1 m)')) as HTMLSelectElement;
+    const file = el('input', { id: 'iconFile', 'data-field-id': 'central.planos.icon_file', 'data-field-entity': 'resources.decor_icons', 'data-field-prop': 'file_id', type: 'file', accept: ICON_ACCEPT }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'iconSubmit', 'data-feedback-id': 'central.planos.icono.guardar', 'data-feedback-label': 'Guardar el icono', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];
@@ -974,10 +974,10 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
     const buildings = rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior')).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const building = el('select', { id: 'imageBuilding', 'data-field-id': 'central.planos.image_building', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id, selected: b.id === spaceId }, b.name))) as HTMLSelectElement;
-    const kindSel = el('select', { id: 'imageKind', 'data-field-id': 'central.planos.image_kind', 'aria-label': 'Tipo de imagen' }, ...IMAGE_KINDS.map((k) => el('option', { value: k }, IMAGE_KIND_LABELS[k]))) as HTMLSelectElement;
-    const title = el('input', { id: 'imageTitle', 'data-field-id': 'central.planos.image_title', type: 'text', maxlength: '120', placeholder: 'Alzado norte' }) as HTMLInputElement;
-    const file = el('input', { id: 'imageFile', 'data-field-id': 'central.planos.image_file', type: 'file', accept: 'image/png,image/jpeg,image/svg+xml' }) as HTMLInputElement;
+    const building = el('select', { id: 'imageBuilding', 'data-field-id': 'central.planos.image_building', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'space_id', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id, selected: b.id === spaceId }, b.name))) as HTMLSelectElement;
+    const kindSel = el('select', { id: 'imageKind', 'data-field-id': 'central.planos.image_kind', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'kind', 'aria-label': 'Tipo de imagen' }, ...IMAGE_KINDS.map((k) => el('option', { value: k }, IMAGE_KIND_LABELS[k]))) as HTMLSelectElement;
+    const title = el('input', { id: 'imageTitle', 'data-field-id': 'central.planos.image_title', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'title', type: 'text', maxlength: '120', placeholder: 'Alzado norte' }) as HTMLInputElement;
+    const file = el('input', { id: 'imageFile', 'data-field-id': 'central.planos.image_file', 'data-field-entity': 'resources.space_images', 'data-field-prop': 'file_id', type: 'file', accept: 'image/png,image/jpeg,image/svg+xml' }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'imageSubmit', 'data-feedback-id': 'central.planos.imagen.guardar', 'data-feedback-label': 'Guardar la imagen', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];

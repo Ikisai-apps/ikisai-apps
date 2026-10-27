@@ -103,7 +103,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
   function linkDecision(review: Review, i: WeeklyKpi): void {
     let sheet: Sheet | null = null;
     const live = ctxDecisions.filter((d) => d.status === 'vigente').sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const select = el('select', { id: 'weeklyDecision', 'data-field-id': 'central.semana.decision' }, el('option', { value: '' }, 'Elige una decisión'),
+    const select = el('select', { id: 'weeklyDecision', 'data-field-id': 'central.semana.decision', 'data-field-entity': 'central.weekly_actions', 'data-field-prop': 'decision_id' }, el('option', { value: '' }, 'Elige una decisión'),
       ...live.map((d) => el('option', { value: d.id }, d.code ? `${d.code} · ${d.name}` : d.name))) as HTMLSelectElement;
     const save = el('button', { class: 'primary', type: 'button', id: 'weeklyDecisionSave', 'data-feedback-id': 'central.semana.decision.guardar', 'data-feedback-label': 'Enlazar la decisión', onclick: async () => {
       if (!select.value) { toast('Elige una decisión.'); return; }
@@ -156,7 +156,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
       return;
     }
     const red = el('div', { id: 'weeklyRed', 'data-feedback-id': 'central.semana.rojo', 'data-feedback-label': 'Lo que está en rojo' }, el('p', { class: 'muted' }, 'Leyendo el panel…'));
-    const summary = el('textarea', { id: 'weeklySummary', 'data-field-id': 'central.semana.summary', maxlength: 1000, rows: 4, disabled: !prepares }, review.summary ?? '') as HTMLTextAreaElement;
+    const summary = el('textarea', { id: 'weeklySummary', 'data-field-id': 'central.semana.summary', 'data-field-entity': 'central.weekly_reviews', 'data-field-prop': 'summary', maxlength: 1000, rows: 4, disabled: !prepares }, review.summary ?? '') as HTMLTextAreaElement;
     const direction = people.filter((p) => p.house_level === 'direccion');
     const chosen = new Set(review.attendee_ids ?? []);
     const attendees = el('div', { class: 'chips', id: 'weeklyAttendees', role: 'group', 'aria-label': 'Quién estuvo', 'data-feedback-id': 'central.semana.asistentes', 'data-feedback-label': 'Quién estuvo' },
