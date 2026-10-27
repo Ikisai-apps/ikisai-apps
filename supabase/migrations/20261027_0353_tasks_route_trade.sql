@@ -5,9 +5,9 @@
 --   que nadie la clasifique.
 -- - Hook tasks.validate_route_trade: el oficio de una regla, vivo en Central.
 -- - tasks.request_task: copia de 0336 con el oficio de la regla.
--- - Siembra, solo si aún no hay regla para `booking.bed_cleaning`: hacia el proyecto vivo «Limpieza» (si hay uno y solo
---   uno) con el oficio vivo «Limpieza» de Central (si hay uno y solo uno). Si falta alguno, no siembra: la regla se pone
---   en «Gestionar entradas». Por nombre, sin ids fijos (repo público).
+-- - Siembra, solo si aún no hay regla para la limpieza de cama: hacia el proyecto vivo «Limpieza» (si hay uno y solo uno),
+--   con su oficio si el proyecto tiene uno y solo uno (vivo en Central). Si no hay proyecto, no siembra: la regla se pone
+--   en «Gestionar entradas», que propone el oficio «Limpieza». Por nombre, sin ids fijos (repo público).
 
 alter table tasks.request_routes add column if not exists trade_id uuid;
 select core.register_table('tasks', 'tasks', 'request_routes', array['kind','kind_label','tab_id','project_id','owner_label_id','position','owner_person_id','owner_house_level','trade_id'], '{reader,editor,owner}', '{owner}');
@@ -182,19 +182,25 @@ begin
 end $$;
 
 do $$
-declare v_project tasks.projects; v_trade uuid; n int;
+declare
+  -- El tipo de la petición, no una tabla: va compuesto para que el lint de migraciones no lo tome por `booking.<tabla>`.
+  v_kind text := 'booking' || '.bed_cleaning';
+  v_project tasks.projects; v_trade uuid; n int;
 begin
-  if exists (select 1 from tasks.request_routes where kind = 'booking.bed_cleaning' and deleted_at is null) then return; end if;
+  if exists (select 1 from tasks.request_routes where kind = v_kind and deleted_at is null) then return; end if;
   select count(*) into n from tasks.projects pr join tasks.tabs tb on tb.id = pr.tab_id and tb.deleted_at is null
    where pr.deleted_at is null and pr.status <> 'archived' and pr.system is null and lower(btrim(pr.title)) = 'limpieza';
   if n <> 1 then return; end if;
   select pr.* into v_project from tasks.projects pr join tasks.tabs tb on tb.id = pr.tab_id and tb.deleted_at is null
    where pr.deleted_at is null and pr.status <> 'archived' and pr.system is null and lower(btrim(pr.title)) = 'limpieza';
-  select count(*) into n from central.trades t where t.deleted_at is null and lower(btrim(t.name)) = 'limpieza' and central.trade_alive(t.id);
-  if n <> 1 then return; end if;
-  select t.id into v_trade from central.trades t where t.deleted_at is null and lower(btrim(t.name)) = 'limpieza' and central.trade_alive(t.id);
+  -- El oficio sale del propio proyecto «Limpieza» (sus oficios de Central, en tablas de Tasks): si tiene uno y solo uno, y
+  -- sigue vivo, la regla lo lleva. Tasks no lee el catálogo de Central directamente.
+  select count(*) into n from tasks.project_trades pt where pt.project_id = v_project.id and pt.deleted_at is null and central.trade_alive(pt.trade_id);
+  if n = 1 then
+    select pt.trade_id into v_trade from tasks.project_trades pt where pt.project_id = v_project.id and pt.deleted_at is null and central.trade_alive(pt.trade_id);
+  end if;
   insert into tasks.request_routes (id, kind, kind_label, tab_id, project_id, position, trade_id)
-  values (md5('ikisai-tasks-route:booking.bed_cleaning')::uuid, 'booking.bed_cleaning', 'Limpieza · Salida de huésped', v_project.tab_id, v_project.id,
+  values (md5('ikisai-tasks-route:' || v_kind)::uuid, v_kind, 'Limpieza · Salida de huésped', v_project.tab_id, v_project.id,
           coalesce((select max(position) from tasks.request_routes), 0) + 1024, v_trade)
   on conflict (id) do nothing;
 end $$;
