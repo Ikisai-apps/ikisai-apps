@@ -2254,6 +2254,13 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - Flow lo pinta con la pieza «lista de comprobación» del kit (#872) y marca con `tasks.review_item_result` (§46.3).
 - **Pruebas:** `tests/tasks/review-open.test.ts`.
 
+### 46.5 En la app (`revision-ui.js`)
+
+- **En Proyectos:** «+ Revisión de apertura» crea una desde una plantilla (de la casa o del área), con nombre, fecha y, opcionalmente, el evento.
+- **En el proyecto de una revisión:** la banda con los críticos verificados, los ítems y los fallos, y «Abrir». Con críticos pendientes, la lista de lo que falta; solo una owner abre igualmente y con nota.
+- **En la ficha de un ítem:** «Comprobación», con las instrucciones, lo esperado, el valor, la foto o la observación, y «Está bien» o «Falla». Debajo, el primer fallo y los enlaces a «Arreglar» y «Volver a comprobar». Quien solo lee lo ve sin controles.
+- **Pruebas:** `tests/tasks/revision.spec.ts`.
+
 ## 47. «Trabajos de hoy» para Flow (migración `0352`, `tasks-api/today.ts`; encargo de Core, 27-10-2026)
 
 - **`GET today/projection?date=&projectId=`** (lectura `tasks.today_projection`, también la capacidad del mismo nombre; reader, editor, owner y outsider, en su ámbito). Devuelve `{date, items}`: lo que vence ese día o antes y sigue abierto, más lo hecho ese día. Cada ítem trae proyecto, madre, prioridad, vencimiento, estado, `overdue`, `blocked` (por una dependencia o por el paso anterior sin hacer) y los ids de personas, oficios y espacios. El Plan de hoy (`day_plans`) no entra: es privado por persona (decisión de VG, §38).
