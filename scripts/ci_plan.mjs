@@ -21,6 +21,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHARED_FOLDERS = new Set(['core', 'sync-client', 'scripts']);
 /** Por debajo de estos archivos *.test.ts, una carpeta va en el grupo de las pequeñas. */
 const SMALL = 12;
+/** Desde estos, la carpeta se parte en dos trozos (`--test-shard`): booking pasaba de 3 min sola (run 40435076631). */
+const SPLIT = 45;
 
 export const isDoc = (file) => /^(docs\/|MUELA\/|CODEOWNERS$)|\.md$/.test(file);
 
@@ -77,12 +79,15 @@ export function dependents(app, server, folders, root = ROOT) {
   }));
 }
 
-/** Grupos de la matriz: una carpeta grande por grupo y las pequeñas juntas. */
-export function groups(folders, root = ROOT) {
+/** Grupos de la matriz: una carpeta grande por grupo (la muy grande, en dos trozos) y las pequeñas juntas. */
+export function groups(folders, root = ROOT, split = SPLIT) {
   const size = (f) => fs.readdirSync(path.join(root, 'tests', f)).filter((n) => n.endsWith('.test.ts')).length;
   const big = folders.filter((f) => size(f) >= SMALL);
   const small = folders.filter((f) => size(f) < SMALL);
-  return [...big.map((f) => ({ name: f, folders: f })), ...(small.length ? [{ name: small.join(' + '), folders: small.join(' ') }] : [])];
+  return [
+    ...big.flatMap((f) => (size(f) >= split ? [1, 2].map((i) => ({ name: `${f} ${i}/2`, folders: f, shard: `${i}/2` })) : [{ name: f, folders: f }])),
+    ...(small.length ? [{ name: small.join(' + '), folders: small.join(' ') }] : []),
+  ];
 }
 
 /** El plan de una PR (o de un run fuera de PR, `event !== 'pull_request'`: todo). */

@@ -108,7 +108,8 @@ jobs:
     needs: cambios
     if: needs.cambios.outputs.code == 'true' && needs.cambios.outputs.pglite != '[]'
     runs-on: ubuntu-24.04
-    # Un job por carpeta grande (las pequeñas juntas): el tiempo es el de la más lenta, no la suma de las nueve apps.
+    # Un job por carpeta grande (la muy grande, en dos trozos; las pequeñas, juntas): el tiempo es el del grupo más lento,
+    # no la suma de las nueve apps.
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -121,7 +122,7 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - run: node scripts/run_tests.mjs ${{ matrix.folders }}
+      - run: node scripts/run_tests.mjs ${{ matrix.folders }} ${{ matrix.shard && format('--shard={0}', matrix.shard) || '' }}
   core:
     # Comprobación obligatoria de main (ruleset): mismo nombre de siempre, ahora como puerta de «lint» y de la matriz
     # «pglite». Verde si todo lo que tocaba pasó; en una PR solo de documentación, verde sin correr nada.

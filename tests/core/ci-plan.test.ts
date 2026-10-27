@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { plan } from '../../scripts/ci_plan.mjs';
+import { groups, plan } from '../../scripts/ci_plan.mjs';
 
 function fakeRepo(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-plan-'));
@@ -54,5 +54,14 @@ test('ci por app · lo compartido y fuera de una PR: todas, la grande sola y las
   assert.deepEqual(plan({ root, event: 'schedule' }).groups, [
     { name: 'booking', folders: 'booking' },
     { name: 'core + food + guests + organizers + sync-client', folders: 'core food guests organizers sync-client' },
+  ]);
+});
+
+test('ci por app · una carpeta muy grande va en dos trozos', () => {
+  const root = fakeRepo();
+  assert.deepEqual(groups(['booking', 'food'], root, 12), [
+    { name: 'booking 1/2', folders: 'booking', shard: '1/2' },
+    { name: 'booking 2/2', folders: 'booking', shard: '2/2' },
+    { name: 'food', folders: 'food' },
   ]);
 });
