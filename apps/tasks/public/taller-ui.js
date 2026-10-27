@@ -36,7 +36,7 @@ if(typeof homeTaskRow==='function'){
 // Anillo de progreso en la esquina de cada tarjeta de proyecto.
 // Atajo a la paleta dentro del buscador.
 const searchbarBeforeTaller=searchbar;
-searchbar=function(){return searchbarBeforeTaller().replace(/(<input id="searchInput"[^>]*>)/,'<div class="searchwrap">$1<button type="button" class="kbdhint" data-open-palette data-feedback-id="tasks.paleta.abrir" data-feedback-label="Abrir la paleta de comandos" aria-label="Abrir la paleta de comandos" title="Ctrl K">'+menuIcon('search')+'<span>Ctrl K</span></button></div>')};
+searchbar=function(){return searchbarBeforeTaller().replace(/(<input data-field-id="tasks.busqueda.campo" id="searchInput"[^>]*>)/,'<div class="searchwrap">$1<button type="button" class="kbdhint" data-open-palette data-feedback-id="tasks.paleta.abrir" data-feedback-label="Abrir la paleta de comandos" aria-label="Abrir la paleta de comandos" title="Ctrl K">'+menuIcon('search')+'<span>Ctrl K</span></button></div>')};
 /* Búsqueda y filtros como iconos en la fila de Estado, Disponibilidad y las demás facetas (FB_2026_022). La lupa
    despliega el campo, que sigue abierto mientras haya texto; cerrarlo borra la búsqueda. «/» lo abre y lo enfoca. Donde
    no hay facetas (otras pantallas), la barra queda como estaba. */

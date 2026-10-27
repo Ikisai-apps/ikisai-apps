@@ -40,8 +40,8 @@ function convertTabSheet(id){
   const preferred=targets.find(x=>/mantenimiento/i.test(x.name))||targets[0];
   openSheet(`<h2 class="sheettitle">Convertir «${esc(t.name)}» en proyecto</h2>
     <p class="small muted">Sus tareas pasan, con su historial, fotos, notas, dependencias y enlaces de Finance, a un proyecto nuevo de otra área. El área antigua, vacía, va a la papelera y se puede restaurar.</p>
-    <div class="field"><label for="convertTarget">Área de destino</label><select id="convertTarget" data-feedback-id="tasks.convertir_area.destino" data-feedback-label="Área de destino">${targets.map(x=>`<option value="${esc(x.id)}" ${x.id===preferred.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
-    <div class="field"><label for="convertTitle">Nombre del proyecto</label><input id="convertTitle" maxlength="300" value="${esc(t.name)}" data-feedback-id="tasks.convertir_area.nombre" data-feedback-label="Nombre del proyecto"></div>
+    <div class="field"><label for="convertTarget">Área de destino</label><select data-field-id="tasks.convertir_area.destino" id="convertTarget" data-feedback-id="tasks.convertir_area.destino" data-feedback-label="Área de destino">${targets.map(x=>`<option value="${esc(x.id)}" ${x.id===preferred.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="convertTitle">Nombre del proyecto</label><input data-field-id="tasks.convertir_area.nombre" data-field-entity="tasks.projects" data-field-prop="title" id="convertTitle" maxlength="300" value="${esc(t.name)}" data-feedback-id="tasks.convertir_area.nombre" data-feedback-label="Nombre del proyecto"></div>
     <div id="convertPreview" aria-live="polite"></div>
     <div class="actions"><button class="ghost" id="convertCancel" data-feedback-id="tasks.convertir_area.cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="convertConfirm" disabled data-feedback-id="tasks.convertir_area.confirmar" data-feedback-label="Convertir">Convertir</button></div>`);
   let finance=null,asked=false;

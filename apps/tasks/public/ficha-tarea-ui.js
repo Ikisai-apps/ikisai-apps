@@ -139,7 +139,7 @@ function fichaBindTitle(s,id){const field=s._tkfParts?.text,input=document.getEl
 function fichaDoneControl(s,id){const row=s._tkfParts?.when;if(!row)return;
   const own=s.querySelector('.outsiderdone');if(own){row.after(own);return}
   if(!canEdit())return;const loc=taskLocation(id);if(!loc)return;
-  row.insertAdjacentHTML('afterend',`<label class="checkline outsiderdone tkf-done"><input type="checkbox" id="tkfDone" ${status(loc.p,loc.t)==='done'?'checked':''} data-feedback-id="tasks.editor_tarea.hecha" data-feedback-label="Marcar hecha"><span><strong>Hecha</strong> <span class="small tkf-donehint">· a un toque, con «Deshacer»</span></span></label>`);
+  row.insertAdjacentHTML('afterend',`<label class="checkline outsiderdone tkf-done"><input data-field-id="tasks.editor_tarea.hecha" data-field-entity="tasks.tasks" data-field-prop="done" type="checkbox" id="tkfDone" ${status(loc.p,loc.t)==='done'?'checked':''} data-feedback-id="tasks.editor_tarea.hecha" data-feedback-label="Marcar hecha"><span><strong>Hecha</strong> <span class="small tkf-donehint">· a un toque, con «Deshacer»</span></span></label>`);
   const box=document.getElementById('tkfDone');box.onchange=()=>{const now=taskLocation(id);if(!now){box.checked=!box.checked;return}
     if((status(now.p,now.t)==='done')!==box.checked)toggleTask(id);const after=taskLocation(id);box.checked=after?status(after.p,after.t)==='done':false;if(typeof refreshChildSection==='function')refreshChildSection(id);fichaPaintHead(s,id)}}
 const syncOutsiderDoneBeforeFicha=syncOutsiderDone;
@@ -214,7 +214,7 @@ bindCosts=function(taskId){bindCostsBeforeFicha(taskId);const line=document.quer
   line.querySelector('[data-cost-legacy-remove]').onclick=()=>{const before=old();if(!fichaSetLegacyCost(taskId,null))return;
     if(typeof offerLocalUndo==='function')offerLocalUndo('Coste (€) de la tarea quitado',()=>fichaSetLegacyCost(taskId,before));else toast('Coste quitado.')};
   line.querySelector('[data-cost-legacy-edit]').onclick=()=>{const strong=line.querySelector('strong');
-    strong.innerHTML=`<input class="inlineedit tkf-costedit" id="costLegacyInput" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(String(old()??''))}" aria-label="Coste (€) de la tarea" data-feedback-id="tasks.tarea.coste.corregir_importe" data-feedback-label="Importe de la tarea">`;
+    strong.innerHTML=`<input data-field-id="tasks.tarea.coste.corregir_importe" class="inlineedit tkf-costedit" id="costLegacyInput" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(String(old()??''))}" aria-label="Coste (€) de la tarea" data-feedback-id="tasks.tarea.coste.corregir_importe" data-feedback-label="Importe de la tarea">`;
     line.querySelectorAll('button').forEach(b=>b.hidden=true);const input=strong.querySelector('input');input.focus();input.select();
     const commit=()=>{const raw=input.value.trim(),n=Number(raw);if(raw!==''&&(!Number.isFinite(n)||n<0)){toast('El coste debe ser un número finito no negativo.');return input.focus()}
       const value=raw===''||n===0?null:n;if(value===old()){drawCosts(taskId);return}if(fichaSetLegacyCost(taskId,value))toast(value==null?'Coste (€) de la tarea quitado.':'Coste corregido.')};
