@@ -1378,6 +1378,18 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 
 `booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
 
+**Para los KPIs de Guests** (migración 0496): `booking.guests_kpi_projection` sale solo para service_role, sin `allow_read`. La lee `guests.central_kpi_projection`.
+
+- **Filas:** una por reserva viva confirmada o en ejecución que entra entre hoy−30 y hoy+30 o está en curso.
+- **Columnas:** `reservation_id`, `start_date`, `end_date`, `guests`, `entered`, `signed`, `unsigned`, `ses_sent` y `ses_pending`.
+- **Huéspedes que cuentan:** los vivos. No cuentan el de muestra, el equipo (`portal_role`) ni los anonimizados.
+- **Qué cuenta cada columna:**
+  - `entered`: tienen `privacy_ack_at`;
+  - `signed`: tienen `signed_at`;
+  - `unsigned`: `guests` − `signed`;
+  - `ses_sent`: `ses_status = 'enviado_SES'`;
+  - `ses_pending`: llegaron y no están en `enviado_SES` ni en `no_aplica`.
+
 ## 19. Lectura para facturar desde una reserva (Finance)
 
 `booking.reservation_invoice_source({reservation_id})`, registrada para `invoices` (migración `20261007_0444_booking_invoice_source.sql`; contrato en `docs/invoices/API.md` §14.8, con estos ajustes de Booking):
