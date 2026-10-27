@@ -27,7 +27,7 @@ Clasificación de los 28 reportes aprobados y abiertos (`MUELA\equipo\UX-Tasks\F
 - **PR 3:** FB_2026_072 y 073: la revisión de «Sugerencias y QA» y el «Registro de accesos» pasan a Central, con enlace; antes, en PETICIONES, lo que aporta la vista de Tasks.
 - **Verificar (arreglados en #459):** FB_2026_034, 036, 038, 040 y 043.
 - **Sin actuar (VG):** FB_2026_062 (se deja abierto), 065 y 068 (errores al reportar).
-- **Pendiente de VG o de otros equipos:** FB_2026_035, 056, 066, 070, 071 (replanteo, después del evento del sábado) y 075 (kit).
+- **Pendiente de VG o de otros equipos:** FB_2026_035, 056, 066, 070 y 071 (replanteo, después del evento). El 075 ya está con el kit 0.58 (#753).
 
 
 ## Hecho
