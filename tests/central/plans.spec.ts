@@ -197,6 +197,28 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   const halo = await page.locator('#placeEditor .ctl-placelabel').first().evaluate((n) => { const cs = getComputedStyle(n); return { order: cs.paintOrder, stroke: cs.stroke }; });
   expect(halo.order).toContain('stroke');
   expect(halo.stroke).not.toBe('none');
+
+  // Decoración (encargo de VG del 27-10): sin escala no se decora; con ella, la pieza del kit con la capa editable.
+  await page.locator('#placeTabs [data-tab="decoracion"]').click();
+  await expect(page.locator('#placeEditor')).toContainText('necesita su escala');
+  await expect(page.locator('#decorIcons')).toHaveCount(0);
+  await expect(page.locator('#placeEditor')).toContainText('Aún no hay iconos');
+  await page.locator('#decorPlanScale').fill('0,05');
+  await page.locator('#saveDecorScale').click();
+  await expect.poll(async () => (await api.app.t.db.query<{ g: unknown }>(`select grid as g from resources.floor_plans where id = $1`, [plan.id])).rows[0]!.g).toEqual({ metersPerUnit: 0.05, originX: 0, originY: 0 });
+  await expect(page.locator('#decorStage .map-box')).toBeVisible();
+  await page.locator('#placeTabs [data-tab="estancias"]').click();
+  await expect(page.locator('#placeReviewHead')).toBeVisible();
+
+  // Imágenes del centro: el owner las sube por edificio (una silueta en PNG).
+  await page.locator('#newCenterImage').click();
+  await page.locator('#imageBuilding').selectOption(ids.building);
+  await page.locator('#imageKind').selectOption('silueta');
+  await page.locator('#imageTitle').fill('Alzado norte');
+  await page.locator('#imageFile').setInputFiles({ name: 'alzado.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+  await page.locator('#imageSubmit').click();
+  await expect.poll(async () => (await api.app.t.db.query<{ k: string; t: string }>(`select kind as k, title as t from resources.space_images where space_id = $1 and deleted_at is null`, [ids.building])).rows).toEqual([{ k: 'silueta', t: 'Alzado norte' }]);
+  await expect(page.locator(`#centerImageList [data-space="${ids.building}"]`)).toContainText('Alzado norte');
 });
 
 test('planos · un giro se coloca bien; lo que no se lee, «Por revisar» con el motivo; sin red, apagado con su motivo', async ({ page, context }) => {
@@ -251,5 +273,8 @@ test('planos · en el móvil, y para quien no es owner, solo el mapa', async ({ 
   await expect(reader.locator('#plansMap .map-box')).toBeVisible();
   await expect(reader.locator('#planTools')).toBeEmpty();
   await expect(reader.locator('#placeEditor')).toBeHidden();
+  // Las imágenes del centro se ven, pero solo el owner las sube.
+  await expect(reader.locator('#centerImages')).toBeVisible();
+  await expect(reader.locator('#newCenterImage')).toHaveCount(0);
   await reader.close();
 });

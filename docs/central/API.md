@@ -888,6 +888,18 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
 
 ---
 
+#### Finca y decoración (encargo de VG del 27-10; Recursos 0814, kit 0.63)
+- **El mapa** empieza en el dibujo de la finca, si lo hay, y baja a cada edificio con su miga (`drill`). Enseña la decoración general, solo para ver (también en el móvil), y la cota de cada altura en su curva de nivel. La etiqueta sale de `floor_plans.contours`: la posición la guarda el dibujo; el nombre y los metros, la altura.
+- **Subir** (owner, ordenador): se elige «Edificio o exterior» o «Finca». La finca cuelga del espacio de tipo `finca` y se guarda con `kind: 'estate'`.
+  - Del SVG se leen la escala (`data-meters-per-unit`, y `data-origin-x`/`-y` si los trae) → `grid`.
+  - Se lee también la cota de cada altura: en el punto medio de su curva `<path data-contour="Altura N">` → `contours`.
+  - La escala también se puede escribir a mano. En la finca se colocan solos los edificios con `data-name`.
+- **Colocar** tiene dos pestañas:
+  - «Estancias» (en la finca, «Edificios»): lo de siempre.
+  - **Decoración:** la pieza del kit con `decorEdit` (icono, 1 o 4 celdas, escala 5 · 1 · 0,5 m, poner, arrastrar, girar y quitar). Cada cambio va a `resources.decor_items` (capa `general`) con su «Deshacer» (`app/decor.ts`). Al lado: la escala del dibujo (sin ella no se decora), el catálogo de iconos (SVG limpio, PNG o GIF de hasta 1 MB, con nombre, categoría y tamaño por defecto) y, en la finca, la cota de cada altura (`attributes.elevation_m`) con lo que sube hasta la siguiente.
+- **Imágenes del centro:** siluetas, secciones y fotos por edificio (`resources.space_images`; PNG, JPG o SVG de hasta 5 MB). Las sube y quita el owner y las ven todos; Guests y Organizers las leen de `portal_plans`.
+- **Pendiente (siguiente PR):** mover los puntos de las curvas en «Colocar» (`contours[i].points`, Recursos 0815).
+
 ## 10. Offline
 
 - **Espejo local:** todas las tablas `central.*`. Las reservadas se borran al cerrar sesión (§5.3).

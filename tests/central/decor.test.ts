@@ -1,7 +1,7 @@
 /** Central · finca y decoración (encargo de VG del 27-10): reglas puras de `apps/central/src/app/decor.ts`. Datos ficticios. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DECOR_ITEMS, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
+import { DECOR_ITEMS, contoursFromBands, contoursFromCurves, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
 
 test('finca · escala, origen y alturas del SVG; sin escala, se pide al subir', () => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" data-meters-per-unit="0.25" data-origin-x="10" data-origin-y="20">
@@ -80,4 +80,29 @@ test('finca · curvas de nivel: cota de cada altura y lo que sube hasta la sigui
     [30.5, null, 'Altura 3 · Albergue · 30,5 m'],
     [null, null, 'Altura 5 · Depósito · sin cota'],
   ]);
+});
+
+test('finca · la etiqueta de cada cota, en la línea de arriba de su banda; las bandas sin altura, fuera', () => {
+  const bands = [{ name: 'Altura 1', y0: 0.7, y1: 0.8 }, { name: 'Altura 10 · otra', y0: 0.1, y1: 0.2 }, { name: 'Mirador', y0: 0.3, y1: 0.4 }];
+  const alturas = [{ id: 'a1', name: 'Altura 1' }, { id: 'a10', name: 'Altura 10' }];
+  assert.deepEqual(contoursFromBands(bands, alturas), [{ spaceId: 'a1', x: 0.02, y: 0.7 }, { spaceId: 'a10', x: 0.02, y: 0.1 }]);
+});
+
+test('imágenes del centro · PNG, JPG o SVG de hasta 5 MB, con título', () => {
+  assert.equal(imageProblem({ type: 'image/png', size: 4_000_000 }, 'Albergue · alzado norte'), null);
+  assert.equal(imageProblem({ type: 'image/png', size: 10 }, ' '), 'Ponle un título a la imagen.');
+  assert.equal(imageProblem({ type: 'image/gif', size: 10 }, 'X'), 'La imagen tiene que ser PNG, JPG o SVG.');
+  assert.equal(imageProblem({ type: 'image/jpeg', size: 5 * 1024 * 1024 + 1 }, 'X'), 'La imagen no puede pasar de 5 MB.');
+});
+
+test('finca · curvas de nivel data-contour: puntos relativos y la etiqueta en su punto medio', () => {
+  const svg = `<svg viewBox="0 0 400 200" data-meters-per-unit="1">
+    <path data-contour="Altura 1" d="M0 180 L100 170 L200 175 L300 160 L400 165"/>
+    <path data-contour="Altura 2" d="M0 120 L400 110"/>
+    <path data-name="Albergue" d="M100 50 L140 50 L140 80 Z"/>
+  </svg>`;
+  const meta = estateMeta(svg);
+  assert.deepEqual(meta.contours.map((c) => [c.name, c.points.length, c.anchor]), [['Altura 1', 5, [0.5, 0.875]], ['Altura 2', 2, [0.5, 0.575]]]);
+  assert.deepEqual(meta.bands, []);
+  assert.deepEqual(contoursFromCurves(meta.contours, [{ id: 'a1', name: 'Altura 1' }, { id: 'a2', name: 'Altura 2' }]), [{ spaceId: 'a1', x: 0.5, y: 0.875 }, { spaceId: 'a2', x: 0.5, y: 0.575 }]);
 });

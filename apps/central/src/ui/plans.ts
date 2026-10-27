@@ -15,24 +15,45 @@
  *     `onShape` de la pieza;
  *   - **«Por revisar»:** las estancias del edificio que aún no tienen forma.
  * - El plano en imagen o PDF de la Entidad no cambia: lo siguen usando los portales.
+ * - **Finca y decoración** (encargo de VG del 27-10; Recursos 0814, kit 0.63):
+ *   - el mapa empieza en el dibujo de la finca (si lo hay) y baja a cada edificio con su miga (`drill`); enseña la
+ *     decoración general (solo ver) y las cotas de las alturas en sus curvas de nivel;
+ *   - al subir un dibujo se elige «Edificio o exterior» o «Finca». De la finca se leen la escala (`data-meters-per-unit`) y
+ *     dónde va la cota de cada altura: el punto medio de su curva de nivel (`<path data-contour="Altura N">`, convención de
+ *     Core con UI-kit). Las bandas no se guardan, porque el SVG ya dibuja las curvas;
+ *   - «Colocar» tiene dos pestañas: Estancias (lo de siempre) y **Decoración** (la pieza del kit con `decorEdit`: icono,
+ *     tamaño, escala, poner, arrastrar, girar y quitar; cada cambio con «Deshacer»), más el catálogo de iconos, la escala
+ *     del dibujo y, en la finca, la cota de cada altura;
+ *   - **Imágenes del centro:** siluetas, secciones y fotos de cada edificio, que leen Guests y Organizers.
  */
 import {
   bindOnline, confirmDialog, createSpaceMap, createSyncSpaceSource, el, icon, indexSpaces, openSheet, renderOfflineReason, replace, shapeCenter, spacePath,
-  spaceToFields, toast, toastWithAction, validShape,
-  type FloorPlan, type PlanShape, type Sheet, type SpaceMap, type SpaceRow,
+  spaceToFields, toast, toastWithAction, validGrid, validShape,
+  type DecorChange as KitDecorChange, type DecorIcon, type DecorItem, type FloorPlan, type GridScale, type PlanContour, type PlanGrid, type PlanShape, type Sheet,
+  type SpaceMap, type SpaceRow,
 } from '@ikisai/ui-kit';
 import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { describeError } from '../app/client.ts';
-import { startResources } from '../app/resources.ts';
+import { R, startResources } from '../app/resources.ts';
+import {
+  DECOR_ICONS, IMAGE_KIND_LABELS, IMAGE_KINDS, contoursFromBands, contoursFromCurves, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
+  type DecorRow, type ImageKind,
+} from '../app/decor.ts';
 import { activeContent, cleanSvg, foldName, generatedName, matchShapes, readSvgPlan } from '../app/svg-plan.ts';
 import type { ViewMount } from './shell.ts';
 
 const PLANS = 'resources.floor_plans' as TableName;
 const SPACES = 'resources.spaces' as TableName;
 const PLAN_MIME = ['image/svg+xml', 'image/png', 'image/jpeg'];
+const ITEMS = R.decorItems as TableName;
+const IMAGES = R.spaceImages as TableName;
+const ICON_ACCEPT = 'image/svg+xml,image/png,image/gif';
+type PlanRow = { id: string; revision: number; kind?: string | null; grid?: unknown; contours?: unknown; deleted_at?: string | null };
+type IconRow = { id: string; revision: number; name: string; category: string; file_id: unknown; default_size: number; deleted_at?: string | null };
+type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; deleted_at?: string | null };
 const WIDE = '(min-width: 900px)';
 /** Lo que no se coloca: lo que contiene estancias (alturas, edificios y exteriores). */
-const CONTAINERS = new Set(['altura', 'edificio', 'exterior']);
+const CONTAINERS = new Set(['altura', 'edificio', 'exterior', 'finca']);
 /** El aviso del SVG con contenido activo (el servidor lo rechaza, #694; aquí no debería llegar, porque se sube limpio). */
 const ACTIVE_SVG = 'El SVG lleva contenido activo. Guárdalo limpio desde tu programa de dibujo.';
 /** Cuántos nombres del SVG sin estancia se dicen; del resto, «+N más». */
@@ -100,19 +121,34 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   const reviewWhy = new Map<string, string>();
   /** Los nombres del último «Colocar solo» que no son de ninguna estancia, por plano. */
   const unmatchedOf = new Map<string, string[]>();
+  // Finca y decoración (0814): lo que la fuente del kit aún no trae de cada dibujo, los iconos, los objetos y las imágenes.
+  let planRows: PlanRow[] = [];
+  let icons: IconRow[] = [];
+  let items: Array<DecorRow & { deleted_at?: string | null }> = [];
+  let images: ImageRow[] = [];
+  /** URL de cada archivo (iconos e imágenes), ya resuelta: la pieza del kit la quiere al momento. */
+  const fileUrls = new Map<string, string>();
+  /** Pestaña de «Colocar». */
+  let tab: 'estancias' | 'decoracion' = 'estancias';
+  let decorMap: SpaceMap | null = null;
+  let decorScale: GridScale = 1;
 
   const viewerHost = el('div', { id: 'plansMap' });
+  const imagesHost = el('section', { id: 'centerImages', 'aria-label': 'Imágenes del centro', 'data-feedback-id': 'central.planos.imagenes', 'data-feedback-label': 'Imágenes del centro' });
   const tools = el('section', { id: 'planTools', 'aria-label': 'Dibujos y colocar', 'data-feedback-id': 'central.planos.dibujos', 'data-feedback-label': 'Dibujos y colocar' });
   const editor = el('section', { id: 'placeEditor', hidden: true, 'aria-label': 'Colocar', 'data-feedback-id': 'central.planos.colocar', 'data-feedback-label': 'Colocar' });
   replace(main,
     el('a', { href: '#/entidad', class: 'backlink', 'data-feedback-id': 'central.planos.volver', 'data-feedback-label': 'Volver a la entidad' }, '← Entidad'),
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.planos.cabecera', 'data-feedback-label': 'Cabecera de Planos' }, el('div', null, el('h2', null, 'Planos del centro'),
       el('p', null, 'El dibujo de cada edificio y planta, con sus estancias encima: es el mapa de zonas que ven las apps. El plano en imagen o PDF de la Entidad sigue siendo el de los portales.'))),
-    tools, editor, viewerHost);
+    tools, editor, viewerHost, imagesHost);
 
   const index = () => indexSpaces(rows);
   const planName = (p: FloorPlan) => [rows.find((s) => s.id === p.buildingId)?.name ?? 'Edificio', p.floor].filter(Boolean).join(' · ');
-  const inside = (p: FloorPlan) => { const idx = index(); return rows.filter((s) => s.active && !CONTAINERS.has(s.kind) && (s.id === p.buildingId || spacePath(idx, s.id).startsWith(`${spacePath(idx, p.buildingId)} › `))); };
+  const inside = (p: FloorPlan) => {
+    if (isEstate(p)) return rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior'));
+    const idx = index(); return rows.filter((s) => s.active && !CONTAINERS.has(s.kind) && (s.id === p.buildingId || spacePath(idx, s.id).startsWith(`${spacePath(idx, p.buildingId)} › `)));
+  };
   const placedOn = (p: FloorPlan) => rows.filter((s) => s.planId === p.id && validShape(s.planShape));
   const toReview = (p: FloorPlan) => inside(p).filter((s) => !(s.planId === p.id && validShape(s.planShape)));
   /** Lo que hay dentro de una estancia (sus camas) y está en el mismo dibujo. */
@@ -122,18 +158,59 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     return false;
   });
 
+  // --- Finca y decoración: lo que la fuente del kit aún no trae de cada dibujo ---------------------------------------
+  const planRow = (id: string) => planRows.find((x) => x.id === id && !x.deleted_at) ?? null;
+  const isEstate = (p: FloorPlan) => planRow(p.id)?.kind === 'estate';
+  const gridOfPlan = (p: FloorPlan): PlanGrid | null => { const g = planRow(p.id)?.grid; return validGrid(g) ? g : null; };
+  const elevationOf = (s: SpaceRow) => { const v = (s.attributes as Record<string, unknown> | undefined)?.elevation_m; return typeof v === 'number' ? v : null; };
+  /** Cotas de la finca para la pieza: la posición la guarda el dibujo; el nombre y los metros, cada altura. */
+  function contoursOf(p: FloorPlan): PlanContour[] | null {
+    const raw = planRow(p.id)?.contours;
+    if (!Array.isArray(raw)) return null;
+    const out: PlanContour[] = [];
+    for (const c of raw as Array<{ spaceId?: string; x?: number; y?: number }>) {
+      const a = rows.find((s) => s.id === c.spaceId);
+      const m = a ? elevationOf(a) : null;
+      if (a && m !== null && typeof c.x === 'number' && typeof c.y === 'number') out.push({ spaceId: a.id, label: a.publicName ?? a.name, elevationM: m, x: c.x, y: c.y });
+    }
+    return out.length ? out : null;
+  }
+  const enrich = (p: FloorPlan): FloorPlan => ({ ...uploaded(p), grid: gridOfPlan(p), bands: null, contours: contoursOf(p) });
+  const iconUrl = (id: string) => { const f = icons.find((i) => i.id === id)?.file_id; return typeof f === 'string' ? fileUrls.get(f) ?? null : null; };
+  const decorOf = (planId: string): DecorItem[] => decorForPlan(items, planId, iconUrl).filter((d): d is typeof d & { iconUrl: string } => !!d.iconUrl).map((d): DecorItem => ({
+    ...d, scale: d.scale as GridScale, size: d.size === 4 ? 4 : 1, rotation: ([0, 90, 180, 270].includes(d.rotation) ? d.rotation : 0) as DecorItem['rotation'], label: icons.find((i) => i.id === d.iconId)?.name ?? null,
+  }));
+  const allDecor = () => plans.flatMap((p) => decorOf(p.id));
+  const kitIcons = (): DecorIcon[] => icons.filter((i) => !i.deleted_at).flatMap((i) => { const url = iconUrl(i.id); return url ? [{ id: i.id, url, label: i.name, size: i.default_size === 4 ? 4 as const : 1 as const }] : []; });
+  /** Resuelve la URL de los archivos que aún no la tienen (iconos e imágenes) y repinta lo que la usa. */
+  async function resolveFiles(): Promise<void> {
+    const want = [...icons.map((i) => i.file_id), ...images.map((i) => i.file_id)].filter((f): f is string => typeof f === 'string' && !fileUrls.has(f));
+    if (!want.length) return;
+    await Promise.all(want.map(async (f) => { try { fileUrls.set(f, await r.fileUrl(f)); } catch { /* sin red: se intenta en la próxima vuelta */ } }));
+    if (!alive) return;
+    viewer?.setDecor(allDecor());
+    paintDecorEditor();
+    paintImages();
+  }
+  /** El dibujo con el que empieza el mapa: el de la finca, si lo hay. */
+  const startPlan = () => plans.find((p) => isEstate(p))?.id ?? null;
+
   // --- El mapa (todos) ------------------------------------------------------------------------------------------
   function buildViewer(): void {
     viewer?.destroy();
     viewer = createSpaceMap({
       source: spaces, label: 'Mapa de zonas', feedbackId: 'central.planos.mapa',
       plans: {
-        list: async () => (await spaces.plans.list()).map(uploaded),
-        subscribe: (listener) => spaces.plans.subscribe!((next) => listener(next.map(uploaded))),
+        list: async () => (await spaces.plans.list()).map(enrich),
+        subscribe: (listener) => spaces.plans.subscribe!((next) => listener(next.map(enrich))),
       },
       planUrl: (fileId) => r.fileUrl(fileId),
       // «Colocar» guarda aquí lo que la pieza avisa: la forma, en su dibujo.
       onShape: (space, planId, shape) => save(space.id, planId, shape),
+      // De la finca a cada edificio, con su miga; la decoración general, solo para ver.
+      drill: true,
+      plan: startPlan(),
+      decor: allDecor(),
     });
     replace(viewerHost, viewer.element);
   }
@@ -240,8 +317,17 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   function openUpload(plan: FloorPlan | null): void {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
-    const buildings = rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior')).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id }, spacePath(index(), b.id)))) as HTMLSelectElement;
+    const estateNow = plan ? isEstate(plan) : false;
+    const kind = el('select', { id: 'planKind', 'data-field-id': 'central.planos.plan_kind', 'aria-label': 'Tipo de dibujo' },
+      el('option', { value: 'building' }, 'Edificio o exterior'), el('option', { value: 'estate' }, 'Finca (el plano de todo el centro)')) as HTMLSelectElement;
+    const buildingsOf = (k: string) => rows.filter((s) => s.active && (k === 'estate' ? s.kind === 'finca' : (s.kind === 'edificio' || s.kind === 'exterior'))).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'aria-label': 'Edificio' }) as HTMLSelectElement;
+    const fillBuildings = () => replace(building, ...buildingsOf(kind.value).map((b) => el('option', { value: b.id }, spacePath(index(), b.id))));
+    fillBuildings();
+    kind.addEventListener('change', fillBuildings);
+    // Escala: metros por unidad del dibujo. Del SVG si la trae (`data-meters-per-unit`); si no, se escribe (para decorar).
+    const scale = el('input', { id: 'planScale', 'data-field-id': 'central.planos.plan_scale', type: 'number', step: 'any', min: '0', inputmode: 'decimal', placeholder: 'Del SVG si la trae',
+      value: plan ? String(gridOfPlan(plan)?.metersPerUnit ?? '') : '' }) as HTMLInputElement;
     const floor = el('input', { id: 'planFloor', 'data-field-id': 'central.planos.plan_floor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
     const file = el('input', { id: 'planFile', 'data-field-id': 'central.planos.plan_file', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'planSubmit', 'data-feedback-id': 'central.planos.subir.guardar', 'data-feedback-label': 'Guardar el dibujo', onclick: async () => {
@@ -258,7 +344,16 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       const blob: Blob = svgText !== null ? new Blob([svgText], { type: 'image/svg+xml' }) : f;
       const size = await imageSize(blob, svgText);
       if (!size) { error.textContent = 'No se ha podido leer el dibujo. Prueba con otro archivo.'; return; }
-      if (!plan && !building.value) { error.textContent = 'Elige el edificio.'; return; }
+      if (!plan && !building.value) { error.textContent = kind.value === 'estate' ? 'Falta el espacio «Finca» en Recursos.' : 'Elige el edificio.'; return; }
+      const estate = plan ? estateNow : kind.value === 'estate';
+      const meta = svgText !== null ? estateMeta(svgText) : null;
+      const typed = Number(scale.value.replace(',', '.'));
+      const grid = scale.value.trim() ? (typed > 0 ? { metersPerUnit: typed, originX: meta?.originX ?? 0, originY: meta?.originY ?? 0 } : null) : (meta ? gridOf(meta) : null);
+      if (scale.value.trim() && !grid) { error.textContent = 'La escala son los metros por unidad del dibujo: un número mayor que 0.'; return; }
+      // En la finca, dónde va la cota de cada altura (sus trazados «Altura N»); las bandas no se guardan: el SVG ya las dibuja.
+      const alturas = rows.filter((x) => x.kind === 'altura');
+      const contours = estate && meta ? (meta.contours.length ? contoursFromCurves(meta.contours, alturas) : contoursFromBands(meta.bands, alturas)) : null;
+      const extra: Record<string, unknown> = { ...(grid ? { grid } : {}), ...(contours && contours.length ? { contours } : {}) };
       submit.disabled = true;
       try {
         const sha = await r.stageBlob(blob, { filename: `plano.${mime === 'image/svg+xml' ? 'svg' : mime.split('/')[1]}`, mime });
@@ -268,13 +363,13 @@ export const mountPlans: ViewMount = ({ main, client }) => {
         localUrls.set(id, URL.createObjectURL(blob));
         if (plan) {
           const current = await r.get(PLANS, plan.id);
-          await r.commit([{ op: 'update', table: PLANS, id, expectedRevision: Number(current?.revision ?? 0), fields: { file_id: { $blob: sha }, width: size.width, height: size.height } }]);
+          await r.commit([{ op: 'update', table: PLANS, id, expectedRevision: Number(current?.revision ?? 0), fields: { file_id: { $blob: sha }, width: size.width, height: size.height, ...extra } }]);
         } else {
-          await r.commit([{ op: 'insert', table: PLANS, id, fields: { building_id: building.value, floor: floor.value.trim() || null, position: plans.length, file_id: { $blob: sha }, width: size.width, height: size.height } }]);
+          await r.commit([{ op: 'insert', table: PLANS, id, fields: { building_id: building.value, floor: floor.value.trim() || null, position: plans.length, file_id: { $blob: sha }, width: size.width, height: size.height, kind: estate ? 'estate' : 'building', ...extra } }]);
         }
         void sheet?.close(true);
-        toast(plan ? 'Dibujo sustituido: las estancias siguen en su sitio.' : 'Dibujo subido.');
-        // Si el SVG trae los nombres, se colocan solas las que aún no tienen forma.
+        toast(plan ? 'Dibujo sustituido: las estancias siguen en su sitio.' : estate ? `Finca subida${grid ? '' : ' (sin escala: ponla para decorar)'}.` : 'Dibujo subido.');
+        // Si el SVG trae los nombres, se colocan solas las que aún no tienen forma (en la finca, los edificios).
         if (svgText !== null) setTimeout(() => autoPlace(id, svgText, !!plan), 0);
         openEditor(id);
       } catch (e) { error.textContent = describeError(e); } finally { submit.disabled = false; }
@@ -284,10 +379,12 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       title: plan ? `Sustituir el dibujo · ${planName(plan)}` : 'Subir un dibujo',
       body: el('div', { 'data-feedback-id': 'central.planos.subir.formulario', 'data-feedback-label': 'Dibujo' },
         plan ? el('p', { class: 'muted' }, 'Las estancias colocadas se conservan: su forma es relativa a la imagen. Si el dibujo nuevo cambia mucho, recolócalas.')
-          : el('label', { class: 'field', 'data-feedback-id': 'central.planos.subir.edificio', 'data-feedback-label': 'Edificio' }, el('span', null, 'Edificio'), building),
+          : el('label', { class: 'field', 'data-feedback-id': 'central.planos.subir.tipo', 'data-feedback-label': 'Tipo de dibujo' }, el('span', null, 'Qué es'), kind),
+        plan ? null : el('label', { class: 'field', 'data-feedback-id': 'central.planos.subir.edificio', 'data-feedback-label': 'Edificio' }, el('span', null, 'Edificio o finca'), building),
         plan ? null : el('label', { class: 'field', 'data-feedback-id': 'central.planos.subir.planta', 'data-feedback-label': 'Planta' }, el('span', null, 'Planta (opcional)'), floor),
         el('label', { class: 'field', 'data-feedback-id': 'central.planos.subir.archivo', 'data-feedback-label': 'Archivo del dibujo' }, el('span', null, 'Dibujo (SVG, PNG o JPG, hasta 10 MB)'), file),
-        el('p', { class: 'hint' }, 'Si es un SVG con los nombres de las estancias, se colocan solas.'),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.subir.escala', 'data-feedback-label': 'Escala del dibujo' }, el('span', null, 'Escala: metros por unidad del dibujo (opcional; hace falta para decorar)'), scale),
+        el('p', { class: 'hint' }, 'Si es un SVG con los nombres de las estancias (o, en la finca, de los edificios), se colocan solas. De la finca se leen la escala y las alturas.'),
         error),
       panelAttrs: { 'data-feedback-id': 'central.planos.subir', 'data-feedback-label': 'Subir un dibujo' },
       closeAttrs: { 'data-feedback-id': 'central.planos.subir.cerrar', 'data-feedback-label': 'Cerrar' },
@@ -334,13 +431,17 @@ export const mountPlans: ViewMount = ({ main, client }) => {
 
   // --- Colocar a mano ---------------------------------------------------------------------------------------------
   let selected: string | null = null;
-  function openEditor(planId: string): void { editing = planId; selected = null; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
-  function closeEditor(): void { for (const b of editorBinds.splice(0)) b(); editing = null; selected = null; editor.hidden = true; replace(editor); }
+  function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
+  function closeEditor(): void { for (const b of editorBinds.splice(0)) b(); decorMap?.destroy(); decorMap = null; editing = null; selected = null; editor.hidden = true; replace(editor); }
+  const tabBar = (plan: FloorPlan) => el('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Qué colocar', id: 'placeTabs', 'data-feedback-id': 'central.planos.colocar.pestanas', 'data-feedback-label': 'Estancias o decoración' },
+    ...([['estancias', isEstate(plan) ? 'Edificios' : 'Estancias'], ['decoracion', 'Decoración']] as const).map(([k, label]) => el('button', { type: 'button', role: 'tab', 'aria-selected': String(tab === k), class: tab === k ? 'on' : '', dataset: { tab: k },
+      onclick: () => { if (tab !== k) { tab = k; decorMap?.destroy(); decorMap = null; paintEditor(); } } }, label)));
 
   function paintEditor(): void {
     if (!editing || !alive) return;
     const plan = plans.find((p) => p.id === editing);
     if (!plan || !canPlace() || !media.matches) { closeEditor(); return; }
+    if (tab === 'decoracion') { paintDecorEditor(); return; }
     for (const b of editorBinds.splice(0)) b();
     // Repintar no quita el foco: si estaba en una estancia (o en un botón con su id), vuelve a ella.
     const focused = editor.contains(document.activeElement) ? (document.activeElement as HTMLElement | SVGElement | null) : null;
@@ -415,6 +516,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     replace(editor,
       el('div', { class: 'blockhead' }, el('h3', null, `Colocar · ${planName(plan)}`),
         el('button', { type: 'button', class: 'linkbtn', id: 'closePlace', 'data-feedback-id': 'central.planos.colocar.cerrar', 'data-feedback-label': 'Cerrar Colocar', onclick: () => closeEditor() }, 'Cerrar')),
+      tabBar(plan),
       el('p', { class: 'hint' }, 'Arrastra una estancia para moverla y sus esquinas para estirarla; sus camas la acompañan. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.'),
       el('div', { class: 'ctl-place' },
         el('div', { class: 'ctl-placestage' }, svg),
@@ -435,6 +537,241 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     // «Colocar solo» lee el dibujo del servidor: sin red, apagado con su motivo.
     editorBinds.push(bindOnline(autoBtn, { client: r, reason: 'Colocar solo lee el dibujo con conexión.' }));
     if (focusKey) editor.querySelector<HTMLElement | SVGElement>(focusKey)?.focus({ preventScroll: true });
+  }
+
+  /**
+   * Pestaña Decoración: la pieza del kit con `decorEdit` sobre este dibujo (icono, tamaño 1 o 4, escala 5 · 1 · 0,5 m,
+   * poner, arrastrar por celdas, girar y quitar). Cada cambio va a Recursos con su «Deshacer». Al lado: la escala del dibujo
+   * (sin ella no se decora), el catálogo de iconos y, en la finca, la cota de cada altura.
+   */
+  function paintDecorEditor(): void {
+    if (!editing || tab !== 'decoracion' || !alive) return;
+    const plan = plans.find((p) => p.id === editing);
+    if (!plan || !canPlace() || !media.matches) { closeEditor(); return; }
+    const grid = gridOfPlan(plan);
+    if (decorMap && grid) { decorMap.setDecor(decorOf(plan.id)); paintDecorSide(plan); return; }
+    for (const b of editorBinds.splice(0)) b();
+    decorMap?.destroy(); decorMap = null;
+    const stage = el('div', { class: 'ctl-placestage', id: 'decorStage' });
+    const side = el('div', { class: 'ctl-placeside', id: 'decorSide' });
+    replace(editor,
+      el('div', { class: 'blockhead' }, el('h3', null, `Colocar · ${planName(plan)}`),
+        el('button', { type: 'button', class: 'linkbtn', id: 'closePlace', 'data-feedback-id': 'central.planos.colocar.cerrar', 'data-feedback-label': 'Cerrar Colocar', onclick: () => closeEditor() }, 'Cerrar')),
+      tabBar(plan),
+      el('p', { class: 'hint' }, grid ? 'Elige un icono, su tamaño y la escala; toca el plano para ponerlo. Arrástralo de celda en celda; seleccionado, las flechas lo mueven, R lo gira y Supr lo quita. Se guarda solo.'
+        : 'Para decorar, este dibujo necesita su escala: los metros por unidad. Escríbela al lado.'),
+      el('div', { class: 'ctl-place' }, stage, side));
+    if (grid) {
+      decorMap = createSpaceMap({
+        source: spaces, label: `Decoración · ${planName(plan)}`, feedbackId: 'central.planos.decoracion',
+        plans: { list: async () => (await spaces.plans.list()).filter((x) => x.id === plan.id).map(enrich) },
+        planUrl: (fileId) => r.fileUrl(fileId),
+        plan: plan.id,
+        decor: decorOf(plan.id),
+        decorEdit: { icons: kitIcons(), scale: decorScale, onDecorChange: (change) => void onDecor(change) },
+      });
+      replace(stage, decorMap.element);
+    }
+    paintDecorSide(plan);
+  }
+
+  /** Un cambio de la pieza: a Recursos, y «Deshacer» con la operación contraria. */
+  async function onDecor(change: KitDecorChange): Promise<void> {
+    decorScale = change.item.scale;
+    const before = items.find((x) => x.id === change.item.id && !x.deleted_at) ?? null;
+    const ops = decorOperations({ type: change.type, item: { ...change.item, iconId: change.item.iconId ?? '' } }, before);
+    if (!ops) return;
+    try {
+      await r.commit([ops.op]);
+      const what = { add: 'Puesto', move: 'Movido', rotate: 'Girado', remove: 'Quitado' }[change.type];
+      toastWithAction(`${what} «${change.item.label ?? 'objeto'}».`, { label: 'Deshacer', onClick: () => void (async () => {
+        try { const now = await r.get(ITEMS, change.item.id); await r.commit([ops.undo(Number(now?.revision ?? 0))]); }
+        catch (e) { toast(describeError(e)); }
+      })() });
+    } catch (e) {
+      toast(describeError(e));
+      decorMap?.setDecor(decorOf(change.item.planId));
+    }
+  }
+
+  function paintDecorSide(plan: FloorPlan): void {
+    const side = editor.querySelector<HTMLElement>('#decorSide');
+    if (!side) return;
+    for (const b of editorBinds.splice(0)) b();
+    const grid = gridOfPlan(plan);
+    const scaleIn = el('input', { id: 'decorPlanScale', 'data-field-id': 'central.planos.decor_plan_scale', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: grid ? String(grid.metersPerUnit) : '', 'aria-describedby': 'decorScaleHelp' }) as HTMLInputElement;
+    const saveScale = el('button', { type: 'button', class: 'ghost small', id: 'saveDecorScale', 'data-feedback-id': 'central.planos.decoracion.guardar_escala', 'data-feedback-label': 'Guardar la escala', onclick: async () => {
+      const v = Number(scaleIn.value.replace(',', '.'));
+      if (!(v > 0)) { toast('La escala son los metros por unidad del dibujo: un número mayor que 0.'); return; }
+      try {
+        const current = await r.get(PLANS, plan.id);
+        await r.commit([{ op: 'update', table: PLANS, id: plan.id, expectedRevision: Number(current?.revision ?? 0), fields: { grid: { metersPerUnit: v, originX: grid?.originX ?? 0, originY: grid?.originY ?? 0 } } }]);
+        toast('Escala guardada.');
+      } catch (e) { toast(describeError(e)); }
+    } }, 'Guardar');
+    const newIcon = el('button', { type: 'button', class: 'primary small', id: 'newDecorIcon', 'data-feedback-id': 'central.planos.decoracion.subir_icono', 'data-feedback-label': 'Subir un icono', onclick: () => openIconUpload() }, icon('upload', 16), 'Subir un icono');
+    editorBinds.push(bindOnline(newIcon, { client: r, reason: 'Los iconos se suben con conexión.' }));
+    const live = icons.filter((i) => !i.deleted_at).sort((a, b) => a.category.localeCompare(b.category, 'es') || a.name.localeCompare(b.name, 'es'));
+    const alturas = rows.filter((s) => s.kind === 'altura' && s.active).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+    const lines = isEstate(plan) ? elevationLines(alturas.map((a) => ({ name: a.name, y0: 0, y1: 0 })), alturas.map((a) => ({ name: a.name, elevation_m: elevationOf(a) }))) : [];
+    replace(side,
+      el('h4', { class: 'sectionlabel' }, 'Escala del dibujo'),
+      el('label', { class: 'field', 'data-feedback-id': 'central.planos.decoracion.escala', 'data-feedback-label': 'Escala del dibujo' }, el('span', null, 'Metros por unidad'), scaleIn),
+      el('p', { class: 'hint', id: 'decorScaleHelp' }, 'En un SVG a escala 1:1, 1. Sin escala no se puede decorar.'),
+      saveScale,
+      el('h4', { class: 'sectionlabel' }, `Iconos · ${live.length}`),
+      newIcon,
+      live.length ? el('ul', { class: 'list ctl-decoricons', id: 'decorIcons' }, ...live.map((i) => {
+        const url = iconUrl(i.id);
+        return el('li', { class: 'agentrow', dataset: { icon: i.id } },
+          el('span', { class: 'ctl-decoricon' }, url ? el('img', { src: url, alt: '', width: '32', height: '32' }) : null),
+          el('span', null, el('strong', null, i.name), el('span', { class: 'muted small' }, ` · ${i.category} · ${i.default_size === 4 ? '4 celdas' : '1 celda'}`)),
+          el('button', { type: 'button', class: 'ghost small', 'aria-label': `Quitar el icono ${i.name}`, 'data-feedback-id': 'central.planos.decoracion.quitar_icono', 'data-feedback-label': 'Quitar el icono', onclick: () => void removeIcon(i) }, icon('trash', 16)));
+      })) : el('p', { class: 'hint' }, 'Aún no hay iconos. Sube uno (SVG, PNG o GIF, visto desde arriba).'),
+      isEstate(plan) ? el('h4', { class: 'sectionlabel' }, 'Cota de cada altura') : null,
+      isEstate(plan) ? el('ul', { class: 'list', id: 'decorElevations' }, ...alturas.map((a, n) => {
+        const input = el('input', { type: 'number', step: 'any', min: '-500', max: '9000', id: `elev-${n}`, value: elevationOf(a) ?? '', 'aria-label': `Cota de ${a.name} en metros sobre el mar` }) as HTMLInputElement;
+        input.addEventListener('change', () => void saveElevation(a, input.value));
+        return el('li', { class: 'agentrow', dataset: { space: a.id } }, el('label', { class: 'field' }, el('span', null, a.name), input),
+          el('span', { class: 'muted small' }, lines[n]?.toNext !== null && lines[n]?.toNext !== undefined ? `+${lines[n]!.toNext} m hasta la siguiente` : ''));
+      })) : null);
+  }
+
+  async function saveElevation(a: SpaceRow, value: string): Promise<void> {
+    const v = value.trim() === '' ? null : Number(value.replace(',', '.'));
+    if (v !== null && !(Number.isFinite(v) && v >= -500 && v <= 9000)) { toast('La cota va en metros sobre el mar, entre −500 y 9000.'); return; }
+    const attrs = { ...((a.attributes as Record<string, unknown> | undefined) ?? {}) };
+    if (v === null) delete attrs.elevation_m; else attrs.elevation_m = v;
+    try { await spaces.update(a.id, { attributes: attrs }); toast(v === null ? `Sin cota en ${a.name}.` : `${a.name}: ${v} m.`); }
+    catch (e) { toast(describeError(e)); }
+  }
+
+  /** Subir un icono del catálogo: SVG (se sube limpio), PNG o GIF de hasta 1 MB, con nombre, categoría y tamaño por defecto. */
+  function openIconUpload(): void {
+    let sheet: Sheet | null = null;
+    const error = el('p', { class: 'formerror', role: 'alert' });
+    const name = el('input', { id: 'iconName', 'data-field-id': 'central.planos.icon_name', type: 'text', maxlength: '80', placeholder: 'Planta grande' }) as HTMLInputElement;
+    const category = el('input', { id: 'iconCategory', 'data-field-id': 'central.planos.icon_category', type: 'text', maxlength: '40', placeholder: 'Plantas', list: 'iconCategories' }) as HTMLInputElement;
+    const cats = el('datalist', { id: 'iconCategories' }, ...[...new Set(icons.map((i) => i.category))].map((c) => el('option', { value: c })));
+    const size = el('select', { id: 'iconSize', 'data-field-id': 'central.planos.icon_size', 'aria-label': 'Tamaño por defecto' }, el('option', { value: '1' }, '1 celda (0,5 m en interior)'), el('option', { value: '4' }, '4 celdas (2×2, 1 m)')) as HTMLSelectElement;
+    const file = el('input', { id: 'iconFile', 'data-field-id': 'central.planos.icon_file', type: 'file', accept: ICON_ACCEPT }) as HTMLInputElement;
+    const submit = el('button', { type: 'button', class: 'primary', id: 'iconSubmit', 'data-feedback-id': 'central.planos.icono.guardar', 'data-feedback-label': 'Guardar el icono', onclick: async () => {
+      error.textContent = '';
+      const f = file.files?.[0];
+      if (!f) { error.textContent = 'Elige el icono: SVG, PNG o GIF.'; return; }
+      const mime = f.type || (f.name.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : '');
+      const problem = iconProblem({ type: mime, size: f.size }, name.value, Number(size.value)) ?? (category.value.trim() ? null : 'Ponle una categoría.');
+      if (problem) { error.textContent = problem; return; }
+      const raw = mime === 'image/svg+xml' ? await f.text() : null;
+      const svgText = raw === null ? null : cleanSvg(raw);
+      if (raw !== null && svgText === null) { error.textContent = activeContent(raw) ? ACTIVE_SVG : 'No se ha podido leer el icono.'; return; }
+      submit.disabled = true;
+      try {
+        const blob: Blob = svgText !== null ? new Blob([svgText], { type: 'image/svg+xml' }) : f;
+        const sha = await r.stageBlob(blob, { filename: `icono.${mime === 'image/svg+xml' ? 'svg' : mime.split('/')[1]}`, mime });
+        await r.commit([{ op: 'insert', table: DECOR_ICONS, id: crypto.randomUUID(), fields: { name: name.value.trim(), category: category.value.trim(), default_size: Number(size.value), file_id: { $blob: sha } } }]);
+        void sheet?.close(true);
+        toast(`Icono «${name.value.trim()}» subido.`);
+      } catch (e) { error.textContent = describeError(e); } finally { submit.disabled = false; }
+    } }, 'Subir');
+    const unbind = bindOnline(submit, { client: r, reason: 'El icono se sube con conexión.' });
+    sheet = openSheet({
+      title: 'Subir un icono',
+      body: el('div', { 'data-feedback-id': 'central.planos.icono.formulario', 'data-feedback-label': 'Icono' },
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.icono.nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre'), name),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.icono.categoria', 'data-feedback-label': 'Categoría' }, el('span', null, 'Categoría'), category, cats),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.icono.tamano', 'data-feedback-label': 'Tamaño por defecto' }, el('span', null, 'Tamaño por defecto'), size),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.icono.archivo', 'data-feedback-label': 'Archivo del icono' }, el('span', null, 'Icono (SVG, PNG o GIF animado, hasta 1 MB, visto desde arriba)'), file),
+        error),
+      panelAttrs: { 'data-feedback-id': 'central.planos.icono', 'data-feedback-label': 'Subir un icono' },
+      closeAttrs: { 'data-feedback-id': 'central.planos.icono.cerrar', 'data-feedback-label': 'Cerrar' },
+      foot: [submit],
+      onClose: () => unbind(),
+    });
+  }
+
+  async function removeIcon(i: IconRow): Promise<void> {
+    const used = items.filter((x) => !x.deleted_at && x.icon_id === i.id).length;
+    if (used) { toast(`«${i.name}» está puesto ${used === 1 ? 'una vez' : `${used} veces`}: quítalo de los planos antes.`); return; }
+    if (!(await confirmDialog({ title: `¿Quitar el icono «${i.name}»?`, text: 'Deja de salir en el catálogo. Se puede volver a subir.', confirmLabel: 'Quitar', danger: true }))) return;
+    try { const now = await r.get(DECOR_ICONS, i.id); await r.commit([{ op: 'delete', table: DECOR_ICONS, id: i.id, expectedRevision: Number(now?.revision ?? 0) }]); toast('Icono quitado.'); }
+    catch (e) { toast(describeError(e)); }
+  }
+
+  // --- Imágenes del centro (todos ven; el owner sube y quita) ---------------------------------------------------------
+  const imageBinds: Array<() => void> = [];
+  function paintImages(): void {
+    if (!alive) return;
+    for (const b of imageBinds.splice(0)) b();
+    const owner = canPlace();
+    const buildings = rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior'));
+    const live = images.filter((i) => !i.deleted_at);
+    const add = owner ? el('button', { type: 'button', class: 'primary', id: 'newCenterImage', 'data-feedback-id': 'central.planos.imagenes.subir', 'data-feedback-label': 'Subir una imagen del centro', onclick: () => openImageUpload(null) }, icon('upload', 16), 'Subir una imagen') : null;
+    if (add) imageBinds.push(bindOnline(add, { client: r, reason: 'Las imágenes se suben con conexión.' }));
+    const byBuilding = buildings.filter((b) => live.some((i) => i.space_id === b.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    replace(imagesHost,
+      el('div', { class: 'blockhead' }, el('h3', null, 'Imágenes del centro'), add),
+      el('p', { class: 'hint' }, 'Siluetas, secciones y fotos de cada edificio: salen de cabecera en los portales de huéspedes y de quien organiza, y en la ficha del edificio.'),
+      byBuilding.length ? el('div', { id: 'centerImageList' }, ...byBuilding.map((b) => el('section', { class: 'card', dataset: { space: b.id } },
+        el('div', { class: 'blockhead' }, el('h4', null, b.name),
+          owner ? el('button', { type: 'button', class: 'ghost small', 'aria-label': `Subir una imagen de ${b.name}`, 'data-feedback-id': 'central.planos.imagenes.subir_edificio', 'data-feedback-label': 'Subir una imagen del edificio', onclick: () => openImageUpload(b.id) }, icon('plus', 16), 'Añadir') : null),
+        el('ul', { class: 'ctl-centerimages' }, ...live.filter((i) => i.space_id === b.id).sort((x, y) => x.position - y.position).map((i) => {
+          const url = typeof i.file_id === 'string' ? fileUrls.get(i.file_id) ?? null : null;
+          return el('li', { dataset: { image: i.id } },
+            url ? el('img', { src: url, alt: `${IMAGE_KIND_LABELS[i.kind as ImageKind] ?? i.kind} de ${b.name}: ${i.title}`, loading: 'lazy' }) : el('span', { class: 'muted small' }, 'Cargando…'),
+            el('span', { class: 'small' }, el('strong', null, i.title), ` · ${IMAGE_KIND_LABELS[i.kind as ImageKind] ?? i.kind}`),
+            owner ? el('button', { type: 'button', class: 'ghost small', 'aria-label': `Quitar «${i.title}»`, 'data-feedback-id': 'central.planos.imagenes.quitar', 'data-feedback-label': 'Quitar la imagen', onclick: () => void removeImage(i) }, icon('trash', 16), 'Quitar') : null);
+        }))))) : el('p', { class: 'hint', id: 'centerImagesEmpty' }, owner ? 'Aún no hay imágenes. Sube las siluetas y secciones de cada edificio.' : 'Aún no hay imágenes de los edificios.'));
+  }
+
+  function openImageUpload(spaceId: string | null): void {
+    let sheet: Sheet | null = null;
+    const error = el('p', { class: 'formerror', role: 'alert' });
+    const buildings = rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior')).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const building = el('select', { id: 'imageBuilding', 'data-field-id': 'central.planos.image_building', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id, selected: b.id === spaceId }, b.name))) as HTMLSelectElement;
+    const kindSel = el('select', { id: 'imageKind', 'data-field-id': 'central.planos.image_kind', 'aria-label': 'Tipo de imagen' }, ...IMAGE_KINDS.map((k) => el('option', { value: k }, IMAGE_KIND_LABELS[k]))) as HTMLSelectElement;
+    const title = el('input', { id: 'imageTitle', 'data-field-id': 'central.planos.image_title', type: 'text', maxlength: '120', placeholder: 'Alzado norte' }) as HTMLInputElement;
+    const file = el('input', { id: 'imageFile', 'data-field-id': 'central.planos.image_file', type: 'file', accept: 'image/png,image/jpeg,image/svg+xml' }) as HTMLInputElement;
+    const submit = el('button', { type: 'button', class: 'primary', id: 'imageSubmit', 'data-feedback-id': 'central.planos.imagen.guardar', 'data-feedback-label': 'Guardar la imagen', onclick: async () => {
+      error.textContent = '';
+      const f = file.files?.[0];
+      if (!f) { error.textContent = 'Elige la imagen: PNG, JPG o SVG.'; return; }
+      const mime = f.type || (f.name.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : '');
+      const problem = imageProblem({ type: mime, size: f.size }, title.value) ?? (building.value ? null : 'Elige el edificio.');
+      if (problem) { error.textContent = problem; return; }
+      const raw = mime === 'image/svg+xml' ? await f.text() : null;
+      const svgText = raw === null ? null : cleanSvg(raw);
+      if (raw !== null && svgText === null) { error.textContent = activeContent(raw) ? ACTIVE_SVG : 'No se ha podido leer la imagen.'; return; }
+      submit.disabled = true;
+      try {
+        const blob: Blob = svgText !== null ? new Blob([svgText], { type: 'image/svg+xml' }) : f;
+        const sha = await r.stageBlob(blob, { filename: `imagen.${mime === 'image/svg+xml' ? 'svg' : mime === 'image/jpeg' ? 'jpg' : 'png'}`, mime });
+        const position = images.filter((i) => !i.deleted_at && i.space_id === building.value).length;
+        await r.commit([{ op: 'insert', table: IMAGES, id: crypto.randomUUID(), fields: { space_id: building.value, kind: kindSel.value, title: title.value.trim(), file_id: { $blob: sha }, position } }]);
+        void sheet?.close(true);
+        toast(`Imagen «${title.value.trim()}» subida.`);
+      } catch (e) { error.textContent = describeError(e); } finally { submit.disabled = false; }
+    } }, 'Subir');
+    const unbind = bindOnline(submit, { client: r, reason: 'La imagen se sube con conexión.' });
+    sheet = openSheet({
+      title: 'Subir una imagen del centro',
+      body: el('div', { 'data-feedback-id': 'central.planos.imagen.formulario', 'data-feedback-label': 'Imagen del centro' },
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.imagen.edificio', 'data-feedback-label': 'Edificio' }, el('span', null, 'Edificio'), building),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.imagen.tipo', 'data-feedback-label': 'Tipo de imagen' }, el('span', null, 'Qué es'), kindSel),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.imagen.titulo', 'data-feedback-label': 'Título' }, el('span', null, 'Título'), title),
+        el('label', { class: 'field', 'data-feedback-id': 'central.planos.imagen.archivo', 'data-feedback-label': 'Archivo de la imagen' }, el('span', null, 'Imagen (PNG, JPG o SVG, hasta 5 MB)'), file),
+        error),
+      panelAttrs: { 'data-feedback-id': 'central.planos.imagen', 'data-feedback-label': 'Subir una imagen del centro' },
+      closeAttrs: { 'data-feedback-id': 'central.planos.imagen.cerrar', 'data-feedback-label': 'Cerrar' },
+      foot: [submit],
+      onClose: () => unbind(),
+    });
+  }
+
+  async function removeImage(i: ImageRow): Promise<void> {
+    if (!(await confirmDialog({ title: `¿Quitar «${i.title}»?`, text: 'Deja de salir en los portales y en la ficha del edificio.', confirmLabel: 'Quitar', danger: true }))) return;
+    try { const now = await r.get(IMAGES, i.id); await r.commit([{ op: 'delete', table: IMAGES, id: i.id, expectedRevision: Number(now?.revision ?? 0) }]); toast('Imagen quitada.'); }
+    catch (e) { toast(describeError(e)); }
   }
 
   /** Una estancia sin forma va al centro del dibujo, como un rectángulo; las camas, más pequeñas y dentro de su habitación. */
@@ -524,7 +861,20 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
 
   // --- Datos ------------------------------------------------------------------------------------------------------
-  const repaint = () => { if (!alive) return; paintTools(); paintEditor(); };
+  const repaint = () => { if (!alive) return; paintTools(); paintEditor(); paintImages(); };
+  // Lo de 0814 que la fuente del kit no trae: dibujos (tipo, escala y cotas), iconos, objetos e imágenes.
+  async function loadExtra(): Promise<void> {
+    const [p, ic, it, im] = await Promise.all([r.list(PLANS), r.list(DECOR_ICONS), r.list(ITEMS), r.list(IMAGES)].map((x) => x.catch(() => [])));
+    planRows = p as unknown as PlanRow[];
+    icons = (ic as unknown as IconRow[]).filter((x) => !x.deleted_at);
+    items = it as unknown as typeof items;
+    images = (im as unknown as ImageRow[]).filter((x) => !x.deleted_at);
+    if (!alive) return;
+    viewer?.setDecor(allDecor());
+    repaint();
+    void resolveFiles();
+  }
+  const offExtra = [PLANS, DECOR_ICONS, ITEMS, IMAGES].map((t) => r.onTable(t, () => void loadExtra()));
   const offRows = spaces.subscribe((next) => { rows = next.map((s) => ({ ...s })); repaint(); });
   const offPlans = spaces.plans.subscribe?.((next) => { plans = next; repaint(); }) ?? null;
   // Si el servidor rechaza el SVG (no debería: se sube limpio), se dice una vez y por qué.
@@ -535,7 +885,13 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   });
   const onMedia = () => repaint();
   media.addEventListener('change', onMedia);
-  void Promise.all([spaces.list(), spaces.plans.list()]).then(([s, p]) => { rows = s.map((x) => ({ ...x })); plans = p; repaint(); });
+  void Promise.all([spaces.list(), spaces.plans.list(), loadExtra()]).then(([s, p]) => {
+    rows = s.map((x) => ({ ...x })); plans = p;
+    // El mapa empieza en la finca en cuanto se sabe que la hay.
+    const first = startPlan();
+    if (first) viewer?.setPlan(first);
+    repaint();
+  });
   buildViewer();
   return () => {
     alive = false;
@@ -543,7 +899,9 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     for (const b of binds.splice(0)) b();
     for (const b of editorBinds.splice(0)) b();
     offRows(); offPlans?.(); offStatus(); media.removeEventListener('change', onMedia);
-    viewer?.destroy(); spaces.destroy();
+    for (const off of offExtra) off();
+    for (const b of imageBinds.splice(0)) b();
+    viewer?.destroy(); decorMap?.destroy(); spaces.destroy();
     for (const u of localUrls.values()) URL.revokeObjectURL(u);
   };
 };
