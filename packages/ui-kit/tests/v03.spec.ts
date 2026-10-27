@@ -36,7 +36,12 @@ test.describe('ui-kit v0.3', () => {
     await expect(todayEvents.first()).toHaveAttribute('data-event-id', 'r1');
     await cal.locator('.cal-day.today .cal-num').click();
     await expect(page.locator('.toast.show')).toContainText('3 evento(s)');
-    await cal.locator('.cal-day.today .cal-event').first().click();
+    // Con el dedo (K23, 0.69.8), el día abre una hoja con sus eventos de 46 px; con ratón, se toca la barra.
+    if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+      await page.locator('.cal-sheet-event[data-event-id="r1"]').click();
+    } else {
+      await cal.locator('.cal-day.today .cal-event').first().click();
+    }
     await expect(page.locator('.toast.show')).toContainText('Abrir Familia Ortega');
     const title = await cal.locator('.cal-title').innerText();
     await cal.getByRole('button', { name: 'Siguiente' }).click();
