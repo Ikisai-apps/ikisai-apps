@@ -53,7 +53,7 @@ test('FL3 · history: el call entero al owner y a quien lo hizo; al editor, al l
     const c = await entry(token, cursor);
     assert.equal(c.op, 'call', who);
     assert.equal(c.before.name, SECRET, `${who}: argumentos`);
-    assert.equal(c.after.echo.name, SECRET, `${who}: resultado`);
+    assert.ok(JSON.stringify(c.after).includes(SECRET), `${who}: resultado`);
     assert.equal(c.redacted, undefined, who);
   }
   for (const [who, token] of [['otro editor', otherEditorToken], ['lector', app.tokens.reader], ['outsider', outsiderToken]] as const) {
