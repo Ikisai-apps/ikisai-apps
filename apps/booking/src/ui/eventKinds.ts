@@ -9,6 +9,7 @@ import { el, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-ki
 import { WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, walkinNightPrice } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shortDay, today } from '../app/client.ts';
 import type { FieldSpec } from './form.ts';
+import { settleBatch } from '../app/settle.ts';
 import type { LodgingData } from './lodging.ts';
 
 type Row = SyncedRow & Record<string, any>;
@@ -105,7 +106,8 @@ export async function sendWalkinToFinance(client: SyncClient, charge: Row): Prom
     fields = { finance_error: message.slice(0, 300) };
   }
   try {
-    await client.commit([{ op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields }]);
+    const { requestId } = await client.commit([{ op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields }]);
+    await settleBatch(client, requestId);
   } catch { /* se ve en el estado del cobro */ }
   if (ok) toast('Cobro enviado a Finance.');
   return ok;
@@ -181,10 +183,13 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       ];
       save.disabled = true;
       try {
-        await o.client.commit(ops);
+        const { requestId } = await o.client.commit(ops);
+        // el envío a Finance necesita el cobro ya en el servidor: se espera a que el lote se confirme
+        const rejected = navigator.onLine ? await settleBatch(o.client, requestId) : null;
+        if (rejected) { show(describeError(rejected.error)); save.disabled = false; return; }
         await sheet.close(true);
         toast(navigator.onLine ? `Alojamiento guardado: ${name.value.trim()}.` : 'Guardado en este dispositivo. Se enviará al reconectar.');
-        if (method && navigator.onLine) await sendWalkinToFinance(o.client, { id: chargeId, revision: 1 } as Row);
+        if (method && navigator.onLine && o.client.status().pendingCommands === 0) await sendWalkinToFinance(o.client, { id: chargeId, revision: 1 } as Row);
       } catch (e) { show(describeError(e)); save.disabled = false; }
     }
     function show(text: string): void { error.hidden = false; error.textContent = text; }
@@ -205,9 +210,11 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     const ok = el('button', { class: 'primary', type: 'button', id: 'collectSave', onclick: async () => {
       ok.disabled = true;
       try {
-        await o.client.commit([{ op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields: { method: pay.value, paid_at: new Date().toISOString() } }]);
+        const { requestId } = await o.client.commit([{ op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields: { method: pay.value, paid_at: new Date().toISOString() } }]);
+        const rejected = navigator.onLine ? await settleBatch(o.client, requestId) : null;
+        if (rejected) { toast(describeError(rejected.error)); ok.disabled = false; return; }
         await sheet.close(true);
-        if (navigator.onLine) await sendWalkinToFinance(o.client, { ...charge, revision: Number(charge.revision) + 1 });
+        if (navigator.onLine && o.client.status().pendingCommands === 0) await sendWalkinToFinance(o.client, { ...charge, revision: Number(charge.revision) + 1 });
       } catch (e) { toast(describeError(e)); ok.disabled = false; }
     } }, `Cobrar ${euros(charge.amount_cents)}`);
     const sheet: Sheet = openSheet({ title: 'Cobrar el alojamiento', body: el('label', { class: 'field' }, el('span', null, 'Cómo paga'), pay),
