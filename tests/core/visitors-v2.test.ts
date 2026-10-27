@@ -113,3 +113,25 @@ test('v2 · el visitante reclama la ficha de su petición aceptada: enlace de un
   const events = (await app.t.db.query<{ event: string }>('select event from core.visitor_events where visitor_id = $1 order by id', [visitorId])).rows.map((r) => r.event);
   for (const e of ['created', 'email_requested', 'email_saved', 'email_recovered', 'token_added', 'token_revoked', 'linked', 'claimed', 'claim_redeemed', 'unlinked']) assert.ok(events.includes(e), e);
 });
+
+test('0115 · un miembro con sesión ata el visitante de su móvil; me dice quién es; otro móvil del mismo miembro recupera; un visitante anónimo no es miembro', async () => {
+  const born = await pub('/api/v1/public/visitor', { body: { eventCode: 'EVT_M' } });
+  assert.equal(born.status, 200); const tok = born.data.token as string;
+  assert.equal((await pub('/api/v1/public/visitor/me', { visitor: tok })).data.member, null);
+  // Sin sesión, 401.
+  assert.equal((await pub('/api/v1/public/visitor/as-member', { body: {}, visitor: tok })).status, 401);
+  const bound = await pub('/api/v1/public/visitor/as-member', { body: {}, visitor: tok, token: app.tokens.editor });
+  assert.equal(bound.status, 200, JSON.stringify(bound.data)); assert.equal(bound.data.saved, true); assert.equal(bound.data.userId, app.users.editor);
+  const me = await pub('/api/v1/public/visitor/me', { visitor: tok });
+  assert.equal(me.data.member?.userId, app.users.editor); assert.ok(Array.isArray(me.data.member.apps) && me.data.member.apps.length >= 1);
+  assert.equal((await app.t.db.query<{ u: string }>(`select core.visitor_member($1)::text u`, [born.data.visitorId])).rows[0]!.u, app.users.editor);
+  // Un outsider (cuenta de portal con pertenencia outsider) no es miembro: su visitante no se marca como prueba.
+  const out = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('guests', $1, 'outsider')`, [out]).catch(() => undefined);
+  const vo = await pub('/api/v1/public/visitor', { body: { eventCode: 'EVT_M' } });
+  await app.t.db.query(`update core.visitors set auth_user_id = $1 where id = $2`, [out, vo.data.visitorId]);
+  assert.equal((await app.t.db.query<{ u: string | null }>(`select core.visitor_member($1)::text u`, [vo.data.visitorId])).rows[0]!.u, null);
+  // Otro móvil del mismo miembro, sin visitante previo: recupera el mismo visitante con un token nuevo.
+  const other = await pub('/api/v1/public/visitor/as-member', { body: {}, token: app.tokens.editor });
+  assert.equal(other.status, 200, JSON.stringify(other.data)); assert.equal(other.data.recovered, true); assert.equal(other.data.visitorId, born.data.visitorId); assert.ok(other.data.token);
+});
