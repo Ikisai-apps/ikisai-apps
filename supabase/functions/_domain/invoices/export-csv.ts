@@ -85,6 +85,8 @@ export interface ExportManifest {
   app_entries_totals?: {
     income: { count: number; base: number; quota: number; total: number; quota_by_rate: Array<{ rate: number; base: number; quota: number }> };
     expense: { count: number; base: number; quota: number; total: number };
+    /** Apuntes de proceso (0245): informativos, fuera de la cuenta fiscal. */
+    process?: { count: number; income: number; expense: number };
   };
   app_entries?: ManifestAppEntry[];
 }

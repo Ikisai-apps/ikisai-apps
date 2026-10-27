@@ -246,6 +246,8 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
           if (!snap) fail(422, 'ENTITY_MISSING', domainMessage('ENTITY_MISSING'), { index });
           op.args = { id: op.args?.id, expectedRevision: op.args?.expectedRevision, issuer: snap };
         }
+        // Justificante de un apunte de otra app (0245): un documento de Finance ya verificado
+        if (op.procedure === 'invoices.record_app_entry' && op.args?.receipt_file_id != null) await verifiedFile(supabase, ctx, op.args.receipt_file_id, index, 'receipt_file_id');
         if (op.procedure === 'invoices.take_issuer') {
           entityRow ??= { row: await readEntity(supabase, ctx) };
           const snap = issuerSnapshot(entityRow.row);
@@ -281,6 +283,7 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       }
       // Apuntes de otras apps (0244): llegan por `invoices.record_app_entry`; aquí no se crean ni se borran.
       if (op.table === TABLES.appEntries && (op.op === 'delete' || op.op === 'restore')) fail(422, 'APP_ENTRY_NOT_DELETABLE', domainMessage('APP_ENTRY_NOT_DELETABLE'), { index, id: op.id });
+      if (op.table === TABLES.appEntries && op.op === 'update' && typeof fields.receipt_file_id === 'string') await verifiedFile(supabase, ctx, fields.receipt_file_id, index, 'receipt_file_id');
       if (op.table === TABLES.invoiceFiles && op.op === 'insert') {
         Object.assign(fields, await verifiedFile(supabase, ctx, fields.file_id, index));
       }

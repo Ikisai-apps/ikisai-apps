@@ -2060,3 +2060,14 @@ Authorization: Bearer <token de la persona>
   - «Elegir artículo» abre el selector del inventario del kit (`createItemPicker`, también para dar de alta) y la solicitud pasa a apuntar a él (`item_id`; la unidad del artículo si no tenía), con «Deshacer».
   - Quien solo lee la ve sin mandos.
 - **Pruebas:** `tests/tasks/requests-purchase.test.ts` (procedencia, inmutable, enlace solo en ikisai.com y vacía en las de la interfaz) y `tests/tasks/compras-r6.spec.ts` (la vista agrupada con «Ver en Flow ›», el artículo, aprobar, comprada y ha llegado con +3 en el inventario, y la lectora sin mandos).
+
+## 40. «Solo de un área»: una etiqueta General vuelve a ser de un área (FB_2026_035; VG 27-10-2026)
+
+VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de «Hacer General» (§27).
+
+- **`POST labels/general/to-area {requestId, labelId, tabId}`** (propietaria con acceso a toda la app, si no 403) llama a `tasks.general_label_to_area` (migración `0343`) en un lote con historial. Devuelve `{labelId, tabId, copies: {tabId: labelId}, counts, cursor}`.
+- La General pasa al área elegida y se queda en su familia (su `tab_id` cambia en modo conversión, como en §30). Si esa área ya tenía viva una igual (misma familia y nombre, `label_name_key`), se usa esa y la General queda archivada.
+- Las demás áreas que la usan (etiquetas de tareas y proyectos, responsables, reglas de entrada, hijas propias y vistas guardadas, también en `_exclude`) pasan a una copia propia: la viva igual; si no, la copia archivada que dejó «Hacer General», desarchivada; si no, una nueva en la misma familia y con la misma madre.
+- Errores: con hijas General, 422 `LABEL_HAS_GENERAL_CHILDREN` (primero ellas). Si no es una General viva, 422 `INVALID_OPERATION`. Si el área no existe, 404.
+- Interfaz: «Solo de un área…» en el editor de una etiqueta General. Se elige el área, que viene marcada con la que más la usa o con la actual, y la hoja dice en qué otras áreas queda una copia.
+- Pruebas: `tests/tasks/general-to-area.test.ts`.

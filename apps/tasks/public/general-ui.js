@@ -197,3 +197,41 @@ generalLabelsView=function(){const areas=generalAreas(),first=areas[0];
   return `<main class="screen"><div class="screenhead"><div><h1 class="title">Etiquetas</h1><p class="subtitle">General · lo común y lo de cada área</p></div></div><div class="notice">Lo General vale en todas las áreas; debajo, lo propio de cada una. Pulsa una etiqueta para editarla.</div>
     <section class="areablock" id="catalogGeneral"><h2 class="sectionlabel areatitle"><span>General · en todas las áreas</span></h2>${isAdministrator()?`<div class="row generalnew generaltools"><button class="ghost" id="generalMergeOpen" type="button" data-feedback-id="tasks.etiquetas.general.abrir" data-feedback-label="Repetidas a General">Repetidas → General (${generalMergeGroups().length+generalKeyConflicts().length})</button><button class="ghost" id="generalFamilyNew" type="button" data-feedback-id="tasks.etiquetas.general.nueva_familia" data-feedback-label="Nueva familia General">+ Nueva familia General</button></div>`:''}${generals||'<p class="small muted">Aún no hay etiquetas General.</p>'}</section>
     ${blocks.join('')}${generalArchivedButton()}</main>`};
+
+/* «Solo de un área» (FB_2026_035; VG 27-10-2026 eligió «volver a específica»): la vuelta de «Hacer General», en el editor
+   de una etiqueta General (propietaria con acceso completo). Pasa al área elegida; las demás áreas que la usan se quedan
+   con su copia (la que archivó «Hacer General» o una nueva), con sus tareas, proyectos, responsables, reglas y vistas
+   (`POST labels/general/to-area`, migración 0343). Con hijas General, primero ellas. */
+function generalUsesByArea(id){const d=Sync.core?.data||{},n=new Map(),add=t=>{if(t)n.set(t,(n.get(t)||0)+1)};
+  for(const t of ['tasks.task_labels','tasks.project_labels'])for(const x of d[t]||[])if(!x.deleted_at&&x.label_id===id)add(x.tab_id);
+  for(const t of ['tasks.tasks','tasks.projects','tasks.request_routes'])for(const x of d[t]||[])if(!x.deleted_at&&x.owner_label_id===id)add(x.tab_id);
+  for(const x of d['tasks.labels']||[])if(!x.deleted_at&&x.parent_id===id&&x.tab_id)add(x.tab_id);
+  for(const x of d['tasks.saved_views']||[])if(!x.deleted_at&&JSON.stringify(x.filters||{}).includes(id))add(x.tab_id);
+  return n}
+function generalToAreaSheet(id){
+  if(!generalReady())return;
+  const c=generalCatalog(),l=c.byId.get(id);if(!l||l.tab_id||l.archived)return toast('Esta etiqueta ya no es General.');
+  const kids=c.all.filter(x=>x.parent_id===id&&!x.tab_id);
+  if(kids.length)return toast(`Primero sus hijas General: ${kids.map(x=>`«${x.name}»`).join(', ')}.`);
+  const uses=generalUsesByArea(id),areas=generalAreas(),first=uses.has(state.activeTab)||!uses.size?state.activeTab:[...uses.entries()].sort((a,b)=>b[1]-a[1])[0][0];
+  const usesText=n=>n===1?'se usa 1 vez':`se usa ${n} veces`;
+  openSheet(`<h2 class="sheettitle">Solo de un área</h2><p class="small muted">«${esc(l.name)}» deja de ser General y pasa a ser solo del área que elijas.</p>
+    <fieldset class="generalarea"><legend class="small">Área</legend>${areas.map(a=>`<label class="row"><input type="radio" name="generalArea" value="${a.id}" ${a.id===first?'checked':''} data-feedback-id="tasks.etiquetas.general.a_area_elegir" data-feedback-label="Elegir área"> ${esc(a.name)}${uses.get(a.id)?` <span class="small muted">· ${usesText(uses.get(a.id))}</span>`:''}</label>`).join('')}</fieldset>
+    <p class="small" id="generalAreaNote" aria-live="polite"></p>
+    <div class="actions"><button class="ghost" id="generalAreaCancel" data-feedback-id="tasks.etiquetas.general.a_area_cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="generalAreaGo" data-feedback-id="tasks.etiquetas.general.a_area" data-feedback-label="Pasar a este área">Pasar a este área</button></div>`);
+  const chosen=()=>document.querySelector('#sheet input[name="generalArea"]:checked')?.value;
+  const note=()=>{const to=chosen(),others=[...uses.keys()].filter(t=>t!==to).map(t=>c.tabs.get(t)?.name).filter(Boolean);
+    document.getElementById('generalAreaNote').textContent=others.length?`En ${others.join(', ').replace(/, ([^,]*)$/,' y $1')} también se usa: allí queda una copia propia, con todo lo suyo.`:'No se usa en otras áreas.'};
+  document.querySelectorAll('#sheet input[name="generalArea"]').forEach(i=>i.onchange=note);note();
+  document.getElementById('generalAreaCancel').onclick=closeSheet;
+  document.getElementById('generalAreaGo').onclick=async()=>{const b=document.getElementById('generalAreaGo'),to=chosen();if(!to)return;b.disabled=true;
+    try{const out=await usage.run('tasks.etiquetas.general.a_area',()=>Sync.core.api('/labels/general/to-area',{method:'POST',json:{labelId:id,tabId:to,requestId:uid('req-')}}));
+      await syncNow();closeSheet();render();const n=Object.keys(out?.copies||{}).length;
+      toast(`«${l.name}» es solo de ${c.tabs.get(to)?.name||'esa área'}${n?` · ${n===1?'una copia':`${n} copias`} en otras áreas`:''}.`)}
+    catch(e){b.disabled=false;toast(e.message)}};
+}
+const labelEditorBeforeToArea=openLabelEditor;
+openLabelEditor=function(fid,id=null,returnTo=null){const out=labelEditorBeforeToArea(fid,id,returnTo);const l=id?label(id):null;
+  if(l&&l.general&&!l.archived&&isAdministrator()){const actions=document.querySelector('#sheet .actions');if(actions&&!document.querySelector('[data-general-to-area]'))actions.insertAdjacentHTML('afterbegin',`<button class="ghost" data-general-to-area="${l.id}" data-feedback-id="tasks.editor_etiqueta.solo_area" data-feedback-label="Solo de un área">Solo de un área…</button>`)}
+  return out};
+document.addEventListener('click',e=>{const b=e.target.closest?.('[data-general-to-area]');if(b)generalToAreaSheet(b.dataset.generalToArea)});

@@ -289,6 +289,21 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
       },
     },
     /**
+     * «Solo de un área» (FB_2026_035, migración 0343): una etiqueta General vuelve a ser de un área. Las demás áreas que la
+     * usan se quedan con su copia (la viva igual, la archivada o una nueva). En un lote y con historial.
+     */
+    {
+      method: 'POST', pattern: 'labels/general/to-area', handler: async ({ ctx, json }) => {
+        admin(ctx);
+        const body = await json();
+        if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        if (typeof body.labelId !== 'string' || !UUID.test(body.labelId) || typeof body.tabId !== 'string' || !UUID.test(body.tabId)) fail(422, 'INVALID_OPERATION', 'Elige la etiqueta y el área.');
+        const committed = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.general_label_to_area', args: { labelId: body.labelId.toLowerCase(), tabId: body.tabId.toLowerCase() } }] });
+        const result = (committed.results[0] as { result?: { labelId: string; tabId: string; copies: Record<string, string>; counts: Record<string, number> } })?.result;
+        return { labelId: result?.labelId ?? null, tabId: result?.tabId ?? body.tabId, copies: result?.copies ?? {}, counts: result?.counts ?? {}, cursor: committed.cursor };
+      },
+    },
+    /**
      * Pasar las zonas a espacios de Recursos y su marcha atrás (R2, §30). Solo la propietaria con acceso completo, desde la
      * app y tras la vista previa (`read/tasks.zones_preview`). En un lote y con historial.
      * - `zones/to-spaces {requestId, remove?}`: `remove`, las zonas sin espacio que se quitan («Exteriores» a secas).

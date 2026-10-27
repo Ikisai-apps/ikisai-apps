@@ -390,3 +390,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgfoodoffer-line{display:flex;gap:6px;align-items:baseline}
 .orgfoodoffer-code{font-weight:700;color:var(--muted)}
 .orgfoodoffer-price{margin-left:auto;font-weight:700;white-space:nowrap}
+/* Comentarios de tus asistentes (resumen del retiro) */
+.orgcomments{display:grid;gap:12px}
+.orgcomment>p{margin:0}
+.orgcomment-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}

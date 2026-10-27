@@ -47,6 +47,7 @@ test.beforeAll(async () => {
   const water = api.seed('resources.items', { name: 'Agua, botella pequeña', kind: 'bebida', base_unit: 'ud' }).id;
   api.seed('food.menus', { id: carta, kind: 'carta', name: 'Barra de prueba', status: 'borrador' });
   serrano = api.seed('food.carta_lines', { menu_id: carta, recipe_id: recipe, scope: 'clasico', code: 'A', sale_price_cents: 250, active: true, position: 1 }).id;
+  api.seed('food.event_offers', { event_id: FAMILY, menu_id: carta, name: 'Barra familiar', audience: 'huespedes', meal_groups: ['Familia'], payer: 'huesped', charge_when: 'barra', position: 1 });
   agua = api.seed('food.carta_lines', { menu_id: carta, item_id: water, scope: 'barra', code: 'A', name: 'Agua, botella pequeña', sale_price_cents: 100, active: true, position: 9 }).id;
   process.env.VITE_API_PROXY = api.url;
   await buildFoodApp();
@@ -160,4 +161,21 @@ test('evento familiar · come del menú de casa: sin «Crear menú» y con el en
   await expect(page.locator('#createMenu')).toHaveCount(0);
   await page.locator('#openHouseMenu').click();
   await expect(page).toHaveURL(/#\/menus\/f00dca5a-0000-4000-8000-000000000001$/);
+});
+
+test('ofertas · la ficha del evento las enseña y deja añadir otra', async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page);
+  await page.goto(`${baseURL}/#/eventos`);
+  await page.locator('#eventList, .list').getByText('Visita de la familia').first().click();
+  const block = page.locator('#eventOffers');
+  await expect(block).toContainText('Barra familiar');
+  await expect(block).toContainText('Familia');
+  await expect(block).toContainText('Paga el huésped, en barra');
+  await page.locator('#addOffer').click();
+  await page.locator('#offerName').fill('Equipo de cocina');
+  await page.locator('#offerAudience').selectOption('interna');
+  await page.locator('#offerGroups').fill('Equipo');
+  await page.locator('#offerSave').click();
+  await expect.poll(() => api.rows('food.event_offers').find((o) => o.name === 'Equipo de cocina')).toMatchObject({ event_id: FAMILY, audience: 'interna', meal_groups: ['Equipo'], payer: null, charge_when: null });
 });

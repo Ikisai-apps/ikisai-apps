@@ -11,7 +11,7 @@
  */
 import type { RowOperation } from '@ikisai/sync-client';
 import {
-  CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLinesInOrder, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
+  CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLinesInOrder, defaultOfferFields, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
   parseEurosToCents, validateOperations, type CartaCode, type CartaLine, type CartaScope, type FoodEvent, type Menu, type Recipe, type ResourceItem,
 } from '@ikisai/domain-food';
 import { closeSheet, el, listRow, openSheet, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -61,6 +61,7 @@ async function copyCarta(client: SyncClient, source: CartaMenu, name: string, ev
   const lines = (await client.list(T.cartaLines)) as LineRow[];
   const newId = crypto.randomUUID();
   const ops = copyCartaOperations({ lines, sourceId: source.id, newId, name, eventId, newLineId: () => crypto.randomUUID(), prepSplit: source.prep_split ?? null }) as unknown as RowOperation[];
+  if (eventId) ops.push({ op: 'insert', table: T.eventOffers, id: crypto.randomUUID(), fields: defaultOfferFields({ id: newId, kind: 'carta', name }, eventId) });
   const done = await usage.run('food.carta.copiar', () => commit(client, ops));
   if (done) navigate(cartaHash(newId));
   return done;
@@ -103,7 +104,10 @@ export function openNewCartaSheet(client: SyncClient, navigate: (hash: string) =
       const title = name.value.trim();
       if (!title) { toast('Ponle un nombre a la carta.'); return; }
       const id = crypto.randomUUID();
-      const ok = await usage.run('food.menus.crear_carta', () => commit(client, [{ op: 'insert', table: T.menus, id, fields: { kind: 'carta', name: title, ...(eventId ? { event_id: eventId } : {}) } }]));
+      const ops: RowOperation[] = [{ op: 'insert', table: T.menus, id, fields: { kind: 'carta', name: title, ...(eventId ? { event_id: eventId } : {}) } }];
+      // Para un evento, su oferta (1111): de huéspedes, pagada en barra; se cambia en la ficha del evento.
+      if (eventId) ops.push({ op: 'insert', table: T.eventOffers, id: crypto.randomUUID(), fields: defaultOfferFields({ id, kind: 'carta', name: title }, eventId) });
+      const ok = await usage.run('food.menus.crear_carta', () => commit(client, ops));
       if (!ok) return;
       await sheet?.close(true);
       navigate(cartaHash(id));
