@@ -808,3 +808,23 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Pruebas:**
   - `tests/organizers/pay-now.test.ts`: las tres Edge sobre PGlite con el Stripe falso. Comprueba el importe, las URL de vuelta, la reutilización, la lectura del portal con el enlace, el ámbito y el apagado.
   - `pay-link.test.ts` y `portal.spec.ts`.
+
+## 25. Avisos por correo de comentarios nuevos (migración 0709; línea de Core del 28-10)
+
+- **Qué recibe quien organiza:** un correo, como mucho cada hora, con los comentarios de sus asistentes (Guests, sobre el retiro) que aún no ha visto (`comment_reads`, §23) y que llegaron después del último aviso.
+  - El correo dice por retiro cuántos hay y lleva el enlace a Mis retiros. Va en texto plano y en español.
+  - No lleva el texto de los comentarios, el nombre de los asistentes ni nada de otros retiros.
+- **Quién:** quien tiene un enlace de Organizers vivo con ese retiro en su ámbito (`core.portal_links` y `core.portal_in_scope`). Dirección con «todos» no lo recibe. La primera vez solo se avisa de lo de las últimas 24 horas.
+- **Cómo:**
+  - `organizers.comment_notices` guarda, por persona, el cursor y la hora del último aviso;
+  - `organizers.comment_notices_due` y `organizers.comment_notices_sent` son acciones de sistema;
+  - el tick `comment-notices/tick` corre cada 15 min, solo si `comment_notices_has_work()`;
+  - el worker lee el correo en Auth (admin) y los títulos con `booking.portal_reservations` como esa persona. Solo avanza el cursor de quien lo ha recibido; si el envío falla, se repite en la siguiente vuelta.
+- **Encendido:** `IKISAI_ORGANIZER_MAIL=1`, más el SMTP de la Edge: `IKISAI_SMTP_HOST`, `IKISAI_SMTP_PORT` (465), `IKISAI_SMTP_USER`, `IKISAI_SMTP_PASS` e `IKISAI_SMTP_FROM`.
+  - Son las mismas credenciales que VG ponga en Auth: el SMTP de Auth no manda correos sueltos.
+  - TLS desde el primer byte (465): la Edge de Supabase no deja salir por 25 ni 587.
+  - Apagado, el tick responde `{off: true}` y no envía nada.
+- **Pruebas:** `tests/organizers/comment-notices.test.ts`:
+  - el texto del correo, las cabeceras sin inyección y el diálogo SMTP con una conexión doble;
+  - el envío en PGlite: lo suyo sin leer, la espera de una hora, cada organizadora lo suyo y nada con el aviso apagado.
+

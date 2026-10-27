@@ -20,11 +20,12 @@ test.after(async () => { await app.close(); });
 test('organizers · estimado de utilidad: todas las funcionalidades, por área, y se aplica al entrar por el catálogo', async () => {
   const q = async <T>(sql: string, args: unknown[] = []) => (await app.t.db.query<T>(sql, args)).rows;
   const counts = await q<{ frequency: string; n: number }>(`select frequency, count(*)::int n from core.usage_estimates where app = 'organizers' group by 1 order by 1`);
-  assert.deepEqual(Object.fromEntries(counts.map((r) => [r.frequency, r.n])), { frequent: 96, normal: 111, occasional: 61, rare_critical: 19 });
+  assert.deepEqual(Object.fromEntries(counts.map((r) => [r.frequency, r.n])), { frequent: 96, normal: 111, occasional: 63, rare_critical: 19 });
   const one = async (id: string) => (await q<{ frequency: string; audience: unknown }>(`select frequency, audience from core.usage_estimates where app = 'organizers' and feature_id = $1`, [id]))[0];
   assert.deepEqual(await one('organizers.asistente.restriccion.gravedad'), { frequency: 'rare_critical', audience: { kinds: ['organizers'] } });
   assert.equal((await one('organizers.pagos.pagar_ahora'))?.frequency, 'normal');
   assert.equal((await one('organizers.diseno.expected_guests'))?.frequency, 'occasional');
+  assert.equal((await one('organizers.entrada.codigo.correo'))?.frequency, 'occasional', '0708: el código por correo es la entrada de repuesto');
   // Entra por el catálogo de una publicación: recibe el estimado.
   await q(`select core.usage_catalog_ingest('organizers', 'v9.9.9', $1::jsonb)`, [JSON.stringify([{ id: 'organizers.asistentes.lista', label: 'Asistentes', kind: 'element' }])]);
   assert.deepEqual((await q<{ frequency: string; audience: unknown }>(`select frequency, audience from core.usage_features where feature_id = 'organizers.asistentes.lista'`))[0],

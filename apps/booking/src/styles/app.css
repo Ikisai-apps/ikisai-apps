@@ -149,6 +149,8 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 #needList .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }
 /* Llegada: los botones de cada huésped pasan a una fila propia bajo el nombre */
 #guestList .row-actions { grid-row: auto; grid-column: 1 / -1; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 10px; }
+/* Recepción (revisión móvil de UI-kit): las acciones bajo la ficha, en varias líneas si no caben */
+.reception-list .row-actions { grid-row: auto; grid-column: 1 / -1; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 10px; }
 #pvResult { display: block; }
 #pvResult ul { margin: 6px 0 0; padding-left: 18px; }
 /* Bloque «Portal del organizador» y hoja con la URL recién emitida */
