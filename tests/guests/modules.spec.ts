@@ -392,6 +392,28 @@ test('guests · «Ver en el plano» con los dibujos reales del Albergue y de Sal
   await expect(now.locator('.map-svg [role="button"][aria-pressed="true"]')).toHaveAttribute('aria-label', /Museo/);
 });
 
+test('guests · silueta de cabecera: la que Central eligió para Guests (Recursos 0816) sale bajo la portada; las demás, no', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con silueta', start: day(1), end: day(3) });
+  const ona = await api.guest(event, { first_name: 'Ona' });
+  const db = api.booking.t.db;
+  const building = (await db.query<{ id: string }>(`insert into resources.spaces (kind, name) values ('edificio', 'Albergue de la silueta') returning id`)).rows[0]!.id;
+  const file = async () => (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status, hash_verified) values ('resources', 'resources-plans', $1, 'silueta', 'image/svg+xml', 300, $2, 'verified', true) returning id`,
+    [`resources/${crypto.randomUUID()}`, 'e'.repeat(64)])).rows[0]!.id;
+  // Una para Central y otra para Guests: solo se ve la de Guests.
+  await db.query(`insert into resources.space_images (space_id, kind, title, file_id, header_for) values ($1, 'silueta', 'Para Central', $2, '{central}'), ($1, 'silueta', 'Para Guests', $3, '{guests}')`, [building, await file(), await file()]);
+  await enter(page, await api.guestLink(reservation, ona, 'Ona'));
+  await page.route('https://test.supabase.co/storage/v1/object/sign/**', (route) => route.fulfill({
+    status: 200, headers: { 'content-type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*' },
+    body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><path d="M0 40V20h60V5h80v15h60v20z" fill="#333"/></svg>',
+  }));
+  await page.reload();
+  const skyline = page.locator('#headerSilhouette');
+  await expect(skyline).toBeVisible();
+  await expect(skyline).toHaveAttribute('aria-hidden', 'true');
+  await expect(skyline.locator('img')).toHaveAttribute('alt', '');
+  await db.query(`update resources.space_images set deleted_at = now() where space_id = $1`, [building]);
+});
+
 test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaciones abiertas en el plano, con su estado en texto; tocar una la enseña abajo', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con plano de habitaciones' });
   const eli = await api.guest(event, { first_name: 'Eli' });

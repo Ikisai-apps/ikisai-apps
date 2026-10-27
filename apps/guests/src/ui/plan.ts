@@ -119,6 +119,12 @@ export function decorOf(data: PortalPlans): DecorItem[] {
   });
 }
 
+/** La silueta de cabecera de Guests que eligió Central (`headerFor`), ya firmada; sin elegir, ninguna. Pura. */
+export function headerSilhouette(data: PortalPlans | null | undefined): { url: string; title: string | null } | null {
+  const image = (data?.images ?? []).find((m) => m.kind === 'silueta' && m.url && (m.headerFor ?? []).includes('guests'));
+  return image?.url ? { url: image.url, title: image.title } : null;
+}
+
 /** El plano de la finca, si lo hay (el mapa empieza en él y se baja tocando: finca → edificio → habitación). */
 export function estateOf(data: PortalPlans): string | null {
   return data.plans.find((x) => x.kind === 'estate')?.id ?? null;

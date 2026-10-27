@@ -107,6 +107,8 @@
 
 - 2026-10-27 · «Ver en el plano» con los dibujos reales del Albergue y de Salas (`tests/guests/fixtures/planos`, trazados sin cotas ni datos del pliego): cada cama con el icono de su tipo (`bedKind` de Recursos 0816, que antes no llegaba al mapa) y prueba en el móvil (390 px) en `modules.spec.ts`.
 
+- 2026-10-27 · Silueta de cabecera desde Central: bajo la portada del retiro, la silueta que Central marcó «Cabecera de: Guests» (`headerFor` de `resources.space_images`, Recursos 0816), decorativa, fundida con el papel (invertida en oscuro). Sin elegir, nada. Prueba en `modules.spec.ts`.
+
 ## Pendiente
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
