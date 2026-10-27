@@ -6,6 +6,7 @@
  * `booking_visitor_requests` y su `X-Visitor`. Un visitante nunca ve a otros.
  */
 import { cache } from './cache.ts';
+import type { PortalPlans } from './portal-types.ts';
 
 const TOKEN_KEY = 'ikisai-visitor';
 const EVENTS_KEY = 'ikisai-visitor-events';
@@ -64,11 +65,26 @@ export function rememberEvent(code: string): void {
   const next = [code.toUpperCase(), ...myEventCodes().filter((c) => c !== code.toUpperCase())].slice(0, 50);
   try { store()?.setItem(EVENTS_KEY, JSON.stringify(next)); } catch { /* solo en memoria */ }
   // Con identidad, también en el núcleo (0107): así «Mis eventos» se rehace en otro móvil al recuperar el acceso.
+  void recordVisit(code);
+}
+
+/** Anota en el núcleo que este visitante entró en el evento (una vez por visita de la página); se puede esperar. */
+export async function recordVisit(code: string): Promise<void> {
   const upper = code.toUpperCase();
-  if (visitorToken() && !visited.has(upper)) {
-    visited.add(upper);
-    void call('/api/v1/public/visitor/visit', { json: { eventCode: upper } }).catch(() => visited.delete(upper));
-  }
+  if (!visitorToken() || visited.has(upper)) return;
+  visited.add(upper);
+  await call('/api/v1/public/visitor/visit', { json: { eventCode: upper } }).catch(() => { visited.delete(upper); });
+}
+
+/**
+ * El plano de la casa para el visitante que se aloja (`GET public/plans`, guests-api): sin identidad, nunca. Crea la
+ * identidad si aún no la hay (abrir el plano es un gesto) y anota la visita, que la Edge comprueba.
+ */
+export async function visitorPlans(code: string): Promise<PortalPlans> {
+  await ensureVisitor(code);
+  await recordVisit(code);
+  const raw = await withVisitor(code, () => call<PortalPlans>(`/api/v1/public/plans?event_code=${encodeURIComponent(code.toUpperCase())}`));
+  return { plans: raw?.plans ?? [], spaces: raw?.spaces ?? [], icons: raw?.icons ?? [], decor: raw?.decor ?? [], images: raw?.images ?? [] };
 }
 
 /** Abre «Alójate aquí» de ese evento en este móvil (QR o enlace de Flow). */

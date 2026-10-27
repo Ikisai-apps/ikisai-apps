@@ -180,7 +180,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   /** `force`: volver a montar aunque solo cambie el apartado de la Experiencia. */
   function route(force = false): void {
-    const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
+    // Lo que va tras «?» (la vuelta de la pasarela, `?pago=ok`) no es parte de la ruta: lo lee y lo limpia la pantalla.
+    const hash = (location.hash && location.hash !== '#' ? location.hash : '#/').split('?')[0]!;
     const guest = hash.match(GUEST);
     let retreat = hash.match(RETREAT);
     // Un apartado solo vale tras «experiencia» (`/asistentes/programa` no es una ruta): va a Mis retiros.

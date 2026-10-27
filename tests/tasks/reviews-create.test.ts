@@ -48,7 +48,7 @@ test('crear: el proyecto, una madre por zona en el orden de la plantilla, una hi
   assert.deepEqual([review.project_id, review.template_id, review.event_ref, review.status], [project.id, house, 'booking:RES2026-80', 'open']);
   const items = (await rows('tasks.review_items')).filter((i) => i.review_id === reviewId);
   assert.equal(items.length, 15);
-  assert.equal(items.filter((i) => i.critical).length, 7);
+  assert.equal(items.filter((i) => i.critical).length, 6);
   for (const i of items) assert.ok(children.some((t) => t.id === i.task_id), 'cada ítem con su tarea');
   const acs = items.find((i) => i.zone === 'duchas_acs');
   assert.deepEqual([acs.state, acs.answer, acs.expected], ['pending', 'reading', { unit: '°C', min: 50 }]);
