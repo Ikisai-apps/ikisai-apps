@@ -38,6 +38,7 @@ import {
 import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
+import { announceHeaderArt, centralHeader } from './header-art.ts';
 import {
   DECOR_ICONS, HEADER_APPS, HEADER_APP_LABELS, IMAGE_KIND_LABELS, headerOf, headerOperations, type HeaderApp, IMAGE_KINDS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
   type DecorRow, type ImageKind,
@@ -1020,12 +1021,16 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   // --- Datos ------------------------------------------------------------------------------------------------------
   const repaint = () => { if (!alive) return; paintTools(); paintEditor(); paintImages(); };
   // Lo de 0814 que la fuente del kit no trae: dibujos (tipo, escala y cotas), iconos, objetos e imágenes.
+  let lastHeader: string | null | undefined;
   async function loadExtra(): Promise<void> {
     const [p, ic, it, im] = await Promise.all([r.list(PLANS), r.list(DECOR_ICONS), r.list(ITEMS), r.list(IMAGES)].map((x) => x.catch(() => [])));
     planRows = p as unknown as PlanRow[];
     icons = (ic as unknown as IconRow[]).filter((x) => !x.deleted_at);
     items = it as unknown as typeof items;
     images = (im as unknown as ImageRow[]).filter((x) => !x.deleted_at);
+    // Si cambia la silueta de cabecera de Central (se elige aquí), la cabecera se entera sin leer Recursos por su cuenta.
+    const header = centralHeader(images as unknown as Parameters<typeof centralHeader>[0])?.id ?? null;
+    if (header !== lastHeader) { if (lastHeader !== undefined) announceHeaderArt(images as unknown as Parameters<typeof announceHeaderArt>[0]); lastHeader = header; }
     if (!alive) return;
     viewer?.setDecor(allDecor());
     repaint();
