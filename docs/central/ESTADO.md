@@ -120,6 +120,7 @@
 - 2026-10-27 · **Registro de accesos para las demás apps** (X1 de Tasks, FB_2026_073): `#/accesos/registro?app=<app>` abre ya filtrado y «Por fecha», sin cambiar la vista recordada; en cada línea, quién lo hizo con su tipo (persona o agente) y a qué afecta (la persona, o la clave o la propuesta por su nombre); el ciclo de las propuestas de agentes con sus palabras y tono (también «Propuesta revocada»); «Ver anteriores». Tasks puede enlazar aquí con «‹ Volver a Tasks».
 - 2026-10-27 · **Revisión › Uso y cobertura** (visión V0.2 aprobada por VG; `1517`): por app y función, el uso de 30 días por audiencia, el estado de cobertura (nadie llega, se ve sin uso, sin instrumentar, usado fuera de recorridos, requerido) y la decisión de una persona (Mantener, Simplificar, Integrar, Retirar con confirmación). Inventario de UI-kit con P15; recorridos de Flow, cuando existan. Pruebas `coverage.test.ts` y `coverage.spec.ts`.
 - 2026-10-27 · **Campos instrumentados para el inventario** (UI-kit #771): 81 campos con `data-field-id` (`central.<pantalla>.<campo>`), comprobado en `feedback-ids.test.ts`. Salen en «Uso y cobertura» como medidos.
+- 2026-10-27 · **Finca y decoración en Planos** (encargo de VG; Recursos 0814, kit 0.63): el mapa empieza en la finca y baja con miga; decoración general para ver; subir la finca (escala y cotas del SVG); «Colocar» › Decoración con iconos, escala y «Deshacer»; cota de cada altura; «Imágenes del centro». Reglas en `app/decor.ts` (`decor.test.ts`); prueba en `plans.spec.ts`. Falta: curvas editables (0815).
 
 ## Pendiente
 

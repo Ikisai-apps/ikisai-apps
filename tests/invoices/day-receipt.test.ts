@@ -15,11 +15,23 @@ const day = (f: Partial<ReceiptEntry> = {}): ReceiptEntry => ({
 test('es un ticket (VG, 27-10): sin serie ni número de factura, IVA incluido', () => {
   const r = dayReceipt(day());
   assert.equal(r.title, 'Ticket de ventas');
-  assert.ok(!('number' in r), 'sin numeración de factura');
+  assert.equal(r.number, null, 'sin número de cobro (cierre del día)');
+  assert.equal(r.kind, 'ticket');
   assert.match(r.notice, /no es una factura/);
-  assert.deepEqual(r.methods, [{ label: 'Efectivo', cents: 80000 }, { label: 'Bizum', cents: 43450 }]);
+  assert.deepEqual(r.methods, [{ label: 'Metálico', cents: 80000 }, { label: 'Bizum', cents: 43450 }]);
   assert.deepEqual(r.lines.map((l) => l.label), ['A · Montadito clásico A', 'Caña']);
   assert.deepEqual([r.rate, r.netCents, r.taxCents, r.totalCents, r.pendingRefundsCents], [10, 112227, 11223, 123450, 200]);
+});
+
+test('un cobro de la caja (API.md §17.9): ticket con su número de cobro, o factura simplificada según receipt_kind', () => {
+  const sale = day({ description: 'Cobro 57', receipt_number: '57', receipt_kind: 'ticket', methods: { bitcoin: 123450 } });
+  const t = dayReceipt(sale);
+  assert.deepEqual([t.title, t.number, t.kind], ['Ticket de venta', '57', 'ticket']);
+  assert.match(t.notice, /Ticket nº 57: no es una factura/);
+  assert.deepEqual(t.methods, [{ label: 'Bitcoin', cents: 123450 }]);
+  const f = dayReceipt({ ...sale, receipt_kind: 'invoice' });
+  assert.deepEqual([f.title, f.number, f.kind], ['Factura simplificada', '57', 'invoice']);
+  assert.match(f.notice, /Factura simplificada nº 57/);
 });
 
 test('liquidación de cuenta de cliente: desglose por pedido; un gasto no tiene justificante de ventas', () => {

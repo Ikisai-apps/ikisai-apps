@@ -1983,6 +1983,25 @@ El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan o
   - **vista «Evento»:** las recibidas asignadas aún sin validar cuentan como gasto de proceso, marcadas.
 - **Para no contar dos veces en «Evento»** (Core, 27-10): cada cobro va en un solo apunte. El cierre de Flow excluye lo ya enviado como fiscal, y Finance no resta nada.
 
+### 17.9 Justificante imprimible de un cobro (para «Imprimir factura» de Flow)
+
+- **Enlace estable** (en `finance.ikisai.com`, con la sesión de la persona; la sesión común del núcleo la abre sola desde Flow):
+  - `https://finance.ikisai.com/#/justificante/<entry_id>`, con el `entry_id` que devuelve `record_app_entry`;
+  - `https://finance.ikisai.com/#/justificante?ref=<source_ref>`, con la clave de la app codificada en la URL (`encodeURIComponent`), para que Flow no tenga que guardar ids.
+- **Qué enseña:**
+  - el emisor (datos del centro, de Central, con red);
+  - el número de cobro (`receipt_number` del apunte; lo pone la app, no es una serie de Finance);
+  - la fecha y las líneas (`detail`);
+  - los medios de cobro (Metálico, Bizum, Tarjeta, Bitcoin… y cualquier clave de `methods` tal cual);
+  - la base, el IVA incluido y el total.
+- **El título sale de `receipt_kind`:** «Ticket de venta» (o «Ticket de ventas» en un cierre del día sin número), con la marca «TICKET»; con `invoice`, «Factura simplificada nº <número>».
+- **Pensado para el móvil:**
+  - «Imprimir / Guardar PDF» abre la impresión del navegador, con el CSS `@media print` del kit, y desde ahí el sistema guarda o comparte el PDF;
+  - «Compartir» abre la hoja de compartir del sistema con el enlace, cuando el navegador la tiene.
+  - Sin librerías nuevas.
+- **Sin red,** sale del espejo del dispositivo y avisa de que faltan los datos del centro. Un apunte de proceso o un gasto no tiene justificante: la página lo dice.
+- **Sin envío por correo** todavía (falta Workspace).
+
 ### 17.8 Factura o ticket (decisión de VG del 27-10, migración 0247)
 
 A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se registra como gasto, pero no es deducible: puede haber compras con ticket que nunca tengan factura.

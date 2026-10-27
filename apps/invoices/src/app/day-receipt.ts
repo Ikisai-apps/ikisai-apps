@@ -5,6 +5,10 @@
  *
  * Es un TICKET (decisión de VG del 27-10): sin serie ni numeración de factura. El IVA va incluido, como en cualquier
  * ticket; no se trata como el de una factura.
+ *
+ * Justificante imprimible de cada cobro (encargo de VG por Core, 27-10; API.md §17.9): el mismo documento sirve para un
+ * cobro suelto que la caja de Flow manda a Finance. El título sale de `receipt_kind`: «Ticket de venta» o, con
+ * `invoice`, «Factura simplificada». `receipt_number` es el número de cobro que pone la app (no es una serie de Finance).
  */
 
 export interface ReceiptEntry {
@@ -22,11 +26,17 @@ export interface ReceiptEntry {
   pending_refunds_cents: number;
   methods: Record<string, number>;
   detail: Array<{ code?: string | null; name: string; quantity: number; amount_cents: number }>;
+  /** 0245/0247: número de cobro (de la app) y factura o ticket. */
+  receipt_number?: string | null;
+  receipt_kind?: 'invoice' | 'ticket' | null;
 }
 
 export interface DayReceipt {
-  /** «Ticket de ventas». */
+  /** «Ticket de ventas» (cierre del día), «Ticket de venta» (un cobro) o «Factura simplificada». */
   title: string;
+  /** Número de cobro de la app, si lo trae. */
+  number: string | null;
+  kind: 'ticket' | 'invoice';
   date: string;
   description: string;
   lines: Array<{ label: string; quantity: number; cents: number }>;
@@ -40,15 +50,19 @@ export interface DayReceipt {
   notice: string;
 }
 
-const METHOD_LABELS: Record<string, string> = { cash: 'Efectivo', bizum: 'Bizum', card: 'Tarjeta', bitcoin: 'Bitcoin', transfer: 'Transferencia' };
+const METHOD_LABELS: Record<string, string> = { cash: 'Metálico', bizum: 'Bizum', card: 'Tarjeta', bitcoin: 'Bitcoin', transfer: 'Transferencia' };
 export const methodLabel = (k: string): string => METHOD_LABELS[k] ?? k;
 
-/** El ticket de un ingreso. */
+/** El justificante de un ingreso: ticket o factura simplificada, con su número de cobro si lo trae. */
 export function dayReceipt(entry: ReceiptEntry): DayReceipt {
   if (entry.kind !== 'income') throw new Error('Solo los ingresos tienen justificante de ventas.');
   if ((entry.nature ?? 'fiscal') !== 'fiscal') throw new Error('Un apunte de proceso no tiene justificante: no va a la gestoría.');
+  const kind = entry.receipt_kind === 'invoice' ? 'invoice' : 'ticket';
+  const number = entry.receipt_number?.trim() || null;
   return {
-    title: 'Ticket de ventas',
+    title: kind === 'invoice' ? 'Factura simplificada' : number ? 'Ticket de venta' : 'Ticket de ventas',
+    number,
+    kind,
     date: entry.entry_date,
     description: entry.description,
     lines: (entry.detail ?? []).map((d) => ({ label: d.code ? `${d.code} · ${d.name}` : d.name, quantity: Number(d.quantity), cents: Number(d.amount_cents) })),
@@ -58,6 +72,8 @@ export function dayReceipt(entry: ReceiptEntry): DayReceipt {
     taxCents: Number(entry.tax_cents),
     totalCents: Number(entry.amount_cents),
     pendingRefundsCents: Number(entry.pending_refunds_cents ?? 0),
-    notice: 'Ticket de las ventas: no es una factura y no lleva serie ni numeración de factura. IVA incluido.',
+    notice: kind === 'invoice'
+      ? `Factura simplificada${number ? ` nº ${number}` : ''}. IVA incluido.`
+      : `Ticket${number ? ` nº ${number}` : ' de las ventas'}: no es una factura y no lleva serie ni numeración de factura. IVA incluido.`,
   };
 }

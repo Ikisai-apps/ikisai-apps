@@ -123,11 +123,15 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
   });
 }
 
+/** Enlace estable al justificante de un apunte (API.md §17.9): por su id o por la clave de la app de origen. */
+export const receiptLink = (entry: { id: string }) => `#/justificante/${entry.id}`;
+
 /**
- * «Justificante del día» (API.md §17.5): la hoja imprimible de un ingreso, con el emisor de Central (con red), los medios,
- * el desglose (productos o, en una liquidación, pedidos) y el IVA incluido. Sin numeración fiscal (`app/day-receipt.ts`).
+ * El justificante imprimible de un ingreso (API.md §17.5 y §17.9): emisor de Central (con red), número de cobro, fecha,
+ * líneas, medios de cobro e IVA incluido; ticket o factura simplificada según `receipt_kind` (`app/day-receipt.ts`).
+ * La vista de impresión del kit lleva «Imprimir / Guardar PDF» (y su CSS de impresión); aquí se añade «Compartir».
  */
-async function openDayReceipt(ctx: ViewContext, entry: LocalAppEntry): Promise<void> {
+async function receiptView(ctx: ViewContext, entry: LocalAppEntry, options: { onBack?: () => void } = {}): Promise<{ title: string; meta: string; element: HTMLElement }> {
   const r = dayReceipt(entry);
   const { entity } = await fetchEntity(ctx.client);
   const rate = `${String(r.rate).replace('.', ',')} %`;
@@ -135,7 +139,8 @@ async function openDayReceipt(ctx: ViewContext, entry: LocalAppEntry): Promise<v
     el('div', { class: 'issued-print-parties' },
       el('div', { id: 'receiptIssuer' }, el('small', null, 'Emisor'),
         ...(entity ? issuerLines(entity).map((l, i) => (i === 0 ? el('strong', null, l) : el('div', null, l))) : [el('div', { class: 'banner warn' }, MISSING_ENTITY)])),
-      el('div', null, el('small', null, 'Ventas'), el('strong', null, r.description), el('div', null, `${shortDate(r.date)} · ${appName(entry.source_app)}`))),
+      el('div', null, el('small', null, r.number ? 'Cobro' : 'Ventas'), el('strong', { id: 'receiptNumber' }, r.number ? `Nº ${r.number}` : r.description),
+        el('div', null, `${shortDate(r.date)} · ${appName(entry.source_app)}`), r.number ? el('div', null, r.description) : null)),
     r.lines.length ? el('table', { class: 'inv-table', id: 'receiptLines' },
       el('thead', null, el('tr', null, el('th', null, 'Concepto'), el('th', { class: 'num' }, 'Cantidad'), el('th', { class: 'num' }, 'Importe'))),
       el('tbody', null, ...r.lines.map((l) => el('tr', null, el('td', null, l.label), el('td', { class: 'num' }, String(l.quantity).replace('.', ',')), el('td', { class: 'num' }, fromCents(l.cents)))))) : null,
@@ -147,20 +152,65 @@ async function openDayReceipt(ctx: ViewContext, entry: LocalAppEntry): Promise<v
       el('div', null, el('span', null, `IVA ${rate} incluido`), el('strong', null, fromCents(r.taxCents))),
       r.pendingRefundsCents ? el('div', null, el('span', null, 'Devoluciones pendientes'), el('strong', null, fromCents(r.pendingRefundsCents))) : null,
       el('div', { class: 'total' }, el('span', null, 'TOTAL'), el('strong', null, fromCents(r.totalCents)))));
+  // «Compartir»: la hoja del sistema con el enlace (desde ella, o desde «Imprimir», el móvil guarda o comparte el PDF)
+  const url = `${location.origin}${location.pathname}${receiptLink(entry)}`;
+  const share = typeof navigator.share === 'function'
+    ? el('button', { 'data-feedback-id': 'invoices.justificante.compartir', 'data-feedback-label': 'Compartir', class: 'ghost', type: 'button', id: 'receiptShare',
+      onclick: () => void navigator.share({ title: `${r.title}${r.number ? ` ${r.number}` : ''}`, text: `${r.title} · ${fromCents(r.totalCents)} · ${shortDate(r.date)}`, url }).catch(() => undefined) }, icon('upload', 18), 'Compartir')
+    : null;
   const view = createPrintView({
     brand: { appName: 'Finance', markIcon: 'invoice', line: entity?.legal_name ?? MISSING_ENTITY },
     title: r.title,
+    subtitle: r.number ? `Nº ${r.number}` : undefined,
     meta: [shortDate(r.date), r.description],
-    draft: 'TICKET',
+    draft: r.kind === 'invoice' ? false : 'TICKET',
     intro: body,
     sections: [],
     notes: r.notice,
-    runningFoot: `Ikisai Finance · ${r.title} · ${r.date}`,
-  }, { printLabel: 'Imprimir / Guardar PDF' });
-  openSheet({ title: r.title, meta: `${shortDate(r.date)} · ${r.description}`,
-    body: el('div', { 'data-feedback-id': 'invoices.apuntes.justificante', 'data-feedback-label': 'Justificante del día', 'data-feedback-ignore': '', id: 'dayReceiptView' }, view.element),
+    runningFoot: `Ikisai Finance · ${r.title}${r.number ? ` ${r.number}` : ''} · ${r.date}`,
+  }, { printLabel: 'Imprimir / Guardar PDF', actions: share ? [share] : [], ...(options.onBack ? { onBack: options.onBack, backLabel: 'Volver' } : {}) });
+  return { title: r.title, meta: `${shortDate(r.date)} · ${r.description}`, element: view.element };
+}
+
+/** El justificante en una hoja, desde la ficha del apunte. */
+async function openDayReceipt(ctx: ViewContext, entry: LocalAppEntry): Promise<void> {
+  const v = await receiptView(ctx, entry);
+  openSheet({ title: v.title, meta: v.meta,
+    body: el('div', { 'data-feedback-id': 'invoices.apuntes.justificante', 'data-feedback-label': 'Justificante del día', 'data-feedback-ignore': '', id: 'dayReceiptView' }, v.element),
     foot: [el('button', { 'data-feedback-id': 'invoices.apuntes.justificante.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
 }
+
+/**
+ * «Justificante» a página completa (API.md §17.9): `#/justificante/<id>` o `#/justificante?ref=<source_ref>` (la clave
+ * de la app de origen, para que Flow enlace sin guardar ids). Funciona sin red con el espejo del dispositivo; el emisor
+ * de Central necesita red (sin ella, avisa).
+ */
+export const mountReceipt: ViewMount = (ctx) => {
+  const { main, client, navigate } = ctx;
+  const [path, query] = location.hash.slice(1).split('?');
+  const id = (path ?? '').split('/')[2] ?? '';
+  const ref = new URLSearchParams(query ?? '').get('ref');
+  const host = el('div', { id: 'receiptPage', 'data-feedback-id': 'invoices.justificante', 'data-feedback-label': 'Justificante', 'data-feedback-ignore': '' });
+  replace(main, host);
+  const back = () => (history.length > 1 ? history.back() : navigate('#/apuntes'));
+  async function load(): Promise<void> {
+    const entries = liveEntries((await client.list(APP_ENTRIES)) as unknown as LocalAppEntry[]);
+    const entry = entries.find((e) => (id && e.id === id) || (!!ref && e.source_ref === ref));
+    if (!entry) {
+      replace(host, el('div', { class: 'card', id: 'receiptMissing' }, el('h3', null, 'Este justificante no está en este dispositivo'),
+        el('p', null, 'Puede que aún no haya llegado de la otra app o que no se haya sincronizado. Vuelve a intentarlo con conexión.')));
+      return;
+    }
+    if (entry.kind !== 'income' || !isFiscal(entry)) {
+      replace(host, el('div', { class: 'card', id: 'receiptMissing' }, el('h3', null, 'Este apunte no tiene justificante'),
+        el('p', null, entry.kind !== 'income' ? 'Solo los cobros tienen justificante de venta.' : 'Es un apunte de proceso: no va a la gestoría ni lleva justificante.')));
+      return;
+    }
+    replace(host, (await receiptView(ctx, entry, { onBack: back })).element);
+  }
+  void load();
+  return onAnyTable(client, () => void load());
+};
 
 async function save(client: SyncClient, entry: LocalAppEntry, fields: Record<string, unknown>, okMessage: string): Promise<boolean> {
   try {
