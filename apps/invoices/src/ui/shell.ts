@@ -4,7 +4,7 @@ import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
-import { mountAppEntries, mountEvent } from './app-entries.ts';
+import { mountAppEntries, mountEvent, mountReceipt } from './app-entries.ts';
 import { startValidationConflictWatcher } from './invoices.ts';
 import { mountInvoices } from './invoice-list.ts';
 import { mergesAreOwn } from './undo.ts';
@@ -31,7 +31,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento', '#/justificante'] },
   { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
   { hash: '#/compras', label: 'Compras', icon: 'cart' },
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
@@ -45,6 +45,7 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   // Ingresos y gastos de otras apps (0244, API.md §17)
   '#/apuntes': { title: 'Ingresos y gastos de apps', screen: 'invoices.apuntes', mount: mountAppEntries },
   '#/evento': { title: 'Evento', screen: 'invoices.evento', mount: mountEvent },
+  '#/justificante': { title: 'Justificante', screen: 'invoices.justificante', mount: mountReceipt },
   '#/facturas': { title: 'Facturas', screen: 'invoices.facturas', mount: mountInvoices },
   '#/compras': { title: 'Compras', screen: 'invoices.compras', mount: mountPurchases },
   '#/gestoria': { title: 'Gestoría', screen: 'invoices.gestoria', mount: mountAccounting },
@@ -174,7 +175,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     // Enlaces de otras apps (API.md §9.6): la consulta (`#/compras?destino=…`) la lee la vista, no el router.
     const raw = full.split('?')[0] || '#/';
     // `#/facturas/nueva`, `#/facturas/<id>` y `#/facturas/<código>` montan Facturas y abren la hoja correspondiente.
-    const hash = raw.startsWith('#/facturas/') ? '#/facturas' : raw;
+    const hash = raw.startsWith('#/facturas/') ? '#/facturas' : raw.startsWith('#/justificante/') ? '#/justificante' : raw;
     const entry = ROUTES[hash] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
