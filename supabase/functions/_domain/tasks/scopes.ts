@@ -154,6 +154,10 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     // Ajustes de la app (de dónde sale la zona): los lee cualquiera con acceso a Tasks.
     case 'tasks.settings':
       return true;
+    // Plantillas de revisión (0348): las de la casa, cualquiera con acceso a Tasks; las de un área, quien vea algo de ella.
+    case 'tasks.review_templates':
+    case 'tasks.review_template_items':
+      return row.tab_id == null || someTab(scopes, tab);
     default:
       return false;
   }

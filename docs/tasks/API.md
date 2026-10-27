@@ -2173,3 +2173,25 @@ Es el hueco que Finance encontró en la cadena de compra de la barra: lo que se 
 - Las fuentes de sistema (`booking`, `feedback`, `core`, `invoices`) no valen aquí, con o sin prueba: van por `worker/requests/task` (§19.2).
 - **Para Flow y Food:** añadid las dos cabeceras a las llamadas de servidor a servidor que ya hacéis a `requests/task` y `requests/purchase`, sin más cambios. Avisad a Tasks al publicarlo para hacerlas obligatorias.
 - **Pruebas:** `tests/tasks/requests.test.ts` («fuentes de app»).
+
+## 46. Revisión de apertura (encargo de VG por Core, 27-10-2026; diseño en `MUELA/equipo/feedback/tasks/REVISION_APERTURA.md`)
+
+Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisión vive en Tasks; Flow la pinta con la pieza «lista de comprobación» del kit y marca los ítems por la capacidad `tasks.review_item_result` (§46.3).
+
+### 46.1 Plantillas (migración `0348`)
+
+- **`tasks.review_templates`**: `name`, `note`, `active` y `position`. `tab_id` nulo = plantilla de la casa, válida en todas las áreas; con área, solo de esa área.
+- **`tasks.review_template_items`**, los ítems de la plantilla:
+  - `template_id` y `position`;
+  - `zone`: `habitaciones`, `camas`, `aseos`, `duchas_acs`, `puertas`, `electricidad`, `cocina`, `maquinaria`, `accesos`, `barandillas`, `comunes`, `limpieza`, `extintores` o `agua`;
+  - `trade_id`, el oficio de Central (opcional);
+  - `title` e `instructions`;
+  - `answer`: `check` (funciona o no), `quantity`, `photo`, `reading` o `note`;
+  - `expected`: `{count}` en una cantidad, `{unit, min?, max?}` en una lectura, y `{}` en el resto;
+  - `critical`. `tab_id` es el de su plantilla.
+- **Quién:**
+  - las de la casa, solo una owner (hook `tasks.validate_review_templates`, con el rol con el que empezó el lote);
+  - las de un área, owner o editor con el área entera (`tasks.validate_batch`).
+  - Las leen todos los que ven el área (las de la casa, cualquiera con acceso a Tasks).
+- **Siembra:** la plantilla de la casa «Revisión de apertura», con un ítem genérico por zona más «Observaciones generales». Son críticos el agua caliente (lectura ≥ 50 °C), la electricidad, las cámaras (≤ 5 °C), los accesos, las barandillas, los extintores y el cloro del agua (0,2–1 ppm). Los ids son fijos y no hay datos reales.
+- **Pruebas:** `tests/tasks/review-templates.test.ts`.
