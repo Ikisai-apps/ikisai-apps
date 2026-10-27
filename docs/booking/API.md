@@ -2005,3 +2005,11 @@ El visitante, desde «Alójate aquí»:
 - **Retención de la plaza por defecto:** 2 horas, por decisión de Core en nombre de VG. Se cambia por evento.
 - **Para Finance (#904):** `booking.event_reservations_for_invoices({event_ids})`, legible por invoices, devuelve `[{reservation_id, event_id, status}]` sin datos personales. Admite hasta 200 eventos.
 
+## 42. Visitante solo de jornada: sin pernocta, sin SES (migración 1404; aceptación H)
+
+- **Al aceptar a un visitante del QR que pidió apuntarse sin noches** (`kind = 'join'`) en unas jornadas abiertas, su ficha nace con `ses_status = 'no_aplica'` y `data_status = 'no_aplica'`. Lo hace el disparador `visitor_day_only`.
+  - Huéspedes lo enseña como «Sin pernocta · sin SES» y no pide el documento.
+  - El parte de viajeros (`ses_guest_report_source_base`) lo deja fuera aunque llegue.
+- **Si después se le da cama** (una asignación con él), vuelve a `pendiente_envio` y `pendiente_datos` (`assignment_needs_ses`).
+- **En un retiro**, apuntarse es venir a dormir: nada cambia.
+
