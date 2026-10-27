@@ -2117,4 +2117,14 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
   - Errores: sin pago en línea, 409 `NOT_PAID_ONLINE`; si ya llegó, 409 `ALREADY_ARRIVED`; si la solicitud es de otro visitante, 404; sin pasarela, 503 `PAYMENTS_OFF`.
 - **Recepción:** «Devolver…» de un cobro `online` muestra lo que propone la política.
 - **Adaptador:** `refund(providerRef, cents, idempotencyKey?)` admite la clave.
+**Elegir pago en línea o en recepción (migración 1418; VG, vg-38):**
+- `reservations.lodging_pay_on_site` (por defecto `false`). Con `lodging_pay_mode = 'online'` deja además pagar en recepción. En Booking es la casilla «En línea, o también en recepción» de «Visible para huéspedes».
+- La oferta pública (`booking_public_lodging`) añade `pay_options`:
+  - `["online", "on_site"]` si el evento deja las dos; `["online"]` si es solo en línea; `["on_site"]` en `hold` y `pay_first`.
+  - `hold_hours` sale también cuando se puede pagar en recepción.
+- `POST public/stay` admite `pay: 'online' | 'on_site'`. Sin `pay`, se usa el modo del evento.
+  - `on_site` guarda la plaza `lodging_hold_hours` (`pay: 'hold'` en la respuesta).
+  - `online` la guarda 20 minutos (`lodging_online_minutes`).
+  - Un modo que el evento no deja responde 422 `PAY_MODE_NOT_ALLOWED`.
+- Antes de pagar en línea hace falta un correo: el de `contact` (o `email` suelto en `public/stay`) o el del borrador del primer viajero (`public/stay/traveler`). Sin correo, `public/stay/pay` responde 422 `EMAIL_REQUIRED`. Los datos de SES se completan al llegar o desde el enlace.
 
