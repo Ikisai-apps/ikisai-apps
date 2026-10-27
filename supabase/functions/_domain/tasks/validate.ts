@@ -109,6 +109,10 @@ const ownerPeople = { owner_person_id: nullable(uuid('INVALID_OWNER')), owner_ho
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
 
+const unitOnly: Check = (_v, field) => reject(422, 'INVALID_UNITS', 'Las unidades solo se marcan con su acción (tasks/unit-step).', { field });
+const unitCount: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 100) reject(422, 'INVALID_UNITS', 'Las unidades son un número entero de 1 a 100.', { field });
+};
 const reviewOnly: Check = (_v, field) => reject(422, 'INVALID_REVIEW', 'La revisión y sus resultados solo se escriben desde sus acciones.', { field });
 
 /** Lo esperado de un ítem de revisión (0348): {count} en una cantidad, {unit, min?, max?} en una lectura (el tipo lo cruza el hook). */
@@ -206,6 +210,8 @@ const RULES: Record<TableName, TableRules> = {
       steps_in_order: flag('INVALID_FLAG'), step_free: flag('INVALID_FLAG'),
       // Fase (0356): una viva del mismo proyecto y solo en una madre; lo comprueba el hook tasks.validate_phases.
       phase_id: nullable(uuid('INVALID_PHASE')),
+      // Unidades (0360): solo en una madre; lo comprueba el hook tasks.validate_units.
+      unit_count: nullable(unitCount),
       ...ownerPeople,
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
@@ -218,6 +224,11 @@ const RULES: Record<TableName, TableRules> = {
       status: oneOf(PHASE_STATUSES, 'INVALID_PHASE', 'Estado de fase desconocido.'), start: nullable(date), due: nullable(date), closed_note: shortText(2000),
     },
     required: ['tab_id', 'project_id', 'name', 'position'],
+  },
+  // Unidades hechas (0360, §55): solo tasks.unit_step las crea o borra; seguir a su tarea (área y proyecto) sí se puede.
+  'tasks.task_units': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: unitOnly, unit: unitOnly, done_by: unitOnly, done_at: unitOnly },
+    required: [],
   },
   'tasks.project_labels': {
     fields: { tab_id: uuid(), project_id: uuid(), label_id: uuid('INVALID_LABELS') },

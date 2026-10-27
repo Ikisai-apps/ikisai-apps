@@ -33,6 +33,8 @@ export interface LegacyTask {
    * Sin el campo, `decompose` no la toca (salvo para soltar una fase que ya no es de su proyecto).
    */
   phaseId?: Uuid | null;
+  /** Unidades (0360, §55): en la madre, cuántas; en la tarea de trabajo, cuántas hay hechas. Sin el campo, no se toca. */
+  unitCount?: number | null; unitsDone?: number;
   order: number; attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; deleteBatch: string | null; dependsOn: Uuid[]; cost: number | null;
   version: number; updatedAt: string;
   /** Quién la tocó la última vez (`updated_by`; «Lo último que tocaste» y «Juan, ayer» del plan de hoy). `decompose` lo ignora. */
@@ -120,6 +122,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
     (row.owner_person_id || row.owner_house_level ? { ownerPerson: personKey({ person_id: row.owner_person_id ?? null, house_level: row.owner_house_level ?? null }) } : {});
   const dependencies = group(live(data['tasks.task_dependencies']), (d) => d.task_id);
   const phases = group(live(data['tasks.project_phases'] ?? []), (ph) => ph.project_id);
+  const unitsDone = group(live(data['tasks.task_units'] ?? []), (u) => u.task_id);
   const taskById = new Map(data['tasks.tasks'].map((t) => [t.id, t]));
   // La fase de una tarea: la suya si es madre; la de su madre si es un paso.
   const phaseOf = (t: TaskRow): Uuid | null => (t.parent_id ? taskById.get(t.parent_id)?.phase_id ?? null : t.phase_id ?? null);
@@ -165,6 +168,8 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           ...(taskPeople.has(t.id) ? { people: taskPeople.get(t.id)!.sort(byCreation).map(personKey) } : {}),
           ...ownerOf(t),
           ...(phaseOf(t) ? { phaseId: phaseOf(t) } : {}),
+          ...(t.unit_count ? { unitCount: t.unit_count } : {}),
+          ...(unitsDone.has(t.id) ? { unitsDone: unitsDone.get(t.id)!.length } : {}),
           dependsOn: (dependencies.get(t.id) ?? []).sort(byPosition).map((d) => d.depends_on_id),
           attachments: (taskFiles.get(t.id) ?? []).sort(byPosition).map(attachment),
           order: t.position, deleted: !!t.deleted_at, deletedAt: t.deleted_at, deleteBatch: t.deleted_at, cost: t.cost,
@@ -352,6 +357,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
           position: typeof t.order === 'number' ? t.order : (taskIndex + 1) * POSITION_STEP,
           ...ownerFields(t),
           ...(t.phaseId !== undefined || currentPhase ? { phase_id: phase } : {}),
+          ...(t.unitCount !== undefined && !t.parentId ? { unit_count: t.unitCount || null } : {}),
           ...(taskRow ? {} : { tab_id: tab.id }),
         }, deletedWanted.get(t.id) ?? false);
         bridges('tasks.task_labels', 'task_id', t.id, p.id, 'label_id', t.labels ?? [], (label) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, label_id: label }));
@@ -364,6 +370,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         if (!(deletedWanted.get(t.id) ?? false)) {
           for (const c of live(data['tasks.task_comments'] ?? [])) if (c.task_id === t.id && c.project_id !== p.id) want('tasks.task_comments', c.id, { project_id: p.id });
           for (const m of live(data['tasks.task_materials'] ?? [])) if (m.task_id === t.id && m.project_id !== p.id) want('tasks.task_materials', m.id, { project_id: p.id });
+          for (const u of live(data['tasks.task_units'] ?? [])) if (u.task_id === t.id && u.project_id !== p.id) want('tasks.task_units', u.id, { project_id: p.id });
         }
       });
     });
@@ -409,7 +416,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
   return [first, second].filter((batch) => batch.length > 0).map(ordered);
 }
 
-const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials'];
+const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials', 'tasks.task_units'];
 
 /** Orden canónico de tablas; dentro de tareas y etiquetas, los padres antes que sus hijas (las FK son inmediatas). */
 function ordered(operations: Operation[]): Operation[] {
