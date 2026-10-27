@@ -240,8 +240,8 @@ export function purchaseMovement(args: { itemId: string; lineId: string; bought:
   const delta = Math.round(((args.bought ? args.quantityBase : 0) - already) * 1000) / 1000;
   if (delta === 0) return null;
   return delta > 0
-    ? { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'entrada_manual', source_app: 'food', source_ref: ref, note: args.supplier ? `Compra · ${args.supplier}` : 'Compra' }
-    : { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'salida_manual', reason: 'otro', source_app: 'food', source_ref: ref, note: 'Desmarcado como comprado' };
+    ? { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'entrada_manual', source_ref: ref, note: args.supplier ? `Compra · ${args.supplier}` : 'Compra' }
+    : { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'salida_manual', reason: 'otro', source_ref: ref, note: 'Desmarcado como comprado' };
 }
 
 /** Dónde entra lo comprado: el sitio habitual del artículo; si no tiene, una despensa o la cocina. */
@@ -262,6 +262,6 @@ export function machineStockMovement(args: { itemId: string; spaceId: string; qu
   const delta = Math.round((args.quantity - stock) * 1000) / 1000;
   if (delta === 0) return null;
   return delta > 0
-    ? { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'entrada_manual', source_app: 'food', note: 'Cantidad de Maquinaria' }
-    : { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'salida_manual', reason: 'otro', source_app: 'food', note: 'Cantidad de Maquinaria' };
+    ? { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'entrada_manual', note: 'Cantidad de Maquinaria' }
+    : { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'salida_manual', reason: 'otro', note: 'Cantidad de Maquinaria' };
 }

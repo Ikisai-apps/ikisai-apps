@@ -143,6 +143,7 @@ test('dominio · precio por unidad: última compra, si no el coste medio, y si n
 test('dominio · H-C5: cambiar lo comprado deja la Despensa con la diferencia, con la misma referencia', () => {
   const first = purchaseMovement({ itemId: 'i', lineId: 'l', bought: true, quantityBase: 2, spaceId: 's', supplier: null, movements: [] });
   assert.equal(first?.quantity, 2);
+  assert.equal('source_app' in (first ?? {}), false, 'FO4: el origen lo pone el servidor');
   const movements = [{ item_id: 'i', space_id: 's', lot_id: null, quantity: 2, source_ref: 'shopping_item:l', deleted_at: null }];
   assert.equal(purchaseMovement({ itemId: 'i', lineId: 'l', bought: true, quantityBase: 3, spaceId: 's', supplier: null, movements })?.quantity, 1);
   assert.equal(purchaseMovement({ itemId: 'i', lineId: 'l', bought: true, quantityBase: 1.5, spaceId: 's', supplier: null, movements })?.quantity, -0.5);

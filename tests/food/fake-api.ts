@@ -570,13 +570,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (allowed.includes('name') && !['food.menus', 'food.carta_lines'].includes(op.table) && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? DEFAULTS[op.table]?.[column] ?? null;
+        // FO4: el origen de un movimiento lo pone el servidor con la app del lote, no el cliente.
+        if (op.table === 'resources.movements') row.source_app = 'food';
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });
         if (op.expectedRevision !== row.revision) {
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: op.table, id: op.id, expectedRevision: op.expectedRevision, currentRevision: row.revision, current: { ...row } });
         }
-        if (op.op === 'update') Object.assign(row, fields);
+        if (op.op === 'update') Object.assign(row, op.table === 'resources.movements' ? { ...fields, source_app: row.source_app } : fields);
         if (op.op === 'delete') row.deleted_at = now;
         if (op.op === 'restore') {
           if (!row.deleted_at) throw new Fault(409, 'ROW_NOT_DELETED', 'La fila no está borrada.');
