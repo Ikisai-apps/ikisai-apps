@@ -160,6 +160,12 @@ test('Maquinaria · un solo «Dónde está», el stock antes de guardar y el avi
   await capture(page, 'b2-03-maquinaria-ficha');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+  // F-MAQ-3: la averiada se avisa a Tasks desde la fila, sin abrir la ficha.
+  const fromRow = page.waitForRequest((r) => r.url().includes(`/equipment/${chiller}/fault`));
+  await rows.filter({ hasText: 'Abatidor' }).getByRole('button', { name: 'Avisar a Tasks de Abatidor' }).click();
+  expect((await fromRow).postDataJSON().location).toBe('Cocina › Office');
+  await expect(page.getByRole('dialog', { name: 'Editar máquina' })).toBeHidden();
+  await expect(rows.filter({ hasText: 'Horno' }).getByRole('button', { name: /Avisar a Tasks/ })).toHaveCount(0);
   await rows.filter({ hasText: 'Abatidor' }).getByRole('button', { name: 'Editar Abatidor' }).click();
   const fault = page.waitForRequest((r) => r.url().includes(`/equipment/${chiller}/fault`));
   await page.locator('#reportFault').click();
