@@ -1,9 +1,12 @@
 # UI kit · estado
 
-Actualizado: 26 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), directorio `packages/ui-kit`.
+Actualizado: 27 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), directorio `packages/ui-kit`.
 
 ## Hecho
 
+- v0.61.0: `createLanes` (Flow v2 y cualquier app con columnas): pestañas o lado a lado, la elección recordada, carriles vacíos plegados, `mount` perezoso con limpieza y `onSelect` del carril principal.
+- v0.60.0: `renderQr` para Booking (QR de entrada de visitantes): SVG negro sobre blanco, nivel M, sin dependencias.
+- v0.59.0: inventario de campos: `fieldAttrs`/`markField` y la opción `field` de los campos del kit; `createStepForm` se marca solo; `fields` y `fieldsUninstrumented` en `feature-catalog.json`, e informe con `--fields-report`.
 - v0.58.0: peticiones K1–K3 de Tasks: `Stat.selected` (`aria-pressed`), la barra inferior en la app instalada (`standalone: 'flush' | 'autohide' | 'both'`, `--tabbar-offset`) y «Mis reportes» (`openFeedbackCenter({ scope: 'mine' })`).
 - v0.57.1: icono de Flow (`board`) en el lanzador; antes salía `grid`, como Central.
 - v0.56.0: `labelJoin` en `createSpaceMap` y `openLabel` por tarjeta en `createFocus`.

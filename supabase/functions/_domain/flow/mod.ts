@@ -52,6 +52,7 @@ export const PROCEDURES = {
   assignGuestNumbers: 'flow.assign_guest_numbers',
   createFlow: 'flow.create_flow',
   markPresence: 'flow.mark_presence',
+  deliverAll: 'flow.deliver_all',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -132,3 +133,4 @@ export const FLOW_ERRORS: Record<string, string> = {
 export * from './menu.ts';
 export * from './scope.ts';
 export * from './carta-sync.ts';
+export * from './metrics.ts';

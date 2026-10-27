@@ -1,5 +1,6 @@
 import { el, replace } from '../dom.ts';
 import { addDays, fromDayKey, todayKey, type DayKey } from '../calendar/calendar.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 export interface DateShortcut {
   label: string;
@@ -33,6 +34,8 @@ export interface DateFieldOptions {
   describe?: boolean;
   onChange?: (value: DayKey | null) => void;
   locale?: string;
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface DateField {
@@ -74,7 +77,7 @@ export function createDateField(options: DateFieldOptions): DateField {
   const shortcuts = options.shortcuts ?? DEFAULT_SHORTCUTS;
   let min = options.min ?? null;
   let max = options.max ?? null;
-  const input = el('input', { id, name: options.name, type: 'date', value: options.value ?? '', min: min ?? null, max: max ?? null, required: !!options.required, disabled: !!options.disabled, 'aria-describedby': `${id}-desc ${id}-error` });
+  const input = el('input', { id, name: options.name, type: 'date', value: options.value ?? '', min: min ?? null, max: max ?? null, required: !!options.required, disabled: !!options.disabled, 'aria-describedby': `${id}-desc ${id}-error`, ...fieldAttrs(options.field, { type: 'date', required: options.required, label: options.label }) });
   const description = el('span', { class: 'hint date-desc', id: `${id}-desc` });
   const error = el('span', { class: 'fielderror', id: `${id}-error`, role: 'alert' });
   const row = shortcuts.length

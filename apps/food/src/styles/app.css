@@ -476,3 +476,41 @@
 .fd-athome{margin-top:18px}
 .fd-athome>summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600}
 .fd-linesheet{display:grid;gap:10px}
+/* La carta (tanda 2): bloques Clásicos, Gourmet y Barra; cada línea con código, imagen, precio, coste y margen. */
+.carta-block{margin:14px 0}
+.carta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px}
+.carta-line{display:grid;gap:10px;padding:12px}
+.carta-line.carta-off{opacity:.72}
+.carta-line-head{display:flex;align-items:center;gap:10px;min-width:0}
+.carta-code{display:inline-grid;place-items:center;min-width:32px;height:32px;border-radius:8px;border:1px solid var(--line);font-weight:700;color:var(--ink)}
+.carta-line-title{display:grid;min-width:0}
+.carta-line-title strong{overflow-wrap:anywhere}
+.carta-line-money{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:end}
+.carta-line-money .field{margin:0}
+.carta-price{width:100%;min-height:var(--tap,46px)}
+.carta-cost,.carta-margin{display:grid;gap:2px;font-size:.92rem}
+.carta-line-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}
+.carta-line-foot .checkline,.carta-line-foot button{min-height:var(--tap,46px)}
+.carta-inline{display:flex;gap:8px;align-items:center}
+.carta-inline input{flex:1;min-width:0}
+/* Previsión de la carta: reparto, unidades esperadas y plan de bandejas (imprimible). */
+.carta-split{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.carta-split input,.carta-units{width:100%;min-height:var(--tap,46px)}
+.carta-units-list{display:grid;gap:6px}
+.carta-unitrow{display:grid;grid-template-columns:auto minmax(0,1fr) 96px 96px;gap:8px;align-items:end}
+.carta-unitrow .field{margin:0}
+.carta-unitname{overflow-wrap:anywhere}
+.carta-planhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.carta-planhead button{min-height:var(--tap,46px)}
+.carta-plan{width:100%;border-collapse:collapse;font-size:.95rem}
+.carta-plan th,.carta-plan td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.carta-plan td{white-space:nowrap}
+.carta-missing td,.carta-missing th{color:var(--alert)}
+#trayPlan{overflow-x:auto}
+@media print{
+  body.carta-printing *{visibility:hidden}
+  body.carta-printing #trayPlan,body.carta-printing #trayPlan *{visibility:visible}
+  body.carta-printing #trayPlan{position:absolute;inset:0 auto auto 0;width:100%;overflow:visible;border:0;box-shadow:none}
+  body.carta-printing #printTrays,body.carta-printing #trayMissing .btnrow{display:none}
+  body.carta-printing .carta-plan th,body.carta-printing .carta-plan td{color:#000;border-bottom-color:#999}
+}
