@@ -348,7 +348,7 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
             } }, 'Usar el nombre de la ficha')) : null);
       }
       const free = people.filter((p) => !p.user_id);
-      const select = el('select', { id: 'linkPerson', 'aria-label': 'Persona del equipo', 'data-feedback-ignore': '' },
+      const select = el('select', { id: 'linkPerson', 'data-field-id': 'central.accesos.link_person', 'aria-label': 'Persona del equipo', 'data-feedback-ignore': '' },
         el('option', { value: '' }, 'Persona nueva: crear su ficha con este nombre'),
         ...free.map((p) => el('option', { value: p.id }, p.display_name))) as HTMLSelectElement;
       const link = el('button', { class: 'primary', type: 'button', id: 'linkPersonSubmit', 'data-feedback-id': 'central.accesos.cuenta.enlazar_ficha', 'data-feedback-label': 'Enlazar con una persona', onclick: async () => {

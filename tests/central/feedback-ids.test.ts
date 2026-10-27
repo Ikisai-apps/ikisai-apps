@@ -102,3 +102,23 @@ test('el catálogo de la publicación recoge todos los ids: ninguno se construye
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('inventario de campos (UI-kit #771): cada campo con id fijo lleva su data-field-id, sin repetir entre campos distintos', () => {
+  const missing: string[] = [];
+  const owner = new Map<string, string>();
+  const clash: string[] = [];
+  for (const file of sources(path.join(SRC, 'ui'))) {
+    const text = readFileSync(file, 'utf8');
+    const rel = path.relative(SRC, file).replaceAll('\', '/');
+    for (const m of text.matchAll(/el\('(input|select|textarea)',\s*\{\s*id:\s*'([A-Za-z0-9_-]+)'([^\n]*)/g)) {
+      const field = /'data-field-id':\s*'(central\.[a-z]+\.[a-z0-9_]+)'/.exec(m[3]!)?.[1];
+      if (!field) { missing.push(`${rel}: #${m[2]}`); continue; }
+      const prev = owner.get(field);
+      if (prev && prev !== m[2]) clash.push(`${field}: #${prev} y #${m[2]}`);
+      owner.set(field, m[2]!);
+    }
+  }
+  assert.deepEqual(missing, []);
+  assert.deepEqual(clash, []);
+  assert.ok(owner.size >= 60, `se esperaban muchos campos y hay ${owner.size}`);
+});

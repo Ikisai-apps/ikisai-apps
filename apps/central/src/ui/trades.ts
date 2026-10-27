@@ -241,10 +241,10 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
 
   function openEditor(t: Trade | null, parentId?: string): void {
     let sheet: Sheet | null = null;
-    const name = el('input', { id: 'tr-name', type: 'text', maxlength: '80', required: true, value: t?.name ?? '' }) as HTMLInputElement;
-    const parent = el('select', { id: 'tr-parent' }, ...parentOptions(t)) as HTMLSelectElement;
+    const name = el('input', { id: 'tr-name', 'data-field-id': 'central.oficios.name', type: 'text', maxlength: '80', required: true, value: t?.name ?? '' }) as HTMLInputElement;
+    const parent = el('select', { id: 'tr-parent', 'data-field-id': 'central.oficios.parent' }, ...parentOptions(t)) as HTMLSelectElement;
     if (parentId) parent.value = parentId;
-    const notes = el('textarea', { id: 'tr-notes', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
+    const notes = el('textarea', { id: 'tr-notes', 'data-field-id': 'central.oficios.notes', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
     notes.value = t?.notes ?? '';
     const save = el('button', { class: 'primary', type: 'button', id: 'saveTrade', 'data-feedback-id': 'central.oficios.editar.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
       const fields = { name: name.value.trim(), parent_id: parent.value || null, notes: notes.value.trim() || null };
