@@ -373,6 +373,10 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       lanes.setLanes(lanesData);
       lanes.refresh();
     }
+    // Con filtros, el carril elegido puede quedar fuera: se elige el del agente tocado o el primero que se ve.
+    const sel = lanes.selected();
+    const want = filters.ag.length === 1 && visibleLanes.includes(filters.ag[0]!) ? filters.ag[0]! : sel && visibleLanes.includes(sel) ? sel : visibleLanes[0];
+    if (want && want !== sel) lanes.select(want);
   }
 
   function load(units: BoardUnit[]): void {
