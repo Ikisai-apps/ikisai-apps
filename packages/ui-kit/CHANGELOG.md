@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.2 · 27 de octubre de 2026
+
+**Con el dedo, nada por debajo de 44 px.** Sale de la revisión móvil a 390 px (`MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`). Lo que más se repetía en las apps eran controles de 36 px.
+
+- En pantallas táctiles (`@media (pointer: coarse)`), `--tap-sm` pasa de 36 a 44 px. Eso sube `.small`, `.iconbtn.small` y los controles `.compact` (p. ej. los `select` de filtros). Con ratón, nada cambia.
+- `.tabpill`, `.linkbtn`, `.pl-tabs button` y `.space-quick-chip` pasan a 44 px de alto, y `.tabtool` a 44 × 44 px, en pantallas táctiles.
+- Arregla sin tocar las apps los toques señalados en Booking (calendario), Central (Inicio, Cumplimiento, Inventario), Finance (Facturas, Compras) y Food (filtros del Recetario).
+
 ## 0.69.1 · 27 de octubre de 2026
 
 **«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
