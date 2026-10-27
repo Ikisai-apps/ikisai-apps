@@ -473,6 +473,8 @@ export const EN: Dictionary = {
   'Factura {numero}': 'Invoice {numero}',
   'Nuevo': 'New',
   '1 nuevo': '1 new',
+  '1 comentario nuevo': '1 new comment',
+  '{n} comentarios nuevos': '{n} new comments',
   '{n} nuevos': '{n} new',
   'Pagar en línea': 'Pay online',
   'Pagar ahora': 'Pay now',

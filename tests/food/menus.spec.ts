@@ -118,6 +118,8 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await page.locator('#eventList .row', { hasText: 'Retiro Test' }).click();
     const sheet = page.getByRole('dialog', { name: 'Retiro Test' });
     await expect(sheet).toContainText('1 alergia a pistacho (grave)');
+    // F-EVT-4: las restricciones, lo primero de la ficha.
+    await expect(sheet.locator('.ficha > *').first()).toHaveClass(/restrictions/);
     await expect(sheet).toContainText('2 veganos');
     await expect(sheet.locator('input[type=checkbox]')).toHaveCount(5); // cena · desayuno, comida, cena · desayuno
     await page.locator('#createMenu').click();
@@ -216,6 +218,16 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     expect(text).not.toMatch(/\brac\./);
     expect(text).not.toContain('alergia a pistacho');
     expect(text).not.toContain('personas');
+    // F-ORG-4: «Revisar», lo mismo en una columna y sin fotos; se vuelve a la hoja para imprimir.
+    await page.getByRole('button', { name: 'Revisar', exact: true }).click();
+    const review = page.locator('#organizerReview');
+    await expect(review).toBeVisible();
+    await expect(sheet).toBeHidden();
+    await expect(review).toContainText('Curry suave de temporada');
+    await expect(review).toContainText('Frutos de cáscara');
+    await expect(review.locator('img')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Hoja', exact: true }).click();
+    await expect(sheet).toBeVisible();
     // Como al pulsar «Imprimir»: el kit marca el documento y solo queda la hoja.
     await page.evaluate(() => document.documentElement.classList.add('printing'));
     await page.emulateMedia({ media: 'print' });
