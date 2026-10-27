@@ -3,7 +3,7 @@
  * El mismo código corre en el cliente antes de encolar y en la Edge (`beforeCommit`). Solo ve las
  * operaciones y los ámbitos del actor: las reglas que dependen del estado viven en el hook SQL.
  */
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, IMMUTABLE, REVIEW_ANSWERS, REVIEW_ZONES, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, IMMUTABLE, PHASE_STATUSES, REVIEW_ANSWERS, REVIEW_ZONES, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
 import { allAccess, canProject, fullTab, type Scopes } from './scopes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -204,9 +204,20 @@ const RULES: Record<TableName, TableRules> = {
       external_url: nullable(externalUrl),
       external_on_behalf: nullable(oneOf(['internal', 'organizer', 'guest'], 'INVALID_FIELDS', 'Origen del reporte desconocido.')),
       steps_in_order: flag('INVALID_FLAG'), step_free: flag('INVALID_FLAG'),
+      // Fase (0356): una viva del mismo proyecto y solo en una madre; lo comprueba el hook tasks.validate_phases.
+      phase_id: nullable(uuid('INVALID_PHASE')),
       ...ownerPeople,
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
+  },
+  // Fases del proyecto (0356, §51). Cerrar con tareas abiertas pide nota y borrar una con tareas vivas no se puede: lo
+  // comprueba el hook tasks.validate_phases.
+  'tasks.project_phases': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), name: text(1, 120, 'INVALID_PHASE', 'La fase necesita un nombre de hasta 120 caracteres.'), position,
+      status: oneOf(PHASE_STATUSES, 'INVALID_PHASE', 'Estado de fase desconocido.'), start: nullable(date), due: nullable(date), closed_note: shortText(2000),
+    },
+    required: ['tab_id', 'project_id', 'name', 'position'],
   },
   'tasks.project_labels': {
     fields: { tab_id: uuid(), project_id: uuid(), label_id: uuid('INVALID_LABELS') },
