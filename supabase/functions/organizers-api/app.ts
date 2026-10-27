@@ -69,7 +69,7 @@ export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'orig
       },
     }, {
       // ¿Puede quien organiza pagar en línea una factura sin enlace? (el botón «Pagar ahora» de las que no lo traen)
-      method: 'GET', pattern: 'payments/config', handler: () => ({ online: paymentsOn }),
+      method: 'GET', pattern: 'payments/config', handler: async () => ({ online: paymentsOn }),
     }, {
       // «Pagar ahora» sin enlace (F5): Finance lo crea o reutiliza el abierto. El ámbito lo comprueba Finance (0256); aquí, solo
       // que la persona pueda escribir y que los ids tengan forma. Ninguna URL de vuelta la elige el cliente.
