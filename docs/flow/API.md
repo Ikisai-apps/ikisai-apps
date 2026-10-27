@@ -474,3 +474,10 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - `add_objective({unit_id, project_id, column_key?, label, criteria: [texto], parent_id?})`;
   - `verify_criterion({unit_id, criterion_id, verified?, evidence?})`: con todos verificados el objetivo queda hecho y verificado; desverificar lo reabre;
   - `record_result({unit_id, project_id, column_key?, label, link: {app, kind, id}, parent_id?})`: hecho y verificado por quien lo anota.
+
+## 48. «Avance» para la mudanza: hitos, historial e importación (migración `0947`)
+
+- **Hito**: unidad `class = 'objective'` del tablero, sin criterios, con `payload.orden`; sus pasos son tarjetas hijas (`parent_id`) con `payload.paso`. Cumplido cuando todas sus hijas que no son backlog están hechas (recurrentes cuentan) y hay al menos una: `done` con `done_at`; si se reabre, `pending` y sin fecha. Lo recalcula `board_card` al escribir.
+- `board_card` admite `hito_id` (colgar o descolgar, `null`) y `paso`.
+- **Historial** `flow.board_history (project_id, t, hecho, pr, curso, pend, backlog, total)`: foto al escribir una tarjeta si cambian los recuentos y la última tiene más de 10 min, o si no cambian y tiene más de 6 h. Solo lectura para la pantalla.
+- **Importación** `flow.import_board(p_project uuid, p_payload jsonb)` (solo service_role): `{hitos: [{hito_id, title, orden, done_at?}], cards: [{card_id, lane_key, title, status, flag?, prio?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?, hito_id?, paso?, done_at?}], history: [{t, hecho, pr, curso, pend, backlog, total}]}`. Idempotente por id; escribe por el registro del núcleo (`core.apply_migration_operations`, lotes de 400), así llega a los móviles. Devuelve `{hitos, cards, history}`.
