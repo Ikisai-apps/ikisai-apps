@@ -48,6 +48,14 @@ test('avance · importar: hitos, tarjetas con paso e historial; un hito con todo
   const c2 = await unit(C2);
   assert.equal(c2.parent_id, H1); assert.equal(c2.payload.paso, 2); assert.equal(c2.prio, 'urgente'); assert.deepEqual(c2.payload.steps, ['Abrir', 'Cobrar']);
   assert.equal((await history()).length, 2);
+  // Cada hito es una ejecución de su cadena: un tramo por tarjeta, en orden de paso, con su carril; estado según las tarjetas.
+  const exec = async (h: string) => (await app.t.db.query<any>(`select e.* from flow.executions e join flow.units u on u.execution_id = e.id where u.id = $1`, [h])).rows[0];
+  const e1 = await exec(H1); const e2 = await exec(H2);
+  assert.equal(e1.status, 'draft'); assert.deepEqual(e1.stages.map((x: any) => x.status), ['done', 'draft']);
+  assert.equal(e2.status, 'done'); assert.deepEqual(e2.stages.map((x: any) => x.status), ['done', 'skipped']);
+  const st = (await app.t.db.query<any>(`select position, kind, lane_key from flow.definition_stages where version_id = $1 order by position`, [e1.version_id])).rows;
+  assert.deepEqual(st, [{ position: 1, kind: 'handoff', lane_key: 'flow' }, { position: 2, kind: 'handoff', lane_key: 'booking' }]);
+  assert.equal(c2.execution_id, e1.id); assert.equal(c2.stage_position, 2);
   // Por el registro del núcleo: los móviles lo reciben al sincronizar.
   const logged = await app.t.db.query(`select 1 from core.changes where app = 'flow' and row_id = $1`, [C2]);
   assert.ok(logged.rows.length >= 1);
@@ -66,6 +74,8 @@ test('avance · al hacer el último paso el hito se cumple; al reabrirlo, vuelve
   assert.equal(r.status, 200, JSON.stringify(r.data));
   let h1 = await unit(H1);
   assert.equal(h1.status, 'done'); assert.ok(h1.done_at);
+  const e1 = (await app.t.db.query<any>(`select * from flow.executions where id = $1`, [h1.execution_id])).rows[0];
+  assert.equal(e1.status, 'done'); assert.deepEqual(e1.stages.map((x: any) => x.status), ['done', 'done']);
   assert.equal((await history()).length, before + 1);
   r = await commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: BOARD, card_id: C2, lane_key: 'booking', status: 'pending' } }]);
   assert.equal(r.status, 200, JSON.stringify(r.data));
@@ -77,6 +87,8 @@ test('avance · al hacer el último paso el hito se cumple; al reabrirlo, vuelve
   const id = n.data.results[0].result.card_id;
   const c = await unit(id);
   assert.equal(c.parent_id, H1); assert.equal(c.payload.paso, 3);
+  // La tarjeta nueva es un tramo más de la cadena del hito.
+  assert.equal(c.stage_position, 3); assert.equal(c.execution_id, (await unit(H1)).execution_id);
   // Nadie importa desde el navegador.
   const bad = await commit([{ op: 'call', procedure: 'flow.import_board', args: {} }]);
   assert.notEqual(bad.status, 200);
