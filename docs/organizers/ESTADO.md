@@ -126,7 +126,7 @@
 - Fase 3: cerrada (K2 hecha el 27-10).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
-- Campos sin `data-field-id` para el inventario de Uso y cobertura (P15 de Central): 74, según `feature-catalog.mjs --fields-report`. Las funciones están al día: 173, sin ids dinámicos y con etiqueta.
+- Inventario de campos (P15 de Central): 116 campos, todos marcados, y 289 funcionalidades, todas con estimado de utilidad (0707 y 0708), sin ids dinámicos (`feature-catalog.mjs --fields-report`, 28-10).
 - Puntos abiertos que decide el usuario: API.md §13.
 
 ## Bloqueos

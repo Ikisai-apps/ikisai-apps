@@ -10,7 +10,7 @@ export function fbIgnore<T extends Element>(node: T): T {
   return node;
 }
 
-/** Marca una pieza con su id y etiqueta (literales: el catálogo de la publicación los recoge de `fbMark(nodo, 'id', 'etiqueta')`). */
+/** Marca una pieza con su id y etiqueta (literales: el catálogo de la publicación los recoge de cada llamada `fbMark(nodo, «id», «etiqueta»)`). */
 export function fbMark<T extends Element>(node: T, id: string, label: string): T {
   node.setAttribute('data-feedback-id', id);
   node.setAttribute('data-feedback-label', label);
