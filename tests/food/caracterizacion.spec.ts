@@ -156,16 +156,20 @@ test('caracterización · añadir plato: solo recetas del recetario, en orden, c
   await expect(page.locator('#menuWarnings')).toContainText('«Lentejas» no tiene los alérgenos revisados');
 });
 
-test('caracterización · recetario: archivadas solo si se piden; en prueba y sin alérgenos revisados se ve', async ({ page }) => {
+test('caracterización · recetario: arriba las del próximo retiro (F-REC-4); archivadas solo si se piden; en prueba y sin alérgenos revisados se ve', async ({ page }) => {
   await login(page);
   await page.goto(`${baseURL}/#/recetario`);
   const cards = page.locator('#recipeGrid .recipecard');
-  await expect(cards.locator('strong')).toHaveText(['Arroz con leche', 'Curry de verduras', 'Lentejas']);
+  // Decisión de Core del 27-10 (F-REC-4): arriba, las del retiro en contexto (las Lentejas, que la prueba anterior puso en la
+  // cena del Retiro Test); debajo, las demás. Por orden alfabético dentro de cada grupo.
+  await expect(page.locator('#recipeGrid .fd-gridlabel')).toHaveText(['En el próximo retiro', 'Las demás']);
+  await expect(cards.locator('strong')).toHaveText(['Lentejas', 'Arroz con leche', 'Curry de verduras']);
   await expect(cards.filter({ hasText: 'Lentejas' })).toContainText('En prueba');
   await expect(cards.filter({ hasText: 'Curry de verduras' }).locator('.chip')).toHaveCount(0); // validada: sin chip
   await capture(page, '07-recetario');
   await page.locator('#filterStatus').selectOption('archivada');
   await expect(cards.locator('strong')).toHaveText(['Bizcocho viejo']);
+  await expect(page.locator('#recipeGrid .fd-gridlabel')).toHaveCount(0); // ninguna del retiro a la vista: sin grupos
   await page.locator('#filterStatus').selectOption('');
   await cards.filter({ hasText: 'Lentejas' }).click();
   const sheet = page.getByRole('dialog', { name: 'Lentejas' });

@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  STATION_LABELS,
+  STATION_LABELS, retreatInContext,
   PREP_UNITS, allergenPresence, ingredientNeeds, needText, nextRecipeService, pendingConsumption, readableQuantity, serviceShares, stockText, weekdayLong,
   type Consumption, type IngredientNeed, type Menu, type MenuGraph, type MenuItem, type MenuService, crossContext, undeclaredAllergens, undeclaredText, type CrossContext, foodUnitFromBase, formatMethodSteps, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
@@ -158,7 +158,16 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const live = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     const visible = live.filter(matches);
-    replace(grid, ...visible.map(card));
+    // Arriba, las recetas del retiro en curso o del próximo (hallazgo F-REC-4, línea de Core del 27-10); debajo, el resto.
+    // Solo con un retiro en contexto que tenga alguna a la vista; dentro de cada grupo, por orden alfabético.
+    const retreat = retreatInContext(planning.menus, planning.services, planning.items, todayKey());
+    const inRetreat = retreat ? visible.filter((r) => retreat.recipeIds.has(r.id)) : [];
+    const rest = visible.filter((r) => !inRetreat.includes(r));
+    const groupLabel = (text: string, id: string) => el('li', { class: 'sectionlabel fd-gridlabel', id, role: 'presentation' }, text);
+    replace(grid, ...(inRetreat.length
+      ? [groupLabel(retreat!.inCourse ? 'En este retiro' : 'En el próximo retiro', 'recipesRetreat'), ...inRetreat.map(card),
+        rest.length ? groupLabel('Las demás', 'recipesRest') : null, ...rest.map(card)]
+      : visible.map(card)));
     replace(host, live.length === 0 ? empty : visible.length === 0 ? emptyFiltered : grid);
     replace(trashList, ...deleted.map((r) => fb(listRow({
       id: r.id, title: r.name, meta: [tagLine(r)], pending: r._pending === true, deleted: true,
@@ -176,7 +185,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const plans = Promise.all([
       client.list(T.menus) as Promise<Array<Mirror<Menu>>>, client.list(T.menuServices) as Promise<Array<Mirror<MenuService>>>,
       client.list(T.menuItems) as Promise<Array<Mirror<MenuItem>>>, client.list(T.consumptions) as Promise<Array<Mirror<Consumption>>>,
-    ]).then(([menus, services, items, consumptions]) => { planning = { menus, services, items, consumptions }; }).catch(() => undefined);
+    ]).then(([menus, services, items, consumptions]) => { planning = { menus, services, items, consumptions }; if (recipes.length) paint(); }).catch(() => undefined);
     // La ficha que se abre antes de que lleguen el inventario y los menús se repinta al llegar (no se queda sin cifras).
     void Promise.all([stock, plans]).then(refreshCard);
     [recipes, ingredients, lines, equipment, needs] = await Promise.all([
