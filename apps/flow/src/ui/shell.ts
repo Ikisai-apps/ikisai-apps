@@ -11,6 +11,7 @@ import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
 import { mountEditor } from './editor.ts';
 import { mountAvance } from './avance.ts';
+import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
@@ -242,6 +243,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     await enterProject(projectId);
     let entry: { title: string; slug: string; mount: ViewMount };
     if (!projectId && hash === '#/recorridos') entry = { title: 'Recorridos', slug: 'recorridos', mount: mountJourneys };
+    else if (!projectId && hash === '#/recorridos/nuevo') entry = { title: 'Nuevo recorrido', slug: 'recorridos', mount: mountJourneyEditor(null) };
+    else if (!projectId && /^#\/recorridos\/[a-z][a-z0-9_]{1,40}\/editar$/.test(hash)) entry = { title: 'Editar recorrido', slug: 'recorridos', mount: mountJourneyEditor(hash.split('/')[2]!) };
     else if (!projectId && hash === '#/nuevo') entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
     else if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };

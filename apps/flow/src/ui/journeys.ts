@@ -41,10 +41,12 @@ async function loadJourneys(client: SyncClient): Promise<Journey[]> {
   }).filter((x): x is Journey => !!x).sort((a, b) => a.def.name.localeCompare(b.def.name, 'es'));
 }
 
-export const mountJourneys: ViewMount = ({ main, client }) => {
+export const mountJourneys: ViewMount = ({ main, client, navigate }) => {
   const list = el('div', { class: 'flows', role: 'list', 'aria-label': 'Recorridos' });
+  const isOwner = client.bootstrap()?.membership.role === 'owner';
   main.append(el('h1', { class: 'col-title' }, 'Recorridos'),
-    el('p', { class: 'muted small' }, '«Aprender» es un ensayo: no registra nada. «Ejecutar» lo hace de verdad, con tu cuenta.'), list);
+    el('p', { class: 'muted small' }, '«Aprender» es un ensayo: no registra nada. «Ejecutar» lo hace de verdad, con tu cuenta.'),
+    ...(isOwner ? [el('p', null, el('button', { type: 'button', class: 'secondary', onclick: () => navigate('#/recorridos/nuevo') }, 'Nuevo recorrido'))] : []), list);
   void loadJourneys(client).then((items) => {
     if (!items.length) { replace(list, el('p', { class: 'muted' }, 'Aún no hay recorridos.')); return; }
     replace(list, ...items.map((j) => el('div', { class: 'qcard journey-card', role: 'listitem', 'data-feedback-id': `flow.recorridos.${j.def.key}`, 'data-feedback-label': j.def.name },
@@ -52,7 +54,8 @@ export const mountJourneys: ViewMount = ({ main, client }) => {
         el('small', { class: 'qcard-sub muted' }, [j.def.description, j.stages.length > 1 ? `${j.stages.length} tramos` : ''].filter(Boolean).join(' · '))),
       el('div', { class: 'flow-actions' },
         el('button', { type: 'button', class: 'secondary', onclick: () => void runJourney(client, j, 'learn') }, 'Aprender'),
-        el('button', { type: 'button', class: 'primary', onclick: () => void runJourney(client, j, 'run') }, 'Ejecutar')))));
+        el('button', { type: 'button', class: 'primary', onclick: () => void runJourney(client, j, 'run') }, 'Ejecutar'),
+        isOwner ? el('button', { type: 'button', class: 'ghost', onclick: () => navigate(`#/recorridos/${j.def.key}/editar`) }, 'Editar') : null))));
   });
   return () => undefined;
 };
