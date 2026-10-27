@@ -140,7 +140,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     },
     returnTo: { feedbackId: 'food.cabecera.volver' },
     // Guiado mínimo del kit: con `?campo=` señala el anclaje; con `?paso=` lo explica y pone «Volver a…». Sin client: no lee Flow.
-    guide: { feedbackId: 'food.guia' },
+    guide: { feedbackId: 'food.cabecera.guia' },
   });
   registerFoodReveals(navigate);
   const { main } = shell;
