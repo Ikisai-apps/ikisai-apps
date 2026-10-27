@@ -20,3 +20,7 @@ html.dark .primary:hover,html.dark .primary:focus-visible{background:#55623f}
 .tkguia{position:fixed;z-index:70;top:calc(env(safe-area-inset-top,0px) + 8px);left:12px;right:12px;display:grid;gap:6px;pointer-events:none}
 .tkguia>*{pointer-events:auto}
 .tkguia .tkguia-back{justify-self:start;min-height:44px;display:inline-flex;align-items:center;padding:0 14px;border-radius:22px;background:var(--paper);border:1px solid var(--line);color:var(--ink);font-weight:650;text-decoration:none;box-shadow:var(--shadow-2)}
+/* Segunda medición de Core Ops (27-10): los botones de faceta de Filtros a 44 px, y la actividad de Inicio se lee entera
+   (hasta tres líneas en vez de cortarse en una). */
+.facetbtn{min-height:44px}
+.activitywhat{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
