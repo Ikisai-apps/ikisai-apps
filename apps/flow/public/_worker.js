@@ -1,7 +1,9 @@
 /* Cloudflare Pages (advanced mode): proxy de mismo origen hacia la Edge Function de Flow.
    El bundle no lleva ninguna credencial privada; solo reenvía /api/v1/* y rechaza orígenes cruzados. */
 const BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/flow-api';
-const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'accept'];
+// `x-flow-customer`: el token del cliente de la carta pública (Mi pedido, pedir); `x-visitor`: el visitante del kit
+// (número por QR, traspaso a ven.ikisai.com). Sin ellas, la carta en producción no reconoce al móvil.
+const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'accept', 'x-flow-customer', 'x-visitor'];
 
 export default {
   async fetch(request, env) {
