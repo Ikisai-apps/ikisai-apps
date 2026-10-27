@@ -8,6 +8,7 @@ import { preview, type PreviewServer } from 'vite';
 import { freePort } from '../../packages/test-kit/src/net.ts';
 import { buildOrganizersApp, ORGANIZERS_VITE_CONFIG, startOrganizersServer, type OrganizersTestServer } from './server.ts';
 import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { formatFindings, mobileAudit } from '../../packages/ui-kit/testing/mobile-audit.ts';
 
 const configFile = ORGANIZERS_VITE_CONFIG;
 
@@ -1237,3 +1238,48 @@ test('organizers · guarda tu acceso: botón compacto en Mis retiros y en la fic
   await expect(page.locator('#accessSheet')).toBeVisible();
   await context.close();
 });
+
+// Revisión móvil del kit (#980, testing/mobile-audit.ts) en cada PR: a 390 px, sin desborde, sin toques de menos de 44 px
+// y sin textos cortados, en Mis retiros, el resumen del retiro y Pagos (la revisión del 27-10 encontró la cabecera «Ikis…»).
+test('organizers · revisión móvil a 390 px: Mis retiros, resumen y Pagos sin desborde, toques pequeños ni textos cortados @smoke', async ({ page }) => {
+  const a = await api.reservation({ title: 'Retiro móvil uno', confirm: true });
+  const b = await api.draftReservation({ title: 'Retiro móvil dos', status: 'negociacion' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enter(page, await api.organizerLink([a, b], 'movil@example.invalid', 'Rocío'));
+  const audit = async (where: string) => {
+    const found = await mobileAudit(page, { kinds: ['desborde', 'toque', 'cortado'] });
+    expect(found, `${where}
+${formatFindings(found)}`).toEqual([]);
+  };
+  await expect(page.locator('.orgretreat').first()).toBeVisible();
+  await audit('Mis retiros');
+  await page.locator('.orgretreat', { hasText: 'Retiro móvil uno' }).first().click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro móvil uno');
+  await audit('Resumen del retiro');
+  await page.locator('#tab-pagos').click();
+  await expect(page.locator('#payments')).toBeVisible();
+  await audit('Pagos');
+});
+
+// Guiado mínimo (kit 0.68) con el inventario de campos (P15, #979): `?campo=` lleva al campo, lo enfoca y lo resalta. En
+// tres pantallas: Diseño, el mismo campo pedido desde el resumen (registerReveal cambia de pestaña) y Experiencia.
+test('organizers · Guiado: ?campo= señala el campo en Diseño, desde el resumen (cambia de pestaña) y en Experiencia @smoke', async ({ page }) => {
+  const draft = await api.draftReservation({ title: 'Retiro guiado', status: 'negociacion' });
+  const confirmed = await api.reservation({ title: 'Retiro guiado confirmado', confirm: true });
+  await enter(page, await api.organizerLink([draft, confirmed], 'guiado@example.invalid', 'Gala'));
+  await expect(page.locator('.orgretreat').first()).toBeVisible();
+  const pointed = async (hash: string, selector: string) => {
+    // El Guiado lee `?campo=` al montar la cáscara: una carga nueva, no solo un cambio de hash (la sesión sigue guardada).
+    await page.goto('about:blank');
+    await page.goto(`${baseURL}/${hash}`);
+    const field = page.locator(selector);
+    await expect(field).toBeFocused();
+    await expect(field).toHaveClass(/guia-pulse/);
+    expect(new URL(page.url()).hash).not.toContain('campo=');
+  };
+  await pointed(`#/retiro/${draft}/diseno?campo=organizers.diseno.expected_guests`, '#d-expected_guests');
+  await pointed(`#/retiro/${draft}?campo=organizers.diseno.organizer_notes`, '#d-organizer_notes');
+  await expect(page.locator('#tab-diseno')).toHaveClass(/on/);
+  await pointed(`#/retiro/${confirmed}/experiencia?campo=organizers.experiencia.mensaje`, '#exp-message');
+});
+
