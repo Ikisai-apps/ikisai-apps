@@ -6,7 +6,8 @@ on:
     # (20–30 min por PR con la cola llena, 26-10-2026). Las comprobaciones del SHA siguen valiendo para la fusión.
     types: [opened, synchronize, reopened]
     # Sin filtro de rutas: con main protegida (14-10-2026) las comprobaciones obligatorias tienen que informar siempre.
-    # En una PR solo de documentación, «Qué ha cambiado» decide `code=false` y el job pesado queda saltado (cuenta como verde).
+    # En una PR solo de documentación, «Qué ha cambiado» decide `code=false`: lo pesado queda saltado y la puerta
+    # «Lint de migraciones, typecheck y pruebas PGlite» sale verde sin correr nada.
   workflow_call:
   # Completa cada noche (solo si main cambió en las últimas 24 h) y a mano: en las PR, de lo compartido solo va el humo.
   schedule:
@@ -29,6 +30,7 @@ jobs:
       uikit: ${{ steps.detect.outputs.uikit }}
       prefijos: ${{ steps.detect.outputs.prefijos }}
       code: ${{ steps.detect.outputs.code }}
+      pglite: ${{ steps.detect.outputs.pglite }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,12 +42,14 @@ jobs:
           #  · App tocada (su código, su API, su dominio, sus pruebas o sus migraciones): su suite completa.
           #  · Algo compartido (kit, sync-client, test-kit, _kit, CI, scripts, dependencias): solo las pruebas @smoke de
           #    cada app (la app que aún no tiene ninguna, completa). La suite entera de todas corre de noche.
+          # PGlite: scripts/ci_plan.mjs decide `pglite` (grupos de carpetas de tests/: la app tocada y las que dependen de
+          # ella; con algo compartido o fuera de una PR, todas) y `code` (false en una PR solo de docs/, MUELA/, CODEOWNERS
+          # o *.md: sin npm ci, sin PGlite y sin Playwright; solo esta detección y la puerta).
           apps="invoices booking food tasks central organizers guests flow"
-          full=""; smoke=false; uikit=false; prefijos=false; code=true
+          full=""; smoke=false; uikit=false; prefijos=false
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-            # Solo documentación (lo que antes ignoraba `paths-ignore`): sin job pesado ni Playwright.
-            if [ -n "$files" ] && ! echo "$files" | grep -Evq '^(docs/.*|CODEOWNERS|.*\.md)$'; then code=false; fi
+            echo "$files" | node scripts/ci_plan.mjs --event pull_request
             if echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then smoke=true; fi
             if echo "$files" | grep -Eq '^(packages/ui-kit/|package-lock\.json)'; then uikit=true; fi
             # CSS o HTML de una app: solo la prueba de prefijos de clases del kit (v45), para que un choque con el kit salga
@@ -60,9 +64,14 @@ jobs:
             done
           elif [ "${{ github.event_name }}" = "schedule" ] && [ -z "$(git log --since='25 hours ago' --format=%H -1)" ]; then
             echo "Sin cambios en main desde ayer: nada que probar"
+            printf 'code=false\npglite=[]\n' >> "$GITHUB_OUTPUT"
           else
             full="$apps"; uikit=true
+            node scripts/ci_plan.mjs --event "${{ github.event_name }}" < /dev/null
           fi
+          code=$(grep -E '^code=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2)
+          # Sin código, ningún Playwright (una PR solo de documentación).
+          [ "$code" = true ] || { full=""; smoke=false; }
           items=""
           for app in $apps; do
             [ -n "$(find tests/$app -name '*.spec.ts' 2>/dev/null | head -1)" ] || continue
@@ -76,15 +85,14 @@ jobs:
           echo "e2e=[${items%,}]" >> "$GITHUB_OUTPUT"
           echo "uikit=$uikit" >> "$GITHUB_OUTPUT"
           echo "prefijos=$prefijos" >> "$GITHUB_OUTPUT"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "Archivos: $(echo "${files:-}" | wc -l)  e2e=[${items%,}]  uikit=$uikit  prefijos=$prefijos  code=$code"
-  core:
-    name: Lint de migraciones, typecheck y pruebas PGlite
+  lint:
+    name: Lint de migraciones y typecheck
     needs: cambios
-    # Saltado solo en una PR de documentación; en código, migraciones, workflows, scripts, manual o programado, corre siempre.
+    # Saltado solo en una PR de documentación. El typecheck es entero siempre (≈1 min, en paralelo con PGlite).
     if: needs.cambios.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -93,9 +101,50 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: npm run test
       - name: Pruebas de los scripts de operación (Python)
         run: python3 -m unittest discover -s tests/scripts
+  pglite:
+    name: PGlite · ${{ matrix.name }}
+    needs: cambios
+    if: needs.cambios.outputs.code == 'true' && needs.cambios.outputs.pglite != '[]'
+    runs-on: ubuntu-24.04
+    # Un job por carpeta grande (la muy grande, en dos trozos; las pequeñas, juntas): el tiempo es el del grupo más lento,
+    # no la suma de las nueve apps.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.cambios.outputs.pglite) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: node scripts/run_tests.mjs ${{ matrix.folders }} ${{ matrix.shard && format('--shard={0}', matrix.shard) || '' }}
+  core:
+    # Comprobación obligatoria de main (ruleset): mismo nombre de siempre, ahora como puerta de TODO el workflow. El ruleset
+    # solo exige esta y «Qué ha cambiado»; con la fusión automática, un Playwright, los prefijos o el ui-kit en rojo tienen
+    # que tumbarla también. Saltado vale solo donde el job no tocaba; en una PR solo de documentación, verde sin correr nada.
+    name: Lint de migraciones, typecheck y pruebas PGlite
+    needs: [cambios, lint, pglite, e2e, prefijos, uikit]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - shell: bash
+        run: |
+          echo "cambios=${{ needs.cambios.result }}  lint=${{ needs.lint.result }}  pglite=${{ needs.pglite.result }}  e2e=${{ needs.e2e.result }}  prefijos=${{ needs.prefijos.result }}  uikit=${{ needs.uikit.result }}  code=${{ needs.cambios.outputs.code }}"
+          [ "${{ needs.cambios.result }}" = success ] || { echo "«Qué ha cambiado» no terminó bien"; exit 1; }
+          # Playwright, prefijos y ui-kit: verdes o saltados (no tocaban); fallo o cancelación, rojo.
+          ok() { [ "$2" = success ] || [ "$2" = skipped ] || { echo "$1: $2"; exit 1; }; }
+          ok "Playwright" "${{ needs.e2e.result }}"
+          ok "Prefijos de clases" "${{ needs.prefijos.result }}"
+          ok "Pruebas del ui-kit" "${{ needs.uikit.result }}"
+          [ "${{ needs.cambios.outputs.code }}" = true ] || { echo "Solo documentación: nada que probar"; exit 0; }
+          [ "${{ needs.lint.result }}" = success ] || { echo "Lint de migraciones o typecheck: ${{ needs.lint.result }}"; exit 1; }
+          [ "${{ needs.pglite.result }}" = success ] || { echo "Pruebas PGlite: ${{ needs.pglite.result }}"; exit 1; }
   e2e:
     name: Playwright · ${{ matrix.app }}${{ matrix.grep && ' (humo)' || '' }}
     needs: cambios

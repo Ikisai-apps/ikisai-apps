@@ -1,5 +1,47 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.62.0 · 27 de octubre de 2026
+
+**Dos peticiones de Tasks** (K4 y K5 de `docs/tasks/PETICIONES.md`, decisiones de VG del 27-10). Sin las opciones nuevas, el selector se comporta como antes.
+
+1. **K5 · Buscar por palabras** (FB_2026_070). `searchItems`, y con él el buscador de `createItemPicker` y el de `createItemCatalog`, encuentra cada palabra en cualquier orden, sin tildes ni mayúsculas: «multicapa 20» da «Tubo multicapa 20 mm».
+   - Orden de los resultados:
+     1. el nombre empieza por lo escrito;
+     2. el nombre contiene la frase;
+     3. todas las palabras aparecen al principio de palabras del nombre;
+     4. todas las palabras aparecen dentro del nombre;
+     5. lo mismo en los alias;
+     6. las palabras repartidas entre nombre y alias.
+   - Con una sola palabra, el orden es el de siempre.
+   - **Completar con nombres que ya existen:** si el primer artículo empieza por lo escrito, bajo el campo sale «→ completa «Tubo multicapa 20 mm»». Se acepta con → al final del texto o tocando la línea.
+2. **K4 · Sugeridos en el selector** (FB_2026_056, «solo ordenar el selector»). `createItemPicker({ suggested: [ids], suggestedLabel: 'Del kit del oficio' })`:
+   - al buscar, los sugeridos que coinciden van primero y llevan la marca;
+   - con el campo vacío, al entrar en él, se ofrecen ellos solos.
+   - `searchItems(…, { boost: [ids] })` hace lo mismo para cualquier lista.
+- Marca de feedback nueva: `<base>.completar`. Pruebas: `tests/v66.spec.ts`.
+
+## 0.61.0 · 27 de octubre de 2026
+
+**`createLanes`: carriles con dos vistas que se intercambian** (encargo de VG del 27-10 para Flow v2; vale para cualquier app con columnas). La API está acordada con Flow.
+- **Firma**: `createLanes({ label, lanes: [{ id, title, short?, count?, empty?, mount(body) }], view?, storageKey?, wideFrom?, selected?, onSelect?, onView?, feedbackId? })`. Devuelve `{ element, view, setView, selected, setLanes, select, refresh, destroy }`.
+- **Pestañas**: chips desplazables con título y recuento, y un carril visible. Es `tablist`/`tab`/`tabpanel`, y las flechas, Inicio y Fin cambian de carril.
+- **Lado a lado**: desplazamiento horizontal, y vertical dentro de cada carril.
+  - La altura sale de `--lanes-height`, por defecto `min(72dvh, 760px)`.
+  - Cada carril mide `clamp(172px, 50vw − 22px, 240px)` y crece hasta llenar el ancho: dos en un móvil en vertical y de 5 a 7 en un PC.
+  - Un carril `empty` se pliega a una mini columna de 44 px con el título girado (o `short`); al tocarla se despliega.
+- **Conmutador «Pestañas / Lado a lado»** siempre visible.
+  - La elección se guarda en el dispositivo (`storageKey`).
+  - Sin nada guardado, se usan pestañas por debajo de `wideFrom` (720 px) y lado a lado por encima.
+- **Ciclo de vida** (lo pidió Flow): `mount(body)` se llama una vez, cuando el carril se ve por primera vez, y puede devolver su limpieza.
+  - La limpieza se llama al quitar el carril con `setLanes`, con `refresh(id)` (que vuelve a montarlo) y con `destroy()`.
+  - En «Pestañas», los carriles ya montados se ocultan sin desmontarse; el mismo nodo pasa de una vista a otra.
+- **`onSelect(id)`** avisa del carril principal, por ejemplo para el hash o la barra inferior. Se llama:
+  - al elegir una pestaña;
+  - en «Lado a lado», al tocar una cabecera o cuando otro carril pasa a ser el primero visible (60 % o más) al desplazar.
+- **Feedback**: `feedbackId` marca `<base>.vista`, `<base>.carril` y `<base>.desplegar`; el catálogo añade esos hijos solo.
+- Tokens del kit en los dos temas y textos en inglés.
+- Pruebas: `tests/v65.spec.ts`.
+
 ## 0.60.0 · 27 de octubre de 2026
 
 **`renderQr(text, { size, label, margin })`** → `SVGSVGElement` (petición de Booking, visión V0.2: el QR de entrada de visitantes que se imprime en la ficha del evento).
