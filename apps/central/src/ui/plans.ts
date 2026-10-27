@@ -25,6 +25,9 @@
  *     tamaño, escala, poner, arrastrar, girar y quitar; cada cambio con «Deshacer»), más el catálogo de iconos, la escala
  *     del dibujo y, en la finca, la cota de cada altura;
  *   - **Imágenes del centro:** siluetas, secciones y fotos de cada edificio, que leen Guests y Organizers.
+ *   - **Curvas de nivel editables** (Recursos 0815): en «Colocar» de la finca, cada curva con sus puntos como asas; se
+ *     arrastran (o con el teclado, flechas) y se guardan en `contours[i].points` con «Deshacer». Sin puntos guardados, la
+ *     curva sale del SVG (`data-contour`).
  */
 import {
   bindOnline, confirmDialog, createSpaceMap, createSyncSpaceSource, el, icon, indexSpaces, openSheet, renderOfflineReason, replace, shapeCenter, spacePath,
@@ -36,7 +39,7 @@ import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
 import {
-  DECOR_ICONS, IMAGE_KIND_LABELS, IMAGE_KINDS, contoursFromBands, contoursFromCurves, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
+  DECOR_ICONS, IMAGE_KIND_LABELS, IMAGE_KINDS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
   type DecorRow, type ImageKind,
 } from '../app/decor.ts';
 import { activeContent, cleanSvg, foldName, generatedName, matchShapes, readSvgPlan } from '../app/svg-plan.ts';
@@ -132,6 +135,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   let tab: 'estancias' | 'decoracion' = 'estancias';
   let decorMap: SpaceMap | null = null;
   let decorScale: GridScale = 1;
+  /** Curvas de nivel leídas del SVG de cada finca (por plano), para cuando aún no se han ajustado a mano. */
+  const svgCurves = new Map<string, Array<{ spaceId: string; name: string; points: Array<[number, number]>; anchor: [number, number] }>>();
 
   const viewerHost = el('div', { id: 'plansMap' });
   const imagesHost = el('section', { id: 'centerImages', 'aria-label': 'Imágenes del centro', 'data-feedback-id': 'central.planos.imagenes', 'data-feedback-label': 'Imágenes del centro' });
@@ -430,6 +435,108 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
   const unmatchedText = (names: string[]) => `Sin estancia con ese nombre: ${names.slice(0, UNMATCHED_SHOWN).map((n) => `«${n}»`).join(', ')}${names.length > UNMATCHED_SHOWN ? ` y +${names.length - UNMATCHED_SHOWN} más` : ''}.`;
 
+  // --- Curvas de nivel de la finca (editables) ------------------------------------------------------------------------
+  /** Las curvas de cada altura: los puntos ajustados a mano (`points`) o, si no los hay, los del SVG. */
+  function curvesOf(plan: FloorPlan): Array<{ spaceId: string; name: string; points: Array<[number, number]>; anchor: [number, number] }> {
+    const raw = planRow(plan.id)?.contours;
+    const fromSvg = svgCurves.get(plan.id) ?? [];
+    const saved = Array.isArray(raw) ? raw as Array<{ spaceId: string; x: number; y: number; points?: Array<[number, number]> }> : [];
+    const ids = [...new Set([...saved.map((c) => c.spaceId), ...fromSvg.map((c) => c.spaceId)])];
+    return ids.flatMap((id) => {
+      const a = rows.find((x) => x.id === id);
+      const own = saved.find((c) => c.spaceId === id);
+      const svg = fromSvg.find((c) => c.spaceId === id);
+      const points = own?.points && own.points.length >= 2 ? own.points : svg?.points ?? [];
+      return a && points.length >= 2 ? [{ spaceId: id, name: a.name, points, anchor: [own?.x ?? svg?.anchor[0] ?? 0.02, own?.y ?? svg?.anchor[1] ?? 0.5] as [number, number] }] : [];
+    });
+  }
+  /** Lee una vez las curvas del SVG de la finca (para enseñarlas antes de ajustarlas). */
+  async function loadSvgCurves(plan: FloorPlan): Promise<void> {
+    if (svgCurves.has(plan.id) || !isEstate(plan) || typeof plan.fileId !== 'string') return;
+    svgCurves.set(plan.id, []);
+    try {
+      const local = localUrls.get(plan.id);
+      const text = await (await fetch(local ?? await r.fileUrl(plan.fileId))).text();
+      const meta = estateMeta(text);
+      const alturas = rows.filter((x) => x.kind === 'altura');
+      const anchors = contoursFromCurves(meta.contours, alturas);
+      svgCurves.set(plan.id, meta.contours.flatMap((c) => {
+        const at = anchors.find((x) => alturas.find((a) => a.id === x.spaceId && (c.name === a.name || c.name.startsWith(`${a.name} `))));
+        return at ? [{ spaceId: at.spaceId, name: c.name, points: c.points, anchor: [at.x, at.y] as [number, number] }] : [];
+      }));
+      if (alive && editing === plan.id) paintEditor();
+    } catch { svgCurves.delete(plan.id); }
+  }
+  /** Guarda la curva de una altura con sus puntos nuevos, y «Deshacer» devuelve todas las curvas como estaban. */
+  async function saveCurve(plan: FloorPlan, spaceId: string, points: Array<[number, number]>, anchor: [number, number], name: string): Promise<void> {
+    try {
+      const current = await r.get(PLANS, plan.id);
+      const before = (current as Record<string, unknown> | null)?.contours ?? null;
+      await r.commit([{ op: 'update', table: PLANS, id: plan.id, expectedRevision: Number(current?.revision ?? 0), fields: { contours: withContourPoints(before, spaceId, points, anchor) } }]);
+      toastWithAction(`Curva de «${name}» ajustada.`, { label: 'Deshacer', onClick: () => void (async () => {
+        try { const now = await r.get(PLANS, plan.id); await r.commit([{ op: 'update', table: PLANS, id: plan.id, expectedRevision: Number(now?.revision ?? 0), fields: { contours: before } }]); }
+        catch (e) { toast(describeError(e)); }
+      })() });
+    } catch (e) { toast(describeError(e)); paintEditor(); }
+  }
+  /** Pinta las curvas de la finca en el SVG de «Colocar», con un asa por punto (ratón y teclado). */
+  function drawCurves(svg: SVGSVGElement, plan: FloorPlan): SVGElement[] {
+    const NS = 'http://www.w3.org/2000/svg';
+    const w = plan.width; const h = plan.height;
+    const out: SVGElement[] = [];
+    const r0 = Math.max(w, h) * 0.008;
+    for (const c of curvesOf(plan)) {
+      const line = document.createElementNS(NS, 'polyline');
+      const attr = (pts: Array<[number, number]>) => pts.map(([x, y]) => `${(x * w).toFixed(1)},${(y * h).toFixed(1)}`).join(' ');
+      line.setAttribute('points', attr(c.points));
+      line.setAttribute('class', 'ctl-contour');
+      line.setAttribute('data-contour-for', c.spaceId);
+      line.setAttribute('aria-hidden', 'true');
+      out.push(line);
+      let pts = c.points.map(([x, y]) => [x, y] as [number, number]);
+      pts.forEach((pt, i) => {
+        const dot = document.createElementNS(NS, 'circle');
+        dot.setAttribute('cx', String(pt[0] * w)); dot.setAttribute('cy', String(pt[1] * h)); dot.setAttribute('r', String(r0));
+        dot.setAttribute('class', 'ctl-contourpt');
+        dot.setAttribute('tabindex', '0');
+        dot.setAttribute('role', 'button');
+        dot.setAttribute('data-contour-point', `${c.spaceId}:${i}`);
+        dot.setAttribute('aria-label', `Punto ${i + 1} de ${pts.length} de la curva de ${c.name}: con las flechas se mueve`);
+        dot.addEventListener('keydown', (e) => {
+          const step = e.altKey ? 0.001 : 0.005;
+          const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key] as [number, number] | undefined;
+          if (!d) return;
+          e.preventDefault();
+          pts = movePoint(pts, i, d[0], d[1]);
+          dot.setAttribute('cx', String(pts[i]![0] * w)); dot.setAttribute('cy', String(pts[i]![1] * h));
+          line.setAttribute('points', attr(pts));
+          void saveCurve(plan, c.spaceId, pts, c.anchor, c.name);
+        });
+        dot.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          const box = svg.getBoundingClientRect();
+          const start = pts.map(([x, y]) => [x, y] as [number, number]);
+          const x0 = e.clientX; const y0 = e.clientY;
+          dot.setPointerCapture?.(e.pointerId);
+          const move = (ev: PointerEvent) => {
+            pts = movePoint(start, i, (ev.clientX - x0) / box.width, (ev.clientY - y0) / box.height);
+            dot.setAttribute('cx', String(pts[i]![0] * w)); dot.setAttribute('cy', String(pts[i]![1] * h));
+            line.setAttribute('points', attr(pts));
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            if (pts.some(([x, y], n) => x !== start[n]![0] || y !== start[n]![1])) void saveCurve(plan, c.spaceId, pts, c.anchor, c.name);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+        });
+        out.push(dot);
+      });
+    }
+    return out;
+  }
+
   // --- Colocar a mano ---------------------------------------------------------------------------------------------
   let selected: string | null = null;
   function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
@@ -509,6 +616,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     }
     // Los rótulos, encima de todas las formas (el de una habitación no queda bajo sus camas), y las esquinas para estirar,
     // encima de todo: si no, la estancia de al lado las tapaba.
+    if (isEstate(plan)) { void loadSvgCurves(plan); svg.append(...drawCurves(svg, plan)); }
     svg.append(...labels, ...handles);
     const review = toReview(plan);
     const current = selected ? rows.find((s) => s.id === selected) ?? null : null;
@@ -518,7 +626,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       el('div', { class: 'blockhead' }, el('h3', null, `Colocar · ${planName(plan)}`),
         el('button', { type: 'button', class: 'linkbtn', id: 'closePlace', 'data-feedback-id': 'central.planos.colocar.cerrar', 'data-feedback-label': 'Cerrar Colocar', onclick: () => closeEditor() }, 'Cerrar')),
       tabBar(plan),
-      el('p', { class: 'hint' }, 'Arrastra una estancia para moverla y sus esquinas para estirarla; sus camas la acompañan. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.'),
+      el('p', { class: 'hint' }, isEstate(plan) ? 'Arrastra un edificio para moverlo y sus esquinas para estirarlo. Las curvas de nivel se ajustan arrastrando sus puntos (o con Tab y las flechas). Se guarda solo.'
+        : 'Arrastra una estancia para moverla y sus esquinas para estirarla; sus camas la acompañan. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.'),
       el('div', { class: 'ctl-place' },
         el('div', { class: 'ctl-placestage' }, svg),
         el('div', { class: 'ctl-placeside' },
