@@ -67,7 +67,7 @@ test('el menú común conserva las filas de hoy, sin repetir la barra de abajo, 
   for (const kept of ['tasks.menu.mis_tareas', 'tasks.menu.etiquetas', 'tasks.menu.vistas', 'tasks.menu.archivados', 'tasks.menu.papelera', 'tasks.menu.areas']) expect(work).toContain(kept);
   expect(await a.locator('#shellBottom .navbtn').allInnerTexts()).toEqual(['Inicio', 'Hoy', 'Proyectos', 'Tareas', 'Filtros']);
   expect(await menuRows(a, 'transfer')).toEqual(expect.arrayContaining(['tasks.menu.importar_keep', 'tasks.menu.exportar_json', 'tasks.menu.exportar_csv', 'tasks.menu.exportar_texto']));
-  expect(await menuRows(a, 'system')).toEqual(expect.arrayContaining(['tasks.menu.sugerencias', 'tasks.menu.sincronizacion', 'tasks.menu.historial']));
+  expect(await menuRows(a, 'system')).toEqual(expect.arrayContaining(['tasks.menu.mis_reportes', 'tasks.menu.sincronizacion', 'tasks.menu.historial']));
   expect(await menuRows(a, 'people')).toContain('tasks.menu.mi_cuenta');
   expect(await menuRows(a, 'purchases')).toEqual(['tasks.menu.compras', 'tasks.menu.suministros', 'tasks.menu.planes']);
   const drawer = await openMenu(a);
@@ -130,7 +130,7 @@ test('la marca de la cabecera abre el menú común con las apps de Ikisai y «Co
   // Las apps (sin Tasks: es la de aquí) y los interruptores de feedback.
   await expect(menu.getByRole('region', { name: 'Apps de Ikisai' })).toBeVisible();
   await expect(menu.getByRole('switch', { name: /Señalar para comentar/ })).toBeVisible();
-  await expect(menu.getByText('Sugerencias y QA').first()).toBeVisible();
+  await expect(menu.getByText('Mis reportes').first()).toBeVisible();
   // La marca lleva el icono de Tasks del kit, no el glifo genérico.
   expect(await a.locator('#appLauncher').textContent()).not.toContain('•||•');
   await a.keyboard.press('Escape');

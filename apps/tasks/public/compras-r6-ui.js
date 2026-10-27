@@ -212,9 +212,8 @@ function tcrMountPurchases(){const host=document.getElementById('tcrPurchases');
   const keep=open.filter(r=>{const p=tcrPack(r);return p.rp&&p.rp.extra>0}).length;
   const hint=list=>{const s=tcrSum(list);return s?tcrEuro(s):null};
   const pick=k=>()=>{tcrFilter=tcrFilter===k?null:k;render()};
-  const stats=tcrKit().renderStats([{value:req.length,label:'por aprobar',hint:hint(req),tone:req.length?'warn':null,onClick:pick('requested'),feedbackId:'tasks.compras.cifras.por_aprobar'},{value:app.length,label:'por comprar',hint:hint(app),onClick:pick('approved'),feedbackId:'tasks.compras.cifras.por_comprar'},{value:pur.length,label:'por recibir',hint:hint(pur),onClick:pick('purchased'),feedbackId:'tasks.compras.cifras.por_recibir'},{value:keep,label:'dejan sobra',hint:TCR_KEEP,onClick:pick('keep'),feedbackId:'tasks.compras.cifras.sobra'}],{label:'Compras abiertas · toca una cifra para filtrar'});
-  // Cuál filtra: aria-pressed en su botón (el kit aún no tiene `selected` en renderStats; pedido al UI-kit).
-  stats.querySelectorAll('button.stat-item').forEach((b,i)=>{const k=['requested','approved','purchased','keep'][i];b.setAttribute('aria-pressed',String(tcrFilter===k));if(tcrFilter===k)b.classList.add('tcr-statpick')});
+  const stats=tcrKit().renderStats([{value:req.length,label:'por aprobar',hint:hint(req),tone:req.length?'warn':null,onClick:pick('requested'),selected:tcrFilter==='requested',feedbackId:'tasks.compras.cifras.por_aprobar'},{value:app.length,label:'por comprar',hint:hint(app),onClick:pick('approved'),selected:tcrFilter==='approved',feedbackId:'tasks.compras.cifras.por_comprar'},{value:pur.length,label:'por recibir',hint:hint(pur),onClick:pick('purchased'),selected:tcrFilter==='purchased',feedbackId:'tasks.compras.cifras.por_recibir'},{value:keep,label:'dejan sobra',hint:TCR_KEEP,onClick:pick('keep'),selected:tcrFilter==='keep',feedbackId:'tasks.compras.cifras.sobra'}],{label:'Compras abiertas · toca una cifra para filtrar'});
+  // Cuál filtra: `selected` del kit 0.58 (aria-pressed y el borde de la elegida, K1).
   const shown=tcrFilter==='keep'?open.filter(r=>{const p=tcrPack(r);return p.rp&&p.rp.extra>0}):tcrFilter?open.filter(r=>r.status===tcrFilter):open;
   const ORDER={requested:0,approved:1,purchased:2};
   const sups=[...new Set(shown.map(tcrSupplierOf))].sort((a,b)=>(a==='Sin tienda')-(b==='Sin tienda')||shown.filter(r=>tcrSupplierOf(r)===b).length-shown.filter(r=>tcrSupplierOf(r)===a).length||a.localeCompare(b,'es'));
@@ -278,7 +277,7 @@ function tcrSupplyInfo(it){const stock=tcrStock(it.id),min=Number(it.min_quantit
 function tcrSupplyItems(){return tcrInv().items.filter(i=>!i.deleted_at&&i.active!==false&&tcrP().isSupplyKind(i.kind))}
 const suppliesViewBeforeCompras=suppliesView;
 suppliesView=function(){const html=suppliesViewBeforeCompras();if(generalMode()||!tab()||!fullScope(tab().id)||!Sync.core?.resources)return html;
-  return html.replace('<div class="ikisai-kit" id="suppliesCatalog"></div>','<div class="ikisai-kit tcr-host" id="tcrSupplies"></div><section class="tcr-catalog" aria-labelledby="tcrCatalogTitle"><h2 class="sectionlabel" id="tcrCatalogTitle">Todo el inventario: buscar, filtrar y dar de alta</h2><div class="ikisai-kit" id="suppliesCatalog"></div></section>')};
+  return html.replace('<div class="ikisai-kit" id="suppliesCatalog"></div>','<section class="tcr-event" id="tcrEvent" aria-labelledby="tcrEventTitle" hidden></section><div class="ikisai-kit tcr-host" id="tcrSupplies"></div><section class="tcr-catalog" aria-labelledby="tcrCatalogTitle"><h2 class="sectionlabel" id="tcrCatalogTitle">Todo el inventario: buscar, filtrar y dar de alta</h2><div class="ikisai-kit" id="suppliesCatalog"></div></section>')};
 /* Icono de la baldosa según el tipo del artículo (FB_2026_055, opción a); los iconos son los del kit. */
 const TCR_KIND_ICON={ingrediente:'chef',bebida:'chef',menaje:'chef',material:'briefcase',limpieza:'sync',higiene:'user',consumible:'cart',textil:'bed',herramienta:'settings',maquina:'bot'};
 function tcrKindIcon(kind){return TCR_KIND_ICON[kind]||'grid'}
@@ -444,11 +443,62 @@ costSectionHtml=function(taskId){const html=costSectionHtmlBeforeCompras(taskId)
   const stats=tcrKit().renderStats([{value:tcrEuro(c.materialsAmount??0),label:'materiales'},{value:tcrEuro((c.manualAmount??0)+(c.legacy||0)),label:'a mano'},{value:tcrEuro(c.total),label:'total',tone:'ok'}],{label:'Coste de la tarea'});
   return html.replace('<h3 class="sectionlabel" id="taskCostsTitle">Coste</h3>',`<h3 class="sectionlabel" id="taskCostsTitle">Coste</h3><div class="ikisai-kit tcr-coststats">${stats.outerHTML}</div>`)};
 
+/* ===================================================================================================================== */
+/* Suministros · «Compras del evento»: lo pedido desde otra app (Flow, `requests/purchase`; API.md §39.5)                */
+/* ===================================================================================================================== */
+/* Las compras con procedencia (`source_app`, migración 0342), por proyecto, con lo siguiente de cada una (aprobar,
+   comprada, ha llegado: los mismos pasos y la misma recepción que la estantería), «Elegir artículo» para que al recibir
+   entren en el inventario por Recursos como siempre, y el enlace de vuelta a la app que las pidió («‹ Volver a Tasks»).
+   Lo recibido se queda a la vista 7 días; lo rechazado no sale. */
+const TCR_SOURCE_NAMES={flow:'Flow'};
+const TCR_SOURCE_HOME={flow:'https://flow.ikisai.com/equipo/'};
+function tcrSourceName(app){return TCR_SOURCE_NAMES[app]||(app?app.charAt(0).toUpperCase()+app.slice(1):'la otra app')}
+function tcrEventRows(){const week=Date.now()-7*86400000;
+  return tcrRequests().filter(r=>r.source_app&&r.status!=='rejected'&&(r.status!=='received'||Date.parse(r.received_at||r.updated_at||0)>=week))}
+function tcrEventLink(r){const url=r.source_url||TCR_SOURCE_HOME[r.source_app];if(!url)return '';
+  const href=IkisaiKit.withReturnTo?IkisaiKit.withReturnTo(url,{from:'tasks',url:location.href,title:'Tasks'}):url;
+  return `<a class="tcr-eventlink" href="${esc(href)}" data-feedback-id="tasks.suministros.evento.volver" data-feedback-label="Ver en la app que lo pidió">Ver en ${esc(tcrSourceName(r.source_app))} ›</a>`}
+function tcrEventRow(r){const n=tcrNext(r),[label]=PURCHASE_STATUS[r.status]||[r.status],it=r.item_id?tcrItem(r.item_id):null,edit=canEdit();
+  const qty=r.quantity!=null?`${tcrNum(Number(r.quantity))}${r.unit?' '+r.unit:''}`:'';
+  const where=r.status==='received'?(it?`Entró en el inventario: ${it.name}`:'Recibida sin artículo: no entró en el inventario'):(it?`Al recibirla entra en el inventario: ${it.name}`:'Sin artículo del inventario');
+  return `<li class="tcr-eventrow" data-event-purchase="${r.id}" data-status="${esc(r.status)}">
+    <button type="button" class="tcr-eventmain" data-purchase="${r.id}" data-feedback-id="tasks.suministros.evento.abrir" data-feedback-label="Ver la solicitud"><b>${esc(r.title)}</b><span>${esc([qty,label].filter(Boolean).join(' · '))}</span><small>${esc(where)}</small></button>
+    <span class="tcr-eventactions">${n?`<button type="button" class="primary" data-event-step="${r.id}" data-feedback-id="tasks.suministros.evento.siguiente" data-feedback-label="${esc(n.label)}">${esc(n.label)}</button>`:''}${edit&&!it&&r.status!=='received'?`<button type="button" class="softbtn" data-event-item="${r.id}" data-feedback-id="tasks.suministros.evento.articulo" data-feedback-label="Elegir artículo">Elegir artículo</button>`:''}${tcrEventLink(r)}</span></li>`}
+function tcrMountEvent(){const host=document.getElementById('tcrEvent');if(!host)return;const rows=tcrEventRows();
+  if(!rows.length){host.hidden=true;host.innerHTML='';return}
+  const by=new Map();for(const r of rows){const k=r.project_id||'';if(!by.has(k))by.set(k,[]);by.get(k).push(r)}
+  const ORDER={requested:0,approved:1,purchased:2,received:3};
+  const groups=[...by.entries()].map(([k,list])=>({title:k?(purchaseAreaOf(list[0])?.projects.find(p=>p.id===k)?.title||'Proyecto'):'Sin proyecto',list:list.sort((a,b)=>ORDER[a.status]-ORDER[b.status]||(a.position||0)-(b.position||0))}))
+    .sort((a,b)=>a.title.localeCompare(b.title,'es'));
+  const open=rows.filter(r=>r.status!=='received').length,apps=[...new Set(rows.map(r=>tcrSourceName(r.source_app)))].join(' y ');
+  host.hidden=false;
+  host.innerHTML=`<h2 class="tcr-eventtitle" id="tcrEventTitle">Compras del evento <span class="count">${open}</span></h2>
+    <p class="tcr-howto">Lo que piden desde ${esc(apps)} durante el servicio. Con un artículo del inventario, al recibirlo entra en su sitio, como cualquier compra.</p>
+    ${groups.map(g=>`<section class="tcr-eventgroup" aria-label="${esc(g.title)}"><h3 class="tcr-eventproject">${esc(g.title)} <small>${tcrPlural(g.list.length,'compra','compras')}</small></h3><ul class="tcr-eventlist">${g.list.map(tcrEventRow).join('')}</ul></section>`).join('')}`;
+  host.querySelectorAll('[data-event-step]').forEach(b=>b.onclick=()=>{const r=tcrRow(b.dataset.eventStep);if(r)tcrStep(r)});
+  host.querySelectorAll('[data-event-item]').forEach(b=>b.onclick=()=>tcrEventItemSheet(b.dataset.eventItem));
+  host.querySelectorAll('[data-purchase]').forEach(b=>b.onclick=()=>purchaseSheet(b.dataset.purchase))}
+/* «Elegir artículo»: el selector del inventario del kit; la solicitud pasa a apuntar a él (y toma su unidad si no tenía),
+   con «Deshacer». Así «Ha llegado» la mete en Recursos como cualquier compra. */
+function tcrEventItemSheet(id){const r=tcrRow(id),src=typeof inventorySources==='function'?inventorySources():null;if(!r)return;
+  if(!src)return toast('El inventario no está disponible ahora mismo.');
+  openSheet(`<h2 class="sheettitle">Artículo de «${esc(r.title)}»</h2><p class="small">Al recibirla, entra en el inventario de este artículo, en su sitio.</p><div class="ikisai-kit" id="tcrEventPicker"></div>
+    <div class="actions"><button class="primary" id="tcrEventUse" type="button" data-feedback-id="tasks.suministros.evento.articulo.usar" data-feedback-label="Usar este artículo">Usar este artículo</button><button class="ghost" id="tcrEventCancel" type="button" data-feedback-id="tasks.suministros.evento.articulo.cancelar" data-feedback-label="Cancelar">Cancelar</button></div>`);
+  const picker=IkisaiKit.createItemPicker({label:'Artículo del inventario',source:src.items,spaces:src.spaces,create:true,feedbackId:'tasks.suministros.evento.articulo.elegir'});
+  document.getElementById('tcrEventPicker').append(picker.element);
+  document.getElementById('tcrEventCancel').onclick=()=>closeSheet();
+  document.getElementById('tcrEventUse').onclick=()=>{const pick=picker.get();if(!pick?.itemId)return toast('Elige un artículo del inventario.');closeSheet();tcrEventSetItem(id,pick.itemId)}}
+function tcrEventSetItem(id,itemId){const r=tcrRow(id),it=tcrItem(itemId);if(!r)return false;
+  const before={item_id:r.item_id,unit:r.unit},fields={item_id:itemId};if(!r.unit&&it?.base_unit)fields.unit=it.base_unit;
+  if(!purchaseCommit([{op:'update',table:'tasks.purchase_requests',id,expectedRevision:r.revision,fields}],null))return false;usage.track('tasks.suministros.evento.articulo');
+  offerLocalUndo(`«${r.title}» entrará en ${it?.name||'el inventario'}.`,()=>{const now=tcrRow(id);if(now)purchaseCommit([{op:'update',table:'tasks.purchase_requests',id,expectedRevision:now.revision,fields:before}],'Sin artículo otra vez.')});
+  return true}
+
 /* --- Enlaces --------------------------------------------------------------------------------------------------------- */
 const bindBeforeCompras=bind;
 bind=function(){bindBeforeCompras();
   if(state.view==='purchases')tcrMountPurchases();else tcrDestroyShelves();
-  if(state.view==='supplies')tcrMountSupplies();else{try{tcrSupplyShelves?.destroy()}catch{}tcrSupplyShelves=null}
+  if(state.view==='supplies'){tcrMountSupplies();tcrMountEvent()}else{try{tcrSupplyShelves?.destroy()}catch{}tcrSupplyShelves=null}
   if(state.view==='plans')tcrMountPlans();
   document.querySelectorAll('.tcr-host [data-purchase]').forEach(b=>{if(b.tagName==='BUTTON')b.onclick=()=>purchaseSheet(b.dataset.purchase)});
   const tr=document.getElementById('toggleRejectedPurchases');if(tr)tr.onclick=()=>{showRejectedPurchases=!showRejectedPurchases;render()};

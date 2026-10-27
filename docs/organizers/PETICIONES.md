@@ -131,7 +131,7 @@ Reglas de VG:
   - `suggestionVisible`: la ven, previsualizan y deciden solo quienes tienen permiso propio sobre ese retiro. Dirección no decide las suyas; las sigue con `scope=mine` y puede retirarlas.
   - En el cliente, lo que cambia dirección se junta en un borrador por retiro (`app/proposal-draft.ts`) que las pantallas ven encima del espejo. Se envía de una vez, como una sola sugerencia, desde «Propuesta para quien organiza». Así no sale una por campo ni se llega al límite de 30 pendientes.
   - Quien organiza ve «Propuestas del equipo de Ikisai» con lo que cambia cada una, y los botones «Aceptar» y «Descartar». Al aceptar, lo nuevo en materiales y preguntas pasa a su biblioteca (`owner_id`).
-  - Límite: una propuesta no lleva archivos (`PROPOSAL_NO_FILES`); se propone un enlace. Core lo da por bueno por ahora y lo apunta para VG.
+  - Archivos: desde el 27-10, por orden de VG, una propuesta puede llevar archivos. Dirección los sube al momento y la propuesta lleva su `file_id` (API.md §19.3).
   - Programa y Alojamiento (dentro de Experiencia) son datos operativos de Booking, y dirección es propietaria de Booking: con «todos» se escriben directo, sin propuesta (Core, 26-10).
 
 **K8 y K9:** fusionadas en la #723 (Core, 26-10).
@@ -139,3 +139,9 @@ Reglas de VG:
 Preguntas para VG (por Core):
 - Con «todos», ¿la dirección puede **escribir** en la experiencia y las ofertas de cualquier retiro, o solo verlas? Recomiendo verlo y escribirlo igual que un coorganizador (la regla dice «aparece como coorganizador»). Si es solo lectura, se marca en el ámbito.
 - ¿Los retiros cancelados siguen en «Cancelados» para siempre? Con B19 sí. Recomiendo que sí, porque es lo que pasa hoy mientras dura la sesión.
+
+## Comida que se ofrece (encargo de VG por Core, 27-10-2026)
+
+| Id | Para | Petición | Estado |
+|---|---|---|---|
+| Fd4 | Food | **Ofertas de comida para el portal:** `food.portal_offers({reservation_id, from?, to?})`, para Organizers y Guests y con el ámbito de `portal_in_scope` (con «todos», K8). Lleva:<ul><li>el menú cerrado y las cartas, con quién paga: `payer` vale `'organizador'` o `'huesped'`, y para el huésped, `charge_when` vale `'barra'` o `'cuenta'`;</li><li>días, servicios y lugar;</li><li>las líneas de la carta, con su precio de venta en céntimos con IVA, alérgenos y dietas.</li></ul>Lo interno (`audience = 'interna'`) y las líneas no disponibles no salen. `food.event_offers_projection` es la vista para Booking, no para portales | aceptada (Food, migración 1111) |

@@ -22,6 +22,8 @@ export interface MyGuest {
   /** Huésped de muestra de Booking (BG11): no cuenta en totales ni en SES. */
   preview?: boolean;
   portal_role?: PortalRole | null;
+  /** Grupo de comida de la ficha (Booking, BG16): para las ofertas de Food. */
+  meal_group?: string | null;
   reservation: { title: string; start_date: string | null; end_date: string | null; status: string; arrival_time: string | null; departure_time: string | null };
   restrictions: Restriction[];
 }

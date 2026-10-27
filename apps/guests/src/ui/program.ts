@@ -24,6 +24,8 @@ import type { Dish, Menu, ProgramItem } from '../app/portal.ts';
 import { failure, fbIgnore, fbMark, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
 import { verEnPlano } from './plan.ts';
+import { offerDays, offersBlock, type OffersPerson } from './offers.ts';
+import { offersForGuest } from '../app/offers.ts';
 
 /** Hora actual en Madrid (HH:MM). */
 export function nowMadrid(): string {
@@ -223,7 +225,7 @@ export function allergens(d: Pick<Dish, 'allergens' | 'allergens_checked'>): HTM
 
 /** Quien come: su nombre (solo con la familia junta) y lo que indicó en su alimentación. */
 /** `team`: ficha de equipo (Booking §29.4): sus restricciones no llegan a cocina (G-B1). */
-interface Eater { guestId: string; name: string | null; base: string; restrictions: Restriction[]; team: boolean }
+export interface Eater { guestId: string; name: string | null; base: string; restrictions: Restriction[]; team: boolean }
 
 /** Dietas: se ven en las etiquetas del plato; el cruce plato a plato es para alergias, intolerancias y preferencias. */
 const DIETS = new Set(['vegetariano', 'vegano', 'sin_gluten', 'sin_lactosa']);
@@ -240,7 +242,7 @@ function asRecipe(d: Dish, i: number): Recipe {
 interface Hit { eater: Eater; what: string; warn: boolean; detail: string }
 
 /** Los cruces de un plato con cada persona (G13): lo declarado avisa siempre, esté revisada o no la receta. */
-function hitsOf(d: Dish, i: number, eaters: Eater[]): Hit[] {
+export function hitsOf(d: Dish, i: number, eaters: Eater[]): Hit[] {
   const recipe = asRecipe(d, i);
   const seen = new Set<string>();
   return eaters.flatMap((p) => p.restrictions.filter((r) => r.subject?.trim() && !DIETS.has(r.restriction_type)).flatMap((r) => {
@@ -260,7 +262,7 @@ function hitsOf(d: Dish, i: number, eaters: Eater[]): Hit[] {
  * El aviso de un plato, encima de su línea de alérgenos (MUELA-078): «⚠ Lleva frutos de cáscara, que nos indicaste
  * (alergia grave). Pregunta en cocina.»; con la familia, con el nombre de cada persona. Nunca «apto».
  */
-function crossings(hits: Hit[], named: boolean): HTMLElement | null {
+export function crossings(hits: Hit[], named: boolean): HTMLElement | null {
   const lines = hits.map((h) => {
     const name = h.eater.name || t('menu.noName');
     const text = h.warn ? (named ? t('menu.crossWarn', { name, what: h.what, detail: h.detail }) : t('menu.crossWarnMine', { what: h.what, detail: h.detail }))
@@ -296,7 +298,9 @@ export function mountMenu(main: HTMLElement, ctxs: GuestContext[], notice: HTMLE
   let alive = true;
   const ctx = ctxs[0]!;
   replace(main, loading());
-  void ctx.reads.menu(ctx.grant.reservation_id, ctx.grant.guest_id).then((loaded) => {
+  // «Tus ofertas» (§9.18): las de cada persona, según su grupo de comida y si es de equipo.
+  const offersLoad = Promise.all(ctxs.map((c) => c.reads.offers(c.grant.reservation_id, c.grant.guest_id).catch(() => null)));
+  void Promise.all([ctx.reads.menu(ctx.grant.reservation_id, ctx.grant.guest_id), offersLoad]).then(([loaded, offersRaw]) => {
     if (!alive) return;
     const menu = loaded?.value ?? { status: null, services: [] };
     const named = ctxs.length > 1;
@@ -304,8 +308,11 @@ export function mountMenu(main: HTMLElement, ctxs: GuestContext[], notice: HTMLE
       base: bases?.[i] ?? `#/p/${c.grant.guest_id}`, restrictions: c.guest().restrictions, team: Boolean(c.guest().portal_role) }));
     const head = el('div', { class: 'pagehead' }, el('h2', null, t('menu.title')),
       menu.status === 'provisional' ? el('p', { class: 'chip small', id: 'menuProvisional' }, t('menu.provisional')) : null);
-    const days = daysOf(menu.services, (s) => s.date);
+    const offerPeople: OffersPerson[] = eaters.map((eater, i) => ({ eater, offers: offersForGuest(offersRaw[i]?.value ?? null, ctxs[i]!.guest().meal_group ?? null, ctxs[i]!.guest().portal_role ?? null) }));
+    const days = [...new Set([...daysOf(menu.services, (s) => s.date), ...offerDays(offerPeople)])].sort();
     if (!days.length) { replace(main, head, familyLine(ctxs), el('p', { class: 'card gcard muted', id: 'menuEmpty' }, t('menu.empty')), notice); return; }
+    const offersHost = el('div', { id: 'menuOffersHost' });
+    const customer = (guestId: string) => ctx.reads.customer(ctx.grant.reservation_id, guestId);
 
     // Lo que tiene registrado cocina, persona a persona (sin promesas clínicas, API.md §13.3), con «Cambiar».
     const listOf = (rs: Restriction[]) => rs.map((r) => r.subject ?? restrictionLabel(r.restriction_type).toLowerCase()).join(', ');
@@ -389,6 +396,7 @@ export function mountMenu(main: HTMLElement, ctxs: GuestContext[], notice: HTMLE
         return fold;
       });
       replace(list, ...blocks);
+      replace(offersHost, offersBlock(selected, today, offerPeople, named, customer));
       count.textContent = filters.size ? `${t('menu.count', { shown, total })}${filters.has('mine') ? ` ${t('menu.countMine')}` : ''}` : '';
       count.hidden = !filters.size;
       // Familia: «Lo que vigilar, persona a persona», solo si algo coincide ese día.
@@ -406,7 +414,7 @@ export function mountMenu(main: HTMLElement, ctxs: GuestContext[], notice: HTMLE
     };
     const tabs = dayTabs(days, selected, (d) => { selected = d; paint(); }, 'menuDays', 'menuList');
     fbMark(tabs, 'guests.menu.dias.elegir', 'Elegir día del menú');
-    replace(main, loaded?.stale ? staleNote(loaded.at) : null, head, familyLine(ctxs), kitchen, tabs, filterBar, count, watch, list, notice);
+    replace(main, loaded?.stale ? staleNote(loaded.at) : null, head, familyLine(ctxs), kitchen, tabs, offersHost, filterBar, count, watch, list, notice);
     paint();
   }).catch((error) => { if (alive) replace(main, failure(error)); });
   return () => { alive = false; };

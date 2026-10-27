@@ -1,6 +1,7 @@
 /**
  * «Sugerencias y QA» (especificación §7, §20 y §21; FEEDBACK.md §7 y §8.2): entrada de menú de las apps internas con
- * cuatro vistas (Mapa · Abiertos · Pendientes de verificar · Mis borradores).
+ * cuatro vistas (Mapa · Abiertos · Pendientes de verificar · Mis borradores). Con `scope: 'mine'`, «Mis reportes»: las tres
+ * últimas, solo de quien mira.
  * - **Mapa**: árbol plegado construido con `GET feedback/tree?app=` (solo ramas con reportes), con recuento por rama y
  *   búsqueda por etiqueta. Al tocar un nodo, sus reportes.
  * - **Tarjeta** de reporte: código, tipo, estado, «Me bloquea», apoyos y ruta.
@@ -44,6 +45,12 @@ export interface FeedbackCenterOptions {
   onLeave?: () => void;
   /** Dónde montar la hoja de `openFeedbackCenter`; por defecto `document.body` (en Tasks, `#kitLayer`). */
   container?: () => HTMLElement;
+  /**
+   * `'mine'` (K3, FB_2026_072): «Mis reportes», para las apps cuya revisión vive en otra (Central `#/revision`). Sin Mapa:
+   * Abiertos, Pendientes de verificar (con «Funciona» y «Sigue fallando») y Mis borradores, solo de quien mira
+   * (`GET feedback?mine=true`). Por defecto, `'all'`: las cuatro vistas de siempre.
+   */
+  scope?: 'all' | 'mine';
 }
 
 export interface FeedbackCenter {
@@ -53,6 +60,7 @@ export interface FeedbackCenter {
 }
 
 const TABS: [FeedbackCenterTab, string][] = [['map', 'Mapa'], ['open', 'Abiertos'], ['verify', 'Pendientes de verificar'], ['drafts', 'Mis borradores']];
+const MINE_TABS = TABS.filter(([id]) => id !== 'map');
 const DISPLAY_CHIP: Record<string, string> = { open: 'pending', in_progress: '', pending_verify: 'ok', verified: 'ok', dismissed: 'trash' };
 
 const when = (iso: string | null | undefined) => {
@@ -123,16 +131,18 @@ export function buildFeedbackTree(nodes: FeedbackTreeNode[]): Branch {
 
 export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCenter {
   const expanded = new Set<string>();
-  let tab: FeedbackCenterTab = options.tab ?? 'map';
+  const mine = options.scope === 'mine';
+  const tabs = mine ? MINE_TABS : TABS;
+  let tab: FeedbackCenterTab = options.tab && (!mine || options.tab !== 'map') ? options.tab : (mine ? 'open' : 'map');
   let tree: Branch | null = null;
   let query = '';
-  const tabsRow = el('div', { class: 'segmented fb-tabs', role: 'tablist', 'aria-label': kt('Sugerencias y QA') });
+  const tabsRow = el('div', { class: 'segmented fb-tabs', role: 'tablist', 'aria-label': (options.scope === 'mine' ? kt('Mis reportes') : kt('Sugerencias y QA')) });
   const body = el('div', { class: 'fb-center-body', role: 'tabpanel' });
   const element = el('div', { class: 'fb-center' }, tabsRow, body);
-  const appQ = `app=${encodeURIComponent(options.app)}`;
+  const appQ = `app=${encodeURIComponent(options.app)}${mine ? '&mine=true' : ''}`;
 
   function paintTabs(): void {
-    replace(tabsRow, ...TABS.map(([id, label]) => el('button', {
+    replace(tabsRow, ...tabs.map(([id, label]) => el('button', {
       type: 'button', role: 'tab', 'aria-selected': String(id === tab), class: id === tab ? 'on' : '', dataset: { fbTab: id },
       onclick: () => void show(id),
     }, kt(label))));
@@ -207,7 +217,7 @@ export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCe
   }
 
   async function show(next: FeedbackCenterTab): Promise<void> {
-    tab = next;
+    tab = mine && next === 'map' ? 'open' : next;
     paintTabs();
     if (tab === 'open') return list(`/feedback?status=open&${appQ}&limit=50`, null, kt('No hay reportes abiertos.'));
     if (tab === 'verify') return list(`/feedback?status=pending_verify&${appQ}&limit=50`, null, kt('Nada pendiente de verificar.'));
@@ -278,6 +288,6 @@ export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCe
 export function openFeedbackCenter(options: FeedbackCenterOptions): Sheet {
   let sheet: Sheet | null = null;
   const center = renderFeedbackCenter({ ...options, onLeave: () => { void sheet?.close(true); options.onLeave?.(); } });
-  sheet = openSheet({ title: kt('Sugerencias y QA'), body: center.element, container: options.container?.() });
+  sheet = openSheet({ title: (options.scope === 'mine' ? kt('Mis reportes') : kt('Sugerencias y QA')), body: center.element, container: options.container?.() });
   return sheet;
 }
