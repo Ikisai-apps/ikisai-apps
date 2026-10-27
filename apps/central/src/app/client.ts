@@ -22,6 +22,7 @@ export const T = {
   texts: 'central.texts',
   reviewScreens: 'central.review_screens',
   coverageDecisions: 'central.coverage_decisions',
+  agents: 'central.agents',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
@@ -63,7 +64,7 @@ export function describeError(error: unknown): string {
     case 'ORPHAN_CHILD': return 'Antes hay que enviar a la papelera lo que depende de esta ficha.';
     case 'MISSING_BASE_LANGUAGE': return 'Un texto en inglés necesita su versión en español (la que se usa cuando falta la traducción).';
     case 'KIND_MISMATCH': return 'La traducción debe tener el mismo tipo que el texto en español.';
-    case 'PERSON_IN_USE': return 'Es responsable de alguna obligación o documento: cambia el responsable o márcala inactiva.';
+    case 'PERSON_IN_USE': return 'Es responsable de alguna obligación, documento o agente: cambia el responsable o márcala inactiva.';
     case 'TASKS_FORBIDDEN': return 'Tu cuenta no puede crear tareas en Tasks. Pide acceso de editor en Tasks.';
     case 'TASKS_UNAVAILABLE': return 'Tasks no responde ahora mismo. Inténtalo más tarde.';
     case 'TASKS_REJECTED': return e.message || 'Tasks no ha aceptado la petición.';

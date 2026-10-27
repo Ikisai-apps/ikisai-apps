@@ -9,9 +9,11 @@ import {
   renderQr,
   createLanes,
   groupLanes,
+  renderCoverage,
   createProjection,
   createFieldPointer,
   registerReveal,
+  revealAnchor,
   onSaved,
   withGuideLink,
   announceSaved,
@@ -1964,10 +1966,30 @@ void regroupToday('who');
 const todaySection = section('hoy', 'Trabajos de hoy (composición)', 'Una pantalla de Flow hecha solo con piezas: carriles (createLanes) agrupados por persona, oficio o espacio (groupLanes), cada uno con una proyección del Plan de hoy de Tasks (createProjection) y «Hecha» como acción; el título abre la tarea en Tasks con el Guiado (?guia=) y «Volver a Trabajos de hoy». Cliente de mentira.',
   todayPick, el('div', { id: 'todayHost' }, todayLanes.element), el('p', null, 'Pendientes por carril: ', todayCounts));
 
+// Cobertura de campos por flujos (0.69.11), para el Revisor de Central. Datos de ejemplo: el cruce real llega del núcleo.
+const coverageOut = el('output', { id: 'coverageOut' }, '—');
+const coverage = renderCoverage({ label: 'Cobertura de campos', feedbackId: 'demo.revisor.cobertura', periodDays: 30,
+  onOpen: (r) => { coverageOut.textContent = r.field.fieldId; },
+  fields: [
+    { fieldId: 'booking.ficha.llegada', app: 'Booking', screen: 'Ficha', label: 'Hora de llegada', entity: 'booking.stays', prop: 'arrival_time', required: 'always', critical: true, declared: 'Recepción · diaria · alto impacto' },
+    { fieldId: 'guests.datos.llegada', app: 'Guests', screen: 'Mis datos', label: 'Hora de llegada (huésped)', entity: 'booking.stays', prop: 'arrival_time' },
+    { fieldId: 'finance.compra.proveedor', app: 'Finance', screen: 'Compra', label: 'Proveedor', entity: 'finance.purchases', prop: 'supplier' },
+    { fieldId: 'tasks.ficha.nota', app: 'Tasks', screen: 'Ficha', label: 'Nota de la tarea', entity: 'tasks.tasks', prop: 'note' },
+    { fieldId: 'food.receta.tiempo', app: 'Food', screen: 'Receta', label: 'Tiempo de preparación' },
+  ],
+  links: [
+    { fieldId: 'booking.ficha.llegada', via: 'direct', flows: [{ id: 'alojar', name: 'Alojar a alguien' }] },
+    { fieldId: 'guests.datos.llegada', via: 'indirect', flows: [{ id: 'alojar', name: 'Alojar a alguien' }, { id: 'acogida', name: 'Acogida' }] },
+    { fieldId: 'finance.compra.proveedor', via: 'direct', flows: [{ id: 'compra', name: 'Registrar compra' }] },
+  ],
+  usage: [{ fieldId: 'booking.ficha.llegada', activations: 214 }, { fieldId: 'tasks.ficha.nota', activations: 57 }],
+});
+
 const genericSection = section('genericas', 'Piezas genéricas (formulario libre y lista)', 'Para el catálogo de piezas de Flow: un formulario que sale de un esquema (pregunta a pregunta, revisión y «Registrar») y una lista de comprobación con quién y cuándo.',
   el('h3', null, 'Formulario libre'), el('div', { id: 'freeFormHost' }, freeForm.element, el('p', null, 'Registrado: ', formOut)),
   el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
   el('h3', null, 'Proyección (Recepción, leyendo de Booking)'), el('div', { id: 'projHost', class: 'card', style: 'padding:6px 14px' }, projection.element), el('p', null, 'Llamadas: ', projOut),
+  el('h3', null, 'Cobertura de campos por flujos (Revisor)'), el('div', { id: 'coverageHost' }, coverage.element), el('p', null, 'Abierto: ', coverageOut),
   el('h3', null, 'Carriles por cualquier clave'), el('p', null, 'Agrupar por: '), groupPick, el('div', { id: 'groupLanesHost' }, groupedLanes.element),
 );
 
@@ -2094,7 +2116,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, renderCoverage, createItemPicker, createFieldPointer, registerReveal, revealAnchor, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

@@ -1,6 +1,7 @@
 // Punto de entrada Deno de la Edge Function `invoices-api`.
 import { createInvoicesApp, DEFAULT_TASKS_API_BASE } from './app.ts';
 import { createDocumentExtractorFromEnv } from '../_kit/extract.ts';
+import { createStripeGateway } from '../_domain/payments/stripe.ts';
 
 declare const Deno: { serve: (handler: (request: Request) => Promise<Response>) => void; env: { get: (name: string) => string | undefined } };
 
@@ -17,4 +18,7 @@ const config = {
 
 // Extracción automática (API.md §6): OpenAI si existe `OPENAI_API_KEY` (decisión del usuario), Anthropic si no.
 // Sin ninguna clave responde EXTRACTION_UNAVAILABLE 503 y la app ofrece pegar el JSON.
-Deno.serve(createInvoicesApp({ ...config, extractInvoice: createDocumentExtractorFromEnv(config, (name) => Deno.env.get(name)) }));
+// Pagos en línea (finance-18): Stripe si existe `STRIPE_SECRET_KEY`; sin ella, PAYMENTS_OFF.
+const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+const payments = stripeKey ? createStripeGateway({ secretKey: stripeKey }) : null;
+Deno.serve(createInvoicesApp({ ...config, payments, extractInvoice: createDocumentExtractorFromEnv(config, (name) => Deno.env.get(name)) }));

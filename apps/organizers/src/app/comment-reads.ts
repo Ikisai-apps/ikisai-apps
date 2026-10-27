@@ -16,6 +16,26 @@ export async function readIds(client: Pick<SyncClient, 'list'>, reservationId: s
   return new Set(rows.filter((r) => r.reservation_id === reservationId && r.user_id === userId && !r.deleted_at).map((r) => String(r.report_id).toLowerCase()));
 }
 
+/** Ids de todos los comentarios que esta persona ya ha visto, en cualquiera de sus retiros (para «Mis retiros»). */
+export async function allReadIds(client: Pick<SyncClient, 'list'>, userId: string): Promise<Set<string>> {
+  const rows = await client.list(TABLES.commentReads);
+  return new Set(rows.filter((r) => r.user_id === userId && !r.deleted_at).map((r) => String(r.report_id).toLowerCase()));
+}
+
+/**
+ * «Mis retiros»: cuántos comentarios de asistentes sin ver tiene cada retiro (por id de reserva, en minúsculas). Cuenta lo
+ * mismo que la ficha (`retreatComments`): de huéspedes, sobre el evento y con su reserva.
+ */
+export function unreadByReservation(items: readonly { id: string; reporterKind: string; subject: string; scope: { reservation_id?: string } | null }[], read: ReadonlySet<string>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of items) {
+    const reservation = r.scope?.reservation_id?.toLowerCase();
+    if (r.reporterKind !== 'guest' || r.subject !== 'event' || !reservation || read.has(r.id.toLowerCase())) continue;
+    out.set(reservation, (out.get(reservation) ?? 0) + 1);
+  }
+  return out;
+}
+
 /** Los comentarios (por id) que aún no ha visto. */
 export function unreadOf(reportIds: readonly string[], read: ReadonlySet<string>): string[] {
   return reportIds.filter((id) => !read.has(id.toLowerCase()));

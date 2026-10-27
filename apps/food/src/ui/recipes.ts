@@ -6,6 +6,7 @@ import {
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
+import { recipeMedal } from './recipe-medal.ts';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -147,7 +148,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     if (ref && !navigator.onLine) void photoUrl(client, ref).then((url) => { if (!url) missing.hidden = false; });
     return el('li', null,
       el('button', { 'data-feedback-id': 'food.recetario.tarjetas.tarjeta', 'data-feedback-label': 'Tarjeta de receta', class: 'recipecard', type: 'button', 'data-id': recipe.id, 'data-pending': String(recipe._pending === true), 'aria-label': `Abrir ${recipe.name}`, onclick: () => openCard(recipe) },
-        el('span', { class: 'recipephoto' }, icon('chef', 30), img, missing),
+        el('span', { class: 'recipephoto' }, recipeMedal(recipe), img, missing),
         el('span', { class: 'recipebody' }, el('strong', { title: recipe.name }, recipe.name), el('span', { class: 'recipemeta' }, tagLine(recipe)), el('span', { class: 'chips' }, ...chips)),
       ));
   }

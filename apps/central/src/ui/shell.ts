@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, registerReveal, replace, toast,
   type LauncherCatalog, type NavItem, type Usage,
 } from '@ikisai/ui-kit';
 import { T, describeError } from '../app/client.ts';
@@ -178,6 +178,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navigate,
     navLayout: 'bar',
     returnTo: { feedbackId: 'central.cabecera.volver' },
+    // Guiado mínimo del kit (0.68): con ?campo= señala el campo; con ?paso= lo explica y ofrece «Volver a…». Sin Flow.
+    guide: { feedbackId: 'central.cabecera.guia' },
     search: { label: 'Buscar en Central…', onOpen: () => palette.open(), feedbackId: 'central.cabecera.buscar' },
     // Menú lateral común (MUELA-013): la marca abre el cajón; en el ordenador, además, la columna fija.
     menu: {
@@ -226,6 +228,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   fbMark(shell.header, 'central.cabecera', 'Cabecera');
   // La silueta de cabecera que el owner elige en «Imágenes del centro» (Recursos 0816): una lectura al arrancar.
   const offHeaderArt = mountHeaderArt(client, shell.header);
+  // Guiado: un campo del panel de Dirección puede estar en un grupo de indicadores plegado; se despliegan los plegados.
+  // (Los <details> cerrados ya los abre el kit.)
+  const offReveal = registerReveal('central.direccion', () => {
+    for (const head of main.querySelectorAll<HTMLButtonElement>('.kpigroup.folded > .kpigrouphead')) head.click();
+  });
   const launcherButton = shell.header.querySelector('#appLauncher');
   if (launcherButton) fbMark(launcherButton, 'central.cabecera.menu', 'Menú');
   const statusBar = shell.header.querySelector('#syncStatus');
@@ -350,6 +357,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offSessionEnd();
     offMenuTables.forEach((off) => off());
     offHeaderArt();
+    offReveal();
     if (menuTimer) clearTimeout(menuTimer);
     palette.destroy();
     window.removeEventListener('online', flushNames);
