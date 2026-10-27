@@ -28,6 +28,16 @@ runs:
         # Cada intento, como mucho 4 min; lo ya bajado se queda en la caché de apt y el siguiente sigue desde ahí.
         # `timeout` no llega al apt-get que lanza Playwright con sudo (otra sesión): se para a mano y se espera a que suelte
         # el cerrojo de dpkg, o el siguiente intento falla con «Could not get lock» (27-10, run 40482609722).
+        # Primero, sin apt: la imagen ubuntu-24.04 ya trae las librerías de Chromium y el navegador baja de la CDN de Playwright
+        # en segundos. `--with-deps` solo añadía fuentes (CJK, tailandesa, unifont) y xvfb, que el modo sin ventana no usa, y
+        # con el mirror apt de Azure a ~20 kB/s agotaba los 3 intentos (27-10: jobs cortados a los 720 s en #848, #874 y #876).
+        # Si Chromium no arranca (falta alguna librería), se instala lo de apt como antes.
+        launch() { node -e "require('playwright-core').chromium.launch().then((b) => b.close()).catch((e) => { console.error(e.message.split('\n')[0]); process.exit(1); })"; }
+        if npx playwright install chromium && launch; then
+          echo "Chromium listo sin paquetes del sistema"
+          exit 0
+        fi
+        echo "::warning::Chromium no arranca sin sus paquetes del sistema: se instalan con apt"
         ok=false
         for i in 1 2 3; do
           if timeout 240 npx playwright install --with-deps chromium; then ok=true; break; fi
@@ -38,6 +48,7 @@ runs:
         done
         # Para que actions/cache pueda leer lo que dejó apt (root).
         sudo chown -R "$(id -u):$(id -g)" ~/.cache/apt-pw
+        $ok && launch || ok=false
         rm -rf ~/.cache/apt-pw/partial ~/.cache/apt-pw/lock
         $ok
     - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
