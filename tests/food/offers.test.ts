@@ -99,7 +99,9 @@ test('Booking · ve las ofertas de huéspedes, nunca las internas', async () => 
 
 test('portal · Organizers sin internas y con lo provisional; Guests con las internas marcadas y solo lo validado', async () => {
   const org = await member('organizers', { reservation_id: reservation });
-  const guestUser = await member('guests', { reservation_id: reservation, guest_id: uuid() });
+  // En Guests, el ámbito es la reserva y la ficha del huésped: la lectura lleva su guest_id.
+  const guest = uuid();
+  const guestUser = await member('guests', { reservation_id: reservation, guest_id: guest });
   await assert.rejects(read('organizers', await member('organizers', { reservation_id: uuid() }), 'food.portal_offers', { reservation_id: reservation }), /OUT_OF_SCOPE/);
 
   const forOrg = await read('organizers', org, 'food.portal_offers', { reservation_id: reservation });
@@ -113,7 +115,7 @@ test('portal · Organizers sin internas y con lo provisional; Guests con las int
   assert.deepEqual(day20.services[0].included[0].options, []);
   assert.equal(day20.cartas.length, 1);
 
-  const forGuests = await read('guests', guestUser, 'food.portal_offers', { reservation_id: reservation });
+  const forGuests = await read('guests', guestUser, 'food.portal_offers', { reservation_id: reservation, guest_id: guest });
   // El menú cerrado sin validar no le llega al huésped; la interna, sí, marcada (Guests la filtra por portal_role).
   assert.deepEqual(forGuests.offers.map((o: any) => [o.name, o.audience]), [['Barra del retiro', 'huespedes'], ['Cena de ponentes', 'huespedes'], ['Equipo', 'interna']]);
   const equipo = forGuests.days.find((d: any) => d.date === day(20)).services[0].included[0];
