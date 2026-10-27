@@ -85,7 +85,12 @@ export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePick
 export {
   createSpaceMap, SPACE_MAP_MARKS, validShape, shapeCenter,
   type SpaceMap, type SpaceMapOptions, type SpaceMapLayer, type SpaceMapTone, type SpaceMapBedState, type SpaceMapPickContext, type FloorPlan, type FloorPlanSource, type PlanShape,
+  type PlanBand, type PlanContour, type SpaceMapStep,
 } from './spaces/map.ts';
+export {
+  GRID_SCALES, BED_KINDS, cellSize, cellToRel, relToCell, decorBox, validGrid, safeIconUrl, bedKindOf,
+  type GridScale, type PlanGrid, type DecorItem, type DecorIcon, type DecorChange, type BedKind,
+} from './spaces/decor.ts';
 export {
   DEFAULT_ITEM_KINDS, BASE_UNITS, itemKey, kindLabelOf, sameNameItem, similarItems, searchItems, unitsFor, baseQuantity, stockFromMovements, stockBySpace, stockSummary,
   itemFromRow, itemUnitFromRow, itemKindFromRow, newItemId, createMemoryItemSource,
