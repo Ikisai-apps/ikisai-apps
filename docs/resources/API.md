@@ -141,6 +141,11 @@ Diseño en `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`; forma acordad
 - **`space_images.header_for`** (`text[]`, por defecto vacío): apps de las que esa silueta es la cabecera (`central`, `guests`, `organizers`). Solo en `kind = 'silueta'`, sin repetidas y una imagen viva por app; para cambiarla, el mismo lote la quita de la anterior (`409 HEADER_TAKEN` si no). La escribe el owner. Las lecturas dan `headerFor` en cada imagen; cada portal toma la suya.
 - **Pruebas:** `tests/resources/decor-estate.test.ts`.
 
+## 2.9 El mapa para el visitante que se aloja (migración 0817, VG 27-10-2026)
+
+- `resources.portal_plans` se registra como lectura pública **solo para código de Edge** (`core.allow_public_read('resources_portal_plans', …)`, sin exponerla al navegador).
+- La sirve guests-api en `GET public/plans` («Alójate aquí»), que exige la identidad de visitante, un evento con noches y que el visitante haya entrado en él. Sin sesión, nunca.
+
 ## 3. Inventario (fase R3, migración 0802)
 
 Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de artículo, solo el owner. Huéspedes, organizadores y outsiders no lo ven.

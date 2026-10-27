@@ -415,7 +415,8 @@ Diseño: `MUELA/equipo/feedback/food/LISTA_COMPRA.md`.
     - con título «Arroz · 3 kg (Evento)»;
     - con `due`, el día antes del evento;
     - con la nota del proveedor y de qué menús sale;
-    - con el enlace `#/eventos/<id>/compra`.
+    - con el enlace `#/eventos/<id>/compra`;
+    - con `item_id`, el artículo de Recursos de la fila, si lo tiene (Tasks #874, API §39.6): al recibirla, Tasks apunta la entrada de stock con su coste.
     Después lo apunta en las líneas.
   - `POST events/:id/shopping/refresh` vuelve a pedir con la misma referencia, que devuelve la compra con su estado sin crear otra. Marca las líneas `comprado` (`purchased`) o `recibido` (`received`).
 - **Pantalla `#/eventos/<id>/compra`:** se abre desde la ficha del evento con «Lista de la compra del evento».

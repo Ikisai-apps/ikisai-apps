@@ -51,7 +51,7 @@ export function mountAccess(tab: AccessTab): ViewMount {
     switch (tab) {
       case 'cuentas': void mountAccounts(body, admin, client, me, state, ctx.navigate, ctx.usage); break;
       case 'alta': void mountInvite(body, admin, client, ctx.navigate, ctx.usage, state); break;
-      case 'agentes': void mountAgents(body, admin, state, ctx.usage); break;
+      case 'agentes': void mountAgents(body, admin, state, ctx.usage, client); break;
       case 'registro': void mountLog(body, admin, state); break;
     }
     return () => { state.alive = false; for (const c of state.cleanups.splice(0)) c(); };

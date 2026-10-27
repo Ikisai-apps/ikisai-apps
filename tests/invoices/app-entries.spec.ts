@@ -102,9 +102,41 @@ test('ingresos de apps: lista, notas, ficha y resultado del evento', async ({ pa
     await page.locator('#appEntrySheet').getByRole('link').click();
   });
 
+  await test.step('arqueo del día: lo cobrado por medio y el total a cuadrar, imprimible', async () => {
+    await page.goto(`${baseURL}/#/arqueo?dia=2026-10-31`);
+    await expect(page.locator('#cashCountMethods')).toContainText('Metálico');
+    await expect(page.locator('#cashCountCash')).toContainText('798,00');
+    await expect(page.locator('#cashCountTotal')).toContainText('1.232,50');
+    await expect(page.locator('#cashCountSources')).toContainText('Barra y caja (Flow)');
+    await page.goto(`${baseURL}/#/apuntes`);
+    await page.locator('#appEntriesList li.row', { hasText: '31-10' }).getByText('Barra · Evento de octubre · 31-10').click();
+    await page.locator('#appEntrySheet').getByRole('link').click();
+  });
+
   await test.step('el evento: ingresos de apps menos gastos, sin IVA', async () => {
     await expect(page.locator('#eventStats')).toContainText('1.120,45');
     await expect(page.locator('#eventMoves')).toContainText('Barra · Evento de octubre · 31-10 · Flow');
+  });
+
+  await test.step('alojamiento y barra (finance-15): sin la lectura de Booking lo avisa; con ella suma el alojamiento de la reserva', async () => {
+    await expect(page.locator('#eventBalance')).toContainText('1.120,45');
+    await expect(page.locator('#eventLodgingMissing')).toBeVisible();
+    // Booking publica las reservas del evento y hay una emitida a la reserva, cobrada en parte (señal cobrada, saldo pendiente)
+    const RES = '7c1e9a40-2b3d-4e5f-8a6b-1c2d3e4f5a60';
+    api.setEventReservations([{ reservation_id: RES, event_id: EVENT, status: 'confirmada' }]);
+    api.seed('invoices.issued_invoices', [
+      { id: 'e0000000-0000-4000-8000-000000000001', full_number: 'PA-2026-0101', status: 'registrada', description: 'Señal del alojamiento', issue_date: '2026-10-01', payment_status: 'cobrada', base_total: 400, total: 440 },
+      { id: 'e0000000-0000-4000-8000-000000000002', full_number: 'PA-2026-0102', status: 'registrada', description: 'Saldo del alojamiento', issue_date: '2026-10-29', payment_status: 'pendiente', base_total: 600, total: 660 },
+    ]);
+    api.seed('invoices.issued_allocations', [
+      { id: 'f0000000-0000-4000-8000-000000000001', issued_invoice_id: 'e0000000-0000-4000-8000-000000000001', target_app: 'booking', target_kind: 'reservation', target_id: RES, target_label: 'Reserva', allocated_amount: 400 },
+      { id: 'f0000000-0000-4000-8000-000000000002', issued_invoice_id: 'e0000000-0000-4000-8000-000000000002', target_app: 'booking', target_kind: 'reservation', target_id: RES, target_label: 'Reserva', allocated_amount: 600 },
+    ]);
+    await page.reload();
+    await expect(page.locator('#eventBalance')).toContainText('1.000,00');
+    await expect(page.locator('#eventBalance')).toContainText('por cobrar 600,00');
+    await expect(page.locator('#eventLodgingMissing')).toHaveCount(0);
+    await expect(page.locator('#eventMoves')).toContainText('Alojamiento (reserva)');
     await page.getByRole('link', { name: '‹ Ingresos y gastos de apps' }).click();
     await expect(page.getByRole('heading', { name: 'Ingresos y gastos de apps', level: 2 })).toBeVisible();
   });

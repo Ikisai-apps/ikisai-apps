@@ -60,10 +60,13 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   assert.equal(v('central.people_active'), 1);
   assert.equal(v('central.people_records_expired'), 1);
   assert.equal(JSON.stringify(dash.data).includes('Marga'), false);
-  // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no. No depende de cuáles sean.
+  // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no, y las que publican
+  // solo para otros roles (p. ej. Guests, {owner}) se omiten para el lector. No depende de cuáles sean.
   const published = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and name <> 'central.central_kpi_projection'`)).rows.map((r) => r.app);
-  const expected = ['booking', 'guests', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
+  const expected = ['booking', 'guests', 'organizers', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
   assert.deepEqual(dash.data.unavailable, expected);
+  const forReader = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and not ('reader' = any(roles))`)).rows.map((r) => r.app);
+  for (const hidden of forReader) assert.equal(dash.data.items.some((i: any) => i.app === hidden), false, `${hidden}: el lector no la ve`);
 });
 
 test('kpis · otra app publica su proyección con el contrato y entra en el panel', async () => {
@@ -119,6 +122,16 @@ test('kpis · R7: temas del panel en su orden; lo que no tiene tema va detrás, 
   assert.deepEqual(groupBySection(['guests.ses_sent_30d', 'guests.signatures_done', 'guests.portal_entered_pct', 'guests.retreats_ses_pending'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
     ['Portal y firmas', ['guests.portal_entered_pct', 'guests.signatures_done']],
     ['Partes de viajeros', ['guests.retreats_ses_pending', 'guests.ses_sent_30d']],
+  ]);
+  // Organizers (#959): un solo tema, con lo que falta delante.
+  assert.deepEqual(groupBySection(['organizers.reports_sent_30d', 'organizers.retreats_without_access'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
+    ['Quien organiza', ['organizers.retreats_without_access', 'organizers.reports_sent_30d']],
+  ]);
+  // Finance (#955): cobros, facturas recibidas y el mes y el trimestre.
+  assert.deepEqual(groupBySection(['invoices.vat_quarter', 'invoices.unpaid', 'invoices.collected_today', 'invoices.pending_collection', 'invoices.expenses_month'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
+    ['Cobros', ['invoices.collected_today', 'invoices.pending_collection']],
+    ['Facturas recibidas', ['invoices.unpaid']],
+    ['Mes y trimestre', ['invoices.expenses_month', 'invoices.vat_quarter']],
   ]);
   // Una app sin claves con tema se queda en un solo bloque y en el orden de llegada.
   assert.deepEqual(groupBySection([{ kpi: 'tasks.b' }, { kpi: 'tasks.a' }]).map((g) => [g.title, g.items.map((i) => i.kpi)]), [[null, ['tasks.b', 'tasks.a']]]);

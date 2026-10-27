@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
+  BED_LAYOUT_PROJECTION, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
   type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -135,7 +135,20 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
       },
     },
     // Panel de dirección (API.md §7.2): lee la proyección de KPIs de cada app con la clave de servicio y la registración
-    // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`.
+    // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`; si la app
+    // la publica solo para otros roles (FORBIDDEN), se omite: no es que no tenga indicadores, es que este rol no los ve.
+    // Camas en el plano con un solo modelo (VG, 27-10): la disposición de cada cama la guarda Booking y Central la lee aquí
+    // para derivar su forma. Si Booking no responde, ninguna cama en el plano (`available: false`), nunca la forma vieja.
+    {
+      method: 'GET', pattern: 'beds/layout', handler: async ({ ctx }) => {
+        try {
+          const out = await read<{ rows: BedLayout[] }>(ctx, BED_LAYOUT_PROJECTION, { limit: 2000 });
+          return { rows: out.rows.map((b) => ({ resource_bed_id: b.resource_bed_id, resource_space_id: b.resource_space_id, cols: Number(b.cols), rows: Number(b.rows), x: Number(b.x), y: Number(b.y), rot: Number(b.rot), label: b.label ?? null })), available: true };
+        } catch {
+          return { rows: [], available: false };
+        }
+      },
+    },
     {
       method: 'GET', pattern: 'dashboard', handler: async ({ ctx }) => {
         const snapshot = await supabase.rpc<{ rows: KpiTarget[] }>('core_snapshot_table', { p_app: ctx.app, p_role: ctx.membership.role, p_table: 'central.kpi_targets', p_include_deleted: false, p_limit: 1000, p_offset: 0 });
@@ -153,7 +166,8 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
                 periodStart: row.period_start, periodEnd: row.period_end, direction: row.direction, link: row.link, computedAt: row.computed_at,
                 target: target?.target ?? null, state: kpiState(value, target) });
             }
-          } catch {
+          } catch (error) {
+            if (isFault(error) && error.code === 'FORBIDDEN') return;
             unavailable.push(source.app);
           }
         }));

@@ -10,16 +10,19 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { claimGuest, ensureVisitor, errorCodeOf, forgetVisitor, lodgingUnlocked, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
 import { languageSelect } from './language.ts';
 import { offersBlock } from './offers.ts';
+import { accessBox } from './visitor-access.ts';
+import { mountLodge } from './lodge.ts';
+import { stayBlock, stayRequestText } from './stay.ts';
 
 const LIST = '#/v';
-const EVENT = /^#\/v\/([A-Za-z0-9]{10})$/;
+const EVENT = /^#\/v\/([A-Za-z0-9]{10})(\/alojate)?$/;
 
 /** ¿Es una ruta del portal del visitante? */
 export function isVisitorHash(hash: string): boolean {
@@ -47,7 +50,7 @@ export function renderVisitor(root: HTMLElement): () => void {
   const route = () => {
     const mine = ++token;
     const m = location.hash.match(EVENT);
-    if (m) void showEvent(m[1]!.toUpperCase(), mine); else void showList(mine);
+    if (m) void showEvent(m[1]!.toUpperCase(), mine, m[2] ? 'alojate' : 'evento'); else void showList(mine);
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
   };
@@ -89,7 +92,7 @@ export function renderVisitor(root: HTMLElement): () => void {
       footer());
   }
 
-  async function showEvent(code: string, mine: number): Promise<void> {
+  async function showEvent(code: string, mine: number, tab: 'evento' | 'alojate' = 'evento'): Promise<void> {
     replace(main, loading());
     let loaded: Awaited<ReturnType<typeof publicEvent>>;
     try {
@@ -119,6 +122,34 @@ export function renderVisitor(root: HTMLElement): () => void {
         el('span', { class: 'chip small gstatus' }, t(event.status === 'abierto' ? 'visitor.open' : 'visitor.closed'))),
       event.summary ? el('p', { id: 'visitorSummary' }, event.summary) : null);
 
+    // «Alójate aquí» (VG, por Core): pestaña aparte, abierta en este móvil por el QR del evento o por el enlace de la carta
+    // de Flow (`/e/<código>?alojate`). Sin abrir, ni la pestaña ni las noches.
+    const lodging = event.lodging && lodgingUnlocked(code);
+    const tabs = lodging ? el('nav', { class: 'segmented gvisitor-tabs', id: 'visitorTabs', 'aria-label': t('visitor.tabs') },
+      ...([['evento', `#/v/${code}`, t('visitor.tabEvent')], ['alojate', `#/v/${code}/alojate`, t('lodge.tab')]] as const).map(([key, href, label]) => el('a', {
+        href, class: tab === key ? 'on' : '', 'aria-current': tab === key ? 'page' : null, dataset: { tab: key },
+        'data-feedback-id': 'guests.visitante.pestana.abrir', 'data-feedback-label': 'Pestaña del visitante',
+      }, label))) : null;
+    if (lodging && tab === 'alojate') {
+      // «Reservar antes» (la solicitud con `hold` o `pay_first`), opción secundaria y plegada.
+      const stay = stayBlock(event, today, {
+        send: async (input) => {
+          await sendStay(code, input);
+          rememberEvent(code);
+          toast(t('stay.sent'));
+          location.hash = `#/v/${code}`;
+        },
+        error: visitorError,
+      });
+      const later = el('details', { class: 'card gcard', id: 'lodgeLater', 'data-feedback-id': 'guests.visitante.alojate.antes', 'data-feedback-label': 'Reservar antes' },
+        el('summary', null, t('lodge.later')), stay);
+      rememberEvent(code);
+      const lodgeHost = el('div', { id: 'lodgeHost' });
+      replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, lodgeHost, later, footer());
+      mountLodge(lodgeHost, event, today, { alive: () => current(mine) && location.hash.endsWith('/alojate') });
+      return;
+    }
+
     // Sin identidad todavía: se entra sin dar nada.
     if (!visitorToken()) {
       const enter = el('button', { type: 'button', class: 'primary wide', id: 'visitorEnter', 'data-feedback-id': 'guests.visitante.evento.entrar', 'data-feedback-label': 'Entrar como visitante',
@@ -126,7 +157,7 @@ export function renderVisitor(root: HTMLElement): () => void {
           enter.setAttribute('disabled', '');
           try { await ensureVisitor(code); rememberEvent(code); route(); } catch (error) { enter.removeAttribute('disabled'); toast(visitorError(error)); }
         } }, t('visitor.enter'));
-      replace(main, loaded.stale ? staleNote(loaded.at) : null, head,
+      replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs,
         el('section', { class: 'card gcard', id: 'visitorWelcome' }, el('p', null, t('visitor.enterText')), enter), footer());
       return;
     }
@@ -135,7 +166,7 @@ export function renderVisitor(root: HTMLElement): () => void {
     const offersHost = el('div', { id: 'visitorOffers' });
     const requestsHost = el('div', { id: 'visitorRequests' });
     const orderHost = el('section', { class: 'card gcard', id: 'visitorOrder' });
-    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, offersHost, orderHost, requestsHost, invitation(), footer());
+    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, offersHost, orderHost, requestsHost, invitation(), footer());
     const join = async () => { const c = await visitorJoin(code); return { number: c.number, carta_url: c.carta_url, account_open: c.account_open }; };
 
     // Ofertas públicas (FD5): la pieza del Menú, sin cruce personal.
@@ -191,7 +222,17 @@ export function renderVisitor(root: HTMLElement): () => void {
     const joined = list.find((r) => r.kind === 'join' && r.status !== 'descartada');
     const repaint = () => void paintRequests(code, event, host, mine);
     const sent = list.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorSent' }, ...list.map((r) => el('li', { dataset: { kind: r.kind, status: r.status } },
-      el('strong', null, r.kind === 'join' ? t('visitor.joinSent') : t('visitor.contactSent')), ' · ', requestText(r)))) : null;
+      el('strong', null, r.kind === 'join' ? t('visitor.joinSent') : r.kind === 'stay' ? t('stay.sentTitle') : t('visitor.contactSent')), ' · ', requestText(r),
+      r.kind === 'stay' ? el('span', { class: 'small gstay-sent' }, stayRequestText(r)) : null,
+      // Aceptada con ficha: «Tu ficha está lista» (entra con un enlace de un solo uso; el núcleo comprueba que es suya).
+      r.id && r.status === 'aceptada' && (r.kind === 'join' || r.kind === 'stay') ? el('button', { type: 'button', class: 'primary small gclaim', dataset: { request: r.id },
+        'data-feedback-id': 'guests.visitante.ficha.entrar', 'data-feedback-label': 'Tu ficha está lista',
+        onclick: async (e: Event) => {
+          const button = e.currentTarget as HTMLButtonElement;
+          button.disabled = true;
+          try { const out = await claimGuest(code, r.id!); location.assign(`/i/${out.loginToken}`); }
+          catch (error) { button.disabled = false; toast(errorCodeOf(error) === 'NOT_FOUND' ? t('vlink.notReady') : visitorError(error)); }
+        } }, t('vlink.ready')) : null))) : null;
 
     const field = (id: string, label: string, help: string | null, attrs: Record<string, string> = {}) => {
       const input = el('input', { id, class: 'input', ...attrs }) as HTMLInputElement;
@@ -249,7 +290,10 @@ export function renderVisitor(root: HTMLElement): () => void {
   }
 
   function footer(): HTMLElement {
+    // «Guarda tu acceso» (tarjeta 3): en «Mis eventos» y en cada evento; para recuperar el de otro móvil, el mismo correo.
+    const code = location.hash.match(EVENT)?.[1]?.toUpperCase() ?? null;
     return el('footer', { class: 'gvisitor-foot' },
+      accessBox(code, () => route()),
       el('p', { class: 'small' }, t('visitor.onlyHere')),
       visitorToken() ? el('button', { type: 'button', class: 'ghost', id: 'visitorForget', 'data-feedback-id': 'guests.visitante.movil.salir', 'data-feedback-label': 'Salir de este móvil',
         onclick: async () => { await forgetVisitor(); location.hash = LIST; route(); } }, icon('logout', 16), ' ', t('visitor.forget')) : null);
@@ -266,6 +310,8 @@ function visitorError(error: unknown): string {
     case 'NETWORK': return t('error.offline');
     case 'RESERVATION_NOT_OPEN': return t('retreats.notOpen');
     case 'RATE_LIMITED': return t('visitor.busy');
+    case 'NO_AVAILABILITY': return t('stay.noAvailability');
+    case 'NO_LODGING': return t('stay.noLodging');
     case 'INVALID_FIELDS': return t('error.invalid');
     default: return t('error.generic');
   }
@@ -299,9 +345,13 @@ export function openEvents(): HTMLElement {
   return host;
 }
 
-/** `/e/<código>` → `#/v/<CÓDIGO>` (sin el código en la ruta), o null si no es una entrada de visitante. */
-export function visitorEntry(pathname: string): string | null {
+/** `/e/<código>` → `#/v/<CÓDIGO>` (sin el código en la ruta; con `?alojate`, `#/v/<CÓDIGO>/alojate`), o null si no es una entrada de visitante. */
+export function visitorEntry(pathname: string, search = ''): string | null {
   const m = pathname.match(/^\/e\/([^/?#]*)\/?$/);
   if (!m) return null;
-  return EVENT_CODE.test(m[1] ?? '') ? `#/v/${m[1]!.toUpperCase()}` : LIST;
+  if (!EVENT_CODE.test(m[1] ?? '')) return LIST;
+  // Por el QR o por la carta de Flow se abre «Alójate aquí» en este móvil; con `?alojate`, directamente en esa pestaña.
+  const code = m[1]!.toUpperCase();
+  unlockLodging(code);
+  return new URLSearchParams(search).has('alojate') ? `#/v/${code}/alojate` : `#/v/${code}`;
 }

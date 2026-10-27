@@ -24,6 +24,14 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgentry .login-card h2{margin:18px 0 6px;font-size:1.2rem}
 .orgentry #entryContact{font-weight:600}
 .orgentry-foot{margin-top:16px}
+/* Entrar con un código por correo (0108) */
+.orgcode{margin-top:18px;text-align:left}
+.orgcode h3{margin:0 0 4px;font-size:1rem}
+.orgcode .field{display:grid;gap:4px;margin:8px 0}
+.orgcode input{width:100%}
+/* Pagar en línea (fase 6) */
+.orgpaylist{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
+.orgpaylist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 /* Móvil (revisión del 27-10): sin el selector ES | EN en la cabecera, el título «Ikisai Organizers» cabe; el idioma, en el menú. */
 @media (max-width:600px){.orglang-head{display:none}}
 
@@ -59,7 +67,8 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 #retreatHead{display:grid;gap:6px;margin:0 0 10px}
 #retreatHead .orghead-meta{margin:0;color:var(--muted)}
 #retreatTabs{position:relative}
-#retreatTabs.orgtabs-fade::after{content:"";position:absolute;top:4px;right:0;bottom:14px;width:36px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2));pointer-events:none}
+/* Hay más pestañas a la derecha (revisión móvil del 27-10: «Experiencia» quedaba cortada sin aviso): degradado y una flecha. */
+#retreatTabs.orgtabs-fade::after{content:"›";position:absolute;top:4px;right:0;bottom:14px;width:48px;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;box-sizing:border-box;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2) 55%);color:var(--muted);font-size:1.4rem;font-weight:700;line-height:1;pointer-events:none}
 #retreatTabs.orgtabs-fade.end::after{display:none}
 .orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto;scrollbar-width:none}
 .orgtabs::-webkit-scrollbar{display:none}
@@ -395,4 +404,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 /* Comentarios de tus asistentes (resumen del retiro) */
 .orgcomments{display:grid;gap:12px}
 .orgcomment>p{margin:0}
+/* Leídos y sin leer (0706) */
+.orgcomment-new{border-left:3px solid var(--warn);padding-left:10px}
+#retreatComments h3 .orgcomments-new{margin-left:8px;vertical-align:middle}
 .orgcomment-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}

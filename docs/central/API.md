@@ -479,6 +479,26 @@ El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es l
 
 Lee y escribe solo el owner.
 
+### 2.18 Fichas de agente (`central.agents`, `1520`; traspaso de Flow §8.3, decisión de VG del 27-10)
+
+La ficha no es una cuenta: se apoya en la cuenta de agente del núcleo (`core.profiles.kind = 'agent'`, claves en `core.agent_keys`) y añade quién responde por el agente, qué hace, en qué trabaja y quién le sigue. Los ámbitos (apps, proyectos y roles) se leen de `core.memberships`; no se copian. Las tarjetas y decisiones conservan su autoría (`core.changes`) cuando se nombra un sustituto. Revocar las claves no toca la ficha.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `code` | `text` | `AGT_AAAA_NNN`. |
+| `display_name` | `text not null` | 1–80. |
+| `user_id` | `uuid` | La cuenta de agente del núcleo; la base comprueba que es de agente. Una ficha viva por cuenta. |
+| `mission` | `text` | Hasta 500. Qué hace. |
+| `work_areas` | `text` | Hasta 300. Apps y repositorios en los que trabaja. |
+| `responsible_kind` | `text not null` | `person` (por defecto) o `service`. |
+| `responsible_person_id` | `uuid` | Solo con `person`. Ficha activa de Central; no se borra mientras responda (`PERSON_IN_USE`). |
+| `responsible_service` | `text` | Solo con `service`, 1–120: la entidad de servicio, sin persona detrás. |
+| `active` | `boolean` | `false` por defecto. Sin responsable no se activa. |
+| `successor_id` | `uuid` | El agente que le sigue. Nunca él mismo. |
+| `notes` | `text` | Hasta 500. |
+
+Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). El agente no cambia su ficha: lo que proponga irá por `core.proposals` cuando la pantalla lo admita.
+
 ## 3. Procedimientos y lecturas
 
 ### 3.1 Procedimientos (`call`)
@@ -594,7 +614,8 @@ function visible(table, row, ctx) {
 | `GET people/house-grants` | owner | → `{items: [{userId, app, level, role, previousRole}]}`: lo que el nivel de casa ha dado a cada cuenta (`core_house_grants`, núcleo 0092). Personas y Accesos lo marcan «por nivel de casa». | `FORBIDDEN` |
 | `POST invoke/central.apply_house_level` | owner | `{personId}` → `{personId, userId, level, changes: [{app, from, to}]}`. Acción SQL (`1515`): lee el nivel vigente de la ficha en la base (inactiva, en la papelera o fusionada = sin nivel), nunca el que mande el cliente, y llama a `core.apply_house_level`, que es idempotente. «Aplicar accesos» de la ficha. | `FORBIDDEN 403`, `NOT_FOUND 404`, `NO_ACCOUNT 422` |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
-| `GET dashboard` | reader | `{computedAt, items: [{app, kpi, label, value, unit, period, periodStart, periodEnd, direction, link, computedAt, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 (`KPI_SOURCES`) y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
+| `GET dashboard` | reader | `{computedAt, items: [{app, kpi, label, value, unit, period, periodStart, periodEnd, direction, link, computedAt, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 (`KPI_SOURCES`) y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel; si la publica solo para otros roles, se omite para quien no la puede leer. | — |
+| `GET beds/layout` | reader | `{rows: [{resource_bed_id, resource_space_id, cols, rows, x, y, rot, label}], available}`. El sitio de cada cama, de `booking.bed_layout_projection` (un solo modelo, VG 27-10). Sin Booking, `available: false` y ninguna cama en el plano. | — |
 | — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
 
 No hay rutas propias de escritura para personas, requisitos ni documentos: todo va por `commands`, para que funcione sin red.

@@ -927,6 +927,16 @@ export const KIT_EN: Dictionary = {
   'No se pudo subir la foto. Prueba otra vez.': 'The photo could not be uploaded. Try again.',
   'Nuevo registro': 'New record',
   'Sin asignar': 'Unassigned',
+  // Proyección (0.69)
+  'la otra app': 'the other app',
+  'Tu cuenta no puede hacer esto en {app}.': 'Your account cannot do this in {app}.',
+  '{app} no responde ahora mismo. Prueba en un rato.': '{app} is not responding right now. Try again in a while.',
+  'Sin conexión: no se ha hecho.': 'Offline: it was not done.',
+  '{app} no lo ha aceptado.': '{app} did not accept it.',
+  'Sin conexión: puede no estar al día.': 'Offline: it may not be up to date.',
+  'Nada por ahora.': 'Nothing for now.',
+  'Haciendo…': 'Doing it…',
+  '¿{action}: {title}?': '{action}: {title}?',
   // Guiado completo (0.67)
   'Cargando la guía…': 'Loading the guide…',
   'Cerrar la guía': 'Close the guide',

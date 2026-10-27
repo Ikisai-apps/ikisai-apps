@@ -472,6 +472,63 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
       },
     },
     {
+      // Guiado (0940): los pasos de una ejecución que tocan a una app, con ruta y confirmación de cada anclaje (lectura por id de
+      // campo del núcleo, 0109). Solo quien hace la ejecución. Sin la lectura del núcleo, sin ruta (el kit dice «no lo encuentro»).
+      method: 'POST', pattern: 'guide-read', handler: async ({ ctx, json }) => {
+        const body = (await json().catch(() => ({}))) ?? {};
+        if (typeof body.execution_id !== 'string' || !UUID.test(body.execution_id)) fail(422, 'INVALID_OPERATION', 'execution_id inválido.');
+        const app = typeof body.app === 'string' && /^[a-z][a-z0-9_]{1,30}$/.test(body.app) ? body.app : null;
+        if (!app) fail(422, 'INVALID_OPERATION', 'app inválida.');
+        const out = await supabase.rpc<{ id: string; title: string; mode: string; status: string; steps: Array<Record<string, any>> }>('core_read',
+          { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.guide_steps_read', p_args: { execution_id: body.execution_id, app } });
+        const anchors = [...new Set(out.steps.map((s) => s.anchor).filter((x): x is string => !!x))].slice(0, 200);
+        let fields: Array<{ fieldId: string; route?: string | null; confirm?: string | null }> = [];
+        if (anchors.length) {
+          try { fields = (await supabase.rpc<Array<{ fieldId: string; route?: string | null; confirm?: string | null }> | null>('core_field_lookup', { p_actor: ctx.user.id, p_field_ids: anchors })) ?? []; }
+          catch { fields = []; }
+        }
+        const byId = new Map(fields.map((f) => [f.fieldId, f]));
+        return { id: out.id, title: out.title, mode: out.mode, status: out.status, steps: out.steps.map((s) => {
+          const f = s.anchor ? byId.get(s.anchor) : undefined;
+          const confirm = !s.anchor ? 'manual' : (['save', 'event', 'manual', 'none'].includes(String(f?.confirm)) ? f!.confirm : 'manual');
+          return { id: s.id, title: s.title, explain: s.explain ?? null, anchor: s.anchor ?? null, route: f?.route ?? null, confirm, done: !!s.done, essential: !!s.essential, app: s.app ?? null, stage: s.stage };
+        }) };
+      },
+    },
+    {
+      // Guiado (0940): recibo de que la app confirmó un paso; nunca valores. Idempotente por requestId (recibo del núcleo).
+      method: 'POST', pattern: 'guide-confirm', handler: async ({ ctx, json }) => {
+        const body = (await json().catch(() => ({}))) ?? {};
+        const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
+        if (!requestId) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        const args = { execution_id: body.execution_id, step_id: body.step_id, how: body.how, pending: body.pending === true };
+        const operations = [{ op: 'call', procedure: 'flow.guide_confirm', args }];
+        const out = await supabase.rpc<{ replayed?: boolean }>('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(args)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        return { ok: true, replayed: !!out?.replayed };
+      },
+    },
+    {
+      // «Avance» (0938): crear o cambiar una tarjeta en el carril de quien llama (el guard comprueba scopes.lanes).
+      // Idempotente por requestId (recibo del núcleo por persona); el id de una tarjeta nueva lo pone la Edge.
+      method: 'POST', pattern: 'board-card', handler: async ({ ctx, json }) => {
+        if (!['editor', 'owner', 'outsider'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Tu cuenta no puede escribir en el Avance.');
+        const body = (await json().catch(() => ({}))) ?? {};
+        const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
+        if (!requestId) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        const KEYS = ['project_id', 'card_id', 'lane_key', 'title', 'status', 'prio', 'flag', 'kind', 'tipo', 'order', 'ref', 'url', 'url_text', 'steps', 'note'];
+        const args: Record<string, unknown> = Object.fromEntries(KEYS.filter((k) => k in body).map((k) => [k, body[k]]));
+        if (!args.card_id) args.card_id = crypto.randomUUID();
+        const operations = [{ op: 'call', procedure: 'flow.board_card', args }];
+        const { card_id: _new, ...digestOf } = args;
+        const out = await supabase.rpc<{ replayed?: boolean; results?: Array<{ result?: { card_id?: string; created?: boolean } }> }>('core_commit', {
+          p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(body.card_id ? args : digestOf)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        const result = out?.results?.[0]?.result ?? {};
+        return { card_id: result.card_id ?? null, created: !!result.created, replayed: !!out?.replayed };
+      },
+    },
+    {
       method: 'POST', pattern: 'logistics-task', handler: async ({ ctx, json }) => {
         const body = (await json().catch(() => ({}))) ?? {};
         const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;

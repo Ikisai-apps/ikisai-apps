@@ -12,6 +12,7 @@ import { createPrintView, el, openSheet, renderMoneyBreakdown, replace, toast, t
 import type { IssuedAddress, IssuedDocument, IssuerSnapshot } from '../../../../supabase/functions/_domain/invoices/issued.ts';
 import type { Contract, PortalInvoice, PortalInvoiceDocument, PortalMoney } from '../app/api.ts';
 import { statementOf, type StatementMove } from '../app/pay-state.ts';
+import { clearPending, markPending, payableInvoices, payState, pendingOf, returnOf } from '../app/pay-link.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, contactLine, textParagraphs } from '../app/common-texts.ts';
 import { i18n, L, t } from '../app/i18n.ts';
@@ -33,6 +34,24 @@ const issueDay = (date: string) => dayLabel(`${date.slice(0, 10)}T12:00:00Z`);
 export function renderPayments(ctx: ViewContext, reservationId: string, contract: Contract | null): HTMLElement {
   const host = el('div', { id: 'payments', 'data-feedback-id': 'organizers.pagos', 'data-feedback-label': 'Pagos y facturas' }, loading());
   let alive = true;
+  /** Con algún «Pago en curso», Pagos se vuelve a leer cada minuto durante 10 minutos y al volver a la pestaña. */
+  let pendingNow = false;
+  let polling: ReturnType<typeof setInterval> | null = null;
+  const poll = () => {
+    if (!pendingNow || polling) return;
+    const until = Date.now() + 10 * 60_000;
+    polling = setInterval(() => { if (!alive || !pendingNow || Date.now() > until) { clearInterval(polling!); polling = null; return; } void load(); }, 60_000);
+  };
+  const onVisible = () => { if (document.visibilityState === 'visible' && pendingNow && alive) void load(); };
+  document.addEventListener('visibilitychange', onVisible);
+
+  // Vuelta de la pasarela (`#/retiro/<id>/pagos?pago=ok&factura=<id>`): un aviso y fuera de la URL. No demuestra el cobro.
+  const back = returnOf(location.hash);
+  if (back) {
+    if (back.invoiceId) { if (back.outcome === 'ok') markPending(back.invoiceId); else clearPending(back.invoiceId); }
+    if (back.outcome === 'ok') toast(t('Hemos recibido tu pago. Lo verás como pagado cuando el equipo de Ikisai lo registre.'));
+    history.replaceState(history.state, '', location.pathname + location.search + location.hash.slice(0, location.hash.indexOf('?')));
+  }
 
   async function load(): Promise<void> {
     try {
@@ -121,6 +140,27 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
     });
     for (const button of statement.querySelectorAll('li.mb-doc button.mb-open')) fbMark(button, 'organizers.pagos.factura.abrir', 'Abrir factura');
 
+    // Fase 6: «Pagar ahora» con el enlace de la pasarela que crea Finance (F5). Solo si lo hay; el cobro lo registra Finance.
+    // «Pago en curso» (PAGO_EN_CURSO.md): la marca del dispositivo al pulsar; se quita sola cuando Finance lo da por cobrado.
+    const links = new Map(payableInvoices(m.invoices).map((p) => [p.invoice.id, p.url]));
+    for (const invoice of m.invoices) if (invoice.collected) clearPending(invoice.id);
+    const rows = m.invoices.map((invoice) => ({ invoice, url: links.get(invoice.id) ?? null, state: payState(invoice, pendingOf(invoice.id)) }))
+      .filter((r) => r.state !== 'cobrada' && (r.url !== null || r.state !== 'pagar'));
+    pendingNow = rows.some((r) => r.state === 'en_curso');
+    poll();
+    const payOnline = rows.length ? fbMark(section(t('Pagar en línea'), { id: 'payOnline' },
+      el('ul', { class: 'orgpaylist' }, ...rows.map(({ invoice, url, state }) => el('li', { 'data-pay-state': state },
+        el('span', null, el('strong', null, t('Factura {numero}', { numero: invoice.number })), ' · ', money(invoice.total), purposeChip(invoice.purpose) ? ' ' : null, purposeChip(invoice.purpose),
+          state === 'en_curso' ? el('span', { class: 'chip warn orgpay-pending' }, t('Pago en curso')) : null),
+        state === 'caducado' ? el('p', { class: 'muted small orgpay-expired' }, t('¿Ya pagaste? Escríbenos y lo miramos.'), ' ', contactLine()) : null,
+        url ? el('a', {
+          class: state === 'en_curso' ? 'btn' : 'btn primary', href: url, target: '_blank', rel: 'noopener noreferrer', 'data-invoice': invoice.id,
+          'data-feedback-id': 'organizers.pagos.pagar_ahora', 'data-feedback-label': 'Pagar ahora',
+          onclick: () => { markPending(invoice.id); setTimeout(() => { if (alive) paint(m, staleAt); }, 0); },
+        }, state === 'en_curso' ? t('Volver a la pasarela') : t('Pagar ahora')) : null))),
+      el('p', { class: 'muted small' }, t('El pago se hace en la pasarela segura del banco o de la tarjeta: Ikisai no ve los datos de tu tarjeta. Lo verás como pagado cuando el equipo de Ikisai lo registre.'))),
+    'organizers.pagos.en_linea', 'Pagar en línea') : null;
+
     const figures = fbMark(section(t('Las cuentas'), { id: 'moneyTotals' },
       el('dl', { class: 'kv orgtotals' },
         s.hasContract ? [
@@ -140,13 +180,18 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
       staleAt ? staleNote(staleAt) : null,
       contract ? null : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.')),
       fbMark(el('div', { id: 'moneyStatement', class: 'orgstatement' }, statement), 'organizers.pagos.extracto', 'Extracto'),
+      payOnline,
       contract?.payment_type ? el('p', { id: 'paymentType' }, t('Forma de pago acordada: {forma}', { forma: t(PAYMENT_TYPES[contract.payment_type] ?? contract.payment_type) })) : null,
       figures,
       owes ? null : how);
   }
 
   void load();
-  (host as HTMLElement & { destroy?: () => void }).destroy = () => { alive = false; };
+  (host as HTMLElement & { destroy?: () => void }).destroy = () => {
+    alive = false;
+    if (polling) clearInterval(polling);
+    document.removeEventListener('visibilitychange', onVisible);
+  };
   return host;
 }
 

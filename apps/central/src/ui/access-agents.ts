@@ -11,6 +11,8 @@ import { ROLE_LABELS, type AdminApi, type AgentKey, type CatalogApp } from '../a
 import type { Usage } from '@ikisai/ui-kit';
 import { appShort, NEEDS_NETWORK, offlineNote, type AccessState } from './access-common.ts';
 import { fbIgnoreWithin } from './feedback.ts';
+import { mountAgentCards } from './agent-cards.ts';
+import type { SyncClient } from '@ikisai/sync-client';
 
 const SOON_DAYS = 14;
 
@@ -44,11 +46,15 @@ export function groupSummary(keys: AgentKey[], now = new Date()): string {
   return parts.length ? parts.join(' · ') : plural(keys.length, 'clave en uso', 'claves en uso');
 }
 
-export async function mountAgents(body: HTMLElement, admin: AdminApi, state: AccessState, usage: Usage): Promise<void> {
+export async function mountAgents(body: HTMLElement, admin: AdminApi, state: AccessState, usage: Usage, client: SyncClient): Promise<void> {
   let catalog: CatalogApp[] = admin.cached.catalog ?? [];
+  let lastKeys: AgentKey[] = admin.cached.agents?.items ?? [];
+  // Fichas de agente (1520), encima de las claves: quién responde por cada agente, qué hace y quién le sigue.
+  const cards = el('section', { class: 'ctl-agentcards', 'data-feedback-id': 'central.accesos.agentes.fichas_bloque', 'data-feedback-label': 'Bloque de fichas de agente' });
   const list = el('div', { id: 'agentList', 'data-feedback-id': 'central.accesos.agentes.lista', 'data-feedback-label': 'Claves de agentes' });
   const note = el('div', { 'data-feedback-id': 'central.accesos.agentes.aviso', 'data-feedback-label': 'Aviso de agentes' });
-  replace(body, el('p', { class: 'muted' }, 'Las claves las emite el propietario de cada app. Revocar una clave la corta en todas las apps y revoca sus propuestas abiertas.'), note, list);
+  replace(body, cards, el('h3', null, 'Claves'), el('p', { class: 'muted' }, 'Las claves las emite el propietario de cada app. Revocar una clave la corta en todas las apps y revoca sus propuestas abiertas.'), note, list);
+  mountAgentCards(cards, client, usage, () => lastKeys, () => state.alive);
   let binds: Array<() => void> = [];
   state.cleanups.push(() => { for (const b of binds) b(); });
 
@@ -107,6 +113,7 @@ export async function mountAgents(body: HTMLElement, admin: AdminApi, state: Acc
     try {
       const [keys, apps] = await Promise.all([admin.agents(), admin.catalog().catch(() => catalog)]);
       catalog = apps;
+      lastKeys = keys;
       replace(note);
       if (state.alive) paint(keys);
     } catch (e) {

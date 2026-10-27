@@ -4,6 +4,7 @@ Actualizado: 27 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), direct
 
 ## Hecho
 
+- v0.69.0: `createProjection`, un carril que lee de otra app con una capacidad y actúa por fila con otra (idempotente; vuelve a leer en vez de dar por hecho).
 - v0.68.0: Guiado, tanda 3. `createAppShell({ guide: { client, app } })` monta la guía completa leyendo la ejecución de Flow (`flow.guide_read` / `flow.guide_confirm`, sin valores); `flowGuideSource` valida lo que llega. Falta la parte de Flow.
 - v0.67.0: Guiado, tanda 2. `createGuide` con foco y burbuja, avance solo con la confirmación real, recálculo de lo pendiente, «Saltar», «Anterior», píldora y «Volver a…».
 - v0.66.0: Guiado, tanda 1. Anclajes semánticos (`confirm`, `validator`), aviso de guardado sin valores, `registerReveal`, `withGuideLink` y `createAppShell({ guide })` con el campo señalado al llegar.

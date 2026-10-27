@@ -709,15 +709,16 @@ test('tomar el emisor actual: solo las emitidas sin emisor, nunca sobrescribe ni
 });
 
 
-test('indicadores para Central (§7.5): columnas del contrato, 29 filas, solo agregados y valores que cuadran', async () => {
+test('indicadores para Central (§7.6): columnas del contrato, 36 filas, solo agregados y valores que cuadran', async () => {
   const q = await app.t.db.query<Record<string, any>>(`select * from invoices.central_kpi_projection order by kpi, period`);
   const rowsKpi = q.rows;
-  assert.equal(rowsKpi.length, 29);
+  assert.equal(rowsKpi.length, 36);
   assert.deepEqual(Object.keys(rowsKpi[0]!).sort(), ['computed_at', 'direction', 'kpi', 'label', 'link', 'period', 'period_end', 'period_start', 'unit', 'value'].sort());
   const keys = [...new Set(rowsKpi.map((r) => r.kpi))].sort();
-  assert.deepEqual(keys, ['invoices.expenses_month', 'invoices.income_issued_month', 'invoices.pending_review', 'invoices.unpaid', 'invoices.unpaid_amount']);
+  assert.deepEqual(keys, ['invoices.collected_event_today', 'invoices.collected_today', 'invoices.expenses_month', 'invoices.income_issued_month', 'invoices.organizer_reservations_pending', 'invoices.pending_collection',
+    'invoices.pending_collection_count', 'invoices.pending_review', 'invoices.unassigned', 'invoices.unpaid', 'invoices.unpaid_amount', 'invoices.vat_quarter']);
   for (const r of rowsKpi) {
-    assert.ok(r.label.length <= 60 && ['count', 'eur'].includes(r.unit) && ['up', 'down'].includes(r.direction) && r.link.startsWith('https://finance.ikisai.com/#/'));
+    assert.ok(r.label.length <= 60 && ['count', 'eur'].includes(r.unit) && (['up', 'down'].includes(r.direction) || (r.kpi === 'invoices.vat_quarter' && r.direction === null)) && r.link.startsWith('https://finance.ikisai.com/#/'), r.kpi);
   }
   const months = rowsKpi.filter((r) => r.kpi === 'invoices.income_issued_month').map((r) => r.period);
   assert.equal(months.length, 13); assert.match(months[0], /^\d{4}-\d{2}$/);
@@ -733,6 +734,19 @@ test('indicadores para Central (§7.5): columnas del contrato, 29 filas, solo ag
   const val = (k: string) => Number(rowsKpi.find((r) => r.kpi === k)!.value);
   assert.equal(val('invoices.pending_review'), Number(direct.rows[0]!.pending));
   assert.equal(val('invoices.unpaid'), Number(direct.rows[0]!.unpaid));
+  // P7 de Central (0253): pendiente de cobro y sin asignar cuadran; el IVA va por el trimestre en curso
+  const p7 = await app.t.db.query<Record<string, string>>(`select
+    (select count(*) from invoices.issued_invoices where deleted_at is null and status not in ('anulada', 'borrador') and payment_status = 'pendiente') as pending_count,
+    (select coalesce(sum(total), 0) from invoices.issued_invoices where deleted_at is null and status not in ('anulada', 'borrador') and payment_status = 'pendiente') as pending_amount,
+    to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY') || 'T' || extract(quarter from (now() at time zone 'Europe/Madrid')::date)::int as quarter`);
+  assert.equal(val('invoices.pending_collection_count'), Number(p7.rows[0]!.pending_count));
+  // F4 de Organizers (0254): reservas con emitidas enviadas sin cobrar
+  const f4 = await app.t.db.query<{ n: string }>(`select count(distinct a.target_id) n from invoices.issued_allocations a join invoices.issued_invoices i on i.id = a.issued_invoice_id
+    where a.deleted_at is null and a.target_kind = 'reservation' and i.deleted_at is null and i.status not in ('anulada', 'borrador') and i.sent_at is not null and i.payment_status = 'pendiente'`);
+  assert.equal(val('invoices.organizer_reservations_pending'), Number(f4.rows[0]!.n));
+  assert.equal(Math.round(val('invoices.pending_collection') * 100), Math.round(Number(p7.rows[0]!.pending_amount) * 100));
+  assert.equal(rowsKpi.find((r) => r.kpi === 'invoices.vat_quarter')!.period, p7.rows[0]!.quarter);
+  assert.ok(Number.isFinite(val('invoices.vat_quarter')) && Number.isFinite(val('invoices.collected_today')) && Number.isFinite(val('invoices.unassigned')));
   // La suma de los 13 meses es la base de las emitidas no anuladas de esa ventana
   const incomeWindow = rowsKpi.filter((r) => r.kpi === 'invoices.income_issued_month').reduce((n, r) => n + Number(r.value), 0);
   assert.equal(Math.round(incomeWindow * 100), Math.round(Number(direct.rows[0]!.income_window) * 100));

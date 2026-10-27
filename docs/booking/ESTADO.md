@@ -1,6 +1,6 @@
 # Booking · estado
 
-Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar real probado contra Google por Core y escenarios sin red automatizados; falta el recorrido de aceptación del usuario en producción.**
+Actualizado: 27 de octubre de 2026. **Las cuatro pantallas construidas, Calendar real probado contra Google por Core y escenarios sin red automatizados; falta el recorrido de aceptación del usuario en producción.**
 
 ## Hecho
 
@@ -131,7 +131,47 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Código público del evento (0488):** `public_code` para el QR de visitantes a ven.ikisai.com y la lectura pública `booking_event`; «QR de entrada» en la ficha (imprimir y regenerar). API.md §33; prueba en `public-code.test.ts`. El QR, con `renderQr` del kit 0.60.
 
-- **Visitante se apunta desde el QR (0489, BG18):** `visitor_requests` por lote público con el código del QR, y `join_from_visitor` para aceptar o descartar; «Déjanos un dato» (`kind 'contact'`), y su nombre, contacto y nota se borran a los 6 meses del fin del evento (conservación). Falta la ruta `public/join` (espera a `resolveVisitor` del kit). API.md §33; prueba en `visitor-join.test.ts`.
+- **Visitante se apunta desde el QR (0489, BG18):** `visitor_requests` por lote público con el código del QR, y `join_from_visitor` para aceptar o descartar; «Déjanos un dato» (`kind 'contact'`), y su nombre, contacto y nota se borran a los 6 meses del fin del evento (conservación). La ruta `public/join` está en booking-api (espera a `resolveVisitor` del kit). API.md §33; prueba en `visitor-join.test.ts`.
+
+- **Alojamiento libre «como la barra» (VG 27-10-2026; API §36–§43):**
+  - **Oferta pública** (0498): `booking_public_events`, `booking_public_lodging` y `booking.free_beds`, que resta las estancias de outsider y las retenciones vivas.
+  - **Solicitud del QR** (0499, 1400): `POST public/stay`.
+    - Número corto por evento, cama elegida o asignada, y borrador del viajero en `stay_travelers`, visible solo con el ámbito de huéspedes.
+    - Retención de 2 h por defecto, o «no reserva hasta pagar», según el evento.
+    - Nunca dos en la última plaza.
+  - **Recepción** (1401 y carriles):
+    - «Cobrar y alojar» en un gesto, con Bizum, efectivo, Bitcoin o tarjeta, y envío a Finance con las cabeceras de servidor (#867).
+    - Carriles por confirmar, entradas, estancia, salidas y excepciones, con cuatro indicadores por ficha.
+  - **Salida** (1402): libera la cama y pide la limpieza a Tasks (`booking.bed_cleaning`, Tasks #933).
+  - **Ajustes y devoluciones** (1403): un solo apunte en Finance por cobro.
+  - **Visitante solo de jornada** (1404): sin SES.
+  - **Pruebas:** de punta a punta (`tests/booking/lodging-weekend-e2e.test.ts`) y de carga del sábado (`tests/booking/lodging-load.test.ts`: 30 a la vez por la última cama y dos recepciones con el mismo número).
+  - **Resumen del modelo:** API §44.
+  - **En recepción:**
+    - «Ampliar…» suma noches o cambia de cama en un lote con su cobro (aceptación C);
+    - el alta de «Alojar a alguien» pide apellido, teléfono o correo y si es menor.
+- **Venta de noches en línea, booking-22 (API §45; apagada por defecto):**
+  - modo `online` por evento y `stay_payments`, que solo escribe la cuenta de servicio;
+  - `POST public/stay/pay` y el webhook firmado `public/payments/:provider`;
+  - conciliación (`worker/payments/reconcile`) y devolución por la pasarela;
+  - la pasarela va detrás de un adaptador (`booking-api/payments.ts`), con una falsa para las pruebas.
+  - Pendiente: la pasarela real (decisión de VG, vg-38) y que el servidor aloje solo al pagarse (núcleo: la cuenta de servicio de Booking en Booking).
+- **Seguridad (auditoría del 27-10):**
+  - B2: lecturas de huéspedes con ámbito (0494).
+  - B3: `flow_guests_projection` cerrada (0495).
+  - B4: enlaces de Guests con ámbito (core 0104).
+  - B5: cabeceras de servidor hacia Finance.
+  - B7: aceptar visitantes con ámbito.
+  - B8: límite de peticiones públicas (1407).
+  - B9: código público del servidor (1406).
+  - B1 y B6 los hizo Core (0103).
+- **Para otras apps:**
+  - «Listo para Flow» (0492);
+  - KPIs de Guests (0496);
+  - `public_code` en `food_event_projection` (0497) y en `event_projection` (1405);
+  - `event_reservations_for_invoices` para Finance (1403);
+  - `visitor_claim` para Guests (1409);
+  - guiado mínimo del kit.
 
 ## Pendiente
 

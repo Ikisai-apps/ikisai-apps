@@ -13,6 +13,7 @@ import { mountEvents } from './events.ts';
 import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
 import { mountCarta, type CartaTab } from './carta.ts';
 import { mountEventShopping } from './event-shopping.ts';
+import { registerFoodReveals } from './guide.ts';
 import { HOUSE_SUGGESTIONS_HASH, mountHouseSuggestions } from './house-suggestions.ts';
 import { mountConflicts } from './conflicts.ts';
 import { KITCHEN_HASH, mountKitchen } from './kitchen.ts';
@@ -138,7 +139,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       feedbackId: 'food.menu_lateral',
     },
     returnTo: { feedbackId: 'food.cabecera.volver' },
+    // Guiado mínimo del kit: con `?campo=` señala el anclaje; con `?paso=` lo explica y pone «Volver a…». Sin client: no lee Flow.
+    guide: { feedbackId: 'food.guia' },
   });
+  registerFoodReveals(navigate);
   const { main } = shell;
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.

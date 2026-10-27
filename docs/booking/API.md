@@ -1375,6 +1375,8 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 | `booking.staff_needs_open` | count | actual | down | refuerzos sin cubrir de eventos que no han terminado |
 | `booking.occupancy_rate` | pct | mensual (12 meses anteriores, el actual y 3 siguientes) | up | personas-noche asignadas en el mes (asignaciones de alojamiento de reservas vivas, noches [entrada, salida)) / (plazas base × días del mes) × 100; plazas base = camas activas no supletorias de habitaciones activas y reservables; `null` si no hay plazas |
 | `booking.occupancy_weekend` | pct | actual (viernes → domingo del fin de semana que viene; el sábado, el que está en curso) | up | personas-noche asignadas las noches de viernes y sábado / (plazas base × 2) × 100; `null` si no hay plazas (migración 0493, panel de Dirección V2 de Central) |
+| `booking.beds_free_tonight` | count | actual (hoy → mañana) | up | plazas de cama libres esta noche según `booking.free_beds` (sin asignación, estancia ni retención viva; migración 1412) |
+| `booking.stay_requests_unpaid` | count | actual | down | solicitudes de noches del QR pendientes de cobrar en recepción, sin las de retención caducada (1412) |
 
 `booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
 
@@ -1993,4 +1995,103 @@ El visitante, desde «Alójate aquí»:
   - si Tasks falla, la salida queda hecha igualmente.
 
   Los datos salen de `booking.cleaning_source` (sistema). **Pendiente de Tasks:** aceptar el tipo `booking.bed_cleaning`.
+
+## 41. Ajustes y devoluciones del cobro del alojamiento (migración 1403; VG 27-10-2026)
+
+- **Ajuste:** en «Alojamiento a la carta», «Ajustar…» cambia las noches o el precio por noche, y el importe vuelve a ser noches × precio.
+- **Ampliar o cambiar la estancia** (aceptación C): «Ampliar…» cambia en un lote las noches y la cama de la asignación, y las noches y el importe de su cobro. La lista solo ofrece camas libres todas esas noches, y el servidor lo vuelve a comprobar con `BED_OVERBOOKED` o `BED_HELD`: si falla, no cambia nada. Si el cobro ya estaba en Finance, queda por reenviar y se reenvía. La diferencia de dinero se cobra o se devuelve aparte.
+- **Devolución:** «Devolver…» guarda `walkin_charges.refund_cents` (hasta lo cobrado), `refund_method` y `refunded_at`. Con 0 se quita.
+- **Un solo apunte en Finance por cobro** (`booking:stay:<id del cobro>`): `walkinFinanceEntry` lo manda por lo cobrado menos lo devuelto.
+  - El método de la devolución va en negativo y el desglose lleva una línea «Devolución» negativa, así que métodos y desglose suman el importe.
+  - Un cambio de importe, cobro o devolución en un cobro ya enviado borra `finance_sent_at` (disparador `walkin_charge_stale`) y la ficha ofrece «Reenviar a Finance».
+  - El reenvío sustituye el apunte (patrón F1, con las cabeceras de servidor del #867). Si el apunte ya está en la gestoría, Finance responde `ENTRY_LOCKED`.
+- **Retención de la plaza por defecto:** 2 horas, por decisión de Core en nombre de VG. Se cambia por evento.
+- **Para Finance (#904):** `booking.event_reservations_for_invoices({event_ids})`, legible por invoices, devuelve `[{reservation_id, event_id, status}]` sin datos personales. Admite hasta 200 eventos.
+
+## 42. Visitante solo de jornada: sin pernocta, sin SES (migración 1404; aceptación H)
+
+- **Al aceptar a un visitante del QR que pidió apuntarse sin noches** (`kind = 'join'`) en unas jornadas abiertas, su ficha nace con `ses_status = 'no_aplica'` y `data_status = 'no_aplica'`. Lo hace el disparador `visitor_day_only`.
+  - Huéspedes lo enseña como «Sin pernocta · sin SES» y no pide el documento.
+  - El parte de viajeros (`ses_guest_report_source_base`) lo deja fuera aunque llegue.
+- **Si después se le da cama** (una asignación con él), vuelve a `pendiente_envio` y `pendiente_datos` (`assignment_needs_ses`).
+- **En un retiro**, apuntarse es venir a dormir: nada cambia.
+
+## 43. Carriles de Recepción (traspaso §4.3; Core 27-10-2026)
+
+`#/recepcion` muestra la misma estancia en carriles filtrados (`createLanes` del kit; pestañas o lado a lado, y la elección se recuerda en el dispositivo). Sirve para las jornadas abiertas en curso.
+
+- **Carriles:**
+  - **Por confirmar:** las solicitudes del QR con número.
+  - **Entradas de hoy:** quien tiene cama desde hoy y no ha llegado.
+  - **En estancia:** quien ha llegado y no ha salido.
+  - **Salidas y limpieza:** quien sale hoy o ya ha salido hoy (su limpieza se pide al salir, §40).
+  - **Excepciones:** cobro pendiente con la cama ocupada, datos incompletos el día de entrada o dentro, retención caducada o sin cama. Es un filtro encima de los otros carriles.
+- **Cuatro indicadores independientes por ficha:** plaza, cobro, datos y presencia. Que uno esté bien no da los otros por hechos. Sin el ámbito de huéspedes no salen ni nombres ni datos.
+- **Acciones:**
+  - «Cobrar y alojar» y «Descartar», en las solicitudes;
+  - «Llega» (`guest_arrive`), «Sale» (`guest_leave`) y «Ficha», en los huéspedes.
+- **La regla** está en `apps/booking/src/app/receptionLanes.ts` (`receptionCards`, `laneCards`). Es pura y tiene prueba en `tests/booking/reception-lanes.test.ts`.
+
+## 44. El alojamiento como la barra, de punta a punta (resumen; VG 27-10-2026)
+
+Resumen del modelo, con los detalles en §36 a §43. Las pruebas que lo cubren:
+- `tests/booking/lodging-weekend-e2e.test.ts`: de punta a punta;
+- `tests/booking/lodging-load.test.ts`: 30 a la vez por la última cama y dos recepciones con el mismo número.
+
+**1. El visitante** (ven.ikisai.com, pestaña «Alójate aquí»; lo pinta Guests):
+1. Elige noches y personas. `booking_public_lodging` da la oferta y `booking_public_beds` las camas (§36, §38).
+2. Elige cama o pide que se la asignen, y mete sus datos en borrador.
+3. Pulsa «Ir a pagar»: `POST public/stay` (§37, §38) le da su **número** (1, 2, 3… por evento). El total lo calcula el servidor.
+4. Ve su estado en `booking_visitor_stay`: `por_pagar` → `pagada` → `alojado` → `salida`, o `caducada` o `descartada`.
+
+**2. La retención:**
+- En `hold` (por defecto, 2 h por evento), la cama queda retenida para ese número: no la puede dar ni otro visitante ni el personal (`BED_HELD`).
+- Al vencer, vuelve a estar libre y la solicitud pasa a `caducada`.
+- En `pay_first` no se retiene nada hasta pagar.
+- La comprobación y la retención van en el mismo lote, y los lotes van en serie: **nunca dos en la última plaza**.
+
+**3. Recepción** (`#/recepcion`, carriles §43):
+- Busca el número y ve qué falta por persona.
+- Completa los datos y pulsa «Cobrar y alojar» (Bizum, efectivo, Bitcoin o tarjeta).
+- En un lote (§39) se crean las fichas con el borrador, la cama con fechas y el cobro pagado.
+- El cobro va a Finance con las cabeceras de servidor: un apunte por cobro.
+- Repetirlo, o que dos recepciones lo hagan a la vez, no duplica nada.
+
+**4. Durante la estancia:**
+- «Llega» (`guest_arrive`) la marca recepción o Flow.
+- Ajustes y devoluciones (§41): un solo apunte, que se reenvía y sustituye al anterior.
+
+**5. La salida** (§40):
+- «Sale» (`guest_leave`) acorta la cama hasta hoy, así que queda libre esa noche.
+- Pide la limpieza a Tasks (`booking.bed_cleaning`, `LIMP-<asignación>`).
+- «Deshacer» la devuelve si nadie la ha ocupado.
+
+**6. Quien solo viene de día** (§42): sin noches no va a SES ni se le pide el documento. Si luego duerme, sí.
+
+**Para Central** (§18): «Camas libres esta noche» y «Solicitudes de noches por pagar».
+
+## 45. Venta de noches en línea, base (migración 1413; booking-22, apagada por defecto)
+
+Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasarela concreta está pendiente de VG (vg-38). Hasta que haya una y un evento ponga `lodging_pay_mode = 'online'`, no cambia nada.
+
+- **Modo `online` por evento:** la solicitud retiene la cama `lodging_online_minutes` (20 por defecto) mientras se paga. `booking_public_lodging` da `pay: 'online'` y `hold_minutes`.
+- **`POST public/stay/pay {stay_id | request_id}`** (con X-Visitor) devuelve `{redirect_url, expires_at, reused}`.
+  - El importe es el de la solicitud, el que calculó el servidor.
+  - Un solo intento vivo por solicitud: repetir devuelve el mismo.
+  - Sin pasarela, 503 `PAYMENTS_OFF`. Si la retención ha caducado, 409 `HOLD_EXPIRED`.
+- **`POST public/payments/:provider`** es el aviso de la pasarela: webhook firmado, sin sesión.
+  - El adaptador comprueba la firma; si no es válida, 400 `INVALID_SIGNATURE`.
+  - Cada aviso cuenta una vez (`last_event_id`). Un pago desconocido se acusa sin efecto.
+- **`booking.stay_payments`:** un intento por fila (proveedor, referencia, importe, estado, `paid_at`, `fee_cents`, devoluciones y `redirect_url`). Solo la escribe el sistema, con `booking.stay_payment_record` (acción de sistema por `core.apply_system_operations`); el disparador rechaza cualquier otra escritura.
+- **Pagado:**
+  - la retención se alarga hasta la salida;
+  - el visitante ve `stay_status = 'pagada'` y `paid_online: true`;
+  - Recepción ve «Pagado en línea» y aloja con «Alojar (pagado en línea)», es decir, `join_from_visitor({accept, method: 'online'})`. Solo vale con el pago confirmado; si no, 409 `NOT_PAID_ONLINE`.
+- **El cobro y la devolución** admiten el método `online`.
+- **Adaptador** (`supabase/functions/booking-api/payments.ts`): `createIntent` y `parseWebhook`. Hay uno falso para las pruebas (`fakePaymentProvider`), y el real llega con la decisión de pasarela. Se configura con `createBookingApp({ payments })`.
+- **Pendiente de Core:** que el servidor aloje solo al confirmarse el pago, sin recepción. Necesita que la cuenta de servicio de Booking pueda escribir en Booking (`core.service_grants`), o un camino de sistema que admita el procedimiento.
+
+**Conciliación y devolución (migración 1414):**
+- **Worker `POST worker/payments/reconcile`:** pregunta a la pasarela (`fetchStatus`) por los intentos pendientes de hace más de 10 minutos (`booking.stay_payments_pending`) y aplica lo que diga, por si se perdió un aviso.
+- **`POST walkins/:id/refund/online {cents}`** (editor, owner): pide a la pasarela (`refund`) la devolución del cobro de una noche pagada en línea, nunca más de lo pagado (`booking.stay_payment_for_charge`). Después la ficha anota la devolución en el cobro (§41) y el aviso `refunded` la anota en el pago. Sin pasarela, 503 `PAYMENTS_OFF`.
 

@@ -24,6 +24,7 @@ import { dateRange, hhmm, missingText } from '../app/labels.ts';
 import type { Lodging, Menu, ProgramItem } from '../app/portal.ts';
 import { roleText } from './retreats.ts';
 import { fbIgnore, fbMark, staleNote, whyNote } from './common.ts';
+import { visitorLinkCard } from './visitor-link.ts';
 import { shortRange } from './frame.ts';
 import { choiceOpen } from './lodging.ts';
 import type { Modules } from './nav.ts';
@@ -312,6 +313,8 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
       offline ? el('p', { class: 'small goffline', id: 'resumenOffline', role: 'status' }, icon('offline', 14), ' ', t('home2.offline')) : null,
       head(guest, moment),
       todo,
+      // Este móvil entró también como visitante: «Unir este móvil a mi ficha» (tarjeta 4), con su consentimiento.
+      actions.client && !ctx.readOnly() ? visitorLinkCard(actions.client, ctx.grant.guest_id) : null,
       mods ? schedule(moment) : null,
       message?.text ? el('section', { class: 'card gcard', id: 'organizerMessage', 'data-feedback-id': 'guests.inicio.mensaje', 'data-feedback-label': 'Mensaje del organizador' },
         el('h3', null, t('home.organizerMessage')), el('p', { class: 'gtext' }, message.text)) : null,

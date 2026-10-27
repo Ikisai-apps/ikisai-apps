@@ -1,10 +1,11 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, registerReveal, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountAppEntries, mountEvent, mountReceipt } from './app-entries.ts';
+import { mountCashCount } from './cash-count.ts';
 import { startValidationConflictWatcher } from './invoices.ts';
 import { mountInvoices } from './invoice-list.ts';
 import { mergesAreOwn } from './undo.ts';
@@ -31,7 +32,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento', '#/justificante'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento', '#/justificante', '#/arqueo'] },
   { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
   { hash: '#/compras', label: 'Compras', icon: 'cart' },
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
@@ -46,6 +47,7 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/apuntes': { title: 'Ingresos y gastos de apps', screen: 'invoices.apuntes', mount: mountAppEntries },
   '#/evento': { title: 'Evento', screen: 'invoices.evento', mount: mountEvent },
   '#/justificante': { title: 'Justificante', screen: 'invoices.justificante', mount: mountReceipt },
+  '#/arqueo': { title: 'Arqueo del día', screen: 'invoices.arqueo', mount: mountCashCount },
   '#/facturas': { title: 'Facturas', screen: 'invoices.facturas', mount: mountInvoices },
   '#/compras': { title: 'Compras', screen: 'invoices.compras', mount: mountPurchases },
   '#/gestoria': { title: 'Gestoría', screen: 'invoices.gestoria', mount: mountAccounting },
@@ -87,6 +89,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     review,
     center: () => { openFeedbackCenter({ api, app: 'invoices', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
+  // El panel de la guía lo crea el kit (sin rótulo propio): solo su id de feedback.
+  const GUIDE_FEEDBACK_ID = 'invoices.guia';
   const shell = createAppShell(root, {
     appName: 'Finance',
     launcher,
@@ -95,8 +99,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
+    // Guiado mínimo (kit 0.68): `?campo=` señala el campo y `?paso=` lo explica con «Volver a…». Sin client: no lee de Flow.
+    guide: { feedbackId: GUIDE_FEEDBACK_ID },
   });
   const { main } = shell;
+  // Lo que vive en un desplegable cerrado: la guía lo abre antes de señalarlo.
+  const openDetails = (anchor: string) => () => { document.querySelector<HTMLDetailsElement>(`details[data-feedback-id="${anchor}"]`)?.setAttribute('open', ''); };
+  for (const anchor of ['invoices.gestoria.detalle', 'invoices.proveedores.papelera', 'invoices.apuntes.ficha.desglose']) registerReveal(anchor, openDetails(anchor));
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
   fb(shell.header, { feedbackId: 'invoices.cabecera', feedbackLabel: 'Cabecera' });
