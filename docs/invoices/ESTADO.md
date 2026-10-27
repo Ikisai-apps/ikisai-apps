@@ -177,3 +177,7 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 
 ## Pendiente después del sábado (decisión de VG, 27-10; finance-18)
 - **Pagos en línea:** Finance crea un enlace de pago por vencimiento (Stripe Payment Links, Redsys o el Bizum del banco; la pasarela la elige VG). Organizers solo enseña «Pagar ahora». Lo cobrado lo registra Finance. Ningún dato de tarjeta pasa por Ikisai.
+
+## finance-15 · Conciliación de alojamiento y barra (cerrada, 27-10)
+- Un apunte por hecho económico: el alojamiento de recepción entra como ticket y no se duplica al reintentar (#903). Una devolución sustituye el mismo apunte (#916). «Evento» suma alojamiento y barra, con lo facturado frente a lo cobrado (#915, con la lectura de Booking #909).
+
