@@ -112,12 +112,12 @@ export function mountJourneyEditor(key: string | null): ViewMount {
         el('label', null, 'Explicación', input(stage.explain, (v) => { stage.explain = v; })),
         stage.kind === 'capability' ? el('div', { class: 'editor-head' },
           el('label', null, 'Capacidad', select(stage.capability, [['', 'Elige…'], ...caps.map((c) => [c.id, c.title] as [string, string])], (v) => { stage.capability = v; }, 'Capacidad')),
-          el('button', { type: 'button', class: 'secondary small', onclick: loadFields }, 'Cargar sus campos')) : null,
+          el('button', { type: 'button', class: 'ghost small', onclick: loadFields }, 'Cargar sus campos')) : null,
         stage.kind === 'handoff' ? el('div', { class: 'editor-head' },
           el('label', null, 'App', select(stage.app, APPS, (v) => { stage.app = v; }, 'App')),
           el('label', null, 'Pantalla o campo (opcional)', input(stage.anchor, (v) => { stage.anchor = v; }, { placeholder: 'tasks.compras.nueva' }))) : null,
         ...stage.steps.map((p, pi) => stepRow(stage, si, p, pi)),
-        stage.kind === 'record' ? el('button', { type: 'button', class: 'secondary small', onclick: () => {
+        stage.kind === 'record' ? el('button', { type: 'button', class: 'ghost small', onclick: () => {
           stage.steps.push({ key: '', title: '', explain: '', essential: true, mode: 'ask', fixed: '', from: '', type: 'text', options: '' }); paint(); } }, 'Añadir pregunta') : null);
     }
 
