@@ -74,11 +74,12 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       const number = customerNumber(data, o);
       const p = pendingOf(data, o);
       const finished = kind === 'order' ? o.status !== 'open' : o.status === 'delivered';
-      node.className = `qcard order-card is-${o.status}${finished ? ' is-done' : ''}${o._pending ? ' is-unconfirmed' : ''}`;
+      node.className = `qcard order-card is-${o.status}${finished ? ' is-done' : ''}${o._pending ? ' is-unconfirmed' : ''}${o.test_by ? ' is-test' : ''}`;
       node.querySelector('.order-badge')!.textContent = o.pay_seq ? String(o.pay_seq) : '·';
       const items = (data.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
       const account = o.account_id ? data.accounts.find((a) => a.id === o.account_id) : null;
-      node.querySelector('.qcard-title')!.textContent = [number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
+      // Pedido de prueba de un miembro (0952): se ve siempre y no cuenta en caja ni en Finance.
+      node.querySelector('.qcard-title')!.textContent = [o.test_by ? `Pedido de prueba (${o.test_name ?? 'equipo'})` : '', number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
         account ? `a cuenta: ${accountLabel(data, account)}` : ''].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = `${items || 'sin productos'} · ${formatEuros(orderTotal(data, o))}`;
       const state = o.status === 'open' ? 'Por cobrar'
