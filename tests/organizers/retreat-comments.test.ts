@@ -51,7 +51,7 @@ async function report(reporter: string, fields: { subject: 'event' | 'space' | '
 
 let R1: string; let R2: string;
 let ana: { token: string; id: string }; let otra: { token: string; id: string };
-const ids: Record<string, string> = {};
+const ids = { early: '', late: '', other: '', space: '', app: '' };
 
 test.before(async () => {
   booking = await createTestApp({
