@@ -278,6 +278,12 @@ const RULES: Record<TableName, TableRules> = {
       supplier_id: nullable(supplierId), supplier_name: nullable(shortText(200)), position,
       // Procedencia (0342): la app que pidió, su referencia y el enlace de vuelta; inmutables tras el alta.
       source_app: nullable(sourceApp), source_ref: nullable(text(1, 150, 'INVALID_FIELDS', 'Referencia de origen inválida.')), source_url: nullable(externalUrl),
+      // Registro en Finance (0346): lo pagado con IVA, ticket o factura, su número y su foto; y el resultado del registro.
+      paid_total: nullable(amount), receipt_kind: nullable(oneOf(['invoice', 'ticket'], 'INVALID_FIELDS', 'El justificante es una factura o un ticket.')),
+      invoice_number: nullable(text(1, 64, 'INVALID_FIELDS', 'El número de la factura o del ticket va hasta 64 caracteres.')), receipt_file_id: nullable(uuid()),
+      finance_status: nullable(oneOf(['pending', 'registered', 'needs_access', 'failed'], 'INVALID_FIELDS', 'Estado del registro en Finance desconocido.')),
+      finance_invoice_id: nullable(uuid()), finance_code: nullable(text(1, 40, 'INVALID_FIELDS', 'Código de Finance inválido.')),
+      finance_error: nullable(text(1, 300, 'INVALID_FIELDS', 'Motivo demasiado largo.')),
     },
     required: ['tab_id', 'title'],
   },

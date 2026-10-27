@@ -570,6 +570,7 @@ test('almacenamiento: los adjuntos y la foto de los comentarios son los campos d
     `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks' order by table_name`)).rows;
   assert.deepEqual(fields, [
     { schema_name: 'tasks', table_name: 'attachments', column_name: 'file_id', retention: 'operational' },
+    { schema_name: 'tasks', table_name: 'purchase_requests', column_name: 'receipt_file_id', retention: 'operational' },
     { schema_name: 'tasks', table_name: 'task_comments', column_name: 'file_id', retention: 'operational' },
   ]);
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.file_gc_apps where app = 'tasks'`)).rows[0]!.n), 1);

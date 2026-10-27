@@ -105,6 +105,9 @@ export interface PurchaseRequestRow extends BaseRow {
   supplier_id: string | null; supplier_name: string | null; approved_at: string | null; purchased_at: string | null; received_at: string | null; position: number;
   /** Procedencia de una compra pedida desde otra app (`requests/purchase`, migración 0342): app, referencia y enlace de vuelta. */
   source_app?: string | null; source_ref?: string | null; source_url?: string | null;
+  /** Registro en Finance (0346): lo pagado, el justificante y el resultado que escribe `purchases/:id/finance`. */
+  paid_total?: number | null; receipt_kind?: 'invoice' | 'ticket' | null; invoice_number?: string | null; receipt_file_id?: string | null;
+  finance_status?: 'pending' | 'registered' | 'needs_access' | 'failed' | null; finance_invoice_id?: string | null; finance_code?: string | null; finance_error?: string | null;
 }
 /** Petición de otra app (§20): pendiente en «Por clasificar», enrutada (su tarea tiene el mismo id) o descartada. */
 export interface RequestRow extends BaseRow {
@@ -182,7 +185,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.task_materials': ['tab_id', 'project_id', 'task_id', 'item_id', 'quantity', 'note', 'consumed', 'position'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
-  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'need_quantity', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position', 'source_app', 'source_ref', 'source_url'],
+  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'need_quantity', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position', 'source_app', 'source_ref', 'source_url', 'paid_total', 'receipt_kind', 'invoice_number', 'receipt_file_id', 'finance_status', 'finance_invoice_id', 'finance_code', 'finance_error'],
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of', 'space_id'],
   'tasks.settings': ['key', 'value'],
