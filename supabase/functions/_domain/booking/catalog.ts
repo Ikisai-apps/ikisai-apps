@@ -54,6 +54,8 @@ export const READS = {
   eventProjection: 'booking.event_projection',
   eventStaffProjection: 'booking.event_staff_projection',
   flowGuestsProjection: 'booking.flow_guests_projection',
+  /** Para Flow: los huéspedes de un evento de su ámbito ({event_id}). */
+  flowGuestsOf: 'booking.flow_guests_of',
 } as const;
 
 export const PROCEDURES = {
