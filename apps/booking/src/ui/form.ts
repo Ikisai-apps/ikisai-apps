@@ -1,10 +1,11 @@
 /** Formularios de fila: se describen con una lista de campos y solo viaja al servidor lo que cambia. */
 import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/sync-client';
-import { announceSaved, attachSuggestions, confirmDialog, el, fieldAttrs, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { attachSuggestions, confirmDialog, el, fieldAttrs, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { validateFields } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import { describeError } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
+import { announceWhenAccepted } from '../app/guideSaved.ts';
 
 export interface FieldSpec {
   key: string;
@@ -219,8 +220,8 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
       if (rejected) return form.showError(describeError(rejected.error));
       guard.dirtyEditor = false;
       await sheet.close(true);
-      // Guiado: la hoja y sus campos se confirman cuando la base lo ha aceptado (sin red, como pendiente), nunca con valores
-      if (options.feedbackId) for (const id of [`${options.feedbackId}.guardar`, ...changed.map((k) => `${options.feedbackId}.${k}`)]) announceSaved(id, { pending: !navigator.onLine });
+      // Guiado: la hoja y sus campos se confirman cuando la base lo acepta (sin red, pendiente y otra vez al subir), sin valores
+      if (options.feedbackId) announceWhenAccepted(client, requestId, [`${options.feedbackId}.guardar`, ...changed.map((k) => `${options.feedbackId}.${k}`)]);
       toast(navigator.onLine ? message : `${message} Se enviará al reconectar.`);
     } catch (error) {
       form.showError(describeError(error));

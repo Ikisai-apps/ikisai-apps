@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
   COMMERCIAL_STAGES, EVENT_TYPES, PHASES, PHASE_LABELS, TABLES, canHoldStatus, commercialStageLabel, dayNumber, foldText, missingForConfirmation, nextText, nights, validateFields,
   type CommercialStage, type Phase, type ReservationStatus,
@@ -10,6 +10,7 @@ import {
   type ReservationRow,
 } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
+import { announceWhenAccepted } from '../app/guideSaved.ts';
 import { PHASE_COLORS, loadExperiences, onSesPending, resetSesWatch, requestBlock, type ExperienceSet, type ReservationView } from '../app/experience.ts';
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
@@ -378,7 +379,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         if (rejected) return showError(describeError(rejected.error));
         guard.dirtyEditor = false;
         await sheet?.close(true);
-        announceSaved('booking.reservas.alta.guardar', { pending: !navigator.onLine });
+        announceWhenAccepted(client, requestId, ['booking.reservas.alta.guardar']);
         toast(navigator.onLine ? 'Reserva guardada.' : 'Guardada en este dispositivo. Se enviará al reconectar.');
       } catch (e) {
         showError(describeError(e));
