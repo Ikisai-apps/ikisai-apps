@@ -178,8 +178,11 @@ const RETREAT_LOGO_BUCKET = 'organizers-materials';
  * Alojamiento a la carta (0487): el ingreso de un cobro a Finance (`invoices.record_app_entry`, idempotente por
  * `booking:stay:<id>`) con la sesión de la persona, que tiene que ser editor u owner en Finance (si no, `NEEDS_ACCESS`).
  * El resultado lo anota la app en el cobro (`finance_entry_id` y `finance_sent_at`, o `finance_error`).
+ * Seguridad B5 (auditoría del 27-10; Finance #859): la llamada lleva además la prueba de que sale del servidor de Booking,
+ * `X-Ikisai-Worker-Key` (la `IKISAI_WORKER_KEY`) y `X-Ikisai-Caller: booking`; un navegador no tiene la clave, así que
+ * nadie más puede apuntar con `source_app: 'booking'`.
  */
-function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch): AppRoute[] {
+function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: string | undefined): AppRoute[] {
   const commandsOf = (slug: string) => `${supabase.base}/functions/v1/${slug}/api/v1/commands`;
   return [{
     method: 'POST', pattern: 'walkins/:id/send/finance',
@@ -194,7 +197,7 @@ function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch): AppRoute[] {
       let res: Response;
       try {
         res = await appsFetch(commandsOf('invoices-api'), {
-          method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+          method: 'POST', headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': workerKey ?? '', 'X-Ikisai-Caller': 'booking' },
           body: JSON.stringify({ requestId: `booking:walkin:${charge.id}:${(await sha256Hex(JSON.stringify(args))).slice(0, 24)}`, operations: [{ op: 'call', procedure: 'invoices.record_app_entry', args }] }),
           signal: AbortSignal.timeout(15_000),
         });
@@ -283,13 +286,13 @@ export function bookingPublicRoutes(): PublicRoute[] {
   }];
 }
 
-export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch): AppRoute[] {
+export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}, appsFetch: typeof fetch = fetch, workerKey: string | undefined = denoEnv('IKISAI_WORKER_KEY')): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
   // Archivos ajenos (logotipo de Central, firmas subidas desde Guests): siempre por la abstracción del kit (contrato §3.9)
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
-    ...walkinRoutes(supabase, appsFetch),
+    ...walkinRoutes(supabase, appsFetch, workerKey),
     ...montageRoutes(supabase, ses),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
@@ -444,7 +447,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     // K3 para miembros: un archivo ajeno (justificante o firma de un huésped) solo lo lee por su id quien ve la fila que lo referencia
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
-    routes: bookingRoutes(supabase, calendar, ses, appsFetch),
+    routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY')),
     publicRoutes: bookingPublicRoutes(),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner

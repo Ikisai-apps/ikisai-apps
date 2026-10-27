@@ -156,7 +156,7 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       await booking.t.rpc('core_invoke', { p_app: 'organizers', p_actor: user, p_name: 'booking.portal_update_guest', p_args: { guest_id: guestId, fields, declaration: true } });
     },
     async guestLink(reservationId, guestId, name, email, preview) {
-      const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.editor, body: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name, ...(email ? { email } : {}) }, ...(preview ? { preview: true } : {}) } });
+      const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.owner, body: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name, ...(email ? { email } : {}) }, ...(preview ? { preview: true } : {}) } });
       if (link.status !== 200) throw new Error(`portal-links ${link.status}: ${JSON.stringify(link.data)}`);
       return link.data.url.split('/i/')[1];
     },

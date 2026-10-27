@@ -63,3 +63,23 @@ test('carta pública · freno por IP en la Edge (ventana deslizante)', async () 
   for (let i = 0; i < 30; i += 1) allow('orders', '203.0.113.9');
   assert.equal(allow('orders', '203.0.113.9'), false);
 });
+
+test('carta pública · FL11: un token web no pide en un flujo que ya no sirve la carta o está cerrado', async () => {
+  const V1 = '0f10a000-0000-4000-8000-000000000001';
+  // Un cliente web de antes (el tope de altas por minuto del flujo ya está lleno en esta prueba: se crea por SQL).
+  const token = 'b'.repeat(64);
+  const { createHash } = await import('node:crypto');
+  await app.t.db.exec(`begin; select set_config('flow.proc', 'on', true); insert into flow.customers (project_id, token_hash, origin) values ('${V1}', '${createHash('sha256').update(token).digest('hex')}', 'web'); commit;`);
+  const set = async (fields: Record<string, unknown>) => {
+    const p = (await rows(TABLES.projects)).find((x) => x.id === V1);
+    const r = await app.call('/api/v1/commands', { body: { requestId: `pl-${++seq}`, operations: [{ op: 'update', table: TABLES.projects, id: V1, expectedRevision: p.revision, fields }] } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  };
+  await set({ serves_public: false });
+  const off = await order(token);
+  assert.equal(off.status, 409, JSON.stringify(off.data)); assert.equal(off.data.error.code, 'MENU_CLOSED');
+  await set({ serves_public: true, status: 'closed' });
+  assert.equal((await order(token)).data.error?.code, 'MENU_CLOSED');
+  await set({ status: 'active' });
+  assert.equal((await order(token)).status, 200);
+});

@@ -5,12 +5,12 @@
  * queda por pagar, lo próximo y los movimientos. Debajo, la forma de pago acordada, «Cómo pagar» (texto de Central) y la
  * banda de las seis cifras con la regla escrita.
  * - La factura emitida desde Finance se pinta desde su copia congelada con la página imprimible del kit (imprimir o
- *   guardar en PDF), en español. Una factura antigua que solo tiene su PDF guardado aún no se puede abrir desde el portal:
- *   «Pide esta factura a Ikisai», con el contacto público.
+ *   guardar en PDF), en español. Una registrada (hecha con otra herramienta) abre su PDF guardado con «Abrir PDF» (K2:
+ *   `portal-files`, resolutor de Finance 0249); sin PDF, «Pide esta factura a Ikisai», con el contacto público.
  */
 import { createPrintView, el, openSheet, renderMoneyBreakdown, replace, toast, type MoneyMove } from '@ikisai/ui-kit';
 import type { IssuedAddress, IssuedDocument, IssuerSnapshot } from '../../../../supabase/functions/_domain/invoices/issued.ts';
-import type { Contract, PortalInvoice, PortalMoney } from '../app/api.ts';
+import type { Contract, PortalInvoice, PortalInvoiceDocument, PortalMoney } from '../app/api.ts';
 import { statementOf, type StatementMove } from '../app/pay-state.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, contactLine, textParagraphs } from '../app/common-texts.ts';
@@ -49,10 +49,35 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
     try {
       const out = await ctx.usage.run('organizers.pagos.factura.ver', () => ctx.api.invoiceDocument(reservationId, invoice.id));
       if (out.value.document) openDocument(out.value.document);
+      else if (out.value.files.length) openFiles(invoice, out.value.files);
       else askIkisai(invoice);
     } catch (error) {
       toast(describeError(error));
     }
+  }
+
+  /** K2: el PDF guardado de una registrada. La pestaña se abre al pulsar (si no, el navegador la bloquea tras la espera) y
+   *  luego recibe la URL firmada de 5 minutos, que se pide en ese momento. */
+  function openFiles(invoice: PortalInvoice, files: PortalInvoiceDocument['files']): void {
+    const button = (file: PortalInvoiceDocument['files'][number]) => el('button', {
+      type: 'button', class: 'primary', 'data-file-id': file.file_id,
+      onclick: async () => {
+        const tab = window.open('', '_blank');
+        try {
+          const out = await ctx.usage.run('organizers.pagos.factura.pdf', () => ctx.api.portalFile(file.file_id));
+          if (tab) tab.location.href = out.url; else window.location.assign(out.url);
+        } catch (error) {
+          tab?.close();
+          toast(describeError(error));
+        }
+      },
+    }, files.length === 1 ? t('Abrir PDF') : t('Abrir {nombre}', { nombre: file.filename }));
+    openSheet({
+      title: t('Factura {numero}', { numero: invoice.number }),
+      body: el('div', { id: 'invoiceFiles', 'data-feedback-id': 'organizers.pagos.factura.pdf', 'data-feedback-label': 'PDF de la factura' },
+        el('p', null, t('Esta factura se hizo con otra herramienta. Aquí tienes su PDF para verlo o guardarlo.')),
+        el('div', { class: 'btnrow' }, ...files.map(button))),
+    });
   }
 
   function askIkisai(invoice: PortalInvoice): void {

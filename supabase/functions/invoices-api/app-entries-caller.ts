@@ -12,7 +12,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { fail, type Operation } from '../_kit/mod.ts';
 
 export const APP_ENTRY_SOURCES: ReadonlySet<string> = new Set(['flow', 'booking']);
-export const APP_ENTRY_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>([]);
+export const APP_ENTRY_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>(['flow', 'booking']);
 
 const scope = new AsyncLocalStorage<string | null>();
 

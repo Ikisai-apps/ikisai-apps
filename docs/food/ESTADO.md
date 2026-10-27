@@ -73,6 +73,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 - **«Rellenar previsión» y aviso «Sin previsión»** (hueco S3 de la QA de Flow; migración 1114 con la previsión de partida de la carta de octubre; API.md §2.11).
 - **Qué falta en la previsión para Flow** (encargo de Core del 28-10: rendimiento y recipientes; migración 1115; API.md §2.13): `missing`, `yield_missing` y `note` en las dos lecturas; avisos en el plan de bandejas y «Falta» en el rendimiento.
 - **Seguridad FO2** (auditoría del 27-10; Tasks #852): las peticiones a Tasks llevan la clave de worker y `X-Ikisai-Caller: food`.
+- **Seguridad FO1** (auditoría del 27-10; migración 1118): las ofertas de visitante, por el código público del evento y sin `event_id`. Necesita que Booking añada `public_code` a `booking.food_event_projection`.
 - **Seguridad FO3** (auditoría del 27-10; migración 1119): los avisos de avería (`food.equipment_notices`) solo los escribe la cuenta de servicio `food`.
 
 ## Aceptación del usuario (6 de octubre de 2026)

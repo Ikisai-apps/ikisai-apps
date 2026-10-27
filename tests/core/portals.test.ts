@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createApp } from '../../supabase/functions/_kit/handler.ts';
+import { sha256Hex } from '../../supabase/functions/_kit/supabase.ts';
 
 const BOOKING = 'https://booking.ikisai.com';
 let app: TestApp;
@@ -290,4 +291,24 @@ test('portales · K7: la cuenta de servicio de Organizers se registra sin perten
   assert.equal(id, user);
   assert.equal((await app.t.db.query<{ n: number }>('select count(*)::int n from core.memberships where user_id = $1', [user])).rows[0]!.n, 0);
   assert.equal((await app.t.db.query<{ id: string }>(`select core.service_actor('organizers')::text id`)).rows[0]!.id, user);
+});
+
+test('portales · B1: el correo de alguien del personal no sirve para un enlace de portal, y un enlace a esa cuenta no abre sesión', async () => {
+  // Emitir con el correo del editor de Booking: antes devolvía un enlace que entraba como él (owner en todo).
+  await app.t.db.query('update auth.users set email = $2 where id = $1', [app.users.editor, 'editor@example.invalid']);
+  const r = await app.call('/api/v1/portal-links', { token: app.tokens.editor, body: { app: 'organizers', scope: { reservation_id: R1 }, person: { name: 'Intruso', email: 'editor@example.invalid' } } });
+  assert.equal(r.status, 409, JSON.stringify(r.data)); assert.equal(r.data.error.code, 'PORTAL_EMAIL_STAFF');
+  const links = await app.t.db.query<{ n: number }>('select count(*)::int n from core.portal_links where user_id = $1', [app.users.editor]);
+  assert.equal(links.rows[0]!.n, 0, 'no se emite nada para esa cuenta');
+  // Un enlace antiguo que apunte a una cuenta del personal (insertado a mano) tampoco abre sesión.
+  const token = 'B'.repeat(43);
+  await app.t.db.query(`insert into core.portal_links (app, user_id, digest, scope, created_by, issuer_app) values ('organizers', $1, $2, $3, $1, 'booking')`,
+    [app.users.editor, await sha256Hex(token), JSON.stringify({ reservation_id: R1 })]);
+  const bad = await callPortal(organizers, 'organizers', '/api/v1/auth/link', { body: { token } });
+  assert.equal(bad.status, 401); assert.equal(bad.data.error.code, 'LINK_INVALID');
+  // Una cuenta de portal (Paco, organizador) sigue siéndolo: se reutiliza por correo.
+  const ok = await app.call('/api/v1/portal-links', { token: app.tokens.editor, body: { app: 'organizers', scope: { reservation_id: R1 }, person: { name: 'Paco', email: 'paco@example.invalid' } } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal((await app.t.db.query<{ ok: boolean }>('select core.is_portal_account($1) ok', [ok.data.userId])).rows[0]!.ok, true);
+  assert.equal((await app.t.db.query<{ ok: boolean }>('select core.is_portal_account($1) ok', [app.users.owner])).rows[0]!.ok, false);
 });
