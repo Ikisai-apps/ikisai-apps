@@ -2386,3 +2386,11 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **Modelo de la interfaz:** `LegacyProject.deliverables` (`{id, name, quantity, status, spaceId, note, order, version}`, más los calculados `done`, `open` y `total`) y `LegacyTask.deliverableId`. Quitar uno del modelo suelta sus tareas.
 - **Papelera:** los entregables van a ella con su proyecto y la purga los borra.
 - **Pruebas:** `tests/tasks/deliverables.test.ts`.
+
+## 58. La producción y «hoy» con unidades y entregables (migración `0362`; «Proyectos y producción» 7.5)
+
+- **Producción (§52):**
+  - `deliverables: [{id, name, quantity, status, spaceId, total, open, done}]`, donde `total`, `open` y `done` cuentan las madres;
+  - por tarea, `deliverableId` (en un paso, el de su madre) y `units: {total, done}`, que es nulo si la tarea no tiene unidades o es un contenedor.
+- **«Hoy» (§47):** `units: {total, done}` por tarea.
+- **Pruebas:** `tests/tasks/production-units.test.ts`.

@@ -243,13 +243,13 @@
 
 /* ---------- Selector de tema, rechazados y detalles de v0.2 ---------- */
 .segmented{display:inline-flex;gap:2px;padding:3px;border-radius:11px;background:rgba(31,42,34,.07)}
-.segmented button{border:0;background:transparent;min-width:var(--tap);min-height:var(--tap);height:auto;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--ink);font:inherit;font-size:var(--text-sm);font-weight:700}
-.segmented button:hover{background:rgba(31,42,34,.05)}
-.segmented button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.segmented :is(button,a){border:0;text-decoration:none;background:transparent;min-width:var(--tap);min-height:var(--tap);height:auto;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--ink);font:inherit;font-size:var(--text-sm);font-weight:700}
+.segmented :is(button,a):hover{background:rgba(31,42,34,.05)}
+.segmented :is(button.on,a.on,a[aria-current="page"]){background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
 .segmented .icon{width:16px;height:16px}
 :root[data-theme="dark"] .segmented{background:rgba(236,229,216,.08)}
-:root[data-theme="dark"] .segmented button:hover{background:rgba(236,229,216,.06)}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .segmented{background:rgba(236,229,216,.08)}:root:not([data-theme="light"]) .segmented button:hover{background:rgba(236,229,216,.06)}}
+:root[data-theme="dark"] .segmented :is(button,a):hover{background:rgba(236,229,216,.06)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .segmented{background:rgba(236,229,216,.08)}:root:not([data-theme="light"]) .segmented :is(button,a):hover{background:rgba(236,229,216,.06)}}
 .statuschip[data-rejected="true"]{color:var(--alert);border-color:color-mix(in srgb,var(--alert) 50%,transparent);background:var(--alert-soft)}
 .conflict .meta{color:var(--muted);font-size:13px;margin-bottom:4px}
 .conflict .who{margin:0 0 2px;font-size:14px}

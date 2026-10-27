@@ -71,7 +71,7 @@ test.afterAll(async () => {
 });
 
 async function enter(page: Page): Promise<void> {
-  await page.goto(`${baseURL}/equipo`);
+  await page.goto(`${baseURL}/`);
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
   await page.getByRole('button', { name: 'Entrar' }).click();

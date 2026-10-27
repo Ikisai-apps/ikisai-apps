@@ -5,9 +5,23 @@ const BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/flow-api'
 // (número por QR, traspaso a ven.ikisai.com). Sin ellas, la carta en producción no reconoce al móvil.
 const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'accept', 'x-flow-customer', 'x-visitor'];
 
+/* Entradas (decisión de VG, 27-10): la raíz es la entrada del equipo; la carta pública vive en /recorridos/carta y se llega
+   desde ven.ikisai.com. Redirecciones permanentes desde las URL antiguas, por si algún enlace vive:
+   /equipo… → / (el navegador conserva el #), /carta → ven.ikisai.com, /?invitacion=… (enlace de Guests) → la carta. */
+const CARTA_PATH = '/recorridos/carta';
+function redirectFor(url) {
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/equipo' || path.startsWith('/equipo/')) return `${url.origin}/${url.search}`;
+  if (path === '/carta') return 'https://ven.ikisai.com/';
+  if (path === '/' && url.searchParams.has('invitacion')) return `${url.origin}${CARTA_PATH}${url.search}`;
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const moved = redirectFor(url);
+    if (moved) return Response.redirect(moved, 301);
     if (!url.pathname.startsWith('/api/v1/')) return env.ASSETS.fetch(request);
 
     const origin = request.headers.get('origin');

@@ -16,6 +16,8 @@ export interface Order extends Row {
   project_id: string; origin: 'public' | 'counter'; status: OrderStatus; pay_seq: number | null; paid_at: string | null; paid_by: string | null;
   pay_method: PayMethod | 'account' | 'card' | 'btc_ln' | 'btc_chain' | null; total_cents: number | null; delivered_at: string | null; delivered_by: string | null; delivery_exception: boolean;
   notes: string | null; customer_id: string | null; parent_id: string | null; account_id: string | null;
+  /** Pedido de prueba de un miembro (0952): quién; no cuenta en caja ni en Finance. */
+  test_by?: string | null; test_name?: string | null;
 }
 export interface OrderLine extends Row { order_id: string; product_id: string; quantity: number; unit_price_cents: number | null; position: number; delivered_qty: number }
 export interface Payment extends Row { order_id: string | null; account_id: string | null; kind: 'charge' | 'reversal' | 'adjustment' | 'refund'; method: SettleMethod | 'btc_ln' | 'btc_chain' | null; amount_cents: number; note: string | null; settled_at: string | null; settled_by: string | null }
