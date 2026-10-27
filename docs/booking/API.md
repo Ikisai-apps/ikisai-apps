@@ -1374,6 +1374,7 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 | `booking.deposits_pending` | count | actual | down | reservas vivas pre-reservadas o confirmadas con señal pedida mayor que la cobrada |
 | `booking.staff_needs_open` | count | actual | down | refuerzos sin cubrir de eventos que no han terminado |
 | `booking.occupancy_rate` | pct | mensual (12 meses anteriores, el actual y 3 siguientes) | up | personas-noche asignadas en el mes (asignaciones de alojamiento de reservas vivas, noches [entrada, salida)) / (plazas base × días del mes) × 100; plazas base = camas activas no supletorias de habitaciones activas y reservables; `null` si no hay plazas |
+| `booking.occupancy_weekend` | pct | actual (viernes → domingo del fin de semana que viene; el sábado, el que está en curso) | up | personas-noche asignadas las noches de viernes y sábado / (plazas base × 2) × 100; `null` si no hay plazas (migración 0493, panel de Dirección V2 de Central) |
 
 `booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
 
