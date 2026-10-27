@@ -53,7 +53,8 @@ test('reserva la plaza N horas: bloquea camas, la última plaza es de uno solo, 
   await ask(d.code, ana, { ...night, persons: 1, total_cents: 1 });
   const [a1] = await rowsOf(ana);
   assert.deepEqual([a1!.status, a1!.pay_mode, a1!.total_cents, a1!.hold_bed_ids.length], ['pendiente', 'hold', 2000 * 2 * 1, 1]);
-  assert.ok(new Date(a1!.hold_until).getTime() > Date.now() + 23 * 3600_000, '24 horas por defecto');
+  // 1403: la retención por defecto es de 2 horas
+  assert.ok(new Date(a1!.hold_until).getTime() > Date.now() + 1.5 * 3600_000 && new Date(a1!.hold_until).getTime() <= Date.now() + 2 * 3600_000 + 60_000, '2 horas por defecto');
   assert.equal(await free('2032-03-02', '2032-03-04', d.space), 1);
   assert.equal(await codeOf(ask(d.code, bea, { ...night, persons: 2 })), 'NO_AVAILABILITY');
   assert.equal((await rowsOf(bea)).length, 0, 'sin reserva fantasma');

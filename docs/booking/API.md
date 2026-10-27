@@ -1375,6 +1375,8 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 | `booking.staff_needs_open` | count | actual | down | refuerzos sin cubrir de eventos que no han terminado |
 | `booking.occupancy_rate` | pct | mensual (12 meses anteriores, el actual y 3 siguientes) | up | personas-noche asignadas en el mes (asignaciones de alojamiento de reservas vivas, noches [entrada, salida)) / (plazas base × días del mes) × 100; plazas base = camas activas no supletorias de habitaciones activas y reservables; `null` si no hay plazas |
 | `booking.occupancy_weekend` | pct | actual (viernes → domingo del fin de semana que viene; el sábado, el que está en curso) | up | personas-noche asignadas las noches de viernes y sábado / (plazas base × 2) × 100; `null` si no hay plazas (migración 0493, panel de Dirección V2 de Central) |
+| `booking.beds_free_tonight` | count | actual (hoy → mañana) | up | plazas de cama libres esta noche según `booking.free_beds` (sin asignación, estancia ni retención viva; migración 1412) |
+| `booking.stay_requests_unpaid` | count | actual | down | solicitudes de noches del QR pendientes de cobrar en recepción, sin las de retención caducada (1412) |
 
 `booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
 
@@ -1993,4 +1995,39 @@ El visitante, desde «Alójate aquí»:
   - si Tasks falla, la salida queda hecha igualmente.
 
   Los datos salen de `booking.cleaning_source` (sistema). **Pendiente de Tasks:** aceptar el tipo `booking.bed_cleaning`.
+
+## 41. Ajustes y devoluciones del cobro del alojamiento (migración 1403; VG 27-10-2026)
+
+- **Ajuste:** en «Alojamiento a la carta», «Ajustar…» cambia las noches o el precio por noche, y el importe vuelve a ser noches × precio.
+- **Devolución:** «Devolver…» guarda `walkin_charges.refund_cents` (hasta lo cobrado), `refund_method` y `refunded_at`. Con 0 se quita.
+- **Un solo apunte en Finance por cobro** (`booking:stay:<id del cobro>`): `walkinFinanceEntry` lo manda por lo cobrado menos lo devuelto.
+  - El método de la devolución va en negativo y el desglose lleva una línea «Devolución» negativa, así que métodos y desglose suman el importe.
+  - Un cambio de importe, cobro o devolución en un cobro ya enviado borra `finance_sent_at` (disparador `walkin_charge_stale`) y la ficha ofrece «Reenviar a Finance».
+  - El reenvío sustituye el apunte (patrón F1, con las cabeceras de servidor del #867). Si el apunte ya está en la gestoría, Finance responde `ENTRY_LOCKED`.
+- **Retención de la plaza por defecto:** 2 horas, por decisión de Core en nombre de VG. Se cambia por evento.
+- **Para Finance (#904):** `booking.event_reservations_for_invoices({event_ids})`, legible por invoices, devuelve `[{reservation_id, event_id, status}]` sin datos personales. Admite hasta 200 eventos.
+
+## 42. Visitante solo de jornada: sin pernocta, sin SES (migración 1404; aceptación H)
+
+- **Al aceptar a un visitante del QR que pidió apuntarse sin noches** (`kind = 'join'`) en unas jornadas abiertas, su ficha nace con `ses_status = 'no_aplica'` y `data_status = 'no_aplica'`. Lo hace el disparador `visitor_day_only`.
+  - Huéspedes lo enseña como «Sin pernocta · sin SES» y no pide el documento.
+  - El parte de viajeros (`ses_guest_report_source_base`) lo deja fuera aunque llegue.
+- **Si después se le da cama** (una asignación con él), vuelve a `pendiente_envio` y `pendiente_datos` (`assignment_needs_ses`).
+- **En un retiro**, apuntarse es venir a dormir: nada cambia.
+
+## 43. Carriles de Recepción (traspaso §4.3; Core 27-10-2026)
+
+`#/recepcion` muestra la misma estancia en carriles filtrados (`createLanes` del kit; pestañas o lado a lado, y la elección se recuerda en el dispositivo). Sirve para las jornadas abiertas en curso.
+
+- **Carriles:**
+  - **Por confirmar:** las solicitudes del QR con número.
+  - **Entradas de hoy:** quien tiene cama desde hoy y no ha llegado.
+  - **En estancia:** quien ha llegado y no ha salido.
+  - **Salidas y limpieza:** quien sale hoy o ya ha salido hoy (su limpieza se pide al salir, §40).
+  - **Excepciones:** cobro pendiente con la cama ocupada, datos incompletos el día de entrada o dentro, retención caducada o sin cama. Es un filtro encima de los otros carriles.
+- **Cuatro indicadores independientes por ficha:** plaza, cobro, datos y presencia. Que uno esté bien no da los otros por hechos. Sin el ámbito de huéspedes no salen ni nombres ni datos.
+- **Acciones:**
+  - «Cobrar y alojar» y «Descartar», en las solicitudes;
+  - «Llega» (`guest_arrive`), «Sale» (`guest_leave`) y «Ficha», en los huéspedes.
+- **La regla** está en `apps/booking/src/app/receptionLanes.ts` (`receptionCards`, `laneCards`). Es pura y tiene prueba en `tests/booking/reception-lanes.test.ts`.
 

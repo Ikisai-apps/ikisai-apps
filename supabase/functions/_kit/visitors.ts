@@ -12,12 +12,13 @@ export const VISITOR_HEADER = 'x-visitor';
 const TOKEN = /^[0-9a-f]{64}$/;
 
 /** Alta: token nuevo para el navegador (solo se enseña una vez) y su identidad. */
-export async function issueVisitor(supabase: Supabase, eventCode: string | null): Promise<{ visitorId: string; token: string }> {
+export async function issueVisitor(supabase: Supabase, eventCode: string | null, ip: string | null = null): Promise<{ visitorId: string; token: string }> {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   const token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   const code = typeof eventCode === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(eventCode) ? eventCode : null;
-  const visitorId = await supabase.rpc<string>('core_visitor_create', { p_token_hash: await sha256Hex(token), p_event_code: code });
+  // Freno por IP del proxy (30 altas por hora); sin IP conocida, solo los frenos globales.
+  const visitorId = await supabase.rpc<string>('core_visitor_create', { p_token_hash: await sha256Hex(token), p_event_code: code, p_ip: ip });
   return { visitorId, token };
 }
 

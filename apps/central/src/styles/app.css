@@ -83,7 +83,7 @@ button.accountrow:hover,button.accountrow:focus-visible{border-color:var(--accen
 .dashboard{margin:0 0 18px}
 .dashboard .blockhead h3{margin:0;font-size:1.05rem}
 .kpigroup{margin:8px 0 12px}
-.kpigrouphead{display:flex;align-items:center;gap:8px;width:100%;margin:0 0 6px;padding:6px 0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.kpigrouphead{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--tap,46px);margin:0 0 6px;padding:6px 0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .kpigrouphead .sectionlabel{margin:0}
 .kpigrouphead svg{margin-left:auto;flex:none;color:var(--muted);transition:transform .15s}
 .kpigroup.folded .kpigrouphead svg{transform:rotate(-90deg)}

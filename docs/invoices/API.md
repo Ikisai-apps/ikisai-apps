@@ -701,7 +701,7 @@ Cuando Booking fusione su PR #146 existirá `booking.invoices_staff_hours_projec
 
 ### 7.6 Indicadores para el panel de Dirección de Central (ronda 40, migración 0211)
 
-Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2. Está registrada con `core.allow_read('central', …, 'view')` y solo la lee la clave de servicio. Publica solo agregados: ningún proveedor, cliente ni importe de una factura concreta. «Hoy» es la fecha en hora de Madrid. Las claves mensuales cubren el mes en curso y los 12 anteriores, así que la vista tiene 29 filas.
+Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2. Está registrada con `core.allow_read('central', …, 'view')` y solo la lee la clave de servicio. Publica solo agregados: ningún proveedor, cliente ni importe de una factura concreta. «Hoy» es la fecha en hora de Madrid. Las claves mensuales cubren el mes en curso y los 12 anteriores (29 filas en 0211; 35 desde 0253).
 
 | Clave | Etiqueta | Unidad · periodo · sentido | Fórmula |
 |---|---|---|---|
@@ -710,6 +710,19 @@ Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md
 | `invoices.unpaid_amount` | Importe recibido sin pagar | `eur` · `actual` · `down` | Suma de `calculated_total` (IVA incluido) de las mismas facturas que `invoices.unpaid`. |
 | `invoices.expenses_month` | Gasto del mes (facturas validadas) | `eur` · `AAAA-MM` · `down` | Suma de `calculated_total` (IVA incluido) de las recibidas `validada` o `archivada`, por mes de `invoice_date`. Las que están por revisar no cuentan hasta validarlas. |
 | `invoices.income_issued_month` | Ingresos facturados del mes (base) | `eur` · `AAAA-MM` · `up` | Suma de `base_total` (sin IVA) de las emitidas no borradas ni anuladas, y sin borradores cuando exista la emisión (§14), por mes de `issue_date`. |
+
+**Dirección V2 (P7 de Central, migración 0253):** seis claves más; la vista pasa a 35 filas.
+
+| Clave | Etiqueta | Unidad · periodo · sentido | Fórmula |
+|---|---|---|---|
+| `invoices.collected_today` | Cobrado hoy | `eur` · `actual` · `up` | Ingresos de apps del día (`amount_cents`, IVA incluido: barra y alojamiento de recepción) más el `total` de las emitidas cobradas hoy (`paid_at`). |
+| `invoices.collected_event_today` | Cobrado en el evento de hoy | `eur` · `actual` · `up` | Todo lo cobrado por apps (IVA incluido, todos sus días) en los eventos que hoy tienen algún cobro. |
+| `invoices.pending_collection` | Pendiente de cobro (facturas emitidas) | `eur` · `actual` · `down` | `total` de las emitidas, sin borradores ni anuladas, con `payment_status = 'pendiente'`. |
+| `invoices.pending_collection_count` | Facturas emitidas sin cobrar | `count` · `actual` · `down` | Las mismas, contadas. |
+| `invoices.unassigned` | Facturas recibidas sin asignar | `count` · `actual` · `down` | Recibidas no anuladas con alguna asignación viva a «Sin asignar» (`general/unassigned`). |
+| `invoices.vat_quarter` | IVA del trimestre (repercutido − soportado) | `eur` · `AAAATn` · sin sentido | Repercutido: `quota_total` de las emitidas del trimestre más el IVA de los ingresos fiscales de apps. Soportado: `calculated_vat` de las recibidas validadas con factura, por `declaration_date`, más el IVA de los gastos fiscales de apps con factura. Positivo: a ingresar. |
+
+«Apuntes por reenviar» no es de Finance: lo saben Booking y Flow (un cobro que cambió después de enviarse) y es indicador suyo.
 
 Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `?vista=emitidas`) y el gasto a `#/gestoria`. Cambiar el significado de una clave es crear otra.
 
