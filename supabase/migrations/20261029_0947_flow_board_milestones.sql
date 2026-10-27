@@ -9,6 +9,19 @@
 -- - `flow.import_board(p_project, p_payload)` (solo service_role): carga hitos, tarjetas e historial exportados del artefacto,
 --   idempotente por id, por el registro del núcleo (`core.apply_migration_operations`) en lotes de 400.
 
+-- Hito = ejecución de una definición «cadena» (VG, 27-10): cada hito tiene su definición publicada y una ejecución; cada tarjeta
+-- del hito es un tramo «ir a otro carril» (handoff, con su `lane_key`) y queda enlazada a él (`execution_id`, `stage_position`).
+-- El objetivo del hito guarda `execution_id`. Cerrar la tarjeta (board_card, `done`) cierra su tramo; cumplido el hito, la
+-- ejecución queda hecha. La pantalla y el gráfico siguen leyendo unidades: no cambian.
+alter table flow.units add column execution_id uuid references flow.executions(id);
+alter table flow.units add column stage_position integer check (stage_position is null or stage_position between 1 and 200);
+alter table flow.definition_stages add column lane_key text check (lane_key is null or lane_key ~ '^[a-z][a-z0-9_]{1,30}$');
+alter table flow.definition_stages drop constraint definition_stages_position_check;
+alter table flow.definition_stages add constraint definition_stages_position_check check (position between 1 and 200);
+create index units_execution_idx on flow.units (execution_id) where execution_id is not null;
+select core.register_table('flow', 'flow', 'units', array['project_id','column_key','kind','order_id','line_id','product_id','idx','pay_seq','label','priority','status','assigned_to','done_at','done_by','payload','source_ref','lane_key','prio','board_flag','class','parent_id','criteria','result_link','verified_by','verified_at','execution_id','stage_position'], '{reader,editor,owner,outsider}', '{editor,owner,outsider}', true);
+select core.register_table('flow', 'flow', 'definition_stages', array['version_id','position','kind','capability','title','explain','target_app','target_anchor','lane_key'], '{reader,editor,owner}', '{owner}', true);
+
 create table flow.board_history (
   id uuid primary key default gen_random_uuid(),
   revision bigint not null default 1,
@@ -78,7 +91,8 @@ end $$;
 create or replace function flow.board_after_write(p jsonb, p_project uuid, p_old_parent uuid, p_new_parent uuid) returns void language plpgsql as $$
 begin
   perform flow.refresh_hito(p, p_new_parent);
-  if p_old_parent is distinct from p_new_parent then perform flow.refresh_hito(p, p_old_parent); end if;
+  perform flow.hito_chain_apply(p, p_new_parent);
+  if p_old_parent is distinct from p_new_parent then perform flow.refresh_hito(p, p_old_parent); perform flow.hito_chain_apply(p, p_old_parent); end if;
   perform flow.board_snapshot(p, p_project);
 end $$;
 
@@ -89,8 +103,8 @@ begin
   -- Clase, criterios, vínculo, verificación y dependencia: solo por procedimiento (nadie se verifica a sí mismo a mano).
   if not flow.in_proc() and (
        (tg_op = 'INSERT' and (new.class <> 'operation' or new.criteria is not null or new.result_link is not null or new.verified_by is not null
-                              or new.verified_at is not null or new.parent_id is not null))
-       or (tg_op = 'UPDATE' and flow.changed(to_jsonb(old), to_jsonb(new), array['class', 'criteria', 'result_link', 'verified_by', 'verified_at', 'parent_id']))) then
+                              or new.verified_at is not null or new.parent_id is not null or new.execution_id is not null or new.stage_position is not null))
+       or (tg_op = 'UPDATE' and flow.changed(to_jsonb(old), to_jsonb(new), array['class', 'criteria', 'result_link', 'verified_by', 'verified_at', 'parent_id', 'execution_id', 'stage_position']))) then
     perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.units', 'reason', 'activity class fields'));
   end if;
   -- Una unidad solo depende de otra viva del mismo proyecto (nada de colgarla de un proyecto ajeno).
@@ -210,6 +224,73 @@ begin
 end $$;
 
 /**
+ * Lo que falta para que el hito sea una ejecución de su cadena: definición, versión publicada y ejecución si no existen; un tramo
+ * por cada tarjeta hija que aún no lo tenga (en orden de paso); el estado de cada tramo según su tarjeta (hecha → done, backlog →
+ * skipped, si no → draft) y el de la ejecución (done cuando no queda ninguno en draft). Devuelve operaciones de fila: las aplica
+ * board_card (`hito_chain_apply`) o la importación (`import_apply`), siempre por el registro del núcleo.
+ */
+create or replace function flow.hito_chain_ops(p_hito uuid) returns jsonb language plpgsql as $$
+declare h flow.units; e flow.executions; c flow.units; v_def uuid; v_ver uuid; v_exec uuid; v_pos int := 0; v_new boolean;
+  v_head jsonb := '[]'::jsonb; v_stage_ops jsonb := '[]'::jsonb; v_unit_ops jsonb := '[]'::jsonb; v_stages jsonb := '[]'::jsonb; v_p int; v_all boolean;
+begin
+  select * into h from flow.units where id = p_hito and class = 'objective' and deleted_at is null;
+  if h.id is null or jsonb_array_length(coalesce(h.criteria, '[]'::jsonb)) > 0 then return '[]'::jsonb; end if;
+  v_new := h.execution_id is null;
+  if v_new then
+    v_def := gen_random_uuid(); v_ver := gen_random_uuid(); v_exec := gen_random_uuid();
+    v_head := jsonb_build_array(
+      jsonb_build_object('op', 'insert', 'table', 'flow.definitions', 'id', v_def, 'fields', jsonb_build_object(
+        'key', 'cadena_' || replace(h.id::text, '-', ''), 'name', left(coalesce(h.label, 'Hito'), 80), 'description', 'Cadena del hito del Avance')),
+      jsonb_build_object('op', 'insert', 'table', 'flow.definition_versions', 'id', v_ver, 'fields', jsonb_build_object(
+        'definition_id', v_def, 'version', 1, 'status', 'published')));
+  else
+    v_exec := h.execution_id;
+    select * into e from flow.executions where id = v_exec;
+    v_ver := e.version_id;
+    select coalesce(max(position), 0) into v_pos from flow.definition_stages where version_id = v_ver and deleted_at is null;
+  end if;
+  for c in select * from flow.units where parent_id = h.id and deleted_at is null and kind in ('card', 'recurring')
+            order by coalesce((payload->>'paso')::int, 9999), idx, created_at, id loop
+    if c.stage_position is null or c.execution_id is distinct from v_exec then
+      v_pos := v_pos + 1; v_p := v_pos;
+      v_stage_ops := v_stage_ops || jsonb_build_object('op', 'insert', 'table', 'flow.definition_stages', 'id', gen_random_uuid(), 'fields', jsonb_build_object(
+        'version_id', v_ver, 'position', v_pos, 'kind', 'handoff', 'title', left(coalesce(c.label, 'Paso'), 120), 'target_app', 'flow', 'lane_key', c.lane_key));
+      v_unit_ops := v_unit_ops || jsonb_build_object('op', 'update', 'table', 'flow.units', 'id', c.id, 'expectedRevision', c.revision,
+        'fields', jsonb_build_object('execution_id', v_exec, 'stage_position', v_pos));
+    else
+      v_p := c.stage_position;
+    end if;
+    v_stages := v_stages || jsonb_build_object('position', v_p, 'unit_id', c.id,
+      'status', case when c.board_flag = 'backlog' then 'skipped' when c.status = 'done' or c.kind = 'recurring' then 'done' else 'draft' end);
+  end loop;
+  select coalesce(jsonb_agg(x order by (x->>'position')::int), '[]'::jsonb) into v_stages from jsonb_array_elements(v_stages) x;
+  v_all := jsonb_array_length(v_stages) > 0 and not exists (select 1 from jsonb_array_elements(v_stages) x where x->>'status' = 'draft');
+  if v_new then
+    return v_head || v_stage_ops
+      || jsonb_build_array(jsonb_build_object('op', 'insert', 'table', 'flow.executions', 'id', v_exec, 'fields', jsonb_build_object(
+           'version_id', v_ver, 'mode', 'run', 'status', case when v_all then 'done' else 'draft' end, 'stages', v_stages,
+           'finished_at', case when v_all then now() end)),
+         jsonb_build_object('op', 'update', 'table', 'flow.units', 'id', h.id, 'expectedRevision', h.revision, 'fields', jsonb_build_object('execution_id', v_exec)))
+      || v_unit_ops;
+  end if;
+  if e.stages is distinct from v_stages or (e.status = 'done') is distinct from v_all then
+    v_unit_ops := v_unit_ops || jsonb_build_object('op', 'update', 'table', 'flow.executions', 'id', e.id, 'expectedRevision', e.revision, 'fields', jsonb_build_object(
+      'stages', v_stages, 'status', case when v_all then 'done' else 'draft' end, 'finished_at', case when v_all then coalesce(e.finished_at, now()) end));
+  end if;
+  return v_stage_ops || v_unit_ops;
+end $$;
+
+/** Desde board_card: aplica la cadena con el permiso del procedimiento (las definiciones y ejecuciones son del encargado). */
+create or replace function flow.hito_chain_apply(p jsonb, p_hito uuid) returns void language plpgsql as $$
+declare op jsonb;
+begin
+  if p_hito is null then return; end if;
+  for op in select * from jsonb_array_elements(flow.hito_chain_ops(p_hito)) loop
+    perform flow.row_op(p || jsonb_build_object('role', 'owner'), op);
+  end loop;
+end $$;
+
+/**
  * Importar el tablero exportado del artefacto (solo service_role; Core lo ejecuta en producción). Idempotente por id.
  * Con `p_project` null crea el flujo «Avance por aplicaciones» (plantilla `avance`, columna «Avance»; nombre en `p_payload.name`)
  * y devuelve su id en `project_id`: para la segunda carga, se pasa ese id.
@@ -278,6 +359,11 @@ begin
     end if;
   end loop;
   if jsonb_array_length(v_ops) > 0 then perform flow.import_apply(v_ops, 'estado'); end if;
+  -- 3b. Cada hito, ejecución de su cadena (definición, tramos por paso, enlaces y estado).
+  for x in select * from jsonb_array_elements(coalesce(p_payload->'hitos', '[]'::jsonb)) loop
+    v_ops := flow.hito_chain_ops((x->>'hito_id')::uuid);
+    if jsonb_array_length(v_ops) > 0 then perform flow.import_apply(v_ops, 'cadena'); end if;
+  end loop;
   -- 4. Historial (sin repetir fotos ya cargadas).
   v_ops := '[]'::jsonb;
   for x in select * from jsonb_array_elements(coalesce(p_payload->'history', '[]'::jsonb)) loop

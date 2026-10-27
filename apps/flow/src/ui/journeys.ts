@@ -32,7 +32,8 @@ async function loadJourneys(client: SyncClient): Promise<Journey[]> {
     client.list(TABLES.definitionStages), client.list(TABLES.definitionSteps)]);
   const live = <T extends { deleted_at: string | null }>(rows: unknown[]) => (rows as T[]).filter((r) => !r.deleted_at);
   const allSteps = live<Step>(steps);
-  return live<Definition>(defs).map((def) => {
+  // Las cadenas de los hitos del Avance (0947) no son recorridos para hacer a mano: no salen aquí.
+  return live<Definition>(defs).filter((d) => !d.key.startsWith('cadena_')).map((def) => {
     const version = live<Version>(versions).filter((v) => v.definition_id === def.id && v.status === 'published').sort((a, b) => b.version - a.version)[0];
     if (!version) return null;
     const own = live<Stage>(stages).filter((s) => s.version_id === version.id).sort((a, b) => a.position - b.position)
