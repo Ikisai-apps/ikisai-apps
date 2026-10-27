@@ -24,7 +24,8 @@ import { SERVICE_LABELS } from './events.ts';
 import type { ViewMount } from './shell.ts';
 
 /** Par de atributos de «Sugerencias y QA» que los helpers de esta vista reciben ya escrito en literal. */
-type Mark = { 'data-feedback-id': string; 'data-feedback-label': string };
+/** Marca de feedback y, en los campos que guardan datos, su declaración en el inventario (`data-field-*`, 0111). */
+type Mark = { 'data-feedback-id': string; 'data-feedback-label': string; 'data-field-id'?: string; 'data-field-entity'?: string; 'data-field-prop'?: string };
 
 /** En el espejo local la foto puede ser todavía un marcador de blob en cola. */
 type RecipeRow = Mirror<Omit<Recipe, 'photo_file_id' | 'photo_thumb_file_id'> & { photo_file_id: PhotoRef; photo_thumb_file_id: PhotoRef }>;
