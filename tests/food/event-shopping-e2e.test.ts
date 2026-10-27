@@ -44,7 +44,7 @@ async function ok(path: 'commands' | 'resources/commands', operations: unknown[]
 const q = async <T = any>(sql: string, params: unknown[] = []) => (await app.t.db.query<T>(sql, params)).rows;
 const shopping = async (): Promise<EventShopping> => (await app.call('/api/v1/read/food.event_shopping', { body: { event_id: event } })).data;
 
-const ARROZ = uuid(), SAL = uuid(), KITCHEN = uuid(), TAB = uuid(), PROJECT = uuid();
+const ARROZ = uuid(), SAL = uuid(), HOUSE = uuid(), KITCHEN = uuid(), TAB = uuid(), PROJECT = uuid();
 const rice = uuid(), salt = uuid(), recipe = uuid(), menu = uuid(), service = uuid();
 let event = '';
 
@@ -67,7 +67,9 @@ test.before(async () => {
   await ok('resources/commands', [
     insert('resources.items', ARROZ, { name: 'Arroz', kind: 'ingrediente', base_unit: 'kg' }),
     insert('resources.items', SAL, { name: 'Sal', kind: 'ingrediente', base_unit: 'kg' }),
-    insert('resources.spaces', KITCHEN, { kind: 'cocina', name: 'Cocina' }),
+    // Una cocina cuelga de un edificio (Recursos no admite una cocina en la raíz).
+    insert('resources.spaces', HOUSE, { kind: 'edificio', name: 'Casa' }),
+    insert('resources.spaces', KITCHEN, { kind: 'cocina', name: 'Cocina', parent_id: HOUSE }),
   ]);
   event = await seedBookingEvent(app, { title: 'Retiro con barra', start: day(20), end: day(21) });
   const snapshot = (await app.call(`/api/v1/events/${event}`)).data.event as FoodEvent;
