@@ -62,6 +62,9 @@ test('tramos · borrador de tres tramos; publicar valida; lo publicado no se toc
   assert.equal(v.status, 'published'); assert.equal(v.capability, 'invoices.prueba');
   const step = (await rows(TABLES.definitionSteps)).find((s) => s.id === bad);
   assert.equal(await code([{ op: 'update', table: TABLES.definitionSteps, id: bad, expectedRevision: step.revision, fields: { title: 'Cambiado' } }]), 'VERSION_PUBLISHED');
+  // Tampoco la versión publicada (y un borrador sí se puede renombrar: la guarda no falla en `definition_versions`).
+  const pv = (await rows(TABLES.definitionVersions)).find((x) => x.id === VER);
+  assert.equal(await code([{ op: 'update', table: TABLES.definitionVersions, id: VER, expectedRevision: pv.revision, fields: { capability: 'otra.cosa' } }]), 'VERSION_PUBLISHED');
 });
 
 test('tramos · ejecutar: fijo y heredado los pone el servidor; error y reintento del tramo; handoff; termina hecha', async () => {

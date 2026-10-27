@@ -64,8 +64,9 @@ create or replace function flow.guard_published() returns trigger language plpgs
 declare v_version uuid; v_status text;
 begin
   if flow.in_proc() then return new; end if;
-  v_version := case when tg_table_name = 'definition_versions' then old.id else old.version_id end;
-  if tg_op = 'INSERT' then v_version := case when tg_table_name = 'definition_versions' then null else new.version_id end; end if;
+  -- Por jsonb: PL/pgSQL resuelve `old.<campo>` aunque la rama del case no se tome (y las versiones no tienen version_id).
+  v_version := case when tg_table_name = 'definition_versions' then (to_jsonb(old)->>'id')::uuid else (to_jsonb(old)->>'version_id')::uuid end;
+  if tg_op = 'INSERT' then v_version := case when tg_table_name = 'definition_versions' then null else (to_jsonb(new)->>'version_id')::uuid end; end if;
   if v_version is null then return new; end if;
   select status into v_status from flow.definition_versions where id = v_version;
   if v_status = 'published' then perform core.fail('VERSION_PUBLISHED', 409, jsonb_build_object('version_id', v_version)); end if;
