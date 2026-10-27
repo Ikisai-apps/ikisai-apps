@@ -9,7 +9,7 @@
  * 4. Cuando recepción cobra, **«Esta noche duermes en …»** (`booking_visitor_stay`, que se mira cada 20 s mientras se
  *    espera el cobro, solo con la pantalla a la vista). Mientras no esté alojado, «Completar mis datos».
  */
-import { el, icon, replace, toast } from '@ikisai/ui-kit';
+import { announceSaved, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
 import { errorCodeOf, myStay, publicBeds, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
@@ -26,15 +26,19 @@ const dayText = (day: string) => formatDate(day, { weekday: 'short', day: 'numer
 const POLL_MS = 20_000;
 
 /** Campos del borrador, en este orden (el visitante aún no tiene ficha: los textos son `lodge.f.*`). */
-const FIELDS: Array<{ key: keyof TravelerFields; type?: string; auto?: string; required?: boolean }> = [
-  { key: 'first_name', auto: 'given-name', required: true },
-  { key: 'last_name_1', auto: 'family-name' },
-  { key: 'last_name_2' },
-  { key: 'document_type' },
-  { key: 'document_number' },
-  { key: 'birth_date', type: 'date', auto: 'bday' },
-  { key: 'phone', type: 'tel', auto: 'tel' },
+// Cada campo, en el inventario (FieldSpec) con su ancla del Guiado; los mismos en «Tus datos» y en «Completar mis datos»
+// (nunca están a la vez en pantalla). Se confirman al guardar (`announceSaved`).
+const FIELDS: Array<{ key: keyof TravelerFields; type?: string; auto?: string; required?: boolean; mark: Record<string, string | null> }> = [
+  { key: 'first_name', auto: 'given-name', required: true, mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.first_name', entity: 'booking.guests', prop: 'first_name', required: true, sensitivity: 'personal', confirm: 'event' }) },
+  { key: 'last_name_1', auto: 'family-name', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.last_name_1', entity: 'booking.guests', prop: 'last_name_1', required: 'para dormir', sensitivity: 'personal', confirm: 'event' }) },
+  { key: 'last_name_2', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.last_name_2', entity: 'booking.guests', prop: 'last_name_2', required: false, sensitivity: 'personal', confirm: 'event' }) },
+  { key: 'document_type', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.document_type', entity: 'booking.guests', prop: 'document_type', type: 'select', required: 'para dormir', sensitivity: 'personal', confirm: 'event' }) },
+  { key: 'document_number', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.document_number', entity: 'booking.guests', prop: 'document_number', required: 'para dormir', sensitivity: 'sensitive', confirm: 'event' }) },
+  { key: 'birth_date', type: 'date', auto: 'bday', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.birth_date', entity: 'booking.guests', prop: 'birth_date', type: 'date', required: 'para dormir', sensitivity: 'personal', confirm: 'event' }) },
+  { key: 'phone', type: 'tel', auto: 'tel', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.phone', entity: 'booking.guests', prop: 'phone', type: 'tel', required: false, sensitivity: 'personal', confirm: 'event' }) },
 ];
+/** Avisa al Guiado de los campos del viajero guardados (los que llevaban algo). */
+const announceTraveler = (fields: TravelerFields) => FIELDS.forEach((f) => { const id = f.mark['data-field-id']; if (fields[f.key] && id) announceSaved(id); });
 const DOCUMENT_TYPES = ['DNI', 'NIE', 'Pasaporte', 'TIE', 'Otro'];
 /** Los campos que Booking puede decir que faltan (`booking.guests`); uno desconocido sale tal cual. */
 const KNOWN = ['first_name', 'last_name_1', 'last_name_2', 'document_type', 'document_number', 'document_support_number', 'birth_date', 'phone', 'email',
@@ -59,8 +63,8 @@ function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerF
   const rows = FIELDS.map((f) => {
     const id = `${prefix}${f.key}`;
     const input = f.key === 'document_type'
-      ? el('select', { id, class: 'input' }, el('option', { value: '' }, '—'), ...DOCUMENT_TYPES.map((d) => el('option', { value: d }, d))) as HTMLSelectElement
-      : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}) }) as HTMLInputElement;
+      ? el('select', { id, class: 'input', ...f.mark }, el('option', { value: '' }, '—'), ...DOCUMENT_TYPES.map((d) => el('option', { value: d }, d))) as HTMLSelectElement
+      : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}), ...f.mark }) as HTMLInputElement;
     inputs.set(f.key, input);
     return el('label', { class: 'field', for: id }, el('span', null, t(`lodge.f.${f.key}`)), input);
   });
@@ -125,13 +129,13 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
 
   const completeBox = (stay: VisitorStay) => {
     const form = travelerForm('lodgeEdit_');
-    const save = el('button', { type: 'submit', class: 'ghost', id: 'lodgeSave' }, t('lodge.save')) as HTMLButtonElement;
+    const save = el('button', { type: 'submit', class: 'ghost', id: 'lodgeSave', 'data-feedback-id': 'guests.visitante.alojate.datos.guardar', 'data-feedback-label': 'Guardar mis datos' }, t('lodge.save')) as HTMLButtonElement;
     return el('details', { class: 'card gcard', id: 'lodgeComplete', 'data-feedback-id': 'guests.visitante.alojate.datos', 'data-feedback-label': 'Completar mis datos' },
       el('summary', null, t('lodge.complete')),
       el('form', { novalidate: '', onsubmit: async (e: Event) => {
         e.preventDefault();
         save.disabled = true;
-        try { await saveTraveler(code, stay.id, form.read()); toast(t('lodge.saved')); void refresh(); }
+        try { const fields = form.read(); await saveTraveler(code, stay.id, fields); announceTraveler(fields); toast(t('lodge.saved')); void refresh(); }
         catch (error) { save.disabled = false; toast(lodgeError(error)); }
       } }, el('p', { class: 'small' }, t('lodge.draftText')), form.element, save));
   };
@@ -181,8 +185,10 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
   const paintChooser = (previous: VisitorStay | null) => {
     const first = event.starts_on && event.starts_on > today ? event.starts_on : today;
     const last = event.ends_on ?? addDays(first, 1);
-    const from = el('input', { type: 'date', id: 'lodgeFrom', class: 'input', value: first, min: first, max: last }) as HTMLInputElement;
-    const to = el('input', { type: 'date', id: 'lodgeTo', class: 'input', value: addDays(first, 1), min: addDays(first, 1), max: addDays(last, 1) }) as HTMLInputElement;
+    const from = el('input', { type: 'date', id: 'lodgeFrom', class: 'input', value: first, min: first, max: last,
+      ...fieldAttrs({ id: 'guests.visitante.alojate.llegada', entity: 'booking.visitor_requests', prop: 'from', type: 'date', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
+    const to = el('input', { type: 'date', id: 'lodgeTo', class: 'input', value: addDays(first, 1), min: addDays(first, 1), max: addDays(last, 1),
+      ...fieldAttrs({ id: 'guests.visitante.alojate.salida', entity: 'booking.visitor_requests', prop: 'to', type: 'date', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
     from.addEventListener('change', () => { to.min = addDays(from.value, 1); if (to.value <= from.value) to.value = addDays(from.value, 1); void beds(); });
     to.addEventListener('change', () => void beds());
     const bedsHost = el('div', { id: 'lodgeBeds', 'aria-live': 'polite' });
@@ -206,7 +212,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           el('p', { class: 'small', id: 'lodgePrice' }, value.price_night_cents !== null
             ? t('lodge.price', { night: money(value.price_night_cents), total: money(value.price_night_cents * value.nights), nights: t('stay.nights', { count: value.nights }) }) : ''),
           free.length
-            ? el('fieldset', { class: 'glodge-beds' }, el('legend', null, t('lodge.bedTitle')),
+            ? el('fieldset', { class: 'glodge-beds', ...fieldAttrs({ id: 'guests.visitante.alojate.cama', entity: 'booking.visitor_requests', prop: 'bed_id', type: 'select', required: false, sensitivity: 'internal', confirm: 'event' }) }, el('legend', null, t('lodge.bedTitle')),
               radio('', el('strong', null, t('lodge.assign')), true),
               ...value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
                 el('p', { class: 'small glodge-room-name' }, r.name),
@@ -231,6 +237,9 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           try {
             await startStay(code, { from: from.value, to: to.value, bed_id: picked, traveler });
             rememberEvent(code);
+            // Para el Guiado: lo que se guardó con «Ir a pagar».
+            ['guests.visitante.alojate.llegada', 'guests.visitante.alojate.salida', 'guests.visitante.alojate.cama', 'guests.visitante.alojate.pagar'].forEach((id) => announceSaved(id));
+            announceTraveler(traveler);
             void refresh();
           } catch (error) {
             go.disabled = false;
