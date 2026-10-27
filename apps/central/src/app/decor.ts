@@ -13,6 +13,7 @@ import type { RowOperation, TableName } from '@ikisai/sync-client';
 
 export const DECOR_ICONS = 'resources.decor_icons' as TableName;
 export const DECOR_ITEMS = 'resources.decor_items' as TableName;
+export const SPACE_IMAGES = 'resources.space_images' as TableName;
 /** Escalas de celda, en metros: 5 m para exteriores; 1 m y 0,5 m para dentro. */
 export const DECOR_SCALES = [5, 1, 0.5] as const;
 export type DecorScale = typeof DECOR_SCALES[number];
@@ -226,6 +227,34 @@ export type ImageKind = typeof IMAGE_KINDS[number];
 export const IMAGE_KIND_LABELS: Record<ImageKind, string> = { silueta: 'Silueta', seccion: 'Sección', foto: 'Foto' };
 export const IMAGE_MIME = ['image/png', 'image/jpeg', 'image/svg+xml'] as const;
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Las apps que llevan una silueta de cabecera (Recursos 0816: `space_images.header_for`), una imagen viva por app. */
+export const HEADER_APPS = ['central', 'guests', 'organizers'] as const;
+export type HeaderApp = typeof HEADER_APPS[number];
+export const HEADER_APP_LABELS: Record<HeaderApp, string> = { central: 'Central', guests: 'Guests', organizers: 'Organizers' };
+export type HeaderImage = { id: string; revision: number; kind: string; header_for?: readonly string[] | null; deleted_at?: string | null };
+/** La silueta que hace de cabecera de una app, o `null`. */
+export function headerOf(images: readonly HeaderImage[], app: HeaderApp): string | null {
+  return images.find((i) => !i.deleted_at && (i.header_for ?? []).includes(app))?.id ?? null;
+}
+/**
+ * El lote para que `imageId` (o ninguna, con `null`) sea la cabecera de `app`: primero se le quita la app a la de antes
+ * y luego se le pone a la nueva, que la regla de Recursos comprueba al final del lote. Sin cambios, lista vacía.
+ */
+export function headerOperations(images: readonly HeaderImage[], app: HeaderApp, imageId: string | null): RowOperation[] {
+  const live = images.filter((i) => !i.deleted_at);
+  const ops: RowOperation[] = [];
+  for (const i of live) {
+    const apps = [...(i.header_for ?? [])];
+    if (i.id !== imageId && apps.includes(app)) ops.push({ op: 'update', table: SPACE_IMAGES, id: i.id, expectedRevision: i.revision, fields: { header_for: apps.filter((a) => a !== app) } });
+  }
+  const target = imageId ? live.find((i) => i.id === imageId && i.kind === 'silueta') : null;
+  if (target && !(target.header_for ?? []).includes(app)) {
+    ops.push({ op: 'update', table: SPACE_IMAGES, id: target.id, expectedRevision: target.revision, fields: { header_for: [...(target.header_for ?? []), app] } });
+  }
+  return ops;
+}
+
 export function imageProblem(file: { type: string; size: number }, title: string): string | null {
   if (!title.trim()) return 'Ponle un título a la imagen.';
   if (title.trim().length > 120) return 'El título, como mucho 120 letras.';
