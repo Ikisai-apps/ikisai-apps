@@ -59,7 +59,8 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 #retreatHead{display:grid;gap:6px;margin:0 0 10px}
 #retreatHead .orghead-meta{margin:0;color:var(--muted)}
 #retreatTabs{position:relative}
-#retreatTabs.orgtabs-fade::after{content:"";position:absolute;top:4px;right:0;bottom:14px;width:36px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2));pointer-events:none}
+/* Hay más pestañas a la derecha (revisión móvil del 27-10: «Experiencia» quedaba cortada sin aviso): degradado y una flecha. */
+#retreatTabs.orgtabs-fade::after{content:"›";position:absolute;top:4px;right:0;bottom:14px;width:48px;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;box-sizing:border-box;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2) 55%);color:var(--muted);font-size:1.4rem;font-weight:700;line-height:1;pointer-events:none}
 #retreatTabs.orgtabs-fade.end::after{display:none}
 .orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto;scrollbar-width:none}
 .orgtabs::-webkit-scrollbar{display:none}
