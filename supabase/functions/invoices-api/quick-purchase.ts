@@ -10,6 +10,11 @@
  * Idempotente por `requestId`: los ids salen de la persona y el `requestId`, así que repetir la misma petición devuelve el
  * mismo resultado (`replayed: true`) sin duplicar nada; otra petición con el mismo `requestId`, 409 IDEMPOTENCY_REUSE.
  * La compra queda pendiente de revisión: la oficina la completa y la valida en Finance.
+ *
+ * Fiscal o de proceso (decisión de VG del 27-10: a la gestoría va solo lo que tiene factura o ticket): con justificante
+ * (`file_id` o `invoice_number`) es `fiscal`; sin él, `process`. Una compra de proceso cuenta en la vista «Evento», pero no
+ * llega a la gestoría: una factura sin su documento original no se valida. Al adjuntar el justificante pasa a fiscal (al
+ * revés, no).
  */
 import { fail, type CommitResult, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import { TABLES, TARGET_KINDS, domainMessage } from '../_domain/invoices/mod.ts';
@@ -29,6 +34,8 @@ export interface QuickPurchaseInput {
   vat_rate: number | null;
   description: string;
   file_id: string | null;
+  /** Número de la factura o del ticket, si se sabe. */
+  invoice_number: string | null;
   target: { app: 'booking'; kind: 'event'; id: string } | { app: 'general'; kind: string };
   notes: string | null;
 }
@@ -37,6 +44,8 @@ export interface QuickPurchaseResult {
   invoice_id: string;
   code: string | null;
   status: string;
+  /** `fiscal` con justificante (`file_id` o `invoice_number`); `process` sin él. */
+  nature: 'fiscal' | 'process';
   supplier: { id: string; name: string; created: boolean };
   total: number;
   base: number;
@@ -97,7 +106,8 @@ export function parseQuickPurchase(body: unknown): QuickPurchaseInput {
     if (typeof b.target.kind !== 'string' || !TARGET_KINDS.general.includes(b.target.kind)) bad('target.kind', `Destino general: ${TARGET_KINDS.general.join(', ')}.`);
     target = { app: 'general', kind: b.target.kind as string };
   } else return bad('target.app', 'Destino: booking (evento) o general.');
-  return { requestId: b.requestId as string, supplier, date: b.date as string, total: b.total as number, vat_rate: vat, description, file_id: fileId, target, notes: text(b.notes, 'notes', 2000, false) };
+  return { requestId: b.requestId as string, supplier, date: b.date as string, total: b.total as number, vat_rate: vat, description, file_id: fileId,
+    invoice_number: text(b.invoice_number, 'invoice_number', 64, false), target, notes: text(b.notes, 'notes', 2000, false) };
 }
 
 const GENERAL_LABELS: Record<string, string> = { unassigned: 'Sin asignar', operating_expense: 'Gasto de explotación', investment: 'Inversión' };
@@ -134,7 +144,7 @@ export function createQuickPurchase(deps: { supabase: Supabase; commit: Commit; 
     const vat = input.vat_rate === null ? null : round2(input.total - base);
     const generalLabel = input.target.app === 'general' ? GENERAL_LABELS[input.target.kind] ?? input.target.kind : '';
     operations.push(
-      { op: 'insert', table: TABLES.invoices, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: input.date, object: input.description, source_total: input.total, ...(input.notes ? { notes: input.notes } : {}) } } as Operation,
+      { op: 'insert', table: TABLES.invoices, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: input.date, object: input.description, source_total: input.total, ...(input.invoice_number ? { invoice_number: input.invoice_number } : {}), ...(input.notes ? { notes: input.notes } : {}) } } as Operation,
       { op: 'insert', table: TABLES.invoiceLines, id: lineId, fields: { invoice_id: invoiceId, position: 0, description: input.description, net_amount: base, ...(input.vat_rate === null ? {} : { vat_rate: input.vat_rate, vat_amount: vat }) } } as Operation,
       ...(input.vat_rate === null ? [] : [{ op: 'insert', table: TABLES.taxLines, id: taxId, fields: { invoice_id: invoiceId, position: 0, tax_type: 'iva', rate: input.vat_rate, taxable_base: base, amount: vat } } as Operation]),
       ...(input.file_id ? [{ op: 'insert', table: TABLES.invoiceFiles, id: fileLinkId, fields: { invoice_id: invoiceId, file_id: input.file_id, original_filename: `compra-${input.date}` } } as Operation] : []),
@@ -158,7 +168,7 @@ export function createQuickPurchase(deps: { supabase: Supabase; commit: Commit; 
     const label = String(allocation?.target_label ?? generalLabel);
     const code = (invoice!.code as string | null) ?? null;
     return {
-      invoice_id: invoiceId, code, status: String(invoice!.status), supplier: { id: supplierId, name: supplierName, created }, total: input.total, base, vat,
+      invoice_id: invoiceId, code, status: String(invoice!.status), nature: input.file_id || input.invoice_number ? 'fiscal' : 'process', supplier: { id: supplierId, name: supplierName, created }, total: input.total, base, vat,
       target: { app: input.target.app, kind: input.target.kind, id: input.target.app === 'booking' ? input.target.id : null, label },
       file_id: input.file_id, replayed: !!result.replayed,
       summary: [code ?? 'Compra', supplierName, eur(input.total), label].join(' · '),

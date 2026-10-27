@@ -37,4 +37,7 @@ test('liquidación de cuenta de cliente: desglose por pedido; un gasto no tiene 
     methods: { bizum: 3600 }, detail: [{ code: 'P 14', name: 'Pedido 14', quantity: 1, amount_cents: 2100 }, { code: 'P 31', name: 'Pedido 31', quantity: 1, amount_cents: 1500 }] }));
   assert.deepEqual(r.lines.map((l) => [l.label, l.cents]), [['P 14 · Pedido 14', 2100], ['P 31 · Pedido 31', 1500]]);
   assert.throws(() => dayReceipt(day({ kind: 'expense' })), /Solo los ingresos/);
+  // 0245: el justificante es solo de lo fiscal
+  assert.throws(() => dayReceipt(day({ nature: 'process' })), /proceso/);
+  assert.equal(dayReceipt(day({ nature: 'fiscal' })).title, 'Justificante de ventas');
 });

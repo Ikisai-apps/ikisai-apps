@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appEntriesSummary, appName, entriesTotals, entryDelivered, eventResults, type EntryLike, type EventSources } from '../../apps/invoices/src/app/app-entries-state.ts';
+import { appEntriesSummary, appName, entriesTotals, entryDelivered, eventResults, isFiscal, type EntryLike, type EventSources } from '../../apps/invoices/src/app/app-entries-state.ts';
 
 const EVENT = 'ev-oct';
 let n = 0;
@@ -36,12 +36,12 @@ test('resultado del evento sin IVA: ingresos de apps y emitidas menos recibidas 
   assert.equal(r!.label, 'Retiro de octubre · 2026-10-30');
   assert.equal(r!.appIncomeCents, 105000);
   assert.equal(r!.issuedIncomeCents, 30000);
-  // Las dos líneas de la misma factura se suman en un movimiento; la pendiente de revisar no cuenta y se dice
-  assert.equal(r!.invoiceExpenseCents, 20000);
+  // Las dos líneas de la misma factura se suman en un movimiento; la pendiente de revisar cuenta como gasto de proceso (27-10)
+  assert.equal(r!.invoiceExpenseCents, 28000);
   assert.equal(r!.pendingInvoices, 1);
   assert.equal(r!.appExpenseCents, 2000);
-  assert.equal(r!.resultCents, 105000 + 30000 - 20000 - 2000);
-  assert.deepEqual(r!.moves.map((m) => [m.kind, m.sign, m.cents]), [['issued', 1, 30000], ['invoice', -1, 20000], ['app', 1, 100000], ['app', 1, 5000], ['app', -1, 2000]]);
+  assert.equal(r!.resultCents, 105000 + 30000 - 28000 - 2000);
+  assert.deepEqual(r!.moves.map((m) => [m.kind, m.sign, m.cents, !!m.process]), [['issued', 1, 30000, false], ['invoice', -1, 20000, false], ['invoice', -1, 8000, true], ['app', 1, 100000, false], ['app', 1, 5000, false], ['app', -1, 2000, false]]);
 });
 
 test('sin evento, borrados, anuladas y emitidas en borrador quedan fuera; solo apuntes de apps también da evento', () => {
@@ -55,7 +55,7 @@ test('sin evento, borrados, anuladas y emitidas en borrador quedan fuera; solo a
 
 test('cifras de la lista y apunte entregado', () => {
   const totals = entriesTotals([entry(), entry({ event_id: null }), entry({ kind: 'expense', amount_cents: 2200 }), entry({ deleted_at: 'x' })]);
-  assert.deepEqual(totals, { count: 3, incomeCents: 220000, expenseCents: 2200, withoutEvent: 1 });
+  assert.deepEqual(totals, { count: 3, incomeCents: 220000, expenseCents: 2200, fiscalIncomeCents: 220000, process: 0, withoutEvent: 1 });
   const exports = [{ status: 'generada', deleted_at: null, manifest: { app_entries: [{ id: 'a' }] } }, { status: 'entregada', deleted_at: null, manifest: { app_entries: [{ id: 'b' }] } }, { status: 'entregada', deleted_at: null, manifest: {} }];
   assert.equal(entryDelivered('a', exports), false);
   assert.equal(entryDelivered('b', exports), true);
@@ -73,3 +73,18 @@ test('resumen del periodo: la misma cuenta que invoices.app_entries_summary_for'
   assert.deepEqual(s.income, { count: 2, base: 1120.45, quota: 112.05, total: 1232.5, quota_by_rate: [{ rate: 10, base: 1120.45, quota: 112.05 }] });
   assert.deepEqual(s.expense, { count: 1, base: 50, quota: 5, total: 55 });
 });
+
+test('0245: lo de proceso cuenta en el evento (marcado) y en las cifras, pero no en el resumen fiscal', () => {
+  const proc = entry({ nature: 'process', amount_cents: 55000, net_cents: 50000, tax_cents: 5000, description: 'Cierre del día' });
+  const [r] = eventResults(sources({ entries: [entry(), proc] }));
+  assert.equal(r!.appIncomeCents, 150000);
+  assert.deepEqual(r!.moves.filter((m) => m.kind === 'app').map((m) => !!m.process), [false, true]);
+  const totals = entriesTotals([entry(), proc]);
+  assert.deepEqual([totals.incomeCents, totals.fiscalIncomeCents, totals.process], [165000, 110000, 1]);
+  const s = appEntriesSummary([entry(), proc], { from: '2026-10-01', to: '2026-12-31' });
+  assert.equal(s.income.count, 1);
+  assert.deepEqual(s.process, { count: 1, income: 550, expense: 0 });
+  assert.equal(isFiscal({}), true, 'sin valor, fiscal');
+  assert.equal(isFiscal({ nature: 'process' }), false);
+});
+
