@@ -95,3 +95,50 @@ export function cartaStockOperations(plan: CartaStockPlan): { operations: CartaS
   }
   return { operations, skipped };
 }
+
+/** Las líneas vivas de una carta, en el orden de la carta: ámbito (clásicos, gourmet, barra), posición y código. */
+export function cartaLinesInOrder<T extends Pick<CartaLine, 'menu_id' | 'scope' | 'position' | 'code' | 'deleted_at'>>(lines: T[], menuId: string): T[] {
+  const scopeIndex = (s: CartaScope) => CARTA_SCOPES.indexOf(s);
+  return lines.filter((l) => l.menu_id === menuId && !l.deleted_at)
+    .sort((a, b) => scopeIndex(a.scope) - scopeIndex(b.scope) || Number(a.position) - Number(b.position) || CARTA_CODES.indexOf(a.code) - CARTA_CODES.indexOf(b.code));
+}
+
+/** Códigos libres de un ámbito en una carta, para añadir una línea. */
+export function freeCartaCodes(lines: Array<Pick<CartaLine, 'menu_id' | 'scope' | 'code' | 'deleted_at'>>, menuId: string, scope: CartaScope): CartaCode[] {
+  const used = new Set(lines.filter((l) => l.menu_id === menuId && l.scope === scope && !l.deleted_at).map((l) => l.code));
+  return CARTA_CODES.filter((c) => !used.has(c));
+}
+
+/**
+ * «Usar en otro evento»: una carta nueva con las mismas líneas (precio, disponibilidad, imagen…), ligada a `eventId` o
+ * guardada sin evento. Las ventas no se copian: cada evento tiene las suyas.
+ */
+export function copyCartaOperations(args: {
+  lines: CartaLine[]; sourceId: string; newId: string; name: string; eventId: string | null; newLineId: () => string;
+}): Array<{ op: 'insert'; table: string; id: string; fields: Record<string, unknown> }> {
+  const ops: Array<{ op: 'insert'; table: string; id: string; fields: Record<string, unknown> }> = [
+    { op: 'insert', table: 'food.menus', id: args.newId, fields: { kind: 'carta', name: args.name, ...(args.eventId ? { event_id: args.eventId } : {}) } },
+  ];
+  for (const l of cartaLinesInOrder(args.lines, args.sourceId)) {
+    ops.push({ op: 'insert', table: 'food.carta_lines', id: args.newLineId(), fields: {
+      menu_id: args.newId, ...(l.recipe_id ? { recipe_id: l.recipe_id } : { item_id: l.item_id }), scope: l.scope, code: l.code,
+      // Lo que viene de la base puede llegar como texto (numeric): se pasa a número.
+      name: l.name, description: l.description, sale_price_cents: Number(l.sale_price_cents), active: l.active, position: Number(l.position), image_key: l.image_key,
+    } });
+  }
+  return ops;
+}
+
+/** Euros a céntimos desde lo que se escribe («2,50», «2.5», «3»); null si no es un precio válido. */
+export function parseEurosToCents(text: string): number | null {
+  const clean = text.trim().replace(/\s|€/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
+  const cents = Math.round(Number(clean) * 100);
+  return cents <= CARTA_PRICE_MAX_CENTS ? cents : null;
+}
+
+/** Céntimos en euros a la española: 250 → «2,50 €». */
+export function formatCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined || !Number.isFinite(cents)) return '—';
+  return (cents / 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}

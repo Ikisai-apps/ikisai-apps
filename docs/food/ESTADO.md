@@ -55,7 +55,12 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - **food-api** ajusta el stock de Recursos tras registrar las ventas (`carta.ts`) y ofrece `POST carta/stock` para reintentarlo.
   - **En la app**, las pantallas del menú cerrado no enseñan la carta.
   - **Prueba:** `carta.test.ts`.
-  - **Pendiente, tanda 2:** la interfaz de la carta. En el alta de Menús se elige el tipo; la vista muestra Clásicos, Gourmet y Barra con código, foto, precio, coste y margen, activar y desactivar y editar el precio; «Usar en otro evento»; y elegir menú para un evento con los dos tipos.
+- **La carta, tanda 2: su vista y el evento familiar** (API.md §2.10).
+  - El bloque «Cartas» en Menús, con «Nueva carta».
+  - `#/cartas/<id>`, con sus bloques, el precio, el coste, el margen y «Disponible».
+  - «Usar en otro evento» y la carta en la ficha del evento, incluidas las que marca Booking en jornadas abiertas.
+  - El evento familiar come del menú de casa.
+  - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
 
 ## Aceptación del usuario (6 de octubre de 2026)
 
