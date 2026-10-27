@@ -394,3 +394,10 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 
 - «Enviar a Finance» de un justificante manda `receipt_kind: 'ticket'` (un cobro de la caja es un ticket de venta; la factura solo la hace Finance) y `receipt_number`: los números de cobro de sus pedidos, en orden, unidos con «+» («12» o «12+13»; si pasan de 64 caracteres, «12…41»).
 - `flow.receipt_for_send` devuelve ese `receipt_number`.
+
+## 36. Avisos del sábado: nada sale vacío sin decir por qué
+
+- **Caja profunda sin direcciones de Bitcoin**: los dos métodos salen apagados con «pendiente de dirección», y una nota dice dónde se ponen (Inicio → «Cobro con Bitcoin»). Tocar no da error.
+- **Generar tareas de ingredientes**: si la previsión de Food sale a cero (carta sin unidades previstas), no se llama a Flow y se explica qué poner en Food. Lo que sale sin cantidad o con aviso enseña la frase de Food (`note`, Food 1115) en una hoja que se cierra con «Entendido», no en un aviso que se va.
+- **Pantalla que no se actualiza**: si el pull (cada 3 s) lleva más de un minuto sin volver y no hay otro aviso de red, sale «Esta pantalla no se actualiza desde hace N min» con «Actualizar».
+- Prueba: `tests/flow/avisos.spec.ts`.

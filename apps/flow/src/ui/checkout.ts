@@ -112,9 +112,15 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
       ...(os.length > 1 ? [el('label', { class: 'editor-option' },
         el('input', { type: 'checkbox', checked: unify, onchange: (e: Event) => { unify = (e.target as HTMLInputElement).checked; } }),
         el('span', null, 'Un solo pago (si no, cada pedido con su justificante)'))] : []));
-    const method = (m: CheckoutMethod, disabled = false) => busyButton({ class: m === 'cash' ? 'primary' : 'secondary', 'data-method': m, ...(disabled ? { disabled: 'disabled', title: 'Aún no disponible' } : {}) },
-      CHECKOUT_METHOD_LABELS[m], () => (m === 'btc_ln' || m === 'btc_chain' ? bitcoin(m, total) : pay(m, total)));
-    replace(foot, method('cash'), method('bizum'), method('card', true), method('btc_ln', !settings?.lightning_address), method('btc_chain', !settings?.bitcoin_address));
+    // Sin dirección cargada, el método de Bitcoin sale apagado y lo dice en el botón (no un error al tocarlo).
+    const method = (m: CheckoutMethod, off: string | null = null) => busyButton({ class: m === 'cash' ? 'primary' : 'secondary', 'data-method': m, ...(off ? { disabled: 'disabled', title: off } : {}) },
+      off && m !== 'card' ? `${CHECKOUT_METHOD_LABELS[m]} · ${off}` : CHECKOUT_METHOD_LABELS[m], () => (m === 'btc_ln' || m === 'btc_chain' ? bitcoin(m, total) : pay(m, total)));
+    const noAddress = 'pendiente de dirección';
+    replace(foot, method('cash'), method('bizum'), method('card', 'Aún no disponible'),
+      method('btc_ln', settings?.lightning_address ? null : noAddress), method('btc_chain', settings?.bitcoin_address ? null : noAddress));
+    if (!settings?.lightning_address && !settings?.bitcoin_address) {
+      body.append(el('p', { class: 'muted small', 'data-note': 'bitcoin' }, 'Bitcoin: pendiente de dirección. La pone el encargado en el Inicio del flujo, «Cobro con Bitcoin».'));
+    }
   }
 
   async function bitcoin(m: CheckoutMethod, total: number): Promise<void> {
@@ -142,7 +148,7 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
     } catch (error) { toast(describeError(error)); }
   }
 
-  void loadSettings().then(paint);
+  void loadSettings().catch(() => undefined).then(paint);
   const off = watchData(client, (d) => { data = d; paint(); }, projectId);
 }
 
