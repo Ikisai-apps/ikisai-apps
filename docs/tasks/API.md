@@ -2330,6 +2330,21 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **El cálculo de bloqueo y fase** está en `tasks.production_rows(proyecto)`, que es la misma regla que «hoy» (§47).
 - **Pruebas:** `tests/tasks/production.test.ts`.
 
+## 53. El material bloquea (migración `0358`; «Proyectos y producción» 7.3; decisión de VG en vg-37)
+
+- **`tasks.material_shortage(proyecto?)`:** se calcula por material pendiente (sin consumir y con cantidad) de una tarea abierta de un proyecto vivo, y solo si el artículo es consumible.
+  - `need`: la cantidad de ese material.
+  - `stock`: la suma de los movimientos del artículo en Recursos.
+  - `before_need`: lo que piden antes otras tareas abiertas del mismo artículo, por vencimiento (sin fecha, al final).
+  - `missing = max(0, need − max(0, stock − before_need))`.
+  - Los equipos no bloquean.
+- **Bloqueo:** una tarea abierta con algo que falta queda `blocked.by = 'material'`, con los artículos en `ids`, **aunque no haya compra**. Va después de `dependency` y `step`. Usan la misma regla:
+  - la producción (§52), que además lleva `need`, `stock`, `missing` y `purchaseOpen` en cada material;
+  - `blocked` de «hoy» (§47);
+  - el indicador `tasks.blocked` de Central (§49).
+- **«Pedir»:** `POST requests/purchase` acepta `task_id`, una tarea viva del mismo proyecto que quien pide ve; si no, da 404. La compra queda ligada a la tarea y la respuesta lleva `taskId` e `itemId`. La capacidad `tasks.request_purchase` declara ahora `item_id` y `task_id`.
+- **Pruebas:** `tests/tasks/material-block.test.ts`.
+
 ## 55. Unidades repetidas (migración `0360`; «Proyectos y producción» 7.5; decisión de VG en vg-37: opción A)
 
 - **`tasks.tasks.unit_count`** (1–100, opcional): va solo en la madre (en un paso da 422 `INVALID_UNITS`). Cada paso se hace tantas veces como diga, y también la madre misma si no tiene pasos.
