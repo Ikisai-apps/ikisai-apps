@@ -105,7 +105,7 @@ test('avance · caja general, discos, filtros y tarjeta con pasos que se marca h
   await expect(page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first().locator('.avance-steps li')).toHaveCount(2);
   await page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first().getByRole('button', { name: 'Hecha' }).click();
   // Nota opcional al cerrar (VG).
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('alertdialog');
   await dialog.getByLabel('Nota (opcional)').fill('Probado en el móvil');
   await dialog.getByRole('button', { name: 'Hecha' }).click();
   await expect(page.locator('.avance-card.is-hecho', { hasText: 'Probar el alojamiento' })).toBeVisible({ timeout: 15_000 });
