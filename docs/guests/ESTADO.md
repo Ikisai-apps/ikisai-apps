@@ -113,4 +113,4 @@
 
 ## Bloqueos
 
-- Ninguno para la fase 1. Mientras no exista el contacto público (C1), la pantalla de enlace no válido usa el contacto de reserva o la última copia guardada.
+- Ninguno.
