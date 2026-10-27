@@ -1961,3 +1961,64 @@ Una liquidación es un pago único que cierra varios pedidos de un cliente. Va p
 El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan otra cosa.
 
 **Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
+
+## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
+
+Ficha de capacidad para el catálogo del núcleo:
+
+| Campo | Valor |
+|---|---|
+| **Nombre** | `invoices.register_purchase_quick`, «Registrar compra rápida» |
+| **Operación** | `POST /api/v1/purchases/quick` de `invoices-api`, con la sesión de la persona o una clave de agente |
+| **Permiso** | `editor` u `owner` en Finance. El lector recibe `403 FORBIDDEN`. Un agente pasa por el riesgo de siempre y, si hace falta, por una propuesta que aprueba un owner humano (contrato §3.1). |
+| **Idempotencia** | Por `requestId` y persona. La misma petición devuelve el mismo resultado con `replayed: true` y no duplica nada. Otra petición con el mismo `requestId` da `409 IDEMPOTENCY_REUSE`. Los ids de las filas salen de la persona y el `requestId`. |
+| **Riesgo** | Bajo: crea una compra **pendiente de revisión**, que la oficina completa y valida en Finance. No valida, no paga y no toca entregas a la gestoría. Si el proveedor no existe, lo crea. |
+| **Sin red** | No: necesita el servidor. El documento se sube antes con `uploads` y `verify`. |
+
+**Entrada** (JSON):
+
+```json
+{
+  "requestId": "flow-hielo-31",                       // 1-100 [A-Za-z0-9_.:-]
+  "supplier": { "id": "<uuid>" },                     // o { "name": "Hielos del Sur", "tax_id": "B00000000" }
+  "date": "2026-10-31",                               // AAAA-MM-DD, fecha de la compra
+  "total": 36.30,                                     // euros con IVA, > 0, dos decimales
+  "vat_rate": 21,                                     // opcional: 0, 4, 5, 10 o 21
+  "description": "Hielo para la barra",               // hasta 120 caracteres, el objeto de la compra
+  "file_id": "<uuid>",                                // opcional: foto o PDF de Finance ya verificado (core.files)
+  "target": { "app": "booking", "kind": "event", "id": "<uuid>" },   // o { "app": "general", "kind": "unassigned" | "operating_expense" | "investment" }
+  "notes": "Pagado con la caja de la barra"           // opcional, hasta 2000
+}
+```
+
+**Salida** (200):
+
+```json
+{
+  "invoice_id": "<uuid>", "code": "FVR_2026_012", "status": "pendiente_revision",
+  "supplier": { "id": "<uuid>", "name": "Hielos del Sur", "created": true },
+  "total": 36.3, "base": 30, "vat": 6.3,
+  "target": { "app": "booking", "kind": "event", "id": "<uuid>", "label": "Eventos › Evento de octubre · 2026-10-30" },
+  "file_id": "<uuid>", "replayed": false,
+  "summary": "FVR_2026_012 · Hielos del Sur · 36,30 € · Eventos › Evento de octubre · 2026-10-30"
+}
+```
+
+**Qué hace por dentro:** son operaciones de fila normales por el commit de siempre, con `beforeCommit`, riesgo de agentes y `core.commit`.
+- **Proveedor:** el del `id`. Si no hay `id`, el que ya existe con ese NIF o, sin NIF, con ese nombre (sin mayúsculas ni acentos). Si no existe ninguno, crea uno nuevo.
+- **Factura:** `object` = `description` y `source_total` = `total`.
+- **Línea y IVA:** una línea con la base. Con `vat_rate`, también su IVA y la línea de impuestos. Sin él, la línea va por el total y la oficina completa el IVA al revisar.
+- **Documento:** el `file_id`, comprobado en `core.files`.
+- **Asignación:** una, por la base, al destino. El evento se resuelve con el token de la persona contra la proyección de Booking. Así la compra cuenta en la vista «Evento» (§17.4) en cuanto se valida.
+
+**Errores:**
+- `422 INVALID_FIELDS`, con `details.field`;
+- `422 SUPPLIER_NOT_FOUND`;
+- `422 TARGET_NOT_FOUND` / `TARGET_FORBIDDEN`, para el evento;
+- `422 INVALID_FILE`, si el documento no está verificado o no es de Finance;
+- `422 DUPLICATE_FILE`;
+- `403 FORBIDDEN`;
+- `409 IDEMPOTENCY_REUSE`;
+- `428 CONFIRMATION_REQUIRED`, para un agente sin propuesta aprobada.
+
+**Pruebas:** `tests/invoices/quick-purchase.test.ts`.
