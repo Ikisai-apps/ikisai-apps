@@ -9,12 +9,13 @@ import type { ViewMount } from './shell.ts';
  * - Grupos: Ahora, Próximos, Pasados y cerrados (plegado) y, para el encargado, Pruebas. En una jornada conviven varios
  *   flujos (barra, llegadas, preparación, avance) y cada persona entra en el suyo, sin una pantalla global.
  * - Cada tarjeta dice para qué es, cuándo y de qué evento (o «General»), cuánta gente lleva trabajo, lo pendiente, lo urgente
- *   y la vista recomendada, y entra directo en ella.
+ *   (prioridad), lo bloqueado (espera algo que no ha llegado, con el primero nombrado) y la vista recomendada, y entra directo en ella.
  * - Sin crear flujos desde aquí (VG, 27-10): los diseña Dirección con Core.
  * Cada persona ve sus flujos (ámbitos, 0902); Dirección, todos.
  */
 interface Column { project_id: string; key: string; position: number; deleted_at: string | null }
-interface UnitRow { project_id: string; kind: string; status: string; assigned_to: string | null; priority: boolean; prio?: string | null; deleted_at: string | null }
+interface UnitRow { id: string; project_id: string; kind: string; status: string; label: string | null; assigned_to: string | null; priority: boolean; prio?: string | null;
+  class?: string; parent_id?: string | null; criteria?: Array<{ verified_at: string | null }> | null; payload?: { external?: { app: string; status?: string | null } } | null; deleted_at: string | null }
 interface BookingEvent { event_id: string; name: string }
 
 /** Para qué es cada plantilla y su vista recomendada (Carriles, Secuencial o Guiado). */
@@ -51,9 +52,22 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
     const today = new Date().toISOString().slice(0, 10);
     const [projects, columns, units] = await Promise.all([loadProjects(client), client.list(TABLES.columns), client.list(TABLES.units)]);
     const cols = (columns as unknown as Column[]).filter((c) => !c.deleted_at);
-    const work = (units as unknown as UnitRow[]).filter((u) => !u.deleted_at && (u.status === 'pending' || u.status === 'in_progress'));
+    const allUnits = (units as unknown as UnitRow[]).filter((u) => !u.deleted_at);
+    const byId = new Map(allUnits.map((u) => [u.id, u]));
+    const work = allUnits.filter((u) => u.status === 'pending' || u.status === 'in_progress');
     const covers = new Map(await Promise.all(projects.map(async (p) => [p.id, await coverUrl(client, p)] as const)));
     if (!projects.length) { replace(host, el('p', { class: 'muted' }, 'Aún no tienes ningún flujo asignado. Pide acceso a Dirección.')); return; }
+
+    const APP_NAMES: Record<string, string> = { tasks: 'Tasks', invoices: 'Finance', booking: 'Booking', food: 'Food', guests: 'Guests', central: 'Central' };
+    /** Por qué espera una unidad, o null: dependencia sin cerrar, lo pedido a otra app sin hacer, objetivo vencido sin verificar. */
+    function blockOf(u: UnitRow, p: Project, todayIso: string): string | null {
+      const parent = u.parent_id ? byId.get(u.parent_id) : undefined;
+      if (parent && parent.status !== 'done') return `espera a «${parent.label ?? 'otra tarea'}»`;
+      const ext = u.payload?.external;
+      if (ext && ext.status !== 'done' && ext.status !== 'received') return `espera a ${APP_NAMES[ext.app] ?? ext.app}: ${u.label ?? 'lo pedido'}`;
+      if (u.class === 'objective' && p.ends_on && p.ends_on < todayIso && (u.criteria ?? []).some((c) => !c.verified_at)) return `objetivo vencido: ${u.label ?? ''}`;
+      return null;
+    }
 
     const card = (p: Project) => {
       const purpose = PURPOSE[p.template_key ?? ''];
@@ -64,12 +78,15 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
       const mine = work.filter((u) => u.project_id === p.id && u.kind !== 'station');
       const people = new Set(mine.map((u) => u.assigned_to).filter(Boolean)).size;
       const urgent = mine.filter((u) => u.priority || u.prio === 'urgente').length;
+      // Bloqueos (Core, 27-10): lo que no puede avanzar porque espera algo que no ha llegado. Se cuenta y se nombra el primero.
+      const blocked = mine.map((u) => blockOf(u, p, today)).filter((b): b is string => !!b);
       const context = p.booking_event_id ? (events.get(p.booking_event_id) ?? 'Evento de Booking') : 'General';
-      const facts: Array<[string, boolean]> = [
-        ...(purpose?.text ?? p.notes ? [[purpose?.text ?? p.notes ?? '', false] as [string, boolean]] : []),
-        [`${context}${projectDates(p) ? ` · ${projectDates(p)}` : ''}`, false],
-        [mine.length ? `${mine.length} pendientes${people ? ` · ${people} ${people === 1 ? 'persona' : 'personas'}` : ''}` : 'Nada pendiente', false],
-        ...(urgent ? [[`${urgent} ${urgent === 1 ? 'urgente' : 'urgentes'}`, true] as [string, boolean]] : []),
+      const facts: Array<[string, string]> = [
+        ...(purpose?.text ?? p.notes ? [[purpose?.text ?? p.notes ?? '', ''] as [string, string]] : []),
+        [`${context}${projectDates(p) ? ` · ${projectDates(p)}` : ''}`, ''],
+        [mine.length ? `${mine.length} pendientes${people ? ` · ${people} ${people === 1 ? 'persona' : 'personas'}` : ''}` : 'Nada pendiente', ''],
+        ...(urgent ? [[`${urgent} ${urgent === 1 ? 'urgente' : 'urgentes'}`, 'is-urgent'] as [string, string]] : []),
+        ...(blocked.length ? [[`${blocked.length} ${blocked.length === 1 ? 'bloqueada' : 'bloqueadas'} · ${blocked[0]}`, 'is-blocked'] as [string, string]] : []),
       ];
       return el('div', { class: `flow-card${p.status === 'closed' ? ' is-closed' : ''}`, role: 'listitem' },
         renderCover({
@@ -82,7 +99,7 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
           onOpen: () => navigate(target),
           feedbackId: 'flow.flujos.tarjeta',
         }),
-        el('ul', { class: 'flow-card-facts' }, ...facts.map(([f, urgentFact]) => el('li', { class: urgentFact ? 'is-urgent' : '' }, f))));
+        el('ul', { class: 'flow-card-facts' }, ...facts.map(([f, cls]) => el('li', { class: cls }, f))));
     };
 
     const byGroup = new Map<Group, Project[]>();
