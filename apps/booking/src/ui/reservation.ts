@@ -1,5 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
+import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderWalkIn, specsFor } from './eventKinds.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
@@ -204,7 +205,7 @@ export function mountReservation(id: string): ViewMount {
       // --- acciones de cabecera
       const editReservation = () => openRowSheet({
         client, title: 'Editar reserva', table: RESERVATIONS, row: reservation, feedbackId: 'booking.reserva.editar', feedbackLabel: 'Editar reserva',
-        specs: RESERVATION_SPECS.map((spec) => spec.key !== 'status' ? spec
+        specs: specsFor(RESERVATION_SPECS, reservation.event_type).map((spec) => spec.key !== 'status' ? spec
           : { ...spec, options: OPTIONS.status.filter(([value]) => !requiresEvent(value as ReservationStatus) || liveEvent !== null || value === reservation.status) }),
         check: (merged) => {
           const row = merged as unknown as ReservationRow;
@@ -346,7 +347,7 @@ export function mountReservation(id: string): ViewMount {
               ['Cierre', liveEvent.closed_at ? formatDate(liveEvent.closed_at) : 'Abierto'],
               liveEvent.incidents ? ['Incidencias', liveEvent.incidents] : null),
             editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', 'data-feedback-id': 'booking.reserva.operacion.cierre', 'data-feedback-label': 'Cierre operativo', onclick: () => void toggleClose() }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
-          ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.', feedbackId: 'booking.reserva.operacion.hoja', feedbackLabel: 'Editar operación' })));
+          ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: specsFor(EVENT_SPECS, reservation.event_type), savedMessage: 'Operación guardada.', feedbackId: 'booking.reserva.operacion.hoja', feedbackLabel: 'Editar operación' })));
 
       // O2 · «Solicitudes para apuntarse»: las sugerencias pendientes (con red) y las que se pasaron al organizador.
       const joinsHost = el('div', { id: 'joinRequests', 'data-feedback-id': 'booking.reserva.abierto.solicitudes', 'data-feedback-label': 'Solicitudes para apuntarse' });
@@ -399,7 +400,12 @@ export function mountReservation(id: string): ViewMount {
         visible || joinsHost.childElementCount ? joinsHost : null);
       if (visible) void paintJoins();
 
-      const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
+      // Tipos (0482): familiar sin alojamiento; jornadas abiertas, alojamiento a la carta.
+      const family = isFamily(reservation.event_type);
+      const openDays = isOpenDays(reservation.event_type);
+      const lodgingBlock = !liveEvent || !lodging || family ? null
+        : openDays && seesGuests ? renderWalkIn({ client, reservation, event: liveEvent, data: lodging, guests, editable })
+        : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 
       const datesCard = dateOptions ? datesBlock.render({ client, reservation, options: dateOptions, editable, run }) : null;
       const portalCard = editable ? portalBlock.render({ client, reservation, editable }) : null;
@@ -485,9 +491,12 @@ export function mountReservation(id: string): ViewMount {
 
       const restrictionSummary = restrictions.filter((r) => r.active).map((r) => `${r.guest_id ? 1 : r.servings} ${label(r.restriction_type).toLowerCase()}${r.subject ? ` a ${r.subject}` : ''}`).join(' · ');
       const meals = block('blockMeals', 'Comidas', [
-        kv(['Régimen', `${label(reservation.meal_plan_requested)} solicitado · ${label(liveEvent?.meal_plan_confirmed)} confirmado`],
-          ['Tipo de menú', `${label(reservation.menu_style_requested)} solicitado · ${label(liveEvent?.menu_style_confirmed)} confirmado`],
-          reservation.meal_notes ? ['Notas', reservation.meal_notes] : null),
+        family ? renderHouseMenu()
+          : openDays ? renderCartas({ client, reservation, editable, run })
+          : kv(['Régimen', `${label(reservation.meal_plan_requested)} solicitado · ${label(liveEvent?.meal_plan_confirmed)} confirmado`],
+            ['Tipo de menú', `${label(reservation.menu_style_requested)} solicitado · ${label(liveEvent?.menu_style_confirmed)} confirmado`],
+            reservation.meal_notes ? ['Notas', reservation.meal_notes] : null),
+        (family || openDays) && reservation.meal_notes ? kv(['Notas', reservation.meal_notes]) : null,
         liveEvent ? [
           el('div', { class: 'sectionlabel' }, 'Restricciones', el('span', { class: 'count' }, String(restrictions.length))),
           restrictions.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : [
@@ -667,7 +676,9 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, extract, cobro, costs], {
+        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
+          // familiar: sin propuesta, cobro ni coste
+          family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs], {
           writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
         }, requested),

@@ -198,7 +198,7 @@ export function experienceOf(input: ExperienceInput, today: string): Experience 
       areas.push({ key: 'huespedes', ok, text: `Huéspedes · ${c.complete}/${want}`, block: 'blockGuests' });
       if (!ok) step('huespedes', want > c.complete ? `Completar ${plural(want - c.complete, 'huésped', 'huéspedes')}` : 'Completar los huéspedes', 'blockGuests');
     }
-    if (r.uses_accommodation !== false && typeof input.bedsAssigned === 'number' && target !== null) {
+    if (r.uses_accommodation !== false && deal && typeof input.bedsAssigned === 'number' && target !== null) {
       const ok = input.bedsAssigned >= target;
       areas.push({ key: 'camas', ok, text: `Camas · ${Math.min(input.bedsAssigned, target)}/${target}`, block: 'blockLodging' });
       if (!ok) step('camas', `Asignar ${plural(target - input.bedsAssigned, 'cama', 'camas')}`, 'blockLodging');
