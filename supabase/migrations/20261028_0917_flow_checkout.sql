@@ -30,7 +30,8 @@ create table flow.project_settings (
   updated_by uuid references auth.users(id),
   deleted_at timestamptz,
   project_id uuid not null references flow.projects(id),
-  lightning_address text check (lightning_address is null or lightning_address ~* '^([a-z0-9._+-]{1,64}@[a-z0-9.-]{1,190}\.[a-z]{2,24}|lnurl[0-9a-z]{20,1500})$'),
+  lightning_address text check (lightning_address is null or (length(lightning_address) <= 1500
+    and lightning_address ~* '^([a-z0-9._+-]{1,64}@[a-z0-9.-]{1,190}\.[a-z]{2,24}|lnurl[0-9a-z]{20,})$')),
   bitcoin_address text check (bitcoin_address is null or bitcoin_address ~ '^(bc1[02-9ac-hj-np-z]{11,87}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$')
 );
 create unique index project_settings_project_uidx on flow.project_settings (project_id) where deleted_at is null;
