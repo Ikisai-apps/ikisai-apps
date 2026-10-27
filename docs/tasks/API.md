@@ -2333,7 +2333,7 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 ## 55. Unidades repetidas (migración `0360`; «Proyectos y producción» 7.5; decisión de VG en vg-37: opción A)
 
 - **`tasks.tasks.unit_count`** (1–100, opcional): va solo en la madre (en un paso da 422 `INVALID_UNITS`). Cada paso se hace tantas veces como diga, y también la madre misma si no tiene pasos.
-- **`tasks.task_units`:** una fila por unidad hecha (`task_id`, `unit`, `done_by`, `done_at`). Desmarcar la borra.
+- **`tasks.task_units`:** una fila por unidad hecha (`task_id`, `unit`, `done_by`, `marked_at`). Desmarcar la borra.
   - La visibilidad es la de su tarea, y las unidades la siguen al moverla, al convertir un área y al ir a la papelera.
   - Solo la escribe `tasks.unit_step`; a mano da 422 `INVALID_UNITS`.
 - **`POST tasks/unit-step {taskId, unit, done?}`** (capacidad `tasks.unit_step`, editor u owner):
