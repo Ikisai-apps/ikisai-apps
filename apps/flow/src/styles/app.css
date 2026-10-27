@@ -309,9 +309,15 @@
 .avance-total .gv{margin:-2px 0 0}
 .avance-chart-box{display:grid;gap:6px;margin-top:6px}
 .avance-chart{width:100%;height:90px;display:block;background:var(--paper,var(--surface));border-radius:8px}
-.avance-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;margin:4px 0 0;font-size:12px}
-.avance-facts dt{color:var(--muted)}.avance-facts dd{margin:0 0 4px;font-weight:700}
-@media (min-width:700px){.avance-facts{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.avance-chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0;color:var(--muted)}
+.avance-chart-legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.avance-stats{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 12px;align-items:center}
+.avance-stat-big b{display:block;font-size:32px;line-height:1.1}
+.avance-stat-big span{display:block;font-weight:600}
+.avance-stat-big small,.avance-stat-side span{color:var(--muted);font-size:12px}
+.avance-stat-side{display:grid;gap:6px}
+.avance-stat-side b{font-size:18px;margin-right:6px}
+.avance-stat-row{grid-column:1/-1;margin:0;color:var(--muted);border-top:1px solid var(--line,rgba(0,0,0,.1));padding-top:4px}
 .avance-discs{display:grid;gap:6px}
 .avance-discs-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 @media (min-width:900px){.avance-discs-row{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.avance-discs-row .avance-disc{flex:0 0 168px}}

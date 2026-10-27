@@ -17,9 +17,10 @@ import type { ViewMount } from './shell.ts';
  *    al final); barra, «n de m», el primer paso sin hacer «bloquea»; pasos en cadena; leyenda que también filtra; tocar uno filtra.
  * 6. Carriles por agente (los vacíos no se pintan): urgencia → lo listo antes que lo «en espera» → hito y paso → orden.
  *    Una tarjeta con hito está «para hacer» solo si todos los pasos anteriores de su hito (sin backlog) están hechos; con el
- *    mismo número de paso no se bloquean. Con filtro de agentes, la bloqueada por un paso de un agente fuera del filtro va
- *    aparte, plegada al final del carril, con «bloqueada por: <tarjeta del paso que falta> (agente)»; si la bloquea un agente
- *    del filtro (o ella misma), y sin filtro de agentes, sale en su sitio con «en espera».
+ *    mismo número de paso no se bloquean. Con filtros, toda tarjeta abierta del carril (pase o no el filtro) cuyo paso
+ *    anterior sin hacer no pasa el conjunto de filtros activos va plegada al final, con «bloqueada por: <tarjeta> (agente)»;
+ *    si su bloqueador pasa los filtros, sale en su sitio con «en espera». Sin filtros no se pliega nada.
+ * «Actualizado a las»: la hora del último cambio recibido.
  * Escribir: Pendiente / En curso / Hecha desde la tarjeta (`flow.board_card`; el carril lo decide el guard).
  */
 
@@ -35,7 +36,7 @@ interface Card {
   waitsAll: Card[]; blocks: boolean;
 }
 interface Hito { id: string; title: string; orden: number; doneAt: string | null; steps: Card[]; number: number }
-interface Snap { t: string; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number; deleted_at: string | null; project_id: string }
+interface Snap { taken_at: string; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number; deleted_at: string | null; project_id: string }
 
 /** Colores con los tokens del kit (tienen su variante oscura); el azul de «fusión» no tiene token. */
 const C = { ok: 'var(--ok,#497044)', warn: 'var(--warn,#c58b2a)', alert: 'var(--alert,#ae3f29)', muted: 'var(--muted,#616d64)', blue: 'var(--info,#3a7cc4)' };
@@ -121,8 +122,10 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   };
   const anyFilter = () => Object.values(filters).some((v) => v.length);
   /** Marcas de la leyenda que tiene una tarjeta. */
-  /** Lo que la bloquea: el primer paso anterior de un agente fuera del filtro, si lo hay; si no, el primero. */
-  const blockerOf = (c: Card) => (filters.ag.length && c.waitsAll.find((b) => !filters.ag.includes(b.lane))) || c.waitsFor;
+  /** Lo que la bloquea: el primer paso anterior que no pasa los filtros activos, si lo hay; si no, el primero. */
+  const blockerOf = (c: Card) => (anyFilter() && c.waitsAll.find((b) => !passEx(b, null))) || c.waitsFor;
+  /** Con filtros, bloqueada «por fuera»: algún paso anterior sin hacer de su hito no pasa el conjunto de filtros activos. */
+  const outside = (c: Card) => c.state !== 'hecho' && anyFilter() && c.waitsAll.some((b) => !passEx(b, null));
   const marks = (c: Card) => [c.state, ...(c.blocks ? ['bloquea'] : []), ...(c.waitsFor ? ['espera'] : []), ...(c.prio === 'urgente' ? ['urgente'] : []), ...(mine.has(c.lane) ? ['tuyo'] : [])];
   const passEx = (c: Card, skip: keyof Filters | null) =>
     (skip === 'est' || !filters.est.length || filters.est.includes(c.state))
@@ -168,10 +171,10 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
 
   function chart(): HTMLElement {
     const now = cards.length ? counts(cards) : null;
-    const series: Snap[] = [...history].sort((a, b) => a.t.localeCompare(b.t));
-    if (now) series.push({ t: new Date().toISOString(), ...now, total: cards.length, deleted_at: null, project_id: projectId ?? '' });
+    const series: Snap[] = [...history].sort((a, b) => a.taken_at.localeCompare(b.taken_at));
+    if (now) series.push({ taken_at: new Date().toISOString(), ...now, total: cards.length, deleted_at: null, project_id: projectId ?? '' });
     if (series.length < 2) return el('p', { class: 'muted small' }, 'Aún no hay historial para el gráfico.');
-    const W = 320, H = 90, t0 = Date.parse(series[0]!.t), t1 = Date.parse(series.at(-1)!.t) || t0 + 1;
+    const W = 320, H = 90, t0 = Date.parse(series[0]!.taken_at), t1 = Date.parse(series.at(-1)!.taken_at) || t0 + 1;
     const x = (t: string) => ((Date.parse(t) - t0) / ((t1 - t0) || 1)) * W;
     const panel = (keys: Array<[keyof Snap, string]>) => {
       const max = Math.max(1, ...series.flatMap((s) => keys.map(([k]) => Number(s[k]))));
@@ -180,7 +183,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'avance-chart'); svg.setAttribute('aria-hidden', 'true');
       const defs = document.createElementNS(svg.namespaceURI, 'defs'); svg.append(defs);
       keys.forEach(([k, color], i) => {
-        const pts = series.map((s) => [x(s.t), y(Number(s[k]))] as [number, number]);
+        const pts = series.map((s) => [x(s.taken_at), y(Number(s[k]))] as [number, number]);
         const grad = document.createElementNS(svg.namespaceURI, 'linearGradient');
         grad.setAttribute('id', `avg-${String(k)}-${i}`); grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0'); grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
         for (const [offset, opacity] of [['0', '.35'], ['1', '0']] as const) {
@@ -211,19 +214,23 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       return svg;
     };
     const last = series.at(-1)!;
-    const at = (ms: number) => [...series].reverse().find((s) => Date.parse(s.t) <= Date.parse(last.t) - ms) ?? series[0]!;
+    const at = (ms: number) => [...series].reverse().find((s) => Date.parse(s.taken_at) <= Date.parse(last.taken_at) - ms) ?? series[0]!;
     const d24 = at(24 * 3600e3), d7 = at(7 * 24 * 3600e3);
-    const days7 = Math.max(1, (Date.parse(last.t) - Date.parse(d7.t)) / (24 * 3600e3));
-    const facts: Array<[string, string]> = [
-      ['Hechas en 24 h', String(last.hecho - d24.hecho)], ['Hechas al día (7 d)', ((last.hecho - d7.hecho) / days7).toFixed(1)],
-      ['En fusión ahora · máximo', `${last.pr} · ${Math.max(...series.map((s) => s.pr))}`], ['En marcha', String(last.curso)],
-      ['Pendientes en 24 h', `${last.pend - d24.pend >= 0 ? '+' : ''}${last.pend - d24.pend}`], ['Hitos cumplidos', String(hitos.filter((h) => h.doneAt).length)],
-      ['Fotos registradas', String(history.length)],
-    ];
-    return el('div', { class: 'avance-chart-box' },
-      panel([['total', 'var(--ink)'], ['hecho', C.ok], ['pend', C.muted]]),
-      panel([['pr', C.blue], ['curso', C.warn], ['backlog', C.alert]]),
-      el('dl', { class: 'avance-facts' }, ...facts.flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)])));
+    const days7 = Math.max(1, (Date.parse(last.taken_at) - Date.parse(d7.taken_at)) / (24 * 3600e3));
+    // Un solo gráfico (VG, 27-10): por hacer, esperando fusión, en marcha y backlog, con las banderas de los hitos cumplidos.
+    const SERIES: Array<[keyof Snap, string, string]> = [['pend', C.muted, 'Por hacer'], ['pr', C.blue, 'Esperando fusión'], ['curso', C.warn, 'En marcha'], ['backlog', C.alert, 'Backlog']];
+    const legend = el('p', { class: 'avance-chart-legend small' }, ...SERIES.map(([, color, label]) => el('span', null, el('i', { style: `background:${color}` }), label)));
+    const pend24 = last.pend - d24.pend;
+    // Números en un bloque compacto: uno grande (hechas en 24 h y el ritmo), dos pequeños y una fila fina.
+    const stats = el('div', { class: 'avance-stats' },
+      el('div', { class: 'avance-stat-big' }, el('b', null, String(last.hecho - d24.hecho)), el('span', null, 'hechas en 24 h'),
+        el('small', null, `${((last.hecho - d7.hecho) / days7).toFixed(1)} al día (7 d)`)),
+      el('div', { class: 'avance-stat-side' },
+        el('div', null, el('b', null, String(last.pr)), el('span', null, `esperando fusión · máx. ${Math.max(...series.map((s) => s.pr))}`)),
+        el('div', null, el('b', null, String(last.curso)), el('span', null, 'en marcha'))),
+      el('p', { class: 'avance-stat-row small' },
+        `Pendientes en 24 h ${pend24 >= 0 ? '+' : ''}${pend24} · Hitos cumplidos ${hitos.filter((h) => h.doneAt).length} · Tareas en total ${cards.length} · Fotos ${history.length}`));
+    return el('div', { class: 'avance-chart-box' }, panel(SERIES.map(([k, color]) => [k, color])), legend, stats);
   }
 
   async function setState(c: Card, status: 'pending' | 'in_progress' | 'done'): Promise<void> {
@@ -342,18 +349,19 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     const hitoOrden = (c: Card) => hitoOf(c.hito)?.orden ?? 9999;
     const sorted = [...shown].sort((a, b) => (a.state === 'backlog' ? 9 : PRIO_RANK[a.prio ?? ''] ?? 5) - (b.state === 'backlog' ? 9 : PRIO_RANK[b.prio ?? ''] ?? 5)
       || Number(!!a.waitsFor) - Number(!!b.waitsFor) || hitoOrden(a) - hitoOrden(b) || (a.paso ?? 0) - (b.paso ?? 0) || a.order - b.order);
-    const visibleLanes = lanesKeys.filter((k) => sorted.some((c) => c.lane === k));
-    const lanesData = groupLanes(sorted, {
+    // En los carriles van también las bloqueadas por fuera que no pasan el filtro (van plegadas).
+    const laneItems = [...sorted, ...cards.filter((c) => outside(c) && !passEx(c, null))];
+    const visibleLanes = lanesKeys.filter((k) => laneItems.some((c) => c.lane === k));
+    const lanesData = groupLanes(laneItems, {
       key: (c) => c.lane, order: visibleLanes, hideEmpty: true, title: (k) => agentName(k), emptyText: 'Nada.',
       mount: (body, items) => {
-        // Con filtro de agentes, la bloqueada por un paso anterior de un agente que no está en el filtro va aparte, plegada al
-        // final (VG, 27-10); si la bloquea ella misma u otro agente seleccionado, sale en su sitio con «en espera».
-        const outside = (c: Card) => !!filters.ag.length && c.waitsAll.some((b) => !filters.ag.includes(b.lane));
-        const pending = items.filter((c) => c.state !== 'hecho' && !outside(c));
-        const blocked = items.filter((c) => c.state !== 'hecho' && outside(c));
+        // Arriba, las que pasan los filtros y no están bloqueadas por fuera. Plegadas al final, todas las abiertas del carril
+        // (pasen o no el filtro) cuyo bloqueador no pasa los filtros: cuanto más estrecho el filtro, más plegadas (VG, 27-10).
+        const pending = items.filter((c) => c.state !== 'hecho' && passEx(c, null) && !outside(c));
+        const blocked = items.filter(outside);
         replace(body, el('p', { class: 'muted small' }, `${pending.filter((c) => c.state !== 'backlog' && !c.waitsFor).length} por hacer`),
           ...pending.map(cardEl),
-          ...items.filter((c) => c.state === 'hecho').map(cardEl),
+          ...items.filter((c) => c.state === 'hecho' && passEx(c, null)).map(cardEl),
           blocked.length ? el('details', { class: 'avance-blocked', 'data-feedback-id': 'flow.avance.bloqueadas' },
             el('summary', null, `Bloqueadas (${blocked.length})`), ...blocked.map(cardEl)) : null);
       },
@@ -371,7 +379,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     const board = units.filter((u) => u.column_key === 'avance' && !u.deleted_at);
     const hitoUnits = board.filter((u) => u.class === 'objective');
     const cardUnits = board.filter((u) => u.kind === 'card' || u.kind === 'recurring');
-    updatedAt = board.map((u) => u.updated_at ?? '').sort().at(-1) ?? null;
+    updatedAt = new Date().toISOString(); // la hora del último cambio recibido (VG, 27-10), no la de la fila
     cards = cardUnits.map((u) => {
       const p = u.payload ?? {};
       return { id: u.id, lane: u.lane_key ?? '', title: u.label ?? '', state: stateOf(u), recurring: u.kind === 'recurring', prio: u.kind === 'recurring' ? null : u.prio,
