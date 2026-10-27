@@ -130,7 +130,7 @@ Lo mecánico (escenarios de Playwright siguiendo un patrón aprobado) puede ir a
 
 La `0900` queda tal cual: se publica con #707 y luego es inmutable. Lo siguiente va en la `0901_flow_customers`.
 
-**Rutas (§8):** `flow.ikisai.com/` abre la **carta pública**, sin login. El área de personal va en **`/equipo`**, con el login del kit, el menú común y la PWA (`start_url` y `scope` en `/equipo/`).
+**Rutas (§8; cambiadas en §50):** `flow.ikisai.com/` es la entrada del equipo, con el login del kit, el menú común y la PWA; la **carta pública** va en `/recorridos/carta`, sin login, y se llega desde ven.ikisai.com. `/equipo` redirige a la raíz.
 
 **Tablas nuevas o cambiadas:**
 
@@ -486,7 +486,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 
 ## 49. Indicadores para Central (P7, migración `0950`)
 
-`flow.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2 (`core.allow_read('central', …, 'view')`; ni `anon` ni `authenticated`). Solo agregados de los flujos activos y fuera del modo pruebas; fechas en hora de Madrid; `period = 'actual'`; enlace a la lista de flujos (`https://flow.ikisai.com/equipo/#/`).
+`flow.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2 (`core.allow_read('central', …, 'view')`; ni `anon` ni `authenticated`). Solo agregados de los flujos activos y fuera del modo pruebas; fechas en hora de Madrid; `period = 'actual'`; enlace a la lista de flujos (`https://flow.ikisai.com/#/`, desde `0951`).
 
 | Clave | Unidad | Sentido | Fórmula |
 |---|---|---|---|
@@ -494,3 +494,25 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 | `flow.day_closures_pending` | `count` | `down` | Días de los últimos 30 (sin hoy) con algún pago y sin `flow.day_closures`, por flujo. |
 | `flow.orders_unfinished_past` | `count` | `down` | Pedidos `paid` (cobrados sin entregar) cobrados antes de hoy. |
 | `flow.buffers_below_target` | `count` | `down` | Mesas y neveras con `capacity > 0` y `level < capacity × threshold_pct / 100`. |
+
+## 50. Entradas por URL (decisión de VG, 27-10; migración `0951`)
+
+- `flow.ikisai.com/` es la entrada del equipo (login del kit, menú común, PWA: `start_url` y `scope` en `/`; el `id` sigue siendo `/equipo` para no duplicar instalaciones).
+- La carta pública vive en `flow.ikisai.com/recorridos/carta` y se llega desde ven.ikisai.com, la única entrada pública.
+- Redirecciones permanentes (301, en `public/_worker.js`; `main.ts` repite las dos primeras en el navegador):
+  - `/equipo…` → `/` (con su query; el navegador conserva el `#`);
+  - `/carta` → `https://ven.ikisai.com/`;
+  - `/?invitacion=…` (enlaces de Guests anteriores a `0951`) → `/recorridos/carta?invitacion=…`.
+- `carta_url` (FL2) sale ya con `/recorridos/carta?invitacion=…` (`flow.carta_link`, 0951).
+- Identidad de visitante en los dos sentidos (handoff del núcleo 0106):
+  - **ven → carta:** `?v=<traspaso>`. La carta lo quita de la dirección y lo canjea (`POST public/visitor/handoff/redeem`) solo si el navegador no tiene visitante; liga a él su cliente web (`customer_visitor`), también tras el primer pedido.
+  - **carta → ven:** tras enviar el pedido, «Tus datos» y, si el evento admite alojamiento, «Alójate aquí» abren `https://ven.ikisai.com/e/<código>?siguiente=datos|alojate&v=<traspaso nuevo>` (con `alojate`, también `?alojate`).
+- `GET public/menu` añade `eventCode`: el código público del evento del flujo, solo si Booking lo da como abierto.
+
+## 54. Pedido de prueba de un miembro (migración `0952`, con el núcleo `0115`)
+
+- Dirección y staff entran en ven.ikisai.com con su identidad (visitante atado a su cuenta, `POST public/visitor/as-member`) y pueden pedir desde la carta.
+- Un pedido cuyo cliente tiene un visitante de una persona del equipo (`core.visitor_member`) nace con `test_by` (quién) y `test_name` (su nombre). Una ampliación hereda la marca. La pone el trigger `flow.orders_member_test`; nadie la cambia (no es columna escribible).
+- No cuenta en caja ni en Finance: `flow.day_summary` (cierre, envío a Food y a Finance) y `flow.central_kpi_projection` lo dejan fuera. Se prepara y se entrega como cualquier otro.
+- Se ve: en Caja y Servicio, «Pedido de prueba (nombre)» en la tarjeta; en la carta, al enviarlo y en «Mis pedidos» (`testName` en `public/mine`).
+- Recomendación de vg-48 (VG aún no la ha contestado): si decide cobrarlo como a un huésped, se quita el filtro y la marca queda solo como aviso.

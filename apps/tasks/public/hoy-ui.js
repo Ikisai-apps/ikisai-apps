@@ -95,7 +95,26 @@ function tkhWho(userId){if(!userId)return '';if(userId===Sync.actor?.id)return '
 function tkhAgo(iso){const at=Date.parse(iso||'');if(isNaN(at))return '';const min=Math.max(0,Math.round((Date.now()-at)/60000));if(min<1)return 'ahora';if(min<60)return `hace ${min} min`;
   const day=new Date(at);day.setHours(0,0,0,0);const days=Math.round((homeToday()-day)/86400000);if(days<=0)return `hace ${Math.round(min/60)} h`;if(days===1)return 'ayer';return `hace ${days} días`}
 function tkhDaysAgo(iso){const at=Date.parse(iso||'');if(isNaN(at))return 99;const day=new Date(at);day.setHours(0,0,0,0);return Math.round((homeToday()-day)/86400000)}
-function tkhStrips(){const all=tkhCandidates(),seen=new Set(),take=(list,n=TKH_TAKE_STRIP)=>{const out=[];for(const x of list){if(out.length>=n)break;if(seen.has(x.t.id))continue;seen.add(x.t.id);out.push(x)}return out};
+/* Filtro por espacio (encargo de VG, 27-10): arriba, un chip por cada espacio que aparece en la pantalla (el plan y «Para
+   coger»), con su recuento de tareas. Un toque marca y otro desmarca; ninguno o todos marcados, se ve todo; varios, lo que esté
+   en cualquiera de ellos. Lo marcado se recuerda en el dispositivo. Mientras filtra, lo apuntado «solo hoy» (sin espacio) no se
+   ve y el plan no se reordena (el orden es del plan entero). */
+const TKH_SPACES_KEY='tasks.hoy.espacios';
+function tkhSpaceSel(){try{const v=JSON.parse(localStorage.getItem(TKH_SPACES_KEY)||'[]');return new Set(Array.isArray(v)?v.filter(x=>typeof x==='string'):[])}catch(e){return new Set()}}
+function tkhSpaceSave(set){try{localStorage.setItem(TKH_SPACES_KEY,JSON.stringify([...set]))}catch(e){}}
+function tkhSpacesOf(t){return [...new Set(t?.spaces||[])].filter(id=>typeof spaceById!=='function'||spaceById(id))}
+function tkhSpaceName(id){return (typeof spaceById==='function'?spaceById(id)?.name:'')||id}
+function tkhSpaceCounts(){const n=new Map(),seen=new Set(),add=t=>{if(!t||seen.has(t.id))return;seen.add(t.id);for(const s of tkhSpacesOf(t))n.set(s,(n.get(s)||0)+1)};
+  for(const it of tkhItems())if(it.task_id)add(tkhFind(it.task_id)?.t);
+  if(tkhCanPick())for(const x of tkhCandidates())add(x.t);
+  return n}
+function tkhSpaceFilter(){const counts=tkhSpaceCounts(),sel=new Set([...tkhSpaceSel()].filter(id=>counts.has(id))),on=sel.size>0&&sel.size<counts.size;
+  return {counts,sel,on,match:t=>!on||tkhSpacesOf(t).some(id=>sel.has(id))}}
+function tkhSpaceBar(f){if(f.counts.size<2)return '';
+  const list=[...f.counts].sort((a,b)=>tkhSpaceName(a[0]).localeCompare(tkhSpaceName(b[0]),'es'));
+  return `<div class="tkh-spaces" id="tkhSpaces" role="group" aria-label="Filtrar por espacio">${list.map(([id,n])=>`<button type="button" class="tkh-space" data-tkh-space="${esc(id)}" aria-pressed="${f.sel.has(id)?'true':'false'}" data-feedback-id="tasks.hoy.espacio" data-feedback-label="Filtrar por espacio">${esc(tkhSpaceName(id))} <span class="tkh-space-n">${n}</span></button>`).join('')}</div>`}
+function tkhSpaceToggle(id){const f=tkhSpaceFilter(),sel=f.sel;if(sel.has(id))sel.delete(id);else sel.add(id);tkhSpaceSave(sel);render()}
+function tkhStrips(){const F=tkhSpaceFilter(),all=tkhCandidates().filter(x=>F.match(x.t)),seen=new Set(),take=(list,n=TKH_TAKE_STRIP)=>{const out=[];for(const x of list){if(out.length>=n)break;if(seen.has(x.t.id))continue;seen.add(x.t.id);out.push(x)}return out};
   const me=Sync.actor?.id;
   const touched=all.filter(x=>x.t.updatedBy&&x.t.updatedBy===me).sort((a,b)=>String(b.t.updatedAt||'').localeCompare(String(a.t.updatedAt||''))).map(x=>({...x,meta:`la tocaste ${tkhAgo(x.t.updatedAt)}`}));
   const steps=all.filter(x=>x.t.parentId).map(x=>{const kids=children(x.p,x.t.parentId),done=kids.filter(k=>k.done).length;return done?{...x,meta:`${done} de ${kids.length} pasos`}:null}).filter(Boolean);
@@ -141,12 +160,14 @@ function tkhView(){const items=tkhItems(),done=items.filter(it=>!tkhItemGone(it)
   const line=pick?`<form class="tkh-find" role="search" id="tkhFind" aria-label="Buscar o apuntar para hoy"><label class="tkh-vh" for="tkhInput">Busca una tarea o apunta algo para hoy</label><input id="tkhInput" type="search" autocomplete="off" enterkeyhint="done" maxlength="300" placeholder="Busca o apunta algo…" value="${esc(tkhQuery)}" data-feedback-id="tasks.hoy.buscar" data-feedback-label="Buscar o apuntar"><button type="submit" class="tkh-note" data-feedback-id="tasks.hoy.apuntar" data-feedback-label="Apuntar">Apuntar</button></form><p class="tkh-vh" aria-live="polite" id="tkhCount"></p><div id="tkhResults" class="tkh-results-box"></div>`
     :tkhCanWrite()?`<form class="tkh-find solo" id="tkhFind" aria-label="Apunta aquí lo tuyo"><label class="tkh-solo-label" for="tkhInput">Apunta aquí lo tuyo</label><input id="tkhInput" type="text" autocomplete="off" enterkeyhint="done" maxlength="300" placeholder="Algo que hacer hoy…" value="${esc(tkhQuery)}" data-feedback-id="tasks.hoy.apuntar_lector" data-feedback-label="Apunta aquí lo tuyo"><button type="submit" class="tkh-note" data-feedback-id="tasks.hoy.apuntar" data-feedback-label="Apuntar">Apuntar</button></form>`:'';
   return `<main class="screen tkh ${pick?'':'small'}"><section class="tkh-head">${tkhArc(done,total)}<div class="tkh-headtext"><h1 class="title">${esc(tkhDateLabel())}</h1><p class="subtitle">${pick?'Tu plan de hoy. Añade desde aquí o con ☀ en cualquier tarea.':'Tu plan de hoy. Apunta aquí lo tuyo.'}</p></div></section>
+    ${tkhSpaceBar(tkhSpaceFilter())}
     ${line}
     ${left?`<section class="tkh-yesterday" aria-label="De ayer"><p>${esc(tkhLeftoverText(left))}</p><div class="tkh-yesterday-actions"><button type="button" class="primary" id="tkhBring" data-feedback-id="tasks.hoy.ayer.traer" data-feedback-label="Traer a hoy">Traer a hoy</button><button type="button" class="ghost" id="tkhLeave" data-feedback-id="tasks.hoy.ayer.dejar" data-feedback-label="Dejarlo">Dejarlo</button></div></section>`:''}
     <section class="tkh-plan" aria-labelledby="tkhPlanTitle"><h2 class="tkh-h2" id="tkhPlanTitle">Tu plan <span class="tkh-n">${tkhLeft(items)} por hacer</span></h2>${items.length?'<div class="ikisai-kit tkh-list" id="tkhList"></div>':`<p class="tkh-empty">${pick?'Todavía no hay nada. Busca arriba, toca ☀ en una tarea o coge algo de abajo.':'Todavía no hay nada. Apunta arriba lo que vas a hacer.'}</p>`}</section>
     ${pick?tkhTake():''}</main>`}
-function tkhMount(){const host=document.getElementById('tkhList');tkhSortable=null;if(host){const items=tkhItems();
-    tkhSortable=IkisaiKit.createSortableList({items,key:it=>it.id,name:it=>(it.task_id?tkhFind(it.task_id)?.t.text:it.text)||'Tarea',render:it=>tkhRowNode(it),label:'Tu plan de hoy',rowClass:'tkh-sortrow',buttons:false,disabled:!tkhCanWrite(),
+function tkhMount(){document.querySelectorAll('[data-tkh-space]').forEach(b=>b.onclick=()=>tkhSpaceToggle(b.dataset.tkhSpace));
+  const host=document.getElementById('tkhList');tkhSortable=null;if(host){const F=tkhSpaceFilter(),items=tkhItems().filter(it=>!F.on||(it.task_id&&F.match(tkhFind(it.task_id)?.t)));
+    tkhSortable=IkisaiKit.createSortableList({items,key:it=>it.id,name:it=>(it.task_id?tkhFind(it.task_id)?.t.text:it.text)||'Tarea',render:it=>tkhRowNode(it),label:'Tu plan de hoy',rowClass:'tkh-sortrow',buttons:false,disabled:!tkhCanWrite()||F.on,
       onReorder:list=>{if(tkhWrite(tkhD().planInOrder(tkhItems(),list.map(x=>x.id))))setTimeout(()=>{const f=document.activeElement;render();if(f?.classList.contains('sortable-handle')){const i=[...document.querySelectorAll('#tkhList .sortable-handle')];const k=list.findIndex(x=>x.id===f.closest('[data-key]')?.dataset.key);i[k]?.focus()}},0)}});
     host.replaceChildren(tkhSortable.element)}
   const input=document.getElementById('tkhInput');if(!input)return;

@@ -32,6 +32,19 @@ test('0111 · field_coverage: una capacidad con writes cubre el campo (indirect)
     const lab = (await db.query<{ r: any }>(`select core.field_coverage($1, 'booking', 'label') r`, [app.users.editor])).rows[0]!.r;
     assert.deepEqual(lab.fields.find((f: any) => f.fieldId === 'booking.reserva.notas').duplicates, ['booking.reserva.notas2'], 'modo label: etiqueta distinta, siguen solo los exactos');
     assert.equal((await db.query<{ r: any }>(`select core.service_grants('invoices') r`)).rows[0]!.r.displayName, 'Finance (sistema)');
+    // 0114: utilidad heredada, uso real y candidatos
+    await db.query(`insert into core.usage_features (feature_id, app, label, catalogued, active, frequency) values ('booking.reserva', 'booking', 'Reserva', true, true, 'frequent')`);
+    await db.query(`insert into core.usage_daily (day, feature_id, generation, actor, context, device_id, activations) values (current_date - 3, 'booking.reserva.color', 1, 'internal', 'production', gen_random_uuid(), 3)`);
+    const r2 = (await db.query<{ r: any }>(`select core.field_coverage($1, 'booking') r`, [app.users.editor])).rows[0]!.r;
+    const by2: Record<string, any> = {}; for (const f of r2.fields) by2[f.fieldId] = f;
+    assert.equal(by2['booking.reserva.color'].estimate.featureId, 'booking.reserva.color', 'la funcionalidad propia manda sobre la de la pantalla');
+    assert.equal(by2['booking.reserva.misterio'].estimate.featureId, 'booking.reserva', 'hereda de la pantalla');
+    assert.equal(by2['booking.reserva.misterio'].estimate.frequency, 'frequent');
+    assert.equal(by2['booking.reserva.color'].activations30d, 3);
+    assert.equal(by2['booking.reserva.misterio'].screenLabel, 'Reserva', 'nombre de la pantalla desde el catálogo de uso');
+    assert.equal(by2['booking.reserva.color'].candidate, false, 'con uso no es candidato');
+    assert.equal(by2['booking.reserva.misterio'].candidate, true, 'sin cobertura, sin uso y sin protección');
+    assert.equal(by2['booking.reserva.notas'].candidate, false, 'lo cubre una capacidad');
     await assert.rejects(db.query(`select core.field_coverage($1, 'booking')`, [app.users.reader]), /FORBIDDEN/);
   } finally {
     await app.close();

@@ -2143,6 +2143,9 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
   - avisos de otra app de la misma cuenta (`metadata.app` distinto de `booking`) o sin interés: 200 `{ignored: true}`;
   - `paid` guarda el pago de Stripe (`stay_payments.provider_payment_ref`, `pi_…`). Por él se casa `charge.refunded`, que no trae la sesión.
 - **Devoluciones:** `refund` busca el pago de la sesión y devuelve con la clave de idempotencia recibida (o con una nueva).
+**Capacidades en el catálogo (migración 1422; para Flow y el Guiado):** son rutas del personal con permiso de escritura y el ámbito de huéspedes, y declaran sus `reads` y `writes` (`entity.prop`, núcleo 0111).
+- `booking.accept_stay`, «Alojar en recepción»: `POST stays/:id/accept {method?, name?, requestId?}`. Es `join_from_visitor` con `accept`. Repetir con el mismo `requestId` devuelve lo mismo. Con `online` y sin pago confirmado, `NOT_PAID_ONLINE`.
+- `booking.cancel_stay_online`, «Cancelar noches pagadas en línea»: `POST stays/:id/cancel/online {confirm?}`. Es lo mismo que `public/stay/cancel` (1419), pero lo hace el personal (`booking.stay_cancel` con `by_staff`).
 
 ## 46. Guiado de Flow en Booking (prueba del alojamiento; VG 27-10-2026)
 

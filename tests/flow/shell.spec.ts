@@ -1,5 +1,5 @@
 /**
- * Flow · cáscara del personal en `/equipo` (FLOW-DIR-001 §8): login del kit, Inicio, menú lateral común con el lanzador, «‹ Volver a…» (K9) al
+ * Flow · cáscara del personal en la raíz (antes `/equipo`, que redirige) (FLOW-DIR-001 §8): login del kit, Inicio, menú lateral común con el lanzador, «‹ Volver a…» (K9) al
  * llegar desde otra app y cierre de sesión. Contra la `flow-api` real sobre PGlite. Datos ficticios.
  */
 import { expect, test, type Page } from 'playwright/test';
@@ -34,7 +34,7 @@ test.afterAll(async () => {
   await api?.close();
 });
 
-async function login(page: Page, url = `${baseURL}/equipo`): Promise<void> {
+async function login(page: Page, url = `${baseURL}/`): Promise<void> {
   await page.goto(url);
   await expect(page.getByText('Ikisai Flow').first()).toBeVisible();
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
@@ -50,7 +50,7 @@ async function enterBar(page: Page): Promise<void> {
 }
 
 test('flow · login con contraseña errónea avisa y no entra', async ({ page }) => {
-  await page.goto(`${baseURL}/equipo`);
+  await page.goto(`${baseURL}/`);
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill('mal');
   await page.getByRole('button', { name: 'Entrar' }).click();
@@ -77,7 +77,7 @@ test('flow · login → flujos → Inicio de la barra con las guías y sus cinco
 
 test('flow · llegar desde otra app con returnTo muestra «Volver a…» y limpia la URL', async ({ page }) => {
   const volver = encodeURIComponent('https://central.ikisai.com/#/');
-  await login(page, `${baseURL}/equipo?desde=central&volver=${volver}&titulo=Central`);
+  await login(page, `${baseURL}/?desde=central&volver=${volver}&titulo=Central`);
   const back = page.locator('a.return-link');
   await expect(back).toBeVisible();
   await expect(back).toContainText('Volver a Central');
@@ -89,18 +89,18 @@ test('flow · sin crear recorridos ni flujos desde la interfaz; «Volver» y «C
   await login(page);
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   await expect(page.locator('nav.flow-nav')).toBeHidden(); // en la entrada común no hace falta
-  await page.goto(`${baseURL}/equipo#/recorridos`);
+  await page.goto(`${baseURL}/#/recorridos`);
   await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Nuevo recorrido' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '‹ Volver' })).toBeVisible();
   await page.getByRole('button', { name: '✕ Cerrar y volver a la entrada' }).click();
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   // Sin el enlace de prueba, «nuevo» lleva a la entrada; con él, abre el editor y deja volver.
-  await page.goto(`${baseURL}/equipo#/recorridos/nuevo`);
+  await page.goto(`${baseURL}/#/recorridos/nuevo`);
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
-  await page.goto(`${baseURL}/equipo#/nuevo`);
+  await page.goto(`${baseURL}/#/nuevo`);
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
-  await page.goto(`${baseURL}/equipo#/recorridos/nuevo?prueba`);
+  await page.goto(`${baseURL}/#/recorridos/nuevo?prueba`);
   await expect(page.getByRole('heading', { name: 'Nuevo recorrido' })).toBeVisible();
   await page.getByRole('button', { name: '‹ Volver' }).click();
   await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();

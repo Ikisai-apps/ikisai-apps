@@ -66,7 +66,7 @@ test('visitantes · «Mi pedido»: lectura pública con el visitante del kit; si
   assert.equal(forged.data.number, null);
   const mine = await pub(`flow_visitor_customer?event_code=${code}`, { visitor });
   assert.ok(mine.data.number >= 100);
-  assert.match(mine.data.carta_url, /^https:\/\/flow\.ikisai\.com\/\?invitacion=/);
+  assert.match(mine.data.carta_url, /^https:\/\/flow\.ikisai\.com\/recorridos\/carta\?invitacion=/);
 });
 
 test('visitantes · el enlace a la carta es de un solo uso (firma con revisión) y deja el navegador como ese cliente', async () => {
