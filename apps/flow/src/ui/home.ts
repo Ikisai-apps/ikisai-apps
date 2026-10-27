@@ -5,6 +5,7 @@ import { describeError } from '../app/client.ts';
 import { loadProjects, loadStock, projectDates, projectState, type Project, type StockItem } from '../app/data.ts';
 import { addDocument, coverUrl, loadCodeGuides, moveDocument, projectDocuments, removeDocument, setCover, type ProjectDocument } from '../app/documents.ts';
 import { assignGuestNumbers, chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
+import { editorLinks } from './editor.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
@@ -52,6 +53,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
       el('div', { class: 'orders-owner flow-version' },
         project.frozen ? el('p', { class: 'muted small' }, `Versión ${project.template_version ?? ''} congelada: su configuración no cambia.`) : null,
         project.template_key ? el('button', { type: 'button', class: 'ghost', onclick: () => void newVersion(project) }, 'Nueva versión del flujo') : null,
+        project.frozen ? null : editorLinks(client, project.id),
         el('button', { type: 'button', class: 'ghost', onclick: () => pickFile('image/*', (file) => setCover(client, project, file, file.name || 'portada.webp').then(() => toast('Portada cambiada.'))) }, 'Cambiar portada'),
         el('button', { type: 'button', class: 'ghost', onclick: () => manageDocuments() }, 'Gestionar documentos'),
         el('label', { class: 'flow-public-switch' }, el('input', { type: 'checkbox', checked: project.serves_public, onchange: (e: Event) => void servePublic(project, (e.target as HTMLInputElement).checked) }),
