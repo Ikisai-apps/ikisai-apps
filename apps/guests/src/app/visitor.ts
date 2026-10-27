@@ -25,6 +25,8 @@ export interface PublicEvent {
   lodging?: boolean;
 }
 export interface VisitorRequest {
+  /** Id de la petición (Booking): para «Tu ficha está lista». */
+  id?: string;
   event_code: string; kind: 'join' | 'contact' | 'stay'; name: string | null; status: 'pendiente' | 'aceptada' | 'atendida' | 'descartada' | string;
   created_at: string; decided_at: string | null;
   /** Solo en `stay` (Booking 0499): noches, personas, total y cómo se paga; con `hold`, hasta cuándo se guarda la plaza. */
@@ -145,6 +147,14 @@ export async function verifyEmailCode(email: string, code: string): Promise<{ re
     return { recovered: true };
   }
   return { recovered: out.recovered === true };
+}
+
+/**
+ * «Tu ficha está lista» (núcleo 0106 con `booking.visitor_claim`): si el personal aceptó su petición y le creó ficha, el
+ * núcleo une este visitante a ella y da un enlace de un solo uso (10 minutos) para entrar en su ficha.
+ */
+export function claimGuest(code: string, requestId: string): Promise<{ loginToken: string }> {
+  return withVisitor(code, () => call<{ loginToken: string }>('/api/v1/public/visitor/claim', { json: { requestId } }));
 }
 
 /** Quita el correo de este acceso. */
