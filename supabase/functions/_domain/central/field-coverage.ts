@@ -69,6 +69,30 @@ export function fieldLinks(fields: readonly CoreCoverageField[], anchors: readon
   return out;
 }
 
+/** Un paso o una regla de Flow como los quiere `coverageFromCore` del kit: el ancla es el id del campo. */
+export interface FlowStepForKit { flowId: string; flowName: string; kind: 'step' | 'rule'; anchor: string }
+
+/**
+ * Lo que da Flow, en la forma del kit: un paso por cada recorrido que usa el anclaje del campo, y una regla por cada regla que
+ * observa su `entity.prop` en su app. Las capacidades las cruza el kit con lo que da el núcleo.
+ */
+export function flowSteps(fields: readonly CoreCoverageField[], anchors: readonly FlowAnchor[], rules: readonly FlowRule[]): FlowStepForKit[] {
+  const byAnchor = new Map(anchors.map((a) => [a.anchor_id, a]));
+  const out: FlowStepForKit[] = [];
+  for (const f of fields) {
+    const anchor = byAnchor.get(f.anchorId ?? '') ?? byAnchor.get(f.fieldId);
+    for (const u of new Map((anchor?.uses ?? []).map((x) => [x.flow_key, x])).values()) out.push({ flowId: u.flow_key, flowName: u.flow_name, kind: 'step', anchor: f.fieldId });
+    if (f.entity && f.prop) {
+      for (const r of rules) if (r.observes.some((o) => o.app === f.app && o.entity === f.entity && o.prop === f.prop)) out.push({ flowId: r.id, flowName: r.name, kind: 'rule', anchor: f.fieldId });
+    }
+  }
+  return out;
+}
+
+/** Las decisiones del kit (`keep`, `later`, `retire`) y las que guarda Central. */
+export const KIT_TO_DECISION: Record<'keep' | 'later' | 'retire', GroupDecision> = { keep: 'dejar', later: 'revisar_mas_tarde', retire: 'retirar' };
+export const DECISION_TO_KIT: Record<GroupDecision, 'keep' | 'later' | 'retire'> = { dejar: 'keep', revisar_mas_tarde: 'later', retirar: 'retire' };
+
 /**
  * ¿Es candidato? Lo dice el núcleo (`candidate`). Si aún no lo da, la misma regla: sin cobertura de Flow (ni paso, ni
  * capacidad, ni regla), sin uso en 30 días y sin estimado de la app que lo proteja.

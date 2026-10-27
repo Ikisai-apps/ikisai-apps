@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
 import {
-  FIELD_GROUP_REVIEWS_TABLE, candidateGroups, candidatesSummary, canDeclareUtility, fieldLinks, inheritedUtility, isCandidate, screenName, validateOperations,
+  DECISION_TO_KIT, FIELD_GROUP_REVIEWS_TABLE, KIT_TO_DECISION, candidateGroups, flowSteps, candidatesSummary, canDeclareUtility, fieldLinks, inheritedUtility, isCandidate, screenName, validateOperations,
 } from '../../supabase/functions/_domain/central/mod.ts';
 
 let app: TestApp;
@@ -46,6 +46,10 @@ test('campos · dominio: vínculos de Flow, candidatos por pantalla, resumen y u
   assert.equal(screenName({ fieldId: 'x.y.z', screen: null }), 'Y');
   assert.equal(inheritedUtility(fields[3]!), 'Recepción · semanal');
   assert.equal(inheritedUtility(fields[1]!, { app: 'booking', screen: 'booking.ficha_reserva', audience: 'Dirección', frequency: 'mensual' }), 'Dirección · mensual · 0 usos en 30 días');
+  // Lo de Flow en la forma del kit: un paso por recorrido con el anclaje del campo, y una regla por regla que observa su dato.
+  assert.deepEqual(flowSteps(fields, anchors, rules).map((x) => [x.kind, x.flowId, x.anchor]), [['step', 'cocina', 'food.carta.expected_units'], ['rule', 'flow.prevision', 'food.carta.expected_units']]);
+  assert.equal(KIT_TO_DECISION.later, 'revisar_mas_tarde');
+  assert.equal(DECISION_TO_KIT.retirar, 'retire');
   assert.equal(canDeclareUtility({ role: 'editor', scopes: { direccion: true } }), true);
   assert.equal(validateOperations([{ op: 'insert', table: FIELD_GROUP_REVIEWS_TABLE, id: 'g', fields: { app: 'booking', screen: 'booking.ficha_reserva', decision: 'dejar' } }], { role: 'editor' })?.code, 'FORBIDDEN');
   assert.equal(validateOperations([{ op: 'insert', table: FIELD_GROUP_REVIEWS_TABLE, id: 'g', fields: { app: 'booking', screen: 'booking.ficha_reserva', decision: 'borrar' } }], { role: 'owner' })?.details.field, 'decision');
