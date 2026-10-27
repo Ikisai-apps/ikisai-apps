@@ -4,7 +4,7 @@
  * «Para quién» (MUELA-065, Booking #664): todos, solo adultos, solo menores o algunas personas, elegidas entre los
  * asistentes (`app/program-audience.ts`). En Guests, cada familia ve solo lo suyo; esa regla es de Booking.
  */
-import { confirmDialog, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import { AUDIENCES, audienceFields, audienceLabel, audienceOf, audienceText, type Audience } from '../app/program-audience.ts';
@@ -113,29 +113,29 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
   function edit(item: ProgramItem | null, day: string): void {
     const p = program!;
     const days = daysOf(p.start_date, p.end_date);
-    const daySel = el('select', { id: 'pr-day' }, ...days.map((d) => el('option', { value: d, selected: d === (item?.day ?? day) ? '' : null }, dayTitle(d)))) as HTMLSelectElement;
-    const starts = el('input', { type: 'time', id: 'pr-starts', value: item?.starts_at ?? '' }) as HTMLInputElement;
-    const ends = el('input', { type: 'time', id: 'pr-ends', value: item?.ends_at ?? '' }) as HTMLInputElement;
-    const title = el('input', { type: 'text', id: 'pr-title', maxlength: '120', required: '', value: item?.title ?? '' }) as HTMLInputElement;
-    const kind = el('select', { id: 'pr-kind' }, ...KINDS.map(([v, l]) => el('option', { value: v, selected: v === (item?.kind ?? 'actividad') ? '' : null }, t(l)))) as HTMLSelectElement;
-    const space = el('select', { id: 'pr-space' },
+    const daySel = el('select', { ...fieldAttrs({ id: 'organizers.programa.dia', label: 'Día', entity: 'booking.program_items', prop: 'day', type: 'select', sensitivity: 'internal' }), id: 'pr-day' }, ...days.map((d) => el('option', { value: d, selected: d === (item?.day ?? day) ? '' : null }, dayTitle(d)))) as HTMLSelectElement;
+    const starts = el('input', { ...fieldAttrs({ id: 'organizers.programa.empieza', label: 'Empieza', entity: 'booking.program_items', prop: 'starts_at', type: 'time', sensitivity: 'internal' }), type: 'time', id: 'pr-starts', value: item?.starts_at ?? '' }) as HTMLInputElement;
+    const ends = el('input', { ...fieldAttrs({ id: 'organizers.programa.termina', label: 'Termina', entity: 'booking.program_items', prop: 'ends_at', type: 'time', sensitivity: 'internal' }), type: 'time', id: 'pr-ends', value: item?.ends_at ?? '' }) as HTMLInputElement;
+    const title = el('input', { ...fieldAttrs({ id: 'organizers.programa.titulo', label: 'Título de la actividad', entity: 'booking.program_items', prop: 'title', type: 'text', sensitivity: 'internal' }), type: 'text', id: 'pr-title', maxlength: '120', required: '', value: item?.title ?? '' }) as HTMLInputElement;
+    const kind = el('select', { ...fieldAttrs({ id: 'organizers.programa.tipo', label: 'Tipo de actividad', entity: 'booking.program_items', prop: 'kind', type: 'select', sensitivity: 'internal' }), id: 'pr-kind' }, ...KINDS.map(([v, l]) => el('option', { value: v, selected: v === (item?.kind ?? 'actividad') ? '' : null }, t(l)))) as HTMLSelectElement;
+    const space = el('select', { ...fieldAttrs({ id: 'organizers.programa.espacio', label: 'Espacio', entity: 'booking.program_items', prop: 'space_id', type: 'select', sensitivity: 'internal' }), id: 'pr-space' },
       el('option', { value: '' }, t('Otro lugar (escríbelo)')),
       ...(p.spaces ?? []).map((s) => el('option', { value: s.id, selected: s.id === item?.space_id ? '' : null }, s.name))) as HTMLSelectElement;
-    const placeText = el('input', { type: 'text', id: 'pr-place', maxlength: '80', value: item?.place_text ?? '', placeholder: t('Por ejemplo: junto al río') }) as HTMLInputElement;
+    const placeText = el('input', { ...fieldAttrs({ id: 'organizers.programa.lugar', label: 'Lugar', entity: 'booking.program_items', prop: 'place_text', type: 'text', sensitivity: 'internal' }), type: 'text', id: 'pr-place', maxlength: '80', value: item?.place_text ?? '', placeholder: t('Por ejemplo: junto al río') }) as HTMLInputElement;
     const placeField = el('label', { class: 'field' }, el('span', null, t('Lugar')), placeText);
-    const publicNote = el('textarea', { id: 'pr-public', rows: '2', maxlength: '500' }, item?.public_note ?? '') as HTMLTextAreaElement;
-    const internal = el('textarea', { id: 'pr-internal', rows: '2', maxlength: '500' }, item?.internal_note ?? '') as HTMLTextAreaElement;
+    const publicNote = el('textarea', { ...fieldAttrs({ id: 'organizers.programa.nota_publica', label: 'Nota para tus asistentes', entity: 'booking.program_items', prop: 'public_note', type: 'text', sensitivity: 'internal' }), id: 'pr-public', rows: '2', maxlength: '500' }, item?.public_note ?? '') as HTMLTextAreaElement;
+    const internal = el('textarea', { ...fieldAttrs({ id: 'organizers.programa.nota_interna', label: 'Nota para Ikisai', entity: 'booking.program_items', prop: 'internal_note', type: 'text', sensitivity: 'internal' }), id: 'pr-internal', rows: '2', maxlength: '500' }, item?.internal_note ?? '') as HTMLTextAreaElement;
     // «Para quién»: con «Algunas personas», la lista de asistentes para marcar.
     const current = audienceOf(item ?? {});
     const chosen = new Set(current.ids);
-    const audienceSel = el('select', { id: 'pr-audience' }, ...AUDIENCES.map((a) => el('option', {
+    const audienceSel = el('select', { ...fieldAttrs({ id: 'organizers.programa.para_quien', label: 'Para quién', entity: 'booking.program_items', prop: 'audience', type: 'select', sensitivity: 'internal' }), id: 'pr-audience' }, ...AUDIENCES.map((a) => el('option', {
       value: a, selected: a === current.audience ? '' : null, disabled: a === 'personas' && !people.length && current.audience !== 'personas' ? '' : null,
     }, audienceLabel(a, t)))) as HTMLSelectElement;
     const peopleBox = el('fieldset', { class: 'orgaudience-people', id: 'pr-people', 'data-feedback-ignore': '' },
       el('legend', null, t('¿Quiénes?')),
       people.length
         ? el('div', { class: 'orgaudience-list' }, ...people.map((g) => el('label', { class: 'field check' },
-          el('input', { type: 'checkbox', value: g.id, checked: chosen.has(g.id) ? '' : null, onchange: (e: Event) => {
+          el('input', { ...fieldAttrs({ id: 'organizers.programa.grupo', label: 'Grupo de asistentes', entity: 'booking.program_items', prop: 'audience_groups', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', value: g.id, checked: chosen.has(g.id) ? '' : null, onchange: (e: Event) => {
             if ((e.target as HTMLInputElement).checked) chosen.add(g.id); else chosen.delete(g.id);
           } }), el('span', null, g.name))))
         : el('p', { class: 'muted small' }, t('Añade asistentes para elegir personas.')));
