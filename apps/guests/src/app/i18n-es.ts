@@ -878,4 +878,5 @@ export const ES: Dictionary = {
   'visitor.forget': 'Salir de este móvil',
   'offers.accountOpen': 'Tienes una cuenta abierta: lo que pidas se apunta en ella.',
   'offers.accountClosed': 'Si quieres pagar al final, pide en caja que te abran una cuenta.',
+  'offers.notYet': 'La barra aún no te ha dado número. Pídelo allí.',
 };

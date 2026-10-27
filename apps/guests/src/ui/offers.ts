@@ -85,10 +85,13 @@ export function offersBlock(day: string, today: string, people: OffersPerson[], 
           // Se abre la ventana en el toque (si no, el navegador la bloquea) y se le pone el enlace al llegar.
           const win = window.open('about:blank', '_blank');
           const out = await customer(guestId).catch(() => null);
-          const url = safeUrl(out?.carta_url) ?? FLOW_CARTA;
+          // Sin la lectura de Flow, la carta pública sin número. Con ella (Flow, 27-10): el número lo da el encargado
+          // («Dar número a los huéspedes»), así que puede no tenerlo aún; sin `carta_url`, solo el número.
+          const url = !out ? FLOW_CARTA : out.number ? safeUrl(out.carta_url) : null;
           // La cuenta la abre caja a petición de la persona (Core, 27-10): Guests solo dice si ya la tiene.
-          replace(note, out?.number ? t('offers.customer', { number: String(out.number) }) : t('offers.noNumber'),
-            out?.account_open === true ? ` ${t('offers.accountOpen')}` : out?.account_open === false ? ` ${t('offers.accountClosed')}` : '');
+          replace(note, !out ? t('offers.noNumber') : out.number ? t('offers.customer', { number: String(out.number) }) : t('offers.notYet'),
+            out?.number && out.account_open === true ? ` ${t('offers.accountOpen')}` : out?.number && out.account_open === false ? ` ${t('offers.accountClosed')}` : '');
+          if (!url) { win?.close(); return; }
           if (win) { win.opener = null; win.location.href = url; } else window.location.href = url;
         },
       }, icon('menu', 16), ' ', t('offers.openCarta'));

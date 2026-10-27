@@ -864,4 +864,5 @@ export const EN: Dictionary = {
   'visitor.forget': 'Leave this phone',
   'offers.accountOpen': 'You have an open account: what you order goes on it.',
   'offers.accountClosed': 'To pay at the end, ask at the till to open an account.',
+  'offers.notYet': 'The bar has not given you a number yet. Ask there.',
 };
