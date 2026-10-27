@@ -81,3 +81,12 @@ test('sin el ámbito de huéspedes: ni nombres ni documentación', () => {
   const [card] = cards(i);
   assert.deepEqual([card!.title, card!.docs.text], ['Huésped', '—']);
 });
+
+test('pagado en línea (1413): sale «Pagado en línea» y no caduca aunque haya pasado la retención', () => {
+  const i = base();
+  i.requests = [{ id: 'q9', kind: 'stay', status: 'pendiente', event_id: 'e', number: 12, name: 'Lía', persons: 1, total_cents: 5000, pay_mode: 'online', hold_until: '2032-06-05T11:00:00Z', hold_bed_ids: ['b1'] }];
+  i.payments = [{ id: 'p', request_id: 'q9', status: 'paid' }];
+  const [card] = cards(i);
+  assert.deepEqual([card!.cobro.tone, card!.cobro.text, card!.plaza.tone, card!.why], ['ok', 'Pagado en línea 50,00 €', 'warn', []]);
+});
+

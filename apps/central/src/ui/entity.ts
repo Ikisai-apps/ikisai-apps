@@ -128,7 +128,11 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
           fbMark(line('Bizum', r.bizum, ENTITY_USES.bizum, 'bizum', true), 'central.entidad.ficha.bizum', 'Bizum'),
           fbMark(line('Lugar de los retiros', r.venue_address, ENTITY_USES.venue_address, 'venue_address'), 'central.entidad.ficha.lugar', 'Lugar de los retiros'),
           fbMark(line('Mapa del lugar', r.venue_map_url ? 'Enlace exacto puesto' : null, ENTITY_USES.venue_map_url, 'venue_map_url'), 'central.entidad.ficha.mapa', 'Mapa del lugar'),
-          fbMark(line('Plano del centro', plan ? (plan.tagName === 'A' ? 'Plano puesto' : (plan.textContent ?? '').trim()) : null, ENTITY_USES.site_plan_file_id, 'site_plan_file_id'), 'central.entidad.ficha.plano', 'Plano del centro')),
+          fbMark(line('Plano para los portales (PDF o imagen)', plan ? (plan.tagName === 'A' ? 'Plano puesto' : (plan.textContent ?? '').trim()) : null, ENTITY_USES.site_plan_file_id, 'site_plan_file_id'), 'central.entidad.ficha.plano', 'Plano para los portales')),
+        // No es el dibujo de los edificios (VG, 27-10: esta fila parecía decir que faltaban los planos).
+        el('p', { class: 'muted small', id: 'entityPlanHelp', 'data-feedback-id': 'central.entidad.ficha.plano_ayuda', 'data-feedback-label': 'Ayuda del plano para los portales' },
+          'Es la imagen o el PDF que ven huéspedes y organizadores. Los dibujos de los edificios, para colocar estancias y camas, están en ',
+          el('a', { href: '#/entidad/planos', 'data-feedback-id': 'central.entidad.ficha.ir_planos', 'data-feedback-label': 'Ir a Planos del centro' }, 'Planos del centro'), '.'),
         // Abrir el mapa y ver el plano siguen a mano, fuera de la fila (que abre la hoja).
         r.venue_map_url || plan ? el('div', { class: 'zone' },
           r.venue_map_url ? el('a', { class: 'ghost btnlike', href: r.venue_map_url, target: '_blank', rel: 'noopener noreferrer', 'data-feedback-id': 'central.entidad.ficha.abrir_mapa', 'data-feedback-label': 'Abrir el mapa' }, icon('pin', 16), 'Abrir el mapa') : null,

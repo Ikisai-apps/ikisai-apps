@@ -36,8 +36,12 @@ export const KPI_SECTIONS: ReadonlyArray<{ title: string; kpis: readonly string[
   // Guests (#876): el portal y las firmas de los huéspedes, y los partes de viajeros (SES).
   { title: 'Portal y firmas', kpis: ['guests.portal_entered_pct', 'guests.portal_entered', 'guests.signatures_pending', 'guests.retreats_signatures_pending', 'guests.signatures_done'] },
   { title: 'Partes de viajeros', kpis: ['guests.retreats_ses_pending', 'guests.ses_sent_30d'] },
-  // Organizers (#959): primero lo que falta (accesos y comentarios abiertos), después la actividad.
-  { title: 'Quien organiza', kpis: ['organizers.retreats_without_access', 'organizers.guest_comments_open_30d', 'organizers.retreats_next_30d', 'organizers.reports_sent_30d'] },
+  // Organizers (#959): primero lo que falta (accesos y comentarios sin leer o abiertos; #1003), después la actividad.
+  { title: 'Quien organiza', kpis: ['organizers.retreats_without_access', 'organizers.guest_comments_unread_30d', 'organizers.guest_comments_open_30d', 'organizers.retreats_next_30d', 'organizers.reports_sent_30d'] },
+  // Finance (#955, 0253): lo cobrado y lo pendiente de cobro; después, lo recibido, el mes y el IVA del trimestre.
+  { title: 'Cobros', kpis: ['invoices.collected_today', 'invoices.collected_event_today', 'invoices.pending_collection', 'invoices.pending_collection_count'] },
+  { title: 'Facturas recibidas', kpis: ['invoices.pending_review', 'invoices.unassigned', 'invoices.unpaid', 'invoices.unpaid_amount'] },
+  { title: 'Mes y trimestre', kpis: ['invoices.income_issued_month', 'invoices.expenses_month', 'invoices.vat_quarter'] },
 ];
 
 /** Tema de una clave y su posición en el panel (`null` si no tiene). */

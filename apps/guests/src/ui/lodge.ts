@@ -12,7 +12,8 @@
 import { el, icon, replace, toast } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
-import { errorCodeOf, myStay, publicBeds, rememberEvent, saveTraveler, startStay, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
+import { errorCodeOf, myStay, publicBeds, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
+import { portalMap } from './plan.ts';
 import { loading, whyNote } from './common.ts';
 
 const addDays = (day: string, n: number) => {
@@ -135,6 +136,43 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
       } }, el('p', { class: 'small' }, t('lodge.draftText')), form.element, save));
   };
 
+  /**
+   * «Ver las camas en el plano» (VG, 27-10-2026): plegado; al abrirlo, el plano de la casa (`GET public/plans`, solo con la
+   * identidad de visitante y habiendo entrado en el evento) con las camas libres todas esas noches para tocar y elegir;
+   * las demás, ocupadas y sin nombre de nadie. Tocar una marca su opción en la lista, que sigue siendo la que manda.
+   */
+  const planBox = (beds: PublicBeds): HTMLElement => {
+    const byResource = new Map(beds.rooms.flatMap((r) => r.beds.filter((b) => b.resource_bed_id).map((b) => [b.resource_bed_id!, b] as const)));
+    const inner = el('div', { id: 'lodgePlan', 'aria-live': 'polite' });
+    const box = el('details', { class: 'glodge-plan', id: 'lodgePlanBox', 'data-feedback-id': 'guests.visitante.alojate.plano', 'data-feedback-label': 'Ver las camas en el plano' },
+      el('summary', null, icon('pin', 16), ' ', t('lodge.planOpen')), inner) as HTMLDetailsElement;
+    let done = false;
+    box.addEventListener('toggle', () => {
+      if (!box.open || done) return;
+      done = true;
+      replace(inner, loading());
+      void visitorPlans(code).then((data) => {
+        if (!byResource.size || !data.plans.length) { replace(inner, whyNote('lodgePlanWhy', t('lodge.planNone'))); return; }
+        const map = portalMap(data, {
+          mode: 'map', label: t('lodge.planLabel'), feedbackId: 'guests.visitante.alojate.plano.mapa', showDecor: false,
+          layer: (s) => {
+            const bed = byResource.get(s.id);
+            return bed ? (bed.free ? { state: 'free' } : { state: 'occupied' }) : null;
+          },
+          onPick: (s) => {
+            const bed = byResource.get(s.id);
+            if (!bed?.free) return;
+            const radio = host.querySelector<HTMLInputElement>(`input[name="lodgeBed"][value="${CSS.escape(bed.id)}"]`);
+            if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+            map.select(s.id);
+          },
+        });
+        replace(inner, map.element);
+      }).catch((error) => { done = false; replace(inner, whyNote('lodgePlanWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('lodge.planFailed'))); });
+    });
+    return box;
+  };
+
   /** Noches y cama, tus datos e «Ir a pagar». */
   const paintChooser = (previous: VisitorStay | null) => {
     const first = event.starts_on && event.starts_on > today ? event.starts_on : today;
@@ -168,6 +206,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
                 el('p', { class: 'small glodge-room-name' }, r.name),
                 ...r.beds.filter((b) => b.free).map((b) => radio(b.id, b.label)))))
             : whyNote('lodgeFull', t('stay.full', { nights: value.nights })));
+        if (free.length) bedsHost.append(planBox(value));
         go.disabled = !free.length;
       } catch (error) {
         replace(bedsHost, whyNote('lodgeBedsWhy', lodgeError(error)));

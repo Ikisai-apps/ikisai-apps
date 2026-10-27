@@ -118,6 +118,8 @@ export interface PortalInvoice {
   withholding: number | string; total: number | string; status: 'emitida' | 'rectificada' | 'registrada'; collected: boolean; collected_at: string | null; has_document: boolean;
   /** Concepto del cobro (Finance #313): señal, saldo o extras; `general` o `null`, sin rótulo. */
   purpose?: 'senal' | 'saldo' | 'extras' | 'general' | null;
+  /** Fase 6 (petición F5 a Finance): enlace de pago de la pasarela para esta factura, si Finance lo ha creado. */
+  payment_link?: { url: string; provider?: string | null; expires_at?: string | null } | null;
 }
 export interface PortalMoney { reservation_id: string; currency: string; invoices: PortalInvoice[]; totals: { invoiced: number | string; collected: number | string; pending: number | string } }
 /** Copia congelada de una factura (F2) o los PDF guardados de una registrada (se abren con `portalFile`, K2). */
@@ -158,7 +160,8 @@ export interface PortalApi {
   setRestrictions(args: { guest_id: string; items: PortalRestriction[]; declaration?: boolean }): Promise<unknown>;
   issueGuestLink(args: { reservationId: string; guestId: string; name: string; email?: string | null; replace: boolean }): Promise<IssuedLink>;
   revokeLink(linkId: string): Promise<unknown>;
-  permanentAccount(): Promise<boolean>;
+  /** `auth/config`: cuenta permanente (Workspace) y entrada con código por correo (0108). Sin red, las dos apagadas. */
+  authConfig(): Promise<{ permanentAccount: boolean; emailCode: boolean }>;
   /** Fases 4 y 5: lectura y acción de otra app con caché (programa y alojamiento de Booking, menú de Food, lugar de Central). */
   readAny<T>(name: string, args?: Record<string, unknown>): Promise<Loaded<T>>;
   invokeAny<T = unknown>(name: string, args: Record<string, unknown>): Promise<T>;
@@ -227,11 +230,12 @@ export function createPortalApi(client: SyncClient): PortalApi {
       json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name }, label: name, preview: true, replace: true },
     }),
     portalFile: (fileId) => client.api(`/portal-files/${encodeURIComponent(fileId)}`),
-    async permanentAccount() {
+    async authConfig() {
       try {
-        return (await client.api<{ permanentAccount?: boolean }>('/auth/config')).permanentAccount === true;
+        const out = await client.api<{ permanentAccount?: boolean; emailCode?: boolean }>('/auth/config');
+        return { permanentAccount: out.permanentAccount === true, emailCode: out.emailCode === true };
       } catch {
-        return false;
+        return { permanentAccount: false, emailCode: false };
       }
     },
   };

@@ -13,6 +13,8 @@ export interface FakeSupabase {
   storage: Map<string, Uint8Array>;
   /** Último enlace de recuperación «enviado» por correo: {email, tokenHash, redirectTo}. */
   lastRecovery(): { email: string; tokenHash: string; redirectTo: string } | null;
+  /** Último código «enviado» por correo (`/auth/v1/otp`; siempre `123456`): {email, code}; null si no se envió ninguno. */
+  lastEmailCode(): { email: string; code: string } | null;
   anonKey: string;
   serviceKey: string;
   url: string;
@@ -28,6 +30,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
   const refreshTokens = new Map<string, string>(); // refresh -> userId
   const magicLinks = new Map<string, string>(); // hashed_token -> userId
   const otps = new Set<string>();
+  let emailCode: { email: string; code: string } | null = null;
   let recovery: { email: string; tokenHash: string; redirectTo: string } | null = null;
   const storage = new Map<string, Uint8Array>();
   let loseReply = false;
@@ -95,8 +98,12 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       if (userId) { const hashed = `rec-${Math.random().toString(36).slice(2)}`; magicLinks.set(hashed, userId); recovery = { email: body.email, tokenHash: hashed, redirectTo: route.searchParams.get('redirect_to') ?? '' }; }
       return Response.json({});
     }
+    // Código por correo (signInWithOtp). Como Auth: con `create_user: false` (código de los portales, 0108), un correo sin
+    // cuenta responde 422 y no envía nada; sin él (visitantes v2), se envía y la cuenta nace al canjearlo.
     if (route.pathname === '/auth/v1/otp' && method === 'POST') {
-      otps.add(String(body.email ?? '').toLowerCase());
+      const email = String(body.email ?? '').toLowerCase();
+      if (body.create_user === false && ![...users.values()].includes(email)) return Response.json({ code: 'otp_disabled', msg: 'Signups not allowed for otp' }, { status: 422 });
+      otps.add(email); emailCode = { email, code: '123456' };
       return Response.json({});
     }
     if (route.pathname === '/auth/v1/verify' && method === 'POST' && body.type === 'email') {
@@ -105,6 +112,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       otps.delete(email);
       let userId = [...users.entries()].find(([, e]) => e === email)?.[0];
       if (!userId) { userId = await t.createUser(); users.set(userId, email); await t.db.query('update auth.users set email = $2 where id = $1', [userId, email]); }
+      else await t.createUser(userId); // vuelve a abrir la sesión si un logout anterior la cerró (como en `token`)
       const token = mockToken(userId); const refresh = `refresh-${Math.random().toString(36).slice(2)}`; refreshTokens.set(refresh, userId);
       return Response.json({ access_token: token, refresh_token: refresh, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: userId, email } });
     }
@@ -181,6 +189,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
     loseNextCommitReply: () => { loseReply = true; },
     storageOffline: (value) => { storageDown = value; },
     lastRecovery: () => recovery,
+    lastEmailCode: () => emailCode,
     storage, anonKey, serviceKey, url,
   };
 }

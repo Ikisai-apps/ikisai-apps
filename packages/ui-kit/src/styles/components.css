@@ -183,6 +183,10 @@
 .navbtn{position:relative;border:0;background:transparent;border-radius:14px;color:var(--muted);font-size:11px;font-weight:700;display:grid;justify-items:center;align-content:center;gap:3px;text-decoration:none;padding:4px 2px;min-width:0}
 .navbtn svg{width:22px;height:22px}
 .navbtn>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Nombres cortos (NavItem.short) y título sin «Ikisai» cuando no caben (revisión móvil del 27-10). Lo escondido sigue para el lector. */
+.navbtn>.navshort{display:none}
+.nav.navtight .navbtn>.navshort{display:block}
+.nav.navtight .navbtn>.navlabel,.topbar.brand-tight .brand-ikisai{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;padding:0}
 .navbtn[aria-current="page"]{color:var(--accent-deep)}
 .navbtn[aria-current="page"]::after{content:'';position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:28px;height:4px;border-radius:0 0 4px 4px;background:var(--accent)}
 .navbtn .soon{position:absolute;top:2px;right:8px;font-size:8px;padding:2px 4px;border-radius:999px;background:var(--paper-2);color:var(--muted);border:1px solid var(--line)}
@@ -2260,4 +2264,4 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .lanes-turned{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:calc(var(--lanes-height) - 32px)}
 .lanes-short{max-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Revisión móvil del 27-10: pestañas, botones de enlace, chips de filtro y «¿Sin red?» del inicio de sesión a 44 px con el dedo. */
-@media (pointer: coarse){.tabpill,.linkbtn,.pl-tabs button,.space-quick-chip{min-height:44px}.tabtool{width:44px;height:44px}.login summary{display:flex;align-items:center;min-height:44px;padding:0}}
+@media (pointer: coarse){.tabpill,.linkbtn,.pl-tabs button,.space-quick-chip{min-height:44px}.tabtool{width:44px;height:44px}.login summary{display:flex;align-items:center;min-height:44px;padding:0}.appmenu-sync{min-height:44px;margin-top:-10px}}

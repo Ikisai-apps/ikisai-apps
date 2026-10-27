@@ -175,7 +175,8 @@ test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y dat
   const beds = page.locator('#lodgeBeds');
   await expect(beds.getByLabel('Asignadme una')).toBeChecked();
   await expect(page.locator('#lodgePrice')).toContainText(/20,00.*la noche/);
-  await beds.getByLabel('Cama 1').check();
+  // Las camas libres son de toda la casa (la base de pruebas la comparten otras pruebas): la de su habitación.
+  await beds.locator('.glodge-room', { hasText: d.room }).getByLabel('Cama 1', { exact: true }).check();
   // Solo el nombre es obligatorio; el documento, no.
   await page.locator('#lodgeGo').click();
   await expect(page.locator('#lodge_first_name')).toBeFocused();
@@ -270,4 +271,33 @@ test('ENTRADA_PUBLICA · «Tu ficha está lista» y «Unir este móvil a mi fich
   await expect(link.locator('#visitorLinked')).toBeVisible();
   await link.locator('#visitorUnlink').click();
   await expect(link.locator('#visitorLinkGo')).toBeVisible();
+});
+
+test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, nunca; con ella y habiendo entrado, se elige tocando', async ({ page }) => {
+  const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  // Las dos camas recién creadas (cada fichero de pruebas tiene su base) y su pareja en Recursos, sobre un dibujo.
+  const beds = (await api.booking.t.db.query<{ id: string; label: string }>(`select id, label from booking.beds order by created_at desc, label desc limit 2`)).rows;
+  const byLabel = Object.fromEntries(beds.map((b) => [b.label, b.id]));
+  const square = (x: number, y: number, s: number): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  const { ids } = await api.floorPlan([
+    { name: 'Habitación de las jornadas', kind: 'habitacion', points: square(0.1, 0.1, 0.6) },
+    { name: 'Cama 1', kind: 'cama', parent: 'Habitación de las jornadas', points: square(0.15, 0.15, 0.15), refs: [`booking.bed:${byLabel['Cama 1']}`], attributes: { bed_kind: 'individual' } },
+    { name: 'Cama 2', kind: 'cama', parent: 'Habitación de las jornadas', points: square(0.45, 0.15, 0.15), refs: [`booking.bed:${byLabel['Cama 2']}`], attributes: { bed_kind: 'individual' } },
+  ]);
+  // La pareja que lee Booking (`booking.beds.resource_id`, la de `booking_public_beds`).
+  for (const label of ['Cama 1', 'Cama 2']) await api.booking.t.db.query('update booking.beds set resource_id = $1 where id = $2', [ids[label], byLabel[label]]);
+
+  // Sin `X-Visitor`, la ruta no da el plano.
+  const anonymous = await page.request.get(`${baseURL}/api/v1/public/plans?event_code=${d.code}`);
+  expect(anonymous.status()).toBe(401);
+
+  await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  const box = page.locator('#lodgePlanBox');
+  await box.locator('summary').click();
+  const bed2 = box.locator(`.map-svg [data-space-id="${ids['Cama 2']}"]`);
+  await expect(bed2).toBeVisible();
+  await bed2.click();
+  await expect(page.locator(`#lodgeBeds input[name="lodgeBed"][value="${byLabel['Cama 2']}"]`)).toBeChecked();
+  // Sin datos de nadie en el plano.
+  await expect(box).not.toContainText('Noa');
 });

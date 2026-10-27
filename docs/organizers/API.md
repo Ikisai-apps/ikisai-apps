@@ -179,7 +179,20 @@ En modo `ses` añade: «Son los datos que exige el registro de viajeros.»
 - **Con nombre**, solo lo que el organizador escribió o lo que el huésped le dejó ver (`named`).
 - Texto: «Si alguien tiene una alergia, añádela en su ficha o pídele que la indique en su enlace.»
 
-### 9.8 «Guarda tu acceso» (hueco)
+### 9.8 «Guarda tu acceso» y entrada con código por correo
+
+**Código por correo (decisión de VG del 27-10-2026, migración 0108).** Quien organiza ya no depende del enlace. En la entrada,
+«¿No tienes el enlace a mano?»: escribe el correo con el que le escribimos, pulsa «Enviarme un código» y entra con el código
+de un solo uso de Supabase Auth (`POST auth/email-code` y `auth/email-code/verify` del kit; `sendEmailCode` y
+`loginWithEmailCode` de sync-client 0.8.0).
+- El código solo llega a una cuenta de portal con un enlace sin revocar y vigente en Organizers (`core.email_code_user`): nunca
+  a una cuenta del personal, y tampoco cuando el retiro deja de dar acceso. La respuesta es igual para cualquier correo.
+- Se enciende con `IKISAI_EMAIL_CODE=1` en la Edge cuando Auth tenga el correo propio (VG): el SMTP por defecto de Supabase
+  manda muy pocos correos por hora y solo al equipo del proyecto. La plantilla «Magic Link» de Auth tiene que llevar
+  `{{ .Token }}` (el código), no solo el enlace. Apagado, la entrada y «Guarda tu acceso» siguen como antes.
+- Con él encendido, la hoja de «Guarda tu acceso» dice que el acceso ya está guardado y cómo entrar con el código. Google
+  llegará con Workspace, como otra forma de entrar.
+
 
 Botón flotante discreto en Mis retiros y Retiro (no en las fichas de asistente, donde taparía el estado del guardado). Hasta que Core active la cuenta permanente (Google y código por correo, con Workspace), abre una hoja: «Pronto podrás guardar tu acceso con tu cuenta de Google o con un código por correo. Mientras tanto, guarda el enlace que te enviamos.» El indicador es `GET auth/config → permanentAccount` (C3, hoy `false`). El componente queda listo para conectarle las dos acciones.
 
@@ -265,7 +278,7 @@ Lo hago yo entero (es pequeño): `supabase/functions/organizers-api` (índice y 
 | **3 · Formalización** | Fecha definitiva, propuesta aceptada, señal, saldo y facturas en solo lectura | Booking, Finance, Tasks (proyecto `AAAAMMDD-`) |
 | **4 · Experiencia de Guests** | Qué ve, hace y contrata el huésped (módulos y acciones fijos, con vista previa), programa, materiales propios, preguntas propias, menú de Food con comentarios | Organizers (configuración, materiales, preguntas), Booking (programa), Food (menú) |
 | **5 · Decisiones del huésped** | Alojamiento delegable (las habitaciones de 2–4 plazas con baño son un extra que Ikisai factura al organizador), ofertas del organizador y cartel en PDF o JPG | Booking (camas, reserva atómica), Organizers (ofertas) |
-| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea | Finance y pasarela |
+| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea. Decisión de VG del 27-10-2026: después del sábado; Finance crea un enlace de pago por factura (F5) y Organizers enseña «Pagar ahora» (`app/pay-link.ts`, sección «Pagar en línea» de Pagos, ya construida) | Finance y pasarela |
 
 PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versión de este documento:
 - importes y facturas: fases 3 y 6;
@@ -290,7 +303,7 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - Los textos de Central se leen en el idioma del dispositivo, con el español como reserva.
   - El idioma se elige con el selector ES | EN de la cabecera (y de la pantalla de entrada) y se recuerda en el dispositivo; por defecto, el del navegador.
 - **Instalación.** Con `createInstallPrompt` del kit (0.20): la hoja «Instala la app» al entrar por enlace (`beforeinstallprompt` en Android y escritorio, instrucciones en iOS) y una tarjeta en Mis retiros. «Ahora no» se recuerda 7 días.
-- **Cuenta permanente.** Sigue el hueco de §9.8 hasta que Core la active con Workspace.
+- **Cuenta permanente.** Código por correo desde el 27-10-2026 (§9.8, 0108), encendido cuando Auth tenga el correo propio; Google, con Workspace.
 
 ### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)
 
@@ -761,7 +774,18 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 | `organizers.retreats_next_30d` | Retiros próximos con quien organiza dentro | Reservas que empiezan de hoy a hoy+30 con un enlace de Organizers sin revocar | up |
 | `organizers.retreats_without_access` | Retiros próximos sin acceso de quien organiza | Las mismas, sin ningún enlace de Organizers vivo | down |
 | `organizers.guest_comments_open_30d` | Comentarios de asistentes abiertos (30 días) | Informes de Guests sobre el retiro (`subject = event`, destino `organizer`) de los últimos 30 días que siguen `open` | down |
+| `organizers.guest_comments_unread_30d` | Comentarios de asistentes sin leer (30 días) | Los mismos que nadie con acceso de Organizers a ese retiro ha visto (`organizers.comment_reads`, 0706) | down |
 | `organizers.reports_sent_30d` | Informes enviados desde Organizers (30 días) | Informes con `origin_app = organizers` de los últimos 30 días | — |
 
-- **«Sin leer»:** Organizers no guarda qué ha leído quien organiza, así que el indicador cuenta los comentarios abiertos.
+- **«Sin leer»:** desde la 0706 está `guest_comments_unread_30d`; `guest_comments_open_30d` sigue contando los abiertos.
 - **«Pagos pendientes de quien organiza»:** es de Finance (petición F4).
+
+## 23. Comentarios leídos y sin leer (migración 0706; diseño en `MUELA/equipo/feedback/organizers/COMENTARIOS_LEIDOS.md`)
+
+- **En el resumen del retiro:** en «Comentarios de tus asistentes», lo que esta persona no ha visto lleva «Nuevo» y el título dice cuántos. Un comentario cuenta como visto tras un segundo en pantalla (`IntersectionObserver`); la marca se queda hasta la próxima vez que se abre.
+- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora, sin purga.
+  - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
+  - No se cambia ni se borra (`IMMUTABLE_FIELD`).
+  - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.
+- **Cliente:** `app/comment-reads.ts` (`readIds`, `unreadOf`, `readOperations`, `markRead`). Sin red, se encola como el resto.
+

@@ -12,3 +12,5 @@ export * from './attention.ts';
 export * from './house-doors.ts';
 export * from './scopes.ts';
 export * from './coverage.ts';
+export * from './agents.ts';
+export * from './beds.ts';
