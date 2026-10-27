@@ -72,9 +72,9 @@ export async function mountLog(body: HTMLElement, admin: AdminApi, state: Access
   const loaded = el('p', { class: 'hint', id: 'logLoaded', 'aria-live': 'polite' });
   const more = el('button', { class: 'ghost', type: 'button', id: 'logMore', 'data-feedback-id': 'central.accesos.registro.cargar_mas', 'data-feedback-label': 'Ver anteriores', hidden: true, onclick: () => void load(false) }, 'Ver anteriores') as HTMLButtonElement;
   state.cleanups.push(bindOnline(more, { reason: 'El registro se lee en el momento: necesita conexión.' }));
-  const filter = el('select', { id: 'logApp', 'aria-label': 'App', 'data-feedback-id': 'central.accesos.registro.filtro_app', 'data-feedback-label': 'Filtro por app', onchange: (e: Event) => { app = (e.target as HTMLSelectElement).value; void load(true); } },
+  const filter = el('select', { id: 'logApp', 'data-field-id': 'central.accesos.log_app', 'aria-label': 'App', 'data-feedback-id': 'central.accesos.registro.filtro_app', 'data-feedback-label': 'Filtro por app', onchange: (e: Event) => { app = (e.target as HTMLSelectElement).value; void load(true); } },
     el('option', { value: '' }, 'Todas las apps')) as HTMLSelectElement;
-  const person = el('select', { id: 'logPerson', 'aria-label': 'Persona', 'data-feedback-id': 'central.accesos.registro.persona', 'data-feedback-label': 'Selector de persona', onchange: (e: Event) => { user = (e.target as HTMLSelectElement).value; void load(true); } },
+  const person = el('select', { id: 'logPerson', 'data-field-id': 'central.accesos.log_person', 'aria-label': 'Persona', 'data-feedback-id': 'central.accesos.registro.persona', 'data-feedback-label': 'Selector de persona', onchange: (e: Event) => { user = (e.target as HTMLSelectElement).value; void load(true); } },
     el('option', { value: '' }, 'Todas las personas')) as HTMLSelectElement;
   const viewButton = (value: LogView, label: string) => el('button', { type: 'button', dataset: { view: value }, 'aria-pressed': String(view === value), class: view === value ? 'on' : '', onclick: () => setView(value) }, label);
   const viewBar = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Cómo verlo', id: 'logView', 'data-feedback-id': 'central.accesos.registro.vista', 'data-feedback-label': 'Por persona o por fecha' },

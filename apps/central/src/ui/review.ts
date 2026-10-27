@@ -69,6 +69,7 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.revision.cabecera', 'data-feedback-label': 'Cabecera de Revisión' },
       el('div', null, el('h2', null, 'Revisión'), el('p', null, 'Cómo va cada pantalla de las apps, en los diez pasos del cuadro, y lo que se ha comentado de ella.')),
       isAdmin ? el('div', { class: 'ctl-headtools' },
+        el('a', { class: 'ghost btnlike', href: '#/revision/uso', id: 'openCoverage', 'data-feedback-id': 'central.revision.uso', 'data-feedback-label': 'Uso y cobertura' }, 'Uso y cobertura'),
         el('button', { class: 'ghost', type: 'button', id: 'importScreens', 'data-feedback-id': 'central.revision.importar', 'data-feedback-label': 'Importar pantallas', onclick: () => openImport() }, icon('upload', 18), 'Importar pantallas'),
         el('button', { class: 'primary', type: 'button', id: 'newScreen', 'data-feedback-id': 'central.revision.nueva', 'data-feedback-label': 'Nueva pantalla', onclick: () => openScreen(null) }, icon('plus', 18), 'Nueva pantalla')) : null),
     note, queueHost, stepsHost, boardHost, roadHost);
@@ -180,7 +181,7 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
   }
   function askReason(report: Report, path: 'dismiss' | 'reopen'): void {
     let sheet: Sheet | null = null;
-    const reason = el('textarea', { id: 'rv-reason', rows: '3', maxlength: '500', 'data-feedback-ignore': '' }) as HTMLTextAreaElement;
+    const reason = el('textarea', { id: 'rv-reason', 'data-field-id': 'central.revision.reason', rows: '3', maxlength: '500', 'data-feedback-ignore': '' }) as HTMLTextAreaElement;
     const error = el('p', { class: 'formerror', role: 'alert' });
     const send = el('button', { class: 'primary', type: 'button', id: 'rv-reason-send', 'data-feedback-id': 'central.revision.motivo.enviar', 'data-feedback-label': 'Enviar', onclick: async () => {
       if (path === 'dismiss' && !reason.value.trim()) { error.textContent = 'Escribe el motivo: lo verá quien lo informó.'; reason.focus(); return; }
@@ -316,14 +317,14 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
     const ro = !isAdmin;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.revision.pantalla.error', 'data-feedback-label': 'Error del formulario' });
     const input = (id: string, value: unknown, attrs: Record<string, string> = {}) => el('input', { id, type: 'text', value: value == null ? '' : String(value), disabled: ro, ...attrs }) as HTMLInputElement;
-    const appSel = el('select', { id: 'rs-app', disabled: ro || s !== null }, ...REVIEW_APPS.map((a) => el('option', { value: a, selected: (s?.app ?? 'central') === a }, appName(a)))) as HTMLSelectElement;
+    const appSel = el('select', { id: 'rs-app', 'data-field-id': 'central.revision.app', disabled: ro || s !== null }, ...REVIEW_APPS.map((a) => el('option', { value: a, selected: (s?.app ?? 'central') === a }, appName(a)))) as HTMLSelectElement;
     const name = input('rs-name', s?.name, { maxlength: '120' });
-    const step = el('select', { id: 'rs-step', disabled: ro }, ...REVIEW_STEPS.map((k, i) => el('option', { value: k, selected: (s?.step ?? 'sin') === k }, `${i} · ${stepName(k)}`))) as HTMLSelectElement;
+    const step = el('select', { id: 'rs-step', 'data-field-id': 'central.revision.step', disabled: ro }, ...REVIEW_STEPS.map((k, i) => el('option', { value: k, selected: (s?.step ?? 'sin') === k }, `${i} · ${stepName(k)}`))) as HTMLSelectElement;
     const url = input('rs-url', s?.url, { type: 'url', maxlength: '500', placeholder: 'https://…', 'data-feedback-ignore': '' });
     const route = input('rs-route', s?.route, { maxlength: '200', placeholder: '#/cumplimiento' });
     const prefix = input('rs-prefix', s?.feedback_prefix, { maxlength: '120', placeholder: 'central.cumplimiento' });
     const handoff = input('rs-handoff', s?.handoff, { maxlength: '60', placeholder: 'MUELA-027' });
-    const noteArea = el('textarea', { id: 'rs-note', rows: '3', maxlength: '2000', disabled: ro }) as HTMLTextAreaElement;
+    const noteArea = el('textarea', { id: 'rs-note', 'data-field-id': 'central.revision.note', rows: '3', maxlength: '2000', disabled: ro }) as HTMLTextAreaElement;
     noteArea.value = s?.note ?? '';
     const values = (): Record<string, unknown> => ({
       app: appSel.value, name: name.value.trim(), step: step.value, url: url.value.trim() || null, route: route.value.trim() || null,
@@ -391,8 +392,8 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
   function openImport(): void {
     let sheet: Sheet | null = null;
     let plan: { ops: RowOperation[]; created: number; updated: number; same: number } | null = null;
-    const area = el('textarea', { id: 'rs-json', rows: '8', 'data-feedback-ignore': '', placeholder: '[{ "app": "central", "name": "Inicio", "step": "alt", "url": "https://…", "route": "#/" }]' }) as HTMLTextAreaElement;
-    const file = el('input', { id: 'rs-file', type: 'file', accept: 'application/json,.json', class: 'visually-hidden' }) as HTMLInputElement;
+    const area = el('textarea', { id: 'rs-json', 'data-field-id': 'central.revision.json', rows: '8', 'data-feedback-ignore': '', placeholder: '[{ "app": "central", "name": "Inicio", "step": "alt", "url": "https://…", "route": "#/" }]' }) as HTMLTextAreaElement;
+    const file = el('input', { id: 'rs-file', 'data-field-id': 'central.revision.file', type: 'file', accept: 'application/json,.json', class: 'visually-hidden' }) as HTMLInputElement;
     const preview = el('div', { id: 'rs-preview', role: 'status', 'data-feedback-id': 'central.revision.importar.vista', 'data-feedback-label': 'Qué se importará' });
     const run = el('button', { class: 'primary', type: 'button', id: 'importScreensRun', disabled: true, 'data-feedback-id': 'central.revision.importar.enviar', 'data-feedback-label': 'Importar' }, 'Importar') as HTMLButtonElement;
     const parse = () => {
