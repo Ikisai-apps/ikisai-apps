@@ -226,7 +226,9 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.locator('#header-guests').selectOption({ index: 1 });
   await expect.poll(header).toEqual(['guests']);
   await expect(page.locator('#centerImageList [data-header-for]')).toHaveText('Cabecera de Guests');
-  await page.locator('.ikisai-toast').filter({ hasText: 'Cabecera de Guests cambiada.' }).getByRole('button', { name: 'Deshacer' }).click();
+  // El aviso es uno con una fila por acción: la última es la nueva.
+  await expect(page.locator('.ikisai-toast')).toContainText('Cabecera de Guests cambiada.');
+  await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).last().click();
   await expect.poll(header).toEqual([]);
   await page.locator('#header-central').selectOption({ index: 1 });
   await expect.poll(header).toEqual(['central']);

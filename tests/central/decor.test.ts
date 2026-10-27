@@ -142,5 +142,5 @@ test('silueta de cabecera · una por app: el lote quita la app de la anterior y 
   assert.deepEqual(headerOperations(images, 'organizers', 's1'), [{ op: 'update', table: SPACE_IMAGES, id: 's1', expectedRevision: 2, fields: { header_for: ['guests', 'central', 'organizers'] } }]);
   assert.deepEqual(headerOperations(images, 'central', null), [{ op: 'update', table: SPACE_IMAGES, id: 's1', expectedRevision: 2, fields: { header_for: ['guests'] } }]);
   assert.deepEqual(headerOperations(images, 'guests', 's1'), [], 'si ya lo es, nada');
-  assert.deepEqual(headerOperations(images, 'guests', 'f1').map((o) => o.id), ['s1'], 'una foto no puede ser cabecera: solo se quita la anterior');
+  assert.deepEqual(headerOperations(images, 'guests', 'f1').map((o) => (o as { id: string }).id), ['s1'], 'una foto no puede ser cabecera: solo se quita la anterior');
 });
