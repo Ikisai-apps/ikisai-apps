@@ -1850,6 +1850,7 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
     - En público solo se crea una petición pendiente, en un retiro vivo y visible para huéspedes, y una por visitante y evento.
     - Nadie más crea peticiones.
     - La decide el personal con `booking.join_from_visitor({request_id, decision: 'accept' | 'reject' | 'done', name?})`. Al aceptar (`join`) se crea la ficha de huésped, ligada a la petición (`guest_id`); repetir no crea otra. Un dato (`contact`) se atiende (`done`) o se descarta.
+  - Conservación: el nombre, el contacto y la nota se borran a los 6 meses del fin del evento, en la misma vuelta de la conservación (§20; acordado con Core).
   - El visitante ve lo suyo con la lectura pública `booking_visitor_requests({visitor_id, event_code?})`, que la Edge llama con el `visitor_id` ya resuelto. Devuelve el estado, sin datos ajenos.
   - **Pendiente:** la ruta `POST /api/v1/public/join` de booking-api (código, nombre y nota con `X-Visitor`), en cuanto el kit traiga `resolveVisitor` y las rutas `public/*` con el origen de ven.ikisai.com.
 

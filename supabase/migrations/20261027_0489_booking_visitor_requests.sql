@@ -31,7 +31,7 @@ create table booking.visitor_requests (
   guest_id uuid references booking.guests(id),
   decided_at timestamptz,
   constraint visitor_requests_accepted_guest check ((status = 'aceptada') = (guest_id is not null)),
-  constraint visitor_requests_contact_kind check (kind = 'join' or (contact is not null and status in ('pendiente', 'atendida', 'descartada'))),
+  constraint visitor_requests_contact_kind check (kind = 'join' or status in ('pendiente', 'atendida', 'descartada')),
   constraint visitor_requests_join_kind check (kind = 'contact' or status <> 'atendida')
 );
 create index visitor_requests_event_idx on booking.visitor_requests (event_id, created_at) where deleted_at is null;
@@ -61,6 +61,10 @@ begin
     new.name := nullif(btrim(new.name), '');
     new.note := nullif(btrim(new.note), '');
     new.contact := nullif(btrim(new.contact), '');
+    -- un dato sin dato no sirve (al crearlo; la conservación lo borra después)
+    if new.kind = 'contact' and new.contact is null then
+      perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('table', 'booking.visitor_requests', 'field', 'contact'));
+    end if;
     return new;
   end if;
   if tg_op = 'INSERT' and coalesce(current_setting('booking.visitor_procedure', true), '') <> 'on' then
@@ -131,6 +135,55 @@ returns jsonb language sql stable as $$
      and (nullif(p->>'event_code', '') is null or e.public_code = upper(btrim(p->>'event_code')))
 $$;
 select core.allow_public_read('booking_visitor_requests', 'booking.visitor_requests_of');
+
+-- Conservación (acordada con Core): el nombre, el contacto y la nota de un visitante se borran a los 6 meses del fin del
+-- evento, en la misma vuelta de la conservación (§20). Es la de 0481 con esa parte.
+create or replace function booking.retention_run(p jsonb)
+returns jsonb language plpgsql as $$
+declare
+  v_ops jsonb := '[]'::jsonb; g booking.guests; r record; v record; v_files uuid[] := '{}'; v_count int := 0; v_visitors int := 0; v_out jsonb;
+begin
+  for g in select * from booking.retention_candidates(coalesce((p->'args'->>'limit')::int, 100)) loop
+    if g.signature_file_id is not null then v_files := v_files || g.signature_file_id; end if;
+    if g.ses_receipt_file_id is not null then v_files := v_files || g.ses_receipt_file_id; end if;
+    for r in select id, revision from booking.dietary_restrictions where guest_id = g.id and deleted_at is null loop
+      v_ops := v_ops || jsonb_build_object('op', 'delete', 'table', 'booking.dietary_restrictions', 'id', r.id, 'expectedRevision', r.revision);
+    end loop;
+    v_ops := v_ops || jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', g.id, 'expectedRevision', g.revision, 'fields', jsonb_build_object(
+      'first_name', 'Huésped anonimizado', 'last_name_1', null, 'last_name_2', null, 'sex', null, 'document_type', null, 'document_number', null,
+      'document_support_number', null, 'nationality', null, 'birth_date', null, 'residence_address', null, 'residence_postal_code', null,
+      'residence_city', null, 'residence_country', null, 'phone', null, 'email', null, 'guardian_name', null, 'kinship', null, 'notes', null,
+      'signed_by_name', null, 'signature_file_id', null, 'ses_receipt_file_id', null, 'ses_receipt_ref', null, 'ses_sent_by', null,
+      'document_checked_by', null, 'anonymized_at', now()));
+    v_count := v_count + 1;
+    exit when jsonb_array_length(v_ops) > 450;
+  end loop;
+  -- 0489: el nombre, el contacto y la nota de los visitantes, a los 6 meses del fin del evento (como lo demás sin SES)
+  for v in select q.id, q.revision from booking.visitor_requests q
+             join booking.events e on e.id = q.event_id join booking.reservations rr on rr.id = e.reservation_id
+            where q.deleted_at is null and (q.name is not null or q.contact is not null or q.note is not null)
+              and rr.end_date is not null and rr.end_date + interval '6 months' <= (now() at time zone 'Europe/Madrid')::date
+            limit 200 loop
+    v_ops := v_ops || jsonb_build_object('op', 'update', 'table', 'booking.visitor_requests', 'id', v.id, 'expectedRevision', v.revision,
+      'fields', jsonb_build_object('name', null, 'contact', null, 'note', null));
+    v_visitors := v_visitors + 1;
+    exit when jsonb_array_length(v_ops) > 480;
+  end loop;
+  if v_count = 0 and v_visitors = 0 then return jsonb_build_object('anonymized', 0, 'visitors', 0); end if;
+
+  update core.files set retention_class = 'temporary' where id = any(v_files);
+  v_out := core.apply_system_operations('booking', v_ops);
+  -- Regla 1 de VG (26-10-2026): el permiso en Guests se conserva; la ficha ya no tiene datos personales.
+  return jsonb_build_object('anonymized', v_count, 'visitors', v_visitors, 'files', cardinality(v_files), 'cursor', v_out->'cursor');
+end $$;
+
+create or replace function booking.retention_has_work()
+returns boolean language sql stable as $$
+  select exists (select 1 from booking.retention_candidates(1))
+      or exists (select 1 from booking.visitor_requests q join booking.events e on e.id = q.event_id join booking.reservations rr on rr.id = e.reservation_id
+                  where q.deleted_at is null and (q.name is not null or q.contact is not null or q.note is not null)
+                    and rr.end_date is not null and rr.end_date + interval '6 months' <= (now() at time zone 'Europe/Madrid')::date)
+$$;
 
 revoke all on all functions in schema booking from public, anon, authenticated;
 grant execute on all functions in schema booking to service_role;

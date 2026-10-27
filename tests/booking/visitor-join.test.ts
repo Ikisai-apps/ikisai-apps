@@ -82,3 +82,19 @@ test('visitante: no en retiros no visibles ni con un código desconocido; en pú
   const rejected = await ok([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: req.id, decision: 'reject' } }]);
   assert.deepEqual([rejected.data.results[0].result.status, rejected.data.results[0].result.guest_id], ['descartada', null]);
 });
+
+test('visitante: a los 6 meses del fin del evento se borran su nombre, su contacto y su nota (conservación)', async () => {
+  const res = uuid(); const event = uuid();
+  await ok([{ op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Pasado sintético', event_type: 'jornadas_abiertas', status: 'pre_reservada', start_date: '2031-10-30', end_date: '2031-11-01', expected_guests: 20, guests_visible: true } }]);
+  await ok([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: res, event_id: event, from_status: 'pre_reservada' } }]);
+  const code = (await app.t.db.query<{ c: string }>(`select public_code c from booking.events where id = $1`, [event])).rows[0]!.c;
+  const visitor = uuid();
+  await ask(code, visitor, { kind: 'contact', name: 'Persona', contact: 'persona@example.invalid', note: 'Nota' });
+  // el evento acabó hace más de 6 meses
+  await app.t.db.query(`update booking.reservations set start_date = '2020-01-01', end_date = '2020-01-03' where id = $1`, [res]);
+  assert.equal((await app.t.db.query<{ v: boolean }>(`select booking.retention_has_work() v`)).rows[0]!.v, true);
+  await app.t.db.query(`select booking.retention_run('{"args":{"limit":100}}'::jsonb)`);
+  const row = (await app.t.db.query<{ name: string | null; contact: string | null; note: string | null; status: string }>(`select name, contact, note, status from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
+  assert.deepEqual(row, { name: null, contact: null, note: null, status: 'pendiente' });
+});
+
