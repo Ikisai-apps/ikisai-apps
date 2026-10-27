@@ -38,11 +38,17 @@ test('guests_kpi_projection: una fila por reserva de la ventana, con lo que cuen
   const g = () => crypto.randomUUID();
   const [ana, luis, eva, team, gone] = [g(), g(), g(), g(), g()];
   await commit([ana, luis, eva, team, gone].map((id, i) => ({ op: 'insert', table: 'booking.guests', id, fields: { event_id: near.event, first_name: `Huésped ${i + 1}` } })));
-  await t.db.query(`update booking.guests set privacy_ack_at = now(), signed_at = now(), ses_status = 'enviado_SES', arrived_at = now() where id = $1`, [ana]);
-  await t.db.query(`update booking.guests set privacy_ack_at = now(), arrived_at = now() where id = $1`, [luis]);
-  await t.db.query(`update booking.guests set arrived_at = now(), ses_status = 'no_aplica' where id = $1`, [eva]);
-  await t.db.query(`update booking.guests set portal_role = 'staff' where id = $1`, [team]);
-  await t.db.query(`update booking.guests set anonymized_at = now() where id = $1`, [gone]);
+  // lo que en la vida real pone el huésped (privacidad, firma) o SES: sembrado sin disparadores, solo para contar
+  await t.db.exec(`set session_replication_role = replica`);
+  try {
+    await t.db.query(`update booking.guests set privacy_ack_at = now(), signed_at = now(), ses_status = 'enviado_SES', arrived_at = now() where id = $1`, [ana]);
+    await t.db.query(`update booking.guests set privacy_ack_at = now(), arrived_at = now() where id = $1`, [luis]);
+    await t.db.query(`update booking.guests set arrived_at = now(), ses_status = 'no_aplica' where id = $1`, [eva]);
+    await t.db.query(`update booking.guests set portal_role = 'staff' where id = $1`, [team]);
+    await t.db.query(`update booking.guests set anonymized_at = now() where id = $1`, [gone]);
+  } finally {
+    await t.db.exec(`set session_replication_role = origin`);
+  }
 
   const rows = (await t.db.query<Record<string, any>>(`select * from booking.guests_kpi_projection`)).rows;
   const ids = rows.map((r) => r.reservation_id);
