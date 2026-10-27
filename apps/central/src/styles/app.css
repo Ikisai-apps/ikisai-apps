@@ -382,7 +382,8 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-planrow{align-items:flex-start}
 .ctl-planactions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .ctl-planactions button{min-height:var(--tap,46px)}
-.ctl-place{display:grid;grid-template-columns:minmax(0,3fr) minmax(240px,1fr);gap:24px;align-items:start;margin:0 0 24px}
+.ctl-place{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:24px;align-items:start;margin:0 0 24px}
+.ctl-placeside{min-width:0}
 .ctl-placestage{border-radius:16px;background:var(--paper);overflow:hidden;box-shadow:0 0 0 1px color-mix(in srgb,var(--line) 60%,transparent)}
 .ctl-placesvg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
 .ctl-placepaper{fill:var(--paper-2)}
@@ -404,7 +405,6 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 
 /* Revisión › Uso y cobertura (V0.2, 27-10): una función por fila, su estado y la decisión de una persona. */
 .ctl-cov{display:flex;flex-direction:column;gap:4px;padding:10px 0;min-width:0}
-.ctl-covhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ctl-cov .muted.small{overflow-wrap:anywhere}
 .ctl-covdecide{flex-wrap:wrap;margin-top:4px}
 .ctl-covdecide button{min-height:var(--tap,46px)}
@@ -432,9 +432,19 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .topbar .ctl-headart{filter:invert(1);mix-blend-mode:screen}}
 :root[data-theme="dark"] .topbar .ctl-headart{filter:invert(1);mix-blend-mode:screen}
 @media (max-width:600px){.topbar .ctl-headart{opacity:.12;max-width:60%}}
-.ctl-placeghost{fill:color-mix(in srgb,var(--warn) 12%,transparent);stroke:var(--warn-ink);stroke-width:2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}
+.ctl-placeghost{fill:color-mix(in srgb,var(--warn) 12%,transparent);stroke:var(--warn-ink);stroke-width:2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;cursor:pointer}
+.ctl-placeghost.held{fill:transparent;stroke:transparent}
+.ctl-placeghost.lit{fill:color-mix(in srgb,var(--accent) 30%,transparent);stroke:var(--accent-deep,var(--accent));stroke-width:3;stroke-dasharray:none}
+.ctl-placenum{fill:var(--ink);font-weight:800;text-anchor:middle;dominant-baseline:central;pointer-events:none;paint-order:stroke;stroke:var(--paper);stroke-width:.4px}
+.ctl-shapes{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ctl-shaperow{display:grid;gap:6px;padding:10px;border-radius:12px;background:var(--paper-2)}
+.ctl-shaperow.warn{box-shadow:inset 3px 0 0 var(--warn)}
+.ctl-shaperow select{width:100%;min-width:0;min-height:var(--tap,46px)}
+.ctl-shapehead{display:flex;align-items:center;gap:8px;min-width:0;overflow-wrap:anywhere}
+.ctl-shapenum{flex:none;display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--paper);font-weight:800;font-size:.875rem}
 .ctl-placemissing{margin:12px 0}
 .ctl-placemissing summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600}
 #placeShapes select{min-height:var(--tap,46px);max-width:100%}
 .ctl-itemtrade{margin:12px 0}
 .ctl-itemtrade select{min-height:var(--tap,46px);max-width:100%}
+.ctl-giveextra summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;color:var(--muted)}

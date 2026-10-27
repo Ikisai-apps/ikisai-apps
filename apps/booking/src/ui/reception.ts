@@ -12,7 +12,7 @@
  * «Llega» y «Sale» son `guest_arrive` y `guest_leave`: la salida libera la cama y pide la limpieza (1402).
  */
 import type { SyncedRow } from '@ikisai/sync-client';
-import { announceSaved, createLanes, el, registerReveal, replace, toast, type Lane } from '@ikisai/ui-kit';
+import { announceSaved, createLanes, el, openSheet, registerReveal, replace, toast, type Lane, type Sheet } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES, WALKIN_METHODS, WALKIN_METHOD_LABELS, canSeeGuests, missingForSes, type GuestLike } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, SPACES, VISITOR_REQUESTS, WALKINS, canWrite, describeError } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -21,6 +21,13 @@ import { sendWalkinToFinance } from './eventKinds.ts';
 import type { ViewMount } from './shell.ts';
 
 type Row = SyncedRow & Record<string, any>;
+/** Los datos del parte de viajeros, en palabras (las claves de `missingForSes`). */
+const SES_FIELD: Record<string, string> = {
+  first_name: 'nombre', last_name_1: 'primer apellido', last_name_2: 'segundo apellido', birth_date: 'fecha de nacimiento',
+  residence_address: 'dirección', residence_postal_code: 'código postal', residence_city: 'población', residence_country: 'país de residencia',
+  contact: 'teléfono o correo', kinship: 'parentesco del menor', document_type: 'tipo de documento', document_number: 'número de documento',
+  document_support_number: 'número de soporte del documento',
+};
 const madridToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 const chip = (label: string, i: Indicator) => el('span', { class: `chip${i.tone ? ` ${i.tone}` : ''}`, title: label }, `${label}: ${i.text}`);
 
@@ -73,7 +80,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', 'data-feedback-id': 'booking.recepcion.descartar', 'data-feedback-label': 'Descartar', onclick: (e: Event) => void decide(c, 'reject', e.currentTarget as HTMLButtonElement) }, 'Descartar'))
       : el('div', { class: 'row-actions' },
         c.presencia.text === 'Llega hoy' || c.presencia.text === 'Sin llegada marcada'
-          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'arrive', 'data-feedback-id': 'booking.recepcion.llega', 'data-feedback-label': 'Llega', onclick: (e: Event) => void presence(c, PROCEDURES.guestArrive, 'Llegada anotada.', 'booking.recepcion.llega', e.currentTarget as HTMLButtonElement) }, 'Llega') : null,
+          ? el('button', { class: 'primary small', type: 'button', 'data-action': 'arrive', 'data-feedback-id': 'booking.recepcion.llega', 'data-feedback-label': 'Llega', onclick: (e: Event) => void arrive(c, e.currentTarget as HTMLButtonElement) }, 'Llega') : null,
         c.presencia.text.startsWith('Dentro')
           ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'leave', 'data-feedback-id': 'booking.recepcion.sale', 'data-feedback-label': 'Sale', onclick: (e: Event) => void presence(c, PROCEDURES.guestLeave, 'Salida anotada: la cama queda libre y se pide su limpieza.', 'booking.recepcion.sale', e.currentTarget as HTMLButtonElement) }, 'Sale') : null,
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'file', 'data-feedback-id': 'booking.recepcion.ficha', 'data-feedback-label': 'Ficha', onclick: () => navigate(c.guestId ? `#/huespedes/${c.eventId}/${c.guestId}` : `#/huespedes/${c.eventId}`) }, 'Ficha'));
@@ -149,6 +156,50 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
     ? once(button, () => run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision } }], `Solicitud ${c.number} descartada.`)) : Promise.resolve(false);
   const presence = (c: ReceptionCard, procedure: string, done: string, anchor: string, button?: HTMLButtonElement) => c.guestId
     ? once(button, () => run([{ op: 'call', procedure, args: { guest_id: c.guestId } }], done).then((ok) => { if (ok) announceSaved(anchor); return ok; })) : Promise.resolve(false);
+
+  /**
+   * «Llega» con el parte de viajeros (SES): si a la ficha le falta algo para el parte o nadie ha visto el documento, una hoja
+   * lo dice antes de marcar la llegada. En recepción se marca «He visto el documento» (sin él, el parte no sale) y se puede
+   * ir a la ficha para completarlo y firmar. Sin documento la llegada se puede anotar igual, pero el parte queda pendiente y
+   * hay que comunicarlo en 24 horas: la hoja lo avisa. Lo que no va a SES (sin pernocta, equipo) llega directo.
+   */
+  async function arrive(c: ReceptionCard, button?: HTMLButtonElement): Promise<void> {
+    if (!c.guestId) return;
+    const g = (await client.get(GUESTS, c.guestId)) as Row | null;
+    const noSes = !g || (g.ses_status === 'no_aplica' && g.data_status === 'no_aplica') || g.portal_role;
+    const missing = noSes ? [] : missingForSes(g as GuestLike);
+    const needsCheck = !noSes && !g!.is_minor && !g!.document_checked_at;
+    if (!missing.length && !needsCheck) return void presence(c, PROCEDURES.guestArrive, 'Llegada anotada.', 'booking.recepcion.llega', button);
+    const seen = el('input', { type: 'checkbox', id: 'arriveSeen', checked: false, disabled: !g!.document_number }) as HTMLInputElement;
+    const go = el('button', { class: 'primary', type: 'button', id: 'arriveSave', 'data-feedback-id': 'booking.recepcion.llega.guardar', 'data-feedback-label': 'Marcar la llegada', onclick: () => void save() }, 'Marcar la llegada') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({
+      title: `Llega ${c.title}`,
+      body: el('div', { 'data-feedback-id': 'booking.recepcion.llega.parte', 'data-feedback-label': 'Parte de viajeros al llegar' },
+        missing.length
+          ? el('p', { class: 'banner warn', id: 'arriveMissing' }, `Falta para el parte de viajeros: ${missing.map((k) => SES_FIELD[k] ?? k).join(', ')}.`)
+          : el('p', { class: 'banner ok' }, 'Los datos del parte están completos.'),
+        needsCheck ? el('label', { class: 'field check', 'data-feedback-id': 'booking.recepcion.llega.documento', 'data-feedback-label': 'He visto el documento' }, seen,
+          el('span', null, g!.document_number ? `He visto el documento original (${g!.document_type ?? 'documento'})` : 'He visto el documento original (primero hay que anotarlo en la ficha)')) : null,
+        !g!.document_number && !g!.is_minor
+          ? el('p', { class: 'hint' }, 'Sin documento no se puede comunicar a SES. Puedes anotar la llegada, pero el parte queda pendiente y hay que enviarlo en 24 horas.')
+          : el('p', { class: 'hint' }, 'La firma y lo que falte se completan en su ficha.')),
+      foot: el('div', { class: 'choices' }, go,
+        el('button', { class: 'ghost', type: 'button', id: 'arriveFile', 'data-feedback-id': 'booking.recepcion.llega.ficha', 'data-feedback-label': 'Completar la ficha', onclick: () => { void sheet.close(); navigate(`#/huespedes/${c.eventId}/${c.guestId}`); } }, 'Completar la ficha y firmar'),
+        el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+      initialFocus: needsCheck && g!.document_number ? seen : go,
+    });
+    async function save(): Promise<void> {
+      const ops: unknown[] = [];
+      if (needsCheck && seen.checked) ops.push({ op: 'update', table: GUESTS, id: g!.id, expectedRevision: g!.revision,
+        fields: { document_checked_at: new Date().toISOString(), document_checked_by: boot?.profile.userId ?? null } });
+      ops.push({ op: 'call', procedure: PROCEDURES.guestArrive, args: { guest_id: g!.id } });
+      const ok = await once(go, () => run(ops, missing.length || (needsCheck && !seen.checked) ? 'Llegada anotada. El parte queda pendiente de completar.' : 'Llegada anotada.'));
+      if (!ok) return;
+      await sheet.close(true);
+      announceSaved('booking.recepcion.llega');
+      if (button) button.disabled = false;
+    }
+  }
 
   // 1: en el móvil (pestañas) solo se monta un carril; el Guiado pide el del botón que busca
   const LANE_OF: Record<string, LaneKey> = { cobrar: 'confirmar', alojar_pagado: 'confirmar', descartar: 'confirmar', metodo: 'confirmar', llega: 'entradas', sale: 'estancia', ficha: 'estancia' };

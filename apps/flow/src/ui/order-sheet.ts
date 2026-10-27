@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, createQuantityField, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, createQuantityField, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { formatEuros, groupMenu, ORDER_STATUS_LABELS, PAY_METHOD_LABELS, SETTLE_METHOD_LABELS, CHECKOUT_METHOD_LABELS, TABLES, type MenuProduct, type PayMethod } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { errorCode, errorDetails, flowActions, isOnline } from '../app/actions.ts';
@@ -75,7 +75,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
       el('h3', null, g.label),
       ...g.products.map((mp) => {
         const product = data!.products.get(mp.id)!;
-        const field = createQuantityField({ label: `Cantidad de ${product.name}`, name: `o-${product.id}`, value: value(product.id), decimals: 0, min: 0, max: max?.(product.id) ?? 99, step: 1,
+        const field = createQuantityField({ field: { id: 'flow.caja.cantidad', entity: 'flow.order_lines', prop: 'quantity', type: 'number' }, label: `Cantidad de ${product.name}`, name: `o-${product.id}`, value: value(product.id), decimals: 0, min: 0, max: max?.(product.id) ?? 99, step: 1,
           disabled: !canEdit, onChange: (v) => onChange(product.id, v.value ?? 0) });
         qtyFields.set(product.id, { set: (q) => field.set({ value: q, unit: field.get().unit }), node: field.element });
         return el('div', { class: 'order-row' }, productMedal(product),
@@ -98,7 +98,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
     const reduce = el('section', { class: 'order-group' }, el('h3', null, 'Bajar o quitar'),
       ...lines().map((l) => {
         const p = data!.products.get(l.product_id)!;
-        const field = createQuantityField({ label: `Nueva cantidad de ${p.name}`, name: `c-${l.id}`, value: c.lines.get(l.id) ?? l.quantity, decimals: 0, min: 0, max: l.quantity, step: 1,
+        const field = createQuantityField({ field: { id: 'flow.caja.cambio_cantidad', entity: 'flow.order_lines', prop: 'quantity', type: 'number' }, label: `Nueva cantidad de ${p.name}`, name: `c-${l.id}`, value: c.lines.get(l.id) ?? l.quantity, decimals: 0, min: 0, max: l.quantity, step: 1,
           onChange: (v) => { c.lines.set(l.id, v.value ?? 0); paintCorrectionTotal(); } });
         return el('div', { class: 'order-row' }, productMedal(p), el('div', { class: 'order-row-text' }, el('strong', null, p.name), el('small', { class: 'muted' }, `cobrado ${l.quantity}`)),
           el('div', { class: 'order-row-qty' }, field.element));

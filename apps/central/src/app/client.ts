@@ -26,6 +26,7 @@ export const T = {
   weeklyActions: 'central.weekly_actions',
   weeklyReviews: 'central.weekly_reviews',
   weeklyItems: 'central.weekly_review_items',
+  fieldGroupReviews: 'central.field_group_reviews',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */

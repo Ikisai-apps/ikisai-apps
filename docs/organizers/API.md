@@ -783,7 +783,9 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 ## 23. Comentarios leídos y sin leer (migración 0706; diseño en `MUELA/equipo/feedback/organizers/COMENTARIOS_LEIDOS.md`)
 
 - **En el resumen del retiro:** en «Comentarios de tus asistentes», lo que esta persona no ha visto lleva «Nuevo» y el título dice cuántos. Un comentario cuenta como visto tras un segundo en pantalla (`IntersectionObserver`); la marca se queda hasta la próxima vez que se abre.
-- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora, sin purga.
+- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora.
+  - **Conservación (0710):** se borra a los 180 días, o cuando el retiro terminó hace más de 90. Si el retiro está borrado, cancelado o perdido, a los 90 días de leerla.
+  - Va en la misma vuelta que las respuestas (`organizers.retention_run`, B18), en un lote del sistema, para que los dispositivos también borren su copia. Nadie más la borra.
   - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
   - No se cambia ni se borra (`IMMUTABLE_FIELD`).
   - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.

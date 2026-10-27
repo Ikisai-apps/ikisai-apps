@@ -1,4 +1,4 @@
-import { createQuantityField, el, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
+import { createQuantityField, el, fieldAttrs, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
 import { linkCustomerToVisitor, lodgingLink, myOrders, PublicApiError, readCustomer, redeemInvitation, redeemVisitorHandoff, submitOrder, venLink, type MyOrder } from './customer.ts';
 import {
   basketLines, basketTotal, formatEuros, groupMenu, productAssets, setQuantity, SCOPE_LABELS,
@@ -119,7 +119,7 @@ export function mountCarta(root: HTMLElement): () => void {
   }
 
   function productCard(product: MenuProduct): HTMLElement {
-    const field = createQuantityField({
+    const field = createQuantityField({ field: { id: 'flow.carta.cantidad', entity: 'flow.order_lines', prop: 'quantity', type: 'number' },
       label: `Cantidad de ${product.name}`, name: `q-${product.id}`, value: basket[product.id] ?? 0, decimals: 0, min: 0, max: 99, step: 1,
       onChange: (value) => change(product.id, value.value ?? 0),
     });
@@ -225,8 +225,8 @@ export function mountCarta(root: HTMLElement): () => void {
     const test = el('p', { class: 'carta-test', role: 'status', hidden: true });
     // Si quien pide es del equipo (visitante atado a un miembro, 0952), el pedido es de prueba y se dice.
     void myOrders().then((m) => {
-      const name = m?.orders.find((o) => o.id === orderId)?.testName;
-      if (name) { test.hidden = false; replace(test, `Pedido de prueba (${name}): no cuenta en caja.`); }
+      const o = m?.orders.find((x) => x.id === orderId);
+      if (o?.testName) { test.hidden = false; replace(test, o.testExcluded ? `Pedido de prueba (${o.testName}): no cuenta en caja.` : `Pedido del equipo (${o.testName}): se ajusta en Finance.`); }
     }).catch(() => undefined);
     openSheet({
       title: 'Pedido enviado',
@@ -269,7 +269,7 @@ export function mountCarta(root: HTMLElement): () => void {
       if (!out || !out.orders.length) { replace(body, el('p', { class: 'muted' }, 'Aún no has enviado pedidos desde este dispositivo.')); paintMine(); return; }
       replace(body, ...out.orders.map((o) => el('section', { class: 'carta-mine-order' },
         el('h3', null, `${MINE_STATE[o.status]}${o.status === 'paid' && o.preparing ? ' · preparando' : o.status === 'paid' ? ' · listo para recoger' : ''}`),
-        o.testName ? el('p', { class: 'carta-test' }, `Pedido de prueba (${o.testName})`) : null,
+        o.testName ? el('p', { class: 'carta-test' }, o.testExcluded ? `Pedido de prueba (${o.testName})` : `Pedido del equipo (${o.testName})`) : null,
         el('ul', { class: 'carta-summary-list' }, ...o.lines.map((l) => el('li', null,
           el('span', { class: 'carta-code' }, l.code),
           el('span', null, `${l.quantity} × ${l.name}`),

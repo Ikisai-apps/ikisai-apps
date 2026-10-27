@@ -523,6 +523,15 @@ Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y
 **Acciones** (`central.weekly_actions`, `1523`; VG, vg-41): mientras la revisión está abierta, cada indicador puede acabar en una decisión vigente (`kind = 'decision'`, `decision_id`) o en una tarea de Tasks (`kind = 'task'`). La tarea la pide `POST weekly/:id/task {requestId, code, kpi, label, title, note?, due?}` con el kind `central.weekly_action`, el token de la persona y la referencia `RSM_…:requestId` (idempotente). Su estado vuelve por `requirements/tasks-status`. La revisión siguiente enseña cómo van las acciones de la anterior. Mismo permiso que la revisión; con la revisión cerrada, `REVIEW_CLOSED`.
 
 Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque puede llevar importes. La foto también se borra del dispositivo al cerrar sesión. Pantalla: `#/direccion/semana`, desde el panel de Dirección.
+### 2.20 Revisor › cobertura de campos por pantalla (`central.field_group_reviews`, `1522`; decisiones de VG del 27-10)
+
+Para Dirección (owner y editor con el ámbito `direccion`). Declarar la utilidad campo a campo es inviable (miles de campos), así que la pantalla enseña por defecto solo los **candidatos**: los que el núcleo marca así (`candidate`: sin cobertura de Flow, sin uso en 30 días y sin estimado de la app que los proteja), agrupados por app y pantalla, con la etiqueta de la pantalla y un resumen («N campos en M pantallas»). «Ver todo» enseña el resto con la pieza del kit.
+
+- **Datos:** `GET coverage/fields?app=` une `core_field_coverage` (0111, con `estimate {frequency, audience}`, `candidate` y `activations30d`) y `flow.anchor_coverage_read` (Flow 0946). Central pone «directo» y «automático» con `fieldLinks`. Si el núcleo aún no trae `candidate`, se aplica la misma regla (`isCandidate`). Si Flow no responde, `flowAvailable: false`.
+- **Utilidad:** se hereda sola del estimado de la app y del uso real (`inheritedUtility`). Declararla es una excepción opcional por pantalla.
+- **Acción por grupo** (una sola vez): «Dejar», «Revisar más tarde» o «Retirar». Retirar no borra nada: queda anotado para el equipo de la app.
+
+`central.field_group_reviews`, una fila viva por `app` y `screen` (inmutable): `decision` (`dejar`, `revisar_mas_tarde`, `retirar`), `audience` y `frequency` (la excepción), `fields_count` (cuántos campos tenía el grupo al decidir) y `note`. Leen y escriben owner y editor con el ámbito `direccion` (Edge y base). Pantalla: `#/revision/campos`, desde Uso y cobertura.
 
 ## 3. Procedimientos y lecturas
 
