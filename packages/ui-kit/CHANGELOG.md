@@ -13,6 +13,23 @@
 - **K19, contraste en oscuro:** el texto de los eventos lleva el 45 % del color de la capa, antes el 70 %. Con colores de capa habituales pasa de 3,7–4,5:1 a 5,5:1 o más; en claro no cambia.
 - `v03` comprueba ahora la hoja con el dedo y la barra con ratón. Pruebas: `tests/v80.spec.ts`.
 
+## 0.69.5 · 27 de octubre de 2026
+
+**`testing/mobile-audit.ts`: la revisión móvil en las pruebas de cada app.** Es la herramienta de la revisión a 390 px del 27-10, ahora como ayuda común, igual que `testing/feedback-smoke.ts`. No toca nada: mide la pantalla que se ve.
+
+- `mobileAudit(page, { kinds?, ignore?, minTarget? })` devuelve una lista de hallazgos `{ kind, sel, text, detail }`. Tipos:
+  - `desborde` (fuera de los contenedores con scroll propio);
+  - `toque` (menos de 44 px; las casillas cuentan con su etiqueta, y los enlaces dentro de un párrafo no cuentan);
+  - `cortado`;
+  - `contraste`: WCAG AA en oscuro; cambia a oscuro y vuelve a claro.
+- `formatFindings(found)` da una línea por hallazgo para el mensaje de `expect`.
+- Ya trae los arreglos de la revisión:
+  - el desborde se mide contra el ancho de la pantalla (`screen.width`): con emulación de móvil, Chrome aleja la página que desborda y agranda `innerWidth`, y antes no se veía;
+  - colores `color(srgb …)` leídos bien;
+  - lo escondido para el lector (`.vh`, cajas de 1 px) no cuenta como cortado ni como toque.
+- Uso: `expect(await mobileAudit(page, { kinds: ['desborde', 'toque'] }), …).toEqual([])` en el humo de la app.
+- Pruebas: `tests/v77.spec.ts`.
+
 ## 0.69.6 · 27 de octubre de 2026
 
 **K24: «Sincronizado» del menú común a 44 px con el dedo** (`equipo/Revisor/KIT_PETICIONES.md`, abierta por Core el 27-10).

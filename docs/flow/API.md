@@ -457,3 +457,11 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - `save_stage_values({execution_id, position, values})`: no deja cambiar lo fijo ni lo heredado.
   - `finish_stage({execution_id, position, status done|error|skipped|practiced, result?, receipt_id?, error?})`: `practiced` solo en aprender; un tramo `capability` no se da por hecho en aprender; `skipped` solo sin pasos esenciales. El último tramo cierra la ejecución (`done` o `practiced`) y su `result` junta los de cada tramo.
 - `journey_steps_projection` añade `stage` y `stage_kind`; la app sale de la capacidad del tramo (o `flow` en los tramos de registro).
+
+## 46. Guiado: `flow.guide_read` y `flow.guide_confirm` (flow-23, migración `0940`)
+
+- `POST guide-read {execution_id, app}` (capacidad `flow.guide_read`): `{id, title, mode, status, steps: [{id, title, explain, anchor, route, confirm, done, essential, app, stage}]}`.
+  - Solo quien hace la ejecución (si no, `404`). Pasos de esa `app` (primer segmento del anclaje) y los propios de Flow (`app: null`: sin anclaje).
+  - `route` y `confirm` salen de la lectura por id de campo del núcleo (`core_field_lookup`, 0109); sin ella, `route: null` y `confirm: 'manual'`.
+  - `done`: recibo de la app con `how` `save` o `event` y sin `pending`; en los pasos propios de Flow, su valor en el tramo o el tramo cerrado.
+- `POST guide-confirm {requestId, execution_id, step_id, how: save|event|manual|none, pending?}` (capacidad `flow.guide_confirm`): deja recibo en `flow.guide_receipts` (sin valores), idempotente por `requestId`. Un ensayo (`learn`) no confirma nada.

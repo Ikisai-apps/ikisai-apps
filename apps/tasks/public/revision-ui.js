@@ -97,3 +97,80 @@ projectsView=function(...a){const html=projectsViewBeforeReview(...a);if(!canEdi
 const bindBeforeReview=bind;
 bind=function(){bindBeforeReview();const n=document.getElementById('tkrNew');if(n)n.onclick=tkrNewSheet;
   const o=document.getElementById('tkrOpen');if(o){const rv=tkrReviewOf(project()?.id);if(rv)o.onclick=()=>tkrOpenSheet(rv)}};
+
+
+/* --- Plantillas de revisión (§46.1) -------------------------------------------------------------------------------- *
+   «Plantillas» junto a «+ Revisión de apertura»: las de la casa (solo las cambia la administradora) y las del área (quien
+   la edita entera). Cambiar una plantilla no toca las revisiones ya creadas: cada una guardó su copia. */
+const TKR_ANSWER={check:'Funciona o no',quantity:'Cantidad',photo:'Foto',reading:'Lectura',note:'Observación'};
+function tkrCanManage(t){return t.tab_id==null?isAdministrator():canEdit()&&!tab()?.restricted}
+function tkrTplItems(id){return tkrRows('tasks.review_template_items').filter(i=>i.template_id===id).sort((a,b)=>Number(a.position)-Number(b.position))}
+function tkrTemplatesSheet(){const tabId=tab()?.id,tpls=tkrRows('tasks.review_templates').filter(t=>t.tab_id==null||t.tab_id===tabId).sort((a,b)=>Number(a.position)-Number(b.position));
+  const row=t=>`<button type="button" data-tkr-tpl="${t.id}" data-feedback-id="tasks.revision.plantillas.abrir" data-feedback-label="Abrir la plantilla">${esc(t.name)}<span class="small muted"> · ${t.tab_id?'de esta área':'de la casa'} · ${tkrTplItems(t.id).length} ítems${t.active===false?' · desactivada':''}</span></button>`;
+  const canNew=canEdit()&&!tab()?.restricted;
+  openSheet(`<h2 class="sheettitle">Plantillas de revisión</h2><p class="subtitle">Cambiar una plantilla no toca las revisiones ya creadas.</p>
+    <div class="menulist">${tpls.map(row).join('')||'<p class="small muted">Aún no hay plantillas.</p>'}</div>
+    <div class="actions">${canNew?'<button class="primary" id="tkrTplNew" type="button" data-feedback-id="tasks.revision.plantillas.nueva" data-feedback-label="Nueva plantilla">Nueva plantilla</button>':''}<button class="ghost" id="tkrTplClose" type="button">Cerrar</button></div>`);
+  document.getElementById('tkrTplClose').onclick=()=>closeSheet();
+  document.querySelectorAll('[data-tkr-tpl]').forEach(b=>b.onclick=()=>tkrTemplateSheet(b.dataset.tkrTpl));
+  const n=document.getElementById('tkrTplNew');
+  if(n)n.onclick=()=>{const id=crypto.randomUUID(),pos=Math.max(0,...tkrRows('tasks.review_templates').map(t=>Number(t.position)||0))+1024;
+    if(purchaseCommit([{op:'insert',table:'tasks.review_templates',id,fields:{tab_id:tab().id,name:'Plantilla nueva',note:'',active:true,position:pos}}],'Plantilla creada.'))setTimeout(()=>tkrTemplateSheet(id),50)}}
+
+function tkrTemplateSheet(id){const t=tkrRows('tasks.review_templates').find(x=>x.id===id);if(!t)return tkrTemplatesSheet();
+  const can=tkrCanManage(t),items=tkrTplItems(id),zones=[...new Set(items.map(i=>i.zone))];
+  const itemRow=i=>`<button type="button" data-tkr-item="${i.id}" ${can?'':'disabled'} data-feedback-id="tasks.revision.plantilla.item" data-feedback-label="Ítem de la plantilla">${esc(i.title)}<span class="small muted"> · ${esc(TKR_ANSWER[i.answer]||i.answer)}${tkrExpected(i)?' · '+esc(tkrExpected(i)):''}${i.critical?' · crítico':''}</span></button>`;
+  const head=can?`<div class="field"><label for="tkrTplName">Nombre</label><input id="tkrTplName" maxlength="120" value="${esc(t.name)}" data-feedback-id="tasks.revision.plantilla.nombre" data-feedback-label="Nombre de la plantilla"></div>
+    <label class="row small"><input type="checkbox" id="tkrTplActive" ${t.active!==false?'checked':''} data-feedback-id="tasks.revision.plantilla.activa" data-feedback-label="Plantilla activa"> Se puede usar para crear revisiones</label>`:'';
+  const body=zones.map(z=>`<h3 class="tkr-zone">${esc(TKR_ZONE[z]||z)}</h3><div class="menulist">${items.filter(i=>i.zone===z).map(itemRow).join('')}</div>`).join('')||'<p class="small muted">Sin ítems.</p>';
+  const acts=can?'<button class="primary" id="tkrTplSave" type="button" data-feedback-id="tasks.revision.plantilla.guardar" data-feedback-label="Guardar la plantilla">Guardar</button><button class="ghost" id="tkrItemNew" type="button" data-feedback-id="tasks.revision.plantilla.nuevo_item" data-feedback-label="Añadir ítem">+ Ítem</button>':'';
+  openSheet(`<h2 class="sheettitle">${esc(t.name)}</h2><p class="subtitle">${t.tab_id?'De esta área':'De la casa'}${can?'':' · solo lectura'}</p>${head}${body}
+    <div class="actions">${acts}<button class="ghost" id="tkrTplBack" type="button">Volver</button></div>`);
+  document.getElementById('tkrTplBack').onclick=()=>tkrTemplatesSheet();
+  document.querySelectorAll('[data-tkr-item]').forEach(b=>b.onclick=()=>tkrItemSheet(id,b.dataset.tkrItem));
+  const s=document.getElementById('tkrTplSave');
+  if(s)s.onclick=()=>{const name=document.getElementById('tkrTplName').value.trim(),active=document.getElementById('tkrTplActive').checked;
+    if(!name)return toast('Pon un nombre a la plantilla.');const fields={};if(name!==t.name)fields.name=name;if(active!==(t.active!==false))fields.active=active;
+    if(!Object.keys(fields).length)return tkrTemplatesSheet();
+    if(purchaseCommit([{op:'update',table:'tasks.review_templates',id:t.id,expectedRevision:t.revision,fields}],'Plantilla guardada.'))tkrTemplatesSheet()};
+  const n=document.getElementById('tkrItemNew');if(n)n.onclick=()=>tkrItemSheet(id,null)}
+
+function tkrItemSheet(tplId,itemId){const t=tkrRows('tasks.review_templates').find(x=>x.id===tplId);if(!t)return tkrTemplatesSheet();
+  const i=itemId?tkrTplItems(tplId).find(x=>x.id===itemId):null,e=i?.expected||{},answer=i?.answer||'check';
+  const opts=(map,cur)=>Object.entries(map).map(([k,v])=>`<option value="${k}" ${cur===k?'selected':''}>${esc(v)}</option>`).join('');
+  openSheet(`<h2 class="sheettitle">${i?'Ítem':'Ítem nuevo'}</h2>
+    <div class="field"><label for="tkrIZone">Zona</label><select id="tkrIZone" data-feedback-id="tasks.revision.item_plantilla.zona" data-feedback-label="Zona del ítem">${opts(TKR_ZONE,i?.zone||'habitaciones')}</select></div>
+    <div class="field"><label for="tkrITitle">Qué se mira</label><input id="tkrITitle" maxlength="200" value="${esc(i?.title||'')}" data-feedback-id="tasks.revision.item_plantilla.titulo" data-feedback-label="Qué se mira"></div>
+    <div class="field"><label for="tkrIInstr">Instrucciones</label><textarea id="tkrIInstr" rows="2" maxlength="2000" data-feedback-id="tasks.revision.item_plantilla.instrucciones" data-feedback-label="Instrucciones del ítem">${esc(i?.instructions||'')}</textarea></div>
+    <div class="field"><label for="tkrIAnswer">Respuesta</label><select id="tkrIAnswer" data-feedback-id="tasks.revision.item_plantilla.respuesta" data-feedback-label="Tipo de respuesta">${opts(TKR_ANSWER,answer)}</select></div>
+    <div class="row tkr-expected" id="tkrIExp">
+      <div class="field" data-for="quantity"><label for="tkrICount">Cuántos se esperan</label><input id="tkrICount" type="number" min="0" step="1" value="${e.count??''}"></div>
+      <div class="field" data-for="reading"><label for="tkrIUnit">Unidad</label><input id="tkrIUnit" maxlength="20" value="${esc(e.unit||'')}" placeholder="°C"></div>
+      <div class="field" data-for="reading"><label for="tkrIMin">Mínimo</label><input id="tkrIMin" type="number" step="any" value="${e.min??''}"></div>
+      <div class="field" data-for="reading"><label for="tkrIMax">Máximo</label><input id="tkrIMax" type="number" step="any" value="${e.max??''}"></div>
+    </div>
+    <label class="row small"><input type="checkbox" id="tkrICrit" ${i?.critical?'checked':''} data-feedback-id="tasks.revision.item_plantilla.critico" data-feedback-label="Ítem crítico"> Crítico: sin él verificado no se abre</label>
+    <div class="actions"><button class="primary" id="tkrISave" type="button" data-feedback-id="tasks.revision.item_plantilla.guardar" data-feedback-label="Guardar el ítem">Guardar</button>${i?'<button class="ghost danger-text" id="tkrIDel" type="button" data-feedback-id="tasks.revision.item_plantilla.quitar" data-feedback-label="Quitar el ítem">Quitar</button>':''}<button class="ghost" id="tkrIBack" type="button">Volver</button></div>`);
+  const sel=document.getElementById('tkrIAnswer'),sync=()=>document.querySelectorAll('#tkrIExp [data-for]').forEach(f=>{f.hidden=f.dataset.for!==sel.value});sel.onchange=sync;sync();
+  document.getElementById('tkrIBack').onclick=()=>tkrTemplateSheet(tplId);
+  const del=document.getElementById('tkrIDel');
+  if(del)del.onclick=()=>{if(purchaseCommit([{op:'delete',table:'tasks.review_template_items',id:i.id,expectedRevision:i.revision}],'Ítem quitado.'))tkrTemplateSheet(tplId)};
+  document.getElementById('tkrISave').onclick=()=>{const v=id=>document.getElementById(id).value.trim(),num=id=>v(id)===''?undefined:Number(v(id)),a=sel.value;
+    const title=v('tkrITitle');if(!title)return toast('Di qué se mira.');
+    const expected={};
+    if(a==='quantity'&&num('tkrICount')!==undefined)expected.count=num('tkrICount');
+    if(a==='reading'){if(!v('tkrIUnit'))return toast('Una lectura necesita su unidad.');expected.unit=v('tkrIUnit');
+      if(num('tkrIMin')!==undefined)expected.min=num('tkrIMin');if(num('tkrIMax')!==undefined)expected.max=num('tkrIMax');
+      if(expected.min!==undefined&&expected.max!==undefined&&expected.min>expected.max)return toast('El mínimo no puede ser mayor que el máximo.')}
+    if(expected.count!==undefined&&(!Number.isInteger(expected.count)||expected.count<0))return toast('Lo esperado es un número entero.');
+    const fields={zone:document.getElementById('tkrIZone').value,title,instructions:v('tkrIInstr'),answer:a,expected,critical:document.getElementById('tkrICrit').checked};
+    const pos=Math.max(0,...tkrTplItems(tplId).map(x=>Number(x.position)||0))+1024;
+    const op=i?{op:'update',table:'tasks.review_template_items',id:i.id,expectedRevision:i.revision,fields}
+      :{op:'insert',table:'tasks.review_template_items',id:crypto.randomUUID(),fields:{...fields,tab_id:t.tab_id,template_id:t.id,position:pos}};
+    if(purchaseCommit([op],i?'Ítem guardado.':'Ítem añadido.'))tkrTemplateSheet(tplId)}}
+
+const projectsViewBeforeTemplatesUi=projectsView;
+projectsView=function(...a){const html=projectsViewBeforeTemplatesUi(...a);if(!canEdit()||tab()?.restricted||!html.includes('tkr-newrow'))return html;
+  return html.replace('+ Revisión de apertura</button>','+ Revisión de apertura</button><button class="ghost" id="tkrTpls" type="button" data-feedback-id="tasks.revision.plantillas" data-feedback-label="Plantillas de revisión">Plantillas</button>')};
+const bindBeforeTemplatesUi=bind;
+bind=function(){bindBeforeTemplatesUi();const p=document.getElementById('tkrTpls');if(p)p.onclick=tkrTemplatesSheet};

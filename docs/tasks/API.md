@@ -2259,6 +2259,7 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - **En Proyectos:** «+ Revisión de apertura» crea una desde una plantilla (de la casa o del área), con nombre, fecha y, opcionalmente, el evento.
 - **En el proyecto de una revisión:** la banda con los críticos verificados, los ítems y los fallos, y «Abrir». Con críticos pendientes, la lista de lo que falta; solo una owner abre igualmente y con nota.
 - **En la ficha de un ítem:** «Comprobación», con las instrucciones, lo esperado, el valor, la foto o la observación, y «Está bien» o «Falla». Debajo, el primer fallo y los enlaces a «Arreglar» y «Volver a comprobar». Quien solo lee lo ve sin controles.
+- **Plantillas:** en Proyectos, «Plantillas» enseña las de la casa y las del área, con sus ítems por zona. Quien edita el área entera crea plantillas del área y les añade, cambia o quita ítems (zona, qué se mira, instrucciones, tipo de respuesta, lo esperado y si es crítico). Las de la casa solo las cambia la administradora. Cambiar una plantilla no toca las revisiones ya creadas.
 - **Pruebas:** `tests/tasks/revision.spec.ts`.
 
 ## 47. «Trabajos de hoy» para Flow (migración `0352`, `tasks-api/today.ts`; encargo de Core, 27-10-2026)
