@@ -112,11 +112,14 @@
 
 - 2026-10-27 · Revisión móvil de UI-kit: a 390 px la cabecera ya no se corta (sin el nombre de la cuenta en móvil). Las barras cortas del calendario anual llevan el nombre en `title` y en el resumen mes a mes, y al tocarlas abren el retiro.
 
+- 2026-10-27 · Guiado mínimo del kit 0.68: `guide: { feedbackId: 'guests.guia' }` en la cabecera, sin leer nada de Flow. `?campo=` señala el campo y `?paso=` explica el paso y pone «Volver a…». `registerReveal('guests')` abre el desplegable cerrado donde esté el anclaje.
+
 ## Pendiente
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
 
-- Visitantes, v2: recuperar el acceso por correo y pasarlo a otro móvil (C11, más adelante).
+- Al recuperar el acceso de visitante en otro móvil, «Mis eventos» sale vacía, porque la lista vive en cada móvil. Hace falta que el núcleo dé los códigos de evento del visitante (p. ej. en `public/visitor/me`); pedido a Core.
+- Barras estrechas del calendario anual: el rótulo fuera de la barra, en el kit (`renderTimeline`); pedido a UI-kit por Core.
 
 ## Bloqueos
 

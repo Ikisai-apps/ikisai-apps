@@ -10,7 +10,7 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, lodgingUnlocked, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { claimGuest, ensureVisitor, errorCodeOf, forgetVisitor, lodgingUnlocked, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
@@ -223,7 +223,16 @@ export function renderVisitor(root: HTMLElement): () => void {
     const repaint = () => void paintRequests(code, event, host, mine);
     const sent = list.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorSent' }, ...list.map((r) => el('li', { dataset: { kind: r.kind, status: r.status } },
       el('strong', null, r.kind === 'join' ? t('visitor.joinSent') : r.kind === 'stay' ? t('stay.sentTitle') : t('visitor.contactSent')), ' · ', requestText(r),
-      r.kind === 'stay' ? el('span', { class: 'small gstay-sent' }, stayRequestText(r)) : null))) : null;
+      r.kind === 'stay' ? el('span', { class: 'small gstay-sent' }, stayRequestText(r)) : null,
+      // Aceptada con ficha: «Tu ficha está lista» (entra con un enlace de un solo uso; el núcleo comprueba que es suya).
+      r.id && r.status === 'aceptada' && (r.kind === 'join' || r.kind === 'stay') ? el('button', { type: 'button', class: 'primary small gclaim', dataset: { request: r.id },
+        'data-feedback-id': 'guests.visitante.ficha.entrar', 'data-feedback-label': 'Tu ficha está lista',
+        onclick: async (e: Event) => {
+          const button = e.currentTarget as HTMLButtonElement;
+          button.disabled = true;
+          try { const out = await claimGuest(code, r.id!); location.assign(`/i/${out.loginToken}`); }
+          catch (error) { button.disabled = false; toast(errorCodeOf(error) === 'NOT_FOUND' ? t('vlink.notReady') : visitorError(error)); }
+        } }, t('vlink.ready')) : null))) : null;
 
     const field = (id: string, label: string, help: string | null, attrs: Record<string, string> = {}) => {
       const input = el('input', { id, class: 'input', ...attrs }) as HTMLInputElement;

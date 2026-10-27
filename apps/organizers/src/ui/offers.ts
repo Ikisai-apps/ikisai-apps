@@ -8,7 +8,7 @@
  * Las caducadas siguen sumando en las cuentas, con su marca y su aviso; en el cartel no salen nunca. Los toques de − / +
  * se agrupan: se guarda una vez, 700 ms después del último.
  */
-import { confirmDialog, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import type { RowOperation } from '@ikisai/sync-client';
 import type { ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
@@ -110,7 +110,7 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
   // --- La cuenta del retiro ----------------------------------------------------------------------------------------
   const accountTop = el('div', { class: 'orgacct-top' });
   const accountTotal = el('ul', { class: 'orgacct-rows' });
-  const otherInput = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: 'offersOther', placeholder: '0',
+  const otherInput = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.otros_ingresos', label: 'Otros ingresos', type: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: 'offersOther', placeholder: '0',
     // Al escribir solo se repinta la cuenta (ni la lista ni el cartel).
     oninput: (e: Event) => { other = (e.target as HTMLInputElement).value; void cache.saveDraft(ctx.userId, otherKey, other); paintAccount(); } }) as HTMLInputElement;
   const bar = (value: number, max: number, kind: 'in' | 'out') => el('span', { class: `orgacct-bar ${kind}`, 'aria-hidden': 'true' },
@@ -165,7 +165,7 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
     };
     update();
     cards.set(o.id, update);
-    const poster = el('input', { type: 'checkbox', checked: o.on_poster && !expired ? '' : null, disabled: expired ? '' : null,
+    const poster = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.en_cartel', label: 'En el cartel', entity: 'organizers.offers', prop: 'on_poster', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', checked: o.on_poster && !expired ? '' : null, disabled: expired ? '' : null,
       onchange: (e: Event) => void setPoster(o, (e.target as HTMLInputElement).checked) });
     const chip = expired ? el('span', { class: 'chip warn' }, t('Caducada'))
       : upcoming ? el('span', { class: 'chip' }, t('Desde el {fecha}', { fecha: day(String(o.available_from)) }))
@@ -261,17 +261,17 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
   }
 
   function edit(row: Row | null): void {
-    const input = (id: string, type: string, value: unknown, attrs: Record<string, string> = {}) =>
-      el('input', { type, id, value: value == null ? '' : String(value), ...attrs }) as HTMLInputElement;
-    const name = input('of-name', 'text', row?.name, { maxlength: '120', required: '' });
-    const price = input('of-price', 'number', row?.price, { min: '0', step: '0.01', inputmode: 'decimal', required: '' });
-    const description = el('textarea', { id: 'of-description', rows: '2', maxlength: '600' }, String(row?.description ?? '')) as HTMLTextAreaElement;
-    const includes = el('textarea', { id: 'of-includes', rows: '2', maxlength: '600', placeholder: t('Alojamiento, comidas, talleres…') }, String(row?.includes ?? '')) as HTMLTextAreaElement;
-    const capacity = input('of-capacity', 'number', row?.capacity, { min: '0', step: '1', inputmode: 'numeric' });
-    const expected = input('of-expected', 'number', row ? expectedOf(row) : null, { min: '0', step: '1', inputmode: 'numeric' });
-    const from = input('of-from', 'date', row?.available_from);
-    const until = input('of-until', 'date', row?.available_until);
-    const poster = el('input', { type: 'checkbox', id: 'of-poster', checked: row ? (row.on_poster ? '' : null) : '' }) as HTMLInputElement;
+    const input = (id: string, type: string, value: unknown, attrs: Record<string, string | null> = {}) =>
+      el('input', { type, id, value: value == null ? '' : String(value), ...attrs, /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ }) as HTMLInputElement;
+    const name = input('of-name', 'text', row?.name, { maxlength: '120', required: '', ...fieldAttrs({ id: 'organizers.ofertas.nombre', label: 'Nombre de la oferta', entity: 'organizers.offers', prop: 'name', type: 'text', sensitivity: 'internal' }) });
+    const price = input('of-price', 'number', row?.price, { min: '0', step: '0.01', inputmode: 'decimal', required: '', ...fieldAttrs({ id: 'organizers.ofertas.precio', label: 'Precio de la oferta', entity: 'organizers.offers', prop: 'price', type: 'number', sensitivity: 'internal' }) });
+    const description = el('textarea', { ...fieldAttrs({ id: 'organizers.ofertas.descripcion', label: 'Descripción de la oferta', entity: 'organizers.offers', prop: 'description', type: 'text', sensitivity: 'internal' }), id: 'of-description', rows: '2', maxlength: '600' }, String(row?.description ?? '')) as HTMLTextAreaElement;
+    const includes = el('textarea', { ...fieldAttrs({ id: 'organizers.ofertas.incluye', label: 'Qué incluye', entity: 'organizers.offers', prop: 'includes', type: 'text', sensitivity: 'internal' }), id: 'of-includes', rows: '2', maxlength: '600', placeholder: t('Alojamiento, comidas, talleres…') }, String(row?.includes ?? '')) as HTMLTextAreaElement;
+    const capacity = input('of-capacity', 'number', row?.capacity, { min: '0', step: '1', inputmode: 'numeric', ...fieldAttrs({ id: 'organizers.ofertas.plazas', label: 'Plazas', entity: 'organizers.offers', prop: 'capacity', type: 'number', sensitivity: 'internal' }) });
+    const expected = input('of-expected', 'number', row ? expectedOf(row) : null, { min: '0', step: '1', inputmode: 'numeric', ...fieldAttrs({ id: 'organizers.ofertas.previstas', label: 'Personas previstas', entity: 'organizers.offers', prop: 'expected', type: 'number', sensitivity: 'internal' }) });
+    const from = input('of-from', 'date', row?.available_from, fieldAttrs({ id: 'organizers.ofertas.desde', label: 'Disponible desde', entity: 'organizers.offers', prop: 'available_from', type: 'date', sensitivity: 'internal' }));
+    const until = input('of-until', 'date', row?.available_until, fieldAttrs({ id: 'organizers.ofertas.hasta', label: 'Disponible hasta', entity: 'organizers.offers', prop: 'available_until', type: 'date', sensitivity: 'internal' }));
+    const poster = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.en_cartel', label: 'En el cartel', entity: 'organizers.offers', prop: 'on_poster', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', id: 'of-poster', checked: row ? (row.on_poster ? '' : null) : '' }) as HTMLInputElement;
     const error = el('p', { class: 'error', role: 'alert', id: 'of-error' });
     const int = (v: string) => (v === '' ? null : Math.max(0, Math.round(Number(v))));
     const sheet = openSheet({
@@ -351,13 +351,13 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
     let background = backgrounds[0] ?? null;
     const img = (entry: { row: Row; url: string } | null) => (entry ? posterImage(api, ctx.userId, fileIdOf(entry.row.file_id)!, entry.url) : Promise.resolve(null));
     const placeText = await venue;
-    const placeInput = el('input', { type: 'text', id: 'poster-place', maxlength: '160', value: placeText || 'Ikisai', oninput: () => void draw() }) as HTMLInputElement;
-    const note = el('input', { type: 'text', id: 'poster-note', maxlength: '160', placeholder: t('Plazas limitadas · reserva en…'), oninput: () => void draw() }) as HTMLInputElement;
+    const placeInput = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.lugar', label: 'Lugar del cartel', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'poster-place', maxlength: '160', value: placeText || 'Ikisai', oninput: () => void draw() }) as HTMLInputElement;
+    const note = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.nota', label: 'Nota del cartel', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'poster-note', maxlength: '160', placeholder: t('Plazas limitadas · reserva en…'), oninput: () => void draw() }) as HTMLInputElement;
     const canvas = el('canvas', { id: 'posterCanvas', class: 'orgposter-canvas', 'aria-label': t('Vista previa del cartel') }) as HTMLCanvasElement;
-    const choose = <T extends string>(id: string, pairs: Array<[T, string]>, current: T, set: (v: T) => void) => el('select', { id,
+    const choose = <T extends string>(id: string, pairs: Array<[T, string]>, current: T, set: (v: T) => void, field: Record<string, string | null>) => el('select', { ...field, /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id,
       onchange: (e: Event) => { set((e.target as HTMLSelectElement).value as T); void draw(); } }, ...pairs.map(([v, l]) => el('option', { value: v, selected: v === current ? '' : null }, t(l))));
     const backgroundSelect = backgrounds.length > 1 ? el('label', { class: 'field' }, el('span', null, t('Foto')),
-      el('select', { id: 'poster-background', onchange: (e: Event) => { background = backgrounds.find((b) => b.row.id === (e.target as HTMLSelectElement).value) ?? background; void draw(); } },
+      el('select', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.foto', label: 'Foto del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'poster-background', onchange: (e: Event) => { background = backgrounds.find((b) => b.row.id === (e.target as HTMLSelectElement).value) ?? background; void draw(); } },
         ...backgrounds.map((b) => el('option', { value: b.row.id }, String(b.row.title))))) : null;
     async function drawAt(f: PosterFormat): Promise<void> {
       drawPoster(canvas, content({
@@ -373,8 +373,8 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
       panelAttrs: { id: 'posterSheet' },
       body: el('div', { id: 'posterBody' },
         el('div', { class: 'orggrid' },
-          el('label', { class: 'field' }, el('span', null, t('Diseño')), choose('poster-template', TEMPLATES, template, (v) => { template = v; })),
-          el('label', { class: 'field' }, el('span', null, t('Formato')), choose('poster-format', FORMATS, format, (v) => { format = v; })),
+          el('label', { class: 'field' }, el('span', null, t('Diseño')), choose('poster-template', TEMPLATES, template, (v) => { template = v; }, fieldAttrs({ id: 'organizers.ofertas.cartel.diseno', label: 'Diseño del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }))),
+          el('label', { class: 'field' }, el('span', null, t('Formato')), choose('poster-format', FORMATS, format, (v) => { format = v; }, fieldAttrs({ id: 'organizers.ofertas.cartel.formato', label: 'Formato del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }))),
           backgroundSelect),
         el('label', { class: 'field' }, el('span', null, t('Lugar')), placeInput),
         el('label', { class: 'field' }, el('span', null, t('Línea final (opcional)')), note),

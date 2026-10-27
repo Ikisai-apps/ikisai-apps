@@ -446,6 +446,26 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
       },
     },
     {
+      // «Avance» (0938): crear o cambiar una tarjeta en el carril de quien llama (el guard comprueba scopes.lanes).
+      // Idempotente por requestId (recibo del núcleo por persona); el id de una tarjeta nueva lo pone la Edge.
+      method: 'POST', pattern: 'board-card', handler: async ({ ctx, json }) => {
+        if (!['editor', 'owner', 'outsider'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Tu cuenta no puede escribir en el Avance.');
+        const body = (await json().catch(() => ({}))) ?? {};
+        const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
+        if (!requestId) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        const KEYS = ['project_id', 'card_id', 'lane_key', 'title', 'status', 'prio', 'flag', 'kind', 'tipo', 'order', 'ref', 'url', 'url_text', 'steps', 'note'];
+        const args: Record<string, unknown> = Object.fromEntries(KEYS.filter((k) => k in body).map((k) => [k, body[k]]));
+        if (!args.card_id) args.card_id = crypto.randomUUID();
+        const operations = [{ op: 'call', procedure: 'flow.board_card', args }];
+        const { card_id: _new, ...digestOf } = args;
+        const out = await supabase.rpc<{ replayed?: boolean; results?: Array<{ result?: { card_id?: string; created?: boolean } }> }>('core_commit', {
+          p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(body.card_id ? args : digestOf)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        const result = out?.results?.[0]?.result ?? {};
+        return { card_id: result.card_id ?? null, created: !!result.created, replayed: !!out?.replayed };
+      },
+    },
+    {
       method: 'POST', pattern: 'logistics-task', handler: async ({ ctx, json }) => {
         const body = (await json().catch(() => ({}))) ?? {};
         const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;

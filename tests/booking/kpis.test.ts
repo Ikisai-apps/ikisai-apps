@@ -99,3 +99,18 @@ test('indicadores · ocupación del fin de semana que viene (noches de viernes y
   assert.ok(onFri >= 3 && onSat >= 3 && places > 0);
   assert.equal(Number((await read()).value), Math.round(1000 * (onFri + onSat) / (places * 2)) / 10, 'noches de viernes y sábado entre plazas × 2');
 });
+
+test('indicadores · camas libres esta noche y solicitudes de noches por pagar (1412)', async () => {
+  const db = app.t.db;
+  const user = await app.t.createUser();
+  await db.query(`insert into core.memberships (app, user_id, role) values ('central', $1, 'reader')`, [user]);
+  const rows = ((await app.t.rpc('core_read', { p_app: 'central', p_actor: user, p_name: 'booking.central_kpi_projection', p_args: { limit: 500 } })) as any).rows as Array<Record<string, any>>;
+  const free = rows.find((r) => r.kpi === 'booking.beds_free_tonight')!;
+  const unpaid = rows.find((r) => r.kpi === 'booking.stay_requests_unpaid')!;
+  assert.deepEqual([free.label, free.unit, free.direction, free.link], ['Camas libres esta noche', 'count', 'up', 'https://booking.ikisai.com/#/recepcion']);
+  assert.deepEqual([unpaid.label, unpaid.unit, unpaid.direction], ['Solicitudes de noches por pagar', 'count', 'down']);
+  const today = (await db.query<{ d: string }>(`select ((now() at time zone 'Europe/Madrid')::date)::text d`)).rows[0]!.d;
+  const places = Number((await db.query<{ n: string }>(`select coalesce(sum(places), 0) n from booking.free_beds($1::date, $1::date + 1)`, [today])).rows[0]!.n);
+  assert.equal(Number(free.value), places, 'las plazas libres de booking.free_beds esta noche');
+  assert.equal(Number(unpaid.value), 0, 'sin solicitudes del QR en esta base');
+});

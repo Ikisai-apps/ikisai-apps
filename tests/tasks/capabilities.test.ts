@@ -27,20 +27,21 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('catálogo: las tres capacidades de Tasks, permitidas a editor y owner, no a quien solo lee', async () => {
+test('catálogo: las tres capacidades de pedir a Tasks, permitidas a editor y owner, no a quien solo lee', async () => {
   const ids = ['tasks.projects_open', 'tasks.request_purchase', 'tasks.request_task'];
   const mine = await app.call('/api/v1/capabilities');
   assert.equal(mine.status, 200, JSON.stringify(mine.data));
   const list = (mine.data.items ?? mine.data) as any[];
-  const ours = list.filter((c) => c.app === 'tasks');
+  // Las de pedir (0345); las de la revisión y «Trabajos de hoy» tienen sus propias pruebas.
+  const ours = list.filter((c) => ids.includes(c.id));
   assert.deepEqual(ours.map((c) => c.id).sort(), ids);
   for (const c of ours) assert.deepEqual([c.allowed, c.risk, c.idempotent, c.roles], [true, 'low', true, ['editor', 'owner']]);
   assert.equal(ours.find((c) => c.id === 'tasks.request_task').route, 'POST requests/task');
   assert.equal(ours.find((c) => c.id === 'tasks.projects_open').kind, 'read');
   assert.ok(ours.find((c) => c.id === 'tasks.request_task').input.properties.children, 'con hijas');
-  assert.ok(ours.every((c) => Array.isArray(c.anchors) && c.anchors.length && c.anchors.every((a: string) => /^tasks(\.[a-z0-9_]+){1,4}$/.test(a))));
+  assert.ok(list.filter((c) => c.app === 'tasks').every((c) => Array.isArray(c.anchors) && c.anchors.length && c.anchors.every((a: string) => /^tasks(\.[a-z0-9_]+){1,4}$/.test(a))));
   const reader = await app.call('/api/v1/capabilities', { token: app.tokens.reader });
-  const readerList = ((reader.data.items ?? reader.data) as any[]).filter((c) => c.app === 'tasks');
+  const readerList = ((reader.data.items ?? reader.data) as any[]).filter((c) => ids.includes(c.id));
   assert.ok(readerList.length === 3 && readerList.every((c) => c.allowed === false));
 });
 
