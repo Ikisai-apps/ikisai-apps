@@ -143,3 +143,22 @@ test('tramos · «Alojamiento libre · recepción»: cuatro tramos «ir a Bookin
   }
   assert.equal((await rows(TABLES.executions)).find((x) => x.id === ex).status, 'done');
 });
+
+test('tramos · recepción v2 (0954): en «Revisa su ficha», abrirla no cierra el tramo; el documento guardado en Booking, sí', async () => {
+  const VERSION = '0f10a000-0000-4000-8000-00000000d302';
+  assert.equal((await rows(TABLES.definitionVersions)).find((x) => x.id === VERSION).status, 'published');
+  const steps = (await rows(TABLES.definitionSteps)).filter((s) => s.version_id === VERSION && s.stage_id === '0f10a000-0000-4000-8000-00000000d322')
+    .sort((a, b) => a.position - b.position);
+  assert.deepEqual(steps.map((s) => s.anchor), ['booking.recepcion.ficha', 'booking.huespedes.ficha.document_number']);
+  const ex = uuid();
+  await ok([call(PROCEDURES.startExecution, { execution_id: ex, version_id: VERSION, mode: 'run' })], app.tokens.editor);
+  await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor);
+  await ok([call(PROCEDURES.finishStage, { execution_id: ex, position: 1, status: 'done' })], app.tokens.editor);
+  await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 2 })], app.tokens.editor);
+  const confirm = (step: string, how: string) => app.call('/api/v1/guide-confirm', { token: app.tokens.editor, body: { requestId: `r2-${ex}-${how}`, execution_id: ex, step_id: step, how } });
+  const stage2 = async () => (await rows(TABLES.executions)).find((x) => x.id === ex).stages.find((s: any) => s.position === 2).status;
+  assert.equal((await confirm(steps[0].id, 'manual')).status, 200);
+  assert.equal(await stage2(), 'draft');
+  assert.equal((await confirm(steps[1].id, 'event')).status, 200);
+  assert.equal(await stage2(), 'done');
+});
