@@ -14,7 +14,9 @@ import type { ViewMount } from './shell.ts';
 export const mountProjects: ViewMount = ({ main, client, navigate }) => {
   const list = el('div', { class: 'flows', role: 'list', 'aria-label': 'Flujos' });
   const isOwner = client.bootstrap()?.membership.role === 'owner';
+  const canRun = ['editor', 'owner'].includes(client.bootstrap()?.membership.role ?? '');
   main.append(el('h1', { class: 'col-title' }, 'Flujos'),
+    ...(canRun ? [el('a', { class: 'ghost button-link', href: '#/recorridos' }, 'Recorridos')] : []),
     ...(isOwner ? [el('div', { class: 'orders-owner' }, editorLinks(client), el('button', { type: 'button', class: 'ghost',
       onclick: async () => { const id = await createCheckinFlow(client); if (id) navigate(`#/p/${id}`); } }, 'Nuevo flujo de llegadas'))] : []),
     list);

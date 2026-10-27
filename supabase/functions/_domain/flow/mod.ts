@@ -27,6 +27,10 @@ export const TABLES = {
   accounts: 'flow.accounts',
   projectSettings: 'flow.project_settings',
   receipts: 'flow.receipts',
+  definitions: 'flow.definitions',
+  definitionVersions: 'flow.definition_versions',
+  definitionSteps: 'flow.definition_steps',
+  executions: 'flow.executions',
   templateColumns: 'flow.template_columns',
   presenceMarks: 'flow.presence_marks',
 } as const satisfies Record<string, `flow.${string}`>;
@@ -58,6 +62,9 @@ export const PROCEDURES = {
   saveTemplate: 'flow.save_template',
   payOrders: 'flow.pay_orders',
   setBufferContainers: 'flow.set_buffer_containers',
+  startExecution: 'flow.start_execution',
+  saveExecutionValues: 'flow.save_execution_values',
+  finishExecution: 'flow.finish_execution',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -150,6 +157,7 @@ export const FLOW_ERRORS: Record<string, string> = {
   INVITATION_EXPIRED: 'Ese enlace ha caducado. Ábrelo otra vez desde la app de huéspedes.',
   INVITATION_USED: 'Ese enlace ya se ha usado. Ábrelo otra vez desde la app de huéspedes.',
   NO_FLOW: 'Este evento no tiene la barra abierta ahora mismo.',
+  EXECUTION_FINISHED: 'Este recorrido ya está terminado: empieza otro.',
   NO_BOOKING_EVENT: 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.',
   SES_ALREADY_REGISTERED: 'Su llegada ya está comunicada a SES: no se puede deshacer desde aquí.',
   GUEST_ALREADY_LEFT: 'Este huésped ya se ha ido: deshaz la salida antes.',

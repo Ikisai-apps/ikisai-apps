@@ -356,3 +356,18 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - Con recipientes: «Reponer mesa: 3 recipientes de Tomate (20 rodaja ≈ 2.5 unidad)», con `payload.containers`.
   - «Comprar X» con rendimiento: `ceil(necesario ÷ yield)` en `purchase_unit` («Comprar Tomate · 1 unidad»), con `payload.purchase_qty` y `purchase_unit`. Así se pide a Tasks.
   - Sin recipientes ni rendimiento, como antes.
+
+## 32. Recorridos (migración `0919`)
+
+- **Modelo**: `flow.definitions` (key, name), `flow.definition_versions` (version, status draft|published y `capability`, un id del catálogo del núcleo 0097) y `flow.definition_steps`.
+  - Cada paso es una pregunta sobre un campo de entrada de la capacidad (`key` = ruta en el `input`: `supplier.name`), con `title`, `explain`, `essential` y `anchor` (data-feedback-id).
+  - Sembrado: «Registrar compra» v1 → `register_purchase_quick` de Finance (docs/invoices/API.md §18). Tiene 8 pasos; 5 son esenciales.
+- **Ejecuciones** (`flow.executions`: mode learn|run, status draft|practiced|done|discarded|error, values, result):
+  - Procedimientos: `start_execution({execution_id, version_id, mode})`, `save_execution_values({execution_id, values})` y `finish_execution({execution_id, status, result?})`.
+  - Solo las toca quien las hace (`EXECUTION_FINISHED` cuando ya están cerradas).
+  - «practiced» solo en aprender; «done» y «error» solo en ejecutar.
+  - Por sincronización solo las lee el owner.
+- **Ejecutar**: la app invoca la capacidad con el kit (`POST capabilities/<id>/invoke`). La Edge llama a la API de la app dueña con el token de la persona y deja recibo en el núcleo. `requestId = flow-<ejecución>`, así que es idempotente.
+- **Aprender**: hace todas las preguntas con su explicación; «Registrar» no escribe nada fuera.
+- **App**: «Recorridos» (`#/recorridos`, editor y owner) con «Aprender» y «Ejecutar». Pregunta a pregunta con `createStepForm`, y al final revisión con Registrar, Corregir y Descartar. Los campos salen del `input` del catálogo.
+- **Central**: `flow.journey_steps_projection` (flow_id, flow_name, version, step, app, feature_id = anclaje o capacidad, capability), con `allow_read('central', …, '{owner}')`.
