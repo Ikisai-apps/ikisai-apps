@@ -8,11 +8,14 @@
  *   «Pendiente: se guardará con conexión»).
  * - Error de validación: `onAnswer` lanza `StepFormInvalid` con el texto; sale bajo la pregunta y no avanza.
  * - La barra no retrocede aunque deje de faltar algo por el camino.
+ * - Inventario de campos: con `feedbackId`, cada pregunta se marca sola como `<feedbackId>.<id>` (en minúsculas, `checkIn` →
+ *   `check_in`) con su tipo; `field` en la pregunta añade entidad, propiedad, permiso, sensibilidad…
  * Prefijo de clases: `ask-`.
  */
 import { el, replace } from '../dom.ts';
 import { kt } from '../i18n/i18n.ts';
 import { createSaveState } from '../fields/save-state.ts';
+import { fieldAttrs, type FieldSpec } from '../fields/field-mark.ts';
 
 export interface StepQuestion {
   id: string;
@@ -26,6 +29,8 @@ export interface StepQuestion {
   inputType?: string;
   placeholder?: string;
   value?: string | string[] | null;
+  /** Inventario de campos (`field-mark.ts`): entidad, propiedad, obligatorio, permiso, sensibilidad… El id sale de `feedbackId` e `id`. */
+  field?: Partial<FieldSpec>;
 }
 
 /** Lánzalo desde `onAnswer` para no avanzar y enseñar el motivo bajo la pregunta. */
@@ -63,6 +68,11 @@ export function createStepForm(options: StepFormOptions): StepForm {
   const mark = (suffix: string, label: string) => (base ? { 'data-feedback-id': `${base}.${suffix}`, 'data-feedback-label': label } : {});
   const element = el('section', { class: 'ask-box', 'aria-label': options.label, ...(base ? { 'data-feedback-id': base, 'data-feedback-label': options.label } : {}) });
   let uid = 0;
+  const fieldOf = (q: StepQuestion) => {
+    const own = q.field?.id ?? (base ? `${base}.${q.id.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()}` : null);
+    if (!own || !/^[a-z][a-z0-9_]*(\.[a-z0-9_-]+){1,7}$/.test(own)) return {};
+    return fieldAttrs({ ...q.field, id: own }, { type: q.kind === 'text' ? q.inputType ?? 'text' : q.kind === 'choice' ? 'select' : 'multi', label: q.question });
+  };
 
   async function submit(q: StepQuestion, value: string | string[], error: HTMLElement): Promise<void> {
     error.textContent = '';
@@ -95,13 +105,13 @@ export function createStepForm(options: StepFormOptions): StepForm {
     const current = answers.get(q.id) ?? q.value ?? (q.kind === 'multi' ? [] : '');
     let body: HTMLElement;
     if (q.kind === 'text') {
-      const input = el('input', { id: `${id}-input`, class: 'ask-input', type: q.inputType ?? 'text', value: String(current ?? ''), placeholder: q.placeholder ?? null, 'aria-describedby': `${id}-hint`,
+      const input = el('input', { id: `${id}-input`, class: 'ask-input', type: q.inputType ?? 'text', value: String(current ?? ''), placeholder: q.placeholder ?? null, 'aria-describedby': `${id}-hint`, ...fieldOf(q),
         onkeydown: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); void submit(q, input.value.trim(), error); } } }) as HTMLInputElement;
       body = el('div', { class: 'ask-field' }, input,
         el('div', { class: 'ask-ok' }, el('button', { type: 'button', class: 'primary', ...mark('aceptar', 'Aceptar'), onclick: () => void submit(q, input.value.trim(), error) }, kt('Aceptar')), el('span', { class: 'hint' }, kt('o pulsa Intro'))));
     } else {
       const picked = new Set(Array.isArray(current) ? current : current ? [current] : []);
-      const group = el('div', { class: 'ask-choices', role: 'group', 'aria-labelledby': `${id}-q` },
+      const group = el('div', { class: 'ask-choices', role: 'group', 'aria-labelledby': `${id}-q`, ...fieldOf(q) },
         ...(q.options ?? []).map((o, i) => {
           const btn = el('button', { type: 'button', class: 'ask-choice', 'aria-pressed': String(picked.has(o.value)), ...mark('opcion', 'Opción'),
             onclick: () => {

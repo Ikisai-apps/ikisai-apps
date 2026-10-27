@@ -6,10 +6,14 @@
  * - **Por fecha**, la de antes, a un toque: todo junto, por día, para ver qué pasó en una franja.
  * - Chips de app y de tipo, selector de persona (filtra en el núcleo: `user`, P12) y «Cargar más» de 50 en 50 en las dos.
  * - Cada línea con su día y su hora («lun 19 oct, 10:42»): es un registro de seguridad.
+ * - X1 de Tasks (FB_2026_073): `#/accesos/registro?app=<app>` abre ya filtrado por esa app y «Por fecha» (la lista corrida,
+ *   la más reciente arriba), sin cambiar la vista que recuerda el dispositivo; en cada línea, quién lo hizo con su tipo
+ *   (persona o agente) y a qué afecta (la persona, o la clave o la propuesta por su nombre); el ciclo de las propuestas de
+ *   agentes con sus palabras y su tono; «Ver anteriores».
  */
 import { bindOnline, el, relativeTime, renderAccessLog, renderGroups, replace, type AccessLogEntry, type Tone } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
-import { EVENT_LABELS, ROLE_LABELS, type AccessEvent, type AdminApi, type Account, type CatalogApp, type Role } from '../app/admin.ts';
+import { EVENT_LABELS, EVENT_TONES, ROLE_LABELS, type AccessEvent, type AdminApi, type Account, type CatalogApp, type Role } from '../app/admin.ts';
 import { appShort, dayAndTime, offlineNote, type AccessState } from './access-common.ts';
 import { fbIgnoreWithin } from './feedback.ts';
 
@@ -44,13 +48,21 @@ export function peopleOf(e: AccessEvent): string[] {
   return [...new Set([e.actorId, target].filter((x): x is string => !!x))];
 }
 
+/** `?app=tasks` del enlace de otra app (X1): la app con la que abrir el registro, o '' si no viene o no es un id válido. */
+export function appFromHash(hash: string): string {
+  const value = new URLSearchParams(hash.split('?')[1] ?? '').get('app') ?? '';
+  return /^[a-z][a-z0-9_]{0,31}$/.test(value) ? value : '';
+}
+
 export async function mountLog(body: HTMLElement, admin: AdminApi, state: AccessState): Promise<void> {
   let items: AccessEvent[] = [];
   let nextBefore: number | null = null;
-  let app = '';
+  // Desde otra app (X1): ya filtrado por ella y en la lista corrida; la vista que recuerda el dispositivo no cambia.
+  const fromApp = appFromHash(location.hash);
+  let app = fromApp;
   let user = '';
   const kinds = new Set<Kind>();
-  let view: LogView = (() => { try { return localStorage.getItem(VIEW_KEY) === 'fecha' ? 'fecha' : 'persona'; } catch { return 'persona'; } })();
+  let view: LogView = fromApp ? 'fecha' : (() => { try { return localStorage.getItem(VIEW_KEY) === 'fecha' ? 'fecha' : 'persona'; } catch { return 'persona'; } })();
   let catalog: CatalogApp[] = admin.cached.catalog ?? [];
   let accounts: Account[] = admin.cached.accounts?.items ?? [];
   const names = new Map<string, string>(accounts.map((a) => [a.userId, a.displayName || a.email || 'Cuenta']));
@@ -58,7 +70,7 @@ export async function mountLog(body: HTMLElement, admin: AdminApi, state: Access
   const grave = el('section', { class: 'ctl-grave', id: 'logGrave', 'aria-label': 'Lo grave', 'data-feedback-id': 'central.accesos.registro.grave', 'data-feedback-label': 'Lo grave' });
   const host = el('div', { id: 'accessLog', 'data-feedback-id': 'central.accesos.registro.entradas', 'data-feedback-label': 'Registro de accesos' });
   const loaded = el('p', { class: 'hint', id: 'logLoaded', 'aria-live': 'polite' });
-  const more = el('button', { class: 'ghost', type: 'button', id: 'logMore', 'data-feedback-id': 'central.accesos.registro.cargar_mas', 'data-feedback-label': 'Cargar más', hidden: true, onclick: () => void load(false) }, 'Cargar más') as HTMLButtonElement;
+  const more = el('button', { class: 'ghost', type: 'button', id: 'logMore', 'data-feedback-id': 'central.accesos.registro.cargar_mas', 'data-feedback-label': 'Ver anteriores', hidden: true, onclick: () => void load(false) }, 'Ver anteriores') as HTMLButtonElement;
   state.cleanups.push(bindOnline(more, { reason: 'El registro se lee en el momento: necesita conexión.' }));
   const filter = el('select', { id: 'logApp', 'aria-label': 'App', 'data-feedback-id': 'central.accesos.registro.filtro_app', 'data-feedback-label': 'Filtro por app', onchange: (e: Event) => { app = (e.target as HTMLSelectElement).value; void load(true); } },
     el('option', { value: '' }, 'Todas las apps')) as HTMLSelectElement;
@@ -73,8 +85,11 @@ export async function mountLog(body: HTMLElement, admin: AdminApi, state: Access
     el('div', { class: 'toolbar', 'data-feedback-id': 'central.accesos.registro.barra', 'data-feedback-label': 'Barra del registro' }, viewBar, filter, person),
     kindChips, host, loaded, more);
 
+  const agents = new Set<string>(accounts.filter((a) => a.kind === 'agent').map((a) => a.userId));
   function fillSelectors(): void {
     for (const a of catalog) if (!filter.querySelector(`option[value="${a.id}"]`)) filter.append(el('option', { value: a.id }, appShort(catalog, a.id)));
+    if (app && filter.querySelector(`option[value="${app}"]`)) filter.value = app;
+    for (const a of accounts) if (a.kind === 'agent') agents.add(a.userId);
     for (const a of accounts) names.set(a.userId, a.displayName || a.email || 'Cuenta');
     const sorted = [...accounts].sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || '', 'es'));
     for (const a of sorted) if (!person.querySelector(`option[value="${a.userId}"]`)) person.append(el('option', { value: a.userId }, `${a.displayName || a.email || 'Cuenta'}${a.kind === 'agent' ? ' (agente)' : ''}`));
@@ -94,25 +109,33 @@ export async function mountLog(body: HTMLElement, admin: AdminApi, state: Access
     const detail = typeof meta.role === 'string' ? ` · ${ROLE_LABELS[meta.role as Role] ?? meta.role}` : meta.removed === true ? ' · quitado' : '';
     return `${EVENT_LABELS[event] ?? event}${detail} · ${appLabel(e.app)}`;
   }
-  function entry(e: AccessEvent): AccessLogEntry {
+  /** Quien lo hizo es un agente: su cuenta lo es, o actuó con una clave. */
+  const isAgent = (e: AccessEvent) => !!e.actorId && (agents.has(e.actorId) || !!e.keyId);
+  /** A qué afecta: la persona, o la clave o la propuesta por su nombre (`meta.name`). */
+  const targetOf = (e: AccessEvent): string | undefined => {
     const meta = e.meta ?? {};
+    return typeof meta.userId === 'string' ? nameOf(meta.userId) : typeof meta.name === 'string' && meta.name.trim() ? meta.name : undefined;
+  };
+  const toneOf = (e: AccessEvent): Tone | undefined => (isGrave(e) ? 'alert' : EVENT_TONES[eventOf(e)]);
+  function entry(e: AccessEvent): AccessLogEntry {
     return {
       at: e.at,
       label: label(e),
-      actor: e.actorId ? names.get(e.actorId) ?? 'Cuenta' : 'Sistema',
-      actorKind: e.keyId && e.event.startsWith('proposal') ? 'agent' : 'person',
-      target: typeof meta.userId === 'string' ? nameOf(meta.userId) : typeof meta.name === 'string' ? meta.name : undefined,
-      tone: isGrave(e) ? 'alert' : undefined,
+      actor: e.actorId ? names.get(e.actorId) ?? 'otra cuenta' : 'Sistema',
+      actorKind: isAgent(e) ? 'agent' : 'person',
+      target: targetOf(e),
+      tone: toneOf(e),
     };
   }
   /** Una línea de la línea de tiempo: qué, quién o sobre quién, y su día y hora (con «hace…» al lado). */
   function line(e: AccessEvent, owner: string | null): HTMLElement {
     const meta = e.meta ?? {};
     const target = typeof meta.userId === 'string' ? meta.userId : null;
-    const actor = e.actorId ? (e.actorId === owner ? null : names.get(e.actorId) ?? 'Cuenta') : 'Sistema';
-    const about = target && target !== owner ? nameOf(target) : null;
-    const who = [actor ? `por ${actor}` : null, about ? `a ${about}` : null].filter(Boolean).join(' ');
-    return el('li', { class: `ctl-logline${isGrave(e) ? ' alert' : ''}` },
+    const actor = e.actorId ? (e.actorId === owner ? null : `${names.get(e.actorId) ?? 'otra cuenta'}${isAgent(e) ? ' (agente)' : ''}`) : 'Sistema';
+    const about = target ? (target !== owner ? `a ${nameOf(target)}` : null) : targetOf(e) ? `sobre «${targetOf(e)}»` : null;
+    const who = [actor ? `por ${actor}` : null, about].filter(Boolean).join(' ');
+    const tone = toneOf(e);
+    return el('li', { class: `ctl-logline${tone ? ` ${tone}` : ''}`, dataset: { event: eventOf(e) } },
       el('span', { class: 'ctl-logwhat' }, label(e)),
       el('span', { class: 'ctl-logmeta', 'data-feedback-ignore': '' }, [who, `${dayAndTime(e.at)} · ${relativeTime(e.at)}`].filter(Boolean).join(' · ')));
   }
@@ -152,7 +175,7 @@ export async function mountLog(body: HTMLElement, admin: AdminApi, state: Access
         ? fbIgnoreWithin(renderGroups<AccessEvent>({ label: 'Registro por persona', groups, toneOf: (e): Tone | null => (isGrave(e) ? 'alert' : null), worstFirst: true, row: (e) => line(e, null) }).element, '.worst-title strong, .medal-disc')
         : el('p', { class: 'hint' }, 'Sin accesos registrados.'));
     }
-    loaded.textContent = items.length ? (nextBefore === null ? `${items.length} ${items.length === 1 ? 'entrada' : 'entradas'}: no hay más.` : `Las últimas ${items.length} entradas. «Cargar más» trae las anteriores.`) : '';
+    loaded.textContent = items.length ? (nextBefore === null ? `${items.length} ${items.length === 1 ? 'entrada' : 'entradas'}: no hay más.` : `Las últimas ${items.length} entradas. «Ver anteriores» trae las de antes.`) : '';
   }
 
   function setView(next: LogView): void {

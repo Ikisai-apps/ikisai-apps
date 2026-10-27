@@ -122,6 +122,11 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
   - `fbMark(nodo, 'booking.reserva.guardar', 'Guardar')`;
   - `usage.run('booking.reserva.guardar', fn)` / `usage.track('…')` para operaciones.
   Un id construido en ejecución (`${…}`, concatenación, variable) no entra: sale en `dynamic` con su archivo y línea.
+- **Inventario de campos** (0.59; lo lee el mismo catálogo, que lo publica en `fields` y `fieldsUninstrumented`). Cada campo declara qué es, nunca su valor: `{ id: '<app>.<pantalla>.<campo>', entity, prop, type, required: true | false | 'si…', permission, sensitivity: 'public' | 'internal' | 'personal' | 'sensitive', since, route }`, siempre con literales.
+  - Campos del kit: la opción `field` (`createDateField({ …, field: { id: 'booking.reserva.entrada', entity: 'booking.reservations', prop: 'check_in' } })`); el tipo y «obligatorio» los ponen ellos.
+  - `createStepForm({ feedbackId })`: cada pregunta se marca sola como `<feedbackId>.<id>`; `field` en la pregunta añade lo demás.
+  - Campos sueltos: `el('input', { …, ...fieldAttrs({ id, entity, prop }) })`, `markField(el('select', …), { … })` o los atributos `data-field-*` en el HTML. El campo hace de ancla de feedback con el mismo id si no tiene otro.
+  - Lo que falta: `node packages/ui-kit/scripts/feature-catalog.mjs --fields-report [--app <app>]`.
 - **Idiomas** (0.19, portales): `const i18n = createI18n({ app: 'guests', dictionaries: { es, en } })`; `i18n.t('clave', { nombre })`, `i18n.formatDate/formatNumber/formatMoney`, `createLanguageSelect(i18n)` en la cabecera y `i18n.onChange(repintar)`. Los textos del kit pasan al mismo idioma solos. Las apps internas no llaman a `createI18n` y siguen en español. En el formulario de portales, los textos admiten `{ es, en }`.
 - **Portales** (0.20): `createSaveState()` (estado de guardado por campo y global), `createSignaturePad()` (firma con PNG recortado y alternativa escrita), `createInstallPrompt({ appName, app })` (hoja «Instala la app» con alternativa web), `createAppShell({ nav: [] })` sin barra inferior e iconos `guest` y `organizer`.
 - **Apps con el CSS del kit acotado** (Tasks, Finance): al arrancar, `setKitLayer(() => document.getElementById('kitLayer'))`. Así todo lo flotante del kit (avisos, hojas, diálogos, feedback, revisor) va a esa capa y conserva sus estilos.
