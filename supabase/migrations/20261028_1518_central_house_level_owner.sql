@@ -11,10 +11,11 @@
 -- le hacía owner y la comprobación, que miraba la membresía, le dejaba pasar.
 -- Toca solo el schema central.
 
--- ¿Era owner de Central quien manda el lote, cuando empezó? (`core.role`; sin él, la membresía, que entonces no ha cambiado.)
+-- ¿Era owner de Central quien manda el lote, cuando empezó? (`core.current_role()`, el rol que fija core.commit; sin él, la
+-- membresía, que entonces no ha cambiado.)
 create or replace function central.batch_by_owner(p jsonb)
 returns boolean language sql stable as $$
-  select case when coalesce(current_setting('core.role', true), '') <> '' then current_setting('core.role', true) = 'owner'
+  select case when core.current_role() is not null then core.current_role() = 'owner'
               else exists (select 1 from core.memberships m where m.app = 'central' and m.user_id = (p->>'actor')::uuid and m.role = 'owner') end
 $$;
 

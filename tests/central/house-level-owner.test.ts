@@ -64,11 +64,15 @@ test('C1 · un editor no se pone «dirección» en su propia ficha: ni por la Ed
   );
   // La misma escalada por la cuenta: una ficha nueva de «dirección» con su propia cuenta. El trigger le daría owner antes
   // que los hooks; la base mira el rol con el que empezó el lote.
+  // (Con otro editor que aún no tiene ficha: una cuenta solo puede estar en una.)
+  const second = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('central', $1, 'editor')`, [second]);
   await assert.rejects(
-    app.t.rpc('core_commit', { p_app: 'central', p_actor: editor, p_request_id: `c1-link-${uuid()}`, p_digest: 'c1-link', p_expected_cursor: null,
-      p_operations: [{ op: 'insert', table: TABLES.people, id: uuid(), fields: { display_name: 'Dirección Ficticia', relation: 'equipo', house_level: 'direccion', user_id: editor } }] }),
+    app.t.rpc('core_commit', { p_app: 'central', p_actor: second, p_request_id: `c1-link-${uuid()}`, p_digest: 'c1-link', p_expected_cursor: null,
+      p_operations: [{ op: 'insert', table: TABLES.people, id: uuid(), fields: { display_name: 'Dirección Ficticia', relation: 'equipo', house_level: 'direccion', user_id: second } }] }),
     (error: any) => error.code === 'FORBIDDEN',
   );
+  assert.deepEqual(await ownerships(second), [], 'el segundo editor tampoco gana owner');
 
   const [row] = (await app.t.db.query<{ l: string; a: boolean; d: string | null }>(`select house_level as l, active as a, deleted_at as d from central.people where id = $1`, [mine])).rows;
   assert.deepEqual([row!.l, row!.a, row!.d], ['outsider', true, null]);
