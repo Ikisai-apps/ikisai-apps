@@ -1,5 +1,41 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.11 · 27 de octubre de 2026
+
+**Cobertura de campos por flujos, para el Revisor de Central** (`renderCoverage`, `src/pieces/coverage.ts`). Es el encargo de Core sobre el análisis `MUELA/equipo/feedback/ui-kit/COBERTURA_INPUTS_FLUJOS.md` (traspaso de Flow v03, §11.9), construido con las decisiones recomendadas. Solo pinta: el cruce llega del núcleo. **Nunca valores de campo.**
+
+- **`classifyCoverage(campos, vínculos, uso)`**, función pura. Da a cada campo una clase:
+  - `direct` (paso de un recorrido);
+  - `indirect` (lo usa una capacidad);
+  - `automatic` (lo usa una regla);
+  - `independent` (se usa sin Flow);
+  - `unknown` (sin datos suficientes, que **no** es «inútil»).
+- **Marcas:**
+  - «Sin cobertura de Flow»;
+  - «Común a varios recorridos»;
+  - «Duplicado», solo por `entity.prop`, que es exacto;
+  - «Obligatorio en un proceso crítico».
+- **La pieza:**
+  - recuentos por clase que filtran;
+  - agrupar por clase, app o pantalla;
+  - por campo: sus recorridos, su uso en el periodo y la utilidad declarada por Central (`declared`);
+  - `onOpen` para «Ir al campo».
+- Marcas de feedback: `filtro`, `agrupar` y `abrir`; `abrir` solo se cataloga si la llamada usa `onOpen`.
+- Demo: «Cobertura de campos por flujos (Revisor)». Pruebas: `tests/v83.spec.ts`.
+
+## 0.69.3 · 27 de octubre de 2026
+
+**Guiado mínimo en las apps sin ids sueltos.** El Guiado mínimo rompía las pruebas de ids de feedback en Guests (#946), Central (#947) y Food (#952). Se arregla en el kit, una vez para todas las apps:
+
+- **Id recomendado:** `guide: { feedbackId: '<app>.cabecera.guia' }`. Va bajo `cabecera`, una raíz que todas las apps ya reconocen como pieza de la cáscara, así que no hay que añadir `guia` a la lista de raíces de cada app.
+- **Catálogo:**
+  - recoge el aviso del paso («Paso del recorrido») y sus botones `.ver` («Ver el campo») y `.cerrar` («Cerrar el aviso»);
+  - una comparación como `dataset.feedbackId === id` ya no cuenta como id dinámico.
+- **`revealAnchor`:**
+  - abre solo los `<details>` cerrados que contienen el anclaje;
+  - si no basta, llama a la función de `registerReveal` con `(id, nodo)`, donde el nodo es el anclaje aunque esté escondido. La app ya no tiene que buscarlo por id (`querySelector` con el id, o comparar `dataset.feedbackId`).
+- Pruebas: `tests/v75.spec.ts`.
+
 ## 0.69.5 · 27 de octubre de 2026
 
 **`testing/mobile-audit.ts`: la revisión móvil en las pruebas de cada app.** Es la herramienta de la revisión a 390 px del 27-10, ahora como ayuda común, igual que `testing/feedback-smoke.ts`. No toca nada: mide la pantalla que se ve.

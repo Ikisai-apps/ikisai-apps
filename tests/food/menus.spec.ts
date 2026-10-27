@@ -143,6 +143,12 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect(restrictions).toHaveAttribute('open', '');
     await expect(restrictions.locator('summary')).toContainText('1 alergia a pistacho (grave)');
     await expect(restrictions.locator('.fd-restralert')).toHaveText('1 aviso por revisar antes de validar');
+    // F-MEN-4: la fila de la lista de menús lleva el mismo recuento; se vuelve al menú desde ella.
+    const menuUrl = page.url();
+    await page.goto(menuUrl.replace(/#.*$/, '#/menus'));
+    await expect(page.locator('#menuList li', { hasText: 'Retiro Test' }).locator('.menuwarnings')).toHaveText('1 aviso');
+    await page.locator('#menuList li', { hasText: 'Retiro Test' }).click();
+    await expect(page).toHaveURL(menuUrl);
     // El pesto es para dos: se cambian las raciones en línea.
     const pesto = page.locator('.dish', { hasText: 'Pasta al pesto' }).locator('.servings');
     await pesto.fill('2');

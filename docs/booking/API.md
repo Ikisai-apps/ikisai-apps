@@ -2095,3 +2095,8 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 - **Worker `POST worker/payments/reconcile`:** pregunta a la pasarela (`fetchStatus`) por los intentos pendientes de hace más de 10 minutos (`booking.stay_payments_pending`) y aplica lo que diga, por si se perdió un aviso.
 - **`POST walkins/:id/refund/online {cents}`** (editor, owner): pide a la pasarela (`refund`) la devolución del cobro de una noche pagada en línea, nunca más de lo pagado (`booking.stay_payment_for_charge`). Después la ficha anota la devolución en el cobro (§41) y el aviso `refunded` la anota en el pago. Sin pasarela, 503 `PAYMENTS_OFF`.
 
+**Alojar solo al pagarse (migración 1415; necesita la 0109 del núcleo):**
+- El aviso `paid` aloja en otro lote de sistema: fichas con el borrador, cama con fechas y cobro `online` ya cobrado. Para ello `booking.join_from_visitor` se registra con `core.allow_system_procedure`.
+- Si no puede alojar (por ejemplo, la cama ya no está libre), el pago queda anotado (`accepted: false`) y recepción lo ve como «Pagado en línea».
+- El envoltorio de B7 deja pasar la llamada de sistema (`core.is_system_call()`) solo para aceptar `online`; el personal sigue necesitando el ámbito de huéspedes.
+
