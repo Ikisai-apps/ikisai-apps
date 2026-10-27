@@ -179,7 +179,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navLayout: 'bar',
     returnTo: { feedbackId: 'central.cabecera.volver' },
     // Guiado mínimo del kit (0.68): con ?campo= señala el campo; con ?paso= lo explica y ofrece «Volver a…». Sin Flow.
-    guide: { feedbackId: 'central.guia' },
+    guide: { feedbackId: 'central.cabecera.guia' },
     search: { label: 'Buscar en Central…', onOpen: () => palette.open(), feedbackId: 'central.cabecera.buscar' },
     // Menú lateral común (MUELA-013): la marca abre el cajón; en el ordenador, además, la columna fija.
     menu: {
@@ -228,15 +228,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   fbMark(shell.header, 'central.cabecera', 'Cabecera');
   // La silueta de cabecera que el owner elige en «Imágenes del centro» (Recursos 0816): una lectura al arrancar.
   const offHeaderArt = mountHeaderArt(client, shell.header);
-  // Guiado: si el campo está dentro de un pliegue cerrado (`<details>` o un grupo de indicadores plegado), se abre.
-  const offReveal = registerReveal('central', (id) => {
-    const q = CSS.escape(id);
-    const node = main.querySelector<HTMLElement>(`[data-field-id="${q}"], [data-feedback-id="${q}"]`);
-    if (!node) return;
-    for (let up = node.parentElement; up && up !== main; up = up.parentElement) {
-      if (up instanceof HTMLDetailsElement && !up.open) up.open = true;
-      if (up.classList.contains('kpigroup') && up.classList.contains('folded')) up.querySelector<HTMLButtonElement>(':scope > .kpigrouphead')?.click();
-    }
+  // Guiado: un campo del panel de Dirección puede estar en un grupo de indicadores plegado; se despliegan los plegados.
+  // (Los <details> cerrados ya los abre el kit.)
+  const offReveal = registerReveal('central.direccion', () => {
+    for (const head of main.querySelectorAll<HTMLButtonElement>('.kpigroup.folded > .kpigrouphead')) head.click();
   });
   const launcherButton = shell.header.querySelector('#appLauncher');
   if (launcherButton) fbMark(launcherButton, 'central.cabecera.menu', 'Menú');
