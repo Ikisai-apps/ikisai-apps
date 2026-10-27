@@ -31,6 +31,9 @@ test.beforeAll(async ({ browser }) => {
   await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
+  // La siembra de Recursos de la barra (migración 0811) añade artículos; las cuentas de esta prueba son solo las suyas
+  // (como en tests/food/r5-vista-previa.test.ts). Antes de abrir la app, para que ningún espejo los tenga.
+  await server.app.t.db.query(`update resources.items set deleted_at = now() where source_refs @> array['food:carta:barra-octubre-2026']`);
   contextA = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   contextB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   contextC = await browser.newContext({ viewport: { width: 1280, height: 900 } });

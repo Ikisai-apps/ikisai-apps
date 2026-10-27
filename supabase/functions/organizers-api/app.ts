@@ -10,7 +10,7 @@
  *   en un lote del sistema firmado por la cuenta de servicio `organizers`.
  */
 import { createApp, createSupabase, ensureServiceActor, fail, type AppConfig } from '../_kit/mod.ts';
-import { MATERIAL_MAX_BYTES, MATERIAL_MIME, validateOperations, visibleRow } from '../_domain/organizers/mod.ts';
+import { MATERIAL_MAX_BYTES, MATERIAL_MIME, proposalVisible, validateOperations, visibleRow } from '../_domain/organizers/mod.ts';
 
 export const ORGANIZERS_ORIGINS = ['https://organizers.ikisai.com', 'https://ikisai-organizers.pages.dev'];
 
@@ -39,8 +39,10 @@ export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'orig
       visible: (table, row, ctx) => visibleRow(table, row, ctx.membership, ctx.user.id),
       beforeCommit: (operations, ctx) => {
         const issue = validateOperations(operations, ctx.membership, undefined, ctx.user.id);
-        if (issue) fail(issue.code === 'FORBIDDEN' || issue.code === 'OUT_OF_SCOPE' ? 403 : 422, issue.code, issue.message, issue.details);
+        if (issue) fail(issue.code === 'FORBIDDEN' || issue.code === 'OUT_OF_SCOPE' || issue.code === 'SUGGESTION_REQUIRED' ? 403 : 422, issue.code, issue.message, issue.details);
       },
+      // Propuestas del equipo de Ikisai (0703): las ve y las decide quien organiza ese retiro con permiso propio.
+      suggestionVisible: (suggestion, ctx) => proposalVisible(suggestion, ctx.membership),
     },
   });
 }

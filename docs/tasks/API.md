@@ -2048,3 +2048,15 @@ Authorization: Bearer <token de la persona>
 - Tasks no avisa a Flow cuando la tarea o la compra cambian: Flow consulta el estado cuando lo enseña (`tasks.targets` con `ids` para las tareas; para la compra, la respuesta de `requests/purchase` repetida con la misma referencia, que devuelve su `status`).
 - Sin artículo de Recursos (`item_id`) ni tienda: los pone quien la aprueba en Tasks.
 - Un agente no usa estas rutas: tiene `tasks_create_task` y `tasks_request_purchase` (MCP).
+
+### 39.5 «Compras del evento» en Suministros (encargo de VG por Core; migración `0342`)
+
+- **Procedencia en la compra** (`tasks.purchase_requests`, migración `20261027_0342_tasks_purchase_source.sql`): `source_app` (p. ej. `flow`), `source_ref` (la referencia de quien pide: la unidad de Flow) y `source_url` (enlace de vuelta, solo https en ikisai.com). Las rellena `requests/purchase`; van juntas, son inmutables (`tasks.guard_immutable`) y la pareja es única entre las vivas. El dominio las valida igual (`validate.ts`, `WRITABLE`, `IMMUTABLE`).
+- **`requests/purchase` admite `external_url`** (opcional, https en ikisai.com) y devuelve `externalUrl`. Flow manda el enlace a su unidad o a su columna de Logística (`https://flow.ikisai.com/equipo/#/p/<proyecto de Flow>/…`). Sin él, el enlace de vuelta lleva a `https://flow.ikisai.com/equipo/`.
+- **La vista** (`compras-r6-ui.js`, `tcrMountEvent`), en Suministros, encima de las estanterías, solo si hay compras con procedencia:
+  - «Compras del evento · N» (N, las que faltan por recibir), agrupadas por proyecto de Tasks (el del evento), con lo pedido en orden: pedidas, aprobadas, compradas y, 7 días, las recibidas. Las rechazadas no salen.
+  - Cada una: título, cantidad y estado; lo siguiente (Aprobar, Comprada, Ha llegado), con los mismos pasos y la misma confirmación que la estantería; «Elegir artículo» si no tiene artículo del inventario; y «Ver en Flow ›» con «‹ Volver a Tasks» (`withReturnTo`).
+  - **Al recibirla, el stock entra por Recursos como siempre** (`recordReceipt`, envase entero incluido) si tiene artículo. Sin artículo queda recibida sin entrada, y lo dice («Recibida sin artículo: no entró en el inventario»).
+  - «Elegir artículo» abre el selector del inventario del kit (`createItemPicker`, también para dar de alta) y la solicitud pasa a apuntar a él (`item_id`; la unidad del artículo si no tenía), con «Deshacer».
+  - Quien solo lee la ve sin mandos.
+- **Pruebas:** `tests/tasks/requests-purchase.test.ts` (procedencia, inmutable, enlace solo en ikisai.com y vacía en las de la interfaz) y `tests/tasks/compras-r6.spec.ts` (la vista agrupada con «Ver en Flow ›», el artículo, aprobar, comprada y ha llegado con +3 en el inventario, y la lectora sin mandos).

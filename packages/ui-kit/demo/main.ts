@@ -1888,7 +1888,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

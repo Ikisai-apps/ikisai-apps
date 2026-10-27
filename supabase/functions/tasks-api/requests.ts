@@ -128,6 +128,9 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       const rawQuantity = body.quantity;
       if (rawQuantity !== undefined && rawQuantity !== null && (typeof rawQuantity !== 'number' || !Number.isFinite(rawQuantity) || rawQuantity <= 0 || rawQuantity >= 1e9)) invalid('quantity', 'quantity es un número mayor que 0.');
       const quantity = typeof rawQuantity === 'number' ? Math.round(rawQuantity * 1000) / 1000 : null;
+      // El enlace de vuelta a la app que pide (Flow: la unidad), solo https en ikisai.com (§39.5, migración 0342).
+      const externalUrl = text('external_url', 500);
+      if (externalUrl !== undefined && !ORIGIN_URL.test(externalUrl)) invalid('external_url', 'external_url debe ser https en ikisai.com.');
 
       // El proyecto: tiene que existir y verlo quien pide (tasks.targets aplica su alcance); de él sale el área.
       const target = async (kind: string, id: unknown): Promise<{ id?: string; tabId?: string; deleted?: boolean; archived?: boolean } | null> => {
@@ -153,6 +156,7 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       const shape = (r: Record<string, unknown>) => ({
         kind: 'purchase_request', id: r.id, tabId: r.tab_id, projectId: r.project_id, title: r.title, status: r.status,
         quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
+        externalUrl: r.source_url ?? null,
       });
       // Lo que ya hay con esa referencia solo se devuelve si es del mismo proyecto que se pide (ya comprobado como visible
       // para quien llama). De otro proyecto, aunque sea de su área, no se dice nada: ni datos ni dónde está. Así una
@@ -170,6 +174,8 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
         tab_id: tabId, project_id: projectId, title,
         note: [`Pedida desde ${source} · ${reference}`, note?.trim()].filter(Boolean).join('\n'),
         quantity, unit, priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
+        // Procedencia (0342): agrupa «Compras del evento» en Suministros y da el enlace de vuelta. Inmutable.
+        source_app: source, source_ref: reference, source_url: externalUrl ?? null,
       };
       try {
         await internal.commit(ctx, { requestId: `request-purchase-${crypto.randomUUID()}`, operations: [{ op: 'insert', table: 'tasks.purchase_requests', id, fields }] });

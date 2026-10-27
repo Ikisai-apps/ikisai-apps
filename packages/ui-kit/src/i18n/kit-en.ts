@@ -114,6 +114,7 @@ export const KIT_EN: Dictionary = {
   'Abiertos': 'Open',
   'Pendientes de verificar': 'Waiting to verify',
   'Mis borradores': 'My drafts',
+  'Mis reportes': 'My reports',
   'No se pudo cargar. Comprueba la conexión.': 'Could not load. Check your connection.',
   'Buscar en el mapa': 'Search the map',
   'Sin reportes en este punto.': 'No reports at this spot.',

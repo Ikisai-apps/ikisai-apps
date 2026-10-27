@@ -7,10 +7,12 @@
  * - El resumen, y «Dar de alta» con el motivo sin red (`bindOnline`). **Un solo envío** al núcleo, y nada se escribe antes:
  *   la comprobación de correo repetido, la cuenta, y después la ficha (enlazar, crear o fusionar). La contraseña temporal
  *   sale al final, una sola vez.
+ * - Flow + proyecto en un paso (encargo de VG del 27-10): bajo Flow, los proyectos (el más actual arriba). Marcar uno sin
+ *   acceso a Flow le da Editor; van en el mismo envío como `scopes.projects`. Sin proyecto no vería nada en Flow.
  */
 import { bindOnline, el, icon, renderMedal, replace, toast } from '@ikisai/ui-kit';
 import type { SyncClient } from '@ikisai/sync-client';
-import { HOUSE_LEVELS, HOUSE_LEVEL_LABELS, type HouseGrant, type HouseLevel } from '@ikisai/domain-central';
+import { HOUSE_LEVELS, HOUSE_LEVEL_LABELS, sortFlowProjects, todayInMadrid, type FlowProject, type HouseGrant, type HouseLevel } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import { grantFor, ROLE_LABELS, type Account, type AdminApi, type CatalogApp, type Role } from '../app/admin.ts';
 import type { Usage } from '@ikisai/ui-kit';
@@ -42,6 +44,11 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
   let chosen: PersonLite | null | undefined;
   const roles = new Map<string, Role>();
   let downgraded: string[] = [];
+  // Proyectos de Flow para el alta (`null` = Flow no los publica o sin red) y los elegidos.
+  let flowProjects: FlowProject[] | null = admin.cached.flowProjects ?? null;
+  const picked = new Set<string>();
+  /** A un outsider nuevo, Flow se lo da el nivel: aquí no se le pone Editor a mano. */
+  const outsiderNew = () => chosen === null && !!levelField && level.value === 'outsider';
 
   // Equipos de cada ficha, para «Como Iñaki M. (Mantenimiento)».
   const teamsOf = new Map<string, string[]>();
@@ -79,7 +86,8 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
   fbIgnoreWithin(faces, '.ctl-face-name');
 
   function paintSummary(): void {
-    const given = catalog.filter((a) => roles.has(a.id)).map((a) => `${appShort(catalog, a.id)} · ${ROLE_LABELS[roles.get(a.id)!]}`);
+    const projectNames = [...picked].map((id) => flowProjects?.find((pr) => pr.id === id)?.name).filter(Boolean);
+    const given = catalog.filter((a) => roles.has(a.id)).map((a) => `${appShort(catalog, a.id)} · ${ROLE_LABELS[roles.get(a.id)!]}${a.id === 'flow' && roles.get(a.id) !== 'owner' && projectNames.length ? ` (${projectNames.join(', ')})` : ''}`);
     const who = chosen ? chosen.display_name : name.value.trim() || 'La persona nueva';
     replace(summary, given.length ? `${who} entrará en ${given.join(', ')}.` : `${who} todavía no tiene ninguna app.`,
       downgraded.length ? el('span', { class: 'ctl-downgraded' }, ` Propietario no se copia: dalo a mano (${downgraded.map((a) => appShort(catalog, a)).join(', ')} va como Editor).`) : null);
@@ -94,9 +102,29 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
             onclick: () => { if (r) roles.set(app.id, r); else roles.delete(app.id); downgraded = downgraded.filter((a) => a !== app.id); paintApps(); paintSummary(); } }, r ? ROLE_LABELS[r] : 'Sin acceso');
         }));
       fbMark(group, 'central.accesos.alta.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${appShort(catalog, app.id)}`);
-      return el('div', { class: 'approw', 'data-feedback-id': 'central.accesos.alta.app', 'data-feedback-label': 'Acceso a una app' },
+      const row = el('div', { class: 'approw', 'data-feedback-id': 'central.accesos.alta.app', 'data-feedback-label': 'Acceso a una app' },
         el('span', { class: 'appname' }, el('strong', null, appShort(catalog, app.id)), el('span', { class: 'muted small' }, app.description ?? '')), group);
+      return app.id === 'flow' ? el('div', null, row, flowPicker()) : row;
     }));
+  }
+
+  /** Proyectos de Flow bajo su fila: marcar uno sin acceso a Flow le da Editor (un paso). Propietario los ve todos. */
+  function flowPicker(): HTMLElement | null {
+    if (roles.get('flow') === 'owner') return null;
+    if (outsiderNew()) return el('p', { class: 'muted small', id: 'inviteFlowOutsider' }, 'A un outsider, Flow se lo da el nivel; su proyecto se elige después, en su ficha.');
+    if (!flowProjects) return el('p', { class: 'muted small', id: 'inviteFlowUnavailable' }, 'Los proyectos de Flow se eligen cuando Flow los publique.');
+    if (!flowProjects.length) return null;
+    const list = sortFlowProjects(flowProjects, todayInMadrid());
+    return el('div', { class: 'scopes ctl-invprojects', id: 'inviteFlowProjects', role: 'group', 'aria-label': 'Proyectos de Flow', 'data-feedback-id': 'central.accesos.alta.proyectos_flow', 'data-feedback-label': 'Proyectos de Flow' },
+      el('span', { class: 'muted small' }, 'Proyectos de Flow: solo ve los marcados.'),
+      ...list.map((pr) => el('label', { class: 'check' },
+        el('input', { type: 'checkbox', value: pr.id, checked: picked.has(pr.id), 'data-feedback-id': 'central.accesos.alta.proyecto_flow', 'data-feedback-label': 'Proyecto de Flow',
+          onchange: (e: Event) => {
+            const box = e.target as HTMLInputElement;
+            if (box.checked) { picked.add(pr.id); if (!roles.has('flow')) roles.set('flow', 'editor'); } else picked.delete(pr.id);
+            paintApps(); paintSummary();
+          } }),
+        el('span', null, pr.name))));
   }
 
   function applyLike(): void {
@@ -140,7 +168,7 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
     error.textContent = '';
     const mail = email.value.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { error.textContent = 'Escribe un correo válido.'; email.focus(); return; }
-    const memberships = [...roles].map(([app, role]) => ({ app, role }));
+    const memberships = [...roles].map(([app, role]) => ({ app, role, ...(app === 'flow' && role !== 'owner' && picked.size ? { scopes: { projects: [...picked] } } : {}) }));
     if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
     const p = chosen ?? null;
     let displayName = p ? p.display_name : name.value.trim();
@@ -193,6 +221,7 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
   error,
   el('div', { class: 'formactions', 'data-feedback-id': 'central.accesos.alta.acciones', 'data-feedback-label': 'Acciones del alta' }, submit));
   name.addEventListener('input', paintSummary);
+  level.addEventListener('change', () => { paintApps(); paintSummary(); });
 
   replace(body,
     el('p', { class: 'muted' }, 'Elige a la persona: su cuenta queda enlazada con su ficha de Personas. Se crea con una contraseña temporal que se muestra una sola vez; si el correo ya tiene cuenta, solo se añaden los accesos.'),
@@ -201,6 +230,7 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
 
   try {
     [catalog, accounts, grants] = await Promise.all([admin.catalog(), admin.accounts().catch(() => accounts), admin.houseGrants().catch(() => grants)]);
+    if (catalog.some((a) => a.id === 'flow')) flowProjects = await admin.flowProjects().catch(() => flowProjects);
     paintApps();
     fillLike();
     paintSummary();

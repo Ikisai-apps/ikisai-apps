@@ -1,0 +1,166 @@
+/**
+ * Tipos de reserva, hito 2 (0482 y 0484; VG 26-10-2026): lo que la ficha pregunta y enseña según el tipo.
+ * - Jornadas abiertas: sin régimen ni estilo de menú; el menú sale de las cartas de Food («Cartas de Food»); el alojamiento
+ *   es a la carta, personas sueltas sobre la marcha («Alojar a alguien»: una ficha de huésped y su cama con sus noches).
+ * - Familiar: sin propuesta, cobro, tarifas ni alojamiento; come del menú de casa de Food.
+ */
+import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
+import { el, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { assignmentNights, dayNumber, isExtraBed } from '@ikisai/domain-booking';
+import { ASSIGNMENTS, GUESTS, RESERVATIONS, describeError, shortDay, today } from '../app/client.ts';
+import type { FieldSpec } from './form.ts';
+import type { LodgingData } from './lodging.ts';
+
+type Row = SyncedRow & Record<string, any>;
+
+export const isOpenDays = (type: unknown): boolean => type === 'jornadas_abiertas';
+export const isFamily = (type: unknown): boolean => type === 'familiar';
+
+const MEAL_PLAN_KEYS = ['meal_plan_requested', 'menu_style_requested', 'meal_plan_confirmed', 'menu_style_confirmed'];
+const LODGING_KEYS = ['uses_accommodation', 'room_distribution', 'rooms_count', 'accommodation_status'];
+
+/** Campos de las hojas de la reserva y del evento que no tocan a ese tipo. */
+export function hiddenKeys(type: unknown): Set<string> {
+  if (isOpenDays(type)) return new Set(MEAL_PLAN_KEYS);
+  if (isFamily(type)) return new Set([...MEAL_PLAN_KEYS, ...LODGING_KEYS]);
+  return new Set();
+}
+export const specsFor = (specs: FieldSpec[], type: unknown): FieldSpec[] => {
+  const hidden = hiddenKeys(type);
+  return hidden.size ? specs.filter((s) => !hidden.has(s.key)) : specs;
+};
+
+/** Un carta de Food tal como la publica `food.booking_carta_projection`. */
+interface Carta { carta_id: string; name: string; active: boolean; items_count: number | null; event_id: string | null }
+
+/**
+ * «Cartas de Food» (jornadas abiertas): cuáles aplican a la reserva (`food_carta_ids`). Las cartas las lee de Food con red;
+ * sin red enseña cuántas hay elegidas.
+ */
+export function renderCartas(o: { client: SyncClient; reservation: Row; editable: boolean; run: (ops: RowOperation[], message: string) => Promise<boolean> }): HTMLElement {
+  const chosen = new Set<string>(Array.isArray(o.reservation.food_carta_ids) ? o.reservation.food_carta_ids : []);
+  const body = el('div', { id: 'cartasBody' }, el('p', { class: 'hint' }, 'Cargando las cartas de Food…'));
+  const host = el('div', { id: 'foodCartas', 'data-feedback-id': 'booking.reserva.comidas.cartas', 'data-feedback-label': 'Cartas de Food' },
+    el('div', { class: 'sectionlabel' }, 'Cartas de Food', el('span', { class: 'count' }, String(chosen.size))), body);
+
+  async function load(): Promise<void> {
+    if (!navigator.onLine) return void replace(body, el('p', { class: 'hint' }, `${chosen.size ? plural(chosen.size, 'carta elegida', 'cartas elegidas') : 'Ninguna carta elegida'}. Las cartas se cargan con conexión.`));
+    let cartas: Carta[];
+    try {
+      cartas = ((await o.client.api<{ rows: Carta[] }>('/read/food.booking_carta_projection?limit=200')).rows ?? []);
+    } catch (error) {
+      return void replace(body, el('p', { class: 'hint' }, `No se pueden leer las cartas de Food: ${describeError(error)}`));
+    }
+    const shown = cartas.filter((c) => c.active || chosen.has(c.carta_id)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    if (shown.length === 0) return void replace(body, el('p', { class: 'hint', id: 'cartasEmpty' }, 'Food aún no ha publicado ninguna carta.'));
+    replace(body,
+      el('p', { class: 'hint' }, 'Lo que se vende en el evento sale de estas cartas. Food las ve en la ficha del evento.'),
+      el('div', { class: 'btnrow', id: 'cartasList' }, shown.map((c) => {
+        const on = chosen.has(c.carta_id);
+        return el('button', {
+          type: 'button', class: `ghost small${on ? ' on' : ''}`, 'aria-pressed': String(on), disabled: !o.editable, dataset: { carta: c.carta_id },
+          'data-feedback-id': 'booking.reserva.comidas.cartas.carta', 'data-feedback-label': 'Carta',
+          onclick: () => void toggle(c.carta_id),
+        }, c.name, c.items_count ? ` · ${c.items_count}` : '', c.active ? '' : ' (retirada)');
+      })));
+  }
+
+  async function toggle(id: string): Promise<void> {
+    const next = new Set(chosen);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    await o.run([{ op: 'update', table: RESERVATIONS, id: o.reservation.id, expectedRevision: o.reservation.revision, fields: { food_carta_ids: next.size ? [...next] : null } }],
+      next.has(id) ? 'Carta añadida.' : 'Carta quitada.');
+  }
+
+  void load();
+  return host;
+}
+
+/** Familiar: el evento come del menú de casa de Food (O3). */
+export function renderHouseMenu(): HTMLElement {
+  return el('p', { id: 'houseMenu', 'data-feedback-id': 'booking.reserva.comidas.casa', 'data-feedback-label': 'Menú de casa' },
+    el('strong', null, 'Menú de casa (Food)'), ' · Las comidas salen del menú de casa; no hay régimen propio.');
+}
+
+const guestName = (g: Row): string => [g.first_name, g.last_name_1].filter(Boolean).join(' ') || 'Sin nombre';
+
+/**
+ * «Alojamiento a la carta» (jornadas abiertas): quién duerme esta noche y «Alojar a alguien» en una hoja de un paso
+ * (nombre, desde, noches y cama). Crea la ficha de huésped y su cama con esas noches en un lote; sin red, al reconectar.
+ */
+export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: Row; data: LodgingData; guests: Row[]; editable: boolean }): HTMLElement {
+  const day = today();
+  const now = dayNumber(day)!;
+  const bedOf = new Map(o.data.beds.map((b) => [b.id, b]));
+  const guestOf = new Map(o.guests.map((g) => [g.id, g]));
+  const tonight = o.data.assignments.filter((a) => {
+    const n = assignmentNights(a as never, o.reservation as never);
+    return n !== null && n[0] <= now && now < n[1] && a.guest_id;
+  });
+
+  function freeBeds(from: string, nights: number): Row[] {
+    const range: [number, number] = [dayNumber(from)!, dayNumber(from)! + nights];
+    const busy = new Set(o.data.assignments.filter((a) => {
+      if (!a.bed_id) return false;
+      const n = assignmentNights(a as never, o.reservation as never);
+      return n !== null && n[0] < range[1] && range[0] < n[1];
+    }).map((a) => a.bed_id));
+    return o.data.beds.filter((b) => b.active !== false && !b.deleted_at && !isExtraBed(b as never) && !b.team_bed && !busy.has(b.id));
+  }
+
+  function open(): void {
+    const start = String(o.reservation.start_date ?? day);
+    const fromDefault = day < start ? start : day;
+    const name = el('input', { id: 'walkName', type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
+    const from = el('input', { id: 'walkFrom', type: 'date', value: fromDefault }) as HTMLInputElement;
+    const nights = el('input', { id: 'walkNights', type: 'number', min: 1, max: 30, step: 1, value: '1', inputmode: 'numeric' }) as HTMLInputElement;
+    const bed = el('select', { id: 'walkBed' }) as HTMLSelectElement;
+    const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
+    const fill = () => {
+      const beds = from.value && Number(nights.value) > 0 ? freeBeds(from.value, Number(nights.value)) : [];
+      const spaceName = (b: Row) => o.data.spaces.find((s) => s.id === b.space_id)?.name ?? '';
+      replace(bed, beds.length ? beds.map((b) => el('option', { value: b.id }, `${spaceName(b)} · ${b.label}`)) : el('option', { value: '' }, 'No hay camas libres esas noches'));
+      bed.disabled = beds.length === 0;
+    };
+    from.addEventListener('change', fill); nights.addEventListener('input', fill);
+    fill();
+    const save = el('button', { class: 'primary', type: 'button', id: 'walkSave', 'data-feedback-id': 'booking.reserva.alacarta.guardar', 'data-feedback-label': 'Alojar', onclick: () => void submit() }, 'Alojar');
+    async function submit(): Promise<void> {
+      const n = Number(nights.value);
+      if (!name.value.trim()) return show('Escribe el nombre.');
+      if (!from.value || !Number.isInteger(n) || n < 1) return show('Indica desde cuándo y cuántas noches.');
+      if (!bed.value) return show('Elige una cama libre.');
+      const chosen = bedOf.get(bed.value)!;
+      const to = new Date(`${from.value}T00:00:00Z`); to.setUTCDate(to.getUTCDate() + n);
+      const guestId = crypto.randomUUID();
+      const ops: RowOperation[] = [
+        { op: 'insert', table: GUESTS, id: guestId, fields: { event_id: o.event.id, first_name: name.value.trim() } },
+        { op: 'insert', table: ASSIGNMENTS, id: crypto.randomUUID(), fields: { event_id: o.event.id, space_id: chosen.space_id, bed_id: chosen.id, guest_id: guestId, persons: 1, from_date: from.value, to_date: to.toISOString().slice(0, 10) } },
+      ];
+      save.disabled = true;
+      try {
+        await o.client.commit(ops);
+        await sheet.close(true);
+        toast(navigator.onLine ? `Alojamiento guardado: ${name.value.trim()}.` : 'Guardado en este dispositivo. Se enviará al reconectar.');
+      } catch (e) { show(describeError(e)); save.disabled = false; }
+    }
+    function show(text: string): void { error.hidden = false; error.textContent = text; }
+    const field = (text: string, control: HTMLElement, key: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reserva.alacarta.${key}`, 'data-feedback-label': text }, el('span', null, text), control);
+    const sheet: Sheet = openSheet({
+      title: 'Alojar a alguien',
+      body: el('form', { 'data-feedback-id': 'booking.reserva.alacarta.hoja', 'data-feedback-label': 'Alojar a alguien', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
+        el('div', { class: 'rowform' }, field('Nombre', name, 'nombre'), field('Desde', from, 'desde'), field('Noches', nights, 'noches'), field('Cama', bed, 'cama'), error)),
+      foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+      initialFocus: name,
+    });
+  }
+
+  return el('article', { class: 'card', id: 'blockWalkIn', 'data-feedback-id': 'booking.reserva.alacarta', 'data-feedback-label': 'Alojamiento a la carta' },
+    el('div', { class: 'cardhead' }, el('h3', null, 'Alojamiento a la carta')),
+    el('div', { class: 'sectionlabel' }, 'Duermen esta noche', el('span', { class: 'count' }, String(tonight.length))),
+    tonight.length === 0 ? el('p', { class: 'hint', id: 'walkTonightEmpty' }, 'Nadie esta noche.')
+      : el('ul', { class: 'list', id: 'walkTonight' }, tonight.map((a) => el('li', { class: 'row', 'data-feedback-ignore': '' },
+        el('div', { class: 'row-title' }, el('span', { class: 'name' }, guestName(guestOf.get(a.guest_id) ?? {} as Row))),
+        el('div', { class: 'row-meta' }, `${bedOf.get(a.bed_id)?.label ?? 'Sin cama'} · ${shortDay(a.from_date ?? o.reservation.start_date)} → ${shortDay(a.to_date ?? o.reservation.end_date)}`)))),
+    o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'primary small', type: 'button', id: 'walkIn', 'data-feedback-id': 'booking.reserva.alacarta.alojar', 'data-feedback-label': 'Alojar a alguien', onclick: open }, 'Alojar a alguien')) : null);
+}

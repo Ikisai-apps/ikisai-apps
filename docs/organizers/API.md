@@ -650,3 +650,85 @@ Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal
 - **Resumen:** el aviso «N personas piden apuntarse a tu retiro» con «Ver solicitudes».
 - **Pestaña Asistentes:** el número de pendientes. Si hay solicitudes, la pestaña sale aunque el retiro no recoja datos de huéspedes.
 - **Necesita red:** decidir no se encola. Si la lectura falla (sin red y sin copia, o un coorganizador sin permiso), la pantalla sigue sin el bloque.
+
+## 19. Acceso que no caduca, dirección como coorganizadora y «Verlo como huésped» (decisión de VG, 26-10-2026)
+
+Reglas de VG:
+- el acceso a Organizers no caduca;
+- quien organiza ve sus retiros pasados y los que está montando, y también es huésped de su retiro en Guests;
+- dirección figura como coorganizadora de cualquier retiro.
+
+Peticiones y respuestas en `PETICIONES.md`: B19–B21 de Booking (#725, 0481), K8 y K9 de Core (#723) y Gu1 de Guests.
+
+### 19.1 Acceso
+
+- **Lo que lo cortaba no estaba en el cliente.** Organizers no borra nada al terminar el evento: la caché solo se borra al cerrar sesión. El acceso lo cortaban el enlace (fin de la reserva más 3 días) y el pase común (30 días, sin alargarse al refrescar).
+  - Con B19, el enlace de quien organiza vale mientras la reserva exista (`'infinity'`, también para retiros terminados, cancelados o perdidos). Solo lo cortan revocarlo o borrar la reserva.
+  - Con K9, el pase se alarga al refrescar la sesión.
+- **Entrada:** un enlace que ya no vale dice «Este enlace ya no está activo» y que con uno nuevo se vuelven a ver todos los retiros, también los pasados. Organizers no lee `validUntil`.
+- **Mis retiros:** los pasados y los cancelados se quedan, plegados, para siempre.
+
+### 19.2 Dirección como coorganizadora (ámbito «todos»)
+
+- **Ámbito:** una entrada `{"all": true}` en `scopes.grants` de Organizers. La concede Core por el nivel de casa «dirección». `core.portal_in_scope` la acepta (K8) y Booking también en sus lecturas y acciones.
+- **`booking.portal_reservations`:** cada elemento lleva `as` (`'organizer'` por permiso propio, `'coorganizer'` por «todos») y `as_guest_id` (B20 y B21).
+- **Dominio** (`_domain/organizers`): `hasAllReservations`, `inReservationScope` (ver) y `writeMode` (`write` con permiso propio, `propose` con solo «todos»).
+- **Mis retiros con «todos»:**
+  - todos los retiros de Ikisai, con buscador por título o código (`#retreatSearch`, sin acentos ni mayúsculas) y la marca «Coorganizas»;
+  - la ficha no se abre sola;
+  - las portadas de los retiros ajenos se piden al buscar o al abrir su grupo.
+- **Ficha:** la misma, con la línea «Lo ves desde dirección de Ikisai: coorganizas todos los retiros.» (`#retreatCoorganizer`).
+- **Programa y Alojamiento** son datos operativos de Booking: con «todos» se escriben directo (respuesta de Core).
+
+### 19.3 Propuestas del equipo de Ikisai (migración 0703)
+
+Dirección edita la experiencia y las ofertas de un retiro que no es suyo, pero el cambio no se escribe: queda como propuesta y quien organiza la acepta o la descarta. Se hace con las sugerencias del núcleo (contrato §3.10).
+
+| Pieza | Qué hace |
+|---|---|
+| `organizers.own_grant(actor, reserva)` | Permiso propio (una entrada `{reservation_id}`). «Todos» no cuenta |
+| `organizers.validate_batch` | Escribir en `organizers.*` pide permiso propio. Con solo «todos» da `SUGGESTION_REQUIRED` (403); fuera de ámbito, `OUT_OF_SCOPE` |
+| Tipo `propuesta_equipo` | «Propuesta del equipo de Ikisai»: altas, cambios y bajas en experiencias, materiales, preguntas y ofertas. Solo la envía quien tiene el nivel de casa «dirección». `detail.reservation_id` dice de qué retiro es |
+| `suggestionVisible` (Edge) | Ven, previsualizan y deciden la propuesta solo quienes tienen permiso propio sobre ese retiro. Dirección sigue las suyas con `scope=mine` y puede retirarlas, pero no decidirlas |
+
+- **Borrador de dirección** (`app/proposal-draft.ts`):
+  - `save` junta cada cambio en un borrador por retiro, y `rowsOf` y `watch` lo ven encima del espejo, así que las pantallas no cambian;
+  - varias ediciones de una fila quedan en una operación, y un alta que se borra desaparece;
+  - vive en la pestaña (`sessionStorage`).
+- **«Propuesta para quien organiza»** (`#teamProposal`, solo dirección):
+  - lo que lleva sin enviar, con «Enviar a quien organiza» (una sola sugerencia, `requestId` estable) y «Descartar cambios» (con confirmación);
+  - las enviadas, a la espera, con «Retirar».
+- **«Propuestas del equipo de Ikisai»** (`#teamInbox`, quien organiza): cada pendiente con lo que cambia («Añade · Oferta «Masaje»»), «Aceptar» y «Descartar».
+  - Al aceptar, el lote se aplica como un commit suyo, y lo nuevo en materiales y preguntas pasa a su biblioteca (`owner_id`, lote corregido).
+  - En Mis retiros, la tarjeta del retiro lleva «N propuestas del equipo».
+- **Necesita red** enviar, retirar, aceptar y descartar.
+- **Archivos** (encargo de VG por Core, 27-10): un material con archivo propuesto por dirección se sube al momento (`app/upload-now.ts`: ticket, `PUT` y verificación, como la firma de Guests), y la propuesta lleva el `file_id` verificado. Una sugerencia no viaja con la cola de subidas: sin red, `PROPOSAL_NO_FILES`.
+  - Hasta que se acepta, el archivo solo lo lee quien lo subió (K3).
+  - Al aceptarlo lo referencia el material, y lo leen quien organiza y, si lo publica, sus asistentes.
+  - Si la propuesta no se acepta, la recogida de huérfanos lo borra (marca a los 2 días y borra a los 30).
+- **Errores:** `SUGGESTION_REQUIRED`, `SUGGESTION_UNAVAILABLE` (ya decidida o retirada) y `TOO_MANY_SUGGESTIONS` (30 pendientes por persona), con su texto en `describeError`.
+- **Ids de feedback:**
+  - `organizers.retiro.propuesta_equipo` (`.enviar`, `.descartar` y `.retirar`);
+  - `organizers.retiro.propuestas_equipo` (`.aceptar` y `.descartar`);
+  - `organizers.retiros.buscador` (`.campo`);
+  - `organizers.retiro.cabecera.ver_como_huesped`.
+
+### 19.4 «Verlo como huésped»
+
+- **Cuándo sale:** en la cabecera de la ficha (`#viewAsGuest`), si `as_guest_id` no es null y la cuenta tiene Guests en `GET apps`. Booking crea la ficha de huésped de quien organiza (`portal_role = 'organizer'`) solo en retiros vivos y no terminados.
+- **Dónde lleva:** abre `https://guests.ikisai.com/#/r/<reservation_id>` (en minúsculas, Gu1) en otra pestaña. Guests entra con el pase común, sin otro inicio de sesión, y abre la familia del retiro o la ficha si solo hay una persona.
+- **Catálogo de apps:** se lee una vez y se olvida al cerrar sesión (`app/guest-view.ts`).
+
+## 20. Comida que se ofrece (Food Fd4, `food.portal_offers`; encargo de VG por Core, 27-10-2026)
+
+En Experiencia › Menú, encima del menú día a día, el bloque «Comida que se ofrece» (`#foodOffers`) enseña las ofertas de comida del retiro tal como las publica Food. Es solo lectura.
+
+- **Cada oferta:**
+  - el nombre, «Menú cerrado» o «Carta», y «Provisional» si lo es;
+  - **quién paga**: «Lo pagas tú (incluido en tu retiro)», «Lo paga cada asistente, en barra» o «…, al final, en su cuenta», con los textos acordados con Food;
+  - los días y servicios, o «Todos los días · todos los servicios», el lugar y, si los hay, los grupos de comida.
+- **Una carta** enseña sus líneas por ámbito (Clásicos, Gourmet, Barra) y por código, con el precio de venta (céntimos, IVA incluido), la descripción, las dietas y los alérgenos con su nombre. Si cocina no ha revisado la receta, dice «sin revisar por cocina».
+- **Un menú cerrado** remite al menú día a día, que sigue debajo con sus comentarios (`portal_menu`).
+- **Lo interno no se ve:** Food no lo devuelve y Organizers, además, descarta lo que llegue con `audience = 'interna'`.
+- **Sin la lectura** (Food sin publicar) o con un fallo sin copia guardada, el bloque no sale. Sin red, la última copia con su aviso.
+- **Reglas puras** en `app/food-offers.ts` (`visibleOffers`, `payerText`, `whenText`, `priceText` y `linesByScope`), con su prueba `food-offers.test.ts`. Id de feedback: `organizers.menu.ofertas`.

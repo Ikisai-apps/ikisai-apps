@@ -1,5 +1,5 @@
 import { createQuantityField, el, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
-import { myOrders, PublicApiError, readCustomer, submitOrder, type MyOrder } from './customer.ts';
+import { myOrders, PublicApiError, readCustomer, redeemInvitation, submitOrder, type MyOrder } from './customer.ts';
 import {
   basketLines, basketTotal, formatEuros, groupMenu, productAssets, setQuantity, SCOPE_LABELS,
   type Basket, type MenuProduct,
@@ -46,6 +46,20 @@ export function mountCarta(root: HTMLElement): () => void {
     replace(mineButton, c?.number ? `Soy el ${c.number}` : 'Mis pedidos');
   };
   paintMine();
+  const notice = el('p', { class: 'carta-notice', role: 'status', hidden: true });
+  // Enlace de Guests: se canjea una vez y se quita de la dirección (no queda en el historial ni se comparte por error).
+  const invitation = new URLSearchParams(location.search).get('invitacion');
+  if (invitation) {
+    history.replaceState(null, '', location.pathname + location.hash);
+    redeemInvitation(invitation).then((c) => {
+      paintMine();
+      notice.hidden = false;
+      replace(notice, c.number ? `Eres el ${c.number}: pide desde aquí y di tu número en la barra.` : 'Listo: ya puedes pedir desde aquí.');
+    }).catch((error) => {
+      notice.hidden = false;
+      replace(notice, error instanceof PublicApiError ? error.message : 'No se ha podido usar el enlace.');
+    });
+  }
   const bar = el('div', { class: 'carta-bar', id: 'cartaBar', role: 'region', 'aria-label': 'Mi pedido' });
   const page = el('div', { class: 'carta-page' },
     el('header', { class: 'carta-head' },
@@ -53,7 +67,7 @@ export function mountCarta(root: HTMLElement): () => void {
       el('h1', null, 'Carta'),
       mineButton,
     ),
-    main, bar);
+    notice, main, bar);
   replace(root, page);
   document.title = 'Carta · Ikisai Flow';
 
@@ -87,6 +101,7 @@ export function mountCarta(root: HTMLElement): () => void {
       el('div', { class: 'carta-text' },
         el('h3', null, product.name),
         product.description ? el('p', { class: 'muted' }, product.description) : null,
+        product.allergens?.length ? el('p', { class: 'carta-allergens' }, `Alérgenos: ${product.allergens.join(', ')}${product.allergensChecked ? '' : ' (sin confirmar con la etiqueta: pregunta en barra)'}`) : null,
         el('strong', { class: 'carta-price' }, formatEuros(product.priceCents)),
       ),
       el('div', { class: 'carta-qty' }, field.element),
