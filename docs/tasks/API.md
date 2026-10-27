@@ -2354,3 +2354,20 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **Estado de vuelta:** por `tasks.targets`, como los vencimientos.
 - **En la app:** «Gestionar entradas» las conoce como «Central · Revisión semanal» y propone el proyecto de Dirección.
 - **Pruebas:** `tests/tasks/central-weekly.test.ts`.
+
+## 57. Entregables del proyecto (migración `0361`; «Proyectos y producción» 7.5)
+
+- **`tasks.project_deliverables`:** lo que el proyecto entrega.
+  - `name` (1–200), `quantity` (opcional, > 0), `space_id` (dónde va, un espacio vivo de Recursos), `note` y `position`.
+  - `status` se pone a mano: `todo` | `delivered` (entregado) | `installed` (instalado).
+  - «Hecho» no se guarda: se calcula al leer cuando lo están todas sus tareas madre.
+  - La visibilidad es la de su proyecto. Escriben editor y owner.
+- **`tasks.tasks.deliverable_id`:** solo en la madre, como la fase (§51). Los pasos heredan el de su madre al leer.
+- **Al mover:** si la tarea cambia de proyecto o pasa a ser hija, lo suelta (trigger `tasks.task_deliverable_follow`, y `moveTaskOps`).
+- **Reglas (hook `tasks.validate_deliverables`):**
+  - el entregable es vivo, de su proyecto y va en una madre (422 `INVALID_DELIVERABLE`);
+  - su espacio existe (422 `INVALID_SPACE`);
+  - con tareas vivas no se borra (422 `DELIVERABLE_NOT_EMPTY`).
+- **Modelo de la interfaz:** `LegacyProject.deliverables` (`{id, name, quantity, status, spaceId, note, order, version}`, más los calculados `done`, `open` y `total`) y `LegacyTask.deliverableId`. Quitar uno del modelo suelta sus tareas.
+- **Papelera:** los entregables van a ella con su proyecto y la purga los borra.
+- **Pruebas:** `tests/tasks/deliverables.test.ts`.

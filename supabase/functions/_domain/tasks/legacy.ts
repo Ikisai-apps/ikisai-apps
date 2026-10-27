@@ -9,7 +9,7 @@
 import { statuses } from './graph.ts';
 import { fullTab, type Scopes } from './scopes.ts';
 import { personFields, personKey } from './people.ts';
-import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type Operation, type PhaseStatus, type Priority, type ProjectStatus, type TaskRow, type Uuid } from './types.ts';
+import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type DeliverableStatus, type Operation, type PhaseStatus, type Priority, type ProjectStatus, type TaskRow, type Uuid } from './types.ts';
 
 export interface LegacyAttachment { id: Uuid; name: string; mime?: string; size?: number; sha256?: string; url?: string }
 /** `general`: del catálogo General (tab_id nulo, FB_2026_023); sale en todas las áreas y se guarda una sola vez. */
@@ -35,6 +35,8 @@ export interface LegacyTask {
   phaseId?: Uuid | null;
   /** Unidades (0360, §55): en la madre, cuántas; en la tarea de trabajo, cuántas hay hechas. Sin el campo, no se toca. */
   unitCount?: number | null; unitsDone?: number;
+  /** Entregable (0361, §57): como `phaseId` (en un paso, el de su madre, solo lectura). Sin el campo, no se toca. */
+  deliverableId?: Uuid | null;
   order: number; attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; deleteBatch: string | null; dependsOn: Uuid[]; cost: number | null;
   version: number; updatedAt: string;
   /** Quién la tocó la última vez (`updated_by`; «Lo último que tocaste» y «Juan, ayer» del plan de hoy). `decompose` lo ignora. */
@@ -45,6 +47,11 @@ export interface LegacyTask {
 /** Fase de un proyecto (0356, §51). `done` y `open` se calculan al componer; `decompose` los ignora. */
 export interface LegacyPhase {
   id: Uuid; name: string; order: number; status: PhaseStatus; start: string; due: string; closedNote: string; version: number;
+  deleted?: boolean; done?: boolean; open?: number; total?: number;
+}
+/** Entregable de un proyecto (0361, §57). `done`, `open` y `total` se calculan al componer; `decompose` los ignora. */
+export interface LegacyDeliverable {
+  id: Uuid; name: string; quantity: number | null; status: DeliverableStatus; spaceId: Uuid | null; note: string; order: number; version: number;
   deleted?: boolean; done?: boolean; open?: number; total?: number;
 }
 export interface LegacyProject {
@@ -59,6 +66,8 @@ export interface LegacyProject {
   ownerPerson?: string | null;
   /** Fases (0356, §51), en orden. Solo si el proyecto tiene alguna; sin el campo, `decompose` no las toca. */
   phases?: LegacyPhase[];
+  /** Entregables (0361, §57), en orden. Solo si el proyecto tiene alguno; sin el campo, `decompose` no los toca. */
+  deliverables?: LegacyDeliverable[];
   attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; order: number; color: string | null; budget: number | null;
   system: 'inbox' | null; version: number; updatedAt: string; tasks: LegacyTask[];
 }
@@ -123,6 +132,9 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
   const dependencies = group(live(data['tasks.task_dependencies']), (d) => d.task_id);
   const phases = group(live(data['tasks.project_phases'] ?? []), (ph) => ph.project_id);
   const unitsDone = group(live(data['tasks.task_units'] ?? []), (u) => u.task_id);
+  const deliverables = group(live(data['tasks.project_deliverables'] ?? []), (d) => d.project_id);
+  const deliverableOf = (t: TaskRow): Uuid | null => (t.parent_id ? taskById.get(t.parent_id)?.deliverable_id ?? null : t.deliverable_id ?? null);
+  const deliverableTasks = group(live(data['tasks.tasks']).filter((t) => !t.parent_id), (t) => t.deliverable_id ?? null);
   const taskById = new Map(data['tasks.tasks'].map((t) => [t.id, t]));
   // La fase de una tarea: la suya si es madre; la de su madre si es un paso.
   const phaseOf = (t: TaskRow): Uuid | null => (t.parent_id ? taskById.get(t.parent_id)?.phase_id ?? null : t.phase_id ?? null);
@@ -152,6 +164,14 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           done: list.length > 0 && open === 0, open, total: list.length,
         };
       }) } : {}),
+      ...(deliverables.has(p.id) ? { deliverables: deliverables.get(p.id)!.sort(byPosition).map((d) => {
+        const list = deliverableTasks.get(d.id) ?? [];
+        const open = list.filter((t) => !info.get(t.id)?.done).length;
+        return {
+          id: d.id, name: d.name, quantity: d.quantity == null ? null : Number(d.quantity), status: d.status, spaceId: d.space_id, note: d.note, order: d.position, version: d.revision,
+          done: list.length > 0 && open === 0, open, total: list.length,
+        };
+      }) } : {}),
       attachments: (projectFiles.get(p.id) ?? []).sort(byPosition).map(attachment),
       deleted: !!p.deleted_at, deletedAt: p.deleted_at, order: p.position, color: p.color, budget: p.budget, system: p.system,
       version: p.revision, updatedAt: p.updated_at,
@@ -169,6 +189,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           ...ownerOf(t),
           ...(phaseOf(t) ? { phaseId: phaseOf(t) } : {}),
           ...(t.unit_count ? { unitCount: t.unit_count } : {}),
+          ...(deliverableOf(t) ? { deliverableId: deliverableOf(t) } : {}),
           ...(unitsDone.has(t.id) ? { unitsDone: unitsDone.get(t.id)!.length } : {}),
           dependsOn: (dependencies.get(t.id) ?? []).sort(byPosition).map((d) => d.depends_on_id),
           attachments: (taskFiles.get(t.id) ?? []).sort(byPosition).map(attachment),
@@ -338,6 +359,21 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         const kept = new Set(p.phases.map((ph) => ph.id));
         for (const row of phaseRows) if (!kept.has(row.id)) want('tasks.project_phases', row.id, {}, true);
       }
+      // Entregables (0361): como las fases.
+      const deliverableRows = live(data['tasks.project_deliverables'] ?? []).filter((d) => d.project_id === p.id);
+      if (p.deliverables) {
+        p.deliverables.forEach((d, i) => {
+          const row = rowOf('tasks.project_deliverables', d.id);
+          want('tasks.project_deliverables', d.id, {
+            name: d.name, quantity: typeof d.quantity === 'number' ? d.quantity : null, status: d.status ?? 'todo', space_id: orNull(d.spaceId), note: text(d.note),
+            position: typeof d.order === 'number' ? d.order : (i + 1) * POSITION_STEP,
+            ...(row ? {} : { tab_id: tab.id, project_id: p.id }),
+          }, !!d.deleted);
+        });
+        const keptDeliverables = new Set(p.deliverables.map((d) => d.id));
+        for (const row of deliverableRows) if (!keptDeliverables.has(row.id)) want('tasks.project_deliverables', row.id, {}, true);
+      }
+      const liveDeliverables = new Set(p.deliverables ? p.deliverables.filter((d) => !d.deleted).map((d) => d.id) : deliverableRows.map((d) => d.id));
       const livePhases = new Set(p.phases ? p.phases.filter((ph) => !ph.deleted).map((ph) => ph.id) : phaseRows.map((ph) => ph.id));
       (p.tasks ?? []).forEach((t, taskIndex) => {
         const taskRow = rowOf('tasks.tasks', t.id) as (TaskRow & Row) | undefined;
@@ -346,6 +382,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         const currentPhase = taskRow?.phase_id ?? null;
         const askedPhase = t.phaseId !== undefined ? t.phaseId : currentPhase;
         const phase = !t.parentId && askedPhase && livePhases.has(askedPhase) ? askedPhase : null;
+        const currentDeliverable = taskRow?.deliverable_id ?? null;
+        const askedDeliverable = t.deliverableId !== undefined ? t.deliverableId : currentDeliverable;
+        const deliverable = !t.parentId && askedDeliverable && liveDeliverables.has(askedDeliverable) ? askedDeliverable : null;
         want('tasks.tasks', t.id, {
           project_id: p.id, parent_id: orNull(t.parentId), title: t.text, note: text(t.note),
           // El `done` de un contenedor se calcula: se guarda como pendiente y no se compara con el valor mostrado.
@@ -357,6 +396,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
           position: typeof t.order === 'number' ? t.order : (taskIndex + 1) * POSITION_STEP,
           ...ownerFields(t),
           ...(t.phaseId !== undefined || currentPhase ? { phase_id: phase } : {}),
+          ...(t.deliverableId !== undefined || currentDeliverable ? { deliverable_id: deliverable } : {}),
           ...(t.unitCount !== undefined && !t.parentId ? { unit_count: t.unitCount || null } : {}),
           ...(taskRow ? {} : { tab_id: tab.id }),
         }, deletedWanted.get(t.id) ?? false);
@@ -416,7 +456,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
   return [first, second].filter((batch) => batch.length > 0).map(ordered);
 }
 
-const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials', 'tasks.task_units'];
+const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.project_phases', 'tasks.project_deliverables', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials', 'tasks.task_units'];
 
 /** Orden canónico de tablas; dentro de tareas y etiquetas, los padres antes que sus hijas (las FK son inmediatas). */
 function ordered(operations: Operation[]): Operation[] {
