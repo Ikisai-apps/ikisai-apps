@@ -69,26 +69,26 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
     const { agents, people } = await data();
     let sheet: Sheet | null = null;
     const v = (x: unknown) => (x === null || x === undefined ? '' : String(x));
-    const name = fbMark(el('input', { id: 'ag-name', 'data-field-id': 'central.accesos.agent_name', maxlength: 80, value: v(current?.display_name), required: true }) as HTMLInputElement, 'central.accesos.agentes.fichas.nombre', 'Nombre del agente');
+    const name = fbMark(el('input', { id: 'ag-name', 'data-field-id': 'central.accesos.agent_name', 'data-field-entity': 'central.agents', 'data-field-prop': 'display_name', maxlength: 80, value: v(current?.display_name), required: true }) as HTMLInputElement, 'central.accesos.agentes.fichas.nombre', 'Nombre del agente');
     const accounts = [...new Map(keys().map((k) => [k.userId, k.name])).entries()];
-    const account = fbMark(el('select', { id: 'ag-account', 'data-field-id': 'central.accesos.agent_account' }, el('option', { value: '' }, 'Sin cuenta'),
+    const account = fbMark(el('select', { id: 'ag-account', 'data-field-id': 'central.accesos.agent_account', 'data-field-entity': 'central.agents', 'data-field-prop': 'user_id' }, el('option', { value: '' }, 'Sin cuenta'),
       ...accounts.map(([id, n]) => el('option', { value: id, selected: current?.user_id === id }, n))) as HTMLSelectElement, 'central.accesos.agentes.fichas.cuenta', 'Cuenta del agente');
-    const mission = fbMark(el('textarea', { id: 'ag-mission', 'data-field-id': 'central.accesos.agent_mission', maxlength: 500, rows: 3 }, v(current?.mission)) as HTMLTextAreaElement, 'central.accesos.agentes.fichas.mision', 'Misión');
-    const areas = fbMark(el('input', { id: 'ag-areas', 'data-field-id': 'central.accesos.agent_areas', maxlength: 300, value: v(current?.work_areas), placeholder: 'Apps y repositorios' }) as HTMLInputElement, 'central.accesos.agentes.fichas.trabaja', 'Dónde trabaja');
-    const kind = fbMark(el('select', { id: 'ag-kind', 'data-field-id': 'central.accesos.agent_responsible_kind' }, ...(['person', 'service'] as const).map((k) => el('option', { value: k, selected: (current?.responsible_kind ?? 'person') === k }, RESPONSIBLE_KIND_LABELS[k]))) as HTMLSelectElement, 'central.accesos.agentes.fichas.tipo', 'Tipo de responsable');
+    const mission = fbMark(el('textarea', { id: 'ag-mission', 'data-field-id': 'central.accesos.agent_mission', 'data-field-entity': 'central.agents', 'data-field-prop': 'mission', maxlength: 500, rows: 3 }, v(current?.mission)) as HTMLTextAreaElement, 'central.accesos.agentes.fichas.mision', 'Misión');
+    const areas = fbMark(el('input', { id: 'ag-areas', 'data-field-id': 'central.accesos.agent_areas', 'data-field-entity': 'central.agents', 'data-field-prop': 'work_areas', maxlength: 300, value: v(current?.work_areas), placeholder: 'Apps y repositorios' }) as HTMLInputElement, 'central.accesos.agentes.fichas.trabaja', 'Dónde trabaja');
+    const kind = fbMark(el('select', { id: 'ag-kind', 'data-field-id': 'central.accesos.agent_responsible_kind', 'data-field-entity': 'central.agents', 'data-field-prop': 'responsible_kind' }, ...(['person', 'service'] as const).map((k) => el('option', { value: k, selected: (current?.responsible_kind ?? 'person') === k }, RESPONSIBLE_KIND_LABELS[k]))) as HTMLSelectElement, 'central.accesos.agentes.fichas.tipo', 'Tipo de responsable');
     const alivePeople = [...people.values()].filter((p) => !p.deleted_at && p.active !== false && !p.merged_into).sort((a, b) => a.display_name.localeCompare(b.display_name, 'es'));
-    const person = fbMark(el('select', { id: 'ag-person', 'data-field-id': 'central.accesos.agent_person' }, el('option', { value: '' }, 'Elige una persona'),
+    const person = fbMark(el('select', { id: 'ag-person', 'data-field-id': 'central.accesos.agent_person', 'data-field-entity': 'central.agents', 'data-field-prop': 'responsible_person_id' }, el('option', { value: '' }, 'Elige una persona'),
       ...alivePeople.map((p) => el('option', { value: p.id, selected: current?.responsible_person_id === p.id }, p.display_name))) as HTMLSelectElement, 'central.accesos.agentes.fichas.persona', 'Persona responsable');
-    const service = fbMark(el('input', { id: 'ag-service', 'data-field-id': 'central.accesos.agent_service', maxlength: 120, value: v(current?.responsible_service), placeholder: 'Nombre de la entidad de servicio' }) as HTMLInputElement, 'central.accesos.agentes.fichas.servicio', 'Entidad de servicio');
+    const service = fbMark(el('input', { id: 'ag-service', 'data-field-id': 'central.accesos.agent_service', 'data-field-entity': 'central.agents', 'data-field-prop': 'responsible_service', maxlength: 120, value: v(current?.responsible_service), placeholder: 'Nombre de la entidad de servicio' }) as HTMLInputElement, 'central.accesos.agentes.fichas.servicio', 'Entidad de servicio');
     const personField = el('label', { class: 'field' }, el('span', null, 'Persona'), person);
     const serviceField = el('label', { class: 'field' }, el('span', null, 'Entidad de servicio'), service);
     const syncKind = () => { const s = kind.value === 'service'; personField.hidden = s; serviceField.hidden = !s; };
     kind.addEventListener('change', syncKind);
     syncKind();
-    const active = fbMark(el('input', { id: 'ag-active', 'data-field-id': 'central.accesos.agent_active', type: 'checkbox', checked: !!current?.active }) as HTMLInputElement, 'central.accesos.agentes.fichas.activo', 'Activo');
-    const successor = fbMark(el('select', { id: 'ag-successor', 'data-field-id': 'central.accesos.agent_successor' }, el('option', { value: '' }, 'Nadie'),
+    const active = fbMark(el('input', { id: 'ag-active', 'data-field-id': 'central.accesos.agent_active', 'data-field-entity': 'central.agents', 'data-field-prop': 'active', type: 'checkbox', checked: !!current?.active }) as HTMLInputElement, 'central.accesos.agentes.fichas.activo', 'Activo');
+    const successor = fbMark(el('select', { id: 'ag-successor', 'data-field-id': 'central.accesos.agent_successor', 'data-field-entity': 'central.agents', 'data-field-prop': 'successor_id' }, el('option', { value: '' }, 'Nadie'),
       ...agents.filter((a) => a.id !== current?.id).map((a) => el('option', { value: a.id, selected: current?.successor_id === a.id }, a.display_name))) as HTMLSelectElement, 'central.accesos.agentes.fichas.sucesor', 'Le sigue');
-    const notes = fbMark(el('textarea', { id: 'ag-notes', 'data-field-id': 'central.accesos.agent_notes', maxlength: 500, rows: 2 }, v(current?.notes)) as HTMLTextAreaElement, 'central.accesos.agentes.fichas.notas', 'Notas');
+    const notes = fbMark(el('textarea', { id: 'ag-notes', 'data-field-id': 'central.accesos.agent_notes', 'data-field-entity': 'central.agents', 'data-field-prop': 'notes', maxlength: 500, rows: 2 }, v(current?.notes)) as HTMLTextAreaElement, 'central.accesos.agentes.fichas.notas', 'Notas');
     const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.accesos.agentes.fichas.error', 'data-feedback-label': 'Error de la ficha' });
     const text = (x: HTMLInputElement | HTMLTextAreaElement) => x.value.trim() || null;
 
