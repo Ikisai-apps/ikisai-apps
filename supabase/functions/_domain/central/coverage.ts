@@ -122,3 +122,18 @@ export function inventorySources(inventory: FieldInventory | null | undefined): 
     })),
   ];
 }
+
+/** Recorridos de Flow (`flow.journey_steps_projection`, Flow; una fila por paso de las versiones vigentes). */
+export const FLOW_JOURNEYS_READ = 'flow.journey_steps_projection';
+export interface JourneyStepRow { flow_id: string; flow_name: string; version?: string | number | null; step?: string | number | null; app?: string | null; feature_id?: string | null }
+
+/** Recorridos de cada función: «Registrar compra · v2», sin repetir aunque aparezca en varios pasos; en orden alfabético. */
+export function journeysByFeature(rows: readonly JourneyStepRow[]): Map<string, string[]> {
+  const out = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!r.feature_id || !r.flow_name) continue;
+    const name = r.version !== null && r.version !== undefined && r.version !== '' ? `${r.flow_name} · v${String(r.version).replace(/^v/, '')}` : r.flow_name;
+    out.set(r.feature_id, (out.get(r.feature_id) ?? new Set()).add(name));
+  }
+  return new Map([...out].map(([k, v]) => [k, [...v].sort((a, b) => a.localeCompare(b, 'es'))]));
+}

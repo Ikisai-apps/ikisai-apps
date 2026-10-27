@@ -3,7 +3,7 @@ import {
 } from '@ikisai/ui-kit';
 import {
   COVERAGE_DECISIONS, COVERAGE_DECISION_LABELS, COVERAGE_STATES, COVERAGE_STATE_LABELS, REVIEW_APPS, REVIEW_APP_LABELS, coverageCounts, coverageRows,
-  inventorySources, type CoverageDecision, type CoverageDecisionRow, type CoverageRow, type CoverageSource, type CoverageState, type FieldInventory,
+  FLOW_JOURNEYS_READ, inventorySources, journeysByFeature, type CoverageDecision, type CoverageDecisionRow, type CoverageRow, type CoverageSource, type CoverageState, type FieldInventory, type JourneyStepRow,
 } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
@@ -28,6 +28,8 @@ export const mountCoverage: ViewMount = ({ main, client, usage }) => {
   let state: 'loading' | 'ok' | 'offline' | 'error' = 'loading';
   let errorText = '';
   let filter: CoverageState | null = null;
+  // Recorridos de Flow por función (vacío mientras Flow no publique la lectura).
+  let journeys = new Map<string, string[]>();
 
   const note = el('p', { class: 'hint', id: 'coverageNote', role: 'status', 'data-feedback-id': 'central.uso.estado', 'data-feedback-label': 'Estado de la carga' });
   const chips = el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Estado de cobertura', id: 'coverageStates' });
@@ -39,7 +41,7 @@ export const mountCoverage: ViewMount = ({ main, client, usage }) => {
         el('p', null, 'Cada función y campo de las apps: cuánto se usa en 30 días, quién lo usa y en qué recorridos participa. El estado solo informa; decides tú.'))),
     note, chips, host);
 
-  const rows = () => coverageRows(sources, () => [], decisions, REVIEW_APPS as readonly string[]);
+  const rows = () => coverageRows(sources, (id) => journeys.get(id) ?? [], decisions, REVIEW_APPS as readonly string[]);
 
   function paintChips(all: CoverageRow[]): void {
     const counts = coverageCounts(all);
@@ -111,6 +113,8 @@ export const mountCoverage: ViewMount = ({ main, client, usage }) => {
       // El inventario de UI-kit (P15): si la ruta aún no existe, se sigue solo con el uso.
       let inventory: FieldInventory | null = null;
       try { inventory = await client.api<FieldInventory>('/usage/inventory?app=all'); inventoryLoaded = true; } catch { inventoryLoaded = false; }
+      // Los recorridos de Flow: si la lectura aún no existe, ninguno.
+      try { journeys = journeysByFeature((await client.api<{ rows: JourneyStepRow[] }>(`/read/${FLOW_JOURNEYS_READ}`, { method: 'POST', json: { limit: 5000 } })).rows ?? []); } catch { journeys = new Map(); }
       sources = [...(out.items ?? []), ...inventorySources(inventory)];
       state = 'ok';
     } catch (e) {

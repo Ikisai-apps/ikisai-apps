@@ -466,7 +466,7 @@ El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es l
 - **Fuentes:**
   - `GET usage/review?app=all`: el uso, núcleo 0071.
   - El inventario de campos de UI-kit, que va en el `feature-catalog.json` de cada release (`fields` y `fieldsUninstrumented`). Core lo cargará y lo servirá en `GET usage/inventory?app=all` (P15). Mientras falte, la pantalla lo dice y sigue con el uso.
-  - Los recorridos de Flow, más adelante.
+  - Los recorridos de Flow: `flow.journey_steps_projection` (`flow_id, flow_name, version, step, app, feature_id`, forma acordada con Flow), que Flow publicará con su primer recorrido. Hasta entonces, no sale ninguno.
 - **Estados** (`_domain/central/coverage.ts`, en este orden): nadie llega · se ve, no se usa · sin instrumentar (desconocido, no inútil) · usado fuera de recorridos · requerido por N recorridos. El estado solo informa.
 - **Decisiones** (solo de una persona): Mantener, Simplificar, Integrar o Retirar. Retirar pide confirmación y no borra nada: queda anotado para el equipo de la app. Van por `commands`, también sin red, y se quitan pulsando otra vez.
 

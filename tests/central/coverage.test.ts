@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
 import {
-  COVERAGE_DECISIONS_TABLE, coverageCounts, coverageRows, coverageState, inventorySources, screenOf, type CoverageSource,
+  COVERAGE_DECISIONS_TABLE, coverageCounts, coverageRows, coverageState, inventorySources, journeysByFeature, screenOf, type CoverageSource,
 } from '../../supabase/functions/_domain/central/mod.ts';
 
 let app: TestApp;
@@ -55,6 +55,17 @@ test('dominio · inventario de UI-kit: lo inventariado cuenta como medido; lo de
     ['central.persona.editar.iniciales', 'central.persona', true, 'Iniciales'],
     ['food:src/ui/x.ts:40', 'food.(sin pantalla)', false, 'input'],
   ]);
+});
+
+test('dominio · recorridos de Flow por función: nombre y versión, sin repetir pasos', () => {
+  const map = journeysByFeature([
+    { flow_id: 'f1', flow_name: 'Registrar compra', version: 2, step: 1, app: 'tasks', feature_id: 'tasks.compra.anadir' },
+    { flow_id: 'f1', flow_name: 'Registrar compra', version: 2, step: 3, app: 'tasks', feature_id: 'tasks.compra.anadir' },
+    { flow_id: 'f2', flow_name: 'Cerrar caja', version: null, step: 1, app: 'flow', feature_id: 'tasks.compra.anadir' },
+    { flow_id: 'f2', flow_name: 'Cerrar caja', version: 'v1', step: 2, app: 'flow', feature_id: null },
+  ]);
+  assert.deepEqual(map.get('tasks.compra.anadir'), ['Cerrar caja', 'Registrar compra · v2']);
+  assert.equal(map.size, 1);
 });
 
 test('decisiones de cobertura (1517): solo el owner, una viva por función y solo las cuatro', async () => {
