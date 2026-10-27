@@ -110,6 +110,10 @@
 - 2026-10-27 · **Notas de Central en Fechas, Diseño y Propuesta** (X2, central 0590): `organizers.dates_note`, `organizers.quote_note` y `organizers.proposal_note` se leen de Central como los demás textos comunes, con reserva en los dos idiomas.
 - 2026-10-27 · **Comentarios de tus asistentes** (API.md §15): en el resumen del retiro, lo que cuentan los asistentes desde Guests sobre el retiro, con el tema, quién y cuándo; los tres últimos a la vista y el resto plegados. Lo da el núcleo (`core.feedback_can_see`, destino `organizer`); no hacía falta nada nuevo. Prueba PGlite en `retreat-comments.test.ts`.
 - 2026-10-27 · **PDF de una factura registrada** (K2): en Pagos, la factura hecha con otra herramienta abre su PDF guardado con «Abrir PDF» (`GET portal-files/:fileId`, resolutor de Finance 0249: dentro del ámbito, sin borradores, editor u owner). Sin PDF, se sigue pidiendo a Ikisai. Prueba en `portal.spec.ts`.
+- 2026-10-27 · **La cabecera en el móvil** (revisión móvil de UI-kit, #937): hasta 600 px el selector ES | EN sale de la cabecera, para que quepa el título, y el idioma se elige en el menú, en «Idioma».
+- 2026-10-27 · **Guiado mínimo del kit** (0.68, #949): `guide` en la cáscara (`?campo=` y `?paso=`) y `registerReveal` por pestaña de la ficha del retiro.
+- 2026-10-27 · **Evidencia de GitHub para Flow** (`organizers.github_evidence`, 0704, #927; API.md §21): `GET github/evidence`, solo para el personal; espera el `GITHUB_TOKEN` de solo lectura de la Edge (carril de VG).
+- 2026-10-27 · **Indicadores para Dirección** (P7 de Central, 0705, #959; API.md §22): retiros próximos con y sin acceso de quien organiza, comentarios de asistentes abiertos e informes enviados. Los pagos pendientes, a Finance (F4).
 
 ## Pendiente
 
@@ -118,6 +122,7 @@
 - Fase 3: cerrada (K2 hecha el 27-10).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
+- Campos sin `data-field-id` para el inventario de Uso y cobertura (P15 de Central): 74, según `feature-catalog.mjs --fields-report`. Las funciones están al día: 173, sin ids dinámicos y con etiqueta.
 - Puntos abiertos que decide el usuario: API.md §13.
 
 ## Bloqueos
