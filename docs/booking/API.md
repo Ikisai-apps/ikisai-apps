@@ -2130,3 +2130,19 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 
 
 **La cama propia en el plano (migración 1421; petición de Guests, CAMA_PROPIA_PLANO.md):** `portal_lodging.mine`, `portal_my_stays.items[]` y `portal_my_stays.default_bed` llevan `room_layout: {cols, rows} | null` y `bed_layout: {x, y, rot} | null`, con la misma forma que la 1417. Son de la cama propia, nunca de la de otras personas; sin disposición, `null`.
+
+## 46. Guiado de Flow en Booking (prueba del alojamiento; VG 27-10-2026)
+
+Booking monta la guía completa del kit (`guide: { client, app: 'booking' }`): con `?guia=<ejecución>` lee los pasos de Flow (`flow.guide_read`) y los confirma (`flow.guide_confirm`) por su Edge, nunca con valores. Con `?campo=` señala el anclaje. Los pasos con `confirm: 'event'` avanzan cuando Booking avisa (`announceSaved`) de que la base ha guardado de verdad.
+
+| Paso | Ruta | Anclaje (`anchor`) | Confirmación |
+|---|---|---|---|
+| Crear el evento de prueba | `#/reservas` | `booking.reservas.alta.guardar` | `event` (al guardar la reserva) |
+| Confirmarlo (crea el evento y su número público) | `#/reservas/<id>` | `booking.reserva.acciones.confirmar` | `event` |
+| Buscar el número en recepción | `#/recepcion` | `booking.recepcion.buscar` | `manual` |
+| Cobrar y alojar | `#/recepcion` | `booking.recepcion.cobrar` (o `booking.recepcion.alojar_pagado` si se pagó en línea) | `event` (aceptado por la base) |
+| Completar los datos | `#/huespedes/<evento>` | `booking.huespedes.ficha.guardar` | `event` (al guardar la ficha) |
+| Llega | `#/recepcion` | `booking.recepcion.llega` | `event` |
+| Sale (libera la cama y pide la limpieza) | `#/recepcion` | `booking.recepcion.sale` | `event` |
+
+Cualquier hoja de Booking hecha con `openRowSheet` avisa `<feedbackId>.guardar` al guardar.
