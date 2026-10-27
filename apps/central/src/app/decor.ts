@@ -2,7 +2,7 @@
  * Central · finca y decoración sobre el plano (encargo de VG del 27-10; MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md).
  * Reglas puras de la pantalla «Colocar» (sin DOM, para probarlas en Node):
  * - lo que el SVG de la finca dice de sí mismo: escala (`data-meters-per-unit` en la raíz), origen de la retícula
- *   (`data-origin-x`, `data-origin-y`) y las cinco alturas (rectángulos con `data-band="Altura 1"`…), en 0..1;
+ *   (`data-origin-x`, `data-origin-y`) y las cinco alturas (formas con `data-name="Altura 1"`… o `data-band`), en 0..1;
  * - qué icono se puede subir (SVG, PNG o GIF de hasta 1 MB, tamaño 1 o 4 celdas);
  * - cada cambio de la capa de decoración de la pieza del kit (`onDecorChange`) como operación de Recursos, con la inversa
  *   para «Deshacer».
@@ -44,11 +44,23 @@ export function estateMeta(svg: string): EstateMeta {
   const mpu = num(attr(root, 'data-meters-per-unit'));
   const bands: EstateBand[] = [];
   if (vh > 0) {
-    for (const m of svg.matchAll(/<rect\b[^>]*\sdata-band\s*=\s*(["'])([^"']+)\1[^>]*>/gi)) {
-      const y = num(attr(m[0], 'y')) ?? 0;
-      const h = num(attr(m[0], 'height'));
-      if (h === null || h <= 0) continue;
-      bands.push({ name: m[2]!.trim(), y0: round4((y - vy) / vh), y1: round4((y + h - vy) / vh) });
+    // Una banda por altura: `data-band="…"` o `data-name="Altura N…"` (el SVG de Core), en un rectángulo o un trazado
+    // con coordenadas absolutas. Su alto es el de la forma.
+    for (const m of svg.matchAll(/<(rect|path|polygon)[^>]*>/gi)) {
+      const tag = m[0];
+      const name = (attr(tag, 'data-band') ?? (/^altura/i.test(attr(tag, 'data-name') ?? '') ? attr(tag, 'data-name') : null))?.trim();
+      if (!name) continue;
+      let top: number | null = null; let bottom: number | null = null;
+      if (m[1]!.toLowerCase() === 'rect') {
+        const y = num(attr(tag, 'y')) ?? 0; const h = num(attr(tag, 'height'));
+        if (h !== null && h > 0) { top = y; bottom = y + h; }
+      } else {
+        const coords = ((attr(tag, 'd') ?? attr(tag, 'points') ?? '').match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
+        const ys = coords.filter((_, i) => i % 2 === 1);
+        if (ys.length >= 2) { top = Math.min(...ys); bottom = Math.max(...ys); }
+      }
+      if (top === null || bottom === null || bottom <= top) continue;
+      bands.push({ name, y0: round4((top - vy) / vh), y1: round4((bottom - vy) / vh) });
     }
   }
   return {

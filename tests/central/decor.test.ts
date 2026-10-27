@@ -21,6 +21,21 @@ test('finca · escala, origen y alturas del SVG; sin escala, se pide al subir', 
   assert.equal(estateMeta('<svg viewBox="0 0 10 10" data-meters-per-unit="-1"></svg>').metersPerUnit, null);
 });
 
+test('finca · alturas como trazados con data-name «Altura N» (la forma del SVG que traza Core)', () => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" data-meters-per-unit="1" data-orientation="sur-arriba">
+    <g id="alturas">
+      <path data-name="Altura 2" d="M20.0 150.0 L380.0 150.0 L380.0 240.0 L20.0 240.0 Z"/>
+      <path data-name="Altura 1" d="M20.0 240.0 L380.0 240.0 L380.0 270.0 L20.0 270.0 Z"/>
+    </g>
+    <path id="parcela" data-name="Finca" d="M10 10 L390 10 L390 290 Z"/>
+    <path data-name="Albergue" d="M100 160 L140 160 L140 190 Z"/>
+    <rect data-name="Piscina" x="120" y="100" width="14" height="7"/>
+  </svg>`;
+  const meta = estateMeta(svg);
+  assert.equal(meta.metersPerUnit, 1);
+  assert.deepEqual(meta.bands, [{ name: 'Altura 2', y0: 0.5, y1: 0.8 }, { name: 'Altura 1', y0: 0.8, y1: 0.9 }]);
+});
+
 test('iconos · SVG, PNG o GIF de hasta 1 MB, con nombre y 1 o 4 celdas', () => {
   const ok = { type: 'image/gif', size: 900_000 };
   assert.equal(iconProblem(ok, 'Planta', 4), null);
