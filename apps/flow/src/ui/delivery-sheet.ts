@@ -11,6 +11,8 @@ import { askReason, busyButton, productMedal } from './sheets-common.ts';
  * cantidad entregada («1 de 3 aguas») y, si es montadito, cuántos están preparados. El pedido sigue cobrado mientras quede
  * algo; «Menú entregado» se puede pulsar siempre, se destaca cuando todo está, y con algo pendiente pide confirmación
  * consciente, que queda registrada. Preparado no es entregado.
+ * Cocina sin tocar el móvil (v2, 0912): con algo en cocina, «Dar por hecho y entregar» termina lo que quede (a nombre de
+ * quien entrega; en Preparación se va solo) y lo entrega todo de una vez.
  */
 const IDENTS: Array<[DeliveryIdent, string]> = [['number', 'Por número'], ['presence', 'Lo reconozco'], ['qr', 'QR'], ['skipped', 'Sin identificar']];
 
@@ -28,8 +30,9 @@ export function openDeliverySheet(client: SyncClient, orderId: string, options: 
     ...IDENTS.map(([value, label]) => el('label', { class: 'chip-radio' },
       el('input', { type: 'radio', name: 'ident', value, checked: value === ident, onchange: () => { ident = value; } }), el('span', null, label))));
   const deliverButton = busyButton({ class: 'primary' }, 'Menú entregado', deliver);
+  const allButton = busyButton({ class: 'primary', hidden: 'hidden' }, 'Dar por hecho y entregar', deliverAll);
   const reopenButton = busyButton({ class: 'ghost' }, 'Reabrir entrega', reopen);
-  const foot = el('div', { class: 'flow-actions' }, reopenButton, deliverButton);
+  const foot = el('div', { class: 'flow-actions' }, reopenButton, allButton, deliverButton);
   const sheet = openSheet({
     title: 'Entrega',
     body: el('div', { class: 'delivery' }, summary, linesEl, identEl),
@@ -91,7 +94,8 @@ export function openDeliverySheet(client: SyncClient, orderId: string, options: 
     deliverButton.hidden = o.status === 'delivered';
     // Siempre pulsable; destacado solo cuando todo está preparado y entregado (§6.3).
     deliverButton.className = complete ? 'primary' : 'secondary deliver-incomplete';
-    if (!canEdit) { reopenButton.disabled = true; deliverButton.disabled = true; }
+    allButton.hidden = !data.completeOnDelivery.has(o.project_id) || o.status === 'delivered' || complete;
+    if (!canEdit) { reopenButton.disabled = true; deliverButton.disabled = true; allButton.disabled = true; }
   }
 
   async function deliver(): Promise<void> {
@@ -113,6 +117,17 @@ export function openDeliverySheet(client: SyncClient, orderId: string, options: 
       try { await actions.deliverOrder(o.id, ident, true, fresh?.revision ?? o.revision); toast('Pedido entregado con excepción registrada.'); sheet.close(); }
       catch (again) { toast(describeError(again)); }
     }
+  }
+
+  async function deliverAll(): Promise<void> {
+    const o = order();
+    if (!o) return;
+    if (!isOnline(client)) { toast('Entregar necesita conexión. Usa la comanda de papel si no vuelve.'); return; }
+    try {
+      const out = await actions.deliverAll(o.id, ident, o.revision);
+      toast(out.completed_units ? `Entregado: ${out.completed_units} dados por hechos desde aquí.` : 'Pedido entregado.');
+      sheet.close();
+    } catch (error) { toast(describeError(error)); }
   }
 
   async function reopen(): Promise<void> {
