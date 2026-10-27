@@ -9,7 +9,7 @@
  * - «¿Cuánto ganas?»: calculadora privada, solo en este dispositivo. Lo de Ikisai varía con las plazas (asistentes más
  *   colaboradores); los colaboradores solo cuentan aquí y **nunca** se escriben en Booking (las plazas, en «Personas»).
  */
-import { createSaveState, el, replace, toast, type CheckItem } from '@ikisai/ui-kit';
+import { createSaveState, el, fieldAttrs, replace, toast, type CheckItem } from '@ikisai/ui-kit';
 import type { DraftFields, ExtraRequest, PortalDates, PortalProposal, PortalRates, ReservationDetail } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { describeError, errorCode, online } from '../app/client.ts';
@@ -25,6 +25,21 @@ import type { ViewContext } from './shell.ts';
 
 const MEAL_PLANS: Array<[string, string]> = [['pension_completa', L('Pensión completa')], ['media_pension', L('Media pensión')], ['desayuno', L('Desayuno')], ['segun_programa', L('Comidas según programa')]];
 const MENU_STYLES: Array<[string, string]> = [['vegetariano', L('Vegetariano')], ['vegano', L('Vegano')], ['mixto', L('Omnívoro')], ['otro', L('A medida')]];
+/** Campos del formulario del diseño por clave, para el inventario de Uso y cobertura (P15): literales, uno por campo. */
+const DESIGN_FIELDS: Partial<Record<string, Record<string, string | null>>> = {
+  expected_guests: fieldAttrs({ id: 'organizers.diseno.expected_guests', label: 'Personas previstas', entity: 'booking.reservations', prop: 'expected_guests', type: 'number', sensitivity: 'internal' }),
+  minors_count: fieldAttrs({ id: 'organizers.diseno.minors_count', label: 'Menores de edad', entity: 'booking.reservations', prop: 'minors_count', type: 'number', sensitivity: 'internal' }),
+  requires_meals: fieldAttrs({ id: 'organizers.diseno.requires_meals', label: 'Con comidas en Ikisai', entity: 'booking.reservations', prop: 'requires_meals', type: 'toggle', sensitivity: 'internal' }),
+  meal_plan_requested: fieldAttrs({ id: 'organizers.diseno.meal_plan_requested', label: 'Régimen de comidas', entity: 'booking.reservations', prop: 'meal_plan_requested', type: 'select', sensitivity: 'internal' }),
+  menu_style_requested: fieldAttrs({ id: 'organizers.diseno.menu_style_requested', label: 'Orientación del menú', entity: 'booking.reservations', prop: 'menu_style_requested', type: 'select', sensitivity: 'internal' }),
+  uses_accommodation: fieldAttrs({ id: 'organizers.diseno.uses_accommodation', label: 'Alojamiento', entity: 'booking.reservations', prop: 'uses_accommodation', type: 'toggle', sensitivity: 'internal' }),
+  uses_interpretation_center: fieldAttrs({ id: 'organizers.diseno.uses_interpretation_center', label: 'Centro de interpretación', entity: 'booking.reservations', prop: 'uses_interpretation_center', type: 'toggle', sensitivity: 'internal' }),
+  uses_outdoors: fieldAttrs({ id: 'organizers.diseno.uses_outdoors', label: 'Zonas exteriores', entity: 'booking.reservations', prop: 'uses_outdoors', type: 'toggle', sensitivity: 'internal' }),
+  uses_pool: fieldAttrs({ id: 'organizers.diseno.uses_pool', label: 'Piscina', entity: 'booking.reservations', prop: 'uses_pool', type: 'toggle', sensitivity: 'internal' }),
+  special_setup: fieldAttrs({ id: 'organizers.diseno.special_setup', label: 'Montaje especial', entity: 'booking.reservations', prop: 'special_setup', type: 'toggle', sensitivity: 'internal' }),
+  technical_support: fieldAttrs({ id: 'organizers.diseno.technical_support', label: 'Apoyo técnico', entity: 'booking.reservations', prop: 'technical_support', type: 'toggle', sensitivity: 'internal' }),
+};
+
 const SPACES: Array<[keyof DraftFields, string]> = [
   ['uses_accommodation', L('Alojamiento (dormir en Ikisai)')], ['uses_interpretation_center', L('Centro de interpretación')],
   ['uses_outdoors', L('Zonas exteriores')], ['uses_pool', L('Piscina')],
@@ -189,7 +204,7 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
       return each.available ? `${dateRange(c.start, c.end)} · ${money(each.payable)}` : dateRange(c.start, c.end);
     };
     const picker = candidates.length > 1 ? el('label', { class: 'field' }, el('span', null, t('Calcular para')),
-      el('select', { id: 'quoteDates', onchange: (e: Event) => { chosen = candidates.find((c) => c.id === (e.target as HTMLSelectElement).value) ?? chosen; paintQuote(); } },
+      el('select', { ...fieldAttrs({ id: 'organizers.diseno.precio.fechas', label: 'Calcular para', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'quoteDates', onchange: (e: Event) => { chosen = candidates.find((c) => c.id === (e.target as HTMLSelectElement).value) ?? chosen; paintQuote(); } },
         ...candidates.map((c) => el('option', { value: c.id, selected: c.id === chosen?.id ? '' : null }, optionText(c))))) : null;
     if (!q.available) {
       replace(quoteHost, picker, el('p', { class: 'muted' }, q.reason === 'no_persons' ? t('Indica cuántas personas venís para calcular el precio.') : t('Marca primero alguna fecha posible en «Fechas» para calcular el precio.')));
@@ -239,20 +254,20 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
     const collaboratorsOf = () => (margins.collaborators === '' ? 0 : Math.max(0, Math.round(Number(margins.collaborators) || 0)));
     const otherOf = () => Math.max(0, Number(margins.other) || 0);
 
-    const numberInput = (id: string, value: string, placeholder: string, attrs: Record<string, string> = {}) => el('input', {
-      type: 'number', min: '0', step: 'any', inputmode: 'decimal', id, value, placeholder, class: 'orgnumber', ...attrs,
+    const numberInput = (id: string, value: string, placeholder: string, attrs: Record<string, string | null> = {}) => el('input', {
+      type: 'number', min: '0', step: 'any', inputmode: 'decimal', id, value, placeholder, class: 'orgnumber', ...attrs, /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */
     }) as HTMLInputElement;
-    const range = (id: string, label: string, max: number) => el('input', { type: 'range', min: '0', max: String(max), step: '1', id, class: 'orgrange', 'aria-label': label }) as HTMLInputElement;
+    const range = (id: string, label: string, max: number, field: Record<string, string | null>) => el('input', { ...field, type: 'range', min: '0', max: String(max), step: '1', id, class: 'orgrange', 'aria-label': label, /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ }) as HTMLInputElement;
 
     const peopleMax = Math.max(50, Math.ceil((expected * 2) / 10) * 10);
-    const attendees = numberInput('margin-attendees', margins.attendees, String(state.expected_guests ?? ''), { step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-attendees-help' });
-    const attendeesRange = range('margin-attendees-range', t('Asistentes'), peopleMax);
-    const collaborators = numberInput('margin-collaborators', margins.collaborators, '0', { step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-collaborators-help' });
-    const collaboratorsRange = range('margin-collaborators-range', t('Colaboradores sin coste'), Math.max(20, Math.ceil(expected / 10) * 10));
-    const price = numberInput('margin-price', margins.price, '0');
-    const priceRange = range('margin-price-range', t('Precio por asistente'), rangeMax);
-    const pct = numberInput('margin-pct', margins.pct, '', { min: '0', max: '500', step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-pct-help' });
-    const other = numberInput('margin-other', margins.other, '0');
+    const attendees = numberInput('margin-attendees', margins.attendees, String(state.expected_guests ?? ''), { step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-attendees-help', ...fieldAttrs({ id: 'organizers.diseno.margen.asistentes', label: 'Asistentes (cálculo)', type: 'number', sensitivity: 'internal', confirm: 'none' }) });
+    const attendeesRange = range('margin-attendees-range', t('Asistentes'), peopleMax, fieldAttrs({ id: 'organizers.diseno.margen.asistentes_barra', label: 'Asistentes (barra)', type: 'range', sensitivity: 'internal', confirm: 'none' }));
+    const collaborators = numberInput('margin-collaborators', margins.collaborators, '0', { step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-collaborators-help', ...fieldAttrs({ id: 'organizers.diseno.margen.colaboradores', label: 'Colaboradores sin coste', type: 'number', sensitivity: 'internal', confirm: 'none' }) });
+    const collaboratorsRange = range('margin-collaborators-range', t('Colaboradores sin coste'), Math.max(20, Math.ceil(expected / 10) * 10), fieldAttrs({ id: 'organizers.diseno.margen.colaboradores_barra', label: 'Colaboradores (barra)', type: 'range', sensitivity: 'internal', confirm: 'none' }));
+    const price = numberInput('margin-price', margins.price, '0', fieldAttrs({ id: 'organizers.diseno.margen.precio', label: 'Precio por asistente', type: 'number', sensitivity: 'internal', confirm: 'none' }));
+    const priceRange = range('margin-price-range', t('Precio por asistente'), rangeMax, fieldAttrs({ id: 'organizers.diseno.margen.precio_barra', label: 'Precio por asistente (barra)', type: 'range', sensitivity: 'internal', confirm: 'none' }));
+    const pct = numberInput('margin-pct', margins.pct, '', { min: '0', max: '500', step: '1', inputmode: 'numeric', 'aria-describedby': 'margin-pct-help', ...fieldAttrs({ id: 'organizers.diseno.margen.porcentaje', label: 'Margen que quieres', type: 'number', sensitivity: 'internal', confirm: 'none' }) });
+    const other = numberInput('margin-other', margins.other, '0', fieldAttrs({ id: 'organizers.diseno.margen.otros_gastos', label: 'Otros gastos', type: 'number', sensitivity: 'internal', confirm: 'none' }));
 
     const seats = el('p', { id: 'marginSeats', class: 'small', 'aria-live': 'polite' });
     const seatsText = el('span');
@@ -378,26 +393,26 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
   // --- Formulario del diseño ------------------------------------------------------------------------------------------
   function paint(staleAt: string | null): void {
     const numberField = (key: 'expected_guests' | 'minors_count', label: string) => el('label', { class: 'field' }, el('span', null, label),
-      el('input', { type: 'number', min: '0', step: '1', inputmode: 'numeric', id: `d-${key}`, value: state[key] === null ? '' : String(state[key]),
+      el('input', { ...DESIGN_FIELDS[key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ type: 'number', min: '0', step: '1', inputmode: 'numeric', id: `d-${key}`, value: state[key] === null ? '' : String(state[key]),
         oninput: (e: Event) => { const v = (e.target as HTMLInputElement).value; change({ [key]: v === '' ? (key === 'minors_count' ? 0 : null) : Math.max(0, Math.round(Number(v))) } as DraftFields); } }));
     const check = (key: keyof DraftFields, label: string) => el('label', { class: 'field check' },
-      el('input', { type: 'checkbox', id: `d-${key}`, checked: state[key as keyof typeof state] ? '' : null,
+      el('input', { ...DESIGN_FIELDS[key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ type: 'checkbox', id: `d-${key}`, checked: state[key as keyof typeof state] ? '' : null,
         onchange: (e: Event) => { change({ [key]: (e.target as HTMLInputElement).checked } as DraftFields); if (key === 'requires_meals') paint(staleAt); } }),
       el('span', null, t(label)));
     const select = (key: 'meal_plan_requested' | 'menu_style_requested', label: string, options: Array<[string, string]>) => el('label', { class: 'field' }, el('span', null, label),
-      el('select', { id: `d-${key}`, onchange: (e: Event) => change({ [key]: (e.target as HTMLSelectElement).value || null } as DraftFields) },
+      el('select', { ...DESIGN_FIELDS[key], /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id: `d-${key}`, onchange: (e: Event) => change({ [key]: (e.target as HTMLSelectElement).value || null } as DraftFields) },
         el('option', { value: '' }, '—'), ...options.map(([v, l]) => el('option', { value: v, selected: state[key] === v ? '' : null }, t(l)))));
 
     // Las supletorias no se piden aquí: se activan por habitación en Experiencia › Alojamiento (Booking §25).
     const extraRates = rates.rates.filter((r) => r.layer === 'extra' && r.service !== 'cama_supletoria');
     const extraRows = extraRates.map((r) => {
       const current = extras.find((e) => e.rate_id === r.id);
-      const qty = el('input', { type: 'number', min: '1', step: '1', class: 'orgextraqty', value: String(current?.quantity ?? 1), hidden: current ? null : '',
+      const qty = el('input', { ...fieldAttrs({ id: 'organizers.diseno.extra.cantidad', label: 'Cantidad del extra', entity: 'booking.reservation_extra_requests', prop: 'quantity', type: 'number', sensitivity: 'internal' }), type: 'number', min: '1', step: '1', class: 'orgextraqty', value: String(current?.quantity ?? 1), hidden: current ? null : '',
         'aria-label': t('Cantidad'),
         oninput: (e: Event) => { const q = Math.max(1, Math.round(Number((e.target as HTMLInputElement).value) || 1)); changeExtras(extras.map((x) => (x.rate_id === r.id ? { ...x, quantity: q } : x))); } }) as HTMLInputElement;
       return el('div', { class: 'orgextra', 'data-rate': r.id },
         el('label', { class: 'field check' },
-          el('input', { type: 'checkbox', checked: current ? '' : null, onchange: (e: Event) => {
+          el('input', { ...fieldAttrs({ id: 'organizers.diseno.extra.pedir', label: 'Pedir el extra', entity: 'booking.reservation_extra_requests', prop: 'rate_id', type: 'toggle', sensitivity: 'internal' }), type: 'checkbox', checked: current ? '' : null, onchange: (e: Event) => {
             const on = (e.target as HTMLInputElement).checked;
             qty.hidden = !on;
             changeExtras(on ? [...extras, { rate_id: r.id, quantity: Math.max(1, Number(qty.value) || 1) }] : extras.filter((x) => x.rate_id !== r.id));
@@ -422,7 +437,7 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
       fbMark(section(t('Extras'), { id: 'designExtras' },
         extraRows.length ? el('div', { class: 'orgextras' }, ...extraRows) : el('p', { class: 'muted' }, t('Ikisai aún no ofrece extras aquí.')),
         el('label', { class: 'field' }, el('span', null, t('¿Necesitas otra cosa? Cuéntaselo a Ikisai')),
-          el('textarea', { id: 'd-organizer_notes', rows: '3', maxlength: '2000', placeholder: t('Sonido, montaje especial, horarios…'),
+          el('textarea', { ...fieldAttrs({ id: 'organizers.diseno.organizer_notes', label: 'Otra cosa para Ikisai', entity: 'booking.reservations', prop: 'organizer_notes', type: 'text', sensitivity: 'internal' }), id: 'd-organizer_notes', rows: '3', maxlength: '2000', placeholder: t('Sonido, montaje especial, horarios…'),
             oninput: (e: Event) => change({ organizer_notes: (e.target as HTMLTextAreaElement).value || null }) }, state.organizer_notes))), 'organizers.diseno.extras', 'Extras'),
       section(t('Precio orientativo'), { id: 'designQuote' }, quoteHost),
       section(t('¿Cuánto ganas?'), { id: 'designMargin' }, marginHost),

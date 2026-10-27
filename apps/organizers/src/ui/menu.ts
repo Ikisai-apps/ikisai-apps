@@ -4,7 +4,7 @@
  * miniaturas abiertas con `portal-files` (C8). Lo que escribe en Food necesita red: sin ella, esos botones se apagan con su
  * motivo. Cocina reutiliza de aquí los nombres de los servicios y los alérgenos, la línea de alérgenos y las fotos.
  */
-import { bindOnline, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { bindOnline, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { commonText, textParagraphs } from '../app/common-texts.ts';
 import { i18n, L, t } from '../app/i18n.ts';
@@ -133,7 +133,7 @@ export function renderMenu(ctx: ViewContext, reservationId: string): HTMLElement
   }
 
   function comment(service: Service | null, dish: Dish | null): void {
-    const text = el('textarea', { id: 'menu-comment', rows: '4', maxlength: '1000', required: '' }) as HTMLTextAreaElement;
+    const text = el('textarea', { ...fieldAttrs({ id: 'organizers.menu.comentario', label: 'Comentario sobre el menú', entity: 'food.menu_comments', prop: 'body', type: 'text', sensitivity: 'internal' }), id: 'menu-comment', rows: '4', maxlength: '1000', required: '' }) as HTMLTextAreaElement;
     const sendButton = el('button', { type: 'submit', class: 'primary', form: 'menuCommentForm', id: 'menu-comment-send' }, t('Enviar'));
     const off = needsNet(ctx, sendButton);
     const sheet = openSheet({

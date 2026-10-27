@@ -118,7 +118,8 @@
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
 
-- Visitantes, v2: recuperar el acceso por correo y pasarlo a otro móvil (C11, más adelante).
+- Al recuperar el acceso de visitante en otro móvil, «Mis eventos» sale vacía, porque la lista vive en cada móvil. Hace falta que el núcleo dé los códigos de evento del visitante (p. ej. en `public/visitor/me`); pedido a Core.
+- Barras estrechas del calendario anual: el rótulo fuera de la barra, en el kit (`renderTimeline`); pedido a UI-kit por Core.
 
 ## Bloqueos
 
