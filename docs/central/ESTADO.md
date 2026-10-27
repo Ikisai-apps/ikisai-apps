@@ -118,6 +118,7 @@
   - Pasada única para quien ya tenía nivel (`1516`, #733): le llegan Flow, los portales y el «todos» de dirección.
 - 2026-10-27 · **Proyectos de Flow en la ficha y en el alta** (encargo de VG; `scopes.projects`, Flow 0902 y 0906): bloque «Proyectos de Flow» con «Cambiar» y «Deshacer», y en el alta Flow + proyecto en un paso. Reglas en `_domain/central/scopes.ts`; pruebas `scopes.test.ts` y `flow-scopes.spec.ts`. El outsider, sin editar hasta P14.
 - 2026-10-27 · **Registro de accesos para las demás apps** (X1 de Tasks, FB_2026_073): `#/accesos/registro?app=<app>` abre ya filtrado y «Por fecha», sin cambiar la vista recordada; en cada línea, quién lo hizo con su tipo (persona o agente) y a qué afecta (la persona, o la clave o la propuesta por su nombre); el ciclo de las propuestas de agentes con sus palabras y tono (también «Propuesta revocada»); «Ver anteriores». Tasks puede enlazar aquí con «‹ Volver a Tasks».
+- 2026-10-27 · **Revisión › Uso y cobertura** (visión V0.2 aprobada por VG; `1517`): por app y función, el uso de 30 días por audiencia, el estado de cobertura (nadie llega, se ve sin uso, sin instrumentar, usado fuera de recorridos, requerido) y la decisión de una persona (Mantener, Simplificar, Integrar, Retirar con confirmación). Inventario de UI-kit con P15; recorridos de Flow, cuando existan. Pruebas `coverage.test.ts` y `coverage.spec.ts`.
 
 ## Pendiente
 

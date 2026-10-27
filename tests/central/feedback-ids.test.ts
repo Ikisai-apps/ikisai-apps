@@ -79,7 +79,7 @@ test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', 
   const roots = new Set(collect().filter((f) => !f.dynamic).map((f) => f.id.split('.')[1]));
   const allowed = new Set([
     'inicio', 'direccion', 'accesos', 'entidad', 'textos', 'personas', 'persona', 'equipos', 'oficios', 'cumplimiento', 'obligacion', 'decisiones', 'conflictos',
-    'inventario', 'articulo', 'decision', 'revision', 'planos',
+    'inventario', 'articulo', 'decision', 'revision', 'planos', 'uso',
     'cabecera', 'navegacion', 'avisos', 'menu',
   ]);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);

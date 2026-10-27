@@ -69,6 +69,7 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.revision.cabecera', 'data-feedback-label': 'Cabecera de Revisión' },
       el('div', null, el('h2', null, 'Revisión'), el('p', null, 'Cómo va cada pantalla de las apps, en los diez pasos del cuadro, y lo que se ha comentado de ella.')),
       isAdmin ? el('div', { class: 'ctl-headtools' },
+        el('a', { class: 'ghost btnlike', href: '#/revision/uso', id: 'openCoverage', 'data-feedback-id': 'central.revision.uso', 'data-feedback-label': 'Uso y cobertura' }, 'Uso y cobertura'),
         el('button', { class: 'ghost', type: 'button', id: 'importScreens', 'data-feedback-id': 'central.revision.importar', 'data-feedback-label': 'Importar pantallas', onclick: () => openImport() }, icon('upload', 18), 'Importar pantallas'),
         el('button', { class: 'primary', type: 'button', id: 'newScreen', 'data-feedback-id': 'central.revision.nueva', 'data-feedback-label': 'Nueva pantalla', onclick: () => openScreen(null) }, icon('plus', 18), 'Nueva pantalla')) : null),
     note, queueHost, stepsHost, boardHost, roadHost);

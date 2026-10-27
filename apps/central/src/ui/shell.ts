@@ -15,6 +15,7 @@ import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
 import { mountDecision, mountDecisions } from './decisions.ts';
 import { mountReview } from './review.ts';
+import { mountCoverage } from './coverage.ts';
 import { EMPTY_MENU, loadMenuData, menuSections, recentRows, screenItems, type MenuData } from './menu.ts';
 import { mountPeople, mountPerson } from './people.ts';
 import { mountTeams } from './teams.ts';
@@ -54,7 +55,7 @@ const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/ac
  */
 function navFor(): NavItem[] {
   return [
-    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos', '#/revision', ...ACCESS_ROUTES] },
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos', '#/revision', '#/revision/uso', ...ACCESS_ROUTES] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
     { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos', '#/personas/oficios'] },
     // Inventario (kit 0.37): para todos los miembros; quien solo lee, solo mira.
@@ -70,6 +71,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/entidad/planos': { title: 'Planos del centro', slug: 'planos', mount: mountPlans },
   '#/decisiones': { title: 'Decisiones', slug: 'decisiones', mount: mountDecisions },
   '#/revision': { title: 'Revisión', slug: 'revision', mount: mountReview },
+  '#/revision/uso': { title: 'Uso y cobertura', slug: 'uso', mount: mountCoverage, admin: true },
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
   '#/personas/equipos': { title: 'Equipos', slug: 'equipos', mount: mountTeams },
   '#/personas/oficios': { title: 'Oficios', slug: 'oficios', mount: mountTrades },
@@ -94,6 +96,7 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'decisiones': fbMark(main, 'central.decisiones', 'Decisiones'); break;
     case 'decision': fbMark(main, 'central.decision', 'Decisión'); break;
     case 'revision': fbMark(main, 'central.revision', 'Revisión'); break;
+    case 'uso': fbMark(main, 'central.uso', 'Uso y cobertura'); break;
     case 'personas': fbMark(main, 'central.personas', 'Personas'); break;
     case 'persona': fbMark(main, 'central.persona', 'Persona'); break;
     case 'equipos': fbMark(main, 'central.equipos', 'Equipos'); break;
