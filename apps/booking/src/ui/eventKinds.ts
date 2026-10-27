@@ -6,7 +6,7 @@
  */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { confirmDialog, el, openSheet, plural, renderQr, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { PROCEDURES, WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, newPublicCode, visitorUrl, walkinNightPrice } from '@ikisai/domain-booking';
+import { PROCEDURES, WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, newPublicCode, stayCancelPercent, stayCancelRefund, visitorUrl, walkinNightPrice } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, EVENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shortDay, today } from '../app/client.ts';
 import type { FieldSpec } from './form.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -266,6 +266,15 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: nights });
   }
 
+  /** Lo pagado en línea: lo que propone la política de cancelación de VG (1419), para no ir a ojo. */
+  function policyHint(charge: Row): HTMLElement | null {
+    const a = assignmentOf.get(charge.assignment_id);
+    if (charge.method !== 'online' || !a?.from_date) return null;
+    const { percent } = stayCancelPercent(String(a.from_date).slice(0, 10), new Date(), ['cancelada', 'perdida'].includes(String(o.reservation.status)));
+    const cents = stayCancelRefund(Number(charge.amount_cents), 0, percent);
+    return el('p', { class: 'hint', id: 'refundPolicy' }, `Según la política (100 % hasta 7 días antes, 50 % hasta 48 h, nada después): ${percent} %, ${euros(cents)}.`);
+  }
+
   /** Devolver parte o todo lo cobrado: un solo apunte en Finance por lo cobrado menos lo devuelto. */
   function refund(charge: Row): void {
     const max = Number(charge.amount_cents);
@@ -287,6 +296,7 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     } }, 'Guardar la devolución') as HTMLButtonElement;
     const sheet: Sheet = openSheet({ title: 'Devolver', body: el('div', null,
       el('label', { class: 'field' }, el('span', null, `Importe devuelto (de ${euros(max)})`), amount), el('label', { class: 'field' }, el('span', null, 'Cómo se devuelve'), method),
+      policyHint(charge),
       el('p', { class: 'hint' }, 'Con 0 se quita la devolución. En Finance queda un solo apunte por lo cobrado menos lo devuelto.')),
       foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: amount });
   }

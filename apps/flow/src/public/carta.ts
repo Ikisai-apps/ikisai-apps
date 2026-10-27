@@ -1,5 +1,5 @@
 import { createQuantityField, el, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
-import { lodgingLink, myOrders, PublicApiError, readCustomer, redeemInvitation, submitOrder, type MyOrder } from './customer.ts';
+import { myOrders, PublicApiError, readCustomer, redeemInvitation, submitOrder, type MyOrder } from './customer.ts';
 import {
   basketLines, basketTotal, formatEuros, groupMenu, productAssets, setQuantity, SCOPE_LABELS,
   type Basket, type MenuProduct,
@@ -26,15 +26,10 @@ function saveBasket(basket: Basket): void {
 const SCOPE_COLOR = { clasico: 'var(--accent)', gourmet: 'var(--ok, #5b6b3a)', barra: 'var(--info, #2f3d57)' } as const;
 
 export async function loadMenu(fetcher: typeof fetch = fetch): Promise<MenuProduct[]> {
-  return (await loadCarta(fetcher)).products;
-}
-
-/** La carta y, si el evento del flujo admite alojamiento (Booking), su código para «Alójate aquí» (0936). */
-export async function loadCarta(fetcher: typeof fetch = fetch): Promise<{ products: MenuProduct[]; lodging: { eventCode: string } | null }> {
   const res = await fetcher('/api/v1/public/menu', { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`menu ${res.status}`);
-  const data = await res.json() as { products?: MenuProduct[]; lodging?: { eventCode?: string } | null };
-  return { products: Array.isArray(data.products) ? data.products : [], lodging: data.lodging?.eventCode ? { eventCode: data.lodging.eventCode } : null };
+  const data = await res.json() as { products?: MenuProduct[] };
+  return Array.isArray(data.products) ? data.products : [];
 }
 
 export function mountCarta(root: HTMLElement): () => void {
@@ -66,24 +61,11 @@ export function mountCarta(root: HTMLElement): () => void {
     });
   }
   const bar = el('div', { class: 'carta-bar', id: 'cartaBar', role: 'region', 'aria-label': 'Mi pedido' });
-  // «Alójate aquí»: solo si el evento admite alojamiento; lleva a ven.ikisai.com con este móvil (traspaso de un uso).
-  const lodgingButton = el('button', { type: 'button', class: 'ghost carta-lodging', id: 'alojate', hidden: true }, 'Alójate aquí') as HTMLButtonElement;
-  let lodgingCode: string | null = null;
-  lodgingButton.addEventListener('click', async () => {
-    if (!lodgingCode || lodgingButton.dataset.busy) return;
-    lodgingButton.dataset.busy = '1'; lodgingButton.disabled = true;
-    try { location.href = await lodgingLink(lodgingCode); }
-    catch (error) {
-      notice.hidden = false;
-      replace(notice, error instanceof PublicApiError ? error.message : 'No se ha podido abrir el alojamiento. Vuelve a intentarlo.');
-    } finally { delete lodgingButton.dataset.busy; lodgingButton.disabled = false; }
-  });
   const page = el('div', { class: 'carta-page' },
     el('header', { class: 'carta-head' },
       el('div', { class: 'carta-brand' }, icon('sync', 22), el('span', null, 'Ikisai Flow')),
       el('h1', null, 'Carta'),
       mineButton,
-      lodgingButton,
     ),
     notice, main, bar);
   replace(root, page);
@@ -247,11 +229,9 @@ export function mountCarta(root: HTMLElement): () => void {
 
   replace(main, el('p', { class: 'muted' }, 'Cargando la carta…'));
   let alive = true;
-  loadCarta().then(({ products: items, lodging }) => {
+  loadMenu().then((items) => {
     if (!alive) return;
     products = items;
-    lodgingCode = lodging?.eventCode ?? null;
-    lodgingButton.hidden = !lodgingCode;
     // Fuera de la cesta lo que ya no está en la carta (agotado o retirado).
     basket = Object.fromEntries(Object.entries(basket).filter(([id]) => products.some((p) => p.id === id)));
     saveBasket(basket);

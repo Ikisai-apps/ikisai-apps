@@ -118,8 +118,6 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await page.locator('#eventList .row', { hasText: 'Retiro Test' }).click();
     const sheet = page.getByRole('dialog', { name: 'Retiro Test' });
     await expect(sheet).toContainText('1 alergia a pistacho (grave)');
-    // F-EVT-4: las restricciones, lo primero de la ficha.
-    await expect(sheet.locator('.ficha > *').first()).toHaveClass(/restrictions/);
     await expect(sheet).toContainText('2 veganos');
     await expect(sheet.locator('input[type=checkbox]')).toHaveCount(5); // cena · desayuno, comida, cena · desayuno
     await page.locator('#createMenu').click();

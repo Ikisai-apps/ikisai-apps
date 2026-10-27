@@ -43,11 +43,11 @@ function tkrOpenSheet(rv){const items=tkrItems(rv.id),pending=items.filter(i=>i.
 
 /* --- La comprobación en la ficha del ítem -------------------------------------------------------------------------- */
 function tkrCheckHtml(i){const exp=tkrExpected(i),fix=i.corrective_task_id?taskLocation(i.corrective_task_id)?.t:null,again=i.recheck_task_id?taskLocation(i.recheck_task_id)?.t:null;
-  const input=i.answer==='quantity'||i.answer==='reading'?`<div class="field"><label for="tkrValue">${i.answer==='quantity'?'Cuántos':'Lectura'}${exp?` <span class="small muted">(esperado: ${esc(exp)})</span>`:''}</label><input id="tkrValue" type="number" inputmode="decimal" step="any" value="${esc(String(i.value??''))}" data-feedback-id="tasks.revision.item.valor" data-feedback-label="Valor del ítem"></div>`
+  const input=i.answer==='quantity'||i.answer==='reading'?`<div class="field"><label for="tkrValue">${i.answer==='quantity'?'Cuántos':'Lectura'}${exp?` <span class="small muted">(esperado: ${esc(exp)})</span>`:''}</label><input id="tkrValue" type="number" inputmode="decimal" step="any" value="${i.value??''}" data-feedback-id="tasks.revision.item.valor" data-feedback-label="Valor del ítem"></div>`
     :i.answer==='photo'?`<div class="field"><label for="tkrPhoto">Foto</label><input id="tkrPhoto" type="file" accept="image/*" capture="environment" data-feedback-id="tasks.revision.item.foto" data-feedback-label="Foto del ítem"></div>`:'';
   const note=`<div class="field"><label for="tkrText">${i.answer==='note'?'Observación':'Observación (opcional)'}</label><textarea id="tkrText" rows="2" maxlength="2000" data-feedback-id="tasks.revision.item.observacion" data-feedback-label="Observación del ítem">${esc(i.text||'')}</textarea></div>`;
   const ff=i.first_failure?`<p class="small tkr-first">Primer fallo${i.first_failure.value!=null?`: ${esc(String(i.first_failure.value))}`:''}${i.first_failure.text?` · ${esc(i.first_failure.text)}`:''}</p>`:'';
-  const links=[fix?`<button class="ghost small" type="button" data-tkr-task="${esc(fix.id)}">${fix.done?'✓ ':''}Arreglar</button>`:'',again?`<button class="ghost small" type="button" data-tkr-task="${esc(again.id)}">${again.done?'✓ ':''}Volver a comprobar</button>`:''].join('');
+  const links=[fix?`<button class="ghost small" type="button" data-tkr-task="${fix.id}">${fix.done?'✓ ':''}Arreglar</button>`:'',again?`<button class="ghost small" type="button" data-tkr-task="${again.id}">${again.done?'✓ ':''}Volver a comprobar</button>`:''].join('');
   return `<section class="tkr-check ${i.state}" id="tkrCheck" aria-label="Comprobación"><h3>Comprobación ${i.critical?'<span class="tkr-crit">Crítico</span>':''} <span class="tkr-state">${esc(TKR_STATE[i.state])}</span></h3>
     ${i.instructions?`<p class="small">${esc(i.instructions)}</p>`:''}${ff}
     ${canEdit()?`${input}${note}<div class="row tkr-actions"><button class="primary" id="tkrOk" type="button" data-feedback-id="tasks.revision.item.resultado" data-feedback-label="Está bien">Está bien</button><button class="ghost danger-text" id="tkrFail" type="button" data-feedback-id="tasks.revision.item.falla" data-feedback-label="Falla">Falla</button></div>`:''}
@@ -75,7 +75,7 @@ openTaskEditor=function(id,...rest){openTaskEditorBeforeReview(id,...rest);const
 function tkrTemplates(){const tabId=tab()?.id;return tkrRows('tasks.review_templates').filter(t=>t.active!==false&&(t.tab_id==null||t.tab_id===tabId)).sort((a,b)=>Number(a.position)-Number(b.position))}
 function tkrNewSheet(){const tpls=tkrTemplates();if(!tpls.length)return toast('No hay plantillas de revisión.');
   openSheet(`<h2 class="sheettitle">Nueva revisión</h2><p class="subtitle">Se creará en ${esc(tab().name)}: un proyecto con una tarea por zona y una por ítem.</p>
-    <div class="field"><label for="tkrTpl">Plantilla</label><select id="tkrTpl" data-feedback-id="tasks.revision.nueva.plantilla" data-feedback-label="Plantilla de la revisión">${tpls.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}${t.tab_id?'':' · de la casa'}</option>`).join('')}</select></div>
+    <div class="field"><label for="tkrTpl">Plantilla</label><select id="tkrTpl" data-feedback-id="tasks.revision.nueva.plantilla" data-feedback-label="Plantilla de la revisión">${tpls.map(t=>`<option value="${t.id}">${esc(t.name)}${t.tab_id?'':' · de la casa'}</option>`).join('')}</select></div>
     <div class="field"><label for="tkrTitle">Nombre</label><input id="tkrTitle" maxlength="200" placeholder="Apertura · nombre del evento" data-feedback-id="tasks.revision.nueva.nombre" data-feedback-label="Nombre de la revisión"></div>
     <div class="field"><label for="tkrDue">Para cuándo</label><input id="tkrDue" type="date" data-feedback-id="tasks.revision.nueva.fecha" data-feedback-label="Fecha de la revisión"></div>
     <div class="field"><label for="tkrEvent">Evento (opcional)</label><input id="tkrEvent" placeholder="booking:RES2026-80" data-feedback-id="tasks.revision.nueva.evento" data-feedback-label="Evento de la revisión"></div>
@@ -106,7 +106,7 @@ const TKR_ANSWER={check:'Funciona o no',quantity:'Cantidad',photo:'Foto',reading
 function tkrCanManage(t){return t.tab_id==null?isAdministrator():canEdit()&&!tab()?.restricted}
 function tkrTplItems(id){return tkrRows('tasks.review_template_items').filter(i=>i.template_id===id).sort((a,b)=>Number(a.position)-Number(b.position))}
 function tkrTemplatesSheet(){const tabId=tab()?.id,tpls=tkrRows('tasks.review_templates').filter(t=>t.tab_id==null||t.tab_id===tabId).sort((a,b)=>Number(a.position)-Number(b.position));
-  const row=t=>`<button type="button" data-tkr-tpl="${esc(t.id)}" data-feedback-id="tasks.revision.plantillas.abrir" data-feedback-label="Abrir la plantilla">${esc(t.name)}<span class="small muted"> · ${t.tab_id?'de esta área':'de la casa'} · ${tkrTplItems(t.id).length} ítems${t.active===false?' · desactivada':''}</span></button>`;
+  const row=t=>`<button type="button" data-tkr-tpl="${t.id}" data-feedback-id="tasks.revision.plantillas.abrir" data-feedback-label="Abrir la plantilla">${esc(t.name)}<span class="small muted"> · ${t.tab_id?'de esta área':'de la casa'} · ${tkrTplItems(t.id).length} ítems${t.active===false?' · desactivada':''}</span></button>`;
   const canNew=canEdit()&&!tab()?.restricted;
   openSheet(`<h2 class="sheettitle">Plantillas de revisión</h2><p class="subtitle">Cambiar una plantilla no toca las revisiones ya creadas.</p>
     <div class="menulist">${tpls.map(row).join('')||'<p class="small muted">Aún no hay plantillas.</p>'}</div>
@@ -119,7 +119,7 @@ function tkrTemplatesSheet(){const tabId=tab()?.id,tpls=tkrRows('tasks.review_te
 
 function tkrTemplateSheet(id){const t=tkrRows('tasks.review_templates').find(x=>x.id===id);if(!t)return tkrTemplatesSheet();
   const can=tkrCanManage(t),items=tkrTplItems(id),zones=[...new Set(items.map(i=>i.zone))];
-  const itemRow=i=>`<button type="button" data-tkr-item="${esc(i.id)}" ${can?'':'disabled'} data-feedback-id="tasks.revision.plantilla.item" data-feedback-label="Ítem de la plantilla">${esc(i.title)}<span class="small muted"> · ${esc(TKR_ANSWER[i.answer]||i.answer)}${tkrExpected(i)?' · '+esc(tkrExpected(i)):''}${i.critical?' · crítico':''}</span></button>`;
+  const itemRow=i=>`<button type="button" data-tkr-item="${i.id}" ${can?'':'disabled'} data-feedback-id="tasks.revision.plantilla.item" data-feedback-label="Ítem de la plantilla">${esc(i.title)}<span class="small muted"> · ${esc(TKR_ANSWER[i.answer]||i.answer)}${tkrExpected(i)?' · '+esc(tkrExpected(i)):''}${i.critical?' · crítico':''}</span></button>`;
   const head=can?`<div class="field"><label for="tkrTplName">Nombre</label><input id="tkrTplName" maxlength="120" value="${esc(t.name)}" data-feedback-id="tasks.revision.plantilla.nombre" data-feedback-label="Nombre de la plantilla"></div>
     <label class="row small"><input type="checkbox" id="tkrTplActive" ${t.active!==false?'checked':''} data-feedback-id="tasks.revision.plantilla.activa" data-feedback-label="Plantilla activa"> Se puede usar para crear revisiones</label>`:'';
   const body=zones.map(z=>`<h3 class="tkr-zone">${esc(TKR_ZONE[z]||z)}</h3><div class="menulist">${items.filter(i=>i.zone===z).map(itemRow).join('')}</div>`).join('')||'<p class="small muted">Sin ítems.</p>';
@@ -144,10 +144,10 @@ function tkrItemSheet(tplId,itemId){const t=tkrRows('tasks.review_templates').fi
     <div class="field"><label for="tkrIInstr">Instrucciones</label><textarea id="tkrIInstr" rows="2" maxlength="2000" data-feedback-id="tasks.revision.item_plantilla.instrucciones" data-feedback-label="Instrucciones del ítem">${esc(i?.instructions||'')}</textarea></div>
     <div class="field"><label for="tkrIAnswer">Respuesta</label><select id="tkrIAnswer" data-feedback-id="tasks.revision.item_plantilla.respuesta" data-feedback-label="Tipo de respuesta">${opts(TKR_ANSWER,answer)}</select></div>
     <div class="row tkr-expected" id="tkrIExp">
-      <div class="field" data-for="quantity"><label for="tkrICount">Cuántos se esperan</label><input id="tkrICount" type="number" min="0" step="1" value="${esc(String(e.count??''))}"></div>
+      <div class="field" data-for="quantity"><label for="tkrICount">Cuántos se esperan</label><input id="tkrICount" type="number" min="0" step="1" value="${e.count??''}"></div>
       <div class="field" data-for="reading"><label for="tkrIUnit">Unidad</label><input id="tkrIUnit" maxlength="20" value="${esc(e.unit||'')}" placeholder="°C"></div>
-      <div class="field" data-for="reading"><label for="tkrIMin">Mínimo</label><input id="tkrIMin" type="number" step="any" value="${esc(String(e.min??''))}"></div>
-      <div class="field" data-for="reading"><label for="tkrIMax">Máximo</label><input id="tkrIMax" type="number" step="any" value="${esc(String(e.max??''))}"></div>
+      <div class="field" data-for="reading"><label for="tkrIMin">Mínimo</label><input id="tkrIMin" type="number" step="any" value="${e.min??''}"></div>
+      <div class="field" data-for="reading"><label for="tkrIMax">Máximo</label><input id="tkrIMax" type="number" step="any" value="${e.max??''}"></div>
     </div>
     <label class="row small"><input type="checkbox" id="tkrICrit" ${i?.critical?'checked':''} data-feedback-id="tasks.revision.item_plantilla.critico" data-feedback-label="Ítem crítico"> Crítico: sin él verificado no se abre</label>
     <div class="actions"><button class="primary" id="tkrISave" type="button" data-feedback-id="tasks.revision.item_plantilla.guardar" data-feedback-label="Guardar el ítem">Guardar</button>${i?'<button class="ghost danger-text" id="tkrIDel" type="button" data-feedback-id="tasks.revision.item_plantilla.quitar" data-feedback-label="Quitar el ítem">Quitar</button>':''}<button class="ghost" id="tkrIBack" type="button">Volver</button></div>`);

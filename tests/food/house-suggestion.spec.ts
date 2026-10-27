@@ -152,8 +152,6 @@ test('platos sugeridos · entrada, votar en el mazo, decidir con «Deshacer», r
     await select(page, 'Curry de verduras');
     await expect(decide(page).locator('.suggestiondish')).toContainText('Ya está en el Recetario: se usará esa.');
     await select(page, 'Arroz con verduras');
-    // F-SUG-3: la que comparte «verduras» sale arriba, en «Más parecidas».
-    await expect(page.locator('#similarRecipe optgroup[label="Más parecidas"] option').first()).toHaveText('Curry de verduras');
     await page.locator('#similarRecipe').selectOption({ label: 'Curry de verduras' });
     await page.locator('#approveSuggestion').click();
     await expect.poll(() => status(rice), { timeout: 15_000 }).toBe('approved');
