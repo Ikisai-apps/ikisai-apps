@@ -11,7 +11,7 @@
  */
 import type { RowOperation } from '@ikisai/sync-client';
 import {
-  CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLinesInOrder, defaultOfferFields, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
+  CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLinesInOrder, cartaPrevisionEmpty, defaultOfferFields, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
   parseEurosToCents, validateOperations, type CartaCode, type CartaLine, type CartaScope, type FoodEvent, type Menu, type Recipe, type ResourceItem,
 } from '@ikisai/domain-food';
 import { closeSheet, el, listRow, openSheet, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -313,7 +313,13 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
     function paintBlocks(): void {
       if (!menu) return;
       const live = cartaLinesInOrder(lines, menu.id);
-      replace(blocks, ...CARTA_SCOPES.map((scope) => {
+      // Sin previsión, Flow no puede preparar existencias (hueco S3 de la QA de Flow): se dice aquí y lleva a Previsión.
+      const empty = live.some((l) => l.active) && cartaPrevisionEmpty(lines, menu.id);
+      replace(blocks,
+        empty ? el('div', { 'data-feedback-id': 'food.carta.sin_prevision', 'data-feedback-label': 'Sin previsión', class: 'banner warn notice', role: 'note', id: 'cartaNoPrevision' },
+          el('div', null, el('strong', null, 'Sin previsión: Flow no podrá preparar existencias.'), ' Pon las unidades a cubrir en Previsión.'),
+          el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.carta.ir_prevision', 'data-feedback-label': 'Ir a Previsión', class: 'ghost', type: 'button',
+            onclick: () => navigate(cartaHash(menuId, 'prevision')) }, 'Ir a Previsión'))) : null, ...CARTA_SCOPES.map((scope) => {
         const own = live.filter((l) => l.scope === scope);
         return el('section', { 'data-feedback-id': 'food.carta.bloque', 'data-feedback-label': 'Bloque de la carta', class: 'carta-block', id: `carta-${scope}` },
           el('div', { class: 'sectionlabel' }, `${CARTA_SCOPE_LABELS[scope]} · ${own.length}`),

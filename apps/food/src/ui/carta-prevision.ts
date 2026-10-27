@@ -10,10 +10,10 @@
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  CARTA_SCOPE_LABELS, STATION_LABELS, cartaAttendance, cartaLinesInOrder, formatAmount, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperations,
+  CARTA_SCOPE_LABELS, STATION_LABELS, cartaAttendance, distributeUnits, cartaLinesInOrder, formatAmount, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperations,
   purchaseFromPrep, UNITS, type CartaLine, type CartaPrepTotal, type Ingredient, type Menu, type Recipe, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
-import { el, replace, toast } from '@ikisai/ui-kit';
+import { el, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
@@ -141,6 +141,10 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     };
     replace(unitsHost,
       el('h3', null, 'Unidades a cubrir'),
+      total === 0 ? el('div', { class: 'banner warn notice', role: 'note', id: 'previsionEmpty' },
+        el('div', null, el('strong', null, 'Sin previsión: Flow no podrá preparar existencias.'), ' Pon las unidades de cada línea o usa «Rellenar previsión».')) : null,
+      canWrite ? el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.carta.prevision.rellenar', 'data-feedback-label': 'Rellenar previsión', class: 'ghost', type: 'button',
+        id: 'fillPrevision', onclick: () => openFill(live, people) }, 'Rellenar previsión')) : null,
       el('label', { class: 'field' }, el('span', null, 'Asistentes esperados'), guests,
         el('span', { class: 'hint', id: 'attendanceHint' }, current.expected_attendance === null || current.expected_attendance === undefined
           ? (eventGuests ? `Sin tocar, las del evento: ${eventGuests}.` : 'Sin asistentes no se puede pasar de «por persona» a «total».')
@@ -187,6 +191,62 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       el('h3', null, 'Rendimiento de los ingredientes'),
       el('p', { class: 'muted' }, 'Para los que las recetas cuentan en piezas: cuántas salen de una unidad de compra (1 tomate = 8 rodajas). Vale para todas las cartas y eventos, y con él la compra dice «3 tomates» y no «24 rodajas».'),
       el('ul', { class: 'plainlist carta-units-list' }, ...list.map(row)));
+  }
+
+  /**
+   * «Rellenar previsión»: un total para un grupo de líneas (los montaditos, la barra o todo), repartido a partes iguales o
+   * según la previsión que ya hay. Después se puede tocar línea a línea. Con asistentes, también el «por persona».
+   */
+  function openFill(live: Array<Mirror<CartaLine>>, people: number | null): void {
+    const GROUPS = [
+      { key: 'montaditos', label: 'Montaditos (Clásicos y Gourmet)', scopes: ['clasico', 'gourmet'] },
+      { key: 'barra', label: 'Barra (bebidas y extras)', scopes: ['barra'] },
+      { key: 'todo', label: 'Toda la carta', scopes: ['clasico', 'gourmet', 'barra'] },
+    ] as const;
+    const group = el('select', { 'data-feedback-id': 'food.carta.prevision.rellenar_grupo', 'data-feedback-label': 'Qué líneas', id: 'fillGroup', 'aria-label': 'Qué líneas' },
+      ...GROUPS.map((g) => el('option', { value: g.key }, g.label)));
+    const total = el('input', { 'data-feedback-id': 'food.carta.prevision.rellenar_total', 'data-feedback-label': 'Total esperado', id: 'fillTotal', type: 'number',
+      inputmode: 'numeric', min: '0', step: '1', placeholder: '400' }) as HTMLInputElement;
+    const mode = el('select', { 'data-feedback-id': 'food.carta.prevision.rellenar_modo', 'data-feedback-label': 'Cómo repartir', id: 'fillMode', 'aria-label': 'Cómo repartir' },
+      el('option', { value: 'igual' }, 'A partes iguales'),
+      el('option', { value: 'actual' }, 'Según la previsión que ya hay'));
+    const preview = el('p', { class: 'muted', id: 'fillPreview' });
+    const picked = () => { const g = GROUPS.find((x) => x.key === group.value)!; return live.filter((l) => (g.scopes as readonly string[]).includes(l.scope)); };
+    const plan = () => {
+      const rows = picked();
+      const n = Number(total.value);
+      if (!rows.length || !Number.isSafeInteger(n) || n < 0) return null;
+      return { rows, units: distributeUnits(n, rows.length, mode.value === 'actual' ? rows.map((l) => l.expected_units ?? 0) : null) };
+    };
+    const paintPreview = () => {
+      const p = plan();
+      preview.textContent = p ? p.rows.map((l, i) => `${l.code} ${nameOf(l)}: ${p.units[i]}`).join(' · ') : 'Escribe el total y elige las líneas.';
+    };
+    [group, total, mode].forEach((x) => x.addEventListener('input', paintPreview));
+    paintPreview();
+    let sheet: Sheet | null = null;
+    const save = el('button', { 'data-feedback-id': 'food.carta.prevision.rellenar_guardar', 'data-feedback-label': 'Rellenar', class: 'primary', type: 'button', id: 'fillSave',
+      onclick: async () => {
+        const p = plan();
+        if (!p) { toast('Escribe un total entero y elige las líneas.'); return; }
+        const ops: RowOperation[] = p.rows.map((l, i) => ({ op: 'update', table: T.cartaLines, id: l.id, expectedRevision: l.revision,
+          fields: { expected_units: p.units[i], ...(people ? { per_person: perPersonFromUnits(p.units[i]!, people) } : {}) } }));
+        if (await usage.run('food.carta.prevision.rellenar', () => commit(client, ops))) {
+          toast(`Previsión rellenada: ${p.units.reduce((a, b) => a + b, 0)} unidades en ${p.rows.length} líneas.`);
+          await sheet?.close(true);
+        }
+      } }, 'Rellenar');
+    sheet = openSheet({
+      title: 'Rellenar previsión',
+      body: el('div', { class: 'formblock' },
+        el('p', { class: 'muted' }, 'Reparte un total entre las líneas disponibles. Después puedes cambiar cada una.'),
+        el('label', { class: 'field' }, el('span', null, 'Qué líneas'), group),
+        el('label', { class: 'field' }, el('span', null, 'Total esperado'), total),
+        el('label', { class: 'field' }, el('span', null, 'Cómo repartir'), mode),
+        preview),
+      foot: [el('button', { 'data-feedback-id': 'food.carta.prevision.rellenar_cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      initialFocus: total,
+    });
   }
 
   function paintPlan(): void {

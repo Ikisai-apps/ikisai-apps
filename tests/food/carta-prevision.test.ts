@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
-import { cartaAttendance, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
+import { cartaAttendance, cartaPrevisionEmpty, distributeUnits, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
 
 const CARTA = 'f00dca7a-0000-4000-8000-000000000001';
 const LINE = (n: number) => `f00dca7a-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;
@@ -126,4 +126,23 @@ test('dominio · el reparto', () => {
   assert.equal(perPersonFromUnits(100, 0), null);
   assert.equal(cartaAttendance({ expected_attendance: 250 }, 180), 250);
   assert.equal(cartaAttendance({ expected_attendance: null }, 180), 180);
+});
+
+test('relleno · repartir un total entre líneas y la previsión de partida de la carta de octubre', async () => {
+  assert.deepEqual(distributeUnits(400, 8), [50, 50, 50, 50, 50, 50, 50, 50]);
+  assert.deepEqual(distributeUnits(10, 3), [4, 3, 3], 'los restos, a las primeras');
+  assert.deepEqual(distributeUnits(100, 3, [2, 1, 1]), [50, 25, 25], 'según la previsión que ya hay');
+  assert.deepEqual(distributeUnits(9, 3, [0, 0, 0]), [3, 3, 3], 'sin pesos, a partes iguales');
+  assert.equal(distributeUnits(7, 4).reduce((a, b) => a + b, 0), 7);
+  // La de partida solo rellena las líneas que siguen a 0: el Serrano ya tenía 100 (prueba de arriba) y no se toca.
+  assert.equal((await q(`select food.seed_carta_octubre_prevision() as n`))[0].n > 0, true);
+  const units = Object.fromEntries((await q(`select id, expected_units from food.carta_lines where menu_id = $1 and deleted_at is null`, [CARTA])).map((r) => [r.id, r.expected_units]));
+  assert.equal(units[SERRANO], 100);
+  assert.equal(units[LINE(2)], 50);
+  assert.equal(units[AGUA], 60, 'el agua ya tenía 60');
+  assert.equal(units[LINE(10)], 100);
+  assert.equal((await q(`select food.seed_carta_octubre_prevision() as n`))[0].n, 0, 'una sola vez');
+  const lines = await q(`select menu_id, active, deleted_at, expected_units from food.carta_lines where menu_id = $1`, [CARTA]);
+  assert.equal(cartaPrevisionEmpty(lines, CARTA), false);
+  assert.equal(cartaPrevisionEmpty(lines.map((l) => ({ ...l, expected_units: 0 })), CARTA), true);
 });

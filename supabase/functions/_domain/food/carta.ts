@@ -240,3 +240,26 @@ export function purchaseFromPrep(prepNeed: number | string | null | undefined, y
   if (prepNeed === null || prepNeed === undefined || yieldPerPurchase === null || yieldPerPurchase === undefined || !(y > 0) || !Number.isFinite(need)) return null;
   return Math.ceil(need / y - 1e-9);
 }
+
+/**
+ * «Rellenar previsión» (hueco S3 de la QA de Flow, 27-10): reparte `total` unidades entre las líneas, a partes iguales o
+ * en proporción a `weights` (la previsión que ya hay). Enteros que suman exactamente `total` (los restos, a las de mayor
+ * parte decimal; a igualdad, en el orden dado). Sin pesos útiles (todo 0), a partes iguales.
+ */
+export function distributeUnits(total: number, count: number, weights?: number[] | null): number[] {
+  if (!(count > 0) || !(total >= 0) || !Number.isFinite(total)) return [];
+  const t = Math.floor(total);
+  const w = weights && weights.length === count && weights.some((x) => x > 0) ? weights.map((x) => Math.max(0, x)) : Array(count).fill(1);
+  const sum = w.reduce((a, b) => a + b, 0);
+  const exact = w.map((x) => (x / sum) * t);
+  const out = exact.map(Math.floor);
+  let left = t - out.reduce((a, b) => a + b, 0);
+  const order = exact.map((x, i) => [x - Math.floor(x), i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of order) { if (left <= 0) break; out[i]! += 1; left -= 1; }
+  return out;
+}
+
+/** La previsión de una carta está vacía si ninguna línea disponible tiene unidades a cubrir (Flow no puede preparar nada). */
+export function cartaPrevisionEmpty(lines: Array<Pick<CartaLine, 'menu_id' | 'active' | 'deleted_at' | 'expected_units'>>, menuId: string): boolean {
+  return !lines.some((l) => l.menu_id === menuId && !l.deleted_at && l.active && (l.expected_units ?? 0) > 0);
+}
