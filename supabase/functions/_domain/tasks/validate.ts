@@ -109,6 +109,8 @@ const ownerPeople = { owner_person_id: nullable(uuid('INVALID_OWNER')), owner_ho
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
 
+const reviewOnly: Check = (_v, field) => reject(422, 'INVALID_REVIEW', 'La revisión y sus resultados solo se escriben desde sus acciones.', { field });
+
 /** Lo esperado de un ítem de revisión (0348): {count} en una cantidad, {unit, min?, max?} en una lectura (el tipo lo cruza el hook). */
 const reviewExpected: Check = (v, field) => {
   const bad = (): never => reject(422, 'INVALID_REVIEW', 'Lo esperado del ítem no es válido.', { field });
@@ -353,6 +355,9 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: ['template_id', 'zone', 'title', 'answer'],
   },
+  // Revisiones (0349): solo las escriben sus procedimientos, por las rutas `reviews/…` (§46.2–46.4).
+  'tasks.reviews': { fields: Object.fromEntries(WRITABLE['tasks.reviews'].map((f) => [f, reviewOnly])), required: [] },
+  'tasks.review_items': { fields: Object.fromEntries(WRITABLE['tasks.review_items'].map((f) => [f, reviewOnly])), required: [] },
 };
 
 export interface ValidationContext {
