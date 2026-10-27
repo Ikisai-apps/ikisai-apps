@@ -152,7 +152,7 @@ KIT_CHILDREN.createSpacePicker = [['rapido', 'Espacio más usado', 'button'], ['
 // `SPACE_MAP_MARKS` (src/spaces/map.ts).
 KIT_CHILDREN.createSpaceMap = [['vista', 'Plano o lista', 'button'], ['dibujo', 'Elegir dibujo', 'button'], ['espacio', 'Espacio en el plano', 'button'], ['fila', 'Espacio en la lista', 'button'], ['miga', 'Miga del plano', 'button'], ['volver', 'Volver', 'button'], ['deco-icono', 'Icono de decoración', 'button'], ['deco-tamano', 'Tamaño del objeto', 'button'], ['deco-escala', 'Escala de la retícula', 'button'], ['deco-objeto', 'Objeto de decoración', 'button'], ['deco-girar', 'Girar 90°', 'button'], ['deco-quitar', 'Quitar el objeto', 'button']];
 // `CALENDAR_MARKS` (src/calendar/calendar.ts) y `PROPOSAL_LIST_MARKS` (src/proposals/list.ts).
-KIT_CHILDREN.createCalendar = [['capa', 'Capa del calendario', 'button'], ['dia', 'Día del calendario', 'button'], ['guardar_dias', 'Guardar días elegidos', 'button'], ['cancelar_dias', 'Cancelar la elección de días', 'button']];
+KIT_CHILDREN.createCalendar = [['capa', 'Capa del calendario', 'button'], ['dia', 'Día del calendario', 'button'], ['guardar_dias', 'Guardar días elegidos', 'button'], ['cancelar_dias', 'Cancelar la elección de días', 'button'], ['evento_dia', 'Evento del día (hoja)', 'button']];
 // `ITEM_PICKER_MARKS` (src/items/picker.ts); con `space`, su `createSpacePicker` cuelga de `.sitio`.
 KIT_CHILDREN.createItemPicker = [['buscar', 'Buscar artículo', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['crear', 'Crear artículo', 'option'], ['crear-guardar', 'Crear y usar', 'button'], ['crear-cancelar', 'Cancelar el alta', 'button'], ['cambiar', 'Cambiar de artículo', 'button'], ['usar-existente', 'Usar el que ya existe', 'button'], ['completar', 'Completar el nombre', 'button'], ['sitio.rapido', 'Sitio más usado', 'button'], ['sitio.buscar', 'Buscar sitio', 'input'], ['sitio.opcion', 'Sitio de la búsqueda', 'option'], ['sitio.quitar', 'Quitar sitio', 'button']];
 // `ITEM_CATALOG_MARKS` (src/items/catalog.ts) y `ITEM_SHEET_MARKS` (src/items/sheet.ts).
@@ -173,7 +173,8 @@ KIT_CHILDREN.createVoteDeck = [['a_favor', 'A favor', 'button'], ['en_contra', '
 KIT_CHILDREN.createStepForm = [['opcion', 'Opción', 'button'], ['aceptar', 'Aceptar', 'button'], ['atras', 'Atrás', 'button'], ['saltar', 'Saltar', 'button']];
 KIT_CHILDREN.createFreeForm = [['preguntas', 'Pregunta a pregunta', 'section'], ['foto', 'Hacer o elegir foto', 'button'], ['cambiar', 'Cambiar', 'button'], ['registrar', 'Registrar', 'button'], ['nuevo', 'Nuevo registro', 'button']];
 KIT_CHILDREN.createChecklist = [['item', 'Ítem', 'checkbox']];
-KIT_CHILDREN.renderCoverage = [['filtro', 'Filtrar por clase', 'button'], ['agrupar', 'Agrupar por', 'button'], ['abrir', 'Abrir el campo', 'button']];
+KIT_CHILDREN.renderCoverage = [['ver-todo', 'Ver todo', 'button'], ['ver-candidatos', 'Ver los candidatos', 'button'], ['filtro', 'Filtrar por clase', 'button'], ['agrupar', 'Agrupar por', 'button'],
+  ['abrir', 'Abrir el campo', 'button'], ['decidir', 'Decidir el grupo', 'button'], ['deshacer', 'Deshacer la decisión', 'button'], ['utilidad', 'Ajustar la utilidad de la pantalla', 'button']];
 KIT_CHILDREN.createProjection = [['abrir', 'Abrir en la app', 'link'], ['accion', 'Acción de la fila', 'button']];
 // `src/pieces/lanes.ts`.
 KIT_CHILDREN.createLanes = [['vista', 'Pestañas o lado a lado', 'button'], ['carril', 'Carril', 'tab'], ['desplegar', 'Desplegar el carril', 'button']];
@@ -203,7 +204,8 @@ function enclosingCallAt(text, at) {
  * funciones a las que nadie llega). Mantener al día con `SPACE_MAP_MARKS` (src/spaces/map.ts).
  */
 const KIT_CHILDREN_WHEN = {
-  renderCoverage: { abrir: /\bonOpen\b/ },
+  renderCoverage: { abrir: /\bonOpen\b/, decidir: /\bonDecide\b/, deshacer: /\bonDecide\b/, utilidad: /\bonDeclare\b/ },
+  createCalendar: { evento_dia: /\bonSelectEvent\b/ },
   createStepForm: { saltar: /\bskip\s*:/ },
   createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/ },
 };

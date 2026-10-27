@@ -1,0 +1,13 @@
+/* Entregables y unidades (entregables-ui.js, §55 y §57): la banda del proyecto, la hoja de un entregable y la ficha de la tarea. */
+.tkdv-band{display:grid;gap:8px;margin:0 0 12px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--paper)}
+.tkdv-chips{display:flex;flex-wrap:wrap;gap:8px}
+.tkdv-chip,.tkdv-band .softbtn{min-height:44px;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);text-align:left}
+.tkdv-chip.delivered,.tkdv-chip.installed{border-color:var(--accent)}
+.tkdv-row{gap:8px;flex-wrap:wrap}
+.tkdv-row .field{flex:1 1 140px}
+.tkdv-h{margin:12px 0 4px;font-size:14px}
+.tkdv-field{margin:4px 0 8px}
+.tkdv-field select,.tkdv-field input{min-height:44px}
+.tkdv-units{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.tkdv-unit{min-width:44px;min-height:44px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font-weight:600}
+.tkdv-unit[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--paper)}

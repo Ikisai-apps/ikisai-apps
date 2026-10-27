@@ -12,6 +12,10 @@
  *   con la ruta del paso.
  * - «Ocultar» la deja en una píldora («Guía · paso 2 de 5»). «Volver a…» lleva a quien guía (la convención K9).
  * - En modo `learn` lo dice («Practicando»): una app que guarda sola no es sitio para practicar, y eso lo decide Flow.
+ * - Guardado sin red (`pending`): el paso avanza y, cuando ese campo se guarda de verdad, se vuelve a confirmar sin `pending`.
+ * - En el móvil, mientras se escribe en la app (foco en un campo o teclado abierto), la burbuja se queda en una tira arriba,
+ *   bajo la cabecera, con el paso y su título: no tapa el campo, ni el teclado, ni «Guardar». Al salir del campo vuelve abajo
+ *   (si se está pulsando algo, espera a soltar, para no mover el botón bajo el dedo).
  * Prefijo de clases: `guia-`.
  */
 import { el, replace } from '../dom.ts';
@@ -92,6 +96,8 @@ export function createGuide(options: GuideOptions): Guide {
   let anchorNode: HTMLElement | null = null;
   let frame = 0;
   let seq = 0;
+  /** Confirmados con `pending` (guardados sin red): se reconfirman cuando ese campo se guarda de verdad. */
+  const unsynced = new Set<string>();
 
   const ring = el('div', { class: 'guia-ring', 'aria-hidden': 'true', hidden: true });
   const bubble = el('section', { class: 'guia-bubble', role: 'region', 'aria-label': kt('Guía'), ...(base ? { 'data-feedback-id': base, 'data-feedback-label': 'Guía' } : {}) });
@@ -206,6 +212,7 @@ export function createGuide(options: GuideOptions): Guide {
     if (!open(step)) return;
     if (revisit === step.id) revisit = null;
     local.add(step.id);
+    if (pending) unsynced.add(step.id); else unsynced.delete(step.id);
     say(pending ? kt('Guardado en este dispositivo: se enviará con conexión.') : kt('Hecho.'));
     try { await options.onConfirmed?.(step, { pending, how }); } catch { /* quien guía lo volverá a ver al reconsultar */ }
     if (destroyed) return;
@@ -222,6 +229,13 @@ export function createGuide(options: GuideOptions): Guide {
   }
 
   const offSaved = onSaved((id, info) => {
+    if (run && !info.pending) {
+      for (const s of run.steps) {
+        if (s.anchor !== id || !unsynced.has(s.id)) continue;
+        unsynced.delete(s.id);
+        void Promise.resolve(options.onConfirmed?.(s, { pending: false, how: confirmOf(s) })).catch(() => undefined);
+      }
+    }
     if (!run || at < 0) return;
     const step = run.steps[at];
     if (!step || step.anchor !== id || !open(step)) return;
@@ -233,6 +247,41 @@ export function createGuide(options: GuideOptions): Guide {
   if (options.refreshOnFocus !== false) document.addEventListener('visibilitychange', onVisible);
   const onResize = () => follow();
   addEventListener('resize', onResize);
+
+  // Móvil: tira arriba mientras se escribe (ver la cabecera del archivo).
+  const vv = typeof visualViewport === 'object' ? visualViewport : null;
+  let pressing = false;
+  let compactTimer = 0;
+  const TYPING = 'textarea, select, [contenteditable=""], [contenteditable="true"], input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=hidden])';
+  /** El foco que pone la guía al llegar no cuenta: hace falta que la persona toque o escriba (si no, la explicación no se ve). */
+  let engaged = false;
+  const typing = () => {
+    const a = document.activeElement as HTMLElement | null;
+    return engaged && !!a && !element.contains(a) && a.matches(TYPING);
+  };
+  function compact(): void {
+    if (destroyed) return;
+    const narrow = typeof matchMedia !== 'function' || !matchMedia('(min-width: 720px)').matches;
+    const keyboard = !!vv && vv.height < innerHeight * 0.75;
+    const on = narrow && !minimized && (typing() || keyboard);
+    bubble.classList.toggle('guia-compact', on);
+    if (on) bubble.style.top = `${Math.round((vv?.offsetTop ?? 0) + (document.querySelector<HTMLElement>('.topbar')?.getBoundingClientRect().bottom ?? 0) + 6)}px`;
+    else bubble.style.removeProperty('top');
+  }
+  const later = () => { clearTimeout(compactTimer); compactTimer = window.setTimeout(() => { if (!pressing) compact(); }, 60); };
+  const onDown = () => { pressing = true; };
+  const onUp = () => { pressing = false; later(); };
+  const onFocus = () => { engaged = pressing; later(); };
+  const onType = () => { engaged = true; later(); };
+  document.addEventListener('focusin', onFocus);
+  document.addEventListener('focusout', later);
+  document.addEventListener('input', onType, true);
+  document.addEventListener('keydown', onType, true);
+  document.addEventListener('pointerdown', onDown, true);
+  document.addEventListener('pointerup', onUp, true);
+  document.addEventListener('pointercancel', onUp, true);
+  vv?.addEventListener('resize', later);
+  vv?.addEventListener('scroll', later);
 
   function exit(): void {
     api.destroy();
@@ -290,6 +339,16 @@ export function createGuide(options: GuideOptions): Guide {
       offSaved();
       document.removeEventListener('visibilitychange', onVisible);
       removeEventListener('resize', onResize);
+      clearTimeout(compactTimer);
+      document.removeEventListener('focusin', onFocus);
+      document.removeEventListener('focusout', later);
+      document.removeEventListener('input', onType, true);
+      document.removeEventListener('keydown', onType, true);
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
+      vv?.removeEventListener('resize', later);
+      vv?.removeEventListener('scroll', later);
       element.remove();
     },
   };

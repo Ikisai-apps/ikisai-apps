@@ -2291,3 +2291,98 @@ Aunque la Edge no deja llamarlos desde `commands`, cada procedimiento comprueba 
 - **`tasks.request_project`**: solo la identidad de servicio de su fuente. El proyecto existente se busca por su referencia.
 - **En la Edge:** `purchases/:id/finance`, `requests/task` y `requests/purchase` no los usan los agentes (403); los agentes van por `commands`, con su revisión de riesgo.
 - **Pruebas:** `tests/tasks/procedures-guard.test.ts`.
+
+## 51. Fases del proyecto (migración `0356`; «Proyectos y producción» 7.1, encargo de Core, 27-10-2026)
+
+Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decisiones de VG en vg-37.
+
+- **`tasks.project_phases`**: `tab_id` y `project_id` (inmutables), `name` (1–120), `position`, `status` (`pending` | `active` | `done`), `start` y `due` (fechas opcionales, `start` ≤ `due`) y `closed_note`. La visibilidad es la de su proyecto. Leen todos los roles con acceso; escriben editor y owner.
+- **`tasks.tasks.phase_id`**: solo en una madre. Los pasos heredan la de su madre al leer (`compose` les pone `phaseId`) y no la guardan.
+- **Reglas (hook `tasks.validate_phases`):**
+  - la fase de una tarea es una fase viva de su mismo proyecto, y la tarea es madre (422 `INVALID_PHASE`);
+  - una fase nueva va en un proyecto vivo de su área (422 `INCONSISTENT_KEYS` / `PROJECT_UNAVAILABLE`);
+  - `start` posterior a `due` da 422 `INVALID_PHASE`;
+  - cerrar (`done`) con tareas abiertas pide `closed_note` (422 `PHASE_OPEN_TASKS`, con `open` en los detalles). Abierta es una madre viva sin hacer: con pasos, alguno vivo sin hacer;
+  - una fase con tareas vivas no se borra (422 `PHASE_NOT_EMPTY`): se sueltan sus tareas en el mismo lote.
+- **Mover:** si una tarea cambia de proyecto o pasa a ser hija, el trigger `tasks.task_phase_follow` le quita la fase (también al convertir un área en proyecto). `moveTaskOps` hace lo mismo en el cliente.
+- **Modelo de la interfaz:**
+  - `LegacyProject.phases` (solo si el proyecto tiene alguna): `{id, name, order, status, start, due, closedNote, version}`, más los calculados `done`, `open` y `total` sobre las madres;
+  - `LegacyTask.phaseId`;
+  - `decompose`: quitar una fase del modelo la manda a la papelera y suelta sus tareas en el mismo guardado.
+- **Papelera:** las fases de los proyectos y áreas en la papelera van a ella después de sus tareas, y la purga las borra.
+- **Pruebas:** `tests/tasks/phases.test.ts`.
+
+## 52. La producción de un proyecto (migración `0357`; «Proyectos y producción» 7.2)
+
+`GET projects/production?projectId=…` es la capacidad `tasks.project_production` (lectura). Pueden leerla reader, editor, owner y outsider, este último solo en los proyectos que se le abren. Si quien lee no ve el proyecto, o el proyecto no existe, da 404.
+
+- **`project`:** `{id, tabId, title, status, due}`.
+- **`phases`:** `{id, name, position, status, start, due, closedNote, total, open, done, blocked, nextTaskId}`.
+  - `total`, `open` y `done` cuentan las madres.
+  - `blocked` cuenta el trabajo bloqueado.
+  - `nextTaskId` es la primera tarea de trabajo sin hacer y sin bloquear, por orden de madre y de paso.
+- **`tasks`:** `{id, parentId, phaseId, title, done, doneAt, priority, due, position, container, trades, spaces, people, materials, purchases, blocked: {by, ids}}`.
+  - Los pasos llevan la fase de su madre.
+  - Un contenedor está hecho cuando lo están todos sus pasos.
+  - `blocked.by` vale `dependency` (una dependencia sin hacer), `step` (el paso anterior de una cadena en orden) o `null`. El material se añade en la 7.3.
+- **`lanes`:** `byTrade`, `bySpace`, `byPerson` (persona o `level:<nivel>`) y `byPhase` (`none` = sin fase), cada uno con `{open, done}`. Cuentan solo tareas de trabajo (no contenedores) y solo llevan ids: los nombres los pone quien lee.
+- **`next`:** `[{phaseId, taskId}]`, la siguiente acción de cada fase.
+- **El cálculo de bloqueo y fase** está en `tasks.production_rows(proyecto)`, que es la misma regla que «hoy» (§47).
+- **Pruebas:** `tests/tasks/production.test.ts`.
+
+## 53. El material bloquea (migración `0358`; «Proyectos y producción» 7.3; decisión de VG en vg-37)
+
+- **`tasks.material_shortage(proyecto?)`:** se calcula por material pendiente (sin consumir y con cantidad) de una tarea abierta de un proyecto vivo, y solo si el artículo es consumible.
+  - `need`: la cantidad de ese material.
+  - `stock`: la suma de los movimientos del artículo en Recursos.
+  - `before_need`: lo que piden antes otras tareas abiertas del mismo artículo, por vencimiento (sin fecha, al final).
+  - `missing = max(0, need − max(0, stock − before_need))`.
+  - Los equipos no bloquean.
+- **Bloqueo:** una tarea abierta con algo que falta queda `blocked.by = 'material'`, con los artículos en `ids`, **aunque no haya compra**. Va después de `dependency` y `step`. Usan la misma regla:
+  - la producción (§52), que además lleva `need`, `stock`, `missing` y `purchaseOpen` en cada material;
+  - `blocked` de «hoy» (§47);
+  - el indicador `tasks.blocked` de Central (§49).
+- **«Pedir»:** `POST requests/purchase` acepta `task_id`, una tarea viva del mismo proyecto que quien pide ve; si no, da 404. La compra queda ligada a la tarea y la respuesta lleva `taskId` e `itemId`. La capacidad `tasks.request_purchase` declara ahora `item_id` y `task_id`.
+- **Pruebas:** `tests/tasks/material-block.test.ts`.
+
+## 55. Unidades repetidas (migración `0360`; «Proyectos y producción» 7.5; decisión de VG en vg-37: opción A)
+
+- **`tasks.tasks.unit_count`** (1–100, opcional): va solo en la madre (en un paso da 422 `INVALID_UNITS`). Cada paso se hace tantas veces como diga, y también la madre misma si no tiene pasos.
+- **`tasks.task_units`:** una fila por unidad hecha (`task_id`, `unit`, `done_by`, `marked_at`). Desmarcar la borra.
+  - La visibilidad es la de su tarea, y las unidades la siguen al moverla, al convertir un área y al ir a la papelera.
+  - Solo la escribe `tasks.unit_step`; a mano da 422 `INVALID_UNITS`.
+- **`POST tasks/unit-step {taskId, unit, done?}`** (capacidad `tasks.unit_step`, editor u owner):
+  - marca (`done` por defecto) o desmarca la unidad;
+  - la tarea queda hecha con todas sus unidades y deja de estarlo si se desmarca una;
+  - repetir no cambia nada;
+  - responde `{taskId, unit, done, unitsDone, units, taskDone}`.
+  - Errores: 404 si no se ve la tarea; 409 `PROJECT_ARCHIVED`; 422 si la unidad está fuera de rango, si es un contenedor (se marcan sus pasos) o si la tarea no tiene unidades (se usa `tasks/complete`).
+- **Modelo de la interfaz:** `LegacyTask.unitCount` en la madre y `unitsDone` en la tarea de trabajo.
+- **Pendiente:** la producción y «hoy» con las unidades, y los entregables (7.5, 2).
+- **Pruebas:** `tests/tasks/units.test.ts`.
+
+## 56. Acciones de la revisión semanal de Dirección (Central, decisión de VG en vg-41)
+
+- **Cómo llegan:** Central manda `central.weekly_action` por `POST requests/task`, con el token de la persona, igual que `central.compliance_due` (§20). La ruta ya admitía cualquier `central.<nombre>`, así que el servidor no cambia.
+- **Dónde quedan:** sin área, en «Por clasificar». Una regla de entrada las lleva a su proyecto.
+- **Repetir:** con la misma `external_ref` devuelve la misma petición.
+- **Estado de vuelta:** por `tasks.targets`, como los vencimientos.
+- **En la app:** «Gestionar entradas» las conoce como «Central · Revisión semanal» y propone el proyecto de Dirección.
+- **Pruebas:** `tests/tasks/central-weekly.test.ts`.
+
+## 57. Entregables del proyecto (migración `0361`; «Proyectos y producción» 7.5)
+
+- **`tasks.project_deliverables`:** lo que el proyecto entrega.
+  - `name` (1–200), `quantity` (opcional, > 0), `space_id` (dónde va, un espacio vivo de Recursos), `note` y `position`.
+  - `status` se pone a mano: `todo` | `delivered` (entregado) | `installed` (instalado).
+  - «Hecho» no se guarda: se calcula al leer cuando lo están todas sus tareas madre.
+  - La visibilidad es la de su proyecto. Escriben editor y owner.
+- **`tasks.tasks.deliverable_id`:** solo en la madre, como la fase (§51). Los pasos heredan el de su madre al leer.
+- **Al mover:** si la tarea cambia de proyecto o pasa a ser hija, lo suelta (trigger `tasks.task_deliverable_follow`, y `moveTaskOps`).
+- **Reglas (hook `tasks.validate_deliverables`):**
+  - el entregable es vivo, de su proyecto y va en una madre (422 `INVALID_DELIVERABLE`);
+  - su espacio existe (422 `INVALID_SPACE`);
+  - con tareas vivas no se borra (422 `DELIVERABLE_NOT_EMPTY`).
+- **Modelo de la interfaz:** `LegacyProject.deliverables` (`{id, name, quantity, status, spaceId, note, order, version}`, más los calculados `done`, `open` y `total`) y `LegacyTask.deliverableId`. Quitar uno del modelo suelta sus tareas.
+- **Papelera:** los entregables van a ella con su proyecto y la purga los borra.
+- **Pruebas:** `tests/tasks/deliverables.test.ts`.

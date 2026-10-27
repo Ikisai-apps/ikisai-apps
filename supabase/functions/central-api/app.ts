@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  BED_LAYOUT_PROJECTION, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
+  BED_LAYOUT_PROJECTION, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
   type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -132,6 +132,41 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
           if (!(isFault(error) && error.code === 'CONSTRAINT_VIOLATION')) throw error;
         }
         return { requirementTaskId: linkId, created: out.created, routed: out.routed ?? null, task: out.task };
+      },
+    },
+    // Acción de la revisión semanal como tarea de Tasks (1523; VG, vg-41): como las obligaciones, con el token de la persona
+    // y referencia idempotente; la acción queda enlazada en `central.weekly_actions`. Solo Dirección y con la revisión abierta.
+    {
+      method: 'POST', pattern: 'weekly/:id/task', handler: async ({ ctx, params, json }) => {
+        if (!canPrepareReview(ctx.membership)) fail(403, 'FORBIDDEN', 'Las acciones de la revisión las crea Dirección.');
+        const body = (await json().catch(() => ({}))) ?? {};
+        const requestId = typeof body.requestId === 'string' ? body.requestId : '';
+        const code = typeof body.code === 'string' ? body.code : '';
+        const kpi = typeof body.kpi === 'string' ? body.kpi : '';
+        const label = typeof body.label === 'string' ? body.label.trim().slice(0, 80) : '';
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        const note = typeof body.note === 'string' ? body.note.trim() : '';
+        const due = typeof body.due === 'string' && body.due ? body.due : null;
+        if (!/^[A-Za-z0-9-]{8,100}$/.test(requestId) || !UUID.test(params.id ?? '') || !/^RSM_\d{4}_\d{3,}$/.test(code)) fail(422, 'INVALID_OPERATION', 'Faltan la revisión o requestId.');
+        if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(kpi) || !label || !title || title.length > 500 || note.length > 2000 || (due !== null && !DATE.test(due))) fail(422, 'INVALID_OPERATION', 'Indicador, título, nota o fecha no válidos.');
+        const externalRef = weeklyTaskRef(code, requestId);
+        const out = await tasks<{ created: boolean; routed?: string; task: TasksTask }>(ctx, 'requests/task', {
+          source: 'central', external_ref: externalRef, kind: WEEKLY_TASK_KIND, kind_label: WEEKLY_TASK_KIND_LABEL,
+          external_url: `${CENTRAL_ORIGINS[0]}/#/direccion/semana`, title, ...(note ? { note } : {}), ...(due ? { due } : {}), priority: 'normal',
+        });
+        if (!out?.task?.id || !UUID.test(out.task.id)) fail(503, 'TASKS_UNAVAILABLE', 'Respuesta de Tasks no válida.');
+        const actionId = await derivedUuid(`central-weekly-task:${requestId}`);
+        const operations = [{ op: 'insert', table: WEEKLY_ACTIONS_TABLE, id: actionId, fields: {
+          review_id: params.id, kpi, label, kind: 'task', task_target_id: out.task.id, task_external_ref: externalRef,
+          task_label: out.task.title ?? title, task_revision: out.task.revision ?? null,
+        } }];
+        const digest = await sha256Hex(new TextEncoder().encode(stable(operations)));
+        try {
+          await supabase.rpc('core_commit', { p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `weekly-task:${requestId}`, p_digest: digest, p_expected_cursor: null, p_operations: operations });
+        } catch (error) {
+          if (!(isFault(error) && error.code === 'CONSTRAINT_VIOLATION')) throw error;
+        }
+        return { actionId, created: out.created, task: out.task };
       },
     },
     // Panel de dirección (API.md §7.2): lee la proyección de KPIs de cada app con la clave de servicio y la registración

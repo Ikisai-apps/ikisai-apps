@@ -162,6 +162,10 @@ export interface PortalApi {
   revokeLink(linkId: string): Promise<unknown>;
   /** `auth/config`: cuenta permanente (Workspace) y entrada con código por correo (0108). Sin red, las dos apagadas. */
   authConfig(): Promise<{ permanentAccount: boolean; emailCode: boolean }>;
+  /** `payments/config`: si se puede pedir el enlace de una factura que no lo trae (F5). Sin red, no. */
+  paymentsConfig(): Promise<{ online: boolean }>;
+  /** «Pagar ahora» sin enlace (F5): Finance crea o reutiliza el de la factura; la vuelta la pone el servidor. */
+  paymentLink(reservationId: string, invoiceId: string): Promise<{ url: string; provider: string | null; expires_at: string | null; reused: boolean }>;
   /** Fases 4 y 5: lectura y acción de otra app con caché (programa y alojamiento de Booking, menú de Food, lugar de Central). */
   readAny<T>(name: string, args?: Record<string, unknown>): Promise<Loaded<T>>;
   invokeAny<T = unknown>(name: string, args: Record<string, unknown>): Promise<T>;
@@ -238,5 +242,9 @@ export function createPortalApi(client: SyncClient): PortalApi {
         return { permanentAccount: false, emailCode: false };
       }
     },
+    async paymentsConfig() {
+      try { return { online: (await client.api<{ online?: boolean }>('/payments/config')).online === true }; } catch { return { online: false }; }
+    },
+    paymentLink: (reservationId, invoiceId) => client.api('/payments/link', { method: 'POST', json: { reservation_id: reservationId, issued_invoice_id: invoiceId } }),
   };
 }

@@ -148,6 +148,27 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   });
   const { main } = shell;
 
+  /**
+   * «Volver» y «Cerrar» siempre a la vista (VG, 27-10: se quedó atrapado en una pantalla): en todas las pantallas menos la
+   * entrada común. «Volver» sube un nivel (pantalla del flujo → su Inicio → entrada; editor → Recorridos → entrada); «Cerrar»
+   * vuelve a la entrada común.
+   */
+  const flowNav = el('nav', { class: 'flow-nav', 'aria-label': 'Volver o cerrar', 'data-feedback-id': 'flow.navegacion', hidden: true });
+  main.before(flowNav);
+  function parentOf(hash: string, projectId: string | null): string | null {
+    if (projectId) return hash === `#/p/${projectId}` ? '#/' : `#/p/${projectId}`;
+    if (hash.startsWith('#/recorridos/')) return '#/recorridos';
+    return hash === '#/' ? null : '#/';
+  }
+  function paintFlowNav(hash: string, projectId: string | null): void {
+    const parent = parentOf(hash, projectId);
+    flowNav.hidden = !parent;
+    replace(flowNav, ...(parent ? [
+      el('button', { type: 'button', class: 'ghost', 'data-feedback-id': 'flow.navegacion.volver', onclick: () => navigate(parent) }, '‹ Volver'),
+      el('button', { type: 'button', class: 'ghost', 'data-feedback-id': 'flow.navegacion.cerrar', onclick: () => navigate('#/') }, '✕ Cerrar y volver a la entrada'),
+    ] : []));
+  }
+
   function paintBanners(status: SyncStatus): void {
     shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply }, staleBanner(status));
   }
@@ -240,14 +261,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   async function route(): Promise<void> {
     const hash = (location.hash && location.hash !== '#' ? location.hash : '#/').split('?')[0]!;
+    const testLink = /[?&]prueba(=|&|$)/.test(location.hash);
     const m = hash.match(/^#\/p\/([0-9a-f-]{36})(?:\/([a-z]+))?$/i);
     const projectId = m ? m[1]! : null;
     await enterProject(projectId);
     let entry: { title: string; slug: string; mount: ViewMount };
     if (!projectId && hash === '#/recorridos') entry = { title: 'Recorridos', slug: 'recorridos', mount: mountJourneys };
-    else if (!projectId && hash === '#/recorridos/nuevo') entry = { title: 'Nuevo recorrido', slug: 'recorridos', mount: mountJourneyEditor(null) };
+    // Crear recorridos y flujos no está en la interfaz (VG, 27-10: «no ahora»): solo con el enlace de prueba (`?prueba`).
+    else if (!projectId && hash === '#/recorridos/nuevo' && testLink) entry = { title: 'Nuevo recorrido', slug: 'recorridos', mount: mountJourneyEditor(null) };
     else if (!projectId && /^#\/recorridos\/[a-z][a-z0-9_]{1,40}\/editar$/.test(hash)) entry = { title: 'Editar recorrido', slug: 'recorridos', mount: mountJourneyEditor(hash.split('/')[2]!) };
-    else if (!projectId && hash === '#/nuevo') entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
+    else if (!projectId && hash === '#/nuevo' && testLink) entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
     else if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };
     else if (m![2] === 'cierre') entry = { title: 'Cierre del día', slug: 'cierre', mount: mountClosure };
@@ -269,6 +292,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView?.();
     unmountView = null;
     shell.setRoute(projectId ? hash : '#/');
+    paintFlowNav(hash, projectId);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, projectId });
     screen = { id: `flow.${entry.slug}`, label: entry.title };

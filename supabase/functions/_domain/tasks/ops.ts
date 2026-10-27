@@ -119,6 +119,9 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   if (target.position !== undefined) fields.position = target.position;
   else if (changesProject) fields.position = nextPosition(data['tasks.tasks'].filter((t) => t.project_id === project.id));
   if (target.parent_id !== undefined && target.parent_id !== task.parent_id) fields.parent_id = target.parent_id;
+  // Fase (0356): es de su proyecto y solo de una madre. El trigger tasks.task_phase_follow hace lo mismo en el servidor.
+  if (task.phase_id && (changesProject || (fields.parent_id ?? null) !== null)) fields.phase_id = null;
+  if (task.deliverable_id && (changesProject || (fields.parent_id ?? null) !== null)) fields.deliverable_id = null;
   const ops: Operation[] = Object.keys(fields).length ? [update('tasks.tasks', task, fields)] : [];
   if (!changesProject) return ops;
   const moved = new Set([task.id, ...children.map((c) => c.id)]);
@@ -131,6 +134,7 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   for (const row of live(data['tasks.attachments'])) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_comments'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_comments', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_materials'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_materials', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_units'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_units', row, { project_id: project.id }));
   return ops;
 }
 
@@ -167,6 +171,7 @@ export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
     for (const row of live(data['tasks.attachments'])) if (row.task_id === t.id) ops.push(update('tasks.attachments', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_comments'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_comments', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_materials'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_materials', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_units'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_units', row, { project_id: above.project_id }));
   }
   return ops;
 }

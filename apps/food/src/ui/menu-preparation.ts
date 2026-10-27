@@ -96,11 +96,11 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
 
   /** Editar o crear un paso. Reescribir el texto o el horario de una propuesta la convierte en un paso propio. */
   function openStep(step: PrepRow | null): void {
-    const text = el('textarea', { 'data-feedback-id': 'food.menu.preparacion.paso.texto', 'data-feedback-label': 'Qué hay que hacer', id: 'p-text', rows: '2', maxlength: '300' });
+    const text = el('textarea', { 'data-field-id': 'food.menu.preparacion.paso.texto', 'data-field-entity': 'food.preparation_items', 'data-field-prop': 'text', 'data-feedback-id': 'food.menu.preparacion.paso.texto', 'data-feedback-label': 'Qué hay que hacer', id: 'p-text', rows: '2', maxlength: '300' });
     text.value = step?.text ?? '';
-    const date = el('input', { 'data-feedback-id': 'food.menu.preparacion.paso.dia', 'data-feedback-label': 'Día', id: 'p-date', type: 'date', value: step?.scheduled_date ?? '' });
-    const time = el('input', { 'data-feedback-id': 'food.menu.preparacion.paso.hora', 'data-feedback-label': 'Hora', id: 'p-time', type: 'time', value: shortTime(step?.scheduled_time ?? null) });
-    const responsible = el('input', { 'data-feedback-id': 'food.menu.preparacion.paso.responsable', 'data-feedback-label': 'Responsable', 'data-feedback-ignore': '', id: 'p-responsible', type: 'text', maxlength: '120', value: step?.responsible ?? '' });
+    const date = el('input', { 'data-field-id': 'food.menu.preparacion.paso.dia', 'data-field-entity': 'food.preparation_items', 'data-field-prop': 'scheduled_date', 'data-feedback-id': 'food.menu.preparacion.paso.dia', 'data-feedback-label': 'Día', id: 'p-date', type: 'date', value: step?.scheduled_date ?? '' });
+    const time = el('input', { 'data-field-id': 'food.menu.preparacion.paso.hora', 'data-field-entity': 'food.preparation_items', 'data-field-prop': 'scheduled_time', 'data-feedback-id': 'food.menu.preparacion.paso.hora', 'data-feedback-label': 'Hora', id: 'p-time', type: 'time', value: shortTime(step?.scheduled_time ?? null) });
+    const responsible = el('input', { 'data-field-id': 'food.menu.preparacion.paso.responsable', 'data-field-entity': 'food.preparation_items', 'data-field-prop': 'responsible', 'data-feedback-id': 'food.menu.preparacion.paso.responsable', 'data-feedback-label': 'Responsable', 'data-feedback-ignore': '', id: 'p-responsible', type: 'text', maxlength: '120', value: step?.responsible ?? '' });
     const error = el('p', { class: 'formerror', role: 'alert' });
     const field = (label: string, control: HTMLElement) => el('label', { class: 'field' }, el('span', null, label), control);
     const save = async () => {

@@ -20,5 +20,25 @@ test('invoices.register_purchase_quick en core.capabilities', async () => {
   assert.ok('invoice_number' in row.input_schema.properties);
   assert.ok('receipt_kind' in row.input_schema.properties, '0247 la actualiza');
   assert.ok(row.anchors.includes('invoices.facturas.nueva'));
+  // 0258: qué lee y qué escribe (entity.prop = esquema.tabla.columna), para la cobertura de campos (núcleo 0111)
+  assert.ok(row.writes.includes('invoices.invoices.supplier_id') && row.writes.includes('invoices.allocations.target_id') && row.writes.includes('invoices.invoices.receipt_kind'));
+  assert.ok(row.reads.includes('invoices.suppliers.tax_id'));
+  // Cada columna declarada existe de verdad
+  for (const ref of [...row.reads, ...row.writes] as string[]) {
+    const [schema, table, column] = ref.split('.');
+    const found = await db.db.query(`select 1 from information_schema.columns where table_schema = $1 and table_name = $2 and column_name = $3`, [schema, table, column]);
+    assert.equal(found.rows.length, 1, ref);
+  }
+  await db.close();
+});
+
+test('0260: primer estimado de utilidad de Finance (core.usage_estimate, vg-39)', async () => {
+  const db = await createTestDatabase();
+  const rows = (await db.db.query<{ feature_id: string; frequency: string }>(`select feature_id, frequency from core.usage_estimates where app = 'invoices' order by feature_id`)).rows;
+  const by = new Map(rows.map((r) => [r.feature_id, r.frequency]));
+  assert.equal(by.get('invoices.facturas.nueva'), 'frequent');
+  assert.equal(by.get('invoices.gestoria'), 'rare_critical');
+  assert.equal(by.get('invoices.guia'), 'do_not_evaluate');
+  assert.ok(rows.every((r) => r.feature_id.startsWith('invoices.')));
   await db.close();
 });

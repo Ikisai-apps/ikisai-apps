@@ -328,7 +328,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
     if (sheet) return;
     const { item, name } = view;
     const disabled = closed || !canWrite();
-    const status = el('select', { 'data-feedback-id': 'food.menu.compra.linea.estado', 'data-feedback-label': 'Estado del producto', 'aria-label': `Estado de ${name}`, disabled },
+    const status = el('select', { 'data-field-id': 'food.menu.compra.linea.estado', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'status', 'data-feedback-id': 'food.menu.compra.linea.estado', 'data-feedback-label': 'Estado del producto', 'aria-label': `Estado de ${name}`, disabled },
       ...SHOPPING_ITEM_STATUSES.map((s) => el('option', { value: s, selected: item.status === s }, ITEM_STATUS_LABELS[s])));
     const done = async (work: Promise<unknown>) => { await work; await sheet?.close(true); };
     const stock = item.stock_quantity === null ? null : Number(item.stock_quantity);
@@ -374,10 +374,10 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
   function addManual(): void {
     if (!list || !data) return;
     const known = data.ingredients.filter((i) => !i.deleted_at);
-    const name = el('input', { 'data-feedback-id': 'food.menu.compra.nueva.producto', 'data-feedback-label': 'Producto', id: 'm-name', type: 'text', list: 'buyIngredients', maxlength: '120', placeholder: 'Producto' });
-    const quantity = el('input', { 'data-feedback-id': 'food.menu.compra.nueva.cantidad', 'data-feedback-label': 'Cantidad a comprar', id: 'm-quantity', type: 'text', inputmode: 'decimal' });
-    const unit = el('select', { 'data-feedback-id': 'food.menu.compra.nueva.unidad', 'data-feedback-label': 'Unidad', id: 'm-unit' }, ...UNITS.map((u) => el('option', { value: u, selected: u === 'unidad' }, UNIT_LABELS[u])));
-    const supplier = el('input', { 'data-feedback-id': 'food.menu.compra.nueva.proveedor', 'data-feedback-label': 'Proveedor', id: 'm-supplier', type: 'text', maxlength: '120' });
+    const name = el('input', { 'data-field-id': 'food.menu.compra.nueva.producto', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'ingredient_id', 'data-feedback-id': 'food.menu.compra.nueva.producto', 'data-feedback-label': 'Producto', id: 'm-name', type: 'text', list: 'buyIngredients', maxlength: '120', placeholder: 'Producto' });
+    const quantity = el('input', { 'data-field-id': 'food.menu.compra.nueva.cantidad', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'purchase_quantity', 'data-feedback-id': 'food.menu.compra.nueva.cantidad', 'data-feedback-label': 'Cantidad a comprar', id: 'm-quantity', type: 'text', inputmode: 'decimal' });
+    const unit = el('select', { 'data-field-id': 'food.menu.compra.nueva.unidad', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'unit', 'data-feedback-id': 'food.menu.compra.nueva.unidad', 'data-feedback-label': 'Unidad', id: 'm-unit' }, ...UNITS.map((u) => el('option', { value: u, selected: u === 'unidad' }, UNIT_LABELS[u])));
+    const supplier = el('input', { 'data-field-id': 'food.menu.compra.nueva.proveedor', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'supplier', 'data-feedback-id': 'food.menu.compra.nueva.proveedor', 'data-feedback-label': 'Proveedor', id: 'm-supplier', type: 'text', maxlength: '120' });
     const error = el('p', { class: 'formerror', role: 'alert' });
     const field = (label: string, control: HTMLElement) => el('label', { class: 'field' }, el('span', null, label), control);
     sheet = openSheet({

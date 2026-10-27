@@ -87,6 +87,21 @@ export async function verifyVisitorEmail(supabase: Supabase, request: Request, b
   return { visitorId: out.visitorId, saved: true };
 }
 
+/** 0115 · Un miembro con sesión (dirección, staff) ata el visitante de este móvil a su cuenta: en ven ve lo mismo que un huésped, con su identidad. */
+export async function visitorAsMember(supabase: Supabase, request: Request, identity: (token: string) => Promise<{ id: string }>): Promise<Record<string, unknown>> {
+  const token = request.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1] ?? null;
+  if (!token) fail(401, 'UNAUTHENTICATED', messageFor('UNAUTHENTICATED'));
+  const who = await identity(token);
+  const visitor = await resolveVisitor(supabase, request);
+  const out = await supabase.rpc<{ visitorId: string; saved?: boolean; recovered?: boolean }>('core_visitor_member_link', { p_visitor: visitor?.id ?? null, p_user: who.id });
+  if (out.recovered) {
+    const fresh = newVisitorToken();
+    await supabase.rpc('core_visitor_token_add', { p_visitor: out.visitorId, p_token_hash: await sha256Hex(fresh) });
+    return { visitorId: out.visitorId, token: fresh, recovered: true, userId: who.id };
+  }
+  return { visitorId: out.visitorId, saved: true, userId: who.id };
+}
+
 export async function forgetVisitorEmail(supabase: Supabase, request: Request): Promise<{ ok: true }> {
   const visitor = await requireVisitor(supabase, request);
   await supabase.rpc('core_visitor_email_forget', { p_visitor: visitor.id });
@@ -103,7 +118,7 @@ export async function visitorMe(supabase: Supabase, request: Request): Promise<R
     const account = await supabase.remote('/auth/v1/admin/users/' + me.authUserId, { service: true }).catch(() => null);
     hint = emailHint(typeof account?.email === 'string' ? account.email : null);
   }
-  return { visitorId: me.visitorId, emailSaved: me.emailSaved, emailHint: hint, devices: me.devices, guestIds: me.guestIds ?? [], eventCodes: me.eventCodes ?? [] };
+  return { visitorId: me.visitorId, emailSaved: me.emailSaved, emailHint: hint, devices: me.devices, guestIds: me.guestIds ?? [], eventCodes: me.eventCodes ?? [], member: (me as any).member ?? null };
 }
 
 /** B · «He estado en este evento»: Guests lo anota al entrar en un evento, y «Mis eventos» se rehace en otro móvil desde `me`. */

@@ -14,7 +14,7 @@ import {
   type IncomeCategory, type IssuedCsvField, type IssuedCsvMapping, type IssuedImportInvoice,
 } from '@ikisai/domain-invoices';
 import {
-  CUSTOMERS, EXPORTS, ISSUED_ALLOCATIONS, ISSUED_FILES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, ISSUED_TAX_LINES,
+  CUSTOMERS, EXPORTS, ISSUED_ALLOCATIONS, describeError, ISSUED_FILES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, ISSUED_TAX_LINES,
   type LocalCustomer, type LocalIssuedAllocation, type LocalIssuedFile, type LocalIssuedInvoice, type LocalIssuedLine, type LocalIssuedSeries, type LocalIssuedTaxLine,
 } from '../app/client.ts';
 import { PAYMENT_METHOD_LABELS, eur, onAnyTable, parseAmount, shortDate, todayIso } from '../app/data.ts';
@@ -328,6 +328,56 @@ function collectForm(invoice: LocalIssuedInvoice, onSave: (fields: Record<string
 /** Lo que necesita red en la ficha, con el motivo junto al botón (`bindOnline`); se suelta al volver a pintar la ficha. */
 let sheetOffline: Array<() => void> = [];
 
+interface PaymentLinkRow { id: string; provider: string; url: string | null; amount: number; status: 'abierto' | 'pagado' | 'caducado' | 'cancelado'; expires_at: string; paid_at: string | null; requested_from: string }
+
+/**
+ * «Pago en línea» (finance-18, API.md §19.2): el enlace de pago de la emitida (Stripe, 24 h) para mandarlo a quien
+ * paga (WhatsApp, correo) o que lo vea en su portal. Crear pide red; el estado se lee con red y, sin ella, lo dice.
+ */
+function paymentLinkBlock(client: SyncClient, invoice: LocalIssuedInvoice, canEdit: boolean, needsNetwork: <T extends HTMLElement>(button: T, reason: string) => T): HTMLElement {
+  const host = el('div', { id: 'paymentLink', 'data-feedback-ignore': '' }, el('p', { class: 'hint' }, 'Cargando…'));
+  const payable = invoice.payment_status !== 'cobrada' && invoice.status !== 'rectificada' && Number(invoice.total) > 0;
+  const copy = (url: string) => void navigator.clipboard?.writeText(url).then(() => toast('Enlace copiado.'), () => toast(url));
+  async function paint(): Promise<void> {
+    let rows: PaymentLinkRow[] = [];
+    try {
+      rows = (await client.api<{ items: PaymentLinkRow[] }>('/read/invoices.payment_links_of', { json: { issued_invoice_id: invoice.id } })).items ?? [];
+    } catch {
+      replace(host, el('p', { class: 'hint' }, 'Sin conexión: el estado del pago en línea se ve con red.'));
+      return;
+    }
+    const open = rows.find((r) => r.status === 'abierto' && r.url);
+    const paid = rows.find((r) => r.status === 'pagado');
+    const parts: Array<HTMLElement | null> = [];
+    if (paid) parts.push(el('p', { id: 'paymentLinkPaid' }, `Pagada en línea${paid.paid_at ? ` el ${shortDate(paid.paid_at.slice(0, 10))}` : ''} · ${eur(paid.amount)}`));
+    if (open) {
+      parts.push(el('p', { id: 'paymentLinkOpen' }, `Enlace abierto · ${eur(open.amount)} · caduca ${new Date(open.expires_at).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`));
+      const share = typeof navigator.share === 'function'
+        ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.pago.compartir', 'data-feedback-label': 'Compartir el enlace de pago', class: 'softbtn', type: 'button',
+          onclick: () => void navigator.share({ title: `Pago · ${invoice.full_number ?? ''}`, text: `${invoice.description ?? 'Factura'} · ${eur(invoice.total)}`, url: open.url! }).catch(() => undefined) }, icon('upload', 18), 'Compartir')
+        : null;
+      parts.push(el('div', { class: 'btnrow' },
+        el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.pago.copiar', 'data-feedback-label': 'Copiar el enlace de pago', class: 'softbtn', type: 'button', id: 'copyPaymentLink', onclick: () => copy(open.url!) }, icon('copy', 18), 'Copiar'),
+        share));
+    } else if (payable && canEdit && !paid) {
+      parts.push(el('div', { class: 'btnrow' }, needsNetwork(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.pago.crear', 'data-feedback-label': 'Crear enlace de pago', class: 'softbtn', type: 'button', id: 'createPaymentLink',
+        onclick: async () => {
+          try {
+            await client.api(`/issued/${invoice.id}/payment-link`, { method: 'POST', json: {} });
+            toast('Enlace de pago creado: caduca en 24 h.');
+            void paint();
+          } catch (error) { toast(describeError(error)); }
+        } }, icon('euro', 18), 'Crear enlace de pago'), 'Crear el enlace necesita conexión.')));
+    }
+    if (!parts.length) parts.push(el('p', { class: 'hint' }, payable ? 'Sin enlace de pago.' : 'No se cobra en línea: está cobrada o rectificada.'));
+    const past = rows.filter((r) => r.status === 'caducado' || r.status === 'cancelado').length;
+    if (past) parts.push(el('p', { class: 'hint' }, `${past} enlace${past === 1 ? '' : 's'} anterior${past === 1 ? '' : 'es'} caducado${past === 1 ? '' : 's'} o cancelado${past === 1 ? '' : 's'}.`));
+    replace(host, ...parts.filter((x): x is HTMLElement => !!x));
+  }
+  void paint();
+  return fbBlock({ feedbackId: 'invoices.emitidas.ficha.pago', feedbackLabel: 'Pago en línea' }, 'Pago en línea', invoice.payment_status === 'cobrada' ? 'cobrada' : 'tarjeta', false, host);
+}
+
 function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData, reopen: (id: string) => void): HTMLElement {
   const { client } = ctx;
   for (const off of sheetOffline) off();
@@ -447,6 +497,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         : el('p', { class: 'hint' }, 'Sin reserva ni evento asignado.'),
       reservationLine(allocations, data),
       canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, needsNetwork(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.destino.asignar', 'data-feedback-label': 'Asignar a reserva o evento', class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento'), 'Buscar reservas y eventos necesita conexión.')) : null),
+    isDraft || invoice.status === 'anulada' ? null : paymentLinkBlock(client, invoice, canEdit, needsNetwork),
     fbBlock({ feedbackId: 'invoices.emitidas.ficha.verifactu', feedbackLabel: 'Verifactu' }, 'Verifactu', invoice.origin === 'app' ? (isDraft ? 'borrador' : invoice.vf_status === 'no_enviar' ? 'guardado, sin enviar' : (invoice.vf_status ?? 'pendiente')) : 'otra herramienta', false,
       el('p', { class: 'hint', id: 'issuedVerifactu' }, invoice.origin === 'app'
         ? verifactuSummary(invoice)
