@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { convert, ingredientKey, outputUnit, retreatInContext, round3, similarRecipes, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
+import { cartaLastSales, convert, ingredientKey, outputUnit, retreatInContext, round3, similarRecipes, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
 
 const RECIPE = '11111111-1111-4111-8111-111111111111';
 const INGREDIENT = '22222222-2222-4222-8222-222222222222';
@@ -184,4 +184,13 @@ test('recetario · el retiro en contexto: el del servicio más cercano de hoy en
   const later = retreatInContext(menus, services, items, '2026-10-29')!;
   assert.deepEqual([later.menuId, [...later.recipeIds], later.inCourse], ['invierno', ['sopa'], false]);
   assert.equal(retreatInContext(menus, services, items, '2026-12-02'), null);
+});
+
+test('carta · lo vendido del último día cerrado en Flow, por línea y en total', () => {
+  const sale = (line_id: string, day: string, quantity: number, menu_id = 'm', deleted_at: string | null = null) => ({ menu_id, line_id, day, quantity, deleted_at });
+  assert.equal(cartaLastSales([sale('a', '2026-10-31', 4, 'otra')], 'm'), null);
+  const out = cartaLastSales([sale('a', '2026-10-30', 3), sale('a', '2026-10-31', 12), sale('b', '2026-10-31', 5), sale('c', '2026-11-01', 9, 'm', '2026-11-01T10:00:00Z')], 'm');
+  assert.equal(out?.day, '2026-10-31');
+  assert.deepEqual([...out!.byLine], [['a', 12], ['b', 5]]);
+  assert.equal(out?.units, 17);
 });

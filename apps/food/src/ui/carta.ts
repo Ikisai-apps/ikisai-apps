@@ -11,10 +11,10 @@
  */
 import type { RowOperation } from '@ikisai/sync-client';
 import {
-  CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLinesInOrder, cartaPrevisionEmpty, defaultOfferFields, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
-  parseEurosToCents, validateOperations, type CartaCode, type CartaLine, type CartaScope, type FoodEvent, type Menu, type Recipe, type ResourceItem,
+  CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLastSales, cartaLinesInOrder, cartaPrevisionEmpty, defaultOfferFields, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
+  parseEurosToCents, validateOperations, type CartaCode, type CartaLine, type CartaSale, type CartaScope, type FoodEvent, type Menu, type Recipe, type ResourceItem,
 } from '@ikisai/domain-food';
-import { closeSheet, el, icon, listRow, openSheet, renderMedal, replace, toast, type IconName, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, el, formatDate, icon, listRow, openSheet, renderMedal, replace, toast, type IconName, type Sheet } from '@ikisai/ui-kit';
 import type { SyncClient } from '@ikisai/sync-client';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { dateRange, todayKey, watchEvents, type EventsSnapshot } from '../app/events.ts';
@@ -32,6 +32,9 @@ export const FLOW_ORIGIN = 'https://flow.ikisai.com';
 /** El icono de cada bloque de la carta, de los de comida del kit (K13), junto a su nombre. */
 const SCOPE_ICONS: Record<CartaScope, IconName> = { clasico: 'plate', gourmet: 'chefHat', barra: 'glass' };
 export const cartaImage = (key: string | null | undefined) => (key ? `${FLOW_ORIGIN}/assets/${key}/miniatura.webp` : null);
+
+/** «31 oct.»: el día de unas ventas (a mediodía, para que la zona horaria no lo cambie). */
+const dayLabel = (day: string) => formatDate(`${day}T12:00:00`, 'short');
 
 type CartaMenu = Mirror<Menu>;
 type LineRow = Mirror<CartaLine>;
@@ -157,6 +160,8 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
     const resources = resourcesClient(client);
     let menu: CartaMenu | null = null;
     let lines: LineRow[] = [];
+    // Lo vendido el último día con ventas: lo apunta Flow al cerrar el día («Enviar a Food»).
+    let sold: ReturnType<typeof cartaLastSales> = null;
     let recipes = new Map<string, Recipe>();
     let items = new Map<string, ResourceItem>();
     let projection = new Map<string, ProjectionRow>();
@@ -196,7 +201,9 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
       replace(head, el('div', null,
         el('h2', { id: 'cartaTitle' }, menu.name ?? 'Carta'),
         el('p', null, [event ? `${event.title} · ${dateRange(event)}` : menu.event_id ? 'Ligada a un evento sin datos en este dispositivo' : 'Guardada, sin evento',
-          `${live.filter((l) => l.active).length} de ${live.length} disponibles`].join(' · '))));
+          `${live.filter((l) => l.active).length} de ${live.length} disponibles`].join(' · ')),
+        sold ? el('p', { 'data-feedback-id': 'food.carta.vendido', 'data-feedback-label': 'Lo vendido', id: 'cartaSold' },
+          `Vendido el ${dayLabel(sold.day)}: ${sold.units} ${sold.units === 1 ? 'unidad' : 'unidades'} (cierre de Flow)`) : null));
     }
 
     function paintSettings(): void {
@@ -248,7 +255,8 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
         onchange: async () => {
           const ok = await usage.run('food.carta.disponible', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { active: available.checked } }]));
           if (!ok) available.checked = line.active;
-          else toast(available.checked ? `${name}, disponible.` : `${name}, agotado: no sale en las cestas nuevas.`);
+          // El catálogo de Flow es un reflejo manual de la carta: hasta que alguien lo actualice, allí sigue igual.
+          else toast(`${name}, ${available.checked ? 'disponible' : 'agotado'} en Food. Para que Flow lo vea: en Caja, «Actualizar carta desde Food».`);
         } });
       return el('article', { 'data-feedback-id': 'food.carta.linea', 'data-feedback-label': 'Línea de la carta', class: 'card carta-line' + (line.active ? '' : ' carta-off'), id: `carta-line-${line.id}`, 'data-pending': String(line._pending === true) },
         el('div', { class: 'carta-line-head' },
@@ -258,6 +266,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
             el('small', { class: 'muted' }, line.description || recipe?.public_description || (line.item_id ? 'Del inventario' : 'Receta')))),
         el('div', { class: 'carta-line-money' },
           el('label', { class: 'field' }, el('span', null, 'Precio (€)'), price),
+          sold ? el('span', { class: 'carta-sold' }, el('span', { class: 'muted' }, 'Vendidas'), el('strong', null, String(sold.byLine.get(line.id) ?? 0))) : null,
           el('span', { class: 'carta-cost' }, el('span', { class: 'muted' }, 'Coste'), el('strong', null, cost === null ? (projectionAt ? 'falta precio' : 'sin datos') : '≈ ' + formatCents(cost))),
           el('span', { class: 'carta-margin' }, el('span', { class: 'muted' }, 'Margen'), el('strong', { class: margin && margin.cents < 0 ? 'warnline' : '' },
             margin ? `${formatCents(margin.cents)} · ${Math.round(margin.ratio * 100)} %` : '—'))),
@@ -348,12 +357,14 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
     }
 
     async function load(): Promise<void> {
-      const [row, allLines, allRecipes, allItems] = await Promise.all([
+      const [row, allLines, allRecipes, allItems, sales] = await Promise.all([
         client.get(T.menus, menuId) as Promise<CartaMenu | null>,
         client.list(T.cartaLines) as Promise<LineRow[]>,
         client.list(T.recipes, { includeDeleted: true }) as Promise<Array<Mirror<Recipe>>>,
         resources.list(R.items).catch(() => []) as unknown as Promise<Array<Mirror<ResourceItem>>>,
+        client.list(T.cartaSales) as Promise<Array<Mirror<CartaSale>>>,
       ]);
+      sold = cartaLastSales(sales, menuId);
       menu = row && !row.deleted_at && isCartaMenu(row) ? row : null;
       lines = allLines;
       recipes = new Map(allRecipes.map((r) => [r.id, r]));
@@ -363,7 +374,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
 
     void load().then(() => (tab === 'carta' ? loadCosts() : undefined));
     const offEvents = watchEvents(client, (next) => { snapshot = next; paintHead(); if (tab === 'carta') paintSettings(); });
-    const offTables = [T.menus, T.cartaLines, T.recipes].map((table) => client.onTable(table, () => void load().then(() => (tab === 'carta' ? loadCosts() : undefined))));
+    const offTables = [T.menus, T.cartaLines, T.recipes, T.cartaSales].map((table) => client.onTable(table, () => void load().then(() => (tab === 'carta' ? loadCosts() : undefined))));
     const offItems = resources.onTable(R.items, () => void load());
     return () => { unmountTab?.(); offEvents(); offTables.forEach((off) => off()); offItems(); };
   };

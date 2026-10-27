@@ -49,6 +49,10 @@ test.beforeAll(async () => {
   serrano = api.seed('food.carta_lines', { menu_id: carta, recipe_id: recipe, scope: 'clasico', code: 'A', sale_price_cents: 250, active: true, position: 1 }).id;
   api.seed('food.event_offers', { event_id: FAMILY, menu_id: carta, name: 'Barra familiar', audience: 'huespedes', meal_groups: ['Familia'], payer: 'huesped', charge_when: 'barra', position: 1 });
   agua = api.seed('food.carta_lines', { menu_id: carta, item_id: water, scope: 'barra', code: 'A', name: 'Agua, botella pequeña', sale_price_cents: 100, active: true, position: 9 }).id;
+  // Lo que Flow apuntó al cerrar dos días: la carta enseña el último.
+  api.seed('food.carta_sales', { menu_id: carta, line_id: serrano, day: '2026-10-30', quantity: 3 });
+  api.seed('food.carta_sales', { menu_id: carta, line_id: serrano, day: '2026-10-31', quantity: 12 });
+  api.seed('food.carta_sales', { menu_id: carta, line_id: agua, day: '2026-10-31', quantity: 5 });
   process.env.VITE_API_PROXY = api.url;
   await buildFoodApp();
   server = await preview({
@@ -94,6 +98,9 @@ test('carta · en Menús, su vista con precio y disponibilidad, y «Nueva carta�
     await expect(page.locator(`#carta-line-${serrano}`)).toContainText('Alérgenos sin revisar');
     // Sin previsión, la carta lo dice: Flow no podría preparar existencias.
     await expect(page.locator('#cartaNoPrevision')).toContainText('Sin previsión');
+    // Lo vendido el último día cerrado en Flow, en la cabecera y en cada línea.
+    await expect(page.locator('#cartaSold')).toContainText('17 unidades');
+    await expect(page.locator(`#carta-line-${serrano} .carta-sold`)).toContainText('12');
   });
 
   await test.step('precio y disponibilidad llegan al servidor', async () => {
@@ -103,6 +110,8 @@ test('carta · en Menús, su vista con precio y disponibilidad, y «Nueva carta�
     await expect.poll(() => line(serrano).sale_price_cents).toBe(280);
     await page.locator(`#carta-active-${agua}`).uncheck();
     await expect.poll(() => line(agua).active).toBe(false);
+    // Flow no lo ve hasta que se actualiza su carta: el aviso lo dice.
+    await expect(page.locator('.toast.show')).toContainText('«Actualizar carta desde Food»');
   });
 
   await test.step('Previsión: unidades esperadas, reparto y plan de bandejas', async () => {
