@@ -1795,7 +1795,7 @@ Hito 2 (migración 0484): la ficha según el tipo (`apps/booking/src/ui/eventKin
   - `portal_my_guest.meal_group` (BG16 de Guests).
   - Food cruza con esto sus ofertas (`food.event_offers_projection`).
 - **Llegada y salida** (0486, acordado con Flow):
-  - `booking.flow_guests_projection` (Flow: reader, editor y owner; Booking). Una fila por huésped vivo de un evento vivo, sin el de muestra ni los anonimizados:
+  - `booking.flow_guests_of({event_id})` (Flow: reader, editor, owner y outsider; decisión de Core): los huéspedes de un evento, solo si está en el ámbito de la persona en Flow (`core.reader_in_scope`, 0098). Si no, `FORBIDDEN`. Devuelve `{items}` con las filas de la vista `booking.flow_guests_projection`, que no se abre a Flow. Una fila por huésped vivo de un evento vivo, sin el de muestra ni los anonimizados:
     - `event_id`, `guest_id`, `guest_revision`;
     - `display_name` («Ana R.»), `portal_role`;
     - `space_name` y `bed_label` (la asignación con cama, si la hay);
