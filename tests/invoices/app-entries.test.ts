@@ -212,14 +212,14 @@ test('0245: un gasto es fiscal solo con justificante; al adjuntarlo pasa a fisca
   // Un gasto fiscal sin justificante, no
   await rejected([call('invoices.record_app_entry', expense('vasos', { nature: 'fiscal' }))], 'INVOICE_REQUIRED');
   // Con el número del ticket al reenviar, pasa a fiscal
-  const withTicket = await record(expense('hielo', { receipt_number: 'T-77' }));
+  const withTicket = await record(expense('hielo', { receipt_number: 'T-77', receipt_kind: 'invoice' }));
   assert.deepEqual([withTicket.status, withTicket.nature], ['replaced', 'fiscal']);
   // Un reenvío sin justificante no lo quita, y no vuelve a proceso
   assert.equal((await record(expense('hielo', { receipt_number: 'T-77' }))).status, 'unchanged');
   assert.equal((await record(expense('hielo'))).nature, 'fiscal');
   await rejected([call('invoices.record_app_entry', expense('hielo', { nature: 'process' }))], 'NATURE_CHANGE', 409);
   // Un documento que no es de Finance o no está verificado, no
-  await rejected([call('invoices.record_app_entry', expense('servilletas', { receipt_file_id: uuid() }))], 'INVALID_FILE');
+  await rejected([call('invoices.record_app_entry', expense('servilletas', { receipt_file_id: uuid(), receipt_kind: 'invoice' }))], 'INVALID_FILE');
 
   // En Finance: adjuntar el número a un gasto de proceso lo pasa a fiscal; quitarlo de un gasto fiscal, no
   const servilletas = await record(expense('servilletas'));
@@ -248,6 +248,19 @@ test('0247: un gasto con ticket se registra, pero no es fiscal; con factura sí,
   assert.equal(sale.nature, 'fiscal');
   const summary = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { from: '2026-12-22', to: '2026-12-22' } })).data;
   assert.deepEqual([Number(summary.expense.count), Number(summary.expense.quota)], [1, 2.1], 'solo el gasto con factura, con su IVA');
+});
+
+test('0248: un cobro de la caja con su número dice si es ticket o factura; sin decirlo, 422 RECEIPT_KIND_REQUIRED', async () => {
+  const sale = (extra: Record<string, unknown> = {}) => ({ source_app: 'flow', source_ref: `flow:receipt:${PROJECT}-57`, kind: 'income', entry_date: '2026-12-22',
+    description: 'Barra · justificante 57', amount_cents: 1100, tax_rate: 10, methods: { cash: 1100 }, ...extra });
+  await rejected([call('invoices.record_app_entry', sale({ nature: 'fiscal', receipt_number: '57' }))], 'RECEIPT_KIND_REQUIRED');
+  const ticket = await record(sale({ nature: 'fiscal', receipt_number: '57', receipt_kind: 'ticket' }));
+  assert.deepEqual([ticket.status, ticket.nature, ticket.receipt_kind], ['created', 'fiscal', 'ticket']);
+  // Reenviado sin receipt_kind, se queda el que tenía
+  assert.equal((await record(sale({ nature: 'fiscal', receipt_number: '57' }))).status, 'unchanged');
+  // Sin justificante (como manda Flow hoy un cobro sin número), sigue entrando
+  const plain = await record(sale({ source_ref: `flow:receipt:${PROJECT}-58`, nature: 'fiscal' }));
+  assert.deepEqual([plain.nature, plain.receipt_kind], ['fiscal', null]);
 });
 
 test('0247: un ticket registrado como factura recibida queda fuera del resumen fiscal y de la entrega', async () => {
