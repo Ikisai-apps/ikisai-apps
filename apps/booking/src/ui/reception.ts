@@ -38,7 +38,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
   // El filtro va en memoria (no relee las tablas en cada tecla) y se guarda en la pestaña: al volver de la ficha, o en el
   // Guiado, sigue señalando la misma ficha (los botones de cada ficha comparten anclaje y la guía señala el primero visible).
   const SEARCH_KEY = 'booking-recepcion-buscar';
-  const search = el('input', { id: 'receptionSearch', ...fieldAttrs({ id: 'booking.recepcion.buscar', label: 'Buscar', confirm: 'none' }), type: 'search', placeholder: 'Número o nombre', autocomplete: 'off', 'aria-label': 'Buscar por número o nombre',
+  const search = el('input', { id: 'receptionSearch', ...fieldAttrs({ id: 'booking.recepcion.buscar', label: 'Buscar', confirm: 'none', storage: 'none' }), type: 'search', placeholder: 'Número o nombre', autocomplete: 'off', 'aria-label': 'Buscar por número o nombre',
     'data-feedback-id': 'booking.recepcion.buscar', 'data-feedback-label': 'Buscar', oninput: () => { remember(); rerender(); } }) as HTMLInputElement;
   try { search.value = sessionStorage.getItem(SEARCH_KEY) ?? ''; } catch { /* sin almacenamiento */ }
   const remember = () => { try { sessionStorage.setItem(SEARCH_KEY, search.value); } catch { /* sin almacenamiento */ } };

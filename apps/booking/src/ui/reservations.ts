@@ -92,7 +92,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   const writable = canWrite(client);
   resetSesWatch();
 
-  const search = el('input', { type: 'search', id: 'reservationSearch', ...fieldAttrs({ id: 'booking.reservas.buscador.campo', label: 'Buscar reservas', confirm: 'none' }), 'data-feedback-id': 'booking.reservas.buscador.campo', 'data-feedback-label': 'Buscar reservas', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
+  const search = el('input', { type: 'search', id: 'reservationSearch', ...fieldAttrs({ id: 'booking.reservas.buscador.campo', label: 'Buscar reservas', confirm: 'none', storage: 'none' }), 'data-feedback-id': 'booking.reservas.buscador.campo', 'data-feedback-label': 'Buscar reservas', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
     'aria-describedby': 'reservationSearchScope', oninput: () => { query = foldText(search.value); paint(); } });
   const searchScope = el('p', { class: 'hint', id: 'reservationSearchScope', 'aria-live': 'polite' });
   const filterBar = el('div', { class: 'filters bk-filters', role: 'group', 'aria-label': 'Filtrar reservas', 'data-feedback-id': 'booking.reservas.filtros', 'data-feedback-label': 'Filtros' });

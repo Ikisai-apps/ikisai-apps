@@ -439,7 +439,7 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
       }
       if (!eventId || !events.some((e) => e.event.id === eventId)) eventId = events[0]!.event.id;
       const current = events.find((e) => e.event.id === eventId)!;
-      const select = el('select', { id: 'eventSelect', ...fieldAttrs({ id: 'booking.huespedes.evento.selector', label: 'Evento', confirm: 'none' }), 'data-feedback-id': 'booking.huespedes.evento.selector', 'data-feedback-label': 'Evento', 'aria-label': 'Evento', onchange: () => navigate(`#/huespedes/${select.value}`) },
+      const select = el('select', { id: 'eventSelect', ...fieldAttrs({ id: 'booking.huespedes.evento.selector', label: 'Evento', confirm: 'none', storage: 'none' }), 'data-feedback-id': 'booking.huespedes.evento.selector', 'data-feedback-label': 'Evento', 'aria-label': 'Evento', onchange: () => navigate(`#/huespedes/${select.value}`) },
         events.map(({ event, reservation }) => el('option', { value: event.id }, `${reservation.title} · ${dateRange(reservation)}`)));
       select.value = eventId;
       replace(selectHost, el('label', { class: 'field' }, el('span', null, 'Evento'), select));
