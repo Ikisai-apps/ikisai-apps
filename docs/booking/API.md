@@ -2013,3 +2013,19 @@ El visitante, desde «Alójate aquí»:
 - **Si después se le da cama** (una asignación con él), vuelve a `pendiente_envio` y `pendiente_datos` (`assignment_needs_ses`).
 - **En un retiro**, apuntarse es venir a dormir: nada cambia.
 
+## 43. Carriles de Recepción (traspaso §4.3; Core 27-10-2026)
+
+`#/recepcion` muestra la misma estancia en carriles filtrados (`createLanes` del kit; pestañas o lado a lado, y la elección se recuerda en el dispositivo). Sirve para las jornadas abiertas en curso.
+
+- **Carriles:**
+  - **Por confirmar:** las solicitudes del QR con número.
+  - **Entradas de hoy:** quien tiene cama desde hoy y no ha llegado.
+  - **En estancia:** quien ha llegado y no ha salido.
+  - **Salidas y limpieza:** quien sale hoy o ya ha salido hoy (su limpieza se pide al salir, §40).
+  - **Excepciones:** cobro pendiente con la cama ocupada, datos incompletos el día de entrada o dentro, retención caducada o sin cama. Es un filtro encima de los otros carriles.
+- **Cuatro indicadores independientes por ficha:** plaza, cobro, datos y presencia. Que uno esté bien no da los otros por hechos. Sin el ámbito de huéspedes no salen ni nombres ni datos.
+- **Acciones:**
+  - «Cobrar y alojar» y «Descartar», en las solicitudes;
+  - «Llega» (`guest_arrive`), «Sale» (`guest_leave`) y «Ficha», en los huéspedes.
+- **La regla** está en `apps/booking/src/app/receptionLanes.ts` (`receptionCards`, `laneCards`). Es pura y tiene prueba en `tests/booking/reception-lanes.test.ts`.
+
