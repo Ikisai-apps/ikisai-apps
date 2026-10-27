@@ -23,7 +23,7 @@ import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { dateRange, hhmm, missingText } from '../app/labels.ts';
 import type { Lodging, Menu, ProgramItem } from '../app/portal.ts';
 import { roleText } from './retreats.ts';
-import { fbIgnore, fbMark, staleNote } from './common.ts';
+import { fbIgnore, fbMark, staleNote, whyNote } from './common.ts';
 import { shortRange } from './frame.ts';
 import { choiceOpen } from './lodging.ts';
 import type { Modules } from './nav.ts';
