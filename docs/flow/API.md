@@ -226,3 +226,11 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **v1 congelada:** mientras no tenga documentos propios, sigue enseñando las guías del código. Documentos y portada son datos, no configuración, así que también se pueden cambiar en la v1.
 - **«Nueva versión»** copia los documentos (los mismos archivos, sin duplicarlos) y la portada.
 - **Para Central:** `flow.projects_projection` (id, name, status, starts_on, ends_on, test_mode, booking_event_id), abierta con `core.allow_read('central', …, '{owner}')` para dar accesos por proyecto.
+
+## 22. Comportamiento «station» (puesto) y métricas (migración `0908`, paso 2)
+
+- **Puesto:** unidad `kind = 'station'` que no se termina: un toque la ocupa (`assigned_to` = quien toca) y otro la suelta. Lo hace `unit_step`, que solo cambia para esta clase de unidad; el resto de unidades sigue igual.
+- **Métrica en vivo**, calculada en el servidor: `flow.station_metrics({project_id})` (lectura registrada, con el ámbito comprobado) devuelve `{unit_id, metric, value}` para cada puesto. Las métricas son enchufables: una función `flow.metric_<clave>(project uuid, params jsonb)` por clave. La app la vuelve a pedir con cada cambio de datos y cada 20 s.
+- **`bread_ahead`:** unidades de preparación de los pedidos cobrados en los últimos `lookback_min` minutos (5), como mucho `per_order_cap` por pedido (4). `rate` = unidades / ventana; `expected` = `rate` × (`warmup_min` + `lead_min`) (1 + 1); descuento por tramos según `rate` (`tiers`: hasta 2, −60 %; hasta 8, −30 %; resto, 0 %); `target` = `floor(expected × (1 − pct/100))`. Salida: `{target, rate, window, units, pct}`.
+- **Textos y parámetros en la unidad** (`payload`: `metric`, `params`, `text`, `notice`, `notice_in`). El código del comportamiento no nombra productos. El owner cambia los parámetros numéricos desde la tarjeta (`flow.station_set_params`).
+- **Plantilla:** `flow.template_units` (`template_key`, `min_version`, `column_key`, `kind`, `label`, `payload`). «Nueva versión» añade las que tocan a su versión. La barra desde la v2 lleva el puesto «Pan» en Logística, con «Ahora deben estar calentándose N panes · r montaditos/min» y el aviso «Pan: N calentándose» en la cabecera de Preparación. La v1 no cambia.
