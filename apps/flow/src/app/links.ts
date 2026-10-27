@@ -56,16 +56,16 @@ export async function chooseTasksProject(client: SyncClient, project: Project): 
 }
 
 /**
- * «Dar número a los huéspedes» (owner, 0910): lee los huéspedes del evento en Booking (`booking.flow_guests_projection`,
+ * «Dar número a los huéspedes» (owner, 0910): lee los huéspedes del evento en Booking (`booking.flow_guests_of`,
  * solo nombre corto) y les da número de cliente en este flujo. Idempotente: quien ya tenía número lo conserva.
  */
 export async function assignGuestNumbers(client: SyncClient, project: Project): Promise<void> {
   if (!isOnline(client)) { toast('Necesita conexión.'); return; }
   if (!project.booking_event_id) { toast('Liga antes el flujo a su evento de Booking.'); return; }
   try {
-    const out = await client.api<{ rows: Array<{ guest_id: string; display_name: string | null }> }>('/read/booking.flow_guests_projection', {
-      method: 'POST', json: { where: { event_id: project.booking_event_id }, limit: 1000 } });
-    const guests = (out.rows ?? []).map((g) => ({ guest_id: g.guest_id, display_name: g.display_name }));
+    const out = await client.api<{ items: Array<{ guest_id: string; display_name: string | null }> }>('/read/booking.flow_guests_of', {
+      method: 'POST', json: { event_id: project.booking_event_id } });
+    const guests = (out.items ?? []).map((g) => ({ guest_id: g.guest_id, display_name: g.display_name }));
     if (!guests.length) { toast('Booking no tiene huéspedes en ese evento.'); return; }
     const res = await callProcedure<{ created: number; updated: number }>(client, PROCEDURES.assignGuestNumbers, { project_id: project.id, guests });
     toast(res.created ? `${res.created} huéspedes con número nuevo (${guests.length} en total).` : `Los ${guests.length} huéspedes ya tenían número.`);
