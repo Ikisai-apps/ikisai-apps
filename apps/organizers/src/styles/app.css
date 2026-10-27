@@ -24,6 +24,11 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgentry .login-card h2{margin:18px 0 6px;font-size:1.2rem}
 .orgentry #entryContact{font-weight:600}
 .orgentry-foot{margin-top:16px}
+/* Entrar con un código por correo (0108) */
+.orgcode{margin-top:18px;text-align:left}
+.orgcode h3{margin:0 0 4px;font-size:1rem}
+.orgcode .field{display:grid;gap:4px;margin:8px 0}
+.orgcode input{width:100%}
 /* Pagar en línea (fase 6) */
 .orgpaylist{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
 .orgpaylist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}

@@ -11,6 +11,7 @@ import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
 import { mountEditor } from './editor.ts';
 import { mountAvance } from './avance.ts';
+import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
@@ -61,7 +62,8 @@ interface FlowColumn { key: string; label: string; behavior: ColumnBehavior; pos
 
 /**
  * Nombres cortos para la barra inferior (revisión móvil de UI-kit, 27-10): con seis secciones a 390 px, los nombres largos
- * se cortaban («Prepara…», «Ingredie…»). El nombre completo sigue en el título de la pantalla y del carril.
+ * se cortaban («Prepara…», «Ingredie…»). Van en `short` del kit: la barra los usa si no caben y el lector sigue diciendo el
+ * nombre entero.
  */
 const NAV_SHORT: Record<string, string> = { order: 'Caja', prep: 'Cocina', ingredients: 'Ingred.', service: 'Entrega', logistics: 'Logística' };
 const NAV_MAX = 9;
@@ -80,7 +82,8 @@ function navFor(projectId: string, columns: FlowColumn[], short: boolean): NavIt
     ...columns.map((c) => {
       const view = COLUMN_VIEWS[c.key];
       const hash = `${base}/${view?.slug ?? c.key}`;
-      return { hash, label: short ? navLabel(c.key, c.label) : c.label, icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
+      // Nombre entero siempre (lo dice el lector); el corto, para la barra cuando no cabe (kit 0.69.4, `short`).
+      return { hash, label: c.label, ...(short ? { short: navLabel(c.key, c.label) } : {}), icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
     }),
   ];
 }
@@ -242,6 +245,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     await enterProject(projectId);
     let entry: { title: string; slug: string; mount: ViewMount };
     if (!projectId && hash === '#/recorridos') entry = { title: 'Recorridos', slug: 'recorridos', mount: mountJourneys };
+    else if (!projectId && hash === '#/recorridos/nuevo') entry = { title: 'Nuevo recorrido', slug: 'recorridos', mount: mountJourneyEditor(null) };
+    else if (!projectId && /^#\/recorridos\/[a-z][a-z0-9_]{1,40}\/editar$/.test(hash)) entry = { title: 'Editar recorrido', slug: 'recorridos', mount: mountJourneyEditor(hash.split('/')[2]!) };
     else if (!projectId && hash === '#/nuevo') entry = { title: 'Nuevo flujo', slug: 'nuevo', mount: mountEditor('new') };
     else if (!projectId) entry = { title: 'Flujos', slug: 'flujos', mount: mountProjects };
     else if (!m![2]) entry = { title: 'Inicio', slug: 'inicio', mount: mountHome };

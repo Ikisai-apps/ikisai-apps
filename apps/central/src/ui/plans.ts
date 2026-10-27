@@ -36,6 +36,7 @@ import {
   type SpaceMap, type SpaceRow,
 } from '@ikisai/ui-kit';
 import type { RowOperation, TableName } from '@ikisai/sync-client';
+import { BOOKING_BEDS_URL, deriveBeds, type BedLayout } from '@ikisai/domain-central';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
 import { announceHeaderArt, centralHeader } from './header-art.ts';
@@ -116,12 +117,23 @@ type Placement = { planId: string | null; shape: PlanShape | null };
 export const mountPlans: ViewMount = ({ main, client }) => {
   let alive = true;
   const r = startResources(client);
-  const spaces = createSyncSpaceSource(r);
+  // Camas con un solo modelo (VG, 27-10): su sitio lo guarda Booking (`GET beds/layout`) y aquí se deriva de la forma de
+  // su habitación en cada lectura. Central no guarda ni escribe formas de cama; lo que hubiera en Recursos no cuenta.
+  const baseSpaces = createSyncSpaceSource(r);
+  let layouts: BedLayout[] = [];
+  const derive = (list: SpaceRow[]) => deriveBeds(list, layouts);
+  const spaces: typeof baseSpaces = {
+    ...baseSpaces,
+    list: async () => derive(await baseSpaces.list()),
+    subscribe: (listener) => baseSpaces.subscribe((next) => listener(derive(next))),
+  };
   const media = matchMedia(WIDE);
   const canPlace = () => r.bootstrap()?.membership.role === 'owner';
   let rows: SpaceRow[] = [];
   let plans: FloorPlan[] = [];
   let editing: string | null = null;
+  const wantedText = new URLSearchParams(location.hash.split('?')[1] ?? '').get('colocar')?.trim() ?? '';
+  let wanted: string | null = wantedText || null;
   let viewer: SpaceMap | null = null;
   const binds: Array<() => void> = [];
   const editorBinds: Array<() => void> = [];
@@ -159,7 +171,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   const planName = (p: FloorPlan) => [rows.find((s) => s.id === p.buildingId)?.name ?? 'Edificio', p.floor].filter(Boolean).join(' · ');
   const inside = (p: FloorPlan) => {
     if (isEstate(p)) return rows.filter((s) => s.active && s.id !== p.buildingId && (s.kind === 'edificio' || s.kind === 'exterior'));
-    const idx = index(); return rows.filter((s) => s.active && !CONTAINERS.has(s.kind) && (s.id === p.buildingId || spacePath(idx, s.id).startsWith(`${spacePath(idx, p.buildingId)} › `)));
+    const idx = index(); return rows.filter((s) => s.active && !CONTAINERS.has(s.kind) && s.kind !== 'cama' && (s.id === p.buildingId || spacePath(idx, s.id).startsWith(`${spacePath(idx, p.buildingId)} › `)));
   };
   const placedOn = (p: FloorPlan) => rows.filter((s) => s.planId === p.id && validShape(s.planShape));
   const toReview = (p: FloorPlan) => inside(p).filter((s) => !(s.planId === p.id && validShape(s.planShape)));
@@ -241,6 +253,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     if (row && !before.has(id)) before.set(id, { planId: row.planId ?? null, shape: row.planShape ? { points: row.planShape.points.map(([x, y]) => [x, y]) } : null });
   }
   function save(id: string, planId: string | null, shape: PlanShape | null): void {
+    // Las camas acompañan a su habitación solo en pantalla: su sitio es de Booking y no se escribe.
+    if (rows.find((s) => s.id === id)?.kind === 'cama') return;
     batch.set(id, { planId, shape });
     if (batchTimer) clearTimeout(batchTimer);
     batchTimer = setTimeout(() => void flush(), 350);
@@ -556,6 +570,23 @@ export const mountPlans: ViewMount = ({ main, client }) => {
 
   // --- Colocar a mano ---------------------------------------------------------------------------------------------
   let selected: string | null = null;
+  /**
+   * Enlace profundo (tarjetas de Flow y de VG): `#/entidad/planos?colocar=Albergue` abre «Colocar» en el dibujo de ese
+   * edificio (por nombre, nombre público o código, sin tildes ni mayúsculas; con planta, «Albergue · Baja»). Una sola vez,
+   * cuando ya están los dibujos; solo el owner y en el ordenador, como «Colocar».
+   */
+  function openWanted(): void {
+    if (wanted === null || !alive || !canPlace() || !media.matches || !plans.length || !rows.length) return;
+    const key = foldName(wanted);
+    const named = (p: FloorPlan) => {
+      const b = rows.find((s) => s.id === p.buildingId);
+      return [foldName(planName(p)), ...[b?.name, b?.publicName, b?.code].filter((k): k is string => !!k).map(foldName)];
+    };
+    const plan = plans.find((p) => named(p).includes(key));
+    wanted = null;
+    if (plan) openEditor(plan.id); else toast(`No hay ningún dibujo de «${wantedText}». Súbelo con «Subir un dibujo».`);
+  }
+
   function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
   function closeEditor(): void { for (const b of editorBinds.splice(0)) b(); decorMap?.destroy(); decorMap = null; editing = null; selected = null; editor.hidden = true; replace(editor); }
   const tabBar = (plan: FloorPlan) => el('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Qué colocar', id: 'placeTabs', 'data-feedback-id': 'central.planos.colocar.pestanas', 'data-feedback-label': 'Estancias o decoración' },
@@ -593,11 +624,19 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const placed = placedOn(plan);
     const labels: SVGTextElement[] = [];
     const handles: SVGRectElement[] = [];
-    for (const s of placed) {
+    // Primero las estancias y después las camas, encima de su habitación: se ven, pero no se tocan (se mueven en Booking).
+    for (const s of [...placed.filter((x) => x.kind !== 'cama'), ...placed.filter((x) => x.kind === 'cama')]) {
       const shape = s.planShape as PlanShape;
       const poly = document.createElementNS(NS, 'polygon');
       poly.setAttribute('points', pointsAttr(shape, plan));
-      poly.setAttribute('class', `ctl-placeshape${selected === s.id ? ' on' : ''}${s.kind === 'cama' ? ' bed' : ''}`);
+      if (s.kind === 'cama') {
+        poly.setAttribute('class', 'ctl-placeshape bed');
+        poly.setAttribute('data-space-id', s.id);
+        poly.setAttribute('aria-hidden', 'true');
+        svg.append(poly);
+        continue;
+      }
+      poly.setAttribute('class', `ctl-placeshape${selected === s.id ? ' on' : ''}`);
       poly.setAttribute('tabindex', '0');
       poly.setAttribute('role', 'button');
       poly.setAttribute('data-space-id', s.id);
@@ -636,15 +675,27 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     if (isEstate(plan)) { void loadSvgCurves(plan); svg.append(...drawCurves(svg, plan)); }
     svg.append(...labels, ...handles);
     const review = toReview(plan);
-    const current = selected ? rows.find((s) => s.id === selected) ?? null : null;
+    // Las camas no se eligen ni se quitan: van con su habitación (su sitio es de Booking).
+    const rooms = placed.filter((s) => s.kind !== 'cama');
+    const current = selected ? rows.find((s) => s.id === selected && s.kind !== 'cama') ?? null : null;
+    // Un solo paso a la vista: colocar lo que falta o, si ya está todo, revisarlo.
+    const step = isEstate(plan) ? null : review.length
+      ? `Paso 2 de 3 · Coloca ${review.length === 1 ? 'la estancia que falta' : `las ${review.length} estancias que faltan`}: «Poner» o «Colocar solo».`
+      : 'Paso 3 de 3 · Todo tiene su sitio. Revisa el dibujo y, si algo no cuadra, arrástralo.';
     const unknown = unmatchedOf.get(plan.id) ?? [];
     const autoBtn = el('button', { type: 'button', class: 'ghost', id: 'autoPlace', 'data-feedback-id': 'central.planos.colocar.solo', 'data-feedback-label': 'Colocar solo', onclick: () => void autoFromFile(plan) }, 'Colocar solo (SVG con nombres)');
     replace(editor,
       el('div', { class: 'blockhead' }, el('h3', null, `Colocar · ${planName(plan)}`),
         el('button', { type: 'button', class: 'linkbtn', id: 'closePlace', 'data-feedback-id': 'central.planos.colocar.cerrar', 'data-feedback-label': 'Cerrar Colocar', onclick: () => closeEditor() }, 'Cerrar')),
       tabBar(plan),
-      el('p', { class: 'hint' }, isEstate(plan) ? 'Arrastra un edificio para moverlo y sus esquinas para estirarlo. Las curvas de nivel se ajustan arrastrando sus puntos (o con Tab y las flechas). Se guarda solo.'
-        : 'Arrastra una estancia para moverla y sus esquinas para estirarla; sus camas la acompañan. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.'),
+      step ? el('p', { class: 'ctl-placestep', id: 'placeStep', 'data-feedback-id': 'central.planos.colocar.paso', 'data-feedback-label': 'Paso de Colocar' }, step) : null,
+      isEstate(plan) ? null : el('p', { class: 'ctl-placebeds', id: 'placeBeds', 'data-feedback-id': 'central.planos.colocar.camas', 'data-feedback-label': 'Camas de Booking' },
+        icon('info', 16), ' Las camas salen como están en Booking y van con su habitación. ',
+        el('a', { href: BOOKING_BEDS_URL, target: '_blank', rel: 'noopener', id: 'placeBedsLink', 'data-feedback-id': 'central.planos.colocar.camas_booking', 'data-feedback-label': 'Mover camas en Booking' }, 'Moverlas en Booking › Espacios y camas')),
+      el('details', { class: 'ctl-placehelp', 'data-feedback-id': 'central.planos.colocar.ayuda', 'data-feedback-label': 'Cómo se coloca' },
+        el('summary', null, 'Cómo se coloca'),
+        el('p', { class: 'hint' }, isEstate(plan) ? 'Arrastra un edificio para moverlo y sus esquinas para estirarlo. Las curvas de nivel se ajustan arrastrando sus puntos (o con Tab y las flechas). Se guarda solo.'
+          : 'Arrastra una estancia para moverla y sus esquinas para estirarla. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.')),
       el('div', { class: 'ctl-place' },
         el('div', { class: 'ctl-placestage' }, svg),
         el('div', { class: 'ctl-placeside' },
@@ -658,8 +709,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
             el('button', { type: 'button', class: 'ghost small', 'aria-label': `Poner ${s.name} en el plano`, 'aria-describedby': reviewWhy.has(s.id) ? `placeWhy-${s.id}` : undefined,
               'data-feedback-id': 'central.planos.colocar.poner', 'data-feedback-label': 'Poner en el plano', onclick: () => putOn(s, plan) }, 'Poner'))))
             : el('p', { class: 'hint' }, 'Todas las estancias de este edificio tienen su sitio.'),
-          el('h4', { class: 'sectionlabel' }, `En el plano · ${placed.length}`),
-          placed.length ? el('ul', { class: 'list', id: 'placePlaced' }, ...placed.map((s) => el('li', null,
+          el('h4', { class: 'sectionlabel' }, `En el plano · ${rooms.length}`),
+          rooms.length ? el('ul', { class: 'list', id: 'placePlaced' }, ...rooms.map((s) => el('li', null,
             el('button', { type: 'button', class: `linkbtn${selected === s.id ? ' on' : ''}`, 'data-space': s.id, 'data-feedback-id': 'central.planos.colocar.elegir', 'data-feedback-label': 'Elegir estancia', onclick: () => { selected = s.id; paintEditor(); } }, s.name)))) : null)));
     // «Colocar solo» lee el dibujo del servidor: sin red, apagado con su motivo.
     editorBinds.push(bindOnline(autoBtn, { client: r, reason: 'Colocar solo lee el dibujo con conexión.' }));
@@ -1038,7 +1089,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
   const offExtra = [PLANS, DECOR_ICONS, ITEMS, IMAGES].map((t) => r.onTable(t, () => void loadExtra()));
   const offRows = spaces.subscribe((next) => { rows = next.map((s) => ({ ...s })); repaint(); });
-  const offPlans = spaces.plans.subscribe?.((next) => { plans = next; repaint(); }) ?? null;
+  const offPlans = spaces.plans.subscribe?.((next) => { plans = next; repaint(); openWanted(); }) ?? null;
   // Si el servidor rechaza el SVG (no debería: se sube limpio), se dice una vez y por qué.
   let warnedActive = false;
   const offStatus = r.onStatus((s) => {
@@ -1047,12 +1098,24 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   });
   const onMedia = () => repaint();
   media.addEventListener('change', onMedia);
+  // Disposición de las camas (Booking): la última se recuerda en este dispositivo para verlas sin red.
+  const LAYOUT_KEY = 'ikisai-central-bed-layouts';
+  try { const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '[]'); if (Array.isArray(saved)) layouts = saved as BedLayout[]; } catch { /* sin almacenamiento */ }
+  void client.api<{ rows: BedLayout[]; available: boolean }>('/beds/layout').then((out) => {
+    if (!alive || !out?.available) return;
+    layouts = out.rows;
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layouts)); } catch { /* sin almacenamiento */ }
+    rows = derive(rows);
+    buildViewer();
+    repaint();
+  }).catch(() => undefined);
   void Promise.all([spaces.list(), spaces.plans.list(), loadExtra()]).then(([s, p]) => {
     rows = s.map((x) => ({ ...x })); plans = p;
     // El mapa empieza en la finca en cuanto se sabe que la hay.
     const first = startPlan();
     if (first) viewer?.setPlan(first);
     repaint();
+    openWanted();
   });
   buildViewer();
   return () => {

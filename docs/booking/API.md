@@ -2091,3 +2091,7 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 - **Adaptador** (`supabase/functions/booking-api/payments.ts`): `createIntent` y `parseWebhook`. Hay uno falso para las pruebas (`fakePaymentProvider`), y el real llega con la decisión de pasarela. Se configura con `createBookingApp({ payments })`.
 - **Pendiente de Core:** que el servidor aloje solo al confirmarse el pago, sin recepción. Necesita que la cuenta de servicio de Booking pueda escribir en Booking (`core.service_grants`), o un camino de sistema que admita el procedimiento.
 
+**Conciliación y devolución (migración 1414):**
+- **Worker `POST worker/payments/reconcile`:** pregunta a la pasarela (`fetchStatus`) por los intentos pendientes de hace más de 10 minutos (`booking.stay_payments_pending`) y aplica lo que diga, por si se perdió un aviso.
+- **`POST walkins/:id/refund/online {cents}`** (editor, owner): pide a la pasarela (`refund`) la devolución del cobro de una noche pagada en línea, nunca más de lo pagado (`booking.stay_payment_for_charge`). Después la ficha anota la devolución en el cobro (§41) y el aviso `refunded` la anota en el pago. Sin pasarela, 503 `PAYMENTS_OFF`.
+
