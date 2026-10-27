@@ -14,7 +14,7 @@
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import {
-  captureFeedbackTarget, collectFeedbackContext, compressImage, createFeedbackClient, el, icon, openSheet, replace, toast,
+  captureFeedbackTarget, collectFeedbackContext, compressImage, createFeedbackClient, el, fieldAttrs, icon, openSheet, replace, toast,
   type FeedbackImage, type FeedbackIntent, type FeedbackReport, type FeedbackSubject, type IconName,
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
@@ -110,8 +110,8 @@ export function openHelp(options: HelpOptions): void {
     return planBox;
   }
   const appBlock = el('section', { class: 'ghelp-block', id: 'blockApp' });
-  const message = el('textarea', { id: 'helpText', rows: '3', maxlength: '4000', 'aria-label': t('help.message'), placeholder: t('help.placeholder'), 'data-feedback-ignore': '' }) as HTMLTextAreaElement;
-  const fileInput = el('input', { type: 'file', accept: 'image/*', multiple: '', hidden: true, onchange: () => void addImages() }) as HTMLInputElement;
+  const message = el('textarea', { id: 'helpText', rows: '3', maxlength: '4000', 'aria-label': t('help.message'), placeholder: t('help.placeholder'), 'data-feedback-ignore': '', ...fieldAttrs({ id: 'guests.ayuda.mensaje', type: 'text', required: true, sensitivity: 'personal' }) }) as HTMLTextAreaElement;
+  const fileInput = el('input', { type: 'file', accept: 'image/*', multiple: '', hidden: true, onchange: () => void addImages(), ...fieldAttrs({ id: 'guests.ayuda.fotos', type: 'file', required: false, sensitivity: 'personal' }) }) as HTMLInputElement;
   const photos = el('div', { class: 'ghelp-photos' });
 
   async function addImages(): Promise<void> {

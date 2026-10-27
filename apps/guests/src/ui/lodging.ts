@@ -12,7 +12,7 @@
  * **La familia junta** (065): arriba, cada persona con su cama o «Falta por colocar»; al tocar a alguien, «Eligiendo
  * para Leo»; y «Dormir todos aquí» reparte las camas libres de la habitación (una llamada por persona, la RPC de hoy).
  */
-import { bindOnline, confirmDialog, el, icon, renderMedal, replace, toast, type SpaceMap } from '@ikisai/ui-kit';
+import { bindOnline, confirmDialog, el, fieldAttrs, icon, renderMedal, replace, type SpaceMap, toast } from '@ikisai/ui-kit';
 import type { GuestContext } from '../app/context.ts';
 import { describeError, errorCode, isNetworkError, online } from '../app/client.ts';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
@@ -163,8 +163,8 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
   function preferenceBox(person: Person): HTMLElement {
     const p = person.data;
     const state = el('p', { class: 'gfield-state', id: 'prefState', role: 'status' });
-    const text = el('textarea', { id: 'prefText', rows: '2', maxlength: '200', disabled: person.ctx.readOnly() ? '' : null }, p.preference?.text ?? '') as HTMLTextAreaElement;
-    const ground = el('input', { type: 'checkbox', id: 'prefGround', disabled: person.ctx.readOnly() ? '' : null, checked: p.preference?.ground_floor ? '' : null }) as HTMLInputElement;
+    const text = el('textarea', { id: 'prefText', rows: '2', maxlength: '200', disabled: person.ctx.readOnly() ? '' : null, ...fieldAttrs({ id: 'guests.alojamiento.preferencia.texto', type: 'text', required: false, sensitivity: 'personal' }) }, p.preference?.text ?? '') as HTMLTextAreaElement;
+    const ground = el('input', { type: 'checkbox', id: 'prefGround', disabled: person.ctx.readOnly() ? '' : null, checked: p.preference?.ground_floor ? '' : null, ...fieldAttrs({ id: 'guests.alojamiento.preferencia.planta_baja', type: 'toggle', required: false, sensitivity: 'personal' }) }) as HTMLInputElement;
     const send = async () => {
       state.textContent = t('save.saving');
       try {
