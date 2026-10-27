@@ -2204,3 +2204,20 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
   - `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en la Edge de Finance;
   - el endpoint del webhook dado de alta en Stripe con los eventos `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `charge.refunded`.
 
+
+### 19.7 «Cobros sin casar» (migración 0263)
+
+Es la pantalla de Dirección (`#/cobros-sin-casar`, desde Inicio) para lo que la pasarela cobró o devolvió y Finance no pudo casar sola con una factura:
+- `mismatch`: la factura ya no estaba por cobrar o el importe no coincide;
+- `unknown`: un pago de un enlace que Finance no conoce;
+- devoluciones: hay que hacer su rectificativa.
+
+- **Lectura:** `invoices.payment_events_review {all?}` (editor u owner).
+  - Por defecto, solo lo pendiente; con `all`, también lo revisado.
+  - Cada aviso trae su importe y su factura (número, total, estado y cobro), y `pending` con el recuento.
+  - Sin datos de quien paga.
+- **Revisado:** `invoices.payment_event_resolve {id, note}` (procedimiento, editor u owner). La nota, de 1 a 500 caracteres, dice qué se hizo; marcarlo otra vez cambia la nota.
+- **Pantalla:**
+  - cada aviso explica qué pasó y qué hacer (`apps/invoices/src/app/unmatched.ts`);
+  - «Abrir la factura» lleva a `#/facturas?vista=emitidas&abrir=<id>`, que abre esa ficha;
+  - necesita red.

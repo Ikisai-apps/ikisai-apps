@@ -266,6 +266,13 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   }
   const off = onAnyTable(client, () => void load());
   void load().then(() => {
+    // Abrir una emitida concreta (p. ej. desde «Cobros sin casar»): #/facturas?vista=emitidas&abrir=<id>
+    const target = location.hash.match(/[?&]abrir=([0-9a-f-]{36})/i);
+    if (target && data?.invoices.some((i) => i.id === target[1]!.toLowerCase())) {
+      history.replaceState(null, '', '#/facturas?vista=emitidas');
+      void open(target[1]!.toLowerCase());
+      return;
+    }
     // «Emitir factura» desde Booking (§14.8): #/facturas?vista=emitidas&desde=booking:reservation:<id>
     const from = location.hash.match(/[?&]desde=booking:reservation:([0-9a-f-]{36})/i);
     if (!from || !data) return;

@@ -129,6 +129,9 @@ export const mountHome: ViewMount = (ctx) => {
     // Ingresos y gastos de otras apps (0244): la lista, el resultado por evento y «facturado» con un toque
     fb(el('a', { class: 'inv-tool', id: 'toolAppEntries', href: '#/apuntes', onclick: (e: Event) => { e.preventDefault(); navigate('#/apuntes'); } },
       icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Ingresos de apps'), el('span', { class: 'inv-tool-hint' }, appEntriesHintText)), { feedbackId: 'invoices.inicio.apuntes', feedbackLabel: 'Ingresos y gastos de apps' }),
+    // Cobros de la pasarela que no casan con su factura (API.md §19.7)
+    fb(el('a', { class: 'inv-tool', id: 'toolUnmatched', href: '#/cobros-sin-casar', onclick: (e: Event) => { e.preventDefault(); navigate('#/cobros-sin-casar'); } },
+      icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Cobros sin casar'), el('span', { class: 'inv-tool-hint' }, 'Pagos en línea por revisar')), { feedbackId: 'invoices.inicio.cobros_sin_casar', feedbackLabel: 'Cobros sin casar' }),
     // La única entrada a Proveedores (no está en el menú)
     fb(el('a', { class: 'inv-tool', id: 'toolSuppliers', href: '#/proveedores', onclick: (e: Event) => { e.preventDefault(); navigate('#/proveedores'); } },
       icon('people', 20), el('span', { class: 'inv-tool-label' }, 'Proveedores'), el('span', { class: 'inv-tool-hint' }, supplierCount)), { feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }),
