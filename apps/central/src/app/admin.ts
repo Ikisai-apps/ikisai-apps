@@ -86,10 +86,18 @@ export const EVENT_LABELS: Record<string, string> = {
   proposal_approved: 'Propuesta aprobada',
   proposal_rejected: 'Propuesta rechazada',
   proposal_consumed: 'Propuesta aplicada',
+  proposal_revoked: 'Propuesta revocada',
   password_reset: 'Contraseña temporal nueva',
   account_disabled: 'Cuenta desactivada',
   account_enabled: 'Cuenta reactivada',
   display_name_changed: 'Nombre de la cuenta cambiado',
+};
+
+/** Tono de cada evento en el registro (X1 de Tasks, el de su `ACCESS_EVENTS`): lo que se da, en verde; lo que se quita o se rechaza, en rojo. */
+export const EVENT_TONES: Record<string, 'ok' | 'alert'> = {
+  key_issued: 'ok', key_revoked: 'alert', member_invited: 'ok',
+  proposal_approved: 'ok', proposal_rejected: 'alert', proposal_consumed: 'ok', proposal_revoked: 'alert',
+  account_disabled: 'alert', account_enabled: 'ok',
 };
 
 export function createAdminApi(client: SyncClient) {
