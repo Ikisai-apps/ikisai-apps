@@ -4,8 +4,9 @@
  *
  * El resultado de un evento va **sin IVA**, porque lo asignado de las facturas es base:
  * - ingresos: los apuntes de ingreso de apps con ese `event_id` y lo asignado al evento de las emitidas registradas;
- * - gastos: lo asignado al evento de las facturas recibidas validadas o archivadas, y los apuntes de gasto de apps;
- * - las recibidas asignadas que aún no están validadas no cuentan, pero se dicen.
+ * - gastos: lo asignado al evento de las facturas recibidas no anuladas, y los apuntes de gasto de apps;
+ * - las recibidas aún sin validar (una compra rápida sin justificante, por ejemplo) cuentan como gasto de proceso, marcadas
+ *   (decisión de VG del 27-10: lo de proceso se ve y cuenta en el evento, pero no va a la gestoría).
  */
 
 export interface EntryLike {
@@ -51,7 +52,7 @@ export interface EventResult {
   resultCents: number;
   /** Desglose de las cuatro fuentes, en céntimos sin IVA. */
   appIncomeCents: number; issuedIncomeCents: number; invoiceExpenseCents: number; appExpenseCents: number;
-  /** Recibidas asignadas al evento todavía sin validar: no cuentan. */
+  /** Recibidas asignadas al evento todavía sin validar: cuentan como gasto de proceso (marcadas). */
   pendingInvoices: number;
   moves: EventMove[];
 }
@@ -95,17 +96,17 @@ export function eventResults(src: EventSources): EventResult[] {
     const invoice = invoiceById.get(lineById.get(a.invoice_line_id)?.invoice_id ?? '');
     if (!invoice || invoice.status === 'anulada') continue;
     const r = of(a.target_id, a.target_label);
-    if (!COUNTED_RECEIVED.has(invoice.status)) {
+    const pending = !COUNTED_RECEIVED.has(invoice.status);
+    if (pending) {
       const seen = pendingSeen.get(a.target_id) ?? new Set<string>();
       if (!seen.has(invoice.id)) { seen.add(invoice.id); r.pendingInvoices += 1; }
       pendingSeen.set(a.target_id, seen);
-      continue;
     }
     const amount = cents(a.allocated_amount);
     r.invoiceExpenseCents += amount;
     const existing = r.moves.find((m) => m.kind === 'invoice' && m.id === invoice.id);
     if (existing) existing.cents += amount;
-    else r.moves.push({ kind: 'invoice', id: invoice.id, date: invoice.invoice_date, title: [invoice.code, invoice.object].filter(Boolean).join(' · ') || 'Factura recibida', cents: amount, sign: -1 });
+    else r.moves.push({ kind: 'invoice', id: invoice.id, date: invoice.invoice_date, title: [invoice.code, invoice.object].filter(Boolean).join(' · ') || 'Factura recibida', cents: amount, sign: -1, process: pending });
   }
   const issuedById = new Map(src.issued.filter((i) => !i.deleted_at).map((i) => [i.id, i]));
   for (const a of src.issuedAllocations) {

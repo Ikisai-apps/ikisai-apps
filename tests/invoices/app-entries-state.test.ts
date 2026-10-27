@@ -36,12 +36,12 @@ test('resultado del evento sin IVA: ingresos de apps y emitidas menos recibidas 
   assert.equal(r!.label, 'Retiro de octubre · 2026-10-30');
   assert.equal(r!.appIncomeCents, 105000);
   assert.equal(r!.issuedIncomeCents, 30000);
-  // Las dos líneas de la misma factura se suman en un movimiento; la pendiente de revisar no cuenta y se dice
-  assert.equal(r!.invoiceExpenseCents, 20000);
+  // Las dos líneas de la misma factura se suman en un movimiento; la pendiente de revisar cuenta como gasto de proceso (27-10)
+  assert.equal(r!.invoiceExpenseCents, 28000);
   assert.equal(r!.pendingInvoices, 1);
   assert.equal(r!.appExpenseCents, 2000);
-  assert.equal(r!.resultCents, 105000 + 30000 - 20000 - 2000);
-  assert.deepEqual(r!.moves.map((m) => [m.kind, m.sign, m.cents]), [['issued', 1, 30000], ['invoice', -1, 20000], ['app', 1, 100000], ['app', 1, 5000], ['app', -1, 2000]]);
+  assert.equal(r!.resultCents, 105000 + 30000 - 28000 - 2000);
+  assert.deepEqual(r!.moves.map((m) => [m.kind, m.sign, m.cents, !!m.process]), [['issued', 1, 30000, false], ['invoice', -1, 20000, false], ['invoice', -1, 8000, true], ['app', 1, 100000, false], ['app', 1, 5000, false], ['app', -1, 2000, false]]);
 });
 
 test('sin evento, borrados, anuladas y emitidas en borrador quedan fuera; solo apuntes de apps también da evento', () => {

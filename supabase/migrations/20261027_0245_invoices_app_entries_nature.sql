@@ -7,15 +7,59 @@
 -- - `record_app_entry` la fija al crear y no la cambia al sustituir (409 NATURE_CHANGE). Sin «desfacturar».
 -- - En Finance no se escribe: la guarda de la 0244 solo deja cambiar el evento y las notas.
 -- - El resumen (con `process` aparte, informativo), el manifest y la entrega desactualizada: solo lo fiscal.
+-- - Justificante (VG, 27-10: a la gestoría va solo lo que tiene factura o ticket, ingresos y gastos):
+--   · `receipt_file_id` (documento de Finance en `core.files`) y `receipt_number` (número de la factura o del ticket);
+--   · un gasto sin `nature` explícita es `fiscal` si trae justificante y `process` si no. Un gasto `fiscal` sin
+--     justificante se rechaza. Un ingreso sin `nature` sigue siendo `fiscal` (lo antiguo); Flow manda `nature`;
+--   · adjuntar el justificante después, al sustituir o en Finance, lo pasa a `fiscal`. Ese sentido se permite; el
+--     contrario, no (409 NATURE_CHANGE);
+--   · en Finance se puede escribir el justificante, además del evento y las notas. Lo que puso Finance no lo borra
+--     un reenvío que no lo trae.
 
-alter table invoices.app_entries add column nature text not null default 'fiscal' check (nature in ('fiscal', 'process'));
+alter table invoices.app_entries
+  add column nature text not null default 'fiscal' check (nature in ('fiscal', 'process')),
+  add column receipt_file_id uuid references core.files(id),
+  add column receipt_number text check (receipt_number is null or length(btrim(receipt_number)) between 1 and 64);
+select core.register_file_field('invoices', 'invoices', 'app_entries', 'receipt_file_id', 'legal');
 
 select core.register_table('invoices', 'invoices', 'app_entries', array[
   'source_app', 'source_ref', 'kind', 'nature', 'entry_date', 'description', 'amount_cents', 'tax_rate', 'tax_cents', 'net_cents',
-  'pending_refunds_cents', 'methods', 'detail', 'event_id', 'notes'],
+  'pending_refunds_cents', 'methods', 'detail', 'event_id', 'notes', 'receipt_file_id', 'receipt_number'],
   '{reader,editor,owner}', '{editor,owner}', true);
 
--- record_app_entry (de 0244) con `nature`.
+-- Guarda (de 0244): en Finance, además del evento y las notas, el justificante. Con justificante, un apunte de proceso
+-- pasa a fiscal; un gasto fiscal no se queda sin él.
+create or replace function invoices.guard_app_entry()
+returns trigger language plpgsql as $$
+declare
+  v_proc boolean := coalesce(current_setting('invoices.procedure', true), '') = 'record_app_entry';
+  v_actor uuid;
+  v_free text[] := array['event_id', 'notes', 'receipt_file_id', 'receipt_number', 'revision', 'updated_at', 'updated_by'];
+begin
+  begin v_actor := nullif(current_setting('core' || '.actor', true), '')::uuid; exception when others then v_actor := null; end;
+  if tg_op = 'INSERT' then
+    if not v_proc then perform core.fail('APP_ENTRY_PROCEDURE_ONLY', 422, jsonb_build_object('procedure', 'invoices.record_app_entry')); end if;
+    new.received_by := v_actor; new.received_at := now();
+    return new;
+  end if;
+  if new.deleted_at is distinct from old.deleted_at then perform core.fail('APP_ENTRY_NOT_DELETABLE', 422, jsonb_build_object('id', old.id)); end if;
+  if v_proc then
+    -- Las notas son de Finance.
+    new.notes := old.notes;
+    new.received_by := v_actor; new.received_at := now();
+  elsif (to_jsonb(new) - v_free) <> (to_jsonb(old) - v_free) then
+    perform core.fail('APP_ENTRY_PROCEDURE_ONLY', 422, jsonb_build_object('id', old.id));
+  end if;
+  if old.nature = 'fiscal' and new.nature = 'process' then perform core.fail('NATURE_CHANGE', 409, jsonb_build_object('id', old.id, 'nature', old.nature)); end if;
+  -- Con justificante, a fiscal (el único sentido permitido)
+  if new.nature = 'process' and (new.receipt_file_id is not null or new.receipt_number is not null) then new.nature := 'fiscal'; end if;
+  if new.nature = 'fiscal' and new.kind = 'expense' and new.receipt_file_id is null and new.receipt_number is null then
+    perform core.fail('RECEIPT_REQUIRED', 422, jsonb_build_object('id', old.id, 'reason', 'a fiscal expense needs its invoice or ticket'));
+  end if;
+  return new;
+end $$;
+
+-- record_app_entry (de 0244) con `nature` y el justificante.
 create or replace function invoices.record_app_entry(p jsonb)
 returns jsonb language plpgsql as $$
 declare
@@ -23,7 +67,8 @@ declare
   v_app text := btrim(coalesce(a->>'source_app', ''));
   v_ref text := btrim(coalesce(a->>'source_ref', ''));
   v_kind text := a->>'kind';
-  v_nature text := coalesce(nullif(a->>'nature', ''), 'fiscal');
+  v_nature text := nullif(a->>'nature', '');
+  v_receipt_file uuid; v_receipt_number text := nullif(btrim(coalesce(a->>'receipt_number', '')), '');
   v_desc text := btrim(coalesce(a->>'description', ''));
   v_date date; v_amount bigint; v_rate numeric; v_pending bigint; v_net bigint; v_tax bigint;
   v_methods jsonb := coalesce(nullif(a->'methods', 'null'::jsonb), '{}'::jsonb);
@@ -36,7 +81,11 @@ begin
     perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'source_ref', 'reason', 'starts with source_app and a colon, 3 to 200 characters'));
   end if;
   if v_kind is null or v_kind not in ('income', 'expense') then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'kind')); end if;
-  if v_nature not in ('fiscal', 'process') then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'nature')); end if;
+  if v_nature is not null and v_nature not in ('fiscal', 'process') then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'nature')); end if;
+  if a->>'receipt_file_id' is not null then
+    begin v_receipt_file := (a->>'receipt_file_id')::uuid; exception when others then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'receipt_file_id')); end;
+  end if;
+  if length(v_receipt_number) > 64 then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'receipt_number')); end if;
   begin v_date := (a->>'entry_date')::date; exception when others then v_date := null; end;
   if v_date is null or (a->>'entry_date') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'entry_date')); end if;
   if length(v_desc) not between 1 and 300 then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'description')); end if;
@@ -75,13 +124,26 @@ begin
 
   perform set_config('invoices.procedure', 'record_app_entry', true);
   select * into e from invoices.app_entries where source_app = v_app and source_ref = v_ref and deleted_at is null for update;
-  -- Sin «desfacturar»: un apunte no cambia de naturaleza al sustituirlo (lo fiscal llega como apunte propio).
-  if e.id is not null and e.nature <> v_nature then perform core.fail('NATURE_CHANGE', 409, jsonb_build_object('id', e.id, 'source_ref', v_ref, 'nature', e.nature)); end if;
+  -- Sin «desfacturar»: pedir proceso para un apunte que ya es fiscal, no.
+  if e.id is not null and e.nature = 'fiscal' and v_nature = 'process' then perform core.fail('NATURE_CHANGE', 409, jsonb_build_object('id', e.id, 'source_ref', v_ref, 'nature', e.nature)); end if;
+  -- El justificante que ya tenía (puesto aquí o en Finance) se queda si el reenvío no lo trae.
+  v_receipt_file := coalesce(v_receipt_file, e.receipt_file_id); v_receipt_number := coalesce(v_receipt_number, e.receipt_number);
+  -- Naturaleza: la que mande la app; sin ella, la que ya tenía si era fiscal; si no, un gasto es fiscal con justificante y
+  -- de proceso sin él, y un ingreso, fiscal (lo antiguo).
+  v_nature := coalesce(v_nature, case when e.nature = 'fiscal' then 'fiscal'
+    when v_kind = 'expense' then case when v_receipt_file is not null or v_receipt_number is not null then 'fiscal' else 'process' end
+    else 'fiscal' end);
+  if v_nature = 'process' and (v_receipt_file is not null or v_receipt_number is not null) then v_nature := 'fiscal'; end if;
+  if v_nature = 'fiscal' and v_kind = 'expense' and v_receipt_file is null and v_receipt_number is null then
+    perform core.fail('RECEIPT_REQUIRED', 422, jsonb_build_object('field', 'receipt_file_id', 'reason', 'a fiscal expense needs its invoice or ticket'));
+  end if;
+  -- Sin «desfacturar»: de fiscal no se vuelve a proceso (de proceso a fiscal sí, cuando llega su justificante).
+  if e.id is not null and e.nature = 'fiscal' and v_nature = 'process' then perform core.fail('NATURE_CHANGE', 409, jsonb_build_object('id', e.id, 'source_ref', v_ref, 'nature', e.nature)); end if;
   v_fields := jsonb_build_object('source_app', v_app, 'source_ref', v_ref, 'kind', v_kind, 'nature', v_nature, 'entry_date', v_date, 'description', v_desc,
     'amount_cents', v_amount, 'tax_rate', v_rate, 'tax_cents', v_tax, 'net_cents', v_net, 'pending_refunds_cents', v_pending,
     'methods', v_methods, 'detail', v_detail,
     -- El evento enlazado a mano en Finance se queda si la otra app no manda uno.
-    'event_id', coalesce(v_event, e.event_id));
+    'event_id', coalesce(v_event, e.event_id), 'receipt_file_id', v_receipt_file, 'receipt_number', v_receipt_number);
   if e.id is null then
     v_id := gen_random_uuid();
     perform invoices.row_op(p, jsonb_build_object('op', 'insert', 'table', 'invoices.app_entries', 'id', v_id, 'fields', v_fields));
@@ -171,5 +233,5 @@ begin
                    and not exists (select 1 from jsonb_array_elements(e.manifest->'app_entries') x where (x->>'id')::uuid = ae.id)))));
 end $$;
 
-revoke all on function invoices.record_app_entry(jsonb), invoices.app_entries_summary_for(date, date), invoices.app_entries_manifest(date, date), invoices.export_bundle(jsonb)
+revoke all on function invoices.guard_app_entry(), invoices.record_app_entry(jsonb), invoices.app_entries_summary_for(date, date), invoices.app_entries_manifest(date, date), invoices.export_bundle(jsonb)
   from public, anon, authenticated;

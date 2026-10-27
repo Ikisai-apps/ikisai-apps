@@ -203,3 +203,33 @@ test('0245: fiscal y de proceso. Por defecto, fiscal; lo de proceso no va a la g
   await rejected([update(process.entry_id, row.revision, { nature: 'fiscal' })], 'INVALID_FIELDS');
 });
 
+test('0245: un gasto es fiscal solo con justificante; al adjuntarlo pasa a fiscal y al revés no', async () => {
+  const expense = (ref: string, extra: Record<string, unknown> = {}) => ({ source_app: 'flow', source_ref: `flow:project:${PROJECT}:${ref}`, kind: 'expense', entry_date: '2026-12-21',
+    description: `Hielo · ${ref}`, amount_cents: 2420, tax_rate: 21, methods: { cash: 2420 }, ...extra });
+  // Sin nature ni justificante: de proceso
+  const hielo = await record(expense('hielo'));
+  assert.equal(hielo.nature, 'process');
+  // Un gasto fiscal sin justificante, no
+  await rejected([call('invoices.record_app_entry', expense('vasos', { nature: 'fiscal' }))], 'RECEIPT_REQUIRED');
+  // Con el número del ticket al reenviar, pasa a fiscal
+  const withTicket = await record(expense('hielo', { receipt_number: 'T-77' }));
+  assert.deepEqual([withTicket.status, withTicket.nature], ['replaced', 'fiscal']);
+  // Un reenvío sin justificante no lo quita, y no vuelve a proceso
+  assert.equal((await record(expense('hielo', { receipt_number: 'T-77' }))).status, 'unchanged');
+  assert.equal((await record(expense('hielo'))).nature, 'fiscal');
+  await rejected([call('invoices.record_app_entry', expense('hielo', { nature: 'process' }))], 'NATURE_CHANGE', 409);
+  // Un documento que no es de Finance o no está verificado, no
+  await rejected([call('invoices.record_app_entry', expense('servilletas', { receipt_file_id: uuid() }))], 'INVALID_FILE');
+
+  // En Finance: adjuntar el número a un gasto de proceso lo pasa a fiscal; quitarlo de un gasto fiscal, no
+  const servilletas = await record(expense('servilletas'));
+  assert.equal(servilletas.nature, 'process');
+  let row = await entry(servilletas.entry_id);
+  await ok([update(servilletas.entry_id, row.revision, { receipt_number: 'F-2026-118' })], app.tokens.editor);
+  row = await entry(servilletas.entry_id);
+  assert.deepEqual([row.nature, row.receipt_number], ['fiscal', 'F-2026-118']);
+  await rejected([update(servilletas.entry_id, row.revision, { receipt_number: null })], 'RECEIPT_REQUIRED');
+  const summary = (await app.call('/api/v1/read/invoices.app_entries_summary', { body: { from: '2026-12-21', to: '2026-12-21' } })).data;
+  assert.equal(Number(summary.expense.count), 2, 'los dos gastos con justificante');
+});
+
