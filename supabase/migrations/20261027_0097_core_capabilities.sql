@@ -112,10 +112,15 @@ begin
 end $$;
 
 -- Los recibos de una persona (los suyos) o de todos (owner de la app que llama), para «lo que he hecho desde Flow».
+-- Con p_all solo se ven los recibos ajenos de capacidades cuya app dueña también tiene al solicitante como miembro: ser
+-- owner de Flow no da a ver la actividad de Invoices de los demás.
 create or replace function core.capability_receipts_of(p_actor uuid, p_caller_app text, p_all boolean default false, p_limit int default 50) returns jsonb language sql stable as $$
   select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'capability', r.capability, 'version', r.version, 'actorId', r.actor_id, 'requestId', r.request_id,
     'status', r.status, 'ok', r.ok, 'errorCode', r.error_code, 'summary', r.summary, 'createdAt', r.created_at) order by r.created_at desc), '[]'::jsonb)
-  from (select * from core.capability_receipts r where r.caller_app = p_caller_app and (p_all or r.actor_id = p_actor) order by r.created_at desc limit greatest(1, least(p_limit, 200))) r
+  from (select * from core.capability_receipts r
+         where r.caller_app = p_caller_app
+           and (r.actor_id = p_actor or (p_all and exists (select 1 from core.memberships m where m.user_id = p_actor and m.app = split_part(r.capability, '.', 1))))
+         order by r.created_at desc limit greatest(1, least(p_limit, 200))) r
 $$;
 
 create or replace function public.core_capabilities_for(p_actor uuid) returns jsonb

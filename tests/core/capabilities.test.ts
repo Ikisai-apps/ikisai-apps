@@ -51,6 +51,18 @@ test('capacidades · Flow invoca una capacidad de Invoices con la sesión de la 
     const stored = await db.query<{ n: number }>(`select count(*)::int n from core.capability_receipts where caller_app = 'flow' and capability = 'invoices.test_compra'`);
     assert.equal(stored.rows[0]?.n, 3);
 
+    // Recibos de todos (owner de Flow): solo de las apps dueñas donde también es miembro; otra persona de Flow solo ve los suyos.
+    const allMine = await app.call('/api/v1/capabilities/receipts?all=1');
+    assert.equal(allMine.data.items.length, 3);
+    const other = await app.call('/api/v1/capabilities/receipts', { token: app.tokens.editor });
+    assert.deepEqual(other.data.items, []);
+    await db.query(`delete from core.memberships where app = 'invoices' and user_id = $1`, [app.users.owner]);
+    assert.equal((await app.call('/api/v1/capabilities/receipts?all=1')).data.items.length, 3, 'los propios siempre');
+    await db.query(`update core.capability_receipts set actor_id = $1`, [app.users.editor]);
+    assert.deepEqual((await app.call('/api/v1/capabilities/receipts?all=1')).data.items, [], 'sin pertenencia en la app dueña, nada ajeno');
+    await db.query(`update core.capability_receipts set actor_id = $1`, [app.users.owner]);
+    await db.query(`insert into core.memberships (app, user_id, role) values ('invoices', $1, 'editor')`, [app.users.owner]);
+
     // Un rol insuficiente en la app dueña: la ve, pero no permitida, y no puede invocar.
     await db.query(`update core.memberships set role = 'reader' where app = 'invoices' and user_id = $1`, [app.users.owner]);
     const asReader = await app.call('/api/v1/capabilities');
