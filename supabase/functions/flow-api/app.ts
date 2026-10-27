@@ -81,23 +81,11 @@ interface DayData {
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
 }
 
-/**
- * Envíos del Cierre del día (contratos con Food y Finance del 26-10): desde aquí, con la sesión de la persona, a la API de
- * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
- * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
- */
-function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
+/** Llamada a un procedimiento de otra app por su API, con el token de la persona (su acceso decide). */
+function appCaller(base: FlowBase, options: FlowAppOptions) {
   const transport = options.appsFetch ?? fetch;
   const apiOf = (slug: string) => `${base.url.replace(/\/$/, '')}/functions/v1/${slug}/api/v1/commands`;
-
-  async function closure(ctx: RequestContext, id: string): Promise<ClosureForSend> {
-    if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'El cierre del día lo envía el encargado.');
-    const out = await supabase.rpc<ClosureForSend | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.closure_for_send', p_args: { id } });
-    if (!out?.closure) fail(404, 'NOT_FOUND', 'Ese cierre no existe.');
-    return out;
-  }
-
-  async function callApp(ctx: RequestContext, slug: string, label: string, requestId: string, procedure: string, args: unknown) {
+  return async function callApp(ctx: RequestContext, slug: string, label: string, requestId: string, procedure: string, args: unknown) {
     let res: Response;
     try {
       res = await transport(apiOf(slug), {
@@ -114,6 +102,59 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
     if (res.status === 401 || res.status === 403 || code === 'NO_MEMBERSHIP') fail(403, 'NEEDS_ACCESS', `Pide acceso a ${label}: tu cuenta no puede enviarle datos.`, { app: slug, code: code ?? null });
     if (!res.ok) fail(res.status === 409 ? 409 : 422, code ?? 'APP_REJECTED', out?.error?.message ?? `${label} no ha aceptado el envío.`, { app: slug, details: out?.error?.details ?? null });
     return out?.results?.[0]?.result ?? null;
+  };
+}
+
+/**
+ * Llegada y salida de huéspedes (check-in, 0911): flow-api comprueba que el flujo es de la persona y que el huésped es
+ * de su evento, y llama a booking.guest_arrive / guest_leave por booking-api con su token (editor en Booking).
+ */
+function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
+  const callApp = appCaller(base, options);
+  /** El evento de Booking de un flujo de check-in del ámbito de la persona (si no, PROJECT_OUT_OF_SCOPE / NO_BOOKING_EVENT). */
+  async function eventOf(ctx: RequestContext, project: string): Promise<string> {
+    if (!UUID.test(project)) fail(422, 'INVALID_OPERATION', 'Identificador no válido.');
+    const target = await supabase.rpc<{ booking_event_id: string | null } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.checkin_target', p_args: { project_id: project } });
+    if (!target) fail(403, 'PROJECT_OUT_OF_SCOPE', 'Este flujo no es tuyo: pide acceso a Dirección.');
+    if (!target.booking_event_id) fail(409, 'NO_BOOKING_EVENT', 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.');
+    return target.booking_event_id;
+  }
+  const guestsOf = (ctx: RequestContext, event: string, guest?: string) => supabase.rpc<{ rows?: unknown[] } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id,
+    p_name: 'booking.flow_guests_projection', p_args: { where: { event_id: event, ...(guest ? { guest_id: guest } : {}) }, limit: guest ? 1 : 2000 } });
+  return [{
+    // Los huéspedes del evento de ESTE flujo (la app no lee la proyección de Booking directamente: así solo ve los de sus flujos).
+    method: 'GET', pattern: 'checkin/:project/guests', handler: async ({ ctx, params }) => {
+      const event = await eventOf(ctx, params.project ?? '');
+      return { rows: (await guestsOf(ctx, event))?.rows ?? [] };
+    },
+  }, {
+    method: 'POST', pattern: 'checkin/:project/guests/:guest/:action', handler: async ({ ctx, params, json }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede marcar llegadas ni salidas.');
+      const action = params.action === 'arrive' ? 'booking.guest_arrive' : params.action === 'leave' ? 'booking.guest_leave' : null;
+      if (!action) fail(404, 'NOT_FOUND', 'Ruta no encontrada.');
+      if (!UUID.test(params.guest ?? '')) fail(422, 'INVALID_OPERATION', 'Identificador no válido.');
+      const body = (await json().catch(() => ({}))) ?? {};
+      const found = await guestsOf(ctx, await eventOf(ctx, params.project ?? ''), params.guest);
+      if (!found?.rows?.length) fail(404, 'NOT_FOUND', 'Ese huésped no es de este evento.');
+      const undo = body.undo === true;
+      return callApp(ctx, 'booking-api', 'Booking', `flow:${params.action}:${params.guest}:${crypto.randomUUID()}`, action, { guest_id: params.guest, ...(undo ? { undo: true } : {}) });
+    },
+  }];
+}
+
+/**
+ * Envíos del Cierre del día (contratos con Food y Finance del 26-10): desde aquí, con la sesión de la persona, a la API de
+ * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
+ * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
+ */
+function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
+  const callApp = appCaller(base, options);
+
+  async function closure(ctx: RequestContext, id: string): Promise<ClosureForSend> {
+    if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'El cierre del día lo envía el encargado.');
+    const out = await supabase.rpc<ClosureForSend | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.closure_for_send', p_args: { id } });
+    if (!out?.closure) fail(404, 'NOT_FOUND', 'Ese cierre no existe.');
+    return out;
   }
 
   const digest = async (value: unknown) => (await sha256Hex(JSON.stringify(value))).slice(0, 24);
@@ -235,7 +276,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options)], uploads: FLOW_UPLOADS,
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
