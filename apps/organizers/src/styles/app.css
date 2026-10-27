@@ -396,4 +396,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 /* Comentarios de tus asistentes (resumen del retiro) */
 .orgcomments{display:grid;gap:12px}
 .orgcomment>p{margin:0}
+/* Leídos y sin leer (0706) */
+.orgcomment-new{border-left:3px solid var(--warn);padding-left:10px}
+#retreatComments h3 .orgcomments-new{margin-left:8px;vertical-align:middle}
 .orgcomment-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}
