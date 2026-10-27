@@ -39,14 +39,18 @@ export function financeRoutes(supabase: Supabase, storage: StorageAccess, option
   const apiBaseOf = options.apiBaseOf ?? ((app: string, domain: string | null) => env('IKISAI_API_BASE_' + app.toUpperCase()) ?? (domain ? 'https://' + domain : null));
 
   const read = (ctx: RequestContext, id: string) => supabase.rpc<Purchase>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.purchase_finance', p_args: { id } });
-  const save = async (ctx: RequestContext, row: Purchase, fields: Record<string, unknown>) => {
-    await internal.commit(ctx, { requestId: `finance-${row.id}-${crypto.randomUUID()}`, operations: [{ op: 'update', table: 'tasks.purchase_requests', id: row.id, expectedRevision: row.revision, fields }] });
+  // El resultado solo lo escribe el servidor (tasks.purchase_finance_set; la app no puede fijar `finance_*`).
+  const save = async (ctx: RequestContext, row: Purchase, fields: { finance_status: string; finance_invoice_id?: string | null; finance_code?: string | null; finance_error?: string | null }) => {
+    await internal.commit(ctx, { requestId: `finance-${row.id}-${crypto.randomUUID()}`, operations: [{ op: 'call', procedure: 'tasks.purchase_finance_set', args: {
+      id: row.id, status: fields.finance_status, invoiceId: fields.finance_invoice_id ?? null, code: fields.finance_code ?? null, error: fields.finance_error ?? null } }] });
   };
 
   /** Sube a Finance los bytes del justificante de Tasks y devuelve el `file_id` de Finance. */
   async function uploadToFinance(ctx: RequestContext, base: string, fileId: string): Promise<string> {
+    // El archivo es el de la solicitud que esta persona ve: lo puso quien lo subió (hook tasks.validate_purchase_finance).
     const file = await supabase.rpc<any>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: fileId });
     if (file.status !== 'verified') fail(422, 'RECEIPT_NOT_READY', 'La foto del justificante aún no se ha subido del todo.');
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(String(file.mime).toLowerCase())) fail(422, 'RECEIPT_NOT_READY', 'El justificante tiene que ser un PDF o una foto.');
     const stored = await storage.download(file);
     if (!stored.ok) fail(503, 'STORAGE_UNAVAILABLE', 'No se pudo leer la foto del justificante.');
     const bytes = new Uint8Array(await stored.arrayBuffer());

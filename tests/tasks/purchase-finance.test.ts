@@ -98,3 +98,18 @@ test('sin lo pagado no se registra; quien solo lee no puede; una ajena no existe
   assert.equal(ticket.data.status, 'registered', JSON.stringify(ticket.data));
   assert.equal(ticket.data.nature, 'process');
 });
+
+test('el resultado de Finance no lo fija la app, y el justificante tiene que ser un archivo propio', async () => {
+  const row = await purchase(VASOS);
+  const spoof = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: VASOS, expectedRevision: Number(row.revision), fields: { finance_status: 'registered' } }]);
+  assert.equal(spoof.status, 422, JSON.stringify(spoof.data));
+  // Un archivo que subió otra persona no se puede poner como justificante (no se manda a Finance lo ajeno).
+  const bytes = new TextEncoder().encode('%PDF-1.4 documento de otra persona');
+  const ticket = await app.call('/api/v1/uploads', { token: app.tokens.editor, body: { filename: 'otro.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256: await sha256(bytes) } });
+  assert.equal(ticket.status, 200, JSON.stringify(ticket.data));
+  app.supabase.storage.set(ticket.data.path, bytes);
+  await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { token: app.tokens.editor, body: {} });
+  const now = await purchase(VASOS);
+  const foreign = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: VASOS, expectedRevision: Number(now.revision), fields: { receipt_file_id: ticket.data.id } }]);
+  assert.equal(foreign.status, 422, JSON.stringify(foreign.data));
+});
