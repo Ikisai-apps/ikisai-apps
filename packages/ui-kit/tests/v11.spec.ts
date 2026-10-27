@@ -37,9 +37,11 @@ test.describe('ui-kit v0.8', () => {
     expect(style.radius).not.toBe('0px');
     await select.focus();
     expect(await select.evaluate((n) => getComputedStyle(n).boxShadow)).toContain('0px 0px 0px 3px');
+    // 36 px con ratón; con el dedo, 44 px (0.69.2, revisión móvil del 27-10).
     const compact = await page.locator('#looseTime').boundingBox();
-    expect(compact!.height).toBeGreaterThanOrEqual(34);
-    expect(compact!.height).toBeLessThanOrEqual(38);
+    const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+    expect(compact!.height).toBeGreaterThanOrEqual(coarse ? 43.5 : 34);
+    expect(compact!.height).toBeLessThanOrEqual(coarse ? 46 : 38);
     // Los campos del kit no cambian: el buscador del selector de etiquetas sigue en 40 px.
     await page.goto('/#labels');
     const search = await page.locator('#labelHost .lp-search').boundingBox();
