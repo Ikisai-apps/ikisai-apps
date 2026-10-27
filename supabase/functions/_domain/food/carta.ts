@@ -197,7 +197,7 @@ export function perPersonFromUnits(units: number, attendance: number): number | 
 export function cartaAttendance(menu: { expected_attendance?: number | null } | null, eventGuests: number | null | undefined): number | null {
   if (menu?.expected_attendance !== null && menu?.expected_attendance !== undefined) return menu.expected_attendance;
   return eventGuests ?? null;
-
+}
 
 /**
  * Fuentes de la lista de la compra de una carta (como `food.carta_shopping_sources`): sus líneas vivas, sus recetas, las
