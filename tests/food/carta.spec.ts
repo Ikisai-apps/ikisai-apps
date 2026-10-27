@@ -161,6 +161,10 @@ test('evento familiar · come del menú de casa: sin «Crear menú» y con el en
   await expect(page.locator('#createMenu')).toHaveCount(0);
   await page.locator('#openHouseMenu').click();
   await expect(page).toHaveURL(/#\/menus\/f00dca5a-0000-4000-8000-000000000001$/);
+  // En el menú de casa, los días del familiar dicen cuántos más comen (6 personas), en esta semana o en la siguiente.
+  const chip = page.locator('.familychip').first();
+  if (!(await chip.isVisible().catch(() => false))) await page.locator('#weekNext').click();
+  await expect(chip).toContainText('+6 de Visita de la familia');
 });
 
 test('ofertas · la ficha del evento las enseña y deja añadir otra', async ({ page }) => {
