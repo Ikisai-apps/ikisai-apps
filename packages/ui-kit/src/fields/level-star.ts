@@ -6,6 +6,7 @@
  */
 import { el } from '../dom.ts';
 import { kt } from '../i18n/i18n.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 const STAR = 'M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.2 6.1L12 17l-5.5 2.9 1.2-6.1-4.5-4.2 6.1-.8z';
 const SVG = 'http://www.w3.org/2000/svg';
@@ -55,6 +56,8 @@ export interface LevelStarOptions {
   /** Marca de feedback y uso del botón. */
   feedbackId?: string;
   feedbackLabel?: string;
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface LevelStar {
@@ -77,6 +80,7 @@ export function createLevelStar(options: LevelStarOptions): LevelStar {
   const text = el('span', { class: 'level-star-label' });
   const button = el('button', {
     type: 'button', class: `level-star${options.showLabel ? ' with-label' : ''}`,
+    ...fieldAttrs(options.field, { type: 'level', label: what }),
     ...(options.feedbackId ? { 'data-feedback-id': options.feedbackId, 'data-feedback-label': options.feedbackLabel ?? what } : {}),
     onclick: () => { if (!readonly) change((value + 1) % levels); },
     onkeydown: (e: Event) => {

@@ -66,6 +66,7 @@ async function login(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
 }
+const barraName = async () => (await api.app.t.db.query<{ n: string }>(`select name as n from flow.projects where id = $1`, [BARRA])).rows[0]!.n;
 const flowScopes = async (user: string) => (await api.app.t.db.query<{ role: string; scopes: any }>(`select role, scopes from core.memberships where user_id = $1 and app = 'flow'`, [user])).rows[0] ?? null;
 
 test('ficha · proyectos de Flow: sin ninguno no ve nada; se eligen en una hoja y «Deshacer» devuelve los de antes', async ({ page }) => {
@@ -79,7 +80,7 @@ test('ficha · proyectos de Flow: sin ninguno no ve nada; se eligen en una hoja 
   await block.locator('#editFlowProjects').click();
   const sheet = page.getByRole('dialog', { name: 'Proyectos de Flow' });
   await expect(sheet.locator('label.check')).toHaveCount(2);
-  await expect(sheet).toContainText('Barra · Evento de octubre');
+  await expect(sheet).toContainText(await barraName());
   await sheet.getByRole('checkbox', { name: /Boda de noviembre/ }).check();
   await sheet.getByRole('button', { name: 'Guardar' }).click();
   await expect.poll(async () => (await flowScopes(daniUser))?.scopes).toEqual({ projects: [ids.boda] });
@@ -96,9 +97,10 @@ test('alta · Flow + proyecto en un paso: marcar el proyecto le da Flow · Edito
   await page.locator('#invitePeople .ctl-face[data-person=""]').click();
   await page.locator('#inviteName').fill('Lola Ficticia');
   await page.locator('#inviteEmail').fill('lola-flow@example.invalid');
-  await page.locator('#inviteFlowProjects').getByRole('checkbox', { name: 'Barra · Evento de octubre' }).check();
+  const barra = await barraName();
+  await page.locator('#inviteFlowProjects').getByRole('checkbox', { name: barra }).check();
   await expect(page.locator('#invite-flow [data-role="editor"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#inviteSummary')).toContainText('Flow · Editor (Barra · Evento de octubre)');
+  await expect(page.locator('#inviteSummary')).toContainText(`Flow · Editor (${barra})`);
   await page.locator('#inviteSubmit').click();
   await expect(page.getByRole('dialog')).toContainText('lola-flow@example.invalid');
   // La ficha nueva queda enlazada con su cuenta (staff, el nivel por defecto): Flow conserva el proyecto.
