@@ -722,6 +722,8 @@ Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md
 | `invoices.unassigned` | Facturas recibidas sin asignar | `count` · `actual` · `down` | Recibidas no anuladas con alguna asignación viva a «Sin asignar» (`general/unassigned`). |
 | `invoices.vat_quarter` | IVA del trimestre (repercutido − soportado) | `eur` · `AAAATn` · sin sentido | Repercutido: `quota_total` de las emitidas del trimestre más el IVA de los ingresos fiscales de apps. Soportado: `calculated_vat` de las recibidas validadas con factura, por `declaration_date`, más el IVA de los gastos fiscales de apps con factura. Positivo: a ingresar. |
 
+**F4 de Organizers (migración 0254):** `invoices.organizer_reservations_pending` · «Retiros con facturas enviadas sin cobrar» · `count` · `actual` · `down`. Cuenta las reservas con alguna emitida (sin borradores ni anuladas) enviada a quien organiza (`sent_at`) y aún `pendiente`. Los vencimientos pasados del calendario de pagos son de Booking (B15). La vista pasa a 36 filas.
+
 «Apuntes por reenviar» no es de Finance: lo saben Booking y Flow (un cobro que cambió después de enviarse) y es indicador suyo.
 
 Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `?vista=emitidas`) y el gasto a `#/gestoria`. Cambiar el significado de una clave es crear otra.
