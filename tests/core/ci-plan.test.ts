@@ -57,6 +57,19 @@ test('ci por app · lo compartido y fuera de una PR: todas, la grande sola y las
   ]);
 });
 
+test('ci por app · con más grupos que el tope, las carpetas se juntan por tamaño; los trozos, aparte', () => {
+  const root = fakeRepo();
+  // booking, 30 archivos (se parte con split 20); tasks, food, core y central, de 12 a 14 (grandes); el resto, pequeñas.
+  const add = (f: string, n: number) => { fs.mkdirSync(path.join(root, 'tests', f), { recursive: true }); for (let i = 0; i < n; i++) fs.writeFileSync(path.join(root, 'tests', f, `p${i}.test.ts`), ''); };
+  add('booking', 18); add('tasks', 14); add('food', 12); add('core', 11); add('central', 12);
+  const out = groups(['booking', 'central', 'core', 'food', 'guests', 'organizers', 'sync-client', 'tasks'], root, 20, 3);
+  assert.deepEqual(out.filter((g) => g.shard).map((g) => g.name), ['booking 1/2', 'booking 2/2']);
+  const packed = out.filter((g) => !g.shard);
+  assert.equal(packed.length, 3);
+  assert.deepEqual(packed.flatMap((g) => g.folders.split(' ')).sort(), ['central', 'core', 'food', 'guests', 'organizers', 'sync-client', 'tasks']);
+  assert.ok(packed.every((g) => g.name === g.folders.split(' ').join(' + ')));
+});
+
 test('ci por app · una carpeta muy grande va en dos trozos', () => {
   const root = fakeRepo();
   assert.deepEqual(groups(['booking', 'food'], root, 12), [

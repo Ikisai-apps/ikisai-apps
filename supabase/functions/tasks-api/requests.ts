@@ -211,6 +211,15 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       const rawQuantity = body.quantity;
       if (rawQuantity !== undefined && rawQuantity !== null && (typeof rawQuantity !== 'number' || !Number.isFinite(rawQuantity) || rawQuantity <= 0 || rawQuantity >= 1e9)) invalid('quantity', 'quantity es un número mayor que 0.');
       const quantity = typeof rawQuantity === 'number' ? Math.round(rawQuantity * 1000) / 1000 : null;
+      // El artículo de Recursos (opcional; Food, lista de la compra, #848): al recibirla, Tasks apunta la entrada de stock con
+      // su coste, como en cualquier compra suya con artículo (receiptEntryOperation). Sin unidad, la base del artículo.
+      const rawItem = body.item_id;
+      if (rawItem !== undefined && rawItem !== null && (typeof rawItem !== 'string' || !UUID.test(rawItem))) invalid('item_id', 'item_id debe ser un uuid (artículo de Recursos).');
+      let item: { id: string; base_unit?: string; active?: boolean } | null = null;
+      if (typeof rawItem === 'string') {
+        item = (await supabase.rpc<{ item?: { id: string; base_unit?: string; active?: boolean } | null }>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.supply_item', p_args: { itemId: rawItem.toLowerCase() } }))?.item ?? null;
+        if (!item || item.active === false) fail(404, 'NOT_FOUND', 'Ese artículo no existe en Recursos o no está activo.', { field: 'item_id' });
+      }
       // El enlace de vuelta a la app que pide (Flow: la unidad), solo https en ikisai.com (§39.5, migración 0342).
       const externalUrl = text('external_url', 500);
       if (externalUrl !== undefined && !ORIGIN_URL.test(externalUrl)) invalid('external_url', 'external_url debe ser https en ikisai.com.');
@@ -238,7 +247,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       };
       const shape = (r: Record<string, unknown>) => ({
         kind: 'purchase_request', id: r.id, tabId: r.tab_id, projectId: r.project_id, title: r.title, status: r.status,
-        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
+        quantity: r.quantity == null ? null : Number(r.quantity), unit: r.unit ?? null, itemId: r.item_id ?? null, revision: r.revision, deleted: !!r.deleted_at, externalRef,
         externalUrl: r.source_url ?? null,
       });
       // Lo que ya hay con esa referencia solo se devuelve si es del mismo proyecto que se pide (ya comprobado como visible
@@ -256,7 +265,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
       const fields: Record<string, unknown> = {
         tab_id: tabId, project_id: projectId, title,
         note: [`Pedida desde ${source} · ${reference}`, note?.trim()].filter(Boolean).join('\n'),
-        quantity, unit, priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
+        item_id: item?.id ?? null, quantity, unit: unit ?? (item ? item.base_unit ?? null : null), priority: priority ?? 'normal', due: due ?? null, needs_invoice: true, position: lastPosition + 1024,
         // Procedencia (0342): agrupa «Compras del evento» en Suministros y da el enlace de vuelta. Inmutable.
         source_app: source, source_ref: reference, source_url: externalUrl ?? null,
       };
@@ -307,7 +316,9 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
     // Plazo legal de SES y, desde los portales de organizadores (T3), fechas posibles, «quiere confirmar» y comentarios a la propuesta.
     // `booking.retreat_extra`: un extra contratado de un retiro (§23), que va al proyecto de su reserva (`project_ref`).
     // `booking.event_setup`: el «Montaje del evento» (§42), al proyecto de su reserva, con sus hijas (`children`); se reenvía entero.
-    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra', 'booking.event_setup']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
+    // `booking.bed_cleaning`: limpiar una cama cuando sale su huésped (#907; §48): `LIMP-<asignación>`, sin `project_ref`; va
+    // donde diga la regla del usuario para ese tipo (p. ej. el proyecto «Limpieza»), o a «Por clasificar».
+    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra', 'booking.event_setup', 'booking.bed_cleaning']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
     url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
   },
   core: {
@@ -352,6 +363,7 @@ const DEFAULT_KIND_LABELS: Record<string, string> = {
   'core.user_task': 'Core · Tarea para ti',
   'invoices.drive_review': 'Finance · Facturas de Drive por revisar',
   'invoices.drive_blocked': 'Finance · Drive bloqueado',
+  'booking.bed_cleaning': 'Limpieza · Salida de huésped',
 };
 const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,150}$`);
 /** Avisos de máquina de Food (§22.3): los pide una persona por `requests/task`, pero su estado lo lee la Edge de Food. */
@@ -407,6 +419,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const projectRef = text('project_ref', 150);
       const eventReport = sourceName === 'feedback' && kind.startsWith('feedback.event.');
       const toReservation = kind === 'booking.retreat_extra' || kind === 'booking.event_setup';
+      if (kind === 'booking.bed_cleaning' && !/^LIMP-[A-Za-z0-9_.:-]{1,140}$/.test(reference)) invalid('external_ref', 'La limpieza de una cama va como LIMP-<asignación>.');
       if (toReservation && !projectRef) invalid('project_ref', 'Un extra o un montaje necesita project_ref (la referencia de su reserva).');
       if (projectRef !== undefined && ((!toReservation && !eventReport) || !SYSTEM_SOURCES.booking!.reference.test(projectRef))) {
         invalid('project_ref', 'project_ref solo vale para booking.retreat_extra, booking.event_setup y feedback.event.*, y es una referencia de reserva.');

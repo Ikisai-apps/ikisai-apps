@@ -133,6 +133,35 @@ export interface RequestRouteRow extends BaseRow {
 export interface DayPlanItem { id: Uuid; task_id?: Uuid; text?: string; tab_id?: Uuid | null; position: number; done?: boolean }
 export interface DayPlanRow extends BaseRow { actor_id: Uuid; day: string; items: DayPlanItem[]; reviewed: boolean }
 
+/**
+ * «Revisión de apertura» (migración 0348, §46): plantillas de revisión. `tab_id` nulo = de la casa. Cada ítem tiene su zona,
+ * su tipo de respuesta, lo esperado y si es crítico.
+ */
+export const REVIEW_ZONES = ['habitaciones', 'camas', 'aseos', 'duchas_acs', 'puertas', 'electricidad', 'cocina', 'maquinaria',
+  'accesos', 'barandillas', 'comunes', 'limpieza', 'extintores', 'agua'] as const;
+export type ReviewZone = (typeof REVIEW_ZONES)[number];
+export const REVIEW_ANSWERS = ['check', 'quantity', 'photo', 'reading', 'note'] as const;
+export type ReviewAnswer = (typeof REVIEW_ANSWERS)[number];
+export interface ReviewExpected { count?: number; unit?: string; min?: number; max?: number }
+export interface ReviewTemplateRow extends BaseRow { tab_id: Uuid | null; name: string; note: string; active: boolean; position: number }
+/** Una revisión creada (0349) y sus ítems: solo los escriben los procedimientos de la revisión (§46.2–46.4). */
+export type ReviewStatus = 'open' | 'ready' | 'opened';
+export type ReviewItemState = 'pending' | 'ok' | 'failed' | 'verified';
+export interface ReviewRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid; template_id: Uuid; title: string; event_ref: string | null; status: ReviewStatus;
+  opened_at: string | null; opened_by: Uuid | null; open_override: boolean; open_note: string | null; pending_at_open: unknown[] | null;
+}
+export interface ReviewItemRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid; review_id: Uuid; task_id: Uuid; template_item_id: Uuid | null; zone: string; title: string;
+  answer: ReviewAnswer; expected: ReviewExpected; critical: boolean; instructions: string; position: number;
+  state: ReviewItemState; value: number | null; text: string | null; file_id: Uuid | null; checked_by: Uuid | null; checked_at: string | null;
+  first_failure: Record<string, unknown> | null; first_failure_file_id: Uuid | null; corrective_task_id: Uuid | null; recheck_task_id: Uuid | null;
+}
+export interface ReviewTemplateItemRow extends BaseRow {
+  tab_id: Uuid | null; template_id: Uuid; zone: ReviewZone; trade_id: Uuid | null; title: string; instructions: string;
+  answer: ReviewAnswer; expected: ReviewExpected; critical: boolean; position: number;
+}
+
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
@@ -141,6 +170,7 @@ export const TABLES = [
   'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials',
   'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests',
   'tasks.request_routes', 'tasks.requests', 'tasks.settings', 'tasks.day_plans',
+  'tasks.review_templates', 'tasks.review_template_items', 'tasks.reviews', 'tasks.review_items',
 ] as const;
 export type TableName = (typeof TABLES)[number];
 
@@ -154,6 +184,8 @@ export interface RowTypes {
   'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow; 'tasks.purchase_requests': PurchaseRequestRow;
   'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
   'tasks.day_plans': DayPlanRow;
+  'tasks.review_templates': ReviewTemplateRow; 'tasks.review_template_items': ReviewTemplateItemRow;
+  'tasks.reviews': ReviewRow; 'tasks.review_items': ReviewItemRow;
 }
 
 /** Filas de todas las tablas, tal y como salen de `snapshot` o del espejo local (incluidas las borradas). */
@@ -190,6 +222,10 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of', 'space_id'],
   'tasks.settings': ['key', 'value'],
   'tasks.day_plans': ['actor_id', 'day', 'items', 'reviewed'],
+  'tasks.review_templates': ['tab_id', 'name', 'note', 'active', 'position'],
+  'tasks.review_template_items': ['tab_id', 'template_id', 'zone', 'trade_id', 'title', 'instructions', 'answer', 'expected', 'critical', 'position'],
+  'tasks.reviews': ['tab_id', 'project_id', 'template_id', 'title', 'event_ref', 'status', 'opened_at', 'opened_by', 'open_override', 'open_note', 'pending_at_open'],
+  'tasks.review_items': ['tab_id', 'project_id', 'review_id', 'task_id', 'template_item_id', 'zone', 'title', 'answer', 'expected', 'critical', 'instructions', 'position', 'state', 'value', 'text', 'file_id', 'checked_by', 'checked_at', 'first_failure', 'first_failure_file_id', 'corrective_task_id', 'recheck_task_id'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
@@ -223,6 +259,12 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.settings': ['key'],
   // El plan es de una persona y un día (trigger `tasks.guard_immutable` de 0339).
   'tasks.day_plans': ['actor_id', 'day'],
+  // Plantillas de revisión (0348): su área no cambia; un ítem no cambia de plantilla.
+  'tasks.review_templates': ['tab_id'],
+  'tasks.review_template_items': ['tab_id', 'template_id'],
+  // Revisiones (0349): de su proyecto y su plantilla; un ítem, de su revisión y su tarea.
+  'tasks.reviews': ['tab_id', 'project_id', 'template_id'],
+  'tasks.review_items': ['tab_id', 'project_id', 'review_id', 'task_id'],
 };
 
 /** Familias que el cliente crea con cada área nueva. */
