@@ -122,11 +122,8 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
   };
   const sheet = openSheet({ initialFocus: progress, title: `${j.def.name} · ${mode === 'learn' ? 'aprender' : 'ejecutar'}`,
     meta: mode === 'learn' ? 'Ensayo: no se registra nada.' : 'Se registrará de verdad, con tu cuenta.', body: el('div', null, progress, host),
-    // Salir siempre a la vista (VG, 27-10): lo hecho queda guardado y el recorrido se retoma desde Recorridos.
-    foot: el('div', { class: 'flow-nav', 'data-feedback-id': 'flow.recorrido.navegacion' },
-      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Volver a Recorridos', onclick: () => void sheet.close() }, el('span', { 'aria-hidden': 'true' }, '‹'), ' Recorridos'),
-      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Cerrar y volver a la entrada', onclick: () => { void sheet.close().then(() => { location.hash = '#/'; }); } },
-        el('span', { 'aria-hidden': 'true' }, '✕'), ' Cerrar')) });
+    // Al pie, solo lo que hace avanzar (VG, 27-10); para salir, el ✕ de la hoja: lo hecho queda guardado.
+  });
 
   async function startStage(index: number): Promise<void> {
     const entry = j.stages[index];
