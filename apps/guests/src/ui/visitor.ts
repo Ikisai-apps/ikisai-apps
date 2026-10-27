@@ -10,7 +10,7 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { claimGuest, createHandoff, ensureVisitor, errorCodeOf, withHandoff, forgetVisitor, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { bindMember, claimGuest, createHandoff, ensureVisitor, visitorMe, errorCodeOf, withHandoff, forgetVisitor, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
@@ -37,7 +37,7 @@ const ORDER_STATES = ['open', 'paid', 'delivered'];
 const orderText = (status: string) => (ORDER_STATES.includes(status) ? t(`visitor.ost.${status}`) : status);
 
 /** El cliente de la app, para el Guiado completo de Flow cuando en este móvil hay sesión de un miembro de Flow. */
-export type VisitorGuideClient = GuideApiClient & { session(): unknown };
+export type VisitorGuideClient = GuideApiClient & { session(): { token: string } | null };
 
 export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | null): () => void {
   let alive = true;
@@ -64,13 +64,28 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
   const pointer = !guide && link?.field ? createFieldPointer(link, { feedbackId: 'guests.visitante.cabecera.guia' }) : null;
   const back = origin ? el('a', { class: 'return-link', href: origin.url, 'data-feedback-id': 'guests.visitante.cabecera.volver', 'data-feedback-label': 'Volver a la guía',
     onclick: () => { clearReturnTo(); clearGuideLink(); } }, icon('chevronLeft', 18), el('span', null, t('visitor.backTo', { place: origin.title ?? origin.from ?? t('visitor.backGuide') }))) : null;
+  // Dirección o staff con su pase (núcleo 0115): el visitante de este móvil se ata a su cuenta y se dice quién entra.
+  // Flow marca lo que pida como prueba (`core.visitor_member`). Un huésped o sin red: sigue como visitante, sin aviso.
+  const memberLine = el('p', { class: 'small gvisitor-member', id: 'visitorMember', role: 'status' });
+  let memberTried = false;
+  const bindAsMember = async (code: string) => {
+    const session = client?.session();
+    if (memberTried || !session) return;
+    memberTried = true;
+    try {
+      await ensureVisitor(code);
+      await bindMember(session.token);
+      const me = await visitorMe();
+      if (me.member && alive) replace(memberLine, icon('guest', 14), ' ', t('visitor.asMember', { name: me.member.displayName ?? t('visitor.memberSomeone'), apps: me.member.apps.map((a) => a.app).join(', ') }));
+    } catch { /* sin pertenencia o sin red */ }
+  };
   const offSaved = !guide && link?.field ? onSaved((id) => { if (id === link.field) toast(t('visitor.guideSaved')); }) : null;
   replace(root, el('div', { class: 'gvisitor-shell' },
     el('header', { class: 'gvisitor-top' },
       el('a', { class: 'gvisitor-brand', href: LIST, 'data-feedback-id': 'guests.visitante.cabecera.eventos', 'data-feedback-label': 'Mis eventos' },
         el('span', { class: 'mark', 'aria-hidden': 'true' }, icon('guest', 20)), el('strong', null, 'Ikisai')),
       languageSelect()),
-    back, pointer?.element ?? null,
+    back, pointer?.element ?? null, memberLine,
     main, guide?.element ?? null));
   if (guide) queueMicrotask(() => void guide.start());
 
@@ -141,6 +156,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
       return;
     }
     document.title = `${event.name} · Ikisai`;
+    void bindAsMember(code);
     const today = todayMadrid();
     const head = el('section', { class: 'card gcard', id: 'visitorEvent', dataset: { code: event.code } },
       el('h2', { id: 'retreatTitle' }, event.name),

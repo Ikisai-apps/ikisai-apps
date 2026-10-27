@@ -896,6 +896,8 @@ export const EN: Dictionary = {
   'stay.noAvailability': 'There is no room left those nights. Try other dates.',
   'visitor.tabs': 'Event sections',
   'visitor.tabEvent': 'The event',
+  'visitor.asMember': 'You are in as {name} · {apps}. What you order is marked as a test.',
+  'visitor.memberSomeone': 'a team member',
   'visitor.routes': 'What you can do here',
   'visitor.routeCarta': 'Order at the bar',
   'visitor.routeDatos': 'Your details',

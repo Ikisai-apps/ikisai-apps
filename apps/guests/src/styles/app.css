@@ -658,3 +658,4 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .gvisitor-route-go>span:nth-child(2){flex:1}
 .gvisitor-route-mark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:2px solid var(--line)}
 .gvisitor-route[data-done] .gvisitor-route-mark{border-color:var(--accent-deep,var(--ink));color:var(--accent-deep,var(--ink))}
+.gvisitor-member:empty{display:none}
