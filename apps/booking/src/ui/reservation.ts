@@ -5,7 +5,7 @@ import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, rend
 import { renderBarService } from './barService.ts';
 import { renderFlowReady } from './flowReady.ts';
 import { revealFor } from './guide.ts';
-import { confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
+import { announceSaved, confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, experienceOf, guestCompleteness, missingForConfirmation, nights, requiresEvent, type ExperienceInput, type ReservationStatus,
@@ -242,6 +242,7 @@ export function mountReservation(id: string): ViewMount {
         try {
           const { requestId } = await client.commit([{ op: 'call', procedure: PROCEDURES.confirmReservation, args: { reservation_id: id, event_id: crypto.randomUUID(), from_status: reservation!.status } }]);
           setConfirmMark({ reservationId: id, requestId });
+          announceSaved('booking.reserva.acciones.confirmar', { pending: !navigator.onLine });
           toast(navigator.onLine ? 'Confirmación enviada.' : 'Confirmación pendiente de enviar. Se enviará al reconectar.');
           void paint();
         } catch (error) {
