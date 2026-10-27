@@ -110,7 +110,7 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await page.goto(`${baseURL}/#/eventos`);
     const row = page.locator('#eventList .row', { hasText: 'Retiro Test' });
     await expect(row).toContainText('Sin menú');
-    await expect(row).toContainText('2 restricciones');
+    await expect(row).toContainText('1 con alergia · 2 veganos');
     await expect(page.locator('#eventsStamp')).toContainText('Datos de los eventos a fecha de');
   });
 

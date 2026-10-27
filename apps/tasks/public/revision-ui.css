@@ -1,0 +1,19 @@
+/* Revisión de apertura (revision-ui.js, §46): la banda del proyecto, la comprobación de la ficha y «Nueva revisión». */
+.tkr-band{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--paper)}
+.tkr-band.ready{border-color:var(--accent)}
+.tkr-band.opened{opacity:.85}
+.tkr-band button{min-height:44px}
+.tkr-check{border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:8px 0 12px;display:grid;gap:6px}
+.tkr-check h3{margin:0;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tkr-check.failed{border-color:#b4532f}
+.tkr-check.verified,.tkr-check.ok{border-color:var(--accent)}
+.tkr-crit{font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:#f3d9cf;color:#7a2c14}
+html.dark .tkr-crit{background:#5a2a1c;color:#f6d3c6}
+.tkr-state{font-size:12px;font-weight:700;color:var(--muted)}
+.tkr-actions button,.tkr-links button{min-height:44px}
+.tkr-actions{gap:8px}
+.tkr-first{color:#9c3a24}
+html.dark .tkr-first{color:#f0a08c}
+.tkr-pending{margin:0 0 8px;padding-left:18px}
+.tkr-newrow{margin:0 0 8px}
+.tkr-newrow button{min-height:44px}

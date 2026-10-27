@@ -94,6 +94,8 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
   return [{
     method: 'POST', pattern: 'requests/task', handler: async ({ ctx, json, request }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir tareas necesita permiso de edición en Tasks.');
+      // Los agentes crean tareas por `commands`, con su revisión de riesgo; esta ruta es para otras apps (autoauditoría 27-10).
+      if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente crea tareas por commands.');
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
       const text = (field: string, max: number, required = false): string | undefined => {
@@ -187,6 +189,7 @@ export function requestRoutes(supabase: Supabase, options: { workerKey?: string;
      */
     method: 'POST', pattern: 'requests/purchase', handler: async ({ ctx, json, request }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir compras necesita permiso de edición en Tasks.');
+      if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente pide compras por commands.');
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
       const text = (field: string, max: number, required = false): string | undefined => {

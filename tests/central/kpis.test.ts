@@ -127,6 +127,12 @@ test('kpis · R7: temas del panel en su orden; lo que no tiene tema va detrás, 
   assert.deepEqual(groupBySection(['organizers.reports_sent_30d', 'organizers.retreats_without_access'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
     ['Quien organiza', ['organizers.retreats_without_access', 'organizers.reports_sent_30d']],
   ]);
+  // Finance (#955): cobros, facturas recibidas y el mes y el trimestre.
+  assert.deepEqual(groupBySection(['invoices.vat_quarter', 'invoices.unpaid', 'invoices.collected_today', 'invoices.pending_collection', 'invoices.expenses_month'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
+    ['Cobros', ['invoices.collected_today', 'invoices.pending_collection']],
+    ['Facturas recibidas', ['invoices.unpaid']],
+    ['Mes y trimestre', ['invoices.expenses_month', 'invoices.vat_quarter']],
+  ]);
   // Una app sin claves con tema se queda en un solo bloque y en el orden de llegada.
   assert.deepEqual(groupBySection([{ kpi: 'tasks.b' }, { kpi: 'tasks.a' }]).map((g) => [g.title, g.items.map((i) => i.kpi)]), [[null, ['tasks.b', 'tasks.a']]]);
   assert.deepEqual(stateSummary([{ state: 'critico' }, { state: 'atencion' }, { state: 'atencion' }, { state: null }, { state: 'ok' }]), { critico: 1, atencion: 2, total: 5 });

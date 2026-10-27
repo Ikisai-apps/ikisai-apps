@@ -503,7 +503,7 @@ test('aceptación V1 · etiquetas padre e hija: dos niveles como máximo y en la
 test('indicadores para Central (§21): agregados de hoy, solo lo vivo, y registrados como lectura de Central', async () => {
   const kpis = async () => Object.fromEntries((await db.t.db.query<{ kpi: string; value: string }>(`select kpi, value from tasks.central_kpi_projection`)).rows.map((r) => [r.kpi, Number(r.value)]));
   const before = await kpis();
-  assert.deepEqual(Object.keys(before).sort(), ['tasks.open', 'tasks.overdue', 'tasks.purchase_requests_open', 'tasks.requests_pending', 'tasks.supplies_below_min']);
+  assert.deepEqual(Object.keys(before).sort(), ['tasks.blocked', 'tasks.open', 'tasks.overdue', 'tasks.purchase_requests_open', 'tasks.requests_pending', 'tasks.reviews_open', 'tasks.supplies_below_min']);
   const { tab, inbox } = await db.area('Indicadores');
   const archivedProject = newId(), parent = newId();
   await db.commit([
