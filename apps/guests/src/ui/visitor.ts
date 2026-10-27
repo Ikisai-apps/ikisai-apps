@@ -10,9 +10,9 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, rememberEvent, sendRequest, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, rememberEvent, sendRequest, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
-import { failure, loading, staleNote } from './common.ts';
+import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
 import { languageSelect } from './language.ts';
@@ -62,15 +62,21 @@ export function renderVisitor(root: HTMLElement): () => void {
       return;
     }
     replace(main, loading());
-    const events = (await Promise.all(codes.map((c) => publicEvent(c).catch(() => null)))).map((x) => x?.value ?? null).filter((e): e is PublicEvent => Boolean(e));
+    let offline = 0;
+    const events = (await Promise.all(codes.map((c) => publicEvent(c).catch((error) => { if (errorCodeOf(error) === 'NETWORK') offline++; return null; }))))
+      .map((x) => x?.value ?? null).filter((e): e is PublicEvent => Boolean(e));
     if (!current(mine)) return;
+    // Los que no se pueden abrir no desaparecen sin más: sin red, o el evento ya no existe o cambió su código.
+    const gone = codes.length - events.length - offline;
+    const why = [offline ? whyNote('visitorListOffline', t('visitor.listOffline', { count: offline })) : null,
+      gone > 0 ? whyNote('visitorListGone', t('visitor.listGone', { count: gone })) : null];
     const today = todayMadrid();
     const by = new Map<When, PublicEvent[]>([['during', []], ['before', []], ['after', []]]);
     for (const e of events) by.get(e.starts_on ? whenOf({ start: e.starts_on, end: e.ends_on }, today) : 'before')!.push(e);
     by.get('before')!.sort((a, b) => (a.starts_on ?? '9999').localeCompare(b.starts_on ?? '9999'));
     by.get('after')!.sort((a, b) => (b.starts_on ?? '').localeCompare(a.starts_on ?? ''));
     const LABEL: Record<When, string> = { during: 'retreats.now', before: 'retreats.next', after: 'retreats.past' };
-    replace(main, el('div', { class: 'pagehead' }, el('h2', null, t('visitor.mine'))),
+    replace(main, el('div', { class: 'pagehead' }, el('h2', null, t('visitor.mine'))), ...why,
       ...(['during', 'before', 'after'] as When[]).filter((w) => by.get(w)!.length).map((w) => el('section', { class: 'gretreats-group', id: `visitor-${w}` },
         el('h3', null, t(LABEL[w])),
         el('ul', { class: 'gretreats' }, ...by.get(w)!.map((e) => el('li', null, el('a', {
@@ -141,7 +147,7 @@ export function renderVisitor(root: HTMLElement): () => void {
       const day = days.includes(today) ? today : days[0];
       const block = day ? offersBlock(day, today, [{ eater, offers }], false, () => join().catch(() => null)) : null;
       replace(offersHost, block ? el('div', null, block, el('p', { class: 'small', id: 'visitorAllergies' }, icon('warn', 14), ' ', t('visitor.allergies'))) : null);
-    }).catch(() => undefined);
+    }).catch((error) => { if (current(mine)) replace(offersHost, whyNote('visitorOffersWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('visitor.offersFailed'))); });
 
     void paintOrder(code, orderHost, mine);
     void paintRequests(code, event, requestsHost, mine);
@@ -176,8 +182,12 @@ export function renderVisitor(root: HTMLElement): () => void {
 
   /** «Apuntarme» (si el evento lo admite) y «Déjanos un dato», con lo que ya pidió. */
   async function paintRequests(code: string, event: PublicEvent, host: HTMLElement, mine: number): Promise<void> {
-    const list = await myRequests(code).catch(() => [] as VisitorRequest[]);
+    let failed = false;
+    const list = await myRequests(code).catch(() => { failed = true; return [] as VisitorRequest[]; });
     if (!current(mine)) return;
+    // Lo que pidió puede no verse: no se pudo leer, o su acceso anterior ya no valía y este móvil tiene uno nuevo.
+    const why = [failed ? whyNote('visitorRequestsWhy', t('visitor.requestsFailed')) : null,
+      takeRenewed() ? whyNote('visitorRenewed', t('visitor.renewed')) : null];
     const joined = list.find((r) => r.kind === 'join' && r.status !== 'descartada');
     const repaint = () => void paintRequests(code, event, host, mine);
     const sent = list.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorSent' }, ...list.map((r) => el('li', { dataset: { kind: r.kind, status: r.status } },
@@ -220,7 +230,7 @@ export function renderVisitor(root: HTMLElement): () => void {
           catch (error) { send.removeAttribute('disabled'); toast(visitorError(error)); }
         } }, contact.row, keep.cloneNode(true), send));
     }
-    replace(host, sent ? el('section', { class: 'card gcard' }, el('h3', null, t('visitor.sentTitle')), sent) : null, join, leave);
+    replace(host, ...why, sent ? el('section', { class: 'card gcard' }, el('h3', null, t('visitor.sentTitle')), sent) : null, join, leave);
   }
 
   /** «Ya tengo invitación»: el vínculo consentido con su ficha es su propio enlace (`/i/<token>`). */
@@ -255,6 +265,7 @@ function visitorError(error: unknown): string {
   switch (errorCodeOf(error)) {
     case 'NETWORK': return t('error.offline');
     case 'RESERVATION_NOT_OPEN': return t('retreats.notOpen');
+    case 'RATE_LIMITED': return t('visitor.busy');
     case 'INVALID_FIELDS': return t('error.invalid');
     default: return t('error.generic');
   }
