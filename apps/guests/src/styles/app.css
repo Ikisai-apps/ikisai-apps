@@ -582,3 +582,18 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 #directionJoin{min-height:46px;margin:0 0 16px}
 .gwho{border:0;margin:12px 0 0;padding:0;display:grid;gap:6px}
 .gwho-row{display:flex;align-items:center;gap:8px;min-height:46px}
+
+/* «Tus ofertas de hoy» (§9.18) */
+.goffers{margin:0 0 12px}
+.goffers h3{margin:0 0 10px}
+.goffer-service{margin:0 0 12px}
+.goffer-service h4,.goffer-cartas{margin:0 0 6px;font-size:.95rem}
+.goffer{margin:0 0 10px}
+.goffer-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 4px}
+.goffer-options,.goffer-lines{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.goffer-options li,.goffer-lines li{display:grid;gap:2px}
+.goffer-line{display:flex;align-items:baseline;gap:8px}
+.goffer-code{font-weight:600;min-width:1.5em}
+.goffer-price{margin-left:auto;white-space:nowrap}
+.goffer-account{display:grid;gap:8px;margin-top:8px}
+.goffer-open{min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
