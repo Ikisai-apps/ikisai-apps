@@ -2,6 +2,7 @@ import { el, renderCover, replace } from '@ikisai/ui-kit';
 import { TABLES } from '@ikisai/domain-flow';
 import { loadProjects, projectDates, projectState, type Project } from '../app/data.ts';
 import { coverUrl } from '../app/documents.ts';
+import { createCheckinFlow } from '../app/links.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
@@ -11,7 +12,11 @@ import type { ViewMount } from './shell.ts';
  */
 export const mountProjects: ViewMount = ({ main, client, navigate }) => {
   const list = el('div', { class: 'flows', role: 'list', 'aria-label': 'Flujos' });
-  main.append(el('h1', { class: 'col-title' }, 'Flujos'), list);
+  const isOwner = client.bootstrap()?.membership.role === 'owner';
+  main.append(el('h1', { class: 'col-title' }, 'Flujos'),
+    ...(isOwner ? [el('div', { class: 'orders-owner' }, el('button', { type: 'button', class: 'ghost',
+      onclick: async () => { const id = await createCheckinFlow(client); if (id) navigate(`#/p/${id}`); } }, 'Nuevo flujo de llegadas'))] : []),
+    list);
 
   async function paint(): Promise<void> {
     const projects = await loadProjects(client);

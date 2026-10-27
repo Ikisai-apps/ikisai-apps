@@ -9,6 +9,7 @@
  */
 import { el, replace } from '../dom.ts';
 import { kitLocaleTag, kt } from '../i18n/i18n.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 /** Forma comparable: minúsculas, sin tildes, espacios simples y sin espacios en los extremos. */
 export function normalizeName(value: string): string {
@@ -125,6 +126,8 @@ export interface SuggestFieldOptions extends SuggestOptions {
   required?: boolean;
   onChange?: (value: string) => void;
   attrs?: Record<string, string>;
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface SuggestField extends SuggestHandle {
@@ -135,7 +138,7 @@ export interface SuggestField extends SuggestHandle {
 
 /** Campo de texto completo con sugerencias (etiqueta, campo, lista y aviso). */
 export function createSuggestField(options: SuggestFieldOptions): SuggestField {
-  const input = el('input', { type: 'text', name: options.name ?? null, placeholder: options.placeholder ?? null, required: options.required ?? false, autocomplete: 'off', id: `kit-suggest-field-${++uid}` }) as HTMLInputElement;
+  const input = el('input', { type: 'text', name: options.name ?? null, placeholder: options.placeholder ?? null, required: options.required ?? false, autocomplete: 'off', id: `kit-suggest-field-${++uid}`, ...fieldAttrs(options.field, { type: 'text', required: options.required, label: options.label }) }) as HTMLInputElement;
   input.value = options.value ?? '';
   input.addEventListener('change', () => options.onChange?.(input.value.trim()));
   const handle = attachSuggestions(input, options);
