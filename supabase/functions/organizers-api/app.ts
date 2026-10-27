@@ -8,6 +8,8 @@
  *   (K3: `files/:id` comprueba la fila que los referencia con `visible`).
  * - Conservación (B18): `POST worker/retention/tick` borra las respuestas de los huéspedes a los 6 meses del fin del retiro,
  *   en un lote del sistema firmado por la cuenta de servicio `organizers`.
+ * - «Pagar ahora» sin enlace (F5, Finance API.md §19.3): `POST payments/link` pide el enlace al worker de Finance en nombre de
+ *   quien organiza; Finance comprueba el ámbito (0256). Se enciende con `IKISAI_PORTAL_PAYMENTS=1` (`GET payments/config`).
  */
 import { createApp, createSupabase, ensureServiceActor, fail, type AppConfig } from '../_kit/mod.ts';
 import { MATERIAL_MAX_BYTES, MATERIAL_MIME, proposalVisible, validateOperations, visibleRow } from '../_domain/organizers/mod.ts';
@@ -23,9 +25,24 @@ export const ORGANIZERS_UPLOADS = { bucket: 'organizers-materials', allowedMime:
 /** `organizers.github_evidence` (0704): token de solo lectura de la Edge (GITHUB_TOKEN); en las pruebas, `fetch` y caché propios. */
 export interface OrganizersGithub { token?: string | null; fetch?: typeof fetch; store?: EvidenceStore }
 
-export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'portalIssuer' | 'uploads' | 'hooks' | 'workerRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { github?: OrganizersGithub }) {
+/** «Pagar ahora» sin enlace (F5): encendido (o `IKISAI_PORTAL_PAYMENTS=1`); en las pruebas, `fetch` hacia la Edge de Finance. */
+export interface OrganizersPayments { enabled?: boolean; fetch?: typeof fetch }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A dónde vuelve quien paga: la pestaña Pagos de su retiro, con el resultado (`app/pay-link.ts`, `returnOf`). */
+export function paymentReturnUrls(reservationId: string, invoiceId: string, origin = ORGANIZERS_ORIGINS[0]!): { success: string; cancel: string } {
+  const at = `${origin}/#/retiro/${reservationId.toLowerCase()}/pagos?factura=${invoiceId.toLowerCase()}`;
+  return { success: `${at}&pago=ok`, cancel: `${at}&pago=cancelado` };
+}
+
+export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'portalIssuer' | 'uploads' | 'hooks' | 'workerRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { github?: OrganizersGithub; payments?: OrganizersPayments }) {
   const supabase = createSupabase(base);
-  const { github, ...config } = base;
+  const { github, payments, ...config } = base;
+  const paymentsOn = payments?.enabled ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_PORTAL_PAYMENTS') === '1');
+  const financeWorker = (route: string, body: unknown) => (payments?.fetch ?? config.fetch ?? fetch)(
+    `${supabase.base}/functions/v1/invoices-api/api/v1/worker/${route}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': config.workerKey ?? '', 'X-Ikisai-Caller': 'organizers' }, body: JSON.stringify(body) });
   const githubToken = github && 'token' in github ? github.token ?? null : ((globalThis as any).Deno?.env?.get?.('GITHUB_TOKEN') ?? null);
   return createApp({
     ...config,
@@ -49,6 +66,38 @@ export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'orig
           if (error instanceof GithubError) fail(error.status, error.code, error.message, error.retryAfter ? { retryAfter: error.retryAfter } : null);
           throw error;
         }
+      },
+    }, {
+      // ¿Puede quien organiza pagar en línea una factura sin enlace? (el botón «Pagar ahora» de las que no lo traen)
+      method: 'GET', pattern: 'payments/config', handler: async () => ({ online: paymentsOn }),
+    }, {
+      // «Pagar ahora» sin enlace (F5): Finance lo crea o reutiliza el abierto. El ámbito lo comprueba Finance (0256); aquí, solo
+      // que la persona pueda escribir y que los ids tengan forma. Ninguna URL de vuelta la elige el cliente.
+      method: 'POST', pattern: 'payments/link',
+      handler: async ({ ctx, json }) => {
+        if (!paymentsOn) fail(503, 'PAYMENTS_OFF', 'El pago en línea aún no está activo.');
+        if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', 'Con acceso de lectura no se puede pagar desde aquí.');
+        const body = (await json().catch(() => null)) as { reservation_id?: unknown; issued_invoice_id?: unknown } | null;
+        for (const k of ['reservation_id', 'issued_invoice_id'] as const) {
+          if (typeof body?.[k] !== 'string' || !UUID.test(body[k] as string)) fail(422, 'INVALID_ARGS', `Falta ${k}.`, { field: k });
+        }
+        const reservationId = (body!.reservation_id as string).toLowerCase();
+        const invoiceId = (body!.issued_invoice_id as string).toLowerCase();
+        const back = paymentReturnUrls(reservationId, invoiceId);
+        let res: Response;
+        try {
+          res = await financeWorker('payment-links/portal', { actor: ctx.user.id, reservation_id: reservationId, issued_invoice_id: invoiceId, return_url: back.success, cancel_url: back.cancel });
+        } catch {
+          fail(503, 'PAYMENT_GATEWAY', 'No hemos podido preparar el pago. Prueba otra vez en un momento.');
+        }
+        const data = await res.json().catch(() => null) as { url?: unknown; provider?: unknown; expires_at?: unknown; reused?: unknown; error?: { code?: string; message?: string } } | null;
+        if (!res.ok || typeof data?.url !== 'string') {
+          const code = data?.error?.code ?? 'PAYMENT_GATEWAY';
+          // Lo de fuera del ámbito responde igual que lo inexistente; la clave de worker mal puesta no es culpa de quien paga.
+          if (res.status === 401) fail(503, 'PAYMENT_GATEWAY', 'No hemos podido preparar el pago. Prueba otra vez en un momento.');
+          fail(res.ok ? 502 : res.status, code, data?.error?.message ?? 'No hemos podido preparar el pago.');
+        }
+        return { url: data!.url, provider: data!.provider ?? null, expires_at: data!.expires_at ?? null, reused: data!.reused === true };
       },
     }],
     workerRoutes: [{
