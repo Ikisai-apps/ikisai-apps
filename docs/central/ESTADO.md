@@ -125,6 +125,8 @@
 
 - 2026-10-27 · **Cabecera de Central con su silueta** (encargo de Core; Recursos 0816): la silueta elegida para Central sale de fondo a la derecha de la cabecera. Es decorativa (`alt` vacío), va detrás de los botones y se invierte en modo oscuro. Se lee una vez al arrancar, solo `space_images` y sin arrancar la sincronización de Recursos. Después cambia cuando Planos del centro avisa. Código en `ui/header-art.ts`; prueba en `plans.spec.ts`.
 
+- 2026-10-27 · **Seguridad C1** (auditoría de rutas): en una ficha con cuenta, cambiar `house_level` o `active`, o borrar, restaurar o fusionar la ficha, exige owner de Central. Lo impone el hook `central.check_house_level_change` (1518) y, antes, la Edge (`accountGuardTargets` y `central.people_with_account`). Prueba: `house-level-owner.test.ts`, que reproduce la escalada por la Edge y por `core_commit`.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
