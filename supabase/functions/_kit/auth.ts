@@ -187,15 +187,17 @@ export function createAuth(supabase: Supabase): AuthService {
     // Límites: un envío por correo y minuto (el código de Auth es el mismo para todas las apps, así que la clave no lleva app)
     // y 20 por IP y hora. Pasado el límite se responde igual y no se envía nada. La IP viene del proxy de Pages o de Cloudflare;
     // quien llame a la función a mano puede inventarla, así que el límite por IP es solo una segunda capa, y generosa.
-    const allowed = (await within(`email-code:send:${email}`, 1, 60)) && (!ip || await within(`email-code:send:ip:${ip}`, 20, 3600));
+    const allowed = (await within(`email-code:send:${email}`, 1, 60)) && (await within(`email-code:send:h:${email}`, 5, 3600))
+      && (!ip || await within(`email-code:send:ip:${ip}`, 20, 3600));
     // Una sesión de Auth vale en todas las apps: el código solo va a una cuenta de portal con un enlace vigente en esta app.
     // La comprobación y el envío siguen en segundo plano para que el tiempo de respuesta no diga si el correo existe.
     const work = (async () => {
       try {
         if (allowed && await allowedUser(app, email)) {
-          // Un código nuevo trae intentos nuevos: así nadie deja fuera a la dueña del correo a base de fallar a propósito.
-          await supabase.rpc('core_rate_reset', { p_key: `email-code:verify:${email}` }).catch(() => undefined);
           await supabase.remote('/auth/v1/otp', { method: 'POST', body: { email, create_user: false } });
+          // Solo si Auth ha emitido el código nuevo: trae intentos nuevos (los 6 de la ventana corta), así nadie deja fuera a la
+          // dueña del correo a base de fallar a propósito. El tope diario de abajo no se reinicia nunca.
+          await supabase.rpc('core_rate_reset', { p_key: `email-code:verify:${email}` }).catch(() => undefined);
         }
       } catch { /* nada que distinga un correo de otro (tampoco el límite de envíos de Auth) */ }
     })();
@@ -210,7 +212,9 @@ export function createAuth(supabase: Supabase): AuthService {
     if (!/^\d{6,10}$/.test(code)) fail(401, 'EMAIL_CODE_INVALID', messageFor('EMAIL_CODE_INVALID'));
     // Fuerza bruta: 6 intentos por correo cada 15 minutos (sin app en la clave: el código es el mismo en todas) y 40 por IP;
     // el séptimo es 429 aunque acierte. Pedir un código nuevo pone el contador a cero (ver sendEmailCode).
-    if (!(await within(`email-code:verify:${email}`, 6, 900)) || (ip && !(await within(`email-code:verify:ip:${ip}`, 40, 900)))) {
+    // Además, 50 intentos por correo y día que ningún envío reinicia: con 5 envíos por hora, la fuerza bruta se queda en nada.
+    if (!(await within(`email-code:verify:${email}`, 6, 900)) || !(await within(`email-code:verify:day:${email}`, 50, 86400))
+      || (ip && !(await within(`email-code:verify:ip:${ip}`, 40, 900)))) {
       fail(429, 'RATE_LIMITED', messageFor('RATE_LIMITED'));
     }
     const user = await allowedUser(app, email);
