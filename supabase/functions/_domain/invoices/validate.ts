@@ -566,6 +566,7 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   ENTRY_LOCKED: 'Este apunte ya está en una entrega a la gestoría: no se puede sustituir.',
   NATURE_CHANGE: 'Un apunte fiscal no vuelve a ser de proceso.',
   RECEIPT_REQUIRED: 'Un gasto fiscal necesita su factura o su ticket.',
+  DRIVE_FIELDS: 'El origen en Google Drive solo lo pone la importación de Drive.',
   SOURCE_MISMATCH: 'El apunte es de otra app: cada app solo envía los suyos.',
   CALLER_REQUIRED: 'Los apuntes de otra app solo llegan desde su servidor.',
   RECEIPT_KIND_REQUIRED: 'Con número o archivo de justificante, la app tiene que decir si es factura o ticket.',

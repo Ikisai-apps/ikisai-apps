@@ -277,6 +277,10 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       }
       if (op.table === TABLES.invoices) {
         if (op.op === 'delete') fail(422, 'INVOICE_NOT_DELETABLE', domainMessage('INVOICE_NOT_DELETABLE'), { index, id: op.id });
+        // F2 (0251): el origen Drive solo lo escribe la cuenta de servicio de Drive; `service:drive` no se puede suplantar.
+        if ((op.op === 'insert' || op.op === 'update') && ('drive_file_id' in fields || 'drive_url' in fields) && ctx.user.sessionId !== 'service:drive') {
+          fail(403, 'DRIVE_FIELDS', domainMessage('DRIVE_FIELDS'), { index, fields: ['drive_file_id', 'drive_url'] });
+        }
         // validada solo por `invoices.validate`, salvo el owner al desarchivar (el trigger exige archivada → validada); anulada solo por `invoices.annul`.
         if (op.op === 'update' && (fields.status === 'anulada' || (fields.status === 'validada' && ctx.membership.role !== 'owner'))) {
           fail(422, 'INVALID_TRANSITION', domainMessage('INVALID_TRANSITION'), { index, to: fields.status });
