@@ -5,6 +5,7 @@
  */
 import { el, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 export interface Hsv { h: number; s: number; v: number }
 
@@ -45,6 +46,8 @@ export interface ColorFieldOptions {
   onChange?: (value: string | null) => void;
   /** Ganchos de la app en el contenedor (`id`, `data-*`). */
   attrs?: Record<string, string | null | undefined>;
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface ColorField {
@@ -69,7 +72,7 @@ export function createColorField(options: ColorFieldOptions): ColorField {
     el('div', { class: 'cf-result' }, preview, hex),
   );
   const customButton = el('button', { type: 'button', class: 'cf-swatch cf-more', 'aria-expanded': 'false', 'aria-label': 'Color personalizado', title: 'Personalizado' }, icon('edit', 16));
-  const element = el('div', { class: 'colorfield', ...(options.attrs ?? {}) },
+  const element = el('div', { class: 'colorfield', ...fieldAttrs(options.field, { type: 'color', label: options.label }), ...(options.attrs ?? {}) },
     options.label ? el('span', { class: 'cf-label' }, options.label) : null,
     swatches, custom);
 

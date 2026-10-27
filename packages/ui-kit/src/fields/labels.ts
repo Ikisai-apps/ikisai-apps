@@ -1,6 +1,7 @@
 import { el, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { foldText } from '../palette.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 export interface LabelFamily {
   id: string;
@@ -39,6 +40,8 @@ export interface LabelPickerOptions {
   disabled?: boolean;
   /** Chips heredados (p. ej. de las hijas) que se muestran apagados y no se pueden quitar. */
   inherited?: string[];
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface LabelPicker {
@@ -76,7 +79,7 @@ export function createLabelPicker(options: LabelPickerOptions): LabelPicker {
   const summary = el('div', { class: 'chips lp-summary' });
   const groups = el('div', { class: 'lp-groups' });
   const search = el('input', { type: 'search', class: 'lp-search', placeholder: 'Buscar etiqueta…', 'aria-label': 'Buscar etiqueta', autocomplete: 'off', disabled: !!options.disabled, oninput: () => { query = foldText(search.value.trim()); paintGroups(); } });
-  const element = el('div', { class: 'labelpicker', role: 'group', 'aria-label': options.label ?? 'Etiquetas' }, summary, groups);
+  const element = el('div', { class: 'labelpicker', role: 'group', 'aria-label': options.label ?? 'Etiquetas', ...fieldAttrs(options.field, { type: 'labels', label: options.label }) }, summary, groups);
   const open = new Set<string>();
   let initialised = false;
 
