@@ -59,7 +59,7 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
         return el('div', { class: 'qcard editor-row', role: 'listitem' },
           el('div', { class: 'editor-row-main' }, label, el('small', { class: 'muted' }, `${piece?.label ?? r.key} · ${piece?.hint ?? ''}`),
             ...(piece?.options ?? []).map((o) => el('label', { class: 'editor-option' },
-              el('input', { ...fieldAttrs({ id: 'flow.editor.columna_opcion', type: 'checkbox' }), type: 'checkbox', checked: r.options[o.key] === true, onchange: (e: Event) => { r.options[o.key] = (e.target as HTMLInputElement).checked; } }),
+              el('input', { ...fieldAttrs({ id: 'flow.editor.columna_opcion', entity: 'flow.columns', prop: 'config', type: 'checkbox' }), type: 'checkbox', checked: r.options[o.key] === true, onchange: (e: Event) => { r.options[o.key] = (e.target as HTMLInputElement).checked; } }),
               el('span', null, o.label)))),
           el('div', { class: 'editor-row-tools' },
             el('button', { type: 'button', class: 'ghost icon-button', 'aria-label': 'Subir', disabled: i === 0, onclick: () => move(i, -1) }, icon('chevronUp', 18)),
@@ -156,7 +156,7 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
 
     async function saveAsTemplate(): Promise<void> {
       const key = el('input', { ...fieldAttrs({ id: 'flow.editor.plantilla_clave', entity: 'flow.projects', prop: 'template_key', type: 'text' }), type: 'text', maxlength: '31', placeholder: 'clave (p. ej. barra)', 'aria-label': 'Clave de la plantilla', value: project?.template_key ?? '' });
-      const base = el('input', { ...fieldAttrs({ id: 'flow.editor.plantilla_nombre', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'Nombre (p. ej. Barra)', 'aria-label': 'Nombre de la plantilla' });
+      const base = el('input', { ...fieldAttrs({ id: 'flow.editor.plantilla_nombre', entity: 'flow.template_columns', prop: 'label_base', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'Nombre (p. ej. Barra)', 'aria-label': 'Nombre de la plantilla' });
       const ok = await confirmDialog({ title: 'Guardar como plantilla', text: 'Sus columnas, nombres y opciones quedan como versión nueva de la plantilla.', body: el('div', { class: 'editor-head' }, key, base), confirmLabel: 'Guardar' });
       if (!ok) return;
       try {

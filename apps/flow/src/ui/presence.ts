@@ -45,7 +45,7 @@ export function mountPresence(stage: PresenceStage): ViewMount {
     let search = '';
     let error = '';
 
-    const searchInput = el('input', { ...fieldAttrs({ id: 'flow.llegadas.buscar', type: 'search' }), type: 'search', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar por nombre', autocomplete: 'off',
+    const searchInput = el('input', { ...fieldAttrs({ id: 'flow.llegadas.buscar', type: 'search', storage: 'none' }), type: 'search', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar por nombre', autocomplete: 'off',
       oninput: () => { search = searchInput.value.trim().toLocaleLowerCase('es'); paint(); } });
     const count = el('p', { class: 'muted small', role: 'status' });
     const listEl = el('div', { class: 'fqueue presence-list', role: 'list' });
