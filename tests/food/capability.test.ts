@@ -1,4 +1,4 @@
-/** Food · lo que Food ofrece en el catálogo de capacidades del núcleo (1113) y la ejecución «Usar en otro evento». */
+/** Food · lo que Food ofrece en el catálogo de capacidades del núcleo (1113, con campos en la 1120) y la ejecución «Usar en otro evento». */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
@@ -40,6 +40,18 @@ test('catálogo · lecturas y ejecución de Food, con rutas, roles y anclajes', 
   // Las lecturas a las que apuntan existen para Food.
   const reads = (await q(`select name from core.allowed_reads where app = 'food'`)).map((r) => r.name);
   for (const name of ['food.carta_prep_totals_projection', 'food.carta_prep_projection', 'food.event_needs', 'food.event_offers_projection']) assert.ok(reads.includes(name), name);
+});
+
+test('catálogo · cada capacidad dice qué campos lee y escribe (0111): `food.<tabla>.<columna>` que existen', async () => {
+  const rows = await q(`select id, kind, reads, writes from core.capabilities where app = 'food' order by id`);
+  const columns = new Set((await q(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'food'`)).map((r) => `food.${r.c}`));
+  for (const r of rows) {
+    assert.ok(r.reads.length > 0, `${r.id} sin reads`);
+    if (r.kind === 'read') assert.deepEqual(r.writes, [], `${r.id}: una lectura no escribe`);
+    for (const f of [...r.reads, ...r.writes]) assert.ok(columns.has(f), `${r.id}: ${f} no es una columna de Food`);
+  }
+  const copy = rows.find((r) => r.id === 'food.use_carta_in_event')!;
+  for (const f of ['food.menus.event_id', 'food.carta_lines.sale_price_cents', 'food.event_offers.payer']) assert.ok(copy.writes.includes(f), f);
 });
 
 test('ejecución · «Usar en otro evento» copia la carta y crea su oferta; repetir devuelve la misma copia', async () => {
