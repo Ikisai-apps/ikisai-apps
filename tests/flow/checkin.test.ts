@@ -27,15 +27,20 @@ test.before(async () => {
     return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
   app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, { appsFetch }) });
-  const exists = (await app.t.db.query<{ v: string | null }>(`select to_regclass('booking.flow_guests_projection')::text as v`)).rows[0]!.v;
-  if (!exists) {
-    await app.t.db.exec(`create view booking.flow_guests_projection as
-      select * from (values
+  // booking.flow_guests_of sintético (misma forma y la misma comprobación de ámbito que la de Booking, 0486), con datos inventados.
+  await app.t.db.exec(`create or replace function booking.flow_guests_of(p jsonb) returns jsonb language plpgsql stable as $f$
+    declare v_event uuid := (p->'args'->>'event_id')::uuid;
+    begin
+      if not core.reader_in_scope(p->>'app', (p->>'actor')::uuid, 'booking_event', v_event::text) then
+        perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'event not in scope'));
+      end if;
+      return jsonb_build_object('items', coalesce((select jsonb_agg(to_jsonb(g) order by g.display_name) from (values
         ('${EVENT}'::uuid, '${GUEST}'::uuid, 1::bigint, 'Ana P.'::text, null::text, 'Roble'::text, 'Cama 1'::text, '2026-10-30'::date, '2026-11-01'::date, null::timestamptz, null::timestamptz, false),
         ('${uuid()}'::uuid, '${OTHER_GUEST}'::uuid, 1::bigint, 'Luis G.', null, null, null, null, null, null, null, false)
-      ) g(event_id, guest_id, guest_revision, display_name, portal_role, space_name, bed_label, from_date, to_date, arrived_at, left_at, signed)`);
-    await app.t.db.exec(`select core.allow_read('flow', 'booking.flow_guests_projection', 'view', '{reader,editor,owner}')`);
-  }
+      ) g(event_id, guest_id, guest_revision, display_name, portal_role, space_name, bed_label, from_date, to_date, arrived_at, left_at, signed)
+       where g.event_id = v_event), '[]'::jsonb));
+    end $f$`);
+  await app.t.db.exec(`select core.allow_read('flow', 'booking.flow_guests_of', 'function', '{reader,editor,owner,outsider}')`);
 });
 test.after(async () => { await app.close(); });
 
