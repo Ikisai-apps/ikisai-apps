@@ -159,10 +159,9 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
           : busyButton({ class: 'secondary' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));
   }
   async function sendToFinance(id: string): Promise<void> {
-    let status = 'sent'; let result: unknown = null;
-    try { result = (await client.api<{ result: unknown }>(`/receipts/${id}/send/finance`, { method: 'POST', json: {} })).result; toast('Enviado a Finance como apunte fiscal.'); sent.add(id); }
-    catch (error) { status = 'error'; result = { code: errorCode(error), message: describeError(error) }; toast(describeError(error)); }
-    try { await callProcedure(client, PROCEDURES.markReceiptSent, { receipt_id: id, status, result }); } catch (error) { toast(describeError(error)); }
+    // El estado del envío lo anota flow-api con la respuesta de Finance.
+    try { await client.api(`/receipts/${id}/send/finance`, { method: 'POST', json: {} }); toast('Enviado a Finance como apunte fiscal.'); sent.add(id); void client.sync(); }
+    catch (error) { toast(describeError(error)); }
     paint();
   }
   const sheet = openSheet({ title: 'Pagado', meta: `${seqs.length > 1 ? 'Pedidos' : 'Pedido'} ${seqs.join(', ')} · ${ORDER_STATUS_LABELS.paid.toLowerCase()}`,

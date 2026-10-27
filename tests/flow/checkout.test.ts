@@ -83,7 +83,11 @@ test('caja · «Enviar a Finance» manda ese cobro como fiscal; el cierre (proce
   assert.equal(args.nature, 'fiscal'); assert.equal(args.source_ref, `flow:receipt:${receipt.id}`);
   assert.equal(args.amount_cents, receipt.total_cents); assert.deepEqual(args.methods, { bitcoin: receipt.total_cents });
   assert.equal(args.detail.reduce((s: number, d: any) => s + d.amount_cents, 0), receipt.total_cents);
-  await ok([call(PROCEDURES.markReceiptSent, { receipt_id: receipt.id, status: 'sent', result: { status: 'created' } })]);
+  // El estado lo anotó flow-api (servidor); el cliente no puede tocarlo.
+  const marked = (await rows(TABLES.receipts)).find((r) => r.id === receipt.id);
+  assert.equal(marked.finance_status, 'sent');
+  const other = (await rows(TABLES.receipts)).find((r) => r.id !== receipt.id);
+  assert.equal(await code([{ op: 'update', table: TABLES.receipts, id: other.id, expectedRevision: other.revision, fields: { finance_status: 'sent' } }]), 'PROCEDURE_ONLY');
   // Cierre del día: el resumen va como proceso, sin el justificante fiscal.
   const closed = await ok([call(PROCEDURES.closeDay, { project_id: v2, day: madrid() })]);
   const fin = await app.call(`/api/v1/closures/${closed.closure_id}/send/finance`, { body: {} });

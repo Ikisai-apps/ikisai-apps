@@ -154,7 +154,7 @@ function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
  * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
  * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
  */
-function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
+function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions, publicWrite: PublicWriter): AppRoute[] {
   const callApp = appCaller(base, options);
 
   async function closure(ctx: RequestContext, id: string): Promise<ClosureForSend> {
@@ -229,7 +229,16 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           amount_cents: r.total_cents, tax_rate: 10, methods: { [method]: r.total_cents },
           detail: out.detail, pending_refunds_cents: 0, event_id: out.project.booking_event_id,
         };
-        const result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+        // El estado lo anota el servidor (lote público, solo los campos de envío): el navegador no puede marcarlo.
+        const mark = (fields: Record<string, unknown>) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.receipts, id: r.id, expectedRevision: r.revision, fields }]);
+        let result: unknown;
+        try {
+          result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+        } catch (error) {
+          await mark({ finance_status: 'error', finance_sent_at: new Date().toISOString(), finance_result: { code: isFault(error) ? error.code : 'ERROR' } }).catch(() => undefined);
+          throw error;
+        }
+        await mark({ finance_status: 'sent', finance_sent_at: new Date().toISOString(), finance_result: result ?? null });
         return { status: 'sent', result };
       },
     },
@@ -238,7 +247,7 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 
 interface FiscalOfDay { amount_cents: number; methods: Record<string, number>; detail: Array<{ code: string; units: number; amount_cents: number }> }
 interface ReceiptForSend {
-  receipt: { id: string; method: string; total_cents: number; order_ids: string[] };
+  receipt: { id: string; revision: number; method: string; total_cents: number; order_ids: string[] };
   project: { id: string; name: string; booking_event_id: string | null };
   day: string;
   detail: Array<{ code: string; name: string; quantity: number; amount_cents: number }>;
@@ -354,10 +363,10 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const origins = base.origins ?? FLOW_ORIGINS;
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options)], uploads: FLOW_UPLOADS,
+  const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options), ...checkinRoutes(supabase, base, options)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
-  const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
 
   async function handlePublic(request: Request, route: string): Promise<Response> {
     const origin = request.headers.get('origin');

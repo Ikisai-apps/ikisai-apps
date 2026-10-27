@@ -148,19 +148,22 @@ begin
   return jsonb_build_object('orders', v_charged, 'receipts', v_receipts);
 end $$;
 
--- Anotar el envío fiscal de un justificante. args = { receipt_id, status: 'sent'|'error', result }
-create or replace function flow.mark_receipt_sent(p jsonb) returns jsonb language plpgsql as $$
-declare v flow.receipts; v_status text := p->'args'->>'status';
+-- El envío fiscal lo anota flow-api tras la respuesta de Finance, con el lote público del servidor (el navegador no puede
+-- hacer lotes públicos): así nadie marca «enviado» un cobro que no ha ido, que si no saldría del cierre sin llegar a Finance.
+-- En un lote público, de un justificante solo cambian sus campos de envío; nada más de él, nunca.
+create or replace function flow.guard_receipts() returns trigger language plpgsql as $$
 begin
-  perform flow.proc_begin();
-  select * into v from flow.receipts where id = flow.arg_uuid(p, 'receipt_id') for update;
-  if v.id is null then perform core.fail('NOT_FOUND', 404, jsonb_build_object('table', 'flow.receipts')); end if;
-  perform flow.check_scope(p, v.project_id);
-  if v_status is null or v_status not in ('sent','error') then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'status')); end if;
-  perform flow.upd(p, 'flow.receipts', v.id, v.revision, jsonb_build_object('finance_status', v_status, 'finance_sent_at', now(), 'finance_result', p->'args'->'result'));
-  perform flow.proc_end();
-  return jsonb_build_object('receipt_id', v.id, 'status', v_status);
+  if flow.in_proc() then return new; end if;
+  if core.is_public_batch() and tg_op = 'UPDATE'
+     and not flow.changed(to_jsonb(old), to_jsonb(new), array['project_id','customer_id','method','total_cents','order_ids','issued_by','deleted_at'])
+     and new.finance_status in ('sent','error') then
+    return new;
+  end if;
+  perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.' || tg_table_name));
 end $$;
+drop trigger flow_guard on flow.receipts;
+create trigger flow_guard before insert or update on flow.receipts for each row execute function flow.guard_receipts();
+select core.allow_public_write('flow', 'flow.receipts');
 
 select core.allow_procedure('flow', 'flow.pay_orders');
 select core.allow_procedure('flow', 'flow.mark_receipt_sent');

@@ -334,7 +334,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - Métodos: `cash`, `bizum`, `card`, `btc_ln` y `btc_chain`.
   - Cada pedido se cobra con su número de cobro y sus unidades (`flow.charge_order`).
   - Con `unify`, un justificante para todos; sin él, uno por pedido. Sin la config, `INVALID_OPERATION`.
-- **`flow.receipts`** (`method`, `total_cents`, `order_ids`, `customer_id`, `finance_status`…) y `payments.receipt_id`. Solo por procedimiento; `mark_receipt_sent({receipt_id, status, result})` anota el envío.
+- **`flow.receipts`** (`method`, `total_cents`, `order_ids`, `customer_id`, `finance_status`…) y `payments.receipt_id`. Solo por procedimiento. El estado del envío (`finance_status`) lo anota flow-api con la respuesta de Finance, por el lote público del servidor, que el navegador no puede usar. La guarda solo deja cambiar ahí los campos de envío. Así nadie marca como enviado un cobro que no ha ido.
 - **«Enviar a Finance»**: `POST receipts/:id/send/finance` → `invoices.record_app_entry` con `nature: 'fiscal'`, `source_ref flow:receipt:<id>` y el detalle de sus líneas. Bitcoin va como método `bitcoin`.
 - **Cierre del día**: va siempre a Finance como `nature: 'process'` (VG 27-10). Excluye lo ya enviado como fiscal (`flow.fiscal_of_day`): importe, métodos y detalle. Un cobro va en un solo apunte. Lo cobrado en Bitcoin que no ha ido como fiscal sale como método `bitcoin`.
 - **`flow.project_settings`** (`lightning_address`, `bitcoin_address`): escribe solo el owner, desde «Cobro con Bitcoin» en el Inicio; leen editor y owner. Las direcciones nunca van en el repo.
