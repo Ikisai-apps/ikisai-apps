@@ -1,4 +1,4 @@
-import { confirmDialog, el, renderMedal } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, renderMedal } from '@ikisai/ui-kit';
 import { productAssets, SCOPE_LABELS } from '@ikisai/domain-flow';
 import type { Product } from '../app/data.ts';
 
@@ -10,7 +10,7 @@ export const productMedal = (p: Product, size = 36) =>
 
 /** Pide un motivo obligatorio (anular un cobro, reabrir una entrega). `null` si se cancela. */
 export async function askReason(title: string, text: string, confirmLabel: string, danger = false): Promise<string | null> {
-  const input = el('input', { type: 'text', maxlength: '200', 'aria-label': 'Motivo', placeholder: 'Motivo' });
+  const input = el('input', { ...fieldAttrs({ id: 'flow.hoja.motivo', type: 'text' }), type: 'text', maxlength: '200', 'aria-label': 'Motivo', placeholder: 'Motivo' });
   const ok = await confirmDialog({ title, text, body: input, confirmLabel, danger });
   const reason = input.value.trim();
   return ok && reason ? reason : null;

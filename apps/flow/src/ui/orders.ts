@@ -1,4 +1,4 @@
-import { confirmDialog, el, icon, openSheet, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, icon, openSheet, toast } from '@ikisai/ui-kit';
 import { formatEuros, TABLES } from '@ikisai/domain-flow';
 import { isOnline } from '../app/actions.ts';
 import { loadProjects } from '../app/data.ts';
@@ -28,7 +28,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     let data: FlowData | null = null;
     let search = '';
 
-    const searchInput = el('input', { type: 'search', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Número de cliente', 'aria-label': 'Buscar por número de cliente', autocomplete: 'off',
+    const searchInput = el('input', { ...fieldAttrs({ id: 'flow.caja.buscar_cliente', type: 'search' }), type: 'search', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Número de cliente', 'aria-label': 'Buscar por número de cliente', autocomplete: 'off',
       oninput: () => { search = searchInput.value.replace(/\D/g, ''); paint(); } });
     const newButton = el('button', { type: 'button', class: 'primary', onclick: newOrder }, icon('plus', 18), el('span', null, 'Nuevo pedido'));
     const accountsButton = el('button', { type: 'button', class: 'ghost', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
