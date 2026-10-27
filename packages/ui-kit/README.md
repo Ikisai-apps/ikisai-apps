@@ -335,6 +335,51 @@ Todo es opcional: sin `menu`, `search` ni `navLayout`, la cáscara queda como si
   - **`desde` sola no cuenta** y se deja intacta: Booking → Finance la usa con su propio sentido. Solo valen URLs de `*.ikisai.com` o del mismo origen.
 - **Clases:** prefijo `appmenu-`, sobre `navmenu-head`, `navmenu-close` y `navmenu-backdrop`. La barra lateral `.navmenu` de Tasks no cambia.
 
+## Piezas genéricas para Flow (0.61–0.69)
+
+Sirven para que el catálogo de piezas de Flow crezca sin pantallas hechas a mano. Cómo las monta Flow (`piece_behavior`, config y qué guarda) está en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`. Se ven en la demo, en `#genericas` y `#hoy`. Ninguna guarda nada por su cuenta.
+
+- **`createLanes({ label, lanes: [{ id, title, short?, count?, empty?, mount(body) }], view?, storageKey?, selected?, onSelect? })`** (0.61): carriles en pestañas o lado a lado, con un conmutador visible.
+  - Cada carril se monta una vez, al verse por primera vez. `setLanes`, `select` y `refresh(id)` lo cambian sin perder el estado.
+  - En «Lado a lado», un carril vacío se pliega a una mini columna.
+  - Clases `lanes-`.
+- **`groupLanes(items, { key, title?, order?, hideEmpty?, noneTitle?, card | mount })`** (0.65): los `lanes` de `createLanes` agrupados por persona, oficio, espacio, fase…
+  - Los de `order` van primero y en ese orden, aunque estén vacíos. El resto, por título, y al final «Sin asignar».
+  - La clave es el id del carril, así que al reagrupar con `setLanes` se conserva el elegido.
+- **`createFreeForm({ label, schema: { questions: [{ id, label, kind, required?, options?, min?, max?, unit? }] }, value?, onPhoto?, onSubmit })`** (0.64): un formulario que sale de un esquema JSON.
+  - Tipos: `text` (o `multiline`), `number`, `yesno`, `choice` y `photo`.
+  - Pregunta a pregunta sobre `createStepForm`. Las opcionales llevan «Saltar» y responden `null`.
+  - Al final, una revisión con «Cambiar» y «Registrar». `onSubmit(answers)` recibe `{ id: valor }`.
+  - La foto se recomprime y la sube `onPhoto`, que devuelve su referencia. `freeFormProblems(schema)` valida el esquema.
+  - Clases `fform-`.
+- **`createChecklist({ label, items: [{ id, text, required? }], checked?, who, onToggle })`** (0.64): lista de comprobación con «Hecho por Ana · 10:42».
+  - Arriba, «3 de 5 hechas · faltan 2 obligatorias».
+  - Si `onToggle` falla, la marca vuelve atrás y lo dice.
+  - `summary().complete` cuando están todas las obligatorias.
+  - Clases `clist-`.
+- **`createProjection({ label, client, read: { capability, input? }, rows, action?, appName?, onCount? })`** (0.69): un carril que lee de otra app con una capacidad del catálogo y actúa por fila con otra.
+  - La acción es idempotente (`requestId` por fila y acción). Al acabar **vuelve a leer**, y manda lo que diga la app dueña.
+  - Errores en palabras («Tu cuenta no puede hacer esto en Booking»). Sin red, la última lectura, sin acciones.
+  - `onCount` es para el recuento del carril.
+  - Clases `proj-`.
+
+## Guiado (0.66–0.68)
+
+Acompaña sobre las pantallas reales de cada app. El diseño está en `MUELA/equipo/feedback/flow/GUIADO.md`. Por decisión de VG, **en las apps se monta ahora solo el nivel mínimo**; la guía completa se enciende por app cuando un recorrido la necesite.
+
+- **Nivel mínimo, una línea en la cáscara:** `createAppShell(root, { …, guide: { feedbackId: '<app>.cabecera.guia' } })`.
+  - Al llegar con `?campo=<id>&paso=<texto>`, una línea arriba explica el paso, el campo se señala (a la vista, con el foco y resaltado) y sale «‹ Volver a…».
+  - El id va bajo `cabecera`, raíz de la cáscara que todas las apps ya reconocen. Sus botones son `.ver` y `.cerrar`.
+  - Implica `returnTo`. Sin `client`, no lee nada de Flow.
+- **El enlace**, desde quien guía: `withGuideLink(url, { field, step, run?, from, title })`. Es la convención de «Volver a…» más `campo`, `paso` y `guia`.
+- **Anclajes:** un id del inventario (`data-field-id` o `data-feedback-id`), nunca un selector CSS.
+  - Si el campo está escondido, la app lo enseña con `registerReveal(prefijo, fn)`. Si no aparece, el aviso dice «No encuentro el campo…».
+- **Guía completa** (`createGuide`; desde la cáscara con `guide: { client, app, feedbackId }` y `?guia=<ejecución>`):
+  - Un anillo sigue al campo y una burbuja explica el paso, sin bloquear la pantalla.
+  - **Avanza solo cuando se guarda de verdad.** `FieldSpec.confirm: 'save'` usa el aviso de `createSaveState` cuando la clave es el id del campo; `'event'` usa `announceSaved(id)`. **Nunca lleva valores.**
+  - Lee y confirma en Flow con `flow.guide_read` y `flow.guide_confirm`, con el token de la persona. Lo que llega se valida (`sanitizeGuideRun`, `safeRoute`).
+  - Clases `guia-`.
+
 ## Muestra y pruebas
 
 ```text
