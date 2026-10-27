@@ -243,7 +243,7 @@ FIELDS[TABLES.walkinCharges] = {
   nights: { kind: 'int', nullable: false, min: 1 },
   price_cents: { kind: 'int', nullable: false, min: 0 },
   amount_cents: { kind: 'int', nullable: false, min: 0 },
-  method: { kind: 'enum', values: ['cash', 'bizum', 'card'], nullable: true },
+  method: { kind: 'enum', values: ['cash', 'bizum', 'bitcoin', 'card'], nullable: true },
   paid_at: { kind: 'timestamp' },
   finance_entry_id: { kind: 'uuid', nullable: true },
   finance_sent_at: { kind: 'timestamp' },
