@@ -10,14 +10,14 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
 import { languageSelect } from './language.ts';
 import { offersBlock } from './offers.ts';
-import { stayBlock } from './stay.ts';
+import { stayBlock, stayRequestText } from './stay.ts';
 
 const LIST = '#/v';
 const EVENT = /^#\/v\/([A-Za-z0-9]{10})$/;
@@ -121,7 +121,16 @@ export function renderVisitor(root: HTMLElement): () => void {
       event.summary ? el('p', { id: 'visitorSummary' }, event.summary) : null);
 
     // «Dormir aquí» (tarjeta 2): precios y plazas por intervalo, también antes de entrar (mirar no pide nada).
-    const stay = event.lodging ? stayBlock(event, today) : null;
+    // Elegir una modalidad abre la solicitud (nombre, contacto optativo y nota) con el resumen y cómo se paga.
+    const stay = event.lodging ? stayBlock(event, today, {
+      send: async (input) => {
+        await sendStay(code, input);
+        rememberEvent(code);
+        toast(t('stay.sent'));
+        route();
+      },
+      error: visitorError,
+    }) : null;
 
     // Sin identidad todavía: se entra sin dar nada.
     if (!visitorToken()) {
@@ -195,7 +204,8 @@ export function renderVisitor(root: HTMLElement): () => void {
     const joined = list.find((r) => r.kind === 'join' && r.status !== 'descartada');
     const repaint = () => void paintRequests(code, event, host, mine);
     const sent = list.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorSent' }, ...list.map((r) => el('li', { dataset: { kind: r.kind, status: r.status } },
-      el('strong', null, r.kind === 'join' ? t('visitor.joinSent') : t('visitor.contactSent')), ' · ', requestText(r)))) : null;
+      el('strong', null, r.kind === 'join' ? t('visitor.joinSent') : r.kind === 'stay' ? t('stay.sentTitle') : t('visitor.contactSent')), ' · ', requestText(r),
+      r.kind === 'stay' ? el('span', { class: 'small gstay-sent' }, stayRequestText(r)) : null))) : null;
 
     const field = (id: string, label: string, help: string | null, attrs: Record<string, string> = {}) => {
       const input = el('input', { id, class: 'input', ...attrs }) as HTMLInputElement;
@@ -270,6 +280,8 @@ function visitorError(error: unknown): string {
     case 'NETWORK': return t('error.offline');
     case 'RESERVATION_NOT_OPEN': return t('retreats.notOpen');
     case 'RATE_LIMITED': return t('visitor.busy');
+    case 'NO_AVAILABILITY': return t('stay.noAvailability');
+    case 'NO_LODGING': return t('stay.noLodging');
     case 'INVALID_FIELDS': return t('error.invalid');
     default: return t('error.generic');
   }

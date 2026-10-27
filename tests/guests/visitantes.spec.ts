@@ -127,3 +127,33 @@ test('ENTRADA_PUBLICA · sin invitación ni QR: ven.ikisai.com enseña los event
   await expect(page.locator('#visitorLeaveBox')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).not.toBeNull();
 });
+
+test('ENTRADA_PUBLICA · «Dormir aquí»: precios y plazas para todas las noches y la solicitud con la plaza guardada', async ({ page }) => {
+  const d = await api.openDays(day(10), day(14), { lodging_pay_mode: 'hold', lodging_hold_hours: 24 });
+  await page.goto(`${baseURL}/#/v/${d.code}`);
+  const stay = page.locator('#pubStay');
+  await expect(stay).toBeVisible();
+  // Mirar no pide nada ni crea identidad.
+  await stay.locator('#pubStayFrom').fill(day(11));
+  await stay.locator('#pubStayTo').fill(day(13));
+  await stay.locator('#pubStayPersons').fill('3');
+  await stay.locator('#pubStayLook').click();
+  await expect(stay.locator('#pubStayAvailable')).toContainText('Quedan 2 plazas todas esas noches (2 noches)');
+  await expect(stay.locator('#pubStayModes button')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).toBeNull();
+
+  await stay.locator('#pubStayPersons').fill('1');
+  await stay.locator('#pubStayLook').click();
+  const mode = stay.locator(`#pubStayModes [data-mode="${d.rate}"]`);
+  await expect(mode).toContainText(/20,00.*la noche.*40,00.*en total/);
+  await mode.getByRole('button', { name: 'Elegir' }).click();
+  await expect(stay.locator('#pubStayPay')).toContainText('Te guardamos la plaza 24 horas y se paga en recepción.');
+  // El nombre es lo único obligatorio.
+  await stay.locator('#pubStaySend').click();
+  await expect(stay.locator('#pubStayName')).toBeFocused();
+  await stay.locator('#pubStayName').fill('Noa');
+  await stay.locator('#pubStaySend').click();
+  await expect(page.locator('#visitorSent')).toContainText('Noches · Pendiente');
+  await expect(page.locator('#visitorSent')).toContainText('plaza guardada hasta');
+  await expect(page.locator('#visitorSent')).toContainText(/40,00/);
+});

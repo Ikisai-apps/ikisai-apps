@@ -712,6 +712,12 @@ El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora
 - **Pantalla de entrada sin sesión y «Mis eventos» vacío:** muestran «Eventos abiertos», sacados de la lectura pública de Booking `booking_public_events`. Son los eventos abiertos al público y los retiros con «Apuntarme». Cada uno lleva su tipo en texto, «Apuntarme» si se puede y «Con alojamiento» si ofrece noches.
 - **Al tocar un evento:** se abre su página de visitante (`#/v/<código>`). Mirar no crea identidad; se crea al «Entrar».
 - **Sin eventos o sin red:** una línea que lo dice.
+- **«Dormir aquí»** (tarjeta 2; Booking 0498 y 0499). Sale en la página pública del evento cuando ofrece noches.
+  - **Mirar:** se eligen la llegada, la salida y las personas. Se ven las modalidades con su precio por noche y el total, si cabéis, y las plazas que quedan **todas** esas noches (`booking_public_lodging`). Mirar no pide datos ni crea identidad.
+  - **Pedir:** al «Elegir» una modalidad sale el resumen y cómo se paga. Con `hold`, la plaza se guarda N horas y se paga en recepción; con `pay_first`, no se guarda hasta pagar. Se pide lo mínimo: el nombre, y el contacto y la nota si se quieren.
+  - **Enviar:** «Pedir las noches» va a `POST /api/booking/v1/public/stay`; ahí se crea la identidad, porque es un gesto. Una solicitud nueva sustituye a la anterior.
+  - **Seguimiento:** en «Lo que has pedido» se ven las noches, las personas, el total y hasta cuándo se guarda la plaza, o que el plazo ya pasó.
+  - **Errores:** `NO_AVAILABILITY` (`409`), `NO_LODGING` e `INVALID_FIELDS`, cada uno con su texto.
 - **Pruebas:** `visitantes.spec.ts`.
 
 ## 10. Offline

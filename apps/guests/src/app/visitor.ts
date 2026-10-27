@@ -23,9 +23,13 @@ export interface PublicEvent {
   lodging?: boolean;
 }
 export interface VisitorRequest {
-  event_code: string; kind: 'join' | 'contact'; name: string | null; status: 'pendiente' | 'aceptada' | 'atendida' | 'descartada' | string;
+  event_code: string; kind: 'join' | 'contact' | 'stay'; name: string | null; status: 'pendiente' | 'aceptada' | 'atendida' | 'descartada' | string;
   created_at: string; decided_at: string | null;
+  /** Solo en `stay` (Booking 0499): noches, personas, total y cómo se paga; con `hold`, hasta cuándo se guarda la plaza. */
+  from?: string; to?: string; persons?: number; total_cents?: number | null; pay?: 'hold' | 'pay_first' | string; hold_until?: string | null; hold_expired?: boolean;
 }
+/** Cómo se paga el alojamiento del evento: `hold` guarda la plaza unas horas y se paga en recepción; `pay_first` no la guarda hasta pagar. */
+export type PayMode = 'hold' | 'pay_first';
 export interface Loaded<T> { value: T; at: string; stale: boolean }
 /** «Mi pedido» (Flow FL2): su número, el enlace de un solo uso a la carta, si tiene cuenta y sus pedidos. */
 export interface VisitorCustomer {
@@ -146,6 +150,8 @@ export interface PublicLodging {
   available: number;
   modes: Array<{ id: string; name: string; includes: string | null; price_night_cents: number | null; total_cents: number | null; max_persons: number | null; available: number | null; fits: boolean }>;
   rules_text: string | null;
+  pay: PayMode | null;
+  hold_hours: number | null;
 }
 
 export function publicLodging(code: string, from: string, to: string, persons: number): Promise<Loaded<PublicLodging>> {
@@ -159,7 +165,8 @@ export function publicLodging(code: string, from: string, to: string, persons: n
         price_night_cents: num(x.price_night_cents), total_cents: num(x.total_cents), max_persons: num(x.max_persons), available: num(x.available), fits: x.fits === true }];
     });
     return { from: String(r.from ?? from), to: String(r.to ?? to), nights: num(r.nights) ?? 0, persons: num(r.persons) ?? persons,
-      available: num(r.available) ?? 0, modes, rules_text: typeof r.rules_text === 'string' && r.rules_text.trim() ? r.rules_text : null };
+      available: num(r.available) ?? 0, modes, rules_text: typeof r.rules_text === 'string' && r.rules_text.trim() ? r.rules_text : null,
+      pay: r.pay === 'hold' || r.pay === 'pay_first' ? r.pay : null, hold_hours: num(r.hold_hours) };
   });
 }
 
@@ -174,6 +181,14 @@ export async function myRequests(code: string): Promise<VisitorRequest[]> {
   // Lectura pública de Booking con el visitante resuelto por el kit (`publicReadWithVisitor`): solo las suyas.
   const out = await withVisitor(code, () => call<{ items?: VisitorRequest[] } | VisitorRequest[] | null>(`/api/v1/public/booking_visitor_requests?event_code=${encodeURIComponent(code.toUpperCase())}`));
   return Array.isArray(out) ? out : Array.isArray(out?.items) ? out.items : [];
+}
+
+/** Pedir noches (Booking 0499, `POST public/stay`): crea la identidad si aún no la hay (es un gesto) y sustituye la anterior del evento. */
+export function sendStay(code: string, input: { mode_id: string; from: string; to: string; persons: number; name: string; contact?: string | null; note?: string | null }): Promise<VisitorRequest & { id: string }> {
+  const clean = (v: string | null | undefined) => (v && v.trim() ? v.trim() : undefined);
+  return withVisitor(code, () => call<VisitorRequest & { id: string }>('/api/booking/v1/public/stay', {
+    json: { event_code: code.toUpperCase(), mode_id: input.mode_id, from: input.from, to: input.to, persons: input.persons, name: input.name.trim(), contact: clean(input.contact), note: clean(input.note) },
+  }));
 }
 
 /** «Apuntarme» (`kind: 'join'`) o «Déjanos un dato» (`kind: 'contact'`): una petición a Booking, firmada por el visitante. */
