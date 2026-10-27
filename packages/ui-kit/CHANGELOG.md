@@ -11,6 +11,7 @@
   - `contraste`: WCAG AA en oscuro; cambia a oscuro y vuelve a claro.
 - `formatFindings(found)` da una línea por hallazgo para el mensaje de `expect`.
 - Ya trae los arreglos de la revisión:
+  - el desborde se mide contra el ancho de la pantalla (`screen.width`): con emulación de móvil, Chrome aleja la página que desborda y agranda `innerWidth`, y antes no se veía;
   - colores `color(srgb …)` leídos bien;
   - lo escondido para el lector (`.vh`, cajas de 1 px) no cuenta como cortado ni como toque.
 - Uso: `expect(await mobileAudit(page, { kinds: ['desborde', 'toque'] }), …).toEqual([])` en el humo de la app.

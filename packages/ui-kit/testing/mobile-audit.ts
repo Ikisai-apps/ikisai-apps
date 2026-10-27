@@ -65,7 +65,9 @@ export function formatFindings(found: MobileFinding[]): string {
 function measure(args: { dark: boolean; kinds: string[]; ignore: string[]; min: number }): MobileFinding[] {
   const { dark, kinds, ignore, min } = args;
   const out: MobileFinding[] = [];
-  const vw = innerWidth;
+  // Con emulación de móvil (`isMobile`), Chrome aleja la página que desborda y agranda `innerWidth` hasta el contenido: el
+  // ancho de verdad es el de la pantalla (390 px), no el de la ventana ya agrandada.
+  const vw = Math.min(innerWidth, screen.width || innerWidth);
   const ignored = (n: Element) => ignore.some((s) => { try { return !!n.closest(s); } catch { return false; } });
   const sel = (n: Element) => {
     const id = (n as HTMLElement).id ? `#${(n as HTMLElement).id}` : '';
@@ -83,8 +85,8 @@ function measure(args: { dark: boolean; kinds: string[]; ignore: string[]; min: 
   const srOnly = (n: Element) => { const r = n.getBoundingClientRect(); const s = getComputedStyle(n); return (r.width <= 1 && r.height <= 1) || (s.position === 'absolute' && s.clip !== 'auto' && s.clip !== ''); };
   if (!dark) {
     if (kinds.includes('desborde')) {
-      const over = document.documentElement.scrollWidth - vw;
-      if (over > 1) out.push({ kind: 'desborde', sel: 'html', text: '', detail: `la página mide ${document.documentElement.scrollWidth} px (+${over})` });
+      const over = Math.max(document.documentElement.scrollWidth, innerWidth) - vw;
+      if (over > 1) out.push({ kind: 'desborde', sel: 'html', text: '', detail: `la página mide ${vw + over} px en ${vw} (+${over})` });
       const inScroller = (n: Element) => {
         for (let p = n.parentElement; p; p = p.parentElement) {
           if (p === document.body || p === document.documentElement) return false;
