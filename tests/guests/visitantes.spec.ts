@@ -271,6 +271,28 @@ test('ENTRADA_PUBLICA · «Tu ficha está lista» y «Unir este móvil a mi fich
   await expect(link.locator('#visitorLinked')).toBeVisible();
   await link.locator('#visitorUnlink').click();
   await expect(link.locator('#visitorLinkGo')).toBeVisible();
+
+test('§9.19 · «Mi pedido» (Flow FL2): «Abrir la carta» le da su número, que sigue al volver', async ({ page, context }) => {
+  const r = await api.reservation({ title: 'Jornada con barra', start: day(0), end: day(1) });
+  await api.booking.t.db.query('update booking.reservations set guests_visible = true where id = $1', [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+  await api.linkBar(r.event);
+  // La carta de Flow es otra app: aquí basta con que se abra.
+  await context.route('https://flow.ikisai.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Carta</title>' }));
+
+  await page.goto(`${baseURL}/e/${code}`);
+  await page.locator('#visitorEnter').click();
+  const order = page.locator('#visitorOrder');
+  // Aún sin número (sin cliente o con cliente sin número).
+  await expect(order.locator('#visitorNumber')).toContainText(/Pide desde la carta|Aún no tienes número/);
+  const [carta] = await Promise.all([context.waitForEvent('page'), order.locator('#visitorCarta').click()]);
+  // La pestaña nace en blanco (para que el navegador no la bloquee) y luego va a la carta con su invitación.
+  await carta.waitForURL(/^https:\/\/flow\.ikisai\.com\/\?invitacion=/);
+  await carta.close();
+  await expect(order.locator('#visitorNumber')).toContainText(/Tu número: \d+/);
+  const number = (await order.locator('#visitorNumber').textContent())!.match(/\d+/)![0];
+  await page.reload();
+  await expect(page.locator('#visitorNumber')).toContainText(`Tu número: ${number}`);
 });
 
 test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, nunca; con ella y habiendo entrado, se elige tocando', async ({ page }) => {
