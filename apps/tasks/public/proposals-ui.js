@@ -137,7 +137,7 @@ function proposalDetail(item){const K=IkisaiKit,d=item.detail||{},rows=Sync.core
     if(d.note)box.append(K.el('p',{class:'proposalnote'},K.el('strong',null,'Nota: '),d.note));
     if(item.status==='pending'&&canDecideProposals()){
       const options=(rows['tasks.projects']||[]).filter(p=>!p.deleted_at&&p.status!=='archived'&&!p.system).map(p=>({p,t:(rows['tasks.tabs']||[]).find(t=>t.id===p.tab_id&&!t.deleted_at)})).filter(x=>x.t);
-      const select=K.el('select',{'data-proposal-target':item.id,'data-feedback-id':'tasks.por_clasificar.propuestas.destino','data-feedback-label':'Proyecto de destino',onchange:e=>{const v=e.target.value;if(v===d.projectId)reviewTarget.delete(item.id);else reviewTarget.set(item.id,v)}},
+      const select=K.el('select',{'data-proposal-target':item.id,'data-field-id':'tasks.por_clasificar.propuestas.destino','data-field-entity':'tasks.tasks','data-field-prop':'project_id','data-feedback-id':'tasks.por_clasificar.propuestas.destino','data-feedback-label':'Proyecto de destino',onchange:e=>{const v=e.target.value;if(v===d.projectId)reviewTarget.delete(item.id);else reviewTarget.set(item.id,v)}},
         ...options.map(({p,t})=>K.el('option',{value:p.id,selected:(reviewTarget.get(item.id)||d.projectId)===p.id?'':null},`${t.name} · ${p.title}`)));
       if(!options.some(x=>x.p.id===d.projectId))select.prepend(K.el('option',{value:d.projectId,selected:''},`${d.projectTitle||'Proyecto'} (no disponible)`));
       box.append(K.el('label',{class:'field'},K.el('span',null,'Proyecto de destino'),select));
