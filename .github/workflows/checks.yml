@@ -124,18 +124,24 @@ jobs:
       - run: npm ci
       - run: node scripts/run_tests.mjs ${{ matrix.folders }} ${{ matrix.shard && format('--shard={0}', matrix.shard) || '' }}
   core:
-    # Comprobación obligatoria de main (ruleset): mismo nombre de siempre, ahora como puerta de «lint» y de la matriz
-    # «pglite». Verde si todo lo que tocaba pasó; en una PR solo de documentación, verde sin correr nada.
+    # Comprobación obligatoria de main (ruleset): mismo nombre de siempre, ahora como puerta de TODO el workflow. El ruleset
+    # solo exige esta y «Qué ha cambiado»; con la fusión automática, un Playwright, los prefijos o el ui-kit en rojo tienen
+    # que tumbarla también. Saltado vale solo donde el job no tocaba; en una PR solo de documentación, verde sin correr nada.
     name: Lint de migraciones, typecheck y pruebas PGlite
-    needs: [cambios, lint, pglite]
+    needs: [cambios, lint, pglite, e2e, prefijos, uikit]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - shell: bash
         run: |
-          echo "cambios=${{ needs.cambios.result }}  lint=${{ needs.lint.result }}  pglite=${{ needs.pglite.result }}  code=${{ needs.cambios.outputs.code }}"
+          echo "cambios=${{ needs.cambios.result }}  lint=${{ needs.lint.result }}  pglite=${{ needs.pglite.result }}  e2e=${{ needs.e2e.result }}  prefijos=${{ needs.prefijos.result }}  uikit=${{ needs.uikit.result }}  code=${{ needs.cambios.outputs.code }}"
           [ "${{ needs.cambios.result }}" = success ] || { echo "«Qué ha cambiado» no terminó bien"; exit 1; }
+          # Playwright, prefijos y ui-kit: verdes o saltados (no tocaban); fallo o cancelación, rojo.
+          ok() { [ "$2" = success ] || [ "$2" = skipped ] || { echo "$1: $2"; exit 1; }; }
+          ok "Playwright" "${{ needs.e2e.result }}"
+          ok "Prefijos de clases" "${{ needs.prefijos.result }}"
+          ok "Pruebas del ui-kit" "${{ needs.uikit.result }}"
           [ "${{ needs.cambios.outputs.code }}" = true ] || { echo "Solo documentación: nada que probar"; exit 0; }
           [ "${{ needs.lint.result }}" = success ] || { echo "Lint de migraciones o typecheck: ${{ needs.lint.result }}"; exit 1; }
           [ "${{ needs.pglite.result }}" = success ] || { echo "Pruebas PGlite: ${{ needs.pglite.result }}"; exit 1; }
