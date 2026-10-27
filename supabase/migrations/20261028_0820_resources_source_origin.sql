@@ -5,7 +5,7 @@
 --     mande el cliente no cuenta;
 --   - lote de servidor (Finance, Tasks, el worker de Food, sistema o migración): el `source_app` declarado, si es una app
 --     conocida (`core.apps`); si no, `INVALID_FIELDS`.
---   Fuera de un lote (SQL directo) no cambia nada. Al editar, `source_app` no cambia.
+--   Fuera de un lote (SQL directo) no cambia nada. Al editar dentro de un lote, `source_app` no cambia.
 -- - `resources.consume`: del navegador, el origen es la app del lote (también al comparar con `once`); de servidor, el
 --   declarado.
 -- - `resources.reconcile_entries`: solo desde servidor (`FORBIDDEN` del navegador).
@@ -14,8 +14,9 @@
 create or replace function resources.guard_source_app() returns trigger language plpgsql as $$
 declare v_app text := nullif(current_setting('core.app', true), '');
 begin
-  if tg_op = 'UPDATE' then new.source_app := old.source_app; return new; end if;
+  -- Fuera de un lote (SQL directo: migraciones, arreglos a mano, pruebas) no se toca nada.
   if not core.in_batch() then return new; end if;
+  if tg_op = 'UPDATE' then new.source_app := old.source_app; return new; end if;
   if core.batch_origin() = 'browser' then
     new.source_app := nullif(v_app, 'resources');
   elsif new.source_app is not null and not exists (select 1 from core.apps x where x.id = new.source_app) then

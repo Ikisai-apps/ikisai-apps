@@ -49,6 +49,9 @@ test('origen · del navegador no cuenta lo que manda el cliente; de servidor, el
   const direct = uuid();
   await app.t.db.query(`insert into resources.movements (id, item_id, space_id, quantity, kind, source_app, source_ref) values ($1, $2, $3, 1, 'entrada_manual', 'food', 'ref:x')`, [direct, item, space]);
   assert.equal(await sourceOf(direct), 'food');
+  // Y un arreglo a mano por SQL también vale (Central fija así el origen en sus pruebas).
+  await app.t.db.query(`update resources.movements set source_app = 'invoices' where id = $1`, [fromBrowser]);
+  assert.equal(await sourceOf(fromBrowser), 'invoices');
 });
 
 test('origen · cuadrar entradas solo desde servidor; consumir desde el navegador apunta la app del lote', async () => {
