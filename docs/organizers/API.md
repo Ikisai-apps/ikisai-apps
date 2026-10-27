@@ -826,3 +826,13 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
   - el texto del correo, las cabeceras sin inyección y el diálogo SMTP con una conexión doble;
   - el envío en PGlite: lo suyo sin leer, la espera de una hora, cada organizadora lo suyo y nada con el aviso apagado.
 
+## 26. La casa contesta (núcleo 0117; diseño en `MUELA/equipo/feedback/organizers/RESPUESTAS_CASA.md`)
+
+- **Qué ve quien organiza:** lo que escribe a Ikisai sobre su retiro («Ayuda y sugerencias») puede recibir respuesta de la casa, desde Booking (B22).
+  - En **Mis retiros**, la tarjeta del retiro lleva «N respuestas de Ikisai» con las que no ha visto.
+  - En **«Lo que me has enviado»**, cada informe muestra sus respuestas firmadas «Ikisai», con la fecha. Al enseñarlas, cuentan como vistas.
+- **Rutas del kit** (contrato §3.7): `GET feedback/replies` y `POST feedback/replies/read {ids}`. Las respuestas solo las escribe la casa (`POST feedback/:id/replies`).
+- **Cliente:** `app/replies.ts` (`loadReplies`, `unreadRepliesByReservation`, `repliesOf`, `markRepliesRead`).
+- **Sin correo todavía:** se sumará al aviso de la 0709 (§25) cuando se encienda.
+- **Pruebas:** `tests/core/feedback-replies.test.ts`.
+
