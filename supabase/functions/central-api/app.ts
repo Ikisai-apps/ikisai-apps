@@ -135,7 +135,8 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
       },
     },
     // Panel de dirección (API.md §7.2): lee la proyección de KPIs de cada app con la clave de servicio y la registración
-    // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`.
+    // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`; si la app
+    // la publica solo para otros roles (FORBIDDEN), se omite: no es que no tenga indicadores, es que este rol no los ve.
     {
       method: 'GET', pattern: 'dashboard', handler: async ({ ctx }) => {
         const snapshot = await supabase.rpc<{ rows: KpiTarget[] }>('core_snapshot_table', { p_app: ctx.app, p_role: ctx.membership.role, p_table: 'central.kpi_targets', p_include_deleted: false, p_limit: 1000, p_offset: 0 });
@@ -153,7 +154,8 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
                 periodStart: row.period_start, periodEnd: row.period_end, direction: row.direction, link: row.link, computedAt: row.computed_at,
                 target: target?.target ?? null, state: kpiState(value, target) });
             }
-          } catch {
+          } catch (error) {
+            if (isFault(error) && error.code === 'FORBIDDEN') return;
             unavailable.push(source.app);
           }
         }));

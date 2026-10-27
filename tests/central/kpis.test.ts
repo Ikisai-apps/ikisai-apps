@@ -60,10 +60,13 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   assert.equal(v('central.people_active'), 1);
   assert.equal(v('central.people_records_expired'), 1);
   assert.equal(JSON.stringify(dash.data).includes('Marga'), false);
-  // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no. No depende de cuáles sean.
+  // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no, y las que publican
+  // solo para otros roles (p. ej. Guests, {owner}) se omiten para el lector. No depende de cuáles sean.
   const published = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and name <> 'central.central_kpi_projection'`)).rows.map((r) => r.app);
   const expected = ['booking', 'guests', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
   assert.deepEqual(dash.data.unavailable, expected);
+  const forReader = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and not ('reader' = any(roles))`)).rows.map((r) => r.app);
+  for (const hidden of forReader) assert.equal(dash.data.items.some((i: any) => i.app === hidden), false, `${hidden}: el lector no la ve`);
 });
 
 test('kpis · otra app publica su proyección con el contrato y entra en el panel', async () => {
