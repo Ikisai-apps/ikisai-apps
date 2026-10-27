@@ -105,7 +105,9 @@ test.describe('ui-kit v0.59 · inventario de campos', () => {
     expect(written.features).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'booking.reserva.entrada', kind: 'field', label: 'Entrada' })]));
     expect(JSON.stringify(written)).not.toMatch(/"value"/);
     const md = fieldReport([catalog]);
-    expect(md).toContain('| booking | 1 | 1 | 1 | 0 |');
+    expect(written.dynamic).toEqual([]);
+    expect(written.fieldsDynamic).toEqual([]);
+    expect(md).toContain('| booking | 1 | 1 | 0 | 1 | 0 |');
     expect(md).toContain('- `apps/booking/src/form.ts:2` · input (text) · «note»');
   });
 });
