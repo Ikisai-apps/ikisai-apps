@@ -876,4 +876,6 @@ export const ES: Dictionary = {
   'visitor.inviteBad': 'Ese enlace no es una invitación de Guests.',
   'visitor.onlyHere': 'Tu acceso de visitante vive solo en este móvil.',
   'visitor.forget': 'Salir de este móvil',
+  'offers.accountOpen': 'Tienes una cuenta abierta: lo que pidas se apunta en ella.',
+  'offers.accountClosed': 'Si quieres pagar al final, pide en caja que te abran una cuenta.',
 };

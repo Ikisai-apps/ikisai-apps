@@ -862,4 +862,6 @@ export const EN: Dictionary = {
   'visitor.inviteBad': 'That link is not a Guests invitation.',
   'visitor.onlyHere': 'Your visitor access lives only on this phone.',
   'visitor.forget': 'Leave this phone',
+  'offers.accountOpen': 'You have an open account: what you order goes on it.',
+  'offers.accountClosed': 'To pay at the end, ask at the till to open an account.',
 };

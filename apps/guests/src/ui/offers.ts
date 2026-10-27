@@ -30,7 +30,7 @@ export function offerDays(people: OffersPerson[]): string[] {
  * uso a Flow; sin respuesta, la carta pública sin número.
  */
 export function offersBlock(day: string, today: string, people: OffersPerson[], named: boolean,
-  customer: (guestId: string) => Promise<{ number: string | null; carta_url: string | null } | null>): HTMLElement | null {
+  customer: (guestId: string) => Promise<{ number: string | null; carta_url: string | null; account_open: boolean | null } | null>): HTMLElement | null {
   const eaters = people.map((p) => p.eater);
   const everyone = (ids: Set<string>) => !named || ids.size === people.length;
   const forWhom = (ids: Set<string>) => (everyone(ids) ? null
@@ -86,7 +86,9 @@ export function offersBlock(day: string, today: string, people: OffersPerson[], 
           const win = window.open('about:blank', '_blank');
           const out = await customer(guestId).catch(() => null);
           const url = safeUrl(out?.carta_url) ?? FLOW_CARTA;
-          replace(note, out?.number ? t('offers.customer', { number: String(out.number) }) : t('offers.noNumber'));
+          // La cuenta la abre caja a petición de la persona (Core, 27-10): Guests solo dice si ya la tiene.
+          replace(note, out?.number ? t('offers.customer', { number: String(out.number) }) : t('offers.noNumber'),
+            out?.account_open === true ? ` ${t('offers.accountOpen')}` : out?.account_open === false ? ` ${t('offers.accountClosed')}` : '');
           if (win) { win.opener = null; win.location.href = url; } else window.location.href = url;
         },
       }, icon('menu', 16), ' ', t('offers.openCarta'));

@@ -50,7 +50,7 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | Gu1 | Organizers → Guests | ruta para abrir un retiro concreto | respondida: `#/r/<reservation_id>`, ya en `main`; con dirección sin ficha, la vista de dirección (§9.17) |
 | FD3 | Food | `food.portal_offers` para Guests y Organizers, con las internas (`audience`) solo para Guests (API.md §9.18) | acordada; PR de Food pendiente |
 | BG16 | Booking | `meal_group` en el primer nivel de `portal_my_guest` (§9.18) | hecha en #748 (0485), sin fusionar |
-| FL1 | Flow | `flow.portal_customer({reservation_id, guest_id})` → `{number, carta_url}` con enlace de un solo uso, para la carta «a cuenta» (§9.18) | acordada; en el paso 3 de Flow |
+| FL1 | Flow | `flow.portal_customer({reservation_id, guest_id})` → `{number, carta_url, account_open}` con enlace de un solo uso, para la carta «a cuenta» (§9.18) | hecha (#772), en uso |
 | C11 | Core | visitantes: `core.visitors`, `POST public/visitor`, `X-Visitor`, `resolveVisitor` y `publicReadWithVisitor`; recuperación y transferencia en v2 (API.md §9.19) | contrato fijado; en #775 |
 | BG17 | Booking | `booking.events.public_code` para el QR (`/e/<código>`) (§9.19) | en #767 (0488) |
 | BG18 | Booking | `POST public/join` en booking-api (`booking.visitor_requests`) con {event_code, kind, name?, contact?, note?}, la lectura `booking_visitor_requests` y `join_from_visitor`; ficha ligada al visitante al aceptarla (§9.19) | en #770, sale con el kit (#775) |
