@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
-import { cartaMargin, cartaStockOperations, cartaStockRef, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
+import { cartaMargin, cartaStockOperations, cartaStockRef, copyCartaOperations, formatCents, freeCartaCodes, parseEurosToCents, validateOperation, validateOperations, type CartaLine } from '../../supabase/functions/_domain/food/mod.ts';
 import { seedBookingEvent } from './helpers.ts';
 
 const CARTA = 'f00dca7a-0000-4000-8000-000000000001';
@@ -205,4 +205,23 @@ test('dominio · validación de la carta y operaciones de stock', () => {
       { item_id: 'c', target: -2, current: -2, default_space_id: null }] };
   assert.deepEqual(cartaStockOperations(plan).operations, [
     { kind: 'consume', itemId: 'a', quantity: 2 }, { kind: 'return', itemId: 'b', quantity: 3, spaceId: 's' }]);
+});
+
+test('dominio · precios, códigos libres y «Usar en otro evento»', async () => {
+  assert.deepEqual(['2,50', '2.5', '3', ' 1,5 € ', '2,505', 'abc', '-1'].map(parseEurosToCents), [250, 250, 300, 150, null, null, null]);
+  assert.match(formatCents(250), /^2,50\s€$/);
+  assert.equal(formatCents(null), '—');
+  const lines = (await q(`select * from food.carta_lines where menu_id = $1`, [CARTA])) as CartaLine[];
+  assert.deepEqual(freeCartaCodes(lines, CARTA, 'barra'), ['β', 'γ', 'δ']);
+  assert.deepEqual(freeCartaCodes(lines, CARTA, 'clasico'), ['α', 'β', 'γ', 'δ']);
+  let n = 0;
+  const target = crypto.randomUUID();
+  const ops = copyCartaOperations({ lines, sourceId: CARTA, newId: target, name: 'Barra · copia', eventId: null, newLineId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}` });
+  assert.equal(ops.length, 1 + lines.filter((l) => !l.deleted_at).length);
+  assert.equal(validateOperations(ops), null, 'la copia pasa la validación de la Edge');
+  await ok('commands', ops);
+  const copied = await q(`select scope, code, sale_price_cents, recipe_id is not null as recipe from food.carta_lines where menu_id = $1 order by scope, position`, [target]);
+  const original = await q(`select scope, code, sale_price_cents, recipe_id is not null as recipe from food.carta_lines where menu_id = $1 and deleted_at is null order by scope, position`, [CARTA]);
+  assert.deepEqual(copied, original);
+  assert.equal((await q(`select count(*)::int as n from food.carta_sales where menu_id = $1`, [target]))[0].n, 0, 'las ventas no se copian');
 });

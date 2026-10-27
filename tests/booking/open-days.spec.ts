@@ -212,6 +212,7 @@ test('visitantes que piden apuntarse por el QR: el personal los acepta desde la 
   await page.goto(`${harness.baseURL}/#/reservas/${res.id}`);
   await expect(page.locator('#publicCode')).toHaveText('ABCDEFGH23');
   await expect(page.locator('#publicUrl')).toHaveText('https://ven.ikisai.com/e/ABCDEFGH23');
+  await expect(page.locator('#publicQr svg[role="img"]')).toHaveAttribute('aria-label', 'QR de entrada de visitantes');
   const card = page.locator('#blockVisitorRequests');
   await expect(card).toContainText('Visitante Sintética');
   await expect(card).toContainText('Vengo con mi hija');
