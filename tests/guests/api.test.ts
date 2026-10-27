@@ -284,3 +284,33 @@ test('guests · el mapa de zonas (GET plans): dibujos firmados aquí y formas co
   // Sin sesión, nada.
   assert.equal((await call('/api/v1/plans')).status, 401);
 });
+
+test('guests · GET plans con finca y decoración (Recursos 0814): retícula y cota, iconos firmados aquí y solo la capa general', async () => {
+  const r = await reservation('Retiro con finca');
+  const g = await guest(r.event, { first_name: 'Teo' });
+  const token = await guestSession(r.id, g, 'Teo');
+  const db = booking.t.db;
+  const finca = (await db.query<{ id: string }>(`insert into resources.spaces (kind, name) values ('exterior', 'Finca del plano') returning id`)).rows[0]!.id;
+  const altura = (await db.query<{ id: string }>(`select id from resources.spaces where kind = 'altura' and name = 'Altura 2'`)).rows[0]!.id;
+  await db.query(`update resources.spaces set attributes = '{"elevation_m": 380}'::jsonb where id = $1`, [altura]);
+  const estate = (await db.query<{ id: string }>(`insert into resources.floor_plans (building_id, kind, width, height, grid, contours) values ($1, 'estate', 225, 260, $2, $3) returning id`,
+    [finca, JSON.stringify({ metersPerUnit: 1 }), JSON.stringify([{ spaceId: altura, x: 0.2, y: 0.6 }])])).rows[0]!.id;
+  const iconFile = (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status) values ('resources', 'resources-plans', $1, 'pino.svg', 'image/svg+xml', 900, $2, 'verified') returning id`,
+    [`resources/${uuid()}`, 'e'.repeat(64)])).rows[0]!.id;
+  const icon = (await db.query<{ id: string }>(`insert into resources.decor_icons (name, category, file_id, default_size) values ('Pino', 'Árboles', $1, 4) returning id`, [iconFile])).rows[0]!.id;
+  const general = (await db.query<{ id: string }>(`insert into resources.decor_items (plan_id, icon_id, cell_x, cell_y, scale, size) values ($1, $2, 3, 4, 5, 4) returning id`, [estate, icon])).rows[0]!.id;
+  await db.query(`insert into resources.decor_items (plan_id, icon_id, cell_x, cell_y, scale, size, layer, event_id, op, replaces_item_id) values ($1, $2, 3, 4, 5, 4, 'event', $3, 'remove', $4)`,
+    [estate, icon, uuid(), general]);
+
+  const res = await call('/api/v1/plans', { token });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const plan = res.data.plans.find((p: any) => p.id === estate);
+  assert.equal(plan.kind, 'estate');
+  assert.deepEqual(plan.grid, { metersPerUnit: 1 });
+  assert.deepEqual(plan.contours, [{ spaceId: altura, label: 'Altura 2', elevationM: 380, x: 0.2, y: 0.6 }]);
+  const pino = res.data.icons.find((i: any) => i.id === icon);
+  assert.equal(pino.defaultSize, 4);
+  assert.match(pino.url, /\/storage\/v1\/object\/sign\/resources-plans\/resources\//);
+  assert.ok(!('file' in pino) && !('bucket' in pino) && !('path' in pino));
+  assert.deepEqual(res.data.decor.map((d: any) => [d.id, d.layer]), [[general, 'general']], 'el portal solo ve la general');
+});

@@ -99,7 +99,7 @@ export function createPortalReads(client: SyncClient): PortalReads {
       const user = userId();
       try {
         const value = await client.api<PortalPlans>('/plans');
-        const clean = { plans: value.plans ?? [], spaces: value.spaces ?? [] };
+        const clean = { plans: value.plans ?? [], spaces: value.spaces ?? [], icons: value.icons ?? [], decor: value.decor ?? [], images: value.images ?? [] };
         void cache.saveRead(user, 'guests.plans', {}, clean);
         return { value: clean, at: new Date().toISOString(), stale: false };
       } catch (error) {
