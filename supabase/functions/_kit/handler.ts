@@ -41,7 +41,7 @@ export interface AppConfig extends SupabaseConfig {
   admin?: boolean;
   /** Recuperación de contraseña por correo; sin indicarlo, IKISAI_PASSWORD_RECOVERY=1. */
   passwordRecovery?: boolean;
-  /** Entrada con código por correo de los portales (0106); si no se indica, IKISAI_EMAIL_CODE=1. */
+  /** Entrada con código por correo de los portales (0108); si no se indica, IKISAI_EMAIL_CODE=1. */
   emailCode?: boolean;
   /** Almacenamiento: R2 y proveedor por defecto. Sin indicarlo, se lee de los secretos R2_* e IKISAI_STORAGE_PROVIDER. */
   storage?: { r2?: R2Config | null; defaultProvider?: ProviderName };
@@ -397,7 +397,7 @@ export function createApp(config: AppConfig): AppHandler {
       const recoveryOn = config.passwordRecovery ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_PASSWORD_RECOVERY') === '1');
       // permanentAccount: «Guarda tu acceso» de los portales (Google y código por correo), cuando haya Workspace.
       const permanentOn = (globalThis as any).Deno?.env?.get?.('IKISAI_PORTAL_ACCOUNTS') === '1';
-      // Código por correo (0106, decisión de VG del 27-10-2026): se enciende por app con `emailCode` o con IKISAI_EMAIL_CODE=1
+      // Código por correo (0108, decisión de VG del 27-10-2026): se enciende por app con `emailCode` o con IKISAI_EMAIL_CODE=1
       // cuando Auth tenga el correo propio (el SMTP por defecto de Supabase manda muy pocos y solo al equipo del proyecto).
       const emailCodeOn = config.emailCode ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_EMAIL_CODE') === '1');
       if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn, emailCode: emailCodeOn });

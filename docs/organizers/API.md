@@ -181,7 +181,7 @@ En modo `ses` añade: «Son los datos que exige el registro de viajeros.»
 
 ### 9.8 «Guarda tu acceso» y entrada con código por correo
 
-**Código por correo (decisión de VG del 27-10-2026, migración 0106).** Quien organiza ya no depende del enlace. En la entrada,
+**Código por correo (decisión de VG del 27-10-2026, migración 0108).** Quien organiza ya no depende del enlace. En la entrada,
 «¿No tienes el enlace a mano?»: escribe el correo con el que le escribimos, pulsa «Enviarme un código» y entra con el código
 de un solo uso de Supabase Auth (`POST auth/email-code` y `auth/email-code/verify` del kit; `sendEmailCode` y
 `loginWithEmailCode` de sync-client 0.8.0).
@@ -303,7 +303,7 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - Los textos de Central se leen en el idioma del dispositivo, con el español como reserva.
   - El idioma se elige con el selector ES | EN de la cabecera (y de la pantalla de entrada) y se recuerda en el dispositivo; por defecto, el del navegador.
 - **Instalación.** Con `createInstallPrompt` del kit (0.20): la hoja «Instala la app» al entrar por enlace (`beforeinstallprompt` en Android y escritorio, instrucciones en iOS) y una tarjeta en Mis retiros. «Ahora no» se recuerda 7 días.
-- **Cuenta permanente.** Código por correo desde el 27-10-2026 (§9.8, 0106), encendido cuando Auth tenga el correo propio; Google, con Workspace.
+- **Cuenta permanente.** Código por correo desde el 27-10-2026 (§9.8, 0108), encendido cuando Auth tenga el correo propio; Google, con Workspace.
 
 ### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)
 

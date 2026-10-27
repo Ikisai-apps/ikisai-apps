@@ -2,7 +2,7 @@
 
 ## 0.8.0 · 27 de octubre de 2026
 
-- **Entrar con un código por correo** en los portales (migración 0106, decisión de VG): `sendEmailCode(email)` pide el código (`POST auth/email-code`, responde igual exista o no la cuenta) y `loginWithEmailCode(email, code)` lo canjea por una sesión (`POST auth/email-code/verify`), como `loginWithLink`. Lo existente no cambia.
+- **Entrar con un código por correo** en los portales (migración 0108, decisión de VG): `sendEmailCode(email)` pide el código (`POST auth/email-code`, responde igual exista o no la cuenta) y `loginWithEmailCode(email, code)` lo canjea por una sesión (`POST auth/email-code/verify`), como `loginWithLink`. Lo existente no cambia.
 
 ## 0.7.3 · 20 de octubre de 2026
 

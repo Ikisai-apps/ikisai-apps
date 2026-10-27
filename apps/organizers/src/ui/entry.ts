@@ -9,7 +9,7 @@ export interface EntryOptions {
   error?: unknown;
   /** Muestra los accesos de la cuenta permanente (Google y código por correo) cuando el núcleo los active. */
   permanentAccount?: boolean;
-  /** Entrada con código por correo (0106), si `auth/config` la tiene encendida. */
+  /** Entrada con código por correo (0108), si `auth/config` la tiene encendida. */
   emailCode?: { send(email: string): Promise<void>; enter(email: string, code: string): Promise<void> };
 }
 

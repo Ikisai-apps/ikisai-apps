@@ -63,7 +63,7 @@ function show(error?: unknown): void {
     return;
   }
   unmount = renderEntry(root!, { error });
-  // Código por correo (0106): pedirlo y canjearlo; al entrar, la app como tras el enlace.
+  // Código por correo (0108): pedirlo y canjearlo; al entrar, la app como tras el enlace.
   const emailCode = {
     send: (email: string) => client.sendEmailCode(email),
     enter: async (email: string, code: string) => { await client.loginWithEmailCode(email, code); await client.start().catch(() => undefined); show(); },

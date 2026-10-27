@@ -26,7 +26,7 @@ export interface AuthService {
   recover(body: unknown, redirectTo: string): Promise<{ sent: true }>;
   /** Canjea el enlace del correo (token_hash de un solo uso) y fija la contraseña nueva; devuelve una sesión. */
   resetPassword(body: unknown): Promise<SessionTokens & { userId: string }>;
-  /** Portales (0106): manda un código de un solo uso al correo si es de una cuenta que podría entrar por su enlace en `app`.
+  /** Portales (0108): manda un código de un solo uso al correo si es de una cuenta que podría entrar por su enlace en `app`.
    *  Responde igual exista o no, y no crea cuentas. */
   sendEmailCode(app: string, body: unknown): Promise<{ sent: true }>;
   /** Canjea ese código por una sesión; solo para la misma cuenta que podía recibirlo. */

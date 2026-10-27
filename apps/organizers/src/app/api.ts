@@ -158,7 +158,7 @@ export interface PortalApi {
   setRestrictions(args: { guest_id: string; items: PortalRestriction[]; declaration?: boolean }): Promise<unknown>;
   issueGuestLink(args: { reservationId: string; guestId: string; name: string; email?: string | null; replace: boolean }): Promise<IssuedLink>;
   revokeLink(linkId: string): Promise<unknown>;
-  /** `auth/config`: cuenta permanente (Workspace) y entrada con código por correo (0106). Sin red, las dos apagadas. */
+  /** `auth/config`: cuenta permanente (Workspace) y entrada con código por correo (0108). Sin red, las dos apagadas. */
   authConfig(): Promise<{ permanentAccount: boolean; emailCode: boolean }>;
   /** Fases 4 y 5: lectura y acción de otra app con caché (programa y alojamiento de Booking, menú de Food, lugar de Central). */
   readAny<T>(name: string, args?: Record<string, unknown>): Promise<Loaded<T>>;

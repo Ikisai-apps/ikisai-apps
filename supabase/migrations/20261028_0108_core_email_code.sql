@@ -1,4 +1,4 @@
--- 0106 · Portales: entrar con un código por correo (cuenta permanente sin Workspace; decisión de VG del 27-10-2026).
+-- 0108 · Portales: entrar con un código por correo (cuenta permanente sin Workspace; decisión de VG del 27-10-2026).
 --
 -- Quien organiza (y, si se enciende, el huésped) entra con un código de un solo uso de Supabase Auth enviado al correo de
 -- su enlace, para no quedarse fuera en un móvil nuevo o tras cerrar sesión. Una sesión de Auth vale en todas las apps, así

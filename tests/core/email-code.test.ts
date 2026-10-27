@@ -1,4 +1,4 @@
-/** 0106 · Entrar con un código por correo en los portales (decisión de VG del 27-10-2026). El código solo llega a una cuenta
+/** 0108 · Entrar con un código por correo en los portales (decisión de VG del 27-10-2026). El código solo llega a una cuenta
  *  de portal con un enlace vigente en esa app; la respuesta no distingue correos; no sirve para el personal ni tras revocar. */
 import test from 'node:test';
 import assert from 'node:assert/strict';

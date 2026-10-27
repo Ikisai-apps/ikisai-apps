@@ -1,6 +1,6 @@
 /**
  * «Guarda tu acceso» (API.md §9.8): botón flotante y compacto (54 × 54, solo el candado) para quien entró por enlace. Con la
- * entrada por código (0106, `auth/config.emailCode`), la hoja explica que ya puede entrar con un código a su correo; sin ella,
+ * entrada por código (0108, `auth/config.emailCode`), la hoja explica que ya puede entrar con un código a su correo; sin ella,
  * que guarde el enlace. Google llegará con Workspace.
  */
 import { el, icon, openSheet } from '@ikisai/ui-kit';

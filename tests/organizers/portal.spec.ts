@@ -57,7 +57,7 @@ test('organizers · enlace no válido: pantalla clara, sin sesión @smoke', asyn
   await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
 });
 
-test('organizers · sin el enlace, entra con un código por correo (0106) @smoke', async ({ page }) => {
+test('organizers · sin el enlace, entra con un código por correo (0108) @smoke', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con código', confirm: true });
   await api.organizerLink([reservation], 'codigo@example.invalid', 'Clara');
   await page.goto(`${baseURL}/`);
