@@ -151,7 +151,7 @@ jobs:
     if: needs.cambios.outputs.e2e != '[]'
     runs-on: ubuntu-24.04
     # Un job por app: el tiempo total es el de la app más lenta, no la suma. Si una app supera esto, se parte su suite.
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -164,7 +164,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Instalar Chromium
-        run: npx playwright install --with-deps chromium
+        # El mirror apt de Azure va a veces a 45 kB/s (27-10, run 40475209816: 9 min 37 s y el job del kit cortado a los 15).
+        # Cada intento tiene 4 min; lo ya bajado se queda en la caché de apt, así que el siguiente sigue desde ahí.
+        run: for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && exit 0; echo "::warning::Chromium, intento $i sin terminar"; done; exit 1
       - name: Pruebas end-to-end de ${{ matrix.app }}
         shell: bash
         run: |
@@ -183,7 +185,7 @@ jobs:
     needs: cambios
     if: needs.cambios.outputs.prefijos == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -191,7 +193,10 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Instalar Chromium
+        # El mirror apt de Azure va a veces a 45 kB/s (27-10, run 40475209816: 9 min 37 s y el job del kit cortado a los 15).
+        # Cada intento tiene 4 min; lo ya bajado se queda en la caché de apt, así que el siguiente sigue desde ahí.
+        run: for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && exit 0; echo "::warning::Chromium, intento $i sin terminar"; done; exit 1
       - run: npm -w @ikisai/ui-kit run test:e2e -- v45 --project=escritorio
   uikit:
     name: Pruebas del ui-kit · ${{ matrix.shard }}/3
@@ -199,7 +204,7 @@ jobs:
     if: needs.cambios.outputs.uikit == 'true'
     runs-on: ubuntu-24.04
     # La suite del kit pasa ya de 10 min seguida: tres trozos en paralelo (Playwright --shard).
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -211,5 +216,8 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Instalar Chromium
+        # El mirror apt de Azure va a veces a 45 kB/s (27-10, run 40475209816: 9 min 37 s y el job del kit cortado a los 15).
+        # Cada intento tiene 4 min; lo ya bajado se queda en la caché de apt, así que el siguiente sigue desde ahí.
+        run: for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && exit 0; echo "::warning::Chromium, intento $i sin terminar"; done; exit 1
       - run: npm -w @ikisai/ui-kit run test:e2e -- --shard=${{ matrix.shard }}/3
