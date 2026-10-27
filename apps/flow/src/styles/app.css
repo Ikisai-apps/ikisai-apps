@@ -91,6 +91,10 @@
 .order-refund{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0}
 .flow-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .flow-actions button[hidden]{display:none}
+.flow-nav{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px 0}
+.flow-nav[hidden]{display:none}
+.flow-nav button{min-height:44px}
+.sheet-foot .flow-nav{padding:0;justify-content:space-between}
 .deliver-incomplete{opacity:.85}
 .danger-text{color:var(--alert,#b3261e)}
 .delivery-ident{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;border:0}
