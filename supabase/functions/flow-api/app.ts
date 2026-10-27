@@ -6,6 +6,7 @@
  * - `POST public/customer`: crea el cliente anónimo; devuelve su token (solo para el navegador) y su número.
  * - `POST public/orders`: envía la cesta como pedido abierto del cliente de la cabecera `X-Flow-Customer`.
  * - `GET public/mine`: los pedidos de ese cliente, y nada más.
+ * - `POST public/invitation`: canje del enlace firmado de un huésped (0910): rota el token de su cliente y lo devuelve.
  * El token nunca llega a la base de datos: aquí se resume con SHA-256 y solo viaja el resumen. Las escrituras van por la
  * escritura pública del núcleo (actor «Flow (sistema)», lote público que limita `flow.guard`).
  */
@@ -17,6 +18,7 @@ export const FLOW_ORIGINS = ['https://flow.ikisai.com', 'https://ikisai-flow.pag
 /** Lecturas públicas registradas por las migraciones 0900 y 0901. */
 export const PUBLIC_MENU = 'flow_menu';
 export const PUBLIC_MINE = 'flow_mine';
+export const PUBLIC_GUEST_LINK = 'flow_guest_link';
 export const CUSTOMER_HEADER = 'x-flow-customer';
 export const MAX_PUBLIC_LINES = 50;
 
@@ -75,7 +77,7 @@ interface ClosureForSend {
   project: { id: string; name: string; test_mode: boolean; food_menu_id: string | null; booking_event_id: string | null };
 }
 interface DayData {
-  orders: number; sales_cents: number; sales_by_method: { cash: number; bizum: number }; refunds_pending_cents: number;
+  orders: number; sales_cents: number; sales_by_method: { cash: number; bizum: number; card?: number }; refunds_pending_cents: number;
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
 }
 
@@ -139,7 +141,7 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           source_app: 'flow', source_ref: sourceRef, kind: 'income', entry_date: c.day,
           description: `${project.name} · ${d}-${m}-${y}`,
           amount_cents: c.data.sales_cents, tax_rate: 10,
-          methods: { cash: c.data.sales_by_method.cash, bizum: c.data.sales_by_method.bizum },
+          methods: { cash: c.data.sales_by_method.cash, bizum: c.data.sales_by_method.bizum, ...(c.data.sales_by_method.card ? { card: c.data.sales_by_method.card } : {}) },
           detail: c.data.units_by_product.map((u) => ({ code: `${u.scope}:${u.code}`, name: u.name, quantity: u.units, amount_cents: u.amount_cents })),
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
@@ -274,6 +276,18 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         const out = await mine(hash);
         return reply({ token, number: out?.number ?? null });
       }
+      if (route === 'invitation' && request.method === 'POST') {
+        // Enlace firmado de Guests (`<cliente>.<caducidad>.<firma>`): un token nuevo para este navegador; el anterior deja de valer.
+        const body = await request.json().catch(() => null) as { invitation?: unknown } | null;
+        const invitation = typeof body?.invitation === 'string' ? body.invitation.trim().slice(0, 200) : '';
+        const link = invitation ? await supabase.rpc<{ customerId?: string; revision?: number; number?: number; expired?: boolean } | null>('core_public_read', { p_name: PUBLIC_GUEST_LINK, p_args: { invitation } }) : null;
+        if (link?.expired) return error(410, 'INVITATION_EXPIRED', 'Ese enlace ha caducado. Ábrelo otra vez desde la app de huéspedes.');
+        if (!link?.customerId) return error(404, 'INVITATION_INVALID', 'Ese enlace no vale. Pide uno nuevo en la app de huéspedes.');
+        const bytes = crypto.getRandomValues(new Uint8Array(32));
+        const token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        await publicWrite(supabase, APP, [{ op: 'update', table: TABLES.customers, id: link.customerId, expectedRevision: link.revision, fields: { token_hash: await sha256Hex(token) } }]);
+        return reply({ token, number: link.number ?? null });
+      }
       if (route === 'orders' && request.method === 'POST') {
         const hash = await customerHash();
         const me = hash ? await mine(hash) : null;
@@ -301,7 +315,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   }
 
   return async (request: Request): Promise<Response> => {
-    const match = new URL(request.url).pathname.match(/\/api\/v1\/public\/(menu|customer|orders|mine)\/?$/);
+    const match = new URL(request.url).pathname.match(/\/api\/v1\/public\/(menu|customer|orders|mine|invitation)\/?$/);
     if (match && ['GET', 'POST', 'OPTIONS'].includes(request.method)) {
       if (request.method === 'OPTIONS') return kit(request);
       return handlePublic(request, match[1]!);

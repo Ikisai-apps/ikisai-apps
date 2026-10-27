@@ -4,7 +4,7 @@ import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
 import { loadProjects, loadStock, projectDates, projectState, type Project, type StockItem } from '../app/data.ts';
 import { addDocument, coverUrl, loadCodeGuides, moveDocument, projectDocuments, removeDocument, setCover, type ProjectDocument } from '../app/documents.ts';
-import { chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
+import { assignGuestNumbers, chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
@@ -69,7 +69,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
       // Enlaces del flujo (owner): su evento de Booking y su proyecto de Tasks.
       el('div', { class: 'orders-owner flow-links' },
         el('button', { type: 'button', class: 'ghost', onclick: () => void chooseBookingEvent(client, project) }, project.booking_event_id ? 'Evento de Booking: cambiar' : 'Ligar a un evento de Booking'),
-        el('button', { type: 'button', class: 'ghost', onclick: () => void chooseTasksProject(client, project) }, project.tasks_project_id ? 'Proyecto de Tasks: cambiar' : 'Elegir proyecto de Tasks')));
+        el('button', { type: 'button', class: 'ghost', onclick: () => void chooseTasksProject(client, project) }, project.tasks_project_id ? 'Proyecto de Tasks: cambiar' : 'Elegir proyecto de Tasks'),
+        // Cuentas (v2, 0910): los huéspedes del evento con su número, para cargarles a cuenta y pedir desde Guests.
+        project.booking_event_id && !project.frozen ? el('button', { type: 'button', class: 'ghost', onclick: () => void assignGuestNumbers(client, project) }, 'Dar número a los huéspedes') : null));
   }
 
   async function newVersion(project: Project): Promise<void> {
