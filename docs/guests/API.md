@@ -666,7 +666,7 @@ VG aprueba `ven.ikisai.com` como puerta pública **sin invitación**. Quien esca
 #### Entrada (`/e/<código>`)
 
 1. `main.ts` reconoce `/e/<código>` (10 caracteres, BG17; vale en mayúsculas o minúsculas), lo quita de la URL antes de pintar y abre `#/v/<CÓDIGO>`.
-2. El evento sale de `GET public/event?code=…` (`guests-api`, hecho; lectura pública `booking_event`, BG19). Si el código no es de ningún evento: «Este código no es de ningún evento abierto», con el contacto público y sin decir si existió.
+2. El evento sale de la lectura pública `booking_event` (BG19), que sirve el kit en `guests-api` como `GET public/booking_event?code=…`. Si el código no es de ningún evento: «Este código no es de ningún evento abierto», con el contacto público y sin decir si existió.
 3. **Identidad de visitante:** con token en el móvil, se usa; si no, al tocar «Entrar» se crea (`POST public/visitor {event_code}`), sin pedir nada. Si el móvil tiene además una sesión de huésped, conviven: el evento se ve como visitante salvo que use «Ya tengo invitación».
 4. El código se añade a la lista de **«Mis eventos» de este móvil** (`localStorage`, solo códigos; se borra con «Salir de este móvil»).
 
@@ -675,13 +675,14 @@ VG aprueba `ven.ikisai.com` como puerta pública **sin invitación**. Quien esca
 - **Cabecera:** nombre, fechas, tipo («Retiro», «Jornadas abiertas», «Familiar»), estado («Abierto», «Cerrado») y el resumen público. Nada de precios ni del organizador.
 - **Qué hay para comer** (FD5, lectura pública `food_visitor_offers` con `event_code`; `guests-api` la sirve en `GET public/offers?code=…`): solo las ofertas que quien las hace marca «Visible para visitantes (QR)», por día y servicio, con la pieza de §9.18 (`offersBlock`) y su línea de alérgenos. Sin restricciones de la persona, no hay cruce personal; sí el aviso «Si tienes alergias, pregunta en cocina».
 - **«Mi pedido»** (Flow, FL2): «Pedir número» o «Abrir la carta» llama a `flow.visitor_join({event_code})` (acción de Flow con `X-Visitor`: crea o encuentra su cliente, sin cuenta) y abre su `carta_url` de un solo uso; «Mi pedido» se pinta con la lectura `flow.visitor_customer` (`{number, carta_url, account_open, orders}`, con el `visitor_id` del kit). Sin número todavía: «Aún no tienes número: lo tendrás al abrir la carta». Con cuenta abierta, «Tienes una cuenta abierta»; si no, «Si quieres pagar al final, pide en caja que te abran una cuenta».
-- **«Apuntarme»** (si `joinable`, BG18): `POST /api/v1/public/join` de **booking-api** (tabla `booking.visitor_requests`, de Booking) con `{event_code, name, contact?}`: «¿Cómo te llamamos?», obligatorio solo aquí; correo o teléfono, opcionales y con su para qué. Queda «Pedido · pendiente» hasta que el personal lo acepta (`booking.join_from_visitor`), y entonces la ficha queda ligada a este visitante por esa petición. Lo pendiente sale de la lectura de «lo mío» de Booking (con el `visitor_id` del kit). Booking tiene que admitir el origen de Guests en esa ruta.
+- **«Apuntarme»** (si `joinable`, BG18): `POST /api/v1/public/join` de **booking-api** (tabla `booking.visitor_requests`, de Booking) con `{event_code, name, contact?}`: «¿Cómo te llamamos?», obligatorio solo aquí; correo o teléfono, opcionales y con su para qué. Queda «Pedido · pendiente» hasta que el personal lo acepta (`booking.join_from_visitor`), y entonces la ficha queda ligada a este visitante por esa petición. Lo pendiente sale de la lectura pública `booking_visitor_requests` (con el `visitor_id` que pone el kit). El worker de Pages lleva `/api/booking/v1/public/*` a booking-api y reenvía `X-Visitor` (sin la sesión del huésped); las pruebas hacen lo mismo en `tests/guests/server.ts`.
 - **«Déjanos un dato»** (opcional, sin apuntarse): el correo para avisarle de la próxima jornada, con su para qué; la misma ruta con `kind: 'contact'` (Core, 27-10), que vale en cualquier evento vivo.
 - **Forma (Booking #770):** `POST public/join {event_code, kind: 'join' | 'contact', name?, contact?, note?}` con `X-Visitor` → la petición `{event_code, kind, name, status, created_at}`; una pendiente por visitante, evento y tipo. «Lo suyo»: `GET public/join?event_code=…` → `{items: [{event_code, kind, name, status, created_at, decided_at}]}`; el contacto no sale nunca. Estados: «Pendiente», «Aceptada» (join), «Atendida» (contact) y «Descartada». Nombre, contacto y nota se borran a los 6 meses del fin del evento, y la pantalla lo dice junto al campo.
 - **«Ya tengo invitación»:** abrir su enlace personal (`/i/<token>`). Es el vínculo consentido con su ficha de huésped.
 
 #### «Mis eventos» (`#/v`)
 
+- Código en `apps/guests/src/app/visitor.ts` y `ui/visitor.ts`; prueba `tests/guests/visitantes.spec.ts`.
 - Los eventos de la lista de este móvil, por momento (en curso, próximos y pasados, la pieza de «Mis retiros», §9.17), cada uno releído con `public/event`, con su estado y el de su «Apuntarme».
 
 #### Salir y, en la v2, guardar y mover
@@ -700,7 +701,7 @@ El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora
 | C11 | Core | `core.visitors`, `POST public/visitor`, `X-Visitor`, `resolveVisitor`, `publicReadWithVisitor` | contrato fijado; PR core/visitantes (0096) |
 | BG17 | Booking | `booking.events.public_code` | en #767 (0488) |
 | BG18 | Booking | `POST public/join` en booking-api (`booking.visitor_requests`), su «lo mío» y `join_from_visitor`; origen de Guests admitido | tras C11 |
-| BG19 | Booking | lectura pública `booking_event` | en #767 (0488); `GET public/event` hecho |
+| BG19 | Booking | lectura pública `booking_event` | en #767 (0488); la sirve el kit |
 | FD5 | Food | lectura pública `food_visitor_offers` con `event_code`, solo ofertas `public` | en #758 |
 | FL2 | Flow | `flow.visitor_join` (acción) y `flow.visitor_customer` (lectura), con `flow.customers.visitor_id` | tras C11 |
 

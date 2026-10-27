@@ -102,7 +102,11 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       for (const [key, value] of Object.entries(req.headers)) if (typeof value === 'string' && key !== 'host' && key !== 'content-length') headers.set(key, value);
       // El proxy de `vite preview` conserva el Origin del navegador: la Edge solo admite el de producción.
       headers.set('Origin', origin);
-      const response = await guests(new Request(`${booking.supabase.url}/functions/v1/guests-api${req.url ?? '/'}`, {
+      // Como el worker de Pages (§9.19): `/api/booking/v1/public/*` va a las rutas públicas de booking-api.
+      const toBooking = (req.url ?? '').startsWith('/api/booking/v1/public/');
+      const target = toBooking ? `${booking.supabase.url}/functions/v1/booking-api${(req.url ?? '').replace('/api/booking/v1/', '/api/v1/')}` : `${booking.supabase.url}/functions/v1/guests-api${req.url ?? '/'}`;
+      if (toBooking) headers.delete('authorization');
+      const response = await (toBooking ? booking.handler : guests)(new Request(target, {
         method: req.method, headers, body: ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : Buffer.concat(chunks),
       }));
       res.writeHead(response.status, Object.fromEntries(response.headers));

@@ -63,6 +63,8 @@ test('guests · toda clave que usa el código existe (también las de catálogo 
     page: ['inicio', 'datos', 'alimentacion', 'firma', 'info', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'calendario', 'outsider', 'retiros'],
     status: ['pre_reservada', 'confirmada', 'en_ejecucion', 'cerrada', 'cancelada', 'perdida'],
     role: ['organizer', 'staff', 'direccion'],
+    'visitor.kind': ['retiro', 'jornadas_abiertas', 'familiar'],
+    'visitor.req': ['pendiente', 'aceptada', 'atendida', 'descartada'],
     menu: ['desayuno', 'comida', 'cena', 'picnic', 'merienda', 'otro'],
     allergen: ['gluten', 'crustaceos', 'huevos', 'pescado', 'cacahuetes', 'soja', 'lacteos', 'frutos_de_cascara', 'apio', 'mostaza', 'sesamo', 'sulfitos', 'altramuces', 'moluscos'],
     'help.event': ['schedule', 'organization', 'activities', 'communication', 'food', 'other'],
@@ -116,7 +118,7 @@ test('guests · cada data-feedback-id escrito en un el(...) lleva su data-feedba
 test('guests · la raíz de cada id es una pantalla conocida', () => {
   const roots = new Set(collectIds().map((f) => f.id.split('.')[1]));
   const allowed = new Set(['entrada', 'aviso', 'inicio', 'datos', 'alimentacion', 'firma', 'info', 'ayuda', 'acceso', 'app', 'cuenta', 'cabecera',
-    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'retiros', 'calendario', 'outsider']);
+    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'retiros', 'calendario', 'outsider', 'visitante']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 
