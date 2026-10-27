@@ -15,6 +15,7 @@ import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
 import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
 import { WEEKLY_ACTIONS_TABLE, WEEKLY_ACTION_KINDS, WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
 import { FIELD_GROUP_REVIEWS_TABLE, GROUP_DECISIONS, UTILITY_FREQUENCIES, canDeclareUtility } from './field-coverage.ts';
+import { PENDING_ACCESS_TABLE } from './scopes.ts';
 import { AGENTS_TABLE, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
@@ -314,6 +315,15 @@ const SPECS: Record<string, TableSpec> = {
     required: ['app', 'screen'],
     immutable: ['screen'],
   },
+  [PENDING_ACCESS_TABLE]: {
+    fields: {
+      person_id: { kind: 'uuid' },
+      app: { kind: 'text', min: 1, max: 40, pattern: /^[a-z][a-z0-9_]*$/, patternText: 'id de app' },
+      note: { kind: 'text', max: 300, nullable: true },
+    },
+    required: ['person_id', 'app'],
+    immutable: ['person_id'],
+  },
   [AGENTS_TABLE]: {
     fields: {
       display_name: { kind: 'text', min: 1, max: 80 },
@@ -533,6 +543,9 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     }
     if (table === FIELD_GROUP_REVIEWS_TABLE && !canDeclareUtility(actor)) {
       return { code: 'FORBIDDEN', message: 'La cobertura de campos la revisa Dirección.', details: { index, table } };
+    }
+    if (table === PENDING_ACCESS_TABLE && actor.role !== 'owner') {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra Central deja accesos pendientes.', details: { index, table } };
     }
     if (table === AGENTS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra Central cambia las fichas de agente.', details: { index, table } };
