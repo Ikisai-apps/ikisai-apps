@@ -2061,6 +2061,13 @@ Authorization: Bearer <token de la persona>
   - Quien solo lee la ve sin mandos.
 - **Pruebas:** `tests/tasks/requests-purchase.test.ts` (procedencia, inmutable, enlace solo en ikisai.com y vacía en las de la interfaz) y `tests/tasks/compras-r6.spec.ts` (la vista agrupada con «Ver en Flow ›», el artículo, aprobar, comprada y ha llegado con +3 en el inventario, y la lectora sin mandos).
 
+### 39.6 Con artículo de Recursos: `item_id` (Food, lista de la compra; decisión de Core del 27-10-2026)
+
+- `item_id` (opcional): el uuid de un artículo activo de Recursos. Si no existe o no está activo, 404 `NOT_FOUND` en el campo `item_id`; si no es un uuid, 422.
+- Si no se manda `unit`, se pone la unidad base del artículo.
+- La compra lleva el artículo (`itemId` en la respuesta). Al recibirla, Tasks apunta la entrada de stock en Recursos con su coste, como cualquier compra suya con artículo (`receiptEntryOperation`): la entrada tiene un solo dueño y Finance ve el coste.
+- Repetir con la misma referencia devuelve la compra tal como está, sin tocar la cantidad, el título ni el artículo.
+
 ## 40. «Solo de un área»: una etiqueta General vuelve a ser de un área (FB_2026_035; VG 27-10-2026)
 
 VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de «Hacer General» (§27).
