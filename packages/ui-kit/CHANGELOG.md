@@ -1,5 +1,17 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.4 · 27 de octubre de 2026
+
+**La cáscara se aprieta sola en el móvil** (revisión a 390 px, `MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`).
+
+- **Título:** si «Ikisai {app}» no cabe junto a las herramientas, «Ikisai» se esconde a la vista, no al lector, y queda el nombre de la app. Guests («Ikisai Guests · Ana») se cortaba; en Organizers ayuda, aunque su conmutador ES/EN sigue comiendo ancho.
+- **Barra de abajo:** `NavItem.short` es el nombre corto («Cobro» por «Pedido y cobro»).
+  - Solo se usa si los nombres enteros no caben, como en las seis secciones de Flow a 390 px.
+  - El lector sigue diciendo el nombre entero.
+  - Sin `short`, la barra se queda como estaba.
+- Lo mide la propia cáscara al pintar y cuando cambia el ancho (`ResizeObserver`). El texto del título no cambia.
+- Pruebas: `tests/v76.spec.ts`.
+
 ## 0.69.1 · 27 de octubre de 2026
 
 **«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
