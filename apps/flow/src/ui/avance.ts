@@ -17,8 +17,9 @@ import type { ViewMount } from './shell.ts';
  *    al final); barra, «n de m», el primer paso sin hacer «bloquea»; pasos en cadena; leyenda que también filtra; tocar uno filtra.
  * 6. Carriles por agente (los vacíos no se pintan): urgencia → lo listo antes que lo «en espera» → hito y paso → orden.
  *    Una tarjeta con hito está «para hacer» solo si todos los pasos anteriores de su hito (sin backlog) están hechos; con el
- *    mismo número de paso no se bloquean. Con algún filtro, las bloqueadas van aparte, plegadas al final del carril, con
- *    «bloqueada por: <tarjeta del paso que falta> (agente)»; sin filtros, todas, con «en espera».
+ *    mismo número de paso no se bloquean. Con filtro de agentes, la bloqueada por un paso de un agente fuera del filtro va
+ *    aparte, plegada al final del carril, con «bloqueada por: <tarjeta del paso que falta> (agente)»; si la bloquea un agente
+ *    del filtro (o ella misma), y sin filtro de agentes, sale en su sitio con «en espera».
  * Escribir: Pendiente / En curso / Hecha desde la tarjeta (`flow.board_card`; el carril lo decide el guard).
  */
 
@@ -29,7 +30,9 @@ interface Card {
   id: string; lane: string; title: string; state: State; recurring: boolean; prio: string | null; tipo: string | null; order: number;
   ref: string | null; url: string | null; urlText: string | null; steps: string[]; note: string | null; hito: string | null; paso: number | null; unit: BoardUnit;
   /** El primer paso sin hacer de su hito (lo que bloquea), si esta tarjeta espera a otro. */
-  waitsFor: Card | null; blocks: boolean;
+  waitsFor: Card | null;
+  /** Todos los pasos anteriores de su hito sin hacer. */
+  waitsAll: Card[]; blocks: boolean;
 }
 interface Hito { id: string; title: string; orden: number; doneAt: string | null; steps: Card[]; number: number }
 interface Snap { t: string; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number; deleted_at: string | null; project_id: string }
@@ -118,6 +121,8 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   };
   const anyFilter = () => Object.values(filters).some((v) => v.length);
   /** Marcas de la leyenda que tiene una tarjeta. */
+  /** Lo que la bloquea: el primer paso anterior de un agente fuera del filtro, si lo hay; si no, el primero. */
+  const blockerOf = (c: Card) => (filters.ag.length && c.waitsAll.find((b) => !filters.ag.includes(b.lane))) || c.waitsFor;
   const marks = (c: Card) => [c.state, ...(c.blocks ? ['bloquea'] : []), ...(c.waitsFor ? ['espera'] : []), ...(c.prio === 'urgente' ? ['urgente'] : []), ...(mine.has(c.lane) ? ['tuyo'] : [])];
   const passEx = (c: Card, skip: keyof Filters | null) =>
     (skip === 'est' || !filters.est.length || filters.est.includes(c.state))
@@ -262,7 +267,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
         c.note || c.ref ? el('div', { class: 'n' }, [c.note, c.ref].filter(Boolean).join(' · ')) : null,
         c.url ? el('div', { class: 'n' }, el('a', { href: c.url, target: '_blank', rel: 'noopener' }, `${c.urlText ?? 'Abrir'} ↗`)) : null,
         h ? el('div', { class: 'n avance-hito-line' }, `⛳ ${h.number}. ${h.title}${c.paso ? ` · paso ${c.paso}` : ''}`) : null,
-        c.waitsFor ? el('div', { class: 'n avance-wait' }, `⏳ en espera · bloqueada por: «${c.waitsFor.title}» (${agentName(c.waitsFor.lane)})`) : null,
+        c.waitsFor ? el('div', { class: 'n avance-wait' }, `⏳ en espera · bloqueada por: «${blockerOf(c)!.title}» (${agentName(blockerOf(c)!.lane)})`) : null,
         c.steps.length ? (isOpen
           ? el(decision ? 'ul' : 'ol', { class: `avance-steps${decision ? ' is-decision' : ''}` }, ...c.steps.map((s) => el('li', null, s)))
           : el('div', { class: 'hint' }, decision ? 'Toca el título para ver las preguntas' : 'Toca el título para ver los pasos')) : null,
@@ -341,11 +346,11 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     const lanesData = groupLanes(sorted, {
       key: (c) => c.lane, order: visibleLanes, hideEmpty: true, title: (k) => agentName(k), emptyText: 'Nada.',
       mount: (body, items) => {
-        // Con algún filtro, las bloqueadas por su hito no van en la lista: aparte, plegadas al final (VG, 27-10). Sin filtros,
-        // todas, con «en espera».
-        const split = anyFilter();
-        const pending = items.filter((c) => c.state !== 'hecho' && !(split && c.waitsFor));
-        const blocked = split ? items.filter((c) => c.state !== 'hecho' && c.waitsFor) : [];
+        // Con filtro de agentes, la bloqueada por un paso anterior de un agente que no está en el filtro va aparte, plegada al
+        // final (VG, 27-10); si la bloquea ella misma u otro agente seleccionado, sale en su sitio con «en espera».
+        const outside = (c: Card) => !!filters.ag.length && c.waitsAll.some((b) => !filters.ag.includes(b.lane));
+        const pending = items.filter((c) => c.state !== 'hecho' && !outside(c));
+        const blocked = items.filter((c) => c.state !== 'hecho' && outside(c));
         replace(body, el('p', { class: 'muted small' }, `${pending.filter((c) => c.state !== 'backlog' && !c.waitsFor).length} por hacer`),
           ...pending.map(cardEl),
           ...items.filter((c) => c.state === 'hecho').map(cardEl),
@@ -372,7 +377,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       return { id: u.id, lane: u.lane_key ?? '', title: u.label ?? '', state: stateOf(u), recurring: u.kind === 'recurring', prio: u.kind === 'recurring' ? null : u.prio,
         tipo: p.tipo ?? null, order: u.idx ?? 0, ref: p.ref ?? null, url: typeof p.url === 'string' && /^https:\/\//.test(p.url) ? p.url : null, urlText: p.url_text ?? null,
         steps: Array.isArray(p.steps) ? p.steps : [], note: p.note ?? null, hito: u.parent_id ?? null, paso: typeof p.paso === 'number' ? p.paso : null, unit: u,
-        waitsFor: null, blocks: false } as Card;
+        waitsFor: null, waitsAll: [], blocks: false } as Card;
     });
     // Hitos numerados por su orden (número fijo aunque se filtre); el primer paso sin hacer bloquea, los de detrás esperan.
     hitos = hitoUnits.sort((a, b) => (a.payload?.orden ?? 0) - (b.payload?.orden ?? 0)).map((u, i) => {
@@ -384,7 +389,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       const minPaso = open.length ? Math.min(...open.map((s) => s.paso ?? 0)) : null;
       for (const s of open) {
         if ((s.paso ?? 0) === minPaso) s.blocks = true;
-        else s.waitsFor = open.find((b) => (b.paso ?? 0) < (s.paso ?? 0)) ?? null;
+        else { s.waitsAll = open.filter((b) => (b.paso ?? 0) < (s.paso ?? 0)); s.waitsFor = s.waitsAll[0] ?? null; }
       }
       return { id: u.id, title: u.label ?? '', orden: u.payload?.orden ?? i + 1, doneAt: u.done_at ?? null, steps, number: i + 1 };
     });

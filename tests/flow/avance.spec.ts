@@ -86,12 +86,17 @@ test('avance · caja general, discos, filtros y tarjeta con pasos que se marca h
   await page.reload();
   await expect(page.locator('.avance-chip', { hasText: 'Urgente' })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.avance-chip', { hasText: 'Urgente' }).click();
-  // Con un filtro, la tarjeta bloqueada por su hito va aparte, plegada, con lo que la bloquea (VG, 27-10).
+  // Filtro de agentes: la bloqueada por un paso de un agente fuera del filtro va aparte, plegada, con lo que la bloquea (VG, 27-10).
   await page.locator('.avance-disc', { hasText: 'Flow' }).click();
   const blocked = page.locator('details.avance-blocked');
   await expect(blocked.locator('summary')).toHaveText('Bloqueadas (1)');
-  await expect(blocked.locator('.avance-card', { hasText: 'Pantalla nueva' })).toContainText('bloqueada por: «Exportar el tablero»');
+  await expect(blocked.locator('.avance-card', { hasText: 'Pantalla nueva' })).toContainText('bloqueada por: «Exportar el tablero» (Core)');
   await expect(page.locator('.avance-card:visible', { hasText: 'Pantalla nueva' })).toHaveCount(0);
+  // Con Core también en el filtro, sale en su sitio con «en espera».
+  await page.locator('.avance-disc', { hasText: 'Core' }).first().click();
+  await expect(page.locator('details.avance-blocked')).toHaveCount(0);
+  await expect(page.locator('.avance-card.is-waiting', { hasText: 'Pantalla nueva' })).toHaveCount(1);
+  await page.locator('.avance-disc', { hasText: 'Core' }).first().click();
   await page.locator('.avance-disc', { hasText: 'Flow' }).click();
   // La tarjeta de Víctor despliega sus pasos y se marca hecha.
   await page.locator('.avance-disc', { hasText: 'Víctor' }).click();
