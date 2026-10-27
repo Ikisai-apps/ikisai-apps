@@ -73,7 +73,7 @@ test('uso y cobertura · desde Revisión; estado por función, filtro y «Retira
   await page.getByRole('button', { name: 'Cancelar' }).click();
   expect(await decision('tasks.lista.exportar')).toBeNull();
   await nobody.getByRole('button', { name: 'Retirar' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Retirar' }).click();
+  await page.locator('#dialogConfirm').click(); // el diálogo del kit es un alertdialog
   await expect.poll(() => decision('tasks.lista.exportar')).toBe('retirar');
   await expect(nobody.getByRole('button', { name: 'Retirar' })).toHaveAttribute('aria-pressed', 'true');
   // Otra vez la misma: la quita.
