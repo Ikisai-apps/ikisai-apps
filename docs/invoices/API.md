@@ -2013,6 +2013,7 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
 - **Apuntes de otras apps** (`app_entries.receipt_kind`): con justificante y sin decir cuál, factura (lo de la 0245).
   - **Gasto con factura:** fiscal. Va a la gestoría y su IVA cuenta como soportado, venga de la app que venga: en Gestoría resta del saldo, y en `resumen_impuestos.csv` va como `iva_soportado_apps_total`.
   - **Gasto con ticket:** de proceso. Se registra, pero no es deducible. Pedirlo fiscal da `422 INVOICE_REQUIRED`.
+  - **`receipt_kind` explícito (0248):** con `receipt_number` o `receipt_file_id` y sin `receipt_kind`, si el apunte no tenía ya uno, `422 RECEIPT_KIND_REQUIRED`. Sin justificante, igual que antes.
   - **Ingreso con ticket:** fiscal. La venta va al IVA repercutido.
   - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
 - **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
