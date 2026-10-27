@@ -13,6 +13,8 @@
  *   pendientes, 409 `REVIEW_NOT_READY`, salvo una owner con el área entera, `override` y una nota.
  * - `GET reviews/projection?reviewId=…|eventRef=…`: la revisión con sus zonas, ítems y totales
  *   (`tasks.review_items_projection`); capacidad `tasks.review_projection`. También quien solo lee.
+ * - `GET reviews/day?date=AAAA-MM-DD`: las revisiones que tocan ese día (vencen ese día o siguen sin abrir de antes), con su
+ *   plantilla, estado y totales (`tasks.reviews_of_day`, §59); capacidad `tasks.reviews_day`, para el recorrido de Flow.
  */
 import { createSync, fail, type AppRoute, type Supabase } from '../_kit/mod.ts';
 
@@ -81,6 +83,12 @@ export function reviewRoutes(supabase: Supabase): AppRoute[] {
       if (!reviewId && !eventRef) fail(422, 'INVALID_INPUT', 'Falta reviewId o eventRef.', { field: 'reviewId' });
       return await supabase.rpc('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.review_items_projection',
         p_args: reviewId ? { reviewId: reviewId.toLowerCase() } : { eventRef } });
+    },
+  }, {
+    method: 'GET', pattern: 'reviews/day', handler: async ({ ctx, url }) => {
+      const date = url.searchParams.get('date');
+      if (date !== null && (!DATE.test(date) || Number.isNaN(Date.parse(date)))) fail(422, 'INVALID_INPUT', 'date va como AAAA-MM-DD.', { field: 'date' });
+      return await supabase.rpc('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.reviews_of_day', p_args: date ? { date } : {} });
     },
   }];
 }
