@@ -5,7 +5,7 @@
  * es su cliente de Flow (FL2: `visitor_join` al tocar, `flow_visitor_customer` para pintar); sin Flow, la carta pública.
  * Un visitante nunca ve a otros.
  */
-import { clearGuideLink, clearReturnTo, createFieldPointer, createGuide, currentGuideLink, currentReturnTo, el, flowGuideSource, icon, onSaved, replace, toast, type GuideApiClient } from '@ikisai/ui-kit';
+import { clearGuideLink, clearReturnTo, createFieldPointer, createGuide, currentGuideLink, currentReturnTo, el, fieldAttrs, flowGuideSource, type GuideApiClient, icon, onSaved, replace, toast } from '@ikisai/ui-kit';
 import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
@@ -321,17 +321,17 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
           catch (error) { button.disabled = false; toast(errorCodeOf(error) === 'NOT_FOUND' ? t('vlink.notReady') : visitorError(error)); }
         } }, t('vlink.ready')) : null))) : null;
 
-    const field = (id: string, label: string, help: string | null, attrs: Record<string, string> = {}) => {
-      const input = el('input', { id, class: 'input', ...attrs }) as HTMLInputElement;
+    const field = (id: string, label: string, help: string | null, attrs: Record<string, string | null> = {}) => {
+      const input = el('input', { id, class: 'input', ...attrs /* data-field-id literal en cada llamada (fieldAttrs) */ }) as HTMLInputElement;
       return { input, row: el('label', { class: 'field', for: id }, el('span', null, label), input, help ? el('span', { class: 'small' }, help) : null) };
     };
     const keep = el('p', { class: 'small' }, t('visitor.keep'));
 
     let join: HTMLElement | null = null;
     if (event.joinable && !joined) {
-      const name = field('visitorName', t('visitor.name'), null, { autocomplete: 'given-name', maxlength: '80', required: '' });
-      const contact = field('visitorJoinContact', t('visitor.contactOptional'), t('visitor.contactWhy'), { autocomplete: 'off', maxlength: '200' });
-      const note = field('visitorNote', t('visitor.note'), null, { maxlength: '300' });
+      const name = field('visitorName', t('visitor.name'), null, { autocomplete: 'given-name', maxlength: '80', required: '', ...fieldAttrs({ id: 'guests.visitante.apuntarme.nombre', entity: 'booking.visitor_requests', prop: 'name', type: 'text', required: true, sensitivity: 'personal' }) });
+      const contact = field('visitorJoinContact', t('visitor.contactOptional'), t('visitor.contactWhy'), { autocomplete: 'off', maxlength: '200', ...fieldAttrs({ id: 'guests.visitante.apuntarme.contacto', entity: 'booking.visitor_requests', prop: 'contact', type: 'text', required: false, sensitivity: 'personal' }) });
+      const note = field('visitorNote', t('visitor.note'), null, { maxlength: '300', ...fieldAttrs({ id: 'guests.visitante.apuntarme.nota', entity: 'booking.visitor_requests', prop: 'note', type: 'text', required: false, sensitivity: 'personal' }) });
       const send = el('button', { type: 'submit', class: 'primary', id: 'visitorJoin', 'data-feedback-id': 'guests.visitante.apuntarme.enviar', 'data-feedback-label': 'Apuntarme como visitante' }, t('retreats.join'));
       join = el('form', { class: 'card gcard', id: 'visitorJoinForm', novalidate: '',
         onsubmit: async (e: Event) => {
@@ -346,7 +346,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
     const pendingContact = list.some((r) => r.kind === 'contact' && r.status === 'pendiente');
     let leave: HTMLElement | null = null;
     if (!pendingContact) {
-      const contact = field('visitorContact', t('visitor.contact'), t('visitor.contactWhyNext'), { autocomplete: 'off', maxlength: '200' });
+      const contact = field('visitorContact', t('visitor.contact'), t('visitor.contactWhyNext'), { autocomplete: 'off', maxlength: '200', ...fieldAttrs({ id: 'guests.visitante.dato.contacto', entity: 'booking.visitor_requests', prop: 'contact', type: 'text', required: true, sensitivity: 'personal' }) });
       const send = el('button', { type: 'submit', class: 'ghost', id: 'visitorLeave', 'data-feedback-id': 'guests.visitante.dato.enviar', 'data-feedback-label': 'Dejar un dato' }, t('visitor.leave'));
       leave = el('details', { class: 'card gcard', id: 'visitorLeaveBox', 'data-feedback-id': 'guests.visitante.dato.abrir', 'data-feedback-label': 'Déjanos un dato' },
         el('summary', null, t('visitor.leaveTitle')),
@@ -364,7 +364,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
 
   /** «Ya tengo invitación»: el vínculo consentido con su ficha es su propio enlace (`/i/<token>`). */
   function invitation(): HTMLElement {
-    const input = el('input', { id: 'visitorInvite', class: 'input', type: 'url', inputmode: 'url', autocomplete: 'off', placeholder: 'https://guests.ikisai.com/i/…' }) as HTMLInputElement;
+    const input = el('input', { id: 'visitorInvite', class: 'input', type: 'url', inputmode: 'url', autocomplete: 'off', placeholder: 'https://guests.ikisai.com/i/…', ...fieldAttrs({ id: 'guests.visitante.invitacion.enlace', type: 'url', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
     return el('details', { class: 'card gcard', id: 'visitorInviteBox', 'data-feedback-id': 'guests.visitante.invitacion.abrir', 'data-feedback-label': 'Ya tengo invitación' },
       el('summary', null, t('visitor.invite')),
       el('p', { class: 'small' }, t('visitor.inviteText')),

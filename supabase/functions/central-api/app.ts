@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  BED_LAYOUT_PROJECTION, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
+  BED_LAYOUT_PROJECTION, FIELD_COVERAGE_READ, canDeclareUtility, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
   type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -172,6 +172,21 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
     // Panel de dirección (API.md §7.2): lee la proyección de KPIs de cada app con la clave de servicio y la registración
     // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`; si la app
     // la publica solo para otros roles (FORBIDDEN), se omite: no es que no tenga indicadores, es que este rol no los ve.
+    // Revisor › cobertura de campos: lo que da el núcleo (`core_field_coverage`, 0111) y lo que da Flow (anclajes de los
+    // pasos y reglas, `flow.anchor_coverage_read`). Solo metadatos. Para Dirección; si Flow no responde, `flowAvailable: false`
+    // y las clases «directo» y «automático» no salen (no se dice que no las haya).
+    {
+      method: 'GET', pattern: 'coverage/fields', handler: async ({ ctx, url }) => {
+        if (!canDeclareUtility(ctx.membership)) fail(403, 'FORBIDDEN', 'La cobertura de campos es para Dirección.');
+        const app = url.searchParams.get('app') || null;
+        if (app !== null && !/^[a-z][a-z0-9_]*$/.test(app)) fail(422, 'INVALID_ARGS', 'App no válida.');
+        const core = await supabase.rpc<{ fields: unknown[]; declared: unknown }>('core_field_coverage', { p_actor: ctx.user.id, p_app: app, p_duplicates: 'exact' });
+        let flow: { anchors: unknown[]; rules: unknown[] } = { anchors: [], rules: [] };
+        let flowAvailable = true;
+        try { flow = await read<{ anchors: unknown[]; rules: unknown[] }>(ctx, FIELD_COVERAGE_READ, app ? { app } : {}); } catch { flowAvailable = false; }
+        return { fields: core?.fields ?? [], declared: core?.declared ?? null, anchors: flow?.anchors ?? [], rules: flow?.rules ?? [], flowAvailable };
+      },
+    },
     // Camas en el plano con un solo modelo (VG, 27-10): la disposición de cada cama la guarda Booking y Central la lee aquí
     // para derivar su forma. Si Booking no responde, ninguna cama en el plano (`available: false`), nunca la forma vieja.
     {

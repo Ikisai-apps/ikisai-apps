@@ -53,6 +53,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const split = prepSplitOf(menu.prep_split);
     const MARKS = { mesa: 'food.carta.prevision.reparto_mesa', nevera: 'food.carta.prevision.reparto_nevera', fresco: 'food.carta.prevision.reparto_fresco' } as const;
     const field = (key: 'mesa' | 'nevera' | 'fresco', label: string) => el('input', {
+      // Los tres porcentajes son un solo dato: el reparto de la carta.
+      'data-field-id': 'food.carta.prevision.reparto', 'data-field-entity': 'food.menus', 'data-field-prop': 'prep_split',
       'data-feedback-id': MARKS[key], 'data-feedback-label': label, id: `split-${key}`, type: 'number', inputmode: 'numeric',
       min: '0', max: '100', step: '1', value: String(split[key]), disabled: !canWrite, 'aria-label': `${label} (%)` }) as HTMLInputElement;
     const mesa = field('mesa', 'En bandeja, en mesa');

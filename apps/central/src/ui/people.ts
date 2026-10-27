@@ -6,7 +6,7 @@ import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
   FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATIONS, RELATION_LABELS,
   DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, OUTSIDER_ACCESS_TEXT, proposeHouseLevel, relationForLevel, type HouseGrant, type HouseLevel,
-  houseDoors, pendingDoors, PORTAL_REACH_LABELS, type HouseDoor,
+  HOUSE_LEVEL_DOORS, houseDoors, pendingDoors, PORTAL_REACH_LABELS, type HouseDoor,
   flowProjectsOf, flowScopeSummary, sortFlowProjects, withFlowProjects, type FlowProject,
   canSeeReserved, dueState, personStatus, recordTypesFor, todayInMadrid, validateOperations, type RecordKind,
 } from '@ikisai/domain-central';
@@ -1247,6 +1247,9 @@ export function mountPerson(personId: string): ViewMount {
         fbMark(s, 'central.persona.cuenta.dar.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
         return el('label', { class: 'approw', 'data-feedback-id': 'central.persona.cuenta.dar.app', 'data-feedback-label': 'Acceso a una app' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, ''))), s);
       });
+      // Con nivel de casa, sus accesos llegan solos al enlazar la cuenta: basta el correo (las apps, opcionales y plegadas).
+      const byLevel = houseLevelsOn && person.house_level ? person.house_level : null;
+      const levelApps = byLevel ? Object.keys(HOUSE_LEVEL_DOORS[byLevel]).map((id) => catalog.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id) : [];
       const submit = el('button', { class: 'primary', type: 'submit', form: 'giveForm', id: 'giveSubmit', 'data-feedback-id': 'central.persona.cuenta.dar.enviar', 'data-feedback-label': 'Dar cuenta' }, 'Dar cuenta') as HTMLButtonElement;
       const form = el('form', { novalidate: true, id: 'giveForm', 'data-feedback-id': 'central.persona.cuenta.dar.formulario', 'data-feedback-label': 'Formulario de cuenta', onsubmit: async (event: Event) => {
         event.preventDefault();
@@ -1254,7 +1257,7 @@ export function mountPerson(personId: string): ViewMount {
         const mail = email.value.trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { error.textContent = 'Escribe un correo válido.'; return; }
         const memberships = [...selects].filter(([, s]) => s.value).map(([app, s]) => ({ app, role: s.value as Role }));
-        if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
+        if (!memberships.length && !byLevel) { error.textContent = 'Elige al menos una app.'; return; }
         submit.disabled = true;
         try {
           // Una persona, una ficha, una cuenta: si el correo ya tiene cuenta, se avisa y se elige antes de dar el alta.
@@ -1287,7 +1290,13 @@ export function mountPerson(personId: string): ViewMount {
         }
       } },
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.cuenta.dar.campo_correo', 'data-feedback-label': 'Correo de la cuenta' }, el('span', null, 'Correo de la cuenta'), email),
-      el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.persona.cuenta.dar.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'), ...rows, error);
+      byLevel ? el('p', { class: 'muted small', id: 'giveByLevel', 'data-feedback-id': 'central.persona.cuenta.dar.por_nivel', 'data-feedback-label': 'Accesos por nivel de casa' },
+        `Escribe su correo delante de la persona. Sus accesos los da su nivel «${HOUSE_LEVEL_LABELS[byLevel]}»: ${levelApps.join(', ')}. Después verás una contraseña temporal una sola vez.`) : null,
+      byLevel
+        ? el('details', { class: 'ctl-giveextra', 'data-feedback-id': 'central.persona.cuenta.dar.otros', 'data-feedback-label': 'Otros accesos' },
+          el('summary', null, 'Otros accesos (opcional)'), ...rows)
+        : el('div', null, el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.persona.cuenta.dar.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'), ...rows),
+      error);
       sheet = ignoreSheetMeta(openSheet({
         title: 'Dar cuenta', meta: person.display_name, body: form,
         panelAttrs: { 'data-feedback-id': 'central.persona.cuenta.dar', 'data-feedback-label': 'Dar cuenta' },

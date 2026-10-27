@@ -15,3 +15,4 @@ export * from './coverage.ts';
 export * from './agents.ts';
 export * from './beds.ts';
 export * from './weekly.ts';
+export * from './field-coverage.ts';

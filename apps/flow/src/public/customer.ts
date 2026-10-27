@@ -10,8 +10,8 @@ export interface CustomerId { token: string; number: number | null }
 
 export interface MyOrder {
   id: string; createdAt: string; status: 'open' | 'paid' | 'delivered'; paySeq: number | null; totalCents: number | null; preparing: boolean;
-  /** Pedido de prueba de un miembro (0952): su nombre; no se cobra como uno de verdad. */
-  testName?: string | null;
+  /** Pedido de un miembro (0952): su nombre; `testExcluded`, de prueba (fuera del horario del evento: no cuenta en caja). */
+  testName?: string | null; testExcluded?: boolean;
   lines: Array<{ name: string; scope: string; code: string; quantity: number; deliveredQty: number; prepared: boolean; preparedQty: number }>;
 }
 

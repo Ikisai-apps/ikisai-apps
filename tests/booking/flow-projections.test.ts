@@ -37,7 +37,7 @@ test('event_projection · Flow (y Booking) leen el evento con sus fechas y su af
   for (const [app, role] of [['flow', 'reader'], ['flow', 'editor'], ['flow', 'owner'], ['booking', 'reader']] as const) {
     const rows = await read(app, await member(app, role), READS.eventProjection, { event_id: ev });
     assert.equal(rows.length, 1, `${app} ${role}`);
-    assert.deepEqual(Object.keys(rows[0]).sort(), ['ends_on', 'event_code', 'event_id', 'event_revision', 'expected_attendance', 'kind', 'name', 'public_code', 'starts_on', 'status']);
+    assert.deepEqual(Object.keys(rows[0]).sort(), ['ends_on', 'event_code', 'event_id', 'event_revision', 'expected_attendance', 'kind', 'name', 'public_code', 'service_hours', 'starts_on', 'status']);
     assert.match(String(rows[0].public_code), /^[A-Z2-9]{10}$/, 'el código público del QR (1405)');
     assert.deepEqual([rows[0].name, rows[0].kind, rows[0].status, rows[0].starts_on, rows[0].ends_on, rows[0].expected_attendance],
       ['Encuentro de otoño (sintético)', 'jornadas_abiertas', 'confirmada', '2026-10-30', '2026-11-01', 120]);
