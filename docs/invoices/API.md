@@ -2204,3 +2204,29 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
   - `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en la Edge de Finance;
   - el endpoint del webhook dado de alta en Stripe con los eventos `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `charge.refunded`.
 
+
+### 19.5 Redsys (tarjeta y Bizum): segundo adaptador
+
+VG decidió el 27-10 «Stripe primero, Redsys después». Esta parte es solo el adaptador en `_domain/payments`, con el mismo contrato `PaymentGateway`. El enlace con Finance (interruptor, rutas públicas, conciliación) va en la PR siguiente.
+
+**Archivos:**
+- `redsys.ts`: `createRedsysGateway({ secretKey, merchantCode, terminal, environment: 'pruebas' | 'real', goUrl, notifyUrl, methods })`.
+- `des.ts`: 3DES en TS puro, porque WebCrypto no tiene DES. Solo sirve para la clave de firma.
+- `fake-redsys.ts`: el adaptador de verdad con una clave sintética y el REST en memoria.
+
+**En qué se diferencia de Stripe:**
+- **No hay URL de pago.** `createCheckout` devuelve el formulario firmado en `session.form` y `session.url = goUrl/<pedido>`. La app guarda el formulario y lo sirve en su página de paso (`redsysGoPage`), que lo manda a Redsys. Si el enlace ha caducado o está cancelado, la app no lo sirve.
+- **Pedido:** 12 caracteres (4 cifras y 8 alfanuméricos), estable por clave de idempotencia. Hace de `sessionId` y de referencia del pago.
+- **Firma `HMAC_SHA256_V1`:**
+  - clave del pedido = 3DES-CBC (IV a cero) de la clave del comercio y el número de pedido;
+  - firma = HMAC-SHA256 de `Ds_MerchantParameters` con esa clave, en base64;
+  - `verifyRedsysNotification` acepta también la base64 «de URL» de los avisos.
+- **Bizum:** `methods: 'bizum'` (`DS_MERCHANT_PAYMETHODS = z`), `'card'` (`C`) o los dos (por defecto).
+- **No se pregunta ni se caduca en la pasarela** (`queryable: false`): `getCheckout` y `expireCheckout` dan `NOT_SUPPORTED`. El estado llega por el aviso firmado y la caducidad la lleva la app.
+- **Avisos** (`normalizeRedsysNotification`), con los metadatos en `Ds_MerchantData`:
+  - `Ds_Response` 0000–0099 → `paid`;
+  - devolución (tipo 3) con `0900` → `refunded`;
+  - lo demás → `failed`.
+- **Devoluciones:** REST `trataPeticionREST`, tipo 3. Redsys no tiene idempotencia, así que la app no repite una devolución hecha.
+
+**Secretos** (solo en la Edge, nunca en el repo): `REDSYS_SECRET_KEY`, `REDSYS_MERCHANT_CODE`, `REDSYS_TERMINAL` y `REDSYS_ENV`.
