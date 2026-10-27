@@ -48,7 +48,7 @@ function tkphSheet(phaseId){const p=project();if(!p)return;const list=tkphList(p
     if(f.order===other.order)f.order=Number(other.order)+(d>0?1:-1);if(tkphSave(p))tkphSheet(f.id)};
   const up=$('tkphUp');if(up)up.onclick=()=>swap(-1);
   const down=$('tkphDown');if(down)down.onclick=()=>swap(1);
-  $('tkphDel').onclick=()=>{p.phases=(p.phases||[]).filter(x=>x.id!==f.id);
+  const del=$('tkphDel');if(del)del.onclick=()=>{p.phases=(p.phases||[]).filter(x=>x.id!==f.id);
     for(const t of p.tasks||[])if(t.phaseId===f.id){t.phaseId=null;touch(t)}
     if(tkphSave(p,tasks.length?`Fase quitada: ${tasks.length===1?'su tarea queda':`sus ${tasks.length} tareas quedan`} sin fase.`:'Fase quitada.'))closeSheet()}}
 
