@@ -338,6 +338,10 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
 - **`food.carta_prep_totals_projection`** (Flow y Food), una fila por componente con las líneas sumadas: `menu_id`, `component_key`, `item_id`, `ingredient_id`, `name`, `unit`, `need_total`, `mesa`, `nevera`, `fresco`, `convertible` (falso si alguna línea no lo es) y `station` (si el ingrediente va en estaciones distintas, la menor).
 - **Lista de la compra de una carta:** `food.regenerate_shopping` con el `menu_id` de la carta, sin rango. Suma las unidades esperadas por lo que gasta cada una, convertido a la unidad del artículo si se puede y, si no, en la unidad de la receta. Las bebidas y los extras entran por su ingrediente de Food, que se crea enlazado a su artículo si falta (`food.carta_ensure_ingredients`, id estable). Las fuentes (`food.carta_shopping_sources`) son las líneas, las recetas, sus cantidades y los ingredientes.
 
+- **En la app** (`#/cartas/<id>/prevision` y `#/cartas/<id>/compra`; `ui/carta-prevision.ts`): la carta tiene tres pestañas, Carta, Previsión y Compra.
+  - **Previsión:** el reparto (mesa, nevera y fresco; avisa si no suma 100), los asistentes esperados (si no se tocan, los del evento), «Por persona» y «Total» enlazados en cada línea disponible, y el plan de bandejas. Se guardan los dos valores. Al cambiar los asistentes, las líneas con «por persona» recalculan su total. El plan viene de `food.carta_prep_totals_projection` y necesita red. Lleva el ingrediente, la estación, el total, la mesa, la nevera y el fresco, en g o ml por debajo de 1 kg o 1 l. Las bebidas y los extras van aparte. Se imprime solo el plan. Lo que no tiene conversión dice «falta la conversión» y lleva a la Despensa.
+  - **Compra:** la pestaña Compra de siempre (`mountShopping` con `carta: true`). Sabe si está al día con `cartaShoppingSources`, que coincide con `food.carta_shopping_sources`.
+
 ### 2.3 Compra, preparación y stock
 
 ```text
