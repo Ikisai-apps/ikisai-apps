@@ -53,6 +53,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   // Avisos a Tasks (1104) y lo que piden los menús que vienen: el «!» va en la etapa si la máquina hace falta.
   let notices: Array<Mirror<EquipmentNotice>> = [];
   let needed = new Set<string>();
+  // Cuántas recetas la necesitan y cuántas de ellas están en lo que viene (hallazgo F-MAQ-2).
+  let demand = new Map<string, { recipes: number; coming: number }>();
   const journeyOf = (row: Row) => equipmentJourney(row as Row & { status_since?: string | null }, notices);
 
   /** El recorrido: pequeño en la fila, completo en la hoja; siempre con la palabra del estado y, en la hoja, lo siguiente. */
@@ -85,12 +87,19 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     canWrite() ? el('button', { 'data-feedback-id': 'food.maquinaria.nueva', 'data-feedback-label': 'Nueva máquina', class: 'fab', type: 'button', id: 'newEquipment', onclick: () => openEditor(null) }, icon('plus'), 'Nueva máquina') : null,
   );
 
+  /** «La necesitan 3 recetas · 2 en menús que vienen». */
+  function demandText(id: string): string {
+    const d = demand.get(id);
+    if (!d) return '';
+    return [d.recipes === 1 ? 'La necesita 1 receta' : `La necesitan ${d.recipes} recetas`, d.coming ? `${d.coming} en menús que vienen` : ''].filter(Boolean).join(' · ');
+  }
+
   function item(row: Row, deleted: boolean): HTMLElement {
     const chip = row.status === 'operativo' ? [] : [el('span', { class: row.status === 'limitado' ? 'chip' : 'chip alert' }, EQUIPMENT_STATUS_LABELS[row.status])];
     const node = listRow({
       id: row.id,
       title: row.name,
-      meta: [row.quantity === 1 ? '1 unidad' : `${row.quantity} unidades`, row.category ?? '', placeOf(row)].filter(Boolean),
+      meta: [row.quantity === 1 ? '1 unidad' : `${row.quantity} unidades`, row.category ?? '', placeOf(row), deleted ? '' : demandText(row.id)].filter(Boolean),
       chips: chip,
       pending: row._pending === true,
       deleted,
@@ -108,7 +117,10 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   }
 
   function paint(): void {
-    const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    // Lo que necesita atención, arriba (hallazgo F-MAQ-1, decisión de Core del 27-10): averiado o fuera de servicio, luego
+    // limitado y luego operativo; dentro de cada grupo, por orden alfabético.
+    const urgency = (r: Row) => (r.status === 'averiado' || r.status === 'fuera_de_servicio' ? 0 : r.status === 'limitado' ? 1 : 2);
+    const sorted = [...rows].sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name, 'es'));
     const active = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     replace(list, ...active.map((r) => item(r, false)));
@@ -131,6 +143,13 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     const coming = new Set(services.filter((sv) => !sv.deleted_at && sv.service_date >= today).map((sv) => sv.id));
     const recipesComing = new Set(items.filter((i) => !i.deleted_at && coming.has(i.service_id)).map((i) => i.recipe_id));
     needed = new Set(uses.filter((u) => !u.deleted_at && recipesComing.has(u.recipe_id)).map((u) => u.equipment_id));
+    demand = new Map();
+    for (const u of uses.filter((x) => !x.deleted_at)) {
+      const d = demand.get(u.equipment_id) ?? { recipes: 0, coming: 0 };
+      d.recipes += 1;
+      if (recipesComing.has(u.recipe_id)) d.coming += 1;
+      demand.set(u.equipment_id, d);
+    }
     try {
       const r = resourcesClient(client);
       const [items, spaceRows, moves] = await Promise.all([r.list(R.items), r.list(R.spaces), r.list(R.movements)]);

@@ -91,7 +91,7 @@ test('caracterización R5 · Inicio, Maquinaria, ficha y formulario de receta, y
     await capture(page, '01-inicio');
   });
 
-  await test.step('Maquinaria: por orden alfabético, con unidades, tipo y ubicación; el estado, si no es operativo', async () => {
+  await test.step('Maquinaria: lo que falla arriba y, dentro, por orden alfabético (decisión de Core del 27-10, F-MAQ-1), con unidades, tipo y ubicación; el estado, si no es operativo', async () => {
     await page.goto(`${baseURL}/#/maquinaria`);
     const rows = page.locator('#equipmentList .row');
     await expect(rows.locator('.name')).toHaveText(['Abatidor', 'Freidora', 'Horno']);
