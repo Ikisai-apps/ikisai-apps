@@ -16,7 +16,8 @@ export interface PublicOperation {
 
 export interface PublicBatchResult { cursor: number; results: unknown[] }
 
-export async function applyPublicOperations(supabase: Supabase, app: string, operations: PublicOperation[]): Promise<PublicBatchResult> {
+/** `visitorId` (C11): el visitante que firma el lote; los hooks lo leen con core.current_visitor(). */
+export async function applyPublicOperations(supabase: Supabase, app: string, operations: PublicOperation[], visitorId: string | null = null): Promise<PublicBatchResult> {
   await ensureServiceActor(supabase, app);
-  return supabase.rpc<PublicBatchResult>('core_apply_public_operations', { p_app: app, p_operations: operations });
+  return supabase.rpc<PublicBatchResult>('core_apply_public_operations', { p_app: app, p_operations: operations, p_visitor: visitorId });
 }
