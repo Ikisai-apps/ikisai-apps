@@ -8,7 +8,8 @@
    Las filas salen de Sync.core.data['tasks.task_materials'] y los cambios son operaciones del dominio
    (IkisaiTasks.materials) que se confirman por el mismo camino que las compras (purchaseRun). */
 const M=()=>IkisaiTasks.materials;
-const EQUIPMENT_DEFAULT=new Set(['menaje','textil','herramienta','maquina']);
+// `epi` (migración 0813 de Recursos): los EPI se cuentan, no se gastan.
+const EQUIPMENT_DEFAULT=new Set(['menaje','textil','herramienta','maquina','epi']);
 function canEditMaterials(){return canEdit()&&Sync.actor?.role!=='outsider'&&Sync.actor?.kind!=='agent'}
 function inventoryItem(id){return Sync.core?.inventory?.items.find(i=>i.id===id)||null}
 /* Consumible según su tipo (los de la semilla de Recursos; uno nuevo, consumible salvo que se diga). El servidor lo decide
