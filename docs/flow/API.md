@@ -431,3 +431,12 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 ## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
 
 - En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).
+
+## 42. «Alójate aquí» en la carta pública (migración `0936`)
+
+- `GET public/menu` añade `lodging: {eventCode}` (código público del evento) solo si el evento del flujo admite alojamiento según `booking_public_events`; si Booking no responde, `null`.
+- Al tocar «Alójate aquí», la carta:
+  1. obtiene un visitante del kit si no lo tiene (`POST public/visitor`, se guarda en el navegador);
+  2. liga su cliente web a ese visitante (`POST public/customer_visitor`, con `X-Flow-Customer` y `X-Visitor`): una vez, solo un cliente web sin visitante y solo con el visitante que firma el lote;
+  3. pide el código de traspaso (`POST public/visitor/handoff`, núcleo 0106: 5 min, un uso, misma IP) y abre `https://ven.ikisai.com/e/<código>?alojate&v=<código de traspaso>`.
+- `customers_visitor_check`: un cliente web puede tener visitante; uno de huésped, no.
