@@ -1,6 +1,7 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { closedMenus, defaultOfferFields, isCartaMenu, eventSnapshot, type EventOffer, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { eventShoppingHash } from './event-shopping.ts';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
@@ -182,6 +183,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
         el('div', { class: 'btnrow' }, el('a', { 'data-feedback-id': 'food.eventos.ficha.abrir_booking', 'data-feedback-label': 'Abrir en Booking', class: 'ghost', href: bookingReservationUrl(event), target: '_blank', rel: 'noopener', id: 'openBooking' }, event.reservation_id ? 'Abrir la reserva en Booking' : 'Abrir Booking'))) : null,
       cancelled ? null : cartaBlock(event),
       cancelled ? null : offersBlock({ client, event, menus: allMenus, offers, canWrite: canWrite(), onChange: () => { void sheet?.close(true); } }),
+      // La lista de la compra única del evento (1117): suma el menú y las cartas del evento.
+      !cancelled && (menu || cartaOf(event)) ? el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.eventos.ficha.lista_compra', 'data-feedback-label': 'Lista de la compra del evento',
+        class: 'ghost', type: 'button', id: 'openEventShopping', onclick: () => { void sheet?.close(true); navigate(eventShoppingHash(event.event_id)); } }, 'Lista de la compra del evento')) : null,
       canCreate ? el('fieldset', { 'data-feedback-id': 'food.eventos.ficha.propuesta', 'data-feedback-label': 'Propuesta de servicios', class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
         el('label', { class: 'field' }, el('span', null, gap ? 'Proponer servicios como' : 'Régimen de la propuesta'), plan),
         picksHost,

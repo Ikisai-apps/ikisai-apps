@@ -42,6 +42,10 @@ export interface ShoppingListItem extends SyncedColumns {
   min_quantity?: number | null;
   /** Línea de «Reponer»: bajo mínimo y sin menú que la pida (R5b). */
   restock?: boolean;
+  /** Pedida a Tasks (1117): referencia, proyecto y cantidad pedida. Las escribe la Edge. */
+  purchase_ref?: string | null;
+  purchase_project_id?: string | null;
+  purchase_requested?: number | string | null;
 }
 
 export interface PreparationItem extends SyncedColumns {

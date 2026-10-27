@@ -390,6 +390,40 @@ Lo que Food ofrece a otras apps (Flow, Booking) con los permisos reales de la pe
 - Los anclajes son los ids de feedback de cada pantalla.
 - **`POST carta/:id/use-in-event {requestId, eventId?, name?}`:** valida el evento y lee la carta con `food.carta_copy_source`. Hace un solo commit con ids estables por `requestId`, así que repetirlo devuelve la misma copia (`replayed: true`). Errores: `CARTA_NOT_FOUND` y `EVENT_NOT_FOUND`.
 
+### 2.15 Lista de la compra única por evento (28-10-2026, encargo de Core; migración 1117)
+
+Diseño: `MUELA/equipo/feedback/food/LISTA_COMPRA.md`.
+
+- **`POST read/food.event_shopping {event_id}`** (lector, editor y owner):
+  - Suma las listas ya generadas de los menús del evento: el menú cerrado y las cartas, los suyos (`event_id`) y los de sus ofertas.
+  - Devuelve `menus`, cada uno con `list_id` null si aún no tiene lista: la pantalla lo avisa.
+  - Devuelve `rows`, una por ingrediente, unidad y tienda, con:
+    - `key`, `name`, `unit`, `supplier`;
+    - `aisle`, la categoría del artículo;
+    - `pending`, `bought` y `requested`;
+    - `purchase_ref` y `purchase_project_id`;
+    - `status`: `pendiente`, `pedida` o `comprado`;
+    - `menus`;
+    - `lines`, con las líneas de cada menú.
+- **Columnas nuevas en `food.shopping_list_items`:** `purchase_ref`, `purchase_project_id` y `purchase_requested`.
+  - Las escribe solo la Edge; para el cliente están reservadas.
+  - Una línea con `purchase_ref` no entra en la Despensa desde Food: el stock entra por Recursos al recibirla en Tasks.
+- **Edge (editor u owner; necesita red):**
+  - `GET events/:id/shopping/projects` devuelve los proyectos abiertos de Tasks.
+  - `POST events/:id/shopping/request {projectId, keys}` pide a Tasks (`requests/purchase`, capacidad `tasks.request_purchase`) lo pendiente sin pedir de esas filas. Hace una compra por fila:
+    - con `external_ref` = `food:event:<evento>:<key>`; lo pendiente nuevo de una fila ya pedida lleva `:2`, `:3`…;
+    - con título «Arroz · 3 kg (Evento)»;
+    - con `due`, el día antes del evento;
+    - con la nota del proveedor y de qué menús sale;
+    - con el enlace `#/eventos/<id>/compra`.
+    Después lo apunta en las líneas.
+  - `POST events/:id/shopping/refresh` vuelve a pedir con la misma referencia, que devuelve la compra con su estado sin crear otra. Marca las líneas `comprado` (`purchased`) o `recibido` (`received`).
+- **Pantalla `#/eventos/<id>/compra`:** se abre desde la ficha del evento con «Lista de la compra del evento».
+  - Agrupa por tienda y pasillo, y avisa de los menús sin lista con un botón para generarla.
+  - El carrito de cada fila marca como compradas sus líneas y las apunta en la Despensa, como la lista de un menú.
+  - Tiene «Pedir a Tasks», con el proyecto elegido y recordado en el navegador, «Ver cómo va en Tasks» e «Imprimir».
+  - En la lista de un menú, las líneas pedidas dicen «Pedida en Tasks».
+
 ### 2.3 Compra, preparación y stock
 
 ```text
