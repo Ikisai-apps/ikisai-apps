@@ -9,6 +9,7 @@
 import { el, replace } from '../dom.ts';
 import { kt } from '../i18n/i18n.ts';
 import { icon } from '../icons.ts';
+import { fieldAttrs, type FieldSpec } from './field-mark.ts';
 
 export interface SignaturePadOptions {
   /** Etiqueta visible; por defecto «Firma». */
@@ -22,6 +23,8 @@ export interface SignaturePadOptions {
   onChange?: (empty: boolean) => void;
   /** Atributos extra del contenedor (ganchos de la app, `data-feedback-id`). */
   attrs?: Record<string, string>;
+  /** Inventario de campos (`field-mark.ts`): id estable, entidad, propiedad, permiso y sensibilidad. */
+  field?: FieldSpec;
 }
 
 export interface SignaturePad {
@@ -49,7 +52,7 @@ export function createSignaturePad(options: SignaturePadOptions = {}): Signature
   const typedInput = el('input', { type: 'text', class: 'signature-typed', autocomplete: 'name', 'aria-label': kt('Escribe tu nombre como firma'), hidden: true, maxlength: '60' }) as HTMLInputElement;
   const typedToggle = options.typed === false ? null : el('button', { type: 'button', class: 'linkbtn signature-type-toggle' }, kt('Escribir mi nombre')) as HTMLButtonElement;
   const label = el('span', { class: 'signature-label' }, options.label ?? kt('Firma'));
-  const element = el('div', { class: 'signature-pad', ...(options.attrs ?? {}) },
+  const element = el('div', { class: 'signature-pad', ...fieldAttrs(options.field, { type: 'signature', label: options.label }), ...(options.attrs ?? {}) },
     label,
     el('div', { class: 'signature-box', style: `height:${height}px` }, canvas, el('span', { class: 'signature-line', 'aria-hidden': 'true' })),
     typedInput,
