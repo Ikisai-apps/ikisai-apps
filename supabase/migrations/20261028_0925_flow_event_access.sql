@@ -11,11 +11,14 @@ create or replace function flow.event_access(p_actor uuid, p_event uuid) returns
           or exists (select 1 from booking.event_staff_projection s where s.event_id = p_event and s.user_id = p_actor))
 $$;
 
+-- El actor sale de la sesión del núcleo (`core.actor`, la pone core.commit con el usuario autenticado); `updated_by` solo
+-- de respaldo, y tampoco lo elige el cliente (apply_row_op lo pisa con el actor).
 create or replace function flow.guard_event_link() returns trigger language plpgsql as $$
+declare v_actor uuid := coalesce(nullif(current_setting('core.actor', true), '')::uuid, new.updated_by);
 begin
-  if new.booking_event_id is null or new.updated_by is null then return new; end if;
+  if new.booking_event_id is null or v_actor is null then return new; end if;
   if tg_op = 'UPDATE' and new.booking_event_id is not distinct from old.booking_event_id then return new; end if;
-  if not flow.event_access(new.updated_by, new.booking_event_id) then
+  if not flow.event_access(v_actor, new.booking_event_id) then
     perform core.fail('EVENT_NOT_ACCESSIBLE', 403, jsonb_build_object('event_id', new.booking_event_id));
   end if;
   return new;
