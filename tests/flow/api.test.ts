@@ -77,7 +77,7 @@ test('flow · health y bootstrap con las 9 tablas de Flow', async () => {
 test('flow · carta pública sin sesión: 13 productos activos del §8, sin pedidos ni personas; origen ajeno 403', async () => {
   const res = await app.call('/api/v1/public/menu', { token: null });
   assert.equal(res.status, 200, JSON.stringify(res.data));
-  assert.equal(res.data.project, 'Barra · Evento de octubre');
+  assert.equal(res.data.project, 'Barra · v1');
   assert.equal(res.data.products.length, 13);
   const byKey = new Map(res.data.products.map((p: any) => [`${p.scope}:${p.code}`, p]));
   assert.equal((byKey.get('clasico:A') as any).name, 'Serrano');

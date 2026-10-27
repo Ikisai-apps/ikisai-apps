@@ -159,3 +159,5 @@
 .flow-pick button{text-align:left}
 .flow-tasks-qty{display:flex;gap:8px}
 .flow-tasks-qty input{flex:1;min-width:0}
+.flow-version{align-items:center}
+.flow-public-switch{display:inline-flex;align-items:center;gap:6px}

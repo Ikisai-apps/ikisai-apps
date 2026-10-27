@@ -35,6 +35,9 @@ export interface FlowAppOptions { publicWrite?: PublicWriter; appsFetch?: typeof
 
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
 
+/** Ruta de cada columna en la app (`#/p/<proyecto>/<ruta>`), para los enlaces que se mandan a otras apps. */
+const COLUMN_SLUGS: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica' };
+
 interface ClosureForSend {
   closure: { id: string; project_id: string; day: string; data: DayData };
   project: { id: string; name: string; test_mode: boolean; food_menu_id: string | null; booking_event_id: string | null };
@@ -169,6 +172,8 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions): AppRoute[] {
           const quantity = Number(body.quantity);
           const out = await tasks<{ created: boolean; purchase: { id: string; status: string } }>(ctx, 'requests/purchase', {
             source: 'flow', external_ref: found.unit.id, title: String(found.unit.label ?? '').slice(0, 300), project_id: found.project.tasks_project_id, priority, note,
+            // «Ver en Flow ›» de Tasks (§39.5): la columna de la tarea en su flujo.
+            external_url: `${FLOW_ORIGINS[0]}/equipo#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
             ...(Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: typeof body.unit === 'string' ? body.unit.slice(0, 20) : undefined } : {}),
           });
           return { created: out.created, link: { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status } };

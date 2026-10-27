@@ -45,7 +45,7 @@ async function login(page: Page, url = `${baseURL}/equipo`): Promise<void> {
 }
 
 async function enterBar(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /Barra · Evento de octubre/ }).first().click();
+  await page.getByRole('button', { name: /Barra · v1/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Guías' })).toBeVisible();
 }
 
