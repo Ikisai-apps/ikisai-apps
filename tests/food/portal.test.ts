@@ -174,7 +174,8 @@ test('fotos de los platos (C8): portal_menu da la miniatura y portal-files solo 
 test('las lecturas de portal están registradas para cada portal, y el comentario como acción', async () => {
   const { rows } = await app.t.db.query<{ app: string; name: string; kind: string }>(`select app, name, kind from core.allowed_reads where name like 'food.portal_%' order by app, name`);
   assert.deepEqual(rows.map((r) => `${r.app}:${r.name}:${r.kind}`), [
-    'guests:food.portal_house_menu:function', 'guests:food.portal_menu:function', 'organizers:food.portal_menu:function', 'organizers:food.portal_menu_comment:action', 'organizers:food.portal_my_menu_comments:function']);
+    'guests:food.portal_house_menu:function', 'guests:food.portal_menu:function', 'guests:food.portal_offers:function',
+    'organizers:food.portal_menu:function', 'organizers:food.portal_menu_comment:action', 'organizers:food.portal_my_menu_comments:function', 'organizers:food.portal_offers:function']);
   const files = await app.t.db.query<{ portal: string; procedure: string }>(`select portal, procedure from core.portal_file_resolvers where procedure like 'food.%' order by portal`);
   assert.deepEqual(files.rows.map((r) => `${r.portal}:${r.procedure}`), ['guests:food.portal_dish_photo', 'organizers:food.portal_dish_photo']);
 });

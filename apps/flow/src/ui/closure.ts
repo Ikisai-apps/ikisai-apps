@@ -57,7 +57,7 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
     try {
       const out = await client.api<{ status: string; result: unknown }>(`/closures/${c.id}/send/${target}`, { method: 'POST', json: {} });
       status = out.status; result = out.result;
-      toast(status === 'skipped_test_mode' ? 'Modo pruebas: no se envía a Finance.' : target === 'food' ? 'Enviado a Food.' : 'Enviado a Finance.');
+      toast(target === 'food' ? 'Enviado a Food.' : 'Enviado a Finance como apunte de proceso.');
     } catch (error) {
       status = 'error'; result = { code: errorCode(error), message: describeError(error) };
       toast(describeError(error));
@@ -107,7 +107,8 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
       el('p', { class: 'muted small' }, `Calculado a las ${hhmm(c.closed_at)}.`));
     replace(sends,
       sendRow('Food', c, 'food', project?.food_menu_id ? null : 'Sin carta de Food: actualiza la carta desde Food en Caja'),
-      sendRow('Finance', c, 'finance', project?.test_mode ? 'Modo pruebas: no se envía a Finance' : null),
+      sendRow('Finance', c, 'finance', null),
+      el('p', { class: 'muted small' }, 'A Finance va como apunte de proceso (informativo). Lo fiscal es la factura que se emite en la caja.'),
       el('p', { class: 'muted small' }, project?.booking_event_id ? 'Booking: lo ve solo en la ficha del evento.' : 'Booking: este flujo aún no está ligado a un evento.'));
   }
 

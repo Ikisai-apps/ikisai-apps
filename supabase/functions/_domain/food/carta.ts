@@ -198,3 +198,32 @@ export function cartaAttendance(menu: { expected_attendance?: number | null } | 
   if (menu?.expected_attendance !== null && menu?.expected_attendance !== undefined) return menu.expected_attendance;
   return eventGuests ?? null;
 }
+
+/**
+ * Fuentes de la lista de la compra de una carta (como `food.carta_shopping_sources`): sus líneas vivas, sus recetas, las
+ * cantidades de esas recetas y sus ingredientes. Para saber en el cliente si la lista está al día.
+ */
+export function cartaShoppingSources(
+  menuId: string, lines: Array<Pick<CartaLine, 'id' | 'revision' | 'menu_id' | 'recipe_id' | 'deleted_at'>>,
+  graph: { recipes: Array<{ id: string; revision: number }>; recipe_ingredients: Array<{ id: string; revision: number; recipe_id: string; ingredient_id: string; deleted_at: string | null }>; ingredients: Array<{ id: string; revision: number }> },
+): Record<string, number> {
+  const live = lines.filter((l) => l.menu_id === menuId && !l.deleted_at);
+  const recipeIds = new Set(live.map((l) => l.recipe_id).filter((id): id is string => !!id));
+  const recipes = graph.recipes.filter((r) => recipeIds.has(r.id));
+  const parts = graph.recipe_ingredients.filter((ri) => !ri.deleted_at && recipeIds.has(ri.recipe_id));
+  const ingredientIds = new Set(parts.map((p) => p.ingredient_id));
+  const out: Record<string, number> = {};
+  for (const row of [...live, ...recipes, ...parts, ...graph.ingredients.filter((g) => ingredientIds.has(g.id))]) out[row.id] = Number(row.revision);
+  return out;
+}
+
+/** Una cantidad en la unidad base del artículo, para leer: 0,45 kg → «450 g»; 1,5 kg → «1,5 kg»; 60 ud → «60 ud». */
+export function formatAmount(value: number | string | null | undefined, unit: string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  const fmt = (x: number, digits: number) => x.toLocaleString('es-ES', { maximumFractionDigits: digits });
+  if (unit === 'kg' && Math.abs(n) < 1) return `${fmt(n * 1000, 0)} g`;
+  if (unit === 'l' && Math.abs(n) < 1) return `${fmt(n * 1000, 0)} ml`;
+  return `${fmt(n, unit === 'kg' || unit === 'l' ? 2 : 1)} ${unit}`;
+}

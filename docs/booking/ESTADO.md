@@ -125,6 +125,8 @@ Actualizado: 26 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
 
 - **Servicio de barra (Flow):** la ficha del evento enseña los cierres del día de Flow (`flow.booking_service_projection`): pedidos, ventas por método, devoluciones pendientes, horas punta y lo más vendido. API.md §28.3; prueba en `open-days.spec.ts`.
 
+- **Grupo de comensal y llegada y salida desde Flow (0485 y 0486):** `meal_group` para las ofertas de Food; `flow_guests_projection`, `guest_arrive` y `guest_leave` para recepción en Flow. API.md §31; pruebas en `meal-groups.test.ts` y `flow-checkin.test.ts`.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).

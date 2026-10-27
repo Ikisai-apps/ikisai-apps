@@ -30,6 +30,8 @@ export const T = {
   /** La carta (1109): sus líneas y lo vendido por día (esto último solo lo escribe Flow con `food.record_carta_sales`). */
   cartaLines: 'food.carta_lines',
   cartaSales: 'food.carta_sales',
+  /** Ofertas de comida por evento (1111): un menú o una carta, cuándo, para quién, dónde y quién paga. */
+  eventOffers: 'food.event_offers',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
@@ -99,6 +101,7 @@ export function describeError(error: unknown): string {
     case 'CARTA_MENU': return 'Una carta no tiene servicios ni se valida: se edita en su propia vista.';
     case 'CARTA_NOT_FOUND': return 'La carta ya no existe.';
     case 'LINE_NOT_IN_CARTA': return 'Esa línea no es de esta carta.';
+    case 'OFFER_EVENT_MISMATCH': return 'Ese menú es de otro evento: elige uno de este evento o una carta guardada.';
     case 'HOUSE_MENU': return 'El menú de casa siempre está abierto: no se valida, no se cierra ni se borra.';
     case 'QUICK_RECIPE_IN_RETREAT': return 'Es un plato rápido por completar: complétalo (alérgenos e ingredientes) en el Recetario para usarlo en un retiro.';
     case 'MENU_EMPTY': return 'Añade al menos un plato antes de validar.';

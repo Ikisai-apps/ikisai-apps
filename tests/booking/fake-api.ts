@@ -178,6 +178,8 @@ export interface FakeApi {
   setCartas(rows: Array<{ carta_id: string; name: string; active: boolean; items_count: number | null; event_id: string | null }>): void;
   /** Cierres del día de Flow (`GET /read/flow.booking_service_projection`, filtrados por `where[event_id]`). */
   setBarService(rows: Array<{ event_id: string; day: string; data: Record<string, unknown>; updated_at?: string }>): void;
+  /** Ofertas de comida de Food (`GET /read/food.event_offers_projection`, filtradas por `where[event_id]`). */
+  setOffers(rows: Array<Record<string, unknown>>): void;
   /** Hace que esa lectura responda con el estado HTTP indicado (`null` la restablece). */
   failCosts(status: number | null): void;
   /** Fija lo que devolverá `GET /calendar/status`. */
@@ -548,6 +550,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let movementRows: Array<Record<string, unknown>> = [];
   let cartaRows: Array<Record<string, unknown>> = [];
   let barRows: Array<Record<string, unknown>> = [];
+  let offerRows: Array<Record<string, unknown>> = [];
   let costFailure: number | null = null;
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
@@ -678,6 +681,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         }));
       }
       if (path === 'read/food.booking_carta_projection' && method === 'GET') return json(res, 200, { rows: cartaRows, total: cartaRows.length });
+      if (path === 'read/food.event_offers_projection' && method === 'GET') {
+        const event = url.searchParams.get('where[event_id]');
+        const rows = offerRows.filter((r) => event === null || r.event_id === event);
+        return json(res, 200, { rows, total: rows.length });
+      }
       if (path === 'read/flow.booking_service_projection' && method === 'GET') {
         const event = url.searchParams.get('where[event_id]');
         const rows = barRows.filter((r) => event === null || r.event_id === event);
@@ -907,6 +915,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     setMovements: (rows) => { movementRows = rows; },
     setCartas: (rows) => { cartaRows = rows; },
     setBarService: (rows) => { barRows = rows; },
+    setOffers: (rows) => { offerRows = rows; },
     failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),

@@ -19,6 +19,7 @@ import { el, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { kt } from '../i18n/i18n.ts';
 import { createQuantityField, formatQuantity, type QuantityField } from '../fields/quantity.ts';
+import { normalizeName } from '../fields/suggest.ts';
 import { createSpacePicker, type SpacePicker } from '../spaces/picker.ts';
 import { indexSpaces, spaceDescendants, type SpaceRow, type SpaceSource } from '../spaces/model.ts';
 import {
@@ -67,6 +68,13 @@ export interface ItemPickerOptions {
   disabled?: boolean;
   onChange?: (pick: ItemPick) => void;
   feedbackId?: string;
+  /**
+   * Sugeridos (K4 de Tasks: el kit de los oficios de la tarea). Al buscar, los que coinciden salen primero y marcados;
+   * con el campo vacío, al entrar en él, se ofrecen ellos solos.
+   */
+  suggested?: string[];
+  /** Marca de los sugeridos; por defecto «Sugerido» («Del kit del oficio» en Tasks). */
+  suggestedLabel?: string;
 }
 
 export interface ItemPicker {
@@ -86,6 +94,7 @@ export const ITEM_PICKER_MARKS = {
   cancel: ['crear-cancelar', 'Cancelar el alta'],
   change: ['cambiar', 'Cambiar de artículo'],
   duplicate: ['usar-existente', 'Usar el que ya existe'],
+  complete: ['completar', 'Completar el nombre'],
 } as const;
 
 let uid = 0;
@@ -126,18 +135,23 @@ export function createItemPicker(options: ItemPickerOptions): ItemPicker {
   const input = el('input', {
     type: 'text', id, class: 'space-search item-search', role: 'combobox', 'aria-expanded': 'false', 'aria-autocomplete': 'list', 'aria-controls': `${id}-list`,
     autocomplete: 'off', placeholder: options.placeholder ?? (canCreate ? kt('Busca o escribe uno nuevo') : kt('Buscar artículo…')), disabled: !!options.disabled, ...mark('search'),
-    oninput: () => search(), onfocus: () => { if (input.value) search(); },
+    'aria-describedby': `${id}-complete`,
+    oninput: () => search(), onfocus: () => search(),
     onkeydown: (e: Event) => onKey(e as KeyboardEvent),
     onblur: () => setTimeout(() => { if (document.activeElement !== input) close(); }, 150),
   }) as HTMLInputElement;
   const searchWrap = el('div', { class: 'space-search-wrap item-search-wrap' }, icon('search', 16), input);
+  // Completar con un nombre que ya existe: → al final del texto, o tocando la línea.
+  const completeHost = el('div', { class: 'item-complete-host', id: `${id}-complete` });
+  let completion: string | null = null;
+  const suggested = new Set(options.suggested ?? []);
   const listbox = el('ul', { class: 'space-results item-results', id: `${id}-list`, role: 'listbox', 'aria-label': options.label, hidden: true });
   const createHost = el('div', { class: 'item-create-host' });
   const qtyHost = el('div', { class: 'item-qty-host' });
   const spaceHost = el('div', { class: 'item-space-host' });
   const element = el('div', { class: 'item-picker', ...(base ? { 'data-feedback-id': base, 'data-feedback-label': options.label } : {}) },
     el('label', { class: 'space-picker-label', for: id }, options.label),
-    chosenHost, notice, searchWrap, listbox, createHost, qtyHost, spaceHost);
+    chosenHost, notice, searchWrap, completeHost, listbox, createHost, qtyHost, spaceHost);
 
   // --- Sitio ------------------------------------------------------------------------------------------------
   let spacePicker: SpacePicker | null = null;
@@ -226,16 +240,34 @@ export function createItemPicker(options: ItemPickerOptions): ItemPicker {
   // --- Buscar -----------------------------------------------------------------------------------------------
   function search(): void {
     const q = input.value.trim();
-    const found = searchItems(snap.items, q, { ...(options.kinds ? { kinds: options.kinds } : {}), ...(options.includeArchived ? { includeArchived: true } : {}), ...(options.aliases ? { aliases: options.aliases } : {}) });
+    if (!q && document.activeElement !== input) { close(); return; }
+    const found = q
+      ? searchItems(snap.items, q, { ...(options.kinds ? { kinds: options.kinds } : {}), ...(options.includeArchived ? { includeArchived: true } : {}), ...(options.aliases ? { aliases: options.aliases } : {}), ...(suggested.size ? { boost: [...suggested] } : {}) })
+      : snap.items.filter((i) => suggested.has(i.id) && i.active && (!options.kinds || options.kinds.includes(i.kind))).sort((a, b) => a.name.localeCompare(b.name));
     results = found.map((i) => ({ type: 'item' as const, item: i }));
     if (q && canCreate && !sameNameItem(snap.items, q)) results.push({ type: 'create', name: q });
     if (q && options.allowText) results.push({ type: 'text', text: q });
     active = results.length ? 0 : -1;
-    paintResults(q);
+    // El primer nombre que empieza por lo escrito (y es más largo) se puede completar.
+    const nq = normalizeName(q);
+    const first = q ? found.find((i) => normalizeName(i.name).startsWith(nq) && normalizeName(i.name) !== nq) : undefined;
+    completion = first ? first.name : null;
+    replace(completeHost, completion
+      ? el('button', { type: 'button', class: 'linkbtn item-complete', tabindex: '-1', ...mark('complete'), onmousedown: (e: Event) => e.preventDefault(), onclick: () => complete() },
+        kt('→ completa «{name}»', { name: completion }))
+      : null);
+    paintResults(q, !q && results.length > 0);
   }
 
-  function paintResults(q: string): void {
-    const open = q !== '';
+  function complete(): void {
+    if (!completion) return;
+    input.value = completion;
+    input.setSelectionRange(completion.length, completion.length);
+    search();
+  }
+
+  function paintResults(q: string, suggestions = false): void {
+    const open = q !== '' || suggestions;
     listbox.hidden = !open;
     input.setAttribute('aria-expanded', String(open));
     replace(listbox, ...(results.length ? results.map((r, i) => {
@@ -243,7 +275,7 @@ export function createItemPicker(options: ItemPickerOptions): ItemPicker {
       if (r.type === 'item') {
         const s = stockLine(r.item);
         return el('li', { ...attrs, class: `space-result item-result${i === active ? ' active' : ''}${r.item.active ? '' : ' archived'}`, dataset: { itemId: r.item.id }, ...mark('option') },
-          el('span', { class: 'space-result-name' }, r.item.name, el('span', { class: 'item-kind' }, kindLabelOf(snap.kinds, r.item.kind)), r.item.pending ? el('span', { class: 'item-pending' }, kt('sin subir')) : null),
+          el('span', { class: 'space-result-name' }, r.item.name, el('span', { class: 'item-kind' }, kindLabelOf(snap.kinds, r.item.kind)), suggested.has(r.item.id) ? el('span', { class: 'item-suggested' }, options.suggestedLabel ?? kt('Sugerido')) : null, r.item.pending ? el('span', { class: 'item-pending' }, kt('sin subir')) : null),
           el('span', { class: `item-stock${s.low ? ' low' : ''}` }, s.text));
       }
       if (r.type === 'create') {
@@ -265,7 +297,7 @@ export function createItemPicker(options: ItemPickerOptions): ItemPicker {
     else startCreate(r.name);
   }
 
-  function close(): void { results = []; active = -1; paintResults(''); }
+  function close(): void { results = []; active = -1; completion = null; replace(completeHost); paintResults(''); }
 
   function onKey(e: KeyboardEvent): void {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -274,6 +306,9 @@ export function createItemPicker(options: ItemPickerOptions): ItemPicker {
       active = (active + (e.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length;
       paintResults(input.value.trim());
       document.getElementById(`${id}-opt-${active}`)?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowRight' && completion && input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+      e.preventDefault();
+      complete();
     } else if (e.key === 'Enter') {
       if (active >= 0 && results[active]) { e.preventDefault(); take(results[active]!); }
     } else if (e.key === 'Escape' && !listbox.hidden) {

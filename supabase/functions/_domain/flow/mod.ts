@@ -52,6 +52,8 @@ export const PROCEDURES = {
   assignGuestNumbers: 'flow.assign_guest_numbers',
   createFlow: 'flow.create_flow',
   markPresence: 'flow.mark_presence',
+  deliverAll: 'flow.deliver_all',
+  saveTemplate: 'flow.save_template',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -59,6 +61,22 @@ export const PULL_INTERVAL_MS = 3_000;
 
 export type ColumnKey = 'order' | 'prep' | 'service' | 'logistics';
 export type ColumnBehavior = 'inspect_confirm' | 'quick_steps' | 'free_task' | 'guest_presence';
+/**
+ * Piezas del editor de flujos (0914): cada columna es una pieza conocida (su clave de datos), con su comportamiento fijo y
+ * sus opciones. Debe coincidir con flow.piece_behavior / flow.piece_config.
+ */
+export const PIECES: ReadonlyArray<{ key: string; label: string; behavior: ColumnBehavior; hint: string; options?: ReadonlyArray<{ key: string; label: string }> }> = [
+  { key: 'order', label: 'Pedido y cobro', behavior: 'inspect_confirm', hint: 'Caja: pedidos, cobro y número de cliente', options: [{ key: 'accounts', label: 'Cuentas del cliente' }] },
+  { key: 'prep', label: 'Preparación', behavior: 'quick_steps', hint: 'Cocina: una tarjeta por montadito cobrado' },
+  { key: 'ingredients', label: 'Ingredientes', behavior: 'quick_steps', hint: 'Propuestas de reposición y existencias', options: [{ key: 'fresh_stock', label: 'Punto «fresco» y «Comprar X»' }] },
+  { key: 'service', label: 'Servicio y entrega', behavior: 'inspect_confirm', hint: 'Entrega de lo cobrado', options: [{ key: 'complete_on_delivery', label: '«Dar por hecho y entregar»' }] },
+  { key: 'logistics', label: 'Logística', behavior: 'free_task', hint: 'Tareas libres y puestos' },
+  { key: 'arrival', label: 'Llegada', behavior: 'guest_presence', hint: 'Huéspedes por llegar (Booking)' },
+  { key: 'bed', label: 'Cama', behavior: 'guest_presence', hint: 'Acompañar a su cama' },
+  { key: 'signature', label: 'Firma', behavior: 'guest_presence', hint: 'Parte de viajeros pendiente' },
+  { key: 'departure', label: 'Salida', behavior: 'guest_presence', hint: 'Huéspedes que se van (Booking)' },
+];
+
 /** Paso de una columna `guest_presence` (check-in, 0911). */
 export type PresenceStage = 'arrival' | 'bed' | 'signature' | 'departure';
 export type OrderStatus = 'open' | 'paid' | 'delivered';
@@ -132,3 +150,4 @@ export const FLOW_ERRORS: Record<string, string> = {
 export * from './menu.ts';
 export * from './scope.ts';
 export * from './carta-sync.ts';
+export * from './metrics.ts';

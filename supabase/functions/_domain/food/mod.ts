@@ -2,6 +2,7 @@
 export * from './catalog.ts';
 export * from './carta.ts';
 export * from './menus.ts';
+export * from './offers.ts';
 export * from './packs.ts';
 export * from './planning.ts';
 export * from './costing.ts';

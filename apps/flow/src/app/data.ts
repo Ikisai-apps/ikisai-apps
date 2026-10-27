@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { TABLES, type OrderStatus, type PayMethod, type SettleMethod, type UnitStatus } from '@ikisai/domain-flow';
+import { steadyMetrics, TABLES, type OrderStatus, type PayMethod, type SettleMethod, type UnitStatus } from '@ikisai/domain-flow';
 
 /**
  * Datos del personal leídos del espejo local (docs/flow/API.md §2). Todo en memoria por pantalla: una barra tiene pocos
@@ -43,6 +43,8 @@ export interface FlowData {
   accounts: Account[];
   /** La caja de este flujo lleva cuentas (config `accounts` de su columna, solo v2). */
   accountsEnabled: boolean;
+  /** Quien entrega puede dar por hecho lo que quede y entregar de una vez (config de Servicio, solo v2; 0912). */
+  completeOnDelivery: Set<string>;
 }
 
 const live = <T extends Row>(rows: unknown[]): T[] => (rows as T[]).filter((r) => !r.deleted_at);
@@ -78,6 +80,8 @@ export async function loadData(client: SyncClient, projectId?: string | null): P
     accounts: inProject(live<Account>(accounts)),
     accountsEnabled: !!projectId && live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
       .some((c) => c.project_id === projectId && c.key === 'order' && c.config?.accounts === true),
+    completeOnDelivery: new Set(live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
+      .filter((c) => c.key === 'service' && c.config?.complete_on_delivery === true).map((c) => c.project_id)),
   };
 }
 
@@ -183,6 +187,8 @@ export async function loadStationMetrics(client: SyncClient, projectId: string):
     return new Map((out ?? []).map((m) => [m.unit_id, m]));
   } catch { return new Map(); }
 }
+
+export { steadyMetrics };
 
 /** «Ahora deben estar calentándose {target} …» con los valores de la métrica. */
 export function fillMetricText(template: string | undefined, metric: StationMetric | undefined): string {

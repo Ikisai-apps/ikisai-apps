@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { closedMenus, isCartaMenu, eventSnapshot, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
+import { closedMenus, defaultOfferFields, isCartaMenu, eventSnapshot, type EventOffer, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
@@ -11,6 +11,7 @@ import {
 import type { ViewMount } from './shell.ts';
 import { cartaHash, openCopySheet, openNewCartaSheet } from './carta.ts';
 import { HOUSE_MENU_HASH } from '../app/house.ts';
+import { offersBlock } from './offers.ts';
 import { fb, fbIgnore, fbRows, type FbMark } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 
@@ -67,6 +68,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   const menuOf = (event: FoodEvent) => menus.find((m) => m.event_id === event.event_id && !m.deleted_at);
   // Las cartas (tanda 2 de la carta): la del evento, si la tiene, y las guardadas para reutilizarlas.
   let cartas: Mirror<Menu>[] = [];
+  // Ofertas de comida (1111): las del evento salen en su ficha; `allMenus`, para elegir qué se ofrece.
+  let allMenus: Mirror<Menu>[] = [];
+  let offers: Mirror<EventOffer>[] = [];
   const cartaOf = (event: FoodEvent) => cartas.find((m) => m.event_id === event.event_id);
 
   function visible(): FoodEvent[] {
@@ -177,6 +181,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
           event.reservation_code ? ` (reserva ${event.reservation_code})` : '', ' para que los datos coincidan.'),
         el('div', { class: 'btnrow' }, el('a', { 'data-feedback-id': 'food.eventos.ficha.abrir_booking', 'data-feedback-label': 'Abrir en Booking', class: 'ghost', href: bookingReservationUrl(event), target: '_blank', rel: 'noopener', id: 'openBooking' }, event.reservation_id ? 'Abrir la reserva en Booking' : 'Abrir Booking'))) : null,
       cancelled ? null : cartaBlock(event),
+      cancelled ? null : offersBlock({ client, event, menus: allMenus, offers, canWrite: canWrite(), onChange: () => { void sheet?.close(true); } }),
       canCreate ? el('fieldset', { 'data-feedback-id': 'food.eventos.ficha.propuesta', 'data-feedback-label': 'Propuesta de servicios', class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
         el('label', { class: 'field' }, el('span', null, gap ? 'Proponer servicios como' : 'Régimen de la propuesta'), plan),
         picksHost,
@@ -234,6 +239,8 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const menuId = crypto.randomUUID();
     const operations: RowOperation[] = [
       { op: 'insert', table: T.menus, id: menuId, fields: { event_id: event.event_id, source_event_revision: event.event_revision, source_event_snapshot: eventSnapshot(event) } },
+      // Lo de siempre como oferta (1111): un evento con su menú = una oferta para los huéspedes, pagada por el organizador.
+      { op: 'insert', table: T.eventOffers, id: crypto.randomUUID(), fields: defaultOfferFields({ id: menuId, kind: 'retiro' }, event.event_id) },
       ...services.map((s, index): RowOperation => ({ op: 'insert', table: T.menuServices, id: crypto.randomUUID(),
         fields: { menu_id: menuId, service_date: s.service_date, service_type: s.service_type, service_time: s.service_time, position: index + 1 } })),
     ];
@@ -250,6 +257,8 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
 
   async function loadMenus(): Promise<void> {
     const all = (await client.list(T.menus)) as Mirror<Menu>[];
+    allMenus = all;
+    offers = (await client.list(T.eventOffers)) as Mirror<EventOffer>[];
     menus = closedMenus(all);
     cartas = all.filter((m) => isCartaMenu(m) && !m.deleted_at);
     const [graphs, purchases] = await Promise.all([loadAllMenuGraphs(client), loadPurchases(client)]);
@@ -260,10 +269,12 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   void loadMenus();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paint(); });
   const offMenus = client.onTable(T.menus, () => void loadMenus());
+  const offOffers = client.onTable(T.eventOffers, () => void loadMenus());
   const offStatus = client.onStatus(() => void refreshEvents(client));
   return () => {
     offEvents();
     offMenus();
+    offOffers();
     offStatus();
     void closeSheet(true);
   };

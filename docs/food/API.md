@@ -338,6 +338,31 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
 - **`food.carta_prep_totals_projection`** (Flow y Food), una fila por componente con las líneas sumadas: `menu_id`, `component_key`, `item_id`, `ingredient_id`, `name`, `unit`, `need_total`, `mesa`, `nevera`, `fresco`, `convertible` (falso si alguna línea no lo es) y `station` (si el ingrediente va en estaciones distintas, la menor).
 - **Lista de la compra de una carta:** `food.regenerate_shopping` con el `menu_id` de la carta, sin rango. Suma las unidades esperadas por lo que gasta cada una, convertido a la unidad del artículo si se puede y, si no, en la unidad de la receta. Las bebidas y los extras entran por su ingrediente de Food, que se crea enlazado a su artículo si falta (`food.carta_ensure_ingredients`, id estable). Las fuentes (`food.carta_shopping_sources`) son las líneas, las recetas, sus cantidades y los ingredientes.
 
+- **En la app** (`#/cartas/<id>/prevision` y `#/cartas/<id>/compra`; `ui/carta-prevision.ts`): la carta tiene tres pestañas, Carta, Previsión y Compra.
+  - **Previsión:** el reparto (mesa, nevera y fresco; avisa si no suma 100), los asistentes esperados (si no se tocan, los del evento), «Por persona» y «Total» enlazados en cada línea disponible, y el plan de bandejas. Se guardan los dos valores. Al cambiar los asistentes, las líneas con «por persona» recalculan su total. El plan viene de `food.carta_prep_totals_projection` y necesita red. Lleva el ingrediente, la estación, el total, la mesa, la nevera y el fresco, en g o ml por debajo de 1 kg o 1 l. Las bebidas y los extras van aparte. Se imprime solo el plan. Lo que no tiene conversión dice «falta la conversión» y lleva a la Despensa.
+  - **Compra:** la pestaña Compra de siempre (`mountShopping` con `carta: true`). Sabe si está al día con `cartaShoppingSources`, que coincide con `food.carta_shopping_sources`.
+
+### 2.12 Ofertas de comida por evento (27-10-2026, encargo de VG; migración 1111)
+
+- **`food.event_offers`:** un evento tiene N ofertas.
+  - **Qué:** cada oferta es un menú cerrado o una carta (`menu_id`). Una carta guardada sin evento se ofrece tal cual. Un menú de un evento solo se ofrece en ese evento (`OFFER_EVENT_MISMATCH`).
+  - **Cuándo:** `days` × `services`; null = todos.
+  - **Para qué grupos:** `meal_groups`, etiquetas `booking.guests.meal_group`. Vacío = todos. Nunca personas.
+  - **Dónde:** `place` y `space_id`.
+  - **Para quién:** `audience` 'huespedes' o 'interna'.
+  - **Quién paga:** `payer` 'organizador' o 'huesped', obligatorio en las de huéspedes. Si paga el huésped, `charge_when` 'barra' o 'cuenta'. Las internas no llevan ninguno de los dos.
+  - El menú de casa es la oferta interna global, sin evento. El evento de una oferta no cambia.
+- **Lo de hoy** (`food.backfill_event_offers`, una sola vez): cada menú de retiro con evento pasa a ser una oferta de huéspedes que paga el organizador. Cada carta con evento, una de huéspedes que se cobra en barra. El menú de casa, la interna global. Al crear el menú de un evento, o una carta para él, la app añade su oferta (`defaultOfferFields`).
+- **`food.event_offers_projection`** (Booking y Food): una fila por oferta de huéspedes, nunca las internas. Columnas: `offer_id`, `event_id`, `name`, `meal_groups`, `days`, `services`, `place`, `payer`, `charge_when`, `menu_kind`, `menu_id`, `price_cents` (null), `active` (en las cartas, si hay alguna línea disponible), `position` y `offer_revision`.
+- **`food.portal_offers({reservation_id, from?, to?})`** (Organizers y Guests, con el ámbito de `food.portal_reservation`):
+  - Devuelve `offers` (con las líneas disponibles de las cartas) y `days[].services[].included` (los platos de los menús cerrados de ese día y servicio) más `days[].cartas`.
+  - Solo lo público: sin costes, cantidades, stock ni ventas.
+  - Organizers nunca recibe las internas. Guests sí, con `audience: 'interna'`, y las filtra por portal_role y grupo.
+  - En Guests, un menú cerrado de huéspedes solo sale validado o cerrado. Los platos de un menú cerrado solo salen si cocina lo ha compartido (`organizer_shared`), salvo en las internas.
+- **Visitantes por QR** (Guests FD5): `event_offers.public` (false por defecto; solo en las de huéspedes) marca lo que ve un visitante sin ficha. `food.visitor_offers({event_code, from?, to?})` (lectura pública del núcleo, `GET /api/v1/public/food_visitor_offers?event_code=…`, sin sesión; decisión de Core) devuelve la misma forma que `portal_offers` con solo las ofertas públicas, sin grupos ni internas. Un código desconocido responde vacío. `portal_offers` y `visitor_offers` comparten `food.offer_rows` y `food.offers_payload`.
+- **`food.event_needs({event_id})`** (Food, `POST read/food.event_needs`): lo que piden todas las ofertas de un evento, sumado por ingrediente (menús: raciones; cartas: unidades a cubrir). Las listas de la compra siguen siendo una por menú o carta; la lista única por evento queda para más adelante (decisión de Core).
+- **En la app** (`ui/offers.ts`): la ficha del evento lleva el bloque «Ofertas de comida». Cada oferta enseña qué, para quién, cuándo, dónde y quién paga, con «Cambiar», «Añadir una oferta» (en una hoja; los grupos se sugieren con los `meal_groups` de Booking) y «Lo que pide el evento».
+
 ### 2.3 Compra, preparación y stock
 
 ```text
