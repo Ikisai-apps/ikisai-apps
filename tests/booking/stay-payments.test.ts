@@ -38,7 +38,7 @@ async function onlineDays() {
 test('en línea: retención corta, intento único, aviso firmado una vez, pagada, la cama se guarda y recepción aloja con «online»', async () => {
   const d = await onlineDays();
   const v = await issueVisitor(db(), d.code);
-  const stay = await (await post('stay', { event_code: d.code, from: '2033-04-02', to: '2033-04-04', persons: 1, bed_id: d.bed, name: 'Lía' }, { 'X-Visitor': v.token })).json();
+  const stay = await (await post('stay', { event_code: d.code, from: '2033-04-02', to: '2033-04-04', persons: 1, bed_id: d.bed, name: 'Lía', email: 'lia@example.invalid' }, { 'X-Visitor': v.token })).json();
   assert.deepEqual([stay.pay, stay.total_cents], ['online', 5000]);
   assert.ok(Date.parse(stay.hold_until) <= Date.now() + 15 * 60_000 + 30_000, 'los 15 minutos del evento');
 

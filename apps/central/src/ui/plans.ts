@@ -30,13 +30,13 @@
  *     curva sale del SVG (`data-contour`).
  */
 import {
-  bindOnline, confirmDialog, createSpaceMap, createSyncSpaceSource, el, icon, indexSpaces, openSheet, renderOfflineReason, replace, shapeCenter, spacePath,
+  applyBedLayouts, bedLayoutFromRow, bindOnline, confirmDialog, createSpaceMap, createSyncSpaceSource, el, icon, indexSpaces, openSheet, renderOfflineReason, replace, shapeCenter, spacePath,
   spaceToFields, toast, toastWithAction, validGrid, validShape,
-  type DecorChange as KitDecorChange, type DecorIcon, type DecorItem, type FloorPlan, type GridScale, type PlanContour, type PlanGrid, type PlanShape, type Sheet,
+  type BedLayout as KitBedLayout, type DecorChange as KitDecorChange, type DecorIcon, type DecorItem, type FloorPlan, type GridScale, type PlanContour, type PlanGrid, type PlanShape, type Sheet,
   type SpaceMap, type SpaceRow,
 } from '@ikisai/ui-kit';
 import type { RowOperation, TableName } from '@ikisai/sync-client';
-import { BOOKING_BEDS_URL, deriveBeds, type BedLayout } from '@ikisai/domain-central';
+import { BOOKING_BEDS_URL, type BedLayout } from '@ikisai/domain-central';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
 import { announceHeaderArt, centralHeader } from './header-art.ts';
@@ -121,7 +121,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   // su habitación en cada lectura. Central no guarda ni escribe formas de cama; lo que hubiera en Recursos no cuenta.
   const baseSpaces = createSyncSpaceSource(r);
   let layouts: BedLayout[] = [];
-  const derive = (list: SpaceRow[]) => deriveBeds(list, layouts);
+  // La derivación es la del kit (`applyBedLayouts` con `bedShape`, #1023): todas las apps pintan las camas igual.
+  const derive = (list: SpaceRow[]) => applyBedLayouts(list, layouts.map((l) => bedLayoutFromRow(l as unknown as Record<string, unknown>)).filter((l): l is KitBedLayout => !!l));
   const spaces: typeof baseSpaces = {
     ...baseSpaces,
     list: async () => derive(await baseSpaces.list()),

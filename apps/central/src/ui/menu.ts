@@ -67,6 +67,7 @@ export function screenItems(isAdmin: boolean, navigate: (hash: string) => void):
     ['Planos del centro', '#/entidad/planos', 'mapa de zonas plano dibujo colocar estancias'],
     ['Textos y contacto', '#/textos', 'avisos legales declaraciones correos'],
     ['Registro de decisiones', '#/decisiones', 'votar decidir'],
+    ['Revisión semanal', '#/direccion/semana', 'direccion semana reunion indicadores rojo atencion acciones'],
     ['Conflictos', '#/conflictos', 'cambios rechazados'],
     ['Revisión', '#/revision', 'pantallas avance feedback'],
     ...(isAdmin ? [
@@ -183,9 +184,13 @@ export function menuSections(data: MenuData, isAdmin: boolean, userId: string | 
     ] });
   sections.push({ key: 'direccion', label: 'Dirección', icon: 'board', summary: 'indicadores',
     badge: kpis.some((k) => k.critical) ? { text: String(kpis.reduce((n, k) => n + k.critical, 0)), tone: 'alert' } : kpis.some((k) => k.attention) ? { text: String(kpis.reduce((n, k) => n + k.attention, 0)), tone: 'warn' } : null,
-    rows: kpis.length ? kpis.map((k) => ({ label: k.name, sub: [plural(k.total, 'indicador', 'indicadores'), k.critical ? plural(k.critical, 'crítico', 'críticos') : '', k.attention ? `${k.attention} en atención` : ''].filter(Boolean).join(' · '),
-      icon: 'board', count: k.critical ? { text: String(k.critical), tone: 'alert' } : k.attention ? { text: String(k.attention), tone: 'warn' } : null, href: `#/?direccion=${k.app}`, feedbackId: 'central.menu.direccion.app' }))
-      : [{ label: 'Panel de dirección', sub: 'indicadores de cada app', icon: 'board', href: '#/?direccion', feedbackId: 'central.menu.direccion.panel' }] });
+    rows: [
+      // La revisión semanal, siempre la primera (VG, 27-10: no la encontraba desde Central).
+      { label: 'Revisión semanal', sub: 'lo que está en rojo, notas y acciones', icon: 'list', href: '#/direccion/semana', feedbackId: 'central.menu.direccion.semana' },
+      ...(kpis.length ? kpis.map((k) => ({ label: k.name, sub: [plural(k.total, 'indicador', 'indicadores'), k.critical ? plural(k.critical, 'crítico', 'críticos') : '', k.attention ? `${k.attention} en atención` : ''].filter(Boolean).join(' · '),
+        icon: 'board', count: k.critical ? { text: String(k.critical), tone: 'alert' as const } : k.attention ? { text: String(k.attention), tone: 'warn' as const } : null, href: `#/?direccion=${k.app}`, feedbackId: 'central.menu.direccion.app' }))
+        : [{ label: 'Panel de dirección', sub: 'indicadores de cada app', icon: 'board', href: '#/?direccion', feedbackId: 'central.menu.direccion.panel' }]),
+    ] });
   sections.push({ key: 'equipos', label: 'Equipos y oficios', icon: 'people', summary: 'quién hace qué', rows: [
     { label: 'Equipos', sub: 'quién trabaja con quién', icon: 'people', href: '#/personas/equipos', feedbackId: 'central.menu.equipos.equipos' },
     { label: 'Oficios', sub: 'qué sabe hacer cada persona', icon: 'tag', href: '#/personas/oficios', feedbackId: 'central.menu.equipos.oficios' },

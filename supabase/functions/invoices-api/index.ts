@@ -21,4 +21,4 @@ const config = {
 // Pagos en línea (finance-18): Stripe si existe `STRIPE_SECRET_KEY`; sin ella, PAYMENTS_OFF.
 const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
 const payments = stripeKey ? createStripeGateway({ secretKey: stripeKey }) : null;
-Deno.serve(createInvoicesApp({ ...config, payments, extractInvoice: createDocumentExtractorFromEnv(config, (name) => Deno.env.get(name)) }));
+Deno.serve(createInvoicesApp({ ...config, payments, paymentsWebhookSecret: Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? null, extractInvoice: createDocumentExtractorFromEnv(config, (name) => Deno.env.get(name)) }));

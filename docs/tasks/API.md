@@ -2329,3 +2329,12 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **`next`:** `[{phaseId, taskId}]`, la siguiente acción de cada fase.
 - **El cálculo de bloqueo y fase** está en `tasks.production_rows(proyecto)`, que es la misma regla que «hoy» (§47).
 - **Pruebas:** `tests/tasks/production.test.ts`.
+
+## 56. Acciones de la revisión semanal de Dirección (Central, decisión de VG en vg-41)
+
+- **Cómo llegan:** Central manda `central.weekly_action` por `POST requests/task`, con el token de la persona, igual que `central.compliance_due` (§20). La ruta ya admitía cualquier `central.<nombre>`, así que el servidor no cambia.
+- **Dónde quedan:** sin área, en «Por clasificar». Una regla de entrada las lleva a su proyecto.
+- **Repetir:** con la misma `external_ref` devuelve la misma petición.
+- **Estado de vuelta:** por `tasks.targets`, como los vencimientos.
+- **En la app:** «Gestionar entradas» las conoce como «Central · Revisión semanal» y propone el proyecto de Dirección.
+- **Pruebas:** `tests/tasks/central-weekly.test.ts`.
