@@ -41,6 +41,7 @@ test('0111 · field_coverage: una capacidad con writes cubre el campo (indirect)
     assert.equal(by2['booking.reserva.misterio'].estimate.featureId, 'booking.reserva', 'hereda de la pantalla');
     assert.equal(by2['booking.reserva.misterio'].estimate.frequency, 'frequent');
     assert.equal(by2['booking.reserva.color'].activations30d, 3);
+    assert.equal(by2['booking.reserva.misterio'].screenLabel, 'Reserva', 'nombre de la pantalla desde el catálogo de uso');
     assert.equal(by2['booking.reserva.color'].candidate, false, 'con uso no es candidato');
     assert.equal(by2['booking.reserva.misterio'].candidate, true, 'sin cobertura, sin uso y sin protección');
     assert.equal(by2['booking.reserva.notas'].candidate, false, 'lo cubre una capacidad');

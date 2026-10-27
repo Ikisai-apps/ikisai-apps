@@ -47,6 +47,8 @@ begin
                  (select jsonb_build_object('featureId', e.feature_id, 'frequency', e.frequency, 'audience', e.audience, 'decided', false)
                     from core.usage_estimates e where e.app = f.app and (e.feature_id = f.field_id or f.field_id like e.feature_id || '.%')
                     order by length(e.feature_id) desc limit 1)) as estimate,
+               -- nombre de la pantalla en lenguaje de persona: la etiqueta de su funcionalidad en el catálogo de uso, si existe
+               (select u.label from core.usage_features u where u.app = f.app and u.feature_id = f.app || '.' || f.screen limit 1) as "screenLabel",
                -- uso real: activaciones en producción en los últimos 30 días del campo o de sus hijos
                coalesce((select sum(d.activations)::int from core.usage_daily d where d.context = 'production' and d.day >= current_date - 30
                   and (d.feature_id = f.field_id or d.feature_id like f.field_id || '.%')), 0) as "activations30d",
