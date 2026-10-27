@@ -13,7 +13,7 @@ import { el, icon, replace, toast } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
 import { errorCodeOf, myStay, publicBeds, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
-import { portalMap } from './plan.ts';
+import { portalMap, withBedLayouts } from './plan.ts';
 import { loading, whyNote } from './common.ts';
 
 const addDays = (day: string, n: number) => {
@@ -153,7 +153,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
       replace(inner, loading());
       void visitorPlans(code).then((data) => {
         if (!byResource.size || !data.plans.length) { replace(inner, whyNote('lodgePlanWhy', t('lodge.planNone'))); return; }
-        const map = portalMap(data, {
+        const map = portalMap(withBedLayouts(data, beds.rooms), {
           mode: 'map', label: t('lodge.planLabel'), feedbackId: 'guests.visitante.alojate.plano.mapa', showDecor: false,
           layer: (s) => {
             const bed = byResource.get(s.id);

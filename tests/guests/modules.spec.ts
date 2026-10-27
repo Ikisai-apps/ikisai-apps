@@ -289,7 +289,7 @@ test('guests · vista previa del organizador (huésped de muestra): franja visib
   expect((await api.row(muestra)).last_name_1).toBeNull();
 });
 
-test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala resaltada con «Aquí» y tu cama en el Resumen', async ({ page }) => {
+test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala resaltada con «Aquí»; tu cama sin disposición en Booking, en su habitación', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con mapa', start: day(0), end: day(2) });
   const ona = await api.guest(event, { first_name: 'Ona' });
   await page.clock.setFixedTime(new Date(`${day(0)}T10:00:00Z`));
@@ -302,12 +302,14 @@ test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala re
     { name: 'Sala del jardín', points: square(0.05, 0.05, 0.3) },
     { name: 'Comedor', points: square(0.4, 0.05, 0.3) },
     { name: 'Habitación del mapa', kind: 'habitacion', points: square(0.05, 0.5, 0.4) },
-    { name: 'Cama 2', kind: 'cama', parent: 'Habitación del mapa', points: square(0.1, 0.55, 0.1) },
+    // La cama, sin forma en Recursos y sin disposición en Booking: no se pinta.
+    { name: 'Cama 2', kind: 'cama', parent: 'Habitación del mapa' },
   ]);
   await enter(page, await api.guestLink(reservation, ona, 'Ona'));
 
-  // Resumen: «Tu habitación en el plano» señala su cama (por nombre: Booking aún no da el id de Recursos).
-  await expect(page.locator('#roomPlan')).toHaveAttribute('data-space', ids['Cama 2']!);
+  // Resumen: «Tu habitación en el plano» la encuentra por nombre y, como su cama no se pinta, señala su habitación.
+  await expect(page.locator('#roomPlan')).toHaveAttribute('data-space', ids['Habitación del mapa']!);
+  expect(ids['Cama 2']).toBeTruthy();
   await go(page, 'programa');
   const plan = page.locator('#nowPlan');
   await expect(plan).toHaveAttribute('data-space', ids['Sala del jardín']!);
@@ -316,7 +318,7 @@ test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala re
   await expect(here).toHaveCount(1);
   await expect(here).toHaveAttribute('aria-label', /Sala del jardín/);
   await expect(here).toHaveAttribute('aria-label', /Aquí/);
-  await expect(plan.locator('.map-svg [role="button"]')).toHaveCount(4);
+  await expect(plan.locator('.map-svg [role="button"]')).toHaveCount(3);
   // El plano del centro de Central (si otra prueba lo sembró), debajo y plegado: nunca en lugar del mapa.
   for (const backup of await plan.locator('.gplan-backup').all()) await expect(backup).not.toHaveAttribute('open', /.*/);
   await plan.scrollIntoViewIfNeeded();
@@ -342,18 +344,21 @@ test('guests · «Ver en el plano» con los dibujos reales del Albergue y de Sal
   await api.experience(reservation, ALL_MODULES);
   const room = await api.room(event, { name: 'Dormitorio del dibujo', enSuite: false, beds: ['Litera 1', 'Cama 2'] });
   await api.assign(event, room.spaceId, room.bedIds[0]!, ona);
+  // Las camas se colocan en Booking (un solo modelo): la habitación en 4 × 6 cuadrantes y las dos a lo largo.
+  await api.bedLayout(room.spaceId, { cols: 4, rows: 6 }, [[room.bedIds[0]!, { x: 0, y: 0, rot: 90 }], [room.bedIds[1]!, { x: 2, y: 0, rot: 90 }]]);
+  // Su disposición llega en `portal_lodging`, que lista las habitaciones abiertas.
+  await api.organizerInvoke(reservation, 'booking.portal_room_settings', { choice: 'choose', choose_until: day(10), rooms: [{ space_id: room.spaceId }] });
 
   // Albergue: sus 20 estancias con nombre; «Hab 1» es la habitación de Booking, con una litera (la de Ona) y una cama.
   const albergue = drawing('albergue.svg');
   expect(albergue.rooms).toHaveLength(20);
-  const x = (v: number) => v / albergue.width; const y = (v: number) => v / albergue.height;
-  const rect = (x0: number, y0: number, x1: number, y1: number): Array<[number, number]> => [[x(x0), y(y0)], [x(x1), y(y0)], [x(x1), y(y1)], [x(x0), y(y1)]];
   const { ids } = await api.floorPlan([
     ...albergue.rooms.map((r) => (r.name === 'Hab 1'
       ? { ...r, kind: 'habitacion', refs: [`booking.space:${room.spaceId}`] }
       : { ...r, kind: r.name.startsWith('Hab ') ? 'habitacion' : 'sala' })),
-    { name: 'Litera 1', kind: 'cama', parent: 'Hab 1', points: rect(560, 330, 610, 430), refs: [`booking.bed:${room.bedIds[0]}`], attributes: { bed_kind: 'litera' } },
-    { name: 'Cama 2', kind: 'cama', parent: 'Hab 1', points: rect(680, 330, 730, 430), refs: [`booking.bed:${room.bedIds[1]}`], attributes: { bed_kind: 'individual' } },
+    // Las camas, sin forma en Recursos: la saca Guests de su disposición en Booking.
+    { name: 'Litera 1', kind: 'cama', parent: 'Hab 1', refs: [`booking.bed:${room.bedIds[0]}`], attributes: { bed_kind: 'litera' } },
+    { name: 'Cama 2', kind: 'cama', parent: 'Hab 1', refs: [`booking.bed:${room.bedIds[1]}`], attributes: { bed_kind: 'individual' } },
   ], { width: albergue.width, height: albergue.height, mime: 'image/svg+xml' });
   // Salas: el «Museo» del dibujo del centro, donde es la actividad de ahora.
   const centro = drawing('centro.svg');
@@ -420,6 +425,8 @@ test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaci
   const olmo = await api.room(event, { name: 'Habitación Olmo', enSuite: true, beds: ['Cama 1', 'Cama 2'] });
   const roble = await api.room(event, { name: 'Habitación Roble', enSuite: true, beds: ['Cama 1', 'Cama 2', 'Cama 3', 'Cama 4', 'Cama 5'] });
   await api.organizerInvoke(reservation, 'booking.portal_room_settings', { choice: 'choose', choose_until: day(10), rooms: [{ space_id: olmo.spaceId }, { space_id: roble.spaceId }] });
+  // Dos camas de Roble colocadas en Booking; las otras, sin colocar, no salen en el plano.
+  await api.bedLayout(roble.spaceId, { cols: 6, rows: 4 }, [[roble.bedIds[0]!, { x: 0, y: 0, rot: 0 }], [roble.bedIds[1]!, { x: 3, y: 0, rot: 0 }]]);
   await api.experience(reservation, { lodging_visible: true, lodging_capability: 'choose' });
   const square = (x: number, y: number, s = 0.3): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
   const { ids } = await api.floorPlan([
@@ -427,9 +434,10 @@ test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaci
     // Otro nombre en Recursos: solo casa por el id que da Booking (#680).
     { name: 'Dormitorio grande', kind: 'habitacion', points: square(0.5, 0.1), refs: [`booking.space:${roble.spaceId}`] },
     { name: 'Comedor de abajo', kind: 'comedor', points: square(0.05, 0.6) },
-    // Camas dibujadas: una casada por id (otro nombre en Recursos) y otra por su nombre en la habitación.
-    { name: 'Cama de la ventana', kind: 'cama', parent: 'Dormitorio grande', points: square(0.52, 0.12, 0.1), refs: [`booking.bed:${roble.bedIds[0]}`] },
-    { name: 'Cama 2', kind: 'cama', parent: 'Dormitorio grande', points: square(0.66, 0.12, 0.1) },
+    // Las camas de Roble en Recursos, sin forma (otro nombre en Recursos: casan por el id que da Booking).
+    { name: 'Cama de la ventana', kind: 'cama', parent: 'Dormitorio grande', refs: [`booking.bed:${roble.bedIds[0]}`] },
+    { name: 'Cama de la puerta', kind: 'cama', parent: 'Dormitorio grande', refs: [`booking.bed:${roble.bedIds[1]}`] },
+    { name: 'Cama 3', kind: 'cama', parent: 'Dormitorio grande', refs: [`booking.bed:${roble.bedIds[2]}`] },
   ]);
   await enter(page, await api.guestLink(reservation, eli, 'Eli'));
   await go(page, 'alojamiento');
