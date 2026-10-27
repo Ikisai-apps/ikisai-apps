@@ -195,3 +195,21 @@ export function imageProblem(file: { type: string; size: number }, title: string
   if (file.size > IMAGE_MAX_BYTES) return 'La imagen no puede pasar de 5 MB.';
   return null;
 }
+
+/** Una entrada de `floor_plans.contours` (0814 y 0815): altura, ancla de la etiqueta y, si se ajustó, sus puntos. */
+export interface ContourEntry { spaceId: string; x: number; y: number; points?: Array<[number, number]> }
+
+/** Las curvas con la de `spaceId` ajustada (`points`, de 2 a 200, en 0..1). Si no tenía entrada, se añade con su ancla. */
+export function withContourPoints(raw: unknown, spaceId: string, points: ReadonlyArray<readonly [number, number]>, anchor: readonly [number, number]): ContourEntry[] {
+  const list: ContourEntry[] = Array.isArray(raw) ? (raw as ContourEntry[]).map((c) => ({ ...c })) : [];
+  const pts = points.slice(0, 200).map(([x, y]) => [round4(x), round4(y)] as [number, number]);
+  const at = list.findIndex((c) => c.spaceId === spaceId);
+  if (at >= 0) list[at] = { ...list[at]!, points: pts };
+  else list.push({ spaceId, x: round4(anchor[0]), y: round4(anchor[1]), points: pts });
+  return list;
+}
+
+/** Mueve el punto `i` de una curva sin salirse del dibujo (0..1). */
+export function movePoint(points: ReadonlyArray<readonly [number, number]>, i: number, dx: number, dy: number): Array<[number, number]> {
+  return points.map(([x, y], n) => (n === i ? [round4(x + dx), round4(y + dy)] : [x, y]) as [number, number]);
+}

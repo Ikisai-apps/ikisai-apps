@@ -1,7 +1,7 @@
 /** Central · finca y decoración (encargo de VG del 27-10): reglas puras de `apps/central/src/app/decor.ts`. Datos ficticios. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DECOR_ITEMS, contoursFromBands, contoursFromCurves, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
+import { DECOR_ITEMS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
 
 test('finca · escala, origen y alturas del SVG; sin escala, se pide al subir', () => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" data-meters-per-unit="0.25" data-origin-x="10" data-origin-y="20">
@@ -105,4 +105,13 @@ test('finca · curvas de nivel data-contour: puntos relativos y la etiqueta en s
   assert.deepEqual(meta.contours.map((c) => [c.name, c.points.length, c.anchor]), [['Altura 1', 5, [0.5, 0.875]], ['Altura 2', 2, [0.5, 0.575]]]);
   assert.deepEqual(meta.bands, []);
   assert.deepEqual(contoursFromCurves(meta.contours, [{ id: 'a1', name: 'Altura 1' }, { id: 'a2', name: 'Altura 2' }]), [{ spaceId: 'a1', x: 0.5, y: 0.875 }, { spaceId: 'a2', x: 0.5, y: 0.575 }]);
+});
+
+test('curvas editables · cambiar los puntos de una altura sin tocar las demás; mover un punto sin salirse', () => {
+  const raw = [{ spaceId: 'a1', x: 0.5, y: 0.8 }, { spaceId: 'a2', x: 0.5, y: 0.6, points: [[0, 0.6], [1, 0.6]] }];
+  const next = withContourPoints(raw, 'a1', [[0, 0.81234], [0.5, 0.79], [1, 0.8]], [0.5, 0.8]);
+  assert.deepEqual(next, [{ spaceId: 'a1', x: 0.5, y: 0.8, points: [[0, 0.8123], [0.5, 0.79], [1, 0.8]] }, raw[1]]);
+  assert.deepEqual(raw[0], { spaceId: 'a1', x: 0.5, y: 0.8 }, 'no toca la lista de antes');
+  assert.deepEqual(withContourPoints(null, 'a3', [[0, 0.1], [1, 0.2]], [0.5, 0.15]), [{ spaceId: 'a3', x: 0.5, y: 0.15, points: [[0, 0.1], [1, 0.2]] }]);
+  assert.deepEqual(movePoint([[0.1, 0.1], [0.98, 0.5]], 1, 0.05, -0.6), [[0.1, 0.1], [1, 0]]);
 });
