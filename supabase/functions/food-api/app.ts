@@ -1,7 +1,7 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { afterCartaSales, syncCartaStock } from './carta.ts';
-import { runConsumptionTick, stableUuid } from './consumption.ts';
-import { createApp, createSupabase, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import { FOOD_SERVICE, runConsumptionTick, stableUuid } from './consumption.ts';
+import { createApp, createSupabase, ensureServiceActor, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
   eventSnapshot, FOOD_PROCEDURES, isHouseMenu, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
   copyCartaOperations, defaultOfferFields, dayBefore, eventPurchaseRef, eventPurchaseTitle, itemStatusFromPurchase, unrequestedQuantity,
@@ -207,14 +207,16 @@ async function fixedId(text: string): Promise<string> {
  * Tanda 27: deja constancia del aviso en `food.equipment_notices` (1104), como quien avisa, para que «Avisado» sea un
  * dato del servidor y lo vean todos los dispositivos. Una fila por máquina y día, con id fijo: repetir no duplica. Si no
  * se puede anotar (la máquina no está en Food, o falla la base), el aviso a Tasks ya salió y no se deshace: `recorded: false`.
+ * Lo anota la cuenta de servicio `food` (auditoría FO3, 1119): ninguna persona escribe avisos.
  */
-async function recordNotice(supabase: Supabase, ctx: RequestContext, equipmentId: string, day: string, status: string, taskId: string): Promise<boolean> {
+async function recordNotice(supabase: Supabase, equipmentId: string, day: string, status: string, taskId: string): Promise<boolean> {
   const ref = `equipment_fault:${equipmentId}:${day}`;
   const operations = [{ op: 'insert', table: 'food.equipment_notices', id: await fixedId(`ikisai-food-notice:${ref}`),
     fields: { equipment_id: equipmentId, notified_on: day, equipment_status: status, task_id: taskId } }];
   try {
+    const actor = await ensureServiceActor(supabase, FOOD_SERVICE);
     await supabase.rpc('core_commit', {
-      p_app: 'food', p_actor: ctx.user.id, p_request_id: `notice:${ref}`, p_digest: await sha256Hex(stable(operations)),
+      p_app: 'food', p_actor: actor, p_request_id: `notice:${ref}`, p_digest: await sha256Hex(stable(operations)),
       p_expected_cursor: null, p_operations: operations, p_confirmation: null,
     });
     return true;
@@ -324,7 +326,7 @@ function tasksRoutes(supabase: Supabase, options: FoodAppOptions): AppRoute[] {
         priority: fault!.priority,
       });
       if (!out?.task?.id) fail(503, 'TASKS_UNAVAILABLE', 'Respuesta de Tasks no válida.');
-      const recorded = await recordNotice(supabase, ctx, id, day, status, out.task!.id!);
+      const recorded = await recordNotice(supabase, id, day, status, out.task!.id!);
       return { created: out.created, routed: out.routed ?? null, taskId: out.task!.id, recorded };
     },
   }];
