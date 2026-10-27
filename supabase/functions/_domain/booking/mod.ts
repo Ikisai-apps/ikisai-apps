@@ -18,3 +18,5 @@ export * from './experience.ts';
 export * from './walkin.ts';
 /** «Monta el dormitorio» (tanda 36): cuadrantes y camas. */
 export * as dorm from './dormLayout.ts';
+/** «Montaje» del evento: decoración específica sobre la general y sus tareas. */
+export * as montage from './montage.ts';
