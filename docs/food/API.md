@@ -390,6 +390,40 @@ Lo que Food ofrece a otras apps (Flow, Booking) con los permisos reales de la pe
 - Los anclajes son los ids de feedback de cada pantalla.
 - **`POST carta/:id/use-in-event {requestId, eventId?, name?}`:** valida el evento y lee la carta con `food.carta_copy_source`. Hace un solo commit con ids estables por `requestId`, así que repetirlo devuelve la misma copia (`replayed: true`). Errores: `CARTA_NOT_FOUND` y `EVENT_NOT_FOUND`.
 
+### 2.15 Lista de la compra única por evento (28-10-2026, encargo de Core; migración 1117)
+
+Diseño: `MUELA/equipo/feedback/food/LISTA_COMPRA.md`.
+
+- **`POST read/food.event_shopping {event_id}`** (lector, editor y owner):
+  - Suma las listas ya generadas de los menús del evento: el menú cerrado y las cartas, los suyos (`event_id`) y los de sus ofertas.
+  - Devuelve `menus`, cada uno con `list_id` null si aún no tiene lista: la pantalla lo avisa.
+  - Devuelve `rows`, una por ingrediente, unidad y tienda, con:
+    - `key`, `name`, `unit`, `supplier`;
+    - `aisle`, la categoría del artículo;
+    - `pending`, `bought` y `requested`;
+    - `purchase_ref` y `purchase_project_id`;
+    - `status`: `pendiente`, `pedida` o `comprado`;
+    - `menus`;
+    - `lines`, con las líneas de cada menú.
+- **Columnas nuevas en `food.shopping_list_items`:** `purchase_ref`, `purchase_project_id` y `purchase_requested`.
+  - Las escribe solo la Edge; para el cliente están reservadas.
+  - Una línea con `purchase_ref` no entra en la Despensa desde Food: el stock entra por Recursos al recibirla en Tasks.
+- **Edge (editor u owner; necesita red):**
+  - `GET events/:id/shopping/projects` devuelve los proyectos abiertos de Tasks.
+  - `POST events/:id/shopping/request {projectId, keys}` pide a Tasks (`requests/purchase`, capacidad `tasks.request_purchase`) lo pendiente sin pedir de esas filas. Hace una compra por fila:
+    - con `external_ref` = `food:event:<evento>:<key>`; lo pendiente nuevo de una fila ya pedida lleva `:2`, `:3`…;
+    - con título «Arroz · 3 kg (Evento)»;
+    - con `due`, el día antes del evento;
+    - con la nota del proveedor y de qué menús sale;
+    - con el enlace `#/eventos/<id>/compra`.
+    Después lo apunta en las líneas.
+  - `POST events/:id/shopping/refresh` vuelve a pedir con la misma referencia, que devuelve la compra con su estado sin crear otra. Marca las líneas `comprado` (`purchased`) o `recibido` (`received`).
+- **Pantalla `#/eventos/<id>/compra`:** se abre desde la ficha del evento con «Lista de la compra del evento».
+  - Agrupa por tienda y pasillo, y avisa de los menús sin lista con un botón para generarla.
+  - El carrito de cada fila marca como compradas sus líneas y las apunta en la Despensa, como la lista de un menú.
+  - Tiene «Pedir a Tasks», con el proyecto elegido y recordado en el navegador, «Ver cómo va en Tasks» e «Imprimir».
+  - En la lista de un menú, las líneas pedidas dicen «Pedida en Tasks».
+
 ### 2.3 Compra, preparación y stock
 
 ```text
@@ -651,7 +685,7 @@ Desde la ficha de una máquina que no está operativa, «Avisar a Tasks para rep
 - Título «Reparar: <nombre> (<ubicación>)» (averiada o fuera de servicio, prioridad `high`) o «Revisar: …» (limitada, `normal`); la nota es la de la ficha; `external_url` = `https://food.ikisai.com/#/maquinaria`.
 - Necesita red y permiso de edición en Food; en Tasks, el de la persona (sin él, `TASKS_FORBIDDEN`).
 - Seguridad FO2 (auditoría del 27-10; Tasks #852, API §45): las llamadas de Food a Tasks llevan, además del token de la persona, `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY`) y `X-Ikisai-Caller: food`. Así la fuente `food` solo la puede usar el servidor de Food.
-- Tanda 27: con la tarea creada, la Edge anota el aviso en `food.equipment_notices` (§2.9) como la persona, con un id fijo por máquina y día. Si no puede (la máquina no está en Food), el aviso a Tasks ya salió y responde `recorded: false`. La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
+- Tanda 27: con la tarea creada, la Edge anota el aviso en `food.equipment_notices` (§2.9) con la cuenta de servicio `food` (desde la 1119, auditoría FO3: solo el servidor escribe avisos; el cliente, ningún campo), con un id fijo por máquina y día. Si no puede (la máquina no está en Food), el aviso a Tasks ya salió y responde `recorded: false`. La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
 
 V2 (G4): `POST stock-entries/sync`, que lee la proyección de compras de Invoices y crea las entradas de stock (§7.3).
 

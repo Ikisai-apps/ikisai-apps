@@ -1,10 +1,11 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { afterCartaSales, syncCartaStock } from './carta.ts';
-import { runConsumptionTick, stableUuid } from './consumption.ts';
-import { createApp, createSupabase, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import { FOOD_SERVICE, runConsumptionTick, stableUuid } from './consumption.ts';
+import { createApp, createSupabase, ensureServiceActor, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
   eventSnapshot, FOOD_PROCEDURES, isHouseMenu, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
-  copyCartaOperations, defaultOfferFields, type AcknowledgedWarning, type CartaLine, type FoodEvent, type Menu, type MenuGraph,
+  copyCartaOperations, defaultOfferFields, dayBefore, eventPurchaseRef, eventPurchaseTitle, itemStatusFromPurchase, unrequestedQuantity,
+  type EventShopping, type EventShoppingRow, type AcknowledgedWarning, type CartaLine, type FoodEvent, type Menu, type MenuGraph,
 } from '../_domain/food/mod.ts';
 
 export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pages.dev'];
@@ -170,13 +171,13 @@ function eventRoutes(events: EventReader): AppRoute[] {
 function createTasksClient(options: FoodAppOptions) {
   const base = (options.tasksApiBase ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
   const transport = options.tasksFetch ?? fetch;
-  return async function call<T>(ctx: RequestContext, path: string, body: unknown): Promise<T> {
+  return async function call<T>(ctx: RequestContext, path: string, body: unknown, method: 'POST' | 'GET' = 'POST'): Promise<T> {
     let response: Response;
     try {
       response = await transport(`${base}/api/v1/${path}`, {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': options.workerKey ?? '', 'X-Ikisai-Caller': 'food' },
-        body: JSON.stringify(body),
+        method,
+        headers: { Authorization: 'Bearer ' + ctx.token, 'X-Ikisai-Worker-Key': options.workerKey ?? '', 'X-Ikisai-Caller': 'food', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}) },
+        ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(10_000),
       });
     } catch {
@@ -206,14 +207,16 @@ async function fixedId(text: string): Promise<string> {
  * Tanda 27: deja constancia del aviso en `food.equipment_notices` (1104), como quien avisa, para que «Avisado» sea un
  * dato del servidor y lo vean todos los dispositivos. Una fila por máquina y día, con id fijo: repetir no duplica. Si no
  * se puede anotar (la máquina no está en Food, o falla la base), el aviso a Tasks ya salió y no se deshace: `recorded: false`.
+ * Lo anota la cuenta de servicio `food` (auditoría FO3, 1119): ninguna persona escribe avisos.
  */
-async function recordNotice(supabase: Supabase, ctx: RequestContext, equipmentId: string, day: string, status: string, taskId: string): Promise<boolean> {
+async function recordNotice(supabase: Supabase, equipmentId: string, day: string, status: string, taskId: string): Promise<boolean> {
   const ref = `equipment_fault:${equipmentId}:${day}`;
   const operations = [{ op: 'insert', table: 'food.equipment_notices', id: await fixedId(`ikisai-food-notice:${ref}`),
     fields: { equipment_id: equipmentId, notified_on: day, equipment_status: status, task_id: taskId } }];
   try {
+    const actor = await ensureServiceActor(supabase, FOOD_SERVICE);
     await supabase.rpc('core_commit', {
-      p_app: 'food', p_actor: ctx.user.id, p_request_id: `notice:${ref}`, p_digest: await sha256Hex(stable(operations)),
+      p_app: 'food', p_actor: actor, p_request_id: `notice:${ref}`, p_digest: await sha256Hex(stable(operations)),
       p_expected_cursor: null, p_operations: operations, p_confirmation: null,
     });
     return true;
@@ -323,8 +326,94 @@ function tasksRoutes(supabase: Supabase, options: FoodAppOptions): AppRoute[] {
         priority: fault!.priority,
       });
       if (!out?.task?.id) fail(503, 'TASKS_UNAVAILABLE', 'Respuesta de Tasks no válida.');
-      const recorded = await recordNotice(supabase, ctx, id, day, status, out.task!.id!);
+      const recorded = await recordNotice(supabase, id, day, status, out.task!.id!);
       return { created: out.created, routed: out.routed ?? null, taskId: out.task!.id, recorded };
+    },
+  }];
+}
+
+/**
+ * La lista de la compra única por evento (1117, API.md §2.15), hacia Tasks por el catálogo (`tasks.request_purchase`).
+ * - `GET events/:id/shopping/projects`: los proyectos abiertos de Tasks donde pedir (`requests/projects`).
+ * - `POST events/:id/shopping/request {projectId, keys}`: pide a Tasks lo pendiente sin pedir de esas filas, una compra por
+ *   fila (referencia por evento, ingrediente, unidad y tienda: repetir no duplica), y lo apunta en sus líneas.
+ * - `POST events/:id/shopping/refresh`: pregunta a Tasks por lo pedido (la misma referencia devuelve la compra con su estado,
+ *   sin crear nada) y marca en Food lo comprado o recibido. Sin entrada en la Despensa: el stock entra por Recursos en Tasks.
+ * Editor u owner; necesitan red.
+ */
+function eventShoppingRoutes(supabase: Supabase, events: EventReader, options: FoodAppOptions): AppRoute[] {
+  const tasks = createTasksClient(options);
+  type Purchase = { created: boolean; purchase?: { id?: string; status?: string; externalRef?: string } };
+  const guard = async (ctx: RequestContext, id: string | undefined) => {
+    if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Solo quien edita puede pedir la compra.');
+    const eventId = UUID.test(id ?? '') ? id!.toLowerCase() : fail(422, 'INVALID_OPERATION', 'Evento no válido.');
+    const event = await events.get(ctx, eventId);
+    if (!event) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { event_id: eventId });
+    const data = await supabase.rpc<EventShopping>('core_read', { p_app: 'food', p_actor: ctx.user.id, p_name: 'food.event_shopping', p_args: { event_id: eventId } });
+    return { eventId, event: event!, data };
+  };
+  const ask = (ctx: RequestContext, row: EventShoppingRow, ref: string, projectId: string, quantity: number, eventId: string, event: FoodEvent) =>
+    tasks<Purchase>(ctx, 'requests/purchase', {
+      source: 'food', external_ref: ref, project_id: projectId, title: eventPurchaseTitle(row, quantity, event.title),
+      quantity, unit: row.unit,
+      note: [row.supplier ? `Proveedor: ${row.supplier}` : null, `Sale de: ${row.menus.join(', ')}`, 'Lista de la compra del evento en Food.'].filter(Boolean).join(' · '),
+      due: dayBefore(event.start_date), external_url: `${FOOD_ORIGINS[0]}/#/eventos/${eventId}/compra`,
+    });
+  const commitLines = async (ctx: RequestContext, requestId: string, ops: Operation[]) => {
+    if (!ops.length) return;
+    await supabase.rpc('core_commit', {
+      p_app: 'food', p_actor: ctx.user.id, p_request_id: requestId, p_digest: await sha256Hex(stable(ops)),
+      p_expected_cursor: null, p_operations: ops, p_confirmation: null,
+    });
+  };
+  return [{
+    method: 'GET', pattern: 'events/:id/shopping/projects', handler: async ({ ctx, params }) => {
+      await guard(ctx, params.id);
+      const out = await tasks<{ projects?: unknown[] }>(ctx, 'requests/projects', null, 'GET');
+      return { projects: Array.isArray(out?.projects) ? out.projects : [] };
+    },
+  }, {
+    method: 'POST', pattern: 'events/:id/shopping/request', handler: async ({ ctx, params, json }) => {
+      const { eventId, event, data } = await guard(ctx, params.id);
+      const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      const projectId = typeof body.projectId === 'string' && UUID.test(body.projectId) ? body.projectId.toLowerCase() : fail(422, 'INVALID_OPERATION', 'Elige un proyecto de Tasks.');
+      const keys = Array.isArray(body.keys) && body.keys.length <= 500 && body.keys.every((k) => typeof k === 'string') ? body.keys as string[] : fail(422, 'INVALID_OPERATION', 'Filas no válidas.');
+      const results: Array<{ key: string; ref: string; created: boolean; quantity: number }> = [];
+      for (const row of data.rows.filter((r) => keys.includes(r.key))) {
+        const quantity = Math.round(unrequestedQuantity(row) * 1000) / 1000;
+        if (!(quantity > 0)) continue;
+        // Lo ya pedido de esta fila guarda su referencia; lo nuevo pendiente se pide aparte (:2, :3…).
+        const asked = new Set(row.lines.map((l) => l.purchase_ref).filter(Boolean)).size;
+        const ref = eventPurchaseRef(eventId, row) + (asked ? `:${asked + 1}` : '');
+        const out = await ask(ctx, row, ref, projectId, quantity, eventId, event);
+        if (!out?.purchase?.id) fail(503, 'TASKS_UNAVAILABLE', 'Respuesta de Tasks no válida.');
+        const ops = row.lines.filter((l) => l.status === 'pendiente' && !l.purchase_ref).map((l) => ({
+          op: 'update', table: 'food.shopping_list_items', id: l.id, expectedRevision: Number(l.revision),
+          fields: { purchase_ref: ref, purchase_project_id: projectId, purchase_requested: Number(l.quantity) },
+        }) as Operation);
+        await commitLines(ctx, `shopping-request:${(await sha256Hex(ref)).slice(0, 40)}`, ops);
+        results.push({ key: row.key, ref, created: out.created, quantity });
+      }
+      return { requested: results };
+    },
+  }, {
+    method: 'POST', pattern: 'events/:id/shopping/refresh', handler: async ({ ctx, params }) => {
+      const { eventId, event, data } = await guard(ctx, params.id);
+      const ops: Operation[] = [];
+      const statuses: Array<{ ref: string; status: string | null }> = [];
+      for (const row of data.rows) {
+        const refs = new Map<string, EventShoppingRow['lines']>();
+        for (const l of row.lines) if (l.purchase_ref && l.status === 'pendiente') refs.set(l.purchase_ref, [...(refs.get(l.purchase_ref) ?? []), l]);
+        for (const [ref, lines] of refs) {
+          const quantity = lines.reduce((n, l) => n + Number(l.quantity), 0);
+          const out = await ask(ctx, row, ref, row.purchase_project_id ?? fail(422, 'INVALID_OPERATION', 'Falta el proyecto de Tasks.'), quantity, eventId, event);
+          const status = itemStatusFromPurchase(out?.purchase?.status);
+          statuses.push({ ref, status: out?.purchase?.status ?? null });
+          if (status) for (const l of lines) ops.push({ op: 'update', table: 'food.shopping_list_items', id: l.id, expectedRevision: Number(l.revision), fields: { status } } as Operation);
+        }
+      }
+      await commitLines(ctx, `shopping-refresh:${(await sha256Hex(stable(ops))).slice(0, 40)}`, ops);
+      return { checked: statuses.length, marked: ops.length, statuses };
     },
   }];
 }
@@ -351,7 +440,7 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
       // La carta: las ventas registradas mueven el stock de Recursos (carta.ts). Un fallo no deshace las ventas.
       afterCommit: async (result) => { await afterCartaSales(supabase, result); },
     },
-    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events)],
+    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events), ...eventShoppingRoutes(supabase, events, options)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
     // Tanda 27: el estado de las peticiones de máquina en Tasks, para «En reparación» (migración 1106).
     workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) },

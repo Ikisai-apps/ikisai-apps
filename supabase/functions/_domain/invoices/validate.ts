@@ -569,6 +569,7 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   DRIVE_FIELDS: 'El origen en Google Drive solo lo pone la importación de Drive.',
   SOURCE_MISMATCH: 'El apunte es de otra app: cada app solo envía los suyos.',
   CALLER_REQUIRED: 'Los apuntes de otra app solo llegan desde su servidor.',
+  FILE_NOT_YOURS: 'Ese documento lo subió otra persona y aún no está en ninguna factura: súbelo tú.',
   RECEIPT_KIND_REQUIRED: 'Con número o archivo de justificante, la app tiene que decir si es factura o ticket.',
   INVOICE_REQUIRED: 'Un gasto con ticket se registra, pero no es deducible ni va a la gestoría: para eso hace falta la factura.',
   ENTITY_MISSING: 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.',
