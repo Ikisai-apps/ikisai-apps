@@ -237,6 +237,15 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
       }
       result.items = result.items.filter((item) => item.changes.length);
     }
+    // FL3 (auditoría, 27-10-2026): un `call` guarda sus argumentos en `before` y su resultado en `after`, y no pasa por
+    // `visible`. Entero solo lo ve el owner de la app y quien lo hizo; al resto le llega la entrada con el nombre del
+    // procedimiento (`table`) y sin argumentos ni resultado, para que el cursor y la paginación no cambien.
+    if (ctx.membership.role !== 'owner') {
+      for (const item of result.items) {
+        if (item.actorId === ctx.user.id) continue;
+        for (const c of item.changes) if (c.op === 'call') { c.before = null; c.after = null; c.redacted = true; }
+      }
+    }
     return result;
   }
 

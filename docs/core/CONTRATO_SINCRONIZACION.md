@@ -326,7 +326,7 @@ La implementa `_kit`; cada app monta sus rutas de lectura, exportación e integr
 | `GET snapshot?tables=a,b&cursor=&page=` | filas vivas (y borradas recientes si `include_deleted`) de las tablas pedidas, paginado; devuelve el `cursor` al que corresponde |
 | `GET changes?after=<cursor>&limit=` | filas de `core.changes` desde el cursor, con `after`; `next` para paginar |
 | `POST commands` | `{requestId, expectedCursor?, operations[]}` → `core.commit` |
-| `GET history?before=&limit=` | lotes de cambios para la vista de historial |
+| `GET history?before=&limit=` | lotes de cambios para la vista de historial. Un `call` (argumentos en `before`, resultado en `after`) llega entero solo al owner de la app y a quien lo hizo; a los demás, con `before` y `after` a `null` y `redacted: true` (FL3, 27-10-2026) |
 | `POST history/{cursor}/undo-plan` / `undo` | previsualizar y ejecutar el deshacer de §4.4 |
 | `POST uploads` | `{filename, mime, size, sha256}` → `{id, path, uploadUrl, method:'PUT', headers, expiresAt, duplicateOf}`; el cliente hace `PUT uploadUrl` directo al bucket |
 | `POST uploads/{id}/verify` | comprueba existencia, tamaño y hash (hasta 25 MB); → `{id, sha256, size, verified, hashVerified}`; un SVG con contenido activo (scripts, `foreignObject`, incrustados, manejadores `on…`, enlaces `javascript:` o entidades) → 422 `UNSUPPORTED_MEDIA` y queda `missing`: el cliente lo sube limpio (MUELA-092) |
