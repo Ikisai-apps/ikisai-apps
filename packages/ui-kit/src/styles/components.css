@@ -1192,6 +1192,9 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .item-change{min-height:44px;padding:0 6px}
 .item-kind{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--hover);color:var(--muted)}
 .item-stock{font-size:var(--text-xs);color:var(--muted)}
+.item-suggested{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+.item-complete-host:empty{display:none}
+.item-complete{display:block;min-height:32px;padding:4px 2px;font-size:var(--text-sm);text-align:left}
 .item-stock.low{color:var(--warn);font-weight:700}
 .item-pending{font-size:11px;font-weight:800;color:var(--warn)}
 .item-result.archived{opacity:.6}
