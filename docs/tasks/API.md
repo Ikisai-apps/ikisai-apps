@@ -2089,3 +2089,36 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
 - **EPI:** se leen de `GET /api/v1/resources/snapshot?tables=resources.item_links` al abrir la mesa, como mucho una vez por minuto. Sin la tabla o sin red, la mesa sale sin EPI. El tipo `epi` cuenta como equipo, no se gasta.
 - **Lectura:** quien solo lee ve la mesa sin «+ Paso», sin «Fuera de orden» y con «Hecho» desactivado.
 - **Pruebas:** `tests/tasks/trabajo.spec.ts`.
+
+## 42. «Pedir a Tasks» con hijas: el «Montaje del evento» de Booking (encargo de Core, 27-10-2026)
+
+`POST worker/requests/task` (§22.2, clave de worker) admite `children`: las tareas hijas de la que se pide, cada una con su clave estable. Lo resuelve `tasks.request_children` (migración `0344`), en el mismo lote de servicio y con historial.
+
+- **Tipo nuevo `booking.event_setup`** («Montaje del evento»): como `booking.retreat_extra`, necesita `project_ref` (la reserva) y va al proyecto de esa reserva. Si el proyecto aún no existe, 409 `PROJECT_NOT_READY`: primero `requests/project`. Al reenviarlo con la madre abierta, toma el título y la nota nuevos (`updated`).
+- **Forma:**
+  ```json
+  {
+    "source": "booking", "kind": "booking.event_setup",
+    "external_ref": "RES2026-80-MONTAJE", "project_ref": "RES2026-80",
+    "title": "Montaje del evento", "note": "…", "due": "2026-11-14",
+    "external_url": "https://booking.ikisai.com/#/reservas/80",
+    "children": [
+      { "external_ref": "mesas", "title": "Montar 12 mesas", "note": "…", "due": "2026-11-13", "priority": "high" },
+      { "external_ref": "sillas", "title": "Colocar 96 sillas" }
+    ]
+  }
+  ```
+  - `children`: hasta 100.
+  - `external_ref` de cada hija: única en la petición, de 1 a 100 caracteres de `[A-Za-z0-9_.:-]`.
+  - `title`: de 1 a 120 caracteres.
+  - `note` (hasta 1000), `due` (AAAA-MM-DD) y `priority` (normal, high o critical) son opcionales.
+- **La lista va ENTERA en cada envío.** Lo que pasa con cada hija:
+  - **nueva:** se crea bajo la madre, en su proyecto, con las etiquetas del proyecto. Su referencia es `booking:<external_ref de la madre>/<external_ref de la hija>` y su id se deriva de ella, así que repetir no duplica;
+  - **sigue abierta:** se pone al día (título; y nota, fecha y urgencia si se mandan) solo si algo cambió;
+  - **ya no viene:** se retira a la papelera con sus propias hijas, si no está hecha, y desde la app se puede restaurar. Las hechas se quedan;
+  - **añadida a mano** en Tasks (sin esa referencia): no se toca nunca;
+  - **alguien la borró:** no se resucita y vuelve con `status: 'deleted'`.
+- **Respuesta:** `{ taskId, status, updated?, children: [{ ref, taskId, status: open|done|deleted }], childrenCounts: { created, updated, retired } }`.
+  - Si la madre no está abierta (hecha, descartada o en la papelera), las hijas no se tocan y llega `children: null`.
+  - `children` también vale con los demás tipos de las fuentes de sistema. La madre, reenviada, toma el título y la nota nuevos mientras esté abierta.
+- **Pruebas:** `tests/tasks/requests-children.test.ts`.
