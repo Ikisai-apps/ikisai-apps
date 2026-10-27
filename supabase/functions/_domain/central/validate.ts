@@ -12,6 +12,7 @@ import { KPI_TARGETS_TABLE } from './kpis.ts';
 import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES, DECISION_VOTES, DECISION_VOTES_TABLE } from './decisions.ts';
 import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
+import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
@@ -186,6 +187,16 @@ const SPECS: Record<string, TableSpec> = {
     },
     required: ['decision_id', 'vote'],
     immutable: ['decision_id'],
+  },
+  [COVERAGE_DECISIONS_TABLE]: {
+    fields: {
+      app: { kind: 'text', min: 1, max: 40 },
+      feature_id: { kind: 'text', min: 1, max: 200 },
+      decision: { kind: 'enum', values: COVERAGE_DECISIONS },
+      note: { kind: 'text', max: 500, nullable: true },
+    },
+    required: ['app', 'feature_id', 'decision'],
+    immutable: ['app', 'feature_id'],
   },
   [REVIEW_SCREENS_TABLE]: {
     fields: {

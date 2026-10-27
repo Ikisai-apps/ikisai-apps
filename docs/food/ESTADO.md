@@ -62,6 +62,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - El evento familiar come del menú de casa.
   - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
 
+- **Previsión de la carta: modelo y lecturas** (migración 1110; API.md §2.11). Unidades esperadas, reparto mesa/nevera/fresco, estación por ingrediente, conversiones sin inventar (rodajas incluidas), `food.carta_prep_projection` y `food.carta_prep_totals_projection` para Flow, y la lista de la compra de una carta. Prueba: `carta-prevision.test.ts`. Pendiente: su pantalla.
+
 ## Aceptación del usuario (6 de octubre de 2026)
 
 - Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.

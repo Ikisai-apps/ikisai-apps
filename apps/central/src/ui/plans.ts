@@ -241,9 +241,9 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert' });
     const buildings = rows.filter((s) => s.active && (s.kind === 'edificio' || s.kind === 'exterior')).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    const building = el('select', { id: 'planBuilding', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id }, spacePath(index(), b.id)))) as HTMLSelectElement;
-    const floor = el('input', { id: 'planFloor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
-    const file = el('input', { id: 'planFile', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
+    const building = el('select', { id: 'planBuilding', 'data-field-id': 'central.planos.plan_building', 'aria-label': 'Edificio' }, ...buildings.map((b) => el('option', { value: b.id }, spacePath(index(), b.id)))) as HTMLSelectElement;
+    const floor = el('input', { id: 'planFloor', 'data-field-id': 'central.planos.plan_floor', type: 'text', maxlength: '40', placeholder: 'Planta baja', autocomplete: 'off' }) as HTMLInputElement;
+    const file = el('input', { id: 'planFile', 'data-field-id': 'central.planos.plan_file', type: 'file', accept: PLAN_MIME.join(',') }) as HTMLInputElement;
     const submit = el('button', { type: 'button', class: 'primary', id: 'planSubmit', 'data-feedback-id': 'central.planos.subir.guardar', 'data-feedback-label': 'Guardar el dibujo', onclick: async () => {
       error.textContent = '';
       const f = file.files?.[0];
