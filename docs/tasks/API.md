@@ -2218,6 +2218,28 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - **Quién escribe:** `tasks.reviews` y `tasks.review_items` solo los escriben los procedimientos de la revisión (hook `tasks.validate_reviews`). Desde `commands`, 422 `INVALID_REVIEW`.
 - **Pruebas:** `tests/tasks/reviews-create.test.ts`.
 
+### 46.3 El resultado de un ítem (migración `0350`; capacidad `tasks.review_item_result`)
+
+- **`POST reviews/result {itemId, result: ok|fail, value?, text?, fileId?}`**, editor u owner con el proyecto de la revisión en su ámbito (si no, 404). También es la capacidad `tasks.review_item_result` del catálogo: Flow marca desde su lista de comprobación.
+- **Según el tipo:**
+  - cantidad: `value` entero; si no coincide con `expected.count`, cuenta como fallo;
+  - lectura: `value`; fuera de `[min, max]` cuenta como fallo aunque llegue `ok`;
+  - foto: `fileId`, una imagen de Tasks verificada y subida por quien marca;
+  - observación: `text`;
+  - funciona o no: sin `value`.
+  - `text` vale en todos como observación.
+- **ok:**
+  - el ítem queda `ok`, o `verified` si venía de un fallo;
+  - su tarea, «volver a comprobar» y la correctiva quedan hechas.
+- **fail:**
+  - el ítem queda `failed` con su valor, su texto y su foto; el primer fallo se guarda en `first_failure` y no se pisa;
+  - su tarea vuelve a sin hacer;
+  - en su zona se crean «Arreglar: …» (con el oficio del ítem y prioridad alta si es crítico) y «Volver a comprobar: …», que depende de la correctiva. Si ya estaban, se reabren.
+  - **Reparar no es verificar:** hacer la correctiva no cambia el ítem; solo un nuevo «ok» lo verifica.
+- **La revisión:** pasa a `ready` cuando todos sus críticos están en `ok` o `verified`, y vuelve a `open` si alguno deja de estarlo. Una ya abierta (`opened`) se queda así.
+- **Responde** `{itemId, state, reviewId, reviewStatus, correctiveTaskId, recheckTaskId}`.
+- **Pruebas:** `tests/tasks/review-results.test.ts`.
+
 ## 48. Limpieza de cama al salir un huésped (Booking #907; tarjeta tasks-24, 27-10-2026)
 
 - **Qué pide Booking:** por `worker/requests/task`, `{source: 'booking', kind: 'booking.bed_cleaning', external_ref: 'LIMP-<asignación>', title, due?, note?, priority?, external_url?}`, sin `project_ref` (si lo trae, 422). La referencia tiene que empezar por `LIMP-`.
