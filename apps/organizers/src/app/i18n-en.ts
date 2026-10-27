@@ -1077,4 +1077,15 @@ export const EN: Dictionary = {
   'Añade asistentes para elegir personas.': 'Add attendees to choose people.',
   'Para quién': 'For whom',
   'Alguna de esas personas ya no está en el retiro. Vuelve a elegirlas.': 'One of those people is no longer in the retreat. Choose them again.',
+  // Comentarios de tus asistentes (resumen del retiro).
+  'Comentarios de tus asistentes': 'Comments from your attendees',
+  'Lo que te cuentan desde su app sobre el retiro. Los lees tú; si algo es del lugar, lo atiende Ikisai.': 'What they tell you about the retreat from their app. You read them; if something is about the venue, Ikisai takes care of it.',
+  'Un asistente': 'An attendee',
+  '1 comentario más': '1 more comment',
+  '{n} comentarios más': '{n} more comments',
+  'Horarios': 'Timetable',
+  'Organización': 'Organisation',
+  'Actividades': 'Activities',
+  'Comunicación': 'Communication',
+  'La comida': 'Food',
 };
