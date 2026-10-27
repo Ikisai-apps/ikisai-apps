@@ -6,6 +6,8 @@ import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/book
 import { TABLES, walkinFinanceEntry } from '../../supabase/functions/_domain/booking/mod.ts';
 
 const uuid = () => crypto.randomUUID();
+/** El id del apunte que da Finance (un uuid). */
+const ENTRY = '00000000-0000-4000-8000-0000000000e1';
 const sent: Array<{ body: any; caller: string | null }> = [];
 let app: TestApp;
 let seq = 0;
@@ -14,7 +16,7 @@ test.before(async () => {
     app: 'booking', slug: 'booking-api', origin: BOOKING_ORIGINS[0]!,
     createHandler: (config) => createBookingApp({ ...config, workerKey: 'clave-sintetica', origins: [BOOKING_ORIGINS[0]!], appsFetch: (async (_url: string, init: RequestInit) => {
       sent.push({ body: JSON.parse(String(init.body)), caller: new Headers(init.headers).get('X-Ikisai-Caller') });
-      return new Response(JSON.stringify({ results: [{ result: { entry_id: 'e-1', status: sent.length > 1 ? 'replaced' : 'created' } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ results: [{ result: { entry_id: ENTRY, status: sent.length > 1 ? 'replaced' : 'created' } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }) as typeof fetch }),
   });
 });
@@ -50,7 +52,7 @@ test('ajustar o devolver un cobro ya enviado lo deja por reenviar; el reenvío s
   const send = () => app.call(`/api/v1/walkins/${charge}/send/finance`, { body: {} });
   assert.equal((await send()).status, 200);
   let c = await row(charge);
-  await ok([{ op: 'update', table: TABLES.walkinCharges, id: charge, expectedRevision: Number(c.revision), fields: { finance_entry_id: 'e-1', finance_sent_at: new Date().toISOString() } }]);
+  await ok([{ op: 'update', table: TABLES.walkinCharges, id: charge, expectedRevision: Number(c.revision), fields: { finance_entry_id: ENTRY, finance_sent_at: new Date().toISOString() } }]);
 
   // devolver sin cobrar no vale; más de lo cobrado, tampoco
   c = await row(charge);
@@ -61,7 +63,7 @@ test('ajustar o devolver un cobro ya enviado lo deja por reenviar; el reenvío s
   await ok([{ op: 'update', table: TABLES.walkinCharges, id: charge, expectedRevision: Number(c.revision), fields: { refund_cents: 1000, refund_method: 'bizum', refunded_at: new Date().toISOString() } }]);
   c = await row(charge);
   assert.equal(c.finance_sent_at, null, 'por reenviar');
-  assert.equal(c.finance_entry_id, 'e-1', 'el mismo apunte');
+  assert.equal(c.finance_entry_id, ENTRY, 'el mismo apunte');
   assert.equal((await send()).status, 200);
   const resend = sent.at(-1)!;
   assert.equal(resend.caller, 'booking');
