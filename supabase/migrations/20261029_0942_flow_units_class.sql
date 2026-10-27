@@ -27,6 +27,18 @@ create or replace function flow.guard_class() returns trigger language plpgsql a
 begin
   -- Un puesto (kind station) es siempre actividad continua, lo cree quien lo cree.
   if tg_op = 'INSERT' and new.kind = 'station' then new.class := 'station'; end if;
+  -- Clase, criterios, vínculo, verificación y dependencia: solo por procedimiento (nadie se verifica a sí mismo a mano).
+  if not flow.in_proc() and (
+       (tg_op = 'INSERT' and (new.class <> 'operation' or new.criteria is not null or new.result_link is not null or new.verified_by is not null
+                              or new.verified_at is not null or new.parent_id is not null))
+       or (tg_op = 'UPDATE' and flow.changed(to_jsonb(old), to_jsonb(new), array['class', 'criteria', 'result_link', 'verified_by', 'verified_at', 'parent_id']))) then
+    perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.units', 'reason', 'activity class fields'));
+  end if;
+  -- Una unidad solo depende de otra viva del mismo proyecto (nada de colgarla de un proyecto ajeno).
+  if new.parent_id is not null and (tg_op = 'INSERT' or new.parent_id is distinct from old.parent_id)
+     and not exists (select 1 from flow.units u where u.id = new.parent_id and u.project_id = new.project_id and u.deleted_at is null and u.id <> new.id) then
+    perform core.fail('NOT_FOUND', 404, jsonb_build_object('table', 'flow.units', 'parent_id', new.parent_id));
+  end if;
   if new.class = 'station' and new.status = 'done' then perform core.fail('STATION_NEVER_DONE', 422, jsonb_build_object('unit_id', new.id)); end if;
   if new.class = 'objective' and new.status = 'done' and (tg_op = 'INSERT' or old.status <> 'done')
      and (jsonb_array_length(coalesce(new.criteria, '[]'::jsonb)) = 0

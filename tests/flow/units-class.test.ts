@@ -44,6 +44,10 @@ test('clases · objetivo: se cumple solo con todos los criterios verificados; de
   await ok([call(PROCEDURES.verifyCriterion, { unit_id: id, criterion_id: 'c1', verified: false })]);
   u = await unit(id);
   assert.equal(u.status, 'pending'); assert.equal(u.verified_by, null);
+  // Nadie se verifica a mano: ni un update directo de criterios o verificación, ni insertar un resultado ya verificado.
+  const cur = await unit(id);
+  assert.equal(await code([{ op: 'update', table: TABLES.units, id, expectedRevision: cur.revision, fields: { verified_by: app.users.editor } }], app.tokens.owner), 'PROCEDURE_ONLY');
+  assert.equal(await code([{ op: 'insert', table: TABLES.units, id: uuid(), fields: { project_id: V1, column_key: 'logistics', kind: 'task', label: 'Falso', status: 'pending', class: 'result', result_link: { app: 'tasks', id: 'x' } } }]), 'PROCEDURE_ONLY');
   // Fuera de su ámbito, no; el lector, tampoco.
   assert.equal(await code([call(PROCEDURES.verifyCriterion, { unit_id: id, criterion_id: 'c1' })], app.tokens.reader), 'FORBIDDEN');
 });
@@ -55,6 +59,13 @@ test('clases · resultado: hecho y verificado por quien lo anota, con su víncul
   assert.equal(u.class, 'result'); assert.equal(u.status, 'done'); assert.equal(u.verified_by, app.users.editor);
   assert.deepEqual(u.result_link, { app: 'invoices', kind: 'invoice', id: 'F-0001' });
   assert.notEqual(await code([call(PROCEDURES.recordResult, { unit_id: uuid(), project_id: V1, label: 'Sin vínculo', link: { app: 'Mal!', id: '' } })]), undefined);
+  // Solo cuelga de una unidad viva del mismo proyecto.
+  const other = uuid();
+  await ok([{ op: 'insert', table: TABLES.projects, id: other, fields: { name: 'Otro evento', starts_on: '2026-12-01', ends_on: '2026-12-02' } }], app.tokens.owner);
+  const foreign = uuid();
+  await ok([call(PROCEDURES.recordResult, { unit_id: foreign, project_id: other, label: 'Ajeno', link: { app: 'tasks', kind: 'task', id: 't-9' } })], app.tokens.owner);
+  assert.equal(await code([call(PROCEDURES.recordResult, { unit_id: uuid(), project_id: V1, label: 'Colgado', link: { app: 'tasks', kind: 'task', id: 't-1' }, parent_id: foreign })]), 'NOT_FOUND');
+  assert.equal(await code([call(PROCEDURES.recordResult, { unit_id: uuid(), project_id: V1, label: 'Hijo', link: { app: 'tasks', kind: 'task', id: 't-2' }, parent_id: id })]), undefined);
 });
 
 test('clases · un puesto es actividad continua: nunca se termina; la clase no cambia', async () => {
