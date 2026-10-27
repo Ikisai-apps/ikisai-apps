@@ -26,7 +26,7 @@ async function code(promise: Promise<unknown>) {
 }
 async function reservation(confirm: boolean) {
   const res = crypto.randomUUID(); const event = crypto.randomUUID();
-  await commit([{ op: 'insert', table: 'booking.reservations', id: res, fields: { title: 'Retiro sintético', event_type: 'retiro', status: 'pre_reservada', start_date: '2031-11-06', end_date: '2031-11-08', expected_guests: 20 } }]);
+  await commit([{ op: 'insert', table: 'booking.reservations', id: res, fields: { title: 'Retiro sintético', status: 'pre_reservada', start_date: '2031-11-06', end_date: '2031-11-08', expected_guests: 20 } }]);
   if (confirm) await commit([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: res, event_id: event, from_status: 'pre_reservada' } }]);
   return { res, event };
 }
