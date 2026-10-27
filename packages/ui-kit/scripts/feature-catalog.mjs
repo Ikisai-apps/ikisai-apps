@@ -202,7 +202,7 @@ function enclosingCallAt(text, at) {
  * funciones a las que nadie llega). Mantener al día con `SPACE_MAP_MARKS` (src/spaces/map.ts).
  */
 const KIT_CHILDREN_WHEN = {
-  createCalendar: { evento_dia: /onSelectEvent\s*:/ },
+  createCalendar: { evento_dia: /\bonSelectEvent\b/ },
   createStepForm: { saltar: /\bskip\s*:/ },
   createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/ },
 };
