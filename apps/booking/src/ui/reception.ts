@@ -60,7 +60,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
         el('button', { class: 'primary small', type: 'button', 'data-action': 'accept-online', 'data-feedback-id': 'booking.recepcion.alojar_pagado', 'data-feedback-label': 'Alojar (pagado en línea)', onclick: () => void accept(c, 'online') }, 'Alojar (pagado en línea)'))
       : c.kind === 'request'
       ? el('div', { class: 'row-actions' }, method,
-        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', 'data-feedback-id': 'booking.recepcion.cobrar', 'data-feedback-label': 'Cobrar y alojar', onclick: () => void accept(c, method.value) }, 'Cobrar y alojar'),
+        el('button', { class: 'primary small', type: 'button', 'data-action': 'accept', 'data-feedback-id': 'booking.recepcion.cobrar', 'data-feedback-label': 'Cobrar y alojar', onclick: (e: Event) => void accept(c, method.value, e.currentTarget as HTMLButtonElement) }, 'Cobrar y alojar'),
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'reject', 'data-feedback-id': 'booking.recepcion.descartar', 'data-feedback-label': 'Descartar', onclick: () => void decide(c, 'reject') }, 'Descartar'))
       : el('div', { class: 'row-actions' },
         c.presencia.text === 'Llega hoy' || c.presencia.text === 'Sin llegada marcada'
@@ -104,9 +104,11 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
     }
   }
 
-  async function accept(c: ReceptionCard, method: string): Promise<void> {
+  async function accept(c: ReceptionCard, method: string, button?: HTMLButtonElement): Promise<void> {
     if (busy || !c.requestId) return;
     busy = true;
+    // señal visible mientras se aloja (revisión móvil de UI-kit): el botón no admite otro toque
+    if (button) button.disabled = true;
     const started = Date.now() - 60_000;
     try {
       if (!(await run([{ op: 'call', procedure: PROCEDURES.joinFromVisitor, args: { request_id: c.requestId, decision: 'accept', method } }], `Alojado el ${c.number}.`))) return;
@@ -115,6 +117,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
       for (const x of fresh) await sendWalkinToFinance(client, x);
     } finally {
       busy = false;
+      if (button) button.disabled = false;
     }
   }
   const decide = (c: ReceptionCard, decision: 'reject') => c.requestId
