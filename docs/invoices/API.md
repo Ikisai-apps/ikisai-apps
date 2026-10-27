@@ -2186,7 +2186,7 @@ Diseño y decisiones de VG en `MUELA/equipo/feedback/finance/PAGOS_EN_LINEA_fina
   - los enlaces anteriores, caducados o cancelados.
   - Sin red, lo dice.
 
-### 19.4 Aviso de Stripe y conciliación (migración 0257, PR 4)
+### 19.4 Aviso de Stripe y conciliación (migración 0259, PR 4)
 
 - **Webhook:** `POST invoices-api/api/v1/public/payments/stripe`, sin sesión.
   - Vale solo con la firma `Stripe-Signature` (`STRIPE_WEBHOOK_SECRET`, tolerancia de 300 s); sin ella, `400` y nada cambia. Sin secreto configurado, `503`.
