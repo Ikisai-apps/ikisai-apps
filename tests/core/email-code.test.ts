@@ -102,3 +102,30 @@ test('código por correo · apagado (sin correo propio en Auth): 503 y auth/conf
   assert.equal(code(await orgOff('/api/v1/auth/email-code', { body: { email: 'x@example.invalid' } })), 'EMAIL_CODE_DISABLED');
   assert.equal(code(await orgOff('/api/v1/auth/email-code/verify', { body: { email: 'x@example.invalid', code: '123456' } })), 'EMAIL_CODE_DISABLED');
 });
+
+test('código por correo · fuerza bruta (0110): al séptimo intento en 15 minutos responde 429 aunque el código sea el bueno', async () => {
+  const email = 'paciente-org@example.invalid';
+  await link(await reservation(), email);
+  await send(email);
+  const mail = booking.supabase.lastEmailCode();
+  assert.equal(mail?.email, email);
+  for (let i = 0; i < 6; i++) assert.equal(code(await org('/api/v1/auth/email-code/verify', { body: { email, code: '000000' } })), 'EMAIL_CODE_INVALID', `intento ${i + 1}`);
+  assert.equal(code(await org('/api/v1/auth/email-code/verify', { body: { email, code: mail!.code } })), 'RATE_LIMITED', 'el séptimo no se mira');
+  // Otro correo no está afectado.
+  const other = 'otra-org@example.invalid';
+  await link(await reservation(), other);
+  await send(other);
+  const ok = await org('/api/v1/auth/email-code/verify', { body: { email: other, code: booking.supabase.lastEmailCode()!.code } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+});
+
+test('código por correo · envíos (0110): a partir del sexto en una hora la respuesta es la misma pero no se envía nada', async () => {
+  const email = 'insistente-org@example.invalid';
+  await link(await reservation(), email);
+  for (let i = 0; i < 5; i++) assert.deepEqual((await send(email)).data, { sent: true });
+  const last = booking.supabase.lastEmailCode();
+  assert.equal(last?.email, email);
+  const sixth = await send(email);
+  assert.deepEqual([sixth.status, sixth.data], [200, { sent: true }]);
+  assert.equal(booking.supabase.lastEmailCode(), last, 'el sexto no envía');
+});

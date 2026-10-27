@@ -143,6 +143,9 @@ test('platos sugeridos · entrada, votar en el mazo, decidir con «Deshacer», r
     const service = api.rows('food.menu_services').find((s) => s.menu_id === HOUSE_MENU_ID && s.service_date === day(0))!;
     expect(service).toMatchObject({ service_type: 'comida', service_time: '14:00' });
     expect(Number(api.rows('food.menu_items').find((i) => i.service_id === service.id)!.servings)).toBe(6);
+    // Plato rápido nuevo: se ofrece completarlo al momento (F-SUG-2).
+    await expect(page.locator('.toast.show')).toContainText('«Gazpacho» está en el menú de casa como plato rápido');
+    await expect(page.locator('.toast.show').getByRole('button', { name: 'Completar la receta' })).toBeVisible();
   });
 
   await test.step('con una receta del Recetario, lo dice; «Usar receta parecida»; descartar con comentario', async () => {

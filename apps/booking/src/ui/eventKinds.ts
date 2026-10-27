@@ -275,6 +275,14 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     const ok = el('button', { class: 'primary', type: 'button', id: 'refundSave', onclick: () => {
       const cents = Math.round(Number(amount.value) * 100);
       if (!Number.isFinite(cents) || cents < 0 || cents > max) return void toast(`La devolución va de 0 a ${euros(max)}.`);
+      // cobrado en línea (1414): la devolución la hace la pasarela; después se anota en el cobro
+      if (charge.method === 'online' && cents > Number(charge.refund_cents ?? 0)) {
+        ok.disabled = true;
+        void o.client.api(`/walkins/${encodeURIComponent(charge.id)}/refund/online`, { method: 'POST', json: { cents: cents - Number(charge.refund_cents ?? 0) } })
+          .then(() => saveCharge(charge, { refund_cents: cents, refund_method: 'online', refunded_at: new Date().toISOString() }, sheet, ok))
+          .catch((e) => { toast(describeError(e)); ok.disabled = false; });
+        return;
+      }
       void saveCharge(charge, cents === 0 ? { refund_cents: 0, refund_method: null, refunded_at: null } : { refund_cents: cents, refund_method: method.value, refunded_at: new Date().toISOString() }, sheet, ok);
     } }, 'Guardar la devolución') as HTMLButtonElement;
     const sheet: Sheet = openSheet({ title: 'Devolver', body: el('div', null,
