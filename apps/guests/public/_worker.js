@@ -2,7 +2,7 @@
    El bundle no lleva ninguna credencial privada; solo reenvía /api/v1/* y rechaza orígenes cruzados.
    Visitantes (API.md §9.19): reenvía también la cabecera X-Visitor, y /api/booking/v1/public/* va a las rutas públicas de
    booking-api («Apuntarme» y «Déjanos un dato», que escribe Booking) y /api/flow/v1/public/* a las de flow-api («Mi pedido»);
-   nada más de esas apps pasa por aquí. */
+   nada más de esas apps pasa por aquí. A todas les pone X-Ikisai-Client-Ip con la IP del móvil (traspaso de visitante, 0106). */
 const BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/guests-api';
 const BOOKING_BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/booking-api';
 const FLOW_BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/flow-api';
@@ -24,6 +24,10 @@ export default {
     const headers = new Headers();
     for (const key of FORWARDED_HEADERS) if (request.headers.has(key)) headers.set(key, request.headers.get(key));
     headers.set('Origin', url.origin);
+    // Traspaso de visitante (núcleo 0106): la IP del móvil, no la de salida de Cloudflare. La pone siempre el proxy (la del
+    // cliente nunca se reenvía: `headers` solo lleva las de FORWARDED_HEADERS).
+    const ip = request.headers.get('cf-connecting-ip');
+    if (ip) headers.set('X-Ikisai-Client-Ip', ip);
     // Sesión única (contrato §3.4): solo en las rutas de sesión, el pase de la cookie común viaja a la Edge como cabecera.
     if (!owner && url.pathname.startsWith('/api/v1/auth/')) {
       const pass = (request.headers.get('cookie') || '').match(/(?:^|;\s*)ikisai_sso=([A-Za-z0-9_-]{43})/);
