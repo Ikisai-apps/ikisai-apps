@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import { day, seedBookingEvent } from './helpers.ts';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -52,6 +53,18 @@ test('catálogo · cada capacidad dice qué campos lee y escribe (0111): `food.<
   }
   const copy = rows.find((r) => r.id === 'food.use_carta_in_event')!;
   for (const f of ['food.menus.event_id', 'food.carta_lines.sale_price_cents', 'food.event_offers.payer']) assert.ok(copy.writes.includes(f), f);
+});
+
+test('inventario · cada campo de Food que declara `entity` y `prop` apunta a una columna que existe (0111)', async () => {
+  const columns = new Set((await q(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'food'`)).map((r) => `food.${r.c}`));
+  const dir = new URL('../../apps/food/src/ui/', import.meta.url);
+  const declared: string[] = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+    const text = readFileSync(new URL(file, dir), 'utf8');
+    for (const m of text.matchAll(/'data-field-entity': '([a-z_.]+)', 'data-field-prop': '([a-z_]+)'/g)) declared.push(`${m[1]}.${m[2]}`);
+  }
+  assert.ok(declared.length >= 70, `solo ${declared.length} campos declarados`);
+  for (const f of declared) assert.ok(columns.has(f), `${f} no es una columna de Food`);
 });
 
 test('ejecución · «Usar en otro evento» copia la carta y crea su oferta; repetir devuelve la misma copia', async () => {

@@ -451,7 +451,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     let removePhoto = false;
     const preview = el('img', { alt: 'Foto de la receta', hidden: true });
     if (recipe?.photo_file_id) showPhoto(client, preview, recipe.photo_file_id);
-    const fileInput = el('input', { 'data-feedback-id': 'food.recetario.foto.archivo', 'data-feedback-label': 'Archivo de foto', id: 'r-photo', type: 'file', accept: 'image/*', class: 'visually-hidden',
+    const fileInput = el('input', { 'data-field-id': 'food.recetario.foto.archivo', 'data-field-entity': 'food.recipes', 'data-field-prop': 'photo_file_id', 'data-feedback-id': 'food.recetario.foto.archivo', 'data-feedback-label': 'Archivo de foto', id: 'r-photo', type: 'file', accept: 'image/*', class: 'visually-hidden',
       onchange: async () => {
         const file = fileInput.files?.[0];
         if (!file) return;
@@ -475,11 +475,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       photoNote);
 
     // Presentación y cocina
-    const name = input('r-name', recipe?.name ?? '', { 'data-feedback-id': 'food.recetario.formulario.nombre', 'data-feedback-label': 'Nombre', required: true, maxlength: '160' });
-    const publicName = input('r-public-name', recipe?.public_name ?? null, { 'data-feedback-id': 'food.recetario.formulario.nombre_publico', 'data-feedback-label': 'Nombre público', maxlength: '160' });
-    const publicDescription = area('r-public-description', recipe?.public_description ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.descripcion_publica', 'data-feedback-label': 'Descripción pública' });
-    const category = el('select', { 'data-feedback-id': 'food.recetario.formulario.categoria', 'data-feedback-label': 'Categoría', id: 'r-category' }, ...RECIPE_CATEGORIES.map((c) => el('option', { value: c, selected: (recipe?.category ?? 'principal') === c }, CATEGORY_LABELS[c])));
-    const servings = input('r-servings', recipe ? formatQuantity(recipe.base_servings) : '', { 'data-feedback-id': 'food.recetario.formulario.raciones', 'data-feedback-label': 'Raciones base', inputmode: 'decimal', required: true });
+    const name = input('r-name', recipe?.name ?? '', { 'data-field-id': 'food.recetario.formulario.nombre', 'data-field-entity': 'food.recipes', 'data-field-prop': 'name', 'data-feedback-id': 'food.recetario.formulario.nombre', 'data-feedback-label': 'Nombre', required: true, maxlength: '160' });
+    const publicName = input('r-public-name', recipe?.public_name ?? null, { 'data-field-id': 'food.recetario.formulario.nombre_publico', 'data-field-entity': 'food.recipes', 'data-field-prop': 'public_name', 'data-feedback-id': 'food.recetario.formulario.nombre_publico', 'data-feedback-label': 'Nombre público', maxlength: '160' });
+    const publicDescription = area('r-public-description', recipe?.public_description ?? null, 2, { 'data-field-id': 'food.recetario.formulario.descripcion_publica', 'data-field-entity': 'food.recipes', 'data-field-prop': 'public_description', 'data-feedback-id': 'food.recetario.formulario.descripcion_publica', 'data-feedback-label': 'Descripción pública' });
+    const category = el('select', { 'data-field-id': 'food.recetario.formulario.categoria', 'data-field-entity': 'food.recipes', 'data-field-prop': 'category', 'data-feedback-id': 'food.recetario.formulario.categoria', 'data-feedback-label': 'Categoría', id: 'r-category' }, ...RECIPE_CATEGORIES.map((c) => el('option', { value: c, selected: (recipe?.category ?? 'principal') === c }, CATEGORY_LABELS[c])));
+    const servings = input('r-servings', recipe ? formatQuantity(recipe.base_servings) : '', { 'data-field-id': 'food.recetario.formulario.raciones', 'data-field-entity': 'food.recipes', 'data-field-prop': 'base_servings', 'data-feedback-id': 'food.recetario.formulario.raciones', 'data-feedback-label': 'Raciones base', inputmode: 'decimal', required: true });
     // Elaboración por pasos; una receta con solo `method` (texto libre) se convierte a pasos sin perder nada.
     const method = createStepsEditor(
       recipe ? (Array.isArray(recipe.method_steps) && recipe.method_steps.length ? recipe.method_steps : methodStepsFromText(recipe.method)) : [],
@@ -490,7 +490,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const prepMode = el('select', { 'data-feedback-id': 'food.recetario.formulario.antelacion_modo', 'data-feedback-label': 'Tipo de antelación', id: 'r-prep-mode', 'aria-label': 'Antelación',
       onchange: () => { paintPrep(); if (prepMode.value === 'antes') prep.focus(); } },
     ...([['sin', 'Sin indicar'], ['momento', 'En el momento'], ['antes', 'Antes del servicio']] as const).map(([value, label]) => el('option', { value, selected: prepParts.mode === value }, label)));
-    const prep = input('r-prep', prepParts.amount != null ? formatQuantity(prepParts.amount) : '', { 'data-feedback-id': 'food.recetario.formulario.antelacion', 'data-feedback-label': 'Antelación', inputmode: 'decimal', 'aria-label': 'Tiempo de antelación', placeholder: 'Ej.: 2', class: 'compact' });
+    const prep = input('r-prep', prepParts.amount != null ? formatQuantity(prepParts.amount) : '', { 'data-field-id': 'food.recetario.formulario.antelacion', 'data-field-entity': 'food.recipes', 'data-field-prop': 'prep_minutes', 'data-feedback-id': 'food.recetario.formulario.antelacion', 'data-feedback-label': 'Antelación', inputmode: 'decimal', 'aria-label': 'Tiempo de antelación', placeholder: 'Ej.: 2', class: 'compact' });
     const PREP_UNIT_LABELS: Record<PrepUnit, string> = { minutos: 'minutos', horas: 'horas', dias: 'días' };
     const prepUnit = el('select', { 'data-feedback-id': 'food.recetario.formulario.antelacion_unidad', 'data-feedback-label': 'Unidad de antelación', id: 'r-prep-unit', 'aria-label': 'Unidad de antelación', class: 'compact' },
       ...PREP_UNITS.map((u) => el('option', { value: u, selected: prepParts.unit === u }, PREP_UNIT_LABELS[u])));
@@ -499,10 +499,10 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     paintPrep();
     const prepField = el('div', { class: 'field' }, el('span', null, 'Antelación'), el('div', { class: 'prepline' }, prepMode, prepAmount),
       el('span', { class: 'hint' }, 'Cuánto antes del servicio se prepara (hasta 7 días).'));
-    const conservation = area('r-conservation', recipe?.conservation ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.conservacion', 'data-feedback-label': 'Conservación' });
-    const freezable = check('r-freezable', 'Se puede congelar', recipe?.freezable ?? false, { 'data-feedback-id': 'food.recetario.formulario.congelable', 'data-feedback-label': 'Se puede congelar' });
-    const regeneration = area('r-regeneration', recipe?.regeneration ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.regeneracion', 'data-feedback-label': 'Regeneración' });
-    const serviceNotes = area('r-service', recipe?.service_notes ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.notas_servicio', 'data-feedback-label': 'Notas de servicio' });
+    const conservation = area('r-conservation', recipe?.conservation ?? null, 2, { 'data-field-id': 'food.recetario.formulario.conservacion', 'data-field-entity': 'food.recipes', 'data-field-prop': 'conservation', 'data-feedback-id': 'food.recetario.formulario.conservacion', 'data-feedback-label': 'Conservación' });
+    const freezable = check('r-freezable', 'Se puede congelar', recipe?.freezable ?? false, { 'data-field-id': 'food.recetario.formulario.congelable', 'data-field-entity': 'food.recipes', 'data-field-prop': 'freezable', 'data-feedback-id': 'food.recetario.formulario.congelable', 'data-feedback-label': 'Se puede congelar' });
+    const regeneration = area('r-regeneration', recipe?.regeneration ?? null, 2, { 'data-field-id': 'food.recetario.formulario.regeneracion', 'data-field-entity': 'food.recipes', 'data-field-prop': 'regeneration', 'data-feedback-id': 'food.recetario.formulario.regeneracion', 'data-feedback-label': 'Regeneración' });
+    const serviceNotes = area('r-service', recipe?.service_notes ?? null, 2, { 'data-field-id': 'food.recetario.formulario.notas_servicio', 'data-field-entity': 'food.recipes', 'data-field-prop': 'service_notes', 'data-feedback-id': 'food.recetario.formulario.notas_servicio', 'data-feedback-label': 'Notas de servicio' });
 
     // Seguridad
     // Dietas y alérgenos con el selector de etiquetas del kit: dos familias, chips conmutables y resumen arriba.
@@ -525,8 +525,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       el('div', null, `Sus ingredientes o su texto nombran: ${proposed.map((a) => ALLERGEN_LABELS[a]).join(', ')}.`),
       el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.formulario.alergenos_propuestos.marcar', 'data-feedback-label': 'Marcarlos', class: 'ghost', type: 'button',
         onclick: () => { tags.set([...new Set([...tags.get(), ...proposed.map((a) => `allergen:${a}`)])]); guard.dirtyEditor = true; proposal?.remove(); } }, 'Marcarlos'))) : null;
-    const checked = check('r-allergens-checked', 'He revisado los alérgenos de esta receta', recipe?.allergens_checked ?? false, { 'data-feedback-id': 'food.recetario.formulario.alergenos_revisados', 'data-feedback-label': 'Alérgenos revisados' });
-    const status = el('select', { 'data-feedback-id': 'food.recetario.formulario.estado', 'data-feedback-label': 'Estado', id: 'r-status' }, ...RECIPE_STATUSES.map((s) => el('option', { value: s, selected: (recipe?.status ?? 'en_prueba') === s }, RECIPE_STATUS_LABELS[s])));
+    const checked = check('r-allergens-checked', 'He revisado los alérgenos de esta receta', recipe?.allergens_checked ?? false, { 'data-field-id': 'food.recetario.formulario.alergenos_revisados', 'data-field-entity': 'food.recipes', 'data-field-prop': 'allergens_checked', 'data-feedback-id': 'food.recetario.formulario.alergenos_revisados', 'data-feedback-label': 'Alérgenos revisados' });
+    const status = el('select', { 'data-field-id': 'food.recetario.formulario.estado', 'data-field-entity': 'food.recipes', 'data-field-prop': 'status', 'data-feedback-id': 'food.recetario.formulario.estado', 'data-feedback-label': 'Estado', id: 'r-status' }, ...RECIPE_STATUSES.map((s) => el('option', { value: s, selected: (recipe?.status ?? 'en_prueba') === s }, RECIPE_STATUS_LABELS[s])));
 
     // Ingredientes: los de Food y, después, los de Recursos que Food aún no usa (R5a).
     const shared = sharedIngredientItems(resourceItems, ingredients);
@@ -540,17 +540,17 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       const known = line ? names.get(line.ingredient_id) : null;
       const form: LineForm = {
         line,
-        name: el('input', { 'data-feedback-id': 'food.recetario.ingredientes.nombre', 'data-feedback-label': 'Ingrediente', type: 'text', list: 'ingredientNames', placeholder: 'Ingrediente', 'aria-label': 'Ingrediente', maxlength: '120', value: known?.name ?? '',
+        name: el('input', { 'data-field-id': 'food.recetario.ingredientes.nombre', 'data-field-entity': 'food.recipe_ingredients', 'data-field-prop': 'ingredient_id', 'data-feedback-id': 'food.recetario.ingredientes.nombre', 'data-feedback-label': 'Ingrediente', type: 'text', list: 'ingredientNames', placeholder: 'Ingrediente', 'aria-label': 'Ingrediente', maxlength: '120', value: known?.name ?? '',
           onchange: () => {
             if (form.line || form.quantity.value) return;
             const hit = byKey(form.name.value);
             const unit = hit ? hit.preferred_unit : foodUnitFromBase(sharedByKey(form.name.value)?.base_unit ?? '');
             if (unit) form.unit.value = unit;
           } }),
-        quantity: el('input', { 'data-feedback-id': 'food.recetario.ingredientes.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', placeholder: 'Cantidad', 'aria-label': 'Cantidad', value: line ? formatQuantity(line.quantity) : '' }),
-        unit: el('select', { 'data-feedback-id': 'food.recetario.ingredientes.unidad', 'data-feedback-label': 'Unidad', 'aria-label': 'Unidad' }, ...UNITS.map((u) => el('option', { value: u, selected: (line?.unit ?? 'g') === u }, UNIT_LABELS[u]))),
+        quantity: el('input', { 'data-field-id': 'food.recetario.ingredientes.cantidad', 'data-field-entity': 'food.recipe_ingredients', 'data-field-prop': 'quantity', 'data-feedback-id': 'food.recetario.ingredientes.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', placeholder: 'Cantidad', 'aria-label': 'Cantidad', value: line ? formatQuantity(line.quantity) : '' }),
+        unit: el('select', { 'data-field-id': 'food.recetario.ingredientes.unidad', 'data-field-entity': 'food.recipe_ingredients', 'data-field-prop': 'unit', 'data-feedback-id': 'food.recetario.ingredientes.unidad', 'data-feedback-label': 'Unidad', 'aria-label': 'Unidad' }, ...UNITS.map((u) => el('option', { value: u, selected: (line?.unit ?? 'g') === u }, UNIT_LABELS[u]))),
         // Estación del montaje (1110): 1 Untar · 2 Colocar · 3 Dosificar · 4 Acabados; la usan la previsión de la carta y Flow.
-        station: el('select', { 'data-feedback-id': 'food.recetario.ingredientes.estacion', 'data-feedback-label': 'Estación', 'aria-label': 'Estación' },
+        station: el('select', { 'data-field-id': 'food.recetario.ingredientes.estacion', 'data-field-entity': 'food.recipe_ingredients', 'data-field-prop': 'station', 'data-feedback-id': 'food.recetario.ingredientes.estacion', 'data-feedback-label': 'Estación', 'aria-label': 'Estación' },
           el('option', { value: '' }, 'Sin estación'),
           ...[1, 2, 3, 4].map((s) => el('option', { value: String(s), selected: Number(line?.station ?? 0) === s }, `${s} · ${STATION_LABELS[s]}`))),
         node: el('div', { 'data-feedback-id': 'food.recetario.ingredientes.linea', 'data-feedback-label': 'Línea de ingrediente', class: 'linerow' }),
@@ -568,8 +568,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const existingNeeds = recipe ? needsOf(recipe.id) : [];
     const machineForms = [...equipment].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((machine) => {
       const need = existingNeeds.find((n) => n.equipment_id === machine.id) ?? null;
-      const box = el('input', { 'data-feedback-id': 'food.recetario.formulario.maquinaria.equipo', 'data-feedback-label': 'Necesita esta máquina', type: 'checkbox', checked: !!need, id: `r-machine-${machine.id}` });
-      const quantity = el('input', { 'data-feedback-id': 'food.recetario.formulario.maquinaria.unidades', 'data-feedback-label': 'Unidades necesarias', type: 'number', min: '1', step: '1', inputmode: 'numeric', value: String(need?.quantity_required ?? 1), 'aria-label': `Unidades de ${machine.name}`, class: 'qty compact' });
+      const box = el('input', { 'data-field-id': 'food.recetario.formulario.maquinaria.equipo', 'data-field-entity': 'food.recipe_equipment', 'data-field-prop': 'equipment_id', 'data-feedback-id': 'food.recetario.formulario.maquinaria.equipo', 'data-feedback-label': 'Necesita esta máquina', type: 'checkbox', checked: !!need, id: `r-machine-${machine.id}` });
+      const quantity = el('input', { 'data-field-id': 'food.recetario.formulario.maquinaria.unidades', 'data-field-entity': 'food.recipe_equipment', 'data-field-prop': 'quantity_required', 'data-feedback-id': 'food.recetario.formulario.maquinaria.unidades', 'data-feedback-label': 'Unidades necesarias', type: 'number', min: '1', step: '1', inputmode: 'numeric', value: String(need?.quantity_required ?? 1), 'aria-label': `Unidades de ${machine.name}`, class: 'qty compact' });
       // R5: dónde está (su espacio en Recursos), fuera de la etiqueta.
       const place = machinePlace(machine);
       return { machine, need, box, quantity, node: el('div', { class: 'machinerow' }, el('label', { class: 'checkline', for: box.id }, box, el('span', null, machine.name)), place ? el('span', { class: 'muted machineplace' }, place) : null, quantity) };

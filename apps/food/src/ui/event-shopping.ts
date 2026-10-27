@@ -148,7 +148,7 @@ export function mountEventShopping(eventId: string): ViewMount {
     async function openRequest(): Promise<void> {
       if (!data) return;
       const rows = data.rows.filter((r) => picked.has(r.key) && pickable(r));
-      const select = el('select', { 'data-feedback-id': 'food.eventos.compra.proyecto', 'data-feedback-label': 'Proyecto de Tasks', id: 'eventShoppingProject', 'aria-label': 'Proyecto de Tasks' },
+      const select = el('select', { 'data-field-id': 'food.eventos.compra.proyecto', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'purchase_project_id', 'data-feedback-id': 'food.eventos.compra.proyecto', 'data-feedback-label': 'Proyecto de Tasks', id: 'eventShoppingProject', 'aria-label': 'Proyecto de Tasks' },
         el('option', { value: '' }, 'Cargando los proyectos…')) as HTMLSelectElement;
       const send = el('button', { 'data-feedback-id': 'food.eventos.compra.enviar', 'data-feedback-label': 'Pedir', class: 'primary', type: 'button', id: 'eventShoppingSend', disabled: true,
         onclick: async () => {

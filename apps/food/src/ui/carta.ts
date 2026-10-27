@@ -70,9 +70,9 @@ async function copyCarta(client: SyncClient, source: CartaMenu, name: string, ev
 /** Hoja «Usar en otro evento» (y «Usar esta carta» desde la ficha del evento): nombre y evento de la copia. */
 export function openCopySheet(client: SyncClient, source: CartaMenu, events: FoodEvent[], navigate: (hash: string) => void, preset?: FoodEvent): void {
   const upcoming = events.filter((e) => e.end_date >= todayKey()).sort((a, b) => a.start_date.localeCompare(b.start_date));
-  const name = el('input', { 'data-feedback-id': 'food.carta.copiar.nombre', 'data-feedback-label': 'Nombre de la copia', id: 'cartaCopyName', type: 'text', maxlength: '120',
+  const name = el('input', { 'data-field-id': 'food.carta.copiar.nombre', 'data-field-entity': 'food.menus', 'data-field-prop': 'name', 'data-feedback-id': 'food.carta.copiar.nombre', 'data-feedback-label': 'Nombre de la copia', id: 'cartaCopyName', type: 'text', maxlength: '120',
     value: preset ? `${source.name ?? 'Carta'} · ${preset.title}` : `${source.name ?? 'Carta'} (copia)` });
-  const event = el('select', { 'data-feedback-id': 'food.carta.copiar.evento', 'data-feedback-label': 'Evento de la copia', id: 'cartaCopyEvent', 'aria-label': 'Evento' },
+  const event = el('select', { 'data-field-id': 'food.carta.copiar.evento', 'data-field-entity': 'food.menus', 'data-field-prop': 'event_id', 'data-feedback-id': 'food.carta.copiar.evento', 'data-feedback-label': 'Evento de la copia', id: 'cartaCopyEvent', 'aria-label': 'Evento' },
     el('option', { value: '' }, 'Sin evento: guardarla'),
     ...upcoming.map((e) => el('option', { value: e.event_id, selected: preset?.event_id === e.event_id }, `${e.title} · ${dateRange(e)}`)));
   let sheet: Sheet | null = null;
@@ -97,7 +97,7 @@ export function openCopySheet(client: SyncClient, source: CartaMenu, events: Foo
 
 /** Hoja «Nueva carta»: solo el nombre; las líneas se añaden en su vista. */
 export function openNewCartaSheet(client: SyncClient, navigate: (hash: string) => void, eventId: string | null = null): void {
-  const name = el('input', { 'data-feedback-id': 'food.menus.cartas.nueva_nombre', 'data-feedback-label': 'Nombre de la carta', id: 'cartaNewName', type: 'text', maxlength: '120', placeholder: 'Barra del sábado' });
+  const name = el('input', { 'data-field-id': 'food.menus.cartas.nueva_nombre', 'data-field-entity': 'food.menus', 'data-field-prop': 'name', 'data-feedback-id': 'food.menus.cartas.nueva_nombre', 'data-feedback-label': 'Nombre de la carta', id: 'cartaNewName', type: 'text', maxlength: '120', placeholder: 'Barra del sábado' });
   let sheet: Sheet | null = null;
   const save = el('button', { 'data-feedback-id': 'food.menus.cartas.crear', 'data-feedback-label': 'Crear carta', class: 'primary', type: 'button', id: 'cartaNewSave',
     onclick: async () => {
