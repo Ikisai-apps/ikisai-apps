@@ -22,7 +22,7 @@ const update = (id: string, expectedRevision: number, fields: Record<string, unk
 /** Un `record_app_entry` llega desde el servidor de su app (F1, §17.10): la prueba de origen va con su `source_app`. */
 function commit(operations: unknown[], token?: string) {
   const entry = (operations as Array<{ procedure?: string; args?: { source_app?: string } }>).find((o) => o.procedure === 'invoices.record_app_entry');
-  const headers = entry?.args?.source_app ? { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': entry.args.source_app } : {};
+  const headers: Record<string, string> = entry?.args?.source_app ? { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': entry.args.source_app } : {};
   return app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations }, headers, ...(token ? { token } : {}) });
 }
 async function ok(operations: unknown[], token?: string) {
