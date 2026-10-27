@@ -25,8 +25,13 @@ begin
   return v_hits <= p_limit;
 end $$;
 
+-- Vuelta a cero de una clave (p. ej., al emitir un código nuevo, los intentos de verificar el anterior ya no cuentan).
+create or replace function core.rate_reset(p_key text) returns void language sql as $$ delete from core.rate_hits where key = p_key $$;
+
 create or replace function public.core_rate_hit(p_key text, p_limit int, p_window_seconds int) returns boolean
 language sql security definer set search_path = '' as $$ select core.rate_hit(p_key, p_limit, make_interval(secs => p_window_seconds)) $$;
+create or replace function public.core_rate_reset(p_key text) returns void
+language sql security definer set search_path = '' as $$ select core.rate_reset(p_key) $$;
 revoke all on table core.rate_hits from public, anon, authenticated;
-revoke all on function core.rate_hit(text, int, interval), public.core_rate_hit(text, int, int) from public, anon, authenticated;
-grant execute on function public.core_rate_hit(text, int, int) to service_role;
+revoke all on function core.rate_hit(text, int, interval), core.rate_reset(text), public.core_rate_hit(text, int, int), public.core_rate_reset(text) from public, anon, authenticated;
+grant execute on function public.core_rate_hit(text, int, int), public.core_rate_reset(text) to service_role;

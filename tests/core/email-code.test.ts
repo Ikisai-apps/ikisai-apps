@@ -119,13 +119,20 @@ test('código por correo · fuerza bruta (0110): al séptimo intento en 15 minut
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
 });
 
-test('código por correo · envíos (0110): a partir del sexto en una hora la respuesta es la misma pero no se envía nada', async () => {
+test('código por correo · envíos (0110): un envío por minuto; el segundo responde igual pero no envía; un envío nuevo reinicia los intentos', async () => {
   const email = 'insistente-org@example.invalid';
   await link(await reservation(), email);
-  for (let i = 0; i < 5; i++) assert.deepEqual((await send(email)).data, { sent: true });
+  assert.deepEqual((await send(email)).data, { sent: true });
   const last = booking.supabase.lastEmailCode();
   assert.equal(last?.email, email);
-  const sixth = await send(email);
-  assert.deepEqual([sixth.status, sixth.data], [200, { sent: true }]);
-  assert.equal(booking.supabase.lastEmailCode(), last, 'el sexto no envía');
+  const second = await send(email);
+  assert.deepEqual([second.status, second.data], [200, { sent: true }]);
+  assert.equal(booking.supabase.lastEmailCode(), last, 'dentro del minuto no envía otro');
+  // El contador de verificación se reinicia con un envío (aquí, a nivel de núcleo, porque la cadencia de un minuto no se espera en la prueba).
+  const db = booking.t.db;
+  let ok = true;
+  for (let i = 0; i < 7; i++) ok = (await db.query<{ r: boolean }>(`select core.rate_hit('email-code:verify:${email}', 6, interval '15 minutes') r`)).rows[0]!.r;
+  assert.equal(ok, false, 'el séptimo no cabe');
+  await db.query(`select core.rate_reset('email-code:verify:${email}')`);
+  assert.equal((await db.query<{ r: boolean }>(`select core.rate_hit('email-code:verify:${email}', 6, interval '15 minutes') r`)).rows[0]!.r, true, 'tras reiniciar, cabe');
 });
