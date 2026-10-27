@@ -24,9 +24,15 @@ test('indicadores · entradas, firmas y SES de los retiros de ahora; muestra y e
     const res = (await db.query<{ id: string }>(`insert into booking.reservations (title, status, start_date, end_date, expected_guests) values ('Retiro KPI', 'confirmada', $1, $2, 5) returning id`, [plus(start), plus(end)])).rows[0]!.id;
     return (await db.query<{ id: string }>(`insert into booking.events (reservation_id) values ($1) returning id`, [res])).rows[0]!.id;
   };
-  const guest = (event: string, fields: Record<string, unknown> = {}) => {
+  // El aviso y la firma solo los pone el propio huésped (`GUEST_ONLY`): aquí se siembran sin disparadores, como ya firmados.
+  const guest = async (event: string, fields: Record<string, unknown> = {}) => {
     const cols = ['event_id', 'first_name', ...Object.keys(fields)];
-    return db.query(`insert into booking.guests (${cols.join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, [event, 'Prueba', ...Object.values(fields)]);
+    await db.query(`set session_replication_role = replica`);
+    try {
+      await db.query(`insert into booking.guests (${cols.join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, [event, 'Prueba', ...Object.values(fields)]);
+    } finally {
+      await db.query(`set session_replication_role = origin`);
+    }
   };
 
   // En curso (empezó hace 2 días): entró, firmó y está comunicado; entró, sin firmar y llegado sin comunicar; no entró.
