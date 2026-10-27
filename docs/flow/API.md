@@ -463,7 +463,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - `POST guide-read {execution_id, app}` (capacidad `flow.guide_read`): `{id, title, mode, status, steps: [{id, title, explain, anchor, route, confirm, done, essential, app, stage}]}`.
   - Solo quien hace la ejecución (si no, `404`). Pasos de esa `app` (primer segmento del anclaje) y los propios de Flow (`app: null`: sin anclaje).
   - `route` y `confirm` salen de la lectura por id de campo del núcleo (`core_field_lookup`, 0109); sin ella, `route: null` y `confirm: 'manual'`.
-  - `done`: recibo de la app con `how` `save` o `event` y sin `pending`; en los pasos propios de Flow, su valor en el tramo o el tramo cerrado.
+  - `done`: recibo de la app sin `pending` (desde `0949`, también `manual` o `none`: «Hecho», «Siguiente», «Saltar», para que no vuelva a salir pendiente al releer); en los pasos propios de Flow, su valor en el tramo o el tramo cerrado. Cerrar un tramo «ir a otra app» sigue pidiendo `save` o `event`.
 - `POST guide-confirm {requestId, execution_id, step_id, how: save|event|manual|none, pending?}` (capacidad `flow.guide_confirm`): deja recibo en `flow.guide_receipts` (sin valores), idempotente por `requestId`. Un ensayo (`learn`) no confirma nada.
 
 ## 47. Clases de actividad (flow-19, migración `0942`)
