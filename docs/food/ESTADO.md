@@ -72,6 +72,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - «Usar en otro evento» y la carta en la ficha del evento, incluidas las que marca Booking en jornadas abiertas.
   - El evento familiar come del menú de casa.
   - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
+  - **Iconos de comida del kit** (K13, ui-kit 0.69.10, línea de Core del 27-10): cada bloque de la carta lleva el suyo (Clásicos, plato; Gourmet, gorro; Barra, vaso) y en Cocina cada servicio el de su momento (`SERVICE_ICONS` en `events.ts`), siempre junto al nombre.
 
 - **Previsión de la carta: modelo y lecturas** (migración 1110; API.md §2.11). Unidades esperadas, reparto mesa/nevera/fresco, estación por ingrediente, conversiones sin inventar (rodajas incluidas), `food.carta_prep_projection` y `food.carta_prep_totals_projection` para Flow, y la lista de la compra de una carta. Prueba: `carta-prevision.test.ts`. **Su pantalla:** las pestañas Previsión (reparto, unidades esperadas y plan de bandejas imprimible) y Compra de la carta. Prueba: `carta.spec.ts`.
 
