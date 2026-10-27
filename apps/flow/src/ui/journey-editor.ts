@@ -164,6 +164,12 @@ export function mountJourneyEditor(key: string | null): ViewMount {
         ops.push({ op: 'insert', table: TABLES.definitionStages, id: stageId, fields: { version_id: versionId, position: si + 1, kind: st.kind,
           capability: st.kind === 'capability' ? st.capability || null : null, title: st.title.trim() || `Tramo ${si + 1}`, explain: st.explain.trim() || null,
           target_app: st.kind === 'handoff' ? st.app : null, target_anchor: st.kind === 'handoff' ? st.anchor.trim() || null : null } });
+        // «Ir a otra app» con pantalla: un paso con ese anclaje, para que la confirmación de la app destino cierre el tramo.
+        if (st.kind === 'handoff' && st.anchor.trim()) {
+          ops.push({ op: 'insert', table: TABLES.definitionSteps, id: crypto.randomUUID(), fields: { version_id: versionId, stage_id: stageId, position: 1,
+            key: 'confirmacion', title: st.title.trim() || 'Hecho en la otra app', explain: null, essential: true, mode: 'ask', anchor: st.anchor.trim() } });
+          return;
+        }
         st.steps.forEach((p, pi) => {
           const fixed = p.mode === 'fixed' ? (p.type === 'number' && p.fixed !== '' && Number.isFinite(Number(p.fixed)) ? Number(p.fixed) : p.fixed) : null;
           ops.push({ op: 'insert', table: TABLES.definitionSteps, id: crypto.randomUUID(), fields: { version_id: versionId, stage_id: stageId, position: pi + 1,
