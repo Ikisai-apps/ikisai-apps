@@ -16,6 +16,7 @@ import { createFilesGc } from './files-gc.ts';
 import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
 import { applyPublicOperations, type PublicOperation } from './public-write.ts';
 import { isPublicOrigin, issueVisitor, publicReadWithVisitor, resolveVisitor, type Visitor } from './visitors.ts';
+import { createCapabilities, type CapabilitiesOptions } from './capabilities.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -51,6 +52,8 @@ export interface AppConfig extends SupabaseConfig {
    * escritura pública de la propia app a mano (`apply`). Van antes de la lectura pública genérica `GET public/<nombre>`.
    */
   publicRoutes?: PublicRoute[];
+  /** Catálogo de capacidades (0097): transporte y bases de API de las apps dueñas (pruebas). */
+  capabilities?: CapabilitiesOptions;
 }
 
 export interface PublicRequest {
@@ -144,6 +147,7 @@ export function createApp(config: AppConfig): AppHandler {
   const suggestions = createSuggestions(supabase, config.app, sync.validateOperations, config.hooks ?? {});
   const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
+  const capabilities = createCapabilities(supabase, config.app, config.capabilities ?? {});
   const mcpCore = (ctx: RequestContext): McpCore => ({
     commit: (body) => sync.commit(ctx, body),
     prepare: (body) => agents.prepare(ctx, body),
@@ -176,6 +180,10 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'read/:name', handler: ({ ctx, params, url }) => sync.read(ctx, params.name ?? '', readArgs(url.searchParams)) },
     { method: 'POST', pattern: 'read/:name', handler: async ({ ctx, params, json }) => sync.read(ctx, params.name ?? '', await json()) },
     { method: 'POST', pattern: 'invoke/:name', handler: async ({ ctx, params, json }) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return sync.invoke(ctx.user.id, params.name ?? '', await json()); } },
+    // Catálogo de capacidades (0097): lo que esta persona puede invocar en otras apps, la invocación con su token y sus recibos.
+    { method: 'GET', pattern: 'capabilities', handler: ({ ctx }) => capabilities.list(ctx) },
+    { method: 'GET', pattern: 'capabilities/receipts', handler: ({ ctx, url }) => capabilities.receipts(ctx, url.searchParams) },
+    { method: 'POST', pattern: 'capabilities/:id/invoke', handler: async ({ ctx, params, json }) => capabilities.invoke(ctx, params.id ?? '', (await json()) as Record<string, unknown>) },
     // Cerrar sesión: esta app y el pase de sesión única del dispositivo; `{everywhere: true}` cierra todas las sesiones y pases.
     { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => {
       let everywhere = false;
