@@ -409,11 +409,11 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn, emailCode: emailCodeOn });
       if (path === '/api/v1/auth/email-code' && request.method === 'POST') {
         if (!emailCodeOn) fail(503, 'EMAIL_CODE_DISABLED', messageFor('EMAIL_CODE_DISABLED'));
-        return json(await auth.sendEmailCode(config.app, await readJson()));
+        return json(await auth.sendEmailCode(config.app, await readJson(), clientIp(request)));
       }
       if (path === '/api/v1/auth/email-code/verify' && request.method === 'POST') {
         if (!emailCodeOn) fail(503, 'EMAIL_CODE_DISABLED', messageFor('EMAIL_CODE_DISABLED'));
-        const { userId, ...tokens } = await auth.verifyEmailCode(config.app, await readJson());
+        const { userId, ...tokens } = await auth.verifyEmailCode(config.app, await readJson(), clientIp(request));
         const pass = await sso.issueForUser(userId).catch(() => null);
         return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
       }

@@ -24,3 +24,7 @@ html.dark .primary:hover,html.dark .primary:focus-visible{background:#55623f}
    (hasta tres líneas en vez de cortarse en una). */
 .facetbtn{min-height:44px}
 .activitywhat{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
+
+/* «¿Sin red?» del inicio de sesión del kit a 44 px con el dedo (UI-kit, revisión móvil 27-10): la regla táctil del kit
+   (#934) no llegaba a ganar en Tasks; aquí se repite, la última hoja y dentro de su mismo ámbito. */
+@media (pointer: coarse){.ikisai-kit .login summary{display:flex;align-items:center;min-height:44px;padding:0}}

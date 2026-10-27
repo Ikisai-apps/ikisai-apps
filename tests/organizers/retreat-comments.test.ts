@@ -10,7 +10,7 @@ import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/book
 import { createOrganizersApp, ORGANIZERS_ORIGINS } from '../../supabase/functions/organizers-api/app.ts';
 import { TABLES as BOOKING } from '../../supabase/functions/_domain/booking/mod.ts';
 import { loadGuestFeedback, retreatComments, type FeedbackItem } from '../../apps/organizers/src/app/retreat-comments.ts';
-import { readOperations, unreadOf } from '../../apps/organizers/src/app/comment-reads.ts';
+import { readOperations, unreadByReservation, unreadOf } from '../../apps/organizers/src/app/comment-reads.ts';
 import { TABLES } from '../../supabase/functions/_domain/organizers/mod.ts';
 
 const uuid = () => crypto.randomUUID();
@@ -130,6 +130,18 @@ test('organizers · leídos: la coorganizadora no ve lo que lee Ana, y cuenta co
   const ops = readOperations([ids.late, ids.early, ids.early.toUpperCase()], new Set([ids.late]), R1, co.id);
   assert.deepEqual(ops.map((o) => o.fields.report_id), [ids.early]);
   assert.equal((await commit(co.token, ops)).status, 200);
+});
+
+test('organizers · leídos: «Mis retiros» cuenta por retiro los comentarios de asistentes sin ver, y nada más', () => {
+  const R = uuid(), S = uuid();
+  const item = (id: string, reservation: string | null, over: Partial<FeedbackItem> = {}): FeedbackItem => ({
+    id, code: id, reporterKind: 'guest', subject: 'event', intent: 'comment', category: null, message: 'Bien',
+    scope: reservation ? { reservation_id: reservation } : null, createdAt: '2026-10-20T10:00:00Z', ...over,
+  });
+  const items = [item('a', R), item('b', R.toUpperCase()), item('c', S), item('d', S), item('e', R, { subject: 'space' }),
+    item('f', R, { reporterKind: 'staff' }), item('g', null)];
+  assert.deepEqual([...unreadByReservation(items, new Set(['c', 'd']))], [[R, 2]]);
+  assert.deepEqual([...unreadByReservation(items, new Set())].sort(), [[R, 2], [S, 2]].sort());
 });
 
 test('organizers · leídos: el KPI de Dirección cuenta los comentarios que nadie del retiro ha visto', async () => {

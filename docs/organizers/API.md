@@ -787,5 +787,6 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
   - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
   - No se cambia ni se borra (`IMMUTABLE_FIELD`).
   - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.
-- **Cliente:** `app/comment-reads.ts` (`readIds`, `unreadOf`, `readOperations`, `markRead`). Sin red, se encola como el resto.
+- **En «Mis retiros»:** la tarjeta de cada retiro lleva «N comentarios nuevos», junto a las propuestas del equipo. Se pinta después de la lista, con la misma lectura `GET feedback?app=guests` y las filas propias de `comment_reads` (`unreadByReservation`). Sin red, sin marca.
+- **Cliente:** `app/comment-reads.ts` (`readIds`, `allReadIds`, `unreadOf`, `unreadByReservation`, `readOperations`, `markRead`). Sin red, se encola como el resto.
 

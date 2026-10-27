@@ -114,9 +114,10 @@
 
 - 2026-10-27 · Guiado mínimo del kit 0.68: `guide: { feedbackId: 'guests.guia' }` en la cabecera, sin leer nada de Flow. `?campo=` señala el campo y `?paso=` explica el paso y pone «Volver a…». `registerReveal('guests')` abre el desplegable cerrado donde esté el anclaje.
 
+- 2026-10-27 · «Mi pedido» del visitante, en uso con Flow FL2 (0915): «Abrir la carta» le da su número, que se conserva al volver. Prueba de punta a punta con flow-api en el servidor de pruebas de Guests (`linkBar`).
+
 ## Pendiente
 
-- «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
 
 - Al recuperar el acceso de visitante en otro móvil, «Mis eventos» sale vacía, porque la lista vive en cada móvil. Hace falta que el núcleo dé los códigos de evento del visitante (p. ej. en `public/visitor/me`); pedido a Core.
 - Barras estrechas del calendario anual: el rótulo fuera de la barra, en el kit (`renderTimeline`); pedido a UI-kit por Core.

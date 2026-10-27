@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { convert, ingredientKey, outputUnit, round3, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
+import { convert, ingredientKey, outputUnit, round3, similarRecipes, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
 
 const RECIPE = '11111111-1111-4111-8111-111111111111';
 const INGREDIENT = '22222222-2222-4222-8222-222222222222';
@@ -151,3 +151,17 @@ test('coste · media de los últimos 3 meses; si no hay, la última compra con a
   assert.deepEqual(menuTotals(new Map([['m', graph]]), prices).get('m'), { total: 4.05, missing: 0, stale: 1 });
 });
 
+test('platos sugeridos · las recetas parecidas: palabras del nombre en común, luego la categoría del servicio (F-SUG-3)', () => {
+  const r = (id: string, name: string, category: 'principal' | 'desayuno' | 'postre') => ({ id, name, category });
+  const recipes = [
+    r('1', 'Lentejas estofadas', 'principal'), r('2', 'Lentejas con verduras', 'principal'), r('3', 'Crema de calabaza', 'principal'),
+    r('4', 'Tostadas de lentejas', 'desayuno'), r('5', 'Verduras al horno', 'principal'), r('6', 'Arroz con leche', 'postre'),
+  ];
+  // «con» y «de» no cuentan; sin acentos; la que comparte dos palabras va primera; a igualdad, la de la categoría de la comida.
+  assert.deepEqual(similarRecipes('Lentejas con verdúras', 'comida', recipes).map((x) => x.id), ['2', '1', '5', '4']);
+  // En el desayuno sube la de desayuno.
+  assert.deepEqual(similarRecipes('lentejas', 'desayuno', recipes).map((x) => x.id), ['4', '2', '1']);
+  assert.deepEqual(similarRecipes('Gazpacho', 'comida', recipes), []);
+  assert.deepEqual(similarRecipes('de la', 'comida', recipes), []);
+  assert.equal(similarRecipes('lentejas', 'comida', recipes, 2).length, 2);
+});

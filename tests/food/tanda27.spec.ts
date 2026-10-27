@@ -80,17 +80,21 @@ test('recetario · «Lleva X / Sin X» con lo no revisado marcado, y la línea s
   await page.goto(`${baseURL}/#/recetario`);
   const names = page.locator('#recipeGrid .recipecard strong');
   await expect(names).toHaveText(['Curry de verduras', 'Ensalada verde', 'Tarta de pistacho']);
+  await page.locator('#openFilters').click(); // F-REC-2: los selectores, en la hoja «Filtrar»
   await page.locator('#filterAllergen').selectOption('frutos_de_cascara');
   // «Lleva»: lo declara (la tarta) o lo nombra un ingrediente (la almendra del curry).
   await expect(names).toHaveText(['Curry de verduras', 'Tarta de pistacho']);
   await page.locator('#filterAllergenMode').selectOption('sin');
   await expect(names).toHaveText(['Ensalada verde']);
+  await expect(page.locator('#filtersDone')).toHaveText('Ver 1 receta');
+  await page.locator('#filtersDone').click();
+  await expect(page.locator('#recipeFilters [data-filter="allergen"]')).toHaveText('Sin frutos de cáscara ×');
   await expect(page.locator('#recipeGrid .recipecard', { hasText: 'Ensalada verde' }).locator('.fd-unreviewed')).toHaveText('Alérgenos sin revisar');
   await expect(page.locator('main')).not.toContainText(/apto|no contiene/i);
   await capture(page, '25-recetario-sin');
 
   // Ficha del curry: la almendra molida nombra frutos de cáscara, que no declara (aviso con su arreglo).
-  await page.locator('#filterAllergen').selectOption('');
+  await page.locator('#recipeFilters [data-filter="allergen"]').click();
   await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
   const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
   await expect(ficha.locator('.fd-undeclared')).toHaveText(/El ingrediente «almendra molida» nombra frutos de cáscara, que la receta no declara: revisa los alérgenos\./);
@@ -137,6 +141,12 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
   await expect(sheet).toContainText('todavía no los ha revisado cocina');
   await expect(sheet).toContainText('Tarta de la casa');
   await capture(page, '27-organizador');
+  // F-ORG-3: «Compartir en la pestaña Menú» abre «Portal del organizador» y deja el botón a la vista.
+  await checks.getByRole('button', { name: 'Compartir en la pestaña Menú' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/menus/${menuId}$`));
+  await expect(page.locator('#menuShareFold')).toHaveAttribute('open', '');
+  await expect(page.locator('#shareMenu')).toBeVisible();
+  await page.reload(); // la ficha vuelve con todo plegado, como la deja el resto de la prueba
 
   // Compartir con alérgenos sin revisar pide confirmación; cancelar no comparte.
   await page.goto(`${baseURL}/#/menus/${menuId}`);

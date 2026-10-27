@@ -1,17 +1,40 @@
 # Cambios de @ikisai/ui-kit
 
-## 0.69.8 · 27 de octubre de 2026
+## 0.69.11 · 27 de octubre de 2026
 
-**K19 + K23: el calendario en el móvil y su contraste en oscuro** (`equipo/Revisor/KIT_PETICIONES.md`, abiertas por Core el 27-10).
+**Cobertura de campos por flujos, para el Revisor de Central** (`renderCoverage`, `src/pieces/coverage.ts`). Es el encargo de Core sobre el análisis `MUELA/equipo/feedback/ui-kit/COBERTURA_INPUTS_FLUJOS.md` (traspaso de Flow v03, §11.9), construido con las decisiones recomendadas. Solo pinta: el cruce llega del núcleo. **Nunca valores de campo.**
 
-- **K23, el día entero es el objetivo:** en pantallas táctiles y sin `agenda`, tocar un día con eventos abre una hoja con ellos.
-  - Cada evento mide al menos 46 px y lleva el color de su capa, su texto entero y el nombre de la capa.
-  - Tocar uno llama a `onSelectEvent` y cierra la hoja. `onSelectDay` se sigue llamando como antes.
-  - Las barras del mes (de pocos píxeles) dejan de recibir toques.
-  - Con ratón, con `agenda`, o con `daySheet: false`, todo queda como antes.
-  - Nueva marca: `evento_dia`. Solo se cataloga si la llamada usa `onSelectEvent`.
-- **K19, contraste en oscuro:** el texto de los eventos lleva el 45 % del color de la capa, antes el 70 %. Con colores de capa habituales pasa de 3,7–4,5:1 a 5,5:1 o más; en claro no cambia.
-- `v03` comprueba ahora la hoja con el dedo y la barra con ratón. Pruebas: `tests/v80.spec.ts`.
+- **`classifyCoverage(campos, vínculos, uso)`**, función pura. Da a cada campo una clase:
+  - `direct` (paso de un recorrido);
+  - `indirect` (lo usa una capacidad);
+  - `automatic` (lo usa una regla);
+  - `independent` (se usa sin Flow);
+  - `unknown` (sin datos suficientes, que **no** es «inútil»).
+- **Marcas:**
+  - «Sin cobertura de Flow»;
+  - «Común a varios recorridos»;
+  - «Duplicado», solo por `entity.prop`, que es exacto;
+  - «Obligatorio en un proceso crítico».
+- **La pieza:**
+  - recuentos por clase que filtran;
+  - agrupar por clase, app o pantalla;
+  - por campo: sus recorridos, su uso en el periodo y la utilidad declarada por Central (`declared`);
+  - `onOpen` para «Ir al campo».
+- Marcas de feedback: `filtro`, `agrupar` y `abrir`; `abrir` solo se cataloga si la llamada usa `onOpen`.
+- Demo: «Cobertura de campos por flujos (Revisor)». Pruebas: `tests/v83.spec.ts`.
+
+## 0.69.3 · 27 de octubre de 2026
+
+**Guiado mínimo en las apps sin ids sueltos.** El Guiado mínimo rompía las pruebas de ids de feedback en Guests (#946), Central (#947) y Food (#952). Se arregla en el kit, una vez para todas las apps:
+
+- **Id recomendado:** `guide: { feedbackId: '<app>.cabecera.guia' }`. Va bajo `cabecera`, una raíz que todas las apps ya reconocen como pieza de la cáscara, así que no hay que añadir `guia` a la lista de raíces de cada app.
+- **Catálogo:**
+  - recoge el aviso del paso («Paso del recorrido») y sus botones `.ver` («Ver el campo») y `.cerrar` («Cerrar el aviso»);
+  - una comparación como `dataset.feedbackId === id` ya no cuenta como id dinámico.
+- **`revealAnchor`:**
+  - abre solo los `<details>` cerrados que contienen el anclaje;
+  - si no basta, llama a la función de `registerReveal` con `(id, nodo)`, donde el nodo es el anclaje aunque esté escondido. La app ya no tiene que buscarlo por id (`querySelector` con el id, o comparar `dataset.feedbackId`).
+- Pruebas: `tests/v75.spec.ts`.
 
 ## 0.69.5 · 27 de octubre de 2026
 
