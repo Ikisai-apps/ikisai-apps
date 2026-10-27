@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
-import { createSupabase, isFault } from '../../supabase/functions/_kit/mod.ts';
+import { createSupabase, isFault, issueVisitor } from '../../supabase/functions/_kit/mod.ts';
 import { applyPublicOperations } from '../../supabase/functions/_kit/public-write.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
 
@@ -20,7 +20,7 @@ const commit = (operations: unknown[]) => app.call('/api/v1/commands', { body: {
 async function ok(operations: unknown[]) { const res = await commit(operations); assert.equal(res.status, 200, JSON.stringify(res.data)); return res; }
 const db = () => createSupabase({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch });
 const ask = (code: string, visitor: string, fields: Record<string, unknown> = {}) =>
-  applyPublicOperations(db(), 'booking', [{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { via_code: code, visitor_id: visitor, ...fields } }]);
+  applyPublicOperations(db(), 'booking', [{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { via_code: code, visitor_id: visitor, ...fields } }], visitor);
 async function failsWith(promise: Promise<unknown>, codeText: string) {
   await assert.rejects(promise, (e: unknown) => JSON.stringify(isFault(e) ? { code: e.code, details: (e as any).details } : String(e)).includes(codeText));
 }
@@ -69,7 +69,9 @@ test('visitante: no en retiros no visibles ni con un código desconocido; en pú
   const visitor = uuid();
   await ask(open.code, visitor);
   const req = (await app.t.db.query<{ id: string; revision: string }>(`select id, revision from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
-  await assert.rejects(applyPublicOperations(db(), 'booking', [{ op: 'update', table: TABLES.visitorRequests, id: req.id, expectedRevision: Number(req.revision), fields: { name: 'Otro' } }]));
+  await assert.rejects(applyPublicOperations(db(), 'booking', [{ op: 'update', table: TABLES.visitorRequests, id: req.id, expectedRevision: Number(req.revision), fields: { name: 'Otro' } }], visitor));
+  // un visitante no escribe a nombre de otro
+  await failsWith(applyPublicOperations(db(), 'booking', [{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { via_code: open.code, visitor_id: uuid() } }], uuid()), 'FORBIDDEN');
   assert.equal((await commit([{ op: 'insert', table: TABLES.visitorRequests, id: uuid(), fields: { event_id: open.event, visitor_id: uuid() } }])).status, 422);
   // «Déjanos un dato»: vale en un retiro no visible, exige el contacto y se atiende (no se acepta)
   const dataVisitor = uuid();
@@ -96,5 +98,23 @@ test('visitante: a los 6 meses del fin del evento se borran su nombre, su contac
   await app.t.db.query(`select booking.retention_run('{"args":{"limit":100}}'::jsonb)`);
   const row = (await app.t.db.query<{ name: string | null; contact: string | null; note: string | null; status: string }>(`select name, contact, note, status from booking.visitor_requests where visitor_id = $1`, [visitor])).rows[0]!;
   assert.deepEqual(row, { name: null, contact: null, note: null, status: 'pendiente' });
+});
+
+test('ruta POST public/join: sin visitante 401; con visitante crea la petición y repetirla devuelve la misma', async () => {
+  const { code } = await retreat(true);
+  const join = (body: unknown, token?: string) => app.handler(new Request(`${app.supabase.url}/functions/v1/booking-api/api/v1/public/join`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://guests.ikisai.com', ...(token ? { 'X-Visitor': token } : {}) }, body: JSON.stringify(body) }));
+  const none = await join({ event_code: code });
+  assert.equal(none.status, 401);
+  assert.equal((await none.json()).error.code, 'VISITOR_REQUIRED');
+  const { token, visitorId } = await issueVisitor(db(), code);
+  const first = await join({ event_code: code, name: 'Lucía', contact: 'lucia@example.invalid' }, token);
+  assert.equal(first.status, 200, await first.clone().text());
+  const out = await first.json();
+  assert.deepEqual([out.event_code, out.kind, out.name, out.status], [code, 'join', 'Lucía', 'pendiente']);
+  assert.ok(!JSON.stringify(out).includes('example.invalid'), 'el contacto no vuelve');
+  const again = await join({ event_code: code }, token);
+  assert.equal((await again.json()).status, 'pendiente');
+  assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from booking.visitor_requests where visitor_id = $1`, [visitorId])).rows[0]!.n, 1);
 });
 

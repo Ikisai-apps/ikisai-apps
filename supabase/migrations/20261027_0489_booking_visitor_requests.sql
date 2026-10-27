@@ -46,7 +46,11 @@ declare r booking.reservations;
 begin
   if core.is_public_batch() then
     if tg_op <> 'INSERT' then perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'a visitor only creates its request')); end if;
-    if new.visitor_id is null or new.status <> 'pendiente' or new.guest_id is not null or new.decided_at is not null then
+    -- C11: el lote lo firma el visitante (core.current_visitor) y solo escribe a su nombre
+    if new.visitor_id is null or new.visitor_id is distinct from core.current_visitor() then
+      perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'visitor_id must be the visitor of the batch'));
+    end if;
+    if new.status <> 'pendiente' or new.guest_id is not null or new.decided_at is not null then
       perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('table', 'booking.visitor_requests', 'reason', 'pending request with visitor_id only'));
     end if;
     -- el evento sale siempre del código del QR (lo que mande el cliente como event_id no cuenta)

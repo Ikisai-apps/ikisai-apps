@@ -1852,5 +1852,8 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
     - La decide el personal con `booking.join_from_visitor({request_id, decision: 'accept' | 'reject' | 'done', name?})`. Al aceptar (`join`) se crea la ficha de huésped, ligada a la petición (`guest_id`); repetir no crea otra. Un dato (`contact`) se atiende (`done`) o se descarta.
   - Conservación: el nombre, el contacto y la nota se borran a los 6 meses del fin del evento, en la misma vuelta de la conservación (§20; acordado con Core).
   - El visitante ve lo suyo con la lectura pública `booking_visitor_requests({visitor_id, event_code?})`, que la Edge llama con el `visitor_id` ya resuelto. Devuelve el estado, sin datos ajenos.
-  - **Pendiente:** la ruta `POST /api/v1/public/join` de booking-api (código, nombre y nota con `X-Visitor`), en cuanto el kit traiga `resolveVisitor` y las rutas `public/*` con el origen de ven.ikisai.com.
+  - **Ruta** `POST /api/v1/public/join` de booking-api (`publicRoutes` del kit, C11), con la cabecera `X-Visitor`. Recibe `{event_code?, kind?, name?, contact?, note?}`; sin `event_code` toma el del token.
+    - Respuestas: sin visitante, 401 `VISITOR_REQUIRED`. Con él, devuelve la petición `{event_code, kind, name, status, created_at}`; si ya tenía una pendiente del mismo tipo, esa.
+    - El lote lo firma el visitante y la base exige `core.current_visitor() = visitor_id`.
+    - «Lo mío» lo sirve el kit en `GET public/booking_visitor_requests`. CORS, el kit.
 
