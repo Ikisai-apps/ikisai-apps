@@ -137,7 +137,7 @@ test('alojamiento a la carta: precio de la tarifa, cobro en el momento y envío 
   await later.getByRole('button', { name: 'Cobrar…' }).click();
   await page.locator('#collectMethod').selectOption('cash');
   await page.locator('#collectSave').click();
-  await expect(page.getByText('Pide acceso a Finance')).toBeVisible();
+  await expect(page.getByText('Pide acceso a Finance').first()).toBeVisible();
   await expect(later).toContainText('Cobrado, sin enviar a Finance');
   api.financeAccess(true);
   await later.getByRole('button', { name: 'Enviar a Finance' }).click();
