@@ -128,9 +128,11 @@ test('ENTRADA_PUBLICA · sin invitación ni QR: ven.ikisai.com enseña los event
   expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).not.toBeNull();
 });
 
-test('ENTRADA_PUBLICA · «Dormir aquí»: precios y plazas para todas las noches y la solicitud con la plaza guardada', async ({ page }) => {
+test('ENTRADA_PUBLICA · «Reservar antes de venir»: precios y plazas para todas las noches y la solicitud con la plaza guardada', async ({ page }) => {
   const d = await api.openDays(day(10), day(14), { lodging_pay_mode: 'hold', lodging_hold_hours: 24 });
-  await page.goto(`${baseURL}/#/v/${d.code}`);
+  // «Reservar antes de venir» va dentro de «Alójate aquí» (abierta por el QR), plegada.
+  await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  await page.locator('#lodgeLater > summary').click();
   const stay = page.locator('#pubStay');
   await expect(stay).toBeVisible();
   // Mirar no pide nada ni crea identidad.
