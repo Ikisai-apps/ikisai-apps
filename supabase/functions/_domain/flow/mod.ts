@@ -31,6 +31,7 @@ export const TABLES = {
   definitionVersions: 'flow.definition_versions',
   definitionSteps: 'flow.definition_steps',
   definitionStages: 'flow.definition_stages',
+  boardHistory: 'flow.board_history',
   guideReceipts: 'flow.guide_receipts',
   executions: 'flow.executions',
   templateColumns: 'flow.template_columns',

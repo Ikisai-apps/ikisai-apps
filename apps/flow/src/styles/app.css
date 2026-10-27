@@ -273,8 +273,8 @@
 .avance-chip strong{font:700 13px/1 var(--font-sans,inherit);white-space:nowrap}
 .avance-chip .de{font-weight:500;font-size:10.5px;opacity:.75}
 .avance-chip small{grid-column:1/3;font:500 10px/1.1 var(--font-sans,inherit);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.avance-chip[aria-pressed="true"]{background:var(--c);color:#fff;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
-.avance-chip[aria-pressed="true"] .g{color:#fff}
+.avance-chip[aria-pressed="true"]{background:color-mix(in srgb,var(--c) 22%,var(--paper,var(--surface)));color:var(--ink);box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+.avance-chip[aria-pressed="true"] .g{color:var(--ink)}
 .avance-chip.is-off{opacity:.35}
 .avance-chip.is-off[aria-pressed="true"]{opacity:1}
 .avance-card{position:relative;display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;background:var(--paper,var(--surface));border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0;cursor:pointer;margin:0 0 6px}
@@ -301,6 +301,61 @@
 .flow-entry-title{margin:0 0 6px;font-size:1rem;color:var(--muted)}
 .flow-entry-group>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--muted)}
 .flow-card-facts{list-style:none;margin:6px 2px 0;padding:0;display:grid;gap:2px;font-size:13px;color:var(--muted)}
+
+/* Avance para la mudanza (0947): cabecera, gráfico, fichas en dos filas, hitos y leyenda. */
+.avance-updated{margin:0;text-align:right}
+.avance-total{cursor:pointer}
+.avance-total .gv{margin:-2px 0 0}
+.avance-chart-box{display:grid;gap:6px;margin-top:6px}
+.avance-chart{width:100%;height:90px;display:block;background:var(--paper,var(--surface));border-radius:8px}
+.avance-chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0;color:var(--muted)}
+.avance-chart-legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.avance-stats{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 12px;align-items:center}
+.avance-stat-big b{display:block;font-size:32px;line-height:1.1}
+.avance-stat-big span{display:block;font-weight:600}
+.avance-stat-big small,.avance-stat-side span{color:var(--muted);font-size:12px}
+.avance-stat-side{display:grid;gap:6px}
+.avance-stat-side b{font-size:18px;margin-right:6px}
+.avance-stat-row{grid-column:1/-1;margin:0;color:var(--muted);border-top:1px solid var(--line,rgba(0,0,0,.1));padding-top:4px}
+.avance-discs{display:grid;gap:6px}
+.avance-discs-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+@media (min-width:900px){.avance-discs-row{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.avance-discs-row .avance-disc{flex:0 0 168px}}
+.avance-disc.is-full{border:2px solid #2f8a45;box-shadow:0 0 0 2px rgba(47,138,69,.25)}
+.avance-section{margin:4px 0;font-size:1rem}
+.avance-hitos{display:grid;gap:8px}
+.avance-legend{display:flex;flex-wrap:wrap;gap:6px}
+.avance-legend-item{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--paper,var(--surface));font-size:12px;cursor:pointer;color:var(--ink)}
+.avance-legend-item i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.avance-legend-item[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.avance-hito{display:grid;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper,var(--surface));cursor:pointer}
+.avance-hito[aria-pressed="true"]{outline:3px solid var(--ink);outline-offset:-2px}
+.avance-hito.is-done{opacity:.75}
+.avance-hito-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.avance-chain{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.avance-chain li{position:relative;min-width:30px;height:30px;padding:0 6px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:2px;font:700 12px/1 var(--font-sans,inherit);border:2px solid #9a9a9a;background:transparent;color:var(--ink)}
+.avance-chain li.is-hecho{background:#56663f;border-color:#56663f;color:#fff;text-decoration:line-through}
+.avance-chain li.is-curso{background:#d19a3a;border-color:#d19a3a;color:#1a1a1a}
+.avance-chain li.is-pr{background:#3a7cc4;border-color:#3a7cc4;color:#fff}
+.avance-chain li.is-backlog{border-color:#c0392b;color:#c0392b}
+.avance-chain li.is-blocking{border-color:#c0392b;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
+.avance-chain li.is-waiting{border-style:dashed;border-color:#b26a00}
+.avance-chain li.is-mine{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink)}
+.avance-chain li.is-filtered{border-style:dotted;border-color:#bbb;background:transparent;color:#999}
+.avance-chain li .star{color:#c0392b;font-size:11px}
+.avance-chain li .blk{font:600 9px/1 var(--font-sans,inherit);color:#c0392b;margin-left:2px}
+.avance-hito-line{color:var(--ink)}
+.avance-wait{color:#b26a00;font-weight:600}
+.avance-card.is-waiting{opacity:.85}
+.avance-blocked{margin-top:8px}
+.avance-blocked>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600}
+.avance-card.is-mine{box-shadow:inset 0 0 0 2px var(--ink)}
+.avance-steps.is-decision{list-style:disc}
+/* Revisión de UI-kit (27-10): título-botón de la tarjeta, leyenda a 44 px en táctil. */
+.avance-card-title{all:unset;display:block;font-weight:600;overflow-wrap:anywhere;cursor:pointer;min-height:24px}
+.avance-card-title:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.avance-card.is-hecho .avance-card-title{text-decoration:line-through;color:var(--muted)}
+@media (pointer:coarse){.avance-legend-item{min-height:44px}}
+.avance-disc .in svg{width:24px;height:24px}
 .flow-card-facts li.is-urgent{color:var(--alert);font-weight:600}
 .flow-card-facts li.is-blocked{color:var(--warn-ink,#7a5414);font-weight:600}
 .order-card.is-test .qcard-title{color:var(--warn-ink,#7a5414)}

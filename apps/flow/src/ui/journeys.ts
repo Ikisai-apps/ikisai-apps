@@ -32,7 +32,8 @@ async function loadJourneys(client: SyncClient): Promise<Journey[]> {
     client.list(TABLES.definitionStages), client.list(TABLES.definitionSteps)]);
   const live = <T extends { deleted_at: string | null }>(rows: unknown[]) => (rows as T[]).filter((r) => !r.deleted_at);
   const allSteps = live<Step>(steps);
-  return live<Definition>(defs).map((def) => {
+  // Las cadenas de los hitos del Avance (0947) no son recorridos para hacer a mano: no salen aquí.
+  return live<Definition>(defs).filter((d) => !d.key.startsWith('cadena_')).map((def) => {
     const version = live<Version>(versions).filter((v) => v.definition_id === def.id && v.status === 'published').sort((a, b) => b.version - a.version)[0];
     if (!version) return null;
     const own = live<Stage>(stages).filter((s) => s.version_id === version.id).sort((a, b) => a.position - b.position)
@@ -80,7 +81,7 @@ function setPath(target: Record<string, any>, path: string, value: unknown): voi
 /** La web de cada app (`invoices` es Finance). El enlace profundo con el campo señalado llegará con el inventario del núcleo. */
 const appUrl = (app: string) => `https://${app === 'invoices' ? 'finance' : app}.ikisai.com/`;
 /** Pantalla de cada anclaje conocido (prefijo → ruta de la app), para abrir el «ir a otra app» donde está el control. */
-const ANCHOR_ROUTES: Array<[string, string]> = [['booking.recepcion', '#/recepcion']];
+const ANCHOR_ROUTES: Array<[string, string]> = [['booking.recepcion', '#/recepcion'], ['booking.reservas', '#/reservas'], ['booking.reserva', '#/reservas']];
 const routeOf = (anchor: string | null) => (anchor ? ANCHOR_ROUTES.find(([p]) => anchor === p || anchor.startsWith(`${p}.`))?.[1] ?? '' : '');
 const APP_NAMES: Record<string, string> = { invoices: 'Finance', tasks: 'Tasks', booking: 'Booking', food: 'Food', central: 'Central', guests: 'Guests', organizers: 'Organizers', flow: 'Flow' };
 const appName = (app: string) => APP_NAMES[app] ?? app;
@@ -88,6 +89,8 @@ const appName = (app: string) => APP_NAMES[app] ?? app;
 async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run'): Promise<void> {
   if (!isOnline(client)) { toast('Los recorridos necesitan conexión.'); return; }
   let caps: Capability[] = [];
+  /** Lo respondido en el recorrido (por clave), para los enlaces que lo necesitan (el código público del evento). */
+  const answers: Record<string, unknown> = {};
   // Si no se pueden leer las capacidades es un fallo de red o del servidor, no de permisos: se dice así y se puede reintentar.
   try { caps = (await client.api<{ items: Capability[] }>('/capabilities')).items; }
   catch { toast('No se ha podido comprobar qué puede hacer tu cuenta. Revisa la conexión y vuelve a intentarlo.'); return; }
@@ -148,7 +151,11 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
     const { stage } = j.stages[index]!;
     const app = stage.target_app ?? 'flow';
     const back = encodeURIComponent(location.href);
-    const url = `${appUrl(app)}?desde=flow&volver=${back}&titulo=Flow${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}${routeOf(stage.target_anchor)}`;
+    // El visitante (móvil A) va a ven.ikisai.com/e/<código público>, el que se apuntó en el recorrido; el resto, a la web de su app.
+    const code = typeof answers.codigo === 'string' ? answers.codigo.trim().toUpperCase() : '';
+    const visitor = !!stage.target_anchor?.startsWith('guests.visitante') && /^[A-Z0-9]{4,20}$/.test(code);
+    const base = visitor ? `https://ven.ikisai.com/e/${encodeURIComponent(code)}` : appUrl(app);
+    const url = `${base}?desde=flow&volver=${back}&titulo=Flow${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}${visitor ? '' : routeOf(stage.target_anchor)}`;
     replace(host, el('div', { class: 'journey-handoff', 'data-feedback-id': `flow.recorrido.${j.def.key}.tramo${stage.position}` },
       el('h3', null, stage.title),
       stage.explain ? el('p', null, stage.explain) : null,
@@ -200,6 +207,7 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
         if (s.input_type === 'number' && v !== '' && !Number.isFinite(Number(v.replace(',', '.')))) throw new StepFormInvalid('Pon un número.');
         const typedValue = typed(s, v);
         setPath(values, q.id, typedValue);
+        answers[q.id] = typedValue;
         await callProcedure(client, PROCEDURES.saveStageValues, { execution_id: executionId, position: stage.position, values: { [q.id]: typedValue } });
       },
       onDone: () => showReview(),
