@@ -23,9 +23,10 @@ const PURPOSE: Record<string, { text: string; view: 'Carriles' | 'Secuencial' | 
   barra: { text: 'Pedidos, cocina, entrega e ingredientes de la barra', view: 'Carriles' },
   checkin: { text: 'Llegadas, camas, firma y salidas de los huéspedes', view: 'Carriles' },
   avance: { text: 'El trabajo de cada agente y las decisiones de Dirección', view: 'Carriles' },
+  apertura: { text: 'Preparar el espacio y revisarlo antes de abrir (Tasks)', view: 'Carriles' },
 };
 const COLUMN_SLUG: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica',
-  arrival: 'llegada', bed: 'cama', signature: 'firma', departure: 'salida', avance: 'avance' };
+  arrival: 'llegada', bed: 'cama', signature: 'firma', departure: 'salida', avance: 'avance', review: 'revision' };
 
 type Group = 'now' | 'next' | 'past' | 'test';
 const GROUPS: Array<[Group, string]> = [['now', 'Ahora'], ['next', 'Próximos'], ['past', 'Pasados y cerrados'], ['test', 'Pruebas']];

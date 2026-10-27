@@ -79,3 +79,11 @@ test('editor · las columnas de un flujo no congelado se editan; las de la v1 co
   const [v1col] = await colsOf(V1);
   assert.equal(await code([{ op: 'update', table: TABLES.columns, id: v1col.id, expectedRevision: v1col.revision, fields: { label: 'Otro' } }]), 'FLOW_FROZEN');
 });
+
+test('editor · plantilla «apertura» (0955): Preparación y Revisión, la pieza `review` de Tasks', async () => {
+  const id = uuid();
+  const out = await ok([call(PROCEDURES.createFlow, { project_id: id, template_key: 'apertura', name: 'Apertura de prueba' })]);
+  assert.equal(out.template_version, 1);
+  const cols = (await app.t.db.query<{ key: string; behavior: string }>(`select key, behavior from flow.columns where project_id = $1 and deleted_at is null order by position`, [id])).rows;
+  assert.deepEqual(cols.map((c) => `${c.key}:${c.behavior}`), ['logistics:free_task', 'review:inspect_confirm']);
+});

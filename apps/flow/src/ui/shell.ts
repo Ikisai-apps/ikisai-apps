@@ -11,6 +11,7 @@ import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
 import { mountEditor } from './editor.ts';
 import { mountAvance } from './avance.ts';
+import { mountReview } from './review.ts';
 import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
@@ -55,6 +56,8 @@ const COLUMN_VIEWS: Record<string, ColumnView> = {
   departure: { slug: 'salida', icon: 'logout', mount: mountPresence('departure') },
   // «Avance por aplicaciones» (0937): su propia pantalla de carriles por agente.
   avance: { slug: 'avance', icon: 'board', mount: mountAvance },
+  // Revisión de apertura (0955): ítems de Tasks por zona, «Bien» o «Incidencia».
+  review: { slug: 'revision', icon: 'check', mount: mountReview },
 };
 const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check', quick_steps: 'board', free_task: 'list', guest_presence: 'guest' };
 

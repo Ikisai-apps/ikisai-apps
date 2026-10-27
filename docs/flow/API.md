@@ -517,3 +517,14 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Durante el evento:** cuenta como el de cualquier huésped. El resumen del día lo lista en `member_orders: [{order_id, name, amount_cents}]` (con su suma en `member_cents`) para que Finance reste su pago. Aviso «Pedido del equipo (nombre), se ajusta en Finance».
 - Horario (`flow.in_event_window(project, at)`, 0953): las horas de servicio del día (`service_hours` de `booking.event_projection`, Booking 1425); sin ellas, los días del evento ligado (`starts_on..ends_on`) o, sin evento, los del flujo. En hora de Madrid.
 - Se prepara y se entrega como cualquier otro. En la carta: al enviarlo y en «Mis pedidos» (`testName`, `testExcluded` en `public/mine`).
+
+## 55. «Preparación y revisión de apertura»: pieza `review` (migración `0955`)
+
+- Segundo flujo de VG. Los datos viven en Tasks (diseño `MUELA/equipo/feedback/tasks/REVISION_APERTURA.md`; `docs/tasks/API.md` §46.3, §46.4 y §59). Flow solo compone, con las capacidades del catálogo y el token de la persona (`POST capabilities/:id/invoke`).
+- Pieza `review` («Revisión de apertura», `inspect_confirm`; `flow.piece_behavior`). Su pantalla `#/p/<flujo>/revision`:
+  1. las revisiones del día (`tasks.reviews_day`): las que vencen hoy y las que siguen sin abrir de días anteriores, con hechos, incidencias y críticos;
+  2. al tocar una, sus ítems por zona (`tasks.review_projection`): instrucciones, lo esperado, si es crítico, su estado y si la correctiva está hecha. «Lista para abrir» cuando todos los críticos están bien;
+  3. «Bien» o «Incidencia» por ítem (`tasks.review_item_result`). La incidencia pide nota; una cantidad o una lectura piden su valor. En Tasks quedan «Arreglar» y «Volver a comprobar», y solo un nuevo «Bien» verifica.
+- Las fotos y abrir la revisión se hacen en Tasks («Abrir en Tasks», `tasks.revision.abrir`).
+- Si el flujo tiene evento de Booking, arriba: «Camas para esta noche: X de Y listas» y, por habitación, lo que falta (por limpiar, sin colocar en el plano, inactivas), con `booking.lodging_readiness` (Booking 1426).
+- Plantilla `apertura` v1: «Preparación» (`logistics`, tareas libres) y «Revisión» (`review`).
