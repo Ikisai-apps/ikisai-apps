@@ -122,7 +122,8 @@ export function copyCartaOperations(args: {
   for (const l of cartaLinesInOrder(args.lines, args.sourceId)) {
     ops.push({ op: 'insert', table: 'food.carta_lines', id: args.newLineId(), fields: {
       menu_id: args.newId, ...(l.recipe_id ? { recipe_id: l.recipe_id } : { item_id: l.item_id }), scope: l.scope, code: l.code,
-      name: l.name, description: l.description, sale_price_cents: l.sale_price_cents, active: l.active, position: l.position, image_key: l.image_key,
+      // Lo que viene de la base puede llegar como texto (numeric): se pasa a número.
+      name: l.name, description: l.description, sale_price_cents: Number(l.sale_price_cents), active: l.active, position: Number(l.position), image_key: l.image_key,
     } });
   }
   return ops;

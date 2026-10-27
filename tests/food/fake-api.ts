@@ -558,7 +558,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       let row = store.get(op.id);
       if (op.op === 'insert') {
         if (row) throw new Fault(422, 'INVALID_OPERATION', 'La fila ya existe.', { index });
-        if (allowed.includes('name') && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre es obligatorio.', { field: 'name' });
+        // El nombre de un menú solo lo lleva la carta, y el de una línea de carta es opcional (1109).
+        if (allowed.includes('name') && !['food.menus', 'food.carta_lines'].includes(op.table) && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? DEFAULTS[op.table]?.[column] ?? null;
         store.set(op.id, row);

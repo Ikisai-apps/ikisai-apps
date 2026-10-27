@@ -77,7 +77,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   let prep: Array<Mirror<PreparationItem>> = [];
   replace(
     main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Menús'), el('p', null, 'El menú cerrado de cada evento (se crea desde Eventos) y las cartas, con su precio de venta.'))),
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Menús'), el('p', null, 'El menú de cada evento. Se crean desde Eventos.'))),
     houseHost,
     nextHost,
     host,
