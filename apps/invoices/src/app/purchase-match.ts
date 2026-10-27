@@ -3,7 +3,7 @@
 export interface PurchaseRequestChoice { kind: string; archived: boolean; supplier?: string | null }
 
 /** Sin tildes, en minúsculas, solo letras y números, y sin la forma societaria final (SL, SLU, SA). */
-const normName = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const normName = (s: string) => s.normalize('NFD').replace(/\p{Mn}/gu, '').toLowerCase()
   .replace(/[^a-z0-9]+/g, ' ').trim()
   .replace(/\s+(s\s?l\s?u|s\s?l|s\s?a|sociedad limitada|sociedad anonima)$/, '').trim();
 
