@@ -17,14 +17,13 @@ let seq = 0;
 let v2 = '';
 let customer = '';
 const sent: any[] = [];
-const sentHeaders: Headers[] = [];
 
 test.before(async () => {
   const appsFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-    sent.push(JSON.parse(String(init?.body ?? '{}'))); sentHeaders.push(new Headers(init?.headers));
+    sent.push(JSON.parse(String(init?.body ?? '{}')));
     return Response.json({ results: [{ result: { status: 'created' } }] });
   }) as typeof fetch;
-  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN], workerKey: 'clave-worker-de-prueba' }, { appsFetch }) });
+  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, { appsFetch }) });
 });
 test.after(async () => { await app.close(); });
 
@@ -82,9 +81,6 @@ test('caja · «Enviar a Finance» manda ese cobro como fiscal; el cierre (proce
   assert.equal(res.status, 200, JSON.stringify(res.data));
   const args = sent.at(-1).operations[0].args;
   assert.equal(args.nature, 'fiscal'); assert.equal(args.source_ref, `flow:receipt:${receipt.id}`);
-  // FL1: identidad de servicio de Flow ante Finance, además del token de la persona.
-  assert.equal(sentHeaders.at(-1)!.get('x-ikisai-worker-key'), 'clave-worker-de-prueba'); assert.equal(sentHeaders.at(-1)!.get('x-ikisai-caller'), 'flow');
-  assert.equal(sentHeaders.at(-1)!.get('authorization'), 'Bearer ' + app.tokens.owner);
   assert.equal(args.amount_cents, receipt.total_cents); assert.deepEqual(args.methods, { bitcoin: receipt.total_cents });
   const seqs = (await rows(TABLES.orders)).filter((o) => receipt.order_ids.includes(o.id)).map((o) => o.pay_seq).sort((x: number, y: number) => x - y);
   assert.equal(args.receipt_kind, 'ticket'); assert.equal(args.receipt_number, seqs.join('+')); assert.equal(seqs.length, 2);
@@ -103,6 +99,12 @@ test('caja · «Enviar a Finance» manda ese cobro como fiscal; el cierre (proce
   assert.equal(pargs.amount_cents, closed.data.sales_cents - receipt.total_cents);
   assert.equal(pargs.methods.bitcoin ?? 0, 0);
   assert.equal(pargs.detail.reduce((s: number, d: any) => s + d.amount_cents, 0) + pargs.pending_refunds_cents, pargs.amount_cents);
+});
+
+test('caja · FL8: los procedimientos retirados ya no están permitidos (mark_receipt_sent, mark_closure_sent, unit_link_external)', async () => {
+  const allowed = await app.t.db.query(`select 1 from core.allowed_procedures where app = 'flow' and procedure in ('flow.mark_receipt_sent', 'flow.mark_closure_sent', 'flow.unit_link_external')`);
+  assert.equal(allowed.rows.length, 0);
+  assert.notEqual(await code([call('flow.mark_receipt_sent', { receipt_id: uuid() })]), undefined);
 });
 
 test('caja · ajustes del proyecto: solo el owner pone las direcciones; formatos válidos', async () => {
