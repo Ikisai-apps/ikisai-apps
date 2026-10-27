@@ -63,3 +63,14 @@ create or replace function public.core_visitor_create(p_token_hash text, p_event
 language sql security definer set search_path = '' as $$ select core.visitor_create(p_token_hash, p_event_code, p_ip) $$;
 revoke all on function core.visitor_create(text, text, text), public.core_visitor_create(text, text, text) from public, anon, authenticated;
 grant execute on function public.core_visitor_create(text, text, text) to service_role;
+
+-- ---------------------------------------------------------------------------------------------------------------------------
+-- Para disparadores y hooks de las apps: ¿estamos dentro de un lote del núcleo? Fuera de un lote, current_setting('core.request_id', true)
+-- devuelve '' (no null) tras el primer lote de la sesión, así que «is not null» engaña (lo encontró Booking el 27-10). Usar estos helpers.
+create or replace function core.current_request_id() returns text language sql stable as $$
+  select nullif(current_setting('core.request_id', true), '')
+$$;
+create or replace function core.in_batch() returns boolean language sql stable as $$
+  select nullif(current_setting('core.request_id', true), '') is not null
+$$;
+grant execute on function core.current_request_id(), core.in_batch() to service_role;
