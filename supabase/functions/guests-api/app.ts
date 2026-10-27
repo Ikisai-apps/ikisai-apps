@@ -16,10 +16,14 @@ export const GUESTS_UPLOADS = { bucket: 'guests-documents', allowedMime: ['image
 const PORTAL_PLANS = 'resources.portal_plans';
 const denoEnv = (name: string): string | undefined => (globalThis as any).Deno?.env?.get?.(name);
 
+type StoredFile = { id: string; bucket: string; path: string; mime: string; sha256: string; provider?: 'supabase' | 'r2' | null };
 interface PortalPlansRow {
-  plans?: Array<{ id: string; buildingId: string; floor: string | null; position: number; width: number; height: number;
-    file: { id: string; bucket: string; path: string; mime: string; sha256: string; provider?: 'supabase' | 'r2' | null } | null }>;
+  plans?: Array<{ id: string; buildingId: string; floor: string | null; position: number; width: number; height: number; file: StoredFile | null } & Record<string, unknown>>;
   spaces?: Array<Record<string, unknown>>;
+  /** Finca y decoración (Recursos 0814): iconos, imágenes de edificios y la decoración general. */
+  icons?: Array<{ id: string; name: string; category: string; defaultSize: number; file: StoredFile | null }>;
+  images?: Array<{ id: string; spaceId: string; kind: string; title: string | null; position: number; file: StoredFile | null }>;
+  decor?: Array<Record<string, unknown>>;
 }
 
 export function guestsRoutes(supabase: Supabase): AppRoute[] {
@@ -32,14 +36,17 @@ export function guestsRoutes(supabase: Supabase): AppRoute[] {
       method: 'GET', pattern: 'plans',
       handler: async ({ ctx }) => {
         const out = await supabase.rpc<PortalPlansRow>('core_read', { p_app: 'guests', p_actor: ctx.user.id, p_name: PORTAL_PLANS, p_args: {} });
-        const plans = await Promise.all((out.plans ?? []).map(async ({ file, ...plan }) => ({
-          ...plan,
+        const sign = async (file: StoredFile | null) => ({
           fileId: file?.id ?? null,
           mime: file?.mime ?? null,
           sha256: file?.sha256 ?? null,
           url: file ? await storage.readUrl({ bucket: file.bucket, path: file.path, storage_provider: file.provider ?? null }, 600).catch(() => null) : null,
-        })));
-        return { plans, spaces: out.spaces ?? [] };
+        });
+        const plans = await Promise.all((out.plans ?? []).map(async ({ file, ...plan }) => ({ ...plan, ...(await sign(file)) })));
+        // Finca y decoración (0814): los iconos y las imágenes, firmados igual; la decoración, solo la capa general.
+        const icons = await Promise.all((out.icons ?? []).map(async ({ file, ...icon }) => ({ ...icon, ...(await sign(file)) })));
+        const images = await Promise.all((out.images ?? []).map(async ({ file, ...image }) => ({ ...image, ...(await sign(file)) })));
+        return { plans, spaces: out.spaces ?? [], icons, images, decor: out.decor ?? [] };
       },
     },
   ];

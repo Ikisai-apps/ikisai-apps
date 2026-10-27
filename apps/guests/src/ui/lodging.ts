@@ -291,6 +291,8 @@ export function mountLodging(main: HTMLElement, ctxs: GuestContext | GuestContex
         focus: roomSpace,
         label: t('lodging.bedsOf', { room: room.name }),
         feedbackId: 'guests.alojamiento.camas',
+        // Al elegir cama, sin decoración (VG: se quita donde moleste, como al ordenar o asignar camas).
+        showDecor: false,
         filter: (x) => Boolean(bedsView?.toBed.has(x.id)),
         layer: (x) => {
           const bed = bedsView?.toBed.get(x.id);

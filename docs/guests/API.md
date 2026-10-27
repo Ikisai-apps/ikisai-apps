@@ -571,6 +571,8 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   habitaciones, salas, baños, comedor, exteriores, zonas de paso y otros). Tocar un sitio lo elige («Sitio: …»,
   `#helpPicked`) y el aviso lleva `scope.space_id` (Recursos) y su nombre en el texto, como siempre. Las baldosas siguen.
 
+- **Finca y decoración** (Recursos 0814, kit 0.63, 28-10-2026): `GET plans` firma también los iconos (`icons[].url`) y las imágenes de los edificios (`images[].url`), y pasa la retícula, las alturas (`bands`), las curvas con su cota (`contours`) y **solo la decoración general** (`decor`). `portalMap` pinta la decoración y las camas con el icono de su tipo (`bedIcons`); el mapa entero («Ikisai», Información práctica) empieza en la finca y se baja tocando (finca → edificio → habitación, `drill`). Al elegir cama (`#lodgingBedsMap`), sin decoración (`showDecor: false`). Prueba en `api.test.ts`.
+
 ### 9.17 Acceso que no caduca, «Mis retiros», dirección y fichas de equipo (encargo de VG del 26-10-2026, plazo 29-10)
 
 Reglas (VG, por Core): quien entró una vez sigue entrando; organizador, staff y dirección aparecen en el retiro como huéspedes; dirección ve todos los retiros. Los datos los pone Booking (`docs/booking/API.md` §29, #725, migraciones 0481 y 0483); Guests solo enseña. Este apartado es el **modelo de pantallas** de la PR en borrador; el código va en la misma PR.

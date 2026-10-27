@@ -103,6 +103,8 @@
 
 - 2026-10-27 · **Portal del visitante por QR** (API.md §9.19, #766 y #778): `/e/<código>` sin sesión ni datos (kit de visitantes, #775), el evento, sus ofertas públicas, «Apuntarme» y «Déjanos un dato» en booking-api, «Mis eventos» de este móvil y «Salir de este móvil»; el worker reenvía `X-Visitor`. Prueba en `visitantes.spec.ts`. Pendiente: «Mi pedido» de cada visitante (Flow FL2) y, en la v2, recuperar por correo y pasar a otro móvil.
 
+- 2026-10-28 · **Finca y decoración en el portal** (API.md §9.16): la finca con sus alturas y cotas, la decoración general, las camas con su icono y la bajada de la finca al edificio; sin decoración al elegir cama.
+
 ## Pendiente
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
