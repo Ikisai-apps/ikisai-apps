@@ -23,6 +23,8 @@ const KNOWN_KINDS=[
   {kind:'booking.ses_deadline',label:'SES · Plazo legal',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
   {kind:'booking.bed_cleaning',label:'Limpieza · Salida de huésped',suggest:{project:/limpieza/i,area:/limpieza|mantenimiento|casa/i}},
   {kind:'central.compliance_due',label:'Central · Vencimientos',suggest:{project:/cumplimiento/i,area:/gesti/i}},
+  // Acciones de la revisión semanal de Dirección (Central, vg-41): como los vencimientos, sin área; la regla las lleva.
+  {kind:'central.weekly_action',label:'Central · Revisión semanal',suggest:{project:/direcci|semanal/i,area:/gesti|direcci/i}},
   {kind:'core.user_task',label:'Core · Tarea para ti',suggest:{project:/tareas de core/i,area:/aplicaciones/i}},
   {kind:'invoices.drive_review',label:'Finance · Facturas de Drive por revisar',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
   {kind:'invoices.drive_blocked',label:'Finance · Drive bloqueado',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},

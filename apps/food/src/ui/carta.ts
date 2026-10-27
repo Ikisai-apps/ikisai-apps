@@ -14,7 +14,7 @@ import {
   CARTA_SCOPES, CARTA_SCOPE_LABELS, cartaLinesInOrder, cartaPrevisionEmpty, defaultOfferFields, cartaMargin, copyCartaOperations, formatCents, freeCartaCodes, isCartaMenu,
   parseEurosToCents, validateOperations, type CartaCode, type CartaLine, type CartaScope, type FoodEvent, type Menu, type Recipe, type ResourceItem,
 } from '@ikisai/domain-food';
-import { closeSheet, el, listRow, openSheet, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, el, icon, listRow, openSheet, renderMedal, replace, toast, type IconName, type Sheet } from '@ikisai/ui-kit';
 import type { SyncClient } from '@ikisai/sync-client';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { dateRange, todayKey, watchEvents, type EventsSnapshot } from '../app/events.ts';
@@ -29,6 +29,8 @@ export type CartaTab = 'carta' | 'prevision' | 'compra';
 export const cartaHash = (id: string, tab: CartaTab = 'carta') => (tab === 'carta' ? `#/cartas/${id}` : `#/cartas/${id}/${tab}`);
 /** Las imágenes de la carta las sirve Flow (assets de VG del 26-10): miniatura de cada clave. */
 export const FLOW_ORIGIN = 'https://flow.ikisai.com';
+/** El icono de cada bloque de la carta, de los de comida del kit (K13), junto a su nombre. */
+const SCOPE_ICONS: Record<CartaScope, IconName> = { clasico: 'plate', gourmet: 'chefHat', barra: 'glass' };
 export const cartaImage = (key: string | null | undefined) => (key ? `${FLOW_ORIGIN}/assets/${key}/miniatura.webp` : null);
 
 type CartaMenu = Mirror<Menu>;
@@ -322,7 +324,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
             onclick: () => navigate(cartaHash(menuId, 'prevision')) }, 'Ir a Previsión'))) : null, ...CARTA_SCOPES.map((scope) => {
         const own = live.filter((l) => l.scope === scope);
         return el('section', { 'data-feedback-id': 'food.carta.bloque', 'data-feedback-label': 'Bloque de la carta', class: 'carta-block', id: `carta-${scope}` },
-          el('div', { class: 'sectionlabel' }, `${CARTA_SCOPE_LABELS[scope]} · ${own.length}`),
+          el('div', { class: 'sectionlabel' }, icon(SCOPE_ICONS[scope], 18), `${CARTA_SCOPE_LABELS[scope]} · ${own.length}`),
           own.length ? el('div', { class: 'carta-grid' }, ...own.map(lineCard)) : el('p', { class: 'muted' }, 'Nada en este bloque.'),
           writable ? el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.carta.anadir', 'data-feedback-label': 'Añadir línea', class: 'ghost', type: 'button',
             id: `carta-add-${scope}`, onclick: () => openAdd(scope) }, `Añadir a ${CARTA_SCOPE_LABELS[scope]}`)) : null);
