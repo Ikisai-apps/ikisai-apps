@@ -14,3 +14,4 @@ export * from './scopes.ts';
 export * from './coverage.ts';
 export * from './agents.ts';
 export * from './beds.ts';
+export * from './weekly.ts';

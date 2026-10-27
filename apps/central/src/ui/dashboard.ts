@@ -107,6 +107,7 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
   const zerosOpen = new Set<string>();
   replace(host, el('section', { class: 'dashboard', id: 'dashboard', 'data-feedback-id': 'central.direccion.panel', 'data-feedback-label': 'Panel de dirección' },
     el('div', { class: 'blockhead', 'data-feedback-id': 'central.direccion.cabecera', 'data-feedback-label': 'Cabecera del panel' }, el('h3', null, 'Dirección'),
+      el('a', { class: 'linkbtn', href: '#/direccion/semana', id: 'openWeekly', 'data-feedback-id': 'central.direccion.revision_semanal', 'data-feedback-label': 'Revisión semanal' }, icon('list', 16), 'Revisión semanal'),
       isAdmin ? el('button', { class: 'linkbtn', type: 'button', id: 'adjustTargets', 'data-feedback-id': 'central.direccion.ajustar_objetivos', 'data-feedback-label': 'Ajustar objetivos', onclick: () => openTargets() }, icon('settings', 16), 'Ajustar objetivos') : null,
       el('button', { class: 'iconbtn', type: 'button', 'data-feedback-id': 'central.direccion.actualizar', 'data-feedback-label': 'Actualizar indicadores', 'aria-label': 'Actualizar indicadores', title: 'Actualizar', onclick: () => void load() }, icon('sync', 18))),
     meta, chips, body));
