@@ -292,7 +292,7 @@ test('§9.19 · «Mi pedido» (Flow FL2): «Abrir la carta» le da su número, q
   const [carta] = await Promise.all([context.waitForEvent('page'), order.locator('#visitorCarta').click()]);
   // La pestaña nace en blanco (para que el navegador no la bloquee) y luego va a la carta con su invitación y el traspaso
   // de esta identidad (`v`, 0106), para que la carta sea el mismo visitante.
-  await carta.waitForURL(/^https:\/\/flow\.ikisai\.com\/\?invitacion=[^&]+&v=[0-9a-f]{64}$/);
+  await carta.waitForURL(/^https:\/\/flow\.ikisai\.com\/(recorridos\/carta)?\?invitacion=[^&]+&v=[0-9a-f]{64}$/);
   await carta.close();
   await expect(order.locator('#visitorNumber')).toContainText(/Tu número: \d+/);
   const number = (await order.locator('#visitorNumber').textContent())!.match(/\d+/)![0];
