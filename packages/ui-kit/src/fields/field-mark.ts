@@ -8,10 +8,18 @@
  * - Campos sueltos: `el('input', { …, ...fieldAttrs({ id, entity, prop }) })`, `markField(nodo, { … })` o los atributos
  *   `data-field-*` en el HTML. Siempre con literales, como los `data-feedback-id`.
  * Si el campo no tiene ya un `data-feedback-id`, se le pone el mismo id (el ancla del feedback y del uso).
+ * - Controles que no son datos (buscadores, filtros, selección de filas, rangos al generar): `...NOT_A_FIELD`
+ *   (`data-field-none`), y no salen en `fieldsUninstrumented`.
  */
+/** Marca de «no es un campo»: un control de la interfaz que no guarda ningún dato. El inventario no lo pide. */
+export const NOT_A_FIELD: Readonly<Record<'data-field-none', string>> = Object.freeze({ 'data-field-none': '' });
+
 export type FieldSensitivity = 'public' | 'internal' | 'personal' | 'sensitive';
 export type FieldConfirm = 'save' | 'event' | 'none';
 export const FIELD_CONFIRMS: readonly FieldConfirm[] = ['save', 'event', 'none'];
+/** Dónde vive lo que se escribe: `server` (una columna: lleva `entity` y `prop`), `device` (solo en el dispositivo) o `none` (no se guarda). */
+export type FieldStorage = 'server' | 'device' | 'none';
+export const FIELD_STORAGES: readonly FieldStorage[] = ['server', 'device', 'none'];
 
 export interface FieldSpec {
   /** Estable: `<app>.<pantalla>.<campo>` en minúsculas y sin acentos, como los ids de feedback. */
@@ -19,6 +27,11 @@ export interface FieldSpec {
   /** Entidad y propiedad que guarda (`booking.reservations` y `check_in`), si el formulario lo sabe. */
   entity?: string;
   prop?: string;
+  /**
+   * Para los que no van a una columna: `device` (la calculadora, un borrador local) o `none` (se dibuja al momento, un código
+   * de un solo uso). Así el inventario no los da por «sin entidad». Por omisión, `server`.
+   */
+  storage?: FieldStorage;
   /** Tipo (`text`, `date`, `number`, `select`, `multi`, `toggle`, `color`, `labels`, `signature`…). Los del kit lo ponen solos. */
   type?: string;
   /** `true` siempre, `false` nunca, o la condición en palabras («si la reserva es de grupo»). */
@@ -62,6 +75,7 @@ export function fieldAttrs(spec: FieldSpec | null | undefined, defaults: Partial
     'data-field-type': s.type ?? null,
     'data-field-entity': s.entity ?? null,
     'data-field-prop': s.prop ?? null,
+    'data-field-storage': s.storage && FIELD_STORAGES.includes(s.storage) && s.storage !== 'server' ? s.storage : null,
     'data-field-required': fieldRequired(s.required),
     'data-field-permission': s.permission ?? null,
     'data-field-sensitivity': s.sensitivity && FIELD_SENSITIVITIES.includes(s.sensitivity) ? s.sensitivity : null,
