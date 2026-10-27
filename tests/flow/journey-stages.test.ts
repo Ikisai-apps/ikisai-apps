@@ -112,3 +112,16 @@ test('tramos · Central ve cada paso con su tramo y su tipo', async () => {
   assert.deepEqual([...new Set(mine.map((r: any) => `${r.stage}:${r.stage_kind}:${r.app}`))].sort(), ['1:capability:invoices', '2:record:flow']);
   assert.equal(out.rows.filter((r: any) => r.flow_name === 'Registrar compra').length, 8);
 });
+
+test('tramos · «Compra recibida»: el título y la referencia de Tasks salen de Finance sin preguntar', async () => {
+  const VERSION = '0f10a000-0000-4000-8000-00000000d201';
+  const v = (await rows(TABLES.definitionVersions)).find((x) => x.id === VERSION);
+  assert.equal(v.status, 'published');
+  const ex = uuid();
+  await ok([call(PROCEDURES.startExecution, { execution_id: ex, version_id: VERSION, mode: 'run' })], app.tokens.editor);
+  await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor);
+  await ok([call(PROCEDURES.saveStageValues, { execution_id: ex, position: 1, values: { description: 'Hielo para la barra', total: 12.1 } })], app.tokens.editor);
+  await ok([call(PROCEDURES.finishStage, { execution_id: ex, position: 1, status: 'done', result: { invoice_id: '0f10a000-0000-4000-8000-0000000000f1' } })], app.tokens.editor);
+  const s2 = await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 2 })], app.tokens.editor);
+  assert.deepEqual(s2.values, { title: 'Hielo para la barra', external_ref: '0f10a000-0000-4000-8000-0000000000f1', source: 'recorridos' });
+});
