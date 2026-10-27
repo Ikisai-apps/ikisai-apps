@@ -2018,6 +2018,17 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
   - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
 - **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
 
+### 17.10 El origen solo vale desde el servidor de la app (seguridad F1, auditoría del 27-10; el modelo de Tasks §45)
+
+`record_app_entry` sigue llegando por `/api/v1/commands` con el token de la persona, así que cuentan su rol y su ámbito. Pero `source_app` solo es de esa app si la llamada viene de su servidor.
+- **La prueba:** dos cabeceras, `X-Ikisai-Worker-Key` (la misma `IKISAI_WORKER_KEY` de todas las Edges) y `X-Ikisai-Caller: flow | booking`. Un navegador no tiene la clave.
+- **Con la prueba:** `source_app` tiene que ser la app que llama. Si no, `403 SOURCE_MISMATCH`.
+- **Sin la prueba:**
+  - hoy se acepta como hasta ahora;
+  - cuando Flow y Booking manden la prueba, cada una pasa a `APP_ENTRY_SOURCES_REQUIRED` (`invoices-api/app-entries-caller.ts`), y desde entonces, sin ella, `403 CALLER_REQUIRED`. Así el navegador ya no puede llamar.
+- **Para Flow y Booking:** añadid las dos cabeceras a la llamada que ya hacéis a `invoices-api/api/v1/commands`, sin más cambios, y avisad para hacerlas obligatorias.
+- **Pruebas:** `tests/invoices/app-entries.test.ts` («F1»).
+
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
 Ficha de capacidad para el catálogo del núcleo:
