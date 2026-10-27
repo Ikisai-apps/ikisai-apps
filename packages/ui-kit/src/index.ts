@@ -92,6 +92,7 @@ export {
 } from './spaces/model.ts';
 export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions, type SpaceRowAction } from './spaces/tree.ts';
 export { createSyncSpaceSource, spaceFromRow, spaceToFields, kindFromRow, floorPlanFromRow, type SyncSpaceSourceOptions } from './spaces/sync-source.ts';
+export { applyBedLayouts, bedLayoutFromRow, bedShape, type BedLayout } from './spaces/bed-layout.ts';
 export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions, type SpacePickerTexts } from './spaces/picker.ts';
 export {
   createSpaceMap, SPACE_MAP_MARKS, validShape, shapeCenter,

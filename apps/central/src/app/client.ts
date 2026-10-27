@@ -23,6 +23,8 @@ export const T = {
   reviewScreens: 'central.review_screens',
   coverageDecisions: 'central.coverage_decisions',
   agents: 'central.agents',
+  weeklyReviews: 'central.weekly_reviews',
+  weeklyItems: 'central.weekly_review_items',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
@@ -35,7 +37,8 @@ export function createClient(): SyncClient {
     tables: Object.values(T),
     pullIntervalMs: 30_000,
     // Datos reservados de personas: fuera del dispositivo al cerrar sesión (API.md §5.3).
-    clearOnLogout: [...RESERVED_TABLES] as TableName[],
+    // La foto de la revisión semanal puede llevar importes: también fuera al cerrar sesión.
+    clearOnLogout: [...RESERVED_TABLES, 'central.weekly_review_items'] as TableName[],
   });
 }
 
@@ -72,6 +75,7 @@ export function describeError(error: unknown): string {
     case 'IMMUTABLE_FIELD': return 'Ese dato no se puede cambiar.';
     case 'INVALID_FILE': return 'El archivo no se pudo enlazar. Vuelve a elegirlo.';
     case 'DECISION_NOT_VOTABLE': return 'Solo se votan las decisiones vigentes.';
+    case 'REVIEW_CLOSED': return 'Esa revisión ya está cerrada: su foto no cambia.';
     case 'OFFLINE': return 'Esta acción necesita conexión.';
     default: {
       const message = typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';

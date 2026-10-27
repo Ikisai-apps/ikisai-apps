@@ -298,15 +298,17 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
       }
     }
 
-    async function togglePeopleScope(input: HTMLInputElement): Promise<void> {
+    async function togglePeopleScope(input: HTMLInputElement, key: 'people' | 'direccion' = 'people'): Promise<void> {
       const m = current('central');
       if (!m) return;
       input.disabled = true;
       try {
-        const scopes = { ...((m.scopes as Record<string, unknown> | null) ?? {}), people: input.checked };
-        if (!input.checked) delete (scopes as Record<string, unknown>).people;
+        const scopes = { ...((m.scopes as Record<string, unknown> | null) ?? {}), [key]: input.checked };
+        if (!input.checked) delete (scopes as Record<string, unknown>)[key];
         await admin.setMembership({ app: 'central', userId: account.userId, role: m.role, scopes: Object.keys(scopes).length ? scopes : null });
-        toast(input.checked ? 'Ahora ve los datos reservados de personas.' : 'Ya no ve los datos reservados de personas.');
+        toast(key === 'direccion'
+          ? (input.checked ? 'Ahora prepara la revisión semanal de Dirección.' : 'Ya no prepara la revisión semanal.')
+          : (input.checked ? 'Ahora ve los datos reservados de personas.' : 'Ya no ve los datos reservados de personas.'));
         await refresh();
       } catch (e) {
         error.textContent = describeError(e);
@@ -396,7 +398,12 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
       } else if (app.id === 'central' && m?.role === 'editor') {
         const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-field-id': 'central.accesos.scope_people', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
         box.addEventListener('change', () => void togglePeopleScope(box));
-        extra = el('label', { class: 'check' }, box, el('span', null, 'Ve datos reservados de personas (contacto, documentos)'));
+        // Ámbito de Dirección (VG, 27-10): prepara la revisión semanal.
+        const dir = el('input', { type: 'checkbox', id: 'scope-direccion', 'data-field-id': 'central.accesos.scope_direccion', 'data-feedback-id': 'central.accesos.cuenta.ambito_direccion', 'data-feedback-label': 'Prepara la revisión semanal', checked: (m.scopes as { direccion?: unknown } | null)?.direccion === true }) as HTMLInputElement;
+        dir.addEventListener('change', () => void togglePeopleScope(dir, 'direccion'));
+        extra = el('div', null,
+          el('label', { class: 'check' }, box, el('span', null, 'Ve datos reservados de personas (contacto, documentos)')),
+          el('label', { class: 'check' }, dir, el('span', null, 'Prepara la revisión semanal de Dirección')));
       } else if (scopes && app.id !== 'central') {
         extra = el('p', { class: 'muted small' }, scopes, ' · ', el('a', { href: `https://${app.domain}/`, target: '_blank', rel: 'noopener', 'data-feedback-id': 'central.accesos.cuenta.editar_en_app', 'data-feedback-label': 'Editar en la app' }, `Editar en ${appShort(catalog, app.id)}`));
       }
