@@ -707,6 +707,13 @@ El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora
 | FD5 | Food | lectura pública `food_visitor_offers` con `event_code`, solo ofertas `public` | en #758 |
 | FL2 | Flow | `flow.visitor_join` (acción) y `flow.visitor_customer` (lectura), con `flow.customers.visitor_id` | tras C11 |
 
+### 9.21 Entrada pública sin invitación ni QR (ENTRADA_PUBLICA.md, tarjeta 1; VG por Core, 27-10-2026)
+
+- **Pantalla de entrada sin sesión y «Mis eventos» vacío:** muestran «Eventos abiertos», sacados de la lectura pública de Booking `booking_public_events`. Son los eventos abiertos al público y los retiros con «Apuntarme». Cada uno lleva su tipo en texto, «Apuntarme» si se puede y «Con alojamiento» si ofrece noches.
+- **Al tocar un evento:** se abre su página de visitante (`#/v/<código>`). Mirar no crea identidad; se crea al «Entrar».
+- **Sin eventos o sin red:** una línea que lo dice.
+- **Pruebas:** `visitantes.spec.ts`.
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:
