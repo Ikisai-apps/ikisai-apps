@@ -169,7 +169,7 @@ export const mountAppEntries: ViewMount = (ctx) => {
       { value: fromCents(t.incomeCents), label: 'ingresos', hint: 'con IVA' },
       { value: fromCents(t.expenseCents), label: 'gastos', hint: 'con IVA' },
       { value: t.withoutEvent, label: 'sin evento' },
-      { value: d.events.length, label: d.events.length === 1 ? 'evento' : 'eventos', onClick: d.events.length ? () => eventsHost.scrollIntoView({ behavior: 'smooth' }) : undefined, feedbackId: 'invoices.apuntes.cifras.eventos' },
+      { value: d.events.length, label: 'eventos', onClick: d.events.length ? () => eventsHost.scrollIntoView({ behavior: 'smooth' }) : undefined, feedbackId: 'invoices.apuntes.cifras.eventos' },
     ], { label: 'Ingresos y gastos de apps' }));
     replace(eventsHost, ...(d.events.length ? [
       el('h3', { class: 'sectionlabel' }, 'Resultado por evento'),
