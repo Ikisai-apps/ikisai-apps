@@ -236,8 +236,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     experiencia: 'experiencia', programa: 'experiencia', alojamiento: 'experiencia', ofertas: 'ofertas', asistentes: 'asistentes', cocina: 'cocina',
   };
   const offReveals = Object.entries(TAB_OF).map(([root, tab]) => registerReveal(['organizers', root].join('.'), () => {
-    if (!menuRetreat) return;
-    navigate(tab === 'resumen' ? `#/retiro/${menuRetreat.id}` : `#/retiro/${menuRetreat.id}/${tab}`);
+    // El retiro de la ruta: al llegar con `?campo=` la ficha aún no ha dicho cuál es (`setMenuRetreat` llega al cargar).
+    const id = menuRetreat?.id ?? (location.hash.split('?')[0] ?? '').match(RETREAT)?.[1];
+    if (!id) return;
+    navigate(tab === 'resumen' ? `#/retiro/${id}` : `#/retiro/${id}/${tab}`);
   }));
 
   const offStatus = client.onStatus(() => {
