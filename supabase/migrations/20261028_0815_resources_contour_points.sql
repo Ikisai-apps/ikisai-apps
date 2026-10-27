@@ -23,7 +23,7 @@ returns boolean language sql immutable as $$
                       or (pt->>0)::numeric not between 0 and 1 or (pt->>1)::numeric not between 0 and 1)))))
 $$;
 
--- La de 0814 con los puntos de cada curva en `contours`.
+-- La de 0814 con los puntos de cada curva en `contours`, solo si los tiene (sin ellos, la forma de 0814).
 create or replace function resources.plans_base()
 returns jsonb language sql stable as $$
   select jsonb_build_object(
@@ -32,7 +32,8 @@ returns jsonb language sql stable as $$
                'id', f.id, 'buildingId', f.building_id, 'floor', f.floor, 'position', f.position, 'kind', f.kind,
                'width', f.width, 'height', f.height, 'grid', f.grid, 'bands', f.bands,
                'contours', (select jsonb_agg(jsonb_build_object('spaceId', s.id, 'label', coalesce(s.public_name, s.name),
-                                    'elevationM', s.attributes->'elevation_m', 'x', c->'x', 'y', c->'y', 'points', c->'points'))
+                                    'elevationM', s.attributes->'elevation_m', 'x', c->'x', 'y', c->'y')
+                                    || case when c ? 'points' then jsonb_build_object('points', c->'points') else '{}'::jsonb end)
                               from jsonb_array_elements(f.contours) c join resources.spaces s on s.id = (c->>'spaceId')::uuid and s.deleted_at is null),
                'file', case when cf.id is null then null else jsonb_build_object(
                  'id', cf.id, 'bucket', cf.bucket, 'path', cf.path, 'mime', cf.mime, 'sha256', cf.sha256, 'provider', cf.storage_provider) end)
