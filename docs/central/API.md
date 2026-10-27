@@ -523,6 +523,15 @@ Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y
 **Acciones** (`central.weekly_actions`, `1523`; VG, vg-41): mientras la revisión está abierta, cada indicador puede acabar en una decisión vigente (`kind = 'decision'`, `decision_id`) o en una tarea de Tasks (`kind = 'task'`). La tarea la pide `POST weekly/:id/task {requestId, code, kpi, label, title, note?, due?}` con el kind `central.weekly_action`, el token de la persona y la referencia `RSM_…:requestId` (idempotente). Su estado vuelve por `requirements/tasks-status`. La revisión siguiente enseña cómo van las acciones de la anterior. Mismo permiso que la revisión; con la revisión cerrada, `REVIEW_CLOSED`.
 
 Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque puede llevar importes. La foto también se borra del dispositivo al cerrar sesión. Pantalla: `#/direccion/semana`, desde el panel de Dirección.
+### 2.20 Revisor › cobertura de campos por pantalla (`central.field_group_reviews`, `1522`; decisiones de VG del 27-10)
+
+Para Dirección (owner y editor con el ámbito `direccion`). Declarar la utilidad campo a campo es inviable (miles de campos), así que la pantalla enseña por defecto solo los **candidatos**: los que el núcleo marca así (`candidate`: sin cobertura de Flow, sin uso en 30 días y sin estimado de la app que los proteja), agrupados por app y pantalla, con la etiqueta de la pantalla y un resumen («N campos en M pantallas»). «Ver todo» enseña el resto con la pieza del kit.
+
+- **Datos:** `GET coverage/fields?app=` une `core_field_coverage` (0111, con `estimate {frequency, audience}`, `candidate` y `activations30d`) y `flow.anchor_coverage_read` (Flow 0946). Central pone «directo» y «automático» con `fieldLinks`. Si el núcleo aún no trae `candidate`, se aplica la misma regla (`isCandidate`). Si Flow no responde, `flowAvailable: false`.
+- **Utilidad:** se hereda sola del estimado de la app y del uso real (`inheritedUtility`). Declararla es una excepción opcional por pantalla.
+- **Acción por grupo** (una sola vez): «Dejar», «Revisar más tarde» o «Retirar». Retirar no borra nada: queda anotado para el equipo de la app.
+
+`central.field_group_reviews`, una fila viva por `app` y `screen` (inmutable): `decision` (`dejar`, `revisar_mas_tarde`, `retirar`), `audience` y `frequency` (la excepción), `fields_count` (cuántos campos tenía el grupo al decidir) y `note`. Leen y escriben owner y editor con el ámbito `direccion` (Edge y base). Pantalla: `#/revision/campos`, desde Uso y cobertura.
 
 ## 3. Procedimientos y lecturas
 
@@ -640,6 +649,7 @@ function visible(table, row, ctx) {
 | `POST invoke/central.apply_house_level` | owner | `{personId}` → `{personId, userId, level, changes: [{app, from, to}]}`. Acción SQL (`1515`): lee el nivel vigente de la ficha en la base (inactiva, en la papelera o fusionada = sin nivel), nunca el que mande el cliente, y llama a `core.apply_house_level`, que es idempotente. «Aplicar accesos» de la ficha. | `FORBIDDEN 403`, `NOT_FOUND 404`, `NO_ACCOUNT 422` |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
 | `GET dashboard` | reader | `{computedAt, items: [{app, kpi, label, value, unit, period, periodStart, periodEnd, direction, link, computedAt, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 (`KPI_SOURCES`) y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel; si la publica solo para otros roles, se omite para quien no la puede leer. | — |
+| `POST agents/new` | owner | `{name, role: reader|editor, apps[], expiresAt?}` → `{userId, keyId, token, apps: [{app, ok, code?}]}`. Alta de un agente en varias apps de una vez: cuenta de agente, su rol en cada app donde quien la da es propietario (nunca Central) y una clave que solo se ve en la respuesta. La pantalla deja su ficha (`central.agents`) enlazada. | — |
 | `GET beds/layout` | reader | `{rows: [{resource_bed_id, resource_space_id, cols, rows, x, y, rot, label}], available}`. El sitio de cada cama, de `booking.bed_layout_projection` (un solo modelo, VG 27-10). Sin Booking, `available: false` y ninguna cama en el plano. | — |
 | — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
 

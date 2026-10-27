@@ -381,20 +381,34 @@ test('accesos · fichas de agente: el owner crea una con responsable, la activa 
   await login(page, 'owner@example.invalid');
   await page.goto(`${baseURL}/#/accesos/agentes`);
   await expect(page.locator('#agentCards')).toContainText('Aún no hay fichas de agente');
+  // «Nuevo agente»: la cuenta de agente, su lectura en las apps elegidas, la clave una vez y la ficha enlazada (VG, 27-10).
   await page.locator('#newAgentCard').click();
-  await page.locator('#ag-name').fill('Agente de textos');
-  await page.locator('#ag-account').selectOption({ label: 'Asistente de obra' });
+  await page.locator('#na-name').fill('Agente de textos');
+  await page.locator('#na-submit').click();
+  const key = page.locator('[data-feedback-id="central.accesos.agentes.clave.valor"]');
+  await expect(key).toBeVisible();
+  expect(await key.inputValue()).toMatch(/^ika_/);
+  await page.locator('[data-feedback-id="central.accesos.agentes.clave.hecho"]').click();
+  await page.locator('.so-confirm input').check();
+  await page.locator('[data-feedback-id="central.accesos.agentes.clave.hecho"]').click();
+  await expect(key).toHaveCount(0);
+  const agentUser = async () => (await t.db.query<{ u: string | null }>(`select user_id as u from central.agents where display_name = 'Agente de textos' and deleted_at is null`)).rows[0]?.u ?? null;
+  await expect.poll(agentUser).not.toBeNull();
+  // Lector en Tasks, donde el owner es propietario; nunca en Central.
+  await expect.poll(async () => (await t.db.query<{ app: string; role: string }>(`select app, role from core.memberships where user_id = $1 order by app`, [await agentUser()])).rows.map((r) => `${r.app}:${r.role}`)).toContain('tasks:reader');
+  expect((await t.db.query(`select 1 from core.memberships where user_id = $1 and app = 'central'`, [await agentUser()])).rows.length).toBe(0);
+
+  // Después, su ficha: misión y responsable; sin responsable no se activa.
+  const card = page.locator('#agentCards .agentrow', { hasText: 'Agente de textos' });
+  await card.getByRole('button', { name: 'Editar: Agente de textos' }).click();
   await page.locator('#ag-mission').fill('Revisa los textos de los portales.');
   await page.locator('#ag-active').check();
-  // Sin responsable no se activa: lo dice antes de enviar.
   await page.locator('#saveAgentCard').click();
   await expect(page.locator('.formerror[role="alert"]').last()).not.toBeEmpty();
   await page.locator('#ag-person').selectOption({ label: 'Responsable Ficticia' });
   await page.locator('#saveAgentCard').click();
-  const card = page.locator('#agentCards .agentrow', { hasText: 'Agente de textos' });
   await expect(card.locator('[data-agent-state]')).toHaveText('Activo');
   await expect(card.locator('[data-agent-meta]')).toContainText('Responde: Responsable Ficticia');
-  await expect(card.locator('[data-agent-meta]')).toContainText('Cuenta: Asistente de obra');
   await expect.poll(async () => (await t.db.query<{ c: string }>(`select code as c from central.agents where display_name = 'Agente de textos'`)).rows[0]?.c ?? '').toMatch(/^AGT_/);
 
   // Responsable de servicio, sin persona detrás.

@@ -238,6 +238,11 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'feedback', handler: async ({ ctx, json }) => feedback.create(ctx, await json()) },
     { method: 'GET', pattern: 'feedback', handler: ({ ctx, url }) => feedback.list(ctx, url.searchParams) },
     { method: 'GET', pattern: 'feedback/tree', handler: ({ ctx, url }) => feedback.tree(ctx, url.searchParams) },
+    // Respuestas de la casa (0117): antes de `feedback/:id`, para que `replies` no se lea como un id.
+    { method: 'GET', pattern: 'feedback/replies', handler: ({ ctx }) => feedback.replies.mine(ctx) },
+    { method: 'POST', pattern: 'feedback/replies/read', handler: async ({ ctx, json }) => feedback.replies.read(ctx, await json()) },
+    { method: 'GET', pattern: 'feedback/:id/replies', handler: ({ ctx, params }) => feedback.replies.of(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'feedback/:id/replies', handler: async ({ ctx, params, json }) => feedback.replies.create(ctx, params.id ?? '', await json()) },
     { method: 'GET', pattern: 'feedback/:id', handler: ({ ctx, params }) => feedback.get(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'feedback/:id/support', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'support', {}) },
     { method: 'POST', pattern: 'feedback/:id/verify', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'verify', await json()) },

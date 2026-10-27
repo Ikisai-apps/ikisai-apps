@@ -166,6 +166,14 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - Los de portales los ven quien informa, el editor u owner de Booking, quien trabaja la tarea enlazada y, en los de evento, el organizador de esa reserva.
   - Gestionan el editor u owner de la app de origen y el owner de Central. Verifica además quien lo informó.
   - Fuera de ámbito: `404 OUT_OF_SCOPE`.
+- **Respuestas de la casa (migración `0117`, `RESPUESTAS_CASA.md`):**
+  - **Rutas:**
+    - `POST feedback/:id/replies {message}` (de 1 a 2000 caracteres);
+    - `GET feedback/:id/replies`;
+    - `GET feedback/replies` (las mías, 180 días);
+    - `POST feedback/replies/read {ids}`.
+  - **Quién contesta:** editor u owner de Booking o el dueño del ecosistema, nunca una cuenta de portal, y solo a informes de quien organiza con reserva (`core.feedback_can_reply`). Si no, `403 FORBIDDEN`.
+  - **Quién las ve:** quien puede ver el informe. A quien lo escribió se le dan sin el autor («Ikisai»), y solo él las marca como vistas.
 - **Ciclo:**
   - Un reporte pasa a `pending_verify` cuando su código aparece en una versión publicada (`core.feedback_mark_released`) o cuando su última tarea está hecha.
   - El pin (`pin=true`) lo ven quien lo informó y el owner de Central.

@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { el, replace, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, replace, toast } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -45,13 +45,22 @@ export function mountJourneyEditor(key: string | null): ViewMount {
     let name = ''; let description = ''; let stages: EStage[] = []; let caps: Capability[] = [];
     let defId: string | null = null; let draft: Row | null = null; let published: Row | null = null; let nextVersion = 1;
 
+    const back = () => el('button', { type: 'button', class: 'ghost', onclick: () => navigate('#/recorridos') }, 'Volver a Recorridos');
+    /** Carga con «Cargando…» y, si falla, error con «Reintentar» y «Volver a Recorridos» (no se queda en blanco). */
+    function start(): void {
+      replace(host, el('p', { class: 'muted' }, 'Cargando…'));
+      load().catch((error) => replace(host,
+        el('p', { class: 'formerror', role: 'alert' }, `No se ha podido cargar el recorrido: ${describeError(error)}`),
+        el('div', { class: 'flow-actions' }, back(), el('button', { type: 'button', class: 'primary', onclick: start }, 'Reintentar'))));
+    }
+
     async function load(): Promise<void> {
       try { caps = (await client.api<{ items: Capability[] }>('/capabilities')).items.filter((c) => c.allowed); } catch { caps = []; }
       if (!key) { paint(); return; }
       const [defs, versions, allStages, allSteps] = (await Promise.all([client.list(TABLES.definitions), client.list(TABLES.definitionVersions),
         client.list(TABLES.definitionStages), client.list(TABLES.definitionSteps)])) as unknown as Row[][];
       const def = defs!.find((d) => d.key === key && !d.deleted_at);
-      if (!def) { replace(host, el('p', { class: 'muted' }, 'Ese recorrido no existe.')); return; }
+      if (!def) { replace(host, el('p', { class: 'muted' }, 'Ese recorrido no existe.'), el('div', { class: 'flow-actions' }, back())); return; }
       defId = def.id; name = def.name; description = def.description ?? '';
       const mine = versions!.filter((v) => v.definition_id === def.id && !v.deleted_at).sort((a, b) => b.version - a.version);
       draft = mine.find((v) => v.status === 'draft') ?? null;
@@ -70,10 +79,13 @@ export function mountJourneyEditor(key: string | null): ViewMount {
       paint();
     }
 
-    const input = (value: string, onInput: (v: string) => void, attrs: Record<string, string> = {}) =>
-      el('input', { type: 'text', value, ...attrs, oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
-    const select = (value: string, options: Array<[string, string]>, onChange: (v: string) => void, label: string) =>
-      el('select', { 'aria-label': label, onchange: (e: Event) => { onChange((e.target as HTMLSelectElement).value); paint(); } },
+    const input = (value: string, onInput: (v: string) => void, attrs: Record<string, string> = {}, field = 'flow.recorridos.editor.texto') =>
+      el('input', { ...fieldAttrs({ id: field, type: 'text' }), type: 'text', value, ...attrs, oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
+    /** Tras repintar, el foco vuelve al control con este `data-fk` (el que se tocó, o el tramo nuevo o movido). */
+    let refocus: string | null = null;
+    const keep = (fk: string) => { refocus = fk; };
+    const select = (value: string, options: Array<[string, string]>, onChange: (v: string) => void, label: string, fk = label) =>
+      el('select', { ...fieldAttrs({ id: `flow.recorridos.editor.${fk.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}`, type: 'select' }), 'aria-label': label, 'data-fk': fk, onchange: (e: Event) => { onChange((e.target as HTMLSelectElement).value); keep(fk); paint(); } },
         ...options.map(([v, l]) => el('option', { value: v, selected: v === value }, l)));
 
     function stepRow(stage: EStage, si: number, step: EStep, pi: number): HTMLElement {
@@ -82,17 +94,17 @@ export function mountJourneyEditor(key: string | null): ViewMount {
         el('div', { class: 'editor-head' },
           el('label', null, 'Pregunta', input(step.title, (v) => { step.title = v; if (stage.kind === 'record' && !step.key) step.key = slug(v); })),
           el('small', { class: 'muted' }, `campo: ${step.key || '—'}`),
-          el('label', { class: 'editor-option' }, el('input', { type: 'checkbox', checked: step.essential, onchange: (e: Event) => { step.essential = (e.target as HTMLInputElement).checked; } }), el('span', null, 'Esencial'))),
+          el('label', { class: 'editor-option' }, el('input', { ...fieldAttrs({ id: 'flow.recorridos.editor.esencial', entity: 'flow.definition_steps', prop: 'essential', type: 'checkbox' }), type: 'checkbox', checked: step.essential, onchange: (e: Event) => { step.essential = (e.target as HTMLInputElement).checked; } }), el('span', null, 'Esencial'))),
         el('label', null, 'Explicación', input(step.explain, (v) => { step.explain = v; })),
         stage.kind === 'record' ? el('div', { class: 'editor-head' },
-          el('label', null, 'Tipo', select(step.type, TYPES, (v) => { step.type = v as InputType; }, 'Tipo')),
-          step.type === 'choice' ? el('label', null, 'Opciones (separadas por comas)', input(step.options, (v) => { step.options = v; })) : null) : null,
+          el('label', null, 'Tipo', select(step.type, TYPES, (v) => { step.type = v as InputType; }, 'Tipo', `tipo-${si}-${pi}`)),
+          step.type === 'choice' ? el('label', null, 'Opciones (separadas por comas)', input(step.options, (v) => { step.options = v; }, { autocapitalize: 'none', autocomplete: 'off' })) : null) : null,
         el('div', { class: 'editor-head' },
           el('label', null, 'Cómo se rellena', select(step.mode, [['ask', 'Preguntar'], ['fixed', 'Valor fijo'], ...(earlier.length ? [['from', 'Desde un tramo anterior'] as [string, string]] : [])],
-            (v) => { step.mode = v as EStep['mode']; }, 'Cómo se rellena')),
+            (v) => { step.mode = v as EStep['mode']; }, 'Cómo se rellena', `modo-${si}-${pi}`)),
           step.mode === 'fixed' ? el('label', null, 'Valor', input(step.fixed, (v) => { step.fixed = v; })) : null,
           step.mode === 'from' ? el('label', null, 'De dónde (p. ej. stages[1].result.invoice_id)', input(step.from, (v) => { step.from = v; }, { placeholder: 'stages[1].result.invoice_id' })) : null),
-        stage.kind === 'record' ? el('button', { type: 'button', class: 'ghost small', onclick: () => { stage.steps.splice(pi, 1); paint(); } }, 'Quitar pregunta') : null);
+        stage.kind === 'record' ? el('button', { type: 'button', class: 'ghost small', onclick: () => { stage.steps.splice(pi, 1); keep(`tramo-${si}`); paint(); } }, 'Quitar pregunta') : null);
     }
 
     function stageCard(stage: EStage, si: number): HTMLElement {
@@ -101,35 +113,35 @@ export function mountJourneyEditor(key: string | null): ViewMount {
         const known = new Map(stage.steps.map((s) => [s.key, s]));
         stage.steps = inputFields(cap?.input).map((f) => known.get(f.key) ?? { key: f.key, title: f.key, explain: '', essential: f.required, mode: 'ask', fixed: '', from: '', type: f.type === 'number' ? 'number' : 'text', options: '' });
         if (!stage.title && cap) stage.title = cap.title;
-        paint();
+        keep(`tramo-${si}`); paint();
       };
       return el('section', { class: 'card editor-stage' },
         el('div', { class: 'editor-head' },
-          el('strong', null, `Tramo ${si + 1} · ${stage.kind === 'capability' ? 'capacidad' : stage.kind === 'record' ? 'registrar' : 'ir a otra app'}`),
-          si > 0 ? el('button', { type: 'button', class: 'ghost small', onclick: () => { [stages[si - 1], stages[si]] = [stages[si]!, stages[si - 1]!]; paint(); } }, 'Subir') : null,
-          el('button', { type: 'button', class: 'ghost small', onclick: () => { stages.splice(si, 1); paint(); } }, 'Quitar tramo')),
+          el('strong', { tabindex: '-1', 'data-fk': `tramo-${si}` }, `Tramo ${si + 1} · ${stage.kind === 'capability' ? 'capacidad' : stage.kind === 'record' ? 'registrar' : 'ir a otra app'}`),
+          si > 0 ? el('button', { type: 'button', class: 'ghost small', onclick: () => { [stages[si - 1], stages[si]] = [stages[si]!, stages[si - 1]!]; keep(`tramo-${si - 1}`); paint(); } }, 'Subir') : null,
+          el('button', { type: 'button', class: 'ghost small', onclick: () => { stages.splice(si, 1); keep(`tramo-${Math.max(0, si - 1)}`); paint(); } }, 'Quitar tramo')),
         el('label', null, 'Título del tramo', input(stage.title, (v) => { stage.title = v; })),
         el('label', null, 'Explicación', input(stage.explain, (v) => { stage.explain = v; })),
         stage.kind === 'capability' ? el('div', { class: 'editor-head' },
-          el('label', null, 'Capacidad', select(stage.capability, [['', 'Elige…'], ...caps.map((c) => [c.id, c.title] as [string, string])], (v) => { stage.capability = v; }, 'Capacidad')),
+          el('label', null, 'Capacidad', select(stage.capability, [['', 'Elige…'], ...caps.map((c) => [c.id, c.title] as [string, string])], (v) => { stage.capability = v; }, 'Capacidad', `cap-${si}`)),
           el('button', { type: 'button', class: 'ghost small', onclick: loadFields }, 'Cargar sus campos')) : null,
         stage.kind === 'handoff' ? el('div', { class: 'editor-head' },
-          el('label', null, 'App', select(stage.app, APPS, (v) => { stage.app = v; }, 'App')),
+          el('label', null, 'App', select(stage.app, APPS, (v) => { stage.app = v; }, 'App', `app-${si}`)),
           el('label', null, 'Pantalla o campo (opcional)', input(stage.anchor, (v) => { stage.anchor = v; }, { placeholder: 'tasks.compras.nueva' }))) : null,
         ...stage.steps.map((p, pi) => stepRow(stage, si, p, pi)),
         stage.kind === 'record' ? el('button', { type: 'button', class: 'ghost small', onclick: () => {
-          stage.steps.push({ key: '', title: '', explain: '', essential: true, mode: 'ask', fixed: '', from: '', type: 'text', options: '' }); paint(); } }, 'Añadir pregunta') : null);
+          stage.steps.push({ key: '', title: '', explain: '', essential: true, mode: 'ask', fixed: '', from: '', type: 'text', options: '' }); keep(`tramo-${si}`); paint(); } }, 'Añadir pregunta') : null);
     }
 
     function paint(): void {
       replace(host,
-        el('label', null, 'Nombre', input(name, (v) => { name = v; }, { maxlength: '80' })),
-        el('label', null, 'Para qué sirve', input(description, (v) => { description = v; }, { maxlength: '300' })),
+        el('label', null, 'Nombre', input(name, (v) => { name = v; }, { maxlength: '80', autocomplete: 'off' })),
+        el('label', null, 'Para qué sirve', input(description, (v) => { description = v; }, { maxlength: '300', autocomplete: 'off' })),
         published ? el('p', { class: 'muted small' }, draft ? 'Editas un borrador: lo publicado sigue igual hasta que publiques.' : `Al guardar se crea la versión ${nextVersion}; la publicada sigue igual hasta que publiques.`) : null,
         ...stages.map(stageCard),
         el('div', { class: 'flow-actions' },
           ...(['capability', 'record', 'handoff'] as Kind[]).map((k) => el('button', { type: 'button', class: 'ghost', onclick: () => {
-            stages.push({ kind: k, capability: '', title: '', explain: '', app: 'tasks', anchor: '', steps: [] }); paint(); } },
+            stages.push({ kind: k, capability: '', title: '', explain: '', app: 'tasks', anchor: '', steps: [] }); keep(`tramo-${stages.length - 1}`); paint(); } },
           k === 'capability' ? 'Añadir tramo de capacidad' : k === 'record' ? 'Añadir tramo de registro' : 'Añadir «ir a otra app»'))),
         el('div', { class: 'flow-actions' },
           busyButton({ class: 'ghost' }, 'Guardar borrador', async () => { await save(); }),
@@ -141,6 +153,7 @@ export function mountJourneyEditor(key: string | null): ViewMount {
             await runJourney(client, j, 'learn');
           }),
           busyButton({ class: 'primary' }, 'Publicar', async () => { const v = await save(); if (v) await publish(v); })));
+      if (refocus) { host.querySelector<HTMLElement>(`[data-fk="${refocus}"]`)?.focus(); refocus = null; }
     }
 
     /** Escribe el borrador (lo crea si hace falta) y devuelve su id. */
@@ -190,7 +203,7 @@ export function mountJourneyEditor(key: string | null): ViewMount {
       try { await client.commit(ops); await client.sync(); }
       catch (error) { toast(describeError(error)); return null; }
       toast('Borrador guardado.');
-      await load();
+      await load().catch(() => undefined);
       return versionId;
     }
 
@@ -202,7 +215,7 @@ export function mountJourneyEditor(key: string | null): ViewMount {
       navigate('#/recorridos');
     }
 
-    void load();
+    start();
     return () => undefined;
   };
 }

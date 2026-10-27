@@ -10,6 +10,8 @@ import {
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import type { PortalApi } from '../app/api.ts';
+import { loadReplies, markRepliesRead, repliesOf } from '../app/replies.ts';
+import { dayLabel } from '../app/labels.ts';
 
 export interface HelpOptions {
   client: SyncClient;
@@ -99,10 +101,19 @@ export async function openHelp(options: HelpOptions): Promise<void> {
 
   async function paintMine(): Promise<void> {
     try {
-      const out = await client.api<{ items: FeedbackReport[] }>('/feedback?mine=true&status=all&limit=20');
+      const [out, replies] = await Promise.all([
+        client.api<{ items: FeedbackReport[] }>('/feedback?mine=true&status=all&limit=20'),
+        loadReplies(client).catch(() => []),
+      ]);
       if (!out.items.length) { replace(mine); return; }
+      // Respuestas de la casa (0117): debajo de cada informe, firmadas «Ikisai»; al enseñarlas, cuentan como vistas.
+      const shown = out.items.flatMap((r) => repliesOf(replies, r.id));
       replace(mine, el('h3', null, t('Lo que me has enviado')), el('ul', { class: 'plainlist orgmine' },
-        ...out.items.map((r) => el('li', null, el('span', { class: 'chip small' }, t(DISPLAY[r.display || r.status] ?? 'Recibido')), ' ', el('span', { 'data-feedback-ignore': '' }, r.message.slice(0, 120))))));
+        ...out.items.map((r) => el('li', null, el('span', { class: 'chip small' }, t(DISPLAY[r.display || r.status] ?? 'Recibido')), ' ', el('span', { 'data-feedback-ignore': '' }, r.message.slice(0, 120)),
+          ...repliesOf(replies, r.id).map((reply) => el('div', { class: `orgreply${reply.read ? '' : ' orgreply-new'}`, dataset: { reply: reply.id } },
+            el('p', { class: 'small muted' }, reply.read ? null : el('span', { class: 'chip warn small' }, t('Nuevo')), reply.read ? null : ' ', el('strong', null, 'Ikisai'), ` · ${dayLabel(reply.created_at)}`),
+            el('p', { class: 'small', 'data-feedback-ignore': '' }, reply.message)))))));
+      void markRepliesRead(client, shown).catch(() => 0);
     } catch (error) {
       replace(mine, el('p', { class: 'muted small' }, describeError(error)));
     }

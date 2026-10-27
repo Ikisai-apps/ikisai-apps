@@ -4,7 +4,8 @@ import {
   type ItemCatalog, type ItemCatalogAction, type ItemCatalogFilter, type ItemRow, type ItemSheetAction, type ItemSnapshot, type ItemSource, type MovementMode,
   type Sheet, type SpaceRow, type SpaceSource,
 } from '@ikisai/ui-kit';
-import { T } from '../app/client.ts';
+import type { TableName } from '@ikisai/sync-client';
+import { T, describeError } from '../app/client.ts';
 import { startResources } from '../app/resources.ts';
 import type { Person } from './people.ts';
 import type { ViewMount } from './shell.ts';
@@ -249,6 +250,7 @@ export function mountInventoryItem(itemId: string): ViewMount {
     let sheet: { destroy(): void } | null = null;
     const host = el('div', { id: 'inventoryItem' });
     const overview = el('div', { id: 'inventoryOverview' });
+    const tradeBox = el('div', { id: 'itemTrade', class: 'ctl-itemtrade' });
     let snap: ItemSnapshot | null = null;
     let spaceRows: SpaceRow[] = [];
 
@@ -269,7 +271,31 @@ export function mountInventoryItem(itemId: string): ViewMount {
     const offSpaces = spaces.subscribe((rows) => { spaceRows = rows; paintOverview(); });
     void Promise.all([items.list(), spaces.list()]).then(([next, rows]) => { snap = next; spaceRows = rows; paintOverview(); });
 
-    replace(main, el('a', { href: '#/inventario', class: 'backlink', 'data-feedback-id': 'central.articulo.volver', 'data-feedback-label': 'Volver a Inventario' }, '← Inventario'), overview, host);
+    replace(main, el('a', { href: '#/inventario', class: 'backlink', 'data-feedback-id': 'central.articulo.volver', 'data-feedback-label': 'Volver a Inventario' }, '← Inventario'), overview, tradeBox, host);
+    // Oficio del artículo (Recursos 0819, #1138): el de Central, opcional. Solo si Recursos ya tiene la columna.
+    void (async () => {
+      const ITEMS = 'resources.items' as TableName;
+      const row = await r.get(ITEMS, itemId).catch(() => null) as Record<string, unknown> | null;
+      if (!alive || !row || !('trade_id' in row)) return;
+      let options: Array<{ trade_id: string; path: string }> = [];
+      try { options = (await client.api<{ rows: Array<{ trade_id: string; path: string }> }>('/read/central.trade_options', { method: 'POST', json: { limit: 2000 } })).rows; } catch { /* sin red: solo el actual */ }
+      if (!alive) return;
+      const current = typeof row.trade_id === 'string' ? row.trade_id : '';
+      if (current && !options.some((o) => o.trade_id === current)) options.push({ trade_id: current, path: 'Oficio retirado' });
+      const select = el('select', { id: 'itemTradeSelect', 'data-field-id': 'central.articulo.trade', 'data-field-entity': 'resources.items', 'data-field-prop': 'trade_id', disabled: !writer },
+        el('option', { value: '' }, 'Sin oficio'),
+        ...options.sort((a, b) => a.path.localeCompare(b.path, 'es')).map((o) => el('option', { value: o.trade_id, selected: o.trade_id === current }, o.path))) as HTMLSelectElement;
+      select.addEventListener('change', async () => {
+        try {
+          const now = await r.get(ITEMS, itemId) as { revision?: number } | null;
+          await r.commit([{ op: 'update', table: ITEMS, id: itemId, expectedRevision: Number(now?.revision ?? 0), fields: { trade_id: select.value || null } }]);
+          toast(select.value ? 'Oficio guardado.' : 'Oficio quitado.');
+        } catch (e) { toast(describeError(e)); }
+      });
+      replace(tradeBox, el('label', { class: 'field', 'data-feedback-id': 'central.articulo.oficio', 'data-feedback-label': 'Oficio del artículo' },
+        el('span', null, 'Oficio'), select,
+        el('span', { class: 'muted small' }, 'Qué oficio lo usa o lo mantiene. Sirve para que Tasks y Flow sepan a quién toca.')));
+    })();
     void (async () => {
       // Nombres de quien hizo cada movimiento: la cuenta enlazada a una ficha de Personas.
       const people = ((await client.list(T.people)) as unknown as Person[]).filter((p) => !p.deleted_at && p.user_id);
