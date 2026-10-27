@@ -2050,6 +2050,22 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
 - **Para Flow y Booking:** añadid las dos cabeceras a la llamada que ya hacéis a `invoices-api/api/v1/commands`, sin más cambios, y avisad para hacerlas obligatorias.
 - **Pruebas:** `tests/invoices/app-entries.test.ts` («F1»).
 
+### 17.12 «Arqueo del día» (para cuadrar la caja; encargo de VG del 27-10)
+
+`#/arqueo?dia=AAAA-MM-DD` (por defecto, hoy en hora de Madrid). Se abre desde «Ingresos y gastos de apps». Usa los apuntes de ingreso de apps de ese día, fiscales y de proceso.
+- **Por medio** (Metálico, Bizum, Tarjeta, Bitcoin… y «Sin medio» si un cobro llega sin medios): lo cobrado (importes positivos de `methods`), lo devuelto (negativos, como manda Booking una devolución) y el neto a cuadrar.
+- **De dónde:** barra y caja (Flow), alojamiento en recepción (`booking:stay:…`) y otros.
+- **Totales:**
+  - cobrado;
+  - devoluciones aparte;
+  - el **efectivo que tiene que haber** (neto en metálico);
+  - las devoluciones pendientes de Flow (aún en caja);
+  - el **total a cuadrar**.
+- **Imprimible** como el ticket: «Imprimir / Guardar PDF». No es una factura ni un ticket.
+- **Sin red,** sale del espejo del dispositivo.
+- El cierre del día de Flow ya no lleva lo enviado antes como cobro fiscal, así que nada cuenta dos veces.
+- Lógica en `apps/invoices/src/app/cash-count.ts`, prueba en `tests/invoices/cash-count.test.ts`.
+
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
 Ficha de capacidad para el catálogo del núcleo:
