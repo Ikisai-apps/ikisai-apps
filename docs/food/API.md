@@ -650,7 +650,7 @@ Desde la ficha de una máquina que no está operativa, «Avisar a Tasks para rep
 - `external_ref: 'equipment_fault:<id de la máquina>:<día en Madrid>'`: como mucho una petición por máquina y día; repetir el aviso devuelve la misma tarea (`created: false`).
 - Título «Reparar: <nombre> (<ubicación>)» (averiada o fuera de servicio, prioridad `high`) o «Revisar: …» (limitada, `normal`); la nota es la de la ficha; `external_url` = `https://food.ikisai.com/#/maquinaria`.
 - Necesita red y permiso de edición en Food; en Tasks, el de la persona (sin él, `TASKS_FORBIDDEN`).
-- Tanda 27: con la tarea creada, la Edge anota el aviso en `food.equipment_notices` (§2.9) como la persona, con un id fijo por máquina y día. Si no puede (la máquina no está en Food), el aviso a Tasks ya salió y responde `recorded: false`. La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
+- Tanda 27: con la tarea creada, la Edge anota el aviso en `food.equipment_notices` (§2.9) con la cuenta de servicio `food` (desde la 1119, auditoría FO3: solo el servidor escribe avisos; el cliente, ningún campo), con un id fijo por máquina y día. Si no puede (la máquina no está en Food), el aviso a Tasks ya salió y responde `recorded: false`. La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
 
 V2 (G4): `POST stock-entries/sync`, que lee la proyección de compras de Invoices y crea las entradas de stock (§7.3).
 
