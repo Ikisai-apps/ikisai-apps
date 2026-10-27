@@ -14,7 +14,7 @@ const SRC = path.resolve(here, '../../apps/organizers/src');
 const PATTERN = /^organizers(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `organizers.…` que no son ids de feedback: claves de los textos comunes de Central. */
-const NOT_IDS = new Set(['organizers.declaration']);
+const NOT_IDS = new Set(['organizers.declaration', 'organizers.dates_note', 'organizers.quote_note', 'organizers.proposal_note']);
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

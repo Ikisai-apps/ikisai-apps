@@ -12,7 +12,7 @@ import { bindOnline, confirmDialog, el, openSheet, replace, toast } from '@ikisa
 import type { PortalProposal, PortalRequest } from '../app/api.ts';
 import { describeError } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
-import { textParagraphs } from '../app/common-texts.ts';
+import { commonText, textParagraphs } from '../app/common-texts.ts';
 import { dateRange, dayLabel } from '../app/labels.ts';
 import { compareVersions, proposalVersions, type LineChange } from '../app/proposal-state.ts';
 import { averagePrice } from '../app/quote.ts';
@@ -247,7 +247,7 @@ export function renderProposal(ctx: ViewContext, reservationId: string): HTMLEle
       fbMark(el('button', { type: 'button', id: 'propViewCompare', class: view === 'compare' ? 'on' : '', 'aria-pressed': String(view === 'compare'), onclick: () => setView('compare') }, t('Comparar versiones ({n})', { n: all.length })), 'organizers.propuesta.vista.comparar', 'Comparar versiones')) : null;
     const intro = current.status === 'aceptada'
       ? t('La aceptación la cierra el equipo de Ikisai contigo.')
-      : t('La aceptación la cierra el equipo de Ikisai contigo. Si te encaja, pulsa «Quiero confirmar».');
+      : `${t('La aceptación la cierra el equipo de Ikisai contigo.')} ${commonText('organizers.proposal_note').body}`;
     replace(host, staleAt ? staleNote(staleAt) : null,
       el('p', { class: 'muted' }, intro),
       views,

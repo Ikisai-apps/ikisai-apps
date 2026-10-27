@@ -25,11 +25,20 @@
  * - **La elegida ampliada** (`focus`, MUELA-056): el mismo dibujo recortado a un espacio (la habitación elegida), con
  *   su contorno y lo de dentro encima (las camas con su número y su color), y la lista de solo eso. Sin forma, la lista.
  * - «Colocar» (Central) irá sobre esta pieza: `onShape` y `setShape` dejan preparada la forma, sin pantalla todavía.
+ * - **Retícula y decoración** (0.63, DECORACION_Y_FINCA): `grid` dibuja la retícula de 5 m, 1 m o 0,5 m del dibujo
+ *   (`FloorPlan.grid`); `decor` pinta los objetos encima de las estancias (`showDecor: false` los quita en la vista). Con
+ *   `decorEdit` (Central, ordenador) se ponen, se arrastran por celdas, se giran y se quitan (`onDecorChange`). Sin
+ *   `decorEdit`, la decoración solo se ve. `bedIcons` dibuja cada cama con el icono de su `bed_kind`; `bands`, las
+ *   alturas de la finca.
+ * - **Bajar de la finca a la habitación** (`drill`): tocar un edificio entra en su dibujo (`onEnterBuilding`) y tocar
+ *   una habitación con cosas dentro la amplía. Una miga («Finca › Albergue › Hab 1») y «Volver» suben. Sin zoom libre:
+ *   se cambia de dibujo.
  * Prefijo de clases: `map-`.
  */
 import { el, replace } from '../dom.ts';
 import { kt } from '../i18n/i18n.ts';
 import { ancestorsOf, indexSpaces, spacePath, type SpaceRow, type SpaceSource } from './model.ts';
+import { GRID_SCALES, bedKindOf, bedSymbols, cellSize, decorBox, relToCell, safeIconUrl, validGrid, type DecorChange, type DecorIcon, type DecorItem, type GridScale, type PlanGrid } from './decor.ts';
 
 /** Dibujo de un edificio y planta (`resources.floor_plans`). */
 export interface FloorPlan {
@@ -45,6 +54,36 @@ export interface FloorPlan {
   width: number;
   height: number;
   notes?: string | null;
+  /** Escala del dibujo para la retícula y la decoración (lo da Recursos). */
+  grid?: PlanGrid | null;
+  /** Bandas horizontales con nombre (las alturas de la finca); `bands` en las opciones manda. */
+  bands?: PlanBand[] | null;
+  /** Etiquetas de las curvas de nivel (la curva va en el dibujo); `contours` en las opciones manda. */
+  contours?: PlanContour[] | null;
+}
+
+/** Cota de una curva de nivel del dibujo: dónde va su etiqueta (0..1) y su altura en metros. */
+export interface PlanContour {
+  spaceId?: string | null;
+  label: string;
+  elevationM: number;
+  x: number;
+  y: number;
+}
+
+/** Banda horizontal del dibujo (las alturas de la finca), con `y` relativa (0..1). */
+export interface PlanBand {
+  name: string;
+  y0: number;
+  y1: number;
+}
+
+/** Tramo de la miga de `drill`. */
+export interface SpaceMapStep {
+  planId: string;
+  /** Habitación ampliada en ese tramo, si la hay. */
+  focus: string | null;
+  name: string;
 }
 
 /** Forma de un espacio en su dibujo: puntos `[x, y]` entre 0 y 1, relativos a la imagen. */
@@ -124,6 +163,26 @@ export interface SpaceMapOptions {
   offline?: boolean;
   /** Preparado para «Colocar» (Central): avisa cuando cambia una forma con `setShape`. Sin pantalla todavía. */
   onShape?: (space: SpaceRow, planId: string, shape: PlanShape) => void;
+  /** Retícula fina de esa escala en los dibujos que la tienen (`FloorPlan.grid`). Por defecto, sin retícula (con `decorEdit`, la de la herramienta). */
+  grid?: GridScale | false;
+  /** Objetos de decoración de los dibujos. */
+  decor?: DecorItem[];
+  /** `false` quita la decoración en esta vista (p. ej. al ordenar camas). Por defecto, con decoración. */
+  showDecor?: boolean;
+  /** Colocar decoración (Central, ordenador): iconos que se pueden poner y aviso de cada cambio. Sin esto, la decoración solo se ve. */
+  decorEdit?: { icons: DecorIcon[]; onDecorChange: (change: DecorChange) => void; scale?: GridScale };
+  /** Camas con el icono de su `attributes.bed_kind` (individual, doble, litera, sofá cama), además del color y el estado. */
+  bedIcons?: boolean;
+  /** Bandas horizontales con nombre (las alturas de la finca); por defecto, `plan.bands`. */
+  bands?: (plan: FloorPlan) => PlanBand[] | null | undefined;
+  /** Etiquetas de las curvas de nivel («Altura 3 · 12 m», «+6 m» hasta la siguiente); por defecto, `plan.contours`. */
+  contours?: (plan: FloorPlan) => PlanContour[] | null | undefined;
+  /** Bajar de la finca al edificio y a la habitación tocando (con miga y «Volver»). */
+  drill?: boolean;
+  /** Dibujo con el que empieza (p. ej. el de la finca). */
+  plan?: string | null;
+  /** Con `drill`: se ha entrado en un edificio. */
+  onEnterBuilding?: (building: SpaceRow, plan: FloorPlan) => void;
 }
 
 export interface SpaceMap {
@@ -138,6 +197,12 @@ export interface SpaceMap {
   setOffline(offline: boolean): void;
   /** Cambia la forma de un espacio en local y avisa con `onShape` (base de «Colocar»). */
   setShape(id: string, planId: string, shape: PlanShape): void;
+  /** Cambia los objetos de decoración (lo del servidor), sin avisar. */
+  setDecor(items: DecorItem[]): void;
+  /** Va a un dibujo (con `drill`, como raíz de la miga). */
+  setPlan(planId: string): void;
+  /** Con `drill`: la miga, de la raíz a donde se está. */
+  path(): SpaceMapStep[];
   destroy(): void;
 }
 
@@ -147,6 +212,14 @@ export const SPACE_MAP_MARKS = {
   plan: ['dibujo', 'Elegir dibujo'],
   space: ['espacio', 'Espacio en el plano'],
   row: ['fila', 'Espacio en la lista'],
+  crumb: ['miga', 'Miga del plano'],
+  back: ['volver', 'Volver'],
+  icon: ['deco-icono', 'Icono de decoración'],
+  size: ['deco-tamano', 'Tamaño del objeto'],
+  scale: ['deco-escala', 'Escala de la retícula'],
+  item: ['deco-objeto', 'Objeto de decoración'],
+  rotate: ['deco-girar', 'Girar 90°'],
+  remove: ['deco-quitar', 'Quitar el objeto'],
 } as const;
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -208,7 +281,9 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   const localShapes = new Map<string, { planId: string; shape: PlanShape }>(Object.entries(options.shapes ?? {}));
   let selected: string | null = options.selected ?? null;
   let planId: string | null = null;
-  let follow = !!selected;
+  /** Dibujo pedido (`plan`, `setPlan`), a la espera de que tenga algo que enseñar. */
+  let wantPlan: string | null = options.plan ?? null;
+  let follow = !!selected && !options.plan;
   let focus: string | null = options.focus ?? null;
   /** Lo que eligió la persona; sin dibujo, se ve la lista igualmente (y al llegar el dibujo, vuelve a lo elegido). */
   let wanted: 'plan' | 'list' = mode === 'list' ? 'list' : 'plan';
@@ -217,12 +292,20 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   /** Píxeles de pantalla por unidad de cada dibujo: los rótulos no bajan de 11 px aunque el plano se vea pequeño. */
   const scales = new Map<string, number>();
   const failed = new Set<string>();
+  // Decoración y bajada.
+  let decor: DecorItem[] = (options.decor ?? []).slice();
+  const edit = options.decorEdit ?? null;
+  const tool: { iconId: string | null; size: 1 | 4; scale: GridScale } = { iconId: edit?.icons[0]?.id ?? null, size: edit?.icons[0]?.size ?? 1, scale: edit?.scale ?? 1 };
+  let decorSel: string | null = null;
+  let trail: Array<{ planId: string; focus: string | null }> = [];
+  let dragging = false;
 
   const head = el('div', { class: 'map-head' });
+  const decorBar = el('div', { class: 'map-decorbar', role: 'toolbar', 'aria-label': kt('Decoración'), hidden: true });
   const notice = el('p', { class: 'map-offline', role: 'status', hidden: true });
   const stage = el('div', { class: 'map-stage' });
   const legend = el('ul', { class: 'map-legend', 'aria-label': kt('Leyenda') });
-  const planBox = el('div', { class: 'map-plan' }, stage, legend);
+  const planBox = el('div', { class: 'map-plan' }, decorBar, stage, legend);
   const list = el('div', { class: 'map-list' });
   const body = el('div', { class: 'map-body' }, planBox, list);
   const element = el('section', {
@@ -236,7 +319,8 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     if (own && validShape(own.shape)) return own;
     return s.planId && validShape(s.planShape) ? { planId: s.planId, shape: s.planShape } : null;
   };
-  const inUse = (s: SpaceRow) => s.active && (!options.filter || options.filter(s));
+  const ownPlans = (s: SpaceRow) => plans.filter((p) => p.buildingId === s.id).sort((a, b) => a.position - b.position);
+  const inUse = (s: SpaceRow) => s.active && (!options.filter || options.filter(s) || (!!options.drill && ownPlans(s).length > 0));
   const layerOf = (s: SpaceRow): SpaceMapLayer => options.layer?.(s) ?? {};
   /** Lo que se dice de un espacio: el texto de la capa; en las camas, su estado; en una habitación con camas, cuántas libres. */
   function stateText(s: SpaceRow, layer: SpaceMapLayer): string | null {
@@ -273,7 +357,51 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   window.addEventListener('online', onNet);
   window.addEventListener('offline', onNet);
 
+  /** Con `drill`: entra en el edificio o amplía la habitación; `true` si lo ha hecho. */
+  function drillInto(s: SpaceRow): boolean {
+    if (!options.drill) return false;
+    const current = planId;
+    const own = ownPlans(s).filter((p) => p.id !== current);
+    if (own.length && current) {
+      trail.push({ planId: current, focus });
+      planId = own[0]!.id; focus = null; selected = null; follow = false;
+      paint();
+      options.onEnterBuilding?.(s, own[0]!);
+      head.querySelector<HTMLElement>('.map-back')?.focus();
+      return true;
+    }
+    const at = shapeOf(s);
+    const inside = s.kind !== 'cama' && focus !== s.id && !!at && rows.some((r) => r.parentId === s.id && r.active && shapeOf(r)?.planId === at.planId);
+    if (inside && current) {
+      trail.push({ planId: current, focus });
+      focus = s.id; selected = null;
+      paint();
+      head.querySelector<HTMLElement>('.map-back')?.focus();
+      return true;
+    }
+    return false;
+  }
+
+  function goBack(to?: number): void {
+    if (!trail.length) return;
+    const at = to ?? trail.length - 1;
+    const step = trail[at]!;
+    trail = trail.slice(0, at);
+    planId = step.planId; focus = step.focus; selected = null;
+    paint();
+    (head.querySelector<HTMLElement>('.map-back') ?? stage.querySelector<HTMLElement>('.map-shape[tabindex="0"]'))?.focus();
+  }
+
+  const stepName = (step: { planId: string; focus: string | null }) => {
+    const room = step.focus ? rows.find((r) => r.id === step.focus) : null;
+    if (room) return nameOf(room);
+    const p = plans.find((x) => x.id === step.planId);
+    return p ? planName(p) : kt('Plano');
+  };
+  const path = (): SpaceMapStep[] => [...trail, { planId: planId ?? '', focus }].filter((s) => s.planId).map((s) => ({ ...s, name: stepName(s) }));
+
   function pick(s: SpaceRow, from: 'map' | 'list'): void {
+    if (drillInto(s)) return;
     selected = s.id;
     paint();
     options.onPick?.(s, { from, offline });
@@ -298,8 +426,16 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
           onclick: () => { planId = p.id; paint(); head.querySelector<HTMLElement>(`.map-plans [data-plan-id="${CSS.escape(p.id)}"]`)?.focus(); },
         }, planName(p))))
       : null;
-    replace(head, toggle, chooser);
-    head.hidden = !toggle && !chooser;
+    const steps = options.drill ? path() : [];
+    const crumbs = options.drill && steps.length > 1
+      ? el('nav', { class: 'map-crumbs', 'aria-label': kt('Dónde estás') },
+        el('button', { type: 'button', class: 'ghost small map-back', ...mark('back'), onclick: () => goBack() }, kt('‹ Volver')),
+        el('ol', { class: 'map-crumbs-list' }, ...steps.map((step, i) => el('li', null, i < steps.length - 1
+          ? el('button', { type: 'button', class: 'linkbtn map-crumb', ...mark('crumb'), onclick: () => goBack(i) }, step.name)
+          : el('span', { class: 'map-crumb-here', 'aria-current': 'location' }, step.name)))))
+      : null;
+    replace(head, crumbs, toggle, options.drill ? null : chooser);
+    head.hidden = !toggle && !(options.drill ? null : chooser) && !crumbs;
   }
 
   /** El espacio y lo de dentro (la elegida ampliada). */
@@ -329,6 +465,19 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       svg('defs', {}, svg('pattern', { id: hatch, patternUnits: 'userSpaceOnUse', width: unit / 90, height: unit / 90, patternTransform: 'rotate(45)' },
         svg('rect', { class: 'map-hatch-line', width: unit / 270, height: unit / 90 }))),
       svg('rect', { class: 'map-paper', width: w, height: h }));
+    if (options.bedIcons) root.append(bedSymbols(`${id}-bed-${plans.indexOf(plan)}`));
+    // Retícula: la de la vista o, colocando, la de la herramienta. Fina, y fuera si sale de menos de 5 px.
+    const gridScale = edit ? tool.scale : options.grid || null;
+    const cs = gridScale ? cellSize(plan, gridScale) : null;
+    const gridNode = cs && validGrid(plan.grid) && !(scale > 0 && cs * scale < 5)
+      ? (() => {
+        const gid = `${id}-grid-${plans.indexOf(plan)}`;
+        const stroke = Math.max(px(1), cs * 0.015);
+        return [svg('defs', {}, svg('pattern', { id: gid, patternUnits: 'userSpaceOnUse', x: plan.grid!.originX ?? 0, y: plan.grid!.originY ?? 0, width: cs, height: cs },
+          svg('path', { class: 'map-grid-line', d: `M ${cs} 0 L 0 0 0 ${cs}`, fill: 'none', 'stroke-width': stroke.toFixed(3) }))),
+        svg('rect', { class: 'map-grid', width: w, height: h, fill: `url(#${gid})`, 'aria-hidden': 'true', 'data-scale': gridScale })];
+      })()
+      : [];
     if (plan.fileId && !failed.has(plan.fileId) && options.planUrl) {
       const image = svg('image', { class: 'map-bg', width: w, height: h, preserveAspectRatio: 'none' });
       const fileId = plan.fileId;
@@ -365,6 +514,23 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       }
       shapesLayer.append(poly);
       if (bed && layer.state === 'occupied') shapesLayer.append(svg('polygon', { class: 'map-hatch', points, fill: `url(#${hatch})`, 'aria-hidden': 'true' }));
+      const kind = bed && options.bedIcons ? bedKindOf(s.attributes) : null;
+      if (kind) {
+        const xs = shape.points.map((p) => p[0] * w);
+        const ys = shape.points.map((p) => p[1] * h);
+        const bx = Math.min(...xs); const by = Math.min(...ys);
+        const bw = Math.max(...xs) - bx; const bh = Math.max(...ys) - by;
+        // El cabecero va arriba si la cama es vertical; si es apaisada, el icono se gira.
+        const wide = bw > bh;
+        const cxm = bx + bw / 2; const cym = by + bh / 2;
+        const [iw, ih] = wide ? [bh, bw] : [bw, bh];
+        shapesLayer.append(svg('use', {
+          class: `map-bedicon${off ? ' map-off' : ''}`, href: `#${id}-bed-${plans.indexOf(plan)}-${kind}`, x: cxm - iw / 2, y: cym - ih / 2, width: iw, height: ih,
+          // En unidades del símbolo (20 de ancho): la línea crece con la cama y no la tapa.
+          'stroke-width': 0.9, 'aria-hidden': 'true', 'data-bed-kind': kind,
+          ...(wide ? { transform: `rotate(90 ${cxm.toFixed(1)} ${cym.toFixed(1)})` } : {}),
+        }));
+      }
       if (selected === s.id) ring.append(svg('polygon', { class: 'map-ring', points }));
       // Rótulo: nombre y estado; en las camas, su número.
       const c = shapeCenter(shape);
@@ -389,10 +555,202 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       if (text && layer.short) labels.append(svg('text', { class: 'map-room-short', x: c.x * w, y: y + size * 1.3, 'font-size': Math.max(size * 1.15, px(15)).toFixed(1), 'dominant-baseline': 'central' }, text));
       else if (text) labels.append(svg('text', { class: 'map-room-state', x: c.x * w, y: y + size * 1.15, 'font-size': Math.max(size * 0.82, px(11)).toFixed(1), 'dominant-baseline': 'central' }, text));
     }
-    root.append(shapesLayer, ring, labels);
+    // Bandas (alturas de la finca): línea arriba y abajo y el nombre a la izquierda.
+    const bandList = ((options.bands ? options.bands(plan) : plan.bands) ?? []).filter((b) => Number.isFinite(b.y0) && Number.isFinite(b.y1));
+    const bandsLayer = bandList.length ? svg('g', { class: 'map-bands', 'aria-hidden': 'true' }, ...bandList.flatMap((b) => [
+      svg('line', { class: 'map-band-line', x1: 0, x2: w, y1: b.y0 * h, y2: b.y0 * h, 'stroke-width': Math.max(px(1), unit * 0.001).toFixed(2) }),
+      svg('line', { class: 'map-band-line', x1: 0, x2: w, y1: b.y1 * h, y2: b.y1 * h, 'stroke-width': Math.max(px(1), unit * 0.001).toFixed(2) }),
+      svg('text', { class: 'map-band-txt', x: unit * 0.01, y: Math.min(b.y0, b.y1) * h + Math.max(px(12), unit * 0.014) * 1.35, 'font-size': Math.max(px(11), unit * 0.012).toFixed(1) }, b.name),
+    ])) : null;
+    // Curvas de nivel: la etiqueta con su cota y, debajo, lo que sube hasta la siguiente.
+    const contourList = ((options.contours ? options.contours(plan) : plan.contours) ?? [])
+      .filter((c) => Number.isFinite(c.elevationM) && Number.isFinite(c.x) && Number.isFinite(c.y)).slice().sort((a, b) => a.elevationM - b.elevationM);
+    const meters = (n: number) => kt('{n} m', { n: new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(n) });
+    const contourText = (c: PlanContour, i: number) => {
+      const next = contourList[i + 1];
+      return { main: `${c.label} · ${meters(c.elevationM)}`, diff: next ? `${next.elevationM >= c.elevationM ? '+' : ''}${meters(next.elevationM - c.elevationM)}` : null };
+    };
+    const csize = Math.max(px(11), unit * 0.012);
+    const contoursLayer = contourList.length ? svg('g', { class: 'map-contours', 'aria-hidden': 'true' }, ...contourList.flatMap((c, i) => {
+      const txt = contourText(c, i);
+      // En la mitad derecha, el texto va a la izquierda del punto para no salirse.
+      const right = c.x > 0.55;
+      const tx = c.x * w + (right ? -1 : 1) * csize * 0.6;
+      const anchor = right ? 'end' : 'start';
+      return [
+        svg('circle', { class: 'map-contour-dot', cx: c.x * w, cy: c.y * h, r: (csize * 0.3).toFixed(1) }),
+        svg('text', { class: 'map-contour-txt', x: tx, y: c.y * h, 'font-size': csize.toFixed(1), 'dominant-baseline': 'central', 'text-anchor': anchor }, txt.main),
+        txt.diff ? svg('text', { class: 'map-contour-diff', x: tx, y: c.y * h + csize * 1.2, 'font-size': (csize * 0.9).toFixed(1), 'dominant-baseline': 'central', 'text-anchor': anchor }, `↑ ${txt.diff}`) : null,
+      ];
+    })) : null;
+    const said = [
+      bandList.length ? `${kt('Alturas')}: ${bandList.map((b) => b.name).join(', ')}` : null,
+      contourList.length ? `${kt('Cotas')}: ${contourList.map((c, i) => { const x = contourText(c, i); return x.diff ? `${x.main} (${kt('{d} hasta la siguiente', { d: x.diff })})` : x.main; }).join(', ')}` : null,
+    ].filter(Boolean);
+    if (said.length) root.setAttribute('aria-label', `${name}. ${said.join('. ')}`);
+    const decorLayer = paintDecor(plan, root, w, h);
+    root.append(...gridNode, shapesLayer, ...decorLayer, ring, bandsLayer ?? '', contoursLayer ?? '', labels);
     const missing = plan.fileId && failed.has(plan.fileId) ? el('p', { class: 'hint map-nobg' }, kt('No se ha podido cargar el dibujo: las estancias siguen en su sitio y en la lista.')) : null;
     const states = new Set(here.filter(({ s }) => s.kind === 'cama' && inUse(s)).map(({ s }) => layerOf(s).state).filter(Boolean) as SpaceMapBedState[]);
     return { nodes: [root, missing], states };
+  }
+
+  // --- Decoración ----------------------------------------------------------------------------------------------
+  const decorName = (item: DecorItem) => item.label ?? edit?.icons.find((i) => i.id === item.iconId)?.label ?? kt('Objeto');
+  const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `deco-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const emit = (type: DecorChange['type'], item: DecorItem) => edit?.onDecorChange({ type, item: { ...item } } as DecorChange);
+
+  function decorNode(plan: FloorPlan, item: DecorItem): SVGElement | null {
+    const box = decorBox(plan, item);
+    if (!box || !safeIconUrl(item.iconUrl)) return null;
+    const cx = box.x + box.side / 2;
+    const cy = box.y + box.side / 2;
+    const image = svg('image', { class: 'map-deco-img', href: item.iconUrl, x: box.x, y: box.y, width: box.side, height: box.side, preserveAspectRatio: 'xMidYMid meet',
+      ...(item.rotation ? { transform: `rotate(${item.rotation} ${cx.toFixed(2)} ${cy.toFixed(2)})` } : {}) });
+    if (!edit) return image;
+    const on = decorSel === item.id;
+    const g = svg('g', {
+      class: `map-deco${on ? ' map-deco-on' : ''}`, role: 'button', tabindex: 0, 'data-deco-id': item.id, 'aria-pressed': String(on),
+      'aria-label': kt('{name}, columna {x}, fila {y}', { name: decorName(item), x: String(item.cellX + 1), y: String(item.cellY + 1) }), ...mark('item'),
+    }, image, on ? svg('rect', { class: 'map-deco-sel', x: box.x, y: box.y, width: box.side, height: box.side, 'aria-hidden': 'true' }) : null);
+    return g;
+  }
+
+  function paintDecor(plan: FloorPlan, root: SVGSVGElement, w: number, h: number): SVGElement[] {
+    const show = edit ? true : options.showDecor !== false;
+    if (!show || !validGrid(plan.grid)) return [];
+    const items = decor.filter((d) => d.planId === plan.id);
+    const layer = svg('g', { class: `map-decor${edit ? ' map-decor-edit' : ''}`, ...(edit ? {} : { 'aria-hidden': 'true' }) }, ...items.map((d) => decorNode(plan, d)).filter((n): n is SVGElement => !!n));
+    if (!edit) return [layer];
+    // Colocando: una capa que recoge los toques sobre el plano (debajo de los objetos).
+    const hit = svg('rect', { class: 'map-decor-hit', width: w, height: h, 'aria-hidden': 'true' });
+    const toRel = (e: PointerEvent | MouseEvent) => {
+      const m = root.getScreenCTM();
+      if (!m) return null;
+      const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+      return { x: p.x / w, y: p.y / h };
+    };
+    hit.addEventListener('click', (e) => {
+      const icon = edit.icons.find((i) => i.id === tool.iconId);
+      const at = toRel(e);
+      if (!icon || !at) return;
+      const cell = relToCell(plan, tool.scale, at.x, at.y);
+      if (!cell) return;
+      // Con 4 celdas, el objeto se centra en el toque.
+      const shift = tool.size === 4 ? 0.5 : 0;
+      const cs = cellSize(plan, tool.scale)!;
+      const c2 = tool.size === 4 ? relToCell(plan, tool.scale, at.x - (shift * cs) / w, at.y - (shift * cs) / h) ?? cell : cell;
+      const item: DecorItem = { id: newId(), planId: plan.id, iconId: icon.id, iconUrl: icon.url, cellX: c2.cellX, cellY: c2.cellY, scale: tool.scale, size: tool.size, rotation: 0, label: icon.label };
+      decor = [...decor, item];
+      decorSel = item.id;
+      emit('add', item);
+      paint();
+      focusDecor(item.id);
+    });
+    // Arrastrar por celdas: el puntero se captura en el SVG, que no se repinta hasta soltar.
+    layer.addEventListener('pointerdown', (e) => {
+      const g = (e.target as Element).closest<SVGGElement>('.map-deco');
+      const item = g ? decor.find((d) => d.id === g.dataset.decoId) : null;
+      const at = toRel(e);
+      if (!g || !item || !at) return;
+      e.preventDefault();
+      const start = relToCell(plan, item.scale, at.x, at.y);
+      if (!start) return;
+      const from = { x: item.cellX, y: item.cellY };
+      let moved = false;
+      dragging = true;
+      decorSel = item.id;
+      root.setPointerCapture(e.pointerId);
+      const move = (ev: PointerEvent) => {
+        const now = toRel(ev);
+        const cell = now ? relToCell(plan, item.scale, now.x, now.y) : null;
+        if (!cell) return;
+        const nx = from.x + cell.cellX - start.cellX;
+        const ny = from.y + cell.cellY - start.cellY;
+        if (nx === item.cellX && ny === item.cellY) return;
+        item.cellX = nx; item.cellY = ny; moved = true;
+        const node = decorNode(plan, item);
+        const old = layer.querySelector(`[data-deco-id="${CSS.escape(item.id)}"]`);
+        if (node && old) old.replaceWith(node);
+      };
+      const up = () => {
+        root.removeEventListener('pointermove', move);
+        root.removeEventListener('pointerup', up);
+        root.removeEventListener('pointercancel', up);
+        dragging = false;
+        if (moved) emit('move', item);
+        paint();
+        focusDecor(item.id);
+      };
+      root.addEventListener('pointermove', move);
+      root.addEventListener('pointerup', up);
+      root.addEventListener('pointercancel', up);
+    });
+    layer.addEventListener('keydown', (e) => {
+      const g = (e.target as Element).closest<SVGGElement>('.map-deco');
+      const item = g ? decor.find((d) => d.id === g.dataset.decoId) : null;
+      if (!item) return;
+      const steps: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      const step = steps[e.key];
+      if (step) { e.preventDefault(); item.cellX += step[0]; item.cellY += step[1]; decorSel = item.id; emit('move', item); paint(); focusDecor(item.id); return; }
+      if (e.key === 'r' || e.key === 'R') { e.preventDefault(); rotateDecor(item); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeDecor(item); return; }
+      if (e.key === 'Escape') { e.stopPropagation(); decorSel = null; paint(); return; }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); decorSel = item.id; paint(); focusDecor(item.id); }
+    });
+    return [hit, layer];
+  }
+
+  function focusDecor(decoId: string): void {
+    stage.querySelector<SVGElement>(`.map-deco[data-deco-id="${CSS.escape(decoId)}"]`)?.focus({ preventScroll: true });
+  }
+  function rotateDecor(item: DecorItem): void {
+    item.rotation = ((item.rotation + 90) % 360) as DecorItem['rotation'];
+    decorSel = item.id;
+    emit('rotate', item);
+    paint();
+    focusDecor(item.id);
+  }
+  function removeDecor(item: DecorItem): void {
+    decor = decor.filter((d) => d.id !== item.id);
+    decorSel = null;
+    emit('remove', item);
+    paint();
+    stage.querySelector<SVGElement>('.map-deco')?.focus({ preventScroll: true });
+  }
+
+  /** Barra de «Decoración» (solo con `decorEdit`): icono, tamaño, escala y lo que se hace con el elegido. */
+  function paintDecorBar(plan: FloorPlan | null): void {
+    decorBar.hidden = !edit || !plan || view !== 'plan';
+    if (!edit || !plan) { replace(decorBar); return; }
+    const chosen = decor.find((d) => d.id === decorSel && d.planId === plan.id) ?? null;
+    const seg = (label: string, items: Array<{ key: string; text: Node | string; on: boolean; act: () => void; markKey: keyof typeof SPACE_MAP_MARKS; extra?: Record<string, string> }>) =>
+      el('div', { class: 'segmented map-decor-seg', role: 'group', 'aria-label': label }, ...items.map((it) => el('button', {
+        type: 'button', class: it.on ? 'on' : '', 'aria-pressed': String(it.on), dataset: { key: it.key }, ...mark(it.markKey), ...(it.extra ?? {}), onclick: it.act,
+      }, it.text)));
+    const icons = seg(kt('Icono'), edit.icons.map((icon) => ({
+      key: icon.id, on: tool.iconId === icon.id, markKey: 'icon' as const,
+      text: el('span', { class: 'map-decor-icon' }, safeIconUrl(icon.url) ? el('img', { src: icon.url, alt: '', width: '24', height: '24', loading: 'lazy' }) : null, el('span', null, icon.label)),
+      act: () => { tool.iconId = icon.id; tool.size = icon.size ?? tool.size; paint(); decorBar.querySelector<HTMLElement>(`[data-key="${CSS.escape(icon.id)}"]`)?.focus(); },
+    })));
+    const sizes = seg(kt('Tamaño'), ([1, 4] as const).map((n) => ({
+      key: `size-${n}`, on: tool.size === n, markKey: 'size' as const, text: n === 1 ? kt('1 celda') : kt('4 celdas'),
+      act: () => { tool.size = n; paint(); decorBar.querySelector<HTMLElement>(`[data-key="size-${n}"]`)?.focus(); },
+    })));
+    const scalesSeg = seg(kt('Retícula'), GRID_SCALES.map((s) => ({
+      key: `scale-${s}`, on: tool.scale === s, markKey: 'scale' as const, text: s === 0.5 ? kt('0,5 m') : `${s} m`,
+      act: () => { tool.scale = s; paint(); decorBar.querySelector<HTMLElement>(`[data-key="scale-${s}"]`)?.focus(); },
+    })));
+    const actions = el('div', { class: 'map-decor-actions' },
+      el('button', { type: 'button', class: 'ghost small map-decor-rotate', disabled: chosen ? null : true, ...mark('rotate'), onclick: () => { if (chosen) rotateDecor(chosen); } }, kt('Girar 90°')),
+      el('button', { type: 'button', class: 'ghost small danger map-decor-remove', disabled: chosen ? null : true, ...mark('remove'), onclick: () => { if (chosen) removeDecor(chosen); } }, kt('Quitar')));
+    const icon = edit.icons.find((i) => i.id === tool.iconId);
+    const hint = el('p', { class: 'hint map-decor-hint', role: 'status' }, !validGrid(plan.grid)
+      ? kt('Este dibujo no tiene escala: no se puede colocar decoración hasta que Recursos la ponga.')
+      : chosen
+        ? kt('«{name}» elegido: arrástralo, muévelo con las flechas, R para girar y Supr para quitar.', { name: decorName(chosen) })
+        : icon ? kt('Toca el plano para poner «{name}».', { name: icon.label }) : kt('Elige un icono.'));
+    replace(decorBar, icons, el('div', { class: 'map-decor-row' }, sizes, scalesSeg, actions), hint);
   }
 
   /** Pinta uno o varios dibujos y la leyenda de las camas (solo los estados que hay). */
@@ -418,7 +776,10 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     const index = indexSpaces(rows);
     // Con dibujo, la lista es su equivalente: lo de ese edificio (con forma o sin ella); ampliada, lo de ese espacio.
     const inside = crop ? within(crop, index) : (s: SpaceRow) => !plan || s.id === plan.buildingId || ancestorsOf(index, s.id).some((a) => a.id === plan.buildingId);
-    const shown = rows.filter((s) => inUse(s) && !container(s) && inside(s));
+    // Con `drill`, la lista es lo dibujado en ese plano (en la finca, los edificios, que llevan dentro).
+    const shown = options.drill && plan && !crop
+      ? rows.filter((s) => inUse(s) && shapeOf(s)?.planId === plan.id)
+      : rows.filter((s) => inUse(s) && !container(s) && inside(s));
     // En el orden del árbol: cada edificio (o la raíz más alta) con lo suyo debajo.
     const ordered: SpaceRow[] = [];
     const walk = (parentId: string | null) => {
@@ -459,7 +820,22 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       el('ul', { class: 'map-items' }, ...items.map(row)))));
   }
 
+  /** Lo que tiene el foco, para devolvérselo al nodo equivalente tras repintar. */
+  function focusKey(): string | null {
+    const a = document.activeElement;
+    if (!a || !element.contains(a) || a === element) return null;
+    const cls = [...a.classList].find((c) => c.startsWith('map-')) ?? '';
+    const data = ['spaceId', 'decoId', 'key', 'view', 'planId'].map((k) => (a as HTMLElement).dataset?.[k] ? `[data-${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}="${CSS.escape((a as HTMLElement).dataset[k]!)}"]` : '').join('');
+    return cls || data ? `${a.tagName.toLowerCase()}${cls ? `.${cls}` : ''}${data}` : null;
+  }
+
   function paint(): void {
+    const keep = focusKey();
+    paintNow();
+    if (keep && !element.contains(document.activeElement)) element.querySelector<HTMLElement>(keep)?.focus({ preventScroll: true });
+  }
+
+  function paintNow(): void {
     // La elegida ampliada: su dibujo recortado, o la lista si no tiene forma.
     const crop = focus ? rows.find((r) => r.id === focus) ?? null : null;
     if (focus) {
@@ -471,6 +847,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       element.classList.toggle('map-noplan', !plan);
       paintHead(!!plan, []);
       if (plan && crop) paintStage([{ plan, crop }]); else { replace(stage); replace(legend); }
+      paintDecorBar(plan);
       planBox.hidden = !plan;
       if (crop) paintList(plan, crop); else replace(list, el('p', { class: 'hint map-empty' }, kt('No hay espacios que enseñar.')));
       if (!plan && crop && mode !== 'list') list.prepend(el('p', { class: 'hint map-why' }, kt('Sin sitio en el plano: lo de dentro, en lista.')));
@@ -487,6 +864,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const at = where ? shapeOf(where)?.planId : null;
       if (at && useful.some((p) => p.id === at)) { planId = at; follow = false; }
     }
+    if (wantPlan && useful.some((p) => p.id === wantPlan)) { planId = wantPlan; wantPlan = null; }
     if (!useful.some((p) => p.id === planId)) planId = useful[0]?.id ?? null;
     const plan = useful.find((p) => p.id === planId) ?? null;
     const hasPlan = !!plan;
@@ -495,6 +873,7 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     element.classList.toggle('map-noplan', !hasPlan);
     paintHead(hasPlan, useful);
     if (plan) paintStage(options.layout === 'all' ? useful.map((p) => ({ plan: p })) : [{ plan }]); else { replace(stage); replace(legend); }
+    paintDecorBar(plan);
     planBox.hidden = !hasPlan;
     // Con todos los dibujos, la lista es la de todos.
     paintList(options.layout === 'all' ? null : plan);
@@ -523,9 +902,15 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const before = scales.get(key) ?? 0;
       if (next > 0 && Math.abs(next - before) / next > 0.08) { scales.set(key, next); changed = true; }
     }
-    if (changed) paint();
+    if (changed && !dragging) paint();
   }) : null;
   resize?.observe(stage);
+  element.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !options.drill || !trail.length || e.defaultPrevented) return;
+    if ((e.target as Element).closest('input, textarea, select, .map-deco')) return;
+    e.preventDefault();
+    goBack();
+  });
 
   paint();
   void refresh();
@@ -544,6 +929,13 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       const s = rows.find((r) => r.id === spaceId);
       if (s) options.onShape?.(s, plan, shape);
     },
+    setDecor(items) {
+      decor = items.slice();
+      if (decorSel && !decor.some((d) => d.id === decorSel)) decorSel = null;
+      if (!dragging) paint();
+    },
+    setPlan(next) { trail = []; focus = null; wantPlan = next; follow = false; paint(); },
+    path,
     destroy() {
       offRows();
       offPlans?.();

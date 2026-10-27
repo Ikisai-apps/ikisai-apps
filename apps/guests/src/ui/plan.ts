@@ -11,7 +11,7 @@
  * por su `sha256` para verlo sin red y no volver a bajarlo si no cambia. Sin plano y sin texto, nada; sin plano pero con
  * texto, solo la línea del sitio.
  */
-import { createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type FloorPlan, type SpaceMap, type SpaceMapOptions, type SpaceRow } from '@ikisai/ui-kit';
+import { createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type DecorItem, type FloorPlan, type SpaceMap, type SpaceMapOptions, type SpaceRow } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { t } from '../app/i18n.ts';
 import type { Loaded } from '../app/api.ts';
@@ -105,15 +105,42 @@ export function loadPlans(reads: PortalReads): Promise<Loaded<PortalPlans> | nul
   return readsOf(reads).plans;
 }
 
+const SCALES = new Set([5, 1, 0.5]);
+const ROTATIONS = new Set([0, 90, 180, 270]);
+
+/** La decoración general de la lectura, con la URL de su icono (las piezas sin icono firmado no se pintan). */
+export function decorOf(data: PortalPlans): DecorItem[] {
+  const icons = new Map((data.icons ?? []).map((i) => [i.id, i]));
+  return (data.decor ?? []).flatMap((d) => {
+    const ic = d.iconId ? icons.get(d.iconId) : null;
+    if (!ic?.url || !SCALES.has(d.scale) || !ROTATIONS.has(d.rotation)) return [];
+    return [{ id: d.id, planId: d.planId, iconId: d.iconId, iconUrl: ic.url, label: ic.name, cellX: d.cellX, cellY: d.cellY,
+      scale: d.scale as DecorItem['scale'], size: d.size === 4 ? 4 : 1, rotation: d.rotation as DecorItem['rotation'] }];
+  });
+}
+
+/** El plano de la finca, si lo hay (el mapa empieza en él y se baja tocando: finca → edificio → habitación). */
+export function estateOf(data: PortalPlans): string | null {
+  return data.plans.find((x) => x.kind === 'estate')?.id ?? null;
+}
+
 /** El mapa del kit sobre la lectura del portal (Alojamiento y Ayuda ponen su capa, su filtro y su `onPick`). */
 export function portalMap(data: PortalPlans, options: Omit<SpaceMapOptions, 'source' | 'plans' | 'planUrl'>): SpaceMap {
-  const plans: FloorPlan[] = data.plans.map((x) => ({ id: x.id, buildingId: x.buildingId, floor: x.floor, position: x.position, fileId: x.fileId, width: x.width, height: x.height }));
+  const plans: FloorPlan[] = data.plans.map((x) => ({
+    id: x.id, buildingId: x.buildingId, floor: x.floor, position: x.position, fileId: x.fileId, width: x.width, height: x.height,
+    grid: x.grid ?? null, bands: x.bands ?? null,
+    // La cota de cada altura (0814): sin cota no hay etiqueta.
+    contours: (x.contours ?? []).flatMap((c) => (typeof c.elevationM === 'number' ? [{ spaceId: c.spaceId, label: c.label, elevationM: c.elevationM, x: c.x, y: c.y }] : [])),
+  }));
   return createSpaceMap({
     source: createMemorySpaceSource(toRows(data.spaces)),
     plans,
     planUrl: (fileId) => planImage(data.plans.find((x) => x.fileId === fileId)),
-    // Sin números en las camas (056): el estado va en el color, el rayado y el nombre accesible.
+    // Sin números en las camas (056): el estado va en el color, el rayado y el nombre accesible; y su icono según el tipo.
     bedNumbers: false,
+    bedIcons: true,
+    // Decoración general por defecto (VG: con decoración salvo donde moleste, que lo quita cada vista).
+    decor: decorOf(data),
     ...options,
   });
 }
@@ -173,6 +200,8 @@ export function verEnPlano(options: PlanOptions): HTMLElement | null {
         feedbackId: 'guests.info.plano.mapa',
         offline: plansLoaded?.stale ?? false,
         layer: (s) => (target && s.id === target.id ? { tone: 'accent', label: t('plan.here') } : null),
+        // Sin un sitio, el mapa entero empieza en la finca y se baja tocando (finca → edificio → habitación).
+        ...(!target && options.whole && estateOf(data!) ? { drill: true, plan: estateOf(data!) } : {}),
       });
       // El plano de Central, debajo y plegado: respaldo mientras el dibujo de zonas se completa.
       const backup = p?.site_plan_file_id ? el('details', { class: 'gplan-backup', 'data-feedback-id': 'guests.info.plano.centro', 'data-feedback-label': 'El plano del centro (Central)' },

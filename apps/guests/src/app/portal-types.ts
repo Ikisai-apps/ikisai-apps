@@ -43,10 +43,21 @@ export interface Menu {
 export interface PortalPlan {
   id: string; buildingId: string; floor: string | null; position: number; width: number; height: number;
   fileId: string | null; mime: string | null; sha256: string | null; url: string | null;
+  /** Finca y decoración (Recursos 0814): el plano de la finca es `estate`; retícula, alturas y curvas de nivel con su cota. */
+  kind?: 'building' | 'estate';
+  grid?: { metersPerUnit: number; originX?: number; originY?: number } | null;
+  bands?: Array<{ name: string; y0: number; y1: number }> | null;
+  contours?: Array<{ spaceId: string; label: string; elevationM: number | null; x: number; y: number; points?: Array<[number, number]> }> | null;
 }
+/** Icono de decoración, ya firmado (10 minutos). */
+export interface PortalIcon { id: string; name: string; category: string; defaultSize: number; fileId: string | null; mime: string | null; url: string | null }
+/** Pieza de la decoración general (Recursos 0814): celda en su escala, tamaño y giro. */
+export interface PortalDecor { id: string; planId: string; iconId: string | null; cellX: number; cellY: number; scale: number; size: number; rotation: number }
+/** Silueta, sección o foto de un edificio o exterior, ya firmada. */
+export interface PortalImage { id: string; spaceId: string; kind: 'silueta' | 'seccion' | 'foto' | string; title: string | null; position: number; url: string | null }
 /** Un espacio con su forma en el dibujo (solo nombres públicos y geometría; las camas, sin ocupación). */
 export interface PortalSpace { id: string; parentId: string | null; kind: string; name: string; planId: string | null; planShape: { points: Array<[number, number]> } | null; position: number }
-export interface PortalPlans { plans: PortalPlan[]; spaces: PortalSpace[] }
+export interface PortalPlans { plans: PortalPlan[]; spaces: PortalSpace[]; icons?: PortalIcon[]; decor?: PortalDecor[]; images?: PortalImage[] }
 
 /** El lugar de Ikisai (`central.portal_place_projection`, Central §2.9): nombre, dirección del lugar, mapa y plano. */
 export interface Place { name: string | null; address: string | null; map_url: string | null; site_plan_file_id: string | null; site_plan_mime: string | null; site_plan_size: number | null }

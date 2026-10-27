@@ -311,3 +311,35 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - «Nuevo flujo» (`#/nuevo`): se elige una plantilla o en blanco, el nombre y el evento de Booking.
   - «Columnas del flujo» (`#/p/<id>/editor`): nombres, orden, opciones, añadir o quitar piezas y «Guardar como plantilla». Editar es escritura normal del owner sobre `flow.columns`; la v1 congelada no cambia (`FLOW_FROZEN`).
   - La portada y los documentos se ponen en el Inicio del flujo, como hasta ahora.
+
+## 29. Visitantes por QR (migración `0915`, FL2)
+
+- **`flow.customers.visitor_id`** (origen `visitor`): un cliente por visitante y flujo. El flujo es el del evento de Booking, por su `event_code`, que atiende la carta pública.
+- **`POST public/visitor_join {event_code}`**: ruta pública del kit, con `X-Visitor` obligatorio.
+  - Crea o encuentra su cliente, por el lote público firmado por el visitante, y devuelve «Mi pedido».
+  - Errores: `401 VISITOR_REQUIRED` y `404 NO_FLOW`.
+- **`flow_visitor_customer({event_code})`**: lectura pública expuesta al navegador, con el `visitor_id` que pone el kit (el del cliente se descarta).
+  - Devuelve `{number, carta_url, account_open, orders: [{number, status, summary, preparing}]}`.
+  - Sin visitante, o si aún no se ha unido: `number` null y sin pedidos.
+- **Enlaces a la carta, de huésped y de visitante**: `<cliente>.<caducidad>.<revisión>.<firma>`.
+  - El canje rota el token y sube la revisión: son de un solo uso (`410 INVITATION_USED`) y caducan a los 10 min.
+  - Los enlaces de huésped de tres partes (0910) valen hasta caducar.
+- **Guarda del lote público**: un cliente nuevo es `web`, o `visitor` con el visitante del propio lote (`core.current_visitor()`). De un cliente de huésped o de visitante solo cambia el token.
+- «Soy el 142» sigue funcionando sin visitante.
+
+## 30. Caja profunda (migración `0917`, «C»)
+
+- **Interruptor**: config de Caja `deep_checkout`. La v2 la lleva por plantilla, y también las versiones de barra ya creadas y no congeladas. La v1 cobra como siempre.
+- **`pay_orders({order_ids, method, unify, revisions?})`**: paga varios pedidos abiertos del mismo flujo.
+  - Métodos: `cash`, `bizum`, `card`, `btc_ln` y `btc_chain`.
+  - Cada pedido se cobra con su número de cobro y sus unidades (`flow.charge_order`).
+  - Con `unify`, un justificante para todos; sin él, uno por pedido. Sin la config, `INVALID_OPERATION`.
+- **`flow.receipts`** (`method`, `total_cents`, `order_ids`, `customer_id`, `finance_status`…) y `payments.receipt_id`. Solo por procedimiento. El estado del envío (`finance_status`) lo anota flow-api con la respuesta de Finance, por el lote público del servidor, que el navegador no puede usar. La guarda solo deja cambiar ahí los campos de envío. Así nadie marca como enviado un cobro que no ha ido.
+- **«Enviar a Finance»**: `POST receipts/:id/send/finance` → `invoices.record_app_entry` con `nature: 'fiscal'`, `source_ref flow:receipt:<id>` y el detalle de sus líneas. Bitcoin va como método `bitcoin`.
+- **Cierre del día**: va siempre a Finance como `nature: 'process'` (VG 27-10). Excluye lo ya enviado como fiscal (`flow.fiscal_of_day`): importe, métodos y detalle. Un cobro va en un solo apunte. Lo cobrado en Bitcoin que no ha ido como fiscal sale como método `bitcoin`.
+- **`flow.project_settings`** (`lightning_address`, `bitcoin_address`): escribe solo el owner, desde «Cobro con Bitcoin» en el Inicio; leen editor y owner. Las direcciones nunca van en el repo.
+- **App**:
+  - En Caja, «Ficha del cliente» al buscar su número: todos sus pedidos con casillas, «Pagar (n)» y «Entregar (n)».
+  - En la ficha de un pedido abierto, «Pagar».
+  - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
+  - Tras pagar: Imprimir factura y Enviar por correo (aún sin función), Enviar a Finance y Cerrar.

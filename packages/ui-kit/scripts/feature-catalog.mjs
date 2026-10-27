@@ -150,7 +150,7 @@ KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
 KIT_CHILDREN.createSpaceTree = [['buscar', 'Buscar espacio', 'input'], ['nueva_altura', 'Nueva altura', 'button'], ['ver_archivados', 'Ver archivados', 'input'], ['fila', 'Espacio', 'button'], ['desplegar', 'Desplegar o plegar', 'button'], ['mover', 'Arrastrar para mover', 'button'], ['anadir', 'Añadir dentro', 'button'], ['editar', 'Editar espacio', 'button'], ['subir', 'Subir', 'button'], ['bajar', 'Bajar', 'button'], ['guardar', 'Guardar espacio', 'button'], ['duplicar', 'Duplicar', 'button'], ['archivar', 'Archivar', 'button'], ['recuperar', 'Recuperar', 'button']];
 KIT_CHILDREN.createSpacePicker = [['rapido', 'Espacio más usado', 'button'], ['buscar', 'Buscar espacio', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['quitar', 'Quitar espacio', 'button']];
 // `SPACE_MAP_MARKS` (src/spaces/map.ts).
-KIT_CHILDREN.createSpaceMap = [['vista', 'Plano o lista', 'button'], ['dibujo', 'Elegir dibujo', 'button'], ['espacio', 'Espacio en el plano', 'button'], ['fila', 'Espacio en la lista', 'button']];
+KIT_CHILDREN.createSpaceMap = [['vista', 'Plano o lista', 'button'], ['dibujo', 'Elegir dibujo', 'button'], ['espacio', 'Espacio en el plano', 'button'], ['fila', 'Espacio en la lista', 'button'], ['miga', 'Miga del plano', 'button'], ['volver', 'Volver', 'button'], ['deco-icono', 'Icono de decoración', 'button'], ['deco-tamano', 'Tamaño del objeto', 'button'], ['deco-escala', 'Escala de la retícula', 'button'], ['deco-objeto', 'Objeto de decoración', 'button'], ['deco-girar', 'Girar 90°', 'button'], ['deco-quitar', 'Quitar el objeto', 'button']];
 // `CALENDAR_MARKS` (src/calendar/calendar.ts) y `PROPOSAL_LIST_MARKS` (src/proposals/list.ts).
 KIT_CHILDREN.createCalendar = [['capa', 'Capa del calendario', 'button'], ['dia', 'Día del calendario', 'button'], ['guardar_dias', 'Guardar días elegidos', 'button'], ['cancelar_dias', 'Cancelar la elección de días', 'button']];
 // `ITEM_PICKER_MARKS` (src/items/picker.ts); con `space`, su `createSpacePicker` cuelga de `.sitio`.
@@ -177,17 +177,30 @@ KIT_CHILDREN.createProposalList = [['estado', 'Estado de las propuestas', 'butto
 
 /** Nombre de la llamada que contiene la posición `at` (el `(` sin cerrar más cercano hacia atrás). */
 function enclosingCall(text, at) {
+  return enclosingCallAt(text, at)?.name ?? null;
+}
+
+/** Como `enclosingCall`, con la posición del `(` para leer los argumentos. */
+function enclosingCallAt(text, at) {
   let depth = 0;
   for (let i = at - 1; i >= Math.max(0, at - 4000); i--) {
     const c = text[i];
     if (c === ')' || c === ']' || c === '}') depth++;
     else if (c === '(' || c === '[' || c === '{') {
-      if (depth === 0 && c === '(') return /([A-Za-z_$][\w$]*)\s*$/.exec(text.slice(Math.max(0, i - 60), i))?.[1] ?? null;
+      if (depth === 0 && c === '(') { const name = /([A-Za-z_$][\w$]*)\s*$/.exec(text.slice(Math.max(0, i - 60), i))?.[1]; return name ? { name, open: i } : null; }
       if (depth > 0) depth--;
     }
   }
   return null;
 }
+
+/**
+ * Hijos que solo existen con una opción: si la llamada no la lleva, no se catalogan (así «Uso y cobertura» no los da por
+ * funciones a las que nadie llega). Mantener al día con `SPACE_MAP_MARKS` (src/spaces/map.ts).
+ */
+const KIT_CHILDREN_WHEN = {
+  createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/ },
+};
 
 /** Extrae funciones de un texto. Exportada para las pruebas. */
 export function extractFeatures(text, file = '') {
@@ -213,8 +226,11 @@ export function extractFeatures(text, file = '') {
     }
     const before = text.slice(0, m.index);
     const after = text.slice(m.index + m[0].length);
-    const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
-    const children = call ? KIT_CHILDREN[call] : null;
+    const at = /feedbackId/.test(m[0]) ? enclosingCallAt(text, m.index) : null;
+    const call = at?.name ?? null;
+    const callText = at ? spanAt(text, at.open) ?? '' : '';
+    const when = call ? KIT_CHILDREN_WHEN[call] : null;
+    const children = call && KIT_CHILDREN[call] ? KIT_CHILDREN[call].filter(([suffix]) => !when?.[suffix] || when[suffix].test(callText)) : null;
     if (children) {
       features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta', createLanes: 'Carriles' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });

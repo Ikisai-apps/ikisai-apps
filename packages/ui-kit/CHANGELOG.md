@@ -1,5 +1,38 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.63.0 · 27 de octubre de 2026
+
+**Decoración y finca en `createSpaceMap`** (encargo de VG del 27-10, `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`). Las formas de los datos se han acordado con Guests (Recursos), Central («Colocar» → Decoración) y Core (el SVG de la finca). Sin las opciones nuevas, el mapa se comporta como antes.
+
+- **Retícula** (`src/spaces/decor.ts`): `FloorPlan.grid = { metersPerUnit, originX, originY }` y escalas de 5 m, 1 m y 0,5 m.
+  - `grid: 5 | 1 | 0.5` dibuja la retícula fina. Se quita sola si las celdas salen de menos de 5 px.
+  - Funciones exportadas: `cellSize`, `cellToRel`, `relToCell` y `decorBox`.
+- **Decoración**: `decor: [{ id, planId, iconId, iconUrl, cellX, cellY, scale, size: 1 | 4, rotation, label }]` va en una capa encima de las estancias.
+  - Se pinta como `<image>`, así que nunca se ejecuta, y `safeIconUrl` descarta lo que no es una imagen.
+  - Sin `decorEdit` solo se ve: sin eventos y `aria-hidden`.
+  - `showDecor: false` la quita en esa vista (p. ej. al ordenar camas).
+- **Colocar decoración** (`decorEdit: { icons, onDecorChange, scale }`, Central en el ordenador):
+  - una barra con icono, tamaño (1 o 4 celdas) y escala;
+  - tocar el plano pone el objeto, que se arrastra saltando de celda en celda;
+  - con el objeto elegido: flechas = 1 celda, R o «Girar 90°», y Supr o «Quitar»;
+  - cada cambio avisa con `onDecorChange({ type: 'add' | 'move' | 'rotate' | 'remove', item })`, y `setDecor(items)` repinta con lo del servidor.
+- **Camas con icono** (`bedIcons: true`): cada cama lleva el símbolo de su `attributes.bed_kind` (individual, doble, litera, sofá cama).
+  - El icono va encima del color, el estado y el rayado, que no cambian.
+  - Si la cama es apaisada, el icono se gira.
+- **Alturas y cotas de la finca**:
+  - `FloorPlan.bands` (u opción `bands`) dibuja las líneas y el nombre de cada altura.
+  - `FloorPlan.contours = [{ label, elevationM, x, y }]` (u opción `contours`) pone la etiqueta «Altura 3 · 10 m» y «↑ +6 m» hasta la siguiente.
+  - Todo va también en el nombre accesible del plano.
+- **De la finca a la habitación** (`drill: true`):
+  - tocar una forma con dibujos propios entra en su plano (`onEnterBuilding(building, plan)`);
+  - tocar una habitación con cosas dentro la amplía;
+  - la miga («Finca › Albergue · Planta baja › Hab 1») vuelve a cualquier nivel, y «‹ Volver» o Escape suben uno;
+  - opción `plan` (el dibujo con el que empieza) y métodos `setPlan(planId)` y `path()`;
+  - sin zoom libre, como decidió VG: se cambia de dibujo.
+- Repintar ya no pierde el foco: lo devuelve al mismo control, también cuando el plano cambia de ancho.
+- Marcas nuevas: `miga`, `volver`, `deco-icono`, `deco-tamano`, `deco-escala`, `deco-objeto`, `deco-girar` y `deco-quitar`; el catálogo las conoce.
+- Pruebas: `tests/v67.spec.ts`.
+
 ## 0.62.0 · 27 de octubre de 2026
 
 **Dos peticiones de Tasks** (K4 y K5 de `docs/tasks/PETICIONES.md`, decisiones de VG del 27-10). Sin las opciones nuevas, el selector se comporta como antes.

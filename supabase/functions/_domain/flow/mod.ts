@@ -25,6 +25,8 @@ export const TABLES = {
   templateUnits: 'flow.template_units',
   templateColumnPatches: 'flow.template_column_patches',
   accounts: 'flow.accounts',
+  projectSettings: 'flow.project_settings',
+  receipts: 'flow.receipts',
   templateColumns: 'flow.template_columns',
   presenceMarks: 'flow.presence_marks',
 } as const satisfies Record<string, `flow.${string}`>;
@@ -54,6 +56,7 @@ export const PROCEDURES = {
   markPresence: 'flow.mark_presence',
   deliverAll: 'flow.deliver_all',
   saveTemplate: 'flow.save_template',
+  payOrders: 'flow.pay_orders',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
@@ -84,6 +87,9 @@ export type UnitStatus = 'proposed' | 'pending' | 'in_progress' | 'done' | 'canc
 export type PayMethod = 'cash' | 'bizum';
 /** Liquidación de una cuenta (0910): también con tarjeta. */
 export type SettleMethod = PayMethod | 'card';
+/** Métodos de la caja profunda (0917). */
+export type CheckoutMethod = 'cash' | 'bizum' | 'card' | 'btc_ln' | 'btc_chain';
+export const CHECKOUT_METHOD_LABELS: Record<CheckoutMethod, string> = { cash: 'Metálico', bizum: 'Bizum', card: 'Tarjeta', btc_ln: 'Bitcoin · Lightning', btc_chain: 'Bitcoin · on-chain' };
 export type DeliveryIdent = 'number' | 'qr' | 'presence' | 'skipped';
 
 /** Siguiente estado de un toque (§5, §7). Una unidad cancelada no avanza. */
@@ -141,6 +147,8 @@ export const FLOW_ERRORS: Record<string, string> = {
   SETTLE_FORBIDDEN: 'Solo quien abrió la cuenta o el encargado puede liquidarla.',
   INVITATION_INVALID: 'Ese enlace no vale. Pide uno nuevo en la app de huéspedes.',
   INVITATION_EXPIRED: 'Ese enlace ha caducado. Ábrelo otra vez desde la app de huéspedes.',
+  INVITATION_USED: 'Ese enlace ya se ha usado. Ábrelo otra vez desde la app de huéspedes.',
+  NO_FLOW: 'Este evento no tiene la barra abierta ahora mismo.',
   NO_BOOKING_EVENT: 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.',
   SES_ALREADY_REGISTERED: 'Su llegada ya está comunicada a SES: no se puede deshacer desde aquí.',
   GUEST_ALREADY_LEFT: 'Este huésped ya se ha ido: deshaz la salida antes.',

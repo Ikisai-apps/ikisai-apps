@@ -12,14 +12,14 @@ export type TabKey = 'resumen' | 'comercial' | 'operacion' | 'huespedes' | 'dine
 const TAB_LABELS: Record<TabKey, string> = { resumen: 'Resumen', comercial: 'Comercial', operacion: 'Operación', huespedes: 'Huéspedes', dinero: 'Dinero', todo: 'Todo' };
 
 /** Mapa bloque → pestaña: los 17 bloques de hoy (más el Extracto) tienen sitio. */
-export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockBarService', Exclude<TabKey, 'todo'>> = {
+export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockBarService' | 'blockPublicCode' | 'blockVisitorRequests', Exclude<TabKey, 'todo'>> = {
   blockSummary: 'resumen', blockOpenRetreat: 'resumen', blockProgram: 'resumen',
   blockDates: 'comercial', blockProposal: 'comercial', blockPortal: 'comercial', blockPortalRequests: 'comercial',
   blockOperation: 'operacion', blockLodging: 'operacion', blockStaff: 'operacion', blockChecklist: 'operacion', blockMeals: 'operacion',
   blockSes: 'huespedes', blockGuests: 'huespedes',
   financeExtract: 'dinero', blockFinance: 'dinero', blockCosts: 'dinero',
   // tipos de reserva (0484) y Flow: alojamiento a la carta y servicio de barra
-  blockWalkIn: 'operacion', blockBarService: 'dinero',
+  blockWalkIn: 'operacion', blockBarService: 'dinero', blockPublicCode: 'resumen', blockVisitorRequests: 'huespedes',
 };
 
 const REMEMBER_KEY = 'booking:ficha:todo';

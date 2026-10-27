@@ -204,6 +204,33 @@ FIELDS[TABLES.beds] = {
   cell: { kind: 'cell' },
   team_bed: { kind: 'bool' },
 };
+// 0488: código público del evento (QR de visitantes)
+FIELDS[TABLES.events] = { ...FIELDS[TABLES.events], public_code: text(10, false) };
+FIELDS[TABLES.visitorRequests] = {
+  event_id: { kind: 'uuid' },
+  via_code: text(20),
+  visitor_id: { kind: 'uuid' },
+  kind: { kind: 'enum', values: ['join', 'contact'], nullable: false },
+  name: text(120),
+  contact: text(200),
+  note: text(500),
+  status: { kind: 'enum', values: ['pendiente', 'aceptada', 'descartada', 'atendida'], nullable: false },
+  guest_id: { kind: 'uuid', nullable: true },
+  decided_at: { kind: 'timestamp' },
+};
+FIELDS[TABLES.walkinCharges] = {
+  event_id: { kind: 'uuid' },
+  assignment_id: { kind: 'uuid' },
+  guest_id: { kind: 'uuid', nullable: true },
+  nights: { kind: 'int', nullable: false, min: 1 },
+  price_cents: { kind: 'int', nullable: false, min: 0 },
+  amount_cents: { kind: 'int', nullable: false, min: 0 },
+  method: { kind: 'enum', values: ['cash', 'bizum', 'card'], nullable: true },
+  paid_at: { kind: 'timestamp' },
+  finance_entry_id: { kind: 'uuid', nullable: true },
+  finance_sent_at: { kind: 'timestamp' },
+  finance_error: text(300),
+};
 FIELDS[TABLES.roomAssignments] = {
   event_id: { kind: 'uuid' },
   space_id: { kind: 'uuid', nullable: true },
@@ -419,6 +446,7 @@ FIELDS[TABLES.dateBlocks] = {
 /** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
 const PARENT_LINK: Record<string, string> = {
   [TABLES.events]: 'reservation_id',
+  [TABLES.walkinCharges]: 'assignment_id',
   [TABLES.guests]: 'event_id',
   [TABLES.restrictions]: 'event_id',
   [TABLES.checklist]: 'event_id',
@@ -442,6 +470,7 @@ const PARENT_LINK: Record<string, string> = {
 
 /** Campos obligatorios al insertar. */
 const REQUIRED_ON_INSERT: Record<string, string[]> = {
+  [TABLES.walkinCharges]: ['event_id', 'assignment_id', 'nights', 'price_cents', 'amount_cents'],
   [TABLES.reservations]: ['title'],
   [TABLES.events]: ['reservation_id'],
   [TABLES.guests]: ['event_id', 'first_name'],
@@ -588,6 +617,9 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
   }
 
   if (table === TABLES.beds && typeof fields.capacity === 'number' && fields.capacity > 2) issues.push(invalid(table, 'capacity', 'admite como máximo 2 personas'));
+  if (table === TABLES.events && 'public_code' in fields && !(typeof fields.public_code === 'string' && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/.test(fields.public_code))) issues.push(invalid(table, 'public_code', 'debe tener 10 caracteres del alfabeto del código público'));
+  if (table === TABLES.walkinCharges && typeof fields.nights === 'number' && typeof fields.price_cents === 'number' && typeof fields.amount_cents === 'number'
+    && fields.amount_cents !== fields.nights * fields.price_cents) issues.push(invalid(table, 'amount_cents', 'debe ser noches × precio por noche'));
 
   if (table === TABLES.rates || table === TABLES.proposalLines) {
     const amountField = table === TABLES.rates ? 'amount' : 'unit_amount';

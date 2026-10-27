@@ -8,8 +8,10 @@ import { i18n, t } from './i18n.ts';
 
 export interface CommonText { key: string; title: string | null; body: string; version: string | null; kind: string | null; lang?: string; source_lang?: string }
 
-export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.email' | 'contact.phone' | 'payment.instructions' | 'portal.menu_note';
-const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone', 'payment.instructions', 'portal.menu_note'];
+export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.email' | 'contact.phone' | 'payment.instructions' | 'portal.menu_note'
+  | 'organizers.dates_note' | 'organizers.quote_note' | 'organizers.proposal_note';
+const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone', 'payment.instructions', 'portal.menu_note',
+  'organizers.dates_note', 'organizers.quote_note', 'organizers.proposal_note'];
 const storeKey = () => `ikisai-organizers-texts:${i18n.locale()}`;
 
 /**
@@ -37,6 +39,10 @@ const FALLBACK: Record<TextKey, CommonText> = {
   'contact.phone': { key: 'contact.phone', title: 'Teléfono', version: null, kind: 'contact', body: '614 76 57 96' },
   'payment.instructions': { key: 'payment.instructions', title: 'Cómo pagar', version: null, kind: 'mensaje', body: 'Te enviaremos los datos para pagar junto con la factura. Si tienes cualquier duda, escríbenos.' },
   'portal.menu_note': { key: 'portal.menu_note', title: 'El menú', version: null, kind: 'mensaje', body: 'El menú puede cambiar para adaptarse a las alergias e intolerancias de tus asistentes.' },
+  // Notas de Fechas, Diseño y Propuesta (Central X2, 0590).
+  'organizers.dates_note': { key: 'organizers.dates_note', title: 'Fechas', version: null, kind: 'mensaje', body: 'Ikisai confirmará la fecha definitiva; lo que marques son posibilidades.' },
+  'organizers.quote_note': { key: 'organizers.quote_note', title: 'Presupuesto', version: null, kind: 'mensaje', body: 'El precio es orientativo e incluye el IVA. Hay un importe mínimo por retiro: el equipo de Ikisai te lo confirmará en la propuesta.' },
+  'organizers.proposal_note': { key: 'organizers.proposal_note', title: 'Propuesta', version: null, kind: 'mensaje', body: 'Para confirmar, pulsa «Quiero confirmar» y el equipo de Ikisai te contactará.' },
 };
 
 /** Reserva en inglés (solo los textos que cambian de idioma; el contacto es el mismo). */
@@ -57,6 +63,9 @@ const FALLBACK_EN: Partial<Record<TextKey, CommonText>> = {
     key: 'portal.privacy', title: 'Data protection', version: null, kind: 'legal', lang: 'en',
     body: 'Ikisai processes this information to manage the stay and, where the law requires it, for the guest register. Each person can access, correct or ask for the deletion of their data by writing to Ikisai.',
   },
+  'organizers.dates_note': { key: 'organizers.dates_note', title: 'Dates', version: null, kind: 'mensaje', lang: 'en', body: 'Ikisai will confirm the final date; the dates you mark are only possibilities.' },
+  'organizers.quote_note': { key: 'organizers.quote_note', title: 'Quote', version: null, kind: 'mensaje', lang: 'en', body: 'The price is an estimate and includes VAT. There is a minimum amount per retreat: the Ikisai team will confirm it in the proposal.' },
+  'organizers.proposal_note': { key: 'organizers.proposal_note', title: 'Proposal', version: null, kind: 'mensaje', lang: 'en', body: 'To confirm, press «I want to confirm» and the Ikisai team will contact you.' },
 };
 
 let loaded: Partial<Record<TextKey, CommonText>> = readStored();

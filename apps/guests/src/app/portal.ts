@@ -19,7 +19,7 @@ export interface PortalReads {
   /** Las ofertas del evento (`food.portal_offers`, FD3), sin cruzar: el cruce con la persona es `offersForGuest`. */
   offers(reservationId: string, guestId: string): Promise<Loaded<unknown> | null>;
   /** Número de cliente y enlace de un solo uso a la carta «a cuenta» (`flow.portal_customer`); sin caché: cada toque, uno nuevo. */
-  customer(reservationId: string, guestId: string): Promise<{ number: string | null; carta_url: string | null } | null>;
+  customer(reservationId: string, guestId: string): Promise<{ number: string | null; carta_url: string | null; account_open: boolean | null } | null>;
   place(): Promise<Loaded<Place> | null>;
   /** El mapa de zonas (`GET plans` de la Edge de Guests, MUELA-024), con copia sin red; null si no hay o no se puede. */
   plans(): Promise<Loaded<PortalPlans> | null>;
@@ -70,9 +70,10 @@ export function createPortalReads(client: SyncClient): PortalReads {
     offers: (reservationId, guestId) => read('food.portal_offers', { reservation_id: reservationId, guest_id: guestId }),
     customer: async (reservationId, guestId) => {
       try {
-        const out = await client.api<{ number?: unknown; carta_url?: unknown } | null>('/read/flow.portal_customer', { method: 'POST', json: { reservation_id: reservationId, guest_id: guestId } });
+        const out = await client.api<{ number?: unknown; carta_url?: unknown; account_open?: unknown } | null>('/read/flow.portal_customer', { method: 'POST', json: { reservation_id: reservationId, guest_id: guestId } });
         if (!out) return null;
-        return { number: out.number === null || out.number === undefined ? null : String(out.number), carta_url: typeof out.carta_url === 'string' ? out.carta_url : null };
+        return { number: out.number === null || out.number === undefined ? null : String(out.number), carta_url: typeof out.carta_url === 'string' ? out.carta_url : null,
+          account_open: typeof out.account_open === 'boolean' ? out.account_open : null };
       } catch {
         return null;
       }
@@ -98,7 +99,7 @@ export function createPortalReads(client: SyncClient): PortalReads {
       const user = userId();
       try {
         const value = await client.api<PortalPlans>('/plans');
-        const clean = { plans: value.plans ?? [], spaces: value.spaces ?? [] };
+        const clean = { plans: value.plans ?? [], spaces: value.spaces ?? [], icons: value.icons ?? [], decor: value.decor ?? [], images: value.images ?? [] };
         void cache.saveRead(user, 'guests.plans', {}, clean);
         return { value: clean, at: new Date().toISOString(), stale: false };
       } catch (error) {
