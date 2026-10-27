@@ -651,3 +651,10 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 /* Revisión móvil de UI-kit (27-10): a 390 px «Ikisai Guests · nombre» no cabía en la cabecera (121 px en 108). En móvil se
    quita el nombre de la cuenta (sale en el menú y, con la familia, en el selector de personas). */
 @media (max-width:420px){#shellSubtitle{display:none}}
+
+/* Recorridos del evento (ven.ikisai.com): una fila por recorrido, con su marca de hecho. */
+.gvisitor-routes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.gvisitor-route-go{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface,transparent);color:inherit;font:inherit;font-weight:600;text-align:left;text-decoration:none;cursor:pointer}
+.gvisitor-route-go>span:nth-child(2){flex:1}
+.gvisitor-route-mark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:2px solid var(--line)}
+.gvisitor-route[data-done] .gvisitor-route-mark{border-color:var(--accent-deep,var(--ink));color:var(--accent-deep,var(--ink))}

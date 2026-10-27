@@ -10,7 +10,7 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { claimGuest, ensureVisitor, errorCodeOf, forgetVisitor, lodgingUnlocked, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { claimGuest, createHandoff, ensureVisitor, errorCodeOf, withHandoff, forgetVisitor, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
@@ -22,7 +22,7 @@ import { mountLodge } from './lodge.ts';
 import { stayBlock, stayRequestText } from './stay.ts';
 
 const LIST = '#/v';
-const EVENT = /^#\/v\/([A-Za-z0-9]{10})(\/alojate)?$/;
+const EVENT = /^#\/v\/([A-Za-z0-9]{10})(?:\/(alojate|datos))?$/;
 
 /** ¿Es una ruta del portal del visitante? */
 export function isVisitorHash(hash: string): boolean {
@@ -77,7 +77,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
   const route = () => {
     const mine = ++token;
     const m = location.hash.match(EVENT);
-    const shown = m ? showEvent(m[1]!.toUpperCase(), mine, m[2] ? 'alojate' : 'evento') : showList(mine);
+    const shown = m ? showEvent(m[1]!.toUpperCase(), mine, (m[2] as 'alojate' | 'datos' | undefined) ?? 'evento') : showList(mine);
     if (pointer) void shown.then(() => { if (current(mine)) void pointer.point(); });
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
@@ -120,7 +120,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
       footer());
   }
 
-  async function showEvent(code: string, mine: number, tab: 'evento' | 'alojate' = 'evento'): Promise<void> {
+  async function showEvent(code: string, mine: number, tab: 'evento' | 'alojate' | 'datos' = 'evento'): Promise<void> {
     replace(main, loading());
     let loaded: Awaited<ReturnType<typeof publicEvent>>;
     try {
@@ -150,12 +150,12 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
         el('span', { class: 'chip small gstatus' }, t(event.status === 'abierto' ? 'visitor.open' : 'visitor.closed'))),
       event.summary ? el('p', { id: 'visitorSummary' }, event.summary) : null);
 
-    // «Alójate aquí» (VG, por Core): pestaña aparte, abierta en este móvil por el QR del evento o por el enlace de la carta
-    // de Flow (`/e/<código>?alojate`). Sin abrir, ni la pestaña ni las noches.
-    const lodging = event.lodging && lodgingUnlocked(code);
+    // «Alójate aquí» (VG, por Core): pestaña aparte en todo evento abierto con noches (ven.ikisai.com, única entrada pública,
+    // 27-10 noche; recomendación de vg-48 mientras VG no decida: visible a cualquiera en el evento abierto).
+    const lodging = event.lodging;
     const tabs = lodging ? el('nav', { class: 'segmented gvisitor-tabs', id: 'visitorTabs', 'aria-label': t('visitor.tabs') },
       ...([['evento', `#/v/${code}`, t('visitor.tabEvent')], ['alojate', `#/v/${code}/alojate`, t('lodge.tab')]] as const).map(([key, href, label]) => el('a', {
-        href, class: tab === key ? 'on' : '', 'aria-current': tab === key ? 'page' : null, dataset: { tab: key },
+        href, class: (tab === 'datos' ? 'evento' : tab) === key ? 'on' : '', 'aria-current': (tab === 'datos' ? 'evento' : tab) === key ? 'page' : null, dataset: { tab: key },
         ...(key === 'alojate' ? { 'data-feedback-id': 'guests.visitante.pestana.alojate', 'data-feedback-label': 'Pestaña «Alójate aquí»' }
           : { 'data-feedback-id': 'guests.visitante.pestana.evento', 'data-feedback-label': 'Pestaña «El evento»' }),
       }, label))) : null;
@@ -193,9 +193,24 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
     rememberEvent(code);
 
     const offersHost = el('div', { id: 'visitorOffers' });
-    const requestsHost = el('div', { id: 'visitorRequests' });
+    const requestsHost = el('div', { id: 'visitorRequests', tabindex: '-1' });
     const orderHost = el('section', { class: 'card gcard', id: 'visitorOrder' });
-    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, offersHost, orderHost, requestsHost, invitation(), footer());
+    // Recorridos (ven.ikisai.com, única entrada pública): pedir en la barra (la carta de Flow) y, después, tus datos y
+    // «Alójate aquí». Cada uno se marca hecho con lo que ya hay; la carta, al acabar, vuelve aquí con `?siguiente=`.
+    const step = (key: 'carta' | 'datos' | 'alojate', label: string, attrs: { href?: string; onclick?: () => void; 'data-feedback-id': string; 'data-feedback-label': string }) =>
+      el('li', { class: 'gvisitor-route', dataset: { route: key } },
+        el(attrs.href ? 'a' : 'button', { ...(attrs.href ? {} : { type: 'button' }), class: 'gvisitor-route-go', ...attrs },
+          el('span', { class: 'gvisitor-route-mark', 'aria-hidden': 'true' }), el('span', null, label), icon('chevronRight', 16)));
+    const routes = el('ol', { class: 'gvisitor-routes', id: 'visitorRoutes', 'aria-label': t('visitor.routes') },
+      step('carta', t('visitor.routeCarta'), { onclick: () => void openCarta(code, orderHost, mine), 'data-feedback-id': 'guests.visitante.recorrido.carta', 'data-feedback-label': 'Pedir en la barra' }),
+      step('datos', t('visitor.routeDatos'), { href: `#/v/${code}/datos`, 'data-feedback-id': 'guests.visitante.recorrido.datos', 'data-feedback-label': 'Tus datos' }),
+      lodging ? step('alojate', t('lodge.tab'), { href: `#/v/${code}/alojate`, 'data-feedback-id': 'guests.visitante.recorrido.alojate', 'data-feedback-label': 'Alójate aquí' }) : null);
+    const done = (key: 'carta' | 'datos' | 'alojate') => {
+      const item = routes.querySelector<HTMLElement>(`[data-route="${key}"]`);
+      if (item && !item.dataset.done) { item.dataset.done = 'true'; item.querySelector('.gvisitor-route-mark')?.replaceChildren(icon('check', 14)); item.setAttribute('aria-label', `${item.textContent ?? ''} · ${t('visitor.routeDone')}`); }
+    };
+    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, el('section', { class: 'card gcard', id: 'visitorRoutesBox' }, el('h3', null, t('visitor.routes')), routes),
+      offersHost, orderHost, requestsHost, invitation(), footer());
     const join = async () => { const c = await visitorJoin(code); return { number: c.number, carta_url: c.carta_url, account_open: c.account_open }; };
 
     // Ofertas públicas (FD5): la pieza del Menú, sin cruce personal.
@@ -209,42 +224,55 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
       replace(offersHost, block ? el('div', null, block, el('p', { class: 'small', id: 'visitorAllergies' }, icon('warn', 14), ' ', t('visitor.allergies'))) : null);
     }).catch((error) => { if (current(mine)) replace(offersHost, whyNote('visitorOffersWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('visitor.offersFailed'))); });
 
-    void paintOrder(code, orderHost, mine);
-    void paintRequests(code, event, requestsHost, mine);
+    void paintOrder(code, orderHost, mine).then((ordered) => { if (ordered) done('carta'); });
+    void paintRequests(code, event, requestsHost, mine).then((kinds) => {
+      if (kinds.has('join') || kinds.has('contact')) done('datos');
+      if (kinds.has('stay')) done('alojate');
+      // `?siguiente=datos` (de la carta) o el recorrido «Tus datos»: a lo que se pide aquí.
+      if (tab === 'datos' && current(mine)) { requestsHost.scrollIntoView({ block: 'start' }); requestsHost.focus({ preventScroll: true }); }
+    });
+  }
+
+  /**
+   * «Pedir en la barra»: se une a la carta (`visitor_join`, idempotente) y la abre con el traspaso de esta identidad
+   * (`?v=`), para que la carta de Flow sea el mismo visitante. Sin Flow, la carta pública.
+   */
+  async function openCarta(code: string, host: HTMLElement, mine: number): Promise<void> {
+    const win = window.open('about:blank', '_blank'); // en el toque, para que el navegador no la bloquee
+    let url: string | null = FLOW_CARTA;
+    try {
+      url = safeUrl((await visitorJoin(code)).carta_url) ?? FLOW_CARTA;
+    } catch (error) {
+      if (errorCodeOf(error) === 'NO_FLOW') { win?.close(); toast(t('visitor.noFlow')); return; }
+    }
+    const target = withHandoff(url, await createHandoff());
+    if (win) { win.opener = null; win.location.href = target; } else window.location.href = target;
+    void paintOrder(code, host, mine);
   }
 
   /**
    * «Mi pedido» (FL2): su número, si tiene cuenta y sus pedidos, de `flow_visitor_customer`. «Abrir la carta» se une con
    * `visitor_join` (idempotente; le da número, sin cuenta) y abre su enlace de un solo uso. Sin Flow, la carta pública.
    */
-  async function paintOrder(code: string, host: HTMLElement, mine: number): Promise<void> {
+  async function paintOrder(code: string, host: HTMLElement, mine: number): Promise<boolean> {
     const customer: VisitorCustomer | null = await visitorCustomer(code).catch(() => null);
-    if (!current(mine)) return;
+    if (!current(mine)) return false;
     const status = el('p', { class: 'small', id: 'visitorNumber', role: 'status' },
       customer?.number ? t('visitor.number', { number: customer.number }) : customer ? t('visitor.noNumber') : t('visitor.orderText'),
       customer?.number ? ` ${customer.account_open ? t('offers.accountOpen') : t('offers.accountClosed')}` : '');
     const open = el('button', { type: 'button', class: 'primary goffer-open', id: 'visitorCarta', 'data-feedback-id': 'guests.visitante.pedido.abrir', 'data-feedback-label': 'Abrir la carta',
-      onclick: async () => {
-        const win = window.open('about:blank', '_blank'); // en el toque, para que el navegador no la bloquee
-        let url: string | null = FLOW_CARTA;
-        try {
-          url = safeUrl((await visitorJoin(code)).carta_url) ?? FLOW_CARTA;
-        } catch (error) {
-          if (errorCodeOf(error) === 'NO_FLOW') { win?.close(); toast(t('visitor.noFlow')); return; }
-        }
-        if (win) { win.opener = null; win.location.href = url; } else window.location.href = url;
-        void paintOrder(code, host, mine);
-      } }, icon('menu', 16), ' ', t('offers.openCarta'));
+      onclick: () => void openCarta(code, host, mine) }, icon('menu', 16), ' ', t('offers.openCarta'));
     const orders = customer?.orders.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorOrders' }, ...customer.orders.map((o) => el('li', { dataset: { status: o.status } },
       el('strong', null, o.summary || t('visitor.order')), ' · ', orderText(o.status), o.preparing ? ` · ${t('visitor.preparing')}` : '', o.number ? ` · ${t('visitor.number', { number: o.number })}` : ''))) : null;
     replace(host, el('h3', null, t('visitor.order')), status, open, orders);
+    return Boolean(customer?.orders.length);
   }
 
   /** «Apuntarme» (si el evento lo admite) y «Déjanos un dato», con lo que ya pidió. */
-  async function paintRequests(code: string, event: PublicEvent, host: HTMLElement, mine: number): Promise<void> {
+  async function paintRequests(code: string, event: PublicEvent, host: HTMLElement, mine: number): Promise<Set<string>> {
     let failed = false;
     const list = await myRequests(code).catch(() => { failed = true; return [] as VisitorRequest[]; });
-    if (!current(mine)) return;
+    if (!current(mine)) return new Set();
     // Lo que pidió puede no verse: no se pudo leer, o su acceso anterior ya no valía y este móvil tiene uno nuevo.
     const why = [failed ? whyNote('visitorRequestsWhy', t('visitor.requestsFailed')) : null,
       takeRenewed() ? whyNote('visitorRenewed', t('visitor.renewed')) : null];
@@ -301,6 +329,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
         } }, contact.row, keep.cloneNode(true), send));
     }
     replace(host, ...why, sent ? el('section', { class: 'card gcard' }, el('h3', null, t('visitor.sentTitle')), sent) : null, join, leave);
+    return new Set(list.filter((r) => r.status !== 'descartada').map((r) => r.kind));
   }
 
   /** «Ya tengo invitación»: el vínculo consentido con su ficha es su propio enlace (`/i/<token>`). */
@@ -379,8 +408,11 @@ export function visitorEntry(pathname: string, search = ''): string | null {
   const m = pathname.match(/^\/e\/([^/?#]*)\/?$/);
   if (!m) return null;
   if (!EVENT_CODE.test(m[1] ?? '')) return LIST;
-  // Por el QR o por la carta de Flow se abre «Alójate aquí» en este móvil; con `?alojate`, directamente en esa pestaña.
+  // Con `?alojate` (o `?siguiente=alojate`, al acabar la carta de Flow), directamente en «Alójate aquí»; con
+  // `?siguiente=datos`, en lo que se pide aquí.
   const code = m[1]!.toUpperCase();
   unlockLodging(code);
-  return new URLSearchParams(search).has('alojate') ? `#/v/${code}/alojate` : `#/v/${code}`;
+  const params = new URLSearchParams(search);
+  const next = params.get('siguiente');
+  return params.has('alojate') || next === 'alojate' ? `#/v/${code}/alojate` : next === 'datos' ? `#/v/${code}/datos` : `#/v/${code}`;
 }

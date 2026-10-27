@@ -160,13 +160,13 @@ test('ENTRADA_PUBLICA · «Reservar antes de venir»: precios y plazas para toda
   await expect(page.locator('#visitorSent')).toContainText(/40,00/);
 });
 
-test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y datos en borrador, «Ir a pagar» y su número', async ({ page, browser }) => {
+test('«Alójate aquí» (como la barra): la pestaña en el evento abierto; cama y datos en borrador, «Ir a pagar» y su número', async ({ page, browser }) => {
   const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
-  // Sin QR (desde la raíz pública), no hay pestaña de alojamiento.
+  // Sin QR (desde la raíz pública) también: ven.ikisai.com es la única entrada (VG, 27-10 noche; vg-48, recomendada).
   const other = await browser.newPage();
   await other.goto(`${baseURL}/#/v/${d.code}`);
   await expect(other.locator('#retreatTitle')).toBeVisible();
-  await expect(other.locator('#visitorTabs')).toHaveCount(0);
+  await expect(other.locator('#visitorTabs a[data-tab="alojate"]')).toBeVisible();
   await other.close();
 
   await page.goto(`${baseURL}/e/${d.code}?alojate`);
@@ -284,16 +284,23 @@ test('§9.19 · «Mi pedido» (Flow FL2): «Abrir la carta» le da su número, q
   await page.goto(`${baseURL}/e/${code}`);
   await page.locator('#visitorEnter').click();
   const order = page.locator('#visitorOrder');
+  // Los recorridos del evento: pedir en la barra y tus datos.
+  await expect(page.locator('#visitorRoutes [data-route="carta"]')).toBeVisible();
+  await expect(page.locator('#visitorRoutes [data-route="datos"]')).toBeVisible();
   // Aún sin número (sin cliente o con cliente sin número).
   await expect(order.locator('#visitorNumber')).toContainText(/Pide desde la carta|Aún no tienes número/);
   const [carta] = await Promise.all([context.waitForEvent('page'), order.locator('#visitorCarta').click()]);
-  // La pestaña nace en blanco (para que el navegador no la bloquee) y luego va a la carta con su invitación.
-  await carta.waitForURL(/^https:\/\/flow\.ikisai\.com\/\?invitacion=/);
+  // La pestaña nace en blanco (para que el navegador no la bloquee) y luego va a la carta con su invitación y el traspaso
+  // de esta identidad (`v`, 0106), para que la carta sea el mismo visitante.
+  await carta.waitForURL(/^https:\/\/flow\.ikisai\.com\/\?invitacion=[^&]+&v=[0-9a-f]{64}$/);
   await carta.close();
   await expect(order.locator('#visitorNumber')).toContainText(/Tu número: \d+/);
   const number = (await order.locator('#visitorNumber').textContent())!.match(/\d+/)![0];
   await page.reload();
   await expect(page.locator('#visitorNumber')).toContainText(`Tu número: ${number}`);
+  // Al acabar, la carta vuelve con `?siguiente=datos`: a lo que se pide aquí.
+  await page.goto(`${baseURL}/e/${code}?siguiente=datos`);
+  await expect(page.locator('#visitorRequests')).toBeFocused();
 });
 
 test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, nunca; con ella y habiendo entrado, se elige tocando', async ({ page }) => {

@@ -146,6 +146,24 @@ export async function ensureVisitor(code: string | null): Promise<void> {
  * el código de un solo uso y guarda su token como el de este móvil. Solo si este móvil aún no tiene identidad: un enlace
  * con el código de otra persona no puede sustituir la suya (fijación de sesión); con una ya guardada, se ignora.
  */
+/**
+ * Traspaso de esta identidad a otro dominio (C11 v2, 0106): un código de 5 minutos, un uso y atado a la IP, que la carta de
+ * Flow canjea con `?v=` (solo si aún no tiene visitante). Sin identidad o si falla, `null` y se abre sin traspaso.
+ */
+export async function createHandoff(): Promise<string | null> {
+  if (!visitorToken()) return null;
+  try {
+    const out = await call<{ code?: string }>('/api/v1/public/visitor/handoff', { method: 'POST', json: {} });
+    return typeof out.code === 'string' && /^[0-9a-f]{64}$/i.test(out.code) ? out.code : null;
+  } catch { return null; }
+}
+
+/** La URL con `v=<traspaso>` añadido (si lo hay). */
+export function withHandoff(url: string, code: string | null): string {
+  if (!code) return url;
+  try { const u = new URL(url); u.searchParams.set('v', code); return u.toString(); } catch { return url; }
+}
+
 export async function redeemHandoff(code: string): Promise<boolean> {
   if (!/^[0-9a-f]{64}$/i.test(code) || visitorToken()) return false;
   const out = await call<{ visitorId?: string; token?: string }>('/api/v1/public/visitor/handoff/redeem', { json: { code }, visitor: false });
