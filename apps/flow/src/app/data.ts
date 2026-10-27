@@ -18,10 +18,14 @@ export interface Order extends Row {
 export interface OrderLine extends Row { order_id: string; product_id: string; quantity: number; unit_price_cents: number | null; position: number; delivered_qty: number }
 export interface Payment extends Row { order_id: string; kind: 'charge' | 'reversal' | 'adjustment' | 'refund'; method: PayMethod | null; amount_cents: number; note: string | null; settled_at: string | null; settled_by: string | null }
 export interface Unit extends Row {
-  project_id: string; column_key: string; kind: 'prep' | 'task'; order_id: string | null; line_id: string | null; product_id: string | null;
+  project_id: string; column_key: string; kind: 'prep' | 'task' | 'station'; order_id: string | null; line_id: string | null; product_id: string | null;
   idx: number; pay_seq: number | null; label: string | null; priority: boolean; status: UnitStatus; assigned_to: string | null; done_at: string | null; done_by: string | null;
+  payload: { item_key?: string; name?: string; unit?: string; qty?: number; to?: string; from?: string | null; external?: { app: string; kind: string; id: string; status?: string | null };
+    /** Puesto (kind 'station'): su métrica, parámetros y textos con {target} y {rate}. */
+    metric?: string; params?: Record<string, unknown>; text?: string; notice?: string; notice_in?: string[] } | null; source_ref: string | null;
 }
-export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null }
+export interface Project extends Row { name: string; status: 'active' | 'closed'; notes: string | null; booking_event_id: string | null; starts_on: string | null; ends_on: string | null; cover_image: string | null; test_mode: boolean; food_menu_id: string | null; tasks_project_id: string | null;
+  template_key: string | null; template_version: number | null; frozen: boolean; serves_public: boolean; cover_file_id: string | null }
 
 export interface FlowData {
   project: Project | null;
@@ -119,11 +123,18 @@ export async function loadProjects(client: SyncClient): Promise<Project[]> {
     return Math.abs(Date.parse(ref) - Date.parse(today)) / 86_400_000;
   };
   return live<Project>(await client.list(TABLES.projects))
-    .sort((a, b) => rank(a) - rank(b) || distance(a) - distance(b) || b.created_at.localeCompare(a.created_at));
+    // Por evento (fechas) y, dentro, por versión: «Barra · v1 (congelada)», «Barra · v2».
+    .sort((a, b) => rank(a) - rank(b) || distance(a) - distance(b) || (a.booking_event_id ?? '').localeCompare(b.booking_event_id ?? '')
+      || (a.template_key ?? '').localeCompare(b.template_key ?? '') || (a.template_version ?? 0) - (b.template_version ?? 0) || b.created_at.localeCompare(a.created_at));
 }
 
 /** «Ahora · hasta el 1 nov», «Dentro de 3 días», «Ya pasó». */
 export function projectState(p: Project, today = new Date().toISOString().slice(0, 10)): string {
+  const base = projectStateBase(p, today);
+  return [base, p.frozen ? 'congelada' : '', p.test_mode ? 'modo pruebas' : ''].filter(Boolean).join(' · ');
+}
+
+function projectStateBase(p: Project, today: string): string {
   if (p.status === 'closed') return 'Cerrado';
   if (!p.starts_on) return 'Sin fechas';
   const fmt = (d: string) => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00`));
@@ -139,4 +150,23 @@ export function projectDates(p: Project): string {
   if (!p.starts_on) return '';
   const fmt = (d: string) => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00`));
   return p.ends_on && p.ends_on !== p.starts_on ? `${fmt(p.starts_on)} – ${fmt(p.ends_on)}` : fmt(p.starts_on);
+}
+
+/** Valor en vivo de la métrica de un puesto (`flow.station_metrics`, calculado en el servidor). */
+export interface StationMetric { unit_id: string; metric: string; value: { target: number; rate: number; window: number } & Record<string, unknown> }
+
+export async function loadStationMetrics(client: SyncClient, projectId: string): Promise<Map<string, StationMetric>> {
+  try {
+    const out = await client.api<StationMetric[] | null>('/read/flow.station_metrics', { method: 'POST', json: { project_id: projectId } });
+    return new Map((out ?? []).map((m) => [m.unit_id, m]));
+  } catch { return new Map(); }
+}
+
+/** «Ahora deben estar calentándose {target} …» con los valores de la métrica. */
+export function fillMetricText(template: string | undefined, metric: StationMetric | undefined): string {
+  if (!template || !metric) return '';
+  return template.replace(/\{(\w+)\}/g, (_, k: string) => {
+    const v = (metric.value as Record<string, unknown>)[k];
+    return typeof v === 'number' ? new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(v) : String(v ?? '');
+  });
 }

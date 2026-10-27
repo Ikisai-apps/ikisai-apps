@@ -46,13 +46,19 @@ export async function save(client: SyncClient, operations: RowOperation[], curre
   if (reservation && writeMode(membership, reservation) === 'propose') {
     const issue = validateOperations(operations as never, membership, (_t, id) => byId.get(id), null, 'proposal');
     if (issue) throw new SyncApiError(issue.code === 'OUT_OF_SCOPE' ? 403 : 422, issue.code, issue.message, issue.details);
-    if (hasPendingFile(operations)) throw new SyncApiError(422, 'PROPOSAL_NO_FILES', 'Una propuesta no lleva archivos.', {});
+    // Los archivos se suben antes (`uploadNow`): un marcador de la cola no puede ir en una sugerencia.
+    if (hasPendingFile(operations)) throw new SyncApiError(422, 'PROPOSAL_NO_FILES', 'El archivo de una propuesta se sube antes de proponerla.', {});
     addToDraft(reservation, operations as never);
     return;
   }
   const issue = validateOperations(operations as never, membership, (_t, id) => byId.get(id));
   if (issue) throw new SyncApiError(issue.code === 'OUT_OF_SCOPE' ? 403 : 422, issue.code, issue.message, issue.details);
   await client.commit(operations);
+}
+
+/** ¿Dirección propone en este retiro (solo «todos», sin permiso propio) en lugar de escribir? */
+export function proposes(client: SyncClient, reservationId: string): boolean {
+  return writeMode(client.bootstrap()?.membership, reservationId) === 'propose';
 }
 
 /** Retiro de un lote: el del alta o el de la fila que se cambia (todas las de un lote son del mismo). */

@@ -701,7 +701,11 @@ Dirección edita la experiencia y las ofertas de un retiro que no es suyo, pero 
 - **«Propuestas del equipo de Ikisai»** (`#teamInbox`, quien organiza): cada pendiente con lo que cambia («Añade · Oferta «Masaje»»), «Aceptar» y «Descartar».
   - Al aceptar, el lote se aplica como un commit suyo, y lo nuevo en materiales y preguntas pasa a su biblioteca (`owner_id`, lote corregido).
   - En Mis retiros, la tarjeta del retiro lleva «N propuestas del equipo».
-- **Necesita red** enviar, retirar, aceptar y descartar. Una propuesta no lleva archivos (`PROPOSAL_NO_FILES`), solo enlaces (Core lo apunta para VG).
+- **Necesita red** enviar, retirar, aceptar y descartar.
+- **Archivos** (encargo de VG por Core, 27-10): un material con archivo propuesto por dirección se sube al momento (`app/upload-now.ts`: ticket, `PUT` y verificación, como la firma de Guests), y la propuesta lleva el `file_id` verificado. Una sugerencia no viaja con la cola de subidas: sin red, `PROPOSAL_NO_FILES`.
+  - Hasta que se acepta, el archivo solo lo lee quien lo subió (K3).
+  - Al aceptarlo lo referencia el material, y lo leen quien organiza y, si lo publica, sus asistentes.
+  - Si la propuesta no se acepta, la recogida de huérfanos lo borra (marca a los 2 días y borra a los 30).
 - **Errores:** `SUGGESTION_REQUIRED`, `SUGGESTION_UNAVAILABLE` (ya decidida o retirada) y `TOO_MANY_SUGGESTIONS` (30 pendientes por persona), con su texto en `describeError`.
 - **Ids de feedback:**
   - `organizers.retiro.propuesta_equipo` (`.enviar`, `.descartar` y `.retirar`);
@@ -714,3 +718,17 @@ Dirección edita la experiencia y las ofertas de un retiro que no es suyo, pero 
 - **Cuándo sale:** en la cabecera de la ficha (`#viewAsGuest`), si `as_guest_id` no es null y la cuenta tiene Guests en `GET apps`. Booking crea la ficha de huésped de quien organiza (`portal_role = 'organizer'`) solo en retiros vivos y no terminados.
 - **Dónde lleva:** abre `https://guests.ikisai.com/#/r/<reservation_id>` (en minúsculas, Gu1) en otra pestaña. Guests entra con el pase común, sin otro inicio de sesión, y abre la familia del retiro o la ficha si solo hay una persona.
 - **Catálogo de apps:** se lee una vez y se olvida al cerrar sesión (`app/guest-view.ts`).
+
+## 20. Comida que se ofrece (Food Fd4, `food.portal_offers`; encargo de VG por Core, 27-10-2026)
+
+En Experiencia › Menú, encima del menú día a día, el bloque «Comida que se ofrece» (`#foodOffers`) enseña las ofertas de comida del retiro tal como las publica Food. Es solo lectura.
+
+- **Cada oferta:**
+  - el nombre, «Menú cerrado» o «Carta», y «Provisional» si lo es;
+  - **quién paga**: «Lo pagas tú (incluido en tu retiro)», «Lo paga cada asistente, en barra» o «…, al final, en su cuenta», con los textos acordados con Food;
+  - los días y servicios, o «Todos los días · todos los servicios», el lugar y, si los hay, los grupos de comida.
+- **Una carta** enseña sus líneas por ámbito (Clásicos, Gourmet, Barra) y por código, con el precio de venta (céntimos, IVA incluido), la descripción, las dietas y los alérgenos con su nombre. Si cocina no ha revisado la receta, dice «sin revisar por cocina».
+- **Un menú cerrado** remite al menú día a día, que sigue debajo con sus comentarios (`portal_menu`).
+- **Lo interno no se ve:** Food no lo devuelve y Organizers, además, descarta lo que llegue con `audience = 'interna'`.
+- **Sin la lectura** (Food sin publicar) o con un fallo sin copia guardada, el bloque no sale. Sin red, la última copia con su aviso.
+- **Reglas puras** en `app/food-offers.ts` (`visibleOffers`, `payerText`, `whenText`, `priceText` y `linesByScope`), con su prueba `food-offers.test.ts`. Id de feedback: `organizers.menu.ofertas`.

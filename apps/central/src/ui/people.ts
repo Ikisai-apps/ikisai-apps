@@ -1,12 +1,13 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  bindOnline, compressImage, confirmDialog, createFocus, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, type Sheet,
+  bindOnline, compressImage, confirmDialog, createFocus, createSortableList, el, icon, openSheet, positionBetween, renderMedal, replace, toast, toastWithAction, type Sheet,
 } from '@ikisai/ui-kit';
 import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
   FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATIONS, RELATION_LABELS,
   DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, OUTSIDER_ACCESS_TEXT, proposeHouseLevel, relationForLevel, type HouseGrant, type HouseLevel,
   houseDoors, pendingDoors, PORTAL_REACH_LABELS, type HouseDoor,
+  flowProjectsOf, flowScopeSummary, sortFlowProjects, withFlowProjects, type FlowProject,
   canSeeReserved, dueState, personStatus, recordTypesFor, todayInMadrid, validateOperations, type RecordKind,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
@@ -535,6 +536,8 @@ export function mountPerson(personId: string): ViewMount {
     let grants: HouseGrant[] = isAdmin ? admin.cached.grants ?? [] : [];
     let catalog: CatalogApp[] = isAdmin ? admin.cached.catalog ?? [] : [];
     let doorBinds: Array<() => void> = [];
+    // Proyectos de Flow (`flow.projects_projection`): `null` = Flow no los publica o no se han podido leer.
+    let flowProjects: FlowProject[] | null = isAdmin ? admin.cached.flowProjects ?? null : null;
     const host = el('div', { id: 'personView', 'data-feedback-id': 'central.persona.contenido', 'data-feedback-label': 'Ficha de la persona' });
     replace(main, el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.persona.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'), host);
 
@@ -644,6 +647,7 @@ export function mountPerson(personId: string): ViewMount {
       const accountBlock = isAdmin ? block('Cuenta', 'blockAccount', accountBody(person, priv)) : null;
       doorBinds.forEach((off) => off()); doorBinds = [];
       const doorsBlock = isAdmin && houseLevelsOn && person.house_level && !person.deleted_at ? block('Accesos del nivel', 'blockDoors', doorsBody(person)) : null;
+      const flowBlock = flowBody(person);
 
       const danger = canEdit && !person.deleted_at ? el('div', { class: 'zone', 'data-feedback-id': 'central.persona.acciones', 'data-feedback-label': 'Acciones de la persona' },
         el('button', { class: 'ghost', type: 'button', id: 'toggleActive', 'data-feedback-id': 'central.persona.acciones.activar', 'data-feedback-label': 'Marcar activa o inactiva', onclick: () => void commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: person.revision, fields: { active: !person.active } }], person.active ? 'Marcada como inactiva.' : 'Marcada como activa.') },
@@ -651,7 +655,7 @@ export function mountPerson(personId: string): ViewMount {
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', 'data-feedback-id': 'central.persona.acciones.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
       // Documentación primero cuando algo caduca (076); si no, el orden de siempre.
-      replace(host, head, focus, ...(due.length ? [recordsBlock, basic] : [basic]), tradesBlock, teamsBlock, privateBlock, ...(due.length ? [] : [recordsBlock]), doorsBlock, accountBlock, danger);
+      replace(host, head, focus, ...(due.length ? [recordsBlock, basic] : [basic]), tradesBlock, teamsBlock, privateBlock, ...(due.length ? [] : [recordsBlock]), doorsBlock, flowBlock, accountBlock, danger);
       fbMark(host.querySelector('#blockTrades'), 'central.persona.oficios', 'Oficios');
       fbMark(host.querySelector('#blockBasic'), 'central.persona.ficha', 'Ficha');
       fbMark(host.querySelector('#blockTeams'), 'central.persona.equipos', 'Equipos');
@@ -659,6 +663,7 @@ export function mountPerson(personId: string): ViewMount {
       fbMark(host.querySelector('#blockRecords'), 'central.persona.documentacion', 'Documentación y formación');
       fbMark(host.querySelector('#blockAccount'), 'central.persona.cuenta', 'Cuenta');
       fbMark(host.querySelector('#blockDoors'), 'central.persona.accesos_nivel', 'Accesos del nivel');
+      fbMark(host.querySelector('#blockFlow'), 'central.persona.proyectos_flow', 'Proyectos de Flow');
     }
 
     /** «Por «Albañilería» ya tiene Sabe: aquí, como mínimo, Sabe.» */
@@ -931,6 +936,74 @@ export function mountPerson(personId: string): ViewMount {
         out.push(el('div', { class: 'zone', 'data-feedback-id': 'central.persona.accesos_nivel.acciones', 'data-feedback-label': 'Acciones de los accesos del nivel' }, apply));
       }
       return out;
+    }
+
+    /**
+     * Ámbitos de Flow (encargo de VG del 27-10): a qué proyectos entra, en `scopes.projects` de su pertenencia a Flow. Sin
+     * proyectos no ve ninguno (Flow 0902); el propietario los ve todos. Se cambia aquí con el admin del núcleo, con «Deshacer».
+     */
+    function flowBody(person: Person): HTMLElement | null {
+      if (!isAdmin || !person.user_id || person.deleted_at || !catalog.some((a) => a.id === 'flow')) return null;
+      const account = accounts?.find((a) => a.userId === person.user_id);
+      const m = account?.memberships.find((x) => x.app === 'flow');
+      if (!account || !m) return null;
+      const ids = flowProjectsOf(m.scopes) ?? [];
+      const body: HTMLElement[] = [];
+      if (m.role === 'owner') {
+        body.push(el('p', { id: 'flowScope' }, flowScopeSummary(m.role, m.scopes, flowProjects ?? [])));
+      } else if (!flowProjects) {
+        body.push(el('p', { id: 'flowScope' }, ids.length ? `${ids.length === 1 ? '1 proyecto' : `${ids.length} proyectos`}.` : 'Ningún proyecto.'),
+          el('p', { class: 'muted small', id: 'flowUnavailable' }, 'Flow todavía no publica sus proyectos (o no hay conexión): se eligen cuando los publique.'));
+      } else {
+        const mine = sortFlowProjects(flowProjects.filter((pr) => ids.includes(pr.id)), todayInMadrid());
+        body.push(mine.length
+          ? el('span', { class: 'chips', id: 'flowScope', 'data-feedback-ignore': '' }, ...mine.map((pr) => el('span', { class: 'chip', dataset: { project: pr.id } }, pr.name)))
+          : el('p', { class: 'note warn', id: 'flowScope' }, 'No ve ningún proyecto de Flow: elige al menos uno.'));
+      }
+      // Outsider: el admin del núcleo aún no acepta su rol al cambiar ámbitos (P14); se enseña, sin editar.
+      if (m.role === 'outsider' && flowProjects) body.push(el('p', { class: 'muted small', id: 'flowOutsider' }, 'A un outsider todavía no se le cambian los proyectos desde Central.'));
+      const change = (m.role === 'editor' || m.role === 'reader') && flowProjects ? el('button', { class: 'linkbtn', type: 'button', id: 'editFlowProjects', 'data-feedback-id': 'central.persona.proyectos_flow.cambiar', 'data-feedback-label': 'Cambiar proyectos de Flow',
+        onclick: () => openFlowProjects(person, account, m) }, icon('edit', 16), 'Cambiar') as HTMLButtonElement : null;
+      if (change) doorBinds.push(bindOnline(change, { client, reason: 'Cambiar los proyectos necesita conexión.' }));
+      return block('Proyectos de Flow', 'blockFlow', [el('p', { class: 'muted small' }, `En Flow es ${ROLE_LABELS[m.role as Role]?.toLowerCase() ?? m.role}.`), ...body], change);
+    }
+
+    /** Hoja con los proyectos de Flow, el más actual arriba; guarda los elegidos sin tocar el resto de ámbitos. */
+    function openFlowProjects(person: Person, account: Account, m: Account['memberships'][number]): void {
+      let sheet: Sheet | null = null;
+      const before = m.scopes;
+      const current = new Set(flowProjectsOf(m.scopes) ?? []);
+      const list = sortFlowProjects(flowProjects ?? [], todayInMadrid());
+      const boxes = list.map((pr) => el('input', { type: 'checkbox', value: pr.id, checked: current.has(pr.id), 'data-feedback-id': 'central.persona.proyectos_flow.editar.proyecto', 'data-feedback-label': 'Proyecto de Flow' }) as HTMLInputElement);
+      const when = (pr: FlowProject) => [pr.starts_on ? day(pr.starts_on) : null, pr.status === 'closed' ? 'cerrado' : null, pr.test_mode ? 'en pruebas' : null].filter(Boolean).join(' · ');
+      const save = el('button', { class: 'primary', type: 'button', id: 'saveFlowProjects', 'data-feedback-id': 'central.persona.proyectos_flow.editar.guardar', 'data-feedback-label': 'Guardar proyectos', onclick: async () => {
+        const ids = boxes.filter((b) => b.checked).map((b) => b.value);
+        save.disabled = true;
+        try {
+          await usage.run('central.persona.proyectos_flow.editar.guardar', () => admin.setMembership({ app: 'flow', userId: account.userId, role: m.role, scopes: withFlowProjects(m.scopes, ids) }));
+          await sheet?.close(true);
+          toastWithAction(ids.length ? `Proyectos de Flow guardados: ${ids.length}.` : 'Sin proyectos de Flow: no verá ninguno.', {
+            label: 'Deshacer',
+            onClick: () => void (async () => {
+              try { await admin.setMembership({ app: 'flow', userId: account.userId, role: m.role, scopes: before }); toast('Deshecho: los proyectos de antes.'); await loadAccounts(); }
+              catch (e) { toast(describeError(e)); }
+            })(),
+          });
+          await loadAccounts();
+        } catch (e) {
+          toast(describeError(e));
+        } finally { save.disabled = false; }
+      } }, 'Guardar') as HTMLButtonElement;
+      sheet = ignoreSheetMeta(openSheet({
+        title: 'Proyectos de Flow', meta: person.display_name,
+        panelAttrs: { 'data-feedback-id': 'central.persona.proyectos_flow.editar', 'data-feedback-label': 'Proyectos de Flow de la persona' },
+        closeAttrs: { 'data-feedback-id': 'central.persona.proyectos_flow.editar.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+        body: el('div', { id: 'flowProjectChoices', 'data-feedback-id': 'central.persona.proyectos_flow.editar.contenido', 'data-feedback-label': 'Elegir proyectos' },
+          el('p', { class: 'muted small' }, 'Solo ve y toca lo de los proyectos marcados. Sin ninguno, no ve nada en Flow.'),
+          list.length ? el('div', { class: 'scopes' }, ...boxes.map((b, i) => el('label', { class: 'check' }, b, el('span', null, list[i]!.name, when(list[i]!) ? el('span', { class: 'muted small' }, ` · ${when(list[i]!)}`) : null))))
+            : el('p', { class: 'muted' }, 'Flow todavía no tiene proyectos.')),
+        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.persona.proyectos_flow.editar.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      }));
     }
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
@@ -1264,6 +1337,7 @@ export function mountPerson(personId: string): ViewMount {
     async function loadAccounts(): Promise<void> {
       if (!isAdmin) return;
       try { [accounts, catalog, grants] = await Promise.all([admin.accounts(), admin.catalog(), admin.houseGrants().catch(() => grants)]); } catch { accounts = admin.cached.accounts?.items ?? null; catalog = admin.cached.catalog ?? catalog; }
+      if (catalog.some((a) => a.id === 'flow')) flowProjects = await admin.flowProjects().catch(() => admin.cached.flowProjects ?? null);
       paint();
     }
 
