@@ -2176,7 +2176,7 @@ Es el hueco que Finance encontró en la cadena de compra de la barra: lo que se 
 
 - **La prueba:** dos cabeceras, `X-Ikisai-Worker-Key` (la misma `IKISAI_WORKER_KEY` de todas las Edges) y `X-Ikisai-Caller: flow | food`. Un navegador no tiene la clave.
 - **Con la prueba:** `source` tiene que ser la app que llama. Si no, 422 `INVALID_INPUT` en el campo `source`.
-- **Sin la prueba:** hoy se acepta como hasta ahora. Cuando Flow y Food manden la prueba, cada una pasa a `APP_SOURCES_REQUIRED` (`tasks-api/requests.ts`) y, sin ella, 403 `CALLER_REQUIRED`.
+- **Sin la prueba:** desde el 27-10-2026, `flow` y `food` están en `APP_SOURCES_REQUIRED` (`tasks-api/requests.ts`): sin ella, 403 `CALLER_REQUIRED`. Flow (#870) y Food (#862) ya la mandan en producción. Las demás fuentes de app, como hasta ahora.
 - Las fuentes de sistema (`booking`, `feedback`, `core`, `invoices`) no valen aquí, con o sin prueba: van por `worker/requests/task` (§19.2).
 - **Para Flow y Food:** añadid las dos cabeceras a las llamadas de servidor a servidor que ya hacéis a `requests/task` y `requests/purchase`, sin más cambios. Avisad a Tasks al publicarlo para hacerlas obligatorias.
 - **Pruebas:** `tests/tasks/requests.test.ts` («fuentes de app»).
@@ -2259,6 +2259,7 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
 - **En Proyectos:** «+ Revisión de apertura» crea una desde una plantilla (de la casa o del área), con nombre, fecha y, opcionalmente, el evento.
 - **En el proyecto de una revisión:** la banda con los críticos verificados, los ítems y los fallos, y «Abrir». Con críticos pendientes, la lista de lo que falta; solo una owner abre igualmente y con nota.
 - **En la ficha de un ítem:** «Comprobación», con las instrucciones, lo esperado, el valor, la foto o la observación, y «Está bien» o «Falla». Debajo, el primer fallo y los enlaces a «Arreglar» y «Volver a comprobar». Quien solo lee lo ve sin controles.
+- **Plantillas:** en Proyectos, «Plantillas» enseña las de la casa y las del área, con sus ítems por zona. Quien edita el área entera crea plantillas del área y les añade, cambia o quita ítems (zona, qué se mira, instrucciones, tipo de respuesta, lo esperado y si es crítico). Las de la casa solo las cambia la administradora. Cambiar una plantilla no toca las revisiones ya creadas.
 - **Pruebas:** `tests/tasks/revision.spec.ts`.
 
 ## 47. «Trabajos de hoy» para Flow (migración `0352`, `tasks-api/today.ts`; encargo de Core, 27-10-2026)

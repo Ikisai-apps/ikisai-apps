@@ -11,10 +11,19 @@
   - `contraste`: WCAG AA en oscuro; cambia a oscuro y vuelve a claro.
 - `formatFindings(found)` da una línea por hallazgo para el mensaje de `expect`.
 - Ya trae los arreglos de la revisión:
+  - el desborde se mide contra el ancho de la pantalla (`screen.width`): con emulación de móvil, Chrome aleja la página que desborda y agranda `innerWidth`, y antes no se veía;
   - colores `color(srgb …)` leídos bien;
   - lo escondido para el lector (`.vh`, cajas de 1 px) no cuenta como cortado ni como toque.
 - Uso: `expect(await mobileAudit(page, { kinds: ['desborde', 'toque'] }), …).toEqual([])` en el humo de la app.
 - Pruebas: `tests/v77.spec.ts`.
+
+## 0.69.6 · 27 de octubre de 2026
+
+**K24: «Sincronizado» del menú común a 44 px con el dedo** (`equipo/Revisor/KIT_PETICIONES.md`, abierta por Core el 27-10).
+
+- `.appmenu-sync` (la línea de sincronización bajo el perfil) medía 24 px de alto. En pantallas táctiles pasa a 44 px, igual que el resto de 0.69.2. Con ratón no cambia.
+- El conmutador «Señalar para comentar» del lanzador ya cumplía: es un interruptor dentro de una etiqueta entera, y se toca la etiqueta.
+- Pruebas: `tests/v78.spec.ts`.
 
 ## 0.69.4 · 27 de octubre de 2026
 
