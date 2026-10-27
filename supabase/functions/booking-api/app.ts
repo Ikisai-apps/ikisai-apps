@@ -78,16 +78,23 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
       const fetchStatus = payments?.fetchStatus?.bind(payments);
       if (!payments || !fetchStatus) return { checked: 0, applied: 0 };
       if (supabase) await ensureServiceActor(supabase, 'booking');
-      const pending = (await invoke('booking.stay_payments_pending', { older_minutes: older })) as Array<{ provider: string; provider_ref: string }> | null;
-      let applied = 0;
+      const pending = (await invoke('booking.stay_payments_pending', { older_minutes: older })) as Array<{ provider: string; provider_ref: string; hold_expired?: boolean }> | null;
+      let applied = 0; let expired = 0;
       for (const p of (pending ?? []).filter((x) => x.provider === payments.name)) {
-        const state = await fetchStatus(p.provider_ref).catch(() => null);
+        let state = await fetchStatus(p.provider_ref).catch(() => null);
+        // 1420: la cama ya no está guardada y la sesión sigue abierta (Stripe no deja menos de 30 min): se caduca a mano
+        if (state?.status === 'pending' && p.hold_expired && payments.expireIntent) {
+          const ok = await payments.expireIntent(p.provider_ref).then(() => true, () => false);
+          // si no se pudo, puede que se acabe de pagar: se vuelve a preguntar
+          state = ok ? { status: 'expired' } : await fetchStatus(p.provider_ref).catch(() => null);
+          if (ok) expired++;
+        }
         if (!state || state.status === 'pending') continue;
         await invoke('booking.stay_payment_record', { action: 'event', provider: p.provider, provider_ref: p.provider_ref, event_id: `reconcile:${state.status}`, status: state.status,
-          ...(state.feeCents !== undefined ? { fee_cents: state.feeCents } : {}) });
+          ...(state.feeCents !== undefined ? { fee_cents: state.feeCents } : {}), ...(state.paymentRef ? { payment_ref: state.paymentRef } : {}) });
         applied++;
       }
-      return { checked: (pending ?? []).length, applied };
+      return { checked: (pending ?? []).length, applied, expired };
     },
   }, {
     method: 'POST', pattern: 'calendar/tick',
@@ -531,11 +538,14 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null): Pu
       if (!payments || params.provider !== payments.name) fail(404, 'NOT_FOUND', messageFor('NOT_FOUND'));
       const event = await payments!.parseWebhook(request);
       if (!event) fail(400, 'INVALID_SIGNATURE', 'Aviso de pago no válido.');
+      // de otra app de la misma cuenta o sin interés: se acusa para que la pasarela no insista
+      if (event!.status === 'ignored') return { ok: true, ignored: true };
       await ensureServiceActor(supabase, 'booking');
       try {
         const out = await supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_payment_record', p_args: {
           action: 'event', provider: payments!.name, provider_ref: event!.providerRef, event_id: event!.eventId, status: event!.status,
           ...(event!.refundedCents !== undefined ? { refunded_cents: event!.refundedCents } : {}), ...(event!.feeCents !== undefined ? { fee_cents: event!.feeCents } : {}),
+          ...(event!.paymentRef ? { payment_ref: event!.paymentRef } : {}),
         } });
         return { ok: true, status: out?.status ?? null, replayed: out?.replayed ?? false, accepted: out?.accepted ?? false };
       } catch (error) {
