@@ -12,7 +12,7 @@ import { busyButton } from './sheets-common.ts';
  *   se pagan (en un solo pago o como pedidos independientes) o se entregan a la vez.
  * - «Pagar»: el importe en grande y desglosado; Metálico, Bizum, Tarjeta (deshabilitada por ahora) y Bitcoin (Lightning u
  *   on-chain con QR; sin conversión EUR→BTC: quien paga pone la cantidad).
- * - Tras pagar: Enviar a Finance (apunte fiscal de ese cobro) · Imprimir factura (el justificante de Finance, tras enviarlo) ·
+ * - Tras pagar: Enviar a Finance (apunte fiscal de ese cobro) · Imprimir ticket (el justificante de Finance, tras enviarlo; la factura solo la hace Finance) ·
  *   Enviar por correo (aún sin función) · Cerrar.
  */
 interface Settings { project_id: string; lightning_address: string | null; bitcoin_address: string | null; deleted_at: string | null }
@@ -156,7 +156,7 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
       el('div', { class: 'flow-actions' },
         // Justificante imprimible de Finance (#817): solo tras «Enviar a Finance»; antes, apagado.
         el('button', { type: 'button', class: 'ghost', disabled: !sent.has(r.receipt_id), title: sent.has(r.receipt_id) ? '' : 'Primero, «Enviar a Finance»',
-          onclick: () => window.open(`https://finance.ikisai.com/#/justificante?ref=${encodeURIComponent(`flow:receipt:${r.receipt_id}`)}`, '_blank', 'noopener') }, 'Imprimir factura'),
+          onclick: () => window.open(`https://finance.ikisai.com/#/justificante?ref=${encodeURIComponent(`flow:receipt:${r.receipt_id}`)}`, '_blank', 'noopener') }, 'Imprimir ticket'),
         el('button', { type: 'button', class: 'ghost', disabled: true, title: 'Pronto' }, 'Enviar por correo'),
         sent.has(r.receipt_id) ? el('span', { class: 'muted small' }, 'Enviado a Finance')
           : busyButton({ class: 'secondary' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));
