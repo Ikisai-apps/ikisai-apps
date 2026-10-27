@@ -2330,6 +2330,22 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **El cálculo de bloqueo y fase** está en `tasks.production_rows(proyecto)`, que es la misma regla que «hoy» (§47).
 - **Pruebas:** `tests/tasks/production.test.ts`.
 
+## 55. Unidades repetidas (migración `0360`; «Proyectos y producción» 7.5; decisión de VG en vg-37: opción A)
+
+- **`tasks.tasks.unit_count`** (1–100, opcional): va solo en la madre (en un paso da 422 `INVALID_UNITS`). Cada paso se hace tantas veces como diga, y también la madre misma si no tiene pasos.
+- **`tasks.task_units`:** una fila por unidad hecha (`task_id`, `unit`, `done_by`, `done_at`). Desmarcar la borra.
+  - La visibilidad es la de su tarea, y las unidades la siguen al moverla, al convertir un área y al ir a la papelera.
+  - Solo la escribe `tasks.unit_step`; a mano da 422 `INVALID_UNITS`.
+- **`POST tasks/unit-step {taskId, unit, done?}`** (capacidad `tasks.unit_step`, editor u owner):
+  - marca (`done` por defecto) o desmarca la unidad;
+  - la tarea queda hecha con todas sus unidades y deja de estarlo si se desmarca una;
+  - repetir no cambia nada;
+  - responde `{taskId, unit, done, unitsDone, units, taskDone}`.
+  - Errores: 404 si no se ve la tarea; 409 `PROJECT_ARCHIVED`; 422 si la unidad está fuera de rango, si es un contenedor (se marcan sus pasos) o si la tarea no tiene unidades (se usa `tasks/complete`).
+- **Modelo de la interfaz:** `LegacyTask.unitCount` en la madre y `unitsDone` en la tarea de trabajo.
+- **Pendiente:** la producción y «hoy» con las unidades, y los entregables (7.5, 2).
+- **Pruebas:** `tests/tasks/units.test.ts`.
+
 ## 56. Acciones de la revisión semanal de Dirección (Central, decisión de VG en vg-41)
 
 - **Cómo llegan:** Central manda `central.weekly_action` por `POST requests/task`, con el token de la persona, igual que `central.compliance_due` (§20). La ruta ya admitía cualquier `central.<nombre>`, así que el servidor no cambia.
