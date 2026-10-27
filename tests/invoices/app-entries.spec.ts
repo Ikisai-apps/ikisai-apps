@@ -102,6 +102,17 @@ test('ingresos de apps: lista, notas, ficha y resultado del evento', async ({ pa
     await page.locator('#appEntrySheet').getByRole('link').click();
   });
 
+  await test.step('arqueo del día: lo cobrado por medio y el total a cuadrar, imprimible', async () => {
+    await page.goto(`${baseURL}/#/arqueo?dia=2026-10-31`);
+    await expect(page.locator('#cashCountMethods')).toContainText('Metálico');
+    await expect(page.locator('#cashCountCash')).toContainText('798,00');
+    await expect(page.locator('#cashCountTotal')).toContainText('1.232,50');
+    await expect(page.locator('#cashCountSources')).toContainText('Barra y caja (Flow)');
+    await page.goto(`${baseURL}/#/apuntes`);
+    await page.locator('#appEntriesList li.row', { hasText: '31-10' }).getByText('Barra · Evento de octubre · 31-10').click();
+    await page.locator('#appEntrySheet').getByRole('link').click();
+  });
+
   await test.step('el evento: ingresos de apps menos gastos, sin IVA', async () => {
     await expect(page.locator('#eventStats')).toContainText('1.120,45');
     await expect(page.locator('#eventMoves')).toContainText('Barra · Evento de octubre · 31-10 · Flow');

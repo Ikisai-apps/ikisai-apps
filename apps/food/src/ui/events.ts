@@ -6,7 +6,7 @@ import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, isFamilyEvent, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
+  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, isFamilyEvent, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, restrictionSummary, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
@@ -111,13 +111,13 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const events = visible();
     replace(list, ...events.map((event) => {
       const menu = menuOf(event);
-      const restrictions = event.dietary_restrictions?.length ?? 0;
+      const restrictions = restrictionSummary(event.dietary_restrictions);
       return listRow({
         id: event.event_id,
         title: event.title,
         meta: [`${dateRange(event)} (${whenLabel(event).toLowerCase()})`, guestsLabel(event), mealPlanLabel(event.meal_plan)],
         // Con alguna alergia o intolerancia en el grupo, el aviso de restricciones va en rojo.
-        chips: [menuChip(event, menu), menu && (totals.get(menu.id)?.total ?? 0) > 0 ? el('span', { class: totals.get(menu.id)!.missing || totals.get(menu.id)!.stale ? 'chip alert' : 'chip', title: [totals.get(menu.id)!.missing ? 'Faltan precios de algún ingrediente' : '', totals.get(menu.id)!.stale ? 'Algún precio es de la última compra, de hace más de 3 meses' : ''].filter(Boolean).join('. ') || 'Coste estimado con las compras de Invoices de los últimos 3 meses' }, `≈ ${Math.round(totals.get(menu.id)!.total).toLocaleString('es-ES')} €${totals.get(menu.id)!.missing ? '+' : ''}${totals.get(menu.id)!.stale ? ' *' : ''}`) : null, restrictions ? el('span', { class: allergyCount(event.dietary_restrictions) ? 'chip alert' : 'chip' }, restrictions === 1 ? '1 restricción' : `${restrictions} restricciones`) : null],
+        chips: [menuChip(event, menu), menu && (totals.get(menu.id)?.total ?? 0) > 0 ? el('span', { class: totals.get(menu.id)!.missing || totals.get(menu.id)!.stale ? 'chip alert' : 'chip', title: [totals.get(menu.id)!.missing ? 'Faltan precios de algún ingrediente' : '', totals.get(menu.id)!.stale ? 'Algún precio es de la última compra, de hace más de 3 meses' : ''].filter(Boolean).join('. ') || 'Coste estimado con las compras de Invoices de los últimos 3 meses' }, `≈ ${Math.round(totals.get(menu.id)!.total).toLocaleString('es-ES')} €${totals.get(menu.id)!.missing ? '+' : ''}${totals.get(menu.id)!.stale ? ' *' : ''}`) : null, restrictions ? el('span', { class: allergyCount(event.dietary_restrictions) ? 'chip alert' : 'chip' }, restrictions) : null],
         pending: menu?._pending === true,
         label: `Abrir ${event.title}`,
         onClick: () => openEvent(event),
