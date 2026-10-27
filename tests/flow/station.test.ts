@@ -1,7 +1,7 @@
 /**
  * Flow · comportamiento «station» (puesto) y métrica `bread_ahead` (migración 0908), sobre PGlite. La v1 congelada no
  * tiene puesto; la v2 nace con «Pan» desde la plantilla. Valores por defecto: ventana 5 min, tope 4 por pedido,
- * 1 + 1 min por delante, tramos [≤2: −60 %, ≤8: −30 %, resto: 0 %].
+ * 1 + 1 min por delante, tramos [≤2: −60 %, ≤8: −30 %, resto: 0 %]. (La v2 nace con bread_v2 desde la 0913: aquí se fuerza bread_ahead.)
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,8 +46,12 @@ test('station · la v1 no tiene puesto; la v2 nace con «Pan» desde la plantill
   assert.equal((await rows(TABLES.units)).filter((u) => u.project_id === V1 && u.kind === 'station').length, 0);
   v2 = uuid();
   await ok([call(PROCEDURES.newVersion, { source_project_id: V1, project_id: v2 })]);
-  const s = await station();
+  let s = await station();
   assert.equal(s.label, 'Pan'); assert.equal(s.column_key, 'logistics'); assert.equal(s.status, 'pending');
+  // Desde la 0913 la v2 nace con bread_v2 (bread.test.ts); aquí se sigue probando bread_ahead, que no cambia.
+  assert.equal(s.payload.metric, 'bread_v2');
+  await app.t.db.query(`update flow.units set payload = payload || '{"metric": "bread_ahead"}'::jsonb where id = $1`, [s.id]);
+  s = await station();
   assert.equal(s.payload.metric, 'bread_ahead');
 });
 
