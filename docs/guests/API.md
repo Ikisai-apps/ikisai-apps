@@ -571,6 +571,138 @@ el sitio en texto y el plano del centro de Central (imagen o PDF).
   habitaciones, salas, baños, comedor, exteriores, zonas de paso y otros). Tocar un sitio lo elige («Sitio: …»,
   `#helpPicked`) y el aviso lleva `scope.space_id` (Recursos) y su nombre en el texto, como siempre. Las baldosas siguen.
 
+### 9.17 Acceso que no caduca, «Mis retiros», dirección y fichas de equipo (encargo de VG del 26-10-2026, plazo 29-10)
+
+Reglas (VG, por Core): quien entró una vez sigue entrando; organizador, staff y dirección aparecen en el retiro como huéspedes; dirección ve todos los retiros. Los datos los pone Booking (`docs/booking/API.md` §29, #725, migraciones 0481 y 0483); Guests solo enseña. Este apartado es el **modelo de pantallas** de la PR en borrador; el código va en la misma PR.
+
+#### a) «Mis retiros» (`#/retiros`, nueva)
+
+- **Dónde:** en el menú lateral, la sección «Tus retiros» enseña los seis más cercanos y «Ver todos» lleva a `#/retiros`; en el Calendario, «Todos tus retiros» enlaza también aquí. La barra («Calendario · Retiros») no cambia: «Retiros» sigue abriendo el retiro que se ve.
+- **Grupos, por fecha:** «En curso» · «Próximos» (el más cercano primero) · «Pasados» (el más reciente primero). Sin fechas (sin red), al final.
+- **Cada fila** (una tarjeta, toda ella enlace a su retiro):
+  - título, fechas cortas y el momento de siempre (`retreatState`: «En 12 días», «Hasta el domingo 9», «Terminado»);
+  - **estado de la reserva** en texto, desde `reservation.status` (`portal_my_guest`) y `status` (`portal_my_retreats`): `pre_reservada` → «Pendiente de confirmar» · `confirmada` → «Confirmado» · `en_ejecucion` → «En curso» · `cerrada` → «Terminado» · `cancelada` y `perdida` → «Cancelado · solo lectura»;
+  - con la familia y «Todos», a quién toca (las caras, como en el calendario);
+  - la etiqueta de equipo si la hay (d).
+- **Pedidos de «Apuntarme» pendientes** (O4b, `joinSuggestions`): en «Próximos», con «Pedido · con el organizador» y «Retirar», como en el Calendario.
+- **Cancelados:** se abren en solo lectura con la franja «Este retiro se canceló. Lo ves en solo lectura.» (la misma pieza que la vista previa: `readOnly()` pasa a ser `preview` **o** reserva `cancelada`/`perdida`). Nada se guarda ni se encola.
+- **Sin red:** de la caché (`my_guest` y `portal_my_retreats`), con la hora de los datos.
+
+#### b) La sesión no se cierra ni se borra al terminar el retiro
+
+Revisado en `main` (830df42):
+
+| Qué | Cuándo se limpia hoy |
+|---|---|
+| Sesión (token y renovación, `sync-client`) | al salir del dispositivo, si `auth/refresh` responde 400/401/403, o si entra otra persona |
+| Caché por persona (IndexedDB `ikisai-guests`: lecturas, borradores y cola) | con el fin de sesión (`onSessionEnd`) |
+| Materiales guardados sin red y «Nuevo» visto (`localStorage`) | con el fin de sesión |
+| Dibujos del plano (Cache Storage `ikisai-guests-plans`) | con el fin de sesión |
+| Shell del service worker | al activar una versión nueva (solo las cachés de shell viejas); el SW no toca `/api/` |
+| Textos comunes (`localStorage`) | nunca (no son de la persona) |
+
+**Nada depende de la fecha del retiro**: Guests no filtra los `grants` por fechas ni borra nada al terminar. Lo que cortaba el acceso era el servidor (el enlace caducaba y el `grant` desaparecía con la conservación); eso lo quita Booking (§29.1, `validUntil = 'infinity'`). En Guests:
+- `validUntil` `'infinity'` (`Date.parse` da `NaN`) se trata como «sin caducidad»: la entrada nunca dice «Caducó el …» con una fecha inválida.
+- Un retiro pasado se abre en el momento «después», como siempre. La ficha anonimizada (conservación) sale con el nombre «Huésped anonimizado» y sus datos vacíos, sin más cambios en Guests.
+- Prueba: una cuenta con un retiro pasado y otro futuro se abre, ve los dos en «Mis retiros» y no ve «No tienes acceso».
+
+#### c) Dirección («todos»)
+
+- **Cómo se sabe:** `membership.scopes.grants` contiene `{all: true}` (núcleo 0095; Booking lo confirma). `api.grants()` sigue devolviendo solo los pares reserva + huésped; `api.direction()` dice si está «todos».
+- **Sin ninguna ficha:** ya no es «No tienes acceso»: la entrada lleva a `#/retiros`.
+- **«Mis retiros»** añade, debajo, **«Todos los retiros»** (`portal_open_retreats`, que con dirección devuelve `direction: true` y todos, pasados y futuros): buscador por título y los mismos grupos por fecha; cada fila con su estado y, si ya tiene ficha, «Ya estás dentro».
+- **Recorrer sin estar apuntada:** `#/r/<reservationId>` de un retiro sin ficha abre la **vista de dirección**: cabecera del retiro (título, fechas, estado) y **Programa** (`portal_program` lo permite con `portal_scope_reservation`). Menú, Alojamiento, Guía, datos y firma llevan `guest_id` y necesitan ficha: no salen. Franja: «Lo ves como dirección. Aún no te has apuntado.».
+- **Apuntarse:** en los vivos (`joinable`), «Apuntarme» en la vista del retiro → confirmación («¿Te apuntas a …?») → `booking.portal_join_direction({reservation_id, persons?})`, sin aprobación. Con una persona en la cuenta, ella misma con su nombre (sin `persons`); con la familia, «¿Con quién?» con todas marcadas, cada una con su clave de Booking (`portal_person_link` si aún no la tiene, como en O4b). Después se relee el `bootstrap` (el `grant` nuevo) y se abre su ficha. Errores en texto: `RESERVATION_NOT_OPEN` «Este retiro ya no admite apuntarse» y `RESERVATION_NOT_CONFIRMED` «Este retiro aún no está confirmado».
+- **«Todos» nunca vale por un huésped:** Guests no pide nada con el `guest_id` de otro.
+
+#### d) Organizador, staff y dirección en el retiro
+
+- **Etiqueta** (`portal_role` de `portal_my_guest` y `portal_my_retreats`, BG14): «Organizas» (`organizer`) · «Equipo» (`staff`) · «Dirección» (`direccion`). Una píldora en «Tu retiro de un vistazo» (`#teamRole`), en su fila de «Mis retiros» y, con la familia junta, en la tarjeta de esa persona del Resumen («Nora · Equipo»). Nada más cambia de sitio.
+- **Datos y firma** (G-B2, Core 26-10): sus fichas se ven en el modo `ninguno` (`teamMode`, `api.ts`): sin «Tus datos», sin firma y sin esas tareas; `#/p/<id>/datos` y `/firma` vuelven al Resumen.
+- **Cama** (`portal_lodging.team: true`): con `choice: 'off'`, «La cama te la asigna el equipo» (`#lodgingTeam`) en lugar de la elección; con `choice: 'choose'` (camas de equipo marcadas, 0483), la elección de siempre entre las habitaciones que da Booking, sin plazo y confirmada al momento. `NOT_OFFERED` con `reason: 'team'` dice lo mismo que `'off'`.
+- **Menú:** como un huésped (VG), pero nunca «Cocina tiene registrado…»: «Tu ficha de equipo no llega a cocina: si comes aquí, avisa tú en cocina.» (G-B1, Core 26-10). El cruce plato a plato sigue.
+- **Outsider que viene como huésped:** ficha normal. Guests no enlaza a Tasks desde el portal (hoy no lo hace; TK1 sigue sin construir).
+
+#### Enlace directo para Organizers (Gu1)
+
+`https://guests.ikisai.com/#/r/<reservation_id>` (ya en `main`): con varias personas de la cuenta en ese retiro, la familia junta; con una, redirige a `#/p/<guest_id>`; con dirección y sin ficha, la vista de dirección (c). Sobrevive al pase común: `auth/sso` es un `fetch` dentro de `client.start()`, sin redirección.
+
+#### Preguntas para VG (por Core; Core decidió las dos según la recomendación el 26-10, a falta de VG)
+
+- **G-B1 · Menú de una ficha de equipo.** Sus restricciones no llegan a cocina (§29.4 de Booking), pero hoy el Menú dice «Cocina tiene registrado…». Opciones: (1) quitar esa línea y decir «Tu ficha de equipo no llega a cocina: si comes aquí, avisa tú en cocina»; (2) quitar también Alimentación de su ficha; (3) dejarlo igual. **Recomiendo (1):** el cruce con sus alergias le sigue avisando y nadie cree que cocina lo sabe.
+- **G-B2 · Datos y firma de una ficha de equipo.** No van a SES. Opciones: (1) ocultar los datos de registro y la firma en sus fichas (quedan nombre y alimentación); (2) dejarlos opcionales; (3) igual que un huésped. **Recomiendo (1):** no pedir datos que no se usan.
+
+**Pruebas:** `tests/guests/accesos.spec.ts` («Mis retiros», ficha de equipo y dirección).
+
+### 9.18 «Tus ofertas de hoy» en el Menú (encargo de VG por Core, 27-10-2026)
+
+Lo que le toca a cada persona, por día y servicio, de la lectura de portal de Food **`food.portal_offers`** (FD3, la misma para Guests y Organizers): `{reservation_id, offers: [{offer_id, name, kind: 'cerrado'|'carta', meal_groups, audience: 'huespedes'|'interna', days, services, place, payer, charge_when, lines}], days: [{date, services: [{type, time, included: [{offer_id, options}]}], cartas: [offer_id]}]}`.
+
+- **El cruce con la persona lo hace Guests** (`offersForGuest`, `app/offers.ts`): una ficha ve las ofertas cuyo `meal_groups` contiene su `meal_group` (Booking, BG16, en `portal_my_guest`) y las que no tienen grupos.
+- **Ofertas internas** (`audience: 'interna'`, decisión de VG por Core): solo a fichas de equipo asignadas (`portal_role` `staff` o `direccion`) de su grupo; nunca a un huésped ni al organizador. Llevan «Solo equipo».
+- **Modo** (de Food): `payer = 'organizador'` → «Incluido» (todas las líneas de esa carta); huésped con `charge_when = 'barra'` → «De pago», con su precio; huésped con `charge_when = 'cuenta'` → «A cuenta».
+- **Dónde:** en el Menú, bajo las pestañas de días, el bloque `#menuOffers` del día elegido («Tus ofertas de hoy» si es hoy): por servicio, lo incluido con sus opciones («Puedes elegir:»); después, «Además, en la carta» con las cartas del día (código, nombre y precio o «Incluido»). Un día con ofertas y sin menú también tiene pestaña. Con la familia junta, lo que no es de todos lleva «Para Ana».
+- **Seguridad alimentaria (G13):** cada opción y cada línea se cruzan con lo que indicó cada persona (`hitsOf` y `crossings` del Menú) y llevan su línea de alérgenos de #597. Nunca «apto».
+- **«A cuenta»:** «Abrir la carta» pide a Flow **`flow.portal_customer({reservation_id, guest_id})` → `{number, carta_url}`** (FL1): `carta_url` es un enlace de un solo uso que deja ese navegador como ese cliente, así que no se guarda en la caché y se pide en cada toque; se enseña «Tu número de cliente: N». Sin la lectura o sin respuesta, la carta pública `https://flow.ikisai.com/` y «Tu número te lo da la carta al pedir.». Solo enlaces `https`. El número ligado a una ficha es un dato personal: nunca en capturas ni en fixtures.
+- **Sin red:** las ofertas, de la caché como el menú; «Abrir la carta» necesita red.
+- **Pruebas:** `tests/guests/offers.test.ts` (cruce, internas, modos, precio y enlace). La de Playwright llega cuando FD3 esté en `main`.
+
+### 9.19 Visitantes por QR: ven.ikisai.com sin invitación (encargo de VG por Core, 27-10-2026)
+
+VG aprueba `ven.ikisai.com` como puerta pública **sin invitación**. Quien escanea el QR de un evento entra como **visitante**: una identidad anónima del núcleo (`core.visitors`, contrato C11 de Core, migración 0096), con su token en el móvil y **ningún dato al entrar**.
+
+**Contrato C11 (Core, 27-10)**
+- **Token aparte, no sesión:** `POST /api/v1/public/visitor {event_code?}` → `{visitorId, token}`. El token se guarda en `localStorage` del portal (`ikisai-visitor`) y va en la cabecera `X-Visitor` en cada llamada pública. Sin bootstrap, sin ámbitos ni pertenencias: **un visitante nunca es miembro de nada**.
+- **Escrituras, en la API del dueño:** cada app abre su escritura pública (`core.allow_public_write`) y la sirve en su propia Edge (`POST /api/v1/public/<nombre>`); el kit resuelve `X-Visitor` y la app pone `visitor_id` en la fila. `guests-api` no escribe en tablas de otros.
+- **Lecturas, públicas con argumentos** (`event_code`), sin ámbito; las de «lo mío» reciben el `visitor_id` que resuelve el kit (`publicReadWithVisitor`), nunca el token. Como las lecturas registradas son globales, `guests-api` las sirve en sus rutas `public/…`.
+- **Recuperación por correo y paso a otro móvil:** v2, no para el sábado.
+
+**Reglas fuertes**
+- Un visitante **nunca ve a otros** visitantes ni huéspedes.
+- **Nunca se liga a un huésped de Booking por el nombre**; solo por un vínculo consentido: su enlace de invitación (`/i/<token>`) o un «Apuntarme» que acepta el personal.
+- Lo que deja (nombre, correo, teléfono) es **voluntario**, con su para qué escrito al lado.
+- Repo público: ejemplos y fixtures con nombres sintéticos y `example.invalid`.
+
+#### Entrada (`/e/<código>`)
+
+1. `main.ts` reconoce `/e/<código>` (10 caracteres, BG17; vale en mayúsculas o minúsculas), lo quita de la URL antes de pintar y abre `#/v/<CÓDIGO>`.
+2. El evento sale de `GET public/event?code=…` (`guests-api`, hecho; lectura pública `booking_event`, BG19). Si el código no es de ningún evento: «Este código no es de ningún evento abierto», con el contacto público y sin decir si existió.
+3. **Identidad de visitante:** con token en el móvil, se usa; si no, al tocar «Entrar» se crea (`POST public/visitor {event_code}`), sin pedir nada. Si el móvil tiene además una sesión de huésped, conviven: el evento se ve como visitante salvo que use «Ya tengo invitación».
+4. El código se añade a la lista de **«Mis eventos» de este móvil** (`localStorage`, solo códigos; se borra con «Salir de este móvil»).
+
+#### Evento del visitante (`#/v/<código>`)
+
+- **Cabecera:** nombre, fechas, tipo («Retiro», «Jornadas abiertas», «Familiar»), estado («Abierto», «Cerrado») y el resumen público. Nada de precios ni del organizador.
+- **Qué hay para comer** (FD5, lectura pública `food_visitor_offers` con `event_code`; `guests-api` la sirve en `GET public/offers?code=…`): solo las ofertas que quien las hace marca «Visible para visitantes (QR)», por día y servicio, con la pieza de §9.18 (`offersBlock`) y su línea de alérgenos. Sin restricciones de la persona, no hay cruce personal; sí el aviso «Si tienes alergias, pregunta en cocina».
+- **«Mi pedido»** (Flow, FL2): «Pedir número» o «Abrir la carta» llama a `flow.visitor_join({event_code})` (acción de Flow con `X-Visitor`: crea o encuentra su cliente, sin cuenta) y abre su `carta_url` de un solo uso; «Mi pedido» se pinta con la lectura `flow.visitor_customer` (`{number, carta_url, account_open, orders}`, con el `visitor_id` del kit). Sin número todavía: «Aún no tienes número: lo tendrás al abrir la carta». Con cuenta abierta, «Tienes una cuenta abierta»; si no, «Si quieres pagar al final, pide en caja que te abran una cuenta».
+- **«Apuntarme»** (si `joinable`, BG18): `POST /api/v1/public/join` de **booking-api** (tabla `booking.visitor_requests`, de Booking) con `{event_code, name, contact?}`: «¿Cómo te llamamos?», obligatorio solo aquí; correo o teléfono, opcionales y con su para qué. Queda «Pedido · pendiente» hasta que el personal lo acepta (`booking.join_from_visitor`), y entonces la ficha queda ligada a este visitante por esa petición. Lo pendiente sale de la lectura de «lo mío» de Booking (con el `visitor_id` del kit). Booking tiene que admitir el origen de Guests en esa ruta.
+- **«Déjanos un dato»** (opcional, sin apuntarse): el correo para avisarle de la próxima jornada, con su para qué; va a la misma tabla de Booking como petición sin «apuntarme» (lo confirma Booking).
+- **«Ya tengo invitación»:** abrir su enlace personal (`/i/<token>`). Es el vínculo consentido con su ficha de huésped.
+
+#### «Mis eventos» (`#/v`)
+
+- Los eventos de la lista de este móvil, por momento (en curso, próximos y pasados, la pieza de «Mis retiros», §9.17), cada uno releído con `public/event`, con su estado y el de su «Apuntarme».
+
+#### Salir y, en la v2, guardar y mover
+
+- **Salir de este móvil:** borra el token, la lista de eventos y la caché del visitante.
+- **v2:** recuperar por correo (enlace) y pasar a otro móvil con un código de un solo uso (C11, más adelante). Hasta entonces, la pantalla dice que el acceso vive solo en ese móvil.
+
+#### Sin red
+
+El evento, sus ofertas y «Mis eventos», de la caché del visitante con la hora de los datos. Entrar, apuntarse, dejar un dato y «Abrir la carta» necesitan red.
+
+#### Lo que necesita Guests
+
+| Id | De | Qué | Estado |
+|---|---|---|---|
+| C11 | Core | `core.visitors`, `POST public/visitor`, `X-Visitor`, `resolveVisitor`, `publicReadWithVisitor` | contrato fijado; PR core/visitantes (0096) |
+| BG17 | Booking | `booking.events.public_code` | en #767 (0488) |
+| BG18 | Booking | `POST public/join` en booking-api (`booking.visitor_requests`), su «lo mío» y `join_from_visitor`; origen de Guests admitido | tras C11 |
+| BG19 | Booking | lectura pública `booking_event` | en #767 (0488); `GET public/event` hecho |
+| FD5 | Food | lectura pública `food_visitor_offers` con `event_code`, solo ofertas `public` | en #758 |
+| FL2 | Flow | `flow.visitor_join` (acción) y `flow.visitor_customer` (lectura), con `flow.customers.visitor_id` | tras C11 |
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:

@@ -22,6 +22,7 @@ import type { GuestContext } from '../app/context.ts';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { dateRange, hhmm, missingText } from '../app/labels.ts';
 import type { Lodging, Menu, ProgramItem } from '../app/portal.ts';
+import { roleText } from './retreats.ts';
 import { fbIgnore, fbMark, staleNote } from './common.ts';
 import { shortRange } from './frame.ts';
 import { choiceOpen } from './lodging.ts';
@@ -295,7 +296,9 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
           const name = String(l.ctx.guest().fields.first_name ?? '') || t('picker.unknown');
           const left = l.tasks.filter((x) => !x.done).length;
           const suffix = `-${l.ctx.grant.guest_id.slice(0, 8)}`;
+          const role = roleText(l.ctx.guest().portal_role);
           return fbIgnore(el('div', { class: `gperson${left ? '' : ' gperson-done'}`, dataset: { guest: l.ctx.grant.guest_id } },
+            role ? el('p', { class: 'gtags' }, el('span', { class: 'chip small grole' }, `${name} · ${role}`)) : null,
             left ? null : el('p', { class: 'small gperson-ready' }, icon('check', 12), ' ', t('home2.personDone', { name })),
             steps(l.tasks, l.base, suffix, left ? t('home2.personLeft', { name, count: left }) : null, null)));
         }));

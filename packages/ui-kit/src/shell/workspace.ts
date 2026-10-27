@@ -196,11 +196,107 @@ export interface TabBarItem {
   attrs?: HookAttrs;
 }
 
+/**
+ * En la app instalada (`display-mode: standalone`, K2 · FB_2026_075):
+ * - `'flush'`: los botones bajan hasta el borde; sin franja de papel vacía en el área segura.
+ * - `'autohide'`: se esconde al bajar y vuelve al subir (ver `bindTabBarAutoHide`).
+ * - `'both'`: las dos cosas.
+ * En el navegador no cambia nada.
+ */
+export type TabBarStandalone = 'flush' | 'autohide' | 'both';
+
 /** Navegación inferior en móvil (en escritorio la sustituye el menú lateral). */
-export function renderTabBar(options: { label: string; items: TabBarItem[]; attrs?: HookAttrs; className?: string }): HTMLElement {
-  return el('nav', { class: cls('tabbar', options.className), 'aria-label': options.label, ...(options.attrs ?? {}) },
+export function renderTabBar(options: { label: string; items: TabBarItem[]; attrs?: HookAttrs; className?: string; standalone?: TabBarStandalone }): HTMLElement {
+  const mode = options.standalone;
+  const nav = el('nav', { class: cls('tabbar', (mode === 'flush' || mode === 'both') && 'tabbar-flush', options.className), 'aria-label': options.label, ...(options.attrs ?? {}) },
     ...options.items.map((item) => el('button', {
       type: 'button', class: cls('navbtn', item.active && 'active'), 'aria-current': item.active ? 'page' : null, ...(item.attrs ?? {}),
     }, iconOf(item.icon, 22), el('span', null, item.label))),
   );
+  if (mode === 'autohide' || mode === 'both') bindTabBarAutoHide(nav);
+  return nav;
+}
+
+/* Un solo vigilante para toda la página: la app puede volver a pintar la barra en cada render sin sumar oyentes. */
+const autoHide = { installed: false, hidden: false, down: 0, touchY: null as number | null };
+const lastScroll = new WeakMap<object, number>();
+const AUTOHIDE_DOWN = 24;
+const AUTOHIDE_EDGE = 24;
+
+function standaloneNow(): boolean {
+  return typeof matchMedia === 'function' && (matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+}
+function autoHideBars(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('.tabbar.tabbar-autohide')].filter((n) => n.isConnected);
+}
+function paintAutoHide(): void {
+  const hidden = autoHide.hidden && standaloneNow();
+  const bars = autoHideBars();
+  for (const nav of bars) nav.classList.toggle('tabbar-hidden', hidden);
+  const root = document.documentElement;
+  if (!bars.length) { root.style.removeProperty('--tabbar-offset'); return; }
+  if (!standaloneNow()) { root.style.removeProperty('--tabbar-offset'); return; }
+  root.style.setProperty('--tabbar-offset', hidden ? '0px' : `${Math.round(bars[0]!.getBoundingClientRect().height)}px`);
+}
+function setAutoHidden(hidden: boolean): void {
+  autoHide.down = 0;
+  if (autoHide.hidden === hidden) return;
+  autoHide.hidden = hidden;
+  paintAutoHide();
+}
+/* Lo que se desplaza: la página o una columna de la app. No cuentan las hojas, los diálogos ni lo que se mueve en horizontal. */
+function scrollState(target: EventTarget | null): { key: object; y: number; end: boolean } | null {
+  const box = target instanceof HTMLElement && target !== document.documentElement && target !== document.body ? target : null;
+  if (box) {
+    if (box.closest('.sheetback, .dialogback, .palette-back, .navmenu, .tabbar')) return null;
+    if (box.scrollHeight <= box.clientHeight + 1) return null;
+    return { key: box, y: box.scrollTop, end: box.scrollTop + box.clientHeight >= box.scrollHeight - 2 };
+  }
+  const doc = document.scrollingElement ?? document.documentElement;
+  return { key: document, y: doc.scrollTop, end: doc.scrollTop + innerHeight >= doc.scrollHeight - 2 };
+}
+function installAutoHide(): void {
+  if (autoHide.installed) return;
+  autoHide.installed = true;
+  document.addEventListener('scroll', (event) => {
+    if (!standaloneNow() || !autoHideBars().length) return;
+    // El navegador ya agrupa los `scroll` por fotograma: se atiende cada uno, sin esperar a otro.
+    const state = scrollState(event.target);
+    if (!state) return;
+    const { key, y, end } = state;
+    const dy = y - (lastScroll.get(key) ?? y);
+    lastScroll.set(key, y);
+    if (y <= 0 || end || dy < 0) { setAutoHidden(false); return; }
+    autoHide.down += dy;
+    if (autoHide.down > AUTOHIDE_DOWN) setAutoHidden(true);
+  }, { capture: true, passive: true });
+  // Deslizar hacia arriba desde el borde inferior la trae.
+  document.addEventListener('touchstart', (event) => {
+    const t = event.touches[0];
+    autoHide.touchY = t && t.clientY >= innerHeight - AUTOHIDE_EDGE ? t.clientY : null;
+  }, { passive: true });
+  document.addEventListener('touchmove', (event) => {
+    const t = event.touches[0];
+    if (autoHide.touchY !== null && t && autoHide.touchY - t.clientY > 16) { autoHide.touchY = null; setAutoHidden(false); }
+  }, { passive: true });
+  document.addEventListener('focusin', (event) => {
+    if (event.target instanceof Element && event.target.closest('.tabbar.tabbar-autohide')) setAutoHidden(false);
+  });
+  if (typeof matchMedia === 'function') matchMedia('(display-mode: standalone)').addEventListener?.('change', paintAutoHide);
+  addEventListener('resize', paintAutoHide);
+}
+
+/**
+ * La barra se esconde al desplazarse hacia abajo y vuelve al subir, al llegar al final, al deslizar hacia arriba desde el
+ * borde inferior o cuando el foco entra en ella. Solo en la app instalada; en el navegador no hace nada. Pone en `:root`
+ * `--tabbar-offset` (lo que ocupa la barra a la vista; 0 escondida), que usa el `.fab` del kit. `renderTabBar` la llama
+ * con `standalone: 'autohide' | 'both'`. Devuelve la barra.
+ */
+export function bindTabBarAutoHide(nav: HTMLElement): HTMLElement {
+  nav.classList.add('tabbar-autohide');
+  installAutoHide();
+  if (!lastScroll.has(document)) lastScroll.set(document, (document.scrollingElement ?? document.documentElement).scrollTop);
+  if (autoHide.hidden && standaloneNow()) nav.classList.add('tabbar-hidden');
+  queueMicrotask(paintAutoHide);
+  return nav;
 }

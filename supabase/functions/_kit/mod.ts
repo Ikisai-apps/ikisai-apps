@@ -10,11 +10,15 @@ export type { AppHooks, RequestContext, Operation, CommitResult, Membership, Boo
 export { createUploads } from './uploads.ts';
 export type { UploadsConfig } from './uploads.ts';
 export { createApp } from './handler.ts';
-export type { AppConfig, AppRoute, RouteRequest, AppHandler, WorkerRoute, WorkerRequest } from './handler.ts';
+export type { AppConfig, AppRoute, RouteRequest, AppHandler, WorkerRoute, WorkerRequest, PublicRoute, PublicRequest } from './handler.ts';
 export { createMcp, MCP_PROTOCOL_VERSIONS } from './mcp.ts';
 export type { McpTool, McpToolKit } from './mcp.ts';
 export { ensureServiceActor } from './service.ts';
 export { applyPublicOperations } from './public-write.ts';
 export type { PublicOperation, PublicBatchResult } from './public-write.ts';
+export { issueVisitor, resolveVisitor, requireVisitor, publicReadWithVisitor, isPublicOrigin, VISITOR_HEADER } from './visitors.ts';
+export type { Visitor } from './visitors.ts';
+export { createCapabilities } from './capabilities.ts';
+export type { CapabilitiesOptions, CapabilityCheck } from './capabilities.ts';
 export { createStorage, r2ConfigFromEnv, type StorageAccess, type StoredObject, type ProviderName } from './storage.ts';
 export { createGoogleTokenSource, parseServiceAccount, GoogleAuthError, type GoogleServiceAccount } from './google.ts';

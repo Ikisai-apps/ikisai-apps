@@ -2,6 +2,11 @@
 
 Actualizado: 26 de octubre de 2026 (tanda de feedback, RELEVO-001). **Desde el 26-10 desarrolla Tasks La Muela (`ux-tasks-e3`); Sevilla revisa.** Lo último en `main`: Plan de hoy con `tasks.day_plans` y el sol en cada tarea (#699, MUELA-095) y Compras R6 «Estantería» con envase y cuadre (#705, MUELA-094). Abajo, la tanda de feedback en curso; el resto es el histórico (el texto de la tanda 13 se conserva tal cual).
 
+## «Pedir a Tasks» desde Flow y «Compras del evento»
+
+- `requests/task` (ya existía) y `requests/purchase` (#717) con la sesión de la persona; contrato en `API.md` §39.
+- «Compras del evento» en Suministros (§39.5): lo pedido desde Flow, por proyecto, con lo siguiente, «Elegir artículo» y «Ver en Flow ›»; al recibir, el stock entra por Recursos como siempre. Procedencia en `tasks.purchase_requests` (migración `0342`).
+
 ## Tanda de feedback (26-10-2026, rama `tasks/feedback`)
 
 Clasificación de los 28 reportes aprobados y abiertos (`MUELA\equipo\UX-Tasks\FEEDBACK_clasificacion.md`), con el visto bueno de Core y las respuestas de VG. Un reporte se cierra cuando VG lo comprueba en la app, no al fusionar.
@@ -22,7 +27,7 @@ Clasificación de los 28 reportes aprobados y abiertos (`MUELA\equipo\UX-Tasks\F
 - **PR 3:** FB_2026_072 y 073: la revisión de «Sugerencias y QA» y el «Registro de accesos» pasan a Central, con enlace; antes, en PETICIONES, lo que aporta la vista de Tasks.
 - **Verificar (arreglados en #459):** FB_2026_034, 036, 038, 040 y 043.
 - **Sin actuar (VG):** FB_2026_062 (se deja abierto), 065 y 068 (errores al reportar).
-- **Pendiente de VG o de otros equipos:** FB_2026_035, 056, 066, 070, 071 (replanteo, después del evento del sábado) y 075 (kit).
+- **Pendiente de VG o de otros equipos:** FB_2026_035, 056, 066, 070 y 071 (replanteo, después del evento). El 075 ya está con el kit 0.58 (#753).
 
 
 ## Hecho

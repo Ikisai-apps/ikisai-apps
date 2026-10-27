@@ -284,6 +284,9 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-cell.none{color:var(--muted);font-weight:400}
 .ctl-cell.role-owner{background:var(--accent-soft,var(--paper-2));border-color:var(--accent)}
 .ctl-cell.derived{border-style:dashed}
+/* Portales (26-10): el alcance en palabras, no la letra del rol. */
+.ctl-cell.portal:not(.none){font-weight:600;font-size:.82rem;padding:0 8px}
+.ctl-portaltag{display:block;font-weight:400;font-size:.75rem;color:var(--muted)}
 .ctl-cell.lone{box-shadow:inset 0 0 0 2px var(--warn)}
 .ctl-cell:focus-visible,.ctl-cell:hover{border-color:var(--accent)}
 .ctl-cellmark{font-weight:400}
@@ -311,6 +314,8 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-loglines{margin:0;padding:0}
 .ctl-logline{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--line)}
 .ctl-logline.alert .ctl-logwhat{color:var(--alert);font-weight:700}
+/* X1 de Tasks: lo que se da, en el verde del kit. */
+.ctl-logline.ok .ctl-logwhat{color:var(--ok);font-weight:600}
 .ctl-logmeta{font-size:var(--text-sm,.875rem);color:var(--muted)}
 
 /* Personas · Directorio de caras (Bloque 2, MUELA-085). El anillo, solo con permiso de datos reservados (si no, borde neutro). */
