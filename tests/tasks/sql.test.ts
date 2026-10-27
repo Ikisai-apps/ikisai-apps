@@ -567,10 +567,12 @@ test('oficios para Central (RECURSOS §13.3): la familia «Tipo: Acción» de la
 
 test('almacenamiento: los adjuntos y la foto de los comentarios son los campos de archivo de Tasks (operativos) y la recogida de huérfanos está activa', async () => {
   const fields = (await db.t.db.query<{ schema_name: string; table_name: string; column_name: string; retention: string }>(
-    `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks' order by table_name`)).rows;
+    `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks' order by table_name, column_name`)).rows;
   assert.deepEqual(fields, [
     { schema_name: 'tasks', table_name: 'attachments', column_name: 'file_id', retention: 'operational' },
     { schema_name: 'tasks', table_name: 'purchase_requests', column_name: 'receipt_file_id', retention: 'operational' },
+    { schema_name: 'tasks', table_name: 'review_items', column_name: 'file_id', retention: 'operational' },
+    { schema_name: 'tasks', table_name: 'review_items', column_name: 'first_failure_file_id', retention: 'operational' },
     { schema_name: 'tasks', table_name: 'task_comments', column_name: 'file_id', retention: 'operational' },
   ]);
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.file_gc_apps where app = 'tasks'`)).rows[0]!.n), 1);

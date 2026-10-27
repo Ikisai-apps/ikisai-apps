@@ -46,7 +46,7 @@ test.after(async () => { await app.close(); });
 test('k3 · Tasks lo activa, y sus columnas de archivo están en core.register_file_field', async () => {
   assert.equal(TASKS_UPLOADS.membersK3, true);
   const registered = (await app.t.db.query<{ col: string }>(`select schema_name || '.' || table_name || '.' || column_name as col from core.file_fields where app = 'tasks' order by 1`)).rows.map((r) => r.col);
-  assert.deepEqual(registered, ['tasks.attachments.file_id', 'tasks.purchase_requests.receipt_file_id', 'tasks.task_comments.file_id']);
+  assert.deepEqual(registered, ['tasks.attachments.file_id', 'tasks.purchase_requests.receipt_file_id', 'tasks.review_items.file_id', 'tasks.review_items.first_failure_file_id', 'tasks.task_comments.file_id']);
   // Ninguna otra columna del schema tasks guarda un archivo (ni en JSON ni en texto).
   const columns = (await app.t.db.query<{ col: string }>(`select c.table_schema || '.' || c.table_name || '.' || c.column_name as col
       from information_schema.columns c join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'

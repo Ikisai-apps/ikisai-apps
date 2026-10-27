@@ -27,6 +27,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
   const tokens = new Map<string, string>(); // token -> userId
   const refreshTokens = new Map<string, string>(); // refresh -> userId
   const magicLinks = new Map<string, string>(); // hashed_token -> userId
+  const otps = new Set<string>();
   let recovery: { email: string; tokenHash: string; redirectTo: string } | null = null;
   const storage = new Map<string, Uint8Array>();
   let loseReply = false;
@@ -93,6 +94,19 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       const userId = [...users.entries()].find(([, email]) => email === String(body.email ?? '').toLowerCase())?.[0];
       if (userId) { const hashed = `rec-${Math.random().toString(36).slice(2)}`; magicLinks.set(hashed, userId); recovery = { email: body.email, tokenHash: hashed, redirectTo: route.searchParams.get('redirect_to') ?? '' }; }
       return Response.json({});
+    }
+    if (route.pathname === '/auth/v1/otp' && method === 'POST') {
+      otps.add(String(body.email ?? '').toLowerCase());
+      return Response.json({});
+    }
+    if (route.pathname === '/auth/v1/verify' && method === 'POST' && body.type === 'email') {
+      const email = String(body.email ?? '').toLowerCase();
+      if (!otps.has(email) || body.token !== '123456') return Response.json({ error_code: 'otp_expired', msg: 'Token has expired or is invalid' }, { status: 403 });
+      otps.delete(email);
+      let userId = [...users.entries()].find(([, e]) => e === email)?.[0];
+      if (!userId) { userId = await t.createUser(); users.set(userId, email); await t.db.query('update auth.users set email = $2 where id = $1', [userId, email]); }
+      const token = mockToken(userId); const refresh = `refresh-${Math.random().toString(36).slice(2)}`; refreshTokens.set(refresh, userId);
+      return Response.json({ access_token: token, refresh_token: refresh, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: userId, email } });
     }
     if (route.pathname === '/auth/v1/verify' && method === 'POST') {
       const userId = magicLinks.get(body.token_hash);

@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = path.join(ROOT, 'supabase/migrations');
 const SCHEMAS = ['core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers', 'resources', 'flow'];
 // Helpers y objetos de core que una migración de app puede usar. Lectura: memberships, changes, files. Escritura solo vía apply_row_op.
-const CORE_HELPERS = ['core.ensure_app', 'core.register_table', 'core.unregister_table', 'core.allow_procedure', 'core.add_validate_hook', 'core.allow_read', 'core.disallow_read', 'core.apply_row_op', 'core.next_code', 'core.fail', 'core.next_seq', 'core.memberships', 'core.changes', 'core.files', 'core.synced_tables', 'core.profiles', 'core.apps', 'core.allow_portal_resolver', 'core.apply_portal_operations', 'core.portal_revoke_scope', 'core.schedule_tick', 'core.register_file_field', 'core.enable_file_gc', 'core.apply_system_operations', 'core.service_actor', 'core.apply_migration_operations', 'core.allow_public_read', 'core.portal_in_scope', 'core.allow_portal_file', 'core.house_levels', 'core.apply_house_level', 'core.register_suggestion_kind', 'core.allow_outsider_procedure', 'core.allow_reader_procedure', 'core.suggestion_author', 'core.suggestion_id', 'core.portal_grant', 'core.set_suggestion_on_submit', 'core.allow_public_write', 'core.is_public_batch', 'core.current_role', 'core.current_visitor', 'core.register_capability', 'core.deprecate_capability', 'core.allow_scope_resolver', 'core.reader_in_scope'];
+const CORE_HELPERS = ['core.ensure_app', 'core.register_table', 'core.unregister_table', 'core.allow_procedure', 'core.add_validate_hook', 'core.allow_read', 'core.disallow_read', 'core.apply_row_op', 'core.next_code', 'core.fail', 'core.next_seq', 'core.memberships', 'core.changes', 'core.files', 'core.synced_tables', 'core.profiles', 'core.apps', 'core.allow_portal_resolver', 'core.apply_portal_operations', 'core.portal_revoke_scope', 'core.schedule_tick', 'core.register_file_field', 'core.enable_file_gc', 'core.apply_system_operations', 'core.service_actor', 'core.apply_migration_operations', 'core.allow_public_read', 'core.portal_in_scope', 'core.allow_portal_file', 'core.house_levels', 'core.apply_house_level', 'core.register_suggestion_kind', 'core.allow_outsider_procedure', 'core.allow_reader_procedure', 'core.suggestion_author', 'core.suggestion_id', 'core.portal_grant', 'core.set_suggestion_on_submit', 'core.allow_public_write', 'core.is_public_batch', 'core.current_role', 'core.current_visitor', 'core.visitor_guest_ids', 'core.allow_visitor_claim', 'core.disallow_procedure', 'core.read', 'core.register_capability', 'core.deprecate_capability', 'core.allow_scope_resolver', 'core.reader_in_scope'];
 const NAME = /^(\d{8})_(\d{4})_(core|tasks|invoices|booking|food|central|guests|organizers|resources|flow)_[a-z0-9_]+\.sql$/;
 
 const problems = [];
@@ -25,7 +25,9 @@ for (const file of files) {
   seen.add(key);
   const schema = match[3];
   // Un id de capacidad ("invoices.register_purchase_quick") dentro de un JSON no es una referencia a otro schema (catálogo 0097).
-  const sql = fs.readFileSync(path.join(DIR, file), 'utf8').replace(/--[^\n]*/g, '').replace(/"(id|capability|capabilityId)"\s*:\s*"[a-z]+\.[a-z0-9_]+"/g, '"$1": ""');
+  let sql = fs.readFileSync(path.join(DIR, file), 'utf8').replace(/--[^\n]*/g, '').replace(/"(id|capability|capabilityId)"\s*:\s*"[a-z]+\.[a-z0-9_]+"/g, '"$1": ""');
+  // current_setting('core.actor') y compañía son variables de sesión del núcleo, no referencias a otro schema (falso positivo visto en Booking 0493 y Flow 0925).
+  sql = sql.replace(/current_setting\(\s*'core\.[a-z_]+'\s*(,\s*true\s*)?\)/g, 'current_setting()');
   for (const other of SCHEMAS.filter((s) => s !== schema)) {
     const refs = [...sql.matchAll(new RegExp(`\\b${other}\\.([a-z_][a-z0-9_]*)`, 'g'))].map((m) => `${other}.${m[1]}`);
     for (const ref of new Set(refs)) {
