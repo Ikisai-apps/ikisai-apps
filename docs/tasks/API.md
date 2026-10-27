@@ -2122,3 +2122,18 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
   - Si la madre no está abierta (hecha, descartada o en la papelera), las hijas no se tocan y llega `children: null`.
   - `children` también vale con los demás tipos de las fuentes de sistema. La madre, reenviada, toma el título y la nota nuevos mientras esté abierta.
 - **Pruebas:** `tests/tasks/requests-children.test.ts`.
+
+## 43. Lo que Tasks ofrece en el catálogo de capacidades (contrato §8, migración 0345; encargo de Core, 27-10-2026)
+
+Para que el editor y los recorridos de Flow (u otra app) lo ofrezcan desde el catálogo y lo invoquen con el token de la persona (`POST capabilities/<id>/invoke`):
+
+| Capacidad | Tipo | Ruta | Roles | Riesgo | Idempotente | Qué hace |
+|---|---|---|---|---|---|---|
+| `tasks.request_task` | execute | `POST requests/task` | editor, owner | bajo | sí (`source:external_ref`) | Una tarea pedida desde otra app (§19–§20), con `children` (§42) |
+| `tasks.request_purchase` | execute | `POST requests/purchase` | editor, owner | bajo | sí (`source:external_ref`) | Una solicitud de compra en un proyecto (§39) |
+| `tasks.projects_open` | read | `GET requests/projects` | editor, owner | bajo | sí | `{projects: [{id, title, tabId, tabName}]}`: los proyectos abiertos que ve la persona, sin «Entrada», sin archivados y sin papelera |
+
+- Los esquemas de entrada y salida y los anclajes (ids de feedback de las pantallas donde ya existe cada cosa) van en la migración.
+- **`requests/task` con hijas, también con el token de la persona:** mismas reglas que §42. Solo si la tarea está viva, sin hacer y con proyecto; pendiente de clasificar, llega `children: null` y las hijas esperan al próximo envío.
+- **`GET requests/projects`** es nueva. El catálogo no admite rutas con punto, como `read/tasks.targets`. Lee `tasks.targets` y lo aplana.
+- **Pruebas:** `tests/tasks/capabilities.test.ts`.

@@ -34,6 +34,28 @@ export async function requestTaskId(externalRef: string): Promise<string> {
 
 type TaskTarget = { id: string; visible?: boolean; request?: string; [key: string]: unknown };
 
+/** Las hijas de una tarea pedida (§42), con el contexto de quien escribe (la persona o la identidad de servicio): primero,
+ *  con la lista entera, se pone al día y se retira; después, cada hija que falta en su propio lote (la procedencia de una
+ *  tarea se fija una por lote). Repetir completa lo que haya quedado a medias. */
+async function writeChildren(internal: ReturnType<typeof createSync>, ctx: Parameters<ReturnType<typeof createSync>['commit']>[0], tag: string,
+  parentRef: string, kind: string, children: Array<Record<string, string>>) {
+  type ChildOut = { ref: string; taskId: string; status: string };
+  type Outcome = { children: ChildOut[]; created: number; updated: number; retired: number };
+  const call = async (args: Record<string, unknown>) => ((await internal.commit(ctx, { requestId: `${tag}-children-${crypto.randomUUID()}`,
+    operations: [{ op: 'call', procedure: 'tasks.request_children', args: { parentRef, kind, ...args } }] })).results[0] as { result?: Outcome })?.result;
+  const first = await call({ children, create: false, retire: true });
+  const list = first?.children ?? [];
+  let created = 0;
+  for (const [i, child] of list.entries()) {
+    if (child.status !== 'missing') continue;
+    const made = await call({ children: [children.find((c) => c.ref === child.ref)], retire: false });
+    list[i] = made?.children[0] ?? child;
+    created += made?.created ?? 0;
+  }
+  return { children: list, childrenCounts: { created, updated: first?.updated ?? 0, retired: first?.retired ?? 0 } };
+}
+
+
 export function requestRoutes(supabase: Supabase): AppRoute[] {
   const internal = createSync(supabase, 'tasks', {});
   return [{
@@ -67,15 +89,25 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       // De qué espacio de Recursos se avisa (0336): opcional; si no existe o está archivado, la petición entra sin él.
       const spaceId = text('space_id', 36);
       for (const [field, value] of [['project_id', projectId], ['tab_id', tabId], ['space_id', spaceId]] as const) if (value !== undefined && !UUID.test(value)) invalid(field, `${field} debe ser un uuid.`);
+      // Hijas (§42): la lista ENTERA de esta petición, cada una con su clave estable; las que dejen de venir se retiran.
+      const children = parseChildren(body.children, invalid);
 
       const externalRef = `${source}:${reference}`;
       const id = await requestTaskId(externalRef);
+      // Con la tarea viva y sin hacer, sus hijas; si no (pendiente de clasificar, hecha o en la papelera), `children: null`.
+      const withChildren = async <T extends { task: TaskTarget | null }>(out: T) => {
+        if (children === undefined) return out;
+        // Una petición pendiente o descartada también sale como `kind: 'task'`, pero sin proyecto (tasks.targets, §20).
+        const task = out.task as { projectId?: string; visible?: boolean; done?: boolean; deleted?: boolean } | null;
+        if (!task?.projectId || task.visible === false || task.done || task.deleted) return { ...out, children: null };
+        return { ...out, ...(await writeChildren(internal, ctx, `request-${source}`, externalRef, kind, children)) };
+      };
       const read = async () => {
         const out = await supabase.rpc<{ items: TaskTarget[] }>('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.targets', p_args: { kind: 'task', ids: [id] } });
         return out.items[0] ?? null;
       };
       const existing = await read();
-      if (existing) return { created: false, routed: null, task: existing };
+      if (existing) return withChildren({ created: false, routed: null, task: existing });
 
       let created = false, routed: string | null = null;
       try {
@@ -89,12 +121,25 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       } catch (error) {
         // Dos peticiones a la vez: la segunda choca con la tarea que acaba de crear la primera, que es la que se devuelve.
         const raced = await read();
-        if (raced) return { created: false, routed: null, task: raced };
+        if (raced) return withChildren({ created: false, routed: null, task: raced });
         throw error;
       }
       const task = await read();
       if (!task) fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa una tarea que no puedes ver.');
-      return { created, routed, task };
+      // Pendiente de clasificar, la tarea aún no existe: las hijas esperan al próximo envío.
+      return withChildren({ created, routed, task });
+    },
+  }, {
+    /**
+     * `GET requests/projects` (§43): los proyectos abiertos que ve quien pide, para elegir dónde pedir una tarea o una
+     * compra (`project_id`). Sin el sistema («Entrada»), sin archivados y sin papelera. Es la capacidad `tasks.projects_open`.
+     */
+    method: 'GET', pattern: 'requests/projects', handler: async ({ ctx }) => {
+      const out = await supabase.rpc<{ tabs?: Array<{ id: string; name: string; deleted?: boolean; projects?: Array<{ id: string; title: string; status: string; system?: string | null; deleted?: boolean }> }> }>(
+        'core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.targets', p_args: {} });
+      const projects = (out.tabs ?? []).filter((t) => !t.deleted).flatMap((t) => (t.projects ?? [])
+        .filter((p) => !p.system && !p.deleted && p.status !== 'archived').map((p) => ({ id: p.id, title: p.title, tabId: t.id, tabName: t.name })));
+      return { projects };
     },
   }, {
     /**
@@ -346,21 +391,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const withChildren = async <T extends { status: string }>(out: T) => {
         if (children === undefined) return out;
         if (out.status !== 'open' || !childCtx) return { ...out, children: null };
-        type ChildOut = { ref: string; taskId: string; status: string };
-        type Outcome = { children: ChildOut[]; created: number; updated: number; retired: number };
-        const call = async (args: Record<string, unknown>) => ((await internal.commit(childCtx!, { requestId: `${sourceName}-children-${crypto.randomUUID()}`,
-          operations: [{ op: 'call', procedure: 'tasks.request_children', args: { parentRef: externalRef, kind, ...args } }] })).results[0] as { result?: Outcome })?.result;
-        // 1. Poner al día y retirar con la lista entera; 2. cada hija que falta, en su propio lote (una procedencia por lote).
-        const first = await call({ children, create: false, retire: true });
-        const list = first?.children ?? [];
-        let created = 0;
-        for (const [i, child] of list.entries()) {
-          if (child.status !== 'missing') continue;
-          const made = await call({ children: [children.find((c) => c.ref === child.ref)], retire: false });
-          list[i] = made?.children[0] ?? child;
-          created += made?.created ?? 0;
-        }
-        return { ...out, children: list, childrenCounts: { created, updated: first?.updated ?? 0, retired: first?.retired ?? 0 } };
+        return { ...out, ...(await writeChildren(internal, childCtx, sourceName, externalRef, kind, children)) };
       };
       const before = await status();
       if (before.status !== 'unknown' && !(refreshes && before.status === 'open')) return reply(before);
