@@ -604,7 +604,9 @@ test('organizers · factura registrada con su PDF guardado: «Abrir PDF» lo abr
     asked = new URL(route.request().url()).pathname.split('/').pop()!;
     return route.fulfill({ json: { id: file, url: 'https://storage.example.invalid/senal.pdf?token=x', mime: 'application/pdf', filename: 'senal.pdf', size: 1234, expiresAt: new Date(Date.now() + 300_000).toISOString() } });
   });
-  await page.context().route('https://storage.example.invalid/**', (route) => route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4' }));
+  // Chromium sin ventana descarga los PDF en lugar de mostrarlos (la pestaña se queda en about:blank): se mira la petición.
+  let opened = '';
+  await page.context().route('https://storage.example.invalid/**', (route) => { opened = route.request().url(); return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4' }); });
   await enter(page, await api.organizerLink([reservation], 'registrada@example.invalid', 'Rosa'));
   await page.locator('#tab-pagos').click();
   await page.locator('#moneyStatement li.mb-doc .mb-open').first().click();
@@ -613,7 +615,8 @@ test('organizers · factura registrada con su PDF guardado: «Abrir PDF» lo abr
   await expect(page.locator('#askInvoice')).toHaveCount(0);
   const popup = page.waitForEvent('popup');
   await sheet.getByRole('button', { name: 'Abrir PDF' }).click();
-  await expect.poll(async () => (await popup).url()).toBe('https://storage.example.invalid/senal.pdf?token=x');
+  await popup;
+  await expect.poll(() => opened).toBe('https://storage.example.invalid/senal.pdf?token=x');
   expect(asked).toBe(file);
 });
 
