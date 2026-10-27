@@ -40,6 +40,7 @@ export const PROCEDURES = {
   generateIngredientTasks: 'flow.generate_ingredient_tasks',
   unitLinkExternal: 'flow.unit_link_external',
   newVersion: 'flow.new_version',
+  stationSetParams: 'flow.station_set_params',
 } as const;
 
 /** Refresco entre móviles (P-3, aprobado por Core): pull cada 3 s con la app visible; el sync-client para en segundo plano. */
