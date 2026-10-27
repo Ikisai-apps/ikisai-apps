@@ -1999,6 +1999,7 @@ El visitante, desde «Alójate aquí»:
 ## 41. Ajustes y devoluciones del cobro del alojamiento (migración 1403; VG 27-10-2026)
 
 - **Ajuste:** en «Alojamiento a la carta», «Ajustar…» cambia las noches o el precio por noche, y el importe vuelve a ser noches × precio.
+- **Ampliar o cambiar la estancia** (aceptación C): «Ampliar…» cambia en un lote las noches y la cama de la asignación, y las noches y el importe de su cobro. La lista solo ofrece camas libres todas esas noches, y el servidor lo vuelve a comprobar con `BED_OVERBOOKED` o `BED_HELD`: si falla, no cambia nada. Si el cobro ya estaba en Finance, queda por reenviar y se reenvía. La diferencia de dinero se cobra o se devuelve aparte.
 - **Devolución:** «Devolver…» guarda `walkin_charges.refund_cents` (hasta lo cobrado), `refund_method` y `refunded_at`. Con 0 se quita.
 - **Un solo apunte en Finance por cobro** (`booking:stay:<id del cobro>`): `walkinFinanceEntry` lo manda por lo cobrado menos lo devuelto.
   - El método de la devolución va en negativo y el desglose lleva una línea «Devolución» negativa, así que métodos y desglose suman el importe.
@@ -2030,4 +2031,42 @@ El visitante, desde «Alójate aquí»:
   - «Cobrar y alojar» y «Descartar», en las solicitudes;
   - «Llega» (`guest_arrive`), «Sale» (`guest_leave`) y «Ficha», en los huéspedes.
 - **La regla** está en `apps/booking/src/app/receptionLanes.ts` (`receptionCards`, `laneCards`). Es pura y tiene prueba en `tests/booking/reception-lanes.test.ts`.
+
+## 44. El alojamiento como la barra, de punta a punta (resumen; VG 27-10-2026)
+
+Resumen del modelo, con los detalles en §36 a §43. Las pruebas que lo cubren:
+- `tests/booking/lodging-weekend-e2e.test.ts`: de punta a punta;
+- `tests/booking/lodging-load.test.ts`: 30 a la vez por la última cama y dos recepciones con el mismo número.
+
+**1. El visitante** (ven.ikisai.com, pestaña «Alójate aquí»; lo pinta Guests):
+1. Elige noches y personas. `booking_public_lodging` da la oferta y `booking_public_beds` las camas (§36, §38).
+2. Elige cama o pide que se la asignen, y mete sus datos en borrador.
+3. Pulsa «Ir a pagar»: `POST public/stay` (§37, §38) le da su **número** (1, 2, 3… por evento). El total lo calcula el servidor.
+4. Ve su estado en `booking_visitor_stay`: `por_pagar` → `pagada` → `alojado` → `salida`, o `caducada` o `descartada`.
+
+**2. La retención:**
+- En `hold` (por defecto, 2 h por evento), la cama queda retenida para ese número: no la puede dar ni otro visitante ni el personal (`BED_HELD`).
+- Al vencer, vuelve a estar libre y la solicitud pasa a `caducada`.
+- En `pay_first` no se retiene nada hasta pagar.
+- La comprobación y la retención van en el mismo lote, y los lotes van en serie: **nunca dos en la última plaza**.
+
+**3. Recepción** (`#/recepcion`, carriles §43):
+- Busca el número y ve qué falta por persona.
+- Completa los datos y pulsa «Cobrar y alojar» (Bizum, efectivo, Bitcoin o tarjeta).
+- En un lote (§39) se crean las fichas con el borrador, la cama con fechas y el cobro pagado.
+- El cobro va a Finance con las cabeceras de servidor: un apunte por cobro.
+- Repetirlo, o que dos recepciones lo hagan a la vez, no duplica nada.
+
+**4. Durante la estancia:**
+- «Llega» (`guest_arrive`) la marca recepción o Flow.
+- Ajustes y devoluciones (§41): un solo apunte, que se reenvía y sustituye al anterior.
+
+**5. La salida** (§40):
+- «Sale» (`guest_leave`) acorta la cama hasta hoy, así que queda libre esa noche.
+- Pide la limpieza a Tasks (`booking.bed_cleaning`, `LIMP-<asignación>`).
+- «Deshacer» la devuelve si nadie la ha ocupado.
+
+**6. Quien solo viene de día** (§42): sin noches no va a SES ni se le pide el documento. Si luego duerme, sí.
+
+**Para Central** (§18): «Camas libres esta noche» y «Solicitudes de noches por pagar».
 

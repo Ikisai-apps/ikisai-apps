@@ -13,7 +13,7 @@ interface Dashboard { computedAt: string; items: DashboardItem[]; unavailable: s
 const CACHE_PREFIX = 'ikisai-central-dashboard-v1:';
 /** Grupos plegados, por cuenta y dispositivo (R7): comodidad de quien mira, no estado compartido. */
 const FOLDED_PREFIX = 'ikisai-central-dashboard-folded-v1:';
-export const APP_NAMES: Record<string, string> = { central: 'Central', booking: 'Booking', invoices: 'Finance', tasks: 'Tasks', food: 'Food', resources: 'Recursos', guests: 'Guests' };
+export const APP_NAMES: Record<string, string> = { central: 'Central', booking: 'Booking', invoices: 'Finance', tasks: 'Tasks', food: 'Food', resources: 'Recursos', guests: 'Guests', organizers: 'Organizers' };
 const STATE_LABELS: Record<string, string> = { ok: 'En objetivo', atencion: 'Atención', critico: 'Crítico' };
 
 function readCache(key: string): Dashboard | null {

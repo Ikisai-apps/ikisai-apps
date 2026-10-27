@@ -12,6 +12,7 @@ import { createPrintView, el, openSheet, renderMoneyBreakdown, replace, toast, t
 import type { IssuedAddress, IssuedDocument, IssuerSnapshot } from '../../../../supabase/functions/_domain/invoices/issued.ts';
 import type { Contract, PortalInvoice, PortalInvoiceDocument, PortalMoney } from '../app/api.ts';
 import { statementOf, type StatementMove } from '../app/pay-state.ts';
+import { payableInvoices } from '../app/pay-link.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, contactLine, textParagraphs } from '../app/common-texts.ts';
 import { i18n, L, t } from '../app/i18n.ts';
@@ -121,6 +122,15 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
     });
     for (const button of statement.querySelectorAll('li.mb-doc button.mb-open')) fbMark(button, 'organizers.pagos.factura.abrir', 'Abrir factura');
 
+    // Fase 6: «Pagar ahora» con el enlace de la pasarela que crea Finance (F5). Solo si lo hay; el cobro lo registra Finance.
+    const payable = payableInvoices(m.invoices);
+    const payOnline = payable.length ? fbMark(section(t('Pagar en línea'), { id: 'payOnline' },
+      el('ul', { class: 'orgpaylist' }, ...payable.map(({ invoice, url }) => el('li', null,
+        el('span', null, el('strong', null, t('Factura {numero}', { numero: invoice.number })), ' · ', money(invoice.total), purposeChip(invoice.purpose) ? ' ' : null, purposeChip(invoice.purpose)),
+        el('a', { class: 'btn primary', href: url, target: '_blank', rel: 'noopener noreferrer', 'data-invoice': invoice.id, 'data-feedback-id': 'organizers.pagos.pagar_ahora', 'data-feedback-label': 'Pagar ahora' }, t('Pagar ahora'))))),
+      el('p', { class: 'muted small' }, t('El pago se hace en la pasarela segura del banco o de la tarjeta: Ikisai no ve los datos de tu tarjeta. Lo verás como pagado cuando el equipo de Ikisai lo registre.'))),
+    'organizers.pagos.en_linea', 'Pagar en línea') : null;
+
     const figures = fbMark(section(t('Las cuentas'), { id: 'moneyTotals' },
       el('dl', { class: 'kv orgtotals' },
         s.hasContract ? [
@@ -140,6 +150,7 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
       staleAt ? staleNote(staleAt) : null,
       contract ? null : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.')),
       fbMark(el('div', { id: 'moneyStatement', class: 'orgstatement' }, statement), 'organizers.pagos.extracto', 'Extracto'),
+      payOnline,
       contract?.payment_type ? el('p', { id: 'paymentType' }, t('Forma de pago acordada: {forma}', { forma: t(PAYMENT_TYPES[contract.payment_type] ?? contract.payment_type) })) : null,
       figures,
       owes ? null : how);

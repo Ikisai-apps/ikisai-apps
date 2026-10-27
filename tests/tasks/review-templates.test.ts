@@ -37,7 +37,7 @@ test('la plantilla de la casa «Revisión de apertura» viene sembrada, con sus 
   const items = (await rows('tasks.review_template_items', app.tokens.reader)).filter((i) => i.template_id === tpl.id);
   assert.equal(items.length, 15);
   assert.equal(new Set(items.map((i) => i.zone)).size, 14, 'todas las zonas');
-  assert.deepEqual(items.filter((i) => i.critical).map((i) => i.zone).sort(), ['accesos', 'agua', 'barandillas', 'duchas_acs', 'electricidad', 'extintores', 'maquinaria']);
+  assert.deepEqual(items.filter((i) => i.critical).map((i) => i.zone).sort(), ['accesos', 'agua', 'barandillas', 'duchas_acs', 'electricidad', 'extintores'], 'los críticos que decidió VG (27-10)');
   const acs = items.find((i) => i.zone === 'duchas_acs');
   assert.deepEqual([acs.answer, acs.expected], ['reading', { unit: '°C', min: 50 }]);
 });
