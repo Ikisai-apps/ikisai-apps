@@ -89,8 +89,8 @@ accessesSheet=async function(){
 createAccessSheet=function(){
   if(!isAdministrator())return;
   const K=IkisaiKit,host=kitSheet('Crear agente');
-  const name=K.el('input',{id:'agentName','data-feedback-id':'tasks.agentes.nuevo.nombre','data-feedback-label':'Nombre',maxlength:'100',placeholder:'Por ejemplo: Asistente de obra'});
-  const role=K.el('select',{id:'agentRole','data-feedback-id':'tasks.agentes.nuevo.permiso','data-feedback-label':'Permiso'},K.el('option',{value:'editor'},'Editar'),K.el('option',{value:'reader'},'Solo lectura'));
+  const name=K.el('input',{id:'agentName','data-field-id':'tasks.agentes.nuevo.nombre','data-field-entity':'core.profiles','data-field-prop':'display_name','data-feedback-id':'tasks.agentes.nuevo.nombre','data-feedback-label':'Nombre',maxlength:'100',placeholder:'Por ejemplo: Asistente de obra'});
+  const role=K.el('select',{id:'agentRole','data-field-id':'tasks.agentes.nuevo.permiso','data-field-entity':'core.memberships','data-field-prop':'role','data-feedback-id':'tasks.agentes.nuevo.permiso','data-feedback-label':'Permiso'},K.el('option',{value:'editor'},'Editar'),K.el('option',{value:'reader'},'Solo lectura'));
   const scopes=K.createScopePicker({areas:scopeAreas(),value:'*',label:'Áreas y proyectos'});
   const save=K.el('button',{class:'primary',type:'button',id:'saveAgent','data-feedback-id':'tasks.agentes.nuevo.crear','data-feedback-label':'Crear y mostrar la clave'},'Crear y mostrar la clave');
   host.append(K.el('label',{class:'field'},K.el('span',null,'Nombre'),name),K.el('label',{class:'field'},K.el('span',null,'Permiso'),role),scopes.element);

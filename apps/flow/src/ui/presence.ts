@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { el, icon, replace, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES, type PresenceStage } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -45,7 +45,7 @@ export function mountPresence(stage: PresenceStage): ViewMount {
     let search = '';
     let error = '';
 
-    const searchInput = el('input', { type: 'search', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar por nombre', autocomplete: 'off',
+    const searchInput = el('input', { ...fieldAttrs({ id: 'flow.llegadas.buscar', type: 'search' }), type: 'search', placeholder: 'Buscar por nombre', 'aria-label': 'Buscar por nombre', autocomplete: 'off',
       oninput: () => { search = searchInput.value.trim().toLocaleLowerCase('es'); paint(); } });
     const count = el('p', { class: 'muted small', role: 'status' });
     const listEl = el('div', { class: 'fqueue presence-list', role: 'list' });

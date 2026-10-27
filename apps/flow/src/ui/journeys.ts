@@ -32,7 +32,8 @@ async function loadJourneys(client: SyncClient): Promise<Journey[]> {
     client.list(TABLES.definitionStages), client.list(TABLES.definitionSteps)]);
   const live = <T extends { deleted_at: string | null }>(rows: unknown[]) => (rows as T[]).filter((r) => !r.deleted_at);
   const allSteps = live<Step>(steps);
-  return live<Definition>(defs).map((def) => {
+  // Las cadenas de los hitos del Avance (0947) no son recorridos para hacer a mano: no salen aquí.
+  return live<Definition>(defs).filter((d) => !d.key.startsWith('cadena_')).map((def) => {
     const version = live<Version>(versions).filter((v) => v.definition_id === def.id && v.status === 'published').sort((a, b) => b.version - a.version)[0];
     if (!version) return null;
     const own = live<Stage>(stages).filter((s) => s.version_id === version.id).sort((a, b) => a.position - b.position)
@@ -60,8 +61,8 @@ export const mountJourneys: ViewMount = ({ main, client, navigate }) => {
       el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, j.def.name),
         el('small', { class: 'qcard-sub muted' }, [j.def.description, j.stages.length > 1 ? `${j.stages.length} tramos` : ''].filter(Boolean).join(' · '))),
       el('div', { class: 'flow-actions' },
-        el('button', { type: 'button', class: 'ghost', onclick: () => void runJourney(client, j, 'learn') }, 'Aprender'),
-        el('button', { type: 'button', class: 'primary', onclick: () => void runJourney(client, j, 'run') }, 'Ejecutar'),
+        busyButton({ class: 'ghost' }, 'Aprender', () => runJourney(client, j, 'learn')),
+        busyButton({ class: 'primary' }, 'Ejecutar', () => runJourney(client, j, 'run')),
         isOwner ? el('button', { type: 'button', class: 'ghost', onclick: () => navigate(`#/recorridos/${j.def.key}/editar`) }, 'Editar') : null))));
   }
   return () => undefined;
@@ -80,7 +81,7 @@ function setPath(target: Record<string, any>, path: string, value: unknown): voi
 /** La web de cada app (`invoices` es Finance). El enlace profundo con el campo señalado llegará con el inventario del núcleo. */
 const appUrl = (app: string) => `https://${app === 'invoices' ? 'finance' : app}.ikisai.com/`;
 /** Pantalla de cada anclaje conocido (prefijo → ruta de la app), para abrir el «ir a otra app» donde está el control. */
-const ANCHOR_ROUTES: Array<[string, string]> = [['booking.recepcion', '#/recepcion']];
+const ANCHOR_ROUTES: Array<[string, string]> = [['booking.recepcion', '#/recepcion'], ['booking.reservas', '#/reservas'], ['booking.reserva', '#/reservas']];
 const routeOf = (anchor: string | null) => (anchor ? ANCHOR_ROUTES.find(([p]) => anchor === p || anchor.startsWith(`${p}.`))?.[1] ?? '' : '');
 const APP_NAMES: Record<string, string> = { invoices: 'Finance', tasks: 'Tasks', booking: 'Booking', food: 'Food', central: 'Central', guests: 'Guests', organizers: 'Organizers', flow: 'Flow' };
 const appName = (app: string) => APP_NAMES[app] ?? app;
@@ -88,7 +89,11 @@ const appName = (app: string) => APP_NAMES[app] ?? app;
 async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run'): Promise<void> {
   if (!isOnline(client)) { toast('Los recorridos necesitan conexión.'); return; }
   let caps: Capability[] = [];
-  try { caps = (await client.api<{ items: Capability[] }>('/capabilities')).items; } catch { caps = []; }
+  /** Lo respondido en el recorrido (por clave), para los enlaces que lo necesitan (el código público del evento). */
+  const answers: Record<string, unknown> = {};
+  // Si no se pueden leer las capacidades es un fallo de red o del servidor, no de permisos: se dice así y se puede reintentar.
+  try { caps = (await client.api<{ items: Capability[] }>('/capabilities')).items; }
+  catch { toast('No se ha podido comprobar qué puede hacer tu cuenta. Revisa la conexión y vuelve a intentarlo.'); return; }
   const capOf = (id: string | null) => caps.find((c) => c.id === id);
   if (mode === 'run') {
     const missing = j.stages.find(({ stage }) => stage.kind === 'capability' && !capOf(stage.capability)?.allowed);
@@ -96,30 +101,48 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
   }
   let events: BookingEvent[] = [];
   if (j.stages.some(({ steps }) => steps.some((s) => s.key === 'target'))) {
-    try { events = ((await client.api<{ rows: BookingEvent[] }>('/read/booking.event_projection?limit=200')).rows ?? []).sort((a, b) => a.starts_on.localeCompare(b.starts_on)); } catch { events = []; }
+    try { events = ((await client.api<{ rows: BookingEvent[] }>('/read/booking.event_projection?limit=200')).rows ?? []).sort((a, b) => a.starts_on.localeCompare(b.starts_on)); }
+    catch { toast('No se han podido cargar los eventos: de momento solo sale «Gasto general». Cierra y vuelve a abrir para reintentar.'); events = []; }
   }
   const executionId = crypto.randomUUID();
   try { await callProcedure(client, PROCEDURES.startExecution, { execution_id: executionId, version_id: j.version.id, mode }); }
   catch (error) { toast(describeError(error)); return; }
 
   const host = el('div', { class: 'journey' });
-  const progress = el('p', { class: 'muted small journey-progress', role: 'status' });
-  const sheet = openSheet({ title: `${j.def.name} · ${mode === 'learn' ? 'aprender' : 'ejecutar'}`,
+  const progress = el('p', { class: 'muted small journey-progress', role: 'status', tabindex: '-1' });
+  /** Tras cada `replace(host)`: el foco al título del tramo (o a la primera pregunta), no al body. */
+  const focusHost = () => requestAnimationFrame(() => {
+    const target = host.querySelector<HTMLElement>('h3, input, select, textarea') ?? progress;
+    if (target.tagName === 'H3') target.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: false });
+  });
+  /** Mientras una acción del tramo trabaja, las demás de su fila quedan bloqueadas («Descartar» y «Registrar» no se pisan). */
+  const exclusive = (run: () => Promise<unknown>) => async () => {
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>('.flow-actions button')];
+    const was = buttons.map((b) => b.disabled);
+    buttons.forEach((b) => { b.disabled = true; });
+    try { await run(); } finally { buttons.forEach((b, i) => { if (b.isConnected) b.disabled = was[i]!; }); }
+  };
+  const sheet = openSheet({ initialFocus: progress, title: `${j.def.name} · ${mode === 'learn' ? 'aprender' : 'ejecutar'}`,
     meta: mode === 'learn' ? 'Ensayo: no se registra nada.' : 'Se registrará de verdad, con tu cuenta.', body: el('div', null, progress, host),
-    // Salir siempre a la vista (VG, 27-10): lo hecho queda guardado y el recorrido se retoma desde Recorridos.
-    foot: el('div', { class: 'flow-nav', 'data-feedback-id': 'flow.recorrido.navegacion' },
-      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Volver a Recorridos', onclick: () => void sheet.close() }, el('span', { 'aria-hidden': 'true' }, '‹'), ' Recorridos'),
-      el('button', { type: 'button', class: 'ghost', 'aria-label': 'Cerrar y volver a la entrada', onclick: () => { void sheet.close().then(() => { location.hash = '#/'; }); } },
-        el('span', { 'aria-hidden': 'true' }, '✕'), ' Cerrar')) });
+    // Al pie, solo lo que hace avanzar (VG, 27-10); para salir, el ✕ de la hoja: lo hecho queda guardado.
+  });
 
   async function startStage(index: number): Promise<void> {
     const entry = j.stages[index];
     if (!entry) { toast(mode === 'learn' ? 'Practicado. En «Ejecutar» se registraría de verdad.' : 'Recorrido terminado.'); sheet.close(); return; }
     const { stage } = entry;
     replace(progress, j.stages.length > 1 ? `Tramo ${index + 1} de ${j.stages.length} · ${stage.title}` : stage.title);
+    replace(host, el('p', { class: 'muted' }, 'Cargando…'));
     let prefilled: Record<string, any> = {};
     try { prefilled = (await callProcedure<{ values: Record<string, any> }>(client, PROCEDURES.startStage, { execution_id: executionId, position: stage.position })).values ?? {}; }
-    catch (error) { toast(describeError(error)); return; }
+    catch (error) {
+      replace(host, el('div', { class: 'journey-retry' },
+        el('p', { class: 'formerror', role: 'alert' }, `No se ha podido abrir «${stage.title}»: ${describeError(error)}`),
+        el('div', { class: 'flow-actions' }, busyButton({ class: 'ghost' }, 'Descartar', () => discard()), busyButton({ class: 'primary' }, 'Reintentar', () => startStage(index)))));
+      focusHost();
+      return;
+    }
     if (stage.kind === 'handoff') { showHandoff(index); return; }
     showQuestions(index, prefilled);
   }
@@ -128,15 +151,20 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
     const { stage } = j.stages[index]!;
     const app = stage.target_app ?? 'flow';
     const back = encodeURIComponent(location.href);
-    const url = `${appUrl(app)}?desde=flow&volver=${back}&titulo=Flow${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}${routeOf(stage.target_anchor)}`;
+    // El visitante (móvil A) va a ven.ikisai.com/e/<código público>, el que se apuntó en el recorrido; el resto, a la web de su app.
+    const code = typeof answers.codigo === 'string' ? answers.codigo.trim().toUpperCase() : '';
+    const visitor = !!stage.target_anchor?.startsWith('guests.visitante') && /^[A-Z0-9]{4,20}$/.test(code);
+    const base = visitor ? `https://ven.ikisai.com/e/${encodeURIComponent(code)}` : appUrl(app);
+    const url = `${base}?desde=flow&volver=${back}&titulo=Flow${stage.target_anchor ? `&campo=${encodeURIComponent(stage.target_anchor)}` : ''}${visitor ? '' : routeOf(stage.target_anchor)}`;
     replace(host, el('div', { class: 'journey-handoff', 'data-feedback-id': `flow.recorrido.${j.def.key}.tramo${stage.position}` },
       el('h3', null, stage.title),
       stage.explain ? el('p', null, stage.explain) : null,
       el('p', null, el('a', { class: 'button primary', href: url, target: '_blank', rel: 'noopener' }, `Ir a ${appName(app)} ↗`)),
       el('p', { class: 'muted small' }, mode === 'learn' ? 'En el ensayo no hace falta ir: toca «Siguiente».' : 'Cuando lo hayas hecho allí, vuelve y toca «Hecho».'),
       el('div', { class: 'flow-actions' },
-        busyButton({ class: 'ghost' }, 'Descartar', () => discard()),
-        busyButton({ class: 'primary' }, mode === 'learn' ? 'Siguiente' : 'Hecho', async () => { await finishStage(index, mode === 'learn' ? 'practiced' : 'done'); }))));
+        busyButton({ class: 'ghost' }, 'Descartar', exclusive(() => discard())),
+        busyButton({ class: 'primary' }, mode === 'learn' ? 'Siguiente' : 'Hecho', exclusive(async () => { await finishStage(index, mode === 'learn' ? 'practiced' : 'done'); })))));
+    focusHost();
   }
 
   function showQuestions(index: number, prefilled: Record<string, any>): void {
@@ -156,7 +184,9 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
       if (s.input_type === 'choice') return { ...base, kind: 'choice', options: (s.options ?? []).map((o) => (typeof o === 'string' ? { value: o, label: o } : o)) };
       if (s.input_type === 'photo') return { ...base, kind: 'text', hint: [hint, 'De momento, descríbela: adjuntar la foto llegará pronto.'].filter(Boolean).join(' ') };
       const type = s.input_type ?? propOf(cap?.input, s.key)?.type;
-      return { ...base, kind: 'text', inputType: s.key === 'date' ? 'date' : type === 'number' ? 'number' : 'text' };
+      // Números como texto con teclado decimal: «12,50» vale (type=number lo vaciaba en algunos móviles).
+      if (s.key !== 'date' && (type === 'number' || s.key === 'total')) return { ...base, kind: 'text', inputType: 'text', inputAttrs: { inputmode: 'decimal', autocomplete: 'off' } };
+      return { ...base, kind: 'text', inputType: s.key === 'date' ? 'date' : 'text' };
     };
     const typed = (s: Step, v: string): unknown => {
       if (s.key === 'target') return JSON.parse(v);
@@ -177,12 +207,14 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
         if (s.input_type === 'number' && v !== '' && !Number.isFinite(Number(v.replace(',', '.')))) throw new StepFormInvalid('Pon un número.');
         const typedValue = typed(s, v);
         setPath(values, q.id, typedValue);
+        answers[q.id] = typedValue;
         await callProcedure(client, PROCEDURES.saveStageValues, { execution_id: executionId, position: stage.position, values: { [q.id]: typedValue } });
       },
       onDone: () => showReview(),
     });
     replace(host, form.element, review);
     if (!asked.length) { form.element.hidden = true; showReview(); }
+    focusHost();
 
     function label(s: Step): string {
       const v = getPath(values, s.key);
@@ -205,9 +237,12 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
           s.mode === 'ask' ? el('button', { type: 'button', class: 'ghost small', onclick: () => { review.hidden = true; form.element.hidden = false; form.goTo(s.key); } }, 'Corregir')
             : el('small', { class: 'muted' }, s.mode === 'fixed' ? ' (fijo)' : ' (del tramo anterior)'))])),
         el('div', { class: 'flow-actions' },
-          busyButton({ class: 'ghost' }, 'Descartar', () => discard()),
+          busyButton({ class: 'ghost' }, 'Descartar', exclusive(() => discard())),
           busyButton({ class: 'primary' }, mode === 'learn' ? (last ? 'Terminar el ensayo' : 'Siguiente tramo')
-            : stage.kind === 'capability' ? 'Registrar' : (last ? 'Terminar' : 'Siguiente tramo'), go)));
+            : stage.kind === 'capability' ? 'Registrar' : (last ? 'Terminar' : 'Siguiente tramo'), exclusive(go))));
+      if (!form.element.hidden) return;
+      review.querySelector('h3')?.setAttribute('tabindex', '-1');
+      (review.querySelector('h3') as HTMLElement | null)?.focus();
     }
   }
 
@@ -234,8 +269,9 @@ async function runJourney(client: SyncClient, j: Journey, mode: 'learn' | 'run')
       replace(host, el('div', { class: 'journey-retry' },
         el('p', null, `«${stage.title}» no se ha podido registrar: ${describeError(error)}`),
         el('div', { class: 'flow-actions' },
-          busyButton({ class: 'ghost' }, 'Descartar', () => discard()),
-          busyButton({ class: 'primary' }, 'Reintentar', () => startStage(index)))));
+          busyButton({ class: 'ghost' }, 'Descartar', exclusive(() => discard())),
+          busyButton({ class: 'primary' }, 'Reintentar', exclusive(() => startStage(index))))));
+      focusHost();
     }
   }
 

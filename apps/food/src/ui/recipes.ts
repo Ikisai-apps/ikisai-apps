@@ -83,16 +83,16 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   const quickPending = (recipe: RecipeRow) => isQuickPending(recipe, lines);
 
   const select = (id: string, label: string, options: Array<[string, string]>, key: 'category' | 'diet' | 'allergen' | 'status', mark: Mark) => {
-    const node = el('select', { ...mark, id, class: 'compact', 'aria-label': label, onchange: () => { filter[key] = node.value; paint(); } },
+    const node = el('select', { 'data-field-none': '', ...mark, id, class: 'compact', 'aria-label': label, onchange: () => { filter[key] = node.value; paint(); } },
       el('option', { value: '' }, label), ...options.map(([value, name]) => el('option', { value }, name)));
     return node;
   };
-  const allergenMode = el('select', { 'data-feedback-id': 'food.recetario.filtros.alergeno_modo', 'data-feedback-label': 'Lleva o sin el alérgeno', id: 'filterAllergenMode', class: 'compact', 'aria-label': 'Lleva o sin el alérgeno',
+  const allergenMode = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.recetario.filtros.alergeno_modo', 'data-feedback-label': 'Lleva o sin el alérgeno', id: 'filterAllergenMode', class: 'compact', 'aria-label': 'Lleva o sin el alérgeno',
     onchange: () => { filter.allergenMode = allergenMode.value as 'lleva' | 'sin'; paint(); } },
     el('option', { value: 'lleva' }, 'Lleva'), el('option', { value: 'sin' }, 'Sin'));
   // Sin red (068 §6): de cuándo son los datos y qué necesita red; lo demás funciona.
   const offline = el('div', { 'data-feedback-id': 'food.recetario.sin_red', 'data-feedback-label': 'Sin conexión', class: 'banner warn notice fd-offline', id: 'recipesOffline', role: 'status', hidden: true });
-  const search = el('input', { 'data-feedback-id': 'food.recetario.filtros.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', id: 'recipeSearch', placeholder: 'Buscar receta', 'aria-label': 'Buscar recetas', autocomplete: 'off',
+  const search = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.recetario.filtros.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', id: 'recipeSearch', placeholder: 'Buscar receta', 'aria-label': 'Buscar recetas', autocomplete: 'off',
     oninput: () => { filter.query = search.value.trim().toLowerCase(); paint(); } });
   const grid = el('ul', { 'data-feedback-id': 'food.recetario.tarjetas', 'data-feedback-label': 'Recetas', class: 'recipegrid', id: 'recipeGrid', 'aria-label': 'Recetas' });
   const host = el('div');
@@ -451,9 +451,12 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   function openEditor(recipe: RecipeRow | null): void {
     const recipeId = recipe?.id ?? crypto.randomUUID();
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+    // Ayudantes: el campo lo declara quien llama (@field-caller).
     const input = (id: string, value: string | null, attrs: Record<string, unknown> = {}) => el('input', { id, type: 'text', value: value ?? '', ...attrs });
+    // @field-caller
     const area = (id: string, value: string | null, rows: number, mark: Mark) => { const node = el('textarea', { ...mark, id, rows: String(rows) }); node.value = value ?? ''; return node; };
     const field = (label: string, control: HTMLElement, hint?: string) => el('label', { class: 'field' }, el('span', null, label), control, hint ? el('span', { class: 'hint' }, hint) : null);
+    // @field-caller
     const check = (id: string, label: string, checked: boolean, mark: Mark) => { const box = el('input', { ...mark, id, type: 'checkbox', checked }); return { box, node: el('label', { class: 'checkline' }, box, el('span', null, label)) }; };
 
     // Foto
@@ -518,6 +521,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     // Dietas y alérgenos con el selector de etiquetas del kit: dos familias, chips conmutables y resumen arriba.
     const tags = createLabelPicker({
       label: 'Dietas y alérgenos',
+      // Guarda dos columnas (diet_tags y allergens); se declara la de seguridad.
+      field: { id: 'food.recetario.formulario.alergenos', entity: 'food.recipes', prop: 'allergens' },
       families: [{ id: 'diet', name: 'Dietas', color: '#5f7a4a' }, { id: 'allergen', name: 'Alérgenos que contiene', color: '#b4532a' }],
       labels: [
         ...DIET_TAGS.map((d) => ({ id: `diet:${d}`, name: DIET_LABELS[d], familyId: 'diet' })),
