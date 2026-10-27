@@ -95,7 +95,8 @@ test('no reserva hasta pagar: comprueba el hueco pero no bloquea; errores de fec
   const v = await visitorOf(d.code);
   await ask(d.code, v, { from_date: '2032-04-01', to_date: '2032-04-03', rate_id: d.rate, persons: 2 });
   const [r] = await rowsOf(v);
-  assert.deepEqual([r!.pay_mode, r!.hold_bed_ids, r!.hold_until, r!.total_cents], ['pay_first', null, null, 2000 * 2 * 2]);
+  // 1400: en pay_first las camas quedan como preferencia, sin bloqueo
+  assert.deepEqual([r!.pay_mode, r!.hold_bed_ids.length, r!.hold_until, r!.total_cents], ['pay_first', 2, null, 2000 * 2 * 2]);
   assert.equal(await free('2032-04-01', '2032-04-03', d.space), 2, 'no bloquea');
   const w = await visitorOf(d.code);
   // la disponibilidad es de toda la casa: una persona más de las que caben
