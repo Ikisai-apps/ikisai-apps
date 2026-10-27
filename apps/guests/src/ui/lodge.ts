@@ -38,7 +38,7 @@ const FIELDS: Array<{ key: keyof TravelerFields; type?: string; auto?: string; r
   { key: 'phone', type: 'tel', auto: 'tel', mark: fieldAttrs({ id: 'guests.visitante.alojate.viajero.phone', entity: 'booking.guests', prop: 'phone', type: 'tel', required: false, sensitivity: 'personal', confirm: 'event' }) },
 ];
 /** Avisa al Guiado de los campos del viajero guardados (los que llevaban algo). */
-const announceTraveler = (fields: TravelerFields) => FIELDS.forEach((f) => { if (fields[f.key]) announceSaved(`guests.visitante.alojate.viajero.${f.key}`); });
+const announceTraveler = (fields: TravelerFields) => FIELDS.forEach((f) => { const id = f.mark['data-field-id']; if (fields[f.key] && id) announceSaved(id); });
 const DOCUMENT_TYPES = ['DNI', 'NIE', 'Pasaporte', 'TIE', 'Otro'];
 /** Los campos que Booking puede decir que faltan (`booking.guests`); uno desconocido sale tal cual. */
 const KNOWN = ['first_name', 'last_name_1', 'last_name_2', 'document_type', 'document_number', 'document_support_number', 'birth_date', 'phone', 'email',

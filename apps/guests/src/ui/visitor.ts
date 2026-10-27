@@ -197,7 +197,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
     const orderHost = el('section', { class: 'card gcard', id: 'visitorOrder' });
     // Recorridos (ven.ikisai.com, única entrada pública): pedir en la barra (la carta de Flow) y, después, tus datos y
     // «Alójate aquí». Cada uno se marca hecho con lo que ya hay; la carta, al acabar, vuelve aquí con `?siguiente=`.
-    const step = (key: 'carta' | 'datos' | 'alojate', label: string, attrs: { href?: string; onclick?: () => void; 'data-feedback-id': string; 'data-feedback-label': string }) =>
+    const step = (key: 'carta' | 'datos' | 'alojate', label: string, attrs: NonNullable<Parameters<typeof el>[1]>) =>
       el('li', { class: 'gvisitor-route', dataset: { route: key } },
         el(attrs.href ? 'a' : 'button', { ...(attrs.href ? {} : { type: 'button' }), class: 'gvisitor-route-go', ...attrs },
           el('span', { class: 'gvisitor-route-mark', 'aria-hidden': 'true' }), el('span', null, label), icon('chevronRight', 16)));
