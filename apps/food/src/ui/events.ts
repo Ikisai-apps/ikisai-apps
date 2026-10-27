@@ -143,7 +143,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const restrictions = sortedRestrictions(event.dietary_restrictions);
     // Régimen con el que proponer servicios: el de Booking si lo hay; si no, lo elige la cocina (o ninguno).
     const gap = mealsGap(event);
-    const plan = el('select', { 'data-feedback-id': 'food.eventos.ficha.regimen', 'data-feedback-label': 'Régimen de la propuesta', id: 'proposalPlan', 'aria-label': 'Proponer servicios como', onchange: () => paintPicks() },
+    const plan = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.eventos.ficha.regimen', 'data-feedback-label': 'Régimen de la propuesta', id: 'proposalPlan', 'aria-label': 'Proponer servicios como', onchange: () => paintPicks() },
       el('option', { value: '' }, 'Ninguno: añadiré los servicios a mano'),
       ...['pension_completa', 'media_pension', 'desayuno'].map((value) => el('option', { value, selected: event.meal_plan === value }, MEAL_PLAN_LABELS[value]!)));
     if (!gap && event.meal_plan && !['pension_completa', 'media_pension', 'desayuno'].includes(event.meal_plan)) plan.value = '';
@@ -151,7 +151,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const picksHost = el('div', { 'data-feedback-id': 'food.eventos.ficha.servicios', 'data-feedback-label': 'Servicios propuestos', id: 'proposedServices' });
     function paintPicks(): void {
       const proposal = plan.value ? proposeServices({ ...event, meal_plan: plan.value }) : [];
-      picks = proposal.map((service, index) => ({ service, box: el('input', { 'data-feedback-id': 'food.eventos.ficha.servicio_propuesto', 'data-feedback-label': 'Servicio propuesto', type: 'checkbox', checked: true, id: `propose-${index}` }) }));
+      picks = proposal.map((service, index) => ({ service, box: el('input', { 'data-field-none': '', 'data-feedback-id': 'food.eventos.ficha.servicio_propuesto', 'data-feedback-label': 'Servicio propuesto', type: 'checkbox', checked: true, id: `propose-${index}` }) }));
       replace(picksHost, ...(picks.length
         ? picks.map((p) => el('label', { class: 'checkline', for: p.box.id }, p.box, el('span', null, `${longDay(p.service.service_date)} · ${SERVICE_LABELS[p.service.service_type]} · ${shortTime(p.service.service_time)}`)))
         : [el('p', { class: 'muted' }, 'Sin servicios propuestos: el menú se crea vacío y los servicios se añaden después.')]));
@@ -233,7 +233,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     }
     if (!canWrite()) return el('section', { 'data-feedback-id': 'food.eventos.ficha.carta', 'data-feedback-label': 'Carta del evento', class: 'formblock', id: 'eventCarta' }, el('h4', null, 'Carta'), el('p', { class: 'muted' }, 'Sin carta.'));
     const saved = [...cartas].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'es'));
-    const pick = el('select', { 'data-feedback-id': 'food.eventos.ficha.carta_elegir', 'data-feedback-label': 'Carta guardada', id: 'eventCartaPick', 'aria-label': 'Carta guardada' },
+    const pick = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.eventos.ficha.carta_elegir', 'data-feedback-label': 'Carta guardada', id: 'eventCartaPick', 'aria-label': 'Carta guardada' },
       ...saved.map((m) => el('option', { value: m.id }, m.name ?? 'Carta')));
     return el('section', { 'data-feedback-id': 'food.eventos.ficha.carta', 'data-feedback-label': 'Carta del evento', class: 'formblock', id: 'eventCarta' },
       el('h4', null, 'Carta'),
