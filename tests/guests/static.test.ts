@@ -65,6 +65,7 @@ test('guests · toda clave que usa el código existe (también las de catálogo 
     role: ['organizer', 'staff', 'direccion'],
     'visitor.kind': ['retiro', 'jornadas_abiertas', 'familiar'],
     'visitor.req': ['pendiente', 'aceptada', 'atendida', 'descartada'],
+    'visitor.ost': ['open', 'paid', 'delivered'],
     menu: ['desayuno', 'comida', 'cena', 'picnic', 'merienda', 'otro'],
     allergen: ['gluten', 'crustaceos', 'huevos', 'pescado', 'cacahuetes', 'soja', 'lacteos', 'frutos_de_cascara', 'apio', 'mostaza', 'sesamo', 'sulfitos', 'altramuces', 'moluscos'],
     'help.event': ['schedule', 'organization', 'activities', 'communication', 'food', 'other'],

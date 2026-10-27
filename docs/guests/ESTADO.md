@@ -105,9 +105,7 @@
 
 ## Pendiente
 
-- «Mis tareas» (TK1), cuando Tasks lo publique.
-
-- «Mi pedido» de cada visitante, cuando Flow publique FL2 (`flow.visitor_join` y `flow.visitor_customer`).
+- «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).
 
 - Visitantes, v2: recuperar el acceso por correo y pasarlo a otro móvil (C11, más adelante).
 

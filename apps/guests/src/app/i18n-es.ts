@@ -879,4 +879,11 @@ export const ES: Dictionary = {
   'offers.accountOpen': 'Tienes una cuenta abierta: lo que pidas se apunta en ella.',
   'offers.accountClosed': 'Si quieres pagar al final, pide en caja que te abran una cuenta.',
   'offers.notYet': 'La barra aún no te ha dado número. Pídelo allí.',
+  'visitor.number': 'Tu número: {number}',
+  'visitor.noNumber': 'Aún no tienes número: lo tendrás al abrir la carta.',
+  'visitor.noFlow': 'Este evento no tiene carta ahora mismo.',
+  'visitor.preparing': 'en preparación',
+  'visitor.ost.open': 'Pedido',
+  'visitor.ost.paid': 'Pagado',
+  'visitor.ost.delivered': 'Entregado',
 };

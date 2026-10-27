@@ -865,4 +865,11 @@ export const EN: Dictionary = {
   'offers.accountOpen': 'You have an open account: what you order goes on it.',
   'offers.accountClosed': 'To pay at the end, ask at the till to open an account.',
   'offers.notYet': 'The bar has not given you a number yet. Ask there.',
+  'visitor.number': 'Your number: {number}',
+  'visitor.noNumber': 'You have no number yet: you will get one when you open the menu.',
+  'visitor.noFlow': 'This event has no menu right now.',
+  'visitor.preparing': 'being prepared',
+  'visitor.ost.open': 'Ordered',
+  'visitor.ost.paid': 'Paid',
+  'visitor.ost.delivered': 'Delivered',
 };

@@ -44,7 +44,7 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | C10 | Core | `POST auth/link` y `loginWithLink` devuelven la entrada del enlace (`grant: {reservation_id, guest_id}`), para abrir ese retiro cuando la cuenta tiene varios (regla de entrada de O4a) | hecha (#508, `sync-client` 0.7.1), en uso |
 | U6 | UI | textos del calendario en el idioma del kit: «Hoy», «Anterior», «Siguiente» y «Vista» salen siempre en español | abierta |
 | FD2 | Food | lectura de portal del menú de casa para el outsider: `food.portal_house_menu({from?, to?})` → `{services: [{date, type, time, dishes: [{name, quick, allergens_checked}]}]}` (preparación de O4 §3) | abierta |
-| TK1 | Tasks | resumen de tareas del outsider para Guests: `tasks.portal_my_summary` → `{assigned}` (preparación de O4 §3), cuando Tasks tenga el rol outsider | abierta |
+| TK1 | Tasks | resumen de tareas del outsider para Guests: `tasks.portal_my_summary` → `{assigned}` (preparación de O4 §3), cuando Tasks tenga el rol outsider | cerrada: no hace falta (VG, 26-10: Ven no incita a abrir Tasks); si se vuelve a pedir, otra petición |
 | BG14 | Booking | `portal_role` en el primer nivel de `portal_my_guest` y en cada item de `portal_my_retreats` (API.md §9.17 d) | hecha (#725), en uso |
 | BG15 | Booking | accesos de su §29: `validUntil = 'infinity'`, `portal_open_retreats` con `direction`, `status` y `joinable`, `portal_join_direction` y `portal_lodging.team` (API.md §9.17) | hecha (#725), en uso |
 | Gu1 | Organizers → Guests | ruta para abrir un retiro concreto | respondida: `#/r/<reservation_id>`, ya en `main`; con dirección sin ficha, la vista de dirección (§9.17) |
@@ -56,4 +56,4 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | BG18 | Booking | `POST public/join` en booking-api (`booking.visitor_requests`) con {event_code, kind, name?, contact?, note?}, la lectura `booking_visitor_requests` y `join_from_visitor`; ficha ligada al visitante al aceptarla (§9.19) | en #770, sale con el kit (#775) |
 | BG19 | Booking | `booking.public_event({code})`, lectura pública que Guests sirve en `GET public/event` (§9.19) | en #767 (0488); la sirve el kit (`GET public/booking_event`) |
 | FD5 | Food | `food.visitor_offers({event_code})`: solo las ofertas con `public` (indicador de `food.event_offers`, «Visible para visitantes (QR)») (§9.19) | acordada; en la #758 de Food |
-| FL2 | Flow | `flow.visitor_join({event_code})` (acción) y `flow.visitor_customer` → `{number, carta_url, account_open, orders}` (§9.19) | acordada; tras C11 |
+| FL2 | Flow | `POST public/visitor_join {event_code}` (acción de flow-api, con `X-Visitor`) y la lectura pública `flow_visitor_customer` → `{number, carta_url, account_open, orders}` (§9.19) | acordada; Guests ya la usa (sin ella, la carta pública); PR de Flow pendiente |

@@ -23,6 +23,11 @@ export interface VisitorRequest {
   created_at: string; decided_at: string | null;
 }
 export interface Loaded<T> { value: T; at: string; stale: boolean }
+/** «Mi pedido» (Flow FL2): su número, el enlace de un solo uso a la carta, si tiene cuenta y sus pedidos. */
+export interface VisitorCustomer {
+  number: string | null; carta_url: string | null; account_open: boolean;
+  orders: Array<{ number: string | null; status: 'open' | 'paid' | 'delivered' | string; summary: string; preparing: boolean }>;
+}
 
 function store(): Storage | null {
   try { return globalThis.localStorage ?? null; } catch { return null; }
@@ -144,4 +149,27 @@ export function sendRequest(code: string, input: { kind: 'join' | 'contact'; nam
 
 export function errorCodeOf(error: unknown): string {
   return error instanceof PublicError ? error.code : '';
+}
+
+function asCustomer(raw: unknown): VisitorCustomer {
+  const c = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const orders = Array.isArray(c.orders) ? c.orders.filter((o): o is Record<string, unknown> => Boolean(o && typeof o === 'object')) : [];
+  return {
+    number: c.number === null || c.number === undefined ? null : String(c.number),
+    carta_url: typeof c.carta_url === 'string' ? c.carta_url : null,
+    account_open: c.account_open === true,
+    orders: orders.map((o) => ({ number: o.number === null || o.number === undefined ? null : String(o.number), status: String(o.status ?? 'open'),
+      summary: typeof o.summary === 'string' ? o.summary : '', preparing: o.preparing === true })),
+  };
+}
+
+/** Su cliente de Flow en este evento (lectura `flow_visitor_customer` con su `visitor_id`); sin visitante, nada. */
+export async function visitorCustomer(code: string): Promise<VisitorCustomer | null> {
+  if (!visitorToken()) return null;
+  return asCustomer(await withVisitor(code, () => call<unknown>(`/api/v1/public/flow_visitor_customer?event_code=${encodeURIComponent(code.toUpperCase())}`)));
+}
+
+/** Unirse a la carta del evento (acción de Flow, idempotente): le da número, sin cuenta, y un enlace de un solo uso. */
+export async function visitorJoin(code: string): Promise<VisitorCustomer> {
+  return asCustomer(await withVisitor(code, () => call<unknown>('/api/flow/v1/public/visitor_join', { json: { event_code: code.toUpperCase() } })));
 }

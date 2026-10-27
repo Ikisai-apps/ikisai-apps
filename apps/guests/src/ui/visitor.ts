@@ -2,15 +2,16 @@
  * El portal del visitante (API.md §9.19): `#/v` («Mis eventos» de este móvil) y `#/v/<código>` (el evento del QR). Sin
  * sesión: se entra sin dar ningún dato y lo que se deja (nombre, contacto, nota) es voluntario, con su para qué y su
  * conservación al lado. Las ofertas son la pieza de §9.18 sin cruce personal (el visitante no indicó nada); «Mi pedido»
- * enlaza con la carta pública de Flow hasta que Flow publique `visitor_join` (FL2). Un visitante nunca ve a otros.
+ * es su cliente de Flow (FL2: `visitor_join` al tocar, `flow_visitor_customer` para pintar); sin Flow, la carta pública.
+ * Un visitante nunca ve a otros.
  */
 import { el, icon, replace, toast } from '@ikisai/ui-kit';
 import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
-import { FLOW_CARTA, offersForGuest } from '../app/offers.ts';
+import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, rememberEvent, sendRequest, visitorOffers, visitorToken,
-  EVENT_CODE, type PublicEvent, type VisitorRequest } from '../app/visitor.ts';
+import { ensureVisitor, errorCodeOf, forgetVisitor, myEventCodes, myRequests, publicEvent, rememberEvent, sendRequest, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+  EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
 import { todayMadrid } from './home.ts';
@@ -29,6 +30,8 @@ const KINDS = ['retiro', 'jornadas_abiertas', 'familiar'];
 const kindText = (kind: string) => (KINDS.includes(kind) ? t(`visitor.kind.${kind}`) : '');
 const STATES = ['pendiente', 'aceptada', 'atendida', 'descartada'];
 const requestText = (r: VisitorRequest) => (STATES.includes(r.status) ? t(`visitor.req.${r.status}`) : r.status);
+const ORDER_STATES = ['open', 'paid', 'delivered'];
+const orderText = (status: string) => (ORDER_STATES.includes(status) ? t(`visitor.ost.${status}`) : status);
 
 export function renderVisitor(root: HTMLElement): () => void {
   let alive = true;
@@ -125,7 +128,9 @@ export function renderVisitor(root: HTMLElement): () => void {
 
     const offersHost = el('div', { id: 'visitorOffers' });
     const requestsHost = el('div', { id: 'visitorRequests' });
-    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, offersHost, order(), requestsHost, invitation(), footer());
+    const orderHost = el('section', { class: 'card gcard', id: 'visitorOrder' });
+    replace(main, loaded.stale ? staleNote(loaded.at) : null, head, offersHost, orderHost, requestsHost, invitation(), footer());
+    const join = async () => { const c = await visitorJoin(code); return { number: c.number, carta_url: c.carta_url, account_open: c.account_open }; };
 
     // Ofertas públicas (FD5): la pieza del Menú, sin cruce personal.
     void visitorOffers(code).then((raw) => {
@@ -134,20 +139,39 @@ export function renderVisitor(root: HTMLElement): () => void {
       const eater = { guestId: 'visitante', name: null, base: '', restrictions: [], team: false };
       const days = offers.days.map((d) => d.date);
       const day = days.includes(today) ? today : days[0];
-      const block = day ? offersBlock(day, today, [{ eater, offers }], false, async () => null) : null;
+      const block = day ? offersBlock(day, today, [{ eater, offers }], false, () => join().catch(() => null)) : null;
       replace(offersHost, block ? el('div', null, block, el('p', { class: 'small', id: 'visitorAllergies' }, icon('warn', 14), ' ', t('visitor.allergies'))) : null);
     }).catch(() => undefined);
 
+    void paintOrder(code, orderHost, mine);
     void paintRequests(code, event, requestsHost, mine);
   }
 
-  /** «Mi pedido»: la carta pública de Flow (con FL2, su número y sus pedidos). */
-  function order(): HTMLElement {
-    return el('section', { class: 'card gcard', id: 'visitorOrder' },
-      el('h3', null, t('visitor.order')),
-      el('p', { class: 'small' }, t('visitor.orderText')),
-      el('a', { class: 'button primary goffer-open', href: FLOW_CARTA, target: '_blank', rel: 'noopener', 'data-feedback-id': 'guests.visitante.pedido.abrir', 'data-feedback-label': 'Abrir la carta' },
-        icon('menu', 16), ' ', t('offers.openCarta')));
+  /**
+   * «Mi pedido» (FL2): su número, si tiene cuenta y sus pedidos, de `flow_visitor_customer`. «Abrir la carta» se une con
+   * `visitor_join` (idempotente; le da número, sin cuenta) y abre su enlace de un solo uso. Sin Flow, la carta pública.
+   */
+  async function paintOrder(code: string, host: HTMLElement, mine: number): Promise<void> {
+    const customer: VisitorCustomer | null = await visitorCustomer(code).catch(() => null);
+    if (!current(mine)) return;
+    const status = el('p', { class: 'small', id: 'visitorNumber', role: 'status' },
+      customer?.number ? t('visitor.number', { number: customer.number }) : customer ? t('visitor.noNumber') : t('visitor.orderText'),
+      customer?.number ? ` ${customer.account_open ? t('offers.accountOpen') : t('offers.accountClosed')}` : '');
+    const open = el('button', { type: 'button', class: 'primary goffer-open', id: 'visitorCarta', 'data-feedback-id': 'guests.visitante.pedido.abrir', 'data-feedback-label': 'Abrir la carta',
+      onclick: async () => {
+        const win = window.open('about:blank', '_blank'); // en el toque, para que el navegador no la bloquee
+        let url: string | null = FLOW_CARTA;
+        try {
+          url = safeUrl((await visitorJoin(code)).carta_url) ?? FLOW_CARTA;
+        } catch (error) {
+          if (errorCodeOf(error) === 'NO_FLOW') { win?.close(); toast(t('visitor.noFlow')); return; }
+        }
+        if (win) { win.opener = null; win.location.href = url; } else window.location.href = url;
+        void paintOrder(code, host, mine);
+      } }, icon('menu', 16), ' ', t('offers.openCarta'));
+    const orders = customer?.orders.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorOrders' }, ...customer.orders.map((o) => el('li', { dataset: { status: o.status } },
+      el('strong', null, o.summary || t('visitor.order')), ' · ', orderText(o.status), o.preparing ? ` · ${t('visitor.preparing')}` : '', o.number ? ` · ${t('visitor.number', { number: o.number })}` : ''))) : null;
+    replace(host, el('h3', null, t('visitor.order')), status, open, orders);
   }
 
   /** «Apuntarme» (si el evento lo admite) y «Déjanos un dato», con lo que ya pidió. */
