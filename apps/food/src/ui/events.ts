@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { closedMenus, defaultOfferFields, isCartaMenu, eventSnapshot, type EventOffer, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
-import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type IconName, type Sheet } from '@ikisai/ui-kit';
 import { eventShoppingHash } from './event-shopping.ts';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
@@ -18,6 +18,8 @@ import { usage } from '../app/usage.ts';
 
 export const MENU_STATUS_LABELS: Record<Menu['status'], string> = { borrador: 'Borrador', revisar: 'Por revisar', validado: 'Validado', cerrado: 'Cerrado' };
 export const SERVICE_LABELS: Record<ServiceType, string> = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', picnic: 'Picnic', merienda: 'Merienda', otro: 'Otro' };
+/** El icono de cada servicio, de los de comida del kit (K13): siempre al lado de su nombre, nunca solo. */
+export const SERVICE_ICONS: Record<ServiceType, IconName> = { desayuno: 'cup', comida: 'plate', cena: 'bowl', picnic: 'basket', merienda: 'cookie', otro: 'chefHat' };
 
 type Filter = 'proximos' | 'sin_menu' | 'pasados';
 

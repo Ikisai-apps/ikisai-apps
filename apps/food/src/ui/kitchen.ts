@@ -23,7 +23,7 @@ import { MENU_TABLES, loadMenuData, type MenuData, type RecipeRow } from '../app
 import { photoUrl } from '../app/photos.ts';
 import { usage } from '../app/usage.ts';
 import { openConsumptionSheet } from './consumption-sheet.ts';
-import { SERVICE_LABELS } from './events.ts';
+import { SERVICE_ICONS, SERVICE_LABELS } from './events.ts';
 import { methodStepsView } from './method-steps.ts';
 import { shareText } from './menu-preparation.ts';
 import { dayChoiceLabel, daySelector, openMoveSheet, purposeText, stepRow, type PrepRow } from './prep-row.ts';
@@ -252,7 +252,7 @@ export const mountKitchen: ViewMount = ({ main, client, navigate }) => {
     return el('section', { 'data-feedback-id': 'food.cocina.servicio', 'data-feedback-label': 'Servicio', class: 'card fd-service', 'data-phase': phase, 'data-id': service.id },
       el('header', { class: 'fd-service-head' },
         el('div', null,
-          el('h3', null, [PHASE_LABEL[phase], label, shortTime(service.service_time)].filter(Boolean).join(' · ')),
+          el('h3', null, icon(SERVICE_ICONS[service.service_type], 20), [PHASE_LABEL[phase], label, shortTime(service.service_time)].filter(Boolean).join(' · ')),
           el('p', { class: 'muted' }, [until, own.length ? `${done} de ${plural(own.length, 'paso', 'pasos')}` : null].filter(Boolean).join(' · ') || ' ')),
         list.length ? el('button', { 'data-feedback-id': 'food.cocina.servicio.pase', 'data-feedback-label': 'Pase', class: 'ghost fd-passbtn', type: 'button', 'aria-label': `Pase de ${label}`, onclick: () => openPass(list, 0, notes) }, 'Pase') : null),
       items.length
