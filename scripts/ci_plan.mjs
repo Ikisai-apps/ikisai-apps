@@ -23,6 +23,9 @@ const SHARED_FOLDERS = new Set(['core', 'sync-client', 'scripts']);
 const SMALL = 12;
 /** Desde estos, la carpeta se parte en dos trozos (`--test-shard`): booking pasaba de 3 min sola (run 40435076631). */
 const SPLIT = 45;
+/** Como mucho estos jobs de PGlite además de los trozos: el plan Free da 20 jobs a la vez para todo el repo y, con unas 30 PR
+ *  abiertas, la release esperaba runner (27-10: 16 min en cola). Con más, las carpetas se juntan por tamaño. */
+const PACK = 4;
 
 export const isDoc = (file) => /^(docs\/|MUELA\/|CODEOWNERS$)|\.md$/.test(file);
 
@@ -80,14 +83,24 @@ export function dependents(app, server, folders, root = ROOT) {
 }
 
 /** Grupos de la matriz: una carpeta grande por grupo (la muy grande, en dos trozos) y las pequeñas juntas. */
-export function groups(folders, root = ROOT, split = SPLIT) {
+export function groups(folders, root = ROOT, split = SPLIT, pack = PACK) {
   const size = (f) => fs.readdirSync(path.join(root, 'tests', f)).filter((n) => n.endsWith('.test.ts')).length;
   const big = folders.filter((f) => size(f) >= SMALL);
   const small = folders.filter((f) => size(f) < SMALL);
-  return [
-    ...big.flatMap((f) => (size(f) >= split ? [1, 2].map((i) => ({ name: `${f} ${i}/2`, folders: f, shard: `${i}/2` })) : [{ name: f, folders: f }])),
-    ...(small.length ? [{ name: small.join(' + '), folders: small.join(' ') }] : []),
-  ];
+  const shards = big.filter((f) => size(f) >= split).flatMap((f) => [1, 2].map((i) => ({ name: `${f} ${i}/2`, folders: f, shard: `${i}/2` })));
+  const units = [...big.filter((f) => size(f) < split).map((f) => [f]), ...(small.length ? [small] : [])];
+  if (units.length <= pack) return [...shards, ...units.map((u) => ({ name: u.join(' + '), folders: u.join(' ') }))];
+  // Más grupos que `pack`: la carpeta más grande, al paquete que menos lleva (por archivos de prueba).
+  const weight = (u) => u.reduce((n, f) => n + size(f), 0);
+  const bins = Array.from({ length: pack }, () => ({ folders: [], weight: 0 }));
+  for (const u of [...units].sort((a, b) => weight(b) - weight(a))) {
+    const bin = bins.reduce((min, b) => (b.weight < min.weight ? b : min));
+    bin.folders.push(...u); bin.weight += weight(u);
+  }
+  return [...shards, ...bins.filter((b) => b.folders.length).map((b) => {
+    const list = [...b.folders].sort();
+    return { name: list.join(' + '), folders: list.join(' ') };
+  })];
 }
 
 /** El plan de una PR (o de un run fuera de PR, `event !== 'pull_request'`: todo). */

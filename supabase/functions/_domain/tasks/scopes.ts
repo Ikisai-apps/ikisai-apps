@@ -48,6 +48,15 @@ export function someTab(scopes: Scopes, tabId: string): boolean {
   return fullTab(scopes, tabId) || grantedProjects(scopes, tabId).length > 0;
 }
 
+/** Algún acceso: toda la app, o al menos un área o un proyecto. Sin ninguno (p. ej. acceso retirado), nada. */
+export function anyScope(scopes: Scopes): boolean {
+  if (allAccess(scopes)) return true;
+  if (Array.isArray(scopes)) return list(scopes).length > 0;
+  const o = asObject(scopes);
+  const projects = o?.projects;
+  return list(o?.tabs).length > 0 || (!!projects && typeof projects === 'object' && !Array.isArray(projects) && Object.values(projects as Record<string, unknown>).some((v) => list(v).length > 0));
+}
+
 /** Administrador: propietario humano con acceso a toda la app. */
 export function isAdministrator(member: { role: Role; scopes: Scopes; kind?: string }): boolean {
   return member.role === 'owner' && allAccess(member.scopes) && (member.kind ?? 'human') === 'human';
@@ -138,6 +147,8 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     case 'tasks.attachments':
     case 'tasks.task_comments':
     case 'tasks.task_materials':
+    case 'tasks.reviews':
+    case 'tasks.review_items':
       return canProject(scopes, tab, String(row.project_id ?? ''));
     // Compras (§18.4): los planes, con el área entera; las solicitudes, como su proyecto (sin él, el área entera). El almacén
     // es el inventario común de Recursos desde R6.
@@ -154,6 +165,11 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     // Ajustes de la app (de dónde sale la zona): los lee cualquiera con acceso a Tasks.
     case 'tasks.settings':
       return true;
+    // Plantillas de revisión (0348): las de la casa, quien tenga algún acceso a Tasks (no quien lo perdió); las de un
+    // área, quien vea algo de ella.
+    case 'tasks.review_templates':
+    case 'tasks.review_template_items':
+      return row.tab_id == null ? anyScope(scopes) : someTab(scopes, tab);
     default:
       return false;
   }
