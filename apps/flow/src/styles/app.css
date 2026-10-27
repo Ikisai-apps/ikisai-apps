@@ -214,3 +214,8 @@
 .checkout-address{word-break:break-all;font-size:.95rem}
 .checkout-receipts{display:grid;gap:8px}
 .checkout-receipt{display:grid;gap:6px;padding:10px 12px}
+
+/* Recipientes (Inicio, owner) */
+.containers-list{display:grid;gap:8px}
+.containers-row{display:grid;grid-template-columns:1fr 64px auto 72px auto;gap:6px;align-items:center}
+.containers-row input{min-width:0}
