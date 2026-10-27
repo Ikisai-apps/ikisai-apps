@@ -202,7 +202,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
       if (!writable) { replace(settings); settings.hidden = true; return; }
       settings.hidden = false;
       const current = menu;
-      const name = el('input', { 'data-feedback-id': 'food.carta.cabecera.nombre', 'data-feedback-label': 'Nombre de la carta', id: 'cartaName', type: 'text', maxlength: '120', value: current.name ?? '' });
+      const name = el('input', { 'data-field-id': 'food.carta.cabecera.nombre', 'data-field-entity': 'food.menus', 'data-field-prop': 'name', 'data-feedback-id': 'food.carta.cabecera.nombre', 'data-feedback-label': 'Nombre de la carta', id: 'cartaName', type: 'text', maxlength: '120', value: current.name ?? '' });
       const saveName = el('button', { 'data-feedback-id': 'food.carta.cabecera.guardar_nombre', 'data-feedback-label': 'Guardar el nombre', class: 'ghost', type: 'button', id: 'cartaNameSave',
         onclick: async () => {
           const title = name.value.trim();
@@ -210,7 +210,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
           if (await commit(client, [{ op: 'update', table: T.menus, id: current.id, expectedRevision: current.revision, fields: { name: title } }])) toast('Nombre guardado.');
         } }, 'Guardar');
       const upcoming = snapshot.events.filter((e) => e.end_date >= todayKey() || e.event_id === current.event_id).sort((a, b) => a.start_date.localeCompare(b.start_date));
-      const event = el('select', { 'data-feedback-id': 'food.carta.cabecera.evento', 'data-feedback-label': 'Evento de la carta', id: 'cartaEvent', 'aria-label': 'Evento de la carta',
+      const event = el('select', { 'data-field-id': 'food.carta.cabecera.evento', 'data-field-entity': 'food.menus', 'data-field-prop': 'event_id', 'data-feedback-id': 'food.carta.cabecera.evento', 'data-feedback-label': 'Evento de la carta', id: 'cartaEvent', 'aria-label': 'Evento de la carta',
         onchange: async () => {
           const next = event.value || null;
           if (next === current.event_id) return;
@@ -232,7 +232,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
       const cost = projection.get(line.id)?.cost_cents ?? null;
       const margin = cartaMargin(line.sale_price_cents, cost);
       const recipe = line.recipe_id ? recipes.get(line.recipe_id) : undefined;
-      const price = el('input', { 'data-feedback-id': 'food.carta.linea.precio', 'data-feedback-label': 'Precio de venta', type: 'text', inputmode: 'decimal', class: 'carta-price',
+      const price = el('input', { 'data-field-id': 'food.carta.linea.precio', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'sale_price_cents', 'data-feedback-id': 'food.carta.linea.precio', 'data-feedback-label': 'Precio de venta', type: 'text', inputmode: 'decimal', class: 'carta-price',
         'aria-label': `Precio de ${name} en euros`, value: (line.sale_price_cents / 100).toLocaleString('es-ES', { minimumFractionDigits: 2 }), disabled: !writable,
         onchange: async () => {
           const cents = parseEurosToCents(price.value);
@@ -241,7 +241,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
           const ok = await usage.run('food.carta.precio', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { sale_price_cents: cents } }]));
           if (ok) toast(`${name}: ${formatCents(cents)}.`);
         } });
-      const available = el('input', { 'data-feedback-id': 'food.carta.linea.disponible', 'data-feedback-label': 'Disponible', type: 'checkbox', checked: line.active, disabled: !writable,
+      const available = el('input', { 'data-field-id': 'food.carta.linea.disponible', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'active', 'data-feedback-id': 'food.carta.linea.disponible', 'data-feedback-label': 'Disponible', type: 'checkbox', checked: line.active, disabled: !writable,
         id: `carta-active-${line.id}`,
         onchange: async () => {
           const ok = await usage.run('food.carta.disponible', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { active: available.checked } }]));
@@ -287,8 +287,8 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
         replace(pickHost, el('label', { class: 'field' }, el('span', null, origin.value === 'receta' ? 'Receta' : 'Artículo'), list.length ? pick : el('span', { class: 'muted' }, origin.value === 'receta' ? 'No hay recetas.' : 'No hay artículos en este dispositivo.')));
       }
       paintPick();
-      const code = el('select', { 'data-feedback-id': 'food.carta.anadir.codigo', 'data-feedback-label': 'Código', id: 'cartaAddCode', 'aria-label': 'Código' }, ...codes.map((c) => el('option', { value: c }, c)));
-      const price = el('input', { 'data-feedback-id': 'food.carta.anadir.precio', 'data-feedback-label': 'Precio de venta', id: 'cartaAddPrice', type: 'text', inputmode: 'decimal', placeholder: '2,50' });
+      const code = el('select', { 'data-field-id': 'food.carta.anadir.codigo', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'code', 'data-feedback-id': 'food.carta.anadir.codigo', 'data-feedback-label': 'Código', id: 'cartaAddCode', 'aria-label': 'Código' }, ...codes.map((c) => el('option', { value: c }, c)));
+      const price = el('input', { 'data-field-id': 'food.carta.anadir.precio', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'sale_price_cents', 'data-feedback-id': 'food.carta.anadir.precio', 'data-feedback-label': 'Precio de venta', id: 'cartaAddPrice', type: 'text', inputmode: 'decimal', placeholder: '2,50' });
       let sheet: Sheet | null = null;
       const save = el('button', { 'data-feedback-id': 'food.carta.anadir.guardar', 'data-feedback-label': 'Añadir a la carta', class: 'primary', type: 'button', id: 'cartaAddSave',
         onclick: async () => {
