@@ -2,7 +2,7 @@
 """Decide qué apps publica el workflow de release y con qué versión. Escribe `apps=<json>` y `version=<v>` en stdout.
 
 - `workflow_dispatch`: la app del input `app`; versión del input `version` o `v0.1.0-build.<run_number>`.
-- pasada programada (cron de release.yml cada 30 min; antes, cada push a main): para cada app, cambios entre el commit que tiene publicado (`https://<app>.ikisai.com/version.json`)
+- pasada por lotes (push a main con 10 min de espera, o cron cada 30 min): para cada app, cambios entre el commit que tiene publicado (`https://<app>.ikisai.com/version.json`)
   y HEAD (`apps/<app>`, `supabase/functions/<app>-api`, `supabase/functions/_domain/<app>`, `packages/domain-<app>`,
   migraciones `*_<app>_*`). Así una release cancelada en cola por la concurrencia de GitHub no deja una app sin publicar.
   Si no se puede leer el commit publicado, se usa BEFORE: la última release completa (tag `released`). Un cambio compartido
