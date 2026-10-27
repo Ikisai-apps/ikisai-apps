@@ -38,6 +38,13 @@ test.beforeAll(async () => {
   await card({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'importante', tipo: 'prueba', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
   await card({ lane_key: 'core', title: 'Revisar CI', kind: 'recurring' });
   await card({ lane_key: 'food', title: 'Más adelante', flag: 'backlog' });
+  // Un hito de dos pasos (0947): el primero sin hacer bloquea; el segundo queda en espera.
+  const hito = crypto.randomUUID();
+  await api.app.t.db.query(`select flow.import_board($1, $2::jsonb)`, [board, JSON.stringify({
+    hitos: [{ hito_id: hito, title: 'Mudanza del Avance', orden: 1 }],
+    cards: [{ card_id: crypto.randomUUID(), lane_key: 'core', title: 'Exportar el tablero', status: 'pending', hito_id: hito, paso: 1 },
+      { card_id: crypto.randomUUID(), lane_key: 'flow', title: 'Pantalla nueva', status: 'pending', hito_id: hito, paso: 2 }],
+  })]);
   await buildFlowApp();
   server = await preview({
     configFile,
@@ -64,8 +71,12 @@ async function enter(page: Page): Promise<void> {
 
 test('avance · caja general, discos, filtros y tarjeta con pasos que se marca hecha', async ({ page }) => {
   await enter(page);
-  // 5 tarjetas, 1 en backlog: 4 en juego; hechas = la de Flow y la recurrente (cuenta como hecha).
-  await expect(page.locator('.avance-total .gt')).toHaveText('2 hechas de 4');
+  // 7 tarjetas, 1 en backlog: 6 en juego; hechas = la de Flow y la recurrente (cuenta como hecha).
+  await expect(page.locator('.avance-total .gt')).toHaveText('2 hechas de 6');
+  // Hitos: numerado, el primer paso sin hacer «bloquea» y el siguiente, en espera.
+  await expect(page.locator('.avance-hito')).toHaveCount(1);
+  await expect(page.locator('.avance-chain li.is-blocking')).toHaveCount(1);
+  await expect(page.locator('.avance-chain li.is-waiting')).toHaveCount(1); // los carriles se montan al verse: se mira en la cadena
   await expect(page.locator('.avance-disc')).toHaveCount(4);
   // Filtro de urgencia: solo «Urgente».
   await page.locator('.avance-chip', { hasText: 'Urgente' }).click();
