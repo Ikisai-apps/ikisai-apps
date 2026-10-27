@@ -154,3 +154,19 @@ test('lecturas · el portal ve la finca, la cota, los iconos y solo la general; 
   assert.deepEqual(inner.decor.map((d: any) => d.layer).sort(), ['event', 'general']);
   assert.equal(inner.decor.find((d: any) => d.layer === 'event').replacesItemId, piece);
 });
+
+test('finca · la curva de cada altura se guarda ajustada a mano (0815): puntos en 0..1, con su ancla', async () => {
+  const a3 = await altura(3);
+  const points = [[0.05, 0.31], [0.4, 0.29], [0.95, 0.33]];
+  ok(await commit([{ op: 'update', table: PLANS, id: estate, expectedRevision: await rev(PLANS, estate), fields: { contours: [{ spaceId: a3, x: 0.5, y: 0.3, points }] } }], app.tokens.owner));
+  // Puntos fuera de 0..1 o una curva de un solo punto, no.
+  fails(await commit([{ op: 'update', table: PLANS, id: estate, expectedRevision: await rev(PLANS, estate), fields: { contours: [{ spaceId: a3, x: 0.5, y: 0.3, points: [[0.1, 1.2], [0.2, 0.2]] }] } }], app.tokens.owner));
+  fails(await commit([{ op: 'update', table: PLANS, id: estate, expectedRevision: await rev(PLANS, estate), fields: { contours: [{ spaceId: a3, x: 0.5, y: 0.3, points: [[0.1, 0.2]] }] } }], app.tokens.owner));
+
+  const guest = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('guests', $1, 'editor')`, [guest]);
+  const out = await app.t.rpc('core_read', { p_app: 'guests', p_actor: guest, p_name: 'resources.portal_plans', p_args: {} }) as any;
+  const contour = out.plans.find((p: any) => p.id === estate).contours[0];
+  assert.deepEqual(contour.points, points);
+  assert.deepEqual([contour.x, contour.y, contour.label], [0.5, 0.3, 'Altura 3']);
+});
