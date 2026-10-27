@@ -5,6 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { seedBookingEvent, seedBookingGuests } from './booking-event.ts';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/flow/mod.ts';
@@ -33,6 +34,15 @@ async function ok(operations: unknown[], token = app.tokens.owner) { const r = a
 async function rows(table: string): Promise<any[]> { const s = await app.call(`/api/v1/snapshot?tables=${table}`); return s.data.tables[0].rows; }
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
 const code = async (operations: unknown[], token = app.tokens.owner) => (await commit(operations, token)).data.error?.code;
+/** FL12 (0935): el flujo tiene que estar ligado a un evento de Booking con esos huéspedes. */
+async function linkEventWithGuests(project: string, guestIds: string[]): Promise<string> {
+  const event = crypto.randomUUID();
+  await seedBookingEvent(app.t.db, event, [app.users.owner]);
+  await seedBookingGuests(app.t.db, event, guestIds);
+  const p = (await rows(TABLES.projects)).find((x) => x.id === project);
+  await ok([{ op: 'update', table: TABLES.projects, id: project, expectedRevision: p.revision, fields: { booking_event_id: event } }]);
+  return event;
+}
 const madrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 
 async function openOrder(project: string, n: number, customerId: string | null = null): Promise<string> {
@@ -53,7 +63,9 @@ test('caja · la v2 nace con deep_checkout; la v1 no puede usar pay_orders', asy
 });
 
 test('caja · un solo justificante para varios pedidos: cada uno con su número de cobro y sus unidades', async () => {
-  customer = (await ok([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests: [{ guest_id: uuid(), display_name: 'Ana P.' }] })])).customers[0].guest_id;
+  const g = uuid();
+  await linkEventWithGuests(v2, [g]);
+  customer = (await ok([call(PROCEDURES.assignGuestNumbers, { project_id: v2, guests: [{ guest_id: g, display_name: 'Ana P.' }] })])).customers[0].guest_id;
   const c = (await rows(TABLES.customers)).find((x) => x.guest_id === customer);
   const a = await openOrder(v2, 2, c.id); const b = await openOrder(v2, 1, c.id);
   assert.equal(await code([call(PROCEDURES.payOrders, { order_ids: [a, b], method: 'cheque' })]), 'INVALID_OPERATION');
