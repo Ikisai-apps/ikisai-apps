@@ -42,10 +42,11 @@ export async function requireVisitor(supabase: Supabase, request: Request): Prom
  * Lectura pública con el visitante resuelto: `visitor_id` sale de la cabecera, nunca de los argumentos del cliente
  * (se descarta cualquier `visitor_id` que venga en la consulta). Sin cabecera, la lectura va sin visitante.
  */
-export async function publicReadWithVisitor(supabase: Supabase, name: string, args: Record<string, unknown>, visitor: Visitor | null): Promise<unknown> {
+export async function publicReadWithVisitor(supabase: Supabase, name: string, args: Record<string, unknown>, visitor: Visitor | null, options: { fromClient?: boolean } = {}): Promise<unknown> {
   const { visitor_id: _dropped, ...rest } = args;
   const p_args = visitor ? { ...rest, visitor_id: visitor.id } : rest;
-  return supabase.rpc<unknown>('core_public_read', { p_name: name, p_args });
+  // Desde el navegador, con sus propios argumentos, solo las lecturas que la app dueña expuso (core.allow_public_read(..., true)).
+  return supabase.rpc<unknown>(options.fromClient ? 'core_public_read_client' : 'core_public_read', { p_name: name, p_args });
 }
 
 /** Orígenes admitidos en las rutas `public/*` de cualquier Edge: los dominios del proyecto, no solo el de la propia app. */

@@ -34,7 +34,9 @@ test('visitantes · alta, lectura con visitor_id del kit (nunca del cliente), es
       create trigger test_requests_guard before insert on booking.test_requests for each row execute function booking.test_requests_guard();
       select core.allow_public_write('booking', 'booking.test_requests');
       create function booking.test_mine(p jsonb) returns jsonb language sql stable as $$ select p $$;
-      select core.allow_public_read('test_mine', 'booking.test_mine');`);
+      select core.allow_public_read('test_mine', 'booking.test_mine', true);
+      create function booking.test_edge_only(p jsonb) returns jsonb language sql stable as $$ select p $$;
+      select core.allow_public_read('test_edge_only', 'booking.test_edge_only');`);
 
     // Alta desde el portal de Guests (otro origen del proyecto), sin sesión y sin datos.
     const created = await app.call('/api/v1/public/visitor', { token: null, origin: GUESTS, body: { eventCode: 'ABC123' } });
@@ -55,6 +57,14 @@ test('visitantes · alta, lectura con visitor_id del kit (nunca del cliente), es
     assert.equal(anon.headers.get('cache-control'), 'public, max-age=30');
     const unknown = await app.call('/api/v1/public/no_existe', { token: null });
     assert.equal(unknown.status, 404);
+    // Una lectura registrada sin exponer (la piden las Edges con sus argumentos) no se sirve al navegador.
+    const edgeOnly = await app.call('/api/v1/public/test_edge_only?a=1', { token: null, origin: GUESTS });
+    assert.equal(edgeOnly.status, 404);
+    // Freno de altas: la 121.ª en un minuto se rechaza.
+    for (let i = 0; i < 119; i++) await db.query(`select core.visitor_create($1, null)`, [i.toString(16).padStart(64, '0')]);
+    const flood = await app.call('/api/v1/public/visitor', { token: null, origin: GUESTS, body: {} });
+    assert.equal(flood.status, 429, JSON.stringify(flood.data));
+    await db.exec(`update core.visitors set created_at = created_at - interval '2 minutes'`);
 
     // Escritura pública de la app dueña, firmada por el visitante; el disparador la ve con core.current_visitor().
     const noHeader = await app.call('/api/v1/public/join', { token: null, origin: GUESTS, body: { body: 'hola' } });

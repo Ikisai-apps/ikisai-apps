@@ -417,10 +417,11 @@ export function createApp(config: AppConfig): AppHandler {
             apply: (operations) => applyPublicOperations(supabase, config.app, operations, visitor?.id ?? null) });
           return result instanceof Response ? result : json(result);
         }
-        // Lectura pública registrada (core.allow_public_read), por su nombre y con los parámetros de la consulta como args.
-        // El dato es público por decisión de la app dueña, así que la sirve cualquier Edge; con visitante, sin caché.
+        // Lectura pública expuesta al navegador (core.allow_public_read(nombre, fn, true)), por su nombre y con los parámetros
+        // de la consulta como args. El dato es público por decisión de la app dueña, así que la sirve cualquier Edge; con
+        // visitante, sin caché. Las lecturas no expuestas (las que piden las Edges con argumentos propios) dan 404.
         if (request.method === 'GET' && /^[a-z][a-z_]{1,40}$/.test(relative)) {
-          const out = await read(relative, Object.fromEntries(url.searchParams));
+          const out = await publicReadWithVisitor(supabase, relative, Object.fromEntries(url.searchParams), visitor, { fromClient: true });
           return json(visitor ? out : withHeaders(out, { 'Cache-Control': 'public, max-age=30' }));
         }
         fail(404, 'NOT_FOUND', 'Ruta pública desconocida.');

@@ -20,11 +20,17 @@ revoke all on core.visitors from public, anon, authenticated;
 grant all on core.visitors to service_role;
 
 -- Alta: la Edge genera el token, lo resume y guarda el resumen. El código del evento es orientativo (de dónde entró).
+-- Freno: como mucho 120 altas por minuto en total y 60 por código de evento (un QR en una pared no da para más; un
+-- script sí). visitor_id identifica un móvil, no una persona: no garantiza unicidad y las apps no deben contar con ella.
 create or replace function core.visitor_create(p_token_hash text, p_event_code text default null)
 returns uuid language plpgsql as $$
 declare v_id uuid;
 begin
   if p_token_hash !~ '^[0-9a-f]{64}$' then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'token hash must be sha-256 hex')); end if;
+  if (select count(*) from core.visitors where created_at > now() - interval '1 minute') >= 120
+     or (p_event_code is not null and (select count(*) from core.visitors where event_code = p_event_code and created_at > now() - interval '1 minute') >= 60) then
+    perform core.fail('RATE_LIMITED', 429, jsonb_build_object('reason', 'too many visitors created'));
+  end if;
   insert into core.visitors (token_hash, event_code) values (p_token_hash, nullif(p_event_code, '')) returning id into v_id;
   return v_id;
 end $$;
@@ -43,6 +49,29 @@ end $$;
 create or replace function core.visitor_revoke(p_id uuid) returns void language sql as $$
   update core.visitors set revoked_at = coalesce(revoked_at, now()) where id = p_id
 $$;
+
+-- Lecturas públicas que el navegador puede pedir directamente (`GET /api/v1/public/<nombre>?args`), con sus argumentos.
+-- Hasta ahora toda lectura pública la pedía código de la Edge que controlaba los argumentos (flow_mine recibe token_hash);
+-- por eso exponerla al cliente es una decisión explícita de la app dueña: core.allow_public_read(nombre, fn, true).
+alter table core.public_reads add column client boolean not null default false;
+drop function core.allow_public_read(text, text);
+create function core.allow_public_read(p_name text, p_procedure text, p_client boolean default false)
+returns void language sql as $$
+  insert into core.public_reads (name, procedure, client) values (p_name, p_procedure, p_client)
+  on conflict (name) do update set procedure = excluded.procedure, client = excluded.client;
+$$;
+create or replace function core.public_read_client(p_name text, p_args jsonb)
+returns jsonb language plpgsql stable as $$
+begin
+  if not exists (select 1 from core.public_reads where name = p_name and client) then perform core.fail('NOT_FOUND', 404, jsonb_build_object('name', p_name)); end if;
+  return core.public_read(p_name, p_args);
+end $$;
+create or replace function public.core_public_read_client(p_name text, p_args jsonb) returns jsonb
+language sql stable security definer set search_path = '' as $$ select core.public_read_client(p_name, p_args) $$;
+revoke all on function core.allow_public_read(text, text, boolean) from public, anon, authenticated;
+revoke all on function core.public_read_client(text, jsonb) from public, anon, authenticated;
+revoke all on function public.core_public_read_client(text, jsonb) from public, anon, authenticated;
+grant execute on function public.core_public_read_client(text, jsonb) to service_role;
 
 -- Para los hooks y disparadores de las apps: el visitante del lote público en curso (null si el lote no lleva visitante).
 create or replace function core.current_visitor() returns uuid language sql stable as $$
