@@ -170,3 +170,34 @@ test('finca · la curva de cada altura se guarda ajustada a mano (0815): puntos 
   assert.deepEqual(contour.points, points);
   assert.deepEqual([contour.x, contour.y, contour.label], [0.5, 0.3, 'Altura 3']);
 });
+
+test('portales · cada cama con su tipo y una silueta de cabecera por app (0816)', async () => {
+  const room = uuid(); const bed = uuid(); const bare = uuid();
+  ok(await commit([
+    { op: 'insert', table: SPACES, id: room, fields: { parent_id: building, kind: 'habitacion', name: 'Hab de prueba' } },
+    { op: 'insert', table: SPACES, id: bed, fields: { parent_id: room, kind: 'cama', name: 'Cama 1', attributes: { bed_kind: 'litera' } } },
+    { op: 'insert', table: SPACES, id: bare, fields: { parent_id: room, kind: 'cama', name: 'Cama 2' } },
+  ], app.tokens.owner));
+
+  // La cabecera solo en siluetas, de apps conocidas y una viva por app (se pasa de una a otra en el mismo lote).
+  const a = uuid(); const b = uuid();
+  fails(await commit([{ op: 'insert', table: IMAGES, id: uuid(), fields: { space_id: building, kind: 'foto', file_id: await file('image/png', 1000), header_for: ['guests'] } }], app.tokens.owner));
+  fails(await commit([{ op: 'insert', table: IMAGES, id: uuid(), fields: { space_id: building, kind: 'silueta', file_id: await file('image/png', 1000), header_for: ['finance'] } }], app.tokens.owner));
+  fails(await commit([{ op: 'insert', table: IMAGES, id: uuid(), fields: { space_id: building, kind: 'silueta', file_id: await file('image/png', 1000), header_for: ['guests', 'guests'] } }], app.tokens.owner), 'HEADER_TAKEN');
+  ok(await commit([{ op: 'insert', table: IMAGES, id: a, fields: { space_id: building, kind: 'silueta', file_id: await file('image/png', 1000), header_for: ['guests', 'central'] } }], app.tokens.owner));
+  fails(await commit([{ op: 'insert', table: IMAGES, id: b, fields: { space_id: building, kind: 'silueta', file_id: await file('image/png', 1000), header_for: ['guests'] } }], app.tokens.owner), 'HEADER_TAKEN');
+  ok(await commit([
+    { op: 'update', table: IMAGES, id: a, expectedRevision: await rev(IMAGES, a), fields: { header_for: ['central'] } },
+    { op: 'insert', table: IMAGES, id: b, fields: { space_id: building, kind: 'silueta', file_id: await file('image/png', 1000), header_for: ['guests'] } },
+  ], app.tokens.owner));
+  fails(await commit([{ op: 'update', table: IMAGES, id: b, expectedRevision: await rev(IMAGES, b), fields: { header_for: [] } }], app.tokens.editor));
+
+  const guest = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('guests', $1, 'editor')`, [guest]);
+  const out = await app.t.rpc('core_read', { p_app: 'guests', p_actor: guest, p_name: 'resources.portal_plans', p_args: {} }) as any;
+  assert.equal(out.spaces.find((s: any) => s.id === bed).bedKind, 'litera');
+  assert.ok(!('bedKind' in out.spaces.find((s: any) => s.id === bare)));
+  assert.ok(!('attributes' in out.spaces.find((s: any) => s.id === bed)), 'ningún otro atributo');
+  assert.deepEqual(out.images.find((m: any) => m.id === b).headerFor, ['guests']);
+  assert.deepEqual(out.images.find((m: any) => m.id === a).headerFor, ['central']);
+});
