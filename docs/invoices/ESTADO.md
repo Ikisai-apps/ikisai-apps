@@ -174,3 +174,6 @@ Actualizado: 26 de octubre de 2026. Desde RELEVO-001 (26-10) desarrolla Finance 
 ## Bloqueos
 
 - Ninguno.
+
+## Pendiente después del sábado (decisión de VG, 27-10; finance-18)
+- **Pagos en línea:** Finance crea un enlace de pago por vencimiento (Stripe Payment Links, Redsys o el Bizum del banco; la pasarela la elige VG). Organizers solo enseña «Pagar ahora». Lo cobrado lo registra Finance. Ningún dato de tarjeta pasa por Ikisai.

@@ -49,9 +49,18 @@ jobs:
       released: ${{ steps.last.outputs.released }}
       skip: ${{ steps.last.outputs.skip }}
     steps:
+      # Los 10 min se cuentan desde el push, no desde que el run arranca: un run que ha esperado en la cola de la concurrencia
+      # (detrás de una publicación) ya ha juntado las fusiones y no vuelve a esperar entero (27-10: el de las 10:18 arrancó a
+      # las 10:21, esperó hasta las 10:31 y acabó a las 10:42).
       - name: Esperar a que acaben de llegar las fusiones (antirrebote)
         if: github.event_name == 'push'
-        run: sleep 600
+        env:
+          PUSHED_AT: ${{ github.event.head_commit.timestamp }}
+        run: |
+          pushed=$(date -d "$PUSHED_AT" +%s 2>/dev/null || date +%s)
+          left=$(( 600 - ($(date +%s) - pushed) ))
+          echo "push: $PUSHED_AT · espera: $(( left > 0 ? left : 0 )) s"
+          if [ "$left" -gt 0 ]; then sleep "$left"; fi
       # Fuera de dispatch, main tal como esté ahora (no el commit que disparó el run): recoge lo fusionado en la espera.
       - uses: actions/checkout@v4
         with:

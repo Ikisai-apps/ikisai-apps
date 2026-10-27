@@ -107,4 +107,15 @@ test('visitantes · el enlace de huésped también es de un solo uso (portal_cus
   assert.equal((await pub('invitation', { body: { invitation } })).data.error.code, 'INVITATION_USED');
 });
 
+test('visitantes · FL10: un enlace de tres partes (de antes de la 0915), aunque esté bien firmado y en plazo, no vale', async () => {
+  const guest = uuid();
+  const out = await ok([call(PROCEDURES.assignGuestNumbers, { project_id: V1, guests: [{ guest_id: guest, display_name: 'Luis E.' }] })]);
+  const customer = (await app.t.db.query<{ id: string }>(`select id from flow.customers where guest_id = $1`, [guest])).rows[0]!.id;
+  assert.ok(out);
+  const msg = `${customer}.${Math.floor(Date.now() / 1000) + 600}`;
+  const invitation = `${msg}.${createHmac('sha256', KEY).update(msg).digest('hex')}`;
+  const res = await pub('invitation', { body: { invitation } });
+  assert.equal(res.status, 404); assert.equal(res.data.error.code, 'INVITATION_INVALID');
+});
+
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });

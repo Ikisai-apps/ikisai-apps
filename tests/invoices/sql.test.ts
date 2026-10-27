@@ -639,6 +639,10 @@ test('plantillas: solo se escriben al validar una factura de ese proveedor; el o
   assert.equal(again.status, 200);
   let text = await read('invoices.document_text', { file_id: doc.file_id });
   assert.equal(text.status, 200); assert.equal(text.data.items[0].str, 'Otra lectura'); assert.equal(text.data.sha256, doc.sha256);
+  // F6: otra persona no sustituye el texto guardado de un documento que no subió (responde, pero no lo guarda)
+  const other = await app.call(`/api/v1/documents/${doc.file_id}/text`, { token: app.tokens.editor, body: { items: [{ str: 'Texto inventado', page: 1, x: 1, y: 1 }] } });
+  assert.deepEqual([other.status, other.data.saved], [200, false]);
+  assert.equal((await read('invoices.document_text', { file_id: doc.file_id })).data.items[0].str, 'Otra lectura');
   assert.equal((await read('invoices.document_text', { file_id: doc.file_id }, app.tokens.reader)).status, 403);
   assert.equal((await app.call(`/api/v1/documents/${doc.file_id}/text`, { token: app.tokens.reader, body: { items: [] } })).status, 403);
   assert.equal((await app.call(`/api/v1/documents/${uuid()}/text`, { body: { items: [] } })).status, 422);

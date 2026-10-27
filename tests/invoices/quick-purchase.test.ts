@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID as uuid } from 'node:crypto';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
-import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
+import { createInvoicesApp, keyedStableUuid, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
 
 let app: TestApp;
 let EVENT: string;
@@ -128,4 +128,13 @@ test('permiso y validación: el lector no registra; cada error dice su campo', a
   const missing = await quick({ ...valid, requestId: 'x-2', target: { app: 'booking', kind: 'event', id: uuid() } });
   assert.equal(missing.status, 422);
   assert.equal(missing.data.error.code, 'TARGET_NOT_FOUND');
+});
+
+test('F5: los ids de la compra rápida llevan un secreto del servidor; sin él no se adivinan desde el usuario y el requestId', async () => {
+  const seed = 'quick-purchase:usuario:req-1:invoice';
+  const a = keyedStableUuid('secreto-a'); const b = keyedStableUuid('secreto-b'); const plain = keyedStableUuid(undefined);
+  assert.equal(await a(seed), await a(seed), 'estable con el mismo secreto (idempotente)');
+  assert.notEqual(await a(seed), await b(seed));
+  assert.notEqual(await a(seed), await plain(seed), 'distinto del SHA-256 sin secreto');
+  assert.match(await a(seed), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
