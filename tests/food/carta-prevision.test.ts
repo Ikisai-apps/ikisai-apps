@@ -146,3 +146,15 @@ test('relleno · repartir un total entre líneas y la previsión de partida de l
   assert.equal(cartaPrevisionEmpty(lines, CARTA), false);
   assert.equal(cartaPrevisionEmpty(lines.map((l) => ({ ...l, expected_units: 0 })), CARTA), true);
 });
+
+test('sábado · la carta de octubre con su previsión de partida no sale vacía para Flow: cada componente trae cantidad o el porqué', async () => {
+  // Después de «relleno» (arriba): todas las líneas con unidades a cubrir.
+  const totals = await q(`select name, convertible, need_total, prep_need_total, missing, note from food.carta_prep_totals_projection where menu_id = $1`, [CARTA]);
+  assert.ok(totals.length > 0);
+  // Lo que se puede calcular, con cantidad mayor que 0; lo que no, con su motivo y su frase (nada vacío en silencio).
+  for (const t of totals) {
+    if (t.convertible) assert.ok(Number(t.need_total) > 0, `${t.name}: cantidad`);
+    else assert.ok(t.missing && t.note, `${t.name}: motivo`);
+  }
+  assert.ok(totals.some((t) => t.convertible && Number(t.prep_need_total) > 0), 'Flow recibe al menos un ingrediente para sus puntos');
+});

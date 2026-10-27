@@ -71,6 +71,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 - **Capacidades en el catálogo del núcleo** (migración 1113; API.md §2.14): `food.carta_prep`, `food.carta_prep_lines`, `food.event_offers`, `food.event_needs` y `food.use_carta_in_event`, con la ruta `POST carta/:id/use-in-event`. Prueba: `capability.test.ts`.
 
 - **«Rellenar previsión» y aviso «Sin previsión»** (hueco S3 de la QA de Flow; migración 1114 con la previsión de partida de la carta de octubre; API.md §2.11).
+- **Qué falta en la previsión para Flow** (encargo de Core del 28-10: rendimiento y recipientes; migración 1115; API.md §2.13): `missing`, `yield_missing` y `note` en las dos lecturas; avisos en el plan de bandejas y «Falta» en el rendimiento.
 
 ## Aceptación del usuario (6 de octubre de 2026)
 
