@@ -899,6 +899,7 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
   - **Decoración:** la pieza del kit con `decorEdit` (icono, 1 o 4 celdas, escala 5 · 1 · 0,5 m, poner, arrastrar, girar y quitar). Cada cambio va a `resources.decor_items` (capa `general`) con su «Deshacer» (`app/decor.ts`). Al lado: la escala del dibujo (sin ella no se decora), el catálogo de iconos (SVG limpio, PNG o GIF de hasta 1 MB, con nombre, categoría y tamaño por defecto) y, en la finca, la cota de cada altura (`attributes.elevation_m`) con lo que sube hasta la siguiente.
 - **Imágenes del centro:** siluetas, secciones y fotos por edificio (`resources.space_images`; PNG, JPG o SVG de hasta 5 MB). Las sube y quita el owner y las ven todos; Guests y Organizers las leen de `portal_plans`.
 - **Curvas de nivel editables** (Recursos 0815): en «Colocar» de la finca, cada curva lleva un asa por punto (ratón, o Tab y flechas). Se guarda en `contours[i].points` con «Deshacer»; sin puntos guardados, la curva sale del SVG.
+- **Silueta de cabecera** (Recursos 0816, `space_images.header_for`): en «Imágenes del centro», un selector por app (Central, Guests y Organizers) con las siluetas subidas, o «Ninguna». Cambiarla va en un solo lote: se le quita la app a la anterior y se le pone a la nueva (`headerOperations`, en `app/decor.ts`). Tiene «Deshacer». Solo el owner la cambia.
 
 ## 10. Offline
 

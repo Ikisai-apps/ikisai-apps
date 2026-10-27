@@ -1819,7 +1819,7 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
   - Campos: `nights`, `price_cents` y `amount_cents`, con `amount_cents = nights × price_cents` (base y dominio).
   - Cobro: `method` (`cash`, `bizum` o `card`, el datáfono externo) y `paid_at`, siempre juntos.
   - Resultado del envío: `finance_entry_id` y `finance_sent_at`, o `finance_error`.
-- **Envío a Finance:** `POST /api/v1/walkins/:id/send/finance` de booking-api, con la sesión de la persona, llama a `invoices.record_app_entry` de invoices-api.
+- **Envío a Finance:** `POST /api/v1/walkins/:id/send/finance` de booking-api, con la sesión de la persona, llama a `invoices.record_app_entry` de invoices-api. Lleva también `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY`) y `X-Ikisai-Caller: booking`, la prueba de que sale del servidor de Booking (seguridad B5; Finance #859). Sin esa prueba, Finance rechaza `source_app: 'booking'` con 403 `SOURCE_MISMATCH` o `CALLER_REQUIRED`.
   - Datos del apunte: `source_app 'booking'`, `source_ref 'booking:stay:<id>'`, `kind 'income'`, fecha del cobro (Madrid), IVA del 10 %, `methods` con el método y `detail` con las noches y la cama.
   - Es idempotente en Finance por `source_ref`.
   - Errores: `NOT_PAID` (409), `NEEDS_ACCESS` (403, «Pide acceso a Finance») y `APP_UNAVAILABLE` (503).

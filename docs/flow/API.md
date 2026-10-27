@@ -388,7 +388,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **`create_flow` desde plantilla**: la versión del flujo nunca queda por debajo de la de la plantilla. Se siembra `barra` v2 (columnas de la v1 con los ajustes de la v2) y se añaden las unidades de plantilla (el puesto «Pan»). Así, «Nuevo flujo» → Barra en un evento nuevo nace como una v2 completa.
 - **Capacidades de Flow** en el catálogo del núcleo:
   - `flow.day_summary`: `POST day-summary {project_id, day}`, solo owner y con el ámbito comprobado. Devuelve el resumen del día (`flow.day_summary`).
-  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Es idempotente: el id sale de la persona y del `requestId`, y repetir devuelve `replayed: true`.
+  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Comprueba el rol (editor u owner) y que el proyecto esté en el ámbito de quien llama (`flow.project_access_read`, 0924; si no, `403 PROJECT_OUT_OF_SCOPE`). El id es aleatorio y es idempotente por persona y `requestId` (recibo del núcleo): repetir devuelve la misma tarea con `replayed: true`.
 - **Prueba de extremo a extremo**: `tests/flow/servicio-sabado.test.ts`. Los huecos que encuentra van en `docs/flow/PETICIONES.md` (S1…).
 
 ## 35. Número de cobro y ticket hacia Finance (migración `0921`)
