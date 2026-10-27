@@ -4,7 +4,7 @@
  * quien le acompaña, `signsOwnEntry`) y un recuadro para firmar con el dedo. Sin red, la firma espera en el dispositivo y
  * se envía sola; no se da por hecha hasta que Booking responde.
  */
-import { el, icon, replace } from '@ikisai/ui-kit';
+import { el, fieldAttrs, icon, replace } from '@ikisai/ui-kit';
 import { signsOwnEntry } from '@ikisai/domain-booking';
 import { commonText, textVersion } from '../app/common-texts.ts';
 import type { GuestContext } from '../app/context.ts';
@@ -121,8 +121,9 @@ export function mountSign(main: HTMLElement, ctx: GuestContext, base: string): (
     const own = r.start_date ? signsOwnEntry({ birth_date: f.birth_date as string | null, is_minor: f.is_minor === true }, r.start_date) : f.is_minor !== true;
     const fullName = [f.first_name, f.last_name_1, f.last_name_2].filter(Boolean).join(' ');
     const signer = el('input', { id: 'signerName', type: 'text', maxlength: '200', autocomplete: 'name', 'data-feedback-ignore': '',
+      ...fieldAttrs({ id: 'guests.firma.firmante', type: 'text', required: true, sensitivity: 'personal', confirm: 'event' }),
       value: own ? fullName : String(f.guardian_name ?? '') }) as HTMLInputElement;
-    const pad = createSignaturePad(t('sign.pad'));
+    const pad = createSignaturePad({ label: t('sign.pad'), field: { id: 'guests.firma.firma', required: true, sensitivity: 'sensitive', confirm: 'event' } });
     const error = el('p', { class: 'ghint', id: 'signError', role: 'alert' });
     const submit = el('button', { type: 'button', class: 'primary wide', id: 'signSubmit', 'data-feedback-id': 'guests.firma.recuadro.firmar', 'data-feedback-label': 'Firmar',
       onclick: async () => {
