@@ -62,7 +62,7 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   assert.equal(JSON.stringify(dash.data).includes('Marga'), false);
   // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no. No depende de cuáles sean.
   const published = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and name <> 'central.central_kpi_projection'`)).rows.map((r) => r.app);
-  const expected = ['booking', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
+  const expected = ['booking', 'guests', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
   assert.deepEqual(dash.data.unavailable, expected);
 });
 
@@ -114,6 +114,11 @@ test('kpis · R7: temas del panel en su orden; lo que no tiene tema va detrás, 
     ['Personas', ['central.people_active']],
     ['Oficios', ['central.trades_at_risk']],
     [null, ['booking.x']],
+  ]);
+  // Guests (#876): primero lo que falta (portal y firmas), después los partes de viajeros.
+  assert.deepEqual(groupBySection(['guests.ses_sent_30d', 'guests.signatures_done', 'guests.portal_entered_pct', 'guests.retreats_ses_pending'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
+    ['Portal y firmas', ['guests.portal_entered_pct', 'guests.signatures_done']],
+    ['Partes de viajeros', ['guests.retreats_ses_pending', 'guests.ses_sent_30d']],
   ]);
   // Una app sin claves con tema se queda en un solo bloque y en el orden de llegada.
   assert.deepEqual(groupBySection([{ kpi: 'tasks.b' }, { kpi: 'tasks.a' }]).map((g) => [g.title, g.items.map((i) => i.kpi)]), [[null, ['tasks.b', 'tasks.a']]]);

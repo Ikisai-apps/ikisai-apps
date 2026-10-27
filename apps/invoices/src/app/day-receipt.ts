@@ -54,14 +54,15 @@ const METHOD_LABELS: Record<string, string> = { cash: 'Metálico', bizum: 'Bizum
 export const methodLabel = (k: string): string => METHOD_LABELS[k] ?? k;
 
 /**
- * Número de cobro: el que manda la app o, en un cobro suelto (`<app>:receipt:<id>`, como el de la caja de Flow), los 8
+ * Número de cobro: el que manda la app o, en un cobro suelto (`<app>:receipt:<id>` o `booking:stay:<id>`), los 8
  * primeros caracteres del id en mayúsculas, los mismos que la app pone en la descripción. Así un cobro nunca se imprime
  * como «Ticket de ventas», que es el del día.
  */
 export function receiptNumberOf(entry: Pick<ReceiptEntry, 'receipt_number' | 'source_ref'>): string | null {
   const own = entry.receipt_number?.trim();
   if (own) return own;
-  const m = /^[a-z_]+:receipt:([0-9a-zA-Z-]{8,})$/.exec(entry.source_ref ?? '');
+  // Un cobro suelto: el de la caja de Flow (`flow:receipt:<id>`) o el de alojamiento de recepción (`booking:stay:<id>`).
+  const m = /^[a-z_]+:(?:receipt|stay):([0-9a-zA-Z-]{8,})$/.exec(entry.source_ref ?? '');
   return m ? m[1]!.slice(0, 8).toUpperCase() : null;
 }
 

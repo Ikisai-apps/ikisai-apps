@@ -302,10 +302,19 @@ interface ReceiptForSend {
  * «Pedir a Tasks» (contrato de Tasks §39): con la sesión de la persona, a la API de Tasks, como Central. Quien pide tiene
  * que ser editor u owner de Tasks y ver el proyecto. Tasks no avisa de cambios: el estado se consulta al enseñarlo.
  */
-function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: string | undefined): AppRoute[] {
+function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: string | undefined, publicWrite: PublicWriter): AppRoute[] {
   const transport = options.appsFetch ?? fetch;
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const base = (options.tasksApiBase ?? env('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
+
+  /**
+   * Anota en la unidad lo que Tasks creó (FL6, 0931): el servidor, con el lote público que solo cambia `payload.external`.
+   * El navegador ya no puede marcar una unidad como pedida.
+   */
+  async function linkUnit(unit: { id: string; revision: number; payload?: Record<string, unknown> | null }, link: Record<string, unknown>): Promise<void> {
+    const payload = { ...(unit.payload ?? {}), external: { ...link, at: new Date().toISOString() } };
+    await publicWrite(supabase, APP, [{ op: 'update', table: TABLES.units, id: unit.id, expectedRevision: unit.revision, fields: { payload } }]);
+  }
 
   async function tasks<T>(ctx: RequestContext, path: string, body: unknown): Promise<T> {
     let res: Response;
@@ -355,13 +364,17 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: str
             external_url: `${FLOW_ORIGINS[0]}/equipo#/p/${found.project.id}/${COLUMN_SLUGS[found.unit.column_key as string] ?? 'logistica'}`,
             ...(Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: typeof body.unit === 'string' ? body.unit.slice(0, 20) : undefined } : {}),
           });
-          return { created: out.created, link: { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status } };
+          const link = { app: 'tasks', kind: 'purchase_request', id: out.purchase.id, status: out.purchase.status };
+          await linkUnit(found.unit, link);
+          return { created: out.created, link };
         }
         const out = await tasks<{ created: boolean; task: { id: string; done?: boolean } }>(ctx, 'requests/task', {
           source: 'flow', kind: 'flow.logistics', kind_label: 'Logística de la barra', external_ref: found.unit.id,
           title: String(found.unit.label ?? '').slice(0, 300), note, project_id: found.project.tasks_project_id, priority,
         });
-        return { created: out.created, link: { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' } };
+        const link = { app: 'tasks', kind: 'task', id: out.task.id, status: out.task.done ? 'done' : 'open' };
+        await linkUnit(found.unit, link);
+        return { created: out.created, link };
       },
     },
     {
@@ -447,7 +460,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 

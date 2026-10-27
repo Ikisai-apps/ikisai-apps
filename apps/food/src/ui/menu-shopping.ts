@@ -1,9 +1,9 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, SHOPPING_ITEM_STATUSES, defaultPurchase, ingredientKey, isStale, itemAverageCost, lastTicket, linePacks, linePerUnit, purchaseMovement, purchaseSpace,
-  cartaShoppingSources, savePackOperations, shopColor, shoppingSources, type CartaLine, sourceChanges, toItemBase, validateOperations,
-  type CostMovement, type ItemConversion, type MovementCost, type MovementLike, type PackUnitRow, type ResourceItem, type ShoppingItemStatus, type ShoppingList,
-  type ShoppingListItem, type ShoppingListStatus, type SpaceLike, type Unit,
+  FOOD_PROCEDURES, SHOPPING_ITEM_STATUSES, defaultPurchase, ingredientKey, isStale, itemAverageCost, lastTicket, linePacks, linePerUnit,
+  cartaShoppingSources, savePackOperations, shopColor, shoppingSources, type CartaLine, sourceChanges, validateOperations,
+  type CostMovement, type MovementCost, type PackUnitRow, type ResourceItem, type ShoppingItemStatus, type ShoppingList,
+  type ShoppingListItem, type ShoppingListStatus, type Unit,
 } from '@ikisai/domain-food';
 import {
   Envase, createShelves, el, formatDate, icon, openSheet, plural, renderTile, replace, toast, toastWithAction, type PackPlan, type ShelfRow, type Sheet, type TileAction,
@@ -13,6 +13,7 @@ import { T, UNITS, UNIT_LABELS, describeError, formatQuantity, parseQuantity, ty
 import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
 import { R, resourcesClient } from '../app/resources.ts';
+import { recordShoppingPurchases } from '../app/shopping-stock.ts';
 import { usage } from '../app/usage.ts';
 import { fb, type FbMark } from './feedback.ts';
 import { housePeriod, periodBar, periodLabel, samePeriod, setHousePeriod } from './house-period.ts';
@@ -113,43 +114,8 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
     commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: item.revision, fields }]);
   const fresh = (item: ItemRow) => items.find((i) => i.id === item.id) ?? null;
 
-  /**
-   * «Comprado» (o «recibido») entra al stock de Recursos en ese momento, sin coste; volver a «pendiente» lo saca
-   * (decisión del usuario, 14-10-2026). Finance (R4) añade después el coste a esa entrada por su referencia
-   * `shopping_item:<id>`. Si el ingrediente aún no tiene artículo o no hay ningún sitio de cocina, la lista sigue como
-   * siempre; si la unidad no se puede pasar a la del artículo, se avisa. Cambiar «En casa» o «Comprar» en una línea ya
-   * comprada (H-C5) también pasa por aquí: el movimiento es la diferencia con lo que ya entró por esa referencia.
-   * Recursos se lee una sola vez para todo el lote.
-   */
-  async function recordPurchases(lines: ItemRow[]): Promise<void> {
-    const linked = lines.map((line) => ({ line, ingredient: data?.ingredients.find((i) => i.id === line.ingredient_id) })).filter((x) => x.ingredient?.item_id);
-    if (!linked.length) return;
-    try {
-      const [all, spaces, moves, conversions] = await Promise.all([
-        r.list(R.items) as unknown as Promise<Article[]>,
-        r.list(R.spaces) as unknown as Promise<SpaceLike[]>,
-        r.list(R.movements) as unknown as Promise<MovementLike[]>,
-        r.list(R.itemUnits) as unknown as Promise<ItemConversion[]>,
-      ]);
-      const operations: RowOperation[] = [];
-      const unconvertible: string[] = [];
-      for (const { line, ingredient } of linked) {
-        const article = all.find((i) => i.id === ingredient!.item_id);
-        if (!article) continue;
-        const space = purchaseSpace(article, spaces);
-        // Sin sitios de cocina en Recursos todavía no se lleva inventario: la lista funciona como siempre, sin avisos.
-        if (!space) continue;
-        const quantity = toItemBase(Number(line.purchase_quantity), line.unit, article.base_unit, article.id, conversions);
-        if (quantity === null) { unconvertible.push(`${ingredient!.name} en el inventario: su unidad no se puede pasar a ${article.base_unit}`); continue; }
-        const movement = purchaseMovement({ itemId: article.id, lineId: line.id, bought: line.status !== 'pendiente', quantityBase: quantity, spaceId: space, supplier: line.supplier, movements: moves });
-        if (movement) operations.push({ op: 'insert', table: R.movements, id: crypto.randomUUID(), fields: movement });
-      }
-      if (unconvertible.length) toast(`No se ha dado entrada a ${unconvertible.join('; ')}.`);
-      if (operations.length) await r.commit(operations);
-    } catch (error) {
-      toast(`No se ha anotado en el inventario: ${describeError(error)}`);
-    }
-  }
+  /** A la Despensa lo que cruza entre pendiente y no (`app/shopping-stock.ts`). */
+  const recordPurchases = (lines: ItemRow[]) => recordShoppingPurchases(r, lines, data?.ingredients ?? []);
 
   /** Cambia el estado de varias líneas en un commit y apunta en la Despensa las que cruzan entre pendiente y no. */
   async function setStatuses(lines: ItemRow[], status: ShoppingItemStatus, event = 'food.compra.marcar'): Promise<boolean> {
@@ -299,6 +265,8 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
   function levelText(view: LineView): string {
     if (view.item.status === 'recibido') return 'Recibido';
     if (view.bought) return 'En el carro';
+    // Pedida a Tasks desde la lista del evento (1117): la compra la lleva Tasks.
+    if (view.item.purchase_ref) return 'Pedida en Tasks';
     const p = view.plan;
     if (p.kind === 'sin' || p.kind === 'granel') return p.need > 0 ? 'Sin envase: lo justo' : 'No hace falta comprar';
     const extra = Envase.extraText(p);

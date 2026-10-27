@@ -216,10 +216,10 @@ function throwDomain(error: unknown, index: number): never {
 }
 
 /** Un documento debe ser un archivo de Invoices ya verificado y de tipo admitido; devuelve los campos que fija el servidor. */
-async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unknown, index: number, field = 'file_id'): Promise<{ mime_type: string; size_bytes: number; sha256: string }> {
+async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unknown, index: number, field = 'file_id', attach = true): Promise<{ mime_type: string; size_bytes: number; sha256: string }> {
   if (isBlobMarker(fileId)) fail(422, 'INVALID_FIELDS', 'El adjunto todavía no se ha subido.', { index, field });
   if (typeof fileId !== 'string' || !UUID.test(fileId)) fail(422, 'INVALID_FIELDS', 'Identificador de archivo inválido.', { index, field });
-  let file: { status: string; mime: string; size: number; sha256: string };
+  let file: { status: string; mime: string; size: number; sha256: string; created_by: string | null };
   try {
     file = await supabase.rpc('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
   } catch (error) {
@@ -228,6 +228,12 @@ async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unk
   }
   if (file.status !== 'verified') fail(422, 'INVALID_FILE', 'El documento todavía no se ha subido por completo.', { index, field });
   if (!(FILE_MIMES as readonly string[]).includes(file.mime)) fail(422, 'INVALID_FILE', 'El documento debe ser PDF, WebP, JPEG o PNG.', { index, field, mime: file.mime });
+  // F4 (0252): se adjunta lo que subió quien lo adjunta, o lo que ya está enlazado a algo de Finance (que todos ven).
+  // Leer (extraer, guardar su texto) no es adjuntar: `attach = false`.
+  if (attach && file.created_by !== ctx.user.id) {
+    const use = await supabase.rpc<{ in_use: boolean }>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'invoices.file_in_use', p_args: { file_id: fileId } });
+    if (!use?.in_use) fail(403, 'FILE_NOT_YOURS', domainMessage('FILE_NOT_YOURS'), { index, field });
+  }
   return { mime_type: file.mime, size_bytes: Number(file.size), sha256: file.sha256 };
 }
 
@@ -710,7 +716,7 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         if (!extractor) fail(503, 'EXTRACTION_UNAVAILABLE', domainMessage('EXTRACTION_UNAVAILABLE'));
         const files: Array<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }> = [];
         for (const [index, id] of (ids as string[]).entries()) {
-          await verifiedFile(supabase, ctx, id, index, `file_ids[${index}]`);
+          await verifiedFile(supabase, ctx, id, index, `file_ids[${index}]`, false);
           const file = await supabase.rpc<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: id });
           files.push({ id: file.id, bucket: file.bucket, path: file.path, mime: file.mime, filename: file.filename, size: Number(file.size) });
         }
@@ -772,7 +778,7 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
           if (!o || typeof o.str !== 'string' || o.str.length > 500 || typeof o.page !== 'number' || num(o.x) === null || num(o.y) === null) fail(422, 'INVALID_OPERATION', 'Fragmento de texto inválido.', { index: i });
           return { str: o.str, page: Math.trunc(o.page as number), x: num(o.x), y: num(o.y), w: num(o.w), h: num(o.h) };
         });
-        await verifiedFile(supabase, ctx, fileId, 0, 'fileId');
+        await verifiedFile(supabase, ctx, fileId, 0, 'fileId', false);
         const { charCount, saved } = await saveDocumentText(supabase, ctx, fileId, items);
         // `fill: true` (lote, lectura automática, vuelta de la red): rellena lo vacío del borrador de quien sube el texto.
         // «Leer PDF» no lo pide: la persona revisa lo leído en la vista previa o en «Rellenar a mano».
