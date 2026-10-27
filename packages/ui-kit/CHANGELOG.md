@@ -1,5 +1,55 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.59.0 · 27 de octubre de 2026
+
+**Inventario semántico de campos** (visión V0.2, encargo de Core; la forma está acordada con Central para «Uso y cobertura»). Cada campo de un formulario declara qué es, nunca lo que se escribe en él: no se toca la telemetría de valores. Sin declarar nada, no cambia nada.
+
+- **Convención y helper** (`src/fields/field-mark.ts`): `FieldSpec` `{ id, entity, prop, type, required, permission, sensitivity, since, route, anchor, label }`.
+  - El `id` es estable y tiene la forma `<app>.<pantalla>.<campo>`, como los de feedback.
+  - `required` vale `true`, `false` o la condición en palabras.
+  - `sensitivity` vale `'public'`, `'internal'`, `'personal'` o `'sensitive'`.
+  - `fieldAttrs(spec)` da los atributos `data-field-*` para `el()`; `markField(nodo, spec)` marca un nodo ya creado, y en el HTML valen los mismos atributos.
+  - Si el campo no tiene `data-feedback-id`, lleva el mismo id: es su ancla para el feedback y el uso. `markField` no pisa uno que ya exista.
+- **Los campos del kit se marcan solos** con la opción `field`, y ponen ellos el tipo y «obligatorio»: `createDateField`, `createQuantityField`, `createSuggestField`, `createColorField`, `createLabelPicker`, `createLevelStar` y `createSignaturePad`.
+- **`createStepForm({ feedbackId })`** marca cada pregunta como `<feedbackId>.<id>`, en minúsculas (`checkIn` pasa a `check_in`), con su tipo y su texto. `StepQuestion.field` añade entidad, propiedad, permiso, sensibilidad…
+- **Catálogo** (`scripts/feature-catalog.mjs`): el `feature-catalog.json` de cada versión trae dos listas nuevas.
+  - `fields`: `{ fieldId, app, screen, route, anchorId, label, type, entity, prop, required, permission, sensitivity, since, source, file, line }`.
+  - `fieldsUninstrumented`: los `input`, `select` y `textarea` (sin `hidden`, `submit`, `button`, `reset` ni `image`) y los campos del kit sin declarar, con su `data-feedback-id` si lo tienen.
+  - `fieldsDynamic`: lo que no se puede leer (ids no literales, preguntas de `createStepForm` fuera de la llamada). Va aparte para que `dynamic` siga siendo solo de funciones.
+  - Cada campo declarado entra también en `features` con `kind: 'field'`. Lo de antes no cambia: en Booking, Tasks y Central, `features` y `dynamic` salen iguales que en main.
+- **Informe «campos sin instrumentar»**: `node packages/ui-kit/scripts/feature-catalog.mjs --fields-report [--app booking] [--out informe.md]`. Hoy en main hay 0 campos declarados y 588 sin instrumentar:
+
+  | App | Sin instrumentar |
+  |---|---:|
+  | Booking | 36 |
+  | Central | 112 |
+  | Flow | 18 |
+  | Food | 54 |
+  | Guests | 22 |
+  | Invoices | 120 |
+  | Organizers | 74 |
+  | Tasks | 152 |
+- `since`: si no se declara, lo pondrá el núcleo con la primera versión en que vea el campo; la carga es de Core (`usage_catalog_ingest.py` aún sube solo `features`).
+- Pruebas: `tests/v63.spec.ts`.
+
+## 0.58.0 · 26 de octubre de 2026
+
+**Tres peticiones de Tasks** (K1, K2 y K3 de `docs/tasks/PETICIONES.md`). Todo es opcional: sin las opciones nuevas no cambia nada.
+
+1. **K1 · `Stat.selected`** (FB_2026_069). En `renderStats`, la cifra que filtra lleva `aria-pressed="true"`; las demás con botón, `"false"`. La elegida se marca con un borde de 3 px del acento (`.stat-selected`), sin depender del color del texto. Sin `selected` en ninguna cifra, no se pinta `aria-pressed`, como antes.
+2. **K2 · la barra inferior en la app instalada** (FB_2026_075; VG eligió «a + b»). Nueva opción `renderTabBar({ …, standalone: 'flush' | 'autohide' | 'both' })`. Solo actúa con `display-mode: standalone`; en el navegador no cambia nada.
+   - `'flush'`: los botones bajan hasta el borde (relleno inferior `max(6px, área segura − 14px)`), sin la franja de papel vacía bajo ellos.
+   - `'autohide'` (`bindTabBarAutoHide(nav)`): la barra se esconde al bajar más de 24 px. Vuelve al subir, al llegar al final, al deslizar hacia arriba desde los 24 px inferiores y cuando el foco entra en ella. Va superpuesta al contenido.
+     - Hay un solo vigilante para toda la página, así que repintar la barra no suma oyentes.
+     - No cuentan las hojas, los diálogos, la paleta ni el menú.
+     - Sin animación con `prefers-reduced-motion`.
+   - **`--tabbar-offset`** en `:root`: lo que ocupa la barra a la vista, y 0 escondida. El `.fab` del kit la usa (`bottom: calc(var(--tabbar-offset, 68px + área segura) + 16px)`), así que baja con la barra. Sin la opción, queda donde estaba.
+3. **K3 · «Mis reportes»** (FB_2026_072). `openFeedbackCenter({ …, scope: 'mine' })` y `renderFeedbackCenter` igual.
+   - Sin Mapa, con tres vistas: Abiertos, Pendientes de verificar («Funciona» y «Sigue fallando») y Mis borradores.
+   - Las listas piden `&mine=true`, y la hoja se titula «Mis reportes» («My reports» en inglés).
+   - Es para las apps cuya revisión vive en otra (Central, `#/revision`).
+- **Pruebas:** `v62` (4 casos). La app instalada se simula en `matchMedia`, porque Playwright no emula `display-mode`.
+
 ## 0.57.1 · 26 de octubre de 2026
 
 **Icono de Flow en el lanzador.** En `KIT_ICONS` (`shell/launcher.ts`), `flow` lleva `board`, un icono neutro del set. Hasta ahora salía el de repuesto (`grid`), el mismo que Central. No cambia nada más; una app que pase `appIcon` sigue usando el suyo.

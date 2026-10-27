@@ -78,8 +78,8 @@ function tkpArrange(html,projects){const tpl=document.createElement('template');
     for(const c of cards)c.remove();const anchor=grid.firstChild;for(const x of sorted)grid.insertBefore(x.node,anchor);
     if(tkpFocus&&!sorted.some(x=>!x.stats.inbox))grid.insertAdjacentHTML('beforeend','<div class="empty">Ningún proyecto en este grupo.</div>')}
   const counts=tkpBandCounts(projects),band=document.createElement('div');band.className='ikisai-kit tkp-band';
-  band.append(IkisaiKit.renderStats(TKP_BAND.map(b=>({value:counts[b.key],label:b.label,tone:counts[b.key]?b.tone:null,feedbackId:b.feedbackId,onClick:()=>{}})),{label:'Lo que pide atención'}));
-  band.querySelectorAll('button.stat-item').forEach((b,i)=>{b.dataset.tkpFocus=TKP_BAND[i].key;b.setAttribute('aria-pressed',String(tkpFocus===TKP_BAND[i].key))});
+  band.append(IkisaiKit.renderStats(TKP_BAND.map(b=>({value:counts[b.key],label:b.label,tone:counts[b.key]?b.tone:null,feedbackId:b.feedbackId,onClick:()=>{},selected:tkpFocus===b.key})),{label:'Lo que pide atención'}));
+  band.querySelectorAll('button.stat-item').forEach((b,i)=>{b.dataset.tkpFocus=TKP_BAND[i].key});
   band.insertAdjacentHTML('afterbegin',tkpProgressHtml(projects));
   const at=main.querySelector(':scope > [data-area-block], :scope > .sectionlabel, :scope > .project-grid');if(at)at.before(band);else main.append(band);
   return tpl.innerHTML}

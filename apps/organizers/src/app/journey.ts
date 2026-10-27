@@ -97,6 +97,23 @@ export function toDoOf(card: Card, today: string, t: Tr = plain): string | null 
   return left === 1 ? t('Te toca: completar los datos de 1 asistente') : t('Te toca: completar los datos de {n} asistentes', { n: left });
 }
 
+/** Texto sin mayúsculas ni acentos, para buscar «Cerámica» con «ceramica». */
+function searchable(text: string): string {
+  return text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+}
+
+/** Buscador de Mis retiros (con el ámbito «todos» salen todos los de Ikisai): por título o código; vacío, todos. */
+export function matchesRetreat(r: { title: string; code: string | null }, query: string): boolean {
+  const q = searchable(query);
+  if (!q) return true;
+  return searchable(r.title).includes(q) || searchable(r.code ?? '').includes(q);
+}
+
+/** ¿Se ve por el ámbito «todos» (dirección como coorganizadora, B20) y no por un permiso propio? */
+export function isCoorganizer(r: { as?: string }): boolean {
+  return r.as === 'coorganizer';
+}
+
 /** Mis retiros: en marcha (por inicio, sin fecha al final), pasados (lo último primero) y cancelados. */
 export function groupRetreats<T extends Dated>(items: readonly T[], today: string): { main: T[]; past: T[]; cancelled: T[] } {
   const byStart = (a: T, b: T) => (a.start_date ?? '9999').localeCompare(b.start_date ?? '9999');

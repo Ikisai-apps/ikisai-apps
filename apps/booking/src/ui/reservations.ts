@@ -6,7 +6,7 @@ import {
 } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import {
-  EVENT_TYPE_LABELS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, RESERVATIONS, ASSIGNMENTS, PORTAL_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, today,
+  DATE_OPTIONS, EVENT_TYPE_LABELS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, RESERVATIONS, ASSIGNMENTS, PORTAL_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, today,
   type ReservationRow,
 } from '../app/client.ts';
 import { PHASE_COLORS, loadExperiences, onSesPending, resetSesWatch, requestBlock, type ExperienceSet, type ReservationView } from '../app/experience.ts';
@@ -339,7 +339,12 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       const issue = validateFields(RESERVATIONS, fields, 'insert')[0];
       if (issue) return showError(issue.message);
       const id = crypto.randomUUID();
-      const operations: RowOperation[] = [{ op: 'insert', table: RESERVATIONS, id, fields }];
+      // Con entrada y salida, la fecha del alta nace como la fecha posible de Ikisai y queda definitiva.
+      const dated = typeof fields.start_date === 'string' && typeof fields.end_date === 'string';
+      const operations: RowOperation[] = [{ op: 'insert', table: RESERVATIONS, id, fields: dated ? { ...fields, dates_definitive: true } : fields }];
+      if (dated && (fields.end_date as string) > (fields.start_date as string) && canRead(client, DATE_OPTIONS)) {
+        operations.push({ op: 'insert', table: DATE_OPTIONS, id: crypto.randomUUID(), fields: { reservation_id: id, start_date: fields.start_date, end_date: fields.end_date, proposed_by: 'ikisai', position: 1 } });
+      }
       // La fila de importes nace con la reserva (mismo id); un lector no llega aquí.
       if (canRead(client, FINANCE)) operations.push({ op: 'insert', table: FINANCE, id, fields: {} });
       const merged = fields as unknown as ReservationRow;

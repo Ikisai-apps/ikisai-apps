@@ -46,6 +46,7 @@ const BED_SPECS: FieldSpec[] = [
   { key: 'kind', label: 'Tipo de cama', type: 'select', options: OPTIONS.bedKind, hint: 'La «Supletoria» se activa solo cuando hace falta y no cuenta en la capacidad base de la habitación.' },
   { key: 'capacity', label: 'Plazas', type: 'number', hint: '1 o 2 personas.' },
   { key: 'active', label: 'Activa', type: 'check' },
+  { key: 'team_bed', label: 'Cama de equipo', type: 'check', hint: 'Solo para el organizador, el personal y dirección; los huéspedes no la ven en Guests.' },
 ];
 
 /** Inserta una habitación y sus camas («Cama 1…N» individuales y «Supletoria 1…M») en un solo lote. */

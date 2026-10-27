@@ -30,7 +30,7 @@ export { createAppLauncher, type AppLauncher, type AppLauncherOptions, type Laun
 export { createAppShell, type AppShell, type AppShellOptions, type NavItem } from './shell/app-shell.ts';
 export { readReturnTo, currentReturnTo, clearReturnTo, withReturnTo, type ReturnTo } from './shell/return-to.ts';
 export { createAppMenu, syncLine, type AppMenu, type AppMenuOptions, type AppMenuRow, type AppMenuSection } from './shell/app-menu.ts';
-export { renderWorkspaceBar, renderAreaTabs, renderStripTool, renderQuickViews, renderNavMenu, renderNavBackdrop, renderTabBar, type WorkspaceBarOptions, type AreaTab, type AreaTabsOptions, type QuickView, type NavMenuItem, type NavMenuGroup, type NavMenuOptions, type TabBarItem, type HookAttrs, type IconLike } from './shell/workspace.ts';
+export { renderWorkspaceBar, renderAreaTabs, renderStripTool, renderQuickViews, renderNavMenu, renderNavBackdrop, renderTabBar, bindTabBarAutoHide, type TabBarStandalone, type WorkspaceBarOptions, type AreaTab, type AreaTabsOptions, type QuickView, type NavMenuItem, type NavMenuGroup, type NavMenuOptions, type TabBarItem, type HookAttrs, type IconLike } from './shell/workspace.ts';
 export { openSheet, closeSheet, currentSheet, type Sheet, type SheetOptions } from './overlay/sheet.ts';
 export { confirmDialog, alertDialog, type DialogOptions } from './overlay/dialog.ts';
 export { trapFocus, focusFirst, focusables, lockScroll } from './overlay/focus.ts';
@@ -100,6 +100,7 @@ export { createMovementForm, MOVEMENT_FORM_MARKS, type MovementForm, type Moveme
 export { createCountSession, COUNT_SESSION_MARKS, type CountSession, type CountSessionOptions, type CountDifference } from './items/count-session.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
+export { fieldAttrs, markField, fieldRequired, FIELD_SENSITIVITIES, type FieldSpec, type FieldSensitivity } from './fields/field-mark.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';
 export { createSignaturePad, type SignaturePad, type SignaturePadOptions } from './fields/signature.ts';
 export { createInstallPrompt, isAppInstalled, installPlatform, type InstallPrompt, type InstallPromptOptions, type InstallPlatform } from './shell/install.ts';

@@ -60,6 +60,8 @@ export function personSelector(persons: Person[], selection: Selection, onPick: 
 const SECTION_ICONS: Record<Section, IconName> = { inicio: 'home', programa: 'calendar', menu: 'chef', alojamiento: 'bed' };
 
 export interface FrameOptions {
+  /** Etiqueta de una ficha de equipo («Organizas», «Equipo» o «Dirección», §9.17 d). */
+  role?: string | null;
   retreats: Retreat[];
   current: Retreat;
   persons: Person[];
@@ -149,7 +151,8 @@ export function retreatFrame(options: FrameOptions): Frame {
   bedFact.hidden = true;
   const names = options.who(current);
   const whoFact = names.length > 1 ? fact('people', new Intl.ListFormat(localeTag(), { type: 'conjunction' }).format(names), t('frame.together')) : null;
-  const facts = el('ul', { class: 'gfacts', 'aria-label': t('frame.glance'), 'data-feedback-ignore': '' }, stateFact, nightsFact, bedFact, whoFact);
+  const roleFact = options.role ? el('li', { class: 'grole-fact', id: 'teamRole' }, el('span', { class: 'chip small grole' }, options.role)) : null;
+  const facts = el('ul', { class: 'gfacts', 'aria-label': t('frame.glance'), 'data-feedback-ignore': '' }, stateFact, nightsFact, bedFact, whoFact, roleFact);
   void options.placeName?.().then((name) => { if (alive && name && nightsFact) nightsFact.querySelector('small')!.textContent = name; });
   void options.bed?.().then((bed) => {
     if (!alive || !bed) return;

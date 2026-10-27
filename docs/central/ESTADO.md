@@ -109,6 +109,15 @@
 - 2026-10-20 · **Tanda 36 · Planos del centro y «Colocar»** (MUELA-024 con sus adendas; núcleo #655 y kit 0.52): pantalla `#/entidad/planos` con el mapa de zonas para todos y, para el owner en el ordenador, subir, sustituir y quitar dibujos, colocar solo con un SVG con nombres (DOMPurify, perfil SVG, sin meterlo en la página), colocar a mano con ratón y teclado, y «Por revisar». El plano en imagen o PDF de la Entidad sigue igual para los portales. Prueba nueva `plans.spec.ts`; el servidor de pruebas reescribe también las subidas de Recursos.
 - 2026-10-20 · **Tanda 37 · Siete ajustes de Planos y «Colocar»** (MUELA-092): se sube el SVG limpio (DOMPurify) con su tamaño y hash; las camas acompañan a su habitación en un lote con un «Deshacer»; sin red se apagan subir, sustituir, quitar y «Colocar solo»; el aviso dice los nombres del SVG sin estancia; giros e inclinaciones con la matriz completa y, lo que no se lee, a «Por revisar» con el motivo; halo en los rótulos; «Quitar» desactivado con su motivo. Pruebas nuevas en `plans.spec.ts` y `svg-plan.test.ts`.
 - 2026-10-26 · **Flow en Revisión** (RELEVO-001, alta de Flow; `1514`): `flow` en `REVIEW_APPS` con la etiqueta «Flow», antes de «Común»; la base acepta sus pantallas. Primera PR de Central desde La Muela (Core Producción).
+- 2026-10-26 · **El nivel de casa abre todas las puertas** (encargo de VG, plazo 29-10; `1515`), parte de Central:
+  - Ficha: bloque «Accesos del nivel» con cada app y portal, «Concedido» o «Pendiente», y «Aplicar accesos» (acción `central.apply_house_level`, solo owner, con el nivel que dice la base).
+  - Editor: al elegir el nivel, qué apps y portales abre.
+  - Accesos › Cuentas: columna por portal con el alcance en palabras (Todos, Huésped, Organiza).
+  - Reglas puras en `_domain/central/house-doors.ts`. Pruebas en `outsider.test.ts` y `people-outsider.spec.ts`.
+  - Con la tabla del núcleo 0095 (#723, P13): dirección propietaria de las seis internas y «todos» en los portales; staff, editor de Tasks, Food y Flow; outsider, también Flow.
+  - Pasada única para quien ya tenía nivel (`1516`, #733): le llegan Flow, los portales y el «todos» de dirección.
+- 2026-10-27 · **Proyectos de Flow en la ficha y en el alta** (encargo de VG; `scopes.projects`, Flow 0902 y 0906): bloque «Proyectos de Flow» con «Cambiar» y «Deshacer», y en el alta Flow + proyecto en un paso. Reglas en `_domain/central/scopes.ts`; pruebas `scopes.test.ts` y `flow-scopes.spec.ts`. El outsider, sin editar hasta P14.
+- 2026-10-27 · **Registro de accesos para las demás apps** (X1 de Tasks, FB_2026_073): `#/accesos/registro?app=<app>` abre ya filtrado y «Por fecha», sin cambiar la vista recordada; en cada línea, quién lo hizo con su tipo (persona o agente) y a qué afecta (la persona, o la clave o la propuesta por su nombre); el ciclo de las propuestas de agentes con sus palabras y tono (también «Propuesta revocada»); «Ver anteriores». Tasks puede enlazar aquí con «‹ Volver a Tasks».
 
 ## Pendiente
 

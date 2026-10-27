@@ -426,6 +426,40 @@ Migración `1512`. Lectura `{reader, editor, owner}`: todos ven el avance. Escri
   - `screensToAct` (pasos `alt` y `listo`: te toca) y `screenOfReport`.
 - **Carga inicial:** las pantallas del cuadro de avance no van por Git. Las carga quien administra desde la app, o Core con la cuenta del owner.
 
+### 2.15 El nivel de casa abre todas las puertas (encargo de VG del 26-10-2026, plazo 29-10; migración `1515`)
+
+El nivel de casa de una persona abre de golpe sus apps y portales. La tabla es la del núcleo (`core.house_level_roles`, 0095):
+
+| Nivel | Apps internas | Guests | Organizers |
+|---|---|---|---|
+| Dirección | Propietario en Central, Tasks, Finance, Booking, Food y Flow | Todos los retiros (ámbito `{"all": true}`): los ve, se apunta y coorganiza | Todos los retiros |
+| Staff | Editor en Tasks, Food y Flow | Huésped de los retiros en los que participa (lo pone Booking al apuntarle) | — |
+| Outsider | Outsider en Tasks y Flow | Huésped | — |
+
+- **Quién lo concede:** el núcleo, `core.apply_house_level` (0092, ampliada en la 0095). Nunca rebaja. Central no toca el núcleo.
+- **Reglas del cliente** (`_domain/central/house-doors.ts`): `HOUSE_LEVEL_DOORS` es la misma tabla, app por app. `houseDoors(level, catalog, memberships, grants)` da cada puerta del catálogo con lo que pide el nivel y su estado. `pendingDoors` deja las que faltan. `portalAllGrant` y `portalCell` leen el ámbito «todos».
+  - Interna: concedida si el rol llega al que pide el nivel; uno mayor también vale.
+  - Portal «todos»: concedida si la pertenencia lleva `{"all": true}` en `scopes.grants` (como `core.portal_all_grant`).
+  - Portal «huésped»: concedida si ya entra en el portal. El de staff lo pone Booking: sin retiros sale «Al apuntarle a un retiro», no «Pendiente», y «Aplicar accesos» no lo cuenta.
+- **Ficha de persona** (owner, con los niveles activos): bloque «Accesos del nivel» con cada app y portal, «Concedido» o «Pendiente», y lo que tiene hoy si es distinto. Si falta alguna, «Aplicar accesos» (necesita red, `bindOnline`). Sin cuenta, «Sin cuenta» en cada puerta y el aviso de que se abren al dársela.
+- **Editor de la ficha:** al elegir el nivel, una línea dice qué abre («Abre Central, Tasks… como propietario; en Guests y Organizers, todos los retiros…»).
+- **Accesos › Cuentas:** una columna por portal, con «portal» en la cabecera. La casilla dice el alcance en palabras: Todos, Huésped u Organiza.
+
+### 2.16 Ámbitos por app en la ficha: proyectos de Flow (encargo de VG del 27-10)
+
+- **Qué es:** a qué proyectos de Flow entra una persona, en `core.memberships.scopes.projects` (Flow 0902). El propietario de Flow ve todo; editor, lector y outsider, solo sus proyectos. Sin la clave o con la lista vacía, ninguno.
+- **Lista de proyectos:** `flow.projects_projection` (Flow 0906: `id, name, status, starts_on, ends_on, test_mode, booking_event_id`, solo vivos), abierta a Central con `core.allow_read('central', …, 'view', '{owner}')`. Se lee con `POST read/flow.projects_projection {limit}`.
+- **Reglas** (`_domain/central/scopes.ts`):
+  - `flowProjectsOf` lee los proyectos y `withFlowProjects` cambia solo esa clave;
+  - `sortFlowProjects` pone el más actual arriba: abiertos por fecha de inicio y luego los cerrados;
+  - `flowScopeSummary` da el resumen en palabras.
+- **Ficha** (owner): bloque «Proyectos de Flow» con el rol en Flow y sus proyectos.
+  - Con ninguno, el aviso «No ve ningún proyecto de Flow».
+  - «Cambiar» abre una hoja con los proyectos y guarda con `admin/memberships`: mismo rol y el resto de ámbitos intacto. Lleva «Deshacer» y necesita red.
+  - El propietario sale como «Todos los proyectos (propietario)», sin editar.
+  - El outsider sale sin editar hasta P14.
+- **Alta:** bajo Flow, los proyectos. Marcar uno sin acceso a Flow le da Editor, y van en el mismo `admin/invite` como `scopes.projects`. A un outsider nuevo, Flow se lo da el nivel: su proyecto se elige después, en la ficha.
+
 ## 3. Procedimientos y lecturas
 
 ### 3.1 Procedimientos (`call`)
@@ -539,6 +573,7 @@ function visible(table, row, ctx) {
 | `POST requirements/:id/task` | editor | `{requestId, title?, due?, note?}` → `{requirementTaskId, created, routed, task}`. Pide la tarea a Tasks (`POST /api/v1/requests/task`) con el token de la persona: `source: 'central'`, `external_ref: '<LEG_…>:<requestId>'`, `kind: 'central.compliance_due'` con `kind_label`, `external_url` a la ficha (`https://central.ikisai.com/#/cumplimiento/<id>`), prioridad por el riesgo (crítico → `critical`, alto → `high`); **sin área ni proyecto** (las reglas de Tasks deciden o queda «Por clasificar»). Después inserta el enlace en `requirement_tasks`. Idempotente: el mismo `requestId` da la misma tarea y el mismo enlace. | `NOT_FOUND`, `TASKS_FORBIDDEN 403`, `EXTERNAL_REF_IN_USE 409`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` |
 | `POST requirements/tasks-status` | reader | `{ids: [id de tarea]}` (hasta 200) → `{items, missing}` de `tasks.targets` con el token de quien mira (`pending`, `request`, `visible`, `done`, `deleted`). | `TASKS_*` |
 | `GET people/house-grants` | owner | → `{items: [{userId, app, level, role, previousRole}]}`: lo que el nivel de casa ha dado a cada cuenta (`core_house_grants`, núcleo 0092). Personas y Accesos lo marcan «por nivel de casa». | `FORBIDDEN` |
+| `POST invoke/central.apply_house_level` | owner | `{personId}` → `{personId, userId, level, changes: [{app, from, to}]}`. Acción SQL (`1515`): lee el nivel vigente de la ficha en la base (inactiva, en la papelera o fusionada = sin nivel), nunca el que mande el cliente, y llama a `core.apply_house_level`, que es idempotente. «Aplicar accesos» de la ficha. | `FORBIDDEN 403`, `NOT_FOUND 404`, `NO_ACCOUNT 422` |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
 | `GET dashboard` | reader | `{computedAt, items: [{app, kpi, label, value, unit, period, periodStart, periodEnd, direction, link, computedAt, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 (`KPI_SOURCES`) y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
 | — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
@@ -906,6 +941,8 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
 | P11 ✅ 0.50 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | — |
 | P12 ✅ #640 | Núcleo: `admin/access-log?user=<uuid>` (lo que hizo esa cuenta, lo que la afecta y lo de sus claves de agente) y `only=grave`. | Registro por persona y «Lo grave» (§9.4) | — |
+| P13 | Núcleo: que `core.apply_house_level` abra todas las puertas del nivel (§2.15): internas con Flow para los tres niveles y los portales (dirección, todos los retiros en Guests y Organizers; staff y outsider, huésped) **Hecha en la 0095 (#723)**: «todos» es `{"all": true}` en `scopes.grants`., anotando cada una en `core.house_grants`. Y decir cómo se guarda «todos los retiros» en los ámbitos. | La ficha pasa de «Pendiente» a «Concedido» al pulsar «Aplicar accesos» | La ficha enseña lo que falta; «Aplicar accesos» aplica lo que el núcleo ya concede |
+| P14 | Kit · `admin/memberships` acepta `role: 'outsider'` cuando la pertenencia ya es outsider (lo comprueba `core.set_membership`, C24), para cambiar sus ámbitos (proyectos de Flow) desde Central. | Proyectos de Flow de un outsider (§2.16) | Se enseñan, sin editar |
 | P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---

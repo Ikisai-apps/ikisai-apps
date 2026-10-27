@@ -278,6 +278,8 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
           fail(422, 'INVALID_TRANSITION', domainMessage('INVALID_TRANSITION'), { index, to: fields.status });
         }
       }
+      // Apuntes de otras apps (0244): llegan por `invoices.record_app_entry`; aquí no se crean ni se borran.
+      if (op.table === TABLES.appEntries && (op.op === 'delete' || op.op === 'restore')) fail(422, 'APP_ENTRY_NOT_DELETABLE', domainMessage('APP_ENTRY_NOT_DELETABLE'), { index, id: op.id });
       if (op.table === TABLES.invoiceFiles && op.op === 'insert') {
         Object.assign(fields, await verifiedFile(supabase, ctx, fields.file_id, index));
       }

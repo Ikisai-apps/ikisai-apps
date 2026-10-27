@@ -27,6 +27,8 @@ test.beforeAll(async () => {
   test.setTimeout(180_000);
   api = await startCentralServer();
   const db = api.app.t.db;
+  // La barra del evento (0811, Recursos) siembra artículos propios: fuera de este escenario, que cuenta solo los suyos.
+  await db.query(`update resources.items set deleted_at = now() where 'food:carta:barra-octubre-2026' = any(source_refs) and deleted_at is null`);
   const a3 = (await db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 3'`)).rows[0]!.id;
   const owner = api.app.users.owner;
   const resources = (operations: unknown[]) => api.app.call('/api/v1/resources/commands', { body: { requestId: `inv-${++seq}`, operations } });
