@@ -105,7 +105,7 @@ async function checkFiles(supabase: Supabase, operations: Operation[], ctx: Requ
 const COLUMN_SLUGS: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica' };
 
 interface ClosureForSend {
-  closure: { id: string; project_id: string; day: string; data: DayData };
+  closure: { id: string; revision: number; project_id: string; day: string; data: DayData };
   project: { id: string; name: string; test_mode: boolean; food_menu_id: string | null; booking_event_id: string | null };
 }
 interface DayData {
@@ -193,7 +193,7 @@ function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 /**
  * Envíos del Cierre del día (contratos con Food y Finance del 26-10): desde aquí, con la sesión de la persona, a la API de
  * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
- * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
+ * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el servidor (lote público, solo los campos de envío; FL9).
  */
 function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions, publicWrite: PublicWriter): AppRoute[] {
   const callApp = appCaller(base, options);
@@ -207,6 +207,21 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 
   const digest = async (value: unknown) => (await sha256Hex(JSON.stringify(value))).slice(0, 24);
 
+  /** Envía y anota el resultado en el cierre (enviado o error). El navegador no puede marcarlo (0927). */
+  async function sendAndMark(c: ClosureForSend['closure'], target: 'food' | 'finance', send: () => Promise<unknown>) {
+    const mark = (status: string, result: unknown) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.dayClosures, id: c.id, expectedRevision: c.revision,
+      fields: { [`${target}_status`]: status, [`${target}_sent_at`]: new Date().toISOString(), [`${target}_result`]: result } }]);
+    let result: unknown;
+    try {
+      result = await send();
+    } catch (error) {
+      await mark('error', { code: isFault(error) ? error.code : 'ERROR' }).catch(() => undefined);
+      throw error;
+    }
+    await mark('sent', result ?? null);
+    return { status: 'sent', result };
+  }
+
   return [
     {
       // Ventas por línea de la carta de Food (food.record_carta_sales, idempotente por carta y día).
@@ -215,8 +230,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
         if (!project.food_menu_id) fail(409, 'NO_FOOD_MENU', 'Este flujo no está ligado a una carta de Food: actualiza la carta desde Food primero.');
         const lines = c.data.units_by_product.filter((u) => u.source_line_id).map((u) => ({ line_id: u.source_line_id, quantity: u.units }));
         const args = { menu_id: project.food_menu_id, day: c.day, lines };
-        const result = await callApp(ctx, 'food-api', 'Food', `flow:food:${c.id}:${await digest(args)}`, 'food.record_carta_sales', args);
-        return { status: 'sent', result };
+        const requestId = `flow:food:${c.id}:${await digest(args)}`;
+        return sendAndMark(c, 'food', () => callApp(ctx, 'food-api', 'Food', requestId, 'food.record_carta_sales', args));
       },
     },
     {
@@ -250,8 +265,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
         };
-        const result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
-        return { status: 'sent', result };
+        const requestId = `flow:${sourceRef}:${await digest(args)}`;
+        return sendAndMark(c, 'finance', () => callApp(ctx, 'invoices-api', 'Finance', requestId, 'invoices.record_app_entry', args));
       },
     },
     {

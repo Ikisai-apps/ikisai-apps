@@ -418,11 +418,16 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Con eso, Finance y Tasks reservan `source_app`/`source: 'flow'` a Flow (Finance: `403 SOURCE_MISMATCH` si no coincide).
 - A Food y a Booking no se les manda la clave.
 
-## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
-
-- En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).
-
 ## 39. Ligar un flujo a un evento exige acceso en Booking (FL4, migración `0925`)
 
 - Al fijar o cambiar `flow.projects.booking_event_id` (por `create_flow`, «Nueva versión» o editando el proyecto), quien lo hace tiene que ver el evento en Booking (`booking.event_projection`) y ser miembro de Booking o estar en el personal de ese evento (`booking.event_staff_projection`). Si no, `403 EVENT_NOT_ACCESSIBLE`.
 - Sin actor (sistema), no se comprueba. Prueba: `tests/flow/event-access.test.ts`.
+
+## 40. El envío del cierre lo anota el servidor (FL9, migración `0927`)
+
+- `closures/:id/send/food` y `…/finance` anotan en el cierre `<target>_status` (`sent` o `error`), `_sent_at` y `_result` con el lote público del servidor, como los justificantes. El navegador ya no marca nada: `flow.mark_closure_sent` desaparece.
+- `flow.guard_closures` solo deja al lote público cambiar los campos de envío.
+
+## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
+
+- En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).

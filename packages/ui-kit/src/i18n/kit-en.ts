@@ -926,6 +926,8 @@ export const KIT_EN: Dictionary = {
   'Hecho por {who} · {time}': 'Done by {who} · {time}',
   'No se pudo subir la foto. Prueba otra vez.': 'The photo could not be uploaded. Try again.',
   'Nuevo registro': 'New record',
+  'Sin asignar': 'Unassigned',
+  'Nada aquí': 'Nothing here',
   'No se pudo registrar. Prueba otra vez.': 'It could not be recorded. Try again.',
   'No se guardó «{item}». Prueba otra vez.': '“{item}” was not saved. Try again.',
   'Obligatoria': 'Required',

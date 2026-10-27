@@ -46,7 +46,6 @@ export const PROCEDURES = {
   createExtension: 'flow.create_extension',
   confirmRefund: 'flow.confirm_refund',
   closeDay: 'flow.close_day',
-  markClosureSent: 'flow.mark_closure_sent',
   unitSetQty: 'flow.unit_set_qty',
   generateIngredientTasks: 'flow.generate_ingredient_tasks',
   newVersion: 'flow.new_version',
