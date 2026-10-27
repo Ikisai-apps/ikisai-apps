@@ -1,5 +1,5 @@
 import { expect, test } from 'playwright/test';
-import { classifyCoverage } from '../src/pieces/coverage.ts';
+import { classifyCoverage, coverageFromCore } from '../src/pieces/coverage.ts';
 // @ts-expect-error: script de Node sin tipos.
 import { extractFeatures } from '../scripts/feature-catalog.mjs';
 
@@ -25,6 +25,25 @@ test.describe('ui-kit v0.69.11 · renderCoverage', () => {
     const ids = (code: string) => extractFeatures(code).features.map((x: { id: string }) => x.id.split('.').pop());
     expect(ids("renderCoverage({ fields, links, feedbackId: 'central.revisor.cobertura' })")).toEqual(['cobertura', 'filtro', 'agrupar']);
     expect(ids("renderCoverage({ fields, links, onOpen, feedbackId: 'central.revisor.cobertura' })")).toContain('abrir');
+  });
+
+  test('del núcleo (core.field_coverage, 0111) y los pasos de Flow: directo por anclaje, automático por regla, clase parcial sin pasos', ({}, info) => {
+    test.skip(info.project.name !== 'escritorio', 'funciones puras: una vez basta');
+    const core = { fields: [
+      { fieldId: 'booking.reserva.notas', app: 'booking', entity: 'booking.reservations', prop: 'notes', capabilities: [{ id: 'booking.test_notes', how: 'writes' as const }], used: true, duplicates: [], class: 'indirect' as const },
+      { fieldId: 'booking.ficha.llegada', app: 'booking', entity: 'booking.stays', prop: 'arrival_time', capabilities: [], used: true, duplicates: ['guests.datos.llegada'], class: 'independent' as const },
+      { fieldId: 'booking.ficha.cuna', app: 'booking', capabilities: [], used: false, duplicates: [], class: 'unknown' as const },
+    ] };
+    const steps = [{ flowId: 'alojar', flowName: 'Alojar a alguien', kind: 'step' as const, anchor: 'booking.ficha.llegada' }, { flowId: 'notas', flowName: 'Notas', kind: 'rule' as const, capability: 'booking.test_notes' }];
+    const { fields, links } = coverageFromCore(core, steps, { 'booking.ficha.llegada': { critical: true, required: 'always' } });
+    expect(classifyCoverage(fields, links).map((r) => [r.cls, r.flows.map((f) => f.name), r.noFlow, r.duplicateOf, r.criticalRequired])).toEqual([
+      ['automatic', ['Notas'], false, [], false],
+      ['direct', ['Alojar a alguien'], false, ['guests.datos.llegada'], true],
+      ['unknown', [], true, [], false],
+    ]);
+    // Sin pasos de Flow: la clase parcial del núcleo, y todos sin cobertura de Flow.
+    const bare = coverageFromCore(core);
+    expect(classifyCoverage(bare.fields, bare.links).map((r) => [r.cls, r.noFlow])).toEqual([['indirect', true], ['independent', true], ['unknown', true]]);
   });
 
   test('@smoke en la muestra: recuentos por clase, filtro, agrupar por app, marcas y «abrir»', async ({ page }) => {

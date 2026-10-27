@@ -27,8 +27,18 @@ export interface CoverageField {
   required?: string | null;
   /** Lo marca Central: el campo pertenece a un proceso crítico. */
   critical?: boolean;
-  /** Utilidad declarada por Central («Recepción · diaria · alto impacto»). */
+  /** Utilidad declarada por Dirección en Central («Recepción · diaria · alto impacto»). */
   declared?: string | null;
+  /** Estimado de la propia app en su catálogo de uso (decisión de VG, vg-39): va antes de que Dirección declare. */
+  estimate?: { audience?: string | null; impact?: string | null; frequency?: string | null } | null;
+  /** Del núcleo (`core.field_coverage`, 0111): capacidades que leen o escriben su `entity.prop`. */
+  capabilities?: Array<{ id: string; how: 'reads' | 'writes' }>;
+  /** Del núcleo: otros campos con el mismo dato (si viene, manda sobre el cálculo por `entity.prop`). */
+  duplicates?: string[];
+  /** Del núcleo: tiene uso propio (sin recuento). */
+  used?: boolean;
+  /** Clase parcial del núcleo (`indirect`, `independent`, `unknown`): se usa cuando no hay vínculos con Flow. */
+  coreClass?: 'indirect' | 'independent' | 'unknown' | null;
 }
 
 /** Un vínculo del cruce del núcleo: el campo llega a estos recorridos por esta vía. */
@@ -42,6 +52,7 @@ export interface CoverageLink {
 /** Uso observado (`createUsage`) por id de campo: activaciones en el periodo. */
 export interface CoverageUsage {
   fieldId: string;
+  /** Activaciones en el periodo; sin recuento, el campo dice solo si hay uso (`used`). */
   activations: number;
   /** Días con uso en el periodo. */
   days?: number;
@@ -54,6 +65,8 @@ export interface CoverageRow {
   usage: CoverageUsage | null;
   noFlow: boolean;
   duplicate: boolean;
+  /** Los otros campos con el mismo dato. */
+  duplicateOf: string[];
   criticalRequired: boolean;
 }
 
@@ -63,23 +76,67 @@ export function classifyCoverage(fields: CoverageField[], links: CoverageLink[],
   for (const l of links) linksOf.set(l.fieldId, [...(linksOf.get(l.fieldId) ?? []), l]);
   const usageOf = new Map(usage.map((u) => [u.fieldId, u]));
   const dataKey = (f: CoverageField) => (f.entity && f.prop ? `${f.entity}.${f.prop}` : null);
-  const perKey = new Map<string, number>();
-  for (const f of fields) { const k = dataKey(f); if (k) perKey.set(k, (perKey.get(k) ?? 0) + 1); }
+  const perKey = new Map<string, string[]>();
+  for (const f of fields) { const k = dataKey(f); if (k) perKey.set(k, [...(perKey.get(k) ?? []), f.fieldId]); }
   return fields.map((field) => {
     const ls = linksOf.get(field.fieldId) ?? [];
     const use = usageOf.get(field.fieldId) ?? null;
     const via = (v: CoverageLink['via']) => ls.some((l) => l.via === v);
+    const usedNow = (use ? use.activations > 0 : false) || field.used === true;
+    // Sin vínculos con Flow: la clase parcial del núcleo (una capacidad lo toca aunque ningún paso la use) o la del uso.
     const cls: CoverageClass = via('direct') ? 'direct' : via('indirect') ? 'indirect' : via('automatic') ? 'automatic'
-      : use && use.activations > 0 ? 'independent' : 'unknown';
+      : field.coreClass ?? (usedNow ? 'independent' : 'unknown');
     const flows = [...new Map(ls.flatMap((l) => l.flows).map((f) => [f.id, f])).values()];
     const key = dataKey(field);
+    const duplicateOf = field.duplicates ?? (key ? (perKey.get(key) ?? []).filter((id) => id !== field.fieldId) : []);
     return {
       field, cls, flows, usage: use,
-      noFlow: !ls.length,
-      duplicate: !!key && (perKey.get(key) ?? 0) > 1,
+      noFlow: !flows.length,
+      duplicate: duplicateOf.length > 0,
+      duplicateOf,
       criticalRequired: !!field.critical && field.required === 'always',
     };
   });
+}
+
+/** Salida de `core.field_coverage` (0111): lo que hace falta de ella. */
+export interface CoreFieldCoverage {
+  fields: Array<{ fieldId: string; app: string; screen?: string | null; label?: string | null; entity?: string | null; prop?: string | null; required?: string | null;
+    capabilities?: Array<{ id: string; how: 'reads' | 'writes' }>; used?: boolean; duplicates?: string[]; class?: 'indirect' | 'independent' | 'unknown' }>;
+}
+
+/** Un paso o una regla de Flow (lo da Flow; lo cruza Central): toca un campo por su anclaje o por una capacidad. */
+export interface FlowCoverageStep {
+  flowId: string;
+  flowName: string;
+  /** `step`: un paso de un recorrido; `rule`: una regla o un disparador. */
+  kind: 'step' | 'rule';
+  /** Id del campo (`data-field-id`) que pinta o pide el paso. */
+  anchor?: string | null;
+  /** Capacidad que invoca. */
+  capability?: string | null;
+}
+
+/**
+ * Del núcleo y de Flow a `renderCoverage`. Un paso con el anclaje del campo es `direct` y una regla con él, `automatic`. Un paso
+ * que invoca una capacidad que lee o escribe el dato del campo es `indirect` (o `automatic`, si es una regla). Lo demás se queda
+ * con la clase parcial del núcleo. `extra` añade por campo lo que pone Central (crítico, estimado, utilidad declarada).
+ */
+export function coverageFromCore(core: CoreFieldCoverage, steps: FlowCoverageStep[] = [], extra: Record<string, Partial<CoverageField>> = {}): { fields: CoverageField[]; links: CoverageLink[] } {
+  const fields: CoverageField[] = core.fields.map((f) => ({
+    fieldId: f.fieldId, app: f.app, screen: f.screen ?? null, label: f.label ?? null, entity: f.entity ?? null, prop: f.prop ?? null, required: f.required ?? null,
+    capabilities: f.capabilities ?? [], duplicates: f.duplicates ?? [], used: !!f.used, coreClass: f.class ?? null, ...extra[f.fieldId],
+  }));
+  const links: CoverageLink[] = [];
+  for (const f of fields) {
+    const caps = new Set((f.capabilities ?? []).map((c) => c.id));
+    for (const s of steps) {
+      const flow = { id: s.flowId, name: s.flowName };
+      if (s.anchor === f.fieldId) links.push({ fieldId: f.fieldId, via: s.kind === 'rule' ? 'automatic' : 'direct', flows: [flow] });
+      else if (s.capability && caps.has(s.capability)) links.push({ fieldId: f.fieldId, via: s.kind === 'rule' ? 'automatic' : 'indirect', flows: [flow], capabilities: [s.capability] });
+    }
+  }
+  return { fields, links };
 }
 
 export interface CoverageOptions {
@@ -142,12 +199,15 @@ export function renderCoverage(options: CoverageOptions): Coverage {
   function rowEl(r: CoverageRow): HTMLElement {
     const f = r.field;
     const days = options.periodDays ?? 30;
-    const use = r.usage ? (r.usage.activations === 1 ? kt('1 uso en {d} días', { d: String(days) }) : kt('{n} usos en {d} días', { n: String(r.usage.activations), d: String(days) })) : kt('Sin datos de uso');
+    const use = r.usage ? (r.usage.activations === 1 ? kt('1 uso en {d} días', { d: String(days) }) : kt('{n} usos en {d} días', { n: String(r.usage.activations), d: String(days) }))
+      : f.used ? kt('Con uso propio') : kt('Sin datos de uso');
+    const caps = f.capabilities?.length ? kt('Lo usan: {list}', { list: f.capabilities.map((c) => `${c.id} (${c.how === 'writes' ? kt('escribe') : kt('lee')})`).join(', ') }) : null;
+    const estimate = f.estimate ? [f.estimate.audience, f.estimate.impact, f.estimate.frequency].filter(Boolean).join(' · ') : '';
     const flows = r.flows.length ? (r.flows.length === 1 ? kt('En el recorrido «{name}»', { name: r.flows[0]!.name }) : kt('En {n} recorridos: {names}', { n: String(r.flows.length), names: r.flows.map((x) => x.name).join(', ') })) : null;
     const flags = [
       r.noFlow && r.cls !== 'unknown' ? el('span', { class: 'chip warn cov-flag', dataset: { flag: 'sin-flow' } }, kt('Sin cobertura de Flow')) : null,
       r.flows.length > 1 ? el('span', { class: 'chip cov-flag', dataset: { flag: 'comun' } }, kt('Común a varios recorridos')) : null,
-      r.duplicate ? el('span', { class: 'chip warn cov-flag', dataset: { flag: 'duplicado' } }, kt('Duplicado: {key}', { key: `${f.entity}.${f.prop}` })) : null,
+      r.duplicate ? el('span', { class: 'chip warn cov-flag', dataset: { flag: 'duplicado' } }, f.entity && f.prop ? kt('Duplicado: {key}', { key: `${f.entity}.${f.prop}` }) : kt('Duplicado de {list}', { list: r.duplicateOf.join(', ') })) : null,
       r.criticalRequired ? el('span', { class: 'chip alert cov-flag', dataset: { flag: 'critico' } }, kt('Obligatorio en un proceso crítico')) : null,
     ].filter(Boolean) as HTMLElement[];
     const title = f.label || f.fieldId;
@@ -159,7 +219,9 @@ export function renderCoverage(options: CoverageOptions): Coverage {
         el('span', { class: 'cov-id' }, f.fieldId),
         el('span', { class: `chip cov-cls ${CLASS_TONE[r.cls]}` }, CLASS_LABEL(r.cls)),
         flows ? el('span', { class: 'cov-line' }, flows) : null,
+        caps ? el('span', { class: 'cov-line cov-caps' }, caps) : null,
         el('span', { class: 'cov-line cov-use' }, use),
+        estimate ? el('span', { class: 'cov-line' }, kt('Estimado de la app: {text}', { text: estimate })) : null,
         f.declared ? el('span', { class: 'cov-line' }, kt('Utilidad declarada: {text}', { text: f.declared })) : null,
         flags.length ? el('div', { class: 'cov-flags' }, ...flags) : null));
   }
