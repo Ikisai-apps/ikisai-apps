@@ -41,7 +41,7 @@ test('guests_kpi_projection: una fila por reserva de la ventana, con lo que cuen
   // lo que en la vida real pone el huésped (privacidad, firma) o SES: sembrado sin disparadores, solo para contar
   await t.db.exec(`set session_replication_role = replica`);
   try {
-    await t.db.query(`update booking.guests set privacy_ack_at = now(), signed_at = now(), ses_status = 'enviado_SES', arrived_at = now() where id = $1`, [ana]);
+    await t.db.query(`update booking.guests set privacy_ack_at = now(), signed_at = now(), ses_status = 'enviado_SES', ses_sent_at = now(), arrived_at = now() where id = $1`, [ana]);
     await t.db.query(`update booking.guests set privacy_ack_at = now(), arrived_at = now() where id = $1`, [luis]);
     await t.db.query(`update booking.guests set arrived_at = now(), ses_status = 'no_aplica' where id = $1`, [eva]);
     await t.db.query(`update booking.guests set portal_role = 'staff' where id = $1`, [team]);
