@@ -78,7 +78,7 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
             onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/evento?id=${entry.event_id}`); } }, eventLabel(event, entry.event_id))
           : 'Sin evento'),
         el('dt', null, 'Tipo'), el('dd', { id: 'appEntryNature' }, isFiscal(entry) ? 'Fiscal: va a la gestoría y al IVA' : 'De proceso: informativo, no va a la gestoría'),
-        el('dt', null, 'Justificante'), el('dd', { id: 'appEntryReceipt' }, entry.receipt_number ? `Nº ${entry.receipt_number}` : null,
+        el('dt', null, 'Justificante'), el('dd', { id: 'appEntryReceiptInfo' }, entry.receipt_number ? `Nº ${entry.receipt_number}` : null,
           entry.receipt_file_id ? el('button', { 'data-feedback-id': 'invoices.apuntes.ficha.ver_justificante', 'data-feedback-label': 'Ver el justificante', class: 'linkbtn', type: 'button',
             onclick: () => void openFile(client, entry.receipt_file_id!).catch((e) => toast(describeError(e))) }, ' Ver el documento') : null,
           !entry.receipt_number && !entry.receipt_file_id ? 'Sin justificante' : null),
