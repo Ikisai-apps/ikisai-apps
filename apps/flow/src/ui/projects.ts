@@ -77,9 +77,11 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
       const target = !p.frozen && purpose?.view === 'Carriles' && first ? `#/p/${p.id}/${COLUMN_SLUG[first.key] ?? first.key}` : `#/p/${p.id}`;
       const mine = work.filter((u) => u.project_id === p.id && u.kind !== 'station');
       const people = new Set(mine.map((u) => u.assigned_to).filter(Boolean)).size;
-      const urgent = mine.filter((u) => u.priority || u.prio === 'urgente').length;
       // Bloqueos (Core, 27-10): lo que no puede avanzar porque espera algo que no ha llegado. Se cuenta y se nombra el primero.
-      const blocked = mine.map((u) => blockOf(u, p, today)).filter((b): b is string => !!b);
+      // Lo que espera no es urgente aunque tenga prioridad: lo urgente es lo que se puede hacer ya.
+      const reasons = new Map(mine.map((u) => [u.id, blockOf(u, p, today)] as const));
+      const blocked = [...reasons.values()].filter((b): b is string => !!b);
+      const urgent = mine.filter((u) => (u.priority || u.prio === 'urgente') && !reasons.get(u.id)).length;
       const context = p.booking_event_id ? (events.get(p.booking_event_id) ?? 'Evento de Booking') : 'General';
       const facts: Array<[string, string]> = [
         ...(purpose?.text ?? p.notes ? [[purpose?.text ?? p.notes ?? '', ''] as [string, string]] : []),
