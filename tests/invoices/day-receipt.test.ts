@@ -34,6 +34,13 @@ test('un cobro de la caja (API.md §17.9): ticket con su número de cobro, o fac
   assert.match(f.notice, /Factura simplificada nº 57/);
 });
 
+test('un cobro de la caja sin número: el número sale de su clave (flow:receipt:<id>), nunca «Ticket de ventas»', () => {
+  const t = dayReceipt(day({ source_ref: 'flow:receipt:9f1c2a7b-0000-4000-8000-000000000001', description: 'Barra · justificante 9f1c2a7b · 31-10', receipt_kind: null }));
+  assert.deepEqual([t.title, t.number, t.kind], ['Ticket de venta', '9F1C2A7B', 'ticket']);
+  assert.match(t.notice, /Ticket nº 9F1C2A7B/);
+  assert.equal(dayReceipt(day({ source_ref: 'flow:receipt:9f1c2a7b', receipt_number: '57' })).number, '57', 'el de la app manda');
+});
+
 test('liquidación de cuenta de cliente: desglose por pedido; un gasto no tiene justificante de ventas', () => {
   const r = dayReceipt(day({ source_ref: 'flow:settlement:9f1c', description: 'Cuenta del cliente 112 · liquidación', pending_refunds_cents: 0, amount_cents: 3600, net_cents: 3273, tax_cents: 327,
     methods: { bizum: 3600 }, detail: [{ code: 'P 14', name: 'Pedido 14', quantity: 1, amount_cents: 2100 }, { code: 'P 31', name: 'Pedido 31', quantity: 1, amount_cents: 1500 }] }));
