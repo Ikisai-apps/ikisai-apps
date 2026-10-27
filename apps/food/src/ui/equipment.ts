@@ -94,6 +94,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       chips: chip,
       pending: row._pending === true,
       deleted,
+      // Toda la fila abre la ficha (hallazgo F-MAQ-4); «Editar» sigue para quien lo busca.
+      ...(deleted ? {} : { label: `Abrir ${row.name}`, onClick: () => openEditor(row) }),
       actions: [deleted
         ? el('button', { 'data-feedback-id': 'food.maquinaria.papelera.restaurar', 'data-feedback-label': 'Restaurar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void commitSafely([{ op: 'restore', table: T.equipment, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurada.`) }, icon('restore', 18), 'Restaurar')
         : el('button', { 'data-feedback-id': 'food.maquinaria.lista.editar', 'data-feedback-label': 'Editar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar')],

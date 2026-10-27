@@ -52,7 +52,7 @@
 .formblock>.hint{display:block;margin-top:6px}
 .linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%}
 .checkline{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
-.checkline input{width:18px;height:18px;flex:none}
+.checkline input{width:18px;height:18px;flex:none;accent-color:var(--accent)}
 /* Elaboración por pasos (FB_2026_028): una lista plana de filas con profundidad; los subpasos, sangrados bajo su paso.
    Asa para arrastrar (también flechas), botones subir/bajar y meter/sacar de nivel, y una línea que marca dónde cae. */
 .stepslist-wrap{position:relative}
