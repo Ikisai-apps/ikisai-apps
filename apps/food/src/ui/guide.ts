@@ -15,8 +15,10 @@ function openFolds(id: string): void {
 
 export function registerFoodReveals(navigate: (hash: string) => void): void {
   registerReveal('food', openFolds);
-  for (const tab of ['prevision', 'compra'] as CartaTab[]) {
-    registerReveal(`food.carta.${tab}`, (id) => {
+  // Ids literales: el catálogo de «Uso» no admite partes dinámicas.
+  const tabs: Array<[string, CartaTab]> = [['food.carta.prevision', 'prevision'], ['food.carta.compra', 'compra']];
+  for (const [prefix, tab] of tabs) {
+    registerReveal(prefix, (id) => {
       const [, cartaId] = location.hash.match(/^#\/cartas\/([0-9a-f-]{36})/i) ?? [];
       if (cartaId && !location.hash.endsWith(`/${tab}`)) navigate(cartaHash(cartaId, tab));
       openFolds(id);
