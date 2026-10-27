@@ -66,7 +66,7 @@ test('la mesa: «Todo» con máquinas, sus EPI y materiales; un paso deja solo l
   await expect(need).toContainText('Gafas de prueba · Ojos');
   await expect(need).toContainText('Tubo de prueba · 6 m');
 
-  await mesa.getByRole('button', { name: /Cortar el tramo viejo/ }).click();
+  await mesa.locator('[data-tkw-step]', { hasText: 'Cortar el tramo viejo' }).click();
   await expect(mesa.locator('#tkwAll')).toHaveAttribute('aria-pressed', 'false');
   await expect(need).toContainText('Radial de prueba');
   await expect(need).toContainText('Gafas de prueba');
@@ -91,7 +91,7 @@ test('fuera de orden: con «Pasos en orden», un paso pasa a «En cualquier mome
   await settled(owner);
   const mesa = await fichaBloque(owner, 'trabajo');
   await expect(mesa.getByRole('heading', { name: /Pasos en orden/ })).toBeVisible();
-  await mesa.getByRole('button', { name: /Montar el tubo nuevo/ }).click();
+  await mesa.locator('[data-tkw-step]', { hasText: 'Montar el tubo nuevo' }).click();
   await mesa.locator('#tkwFree').click();
   await expect(mesa.locator('.tkw-step.free')).toContainText('Montar el tubo nuevo');
   await settled(owner);
