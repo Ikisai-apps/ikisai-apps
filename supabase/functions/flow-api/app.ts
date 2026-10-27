@@ -26,6 +26,36 @@ export const MAX_PUBLIC_LINES = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[0-9a-f]{64}$/;
 
+/**
+ * Freno por IP de la carta pública (FL5): ventana deslizante en memoria de cada instancia de la Edge. Es un freno de más;
+ * los topes firmes (por flujo y por cliente) los pone la base de datos (0923). La IP llega del proxy de Pages
+ * (`X-Ikisai-Client-Ip`, desde `CF-Connecting-IP`) o, si no, de `X-Forwarded-For`.
+ */
+const PUBLIC_IP_LIMITS: Record<'customer' | 'orders', { max: number; windowMs: number }> = {
+  customer: { max: 10, windowMs: 10 * 60_000 },
+  orders: { max: 30, windowMs: 60_000 },
+};
+const PUBLIC_MESSAGES: Record<string, string> = {
+  RATE_LIMITED: 'Demasiados intentos seguidos. Espera un momento y vuelve a probar.',
+  TOO_MANY_OPEN_ORDERS: 'Tienes varios pedidos sin cobrar: pásate por la barra antes de pedir más.',
+};
+export function createIpLimiter(now: () => number = Date.now) {
+  const hits = new Map<string, number[]>();
+  return (kind: keyof typeof PUBLIC_IP_LIMITS, ip: string | null): boolean => {
+    if (!ip) return true;
+    const { max, windowMs } = PUBLIC_IP_LIMITS[kind];
+    const key = `${kind}:${ip}`;
+    const t = now();
+    const recent = (hits.get(key) ?? []).filter((x) => t - x < windowMs);
+    if (recent.length >= max) { hits.set(key, recent); return false; }
+    recent.push(t); hits.set(key, recent);
+    if (hits.size > 5000) for (const [k, v] of hits) if (!v.some((x) => t - x < 10 * 60_000)) hits.delete(k);
+    return true;
+  };
+}
+const clientIp = (request: Request): string | null =>
+  (request.headers.get('x-ikisai-client-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0] ?? '').trim().slice(0, 64) || null;
+
 /** Escritura pública del núcleo (`applyPublicOperations` del kit, migración core 0094); inyectable en pruebas. */
 export type PublicWriter = (supabase: Supabase, app: string, operations: unknown[]) => Promise<{ cursor: number; results: unknown[] }>;
 
@@ -405,6 +435,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
     publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 
+  const ipAllowed = createIpLimiter();
   async function handlePublic(request: Request, route: string): Promise<Response> {
     const origin = request.headers.get('origin');
     const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff', Vary: 'Origin', 'Cache-Control': 'no-store' };
@@ -432,6 +463,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         return reply({ number: out.number, orders: out.orders ?? [] });
       }
       if (route === 'customer' && request.method === 'POST') {
+        if (!ipAllowed('customer', clientIp(request))) return error(429, 'RATE_LIMITED', PUBLIC_MESSAGES.RATE_LIMITED!);
         const menu = await supabase.rpc<{ projectId?: string | null } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
         const projectId = menu?.projectId ?? null;
         if (!projectId) return error(409, 'MENU_CLOSED', 'La barra no está abierta ahora mismo.');
@@ -456,6 +488,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         return reply({ token, number: link.number ?? null });
       }
       if (route === 'orders' && request.method === 'POST') {
+        if (!ipAllowed('orders', clientIp(request))) return error(429, 'RATE_LIMITED', PUBLIC_MESSAGES.RATE_LIMITED!);
         const hash = await customerHash();
         const me = hash ? await mine(hash) : null;
         if (!me?.customerId || !me.projectId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
@@ -476,7 +509,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
       }
       return error(404, 'NOT_FOUND', 'Ruta no encontrada.');
     } catch (caught) {
-      if (isFault(caught) && caught.status < 500) return error(caught.status, caught.code, caught.message);
+      if (isFault(caught) && caught.status < 500) return error(caught.status, caught.code, PUBLIC_MESSAGES[caught.code] ?? caught.message);
       return error(503, 'BACKEND_UNAVAILABLE', 'No disponible ahora mismo. Inténtalo de nuevo.');
     }
   }
