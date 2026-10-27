@@ -166,9 +166,6 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const canCreate = !menu && !cancelled && !family && canWrite();
 
     const body = el('div', { 'data-feedback-id': 'food.eventos.ficha', 'data-feedback-label': 'Ficha del evento', class: 'ficha' },
-      // Lo que más importa en cocina, arriba (hallazgo F-EVT-4): las restricciones antes que los datos.
-      el('section', { 'data-feedback-id': 'food.eventos.ficha.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions' }, el('h4', null, 'Restricciones'),
-        restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
       el('dl', { 'data-feedback-id': 'food.eventos.ficha.datos', 'data-feedback-label': 'Datos del evento', class: 'kv' },
         el('dt', null, 'Fechas'), el('dd', null, dateRange(event)),
         el('dt', null, 'Personas'), el('dd', null, guestsLabel(event) + (event.minors_count ? ` · ${event.minors_count} menores` : '')),
@@ -178,6 +175,8 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
         el('dt', null, 'Códigos'), el('dd', { 'data-feedback-ignore': '' }, [event.event_code, event.reservation_code].filter(Boolean).join(' · ') || '—'),
       ),
       event.meal_notes ? el('p', { 'data-feedback-ignore': '' }, el('strong', null, 'Notas de alimentación: '), event.meal_notes) : null,
+      el('section', { 'data-feedback-id': 'food.eventos.ficha.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions' }, el('h4', null, 'Restricciones'),
+        restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
       cancelled ? el('p', null, el('span', { class: 'chip trash' }, 'La reserva está cancelada en Booking: no hace falta menú.')) : null,
       family && !cancelled ? el('div', { 'data-feedback-id': 'food.eventos.ficha.familiar', 'data-feedback-label': 'Evento familiar', class: 'banner notice', id: 'familyEvent', role: 'note' },
         el('div', null, el('strong', null, 'Evento familiar: come del menú de casa.'), ' No lleva menú propio. Sus personas se cuentan en el menú de casa de esos días.'),

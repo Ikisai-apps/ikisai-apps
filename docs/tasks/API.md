@@ -2291,3 +2291,41 @@ Aunque la Edge no deja llamarlos desde `commands`, cada procedimiento comprueba 
 - **`tasks.request_project`**: solo la identidad de servicio de su fuente. El proyecto existente se busca por su referencia.
 - **En la Edge:** `purchases/:id/finance`, `requests/task` y `requests/purchase` no los usan los agentes (403); los agentes van por `commands`, con su revisión de riesgo.
 - **Pruebas:** `tests/tasks/procedures-guard.test.ts`.
+
+## 51. Fases del proyecto (migración `0356`; «Proyectos y producción» 7.1, encargo de Core, 27-10-2026)
+
+Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decisiones de VG en vg-37.
+
+- **`tasks.project_phases`**: `tab_id` y `project_id` (inmutables), `name` (1–120), `position`, `status` (`pending` | `active` | `done`), `start` y `due` (fechas opcionales, `start` ≤ `due`) y `closed_note`. La visibilidad es la de su proyecto. Leen todos los roles con acceso; escriben editor y owner.
+- **`tasks.tasks.phase_id`**: solo en una madre. Los pasos heredan la de su madre al leer (`compose` les pone `phaseId`) y no la guardan.
+- **Reglas (hook `tasks.validate_phases`):**
+  - la fase de una tarea es una fase viva de su mismo proyecto, y la tarea es madre (422 `INVALID_PHASE`);
+  - una fase nueva va en un proyecto vivo de su área (422 `INCONSISTENT_KEYS` / `PROJECT_UNAVAILABLE`);
+  - `start` posterior a `due` da 422 `INVALID_PHASE`;
+  - cerrar (`done`) con tareas abiertas pide `closed_note` (422 `PHASE_OPEN_TASKS`, con `open` en los detalles). Abierta es una madre viva sin hacer: con pasos, alguno vivo sin hacer;
+  - una fase con tareas vivas no se borra (422 `PHASE_NOT_EMPTY`): se sueltan sus tareas en el mismo lote.
+- **Mover:** si una tarea cambia de proyecto o pasa a ser hija, el trigger `tasks.task_phase_follow` le quita la fase (también al convertir un área en proyecto). `moveTaskOps` hace lo mismo en el cliente.
+- **Modelo de la interfaz:**
+  - `LegacyProject.phases` (solo si el proyecto tiene alguna): `{id, name, order, status, start, due, closedNote, version}`, más los calculados `done`, `open` y `total` sobre las madres;
+  - `LegacyTask.phaseId`;
+  - `decompose`: quitar una fase del modelo la manda a la papelera y suelta sus tareas en el mismo guardado.
+- **Papelera:** las fases de los proyectos y áreas en la papelera van a ella después de sus tareas, y la purga las borra.
+- **Pruebas:** `tests/tasks/phases.test.ts`.
+
+## 52. La producción de un proyecto (migración `0357`; «Proyectos y producción» 7.2)
+
+`GET projects/production?projectId=…` es la capacidad `tasks.project_production` (lectura). Pueden leerla reader, editor, owner y outsider, este último solo en los proyectos que se le abren. Si quien lee no ve el proyecto, o el proyecto no existe, da 404.
+
+- **`project`:** `{id, tabId, title, status, due}`.
+- **`phases`:** `{id, name, position, status, start, due, closedNote, total, open, done, blocked, nextTaskId}`.
+  - `total`, `open` y `done` cuentan las madres.
+  - `blocked` cuenta el trabajo bloqueado.
+  - `nextTaskId` es la primera tarea de trabajo sin hacer y sin bloquear, por orden de madre y de paso.
+- **`tasks`:** `{id, parentId, phaseId, title, done, doneAt, priority, due, position, container, trades, spaces, people, materials, purchases, blocked: {by, ids}}`.
+  - Los pasos llevan la fase de su madre.
+  - Un contenedor está hecho cuando lo están todos sus pasos.
+  - `blocked.by` vale `dependency` (una dependencia sin hacer), `step` (el paso anterior de una cadena en orden) o `null`. El material se añade en la 7.3.
+- **`lanes`:** `byTrade`, `bySpace`, `byPerson` (persona o `level:<nivel>`) y `byPhase` (`none` = sin fase), cada uno con `{open, done}`. Cuentan solo tareas de trabajo (no contenedores) y solo llevan ids: los nombres los pone quien lee.
+- **`next`:** `[{phaseId, taskId}]`, la siguiente acción de cada fase.
+- **El cálculo de bloqueo y fase** está en `tasks.production_rows(proyecto)`, que es la misma regla que «hoy» (§47).
+- **Pruebas:** `tests/tasks/production.test.ts`.
