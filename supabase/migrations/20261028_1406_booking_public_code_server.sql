@@ -8,7 +8,8 @@ create or replace function booking.public_code_from_server()
 returns trigger language plpgsql as $$
 declare v text;
 begin
-  if booking.batch_setting('request_id') is null or new.public_code is null or new.public_code is not distinct from old.public_code then return new; end if;
+  -- fuera de un lote el ajuste queda vacío ('') tras el primero de la sesión, no null
+  if nullif(booking.batch_setting('request_id'), '') is null or new.public_code is null or new.public_code is not distinct from old.public_code then return new; end if;
   loop
     v := booking.new_public_code();
     exit when not exists (select 1 from booking.events where public_code = v);
