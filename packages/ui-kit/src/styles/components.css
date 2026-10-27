@@ -2265,3 +2265,24 @@ a.appmenu-profile:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .lanes-short{max-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Revisión móvil del 27-10: pestañas, botones de enlace, chips de filtro y «¿Sin red?» del inicio de sesión a 44 px con el dedo. */
 @media (pointer: coarse){.tabpill,.linkbtn,.pl-tabs button,.space-quick-chip{min-height:44px}.tabtool{width:44px;height:44px}.login summary{display:flex;align-items:center;min-height:44px;padding:0}.appmenu-sync{min-height:44px;margin-top:-10px}}
+/* Cobertura de campos por flujos (src/pieces/coverage.ts), para el Revisor de Central. */
+.cov-box{display:grid;gap:10px}
+.cov-summary{display:flex;flex-wrap:wrap;gap:6px}
+.cov-filter{min-height:var(--tap);cursor:pointer}
+.cov-filter[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:1px}
+.cov-filter:disabled{opacity:.5;cursor:default}
+.cov-n{font-weight:800;margin-left:2px}
+.cov-group{justify-self:start}
+.cov-body{display:grid;gap:8px}
+.cov-groupbox{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--paper)}
+.cov-groupbox>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:var(--tap);padding:0 12px;font-weight:800;cursor:pointer}
+.cov-list{list-style:none;margin:0;padding:0 12px 6px;display:grid}
+.cov-row{padding:10px 0;border-top:1px solid var(--line)}
+.cov-main{display:grid;gap:4px;min-width:0}
+.cov-title{justify-self:start;font-weight:700;overflow-wrap:anywhere}
+.cov-id{font-size:var(--text-xs);color:var(--muted);font-family:var(--mono,monospace);overflow-wrap:anywhere}
+.cov-cls{justify-self:start}
+.cov-line{font-size:var(--text-sm);color:var(--ink);overflow-wrap:anywhere}
+.cov-use{color:var(--muted)}
+.cov-flags{display:flex;flex-wrap:wrap;gap:6px}
+.cov-empty{margin:0}
