@@ -121,6 +121,7 @@
 - 2026-10-27 · **Revisión › Uso y cobertura** (visión V0.2 aprobada por VG; `1517`): por app y función, el uso de 30 días por audiencia, el estado de cobertura (nadie llega, se ve sin uso, sin instrumentar, usado fuera de recorridos, requerido) y la decisión de una persona (Mantener, Simplificar, Integrar, Retirar con confirmación). Inventario de UI-kit con P15; recorridos de Flow, cuando existan. Pruebas `coverage.test.ts` y `coverage.spec.ts`.
 - 2026-10-27 · **Campos instrumentados para el inventario** (UI-kit #771): 81 campos con `data-field-id` (`central.<pantalla>.<campo>`), comprobado en `feedback-ids.test.ts`. Salen en «Uso y cobertura» como medidos.
 - 2026-10-27 · **Finca y decoración en Planos** (encargo de VG; Recursos 0814, kit 0.63): el mapa empieza en la finca y baja con miga; decoración general para ver; subir la finca (escala y cotas del SVG); «Colocar» › Decoración con iconos, escala y «Deshacer»; cota de cada altura; «Imágenes del centro». Reglas en `app/decor.ts` (`decor.test.ts`); prueba en `plans.spec.ts`. Curvas de nivel editables en «Colocar» (0815, `contours[i].points`).
+- 2026-10-27 · **Silueta de cabecera de cada app** (encargo de Core; Recursos 0816): en «Imágenes del centro», una silueta por app (Central, Guests y Organizers), con «Deshacer». Reglas en `headerOperations`; prueba en `plans.spec.ts`.
 
 ## Pendiente
 
