@@ -44,7 +44,7 @@ test('visitantes · alta, lectura con visitor_id del kit (nunca del cliente), es
     assert.match(created.data.token, /^[0-9a-f]{64}$/);
     assert.equal(created.headers.get('access-control-allow-origin'), GUESTS);
     const visitorId: string = created.data.visitorId;
-    const stored = await db.query<{ n: number }>(`select count(*)::int n from core.visitors where id = $1 and event_code = 'ABC123' and token_hash <> $2`, [visitorId, created.data.token]);
+    const stored = await db.query<{ n: number }>(`select count(*)::int n from core.visitors v join core.visitor_tokens t on t.visitor_id = v.id where v.id = $1 and v.event_code = 'ABC123' and t.token_hash <> $2`, [visitorId, created.data.token]);
     assert.equal(stored.rows[0]?.n, 1, 'se guarda el resumen, no el token');
 
     // Lectura genérica: el visitor_id lo pone el kit y descarta el que venga en la consulta.
