@@ -7,3 +7,4 @@
 - **`watchScrollHint(nodo)`**, para una fila suelta.
 - Demo: «Fila de chips con pista de desplazamiento (K4)». Pruebas: `tests/v79.spec.ts`.
 =======
+- `.scrollrow` lleva `contain:inline-size` y `width:100%`: una fila larga no ensancha la página (en la muestra, 823 px en un móvil de 390).

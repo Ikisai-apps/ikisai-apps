@@ -2297,7 +2297,7 @@ button.cal-sheet-event{cursor:pointer}
 :root[data-theme="dark"] .cal-event{color:color-mix(in srgb,var(--event-color) 45%,var(--ink))}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .cal-event{color:color-mix(in srgb,var(--event-color) 45%,var(--ink))}}
 /* K4: pista de desplazamiento (src/scroll-hint.ts). El borde con más contenido detrás se difumina; solo cuando la fila desborda. */
-.scrollrow{display:flex;align-items:center;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-width:0}
+.scrollrow{display:flex;align-items:center;gap:8px;overflow-x:auto;contain:inline-size;width:100%;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-width:0}
 .scrollrow::-webkit-scrollbar{display:none}
 .scrollrow>*{flex:none}
 [data-more-end]:not([data-more-start]){-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent)}
