@@ -173,6 +173,8 @@ export interface CartaPrepRow {
   name: string; unit: string; per_unit: number | string | null; expected_units: number; need_total: number | string | null;
   mesa: number | string | null; nevera: number | string | null; fresco: number | string | null; station: number | null; convertible: boolean;
   line_revision: number; menu_revision: number;
+  /** Rendimiento (1112): en unidades de preparación, y cómo se compra. */
+  prep_unit: string; prep_per_unit: number | string; prep_need_total: number | string; purchase_unit: string | null; yield: number | string | null;
 }
 
 /** Fila de `food.carta_prep_totals_projection` (1110): una por componente, sumando las líneas. */
@@ -180,6 +182,7 @@ export interface CartaPrepTotal {
   menu_id: string; component_key: string; item_id: string | null; ingredient_id: string | null; name: string; unit: string;
   need_total: number | string | null; mesa: number | string | null; nevera: number | string | null; fresco: number | string | null;
   convertible: boolean; station: number | null;
+  prep_unit: string | null; prep_need_total: number | string | null; purchase_unit: string | null; yield: number | string | null;
 }
 
 export const STATION_LABELS: Record<number, string> = { 1: 'Untar', 2: 'Colocar', 3: 'Dosificar', 4: 'Acabados' };
@@ -226,4 +229,14 @@ export function formatAmount(value: number | string | null | undefined, unit: st
   if (unit === 'kg' && Math.abs(n) < 1) return `${fmt(n * 1000, 0)} g`;
   if (unit === 'l' && Math.abs(n) < 1) return `${fmt(n * 1000, 0)} ml`;
   return `${fmt(n, unit === 'kg' || unit === 'l' ? 2 : 1)} ${unit}`;
+}
+
+/**
+ * Cuántas unidades de compra cubren lo que se prepara (rendimiento, 1112): 24 rodajas con 8 por tomate → 3 tomates.
+ * Hacia arriba: no se compra media pieza. Null sin rendimiento.
+ */
+export function purchaseFromPrep(prepNeed: number | string | null | undefined, yieldPerPurchase: number | string | null | undefined): number | null {
+  const need = Number(prepNeed), y = Number(yieldPerPurchase);
+  if (prepNeed === null || prepNeed === undefined || yieldPerPurchase === null || yieldPerPurchase === undefined || !(y > 0) || !Number.isFinite(need)) return null;
+  return Math.ceil(need / y - 1e-9);
 }

@@ -161,6 +161,12 @@ test('evento familiar · come del menú de casa: sin «Crear menú» y con el en
   await expect(page.locator('#createMenu')).toHaveCount(0);
   await page.locator('#openHouseMenu').click();
   await expect(page).toHaveURL(/#\/menus\/f00dca5a-0000-4000-8000-000000000001$/);
+  // En el menú de casa, los días del familiar dicen cuántos más comen (6 personas), en esta semana o en la siguiente.
+  // La semana del menú de casa va de lunes a domingo: si el día 3 cae después del domingo de esta, la siguiente.
+  const today = new Date(`${day(0)}T12:00:00Z`);
+  const sunday = new Date(today.getTime() + ((7 - today.getUTCDay()) % 7) * 86_400_000).toISOString().slice(0, 10);
+  if (day(3) > sunday) await page.locator('#weekNext').click();
+  await expect(page.locator('.familychip').first()).toContainText('+6 de Visita de la familia');
 });
 
 test('ofertas · la ficha del evento las enseña y deja añadir otra', async ({ page }) => {

@@ -165,6 +165,14 @@ export const bookingReservationUrl = (event: Pick<FoodEvent, 'reservation_id'>) 
 
 /** Evento «familiar» de Booking (event_type desde la 0482): come del menú de casa, no lleva menú propio (VG, 26-10). */
 export const isFamilyEvent = (event: Pick<FoodEvent, 'event_type'>) => event.event_type === 'familiar';
+/**
+ * Personas de los eventos familiares que comen en casa un día (VG, 26-10: el familiar come del menú de casa). Se suman a
+ * las de casa al poner raciones; los cancelados no cuentan.
+ */
+export function familyGuestsOn(events: FoodEvent[], day: string): { guests: number; titles: string[] } {
+  const on = events.filter((e) => isFamilyEvent(e) && !isCancelled(e) && e.start_date <= day && day <= e.end_date);
+  return { guests: on.reduce((n, e) => n + (e.guest_count ?? 0), 0), titles: on.map((e) => e.title) };
+}
 export const needsMenu = (event: FoodEvent) => !isCancelled(event) && !isFamilyEvent(event) && event.requires_meals !== false && event.meal_plan !== 'no_aplica';
 
 const RESTRICTION_PLURAL: Record<string, [string, string]> = {

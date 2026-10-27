@@ -46,9 +46,9 @@
 .linerows{display:flex;flex-direction:column;gap:14px;margin-bottom:12px}
 @media (min-width:720px){.linerows{gap:8px}}
 /* En móvil el nombre del ingrediente ocupa toda la línea y debajo van cantidad, unidad y quitar. */
-.linerow{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:6px;align-items:center}
+.linerow{display:grid;grid-template-columns:minmax(0,1fr) 96px 120px auto;gap:6px;align-items:center}
 .linerow>input:first-child{grid-column:1/-1}
-@media (min-width:720px){.linerow{grid-template-columns:minmax(0,1fr) 84px 96px auto}.linerow>input:first-child{grid-column:auto}}
+@media (min-width:720px){.linerow{grid-template-columns:minmax(0,1fr) 84px 96px 130px auto}.linerow>input:first-child{grid-column:auto}}
 .formblock>.hint{display:block;margin-top:6px}
 .linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%}
 .checkline{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
@@ -514,3 +514,7 @@
   body.carta-printing #printTrays,body.carta-printing #trayMissing .btnrow{display:none}
   body.carta-printing .carta-plan th,body.carta-printing .carta-plan td{color:#000;border-bottom-color:#999}
 }
+.carta-yieldrow{display:grid;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
+.carta-yieldeq{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.carta-yieldeq select,.carta-yieldeq input{min-height:var(--tap,46px);width:auto;min-width:90px}
+.carta-buy{display:block}

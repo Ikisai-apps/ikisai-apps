@@ -59,6 +59,10 @@ export interface Ingredient extends SyncedColumns {
   active: boolean;
   /** Artículo de Recursos (R5a); lo rellena la app al abrirse. */
   item_id?: string | null;
+  /** Rendimiento (1112): 1 `purchase_unit` = `yield` `prep_unit` (1 tomate = 8 rodajas). */
+  purchase_unit?: Unit | null;
+  prep_unit?: string | null;
+  yield?: number | string | null;
 }
 
 export interface RecipeIngredient extends SyncedColumns {

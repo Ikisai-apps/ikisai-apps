@@ -9,6 +9,7 @@ import { closeSheet, confirmDialog, createFocus, createSortableList, el, formatD
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
+  familyGuestsOn,
   dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
 } from '../app/events.ts';
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
@@ -253,7 +254,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     /** Menú de casa (O3a): sin evento, siempre abierto, por semanas y con plato rápido. */
     const house = () => menuId === HOUSE_MENU_ID || isHouseMenu(menu);
     let weekOffset = 0;
-    const defaultServings = () => (house() ? Number(menu?.house_servings ?? 0) || 1 : event()?.guest_count ?? 1);
+    // En casa, las personas de casa más las de los eventos familiares de ese día (comen del menú de casa).
+    const defaultServings = (day?: string) => (house()
+      ? (Number(menu?.house_servings ?? 0) || 1) + (day ? familyGuestsOn(snapshot.events, day).guests : 0)
+      : event()?.guest_count ?? 1);
 
     const head = el('div', { 'data-feedback-id': 'food.menu.cabecera', 'data-feedback-label': 'Cabecera del menú', class: 'pagehead' });
     // Platos sugeridos pendientes (O3c): un aviso en la cabecera del menú de casa, si hay alguno.
@@ -916,6 +920,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       // Todo lo que obliga a rehacer el constructor entero. Lo que no está aquí (orden y datos de las filas de una lista) se actualiza en su lista.
       const shape = JSON.stringify({
         canEdit, cook, days, guests: e?.guest_count ?? null, house: house() ? Number(menu?.house_servings ?? 0) : null,
+        family: house() ? days.map((d) => familyGuestsOn(snapshot.events, d).guests) : null,
         quick: recipes.filter((r) => used.has(r.id) && isQuickPending(r, recipeLines)).map((r) => r.id).sort(),
         recipes: recipes.filter((r) => used.has(r.id)).map((r) => `${r.id}:${r.revision}`).sort(),
         consumption: sorted.map((s) => consumptionOf(s)?.state ?? ''),
@@ -948,7 +953,9 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       replace(builder, house() ? weekNav(days) : null, ...days.map((day) => {
         const ofDay = sorted.filter((s) => s.service_date === day);
         return el('section', { 'data-feedback-id': 'food.menu.dia', 'data-feedback-label': 'Día', class: 'menuday', 'data-day': day },
-          el('h3', null, longDay(day), house() && day === todayKey() ? el('span', { class: 'chip ok todaychip' }, 'Hoy') : null),
+          el('h3', null, longDay(day), house() && day === todayKey() ? el('span', { class: 'chip ok todaychip' }, 'Hoy') : null,
+            house() && familyGuestsOn(snapshot.events, day).guests ? el('span', { class: 'chip familychip', title: familyGuestsOn(snapshot.events, day).titles.join(', ') },
+              `+${familyGuestsOn(snapshot.events, day).guests} de ${familyGuestsOn(snapshot.events, day).titles.join(', ')}`) : null),
           serviceList(day, ofDay),
           canEdit && house() ? el('div', { class: 'btnrow dayactions' },
             el('button', { 'data-feedback-id': 'food.menu.casa.anadir_comida', 'data-feedback-label': 'Añadir comida', class: 'ghost quickService', type: 'button', 'aria-label': `Añadir comida el ${longDay(day)}`, onclick: () => void quickService(day, 'comida', lastPosition(day)) }, icon('plus', 18), 'Comida'),
@@ -999,7 +1006,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const search = el('input', { 'data-feedback-id': 'food.menu.platos.selector.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', placeholder: house() ? 'Buscar receta o escribir un plato nuevo' : 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill(),
         onkeydown: (ev: Event) => { if ((ev as KeyboardEvent).key === 'Enter') (quickHost.querySelector('button') as HTMLButtonElement | null)?.click(); } });
       const grid = el('ul', { 'data-feedback-id': 'food.menu.platos.selector', 'data-feedback-label': 'Selector de recetas', class: 'recipegrid picker', id: 'recipePicker' });
-      const servings = defaultServings();
+      const servings = defaultServings(service.service_date);
       const quickHost = el('div', { class: 'quickdish' });
       /** Plato rápido (solo en casa): la receta mínima y el plato, en un lote. Se completa después en el Recetario. */
       async function addQuick(name: string): Promise<void> {
@@ -1222,7 +1229,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     void load();
-    const offEvents = watchEvents(client, (next) => { snapshot = next; if (menu) paintActionsAndRest(); });
+    const offEvents = watchEvents(client, (next) => { snapshot = next; if (menu) { paintActionsAndRest(); if (house()) paintBuilder(); } });
     const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments, T.consumptions, T.shoppingLists].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
     const offStatus = client.onStatus(() => void refreshEvents(client));
     return () => {
