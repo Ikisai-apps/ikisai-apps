@@ -4,16 +4,43 @@
 -- Como `check_account_link` (0502): en una ficha con cuenta (antes o después), cambiar `house_level`, `active`,
 -- `deleted_at` o `merged_into` exige owner de Central. Se comprueba en la base, para cualquier camino que llegue a
 -- core.commit; la Edge lo rechaza antes (validate.ts). Las fichas sin cuenta las siguen llevando los editores.
+--
+-- El rol que vale es el del lote **al empezar** (`core.role`, que fija core.commit), no la membresía al final: el trigger
+-- `sync_house_level` corre al aplicar la fila, antes que los hooks, y ya le habría dado owner a quien se sube de nivel.
+-- Por lo mismo se rehace `check_account_link` (0502): un editor enlazaba su cuenta a una ficha de «dirección», el trigger
+-- le hacía owner y la comprobación, que miraba la membresía, le dejaba pasar.
 -- Toca solo el schema central.
+
+-- ¿Era owner de Central quien manda el lote, cuando empezó? (`core.role`; sin él, la membresía, que entonces no ha cambiado.)
+create or replace function central.batch_by_owner(p jsonb)
+returns boolean language sql stable as $$
+  select case when coalesce(current_setting('core.role', true), '') <> '' then current_setting('core.role', true) = 'owner'
+              else exists (select 1 from core.memberships m where m.app = 'central' and m.user_id = (p->>'actor')::uuid and m.role = 'owner') end
+$$;
+
+create or replace function central.check_account_link(p jsonb)
+returns void language plpgsql as $$
+declare v_row uuid;
+begin
+  -- Cambios de `user_id` en este lote: alta con valor o modificación (borrar o restaurar la fila no lo cambia).
+  select c.row_id into v_row
+    from core.changes c
+   where c.app = 'central' and c.cursor = (p->>'cursor')::bigint
+     and c.schema_name = 'central' and c.table_name = 'people'
+     and (c.before->>'user_id') is distinct from (c.after->>'user_id')
+   limit 1;
+  if v_row is null then return; end if;
+  if not central.batch_by_owner(p) then
+    perform core.fail('FORBIDDEN', 403, jsonb_build_object('table', 'central.people', 'id', v_row, 'field', 'user_id',
+      'reason', 'only the central owner links accounts'));
+  end if;
+end $$;
 
 create or replace function central.check_house_level_change(p jsonb)
 returns void language plpgsql as $$
 declare v_row uuid;
 begin
-  if exists (select 1 from core.memberships m
-              where m.app = 'central' and m.user_id = (p->>'actor')::uuid and m.role = 'owner') then
-    return;
-  end if;
+  if central.batch_by_owner(p) then return; end if;
   select c.row_id into v_row
     from core.changes c
    where c.app = 'central' and c.cursor = (p->>'cursor')::bigint
