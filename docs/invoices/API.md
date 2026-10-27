@@ -1929,3 +1929,110 @@ Sincronizable y `never_purge`. No se borra: si un apunte estaba mal, lo corrige 
 - **Gestoría:**
   - el ticket suma al saldo de IVA (orientativo) el IVA repercutido de los apuntes de apps;
   - «Todo el detalle» lleva la tarjeta «Ingresos y gastos de apps» (`#appEntriesSummary`), con la misma cuenta que `invoices.app_entries_summary_for`.
+
+### 17.5 «Justificante del día» (encargo de VG del 27-10)
+
+- Es la hoja imprimible de un **ingreso** de otra app. Se abre con «Justificante» en la ficha del apunte (`#appEntryReceipt`) y se imprime o se guarda en PDF con la vista de impresión del kit.
+- Lleva:
+  - el emisor, que sale de Central con red; sin red, avisa de que faltan sus datos;
+  - la fecha y el concepto;
+  - el desglose, por producto o, en una liquidación, por pedido;
+  - los totales por medio de cobro;
+  - la base, el IVA incluido, las devoluciones pendientes y el total.
+- **Sin numeración fiscal:**
+  - mientras la gestoría no diga si es ticket o factura simplificada, se titula «Justificante de ventas», lleva la marca «SIN NUMERACIÓN FISCAL» y dice que no es factura ni ticket;
+  - **el hueco para la serie está preparado:** `DAY_RECEIPT_SERIES` en `app/day-receipt.ts`. Con una serie de simplificadas y un número, el documento pasa a ser «Factura simplificada <número>»;
+  - numerar de verdad (dar y guardar el número en el servidor) irá en una migración propia cuando llegue la respuesta (PETICIONES.md, 27-10).
+- El modelo está en `app/day-receipt.ts` y se prueba con `tests/invoices/day-receipt.test.ts`.
+
+### 17.6 Liquidaciones de cuentas de cliente (Flow)
+
+Una liquidación es un pago único que cierra varios pedidos de un cliente. Va por el mismo `invoices.record_app_entry`, **sin nada nuevo en el modelo**:
+- `source_ref`: `flow:settlement:<id del pago>`, un apunte por liquidación;
+- `entry_date`: el día del pago;
+- `detail`: una línea por pedido, `{code: 'P 14', name: 'Pedido 14', quantity: 1, amount_cents, order_id}`. Las claves de más, como `order_id`, se guardan tal cual;
+- `methods`: el medio del pago, como siempre;
+- el desglose más las devoluciones pendientes suman el importe.
+
+**Lo que hace Flow (27-10): opción «solo en el cierre».** Una liquidación es un pago más del día en que se cobra:
+- entra en el «Cierre del día» de ese día, con su dinero por medio de cobro;
+- lo vendido «a cuenta» va en el desglose de ese día, con su precio cerrado;
+- Flow no manda apuntes `flow:settlement:…` aparte, así que nada se cuenta dos veces.
+El formato de arriba queda disponible, pero sin uso, salvo que Core o VG digan otra cosa.
+
+**Medios de cobro de Flow:** `cash`, `bizum` y `card` (tarjeta en un datáfono externo, sin pasarela). Finance acepta cualquier clave `[a-z_]` y enseña `card` como «Tarjeta». La suma de `methods` es `amount_cents`.
+
+### 17.7 Decisión de VG (27-10): apuntes fiscales y apuntes de proceso (pendiente de implementar, tras #768)
+
+- **Fiscal:** lo que acaba en factura o ticket. Llega cuando la caja de Flow, o cualquier app, pulsa «Enviar a Finance» tras cobrar. Lleva justificante (§17.5), va a la gestoría y cuenta en el IVA.
+- **Proceso:** el resto de lo que llega de las apps, como el resumen del cierre del día o los pedidos cobrados sin factura. Es informativo: se ve y cuenta en la vista «Evento», pero **no** va a la gestoría ni tiene justificante.
+- **Sin «desfacturar»:** un apunte de proceso no se vuelve fiscal. Lo fiscal llega como apunte propio, con su factura.
+- **Para el sábado 31 no cambia nada:** Flow manda lo que ya manda.
+- **Cambio previsto** (migración nueva; la 0244 ya es inmutable):
+  - columna `nature` (`fiscal` | `process`) en `invoices.app_entries`, que fija `record_app_entry` y no cambia al sustituir (`409 NATURE_CHANGE`);
+  - el resumen, el manifest, `ingresos_gastos_apps.csv` y el IVA de Gestoría, solo con lo fiscal;
+  - el justificante, solo para lo fiscal;
+  - la lista y la vista «Evento», con los dos tipos;
+  - el valor por defecto de lo que ya esté en la base, por decidir (ver la pregunta a Core).
+- **Para no contar dos veces en «Evento»:** cada cobro va en un solo apunte. Lo enviado como fiscal no entra también en el apunte de proceso del cierre de ese día (como las liquidaciones, §17.6), y lo decide Flow.
+
+## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
+
+Ficha de capacidad para el catálogo del núcleo:
+
+| Campo | Valor |
+|---|---|
+| **Nombre** | `invoices.register_purchase_quick`, «Registrar compra rápida» |
+| **Operación** | `POST /api/v1/purchases/quick` de `invoices-api`, con la sesión de la persona o una clave de agente |
+| **Permiso** | `editor` u `owner` en Finance. El lector recibe `403 FORBIDDEN`. Un agente pasa por el riesgo de siempre y, si hace falta, por una propuesta que aprueba un owner humano (contrato §3.1). |
+| **Idempotencia** | Por `requestId` y persona. La misma petición devuelve el mismo resultado con `replayed: true` y no duplica nada. Otra petición con el mismo `requestId` da `409 IDEMPOTENCY_REUSE`. Los ids de las filas salen de la persona y el `requestId`. |
+| **Riesgo** | Bajo: crea una compra **pendiente de revisión**, que la oficina completa y valida en Finance. No valida, no paga y no toca entregas a la gestoría. Si el proveedor no existe, lo crea. |
+| **Sin red** | No: necesita el servidor. El documento se sube antes con `uploads` y `verify`. |
+
+**Entrada** (JSON):
+
+```json
+{
+  "requestId": "flow-hielo-31",                       // 1-100 [A-Za-z0-9_.:-]
+  "supplier": { "id": "<uuid>" },                     // o { "name": "Hielos del Sur", "tax_id": "B00000000" }
+  "date": "2026-10-31",                               // AAAA-MM-DD, fecha de la compra
+  "total": 36.30,                                     // euros con IVA, > 0, dos decimales
+  "vat_rate": 21,                                     // opcional: 0, 4, 5, 10 o 21
+  "description": "Hielo para la barra",               // hasta 120 caracteres, el objeto de la compra
+  "file_id": "<uuid>",                                // opcional: foto o PDF de Finance ya verificado (core.files)
+  "target": { "app": "booking", "kind": "event", "id": "<uuid>" },   // o { "app": "general", "kind": "unassigned" | "operating_expense" | "investment" }
+  "notes": "Pagado con la caja de la barra"           // opcional, hasta 2000
+}
+```
+
+**Salida** (200):
+
+```json
+{
+  "invoice_id": "<uuid>", "code": "FVR_2026_012", "status": "pendiente_revision",
+  "supplier": { "id": "<uuid>", "name": "Hielos del Sur", "created": true },
+  "total": 36.3, "base": 30, "vat": 6.3,
+  "target": { "app": "booking", "kind": "event", "id": "<uuid>", "label": "Eventos › Evento de octubre · 2026-10-30" },
+  "file_id": "<uuid>", "replayed": false,
+  "summary": "FVR_2026_012 · Hielos del Sur · 36,30 € · Eventos › Evento de octubre · 2026-10-30"
+}
+```
+
+**Qué hace por dentro:** son operaciones de fila normales por el commit de siempre, con `beforeCommit`, riesgo de agentes y `core.commit`.
+- **Proveedor:** el del `id`. Si no hay `id`, el que ya existe con ese NIF o, sin NIF, con ese nombre (sin mayúsculas ni acentos). Si no existe ninguno, crea uno nuevo.
+- **Factura:** `object` = `description` y `source_total` = `total`.
+- **Línea y IVA:** una línea con la base. Con `vat_rate`, también su IVA y la línea de impuestos. Sin él, la línea va por el total y la oficina completa el IVA al revisar.
+- **Documento:** el `file_id`, comprobado en `core.files`.
+- **Asignación:** una, por la base, al destino. El evento se resuelve con el token de la persona contra la proyección de Booking. Así la compra cuenta en la vista «Evento» (§17.4) en cuanto se valida.
+
+**Errores:**
+- `422 INVALID_FIELDS`, con `details.field`;
+- `422 SUPPLIER_NOT_FOUND`;
+- `422 TARGET_NOT_FOUND` / `TARGET_FORBIDDEN`, para el evento;
+- `422 INVALID_FILE`, si el documento no está verificado o no es de Finance;
+- `422 DUPLICATE_FILE`;
+- `403 FORBIDDEN`;
+- `409 IDEMPOTENCY_REUSE`;
+- `428 CONFIRMATION_REQUIRED`, para un agente sin propuesta aprobada.
+
+**Pruebas:** `tests/invoices/quick-purchase.test.ts`.

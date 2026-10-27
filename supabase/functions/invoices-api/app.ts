@@ -8,6 +8,7 @@ import {
   readAndFill, readingMessage,
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
+import { createQuickPurchase } from './quick-purchase.ts';
 import { createGoogleDriveApi, READER_VERSION, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
 import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
@@ -850,6 +851,9 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
   });
   const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase), afterCommit: createResourceEntries(supabase) };
   const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
+  // Capacidad «Registrar compra rápida» (API.md §18): operaciones de fila por el commit de siempre, con hooks y riesgo.
+  const quickSync = createSync(supabase, 'invoices', hooks);
+  const registerQuickPurchase = createQuickPurchase({ supabase, commit: (ctx, body) => quickSync.commit(ctx, body), allRows: <T,>(ctx: RequestContext, table: string) => allRows<T>(supabase, ctx, table), stableUuid });
   const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
     notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
   return createApp({
@@ -861,6 +865,8 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     hooks,
     mcpTools: invoicesMcpTools(supabase, storage),
     routes: [...invoicesRoutes(supabase, targets, base.extractInvoice, storage, createLectorFill(supabase, hooks)), {
+      method: 'POST', pattern: 'purchases/quick', handler: async ({ ctx, json }) => registerQuickPurchase(ctx, await json()),
+    }, {
       // «Buscar ahora» en Ajustes (owner): el mismo tick, sin esperar al planificador.
       method: 'POST', pattern: 'drive/run', handler: async ({ ctx }) => {
         if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner puede buscar en Drive.');

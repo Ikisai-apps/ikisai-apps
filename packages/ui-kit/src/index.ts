@@ -45,6 +45,7 @@ export { createSuggestionSource, proposalFromSuggestion, changesFromPreview, sug
 export { createQuantityField, parseQuantity, formatQuantity, type QuantityField, type QuantityFieldOptions, type QuantityUnit, type QuantityValue } from './fields/quantity.ts';
 export { openImportSheet, createJsonSource, renderImportHeader, renderImportLines, renderImportTaxes, renderImportReconciliation, renderSchemaErrors, formatMoney, TAX_TYPE_LABELS, type ImportPreviewDocument, type ImportPreviewRecalc, type ImportParseResult, type ImportSheetOptions, type ImportSheet, type JsonSource, type SchemaErrorLike } from './import/import-preview.ts';
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
+export { renderQr, type QrOptions } from './print/qr.ts';
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
 export { deadlineText, deadlineInfo, type DeadlineInfo, type DeadlineOptions } from './fields/deadline.ts';
 export { renderMedal, initialsOf, type MedalOptions } from './pieces/medal.ts';
@@ -65,6 +66,7 @@ export { createVoteDeck, type Vote, type VoteDeck, type VoteDeckOptions, type Vo
 export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type TimelineLane, type TimelineOptions } from './pieces/timeline.ts';
 export { renderTray, renderTrayRow, type TrayAction, type TrayRow, type TrayGroup, type TrayOptions } from './pieces/tray.ts';
 export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
+export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion } from './pieces/step-form.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { setKitLayer, kitLayer } from './layer.ts';

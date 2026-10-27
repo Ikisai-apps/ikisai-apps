@@ -138,8 +138,8 @@ export const mountTeams: ViewMount = ({ main, client, navigate }) => {
   function openEditor(t: Team | null): void {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.equipos.editar.error', 'data-feedback-label': 'Error del formulario' });
-    const name = el('input', { id: 'tm-name', type: 'text', maxlength: '60', value: t?.name ?? '' }) as HTMLInputElement;
-    const color = el('input', { id: 'tm-color', type: 'color', value: t?.color ?? PALETTE[teams.length % PALETTE.length]! }) as HTMLInputElement;
+    const name = el('input', { id: 'tm-name', 'data-field-id': 'central.equipos.name', type: 'text', maxlength: '60', value: t?.name ?? '' }) as HTMLInputElement;
+    const color = el('input', { id: 'tm-color', 'data-field-id': 'central.equipos.color', type: 'color', value: t?.color ?? PALETTE[teams.length % PALETTE.length]! }) as HTMLInputElement;
     const save = el('button', { class: 'primary', type: 'button', id: 'saveTeam', 'data-feedback-id': 'central.equipos.editar.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
       error.textContent = '';
       if (!name.value.trim()) { error.textContent = 'El nombre es obligatorio.'; return; }

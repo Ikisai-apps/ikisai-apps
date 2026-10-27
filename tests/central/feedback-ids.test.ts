@@ -79,7 +79,7 @@ test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', 
   const roots = new Set(collect().filter((f) => !f.dynamic).map((f) => f.id.split('.')[1]));
   const allowed = new Set([
     'inicio', 'direccion', 'accesos', 'entidad', 'textos', 'personas', 'persona', 'equipos', 'oficios', 'cumplimiento', 'obligacion', 'decisiones', 'conflictos',
-    'inventario', 'articulo', 'decision', 'revision', 'planos',
+    'inventario', 'articulo', 'decision', 'revision', 'planos', 'uso',
     'cabecera', 'navegacion', 'avisos', 'menu',
   ]);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
@@ -101,4 +101,26 @@ test('el catálogo de la publicación recoge todos los ids: ninguno se construye
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('inventario de campos (UI-kit #771): cada campo con id fijo lleva su data-field-id, sin repetir entre campos distintos', () => {
+  const missing: string[] = [];
+  const owner = new Map<string, string>();
+  const clash: string[] = [];
+  for (const file of sources(path.join(SRC, 'ui'))) {
+    const text = readFileSync(file, 'utf8');
+    const rel = path.relative(SRC, file).split(path.sep).join('/');
+    // El id en cualquier sitio del objeto. Los campos con id variable (funciones auxiliares) esperan a `markField` del kit.
+    for (const m of text.matchAll(/el\('(?:input|select|textarea)',\s*\{[^\n]*?\bid:\s*'([A-Za-z0-9_-]+)'[^\n]*/g)) {
+      const id = m[1]!;
+      const field = /'data-field-id':\s*'(central\.[a-z]+\.[a-z0-9_]+)'/.exec(m[0])?.[1];
+      if (!field) { missing.push(`${rel}: #${id}`); continue; }
+      const prev = owner.get(field);
+      if (prev && prev !== id) clash.push(`${field}: #${prev} y #${id}`);
+      owner.set(field, id);
+    }
+  }
+  assert.deepEqual(missing, []);
+  assert.deepEqual(clash, []);
+  assert.ok(owner.size >= 60, `se esperaban muchos campos y hay ${owner.size}`);
 });

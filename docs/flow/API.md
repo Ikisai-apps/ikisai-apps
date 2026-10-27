@@ -257,7 +257,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Canje** `POST public/invitation {invitation}` → `{token, number}`: valida (`flow_guest_link`), y el lote público rota el `token_hash` de ese cliente de huésped (el navegador anterior deja de valer). `404 INVITATION_INVALID`, `410 INVITATION_EXPIRED`. El lote público solo crea clientes `web` y de un cliente `guest` solo cambia el token.
 ## 25. Check-in del evento (migración `0911`, paso 5)
 
-- **Comportamiento `guest_presence`** (`config.stage`: `arrival` | `bed` | `signature` | `departure`). Las columnas Llegada → Cama → Firma → Salida enseñan los huéspedes del evento ligado. Los datos salen de `booking.flow_guests_projection`: nombre corto, cama, noches, llegada, salida y firma. La app la lee por `GET checkin/:project/guests` cada 10 s con la pantalla visible. flow-api comprueba el ámbito del flujo y filtra por su evento, así que nadie ve los huéspedes de un evento que no es de sus flujos.
+- **Comportamiento `guest_presence`** (`config.stage`: `arrival` | `bed` | `signature` | `departure`). Las columnas Llegada → Cama → Firma → Salida enseñan los huéspedes del evento ligado. Los datos salen de `booking.flow_guests_of({event_id})` (Booking 0486): nombre corto, cama, noches, llegada, salida y firma. Booking solo responde si el evento está en el ámbito de la persona en Flow (resolutor `flow.in_scope`, 0916). La app la lee por `GET checkin/:project/guests` cada 10 s con la pantalla visible. flow-api comprueba el ámbito del flujo y filtra por su evento, así que nadie ve los huéspedes de un evento que no es de sus flujos.
 - **Plantillas**: `flow.template_columns` (`template_key`, `version`, `label_base`, `key`, `label`, `behavior`, `config`, `position`) y `create_flow({template_key, project_id, name?, booking_event_id?, starts_on?, ends_on?})`, solo owner y desde la última versión de la plantilla. Ya existe la plantilla `checkin` v1. El editor de flujos (paso 6) las ampliará.
 - **Llegada y Salida**: `POST checkin/:project/guests/:guest/arrive|leave {undo?}`.
   - flow-api comprueba tres cosas: rol editor u owner, que el flujo esté en el ámbito de la persona (`flow.checkin_target`) y que el huésped sea del evento del flujo.
@@ -266,3 +266,13 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Cama** («en su cama»): marca de Flow `flow.presence_marks`, solo por procedimiento: `mark_presence({project_id, guest_id, step: 'bed', undo?})`.
 - **Firma**: solo avisa. El parte se firma en Huéspedes y la tarjeta pasa sola a hecha.
 - La barra no cambia.
+
+## 26. Cocina sin tocar el móvil y resolutor de ámbito (migración `0912`, «B»)
+
+- **`complete_on_delivery`** en la config de Servicio. Lo lleva la v2 por plantilla. La 0912 aplica además todos los ajustes de plantilla a las versiones ya creadas y no congeladas, sin pisar lo que tengan.
+- **`deliver_all({order_id, ident, expected_revision?})`**: termina las unidades de preparación que queden y entrega el pedido sin excepción.
+  - Las unidades pasan por `unit_step` (pendiente → en curso → hecho), con su consumo de ingredientes y a nombre de quien entrega.
+  - Las líneas quedan entregadas en su totalidad.
+  - Sin la config, `INVALID_OPERATION`: la v1 entrega con `deliver_order` como siempre.
+- **App**: en la ficha de entrega de la v2, con algo en cocina, aparece «Dar por hecho y entregar». En Servicio, esas tarjetas dicen «En cocina x/y». En Preparación, lo terminado desde entrega desaparece solo.
+- **Resolutor de ámbito**: `flow.in_scope(actor, kind, id)`, registrado con `core.allow_scope_resolver`. Con `kind = 'booking_event'`, es verdadero si la persona tiene en su ámbito algún flujo de ese evento. Booking lo usa en `booking.flow_guests_of`.

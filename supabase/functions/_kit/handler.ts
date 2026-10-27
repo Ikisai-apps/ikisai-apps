@@ -250,6 +250,7 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'usage/consent', handler: ({ ctx }) => usage.consent(ctx, false) },
     { method: 'POST', pattern: 'usage/consent', handler: ({ ctx }) => usage.consent(ctx, true) },
     { method: 'GET', pattern: 'usage/review', handler: ({ ctx, url }) => usage.review(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'usage/inventory', handler: ({ ctx, url }) => usage.inventory(ctx, url.searchParams) },
     { method: 'GET', pattern: 'usage/features/:id', handler: ({ ctx, params }) => usage.feature(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'usage/features/:id/decision', handler: async ({ ctx, params, json }) => usage.decide(ctx, params.id ?? '', await json()) },
     { method: 'POST', pattern: 'usage/features/:id/settings', handler: async ({ ctx, params, json }) => usage.decide(ctx, params.id ?? '', await json()) },

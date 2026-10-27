@@ -147,8 +147,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     const error = el('p', { class: 'fielderror', id: 'one-error', role: 'alert', 'aria-live': 'assertive' });
     const value = field === 'iban' ? formatIban(current.iban) : isFile ? null : (current[field] as string | null);
     const input = isFile
-      ? el('input', { id: 'one-file', type: 'file', accept: (field === 'logo_file_id' ? LOGO_MIME : SITE_PLAN_MIME).join(','), class: 'visually-hidden' }) as HTMLInputElement
-      : el('input', { id: 'one-value', type: field === 'email' ? 'email' : field === 'phone' ? 'tel' : field === 'website' || field === 'venue_map_url' ? 'url' : 'text', value: value ?? '', autocomplete: 'off', 'aria-describedby': 'one-error one-uses',
+      ? el('input', { id: 'one-file', 'data-field-id': 'central.entidad.file', type: 'file', accept: (field === 'logo_file_id' ? LOGO_MIME : SITE_PLAN_MIME).join(','), class: 'visually-hidden' }) as HTMLInputElement
+      : el('input', { id: 'one-value', 'data-field-id': 'central.entidad.value', type: field === 'email' ? 'email' : field === 'phone' ? 'tel' : field === 'website' || field === 'venue_map_url' ? 'url' : 'text', value: value ?? '', autocomplete: 'off', 'aria-describedby': 'one-error one-uses',
         ...(field === 'iban' ? { placeholder: 'ES00 0000 0000 0000 0000 0000', maxlength: '42', 'data-feedback-ignore': '' } : field === 'venue_map_url' ? { placeholder: 'https://maps.app.goo.gl/…', maxlength: '500' } : { maxlength: '300' }) }) as HTMLInputElement;
     const fileState = el('span', { class: 'muted small' }, isFile ? (current[field] ? 'Ya hay uno: el nuevo lo sustituye.' : 'Todavía no hay ninguno.') : '');
     if (isFile) input.addEventListener('change', async () => {
@@ -243,7 +243,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     let logo: LogoRef = (current?.logo_file_id as LogoRef) ?? null;
     let stagedLogo: Blob | null = null;
     const logoPreview = el('div', { class: 'logopreview', 'data-feedback-id': 'central.entidad.editar.logotipo_vista', 'data-feedback-label': 'Vista del logotipo' });
-    const logoInput = el('input', { id: 'en-logo', type: 'file', accept: LOGO_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.logotipo_archivo', 'data-feedback-label': 'Archivo del logotipo' }) as HTMLInputElement;
+    const logoInput = el('input', { id: 'en-logo', 'data-field-id': 'central.entidad.logo', type: 'file', accept: LOGO_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.logotipo_archivo', 'data-feedback-label': 'Archivo del logotipo' }) as HTMLInputElement;
     const paintLogo = async () => {
       if (stagedLogo) {
         const url = URL.createObjectURL(stagedLogo);
@@ -270,7 +270,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     let stagedPlan: File | Blob | null = null;
     let stagedPlanName = '';
     const planPreview = el('div', { class: 'planpreview', 'data-feedback-id': 'central.entidad.editar.plano_vista', 'data-feedback-label': 'Plano elegido' });
-    const planInput = el('input', { id: 'en-plan', type: 'file', accept: SITE_PLAN_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.plano_archivo', 'data-feedback-label': 'Archivo del plano' }) as HTMLInputElement;
+    const planInput = el('input', { id: 'en-plan', 'data-field-id': 'central.entidad.plan', type: 'file', accept: SITE_PLAN_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.plano_archivo', 'data-feedback-label': 'Archivo del plano' }) as HTMLInputElement;
     const paintPlan = async () => {
       replace(planPreview, stagedPlan ? el('span', null, icon('check', 16), ` ${stagedPlanName}`) : (await planNode(plan)) ?? el('span', { class: 'muted' }, 'Sin plano'));
     };
