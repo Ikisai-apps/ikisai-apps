@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
+  COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
   type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -211,6 +211,13 @@ export function createCentralApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
       beforeCommit: async (operations, ctx) => {
         const issue = validateOperations(operations, ctx.membership);
         if (issue) fail(issue.code === 'FORBIDDEN' ? 403 : 422, issue.code, issue.message, issue.details);
+        // Nivel de casa de una ficha con cuenta: solo el owner (C1). La base lo impone también (1518).
+        const guarded = accountGuardTargets(operations, ctx.membership);
+        if (guarded.length) {
+          const out = await supabase.rpc<{ ids: string[] }>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'central.people_with_account', p_args: { ids: guarded.map((t) => t.id) } });
+          const denied = accountGuardIssue(guarded, new Set(out?.ids ?? []));
+          if (denied) fail(403, denied.code, denied.message, denied.details);
+        }
         await checkFiles(supabase, operations, ctx);
       },
     },

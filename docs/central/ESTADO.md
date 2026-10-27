@@ -122,6 +122,8 @@
 - 2026-10-27 · **Campos instrumentados para el inventario** (UI-kit #771): 81 campos con `data-field-id` (`central.<pantalla>.<campo>`), comprobado en `feedback-ids.test.ts`. Salen en «Uso y cobertura» como medidos.
 - 2026-10-27 · **Finca y decoración en Planos** (encargo de VG; Recursos 0814, kit 0.63): el mapa empieza en la finca y baja con miga; decoración general para ver; subir la finca (escala y cotas del SVG); «Colocar» › Decoración con iconos, escala y «Deshacer»; cota de cada altura; «Imágenes del centro». Reglas en `app/decor.ts` (`decor.test.ts`); prueba en `plans.spec.ts`. Curvas de nivel editables en «Colocar» (0815, `contours[i].points`).
 
+- 2026-10-27 · **Seguridad C1** (auditoría de rutas): en una ficha con cuenta, cambiar `house_level` o `active`, o borrar, restaurar o fusionar la ficha, exige owner de Central. Lo impone el hook `central.check_house_level_change` (1518) y, antes, la Edge (`accountGuardTargets` y `central.people_with_account`). Prueba: `house-level-owner.test.ts`, que reproduce la escalada por la Edge y por `core_commit`.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
