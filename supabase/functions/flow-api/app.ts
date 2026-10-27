@@ -111,18 +111,30 @@ function appCaller(base: FlowBase, options: FlowAppOptions) {
  */
 function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
   const callApp = appCaller(base, options);
+  /** El evento de Booking de un flujo de check-in del ámbito de la persona (si no, PROJECT_OUT_OF_SCOPE / NO_BOOKING_EVENT). */
+  async function eventOf(ctx: RequestContext, project: string): Promise<string> {
+    if (!UUID.test(project)) fail(422, 'INVALID_OPERATION', 'Identificador no válido.');
+    const target = await supabase.rpc<{ booking_event_id: string | null } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.checkin_target', p_args: { project_id: project } });
+    if (!target) fail(403, 'PROJECT_OUT_OF_SCOPE', 'Este flujo no es tuyo: pide acceso a Dirección.');
+    if (!target.booking_event_id) fail(409, 'NO_BOOKING_EVENT', 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.');
+    return target.booking_event_id;
+  }
+  const guestsOf = (ctx: RequestContext, event: string, guest?: string) => supabase.rpc<{ rows?: unknown[] } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id,
+    p_name: 'booking.flow_guests_projection', p_args: { where: { event_id: event, ...(guest ? { guest_id: guest } : {}) }, limit: guest ? 1 : 2000 } });
   return [{
+    // Los huéspedes del evento de ESTE flujo (la app no lee la proyección de Booking directamente: así solo ve los de sus flujos).
+    method: 'GET', pattern: 'checkin/:project/guests', handler: async ({ ctx, params }) => {
+      const event = await eventOf(ctx, params.project ?? '');
+      return { rows: (await guestsOf(ctx, event))?.rows ?? [] };
+    },
+  }, {
     method: 'POST', pattern: 'checkin/:project/guests/:guest/:action', handler: async ({ ctx, params, json }) => {
       if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede marcar llegadas ni salidas.');
       const action = params.action === 'arrive' ? 'booking.guest_arrive' : params.action === 'leave' ? 'booking.guest_leave' : null;
       if (!action) fail(404, 'NOT_FOUND', 'Ruta no encontrada.');
-      if (!UUID.test(params.project ?? '') || !UUID.test(params.guest ?? '')) fail(422, 'INVALID_OPERATION', 'Identificador no válido.');
+      if (!UUID.test(params.guest ?? '')) fail(422, 'INVALID_OPERATION', 'Identificador no válido.');
       const body = (await json().catch(() => ({}))) ?? {};
-      const target = await supabase.rpc<{ booking_event_id: string | null } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.checkin_target', p_args: { project_id: params.project } });
-      if (!target) fail(403, 'PROJECT_OUT_OF_SCOPE', 'Este flujo no es tuyo: pide acceso a Dirección.');
-      if (!target.booking_event_id) fail(409, 'NO_BOOKING_EVENT', 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.');
-      const found = await supabase.rpc<{ rows?: unknown[] } | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'booking.flow_guests_projection',
-        p_args: { where: { guest_id: params.guest, event_id: target.booking_event_id }, limit: 1 } });
+      const found = await guestsOf(ctx, await eventOf(ctx, params.project ?? ''), params.guest);
       if (!found?.rows?.length) fail(404, 'NOT_FOUND', 'Ese huésped no es de este evento.');
       const undo = body.undo === true;
       return callApp(ctx, 'booking-api', 'Booking', `flow:${params.action}:${params.guest}:${crypto.randomUUID()}`, action, { guest_id: params.guest, ...(undo ? { undo: true } : {}) });

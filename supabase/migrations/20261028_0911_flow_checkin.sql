@@ -129,7 +129,7 @@ $$;
 
 select core.allow_procedure('flow', 'flow.create_flow');
 select core.allow_procedure('flow', 'flow.mark_presence');
-select core.allow_read('flow', 'flow.checkin_target', 'function', '{editor,owner}');
+select core.allow_read('flow', 'flow.checkin_target', 'function', '{reader,editor,owner}');
 
 revoke all on all functions in schema flow from public, anon, authenticated;
 grant execute on all functions in schema flow to service_role;

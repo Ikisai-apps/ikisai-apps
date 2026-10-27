@@ -91,6 +91,14 @@ test('check-in · llegada y salida van a booking-api con el token de la persona;
   assert.equal(sent.length, before); // nada de eso llegó a Booking
 });
 
+test('check-in · la lista de huéspedes sale por flow-api: solo los del evento del flujo y solo en su ámbito', async () => {
+  const list = await app.call(`/api/v1/checkin/${flow}/guests`);
+  assert.equal(list.status, 200, JSON.stringify(list.data));
+  assert.deepEqual(list.data.rows.map((g: any) => g.guest_id), [GUEST]);
+  assert.equal((await app.call(`/api/v1/checkin/${flow}/guests`, { token: app.tokens.reader })).data.error.code, 'PROJECT_OUT_OF_SCOPE');
+  assert.equal((await app.call(`/api/v1/checkin/${V1}/guests`)).status, 403);
+});
+
 test('check-in · los errores de Booking llegan tal cual; sin acceso a Booking, NEEDS_ACCESS', async () => {
   reply = { status: 409, body: { error: { code: 'SES_ALREADY_REGISTERED', message: 'Comunicado a SES.', details: null } } };
   const ses = await app.call(`/api/v1/checkin/${flow}/guests/${GUEST}/arrive`, { body: { undo: true } });

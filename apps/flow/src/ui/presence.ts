@@ -30,8 +30,9 @@ const REFRESH_MS = 10_000;
 const day = (iso: string | null) => (iso ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(iso)) : '');
 const short = (d: string | null) => (d ? new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00`)) : '');
 
-export async function loadGuests(client: SyncClient, eventId: string): Promise<Guest[]> {
-  const out = await client.api<{ rows: Guest[] }>('/read/booking.flow_guests_projection', { method: 'POST', json: { where: { event_id: eventId }, limit: 2000 } });
+/** Huéspedes del evento de este flujo, por flow-api (comprueba el ámbito del flujo y filtra por su evento). */
+export async function loadGuests(client: SyncClient, projectId: string): Promise<Guest[]> {
+  const out = await client.api<{ rows: Guest[] }>(`/checkin/${projectId}/guests`);
   return (out.rows ?? []).sort((a, b) => a.display_name.localeCompare(b.display_name, 'es'));
 }
 
@@ -111,7 +112,7 @@ export function mountPresence(stage: PresenceStage): ViewMount {
         if (!eventId) eventId = (await loadProjects(client)).find((p) => p.id === projectId)?.booking_event_id ?? null;
         if (!eventId) { error = 'Este flujo aún no está ligado a su evento de Booking: el encargado lo liga en el Inicio.'; paint(); return; }
         if (stage === 'bed') await readMarks();
-        if (document.visibilityState !== 'hidden' && isOnline(client)) guests = await loadGuests(client, eventId);
+        if (document.visibilityState !== 'hidden' && isOnline(client)) guests = await loadGuests(client, projectId!);
         error = '';
       } catch (e) { error = describeError(e); }
       paint();
