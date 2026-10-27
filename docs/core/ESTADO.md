@@ -45,3 +45,6 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 - Cada petición autenticada hace tres viajes a Supabase (usuario, sesión activa, bootstrap). Aceptable en V1; optimizable con caché corta por token.
 - Los archivos viven en `core.files` (registro común) y las tablas de app los referencian por `file_id`.
 - La respuesta perdida tras un commit devuelve 503 `BACKEND_UNAVAILABLE`; el reintento con el mismo `requestId` devuelve el recibo.
+
+
+Arranque de sesiones de agente: [`ARRANQUE_AGENTES.md`](ARRANQUE_AGENTES.md).

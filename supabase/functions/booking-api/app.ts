@@ -5,6 +5,7 @@ import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
 import { createTasksPost, tasksTick, type TasksPost } from './tasks/sync.ts';
+import type { PaymentProvider } from './payments.ts';
 import { createTasksNotifier, sesCancel, sesCommunicateGuestReport, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, runStayCalendarTick, type CalendarHealth, type CalendarInvoke, type StayCalendarAdapters } from './calendar/worker.ts';
 
@@ -335,7 +336,7 @@ function stayOut(item: Record<string, unknown>) {
   };
 }
 
-export function bookingPublicRoutes(): PublicRoute[] {
+export function bookingPublicRoutes(payments: PaymentProvider | null = null): PublicRoute[] {
   const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
   return [{
     method: 'POST', pattern: 'join',
@@ -413,6 +414,56 @@ export function bookingPublicRoutes(): PublicRoute[] {
       const mine = await read('booking_visitor_requests', {}) as { items?: Array<Record<string, unknown>> } | null;
       const item = (mine?.items ?? []).find((x) => x.id === requestId) ?? null;
       return { missing: item?.missing ?? [] };
+    },
+  }, {
+    // Venta en línea (booking-22; 1413): el visitante paga en la página de la pasarela. El importe es el de la solicitud
+    // (lo calculó el servidor). Un solo intento vivo por solicitud: si ya hay uno, se vuelve a él.
+    method: 'POST', pattern: 'stay/pay',
+    handler: async ({ json, visitor, read, supabase }) => {
+      if (!visitor) fail(401, 'VISITOR_REQUIRED', messageFor('VISITOR_REQUIRED'));
+      if (!payments) fail(503, 'PAYMENTS_OFF', 'El pago en línea no está activo.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const requestId = uuidOrFail(body.request_id ?? body.stay_id, 'request_id');
+      const mine = await read('booking_visitor_requests', {}) as { items?: Array<Record<string, any>> } | null;
+      const item = (mine?.items ?? []).find((x) => x.id === requestId);
+      if (!item || item.kind !== 'stay') fail(404, 'NOT_FOUND', 'Esa solicitud no existe.');
+      if (item!.status !== 'pendiente' || item!.pay !== 'online') fail(409, 'REQUEST_CLOSED', 'Esa solicitud no se paga en línea.');
+      if (!item!.hold_until || Date.parse(item!.hold_until) <= Date.now()) fail(409, 'HOLD_EXPIRED', 'Se ha pasado el tiempo para pagar: vuelve a pedir la cama.');
+      const invoke = (args: Record<string, unknown>) => supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_payment_record', p_args: args });
+      await ensureServiceActor(supabase, 'booking');
+      const current = await invoke({ action: 'current', request_id: requestId });
+      if (current?.redirect_url) return { redirect_url: current.redirect_url, expires_at: item!.hold_until, reused: true };
+      let intent: { providerRef: string; redirectUrl: string };
+      try {
+        intent = await payments!.createIntent({
+          amountCents: Number(item!.total_cents), reference: `booking-stay-${requestId}`, description: `Alojamiento · ${item!.from} → ${item!.to}`.slice(0, 120),
+          returnUrl: `https://ven.ikisai.com/e/${encodeURIComponent(String(item!.event_code))}?pago=${encodeURIComponent(requestId)}`, expiresAt: String(item!.hold_until),
+        });
+      } catch {
+        fail(503, 'PAYMENTS_UNAVAILABLE', 'La pasarela de pago no responde ahora mismo.');
+      }
+      await invoke({ action: 'open', request_id: requestId, provider: payments!.name, provider_ref: intent!.providerRef, amount_cents: Number(item!.total_cents), redirect_url: intent!.redirectUrl });
+      return { redirect_url: intent!.redirectUrl, expires_at: item!.hold_until, reused: false };
+    },
+  }, {
+    // El aviso de la pasarela (webhook firmado; sin sesión ni visitante). Cada aviso cuenta una vez.
+    method: 'POST', pattern: 'payments/:provider',
+    handler: async ({ request, params, supabase }) => {
+      if (!payments || params.provider !== payments.name) fail(404, 'NOT_FOUND', messageFor('NOT_FOUND'));
+      const event = await payments!.parseWebhook(request);
+      if (!event) fail(400, 'INVALID_SIGNATURE', 'Aviso de pago no válido.');
+      await ensureServiceActor(supabase, 'booking');
+      try {
+        const out = await supabase.rpc<any>('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.stay_payment_record', p_args: {
+          action: 'event', provider: payments!.name, provider_ref: event!.providerRef, event_id: event!.eventId, status: event!.status,
+          ...(event!.refundedCents !== undefined ? { refunded_cents: event!.refundedCents } : {}), ...(event!.feeCents !== undefined ? { fee_cents: event!.feeCents } : {}),
+        } });
+        return { ok: true, status: out?.status ?? null, replayed: out?.replayed ?? false };
+      } catch (error) {
+        // un pago que no es nuestro: se acusa recibo para que la pasarela no insista
+        if ((error as { code?: string } | null)?.code === 'NOT_FOUND') return { ok: true, ignored: true };
+        throw error;
+      }
     },
   }];
 }
@@ -567,8 +618,8 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   ];
 }
 
-export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads' | 'publicRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig; appsFetch?: typeof fetch }) {
-  const { calendar = {}, ses = {}, appsFetch = fetch, ...config } = base;
+export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads' | 'publicRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig; appsFetch?: typeof fetch; payments?: PaymentProvider | null }) {
+  const { calendar = {}, ses = {}, appsFetch = fetch, payments = null, ...config } = base;
   const supabase = createSupabase(config);
   return createApp({
     ...config,
@@ -579,7 +630,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'], membersK3: true },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: async (result) => { await calendarAfterCommit(supabase, calendar)(result); await cleaningAfterCommit(supabase, ses)(result); }, agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar, ses, appsFetch, config.workerKey ?? denoEnv('IKISAI_WORKER_KEY')),
-    publicRoutes: bookingPublicRoutes(),
+    publicRoutes: bookingPublicRoutes(payments ?? null),
     workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,

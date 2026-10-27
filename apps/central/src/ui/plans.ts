@@ -122,6 +122,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   let rows: SpaceRow[] = [];
   let plans: FloorPlan[] = [];
   let editing: string | null = null;
+  const wantedText = new URLSearchParams(location.hash.split('?')[1] ?? '').get('colocar')?.trim() ?? '';
+  let wanted: string | null = wantedText || null;
   let viewer: SpaceMap | null = null;
   const binds: Array<() => void> = [];
   const editorBinds: Array<() => void> = [];
@@ -556,6 +558,23 @@ export const mountPlans: ViewMount = ({ main, client }) => {
 
   // --- Colocar a mano ---------------------------------------------------------------------------------------------
   let selected: string | null = null;
+  /**
+   * Enlace profundo (tarjetas de Flow y de VG): `#/entidad/planos?colocar=Albergue` abre «Colocar» en el dibujo de ese
+   * edificio (por nombre, nombre público o código, sin tildes ni mayúsculas; con planta, «Albergue · Baja»). Una sola vez,
+   * cuando ya están los dibujos; solo el owner y en el ordenador, como «Colocar».
+   */
+  function openWanted(): void {
+    if (wanted === null || !alive || !canPlace() || !media.matches || !plans.length || !rows.length) return;
+    const key = foldName(wanted);
+    const named = (p: FloorPlan) => {
+      const b = rows.find((s) => s.id === p.buildingId);
+      return [foldName(planName(p)), ...[b?.name, b?.publicName, b?.code].filter((k): k is string => !!k).map(foldName)];
+    };
+    const plan = plans.find((p) => named(p).includes(key));
+    wanted = null;
+    if (plan) openEditor(plan.id); else toast(`No hay ningún dibujo de «${wantedText}». Súbelo con «Subir un dibujo».`);
+  }
+
   function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
   function closeEditor(): void { for (const b of editorBinds.splice(0)) b(); decorMap?.destroy(); decorMap = null; editing = null; selected = null; editor.hidden = true; replace(editor); }
   const tabBar = (plan: FloorPlan) => el('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Qué colocar', id: 'placeTabs', 'data-feedback-id': 'central.planos.colocar.pestanas', 'data-feedback-label': 'Estancias o decoración' },
@@ -1038,7 +1057,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
   const offExtra = [PLANS, DECOR_ICONS, ITEMS, IMAGES].map((t) => r.onTable(t, () => void loadExtra()));
   const offRows = spaces.subscribe((next) => { rows = next.map((s) => ({ ...s })); repaint(); });
-  const offPlans = spaces.plans.subscribe?.((next) => { plans = next; repaint(); }) ?? null;
+  const offPlans = spaces.plans.subscribe?.((next) => { plans = next; repaint(); openWanted(); }) ?? null;
   // Si el servidor rechaza el SVG (no debería: se sube limpio), se dice una vez y por qué.
   let warnedActive = false;
   const offStatus = r.onStatus((s) => {
@@ -1053,6 +1072,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const first = startPlan();
     if (first) viewer?.setPlan(first);
     repaint();
+    openWanted();
   });
   buildViewer();
   return () => {

@@ -18,7 +18,9 @@ let app: TestApp;
 let limited = '';
 let seq = 0;
 
-const ask = (body: Record<string, unknown>, token?: string) => app.call('/api/v1/requests/task', { token, body });
+// Flow y Food piden desde su servidor (§45): la clave de worker y X-Ikisai-Caller, además del token de la persona.
+const appProof = (body: Record<string, unknown>): Record<string, string> => ['flow', 'food'].includes(String(body.source)) ? { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': String(body.source) } : {};
+const ask = (body: Record<string, unknown>, token?: string) => app.call('/api/v1/requests/task', { token, body, headers: appProof(body) });
 const rows = async (table: string) => (await app.call(`/api/v1/snapshot?tables=${table}&includeDeleted=1&limit=2000`)).data.tables[0].rows as any[];
 const commit = (operations: Operation[], token?: string) => app.call('/api/v1/commands', { token, body: { requestId: `seed-${++seq}`, operations } });
 const targets = (args: Record<string, unknown>, token?: string) => app.call('/api/v1/read/tasks.targets', { token, body: args });
@@ -236,7 +238,7 @@ test('la ruta de personas no admite las fuentes de sistema: booking, feedback, c
   assert.equal((await ask({ source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-1', title: 'Hielo para la barra', tab_id: TAB })).status, 200, 'otra app, sí');
 });
 
-test('fuentes de app (flow, food): con la clave de worker y X-Ikisai-Caller, la fuente tiene que ser la de quien llama', async () => {
+test('fuentes de app (flow, food): solo con la clave de worker y X-Ikisai-Caller, y la fuente tiene que ser la de quien llama', async () => {
   const proof = (caller: string, key = WORKER_KEY) => ({ 'X-Ikisai-Worker-Key': key, 'X-Ikisai-Caller': caller });
   const send = (path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) => app.call(`/api/v1/requests/${path}`, { body, headers });
   // Desde su servidor, con la persona: entra como siempre.
@@ -248,9 +250,11 @@ test('fuentes de app (flow, food): con la clave de worker y X-Ikisai-Caller, la 
   const forged = await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-2', title: 'x', tab_id: TAB }, proof('food'));
   assert.deepEqual([forged.status, forged.data.error.details.field], [422, 'source']);
   assert.equal((await send('purchase', { source: 'flow', external_ref: 'LISTA-2', title: 'x', project_id: OBRA }, proof('food'))).status, 422);
-  // Con otra clave no hay prueba: hoy se acepta como antes (aún no son obligatorias).
+  // Con otra clave no hay prueba: desde el 27-10 es obligatoria para flow y food (403 CALLER_REQUIRED).
   assert.equal(serverCaller(new Request('http://x', { headers: proof('flow', 'otra') }), WORKER_KEY), null);
-  assert.equal((await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-3', title: 'Hielo', tab_id: TAB }, proof('flow', 'otra'))).status, 200);
+  assert.equal((await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-3', title: 'Hielo', tab_id: TAB }, proof('flow', 'otra'))).status, 403);
+  const bare = await app.call('/api/v1/requests/task', { body: { source: 'food', kind: 'food.otra', external_ref: 'SIN-PRUEBA', title: 'x', tab_id: TAB } });
+  assert.deepEqual([bare.status, bare.data.error.code], [403, 'CALLER_REQUIRED'], 'sin cabeceras, food tampoco');
   // Cuando la de una app sea obligatoria: sin prueba, 403 CALLER_REQUIRED; con la suya, sí.
   const required = new Set(['flow']);
   assert.throws(() => checkAppSource('flow', null, required), (e: any) => e.status === 403 && e.code === 'CALLER_REQUIRED');

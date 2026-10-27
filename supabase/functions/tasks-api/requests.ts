@@ -65,7 +65,8 @@ async function writeChildren(internal: ReturnType<typeof createSync>, ctx: Param
  *   prueba (Core avisa a Flow y Food); mientras, se aceptan como hasta ahora.
  */
 export const APP_SOURCES: ReadonlySet<string> = new Set(['flow', 'food']);
-export const APP_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>([]);
+// Flow (#870) y Food (#862) mandan la prueba en producción desde el 27-10-2026 (lo comprobó Core Ops): ya es obligatoria.
+export const APP_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>(['flow', 'food']);
 
 function sameSecret(a: string, b: string): boolean {
   if (a.length !== b.length) return false;

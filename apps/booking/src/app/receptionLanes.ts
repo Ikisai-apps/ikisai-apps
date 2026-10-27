@@ -38,6 +38,8 @@ export interface ReceptionInput {
   requests: Row[]; guests: Row[]; assignments: Row[]; charges: Row[]; beds: Row[]; spaces: Row[]; events: Row[]; reservations: Row[];
   /** Borradores del viajero de las solicitudes (solo con el ámbito de huéspedes; si no, vacío). */
   drafts?: Row[];
+  /** Pagos en línea (1413): una solicitud pagada por la pasarela sale «Pagado en línea». */
+  payments?: Row[];
   /** Si quien mira ve los datos de los huéspedes: sin él, la documentación sale como «—». */
   seesGuests: boolean;
 }
@@ -67,8 +69,9 @@ export function receptionCards(input: ReceptionInput, missing: (guest: Row) => s
 
   // Solicitudes del QR con número, por confirmar
   for (const q of live(input.requests).filter((x) => x.kind === 'stay' && x.status === 'pendiente' && eventIds.has(x.event_id))) {
-    const held = q.pay_mode === 'hold';
-    const expired = held && (!q.hold_until || Date.parse(q.hold_until) <= input.now);
+    const paidOnline = live(input.payments ?? []).some((p) => p.request_id === q.id && p.status === 'paid');
+    const held = q.pay_mode === 'hold' || q.pay_mode === 'online';
+    const expired = !paidOnline && held && (!q.hold_until || Date.parse(q.hold_until) <= input.now);
     const beds = ((q.hold_bed_ids ?? []) as string[]).map(place).filter(Boolean).join(', ');
     const drafts = live(input.drafts ?? []).filter((d) => d.request_id === q.id);
     const persons = Number(q.persons) || 1;
@@ -79,7 +82,7 @@ export function receptionCards(input: ReceptionInput, missing: (guest: Row) => s
       key: `q:${q.id}`, kind: 'request', eventId: q.event_id, title: `${q.number ?? '—'} · ${q.name ?? 'Visitante'}`, number: q.number ?? null, requestId: q.id, guestId: null,
       lanes: ['confirmar', ...(why.length ? ['excepciones' as const] : [])], why,
       plaza: expired ? { tone: 'alert', text: 'Retención caducada' } : beds ? { tone: held ? 'warn' : '', text: held ? `Retenida: ${beds}` : `Pedida: ${beds}` } : { tone: '', text: 'Por asignar' },
-      cobro: { tone: 'warn', text: `Por cobrar ${euros(q.total_cents)}` },
+      cobro: paidOnline ? { tone: 'ok', text: `Pagado en línea ${euros(q.total_cents)}` } : { tone: 'warn', text: `Por cobrar ${euros(q.total_cents)}` },
       docs: missingCount === null ? { tone: '', text: '—' } : missingCount === 0 ? { tone: 'ok', text: 'Completa' } : { tone: 'warn', text: `Faltan ${missingCount} datos` },
       presencia: { tone: '', text: 'Por llegar' },
     });

@@ -233,6 +233,12 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.locator('#header-central').selectOption({ index: 1 });
   await expect.poll(header).toEqual(['central']);
   await expect(page.locator(`#centerImageList [data-space="${ids.building}"]`)).toContainText('Alzado norte');
+
+  // Enlace profundo de las tarjetas: `?colocar=` con el nombre del edificio (sin tildes ni mayúsculas) abre «Colocar».
+  await page.goto(`${baseURL}/#/`);
+  await page.goto(`${baseURL}/#/entidad/planos?colocar=albergue%20de%20prueba`);
+  await expect(page.locator('#placeEditor')).toBeVisible();
+  await expect(page.locator('#placeEditor h3')).toContainText('Colocar · Albergue de prueba');
 });
 
 test('planos · un giro se coloca bien; lo que no se lee, «Por revisar» con el motivo; sin red, apagado con su motivo', async ({ page, context }) => {

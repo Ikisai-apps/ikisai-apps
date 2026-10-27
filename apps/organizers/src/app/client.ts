@@ -21,6 +21,9 @@ export function describeError(error: unknown, name?: string): string {
   switch (code) {
     case 'LINK_INVALID': return t('Este enlace no es válido o ya no está activo. Pide uno nuevo a Ikisai.');
     case 'LINK_EXPIRED': return t('Este enlace ya no está activo. Pide uno nuevo a Ikisai.');
+    case 'EMAIL_CODE_INVALID': return t('El código no es correcto o ha caducado. Pide otro.');
+    case 'EMAIL_CODE_DISABLED': return t('Ahora mismo no se puede entrar con un código. Usa tu enlace o pídenos uno nuevo.');
+    case 'RATE_LIMITED': return t('Demasiados intentos. Espera un minuto y vuelve a probar.');
     case 'RESERVATION_NOT_CONFIRMED': return t('Podrás añadir a tus asistentes cuando la reserva esté confirmada.');
     case 'GUEST_DATA_OFF': return t('En este retiro no hace falta la lista de asistentes.');
     case 'DECLARATION_REQUIRED': return t('Antes de guardar, marca la casilla de conformidad.');
