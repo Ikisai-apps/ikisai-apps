@@ -297,3 +297,44 @@
 .flow-card-facts{list-style:none;margin:6px 2px 0;padding:0;display:grid;gap:2px;font-size:13px;color:var(--muted)}
 .flow-card-facts li.is-urgent{color:#c0392b;font-weight:600}
 .flow-card-facts li.is-blocked{color:#b26a00;font-weight:600}
+
+/* Avance para la mudanza (0947): cabecera, gráfico, fichas en dos filas, hitos y leyenda. */
+.avance-updated{margin:0;text-align:right}
+.avance-total{cursor:pointer}
+.avance-total .gv{margin:-2px 0 0}
+.avance-chart-box{display:grid;gap:6px;margin-top:6px}
+.avance-chart{width:100%;height:90px;display:block;background:var(--paper,var(--surface));border-radius:8px}
+.avance-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;margin:4px 0 0;font-size:12px}
+.avance-facts dt{color:var(--muted)}.avance-facts dd{margin:0 0 4px;font-weight:700}
+@media (min-width:700px){.avance-facts{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.avance-discs{display:grid;gap:6px}
+.avance-discs-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+@media (min-width:900px){.avance-discs-row{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.avance-discs-row .avance-disc{flex:0 0 168px}}
+.avance-disc.is-full{border:2px solid #2f8a45;box-shadow:0 0 0 2px rgba(47,138,69,.25)}
+.avance-section{margin:4px 0;font-size:1rem}
+.avance-hitos{display:grid;gap:8px}
+.avance-legend{display:flex;flex-wrap:wrap;gap:6px}
+.avance-legend-item{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--paper,var(--surface));font-size:12px;cursor:pointer;color:var(--ink)}
+.avance-legend-item i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.avance-legend-item[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.avance-hito{display:grid;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper,var(--surface));cursor:pointer}
+.avance-hito[aria-pressed="true"]{outline:3px solid var(--ink);outline-offset:-2px}
+.avance-hito.is-done{opacity:.75}
+.avance-hito-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.avance-chain{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.avance-chain li{position:relative;min-width:30px;height:30px;padding:0 6px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:2px;font:700 12px/1 var(--font-sans,inherit);border:2px solid #9a9a9a;background:transparent;color:var(--ink)}
+.avance-chain li.is-hecho{background:#56663f;border-color:#56663f;color:#fff;text-decoration:line-through}
+.avance-chain li.is-curso{background:#d19a3a;border-color:#d19a3a;color:#1a1a1a}
+.avance-chain li.is-pr{background:#3a7cc4;border-color:#3a7cc4;color:#fff}
+.avance-chain li.is-backlog{border-color:#c0392b;color:#c0392b}
+.avance-chain li.is-blocking{border-color:#c0392b;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
+.avance-chain li.is-waiting{border-style:dashed;border-color:#b26a00}
+.avance-chain li.is-mine{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink)}
+.avance-chain li.is-filtered{border-style:dotted;border-color:#bbb;background:transparent;color:#999}
+.avance-chain li .star{color:#c0392b;font-size:11px}
+.avance-chain li .blk{font:600 9px/1 var(--font-sans,inherit);color:#c0392b;margin-left:2px}
+.avance-hito-line{color:var(--ink)}
+.avance-wait{color:#b26a00;font-weight:600}
+.avance-card.is-waiting{opacity:.85}
+.avance-card.is-mine{box-shadow:inset 0 0 0 2px var(--ink)}
+.avance-steps.is-decision{list-style:disc}
