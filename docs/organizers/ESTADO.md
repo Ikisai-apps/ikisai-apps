@@ -110,6 +110,7 @@
 - 2026-10-27 · **Notas de Central en Fechas, Diseño y Propuesta** (X2, central 0590): `organizers.dates_note`, `organizers.quote_note` y `organizers.proposal_note` se leen de Central como los demás textos comunes, con reserva en los dos idiomas.
 - 2026-10-27 · **Comentarios de tus asistentes** (API.md §15): en el resumen del retiro, lo que cuentan los asistentes desde Guests sobre el retiro, con el tema, quién y cuándo; los tres últimos a la vista y el resto plegados. Lo da el núcleo (`core.feedback_can_see`, destino `organizer`); no hacía falta nada nuevo. Prueba PGlite en `retreat-comments.test.ts`.
 - 2026-10-27 · **PDF de una factura registrada** (K2): en Pagos, la factura hecha con otra herramienta abre su PDF guardado con «Abrir PDF» (`GET portal-files/:fileId`, resolutor de Finance 0249: dentro del ámbito, sin borradores, editor u owner). Sin PDF, se sigue pidiendo a Ikisai. Prueba en `portal.spec.ts`.
+- 2026-10-27 · **Entrar con un código por correo** (decisión de VG; 0108, kit y sync-client 0.8.0): en la entrada, «¿No tienes el enlace a mano?» manda un código al correo del enlace y entra con él. Solo para cuentas de portal con un enlace vigente en Organizers. Pruebas en `tests/core/email-code.test.ts` y `portal.spec.ts`.
 - 2026-10-27 · **La cabecera en el móvil** (revisión móvil de UI-kit, #937): hasta 600 px el selector ES | EN sale de la cabecera, para que quepa el título, y el idioma se elige en el menú, en «Idioma».
 - 2026-10-27 · **Guiado mínimo del kit** (0.68, #949): `guide` en la cáscara (`?campo=` y `?paso=`) y `registerReveal` por pestaña de la ficha del retiro.
 - 2026-10-27 · **Evidencia de GitHub para Flow** (`organizers.github_evidence`, 0704, #927; API.md §21): `GET github/evidence`, solo para el personal; espera el `GITHUB_TOKEN` de solo lectura de la Edge (carril de VG).
@@ -118,7 +119,7 @@
 
 ## Pendiente
 
-- Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
+- Fase 1: cerrada. La entrada con código por correo (0108) está construida y espera a que VG dé de alta el correo propio en Auth (`IKISAI_EMAIL_CODE=1` y la plantilla con `{{ .Token }}`); Google, con Workspace. Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: cerrada (K2 hecha el 27-10).
 

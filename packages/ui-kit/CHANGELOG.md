@@ -11,6 +11,14 @@
 - Food ya no tiene que registrarlos con `registerIcons`; Booking y Guests pueden usarlos para el régimen de comidas.
 - Lámina para revisarlos: `MUELA/equipo/feedback/ui-kit/K13_iconos_comida.png`. Pruebas: `tests/v82.spec.ts`.
 
+## 0.69.6 · 27 de octubre de 2026
+
+**K24: «Sincronizado» del menú común a 44 px con el dedo** (`equipo/Revisor/KIT_PETICIONES.md`, abierta por Core el 27-10).
+
+- `.appmenu-sync` (la línea de sincronización bajo el perfil) medía 24 px de alto. En pantallas táctiles pasa a 44 px, igual que el resto de 0.69.2. Con ratón no cambia.
+- El conmutador «Señalar para comentar» del lanzador ya cumplía: es un interruptor dentro de una etiqueta entera, y se toca la etiqueta.
+- Pruebas: `tests/v78.spec.ts`.
+
 ## 0.69.4 · 27 de octubre de 2026
 
 **La cáscara se aprieta sola en el móvil** (revisión a 390 px, `MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`).
