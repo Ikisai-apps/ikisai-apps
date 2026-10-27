@@ -64,7 +64,8 @@ select core.register_table('booking', 'booking', 'stay_payments', array['request
 create or replace function booking.stay_payment_guard()
 returns trigger language plpgsql as $$
 begin
-  if core.current_role() is distinct from 'system' then
+  -- el lote de sistema (core.apply_system_operations) lo firma la cuenta de servicio de Booking, con rol editor
+  if nullif(booking.batch_setting('actor'), '')::uuid is distinct from core.service_actor('booking') then
     perform core.fail('FORBIDDEN', 403, jsonb_build_object('table', 'booking.stay_payments', 'reason', 'only the payment provider (system) writes payments'));
   end if;
   return new;
