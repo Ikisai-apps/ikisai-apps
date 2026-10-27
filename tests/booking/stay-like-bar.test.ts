@@ -84,5 +84,3 @@ test('Alójate aquí: camas para elegir, número corto, cama elegida o asignada,
   assert.equal(visibleBookingRow(TABLES.stayTravelers, {}, ctx('editor', { guests: true })), true);
   assert.equal(visibleBookingRow(TABLES.stayTravelers, {}, ctx('owner')), true);
 });
-  assert.ok(!JSON.stringify(pull.data ?? {}).includes('Sintética'), JSON.stringify(pull.data).slice(0, 300));
-});
