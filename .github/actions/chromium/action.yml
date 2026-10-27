@@ -9,8 +9,11 @@ runs:
     - id: version
       shell: bash
       run: echo "playwright=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
-    # Una sola entrada por versión (~300 MB): las PR la leen de main y no guardan la suya.
-    - uses: actions/cache@v4
+    # Una sola entrada por versión (~300 MB), guardada solo desde main: una PR lee las cachés de main pero guarda en su propio
+    # ámbito, y con actions/cache cada PR dejaba otra copia (27-10: más de 30, ~9 GB de los 10 del repo). La calienta
+    # cache-chromium.yml al cambiar el lockfile; sin ella, el job instala de la red como antes.
+    - id: cache
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.cache/ms-playwright
@@ -37,3 +40,10 @@ runs:
         sudo chown -R "$(id -u):$(id -g)" ~/.cache/apt-pw
         rm -rf ~/.cache/apt-pw/partial ~/.cache/apt-pw/lock
         $ok
+    - if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.cache/ms-playwright
+          ~/.cache/apt-pw
+        key: chromium-${{ runner.os }}-${{ steps.version.outputs.playwright }}
