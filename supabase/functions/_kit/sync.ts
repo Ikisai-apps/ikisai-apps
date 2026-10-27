@@ -9,6 +9,9 @@ export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
 /** Sin permisos de personal: el lector y el outsider (RECURSOS.md §14.2). El outsider solo escribe lo que cada app le abre. */
 export const isReadOnly = (role: string) => role === 'reader' || role === 'outsider';
 
+/** Una llamada (`op: 'call'`) del historial, tal como la ve `hooks.visibleCall`. */
+export interface HistoryCall { seq: number; table: string; op: 'call'; before: Record<string, unknown> | null; after: unknown; actorId: string | null }
+
 export interface Membership {
   role: Role;
   scopes: unknown;
@@ -39,6 +42,10 @@ export interface RequestContext {
 export interface AppHooks {
   /** Filtra filas por ámbitos del usuario. Si no se define, la visibilidad es la membresía. */
   visible?: (table: string, row: Record<string, unknown>, ctx: RequestContext) => boolean;
+  /** FL3: ¿ve esta persona esta llamada (`op: 'call'`) del historial? `table` es el procedimiento, `before` sus argumentos,
+   *  `after` su resultado y `actorId` quien la hizo. Sin el gancho, la ve todo miembro, pero sin argumentos ni resultado salvo
+   *  el owner de la app y quien la hizo. */
+  visibleCall?: (change: HistoryCall, ctx: RequestContext) => boolean;
   /** Validación de dominio antes de core.commit (tipos, reglas de negocio). Puede lanzar Fault. */
   beforeCommit?: (operations: Operation[], ctx: RequestContext) => Promise<void> | void;
   /** Tras un commit correcto (por ejemplo, encolar una sincronización externa). */
@@ -231,16 +238,15 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     const result = await supabase.rpc<{ items: any[]; nextBefore: number | null; hasMore: boolean }>('core_history', {
       p_app: app, p_role: ctx.membership.role, p_before: before, p_limit: limit,
     });
-    if (hooks.visible) {
-      for (const item of result.items) {
-        item.changes = item.changes.filter((c: any) => c.op === 'call' || hooks.visible!(c.table, c.after ?? c.before ?? {}, ctx));
-      }
-      result.items = result.items.filter((item) => item.changes.length);
+    const seeCall = (c: any, item: any) => hooks.visibleCall ? hooks.visibleCall({ ...c, actorId: item.actorId }, ctx) : true;
+    for (const item of result.items) {
+      item.changes = item.changes.filter((c: any) => c.op === 'call' ? seeCall(c, item) : !hooks.visible || hooks.visible(c.table, c.after ?? c.before ?? {}, ctx));
     }
-    // FL3 (auditoría, 27-10-2026): un `call` guarda sus argumentos en `before` y su resultado en `after`, y no pasa por
-    // `visible`. Entero solo lo ve el owner de la app y quien lo hizo; al resto le llega la entrada con el nombre del
-    // procedimiento (`table`) y sin argumentos ni resultado, para que el cursor y la paginación no cambien.
-    if (ctx.membership.role !== 'owner') {
+    result.items = result.items.filter((item) => item.changes.length);
+    // FL3 (auditoría, 27-10-2026): un `call` guarda sus argumentos en `before` y su resultado en `after`. Sin `visibleCall`,
+    // entero solo lo ve el owner de la app y quien lo hizo; al resto le llega con el procedimiento (`table`) y sin argumentos
+    // ni resultado. Con `visibleCall`, decide la app. Quitar entradas no mueve el cursor: `nextBefore` sale de la base.
+    if (!hooks.visibleCall && ctx.membership.role !== 'owner') {
       for (const item of result.items) {
         if (item.actorId === ctx.user.id) continue;
         for (const c of item.changes) if (c.op === 'call') { c.before = null; c.after = null; c.redacted = true; }
