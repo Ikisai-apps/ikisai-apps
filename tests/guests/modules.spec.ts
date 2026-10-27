@@ -342,11 +342,11 @@ test('guests · «Ver en el plano» con los dibujos reales del Albergue y de Sal
   const ona = await api.guest(event, { first_name: 'Ona' });
   await page.clock.setFixedTime(new Date(`${day(0)}T07:00:00Z`));
   await api.experience(reservation, ALL_MODULES);
-  const room = await api.room(event, { name: 'Dormitorio del dibujo', enSuite: false, beds: ['Litera 1', 'Cama 2'] });
+  const room = await api.room(event, { name: 'Dormitorio del dibujo', enSuite: true, beds: ['Litera 1', 'Cama 2'] });
   await api.assign(event, room.spaceId, room.bedIds[0]!, ona);
   // Las camas se colocan en Booking (un solo modelo): la habitación en 4 × 6 cuadrantes y las dos a lo largo.
   await api.bedLayout(room.spaceId, { cols: 4, rows: 6 }, [[room.bedIds[0]!, { x: 0, y: 0, rot: 90 }], [room.bedIds[1]!, { x: 2, y: 0, rot: 90 }]]);
-  // Su disposición llega en `portal_lodging`, que lista las habitaciones abiertas.
+  // Su disposición llega en `portal_lodging`, que lista las habitaciones abiertas (solo se abren las que tienen baño).
   await api.organizerInvoke(reservation, 'booking.portal_room_settings', { choice: 'choose', choose_until: day(10), rooms: [{ space_id: room.spaceId }] });
 
   // Albergue: sus 20 estancias con nombre; «Hab 1» es la habitación de Booking, con una litera (la de Ona) y una cama.
