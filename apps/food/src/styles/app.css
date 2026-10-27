@@ -508,11 +508,11 @@
 .carta-missing td,.carta-missing th{color:var(--alert)}
 #trayPlan{overflow-x:auto}
 @media print{
-  body.print-trays *{visibility:hidden}
-  body.print-trays #trayPlan,body.print-trays #trayPlan *{visibility:visible}
-  body.print-trays #trayPlan{position:absolute;inset:0 auto auto 0;width:100%;overflow:visible;border:0;box-shadow:none}
-  body.print-trays #printTrays,body.print-trays #trayMissing .btnrow{display:none}
-  body.print-trays .carta-plan th,body.print-trays .carta-plan td{color:#000;border-bottom-color:#999}
+  body.carta-printing *{visibility:hidden}
+  body.carta-printing #trayPlan,body.carta-printing #trayPlan *{visibility:visible}
+  body.carta-printing #trayPlan{position:absolute;inset:0 auto auto 0;width:100%;overflow:visible;border:0;box-shadow:none}
+  body.carta-printing #printTrays,body.carta-printing #trayMissing .btnrow{display:none}
+  body.carta-printing .carta-plan th,body.carta-printing .carta-plan td{color:#000;border-bottom-color:#999}
 }
 .carta-yieldrow{display:grid;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
 .carta-yieldeq{display:flex;flex-wrap:wrap;align-items:center;gap:6px}

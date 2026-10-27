@@ -194,8 +194,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const print = el('button', { 'data-feedback-id': 'food.carta.prevision.imprimir', 'data-feedback-label': 'Imprimir el plan de bandejas', class: 'ghost', type: 'button', id: 'printTrays',
       onclick: () => {
         usage.track('food.carta.prevision.imprimir');
-        document.body.classList.add('print-trays');
-        const done = () => { document.body.classList.remove('print-trays'); window.removeEventListener('afterprint', done); };
+        document.body.classList.add('carta-printing');
+        const done = () => { document.body.classList.remove('carta-printing'); window.removeEventListener('afterprint', done); };
         window.addEventListener('afterprint', done);
         window.print();
       } }, 'Imprimir');
@@ -264,5 +264,5 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
   });
   // Tras guardar (o sincronizar) unidades o reparto, el plan se vuelve a pedir al servidor.
   const offs = [T.menus, T.cartaLines, T.recipeIngredients, T.ingredients].map((table) => client.onTable(table, () => void load().then(loadTotals)));
-  return () => { offEvents(); offs.forEach((off) => off()); document.body.classList.remove('print-trays'); };
+  return () => { offEvents(); offs.forEach((off) => off()); document.body.classList.remove('carta-printing'); };
 }
