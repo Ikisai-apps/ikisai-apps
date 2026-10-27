@@ -67,7 +67,9 @@ export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type T
 export { renderTray, renderTrayRow, type TrayAction, type TrayRow, type TrayGroup, type TrayOptions } from './pieces/tray.ts';
 export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
 export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
-export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion } from './pieces/step-form.ts';
+export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion, type StepRenderContext } from './pieces/step-form.ts';
+export { createFreeForm, freeFormProblems, type FreeForm, type FreeFormAnswer, type FreeFormAnswers, type FreeFormKind, type FreeFormOptions, type FreeFormQuestion, type FreeFormSchema } from './pieces/free-form.ts';
+export { checklistSummary, createChecklist, type Checklist, type ChecklistChecked, type ChecklistItem, type ChecklistOptions, type ChecklistSummary } from './pieces/checklist.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { setKitLayer, kitLayer } from './layer.ts';
 export { installBackNavigation, trackOverlay, type BackNavigationOptions, type OverlayHandle } from './shell/back-navigation.ts';

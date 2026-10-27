@@ -20,15 +20,16 @@ const uuid = () => crypto.randomUUID();
 let app: TestApp;
 let seq = 0;
 /** Lo que flow-api manda a las otras apps, y la respuesta que se simula. */
-const calls: Array<{ url: string; auth: string | null; body: any }> = [];
+const calls: Array<{ url: string; auth: string | null; body: any; worker: string | null; caller: string | null }> = [];
 let reply: (url: string) => Response = () => Response.json({ results: [{ result: { status: 'created' } }] });
 
 test.before(async () => {
-  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN] }, {
+  app = await createTestApp({ app: 'flow', slug: 'flow-api', origin: ORIGIN, createHandler: (config) => createFlowApp({ ...config, origins: [ORIGIN], workerKey: 'clave-worker-de-prueba' }, {
     tasksApiBase: 'https://tasks.example.invalid',
     appsFetch: async (input, init) => {
       const url = String(input);
-      calls.push({ url, auth: new Headers(init?.headers).get('authorization'), body: JSON.parse(String(init?.body ?? '{}')) });
+      const h = new Headers(init?.headers);
+      calls.push({ url, auth: h.get('authorization'), body: JSON.parse(String(init?.body ?? '{}')), worker: h.get('x-ikisai-worker-key'), caller: h.get('x-ikisai-caller') });
       return reply(url);
     },
   }) });
@@ -119,6 +120,7 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
   const food = await app.call(`/api/v1/closures/${c.id}/send/food`, { body: {} });
   assert.equal(food.status, 200, JSON.stringify(food.data));
   assert.match(calls[0]!.url, /\/functions\/v1\/food-api\/api\/v1\/commands$/);
+  assert.equal(calls[0]!.worker, null); // a Food no se le manda la clave: no la pide
   assert.equal(calls[0]!.auth, 'Bearer ' + app.tokens.owner);
   const fop = calls[0]!.body.operations[0];
   assert.equal(fop.procedure, 'food.record_carta_sales');
@@ -202,9 +204,12 @@ test('enlaces · «Pedir a Tasks»: proyecto elegido una vez, tarea o compra con
   assert.equal(asked.status, 200, JSON.stringify(asked.data));
   assert.equal(calls[0]!.url, 'https://tasks.example.invalid/api/v1/requests/task');
   assert.equal(calls[0]!.auth, 'Bearer ' + app.tokens.editor);
+  // FL2: identidad de servicio de Flow ante Tasks, además del token de la persona.
+  assert.equal(calls[0]!.worker, 'clave-worker-de-prueba'); assert.equal(calls[0]!.caller, 'flow');
   assert.equal(calls[0]!.body.external_ref, unitId); assert.equal(calls[0]!.body.project_id, tasksProject);
   assert.equal(calls[0]!.body.priority, 'high'); assert.equal(calls[0]!.body.source, 'flow');
-  await ok([call(PROCEDURES.unitLinkExternal, { unit_id: unitId, link: asked.data.link })]);
+  // El enlace lo anotó flow-api (FL6); el cliente ya no puede escribirlo.
+  assert.notEqual((await commit([call('flow.unit_link_external', { unit_id: unitId, link: { app: 'tasks', kind: 'task', id: 'otro' } })])).status, 200);
   assert.deepEqual((await row(TABLES.units, unitId)).payload.external.id, 't-1');
   // Compra con cantidad.
   const bought = await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'purchase', quantity: 3, unit: 'kg' } });

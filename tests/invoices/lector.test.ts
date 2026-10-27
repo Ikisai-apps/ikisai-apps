@@ -73,6 +73,7 @@ test('con `fill`, el texto rellena el borrador de quien lo sube (proveedor por N
   assert.deepEqual([supplier.name, supplier.tax_id], ['FRUTAS LECTOR S.L.', 'B12345674']);
   assert.equal(inv.import_meta.reading.read, 'sufficient');
   assert.deepEqual(inv.import_meta.reading.filled.invoice_number, { value: 'LEC-1', level: 'regla' });
+  assert.equal(inv.import_meta.reading.requested_by, app.users.owner, 'F7: quién mandó el texto que escribió el lector');
   assert.equal(JSON.stringify(inv.import_meta).includes('Fecha factura'), false, 'sin texto del documento en el resumen');
 });
 

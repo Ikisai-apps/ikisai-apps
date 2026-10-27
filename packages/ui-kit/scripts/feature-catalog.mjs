@@ -170,7 +170,9 @@ KIT_CHILDREN.renderLead = [['hecha', 'Marcar hecha', 'button'], ['abrir', 'Abrir
 KIT_CHILDREN.renderNow = [['hecho', 'Ver lo ya hecho', 'button']];
 KIT_CHILDREN.createQueue = [['principal', 'Acción principal', 'button'], ['secundaria', 'Acción secundaria', 'button'], ['saltar', 'Saltar', 'button'], ['ficha', 'Abrir la ficha', 'button'], ['ver_todo', 'Ver todo', 'button']];
 KIT_CHILDREN.createVoteDeck = [['a_favor', 'A favor', 'button'], ['en_contra', 'En contra', 'button'], ['abrir', 'Ver entera', 'button'], ['reiniciar', 'Volver a empezar', 'button']];
-KIT_CHILDREN.createStepForm = [['opcion', 'Opción', 'button'], ['aceptar', 'Aceptar', 'button'], ['atras', 'Atrás', 'button']];
+KIT_CHILDREN.createStepForm = [['opcion', 'Opción', 'button'], ['aceptar', 'Aceptar', 'button'], ['atras', 'Atrás', 'button'], ['saltar', 'Saltar', 'button']];
+KIT_CHILDREN.createFreeForm = [['preguntas', 'Pregunta a pregunta', 'section'], ['foto', 'Hacer o elegir foto', 'button'], ['cambiar', 'Cambiar', 'button'], ['registrar', 'Registrar', 'button'], ['nuevo', 'Nuevo registro', 'button']];
+KIT_CHILDREN.createChecklist = [['item', 'Ítem', 'checkbox']];
 // `src/pieces/lanes.ts`.
 KIT_CHILDREN.createLanes = [['vista', 'Pestañas o lado a lado', 'button'], ['carril', 'Carril', 'tab'], ['desplegar', 'Desplegar el carril', 'button']];
 KIT_CHILDREN.createProposalList = [['estado', 'Estado de las propuestas', 'button'], ['tipo', 'Tipo de propuesta', 'button'], ['abrir', 'Ver propuesta', 'button'], ['aprobar', 'Aprobar propuesta', 'button'], ['descartar', 'Descartar propuesta', 'button'], ['retirar', 'Retirar propuesta', 'button'], ['proponer', 'Proponer', 'button']];
@@ -199,6 +201,7 @@ function enclosingCallAt(text, at) {
  * funciones a las que nadie llega). Mantener al día con `SPACE_MAP_MARKS` (src/spaces/map.ts).
  */
 const KIT_CHILDREN_WHEN = {
+  createStepForm: { saltar: /\bskip\s*:/ },
   createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/ },
 };
 
@@ -232,7 +235,7 @@ export function extractFeatures(text, file = '') {
     const when = call ? KIT_CHILDREN_WHEN[call] : null;
     const children = call && KIT_CHILDREN[call] ? KIT_CHILDREN[call].filter(([suffix]) => !when?.[suffix] || when[suffix].test(callText)) : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta', createLanes: 'Carriles' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta', createLanes: 'Carriles', createFreeForm: 'Formulario libre', createChecklist: 'Lista de comprobación' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }

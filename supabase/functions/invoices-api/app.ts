@@ -277,6 +277,10 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       }
       if (op.table === TABLES.invoices) {
         if (op.op === 'delete') fail(422, 'INVOICE_NOT_DELETABLE', domainMessage('INVOICE_NOT_DELETABLE'), { index, id: op.id });
+        // F2 (0251): el origen Drive solo lo escribe la cuenta de servicio de Drive; `service:drive` no se puede suplantar.
+        if ((op.op === 'insert' || op.op === 'update') && ('drive_file_id' in fields || 'drive_url' in fields) && ctx.user.sessionId !== 'service:drive') {
+          fail(403, 'DRIVE_FIELDS', domainMessage('DRIVE_FIELDS'), { index, fields: ['drive_file_id', 'drive_url'] });
+        }
         // validada solo por `invoices.validate`, salvo el owner al desarchivar (el trigger exige archivada → validada); anulada solo por `invoices.annul`.
         if (op.op === 'update' && (fields.status === 'anulada' || (fields.status === 'validada' && ctx.membership.role !== 'owner'))) {
           fail(422, 'INVALID_TRANSITION', domainMessage('INVALID_TRANSITION'), { index, to: fields.status });
@@ -385,16 +389,19 @@ interface ExtractionStatus { file_id: string; done: number; invoice_id: string |
 interface ApprovedExtraction { rows: Array<{ id: string; file_id: string; revision: number }> }
 
 /** Guarda (o sustituye) el texto con posiciones de un documento ya verificado; devuelve los caracteres útiles. */
-async function saveDocumentText(supabase: Supabase, ctx: RequestContext, fileId: string, items: Array<{ str: string; page: number; x: number | null; y: number | null; w: number | null; h: number | null }>): Promise<number> {
-  const file = await supabase.rpc<{ sha256: string }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
+async function saveDocumentText(supabase: Supabase, ctx: RequestContext, fileId: string, items: Array<{ str: string; page: number; x: number | null; y: number | null; w: number | null; h: number | null }>): Promise<{ charCount: number; saved: boolean }> {
+  const file = await supabase.rpc<{ sha256: string; created_by: string | null }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
   const charCount = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
   const existing = await read<{ id: string; revision: number } | null>(supabase, ctx, 'invoices.document_text', { file_id: fileId });
+  // F6 (auditoría del 27-10): el texto guardado de un documento solo lo sustituye quien lo subió (las plantillas del
+  // proveedor aprenden de él). Otra persona puede leerlo en su pantalla, pero su lectura no pisa la guardada.
+  if (existing && file.created_by !== ctx.user.id) return { charCount, saved: false };
   const fields = { source: 'pdf_text', items, char_count: charCount, sha256: file.sha256 ?? null };
   const operations = existing
     ? [{ op: 'update', table: DOCUMENT_TEXTS, id: existing.id, expectedRevision: existing.revision, fields }]
     : [{ op: 'insert', table: DOCUMENT_TEXTS, id: crypto.randomUUID(), fields: { file_id: fileId, ...fields } }];
   await edgeCommit(supabase, ctx, `doc-text-${crypto.randomUUID()}`, operations, { required: false, id: null, risk: { required: false, reasons: ['document:text'] } });
-  return charCount;
+  return { charCount, saved: true };
 }
 
 /**
@@ -766,11 +773,11 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
           return { str: o.str, page: Math.trunc(o.page as number), x: num(o.x), y: num(o.y), w: num(o.w), h: num(o.h) };
         });
         await verifiedFile(supabase, ctx, fileId, 0, 'fileId');
-        const charCount = await saveDocumentText(supabase, ctx, fileId, items);
+        const { charCount, saved } = await saveDocumentText(supabase, ctx, fileId, items);
         // `fill: true` (lote, lectura automática, vuelta de la red): rellena lo vacío del borrador de quien sube el texto.
         // «Leer PDF» no lo pide: la persona revisa lo leído en la vista previa o en «Rellenar a mano».
         const fill = body.fill === true && fillFromText ? await fillFromText(ctx, fileId, items.map((it) => ({ ...it, x: it.x ?? 0, y: it.y ?? 0, w: it.w ?? undefined, h: it.h ?? undefined }))) : null;
-        return { file_id: fileId, char_count: charCount, items: items.length, ...(fill ? { fill } : {}) };
+        return { file_id: fileId, char_count: charCount, items: items.length, saved, ...(fill ? { fill } : {}) };
       },
     },
     {
@@ -955,6 +962,11 @@ function createLectorFill(supabase: Supabase, hooks: AppHooks): FillFromText {
       readerVersion: READER_VERSION, at: new Date().toISOString(), newId: () => `${invoice.id.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`, invoices,
     });
     if (r.duplicateOf) return { filled: false, reason: 'DUPLICATE', invoice_id: invoice.id, duplicate_of: r.duplicateOf.code ?? r.duplicateOf.id, message: `Ya está importada como ${r.duplicateOf.code ?? 'otra factura'}: anula este borrador.` };
+    // F7 (auditoría del 27-10): el texto lo manda una persona y lo escribe «Lector (sistema)»; en el resumen queda quién lo pidió.
+    for (const op of r.ops as unknown as Array<{ table?: string; fields?: { import_meta?: { reading?: Record<string, unknown> } } }>) {
+      const meta = op.table === TABLES.invoices ? op.fields?.import_meta : undefined;
+      if (meta?.reading && typeof meta.reading === 'object') meta.reading.requested_by = user.user.id;
+    }
     try { await sync.commit(c, { requestId: `lector-${invoice.id}-${invoice.revision}`, operations: r.ops as unknown as Operation[] }); } catch (error) {
       return { filled: false, reason: isFault(error) ? error.code : 'ERROR', invoice_id: invoice.id };
     }

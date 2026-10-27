@@ -8,6 +8,9 @@
  *   «Pendiente: se guardará con conexión»).
  * - Error de validación: `onAnswer` lanza `StepFormInvalid` con el texto; sale bajo la pregunta y no avanza.
  * - La barra no retrocede aunque deje de faltar algo por el camino.
+ * - `kind: 'custom'` con `render(ctx)`: la app pone su propio control (p. ej. una foto) y llama a `ctx.submit(valor)`.
+ * - `skip: true`: botón «Saltar» que contesta vacío ('' o []); para las preguntas opcionales.
+ * - `multiline: true` en las de texto: un área de texto (Intro hace salto de línea; se acepta con el botón).
  * - Inventario de campos: con `feedbackId`, cada pregunta se marca sola como `<feedbackId>.<id>` (en minúsculas, `checkIn` →
  *   `check_in`) con su tipo; `field` en la pregunta añade entidad, propiedad, permiso, sensibilidad…
  * Prefijo de clases: `ask-`.
@@ -20,8 +23,11 @@ import { fieldAttrs, type FieldSpec } from '../fields/field-mark.ts';
 export interface StepQuestion {
   id: string;
   question: string;
-  /** `choice`: una opción (guarda al tocar). `multi`: varias y «Aceptar». `text`: un campo y «Aceptar» o Intro. */
-  kind: 'choice' | 'multi' | 'text';
+  /**
+   * `choice`: una opción (guarda al tocar). `multi`: varias y «Aceptar». `text`: un campo y «Aceptar» o Intro.
+   * `custom`: lo pinta `render`.
+   */
+  kind: 'choice' | 'multi' | 'text' | 'custom';
   options?: { value: string; label: string }[];
   /** Una línea bajo la pregunta («Lo pide el registro de viajeros»). */
   hint?: string;
@@ -29,8 +35,27 @@ export interface StepQuestion {
   inputType?: string;
   placeholder?: string;
   value?: string | string[] | null;
+  /** Texto largo: área de texto en lugar de una línea. */
+  multiline?: boolean;
+  /** Atributos extra del campo de texto (`inputmode`, `min`, `max`, `step`…). */
+  inputAttrs?: Record<string, string>;
+  /** Botón «Saltar», que contesta vacío. */
+  skip?: boolean;
+  /** Control propio (`kind: 'custom'`). */
+  render?: (ctx: StepRenderContext) => HTMLElement;
   /** Inventario de campos (`field-mark.ts`): entidad, propiedad, obligatorio, permiso, sensibilidad… El id sale de `feedbackId` e `id`. */
   field?: Partial<FieldSpec>;
+}
+
+export interface StepRenderContext {
+  /** Contesta y, si se guarda, pasa a la siguiente. */
+  submit(value: string | string[]): void;
+  /** Lo contestado hasta ahora (o `value`). */
+  value: string | string[];
+  /** Id del texto de la pregunta, para `aria-labelledby`. */
+  labelId: string;
+  /** Atributos del inventario de campos, para el control principal. */
+  field: Record<string, string | null>;
 }
 
 /** Lánzalo desde `onAnswer` para no avanzar y enseñar el motivo bajo la pregunta. */
@@ -71,7 +96,7 @@ export function createStepForm(options: StepFormOptions): StepForm {
   const fieldOf = (q: StepQuestion) => {
     const own = q.field?.id ?? (base ? `${base}.${q.id.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()}` : null);
     if (!own || !/^[a-z][a-z0-9_]*(\.[a-z0-9_-]+){1,7}$/.test(own)) return {};
-    return fieldAttrs({ ...q.field, id: own }, { type: q.kind === 'text' ? q.inputType ?? 'text' : q.kind === 'choice' ? 'select' : 'multi', label: q.question });
+    return fieldAttrs({ ...q.field, id: own }, { type: q.kind === 'text' ? q.multiline ? 'textarea' : q.inputType ?? 'text' : q.kind === 'choice' ? 'select' : q.kind === 'custom' ? 'custom' : 'multi', label: q.question });
   };
 
   async function submit(q: StepQuestion, value: string | string[], error: HTMLElement): Promise<void> {
@@ -104,11 +129,20 @@ export function createStepForm(options: StepFormOptions): StepForm {
     const error = el('p', { class: 'fielderror ask-error', role: 'alert' });
     const current = answers.get(q.id) ?? q.value ?? (q.kind === 'multi' ? [] : '');
     let body: HTMLElement;
-    if (q.kind === 'text') {
-      const input = el('input', { id: `${id}-input`, class: 'ask-input', type: q.inputType ?? 'text', value: String(current ?? ''), placeholder: q.placeholder ?? null, 'aria-describedby': `${id}-hint`, ...fieldOf(q),
-        onkeydown: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); void submit(q, input.value.trim(), error); } } }) as HTMLInputElement;
+    const skip = q.skip ? el('button', { type: 'button', class: 'ghost ask-skip', ...mark('saltar', 'Saltar'), onclick: () => void submit(q, q.kind === 'multi' ? [] : '', error) }, kt('Saltar')) : null;
+    if (q.kind === 'custom') {
+      body = el('div', { class: 'ask-field' },
+        q.render?.({ submit: (value) => void submit(q, value, error), value: current ?? '', labelId: `${id}-q`, field: fieldOf(q) }) ?? el('span'),
+        skip ? el('div', { class: 'ask-ok' }, skip) : null);
+    } else if (q.kind === 'text') {
+      const attrs = { id: `${id}-input`, class: 'ask-input', value: String(current ?? ''), placeholder: q.placeholder ?? null, 'aria-describedby': `${id}-hint`, ...q.inputAttrs, ...fieldOf(q) };
+      const input = (q.multiline
+        ? el('textarea', { ...attrs, rows: '4' }, String(current ?? ''))
+        : el('input', { ...attrs, type: q.inputType ?? 'text',
+          onkeydown: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); void submit(q, input.value.trim(), error); } } })) as HTMLInputElement;
       body = el('div', { class: 'ask-field' }, input,
-        el('div', { class: 'ask-ok' }, el('button', { type: 'button', class: 'primary', ...mark('aceptar', 'Aceptar'), onclick: () => void submit(q, input.value.trim(), error) }, kt('Aceptar')), el('span', { class: 'hint' }, kt('o pulsa Intro'))));
+        el('div', { class: 'ask-ok' }, el('button', { type: 'button', class: 'primary', ...mark('aceptar', 'Aceptar'), onclick: () => void submit(q, input.value.trim(), error) }, kt('Aceptar')),
+          q.multiline ? null : el('span', { class: 'hint' }, kt('o pulsa Intro')), skip));
     } else {
       const picked = new Set(Array.isArray(current) ? current : current ? [current] : []);
       const group = el('div', { class: 'ask-choices', role: 'group', 'aria-labelledby': `${id}-q`, ...fieldOf(q) },
@@ -129,7 +163,8 @@ export function createStepForm(options: StepFormOptions): StepForm {
           return btn;
         }));
       body = el('div', { class: 'ask-field' }, group,
-        q.kind === 'multi' ? el('div', { class: 'ask-ok' }, el('button', { type: 'button', class: 'primary', ...mark('aceptar', 'Aceptar'), onclick: () => void submit(q, [...picked], error) }, kt('Aceptar'))) : null);
+        q.kind === 'multi' || skip ? el('div', { class: 'ask-ok' },
+          q.kind === 'multi' ? el('button', { type: 'button', class: 'primary', ...mark('aceptar', 'Aceptar'), onclick: () => void submit(q, [...picked], error) }, kt('Aceptar')) : null, skip) : null);
     }
     replace(element,
       el('p', { class: 'ask-meta' }, kt('Pregunta {n} de {m}', { n: String(n), m: String(total) })),

@@ -48,7 +48,6 @@ export const PROCEDURES = {
   closeDay: 'flow.close_day',
   unitSetQty: 'flow.unit_set_qty',
   generateIngredientTasks: 'flow.generate_ingredient_tasks',
-  unitLinkExternal: 'flow.unit_link_external',
   newVersion: 'flow.new_version',
   stationSetParams: 'flow.station_set_params',
   openAccount: 'flow.open_account',

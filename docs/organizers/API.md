@@ -350,7 +350,7 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 - **Resumen de Finance:** facturado, cobrado y pendiente. Lo pagado sale solo de Finance.
 - **Facturas del retiro:** número, fecha, total y si están cobradas.
   - La emitida desde Finance se pinta desde su copia congelada con la página imprimible del kit (imprimir o guardar en PDF), tal como se emitió y en español.
-  - La registrada de otra herramienta (solo PDF guardado) muestra «Pídenosla», con el contacto público, hasta que exista la ruta firmada `portal-files`.
+  - La registrada de otra herramienta abre su PDF guardado con «Abrir PDF» (K2, 27-10-2026: `GET portal-files/:fileId` con el resolutor de Finance 0249). Sin PDF, muestra «Pídenosla», con el contacto público.
 - **«Cómo pagar»:** el texto de Central en el idioma elegido.
 - **Lo contratado** (Booking, `portal_reservation_detail.contract`, #312): total de la propuesta aceptada, lo pagado (lo cobrado según Finance), el **saldo pendiente** (contratado − cobrado, nunca negativo) y la forma de pago acordada.
   - Vencimientos de la señal y del saldo, con fecha e importe tal como llegan en `due`; el plazo del saldo es interno de Ikisai y no se muestra (aclaración del usuario del 8-10-2026): el saldo sale solo como importe pendiente; cada uno sale «Pagado» si lo cobrado cubre lo acumulado hasta él.

@@ -175,7 +175,7 @@ test('huéspedes · con clave y la barra en la carta: enlace HMAC-SHA256 de 10 m
   assert.equal((await app.call('/api/v1/public/mine', { token: null, headers: { 'X-Flow-Customer': redeemed.data.token } })).status, 401);
   // Caducado (firma buena, fecha pasada).
   const old = String(Math.floor(Date.now() / 1000) - 5);
-  const expired = await pub('invitation', { invitation: `${id}.${old}.${createHmac('sha256', KEY).update(`${id}.${old}`).digest('hex')}` });
+  const expired = await pub('invitation', { invitation: `${id}.${old}.1.${createHmac('sha256', KEY).update(`${id}.${old}.1`).digest('hex')}` }); // cuatro partes (FL10)
   assert.equal(expired.status, 410); assert.equal(expired.data.error.code, 'INVITATION_EXPIRED');
 });
 
