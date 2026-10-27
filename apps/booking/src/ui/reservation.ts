@@ -1,6 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderPublicCode, renderWalkIn, specsFor } from './eventKinds.ts';
+import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderPublicCode, renderVisitorRequests, renderWalkIn, specsFor } from './eventKinds.ts';
 import { renderBarService } from './barService.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
@@ -10,7 +10,7 @@ import {
 import { onSesPending, sesCandidates, takeRequestedBlock } from '../app/experience.ts';
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import { createFichaLayout } from './fichaLayout.ts';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, WALKINS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, VISITOR_REQUESTS, WALKINS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
 import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../app/joins.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
@@ -194,6 +194,8 @@ export function mountReservation(id: string): ViewMount {
       const lodging = liveEvent ? await loadLodging(client, liveEvent.id) : null;
       // Alojamiento a la carta (0487): sus cobros y las tarifas para el precio por noche
       const walkinCharges = liveEvent && reservation.event_type === 'jornadas_abiertas' && canRead(client, WALKINS) ? ((await client.list(WALKINS)) as Row[]).filter((c) => c.event_id === liveEvent.id && !c.deleted_at) : [];
+      // Visitantes que piden apuntarse por el QR (0489)
+      const visitorRequests = liveEvent && canRead(client, VISITOR_REQUESTS) ? ((await client.list(VISITOR_REQUESTS)) as Row[]).filter((r) => r.event_id === liveEvent.id) : [];
       const walkinRates = reservation.event_type === 'jornadas_abiertas' && canRead(client, RATES) ? (await client.list(RATES)) as Row[] : [];
       const staff = liveEvent ? await loadStaff(client, liveEvent.id) : null;
       const editable = writable && !deleted;
@@ -690,7 +692,8 @@ export function mountReservation(id: string): ViewMount {
         layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
           // familiar: sin propuesta, cobro ni coste
           family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard,
-          liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null], {
+          liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null,
+          renderVisitorRequests({ requests: visitorRequests, editable, run })], {
           writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
         }, requested),
@@ -701,7 +704,7 @@ export function mountReservation(id: string): ViewMount {
     }
 
     void paint();
-    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAYS, STAFF, NEEDS, PROGRAM, WALKINS].filter((table) => canRead(client, table) || table === RESERVATIONS)
+    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAYS, STAFF, NEEDS, PROGRAM, WALKINS, VISITOR_REQUESTS].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));

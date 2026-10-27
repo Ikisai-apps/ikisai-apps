@@ -22,6 +22,8 @@ create table booking.visitor_requests (
   via_code text check (via_code is null or char_length(via_code) <= 20),
   visitor_id uuid not null,
   name text check (name is null or char_length(name) between 1 and 120),
+  -- correo o teléfono, opcional, solo para avisarle de esta petición (dato personal: no va con la nota)
+  contact text check (contact is null or char_length(contact) <= 200),
   note text check (note is null or char_length(note) <= 500),
   status text not null default 'pendiente' check (status in ('pendiente', 'aceptada', 'descartada')),
   guest_id uuid references booking.guests(id),
@@ -30,7 +32,7 @@ create table booking.visitor_requests (
 );
 create index visitor_requests_event_idx on booking.visitor_requests (event_id, created_at) where deleted_at is null;
 create unique index visitor_requests_one_pending on booking.visitor_requests (event_id, visitor_id) where status = 'pendiente' and deleted_at is null;
-select core.register_table('booking', 'booking', 'visitor_requests', array['event_id','via_code','visitor_id','name','note','status','guest_id','decided_at'],
+select core.register_table('booking', 'booking', 'visitor_requests', array['event_id','via_code','visitor_id','name','contact','note','status','guest_id','decided_at'],
   '{editor,owner}', '{editor,owner}');
 select core.allow_public_write('booking', 'booking.visitor_requests');
 
@@ -53,6 +55,7 @@ begin
     end if;
     new.name := nullif(btrim(new.name), '');
     new.note := nullif(btrim(new.note), '');
+    new.contact := nullif(btrim(new.contact), '');
     return new;
   end if;
   if tg_op = 'INSERT' and coalesce(current_setting('booking.visitor_procedure', true), '') <> 'on' then

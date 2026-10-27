@@ -211,6 +211,7 @@ FIELDS[TABLES.visitorRequests] = {
   via_code: text(20),
   visitor_id: { kind: 'uuid' },
   name: text(120),
+  contact: text(200),
   note: text(500),
   status: { kind: 'enum', values: ['pendiente', 'aceptada', 'descartada'], nullable: false },
   guest_id: { kind: 'uuid', nullable: true },
