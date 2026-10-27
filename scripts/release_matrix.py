@@ -2,15 +2,15 @@
 """Decide qué apps publica el workflow de release y con qué versión. Escribe `apps=<json>` y `version=<v>` en stdout.
 
 - `workflow_dispatch`: la app del input `app`; versión del input `version` o `v0.1.0-build.<run_number>`.
-- `push` a main: para cada app, cambios entre el commit que tiene publicado (`https://<app>.ikisai.com/version.json`)
+- pasada programada (cron de release.yml cada 30 min; antes, cada push a main): para cada app, cambios entre el commit que tiene publicado (`https://<app>.ikisai.com/version.json`)
   y HEAD (`apps/<app>`, `supabase/functions/<app>-api`, `supabase/functions/_domain/<app>`, `packages/domain-<app>`,
   migraciones `*_<app>_*`). Así una release cancelada en cola por la concurrencia de GitHub no deja una app sin publicar.
-  Si no se puede leer el commit publicado, se usa `github.event.before`. Un cambio compartido
+  Si no se puede leer el commit publicado, se usa BEFORE: la última release completa (tag `released`). Un cambio compartido
   (`_kit`, migraciones core, `sync-client`, `ui-kit`, `scripts`, workflows) marca todas las apps.
 - Solo se publican apps «publicables»: existen `supabase/functions/<app>-api/index.ts` y `apps/<app>/package.json`.
 - `migrations=true|false`: si hay migraciones que aplicar aunque ninguna app se publique. Una tanda solo de un módulo
   (`*_resources_*`, sin dominio propio) no marca ninguna app, pero sus migraciones tienen que aplicarse (PROD-001, 14-10-2026).
-  Es `true` si alguna app se publica, si el push trae cualquier `supabase/migrations/…` o si no hay historial para saberlo.
+  Es `true` si alguna app se publica, si desde BEFORE hay cualquier `supabase/migrations/…` o si no hay historial para saberlo.
 Variables: EVENT, INPUT_APP, INPUT_VERSION, BEFORE, RUN_NUMBER (las pone el workflow). Sin red ni credenciales.
 """
 import json
@@ -72,7 +72,7 @@ def affected(files):
 
 
 def needs_migrations(files, selected):
-  """¿Hay que lanzar el job de migraciones? Siempre que se publique algo; y si no, cuando el push trae migraciones o no se sabe."""
+  """¿Hay que lanzar el job de migraciones? Siempre que se publique algo; y si no, cuando hay migraciones desde BEFORE o no se sabe."""
   if selected:
     return True
   if files is None:
@@ -97,11 +97,11 @@ def main():
       if base:
         files = changed_files(base)
         if files is None:
-          reasons.append(f'{name}: commit publicado {base[:7]} no está en el historial; se compara con el push')
+          reasons.append(f'{name}: commit publicado {base[:7]} no está en el historial; se compara con la última release')
           files = changed_files(before)
       else:
         files = changed_files(before)
-        reasons.append(f'{name}: sin version.json legible; se compara con el push')
+        reasons.append(f'{name}: sin version.json legible; se compara con la última release')
       apps, why = affected(files)
       if name in apps:
         chosen.add(name)
