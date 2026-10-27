@@ -54,6 +54,28 @@ export function quickDishOperations(input: QuickDishInput): Array<{ op: 'insert'
   ];
 }
 
+/** Palabras que no cuentan al comparar nombres de platos. */
+const NAME_STOPWORDS = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'con', 'sin', 'y', 'e', 'a', 'al', 'en', 'para', 'por', 'un', 'una']);
+const nameWords = (name: string): Set<string> => new Set(name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .split(/[^a-z0-9ñ]+/).filter((w) => w.length > 1 && !NAME_STOPWORDS.has(w)));
+
+/**
+ * Las recetas más parecidas a un plato sugerido (hallazgo F-SUG-3): las que comparten alguna palabra del nombre (sin
+ * acentos ni palabras vacías), primero las que más comparten; a igualdad, la de la categoría del servicio y luego por
+ * nombre. Sin palabras en común no se propone nada: la categoría sola no basta.
+ */
+export function similarRecipes<T extends { id: string; name: string; category: RecipeCategory }>(name: string, service: ServiceType, recipes: T[], limit = 5): T[] {
+  const words = nameWords(name);
+  if (!words.size) return [];
+  const category = quickRecipeCategory(service);
+  return recipes
+    .map((recipe) => ({ recipe, shared: [...nameWords(recipe.name)].filter((w) => words.has(w)).length, same: recipe.category === category ? 1 : 0 }))
+    .filter((x) => x.shared > 0)
+    .sort((x, y) => y.shared - x.shared || y.same - x.same || x.recipe.name.localeCompare(y.recipe.name, 'es'))
+    .slice(0, limit)
+    .map((x) => x.recipe);
+}
+
 /** Tipo de sugerencia del núcleo para proponer un plato del menú de casa desde Guests (O3c; contrato §3.10). */
 export const HOUSE_DISH_SUGGESTION_KIND = 'plato_casa';
 
