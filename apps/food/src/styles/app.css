@@ -525,3 +525,8 @@
 .fd-orgreview-service h4{margin:10px 0 4px;font-size:var(--text-sm,.875rem);color:var(--muted)}
 .fd-orgreview-dishes{list-style:none;margin:0;padding:0}
 .fd-orgreview-dishes li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--line)}
+/* Recetario · filtros en chips (F-REC-2): una fila que se desplaza; los selectores, en la hoja «Filtrar». */
+.fd-filterbar{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;margin:10px 0 14px;padding-bottom:2px;scrollbar-width:none}
+.fd-filterbar .filterchip{flex:none;white-space:nowrap}
+.fd-filterbar .linkbtn{flex:none}
+.fd-filtersheet{grid-template-columns:1fr;margin:0}
