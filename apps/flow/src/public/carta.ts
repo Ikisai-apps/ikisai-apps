@@ -1,4 +1,4 @@
-import { createQuantityField, el, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
+import { createQuantityField, el, fieldAttrs, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
 import { linkCustomerToVisitor, lodgingLink, myOrders, PublicApiError, readCustomer, redeemInvitation, redeemVisitorHandoff, submitOrder, venLink, type MyOrder } from './customer.ts';
 import {
   basketLines, basketTotal, formatEuros, groupMenu, productAssets, setQuantity, SCOPE_LABELS,
@@ -119,7 +119,7 @@ export function mountCarta(root: HTMLElement): () => void {
   }
 
   function productCard(product: MenuProduct): HTMLElement {
-    const field = createQuantityField({
+    const field = createQuantityField({ field: { id: 'flow.carta.cantidad', entity: 'flow.order_lines', prop: 'quantity', type: 'number' },
       label: `Cantidad de ${product.name}`, name: `q-${product.id}`, value: basket[product.id] ?? 0, decimals: 0, min: 0, max: 99, step: 1,
       onChange: (value) => change(product.id, value.value ?? 0),
     });

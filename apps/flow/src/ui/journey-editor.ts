@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { el, replace, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, replace, toast } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -78,13 +78,13 @@ export function mountJourneyEditor(key: string | null): ViewMount {
       paint();
     }
 
-    const input = (value: string, onInput: (v: string) => void, attrs: Record<string, string> = {}) =>
-      el('input', { type: 'text', value, ...attrs, oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
+    const input = (value: string, onInput: (v: string) => void, attrs: Record<string, string> = {}, field = 'flow.recorridos.editor.texto') =>
+      el('input', { ...fieldAttrs({ id: field, type: 'text' }), type: 'text', value, ...attrs, oninput: (e: Event) => onInput((e.target as HTMLInputElement).value) });
     /** Tras repintar, el foco vuelve al control con este `data-fk` (el que se tocó, o el tramo nuevo o movido). */
     let refocus: string | null = null;
     const keep = (fk: string) => { refocus = fk; };
     const select = (value: string, options: Array<[string, string]>, onChange: (v: string) => void, label: string, fk = label) =>
-      el('select', { 'aria-label': label, 'data-fk': fk, onchange: (e: Event) => { onChange((e.target as HTMLSelectElement).value); keep(fk); paint(); } },
+      el('select', { ...fieldAttrs({ id: `flow.recorridos.editor.${fk.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}`, type: 'select' }), 'aria-label': label, 'data-fk': fk, onchange: (e: Event) => { onChange((e.target as HTMLSelectElement).value); keep(fk); paint(); } },
         ...options.map(([v, l]) => el('option', { value: v, selected: v === value }, l)));
 
     function stepRow(stage: EStage, si: number, step: EStep, pi: number): HTMLElement {
@@ -93,7 +93,7 @@ export function mountJourneyEditor(key: string | null): ViewMount {
         el('div', { class: 'editor-head' },
           el('label', null, 'Pregunta', input(step.title, (v) => { step.title = v; if (stage.kind === 'record' && !step.key) step.key = slug(v); })),
           el('small', { class: 'muted' }, `campo: ${step.key || '—'}`),
-          el('label', { class: 'editor-option' }, el('input', { type: 'checkbox', checked: step.essential, onchange: (e: Event) => { step.essential = (e.target as HTMLInputElement).checked; } }), el('span', null, 'Esencial'))),
+          el('label', { class: 'editor-option' }, el('input', { ...fieldAttrs({ id: 'flow.recorridos.editor.esencial', entity: 'flow.definition_steps', prop: 'essential', type: 'checkbox' }), type: 'checkbox', checked: step.essential, onchange: (e: Event) => { step.essential = (e.target as HTMLInputElement).checked; } }), el('span', null, 'Esencial'))),
         el('label', null, 'Explicación', input(step.explain, (v) => { step.explain = v; })),
         stage.kind === 'record' ? el('div', { class: 'editor-head' },
           el('label', null, 'Tipo', select(step.type, TYPES, (v) => { step.type = v as InputType; }, 'Tipo', `tipo-${si}-${pi}`)),
