@@ -144,6 +144,8 @@ export async function verifyEmailCode(email: string, code: string): Promise<{ re
   if (out.token) {
     try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
     await cache.clearUser(CACHE_USER);
+    // «Mis eventos» vive en cada móvil: al recuperar, se rellena con los del acceso, si el núcleo los da.
+    await visitorMe().then((me) => { for (const code of [...me.eventCodes].reverse()) rememberEvent(code); }).catch(() => undefined);
     return { recovered: true };
   }
   return { recovered: out.recovered === true };
@@ -163,9 +165,11 @@ export async function forgetEmail(): Promise<void> {
 }
 
 /** Su acceso: si tiene correo guardado y su pista («v•••@g•••.com»). */
-export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null }> {
-  const out = await call<{ emailSaved?: boolean; emailHint?: string | null }>('/api/v1/public/visitor/me');
-  return { emailSaved: out.emailSaved === true, emailHint: typeof out.emailHint === 'string' ? out.emailHint : null };
+export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null; eventCodes: string[] }> {
+  const out = await call<{ emailSaved?: boolean; emailHint?: string | null; eventCodes?: unknown }>('/api/v1/public/visitor/me');
+  return { emailSaved: out.emailSaved === true, emailHint: typeof out.emailHint === 'string' ? out.emailHint : null,
+    // Los eventos de este visitante, el último primero (pedido al núcleo); sin ellos, ninguno.
+    eventCodes: Array.isArray(out.eventCodes) ? out.eventCodes.filter((c): c is string => typeof c === 'string' && EVENT_CODE.test(c)) : [] };
 }
 
 /** Una llamada con visitante; si su token ya no vale (revocado o malo), se borra, se crea otro y se repite una vez. */
