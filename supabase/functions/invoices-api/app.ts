@@ -9,6 +9,7 @@ import {
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
 import { createQuickPurchase } from './quick-purchase.ts';
+import { checkAppEntrySources, withServerCaller } from './app-entries-caller.ts';
 import { createGoogleDriveApi, READER_VERSION, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
 import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
@@ -852,14 +853,16 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     defaultProvider: base.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
     fetch: base.fetch,
   });
-  const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase), afterCommit: createResourceEntries(supabase) };
+  const domainHooks = createInvoicesHooks(supabase, targets);
+  // F1 (API.md §17.10): el origen de un apunte de otra app solo vale desde el servidor de esa app.
+  const hooks: AppHooks = { beforeCommit: async (operations, ctx) => { checkAppEntrySources(operations); await domainHooks(operations, ctx); }, agentRisk: createAgentRisk(supabase), afterCommit: createResourceEntries(supabase) };
   const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
   // Capacidad «Registrar compra rápida» (API.md §18): operaciones de fila por el commit de siempre, con hooks y riesgo.
   const quickSync = createSync(supabase, 'invoices', hooks);
   const registerQuickPurchase = createQuickPurchase({ supabase, commit: (ctx, body) => quickSync.commit(ctx, body), allRows: <T,>(ctx: RequestContext, table: string) => allRows<T>(supabase, ctx, table), stableUuid });
   const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
     notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
-  return createApp({
+  const handler = createApp({
     ...base,
     app: 'invoices',
     slug: 'invoices-api',
@@ -892,6 +895,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     }],
     workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute],
   });
+  return withServerCaller(handler, base.workerKey);
 }
 
 /** Sube los bytes de un archivo ya creado en core.files (por defecto, PUT a la URL firmada del almacenamiento). */

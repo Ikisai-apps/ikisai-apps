@@ -23,7 +23,7 @@ import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { dateRange, hhmm, missingText } from '../app/labels.ts';
 import type { Lodging, Menu, ProgramItem } from '../app/portal.ts';
 import { roleText } from './retreats.ts';
-import { fbIgnore, fbMark, staleNote } from './common.ts';
+import { fbIgnore, fbMark, staleNote, whyNote } from './common.ts';
 import { shortRange } from './frame.ts';
 import { choiceOpen } from './lodging.ts';
 import type { Modules } from './nav.ts';
@@ -261,6 +261,7 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
     const next = actions.nextRetreat;
     return el('section', { class: 'gpanel', id: 'panel', 'data-feedback-id': 'guests.inicio.estancia', 'data-feedback-label': 'Tu estancia' },
       el('h3', null, t('home2.panel')),
+      !room && lodging && mods?.lodging ? whyNote('roomPlanWhy', t('lodging.none')) : null,
       room ? verEnPlano({ place: room, spaceId: lodging?.mine?.resource_bed_id ?? lodging?.mine?.resource_space_id ?? null, match: { space: lodging?.mine?.space_name, bed: lodging?.mine?.bed_label }, label: t('home2.yourRoomPlan', { room }), id: 'roomPlan', reads: ctx.reads, mark: (n) => fbMark(n, 'guests.inicio.estancia.plano', 'Tu habitación en el plano') }) : null,
       el('div', { class: 'gtiles', id: 'retreatTiles' },
         mods?.menu ? tile({ id: 'openMenu', href: `${retreatBase}/menu`, icon: 'chef', title: t('nav.menu'), sub: meal ? `${t(`menu.${meal.type}`)}${meal.time ? ` · ${hhmm(meal.time)}` : ''}` : t('home2.menuSub') }, (n) => fbMark(n, 'guests.inicio.estancia.menu', 'Menú')) : null,

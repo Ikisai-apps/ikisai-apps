@@ -128,8 +128,24 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { main } = shell;
 
   function paintBanners(status: SyncStatus): void {
-    shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply });
+    shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply }, staleBanner(status));
   }
+
+  /**
+   * La pantalla se actualiza sola (pull cada 3 s). Si lleva más de un minuto sin traer nada y no hay otro aviso (sin red o
+   * error ya salen), lo dice: así una cocina con el móvil apoyado no se queda mirando datos viejos sin saberlo.
+   */
+  const STALE_MS = 60_000;
+  function staleBanner(status: SyncStatus): HTMLElement[] {
+    if (status.network === 'offline' || status.network === 'error' || !status.lastPullAt) return [];
+    const ago = Date.now() - Date.parse(status.lastPullAt);
+    if (!(ago > STALE_MS)) return [];
+    const min = Math.max(1, Math.round(ago / 60_000));
+    return [el('div', { class: 'banner warn', role: 'status', dataset: { banner: 'stale' } },
+      el('span', null, `Esta pantalla no se actualiza desde hace ${min} min.`),
+      el('button', { class: 'linkbtn', type: 'button', onclick: () => void syncNow() }, 'Actualizar'))];
+  }
+  const staleTimer = setInterval(() => { if (document.visibilityState === 'visible') paintBanners(client.status()); }, 15_000);
 
   async function syncNow(): Promise<void> {
     if (!navigator.onLine) {
@@ -274,6 +290,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   return () => {
     offStatus();
+    clearInterval(staleTimer);
     offBadges?.();
     service.destroy();
     offSessionEnd();

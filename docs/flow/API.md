@@ -195,6 +195,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Cierre del día** (owner, en Caja): `flow.close_day` guarda `flow.day_closures.data`, una fila por proyecto y día que se sustituye al repetir. Contiene `orders`, `sales_cents`, `sales_by_method`, `reversals_cents`, `refunds_pending_cents`, `units_by_product`, `peak_hours` y `consumption`. El dinero es el movido ese día; lo vendido, con su precio cerrado; y se cumple `detail + pending = amount`.
 - **Envíos** (`flow-api`, con la sesión de la persona y requestId estable por el hash del payload): `POST closures/:id/send/food` llama a `food.record_carta_sales` y `send/finance` a `invoices.record_app_entry` (en modo pruebas devuelve `skipped_test_mode` sin llamar). Si la persona no es miembro de la otra app: 403 `NEEDS_ACCESS` («Pide acceso a…»). El resultado se anota con `flow.mark_closure_sent`.
 - **Booking** no recibe nada: lee `flow.booking_service_projection (event_id, day, data, updated_at)`, abierta con `core.allow_read('booking', …)`.
+- **Booking** también lee qué flujos vivos tiene cada evento (tarjeta «Listo para Flow», 0922): `flow.booking_event_flows_projection (event_id, project_id, name, template_key, updated_at)`, abierta a `{reader,editor,owner}` de Booking.
 - **Límite conocido** (se cierra la semana que viene): si un cobro de un día se anula al día siguiente, ese segundo día va a Finance con importe negativo y detalle vacío. Finance lo acepta porque solo cuadra el detalle cuando no está vacío, pero no ve qué productos se devolvieron.
 
 ## 18. Columna «Ingredientes» (migración `0904`)
@@ -342,7 +343,7 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - En Caja, «Ficha del cliente» al buscar su número: todos sus pedidos con casillas, «Pagar (n)» y «Entregar (n)».
   - En la ficha de un pedido abierto, «Pagar».
   - La pantalla de pago enseña el total en grande y desglosado, con Metálico, Bizum, Tarjeta (deshabilitada) y Bitcoin. Bitcoin muestra un QR `lightning:<dirección>` o `bitcoin:<dirección>` con `renderQr` del kit; sin conversión EUR→BTC.
-  - Tras pagar: Enviar a Finance; después, Imprimir factura abre el justificante de Finance (`https://finance.ikisai.com/#/justificante?ref=flow:receipt:<id>`, Finance #817). Enviar por correo aún no tiene función. Cerrar.
+  - Tras pagar: Enviar a Finance; después, Imprimir ticket abre el justificante de Finance (`https://finance.ikisai.com/#/justificante?ref=flow:receipt:<id>`, Finance #817). Enviar por correo aún no tiene función. Cerrar. Es un ticket de venta: la factura solo la genera Finance.
 
 ## 31. Recipientes y rendimiento (migración `0918`)
 
@@ -387,5 +388,26 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **`create_flow` desde plantilla**: la versión del flujo nunca queda por debajo de la de la plantilla. Se siembra `barra` v2 (columnas de la v1 con los ajustes de la v2) y se añaden las unidades de plantilla (el puesto «Pan»). Así, «Nuevo flujo» → Barra en un evento nuevo nace como una v2 completa.
 - **Capacidades de Flow** en el catálogo del núcleo:
   - `flow.day_summary`: `POST day-summary {project_id, day}`, solo owner y con el ámbito comprobado. Devuelve el resumen del día (`flow.day_summary`).
-  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Es idempotente: el id sale de la persona y del `requestId`, y repetir devuelve `replayed: true`.
+  - `flow.logistics_task`: `POST logistics-task {requestId, project_id, label, priority?}`, editor u owner. Crea una tarea en Logística. Comprueba el rol (editor u owner) y que el proyecto esté en el ámbito de quien llama (`flow.project_access_read`, 0924; si no, `403 PROJECT_OUT_OF_SCOPE`). El id es aleatorio y es idempotente por persona y `requestId` (recibo del núcleo): repetir devuelve la misma tarea con `replayed: true`.
 - **Prueba de extremo a extremo**: `tests/flow/servicio-sabado.test.ts`. Los huecos que encuentra van en `docs/flow/PETICIONES.md` (S1…).
+
+## 35. Número de cobro y ticket hacia Finance (migración `0921`)
+
+- «Enviar a Finance» de un justificante manda `receipt_kind: 'ticket'` (un cobro de la caja es un ticket de venta; la factura solo la hace Finance) y `receipt_number`: los números de cobro de sus pedidos, en orden, unidos con «+» («12» o «12+13»; si pasan de 64 caracteres, «12…41»).
+- `flow.receipt_for_send` devuelve ese `receipt_number`.
+
+## 36. Avisos del sábado: nada sale vacío sin decir por qué
+
+- **Caja profunda sin direcciones de Bitcoin**: los dos métodos salen apagados con «pendiente de dirección», y una nota dice dónde se ponen (Inicio → «Cobro con Bitcoin»). Tocar no da error.
+- **Generar tareas de ingredientes**: si la previsión de Food sale a cero (carta sin unidades previstas), no se llama a Flow y se explica qué poner en Food. Lo que sale sin cantidad o con aviso enseña la frase de Food (`note`, Food 1115) en una hoja que se cierra con «Entendido», no en un aviso que se va.
+- **Pantalla que no se actualiza**: si el pull (cada 3 s) lleva más de un minuto sin volver y no hay otro aviso de red, sale «Esta pantalla no se actualiza desde hace N min» con «Actualizar».
+- Prueba: `tests/flow/avisos.spec.ts`.
+
+## 37. Frenos de la carta pública (FL5, migración `0923`)
+
+- En la base de datos, solo en lotes públicos (`flow.guard_public_limits`):
+  - clientes: 60 altas por minuto en un flujo;
+  - pedidos públicos: 5 abiertos (sin cobrar) por cliente (`429 TOO_MANY_OPEN_ORDERS`), 6 por minuto por cliente y 120 por minuto en un flujo (`429 RATE_LIMITED`).
+- En flow-api, por IP (memoria de la instancia, freno de más): 10 altas de cliente cada 10 minutos y 30 pedidos por minuto. La IP la pone el proxy de Pages en `X-Ikisai-Client-Ip` desde `CF-Connecting-IP`.
+- Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
+- Prueba: `tests/flow/public-limits.test.ts`.

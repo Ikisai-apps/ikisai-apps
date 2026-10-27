@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
-import { requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
+import { checkAppSource, requestTaskId, serverCaller } from '../../supabase/functions/tasks-api/requests.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { classifyRequestOps, createTabOps, dismissRequestOps, emptyDataset, pendingRequests, routeWaitingOps, saveRouteOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
@@ -59,7 +59,7 @@ test('pedir una tarea: se crea una vez, con procedencia y las etiquetas del proy
   assert.equal(after.length, 1);
   assert.deepEqual([after[0].title, after[0].project_id], ['Renovar licencia de piscina', OBRA], 'una petición repetida no cambia nada');
   // La misma referencia de otra app es otra tarea.
-  const other = await ask({ source: 'booking', external_ref: 'LEG_2026_004', title: 'Otra', tab_id: TAB });
+  const other = await ask({ source: 'flow', external_ref: 'LEG_2026_004', title: 'Otra', tab_id: TAB });
   assert.equal(other.data.created, true);
   assert.equal(other.data.task.projectId, INBOX, 'sin proyecto va a la Entrada del área');
 });
@@ -160,7 +160,7 @@ test('enrutado (§20): la regla manda sobre la sugerencia, el buzón y el estado
 });
 
 test('por clasificar (§20): sin regla espera; clasificar crea la tarea con el mismo id y su origen; descartar se ve', async () => {
-  const waiting = await ask({ source: 'booking', kind: 'booking.space_incident', kind_label: 'Incidencias', external_ref: 'INC_7', title: 'Fuga en la sala 2', external_url: 'https://booking.ikisai.com/#/incidencias/INC_7' });
+  const waiting = await ask({ source: 'central', kind: 'central.space_incident', kind_label: 'Incidencias', external_ref: 'INC_7', title: 'Fuga en la sala 2', external_url: 'https://booking.ikisai.com/#/incidencias/INC_7' });
   assert.equal(waiting.status, 200, JSON.stringify(waiting.data));
   assert.deepEqual([waiting.data.routed, waiting.data.task.pending, waiting.data.task.request, waiting.data.task.title], ['pending', true, 'pending', 'Fuga en la sala 2']);
   const id = waiting.data.task.id;
@@ -171,7 +171,7 @@ test('por clasificar (§20): sin regla espera; clasificar crea la tarea con el m
     return { ...emptyDataset(), ...out };
   };
   // Nadie fija el origen por su cuenta, ni cambia los datos de una petición.
-  const forged = await commit([{ op: 'insert', table: 'tasks.tasks', id, fields: { tab_id: TAB, project_id: OBRA, title: 'x', position: 5, external_ref: 'booking:INC_7' } }]);
+  const forged = await commit([{ op: 'insert', table: 'tasks.tasks', id, fields: { tab_id: TAB, project_id: OBRA, title: 'x', position: 5, external_ref: 'central:INC_7' } }]);
   assert.equal(forged.status, 422, JSON.stringify(forged.data));
   const request = (await rows('tasks.requests')).find((r) => r.id === id);
   assert.equal((await commit([{ op: 'update', table: 'tasks.requests', id, expectedRevision: request.revision, fields: { title: 'Otro' } }])).status, 422);
@@ -181,47 +181,23 @@ test('por clasificar (§20): sin regla espera; clasificar crea la tarea con el m
   const moved = await commit(ops);
   assert.equal(moved.status, 200, JSON.stringify(moved.data));
   const task = (await rows('tasks.tasks')).find((t) => t.id === id);
-  assert.deepEqual([task.project_id, task.external_ref, task.external_kind, task.external_url], [OBRA, 'booking:INC_7', 'booking.space_incident', 'https://booking.ikisai.com/#/incidencias/INC_7']);
+  assert.deepEqual([task.project_id, task.external_ref, task.external_kind, task.external_url], [OBRA, 'central:INC_7', 'central.space_incident', 'https://booking.ikisai.com/#/incidencias/INC_7']);
   assert.deepEqual((await rows('tasks.task_labels')).filter((l) => l.task_id === id && !l.deleted_at).map((l) => l.label_id), [LABEL]);
   assert.equal((await rows('tasks.requests')).find((r) => r.id === id).status, 'routed');
   // Descartar: la app que pidió lo ve así.
-  const junk = (await ask({ source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_8', title: 'Prueba' }, limited)).data.task.id;
+  const junk = (await ask({ source: 'central', kind: 'central.space_incident', external_ref: 'INC_8', title: 'Prueba' }, limited)).data.task.id;
   assert.equal((await commit(dismissRequestOps(await data(), junk))).status, 200);
   const seen = await targets({ kind: 'task', ids: [junk] }, limited);
   assert.deepEqual(seen.data.items, [{ kind: 'task', id: junk, visible: false, request: 'dismissed' }]);
   // Regla nueva y «mover también las que esperaban».
-  await ask({ source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_9', title: 'Bombilla fundida' });
-  await ask({ source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_10', title: 'Puerta atascada' });
-  assert.equal((await commit(saveRouteOps(await data(), { kind: 'booking.space_incident', kind_label: 'Incidencias', tab_id: TAB, project_id: OBRA }))).status, 200);
-  assert.equal(pendingRequests(await data(), 'booking.space_incident').length, 2);
-  const all = routeWaitingOps(await data(), 'booking.space_incident');
+  await ask({ source: 'central', kind: 'central.space_incident', external_ref: 'INC_9', title: 'Bombilla fundida' });
+  await ask({ source: 'central', kind: 'central.space_incident', external_ref: 'INC_10', title: 'Puerta atascada' });
+  assert.equal((await commit(saveRouteOps(await data(), { kind: 'central.space_incident', kind_label: 'Incidencias', tab_id: TAB, project_id: OBRA }))).status, 200);
+  assert.equal(pendingRequests(await data(), 'central.space_incident').length, 2);
+  const all = routeWaitingOps(await data(), 'central.space_incident');
   assert.equal((await commit(all)).status, 200, 'una sola vez, en un lote');
-  assert.equal(pendingRequests(await data(), 'booking.space_incident').length, 0);
-  assert.equal((await rows('tasks.tasks')).filter((t) => t.external_kind === 'booking.space_incident' && !t.deleted_at).length, 3);
-});
-
-test('puente con Feedback (§22.3): worker/requests/status da el estado por referencia, solo con la clave de worker', async () => {
-  const status = (body: unknown, key: string | null = WORKER_KEY) => app.handler(new Request('http://localhost/api/v1/worker/requests/status', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Ikisai-Worker-Key': key } : {}) }, body: JSON.stringify(body) }));
-  const open = (await ask({ source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0001', title: 'Persiana rota', tab_id: TAB })).data.task;
-  const done = (await ask({ source: 'feedback', kind: 'feedback.event.setup', external_ref: 'FB_2026_0002', title: 'Diez sillas más', tab_id: TAB })).data.task;
-  await commit([{ op: 'update', table: 'tasks.tasks', id: done.id, expectedRevision: done.revision, fields: { done: true } }]);
-  await ask({ source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0003', title: 'Ducha' });
-  const out = await status({ externalRefs: ['feedback:FB_2026_0001', 'feedback:FB_2026_0002', 'feedback:FB_2026_0003', 'feedback:FB_2026_9999'] });
-  assert.equal(out.status, 200);
-  const items = Object.fromEntries(((await out.json()) as any).items.map((i: any) => [i.externalRef, i]));
-  assert.deepEqual(['feedback:FB_2026_0001', 'feedback:FB_2026_0002', 'feedback:FB_2026_0003', 'feedback:FB_2026_9999'].map((r) => items[r].status), ['open', 'done', 'pending', 'unknown']);
-  assert.equal(items['feedback:FB_2026_0001'].taskId, open.id);
-  assert.ok(items['feedback:FB_2026_0002'].doneAt);
-  assert.equal(JSON.stringify(items).includes('Persiana'), false, 'solo estados, sin títulos');
-  // Sin clave, con otra o con la sesión de una persona: 401. Solo referencias de feedback (los fallos de aplicación no van a Tasks).
-  assert.equal((await status({ externalRefs: [] }, null)).status, 401);
-  assert.equal((await status({ externalRefs: [] }, 'otra')).status, 401);
-  assert.equal((await app.call('/api/v1/worker/requests/status', { body: { externalRefs: [] } })).status, 401);
-  assert.equal((await status({ externalRefs: ['central:LEG_2026_004'] })).status, 422);
-  assert.equal((await status({ externalRefs: ['qa:FB_2026_0001'] })).status, 422);
-  // Una persona no puede lanzar la acción por invoke.
-  assert.equal((await app.call('/api/v1/invoke/tasks.requests_status', { body: { externalRefs: ['feedback:FB_2026_0001'] } })).status, 403);
+  assert.equal(pendingRequests(await data(), 'central.space_incident').length, 0);
+  assert.equal((await rows('tasks.tasks')).filter((t) => t.external_kind === 'central.space_incident' && !t.deleted_at).length, 3);
 });
 
 test('avisos de máquina de Food (§22.3): worker/requests/status da su estado; ninguna otra referencia de food', async () => {
@@ -248,6 +224,38 @@ test('avisos de máquina de Food (§22.3): worker/requests/status da su estado; 
   // La acción, por SQL, aplica la misma regla.
   await assert.rejects(app.t.db.query(`select tasks.requests_status($1::jsonb)`, [JSON.stringify({ args: { externalRefs: ['food:general:1'] } })]));
   assert.equal((await app.t.db.query<any>(`select tasks.requests_status($1::jsonb) r`, [JSON.stringify({ args: { externalRefs: [refs[1]] } })])).rows[0].r.items[0].status, 'open');
+});
+
+test('la ruta de personas no admite las fuentes de sistema: booking, feedback, core e invoices solo entran por worker/', async () => {
+  for (const source of ['booking', 'feedback', 'core', 'invoices']) {
+    const res = await ask({ source, kind: `${source}.otra`, external_ref: 'RES2026-80-MONTAJE', title: 'Adelantarse a la app', tab_id: TAB });
+    assert.equal(res.status, 422, source);
+    assert.equal(res.data.error.details.field, 'source');
+  }
+  assert.equal((await rows('tasks.tasks')).some((t) => t.title === 'Adelantarse a la app'), false);
+  assert.equal((await ask({ source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-1', title: 'Hielo para la barra', tab_id: TAB })).status, 200, 'otra app, sí');
+});
+
+test('fuentes de app (flow, food): con la clave de worker y X-Ikisai-Caller, la fuente tiene que ser la de quien llama', async () => {
+  const proof = (caller: string, key = WORKER_KEY) => ({ 'X-Ikisai-Worker-Key': key, 'X-Ikisai-Caller': caller });
+  const send = (path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) => app.call(`/api/v1/requests/${path}`, { body, headers });
+  // Desde su servidor, con la persona: entra como siempre.
+  const flow = await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-1', title: 'Cubitera', tab_id: TAB }, proof('flow'));
+  assert.equal(flow.status, 200, JSON.stringify(flow.data));
+  const food = await send('purchase', { source: 'food', external_ref: 'LISTA-1', title: 'Harina', project_id: OBRA, quantity: 2 }, proof('food'));
+  assert.equal(food.status, 200, JSON.stringify(food.data));
+  // Quien llama es food y dice ser flow: no.
+  const forged = await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-2', title: 'x', tab_id: TAB }, proof('food'));
+  assert.deepEqual([forged.status, forged.data.error.details.field], [422, 'source']);
+  assert.equal((await send('purchase', { source: 'flow', external_ref: 'LISTA-2', title: 'x', project_id: OBRA }, proof('food'))).status, 422);
+  // Con otra clave no hay prueba: hoy se acepta como antes (aún no son obligatorias).
+  assert.equal(serverCaller(new Request('http://x', { headers: proof('flow', 'otra') }), WORKER_KEY), null);
+  assert.equal((await send('task', { source: 'flow', kind: 'flow.logistics', external_ref: 'UNIT-PRUEBA-3', title: 'Hielo', tab_id: TAB }, proof('flow', 'otra'))).status, 200);
+  // Cuando la de una app sea obligatoria: sin prueba, 403 CALLER_REQUIRED; con la suya, sí.
+  const required = new Set(['flow']);
+  assert.throws(() => checkAppSource('flow', null, required), (e: any) => e.status === 403 && e.code === 'CALLER_REQUIRED');
+  assert.doesNotThrow(() => checkAppSource('flow', 'flow', required));
+  assert.doesNotThrow(() => checkAppSource('central', null, required), 'las demás, igual que siempre');
 });
 
 test('puente con Feedback (§22.2): worker/requests/task escribe como la identidad de servicio, con quién informó como metadato', async () => {
@@ -319,6 +327,38 @@ test('puente con Feedback (§22.2): worker/requests/task escribe como la identid
   // Nadie más fija quién informó: ni por commands en una tarea, ni cambiándolo después.
   assert.equal((await commit([{ op: 'update', table: 'tasks.tasks', id: task.id, expectedRevision: task.revision, fields: { external_on_behalf: 'internal' } }])).status, 422);
   assert.equal((await commit([{ op: 'insert', table: 'tasks.tasks', id: uuid(), fields: { tab_id: TAB, project_id: INBOX, title: 'x', position: 7, external_on_behalf: 'guest' } }])).status, 422);
+});
+
+test('puente con Feedback (§22.3): worker/requests/status da el estado por referencia, solo con la clave de worker', async () => {
+  const status = (body: unknown, key: string | null = WORKER_KEY) => app.handler(new Request('http://localhost/api/v1/worker/requests/status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Ikisai-Worker-Key': key } : {}) }, body: JSON.stringify(body) }));
+  // Las fuentes de sistema entran solo por worker/ (la identidad de servicio la creó la prueba del puente, §22.2).
+  const report = async (code: string, kind: string, title: string) => (await (await app.handler(new Request('http://localhost/api/v1/worker/requests/task', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify({ source: 'feedback', kind, external_ref: code, title,
+      external_url: `https://tasks.ikisai.com/#/feedback/${code}`, on_behalf_of: { kind: 'guest', report_code: code } }) }))).json()) as { taskId: string; status: string };
+  for (const [kind, position] of [['feedback.space.utilities', 3500], ['feedback.space.safety', 3600]] as const) {
+    await commit([{ op: 'insert', table: 'tasks.request_routes', id: uuid(), fields: { kind, tab_id: TAB, position } }]);
+  }
+  const open = { id: (await report('FB_2026_0001', 'feedback.space.utilities', 'Persiana rota')).taskId };
+  const doneId = (await report('FB_2026_0002', 'feedback.space.safety', 'Diez sillas más')).taskId;
+  const done = (await rows('tasks.tasks')).find((t) => t.id === doneId);
+  await commit([{ op: 'update', table: 'tasks.tasks', id: done.id, expectedRevision: done.revision, fields: { done: true } }]);
+  assert.equal((await report('FB_2026_0003', 'feedback.space.missing', 'Ducha')).status, 'pending');
+  const out = await status({ externalRefs: ['feedback:FB_2026_0001', 'feedback:FB_2026_0002', 'feedback:FB_2026_0003', 'feedback:FB_2026_9999'] });
+  assert.equal(out.status, 200);
+  const items = Object.fromEntries(((await out.json()) as any).items.map((i: any) => [i.externalRef, i]));
+  assert.deepEqual(['feedback:FB_2026_0001', 'feedback:FB_2026_0002', 'feedback:FB_2026_0003', 'feedback:FB_2026_9999'].map((r) => items[r].status), ['open', 'done', 'pending', 'unknown']);
+  assert.equal(items['feedback:FB_2026_0001'].taskId, open.id);
+  assert.ok(items['feedback:FB_2026_0002'].doneAt);
+  assert.equal(JSON.stringify(items).includes('Persiana'), false, 'solo estados, sin títulos');
+  // Sin clave, con otra o con la sesión de una persona: 401. Solo referencias de feedback (los fallos de aplicación no van a Tasks).
+  assert.equal((await status({ externalRefs: [] }, null)).status, 401);
+  assert.equal((await status({ externalRefs: [] }, 'otra')).status, 401);
+  assert.equal((await app.call('/api/v1/worker/requests/status', { body: { externalRefs: [] } })).status, 401);
+  assert.equal((await status({ externalRefs: ['central:LEG_2026_004'] })).status, 422);
+  assert.equal((await status({ externalRefs: ['qa:FB_2026_0001'] })).status, 422);
+  // Una persona no puede lanzar la acción por invoke.
+  assert.equal((await app.call('/api/v1/invoke/tasks.requests_status', { body: { externalRefs: ['feedback:FB_2026_0001'] } })).status, 403);
 });
 
 test('proyecto por retiro (§23): idempotente por la reserva, renombrado, archivado y extras dentro con su vencimiento', async () => {

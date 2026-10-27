@@ -22,7 +22,7 @@ let server: PreviewServer;
 let baseURL: string;
 let seq = 0;
 const uuid = () => crypto.randomUUID();
-const ids = { building: uuid(), room: uuid(), lounge: uuid(), desk: uuid(), bed: uuid(), annex: uuid(), kitchen: uuid(), pantry: uuid() };
+const ids = { finca: uuid(), building: uuid(), room: uuid(), lounge: uuid(), desk: uuid(), bed: uuid(), annex: uuid(), kitchen: uuid(), pantry: uuid() };
 
 // Un SVG con dos estancias con nombre (una con `id`, otra en un grupo con `data-name` y `transform`) y cosas que no
 // deben llegar a ejecutarse nunca (script, `onload`, `foreignObject`).
@@ -52,6 +52,7 @@ test.beforeAll(async () => {
   const db = api.app.t.db;
   const a3 = (await db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 3'`)).rows[0]!.id;
   const res = await api.app.call('/api/v1/resources/commands', { body: { requestId: `plans-${++seq}`, operations: [
+    { op: 'insert', table: 'resources.spaces', id: ids.finca, fields: { parent_id: null, kind: 'exterior', name: 'Finca de prueba' } },
     { op: 'insert', table: 'resources.spaces', id: ids.building, fields: { parent_id: a3, kind: 'edificio', name: 'Albergue de prueba' } },
     { op: 'insert', table: 'resources.spaces', id: ids.room, fields: { parent_id: ids.building, kind: 'habitacion', name: 'Dormitorio 3' } },
     { op: 'insert', table: 'resources.spaces', id: ids.lounge, fields: { parent_id: ids.building, kind: 'habitacion', name: 'Salón' } },
@@ -218,6 +219,19 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.locator('#imageFile').setInputFiles({ name: 'alzado.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
   await page.locator('#imageSubmit').click();
   await expect.poll(async () => (await api.app.t.db.query<{ k: string; t: string }>(`select kind as k, title as t from resources.space_images where space_id = $1 and deleted_at is null`, [ids.building])).rows).toEqual([{ k: 'silueta', t: 'Alzado norte' }]);
+
+  // Silueta de cabecera de cada app (Recursos 0816): se elige entre las siluetas y se puede deshacer.
+  const header = async () => (await api.app.t.db.query<{ h: string[] }>(`select header_for as h from resources.space_images where deleted_at is null and kind = 'silueta'`)).rows[0]?.h ?? null;
+  await expect(page.locator('#headerPicks')).toBeVisible();
+  await page.locator('#header-guests').selectOption({ index: 1 });
+  await expect.poll(header).toEqual(['guests']);
+  await expect(page.locator('#centerImageList [data-header-for]')).toHaveText('Cabecera de Guests');
+  // El aviso es uno con una fila por acción: la última es la nueva.
+  await expect(page.locator('.ikisai-toast')).toContainText('Cabecera de Guests cambiada.');
+  await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).last().click();
+  await expect.poll(header).toEqual([]);
+  await page.locator('#header-central').selectOption({ index: 1 });
+  await expect.poll(header).toEqual(['central']);
   await expect(page.locator(`#centerImageList [data-space="${ids.building}"]`)).toContainText('Alzado norte');
 });
 
@@ -278,3 +292,51 @@ test('planos · en el móvil, y para quien no es owner, solo el mapa', async ({ 
   await expect(reader.locator('#newCenterImage')).toHaveCount(0);
   await reader.close();
 });
+
+test('planos · la finca: escala y cotas del SVG, y sus curvas de nivel se ajustan con el teclado (0815)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await login(page);
+  const altura1 = (await api.app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1' and deleted_at is null`)).rows[0]!.id;
+  const FINCA = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" data-meters-per-unit="1">
+    <path data-name="Parcela" d="M10 10 L390 10 L390 290 L10 290 Z"/>
+    <path data-contour="Altura 1" d="M10 250 L200 240 L390 250"/>
+    <path data-contour="Altura 2" d="M10 200 C100 180 300 180 390 200"/>
+    <path data-contour="Altura 3" d="M10 150 C100 130 300 130 390 150"/>
+    <path data-contour="Altura 4" d="M10 100 c90 -20 290 -20 380 0"/>
+    <path data-contour="Altura 5" d="M10 50 C100 30 300 30 390 50"/>
+  </svg>`;
+  const alturas = (await api.app.t.db.query<{ id: string; name: string }>(`select id, name from resources.spaces where kind = 'altura' and deleted_at is null order by name`)).rows;
+  const idOf = (n: number) => alturas.find((a) => a.name === `Altura ${n}`)!.id;
+  await page.goto(`${baseURL}/#/entidad/planos`);
+  await page.locator('#newPlan').click();
+  await page.locator('#planKind').selectOption('estate');
+  await page.locator('#planBuilding').selectOption(ids.finca);
+  await page.locator('#planFile').setInputFiles({ name: 'finca.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(FINCA) });
+  await page.locator('#planSubmit').click();
+  const estate = async () => (await api.app.t.db.query<{ id: string; k: string; g: unknown; c: Array<{ spaceId: string; x: number; y: number; points?: number[][] }> | null }>(
+    `select id, kind as k, grid as g, contours as c from resources.floor_plans where building_id = $1 and deleted_at is null`, [ids.finca])).rows[0] ?? null;
+  await expect.poll(async () => (await estate())?.k ?? null).toBe('estate');
+  const first = (await estate())!;
+  expect(first.g).toEqual({ metersPerUnit: 1, originX: 0, originY: 0 });
+  // La cota de cada altura, en el punto medio de su curva; las Bézier (absolutas o relativas), por su punto medio y no por los de control.
+  expect(first.c).toEqual([
+    { spaceId: altura1, x: 0.5, y: 0.8 }, { spaceId: idOf(2), x: 0.5, y: 0.6167 }, { spaceId: idOf(3), x: 0.5, y: 0.45 },
+    { spaceId: idOf(4), x: 0.5, y: 0.2833 }, { spaceId: idOf(5), x: 0.5, y: 0.1167 },
+  ]);
+  // En «Colocar», las cinco curvas con tres asas cada una y su nombre con la cota.
+  await expect(page.locator('#placeEditor [data-contour-point]')).toHaveCount(15);
+  await expect(page.locator('#placeEditor [data-contour-label]')).toHaveCount(5);
+  await expect(page.locator(`#placeEditor [data-contour-label="${idOf(2)}"]`)).toHaveText('Altura 2 · sin cota');
+
+  // «Colocar» de la finca: la curva con sus puntos; con el teclado, el del medio baja y se guarda la curva entera.
+  const mid = page.locator(`#placeEditor [data-contour-point="${altura1}:1"]`);
+  await expect(mid).toBeVisible();
+  await mid.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(async () => (await estate())?.c?.[0]?.points ?? null).toEqual([[0.025, 0.8333], [0.5, 0.805], [0.975, 0.8333]]);
+  await expect(page.locator('.ikisai-toast')).toContainText('Curva de «Altura 1» ajustada.');
+  // «Deshacer» la devuelve como estaba (sin puntos: la del SVG).
+  await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+  await expect.poll(async () => (await estate())?.c?.[0]?.points ?? null).toBeNull();
+});
+

@@ -25,6 +25,9 @@
  *     tamaño, escala, poner, arrastrar, girar y quitar; cada cambio con «Deshacer»), más el catálogo de iconos, la escala
  *     del dibujo y, en la finca, la cota de cada altura;
  *   - **Imágenes del centro:** siluetas, secciones y fotos de cada edificio, que leen Guests y Organizers.
+ *   - **Curvas de nivel editables** (Recursos 0815): en «Colocar» de la finca, cada curva con sus puntos como asas; se
+ *     arrastran (o con el teclado, flechas) y se guardan en `contours[i].points` con «Deshacer». Sin puntos guardados, la
+ *     curva sale del SVG (`data-contour`).
  */
 import {
   bindOnline, confirmDialog, createSpaceMap, createSyncSpaceSource, el, icon, indexSpaces, openSheet, renderOfflineReason, replace, shapeCenter, spacePath,
@@ -36,7 +39,7 @@ import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
 import {
-  DECOR_ICONS, IMAGE_KIND_LABELS, IMAGE_KINDS, contoursFromBands, contoursFromCurves, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
+  DECOR_ICONS, HEADER_APPS, HEADER_APP_LABELS, IMAGE_KIND_LABELS, headerOf, headerOperations, type HeaderApp, IMAGE_KINDS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
   type DecorRow, type ImageKind,
 } from '../app/decor.ts';
 import { activeContent, cleanSvg, foldName, generatedName, matchShapes, readSvgPlan } from '../app/svg-plan.ts';
@@ -50,7 +53,13 @@ const IMAGES = R.spaceImages as TableName;
 const ICON_ACCEPT = 'image/svg+xml,image/png,image/gif';
 type PlanRow = { id: string; revision: number; kind?: string | null; grid?: unknown; contours?: unknown; deleted_at?: string | null };
 type IconRow = { id: string; revision: number; name: string; category: string; file_id: unknown; default_size: number; deleted_at?: string | null };
-type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; deleted_at?: string | null };
+/** Ids literales del selector de cabecera de cada app (así entran en el catálogo y en el inventario de campos). */
+const HEADER_MARKS: Record<HeaderApp, { label: Record<string, string>; select: Record<string, string> }> = {
+  central: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.central', 'data-feedback-label': 'Cabecera de Central' }, select: { 'data-field-id': 'central.planos.header_central' } },
+  guests: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.guests', 'data-feedback-label': 'Cabecera de Guests' }, select: { 'data-field-id': 'central.planos.header_guests' } },
+  organizers: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.organizers', 'data-feedback-label': 'Cabecera de Organizers' }, select: { 'data-field-id': 'central.planos.header_organizers' } },
+};
+type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; header_for?: string[] | null; deleted_at?: string | null };
 const WIDE = '(min-width: 900px)';
 /** Lo que no se coloca: lo que contiene estancias (alturas, edificios y exteriores). */
 const CONTAINERS = new Set(['altura', 'edificio', 'exterior']);
@@ -132,6 +141,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   let tab: 'estancias' | 'decoracion' = 'estancias';
   let decorMap: SpaceMap | null = null;
   let decorScale: GridScale = 1;
+  /** Curvas de nivel leídas del SVG de cada finca (por plano), para cuando aún no se han ajustado a mano. */
+  const svgCurves = new Map<string, Array<{ spaceId: string; name: string; points: Array<[number, number]>; anchor: [number, number] }>>();
 
   const viewerHost = el('div', { id: 'plansMap' });
   const imagesHost = el('section', { id: 'centerImages', 'aria-label': 'Imágenes del centro', 'data-feedback-id': 'central.planos.imagenes', 'data-feedback-label': 'Imágenes del centro' });
@@ -430,6 +441,118 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
   const unmatchedText = (names: string[]) => `Sin estancia con ese nombre: ${names.slice(0, UNMATCHED_SHOWN).map((n) => `«${n}»`).join(', ')}${names.length > UNMATCHED_SHOWN ? ` y +${names.length - UNMATCHED_SHOWN} más` : ''}.`;
 
+  // --- Curvas de nivel de la finca (editables) ------------------------------------------------------------------------
+  /** Las curvas de cada altura: los puntos ajustados a mano (`points`) o, si no los hay, los del SVG. */
+  function curvesOf(plan: FloorPlan): Array<{ spaceId: string; name: string; points: Array<[number, number]>; anchor: [number, number] }> {
+    const raw = planRow(plan.id)?.contours;
+    const fromSvg = svgCurves.get(plan.id) ?? [];
+    const saved = Array.isArray(raw) ? raw as Array<{ spaceId: string; x: number; y: number; points?: Array<[number, number]> }> : [];
+    const ids = [...new Set([...saved.map((c) => c.spaceId), ...fromSvg.map((c) => c.spaceId)])];
+    return ids.flatMap((id) => {
+      const a = rows.find((x) => x.id === id);
+      const own = saved.find((c) => c.spaceId === id);
+      const svg = fromSvg.find((c) => c.spaceId === id);
+      const points = own?.points && own.points.length >= 2 ? own.points : svg?.points ?? [];
+      return a && points.length >= 2 ? [{ spaceId: id, name: a.name, points, anchor: [own?.x ?? svg?.anchor[0] ?? 0.02, own?.y ?? svg?.anchor[1] ?? 0.5] as [number, number] }] : [];
+    });
+  }
+  /** Lee una vez las curvas del SVG de la finca (para enseñarlas antes de ajustarlas). */
+  async function loadSvgCurves(plan: FloorPlan): Promise<void> {
+    if (svgCurves.has(plan.id) || !isEstate(plan) || typeof plan.fileId !== 'string') return;
+    svgCurves.set(plan.id, []);
+    try {
+      const local = localUrls.get(plan.id);
+      const text = await (await fetch(local ?? await r.fileUrl(plan.fileId))).text();
+      const meta = estateMeta(text);
+      const alturas = rows.filter((x) => x.kind === 'altura');
+      const anchors = contoursFromCurves(meta.contours, alturas);
+      svgCurves.set(plan.id, meta.contours.flatMap((c) => {
+        const at = anchors.find((x) => alturas.find((a) => a.id === x.spaceId && (c.name === a.name || c.name.startsWith(`${a.name} `))));
+        return at ? [{ spaceId: at.spaceId, name: c.name, points: c.points, anchor: [at.x, at.y] as [number, number] }] : [];
+      }));
+      if (alive && editing === plan.id) paintEditor();
+    } catch { svgCurves.delete(plan.id); }
+  }
+  /** Guarda la curva de una altura con sus puntos nuevos, y «Deshacer» devuelve todas las curvas como estaban. */
+  async function saveCurve(plan: FloorPlan, spaceId: string, points: Array<[number, number]>, anchor: [number, number], name: string): Promise<void> {
+    try {
+      const current = await r.get(PLANS, plan.id);
+      const before = (current as Record<string, unknown> | null)?.contours ?? null;
+      await r.commit([{ op: 'update', table: PLANS, id: plan.id, expectedRevision: Number(current?.revision ?? 0), fields: { contours: withContourPoints(before, spaceId, points, anchor) } }]);
+      toastWithAction(`Curva de «${name}» ajustada.`, { label: 'Deshacer', onClick: () => void (async () => {
+        try { const now = await r.get(PLANS, plan.id); await r.commit([{ op: 'update', table: PLANS, id: plan.id, expectedRevision: Number(now?.revision ?? 0), fields: { contours: before } }]); }
+        catch (e) { toast(describeError(e)); }
+      })() });
+    } catch (e) { toast(describeError(e)); paintEditor(); }
+  }
+  /** Pinta las curvas de la finca en el SVG de «Colocar», con un asa por punto (ratón y teclado). */
+  function drawCurves(svg: SVGSVGElement, plan: FloorPlan): SVGElement[] {
+    const NS = 'http://www.w3.org/2000/svg';
+    const w = plan.width; const h = plan.height;
+    const out: SVGElement[] = [];
+    const r0 = Math.max(w, h) * 0.008;
+    for (const c of curvesOf(plan)) {
+      const line = document.createElementNS(NS, 'polyline');
+      const attr = (pts: Array<[number, number]>) => pts.map(([x, y]) => `${(x * w).toFixed(1)},${(y * h).toFixed(1)}`).join(' ');
+      line.setAttribute('points', attr(c.points));
+      line.setAttribute('class', 'ctl-contour');
+      line.setAttribute('data-contour-for', c.spaceId);
+      line.setAttribute('aria-hidden', 'true');
+      out.push(line);
+      // El nombre de la altura y su cota (o «sin cota»), en el ancla de la curva.
+      const a = rows.find((x) => x.id === c.spaceId);
+      const m = a ? elevationOf(a) : null;
+      const label = document.createElementNS(NS, 'text');
+      label.setAttribute('x', String(c.anchor[0] * w)); label.setAttribute('y', String(c.anchor[1] * h - r0 * 1.6));
+      label.setAttribute('class', 'ctl-contourlabel');
+      label.setAttribute('data-contour-label', c.spaceId);
+      label.setAttribute('font-size', String(Math.max(w, h) * 0.022));
+      label.textContent = `${c.name} · ${m === null ? 'sin cota' : `${String(m).replace('.', ',')} m`}`;
+      out.push(label);
+      let pts = c.points.map(([x, y]) => [x, y] as [number, number]);
+      pts.forEach((pt, i) => {
+        const dot = document.createElementNS(NS, 'circle');
+        dot.setAttribute('cx', String(pt[0] * w)); dot.setAttribute('cy', String(pt[1] * h)); dot.setAttribute('r', String(r0));
+        dot.setAttribute('class', 'ctl-contourpt');
+        dot.setAttribute('tabindex', '0');
+        dot.setAttribute('role', 'button');
+        dot.setAttribute('data-contour-point', `${c.spaceId}:${i}`);
+        dot.setAttribute('aria-label', `Punto ${i + 1} de ${pts.length} de la curva de ${c.name}: con las flechas se mueve`);
+        dot.addEventListener('keydown', (e) => {
+          const step = e.altKey ? 0.001 : 0.005;
+          const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key] as [number, number] | undefined;
+          if (!d) return;
+          e.preventDefault();
+          pts = movePoint(pts, i, d[0], d[1]);
+          dot.setAttribute('cx', String(pts[i]![0] * w)); dot.setAttribute('cy', String(pts[i]![1] * h));
+          line.setAttribute('points', attr(pts));
+          void saveCurve(plan, c.spaceId, pts, c.anchor, c.name);
+        });
+        dot.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          const box = svg.getBoundingClientRect();
+          const start = pts.map(([x, y]) => [x, y] as [number, number]);
+          const x0 = e.clientX; const y0 = e.clientY;
+          dot.setPointerCapture?.(e.pointerId);
+          const move = (ev: PointerEvent) => {
+            pts = movePoint(start, i, (ev.clientX - x0) / box.width, (ev.clientY - y0) / box.height);
+            dot.setAttribute('cx', String(pts[i]![0] * w)); dot.setAttribute('cy', String(pts[i]![1] * h));
+            line.setAttribute('points', attr(pts));
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            if (pts.some(([x, y], n) => x !== start[n]![0] || y !== start[n]![1])) void saveCurve(plan, c.spaceId, pts, c.anchor, c.name);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+        });
+        out.push(dot);
+      });
+    }
+    return out;
+  }
+
   // --- Colocar a mano ---------------------------------------------------------------------------------------------
   let selected: string | null = null;
   function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
@@ -509,6 +632,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     }
     // Los rótulos, encima de todas las formas (el de una habitación no queda bajo sus camas), y las esquinas para estirar,
     // encima de todo: si no, la estancia de al lado las tapaba.
+    if (isEstate(plan)) { void loadSvgCurves(plan); svg.append(...drawCurves(svg, plan)); }
     svg.append(...labels, ...handles);
     const review = toReview(plan);
     const current = selected ? rows.find((s) => s.id === selected) ?? null : null;
@@ -518,7 +642,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       el('div', { class: 'blockhead' }, el('h3', null, `Colocar · ${planName(plan)}`),
         el('button', { type: 'button', class: 'linkbtn', id: 'closePlace', 'data-feedback-id': 'central.planos.colocar.cerrar', 'data-feedback-label': 'Cerrar Colocar', onclick: () => closeEditor() }, 'Cerrar')),
       tabBar(plan),
-      el('p', { class: 'hint' }, 'Arrastra una estancia para moverla y sus esquinas para estirarla; sus camas la acompañan. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.'),
+      el('p', { class: 'hint' }, isEstate(plan) ? 'Arrastra un edificio para moverlo y sus esquinas para estirarlo. Las curvas de nivel se ajustan arrastrando sus puntos (o con Tab y las flechas). Se guarda solo.'
+        : 'Arrastra una estancia para moverla y sus esquinas para estirarla; sus camas la acompañan. Con el teclado: Tab hasta la estancia, las flechas la mueven y, con Mayúsculas, la estiran. Se guarda solo.'),
       el('div', { class: 'ctl-place' },
         el('div', { class: 'ctl-placestage' }, svg),
         el('div', { class: 'ctl-placeside' },
@@ -710,9 +835,24 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const add = owner ? el('button', { type: 'button', class: 'primary', id: 'newCenterImage', 'data-feedback-id': 'central.planos.imagenes.subir', 'data-feedback-label': 'Subir una imagen del centro', onclick: () => openImageUpload(null) }, icon('upload', 16), 'Subir una imagen') : null;
     if (add) imageBinds.push(bindOnline(add, { client: r, reason: 'Las imágenes se suben con conexión.' }));
     const byBuilding = buildings.filter((b) => live.some((i) => i.space_id === b.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    // Silueta de cabecera de cada app (Recursos 0816): una por app, elegida entre las siluetas subidas.
+    const siluetas = live.filter((i) => i.kind === 'silueta').map((i) => ({ i, b: buildings.find((x) => x.id === i.space_id) }))
+      .sort((x, y) => (x.b?.name ?? '').localeCompare(y.b?.name ?? '', 'es') || x.i.position - y.i.position);
+    const headers = siluetas.length ? el('div', { id: 'headerPicks', class: 'ctl-headerpicks', 'data-feedback-id': 'central.planos.imagenes.cabecera', 'data-feedback-label': 'Silueta de cabecera de cada app' },
+      el('h4', { class: 'sectionlabel' }, 'Silueta de cabecera'),
+      el('p', { class: 'hint' }, 'La que sale arriba en cada app.'),
+      ...HEADER_APPS.map((app) => {
+        const current = headerOf(live, app);
+        const sel = el('select', { id: `header-${app}`, ...HEADER_MARKS[app].select, disabled: !owner },
+          el('option', { value: '' }, 'Ninguna'),
+          ...siluetas.map(({ i, b }) => el('option', { value: i.id, selected: i.id === current }, `${b?.name ?? 'Sin edificio'} · ${i.title}`))) as HTMLSelectElement;
+        sel.addEventListener('change', () => void setHeader(app, sel.value || null));
+        return el('label', { class: 'field', ...HEADER_MARKS[app].label }, el('span', null, HEADER_APP_LABELS[app]), sel);
+      })) : null;
     replace(imagesHost,
       el('div', { class: 'blockhead' }, el('h3', null, 'Imágenes del centro'), add),
       el('p', { class: 'hint' }, 'Siluetas, secciones y fotos de cada edificio: salen de cabecera en los portales de huéspedes y de quien organiza, y en la ficha del edificio.'),
+      headers,
       byBuilding.length ? el('div', { id: 'centerImageList' }, ...byBuilding.map((b) => el('section', { class: 'card', dataset: { space: b.id } },
         el('div', { class: 'blockhead' }, el('h4', null, b.name),
           owner ? el('button', { type: 'button', class: 'ghost small', 'aria-label': `Subir una imagen de ${b.name}`, 'data-feedback-id': 'central.planos.imagenes.subir_edificio', 'data-feedback-label': 'Subir una imagen del edificio', onclick: () => openImageUpload(b.id) }, icon('plus', 16), 'Añadir') : null),
@@ -721,6 +861,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
           return el('li', { dataset: { image: i.id } },
             url ? el('img', { src: url, alt: `${IMAGE_KIND_LABELS[i.kind as ImageKind] ?? i.kind} de ${b.name}: ${i.title}`, loading: 'lazy' }) : el('span', { class: 'muted small' }, 'Cargando…'),
             el('span', { class: 'small' }, el('strong', null, i.title), ` · ${IMAGE_KIND_LABELS[i.kind as ImageKind] ?? i.kind}`),
+            i.header_for?.length ? el('span', { class: 'chip', dataset: { headerFor: i.header_for.join(' ') } }, `Cabecera de ${i.header_for.map((a) => HEADER_APP_LABELS[a as HeaderApp] ?? a).join(', ')}`) : null,
             owner ? el('button', { type: 'button', class: 'ghost small', 'aria-label': `Quitar «${i.title}»`, 'data-feedback-id': 'central.planos.imagenes.quitar', 'data-feedback-label': 'Quitar la imagen', onclick: () => void removeImage(i) }, icon('trash', 16), 'Quitar') : null);
         }))))) : el('p', { class: 'hint', id: 'centerImagesEmpty' }, owner ? 'Aún no hay imágenes. Sube las siluetas y secciones de cada edificio.' : 'Aún no hay imágenes de los edificios.'));
   }
@@ -767,6 +908,21 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       foot: [submit],
       onClose: () => unbind(),
     });
+  }
+
+  /** Cambia la silueta de cabecera de una app en un solo lote, con «Deshacer». */
+  async function setHeader(app: HeaderApp, imageId: string | null): Promise<void> {
+    const before = headerOf(images, app);
+    const ops = headerOperations(images, app, imageId);
+    if (!ops.length) return;
+    try {
+      await r.commit(ops);
+      const label = HEADER_APP_LABELS[app];
+      toastWithAction(imageId ? `Cabecera de ${label} cambiada.` : `${label} se queda sin silueta de cabecera.`, { label: 'Deshacer', onClick: () => void (async () => {
+        try { const now = (await r.list(IMAGES)) as unknown as ImageRow[]; const back = headerOperations(now, app, before); if (back.length) await r.commit(back); }
+        catch (e) { toast(describeError(e)); }
+      })() });
+    } catch (e) { toast(describeError(e)); paintImages(); }
   }
 
   async function removeImage(i: ImageRow): Promise<void> {

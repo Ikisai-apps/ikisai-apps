@@ -1,7 +1,7 @@
 /** Central · finca y decoración (encargo de VG del 27-10): reglas puras de `apps/central/src/app/decor.ts`. Datos ficticios. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DECOR_ITEMS, contoursFromBands, contoursFromCurves, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
+import { DECOR_ITEMS, SPACE_IMAGES, headerOf, headerOperations, contoursFromBands, contoursFromCurves, movePoint, pathPoints, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem, type DecorChange, type DecorRow } from '../../apps/central/src/app/decor.ts';
 
 test('finca · escala, origen y alturas del SVG; sin escala, se pide al subir', () => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" data-meters-per-unit="0.25" data-origin-x="10" data-origin-y="20">
@@ -105,4 +105,42 @@ test('finca · curvas de nivel data-contour: puntos relativos y la etiqueta en s
   assert.deepEqual(meta.contours.map((c) => [c.name, c.points.length, c.anchor]), [['Altura 1', 5, [0.5, 0.875]], ['Altura 2', 2, [0.5, 0.575]]]);
   assert.deepEqual(meta.bands, []);
   assert.deepEqual(contoursFromCurves(meta.contours, [{ id: 'a1', name: 'Altura 1' }, { id: 'a2', name: 'Altura 2' }]), [{ spaceId: 'a1', x: 0.5, y: 0.875 }, { spaceId: 'a2', x: 0.5, y: 0.575 }]);
+});
+
+test('curvas editables · cambiar los puntos de una altura sin tocar las demás; mover un punto sin salirse', () => {
+  const raw = [{ spaceId: 'a1', x: 0.5, y: 0.8 }, { spaceId: 'a2', x: 0.5, y: 0.6, points: [[0, 0.6], [1, 0.6]] }];
+  const next = withContourPoints(raw, 'a1', [[0, 0.81234], [0.5, 0.79], [1, 0.8]], [0.5, 0.8]);
+  assert.deepEqual(next, [{ spaceId: 'a1', x: 0.5, y: 0.8, points: [[0, 0.8123], [0.5, 0.79], [1, 0.8]] }, raw[1]]);
+  assert.deepEqual(raw[0], { spaceId: 'a1', x: 0.5, y: 0.8 }, 'no toca la lista de antes');
+  assert.deepEqual(withContourPoints(null, 'a3', [[0, 0.1], [1, 0.2]], [0.5, 0.15]), [{ spaceId: 'a3', x: 0.5, y: 0.15, points: [[0, 0.1], [1, 0.2]] }]);
+  assert.deepEqual(movePoint([[0.1, 0.1], [0.98, 0.5]], 1, 0.05, -0.6), [[0.1, 0.1], [1, 0]]);
+});
+
+test('curvas Bézier · de cada curva, su punto medio y su final (no los de control); absolutas y relativas', () => {
+  assert.deepEqual(pathPoints('M0 0 C0 10 10 10 10 0 s 10 -10 10 0 Q 25 10 30 0 h5 v5 z'), [[0, 0], [5, 7.5], [10, 0], [15, -7.5], [20, 0], [25, 5], [30, 0], [35, 0], [35, 5]]);
+  assert.deepEqual(pathPoints('M10 20 L30 40 50 60'), [[10, 20], [30, 40], [50, 60]], 'las coordenadas seguidas tras M o L son rectas');
+  const meta = estateMeta(`<svg viewBox="0 0 400 300" data-meters-per-unit="1">
+    <path data-contour="Altura 2" d="M10 200 C100 180 300 180 390 200"/>
+    <path data-contour="Altura 4" d="M10 100 c90 -20 290 -20 380 0"/>
+  </svg>`);
+  assert.deepEqual(meta.contours.map((c) => [c.name, c.points.length, c.anchor]), [['Altura 2', 3, [0.5, 0.6167]], ['Altura 4', 3, [0.5, 0.2833]]]);
+});
+
+test('silueta de cabecera · una por app: el lote quita la app de la anterior y se la pone a la nueva (Recursos 0816)', () => {
+  const images = [
+    { id: 's1', revision: 2, kind: 'silueta', header_for: ['guests', 'central'] },
+    { id: 's2', revision: 5, kind: 'silueta', header_for: [] },
+    { id: 'f1', revision: 1, kind: 'foto', header_for: [] },
+    { id: 'old', revision: 1, kind: 'silueta', header_for: ['organizers'], deleted_at: '2026-10-27T00:00:00Z' },
+  ];
+  assert.equal(headerOf(images, 'guests'), 's1');
+  assert.equal(headerOf(images, 'organizers'), null, 'la borrada no cuenta');
+  assert.deepEqual(headerOperations(images, 'guests', 's2'), [
+    { op: 'update', table: SPACE_IMAGES, id: 's1', expectedRevision: 2, fields: { header_for: ['central'] } },
+    { op: 'update', table: SPACE_IMAGES, id: 's2', expectedRevision: 5, fields: { header_for: ['guests'] } },
+  ]);
+  assert.deepEqual(headerOperations(images, 'organizers', 's1'), [{ op: 'update', table: SPACE_IMAGES, id: 's1', expectedRevision: 2, fields: { header_for: ['guests', 'central', 'organizers'] } }]);
+  assert.deepEqual(headerOperations(images, 'central', null), [{ op: 'update', table: SPACE_IMAGES, id: 's1', expectedRevision: 2, fields: { header_for: ['guests'] } }]);
+  assert.deepEqual(headerOperations(images, 'guests', 's1'), [], 'si ya lo es, nada');
+  assert.deepEqual(headerOperations(images, 'guests', 'f1').map((o) => (o as { id: string }).id), ['s1'], 'una foto no puede ser cabecera: solo se quita la anterior');
 });

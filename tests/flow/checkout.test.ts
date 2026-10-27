@@ -82,6 +82,8 @@ test('caja · «Enviar a Finance» manda ese cobro como fiscal; el cierre (proce
   const args = sent.at(-1).operations[0].args;
   assert.equal(args.nature, 'fiscal'); assert.equal(args.source_ref, `flow:receipt:${receipt.id}`);
   assert.equal(args.amount_cents, receipt.total_cents); assert.deepEqual(args.methods, { bitcoin: receipt.total_cents });
+  const seqs = (await rows(TABLES.orders)).filter((o) => receipt.order_ids.includes(o.id)).map((o) => o.pay_seq).sort((x: number, y: number) => x - y);
+  assert.equal(args.receipt_kind, 'ticket'); assert.equal(args.receipt_number, seqs.join('+')); assert.equal(seqs.length, 2);
   assert.equal(args.detail.reduce((s: number, d: any) => s + d.amount_cents, 0), receipt.total_cents);
   // El estado lo anotó flow-api (servidor); el cliente no puede tocarlo.
   const marked = (await rows(TABLES.receipts)).find((r) => r.id === receipt.id);

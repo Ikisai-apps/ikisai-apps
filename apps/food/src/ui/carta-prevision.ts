@@ -11,7 +11,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
   CARTA_SCOPE_LABELS, STATION_LABELS, cartaAttendance, distributeUnits, cartaLinesInOrder, formatAmount, perPersonFromUnits, prepSplitOf, prepSplitProblem, unitsFromPerPerson, validateOperations,
-  purchaseFromPrep, UNITS, type CartaLine, type CartaPrepTotal, type Ingredient, type Menu, type Recipe, type RecipeIngredient, type ResourceItem, type Unit,
+  prepMissingLabel, purchaseFromPrep, UNITS, type CartaLine, type CartaPrepTotal, type Ingredient, type Menu, type Recipe, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { el, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
@@ -167,6 +167,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const list = ingredients.filter((g) => counted.has(g.id) && !g.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es'));
     if (!list.length) { replace(yieldHost); yieldHost.hidden = true; return; }
     yieldHost.hidden = false;
+    // Lo que se compra por piezas (el pan) no necesita rendimiento: 1 pan = 1 pan (1116).
+    const byPiece = (g: Mirror<Ingredient>) => ['ud', 'uds', 'unidad'].includes(String((g.item_id ? items.get(g.item_id)?.base_unit : '') ?? '').trim().toLowerCase());
     const row = (g: Mirror<Ingredient>) => {
       const purchase = el('select', { 'data-feedback-id': 'food.carta.prevision.rendimiento_compra', 'data-feedback-label': 'Unidad de compra', id: `yield-purchase-${g.id}`,
         'aria-label': `Cómo se compra ${g.name}`, disabled: !canWrite },
@@ -184,7 +186,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
           const fields = { purchase_unit: purchase.value as Unit, prep_unit: unit, yield: n };
           if (await usage.run('food.carta.prevision.rendimiento', () => commit(client, [{ op: 'update', table: T.ingredients, id: g.id, expectedRevision: g.revision, fields }]))) toast(`${g.name}: rendimiento guardado.`);
         } }, 'Guardar');
-      return el('li', { class: 'carta-yieldrow' }, el('strong', null, g.name),
+      return el('li', { class: 'carta-yieldrow', id: `yield-row-${g.id}` }, el('strong', null, g.name),
+        (g.yield === null || g.yield === undefined) && !byPiece(g) ? el('span', { class: 'chip warn', id: `yield-missing-${g.id}` }, 'Falta') : null,
         el('span', { class: 'carta-yieldeq' }, '1', purchase, '=', amount, prep), canWrite ? save : null);
     };
     replace(yieldHost,
@@ -267,7 +270,9 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const ingredients = totals.filter((t) => t.station !== null || t.mesa !== null).sort((a, b) => (a.station ?? 9) - (b.station ?? 9) || a.name.localeCompare(b.name, 'es'));
     const extras = totals.filter((t) => !ingredients.includes(t)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
     const amount = (t: CartaPrepTotal, v: number | string | null) => (t.convertible ? formatAmount(v, t.unit) : '—');
-    const missing = totals.filter((t) => !t.convertible);
+    // Sin rendimiento va aparte: se arregla aquí mismo, en «Rendimiento de los ingredientes» (y Flow cuenta mal los recipientes).
+    const noYield = totals.filter((t) => t.missing === 'rendimiento' || (t.convertible && t.yield_missing));
+    const missing = totals.filter((t) => !t.convertible && t.missing !== 'rendimiento');
     replace(planHost, head,
       el('p', { class: 'muted' }, 'Con las unidades esperadas y el reparto. Cantidades en la unidad del inventario.'),
       ingredients.length ? el('table', { class: 'carta-plan', id: 'trayTable' },
@@ -275,11 +280,17 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         el('tbody', null, ...ingredients.map((t) => el('tr', { class: t.convertible ? '' : 'carta-missing' },
           el('th', { scope: 'row' }, t.name),
           el('td', null, t.station ? `${t.station} · ${STATION_LABELS[t.station] ?? ''}` : '—'),
-          el('td', null, t.convertible ? formatAmount(t.need_total, t.unit) : 'falta la conversión',
+          el('td', null, t.convertible ? formatAmount(t.need_total, t.unit) : prepMissingLabel(t),
+            t.convertible && t.yield_missing ? el('small', { class: 'muted carta-buy' }, ' · sin rendimiento: piezas enteras') : null,
             purchaseFromPrep(t.prep_need_total, t.yield) !== null && t.prep_unit ? el('small', { class: 'muted carta-buy' }, ` · ${Number(t.prep_need_total).toLocaleString('es-ES')} ${t.prep_unit} = comprar ${purchaseFromPrep(t.prep_need_total, t.yield)} ${t.purchase_unit ?? 'unidad'}`) : null),
           el('td', null, amount(t, t.mesa)), el('td', null, amount(t, t.nevera)), el('td', null, amount(t, t.fresco)))))) : el('p', { class: 'muted' }, 'Sin unidades esperadas todavía.'),
       extras.length ? el('div', null, el('div', { class: 'sectionlabel' }, 'Bebidas y extras'),
-        el('ul', { class: 'plainlist' }, ...extras.map((t) => el('li', null, el('strong', null, t.name), ': ', t.convertible ? formatAmount(t.need_total, t.unit) : 'falta la conversión')))) : null,
+        el('ul', { class: 'plainlist' }, ...extras.map((t) => el('li', null, el('strong', null, t.name), ': ', t.convertible ? formatAmount(t.need_total, t.unit) : prepMissingLabel(t))))) : null,
+      noYield.length ? el('div', { class: 'banner warn notice', role: 'note', id: 'trayNoYield' },
+        el('div', null, el('strong', null, `Falta el rendimiento: ${noYield.map((t) => t.name).join(', ')}.`),
+          ' Las recetas los cuentan en piezas. Di cuántas salen de una de compra (1 tomate = 8 rodajas); sin eso, Flow no sabe cuántos recipientes salen y la compra cuenta piezas enteras.'),
+        yieldHost.hidden ? null : el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.carta.prevision.ir_rendimiento', 'data-feedback-label': 'Ir al rendimiento', class: 'ghost', type: 'button',
+          onclick: () => yieldHost.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Ir al rendimiento'))) : null,
       missing.length ? el('div', { class: 'banner warn notice', role: 'note', id: 'trayMissing' },
         el('div', null, el('strong', null, missing.length === 1 ? '1 ingrediente sin conversión.' : `${missing.length} ingredientes sin conversión.`),
           ' No se inventa: añade en su ficha cuánto pesa (o mide) una unidad o una rodaja. Hasta entonces no suma en el plan ni en la lista de la compra.'),

@@ -105,6 +105,11 @@
 
 - 2026-10-28 · **Finca y decoración en el portal** (API.md §9.16): la finca con sus alturas y cotas, la decoración general, las camas con su icono y la bajada de la finca al edificio; sin decoración al elegir cama.
 
+- 2026-10-27 · «Ver en el plano» con los dibujos reales del Albergue y de Salas (`tests/guests/fixtures/planos`, trazados sin cotas ni datos del pliego): cada cama con el icono de su tipo (`bedKind` de Recursos 0816, que antes no llegaba al mapa) y prueba en el móvil (390 px) en `modules.spec.ts`.
+- 2026-10-27 · Nunca en blanco: donde el portal se quedaba vacío, una línea que dice por qué (`whyNote`): plano del centro sin publicar o sin poder leerse, tu cama aún sin colocar en el plano o sin asignar; en el visitante, eventos que ya no abren o sin red, ofertas o peticiones que no cargan, acceso caducado y renovado (se dice una vez) y demasiadas altas a la vez (`RATE_LIMITED`). Prueba en `visitantes.spec.ts`.
+
+- 2026-10-27 · Silueta de cabecera desde Central: bajo la portada del retiro, la silueta que Central marcó «Cabecera de: Guests» (`headerFor` de `resources.space_images`, Recursos 0816), decorativa, fundida con el papel (invertida en oscuro). Sin elegir, nada. Prueba en `modules.spec.ts`.
+
 ## Pendiente
 
 - «Mi pedido» de cada visitante: construido sobre FL2; en uso cuando Flow lo publique (hasta entonces, la carta pública).

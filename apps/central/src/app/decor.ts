@@ -13,6 +13,7 @@ import type { RowOperation, TableName } from '@ikisai/sync-client';
 
 export const DECOR_ICONS = 'resources.decor_icons' as TableName;
 export const DECOR_ITEMS = 'resources.decor_items' as TableName;
+export const SPACE_IMAGES = 'resources.space_images' as TableName;
 /** Escalas de celda, en metros: 5 m para exteriores; 1 m y 0,5 m para dentro. */
 export const DECOR_SCALES = [5, 1, 0.5] as const;
 export type DecorScale = typeof DECOR_SCALES[number];
@@ -38,19 +39,57 @@ const attr = (tag: string, name: string): string | null => {
 const num = (v: string | null): number | null => { const n = v === null ? NaN : Number(v); return Number.isFinite(n) ? n : null; };
 const round4 = (n: number) => Math.round(Math.min(1, Math.max(0, n)) * 10000) / 10000;
 
+/**
+ * Los puntos de un trazado SVG en unidades del dibujo: absolutos o relativos, rectas (M, L, H, V) y curvas (C, S, Q, T).
+ * De cada curva se queda su punto medio y su final, no los de control, para que la línea editable siga la curva.
+ */
+export function pathPoints(d: string): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  const tokens = d.match(/[a-z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? [];
+  let i = 0; let cmd = ''; let x = 0; let y = 0; let sx = 0; let sy = 0;
+  let cx: number | null = null; let cy: number | null = null; // último punto de control de una C o S, para reflejarlo en S
+  const isNum = () => i < tokens.length && !/^[a-z]$/i.test(tokens[i]!);
+  const n = () => Number(tokens[i++]);
+  while (i < tokens.length && out.length < 400) {
+    if (!isNum()) { cmd = tokens[i++]!; if (/z/i.test(cmd)) { x = sx; y = sy; cx = cy = null; } continue; }
+    if (!cmd) { i++; continue; }
+    const rel = cmd === cmd.toLowerCase(); const C = cmd.toUpperCase();
+    const ox = rel ? x : 0; const oy = rel ? y : 0;
+    if (C === 'C' || C === 'S') {
+      // Cúbica: su punto medio es (P0 + 3·P1 + 3·P2 + P3) / 8.
+      const [x1, y1] = C === 'C' ? [ox + n(), oy + n()] : cx === null || cy === null ? [x, y] : [2 * x - cx, 2 * y - cy];
+      const x2 = ox + n(); const y2 = oy + n(); const ex = ox + n(); const ey = oy + n();
+      out.push([(x + 3 * x1 + 3 * x2 + ex) / 8, (y + 3 * y1 + 3 * y2 + ey) / 8]);
+      cx = x2; cy = y2; x = ex; y = ey; out.push([x, y]);
+      continue;
+    }
+    cx = cy = null;
+    if (C === 'Q') {
+      // Cuadrática: su punto medio es (P0 + 2·P1 + P2) / 4.
+      const x1 = ox + n(); const y1 = oy + n(); const ex = ox + n(); const ey = oy + n();
+      out.push([(x + 2 * x1 + ex) / 4, (y + 2 * y1 + ey) / 4]);
+      x = ex; y = ey;
+    } else if (C === 'A') { for (let j = 0; j < 5; j++) n(); x = ox + n(); y = oy + n(); }
+    else if (C === 'H') x = ox + n();
+    else if (C === 'V') y = oy + n();
+    else if (C === 'M' || C === 'L' || C === 'T') { x = ox + n(); y = oy + n(); if (C === 'M') { sx = x; sy = y; cmd = rel ? 'l' : 'L'; } }
+    else { i++; continue; }
+    out.push([x, y]);
+  }
+  return out;
+}
+
 /** Escala, origen y alturas del SVG de la finca. Sin escala, `metersPerUnit: null` (se pide al subir). */
 export function estateMeta(svg: string): EstateMeta {
   const root = /<svg\b[^>]*>/i.exec(svg)?.[0] ?? '';
   const box = (attr(root, 'viewBox') ?? '').split(/[\s,]+/).filter(Boolean).map(Number);
   const [vy, vh] = box.length === 4 && box[3]! > 0 ? [box[1]!, box[3]!] : [0, num(attr(root, 'height')) ?? 0];
   const [vx, vw] = box.length === 4 && box[2]! > 0 ? [box[0]!, box[2]!] : [0, num(attr(root, 'width')) ?? 0];
-  // Curvas de nivel (convención de Core con UI-kit, 27-10): un trazado por altura, con coordenadas absolutas.
+  // Curvas de nivel (convención de Core con UI-kit, 27-10): un trazado por altura, con rectas o curvas Bézier.
   const contours: EstateContour[] = [];
   if (vh > 0 && vw > 0) {
     for (const m of svg.matchAll(/<path\b[^>]*\sdata-contour\s*=\s*(["'])([^"']+)\1[^>]*>/gi)) {
-      const coords = ((attr(m[0], 'd') ?? '').match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
-      const points: Array<[number, number]> = [];
-      for (let i = 0; i + 1 < coords.length; i += 2) points.push([round4((coords[i]! - vx) / vw), round4((coords[i + 1]! - vy) / vh)]);
+      const points = pathPoints(attr(m[0], 'd') ?? '').map(([x, y]): [number, number] => [round4((x - vx) / vw), round4((y - vy) / vh)]);
       if (points.length < 2) continue;
       // El ancla, en el punto medio de la curva: el del medio o, con un número par de puntos, entre los dos del medio.
       const n = points.length; const h = Math.floor(n / 2);
@@ -188,10 +227,56 @@ export type ImageKind = typeof IMAGE_KINDS[number];
 export const IMAGE_KIND_LABELS: Record<ImageKind, string> = { silueta: 'Silueta', seccion: 'Sección', foto: 'Foto' };
 export const IMAGE_MIME = ['image/png', 'image/jpeg', 'image/svg+xml'] as const;
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Las apps que llevan una silueta de cabecera (Recursos 0816: `space_images.header_for`), una imagen viva por app. */
+export const HEADER_APPS = ['central', 'guests', 'organizers'] as const;
+export type HeaderApp = typeof HEADER_APPS[number];
+export const HEADER_APP_LABELS: Record<HeaderApp, string> = { central: 'Central', guests: 'Guests', organizers: 'Organizers' };
+export type HeaderImage = { id: string; revision: number; kind: string; header_for?: readonly string[] | null; deleted_at?: string | null };
+/** La silueta que hace de cabecera de una app, o `null`. */
+export function headerOf(images: readonly HeaderImage[], app: HeaderApp): string | null {
+  return images.find((i) => !i.deleted_at && (i.header_for ?? []).includes(app))?.id ?? null;
+}
+/**
+ * El lote para que `imageId` (o ninguna, con `null`) sea la cabecera de `app`: primero se le quita la app a la de antes
+ * y luego se le pone a la nueva, que la regla de Recursos comprueba al final del lote. Sin cambios, lista vacía.
+ */
+export function headerOperations(images: readonly HeaderImage[], app: HeaderApp, imageId: string | null): RowOperation[] {
+  const live = images.filter((i) => !i.deleted_at);
+  const ops: RowOperation[] = [];
+  for (const i of live) {
+    const apps = [...(i.header_for ?? [])];
+    if (i.id !== imageId && apps.includes(app)) ops.push({ op: 'update', table: SPACE_IMAGES, id: i.id, expectedRevision: i.revision, fields: { header_for: apps.filter((a) => a !== app) } });
+  }
+  const target = imageId ? live.find((i) => i.id === imageId && i.kind === 'silueta') : null;
+  if (target && !(target.header_for ?? []).includes(app)) {
+    ops.push({ op: 'update', table: SPACE_IMAGES, id: target.id, expectedRevision: target.revision, fields: { header_for: [...(target.header_for ?? []), app] } });
+  }
+  return ops;
+}
+
 export function imageProblem(file: { type: string; size: number }, title: string): string | null {
   if (!title.trim()) return 'Ponle un título a la imagen.';
   if (title.trim().length > 120) return 'El título, como mucho 120 letras.';
   if (!(IMAGE_MIME as readonly string[]).includes(file.type)) return 'La imagen tiene que ser PNG, JPG o SVG.';
   if (file.size > IMAGE_MAX_BYTES) return 'La imagen no puede pasar de 5 MB.';
   return null;
+}
+
+/** Una entrada de `floor_plans.contours` (0814 y 0815): altura, ancla de la etiqueta y, si se ajustó, sus puntos. */
+export interface ContourEntry { spaceId: string; x: number; y: number; points?: Array<[number, number]> }
+
+/** Las curvas con la de `spaceId` ajustada (`points`, de 2 a 200, en 0..1). Si no tenía entrada, se añade con su ancla. */
+export function withContourPoints(raw: unknown, spaceId: string, points: ReadonlyArray<readonly [number, number]>, anchor: readonly [number, number]): ContourEntry[] {
+  const list: ContourEntry[] = Array.isArray(raw) ? (raw as ContourEntry[]).map((c) => ({ ...c })) : [];
+  const pts = points.slice(0, 200).map(([x, y]) => [round4(x), round4(y)] as [number, number]);
+  const at = list.findIndex((c) => c.spaceId === spaceId);
+  if (at >= 0) list[at] = { ...list[at]!, points: pts };
+  else list.push({ spaceId, x: round4(anchor[0]), y: round4(anchor[1]), points: pts });
+  return list;
+}
+
+/** Mueve el punto `i` de una curva sin salirse del dibujo (0..1). */
+export function movePoint(points: ReadonlyArray<readonly [number, number]>, i: number, dx: number, dy: number): Array<[number, number]> {
+  return points.map(([x, y], n) => (n === i ? [round4(x + dx), round4(y + dy)] : [x, y]) as [number, number]);
 }

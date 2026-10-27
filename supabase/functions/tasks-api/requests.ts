@@ -56,10 +56,43 @@ async function writeChildren(internal: ReturnType<typeof createSync>, ctx: Param
 }
 
 
-export function requestRoutes(supabase: Supabase): AppRoute[] {
+/**
+ * Fuentes de app (auditoría del 27-10-2026, FL2 y FO2): Flow y Food piden con el token de la persona, que conserva su rol y su
+ * ámbito. Pero la fuente solo es suya si la llamada viene de su servidor: la clave de worker (`X-Ikisai-Worker-Key`, la
+ * misma `IKISAI_WORKER_KEY` de todas las Edges) y la app en `X-Ikisai-Caller`. Un navegador no tiene la clave.
+ * - Con la prueba, la fuente tiene que coincidir con quien llama (422 si no).
+ * - Las de `APP_SOURCES_REQUIRED` ya no valen sin ella (403 `CALLER_REQUIRED`). Cada una se añade cuando su app manda la
+ *   prueba (Core avisa a Flow y Food); mientras, se aceptan como hasta ahora.
+ */
+export const APP_SOURCES: ReadonlySet<string> = new Set(['flow', 'food']);
+export const APP_SOURCES_REQUIRED: ReadonlySet<string> = new Set<string>([]);
+
+function sameSecret(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** La app de servidor que llama (`flow` | `food`) si trae la clave de worker y su nombre; si no, `null`. */
+export function serverCaller(request: Request, workerKey: string | undefined): string | null {
+  const key = request.headers.get('x-ikisai-worker-key');
+  const caller = (request.headers.get('x-ikisai-caller') ?? '').trim().toLowerCase();
+  if (!workerKey || !key || !sameSecret(key, workerKey) || !APP_SOURCES.has(caller)) return null;
+  return caller;
+}
+
+/** Comprueba la fuente de una petición de persona frente a quien llama (ver APP_SOURCES). */
+export function checkAppSource(source: string, caller: string | null, required: ReadonlySet<string> = APP_SOURCES_REQUIRED): void {
+  if (caller && caller !== source) fail(422, 'INVALID_INPUT', `La llamada viene de ${caller}: source tiene que ser ${caller}.`, { field: 'source' });
+  if (required.has(source) && caller !== source) fail(403, 'CALLER_REQUIRED', `${source} pide desde su servidor, con X-Ikisai-Caller y la clave de worker.`, { field: 'source' });
+}
+
+export function requestRoutes(supabase: Supabase, options: { workerKey?: string; requiredAppSources?: ReadonlySet<string> } = {}): AppRoute[] {
   const internal = createSync(supabase, 'tasks', {});
+  const appSource = (request: Request, source: string) => checkAppSource(source, serverCaller(request, options.workerKey), options.requiredAppSources);
   return [{
-    method: 'POST', pattern: 'requests/task', handler: async ({ ctx, json }) => {
+    method: 'POST', pattern: 'requests/task', handler: async ({ ctx, json, request }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir tareas necesita permiso de edición en Tasks.');
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
@@ -71,6 +104,10 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       };
       const source = text('source', 31, true)!;
       if (!SOURCE.test(source)) invalid('source', 'source es el id de la app que pide, en minúsculas (p. ej. central).');
+      // Las fuentes de sistema (Booking, Feedback, Core, Finance) solo entran por `worker/requests/task`, con su identidad de
+      // servicio: así nadie se adelanta a una de sus referencias (p. ej. `booking:RES…-MONTAJE`), que luego tomarían por suya.
+      if (Object.hasOwn(SYSTEM_SOURCES, source)) invalid('source', `${source} pide por worker/requests/task, no por esta ruta.`);
+      appSource(request, source);
       const reference = text('external_ref', 150, true)!.trim();
       const title = text('title', 500, true)!.trim();
       const note = text('note', 20000);
@@ -148,7 +185,7 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
      * Idempotente como `requests/task`: el id se deriva de `<source>:<external_ref>` y repetir devuelve la que ya hay. La
      * procedencia va en la nota («Pedida desde flow · <referencia>»): sin migración.
      */
-    method: 'POST', pattern: 'requests/purchase', handler: async ({ ctx, json }) => {
+    method: 'POST', pattern: 'requests/purchase', handler: async ({ ctx, json, request }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Pedir compras necesita permiso de edición en Tasks.');
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
@@ -160,6 +197,7 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       };
       const source = text('source', 31, true)!;
       if (!SOURCE.test(source)) invalid('source', 'source es el id de la app que pide, en minúsculas (p. ej. flow).');
+      appSource(request, source);
       const reference = text('external_ref', 150, true)!.trim();
       const title = text('title', 300, true)!.trim();
       const note = text('note', 4000);

@@ -994,7 +994,7 @@ Rol `editor` u `owner`, con alcance sobre el destino (las reglas de siempre del 
 
 | Campo | Obligatorio | Notas |
 |---|---|---|
-| `source` | sí | App que pide: `[a-z][a-z0-9_-]{1,30}`, por ejemplo `central`. Es un espacio de nombres para `external_ref`, no una credencial. |
+| `source` | sí | App que pide: `[a-z][a-z0-9_-]{1,30}`, por ejemplo `central`. Es un espacio de nombres para `external_ref`, no una credencial. Las fuentes de sistema (`booking`, `feedback`, `core` e `invoices`) no valen aquí (422 `INVALID_INPUT`, campo `source`): solo entran por `worker/requests/task` con su identidad de servicio, para que nadie se adelante a una de sus referencias (27-10-2026, pedido por Core). |
 | `external_ref` | sí | Referencia de la app que pide, de 1 a 150 caracteres. Por ejemplo, el id de la obligación de cumplimiento. |
 | `title` | sí | Hasta 500 caracteres. |
 | `note` | no | La «notes» de la petición. Hasta 20 000 caracteres. |
@@ -2122,7 +2122,7 @@ VG eligió «volver a específica», sin exclusiones por área. Es la vuelta de 
   - Si la madre no está abierta (hecha, descartada o en la papelera), las hijas no se tocan y llega `children: null`.
   - `children` también vale con los demás tipos de las fuentes de sistema. La madre, reenviada, toma el título y la nota nuevos mientras esté abierta.
 - **Quién puede** (migración `0347`): `tasks.request_children` comprueba por sí mismo, antes de tocar nada, que quien escribe es editor u owner y que tiene la madre en su ámbito (su área entera o, si está en un proyecto, ese proyecto). Si no, `FORBIDDEN` 403, también si se invoca directamente sin la Edge. Las identidades de servicio lo ven todo.
-- **Pruebas:** `tests/tasks/requests-children.test.ts` (también el caso denegado).
+- **Pruebas:** `tests/tasks/requests-children.test.ts`: también el caso denegado y el contrato con Booking (la petición que arma `montageRequest` de `_domain/booking/montage.ts`, una hija por objeto).
 
 ## 43. Lo que Tasks ofrece en el catálogo de capacidades (contrato §8, migración 0345; encargo de Core, 27-10-2026)
 
@@ -2162,3 +2162,14 @@ Es el hueco que Finance encontró en la cadena de compra de la barra: lo que se 
   - **En la ficha de una compra recibida:** «En Finance: FVR_… · Ver en Finance ›»; o «Pendiente de registrar en Finance», con el motivo, los campos y «Registrar en Finance».
   - Con ticket, o sin justificante, la compra queda «de proceso» en Finance y no va a la gestoría; con factura y su documento, «fiscal».
 - **Pruebas:** `tests/tasks/purchase-finance.test.ts`. Usa las Edges reales de Tasks y Finance sobre la misma base y cubre: sin acceso, registro con foto, repetición, sin lo pagado, lectora, ajena, y ticket sin foto.
+
+## 45. Fuentes de app: Flow y Food piden desde su servidor (auditoría de rutas del 27-10-2026, FL2 y FO2)
+
+`requests/task` y `requests/purchase` siguen siendo rutas de personas: Flow y Food piden con el token de la persona, así que cuentan su rol y su ámbito. Pero `source: 'flow'` o `'food'` solo es de esa app si la llamada viene de su servidor.
+
+- **La prueba:** dos cabeceras, `X-Ikisai-Worker-Key` (la misma `IKISAI_WORKER_KEY` de todas las Edges) y `X-Ikisai-Caller: flow | food`. Un navegador no tiene la clave.
+- **Con la prueba:** `source` tiene que ser la app que llama. Si no, 422 `INVALID_INPUT` en el campo `source`.
+- **Sin la prueba:** hoy se acepta como hasta ahora. Cuando Flow y Food manden la prueba, cada una pasa a `APP_SOURCES_REQUIRED` (`tasks-api/requests.ts`) y, sin ella, 403 `CALLER_REQUIRED`.
+- Las fuentes de sistema (`booking`, `feedback`, `core`, `invoices`) no valen aquí, con o sin prueba: van por `worker/requests/task` (§19.2).
+- **Para Flow y Food:** añadid las dos cabeceras a las llamadas de servidor a servidor que ya hacéis a `requests/task` y `requests/purchase`, sin más cambios. Avisad a Tasks al publicarlo para hacerlas obligatorias.
+- **Pruebas:** `tests/tasks/requests.test.ts` («fuentes de app»).

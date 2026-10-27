@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
-import { purchaseFromPrep, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
+import { prepMissingLabel, purchaseFromPrep, validateOperation } from '../../supabase/functions/_domain/food/mod.ts';
 
 const TOMATE = '3a3d080c-417e-4174-a87f-9f28fc62ec90';
 const CARTA = 'f00dca7a-0000-4000-8000-000000000001';
@@ -46,6 +46,10 @@ test.after(async () => { await app.close(); });
 test('sin rendimiento · 3 «unidad» de tomate son 3 tomates enteros', async () => {
   const row = (await q(`select per_unit, prep_unit, prep_need_total, yield from food.carta_prep_projection where line_id = $1`, [line]))[0];
   assert.deepEqual([round(row.per_unit), row.prep_unit, round(row.prep_need_total), row.yield], [0.48, 'unidad', 30, null]);
+  // Hay cantidad, pero se avisa (1115): si son rodajas, los recipientes de Flow y la compra salen mal.
+  const why = (await q(`select missing, yield_missing, note from food.carta_prep_projection where line_id = $1`, [line]))[0];
+  assert.deepEqual([why.missing, why.yield_missing], [null, true]);
+  assert.match(why.note, /Tomate sin rendimiento: se cuentan piezas enteras/);
 });
 
 test('con rendimiento · 1 tomate = 8 rodajas: la cantidad, la previsión para Flow y la compra', async () => {
@@ -63,6 +67,41 @@ test('con rendimiento · 1 tomate = 8 rodajas: la cantidad, la previsión para F
   const total = (await q(`select prep_unit, prep_need_total, purchase_unit, yield from food.carta_prep_totals_projection where component_key = $1`, [TOMATE]))[0];
   assert.equal(total.purchase_unit, 'unidad');
   assert.equal(round(total.yield), 8);
+  const why = (await q(`select missing, yield_missing, note from food.carta_prep_totals_projection where component_key = $1`, [TOMATE]))[0];
+  assert.deepEqual([why.missing, why.yield_missing, why.note], [null, false, null], 'con rendimiento no falta nada');
+});
+
+test('avisos · qué falta y dónde se pone: artículo, rendimiento o conversión (1115)', async () => {
+  const PEPINO = uuid(), pepino = uuid(), suelto = uuid(), recipe = uuid(), menu = uuid(), l1 = uuid();
+  // Pepino: artículo en kg sin conversión de la pieza; «Sal suelta»: sin artículo del inventario.
+  await ok('resources/commands', [insert('resources.items', PEPINO, { name: 'Pepino', kind: 'ingrediente', base_unit: 'kg' })]);
+  await ok('commands', [
+    insert('food.ingredients', pepino, { name: 'Pepino', preferred_unit: 'kg', item_id: PEPINO }),
+    insert('food.ingredients', suelto, { name: 'Sal suelta', preferred_unit: 'g' }),
+    insert('food.recipes', recipe, { name: 'Montadito de pepino', category: 'entrante', base_servings: 1 }),
+    insert('food.recipe_ingredients', uuid(), { recipe_id: recipe, ingredient_id: pepino, quantity: 2, unit: 'unidad', station: 2 }),
+    insert('food.recipe_ingredients', uuid(), { recipe_id: recipe, ingredient_id: suelto, quantity: 1, unit: 'g', station: 4 }),
+    insert('food.menus', menu, { kind: 'carta', name: 'Carta de avisos' }),
+    insert('food.carta_lines', l1, { menu_id: menu, recipe_id: recipe, scope: 'clasico', code: 'A', sale_price_cents: 200, expected_units: 20 }),
+  ]);
+  const why = async (key: string) => (await q(`select convertible, missing, yield_missing, note from food.carta_prep_totals_projection where menu_id = $1 and component_key = $2`, [menu, key]))[0];
+  // Cuenta piezas de pepino sin rendimiento y sin conversión: lo que falta es el rendimiento (se pone en la Previsión).
+  let p = await why(PEPINO);
+  assert.deepEqual([p.convertible, p.missing, p.yield_missing], [false, 'rendimiento', true]);
+  assert.match(p.note, /Falta el rendimiento de Pepino: en Food, Previsión de la carta/);
+  assert.equal(prepMissingLabel(p), 'falta el rendimiento');
+  const s = await why(suelto);
+  assert.deepEqual([s.convertible, s.missing], [false, 'articulo']);
+  assert.match(s.note, /Sal suelta no tiene artículo del inventario/);
+  // Con rendimiento (1 pepino = 10 rodajas) falta aún pasar la pieza a kg: ahora es la conversión.
+  const rev = Number((await q(`select revision from food.ingredients where id = $1`, [pepino]))[0].revision);
+  await ok('commands', [{ op: 'update', table: 'food.ingredients', id: pepino, expectedRevision: rev, fields: { purchase_unit: 'unidad', prep_unit: 'rodaja', yield: 10 } }]);
+  p = await why(PEPINO);
+  assert.deepEqual([p.convertible, p.missing, p.yield_missing], [false, 'conversion', false]);
+  assert.match(p.note, /Falta la conversión de Pepino: en Food, Despensa/);
+  // Por línea, lo mismo; y en el total manda el más grave.
+  const rows = await q(`select component_key, missing from food.carta_prep_projection where line_id = $1 order by component_key`, [l1]);
+  assert.deepEqual(Object.fromEntries(rows.map((r) => [r.component_key, r.missing])), { [PEPINO]: 'conversion', [suelto]: 'articulo' });
 });
 
 test('dominio · el rendimiento va entero o no va', () => {

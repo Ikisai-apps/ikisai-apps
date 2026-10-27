@@ -175,6 +175,8 @@ export interface CartaPrepRow {
   line_revision: number; menu_revision: number;
   /** Rendimiento (1112): en unidades de preparación, y cómo se compra. */
   prep_unit: string; prep_per_unit: number | string; prep_need_total: number | string; purchase_unit: string | null; yield: number | string | null;
+  /** Qué falta y dónde se pone (1115). */
+  missing?: PrepMissing | null; yield_missing?: boolean | null; note?: string | null;
 }
 
 /** Fila de `food.carta_prep_totals_projection` (1110): una por componente, sumando las líneas. */
@@ -183,7 +185,20 @@ export interface CartaPrepTotal {
   need_total: number | string | null; mesa: number | string | null; nevera: number | string | null; fresco: number | string | null;
   convertible: boolean; station: number | null;
   prep_unit: string | null; prep_need_total: number | string | null; purchase_unit: string | null; yield: number | string | null;
+  /** Qué falta y dónde se pone (1115). */
+  missing?: PrepMissing | null; yield_missing?: boolean | null; note?: string | null;
 }
+
+/**
+ * Por qué un componente de la previsión no tiene cantidad (1115): sin artículo del inventario, sin rendimiento (la receta
+ * cuenta piezas) o sin conversión de unidad.
+ */
+export type PrepMissing = 'articulo' | 'rendimiento' | 'conversion';
+export const PREP_MISSING_LABELS: Record<PrepMissing, string> = {
+  articulo: 'falta el artículo', rendimiento: 'falta el rendimiento', conversion: 'falta la conversión',
+};
+/** Lo que se enseña en lugar de la cantidad cuando falta un dato. */
+export const prepMissingLabel = (t: Pick<CartaPrepTotal, 'missing'>): string => PREP_MISSING_LABELS[t.missing ?? 'conversion'] ?? PREP_MISSING_LABELS.conversion;
 
 export const STATION_LABELS: Record<number, string> = { 1: 'Untar', 2: 'Colocar', 3: 'Dosificar', 4: 'Acabados' };
 /**

@@ -13,6 +13,7 @@
  */
 import { createMemorySpaceSource, createSpaceMap, el, icon, replace, toast, type DecorItem, type FloorPlan, type SpaceMap, type SpaceMapOptions, type SpaceRow } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
+import { whyNote } from './common.ts';
 import { t } from '../app/i18n.ts';
 import type { Loaded } from '../app/api.ts';
 import type { Place, PortalPlan, PortalPlans, PortalReads, PortalSpace } from '../app/portal.ts';
@@ -53,10 +54,10 @@ function readsOf(reads: PortalReads) {
 // --- El mapa de zonas ------------------------------------------------------------------------------------------------
 const norm = (s: string | null | undefined) => (s ?? '').trim().toLocaleLowerCase('es');
 
-/** Filas del kit desde la lectura del portal (solo nombres públicos). */
+/** Filas del kit desde la lectura del portal (solo nombres públicos y, en las camas, su tipo para el icono). */
 export function toRows(spaces: PortalSpace[]): SpaceRow[] {
   return spaces.map((s) => ({ id: s.id, parentId: s.parentId, kind: s.kind, name: s.name, publicName: null, code: null, position: s.position ?? 0,
-    active: true, notes: null, attributes: {}, planId: s.planId, planShape: s.planShape }));
+    active: true, notes: null, attributes: s.bedKind ? { bed_kind: s.bedKind } : {}, planId: s.planId, planShape: s.planShape }));
 }
 
 /** El espacio del sitio: por id o, si no, por nombre (habitación y cama dentro), solo si la coincidencia es única. Pura. */
@@ -117,6 +118,12 @@ export function decorOf(data: PortalPlans): DecorItem[] {
     return [{ id: d.id, planId: d.planId, iconId: d.iconId, iconUrl: ic.url, label: ic.name, cellX: d.cellX, cellY: d.cellY,
       scale: d.scale as DecorItem['scale'], size: d.size === 4 ? 4 : 1, rotation: d.rotation as DecorItem['rotation'] }];
   });
+}
+
+/** La silueta de cabecera de Guests que eligió Central (`headerFor`), ya firmada; sin elegir, ninguna. Pura. */
+export function headerSilhouette(data: PortalPlans | null | undefined): { url: string; title: string | null } | null {
+  const image = (data?.images ?? []).find((m) => m.kind === 'silueta' && m.url && (m.headerFor ?? []).includes('guests'));
+  return image?.url ? { url: image.url, title: image.title } : null;
 }
 
 /** El plano de la finca, si lo hay (el mapa empieza en él y se baja tocando: finca → edificio → habitación). */
@@ -180,7 +187,14 @@ export function verEnPlano(options: PlanOptions): HTMLElement | null {
     const data = plansLoaded?.value ?? null;
     const target = data ? findSpace(data.spaces, options.spaceId, options.match ?? (place ? { space: place } : null)) : null;
     const withMap = Boolean(data && data.plans.length && (target || options.whole));
-    if (!withMap && !p?.site_plan_file_id) return;
+    if (!withMap && !p?.site_plan_file_id) {
+      // Sin nada que enseñar, se dice por qué: el plano no se pudo leer, aún no está publicado o tu sitio no está en él.
+      const why = !plansLoaded && !placeLoaded ? t('plan.unavailable') : options.whole ? t('plan.none')
+        // Solo para tu cama o tu habitación: en cada actividad del programa sería ruido.
+        : data?.plans.length && (options.spaceId || options.match) ? t('plan.notOnPlan') : null;
+      if (why) host.append(whyNote(`${options.id ?? 'plan'}Why`, why));
+      return;
+    }
     const box = el('div', { class: 'gplan-box' });
     const details = el('details', { class: `gplan${withMap ? ' gplan-map' : ''}`, ...(options.id ? { id: options.id } : {}), ...(target ? { 'data-space': target.id } : {}) },
       el('summary', null, icon('pin', 16), el('span', { class: 'gplan-label' }, options.label ?? place ?? p?.name ?? t('plan.center')),

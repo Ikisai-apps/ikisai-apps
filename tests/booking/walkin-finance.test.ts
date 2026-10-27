@@ -6,15 +6,16 @@ import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/book
 import { TABLES, walkinFinanceEntry, walkinNightPrice } from '../../supabase/functions/_domain/booking/mod.ts';
 
 const uuid = () => crypto.randomUUID();
-const sent: Array<{ url: string; auth: string | null; body: any }> = [];
+const sent: Array<{ url: string; auth: string | null; workerKey: string | null; caller: string | null; body: any }> = [];
 let financeStatus = 200;
 let app: TestApp;
 let seq = 0;
 test.before(async () => {
   app = await createTestApp({
     app: 'booking', slug: 'booking-api', origin: BOOKING_ORIGINS[0]!,
-    createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!], appsFetch: (async (url: string, init: RequestInit) => {
-      sent.push({ url: String(url), auth: new Headers(init.headers).get('Authorization'), body: JSON.parse(String(init.body)) });
+    createHandler: (config) => createBookingApp({ ...config, workerKey: 'clave-de-worker-sintetica', origins: [BOOKING_ORIGINS[0]!], appsFetch: (async (url: string, init: RequestInit) => {
+      const h = new Headers(init.headers);
+      sent.push({ url: String(url), auth: h.get('Authorization'), workerKey: h.get('X-Ikisai-Worker-Key'), caller: h.get('X-Ikisai-Caller'), body: JSON.parse(String(init.body)) });
       return new Response(JSON.stringify(financeStatus === 200 ? { results: [{ result: { entry_id: 'e-1', status: 'created' } }] } : { error: { code: 'NO_MEMBERSHIP', message: 'x' } }), { status: financeStatus, headers: { 'Content-Type': 'application/json' } });
     }) as typeof fetch }),
   });
@@ -58,6 +59,8 @@ test('envío a Finance: apunte con source_ref booking:stay:<id>, la sesión de l
   assert.deepEqual(out.data.result, { entry_id: 'e-1', status: 'created' });
   assert.match(sent[0]!.url, /\/functions\/v1\/invoices-api\/api\/v1\/commands$/);
   assert.match(String(sent[0]!.auth), /^Bearer /);
+  // B5: sale del servidor de Booking (Finance #859: X-Ikisai-Worker-Key y X-Ikisai-Caller)
+  assert.deepEqual([sent[0]!.workerKey, sent[0]!.caller], ['clave-de-worker-sintetica', 'booking']);
   const call = sent[0]!.body.operations[0];
   assert.equal(call.procedure, 'invoices.record_app_entry');
   assert.deepEqual({ ...call.args, description: undefined }, { ...walkinFinanceEntry({ id: charge, event_id: event, nights: 2, price_cents: 2500, amount_cents: 5000, method: 'cash', paid_day: '2031-10-30', title: 'Jornadas', guest: 'Ana S.', space: 'Albergue', bed: 'Cama 3' }), description: undefined });

@@ -58,6 +58,8 @@ export const READS = {
   flowGuestsProjection: 'booking.flow_guests_projection',
   /** Para Flow: los huéspedes de un evento de su ámbito ({event_id}). */
   flowGuestsOf: 'booking.flow_guests_of',
+  /** 0492: «Listo para Flow» en la ficha ({reservation_id}): la primera condición de flow_guests_of que falla. */
+  flowReadiness: 'booking.flow_readiness',
 } as const;
 
 export const PROCEDURES = {
