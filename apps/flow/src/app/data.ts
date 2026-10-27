@@ -14,11 +14,11 @@ export interface Customer extends Row { project_id: string; number: number; orig
 export interface Account extends Row { project_id: string; customer_id: string | null; holder: string; status: 'open' | 'settled'; opened_by: string | null; settled_at: string | null; settled_by: string | null; payment_id: string | null }
 export interface Order extends Row {
   project_id: string; origin: 'public' | 'counter'; status: OrderStatus; pay_seq: number | null; paid_at: string | null; paid_by: string | null;
-  pay_method: PayMethod | 'account' | null; total_cents: number | null; delivered_at: string | null; delivered_by: string | null; delivery_exception: boolean;
+  pay_method: PayMethod | 'account' | 'card' | 'btc_ln' | 'btc_chain' | null; total_cents: number | null; delivered_at: string | null; delivered_by: string | null; delivery_exception: boolean;
   notes: string | null; customer_id: string | null; parent_id: string | null; account_id: string | null;
 }
 export interface OrderLine extends Row { order_id: string; product_id: string; quantity: number; unit_price_cents: number | null; position: number; delivered_qty: number }
-export interface Payment extends Row { order_id: string | null; account_id: string | null; kind: 'charge' | 'reversal' | 'adjustment' | 'refund'; method: SettleMethod | null; amount_cents: number; note: string | null; settled_at: string | null; settled_by: string | null }
+export interface Payment extends Row { order_id: string | null; account_id: string | null; kind: 'charge' | 'reversal' | 'adjustment' | 'refund'; method: SettleMethod | 'btc_ln' | 'btc_chain' | null; amount_cents: number; note: string | null; settled_at: string | null; settled_by: string | null }
 export interface Unit extends Row {
   project_id: string; column_key: string; kind: 'prep' | 'task' | 'station'; order_id: string | null; line_id: string | null; product_id: string | null;
   idx: number; pay_seq: number | null; label: string | null; priority: boolean; status: UnitStatus; assigned_to: string | null; done_at: string | null; done_by: string | null;
@@ -45,6 +45,8 @@ export interface FlowData {
   accountsEnabled: boolean;
   /** Quien entrega puede dar por hecho lo que quede y entregar de una vez (config de Servicio, solo v2; 0912). */
   completeOnDelivery: Set<string>;
+  /** Caja profunda (config de Caja `deep_checkout`, solo v2; 0917): ficha del cliente y «Pagar». */
+  deepCheckout: Set<string>;
 }
 
 const live = <T extends Row>(rows: unknown[]): T[] => (rows as T[]).filter((r) => !r.deleted_at);
@@ -82,6 +84,8 @@ export async function loadData(client: SyncClient, projectId?: string | null): P
       .some((c) => c.project_id === projectId && c.key === 'order' && c.config?.accounts === true),
     completeOnDelivery: new Set(live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
       .filter((c) => c.key === 'service' && c.config?.complete_on_delivery === true).map((c) => c.project_id)),
+    deepCheckout: new Set(live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
+      .filter((c) => c.key === 'order' && c.config?.deep_checkout === true).map((c) => c.project_id)),
   };
 }
 
