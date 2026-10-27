@@ -128,7 +128,7 @@ test('organizers · leídos: la coorganizadora no ve lo que lee Ana, y cuenta co
   assert.deepEqual(unreadOf([ids.late, ids.early], mine), [ids.late, ids.early]);
   // La lógica del cliente: solo apunta los que faltan, una vez cada uno.
   const ops = readOperations([ids.late, ids.early, ids.early.toUpperCase()], new Set([ids.late]), R1, co.id);
-  assert.deepEqual(ops.map((o) => (o.fields as any).report_id), [ids.early]);
+  assert.deepEqual(ops.map((o) => o.fields.report_id), [ids.early]);
   assert.equal((await commit(co.token, ops)).status, 200);
 });
 

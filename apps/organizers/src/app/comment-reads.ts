@@ -4,6 +4,9 @@
  * «Nuevo» se quita al momento. Cada uno ve solo lo suyo. Sin i18n ni DOM, para las pruebas en node.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
+
+/** Una fila de `comment_reads` por añadir. */
+export type ReadInsert = Extract<RowOperation, { op: 'insert' }> & { fields: { reservation_id: string; report_id: string; user_id: string } };
 import { SyncApiError } from '@ikisai/sync-client';
 import { TABLES, validateOperations } from '../../../../supabase/functions/_domain/organizers/mod.ts';
 
@@ -19,8 +22,8 @@ export function unreadOf(reportIds: readonly string[], read: ReadonlySet<string>
 }
 
 /** Las filas que apuntan como vistos los que faltan (ninguna si ya estaban). */
-export function readOperations(reportIds: readonly string[], read: ReadonlySet<string>, reservationId: string, userId: string): RowOperation[] {
-  return unreadOf([...new Set(reportIds.map((id) => id.toLowerCase()))], read).map((reportId) => ({
+export function readOperations(reportIds: readonly string[], read: ReadonlySet<string>, reservationId: string, userId: string): ReadInsert[] {
+  return unreadOf([...new Set(reportIds.map((id) => id.toLowerCase()))], read).map((reportId): ReadInsert => ({
     op: 'insert', table: TABLES.commentReads, id: crypto.randomUUID(), fields: { reservation_id: reservationId, report_id: reportId, user_id: userId },
   }));
 }
@@ -36,5 +39,5 @@ export async function markRead(client: Pick<SyncClient, 'list' | 'commit' | 'boo
   const issue = validateOperations(operations as never, client.bootstrap()?.membership, undefined, userId);
   if (issue) throw new SyncApiError(issue.code === 'OUT_OF_SCOPE' ? 403 : 422, issue.code, issue.message, issue.details);
   await client.commit(operations);
-  return operations.map((o) => String((o.fields as { report_id: string }).report_id));
+  return operations.map((o) => o.fields.report_id);
 }
