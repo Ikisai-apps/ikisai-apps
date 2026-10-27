@@ -18,7 +18,7 @@ const commit = (operations: Operation[]) => app.call('/api/v1/commands', { body:
 const rows = async (table: string) => (await app.call(`/api/v1/snapshot?tables=${table}&includeDeleted=1&limit=2000`)).data.tables[0].rows as any[];
 
 test.before(async () => {
-  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin] }) });
+  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin], workerKey: 'clave-de-worker-de-prueba' }) });
   await commit(createTabOps({ id: TAB, name: 'Eventos', position: 1024, inboxId: INBOX }));
   await commit([
     { op: 'insert', table: 'tasks.projects', id: BARRA, fields: { tab_id: TAB, title: 'Montaje de la barra', position: 2048 } },
@@ -52,7 +52,7 @@ test('tasks.projects_open: los proyectos abiertos que se ven, sin Entrada ni arc
 });
 
 test('tasks.request_task con hijas y el token de la persona: una vez cada una; las que dejan de venir, a la papelera', async () => {
-  const ask = (children: unknown) => app.call('/api/v1/requests/task', { body: { source: 'flow', external_ref: 'montaje-1', title: 'Montar la barra', project_id: BARRA, children } });
+  const ask = (children: unknown) => app.call('/api/v1/requests/task', { headers: { 'X-Ikisai-Worker-Key': 'clave-de-worker-de-prueba', 'X-Ikisai-Caller': 'flow' }, body: { source: 'flow', external_ref: 'montaje-1', title: 'Montar la barra', project_id: BARRA, children } });
   const first = await ask([{ external_ref: 'neveras', title: 'Enchufar las neveras' }, { external_ref: 'grifos', title: 'Probar los grifos' }]);
   assert.equal(first.status, 200, JSON.stringify(first.data));
   assert.deepEqual(first.data.childrenCounts, { created: 2, updated: 0, retired: 0 });

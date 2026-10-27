@@ -75,6 +75,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   const presence = (recipe: RecipeRow, allergen: Allergen) => allergenPresence(recipe as unknown as Recipe, allergen,
     cross ??= crossContext({ recipe_ingredients: lines.filter((l) => !l.deleted_at) as RecipeIngredient[], ingredients: ingredients as Ingredient[] }));
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
+  const undeclared = (recipe: RecipeRow) => undeclaredAllergens(recipe as unknown as Recipe,
+    cross ??= crossContext({ recipe_ingredients: lines.filter((l) => !l.deleted_at) as RecipeIngredient[], ingredients: ingredients as Ingredient[] }));
   /** Plato rápido (O3a) al que aún le faltan los alérgenos revisados o algún ingrediente. */
   const quickPending = (recipe: RecipeRow) => isQuickPending(recipe, lines);
 
@@ -134,6 +136,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const chips = [
       recipe.status !== 'validada' ? el('span', { class: recipe.status === 'archivada' ? 'chip trash' : 'chip' }, RECIPE_STATUS_LABELS[recipe.status]) : null,
       quickPending(recipe) ? el('span', { class: 'chip warn quickchip' }, 'Rápida · por completar') : null,
+      // Sus ingredientes o su texto nombran un alérgeno que no declara (hallazgo F-REC-5): también en la lista, no solo en la ficha.
+      undeclared(recipe).length ? el('span', { class: 'chip alert fd-undeclared-chip' }, 'Alérgeno sin declarar') : null,
       recipe._pending ? el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar')) : null,
       filter.allergen && filter.allergenMode === 'sin' && presence(recipe, filter.allergen as Allergen) === 'sin_revisar' ? el('span', { class: 'chip warn fd-unreviewed' }, 'Alérgenos sin revisar') : null,
     ];
@@ -478,6 +482,12 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       onChange: () => { guard.dirtyEditor = true; },
     });
     fb(tags.element, { feedbackId: 'food.recetario.formulario.dietas_alergenos', feedbackLabel: 'Dietas y alérgenos' });
+    // Lo que delatan sus ingredientes guardados y su texto y no está marcado (hallazgo F-REC-5): se propone, no se marca solo.
+    const proposed = recipe ? [...new Set(undeclared(recipe).map((u) => u.allergen))] : [];
+    const proposal = proposed.length ? el('div', { 'data-feedback-id': 'food.recetario.formulario.alergenos_propuestos', 'data-feedback-label': 'Alérgenos que delatan los ingredientes', class: 'banner warn notice', role: 'note', id: 'proposedAllergens' },
+      el('div', null, `Sus ingredientes o su texto nombran: ${proposed.map((a) => ALLERGEN_LABELS[a]).join(', ')}.`),
+      el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.formulario.alergenos_propuestos.marcar', 'data-feedback-label': 'Marcarlos', class: 'ghost', type: 'button',
+        onclick: () => { tags.set([...new Set([...tags.get(), ...proposed.map((a) => `allergen:${a}`)])]); guard.dirtyEditor = true; proposal?.remove(); } }, 'Marcarlos'))) : null;
     const checked = check('r-allergens-checked', 'He revisado los alérgenos de esta receta', recipe?.allergens_checked ?? false, { 'data-feedback-id': 'food.recetario.formulario.alergenos_revisados', 'data-feedback-label': 'Alérgenos revisados' });
     const status = el('select', { 'data-feedback-id': 'food.recetario.formulario.estado', 'data-feedback-label': 'Estado', id: 'r-status' }, ...RECIPE_STATUSES.map((s) => el('option', { value: s, selected: (recipe?.status ?? 'en_prueba') === s }, RECIPE_STATUS_LABELS[s])));
 
@@ -640,6 +650,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         field('Regeneración', regeneration), field('Notas de servicio', serviceNotes)),
       section({ 'data-feedback-id': 'food.recetario.formulario.seccion_seguridad', 'data-feedback-label': 'Bloque Seguridad' }, 'Seguridad',
         tags.element,
+        proposal,
         checked.node, field('Estado', status, 'Para validarla hay que haber revisado los alérgenos.')),
       section({ 'data-feedback-id': 'food.recetario.formulario.seccion_maquinaria', 'data-feedback-label': 'Bloque Maquinaria' }, 'Maquinaria', machineForms.length ? el('div', { class: 'machinerows' }, ...machineForms.map((m) => m.node)) : el('p', { class: 'muted' }, 'Todavía no hay maquinaria dada de alta.')),
       error,

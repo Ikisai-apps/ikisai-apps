@@ -112,6 +112,9 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await expect.poll(async () => (await api.app.t.db.query(`select site_plan_mime, address, map_url from central.portal_place_projection`)).rows[0])
     .toEqual({ site_plan_mime: 'application/pdf', address: 'Camino del Retiro 5, 28400 Collado', map_url: 'https://maps.app.goo.gl/AbCdEf123' });
   await expect(page.locator('#entityView')).toContainText('Ver plano');
+  // No es el dibujo de los edificios: la ayuda lo dice y lleva a Planos del centro (VG, 27-10).
+  await expect(page.locator('#entityView')).toContainText('Plano para los portales (PDF o imagen)');
+  await expect(page.locator('#entityPlanHelp a[href="#/entidad/planos"]')).toHaveText('Planos del centro');
   await expect(page.locator('#entityView a[href="https://maps.app.goo.gl/AbCdEf123"]')).toContainText('Abrir el mapa');
 
   // Otra persona, en su propio navegador: lectora de Central.

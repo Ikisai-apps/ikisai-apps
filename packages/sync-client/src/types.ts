@@ -167,6 +167,10 @@ export interface SyncClient {
   refreshSessionNow(): Promise<boolean>;
   /** Portales (contrato §3.6): canjea el token de un enlace personal (`/i/<token>`) por una sesión. */
   loginWithLink(token: string): Promise<Session>;
+  /** Portales (0108, 0.8.0): pide un código de un solo uso al correo. Responde igual exista o no la cuenta. */
+  sendEmailCode(email: string): Promise<void>;
+  /** Portales (0108, 0.8.0): canjea el código del correo por una sesión. */
+  loginWithEmailCode(email: string, code: string): Promise<Session>;
   /** Entra con el pase de sesión única del dispositivo si existe (contrato §3.4); null si no hay pase o acceso. */
   trySso(): Promise<Session | null>;
   logout(): Promise<void>;

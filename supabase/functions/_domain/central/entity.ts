@@ -151,7 +151,7 @@ export const ENTITY_GAPS: ReadonlyArray<{ field: 'iban' | 'venue_address' | 'log
   { field: 'iban', label: 'IBAN', effect: 'Sin IBAN, las instrucciones de pago del portal de quien organiza dicen «a la cuenta —».' },
   { field: 'venue_address', label: 'Dirección del lugar', effect: 'Sin la dirección del lugar, los portales no enseñan ni dirección ni mapa.' },
   { field: 'logo_file_id', label: 'Logotipo', effect: 'Sin logotipo, las propuestas y las facturas salen sin él.' },
-  { field: 'site_plan_file_id', label: 'Plano del centro', effect: 'Sin plano, los portales no enseñan cómo moverse por el centro.' },
+  { field: 'site_plan_file_id', label: 'Plano para los portales', effect: 'Sin él, los portales no enseñan cómo moverse por el centro. Los dibujos de los edificios están en Planos del centro.' },
   { field: 'bizum', label: 'Bizum', effect: 'Sin Bizum, las instrucciones de pago solo ofrecen la transferencia.' },
   { field: 'venue_map_url', label: 'Enlace del mapa', effect: 'Sin el enlace exacto, los portales buscan la dirección en el mapa y puede caer en otro sitio.' },
 ];
