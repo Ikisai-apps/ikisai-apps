@@ -167,6 +167,8 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     const list = ingredients.filter((g) => counted.has(g.id) && !g.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es'));
     if (!list.length) { replace(yieldHost); yieldHost.hidden = true; return; }
     yieldHost.hidden = false;
+    // Lo que se compra por piezas (el pan) no necesita rendimiento: 1 pan = 1 pan (1116).
+    const byPiece = (g: Mirror<Ingredient>) => ['ud', 'uds', 'unidad'].includes(String((g.item_id ? items.get(g.item_id)?.base_unit : '') ?? '').trim().toLowerCase());
     const row = (g: Mirror<Ingredient>) => {
       const purchase = el('select', { 'data-feedback-id': 'food.carta.prevision.rendimiento_compra', 'data-feedback-label': 'Unidad de compra', id: `yield-purchase-${g.id}`,
         'aria-label': `Cómo se compra ${g.name}`, disabled: !canWrite },
@@ -185,7 +187,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
           if (await usage.run('food.carta.prevision.rendimiento', () => commit(client, [{ op: 'update', table: T.ingredients, id: g.id, expectedRevision: g.revision, fields }]))) toast(`${g.name}: rendimiento guardado.`);
         } }, 'Guardar');
       return el('li', { class: 'carta-yieldrow', id: `yield-row-${g.id}` }, el('strong', null, g.name),
-        g.yield === null || g.yield === undefined ? el('span', { class: 'chip warn', id: `yield-missing-${g.id}` }, 'Falta') : null,
+        (g.yield === null || g.yield === undefined) && !byPiece(g) ? el('span', { class: 'chip warn', id: `yield-missing-${g.id}` }, 'Falta') : null,
         el('span', { class: 'carta-yieldeq' }, '1', purchase, '=', amount, prep), canWrite ? save : null);
     };
     replace(yieldHost,

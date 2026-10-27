@@ -9,7 +9,7 @@ import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { freePort } from '../food/helpers.ts';
 import { startGuestsServer, type GuestsTestServer } from './server.ts';
 import { buildGuestsApp } from './build.ts';
@@ -321,6 +321,97 @@ test('guests · «Ver en el plano» con el mapa de zonas (MUELA-024): la sala re
   for (const backup of await plan.locator('.gplan-backup').all()) await expect(backup).not.toHaveAttribute('open', /.*/);
   await plan.scrollIntoViewIfNeeded();
   await capture(page, 'plano-mapa');
+});
+
+/** Las estancias de un dibujo real (`MUELA/planos`, trazado sin cotas ni datos del pliego): `data-name` y su contorno en 0..1. */
+function drawing(file: string): { width: number; height: number; rooms: Array<{ name: string; points: Array<[number, number]> }> } {
+  const text = readFileSync(path.join(here, 'fixtures/planos', file), 'utf8');
+  const [, width, height] = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(text)!.map(Number);
+  const rooms = [...text.matchAll(/data-name="([^"]+)" d="([^"]+)"/g)].map(([, name, d]) => ({
+    name: name!,
+    points: [...d!.matchAll(/([\d.]+) ([\d.]+)/g)].map(([, x, y]) => [Number(x) / width!, Number(y) / height!] as [number, number]),
+  }));
+  return { width: width!, height: height!, rooms };
+}
+
+test('guests · «Ver en el plano» con los dibujos reales del Albergue y de Salas, en el móvil: tu cama con su icono y la sala de la actividad', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro en el Albergue', start: day(0), end: day(2) });
+  const ona = await api.guest(event, { first_name: 'Ona' });
+  await page.clock.setFixedTime(new Date(`${day(0)}T07:00:00Z`));
+  await api.experience(reservation, ALL_MODULES);
+  const room = await api.room(event, { name: 'Dormitorio del dibujo', enSuite: false, beds: ['Litera 1', 'Cama 2'] });
+  await api.assign(event, room.spaceId, room.bedIds[0]!, ona);
+
+  // Albergue: sus 20 estancias con nombre; «Hab 1» es la habitación de Booking, con una litera (la de Ona) y una cama.
+  const albergue = drawing('albergue.svg');
+  expect(albergue.rooms).toHaveLength(20);
+  const x = (v: number) => v / albergue.width; const y = (v: number) => v / albergue.height;
+  const rect = (x0: number, y0: number, x1: number, y1: number): Array<[number, number]> => [[x(x0), y(y0)], [x(x1), y(y0)], [x(x1), y(y1)], [x(x0), y(y1)]];
+  const { ids } = await api.floorPlan([
+    ...albergue.rooms.map((r) => (r.name === 'Hab 1'
+      ? { ...r, kind: 'habitacion', refs: [`booking.space:${room.spaceId}`] }
+      : { ...r, kind: r.name.startsWith('Hab ') ? 'habitacion' : 'sala' })),
+    { name: 'Litera 1', kind: 'cama', parent: 'Hab 1', points: rect(560, 330, 610, 430), refs: [`booking.bed:${room.bedIds[0]}`], attributes: { bed_kind: 'litera' } },
+    { name: 'Cama 2', kind: 'cama', parent: 'Hab 1', points: rect(680, 330, 730, 430), refs: [`booking.bed:${room.bedIds[1]}`], attributes: { bed_kind: 'individual' } },
+  ], { width: albergue.width, height: albergue.height, mime: 'image/svg+xml' });
+  // Salas: el «Museo» del dibujo del centro, donde es la actividad de ahora.
+  const centro = drawing('centro.svg');
+  expect(centro.rooms).toHaveLength(5);
+  const salas = await api.floorPlan(centro.rooms.map((r) => ({ ...r, kind: 'sala' })), { width: centro.width, height: centro.height, mime: 'image/svg+xml' });
+  await api.organizerInvoke(reservation, 'booking.portal_program_save', { item: { id: crypto.randomUUID(), day: day(0), starts_at: '06:00', ends_at: '23:00', title: 'Visita guiada', place_text: 'Museo', kind: 'actividad' } });
+
+  await enter(page, await api.guestLink(reservation, ona, 'Ona'));
+  // Los dibujos firmados, servidos como SVG (después de `enter`, para que manden sobre el PDF de prueba).
+  await page.route('https://test.supabase.co/storage/v1/object/sign/**', (route) => route.fulfill({
+    status: 200, headers: { 'content-type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*' },
+    body: readFileSync(path.join(here, 'fixtures/planos', route.request().url().includes(salas.fileId!) ? 'centro.svg' : 'albergue.svg')),
+  }));
+
+  // Resumen: «Tu habitación en el plano», sobre el dibujo, con la litera de Ona marcada y su icono.
+  const plan = page.locator('#roomPlan');
+  await expect(plan).toHaveAttribute('data-space', ids['Litera 1']!);
+  await plan.locator('summary').click();
+  await expect(plan.locator('.map-svg image.map-bg')).toHaveAttribute('href', /.+/);
+  await expect(plan.locator(`.map-svg [data-space-id="${ids['Litera 1']}"]`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(plan.locator('.map-svg use.map-bedicon[data-bed-kind="litera"]')).toHaveCount(1);
+  await expect(plan.locator('.map-svg use.map-bedicon[data-bed-kind="individual"]')).toHaveCount(1);
+  // En el móvil, el mapa cabe en el ancho y la página no se desplaza de lado.
+  const box = await plan.locator('.map-svg').boundingBox();
+  expect(box!.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await plan.scrollIntoViewIfNeeded();
+  await capture(page, 'plano-real-cama');
+
+  // Programa: la actividad en el Museo, resaltada sobre el dibujo de Salas.
+  await go(page, 'programa');
+  const now = page.locator('#nowPlan');
+  await expect(now).toHaveAttribute('data-space', salas.ids['Museo']!);
+  await now.locator('summary').click();
+  await expect(now.locator('.map-svg image.map-bg')).toHaveAttribute('href', /.+/);
+  await expect(now.locator('.map-svg [role="button"][aria-pressed="true"]')).toHaveAttribute('aria-label', /Museo/);
+});
+
+test('guests · silueta de cabecera: la que Central eligió para Guests (Recursos 0816) sale bajo la portada; las demás, no', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con silueta', start: day(1), end: day(3) });
+  const ona = await api.guest(event, { first_name: 'Ona' });
+  const db = api.booking.t.db;
+  const building = (await db.query<{ id: string }>(`insert into resources.spaces (kind, name) values ('edificio', 'Albergue de la silueta') returning id`)).rows[0]!.id;
+  const file = async () => (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status, hash_verified) values ('resources', 'resources-plans', $1, 'silueta', 'image/svg+xml', 300, $2, 'verified', true) returning id`,
+    [`resources/${crypto.randomUUID()}`, 'e'.repeat(64)])).rows[0]!.id;
+  // Una para Central y otra para Guests: solo se ve la de Guests.
+  await db.query(`insert into resources.space_images (space_id, kind, title, file_id, header_for) values ($1, 'silueta', 'Para Central', $2, '{central}'), ($1, 'silueta', 'Para Guests', $3, '{guests}')`, [building, await file(), await file()]);
+  await enter(page, await api.guestLink(reservation, ona, 'Ona'));
+  await page.route('https://test.supabase.co/storage/v1/object/sign/**', (route) => route.fulfill({
+    status: 200, headers: { 'content-type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*' },
+    body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><path d="M0 40V20h60V5h80v15h60v20z" fill="#333"/></svg>',
+  }));
+  await page.reload();
+  const skyline = page.locator('#headerSilhouette');
+  await expect(skyline).toBeVisible();
+  await expect(skyline).toHaveAttribute('aria-hidden', 'true');
+  await expect(skyline.locator('img')).toHaveAttribute('alt', '');
+  await db.query(`update resources.space_images set deleted_at = now() where space_id = $1`, [building]);
 });
 
 test('guests · Alojamiento con el mapa de zonas (MUELA-056 y 024): las habitaciones abiertas en el plano, con su estado en texto; tocar una la enseña abajo', async ({ page }) => {

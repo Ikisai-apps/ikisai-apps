@@ -9,11 +9,13 @@ import { randomUUID as uuid } from 'node:crypto';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
 import { CSV_BOM } from '../../packages/domain-invoices/src/index.ts';
+import { checkAppEntrySources, serverCaller, withServerCaller } from '../../supabase/functions/invoices-api/app-entries-caller.ts';
 
 let app: TestApp;
 let counter = 0;
 const PROJECT = '7d1c1a52-3f0e-4c55-9b7a-0c6a3e7f2b10';
 const REF = `flow:project:${PROJECT}:2026-10-31`;
+const WORKER_KEY = 'clave-de-worker-de-pruebas';
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
 const update = (id: string, expectedRevision: number, fields: Record<string, unknown>) => ({ op: 'update', table: 'invoices.app_entries', id, expectedRevision, fields });
 
@@ -49,7 +51,7 @@ const record = async (args: Record<string, unknown>, token?: string) => (await o
 test.before(async () => {
   app = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
-    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null } }),
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, workerKey: WORKER_KEY }),
   });
 });
 test.after(async () => { await app.close(); });
@@ -212,14 +214,14 @@ test('0245: un gasto es fiscal solo con justificante; al adjuntarlo pasa a fisca
   // Un gasto fiscal sin justificante, no
   await rejected([call('invoices.record_app_entry', expense('vasos', { nature: 'fiscal' }))], 'INVOICE_REQUIRED');
   // Con el número del ticket al reenviar, pasa a fiscal
-  const withTicket = await record(expense('hielo', { receipt_number: 'T-77' }));
+  const withTicket = await record(expense('hielo', { receipt_number: 'T-77', receipt_kind: 'invoice' }));
   assert.deepEqual([withTicket.status, withTicket.nature], ['replaced', 'fiscal']);
   // Un reenvío sin justificante no lo quita, y no vuelve a proceso
   assert.equal((await record(expense('hielo', { receipt_number: 'T-77' }))).status, 'unchanged');
   assert.equal((await record(expense('hielo'))).nature, 'fiscal');
   await rejected([call('invoices.record_app_entry', expense('hielo', { nature: 'process' }))], 'NATURE_CHANGE', 409);
   // Un documento que no es de Finance o no está verificado, no
-  await rejected([call('invoices.record_app_entry', expense('servilletas', { receipt_file_id: uuid() }))], 'INVALID_FILE');
+  await rejected([call('invoices.record_app_entry', expense('servilletas', { receipt_file_id: uuid(), receipt_kind: 'invoice' }))], 'INVALID_FILE');
 
   // En Finance: adjuntar el número a un gasto de proceso lo pasa a fiscal; quitarlo de un gasto fiscal, no
   const servilletas = await record(expense('servilletas'));
@@ -250,6 +252,19 @@ test('0247: un gasto con ticket se registra, pero no es fiscal; con factura sí,
   assert.deepEqual([Number(summary.expense.count), Number(summary.expense.quota)], [1, 2.1], 'solo el gasto con factura, con su IVA');
 });
 
+test('0248: un cobro de la caja con su número dice si es ticket o factura; sin decirlo, 422 RECEIPT_KIND_REQUIRED', async () => {
+  const sale = (extra: Record<string, unknown> = {}) => ({ source_app: 'flow', source_ref: `flow:receipt:${PROJECT}-57`, kind: 'income', entry_date: '2026-12-22',
+    description: 'Barra · justificante 57', amount_cents: 1100, tax_rate: 10, methods: { cash: 1100 }, ...extra });
+  await rejected([call('invoices.record_app_entry', sale({ nature: 'fiscal', receipt_number: '57' }))], 'RECEIPT_KIND_REQUIRED');
+  const ticket = await record(sale({ nature: 'fiscal', receipt_number: '57', receipt_kind: 'ticket' }));
+  assert.deepEqual([ticket.status, ticket.nature, ticket.receipt_kind], ['created', 'fiscal', 'ticket']);
+  // Reenviado sin receipt_kind, se queda el que tenía
+  assert.equal((await record(sale({ nature: 'fiscal', receipt_number: '57' }))).status, 'unchanged');
+  // Sin justificante (como manda Flow hoy un cobro sin número), sigue entrando
+  const plain = await record(sale({ source_ref: `flow:receipt:${PROJECT}-58`, nature: 'fiscal' }));
+  assert.deepEqual([plain.nature, plain.receipt_kind], ['fiscal', null]);
+});
+
 test('0247: un ticket registrado como factura recibida queda fuera del resumen fiscal y de la entrega', async () => {
   const supplier = uuid();
   await ok([{ op: 'insert', table: 'invoices.suppliers', id: supplier, fields: { name: 'Frutería del Mercado' } }]);
@@ -265,3 +280,28 @@ test('0247: un ticket registrado como factura recibida queda fuera del resumen f
   assert.equal(Number(after.invoices.pendiente_datos) + Number(after.invoices.pendiente_revision), 1);
 });
 
+test('F1 (API.md §17.10): con la clave de worker y X-Ikisai-Caller, source_app tiene que ser la app que llama', async () => {
+  const proof = (caller: string, key = WORKER_KEY) => ({ 'X-Ikisai-Worker-Key': key, 'X-Ikisai-Caller': caller });
+  const send = (args: Record<string, unknown>, headers: Record<string, string> = {}) =>
+    app.call('/api/v1/commands', { body: { requestId: `entries-${++counter}`, operations: [call('invoices.record_app_entry', args)] }, headers });
+  const day = (d: string) => barDay({ source_ref: `flow:project:${PROJECT}:${d}`, entry_date: d, nature: 'process' });
+  // Desde el servidor de Flow, con la persona: entra como siempre
+  const ok1 = await send(day('2027-02-01'), proof('flow'));
+  assert.equal(ok1.status, 200, JSON.stringify(ok1.data));
+  // Quien llama es Booking y dice ser Flow: no
+  const forged = await send(day('2027-02-02'), proof('booking'));
+  assert.deepEqual([forged.status, forged.data.error.code], [403, 'SOURCE_MISMATCH']);
+  // Otra clave u otra app no son prueba: hoy se acepta como antes (aún no es obligatoria)
+  assert.equal(serverCaller(new Request('http://x', { headers: proof('flow', 'otra') }), WORKER_KEY), null);
+  assert.equal(serverCaller(new Request('http://x', { headers: proof('tasks') }), WORKER_KEY), null);
+  assert.equal((await send(day('2027-02-03'), proof('flow', 'otra'))).status, 200);
+  // Cuando sea obligatoria: sin prueba, 403 CALLER_REQUIRED; con la suya, sí
+  const required = new Set(['flow', 'booking']);
+  const ops = [call('invoices.record_app_entry', { source_app: 'flow' })] as never;
+  assert.throws(() => checkAppEntrySources(ops, required), (e: any) => e.status === 403 && e.code === 'CALLER_REQUIRED');
+  const through = (headers: Record<string, string>) => withServerCaller(async () => { checkAppEntrySources(ops, required); return new Response('ok'); }, WORKER_KEY)(new Request('http://x', { headers }));
+  assert.equal(await (await through(proof('flow'))).text(), 'ok');
+  await assert.rejects(through(proof('flow', 'otra')), (e: any) => e.code === 'CALLER_REQUIRED');
+  await assert.rejects(through(proof('booking')), (e: any) => e.code === 'SOURCE_MISMATCH');
+  assert.doesNotThrow(() => checkAppEntrySources([{ op: 'update', table: 'invoices.app_entries', id: 'x', fields: {} }] as never, required), 'lo demás, igual que siempre');
+});

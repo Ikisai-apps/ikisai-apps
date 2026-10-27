@@ -85,6 +85,8 @@ export interface FrameOptions {
   bed?(): Promise<string | null>;
   /** Nombre del lugar (Central), para «N noches · La Muela». */
   placeName?(): Promise<string | null>;
+  /** La silueta de cabecera que eligió Central (URL de 10 minutos), bajo la portada; sin ella, nada. */
+  silhouette?(): Promise<{ url: string; title: string | null } | null>;
 }
 
 export interface Frame {
@@ -173,7 +175,18 @@ export function retreatFrame(options: FrameOptions): Frame {
     }, icon(SECTION_ICONS[s], 18), el('span', null, sectionLabel(s))))) : null;
   const sticky = sections ? el('div', { class: 'gsticky' }, bar, sections) : null;
 
-  const element = el('div', { class: 'gframe', id: 'retreatFrame' }, carousel.element, facts, sticky);
+  // La silueta del edificio bajo la portada (decorativa: el nombre del lugar ya va en los datos).
+  const skyline = el('div', { class: 'gskyline', id: 'headerSilhouette', 'aria-hidden': 'true' });
+  skyline.hidden = true;
+  void options.silhouette?.().then((s) => {
+    if (!alive || !s) return;
+    const img = el('img', { src: s.url, alt: '', decoding: 'async' }) as HTMLImageElement;
+    img.addEventListener('load', () => { skyline.hidden = false; }, { once: true });
+    img.addEventListener('error', () => skyline.remove(), { once: true });
+    skyline.replaceChildren(img);
+  }).catch(() => undefined);
+
+  const element = el('div', { class: 'gframe', id: 'retreatFrame' }, carousel.element, skyline, facts, sticky);
 
   // Plegado: cuando la portada sale de la vista, la barra se enseña; la posición fija la da `position: sticky`.
   const observer = typeof IntersectionObserver === 'function'

@@ -84,3 +84,27 @@ test('§9.19 · por QR, sin datos: el evento, «Apuntarme» pendiente, «Mis eve
   await page.goto(`${baseURL}/#/v/${code}`);
   await expect(page.locator('#visitorEnter')).toBeVisible();
 });
+
+test('§9.19 · nunca en blanco: un evento que ya no abre y un acceso de visitante caducado lo dicen', async ({ page }) => {
+  const r = await api.reservation({ title: 'Jornada de puertas abiertas', start: day(5), end: day(5) });
+  await api.booking.t.db.query('update booking.reservations set guests_visible = true where id = $1', [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+
+  // Este móvil recuerda un evento que ya no existe (o cuyo código cambió) y su acceso guardado ya no vale.
+  await page.goto(`${baseURL}/#/v`);
+  await page.evaluate((c) => {
+    localStorage.setItem('ikisai-visitor-events', JSON.stringify([c, 'ZZZZZZZZZZ']));
+    localStorage.setItem('ikisai-visitor', 'acceso-que-ya-no-vale');
+  }, code);
+  await page.reload();
+  await expect(page.locator('#visitor-before')).toContainText('Jornada de puertas abiertas');
+  await expect(page.locator('#visitorListGone')).toContainText('1 evento ya no se puede abrir');
+
+  // Al abrir el evento, el acceso se renueva solo y se dice por qué no se ve lo de antes; una vez.
+  await page.goto(`${baseURL}/#/v/${code}`);
+  await expect(page.locator('#visitorRenewed')).toContainText('Tu acceso de visitante anterior ya no valía');
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).not.toBe('acceso-que-ya-no-vale');
+  await page.reload();
+  await expect(page.locator('#visitorLeaveBox')).toBeVisible();
+  await expect(page.locator('#visitorRenewed')).toHaveCount(0);
+});

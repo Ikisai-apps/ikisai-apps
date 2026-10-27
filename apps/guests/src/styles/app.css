@@ -185,6 +185,11 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gframe{gap:10px}
 .ghero .cover-slide{min-height:220px;border-radius:20px}
 .ghero-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+/* Silueta de cabecera (la elige Central): bajo la portada, el fondo blanco del dibujo se funde con el papel */
+.gskyline{height:64px;margin:4px 12px 0;pointer-events:none}
+.gskyline img{display:block;width:100%;height:100%;object-fit:contain;object-position:center bottom;mix-blend-mode:multiply;opacity:.8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .gskyline img{filter:invert(1);mix-blend-mode:screen}}
+:root[data-theme="dark"] .gskyline img{filter:invert(1);mix-blend-mode:screen}
 .gpersons{background:var(--paper);border-radius:999px;padding:3px}
 .gpersons button{display:inline-flex;align-items:center;gap:6px;min-height:46px;padding:0 12px 0 6px;border-radius:999px;color:var(--gsoft)}
 .gpersons button.on{color:var(--accent-deep,var(--ink));font-weight:800}
@@ -219,6 +224,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 
 /* «Ver en el plano» desplegable (pieza común de Guests) */
 .gplace{display:inline-flex;align-items:center;gap:4px}
+/* Por qué algo no se ve (sin plano, sin cama, acceso renovado): una línea, nunca un hueco en blanco */
+.gwhy{display:flex;align-items:flex-start;gap:6px;margin:6px 0;color:var(--muted)}
+.gwhy svg{flex:none;margin-top:2px}
 .gplan-host{display:block;flex-basis:100%}
 .gplan>summary{display:flex;align-items:center;gap:6px;min-height:46px;font-weight:600;color:var(--accent-deep,var(--ink));list-style:none;cursor:pointer}
 .gplan>summary::-webkit-details-marker{display:none}

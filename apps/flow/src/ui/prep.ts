@@ -203,7 +203,11 @@ export function mountQueue(kind: QueueKind): ViewMount {
       if (!(await confirmDialog({ title: 'Generar tareas de ingredientes', text: 'Se proponen «Preparar X para mesa» y «para nevera» con la previsión de Food. Lo ya generado hoy no se duplica.', confirmLabel: 'Generar' }))) return;
       try {
         const out = await generateIngredientTasks(client, ctx.projectId!);
-        toast(out.message);
+        if (!out.notes.length) { toast(out.message); return; }
+        // Lo que falta se queda a la vista hasta cerrarlo: el motivo y dónde se arregla.
+        const sheet = openSheet({ title: 'Generar tareas de ingredientes', meta: out.message,
+          body: el('ul', { class: 'generate-notes', role: 'list' }, ...out.notes.map((n) => el('li', null, n))),
+          foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: () => sheet.close() }, 'Entendido')) });
       } catch (error) { toast(describeError(error)); }
     }
 

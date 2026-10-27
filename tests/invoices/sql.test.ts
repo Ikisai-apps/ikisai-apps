@@ -1113,4 +1113,25 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   // Deshacer el cobro con el contrario: vuelve a pendiente, sin fecha ni medio
   await ok([update('invoices.issued_invoices', e1, sent.revision, { payment_status: 'pendiente', paid_at: null, payment_method: null })]);
   assert.deepEqual(await (async () => { const r = await row('invoices.issued_invoices', e1); return [r.payment_status, r.paid_at, r.payment_method, r.sent_at]; })(), ['pendiente', null, null, today.d]);
+  // K2 (0249): el PDF guardado de una registrada se abre por `portal-files` (C8) solo dentro del ámbito
+  const pdfR = await uploadFile('%PDF portal R'); const pdfR2 = await uploadFile('%PDF portal R2'); const pdfDraft = await uploadFile('%PDF portal borrador');
+  const regR = uuid(); const regR2 = uuid(); const regDraft = uuid();
+  await ok([
+    insert('invoices.issued_invoices', regR, { series_code: 'PA', number: '2026-0011', issue_date: today.d, invoice_type: 'F2', description: 'Saldo del retiro', total: 100 }),
+    insert('invoices.issued_invoice_files', uuid(), { issued_invoice_id: regR, file_id: pdfR.file_id, original_filename: 'saldo.pdf', page_order: 1 }),
+    insert('invoices.issued_invoices', regR2, { series_code: 'PA', number: '2026-0012', issue_date: today.d, invoice_type: 'F2', description: 'Otro retiro', total: 100 }),
+    insert('invoices.issued_invoice_files', uuid(), { issued_invoice_id: regR2, file_id: pdfR2.file_id, original_filename: 'otro.pdf', page_order: 1 }),
+    insert('invoices.issued_invoices', regDraft, { series_code: 'PZ', status: 'borrador', issue_date: today.d, description: 'Borrador con PDF' }),
+    insert('invoices.issued_invoice_files', uuid(), { issued_invoice_id: regDraft, file_id: pdfDraft.file_id, original_filename: 'borrador.pdf', page_order: 1 }),
+  ]);
+  await allocate(regR, R, 100); await allocate(regR2, R2, 100); await allocate(regDraft, R, 10);
+  const portalFile = (file: string, portalApp = 'organizers') => app.t.db.query<{ r: any }>(`select core.portal_file_get($1, $2, $3) r`, [portalApp, uid, file]);
+  const opened = (await portalFile(pdfR.file_id)).rows[0]!.r;
+  assert.equal(opened.id, pdfR.file_id); assert.equal(opened.app, 'invoices');
+  assert.ok((await portal('invoices.portal_invoice_document', { reservation_id: R, issued_invoice_id: regR })).rows[0]!.r.files.some((f: any) => f.file_id === pdfR.file_id), 'el mismo file_id que da F2');
+  for (const outside of [pdfR2.file_id, pdfDraft.file_id, uuid()]) await assert.rejects(portalFile(outside), /FILE_NOT_FOUND/);
+  // Un lector del portal, no (como F2)
+  await app.t.db.query(`update core.memberships set role = 'reader' where app = 'organizers' and user_id = $1`, [uid]);
+  await assert.rejects(portalFile(pdfR.file_id), /FILE_NOT_FOUND/);
+  await app.t.db.query(`update core.memberships set role = 'editor' where app = 'organizers' and user_id = $1`, [uid]);
 });

@@ -12,7 +12,7 @@ import { busyButton } from './sheets-common.ts';
  *   se pagan (en un solo pago o como pedidos independientes) o se entregan a la vez.
  * - «Pagar»: el importe en grande y desglosado; Metálico, Bizum, Tarjeta (deshabilitada por ahora) y Bitcoin (Lightning u
  *   on-chain con QR; sin conversión EUR→BTC: quien paga pone la cantidad).
- * - Tras pagar: Enviar a Finance (apunte fiscal de ese cobro) · Imprimir factura (el justificante de Finance, tras enviarlo) ·
+ * - Tras pagar: Enviar a Finance (apunte fiscal de ese cobro) · Imprimir ticket (el justificante de Finance, tras enviarlo; la factura solo la hace Finance) ·
  *   Enviar por correo (aún sin función) · Cerrar.
  */
 interface Settings { project_id: string; lightning_address: string | null; bitcoin_address: string | null; deleted_at: string | null }
@@ -112,9 +112,15 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
       ...(os.length > 1 ? [el('label', { class: 'editor-option' },
         el('input', { type: 'checkbox', checked: unify, onchange: (e: Event) => { unify = (e.target as HTMLInputElement).checked; } }),
         el('span', null, 'Un solo pago (si no, cada pedido con su justificante)'))] : []));
-    const method = (m: CheckoutMethod, disabled = false) => busyButton({ class: m === 'cash' ? 'primary' : 'secondary', 'data-method': m, ...(disabled ? { disabled: 'disabled', title: 'Aún no disponible' } : {}) },
-      CHECKOUT_METHOD_LABELS[m], () => (m === 'btc_ln' || m === 'btc_chain' ? bitcoin(m, total) : pay(m, total)));
-    replace(foot, method('cash'), method('bizum'), method('card', true), method('btc_ln', !settings?.lightning_address), method('btc_chain', !settings?.bitcoin_address));
+    // Sin dirección cargada, el método de Bitcoin sale apagado y lo dice en el botón (no un error al tocarlo).
+    const method = (m: CheckoutMethod, off: string | null = null) => busyButton({ class: m === 'cash' ? 'primary' : 'secondary', 'data-method': m, ...(off ? { disabled: 'disabled', title: off } : {}) },
+      off && m !== 'card' ? `${CHECKOUT_METHOD_LABELS[m]} · ${off}` : CHECKOUT_METHOD_LABELS[m], () => (m === 'btc_ln' || m === 'btc_chain' ? bitcoin(m, total) : pay(m, total)));
+    const noAddress = 'pendiente de dirección';
+    replace(foot, method('cash'), method('bizum'), method('card', 'Aún no disponible'),
+      method('btc_ln', settings?.lightning_address ? null : noAddress), method('btc_chain', settings?.bitcoin_address ? null : noAddress));
+    if (!settings?.lightning_address && !settings?.bitcoin_address) {
+      body.append(el('p', { class: 'muted small', 'data-note': 'bitcoin' }, 'Bitcoin: pendiente de dirección. La pone el encargado en el Inicio del flujo, «Cobro con Bitcoin».'));
+    }
   }
 
   async function bitcoin(m: CheckoutMethod, total: number): Promise<void> {
@@ -142,7 +148,7 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
     } catch (error) { toast(describeError(error)); }
   }
 
-  void loadSettings().then(paint);
+  void loadSettings().catch(() => undefined).then(paint);
   const off = watchData(client, (d) => { data = d; paint(); }, projectId);
 }
 
@@ -156,7 +162,7 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
       el('div', { class: 'flow-actions' },
         // Justificante imprimible de Finance (#817): solo tras «Enviar a Finance»; antes, apagado.
         el('button', { type: 'button', class: 'ghost', disabled: !sent.has(r.receipt_id), title: sent.has(r.receipt_id) ? '' : 'Primero, «Enviar a Finance»',
-          onclick: () => window.open(`https://finance.ikisai.com/#/justificante?ref=${encodeURIComponent(`flow:receipt:${r.receipt_id}`)}`, '_blank', 'noopener') }, 'Imprimir factura'),
+          onclick: () => window.open(`https://finance.ikisai.com/#/justificante?ref=${encodeURIComponent(`flow:receipt:${r.receipt_id}`)}`, '_blank', 'noopener') }, 'Imprimir ticket'),
         el('button', { type: 'button', class: 'ghost', disabled: true, title: 'Pronto' }, 'Enviar por correo'),
         sent.has(r.receipt_id) ? el('span', { class: 'muted small' }, 'Enviado a Finance')
           : busyButton({ class: 'secondary' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));

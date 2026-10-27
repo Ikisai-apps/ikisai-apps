@@ -164,6 +164,15 @@ test('flow · Booking lee el resumen del servicio por su proyección cuando el f
   assert.equal(reads.rows.length, 1);
 });
 
+test('Booking · qué flujos vivos tiene cada evento (tarjeta «Listo para Flow»), con lectura abierta a Booking', async () => {
+  const event = (await row(TABLES.projects, PROJECT)).booking_event_id as string;
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('booking', $1, 'reader') on conflict do nothing`, [app.users.editor]);
+  const out = (await app.t.db.query<{ out: any }>(`select core.read('booking', $1, 'flow.booking_event_flows_projection', $2::jsonb) as out`,
+    [app.users.editor, JSON.stringify({ where: { event_id: event }, limit: 50 })])).rows[0]!.out;
+  assert.deepEqual(out.rows.map((r: any) => r.project_id), [PROJECT]);
+  assert.equal(out.rows[0].event_id, event);
+});
+
 test('enlaces · Booking: sus eventos se leen con la sesión de Flow (proyección abierta por Booking)', async () => {
   const res = await app.call('/api/v1/read/booking.event_projection?limit=5');
   assert.equal(res.status, 200, JSON.stringify(res.data));

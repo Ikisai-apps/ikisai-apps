@@ -739,7 +739,7 @@ Dos lecturas registradas para la app `organizers` (`core.allow_read('organizers'
 **Lo contratado y lo cobrado** (decisión de Core, ronda 52): Booking publica lo contratado (total de la propuesta aceptada, señal requerida y vencimientos). Finance publica lo facturado y lo cobrado (F1); «pagado» sale solo de Finance. El portal calcula el saldo como contratado (Booking) − `totals.collected` (Finance).
 
 **Pendiente fuera de Invoices:**
-1. **URL firmada de un PDF guardado** (aplazada por Core en la ronda 52): una Edge con la clave de servicio tiene que firmarla con `createStorage`. La de Organizers es hoy genérica (`read/:name`). Propuesta: una ruta `portal-files` en `organizers-api` que repita la lectura F2 con la sesión del portal y firme solo un `file_id` que esa lectura devuelva. Las facturas emitidas desde Finance no la necesitan, porque el portal pinta su `document`.
+1. **URL firmada de un PDF guardado** (K2, hecha en 0249): Finance registra el resolutor `invoices.portal_invoice_file` para el portal `organizers` (`core.allow_portal_file`, C8). Organizers abre el PDF con su `GET /api/v1/portal-files/<file_id>` (ruta del kit, URL firmada de 5 minutos), con un `file_id` de `files` de F2. Responde solo si el archivo es de una factura de una reserva del ámbito, no borrador, y la persona es editora u owner del portal. Lo de fuera da `404 FILE_NOT_FOUND`, igual que lo inexistente. Las facturas emitidas desde Finance no lo necesitan, porque el portal pinta su `document`.
 
 ### 7.8 Lo cobrado por reserva, para Booking (migración 0222)
 
@@ -2013,9 +2013,21 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
 - **Apuntes de otras apps** (`app_entries.receipt_kind`): con justificante y sin decir cuál, factura (lo de la 0245).
   - **Gasto con factura:** fiscal. Va a la gestoría y su IVA cuenta como soportado, venga de la app que venga: en Gestoría resta del saldo, y en `resumen_impuestos.csv` va como `iva_soportado_apps_total`.
   - **Gasto con ticket:** de proceso. Se registra, pero no es deducible. Pedirlo fiscal da `422 INVOICE_REQUIRED`.
+  - **`receipt_kind` explícito (0248):** con `receipt_number` o `receipt_file_id` y sin `receipt_kind`, si el apunte no tenía ya uno, `422 RECEIPT_KIND_REQUIRED`. Sin justificante, igual que antes.
   - **Ingreso con ticket:** fiscal. La venta va al IVA repercutido.
   - **De ticket a factura sí; de factura a ticket, no** (`409 NATURE_CHANGE`).
 - **Compra rápida** (§18): `receipt_kind` opcional, `invoice` (por defecto) o `ticket`. Con ticket, la compra se registra como ticket y es `process`.
+
+### 17.10 El origen solo vale desde el servidor de la app (seguridad F1, auditoría del 27-10; el modelo de Tasks §45)
+
+`record_app_entry` sigue llegando por `/api/v1/commands` con el token de la persona, así que cuentan su rol y su ámbito. Pero `source_app` solo es de esa app si la llamada viene de su servidor.
+- **La prueba:** dos cabeceras, `X-Ikisai-Worker-Key` (la misma `IKISAI_WORKER_KEY` de todas las Edges) y `X-Ikisai-Caller: flow | booking`. Un navegador no tiene la clave.
+- **Con la prueba:** `source_app` tiene que ser la app que llama. Si no, `403 SOURCE_MISMATCH`.
+- **Sin la prueba:**
+  - hoy se acepta como hasta ahora;
+  - cuando Flow y Booking manden la prueba, cada una pasa a `APP_ENTRY_SOURCES_REQUIRED` (`invoices-api/app-entries-caller.ts`), y desde entonces, sin ella, `403 CALLER_REQUIRED`. Así el navegador ya no puede llamar.
+- **Para Flow y Booking:** añadid las dos cabeceras a la llamada que ya hacéis a `invoices-api/api/v1/commands`, sin más cambios, y avisad para hacerlas obligatorias.
+- **Pruebas:** `tests/invoices/app-entries.test.ts` («F1»).
 
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
