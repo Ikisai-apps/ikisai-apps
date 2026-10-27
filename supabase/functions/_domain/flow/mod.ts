@@ -121,6 +121,7 @@ export const FLOW_ERRORS: Record<string, string> = {
   ORDER_NOT_OPEN: 'Este pedido ya está cobrado: para cambiarlo, corrige el pedido cobrado.',
   TOO_MANY_OPEN_ORDERS: 'Tienes varios pedidos sin cobrar: pásate por la barra antes de pedir más.',
   ORDER_EMPTY: 'El pedido no tiene productos.',
+  EVENT_NOT_ACCESSIBLE: 'No tienes acceso a ese evento en Booking: pide acceso en Booking o al personal del evento.',
   ORDER_NOT_PAID: 'Este pedido no está cobrado.',
   ORDER_NOT_DELIVERED: 'Este pedido no está entregado.',
   ORDER_ALREADY_DELIVERED: 'Este pedido ya está entregado.',

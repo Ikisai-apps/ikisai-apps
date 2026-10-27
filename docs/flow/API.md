@@ -411,3 +411,8 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - En flow-api, por IP (memoria de la instancia, freno de más): 10 altas de cliente cada 10 minutos y 30 pedidos por minuto. La IP la pone el proxy de Pages en `X-Ikisai-Client-Ip` desde `CF-Connecting-IP`.
 - Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
 - Prueba: `tests/flow/public-limits.test.ts`.
+
+## 39. Ligar un flujo a un evento exige acceso en Booking (FL4, migración `0925`)
+
+- Al fijar o cambiar `flow.projects.booking_event_id` (por `create_flow`, «Nueva versión» o editando el proyecto), quien lo hace tiene que ver el evento en Booking (`booking.event_projection`) y ser miembro de Booking o estar en el personal de ese evento (`booking.event_staff_projection`). Si no, `403 EVENT_NOT_ACCESSIBLE`.
+- Sin actor (sistema), no se comprueba. Prueba: `tests/flow/event-access.test.ts`.

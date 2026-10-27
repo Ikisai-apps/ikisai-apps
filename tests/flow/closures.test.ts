@@ -9,6 +9,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { seedBookingEvent } from './booking-event.ts';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { planSync, PROCEDURES, TABLES, type CartaMenu } from '../../supabase/functions/_domain/flow/mod.ts';
@@ -155,6 +156,7 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
 
 test('flow · Booking lee el resumen del servicio por su proyección cuando el flujo tiene evento', async () => {
   const event = uuid();
+  await seedBookingEvent(app.t.db, event, [app.users.owner]);
   const p = await row(TABLES.projects, PROJECT);
   await ok([{ op: 'update', table: TABLES.projects, id: PROJECT, expectedRevision: p.revision, fields: { booking_event_id: event } }], app.tokens.owner);
   const view = await app.t.db.query<{ event_id: string; day: string; data: any }>(`select * from flow.booking_service_projection where event_id = $1`, [event]);
