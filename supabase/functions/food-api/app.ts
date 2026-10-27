@@ -1,10 +1,10 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { afterCartaSales, syncCartaStock } from './carta.ts';
-import { runConsumptionTick } from './consumption.ts';
+import { runConsumptionTick, stableUuid } from './consumption.ts';
 import { createApp, createSupabase, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
   eventSnapshot, FOOD_PROCEDURES, isHouseMenu, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
-  type AcknowledgedWarning, type FoodEvent, type Menu, type MenuGraph,
+  copyCartaOperations, defaultOfferFields, type AcknowledgedWarning, type CartaLine, type FoodEvent, type Menu, type MenuGraph,
 } from '../_domain/food/mod.ts';
 
 export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pages.dev'];
@@ -242,8 +242,42 @@ function voteRoutes(supabase: Supabase): AppRoute[] {
  * La carta (1109): `POST carta/stock {menuId, day}` vuelve a dejar el stock de Recursos como dicen las ventas de ese
  * día. Lo hace solo tras registrar las ventas; esta ruta es para reintentarlo si entonces falló. Editor u owner.
  */
-function cartaRoutes(supabase: Supabase): AppRoute[] {
+function cartaRoutes(supabase: Supabase, events: EventReader): AppRoute[] {
   return [{
+    /**
+     * «Usar en otro evento» como capacidad del núcleo (`food.use_carta_in_event`, 1113): copia la carta con sus líneas y,
+     * con evento, le crea su oferta. Ids estables por `requestId`: repetir la llamada devuelve el recibo, la misma copia.
+     */
+    method: 'POST', pattern: 'carta/:id/use-in-event', handler: async ({ ctx, params, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Solo quien edita puede copiar una carta.');
+      const sourceId = UUID.test(params.id ?? '') ? params.id!.toLowerCase() : fail(422, 'INVALID_OPERATION', 'Carta no válida.');
+      const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+      const eventId = body.eventId === undefined || body.eventId === null ? null
+        : typeof body.eventId === 'string' && UUID.test(body.eventId) ? body.eventId.toLowerCase() : fail(422, 'INVALID_OPERATION', 'Evento no válido.');
+      if (eventId && !(await events.get(ctx, eventId))) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { event_id: eventId });
+      const source = await supabase.rpc<{ menu: Menu & { prep_split?: unknown }; lines: CartaLine[] }>('core_read', {
+        p_app: 'food', p_actor: ctx.user.id, p_name: 'food.carta_copy_source', p_args: { menu_id: sourceId },
+      });
+      const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 120) : `${source.menu.name ?? 'Carta'} (copia)`;
+      const newId = await stableUuid(`food-carta-use:${ctx.user.id}:${requestId}:menu`);
+      const lineIds = await Promise.all(source.lines.map((l) => stableUuid(`food-carta-use:${ctx.user.id}:${requestId}:${l.id}`)));
+      let n = 0;
+      const ops = copyCartaOperations({ lines: source.lines, sourceId, newId, name, eventId, newLineId: () => lineIds[n++]!, prepSplit: (source.menu.prep_split as never) ?? null }) as Operation[];
+      const offerId = eventId ? await stableUuid(`food-carta-use:${ctx.user.id}:${requestId}:offer`) : null;
+      if (eventId) ops.push({ op: 'insert', table: 'food.event_offers', id: offerId!, fields: defaultOfferFields({ id: newId, kind: 'carta', name }, eventId) } as Operation);
+      const issue = validateOperations(ops);
+      if (issue) fail(422, issue.code, issue.message, issue.details);
+      // ¿Ya se hizo con este requestId? (el núcleo devuelve el recibo sin repetir nada; aquí solo se dice).
+      const replayed = await supabase.rpc('core_read', { p_app: 'food', p_actor: ctx.user.id, p_name: 'food.carta_copy_source', p_args: { menu_id: newId } })
+        .then(() => true, () => false);
+      await supabase.rpc('core_commit', {
+        p_app: 'food', p_actor: ctx.user.id, p_request_id: `carta-use:${requestId}`, p_digest: await sha256Hex(stable(ops)),
+        p_expected_cursor: null, p_operations: ops, p_confirmation: null,
+      });
+      return { menuId: newId, name, lines: source.lines.length, eventId, offerId, replayed };
+    },
+  }, {
     method: 'POST', pattern: 'carta/stock', handler: async ({ ctx, json }) => {
       if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Solo quien edita puede ajustar el stock de la carta.');
       const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
@@ -306,7 +340,7 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
       // La carta: las ventas registradas mueven el stock de Recursos (carta.ts). Un fallo no deshace las ventas.
       afterCommit: async (result) => { await afterCartaSales(supabase, result); },
     },
-    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase)],
+    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
     // Tanda 27: el estado de las peticiones de máquina en Tasks, para «En reparación» (migración 1106).
     workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) },
