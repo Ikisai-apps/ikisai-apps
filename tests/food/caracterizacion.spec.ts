@@ -167,10 +167,15 @@ test('caracterización · recetario: arriba las del próximo retiro (F-REC-4); a
   await expect(cards.filter({ hasText: 'Lentejas' })).toContainText('En prueba');
   await expect(cards.filter({ hasText: 'Curry de verduras' }).locator('.chip')).toHaveCount(0); // validada: sin chip
   await capture(page, '07-recetario');
+  // F-REC-2 (decisión de Core del 27-10): los selectores van en la hoja «Filtrar»; el filtro puesto sale como chip.
+  await page.locator('#openFilters').click();
   await page.locator('#filterStatus').selectOption('archivada');
+  await page.locator('#filtersDone').click();
+  await expect(page.locator('#recipeFilters [data-filter="status"]')).toHaveText('Estado: Archivada ×');
   await expect(cards.locator('strong')).toHaveText(['Bizcocho viejo']);
   await expect(page.locator('#recipeGrid .fd-gridlabel')).toHaveCount(0); // ninguna del retiro a la vista: sin grupos
-  await page.locator('#filterStatus').selectOption('');
+  await page.locator('#recipeFilters [data-filter="status"]').click(); // su × lo quita
+  await expect(page.locator('#recipeFilters [data-filter]')).toHaveCount(0);
   await cards.filter({ hasText: 'Lentejas' }).click();
   const sheet = page.getByRole('dialog', { name: 'Lentejas' });
   await expect(sheet).toContainText('Alérgenos sin revisar');
