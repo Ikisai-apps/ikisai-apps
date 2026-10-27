@@ -57,9 +57,18 @@ export function myEventCodes(): string[] {
   } catch { return []; }
 }
 
+/** Eventos ya anotados en el núcleo en esta visita de la página (para no repetir la llamada al volver a la pantalla). */
+const visited = new Set<string>();
+
 export function rememberEvent(code: string): void {
   const next = [code.toUpperCase(), ...myEventCodes().filter((c) => c !== code.toUpperCase())].slice(0, 50);
   try { store()?.setItem(EVENTS_KEY, JSON.stringify(next)); } catch { /* solo en memoria */ }
+  // Con identidad, también en el núcleo (0107): así «Mis eventos» se rehace en otro móvil al recuperar el acceso.
+  const upper = code.toUpperCase();
+  if (visitorToken() && !visited.has(upper)) {
+    visited.add(upper);
+    void call('/api/v1/public/visitor/visit', { json: { eventCode: upper } }).catch(() => visited.delete(upper));
+  }
 }
 
 /** Abre «Alójate aquí» de ese evento en este móvil (QR o enlace de Flow). */
@@ -144,6 +153,8 @@ export async function verifyEmailCode(email: string, code: string): Promise<{ re
   if (out.token) {
     try { store()?.setItem(TOKEN_KEY, out.token); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
     await cache.clearUser(CACHE_USER);
+    // «Mis eventos» vive en cada móvil: al recuperar, se rellena con los del acceso, si el núcleo los da.
+    await visitorMe().then((me) => { for (const code of [...me.eventCodes].reverse()) rememberEvent(code); }).catch(() => undefined);
     return { recovered: true };
   }
   return { recovered: out.recovered === true };
@@ -163,9 +174,11 @@ export async function forgetEmail(): Promise<void> {
 }
 
 /** Su acceso: si tiene correo guardado y su pista («v•••@g•••.com»). */
-export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null }> {
-  const out = await call<{ emailSaved?: boolean; emailHint?: string | null }>('/api/v1/public/visitor/me');
-  return { emailSaved: out.emailSaved === true, emailHint: typeof out.emailHint === 'string' ? out.emailHint : null };
+export async function visitorMe(): Promise<{ emailSaved: boolean; emailHint: string | null; eventCodes: string[] }> {
+  const out = await call<{ emailSaved?: boolean; emailHint?: string | null; eventCodes?: unknown }>('/api/v1/public/visitor/me');
+  return { emailSaved: out.emailSaved === true, emailHint: typeof out.emailHint === 'string' ? out.emailHint : null,
+    // Los eventos de este visitante, el más reciente primero (núcleo 0107).
+    eventCodes: Array.isArray(out.eventCodes) ? out.eventCodes.filter((c): c is string => typeof c === 'string' && EVENT_CODE.test(c)) : [] };
 }
 
 /** Una llamada con visitante; si su token ya no vale (revocado o malo), se borra, se crea otro y se repite una vez. */
