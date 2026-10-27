@@ -300,6 +300,7 @@ const SPECS: Record<string, TableSpec> = {
     },
     required: ['review_id', 'app', 'kpi', 'label', 'period', 'unit', 'state'],
     immutable: ['review_id'],
+  },
   [FIELD_GROUP_REVIEWS_TABLE]: {
     fields: {
       app: { kind: 'text', min: 1, max: 40, pattern: /^[a-z][a-z0-9_]*$/, patternText: 'id de app' },
@@ -529,6 +530,7 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     }
     if ((table === WEEKLY_REVIEWS_TABLE || table === WEEKLY_ITEMS_TABLE || table === WEEKLY_ACTIONS_TABLE) && !canPrepareReview(actor)) {
       return { code: 'FORBIDDEN', message: 'Preparan la revisión semanal quien administra Central y quien tiene el ámbito de Dirección.', details: { index, table } };
+    }
     if (table === FIELD_GROUP_REVIEWS_TABLE && !canDeclareUtility(actor)) {
       return { code: 'FORBIDDEN', message: 'La cobertura de campos la revisa Dirección.', details: { index, table } };
     }
