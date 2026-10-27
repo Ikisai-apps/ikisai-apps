@@ -412,6 +412,16 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Los mensajes de la carta dicen qué hacer («pásate por la barra antes de pedir más»).
 - Prueba: `tests/flow/public-limits.test.ts`.
 
+## 38. Identidad de servicio ante Finance y Tasks (FL1, FL2)
+
+- Las llamadas de flow-api a Finance (`invoices-api /api/v1/commands`, `invoices.record_app_entry`: cierre del día y justificantes) y a Tasks (`requests/task`, `requests/purchase`) llevan, además del token de la persona, `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY` del entorno de la Edge) y `X-Ikisai-Caller: flow`.
+- Con eso, Finance y Tasks reservan `source_app`/`source: 'flow'` a Flow (Finance: `403 SOURCE_MISMATCH` si no coincide).
+- A Food y a Booking no se les manda la clave.
+
+## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
+
+- En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).
+
 ## 39. Ligar un flujo a un evento exige acceso en Booking (FL4, migración `0925`)
 
 - Al fijar o cambiar `flow.projects.booking_event_id` (por `create_flow`, «Nueva versión» o editando el proyecto), quien lo hace tiene que ver el evento en Booking (`booking.event_projection`) y ser miembro de Booking o estar en el personal de ese evento (`booking.event_staff_projection`). Si no, `403 EVENT_NOT_ACCESSIBLE`.

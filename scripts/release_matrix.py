@@ -6,7 +6,7 @@
   y HEAD (`apps/<app>`, `supabase/functions/<app>-api`, `supabase/functions/_domain/<app>`, `packages/domain-<app>`,
   migraciones `*_<app>_*`). Así una release cancelada en cola por la concurrencia de GitHub no deja una app sin publicar.
   Si no se puede leer el commit publicado, se usa BEFORE: la última release completa (tag `released`). Un cambio compartido
-  (`_kit`, migraciones core, `sync-client`, `ui-kit`, `scripts`, workflows) marca todas las apps.
+  (`_kit`, migraciones core, `sync-client`, `ui-kit`, `scripts`, `release.yml`) marca todas las apps.
 - Solo se publican apps «publicables»: existen `supabase/functions/<app>-api/index.ts` y `apps/<app>/package.json`.
 - `migrations=true|false`: si hay migraciones que aplicar aunque ninguna app se publique. Una tanda solo de un módulo
   (`*_resources_*`, sin dominio propio) no marca ninguna app, pero sus migraciones tienen que aplicarse (PROD-001, 14-10-2026).
@@ -23,7 +23,9 @@ import sys
 from apps import APPS, get_app
 from cloud_management import ROOT
 
-SHARED = ('supabase/functions/_kit/', 'packages/sync-client/', 'packages/ui-kit/', 'packages/test-kit/', 'scripts/', '.github/workflows/', 'package.json', 'package-lock.json', 'tsconfig.json')
+# De los workflows, solo release.yml cambia lo que se publica: checks.yml, backup.yml o invoices-corpus.yml no (27-10: la #827,
+# solo checks.yml, republicó las 8 apps).
+SHARED = ('supabase/functions/_kit/', 'packages/sync-client/', 'packages/ui-kit/', 'packages/test-kit/', 'scripts/', '.github/workflows/release.yml', 'package.json', 'package-lock.json', 'tsconfig.json')
 VERSION = re.compile(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?')
 
 

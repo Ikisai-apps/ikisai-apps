@@ -38,8 +38,9 @@ import {
 import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
+import { announceHeaderArt, centralHeader } from './header-art.ts';
 import {
-  DECOR_ICONS, IMAGE_KIND_LABELS, IMAGE_KINDS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
+  DECOR_ICONS, HEADER_APPS, HEADER_APP_LABELS, IMAGE_KIND_LABELS, headerOf, headerOperations, type HeaderApp, IMAGE_KINDS, contoursFromBands, contoursFromCurves, movePoint, withContourPoints, decorForPlan, decorOperations, elevationLines, estateMeta, gridOf, iconProblem, imageProblem,
   type DecorRow, type ImageKind,
 } from '../app/decor.ts';
 import { activeContent, cleanSvg, foldName, generatedName, matchShapes, readSvgPlan } from '../app/svg-plan.ts';
@@ -53,7 +54,13 @@ const IMAGES = R.spaceImages as TableName;
 const ICON_ACCEPT = 'image/svg+xml,image/png,image/gif';
 type PlanRow = { id: string; revision: number; kind?: string | null; grid?: unknown; contours?: unknown; deleted_at?: string | null };
 type IconRow = { id: string; revision: number; name: string; category: string; file_id: unknown; default_size: number; deleted_at?: string | null };
-type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; deleted_at?: string | null };
+/** Ids literales del selector de cabecera de cada app (así entran en el catálogo y en el inventario de campos). */
+const HEADER_MARKS: Record<HeaderApp, { label: Record<string, string>; select: Record<string, string> }> = {
+  central: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.central', 'data-feedback-label': 'Cabecera de Central' }, select: { 'data-field-id': 'central.planos.header_central' } },
+  guests: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.guests', 'data-feedback-label': 'Cabecera de Guests' }, select: { 'data-field-id': 'central.planos.header_guests' } },
+  organizers: { label: { 'data-feedback-id': 'central.planos.imagenes.cabecera.organizers', 'data-feedback-label': 'Cabecera de Organizers' }, select: { 'data-field-id': 'central.planos.header_organizers' } },
+};
+type ImageRow = { id: string; revision: number; space_id: string; kind: string; title: string; file_id: unknown; position: number; header_for?: string[] | null; deleted_at?: string | null };
 const WIDE = '(min-width: 900px)';
 /** Lo que no se coloca: lo que contiene estancias (alturas, edificios y exteriores). */
 const CONTAINERS = new Set(['altura', 'edificio', 'exterior']);
@@ -829,9 +836,24 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const add = owner ? el('button', { type: 'button', class: 'primary', id: 'newCenterImage', 'data-feedback-id': 'central.planos.imagenes.subir', 'data-feedback-label': 'Subir una imagen del centro', onclick: () => openImageUpload(null) }, icon('upload', 16), 'Subir una imagen') : null;
     if (add) imageBinds.push(bindOnline(add, { client: r, reason: 'Las imágenes se suben con conexión.' }));
     const byBuilding = buildings.filter((b) => live.some((i) => i.space_id === b.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    // Silueta de cabecera de cada app (Recursos 0816): una por app, elegida entre las siluetas subidas.
+    const siluetas = live.filter((i) => i.kind === 'silueta').map((i) => ({ i, b: buildings.find((x) => x.id === i.space_id) }))
+      .sort((x, y) => (x.b?.name ?? '').localeCompare(y.b?.name ?? '', 'es') || x.i.position - y.i.position);
+    const headers = siluetas.length ? el('div', { id: 'headerPicks', class: 'ctl-headerpicks', 'data-feedback-id': 'central.planos.imagenes.cabecera', 'data-feedback-label': 'Silueta de cabecera de cada app' },
+      el('h4', { class: 'sectionlabel' }, 'Silueta de cabecera'),
+      el('p', { class: 'hint' }, 'La que sale arriba en cada app.'),
+      ...HEADER_APPS.map((app) => {
+        const current = headerOf(live, app);
+        const sel = el('select', { id: `header-${app}`, ...HEADER_MARKS[app].select, disabled: !owner },
+          el('option', { value: '' }, 'Ninguna'),
+          ...siluetas.map(({ i, b }) => el('option', { value: i.id, selected: i.id === current }, `${b?.name ?? 'Sin edificio'} · ${i.title}`))) as HTMLSelectElement;
+        sel.addEventListener('change', () => void setHeader(app, sel.value || null));
+        return el('label', { class: 'field', ...HEADER_MARKS[app].label }, el('span', null, HEADER_APP_LABELS[app]), sel);
+      })) : null;
     replace(imagesHost,
       el('div', { class: 'blockhead' }, el('h3', null, 'Imágenes del centro'), add),
       el('p', { class: 'hint' }, 'Siluetas, secciones y fotos de cada edificio: salen de cabecera en los portales de huéspedes y de quien organiza, y en la ficha del edificio.'),
+      headers,
       byBuilding.length ? el('div', { id: 'centerImageList' }, ...byBuilding.map((b) => el('section', { class: 'card', dataset: { space: b.id } },
         el('div', { class: 'blockhead' }, el('h4', null, b.name),
           owner ? el('button', { type: 'button', class: 'ghost small', 'aria-label': `Subir una imagen de ${b.name}`, 'data-feedback-id': 'central.planos.imagenes.subir_edificio', 'data-feedback-label': 'Subir una imagen del edificio', onclick: () => openImageUpload(b.id) }, icon('plus', 16), 'Añadir') : null),
@@ -840,6 +862,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
           return el('li', { dataset: { image: i.id } },
             url ? el('img', { src: url, alt: `${IMAGE_KIND_LABELS[i.kind as ImageKind] ?? i.kind} de ${b.name}: ${i.title}`, loading: 'lazy' }) : el('span', { class: 'muted small' }, 'Cargando…'),
             el('span', { class: 'small' }, el('strong', null, i.title), ` · ${IMAGE_KIND_LABELS[i.kind as ImageKind] ?? i.kind}`),
+            i.header_for?.length ? el('span', { class: 'chip', dataset: { headerFor: i.header_for.join(' ') } }, `Cabecera de ${i.header_for.map((a) => HEADER_APP_LABELS[a as HeaderApp] ?? a).join(', ')}`) : null,
             owner ? el('button', { type: 'button', class: 'ghost small', 'aria-label': `Quitar «${i.title}»`, 'data-feedback-id': 'central.planos.imagenes.quitar', 'data-feedback-label': 'Quitar la imagen', onclick: () => void removeImage(i) }, icon('trash', 16), 'Quitar') : null);
         }))))) : el('p', { class: 'hint', id: 'centerImagesEmpty' }, owner ? 'Aún no hay imágenes. Sube las siluetas y secciones de cada edificio.' : 'Aún no hay imágenes de los edificios.'));
   }
@@ -886,6 +909,21 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       foot: [submit],
       onClose: () => unbind(),
     });
+  }
+
+  /** Cambia la silueta de cabecera de una app en un solo lote, con «Deshacer». */
+  async function setHeader(app: HeaderApp, imageId: string | null): Promise<void> {
+    const before = headerOf(images, app);
+    const ops = headerOperations(images, app, imageId);
+    if (!ops.length) return;
+    try {
+      await r.commit(ops);
+      const label = HEADER_APP_LABELS[app];
+      toastWithAction(imageId ? `Cabecera de ${label} cambiada.` : `${label} se queda sin silueta de cabecera.`, { label: 'Deshacer', onClick: () => void (async () => {
+        try { const now = (await r.list(IMAGES)) as unknown as ImageRow[]; const back = headerOperations(now, app, before); if (back.length) await r.commit(back); }
+        catch (e) { toast(describeError(e)); }
+      })() });
+    } catch (e) { toast(describeError(e)); paintImages(); }
   }
 
   async function removeImage(i: ImageRow): Promise<void> {
@@ -983,12 +1021,16 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   // --- Datos ------------------------------------------------------------------------------------------------------
   const repaint = () => { if (!alive) return; paintTools(); paintEditor(); paintImages(); };
   // Lo de 0814 que la fuente del kit no trae: dibujos (tipo, escala y cotas), iconos, objetos e imágenes.
+  let lastHeader: string | null | undefined;
   async function loadExtra(): Promise<void> {
     const [p, ic, it, im] = await Promise.all([r.list(PLANS), r.list(DECOR_ICONS), r.list(ITEMS), r.list(IMAGES)].map((x) => x.catch(() => [])));
     planRows = p as unknown as PlanRow[];
     icons = (ic as unknown as IconRow[]).filter((x) => !x.deleted_at);
     items = it as unknown as typeof items;
     images = (im as unknown as ImageRow[]).filter((x) => !x.deleted_at);
+    // Si cambia la silueta de cabecera de Central (se elige aquí), la cabecera se entera sin leer Recursos por su cuenta.
+    const header = centralHeader(images as unknown as Parameters<typeof centralHeader>[0])?.id ?? null;
+    if (header !== lastHeader) { if (lastHeader !== undefined) announceHeaderArt(images as unknown as Parameters<typeof announceHeaderArt>[0]); lastHeader = header; }
     if (!alive) return;
     viewer?.setDecor(allDecor());
     repaint();

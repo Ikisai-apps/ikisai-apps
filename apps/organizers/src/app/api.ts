@@ -120,7 +120,7 @@ export interface PortalInvoice {
   purpose?: 'senal' | 'saldo' | 'extras' | 'general' | null;
 }
 export interface PortalMoney { reservation_id: string; currency: string; invoices: PortalInvoice[]; totals: { invoiced: number | string; collected: number | string; pending: number | string } }
-/** Copia congelada de una factura (F2) o los PDF guardados de una registrada (aún sin URL firmada para el portal). */
+/** Copia congelada de una factura (F2) o los PDF guardados de una registrada (se abren con `portalFile`, K2). */
 export interface PortalInvoiceDocument {
   id: string; number: string; issue_date: string; status: string; document: IssuedDocument | null;
   files: Array<{ file_id: string; filename: string; mime: string; size: number }>;
@@ -164,8 +164,9 @@ export interface PortalApi {
   invokeAny<T = unknown>(name: string, args: Record<string, unknown>): Promise<T>;
   /** Enlace de Guests de solo lectura al huésped de muestra (O6, C9): `preview: true`. */
   previewLink(reservationId: string, guestId: string, name: string): Promise<IssuedLink>;
-  /** URL firmada corta de un archivo publicado a este portal por otra app (C8: fotos de Food, plano de Central). */
-  portalFile(fileId: string): Promise<{ url: string; mime: string; name?: string }>;
+  /** URL firmada de 5 minutos de un archivo publicado a este portal por otra app (C8: fotos de Food, plano de Central, PDF de
+   *  una factura registrada de Finance, K2). */
+  portalFile(fileId: string): Promise<{ id: string; url: string; mime: string; filename: string; size: number; expiresAt: string }>;
 }
 
 export function createPortalApi(client: SyncClient): PortalApi {
