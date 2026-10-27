@@ -205,7 +205,8 @@ test('enlaces · «Pedir a Tasks»: proyecto elegido una vez, tarea o compra con
   assert.equal(calls[0]!.worker, 'clave-worker-de-prueba'); assert.equal(calls[0]!.caller, 'flow');
   assert.equal(calls[0]!.body.external_ref, unitId); assert.equal(calls[0]!.body.project_id, tasksProject);
   assert.equal(calls[0]!.body.priority, 'high'); assert.equal(calls[0]!.body.source, 'flow');
-  await ok([call(PROCEDURES.unitLinkExternal, { unit_id: unitId, link: asked.data.link })]);
+  // El enlace lo anotó flow-api (FL6); el cliente ya no puede escribirlo.
+  assert.notEqual((await commit([call('flow.unit_link_external', { unit_id: unitId, link: { app: 'tasks', kind: 'task', id: 'otro' } })])).status, 200);
   assert.deepEqual((await row(TABLES.units, unitId)).payload.external.id, 't-1');
   // Compra con cantidad.
   const bought = await app.call(`/api/v1/units/${unitId}/tasks`, { body: { type: 'purchase', quantity: 3, unit: 'kg' } });
