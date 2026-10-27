@@ -11,6 +11,7 @@ const WORKER_KEY = 'clave-worker-factura';
 // Finance falsa: solo la ruta de la factura a petición (los datos sintéticos)
 const asked: Array<{ method: string; url: string; headers: Record<string, string>; body: any }> = [];
 let financeOn = true;
+const invoices = new Map<string, { request_id: string; status: string }>();
 const financeFetch: typeof fetch = async (input, init) => {
   const url = String(input);
   const headers = Object.fromEntries(new Headers(init?.headers).entries());
@@ -18,8 +19,16 @@ const financeFetch: typeof fetch = async (input, init) => {
   asked.push({ method: init?.method ?? 'GET', url, headers, body });
   if (!url.includes('/invoices-api/api/v1/worker/entry-invoice')) return Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 });
   if (!financeOn) return Response.json({}, { status: 404 });
+  if ((init?.method ?? 'GET') === 'GET') {
+    const found = invoices.get(new URL(url).searchParams.get('source') ?? '');
+    return found ? Response.json(found) : Response.json({ error: { code: 'NOT_REQUESTED' } }, { status: 404 });
+  }
   if (body?.customer?.tax_id === '00000000X') return Response.json({ error: { code: 'TAX_ID_INVALID', message: 'NIF no válido', details: { field: 'tax_id' } } }, { status: 422 });
-  return Response.json({ request_id: body?.request_id ?? null, status: 'pendiente' });
+  const prev = invoices.get(body.source);
+  if (prev && prev.status !== 'descartada' && prev.request_id !== body.request_id) return Response.json({ error: { code: 'ALREADY_REQUESTED', details: prev } }, { status: 409 });
+  const row = { request_id: body.request_id, status: 'pendiente' };
+  invoices.set(body.source, row);
+  return Response.json(row);
 };
 let app: TestApp;
 let seq = 0;
@@ -69,19 +78,28 @@ test('el visitante pide factura de lo cobrado; Booking la pide a Finance por cob
   await app.t.db.query(`update booking.walkin_charges set finance_sent_at = now(), finance_entry_id = gen_random_uuid() where id = $1`, [charge]);
   asked.length = 0;
   const first = await (await post('stay/invoice', { stay_id: stay.id, customer }, { 'X-Visitor': v.token })).json();
-  assert.deepEqual(first.invoices, [{ charge_id: charge, status: 'pendiente', full_number: null, pdf_url: null }]);
-  const call = asked.find((a) => a.url.endsWith('/worker/entry-invoice'))!;
+  assert.deepEqual(first.invoices, [{ charge_id: charge, status: 'pendiente', issued_invoice_id: null, full_number: null, pdf_url: null }]);
+  const call = asked.find((a) => a.method === 'POST' && a.url.endsWith('/worker/entry-invoice'))!;
   assert.deepEqual([call.headers['x-ikisai-worker-key'], call.headers['x-ikisai-caller'], call.body.source], [WORKER_KEY, 'booking', `booking:stay:${charge}`]);
   assert.equal(call.body.customer.tax_id, 'B12345674');
-  await post('stay/invoice', { stay_id: stay.id, customer }, { 'X-Visitor': v.token });
-  const again = asked.filter((a) => a.url.endsWith('/worker/entry-invoice')).at(-1)!;
-  assert.equal(again.body.request_id, call.body.request_id);
+  // repetir: ya hay una pedida, no se vuelve a pedir
+  const posts = () => asked.filter((a) => a.method === 'POST').length;
+  const before = posts();
+  assert.equal((await (await post('stay/invoice', { stay_id: stay.id, customer }, { 'X-Visitor': v.token })).json()).invoices[0].status, 'pendiente');
+  assert.equal(posts(), before);
+  // Finance descarta el borrador: se puede volver a pedir, con otro request_id
+  invoices.get(`booking:stay:${charge}`)!.status = 'descartada';
+  assert.equal((await (await post('stay/invoice', { stay_id: stay.id, customer }, { 'X-Visitor': v.token })).json()).invoices[0].status, 'pendiente');
+  const retried = asked.filter((a) => a.method === 'POST').at(-1)!;
+  assert.notEqual(retried.body.request_id, call.body.request_id);
   const leaked = (await app.t.db.query(`select 1 from booking.guests g where g.event_id = $1 and (g::text ilike '%B12345674%' or g::text ilike '%Sintética SL%')`, [event])).rows.length;
   assert.equal(leaked, 0, 'Booking no guarda los datos fiscales');
 
   // errores: NIF que Finance rechaza, datos mal, otro visitante, Finance sin la ruta
+  invoices.clear();
   const badTax = await (await post('stay/invoice', { stay_id: stay.id, customer: { ...customer, tax_id: '00000000X' } }, { 'X-Visitor': v.token })).json();
   assert.equal(badTax.error?.code, 'TAX_ID_INVALID');
+  assert.equal((await app.call(`/api/v1/walkins/${charge}/invoice`, { method: 'GET' })).data?.error?.code, 'NOT_REQUESTED');
   assert.equal((await (await post('stay/invoice', { stay_id: stay.id, customer: { name: 'Sin NIF' } }, { 'X-Visitor': v.token })).json()).error?.details?.field, 'tax_id');
   const other = await issueVisitor(db(), code);
   assert.equal((await post('stay/invoice', { stay_id: stay.id, customer }, { 'X-Visitor': other.token })).status, 404);

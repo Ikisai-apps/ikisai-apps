@@ -246,32 +246,43 @@ const RETREAT_LOGO_BUCKET = 'organizers-materials';
 export interface FinanceLink { base: string; appsFetch: typeof fetch; workerKey: string | undefined }
 
 /**
- * Factura a petición de un cobro (vg-38; contrato con Finance): `worker/entry-invoice` de Finance, uno por cobro
- * (`booking:stay:<cobro>`). Los datos fiscales no se guardan en Booking. `request_id` sale del cobro y del destinatario: repetir
- * lo mismo no pide dos veces. Sin la ruta en Finance (404 sin código), `INVOICES_OFF`.
+ * Factura a petición de un cobro (vg-38; contrato con Finance, `docs/invoices/API.md` §17.13): `worker/entry-invoice` de
+ * Finance, uno por cobro (`booking:stay:<cobro>`). Los datos fiscales no se guardan en Booking. Finance deja la factura en
+ * borrador para revisar (`pendiente`) y la emite (`emitida`, con `issued_invoice_id` y `full_number`); si la descarta
+ * (`descartada`), se puede volver a pedir. Antes de pedir se mira si ya hay una: repetir no pide dos veces. Sin la ruta en
+ * Finance (404 sin código), `INVOICES_OFF`. El PDF para alguien sin sesión todavía no existe (`pdf_url: null`).
  */
 async function requestEntryInvoice(link: FinanceLink, chargeId: string, customer: InvoiceCustomer | null) {
   const url = `${link.base}/functions/v1/invoices-api/api/v1/worker/entry-invoice`;
   const source = `booking:stay:${chargeId}`;
   const headers = { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': link.workerKey ?? '', 'X-Ikisai-Caller': 'booking' };
-  let res: Response;
-  try {
-    if (!customer) {
-      res = await link.appsFetch(`${url}?source=${encodeURIComponent(source)}`, { method: 'GET', headers, signal: AbortSignal.timeout(15_000) });
-    } else {
-      const hex = (await sha256Hex(`booking-invoice:${chargeId}:${JSON.stringify(customer)}`)).slice(0, 32);
-      const requestId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-      res = await link.appsFetch(url, { method: 'POST', headers, body: JSON.stringify({ request_id: requestId, source, customer }), signal: AbortSignal.timeout(15_000) });
+  const call = async (init: RequestInit & { url: string }) => {
+    let res: Response;
+    try {
+      res = await link.appsFetch(init.url, { ...init, headers, signal: AbortSignal.timeout(15_000) });
+    } catch {
+      fail(503, 'APP_UNAVAILABLE', 'Finance no responde ahora mismo. Inténtalo más tarde.');
     }
-  } catch {
-    fail(503, 'APP_UNAVAILABLE', 'Finance no responde ahora mismo. Inténtalo más tarde.');
-  }
-  const body = await res!.json().catch(() => ({})) as any;
-  const code = body?.error?.code as string | undefined;
-  if (res!.ok) return { charge_id: chargeId, status: body.status ?? null, full_number: body.full_number ?? null, pdf_url: body.pdf_url ?? null };
-  if (code === 'ALREADY_REQUESTED') return { charge_id: chargeId, status: body.error?.details?.status ?? 'pendiente', full_number: body.error?.details?.full_number ?? null, pdf_url: body.error?.details?.pdf_url ?? null };
-  if (res!.status === 404 && !code) fail(503, 'INVOICES_OFF', 'La factura a petición todavía no está activa.');
-  fail(res!.status === 409 || res!.status === 404 ? res!.status : 422, code ?? 'APP_REJECTED', body?.error?.message ?? 'Finance no ha aceptado la petición de factura.', { details: body?.error?.details ?? null });
+    return { res: res!, body: await res!.json().catch(() => ({})) as any };
+  };
+  const out = (b: any) => ({ charge_id: chargeId, status: b?.status ?? null, issued_invoice_id: b?.issued_invoice_id ?? null, full_number: b?.full_number ?? null, pdf_url: b?.pdf_url ?? null });
+  const reject = (res: Response, body: any): never => {
+    const code = body?.error?.code as string | undefined;
+    if (res.status === 404 && !code) fail(503, 'INVOICES_OFF', 'La factura a petición todavía no está activa.');
+    fail(res.status === 409 || res.status === 404 ? res.status : 422, code ?? 'APP_REJECTED', body?.error?.message ?? 'Finance no ha aceptado la petición de factura.', { details: body?.error?.details ?? null });
+  };
+  const current = await call({ url: `${url}?source=${encodeURIComponent(source)}`, method: 'GET' });
+  const notRequested = current.res.status === 404 && current.body?.error?.code === 'NOT_REQUESTED';
+  if (!customer) return current.res.ok ? out(current.body) : reject(current.res, current.body);
+  if (!current.res.ok && !notRequested) reject(current.res, current.body);
+  if (current.res.ok && current.body?.status !== 'descartada') return out(current.body);
+  // la primera vez, el id sale del cobro y del destinatario; tras un borrador descartado, uno nuevo
+  const hex = (await sha256Hex(`booking-invoice:${chargeId}:${JSON.stringify(customer)}${notRequested ? '' : `:${crypto.randomUUID()}`}`)).slice(0, 32);
+  const requestId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  const posted = await call({ url, method: 'POST', body: JSON.stringify({ request_id: requestId, source, customer }) });
+  if (posted.res.ok) return out(posted.body);
+  if (posted.body?.error?.code === 'ALREADY_REQUESTED') return out(posted.body.error.details);
+  return reject(posted.res, posted.body);
 }
 
 function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: string | undefined): AppRoute[] {
@@ -570,7 +581,7 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null, fin
       const link: FinanceLink = { base: supabase.base, ...finance! };
       const invoices = [];
       for (const c of billable) {
-        if (!c.sent) { invoices.push({ charge_id: c.id, status: 'sin_apunte', full_number: null, pdf_url: null }); continue; }
+        if (!c.sent) { invoices.push({ charge_id: c.id, status: 'sin_apunte', issued_invoice_id: null, full_number: null, pdf_url: null }); continue; }
         invoices.push(await requestEntryInvoice(link, c.id, (checked as { customer: InvoiceCustomer }).customer));
       }
       return { invoices };

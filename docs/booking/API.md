@@ -2179,5 +2179,11 @@ Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no gua
   - un cobro que aún no está en Finance sale con `status: 'sin_apunte'`;
   - sin nada cobrado, 409 `NOTHING_TO_INVOICE`.
 - **Recepción:** `POST walkins/:id/invoice {customer}` y `GET walkins/:id/invoice` (cómo va), para editor y owner.
+- **Estados (Finance, §17.13):**
+  - `pendiente` es el borrador que revisa Finance; `emitida` trae `issued_invoice_id` y `full_number`;
+  - también puede quedar `anulada` o `descartada`, y con `descartada` se puede volver a pedir;
+  - antes de pedir se mira si ya hay una, así que repetir no pide dos veces;
+  - `pdf_url` llega a `null` hasta que Finance tenga el PDF para quien no tiene sesión;
+  - `GET` sin petición: 404 `NOT_REQUESTED`.
 - **Apagado hasta que Finance tenga la ruta:** si Finance responde 404 sin código, 503 `INVOICES_OFF`.
 - `booking.stay_charges_of` (sistema) da los cobros de la solicitud aceptada, solo al visitante dueño.
