@@ -160,7 +160,8 @@ function asEvent(raw: unknown): PublicEvent | null {
   const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
   return { code: e.code, name: e.name, starts_on: day(e.starts_on), ends_on: day(e.ends_on), kind: String(e.kind ?? 'retiro'),
     status: String(e.status ?? 'cerrado'), joinable: e.joinable === true, summary: typeof e.summary === 'string' && e.summary.trim() ? e.summary : null,
-    lodging: e.lodging === true };
+    // `booking_public_events` lo trae; `booking_event` (un evento por su código) aún no: entonces, el de jornadas abiertas.
+    lodging: e.lodging === true || (e.lodging === undefined && e.kind === 'jornadas_abiertas') };
 }
 
 /** El evento del QR (Booking BG19, lectura pública `booking_event`); null si el código no es de ningún evento. */
