@@ -70,7 +70,11 @@ async function enter(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   await page.getByRole('button', { name: new RegExp(FLOW_NAME) }).first().click();
-  await page.locator('a.navbtn', { hasText: 'Pedido y cobro' }).first().click();
+  // Barra inferior de la v2 con nombres cortos (revisión móvil 27-10): caben a 390 px sin cortarse.
+  const labels = await page.locator('a.navbtn').allInnerTexts();
+  expect(labels.length).toBeGreaterThanOrEqual(6);
+  for (const l of labels) expect(l.replace(/\d+/g, '').trim().length, l).toBeLessThanOrEqual(9);
+  await page.locator('a.navbtn', { hasText: 'Caja' }).first().click();
 }
 
 test('avisos · caja sin direcciones de Bitcoin: «pendiente de dirección», no un error', async ({ page }) => {
