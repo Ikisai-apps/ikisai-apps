@@ -219,6 +219,19 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.locator('#imageFile').setInputFiles({ name: 'alzado.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
   await page.locator('#imageSubmit').click();
   await expect.poll(async () => (await api.app.t.db.query<{ k: string; t: string }>(`select kind as k, title as t from resources.space_images where space_id = $1 and deleted_at is null`, [ids.building])).rows).toEqual([{ k: 'silueta', t: 'Alzado norte' }]);
+
+  // Silueta de cabecera de cada app (Recursos 0816): se elige entre las siluetas y se puede deshacer.
+  const header = async () => (await api.app.t.db.query<{ h: string[] }>(`select header_for as h from resources.space_images where deleted_at is null and kind = 'silueta'`)).rows[0]?.h ?? null;
+  await expect(page.locator('#headerPicks')).toBeVisible();
+  await page.locator('#header-guests').selectOption({ index: 1 });
+  await expect.poll(header).toEqual(['guests']);
+  await expect(page.locator('#centerImageList [data-header-for]')).toHaveText('Cabecera de Guests');
+  // El aviso es uno con una fila por acción: la última es la nueva.
+  await expect(page.locator('.ikisai-toast')).toContainText('Cabecera de Guests cambiada.');
+  await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).last().click();
+  await expect.poll(header).toEqual([]);
+  await page.locator('#header-central').selectOption({ index: 1 });
+  await expect.poll(header).toEqual(['central']);
   await expect(page.locator(`#centerImageList [data-space="${ids.building}"]`)).toContainText('Alzado norte');
 });
 

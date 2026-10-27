@@ -9,6 +9,8 @@ import { cache } from './cache.ts';
 
 const TOKEN_KEY = 'ikisai-visitor';
 const EVENTS_KEY = 'ikisai-visitor-events';
+/** Marca de «tu acceso de visitante se renovó» (el anterior ya no valía), para decirlo una vez en la pantalla. */
+const RENEWED_KEY = 'ikisai-visitor-renewed';
 /** Usuario de la caché sin red de lo público del visitante (no es una persona del núcleo). */
 const CACHE_USER = 'visitor';
 /** Código del QR (Booking BG17): 10 caracteres sin ambigüedades; vale en mayúsculas o minúsculas. */
@@ -52,7 +54,7 @@ export function rememberEvent(code: string): void {
 
 /** «Salir de este móvil»: el token, la lista de eventos y la caché del visitante. */
 export async function forgetVisitor(): Promise<void> {
-  try { store()?.removeItem(TOKEN_KEY); store()?.removeItem(EVENTS_KEY); } catch { /* nada guardado */ }
+  try { store()?.removeItem(TOKEN_KEY); store()?.removeItem(EVENTS_KEY); store()?.removeItem(RENEWED_KEY); } catch { /* nada guardado */ }
   await cache.clearUser(CACHE_USER);
 }
 
@@ -91,7 +93,7 @@ async function withVisitor<T>(code: string, run: () => Promise<T>): Promise<T> {
     return await run();
   } catch (error) {
     if ((error as PublicError).code !== 'VISITOR_INVALID') throw error;
-    try { store()?.removeItem(TOKEN_KEY); } catch { /* nada */ }
+    try { store()?.removeItem(TOKEN_KEY); store()?.setItem(RENEWED_KEY, '1'); } catch { /* nada */ }
     await ensureVisitor(code);
     return run();
   }
@@ -145,6 +147,15 @@ export function sendRequest(code: string, input: { kind: 'join' | 'contact'; nam
   return withVisitor(code, () => call<VisitorRequest>('/api/booking/v1/public/join', {
     json: { event_code: code.toUpperCase(), kind: input.kind, name: clean(input.name), contact: clean(input.contact), note: clean(input.note) },
   }));
+}
+
+/** ¿Se renovó el acceso de visitante desde la última vez que se dijo? Se dice una vez. */
+export function takeRenewed(): boolean {
+  try {
+    if (store()?.getItem(RENEWED_KEY) !== '1') return false;
+    store()?.removeItem(RENEWED_KEY);
+    return true;
+  } catch { return false; }
 }
 
 export function errorCodeOf(error: unknown): string {

@@ -62,3 +62,40 @@ test('indicadores · agregados de reservas, personas, eventos, señales, refuerz
   assert.ok(Math.abs(total - 4) < 0.2, `personas-noche reconstruidas ≈ 4 (${total})`);
   assert.ok(occupancy.every((r) => /^\d{4}-\d{2}$/.test(r.period) && r.unit === 'pct'));
 });
+
+test('indicadores · ocupación del fin de semana que viene (noches de viernes y sábado) entre las plazas base', async () => {
+  const db = app.t.db;
+  const today = (await db.query<{ d: string }>(`select ((now() at time zone 'Europe/Madrid')::date)::text d`)).rows[0]!.d;
+  const user = await app.t.createUser();
+  await db.query(`insert into core.memberships (app, user_id, role) values ('central', $1, 'reader')`, [user]);
+  const read = async () => ((await app.t.rpc('core_read', { p_app: 'central', p_actor: user, p_name: 'booking.central_kpi_projection', p_args: { limit: 500 } })) as any).rows
+    .find((r: any) => r.kpi === 'booking.occupancy_weekend') as Record<string, any>;
+  const before = await read();
+  assert.deepEqual([before.label, before.unit, before.period, before.direction, before.link], ['Ocupación del fin de semana', 'pct', 'actual', 'up', 'https://booking.ikisai.com/#/calendario']);
+  const fri = String(before.period_start).slice(0, 10);
+  const dow = new Date(`${fri}T00:00:00Z`).getUTCDay();
+  const ahead = (Date.parse(fri) - Date.parse(today)) / 86_400_000;
+  assert.equal(dow, 5, 'empieza en viernes');
+  assert.ok(ahead >= -1 && ahead <= 6, `el que viene (o el que está en curso): ${today} → ${fri}`);
+  assert.equal(String(before.period_end).slice(0, 10), new Date(Date.parse(fri) + 2 * 86_400_000).toISOString().slice(0, 10), 'acaba el domingo');
+
+  // 3 personas el viernes y el sábado, en una casa con las plazas que haya: sube 3 × 2 noches / (plazas × 2)
+  const sat = new Date(Date.parse(fri) + 86_400_000).toISOString().slice(0, 10);
+  const sun = new Date(Date.parse(fri) + 2 * 86_400_000).toISOString().slice(0, 10);
+  const room = uuid(); const res = uuid(); const event = uuid();
+  await ok([
+    { op: 'insert', table: TABLES.spaces, id: room, fields: { name: 'Habitación finde', kind: 'habitacion' } },
+    { op: 'insert', table: TABLES.beds, id: uuid(), fields: { space_id: room, label: 'Litera', kind: 'doble', capacity: 2 } },
+    { op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Finde KPI', status: 'pre_reservada', start_date: fri, end_date: sun, expected_guests: 3 } },
+  ]);
+  await ok([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: res, event_id: event, from_status: 'pre_reservada' } }]);
+  const persons = async (night: string) => Number((await db.query<{ n: string }>(`select coalesce(sum(a.persons), 0) n from booking.room_assignments a join booking.events e on e.id = a.event_id and e.deleted_at is null
+     join booking.reservations r on r.id = e.reservation_id where a.deleted_at is null and r.deleted_at is null and r.archived_at is null and r.status not in ('cancelada','perdida')
+     and coalesce(a.from_date, r.start_date) <= $1 and coalesce(a.to_date, r.end_date) > $1`, [night])).rows[0]!.n);
+  const places = Number((await db.query<{ n: string }>(`select coalesce(sum(b.capacity), 0) n from booking.beds b join booking.spaces s on s.id = b.space_id
+     where b.deleted_at is null and b.active and b.kind <> 'supletoria' and s.deleted_at is null and s.active and s.bookable`)).rows[0]!.n);
+  await ok([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: event, space_id: room, group_label: 'Finde', persons: 3, from_date: fri, to_date: sun } }]);
+  const [onFri, onSat] = [await persons(fri), await persons(sat)];
+  assert.ok(onFri >= 3 && onSat >= 3 && places > 0);
+  assert.equal(Number((await read()).value), Math.round(1000 * (onFri + onSat) / (places * 2)) / 10, 'noches de viernes y sábado entre plazas × 2');
+});

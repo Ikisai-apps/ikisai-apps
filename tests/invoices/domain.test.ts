@@ -200,6 +200,14 @@ test('validación de campos por tabla: columnas escribibles, listas cerradas, pa
   assert.equal(failsWith(() => validateRowFields(TABLES.allocations, 'insert', { invoice_line_id: uid(1), target_app: 'general', target_kind: 'unassigned', target_id: 'x', target_label: 'x', allocated_amount: 10 })), 'INVALID_FIELDS');
   assert.equal(failsWith(() => validateRowFields(TABLES.allocations, 'insert', { invoice_line_id: uid(1), target_app: 'tasks', target_kind: 'task', target_label: 'x', allocated_amount: 10 })), 'INVALID_FIELDS');
   assert.equal(failsWith(() => validateRowFields(TABLES.allocations, 'insert', { invoice_line_id: uid(1), target_app: 'general', target_kind: 'investment', target_label: 'x', allocated_amount: 0 })), 'INVALID_FIELDS');
+  // F3: el destino se cambia entero (también en las emitidas)
+  for (const table of [TABLES.allocations, TABLES.issuedAllocations]) {
+    assert.equal(failsWith(() => validateRowFields(table, 'update', { target_id: 'p2' })), 'INVALID_FIELDS', table);
+    assert.equal(failsWith(() => validateRowFields(table, 'update', { target_code: 'R-1' })), 'INVALID_FIELDS', table);
+    assert.equal(failsWith(() => validateRowFields(table, 'update', { target_label: 'Solo el nombre' })), 'OK', table);
+  }
+  assert.equal(failsWith(() => validateRowFields(TABLES.issuedAllocations, 'update', { target_app: 'booking', target_kind: 'reservation' })), 'INVALID_FIELDS');
+  assert.equal(failsWith(() => validateRowFields(TABLES.issuedAllocations, 'update', { target_app: 'booking', target_kind: 'reservation', target_id: 'r2' })), 'OK');
   assert.equal(failsWith(() => validateRowFields(TABLES.exports, 'insert', { status: 'generada' })), 'INVALID_OPERATION');
   assert.equal(failsWith(() => validateRowFields(TABLES.exports, 'update', { status: 'entregada', delivered_to: 'correo' })), 'OK');
   assert.equal(failsWith(() => validateRowFields(TABLES.exportItems, 'insert', {})), 'INVALID_OPERATION');

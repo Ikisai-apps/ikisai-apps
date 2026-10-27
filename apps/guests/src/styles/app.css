@@ -224,6 +224,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 
 /* «Ver en el plano» desplegable (pieza común de Guests) */
 .gplace{display:inline-flex;align-items:center;gap:4px}
+/* Por qué algo no se ve (sin plano, sin cama, acceso renovado): una línea, nunca un hueco en blanco */
+.gwhy{display:flex;align-items:flex-start;gap:6px;margin:6px 0;color:var(--muted)}
+.gwhy svg{flex:none;margin-top:2px}
 .gplan-host{display:block;flex-basis:100%}
 .gplan>summary{display:flex;align-items:center;gap:6px;min-height:46px;font-weight:600;color:var(--accent-deep,var(--ink));list-style:none;cursor:pointer}
 .gplan>summary::-webkit-details-marker{display:none}

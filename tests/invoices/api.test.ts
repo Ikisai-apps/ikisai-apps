@@ -142,6 +142,13 @@ test('beforeCommit: destinos de Tareas con el token del usuario (etiqueta, revis
   const t = uuid();
   const res2 = await ok([insert('invoices.allocations', t, { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'task', target_id: TASK, target_label: 'x', allocated_amount: 5 })]);
   assert.equal(res2.changes.find((c: any) => c.id === t).after.target_label, 'Comprar semillas');
+  // F3 (auditoría del 27-10): reapuntar solo con target_id (a un proyecto que no se ve) no vale; entero, se vuelve a resolver
+  const tRow = res2.changes.find((c: any) => c.id === t).after;
+  const reaim = (fields: Record<string, unknown>) => ({ op: 'update', table: 'invoices.allocations', id: t, expectedRevision: tRow.revision, fields });
+  await rejected([reaim({ target_id: FORBIDDEN_PROJECT })], 'INVALID_FIELDS');
+  await rejected([reaim({ target_kind: 'project', target_id: FORBIDDEN_PROJECT })], 'INVALID_FIELDS');
+  await rejected([reaim({ target_revision: 9 })], 'INVALID_FIELDS');
+  await rejected([reaim({ target_app: 'tasks', target_kind: 'project', target_id: FORBIDDEN_PROJECT, target_label: 'x' })], 'TARGET_FORBIDDEN');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'task', target_id: DELETED_TASK, target_label: 'x', allocated_amount: 1 })], 'TARGET_NOT_FOUND');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'project', target_id: uuid(), target_label: 'x', allocated_amount: 1 })], 'TARGET_NOT_FOUND');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'tasks', target_kind: 'project', target_id: FORBIDDEN_PROJECT, target_label: 'x', allocated_amount: 1 })], 'TARGET_FORBIDDEN');
