@@ -2195,3 +2195,18 @@ Antes de cada evento se revisa lo que tiene que estar bien para abrir. La revisi
   - Las leen todos los que ven el área (las de la casa, cualquiera con acceso a Tasks).
 - **Siembra:** la plantilla de la casa «Revisión de apertura», con un ítem genérico por zona más «Observaciones generales». Son críticos el agua caliente (lectura ≥ 50 °C), la electricidad, las cámaras (≤ 5 °C), los accesos, las barandillas, los extintores y el cloro del agua (0,2–1 ppm). Los ids son fijos y no hay datos reales.
 - **Pruebas:** `tests/tasks/review-templates.test.ts`.
+
+### 46.2 Crear una revisión (migración `0349`, `tasks-api/reviews.ts`)
+
+- **`POST reviews {templateId, tabId, title?, eventRef?, due?, reviewId?}`**, editor u owner con el área entera. Responde `{reviewId, projectId, created, items}`.
+  - La plantilla tiene que estar viva y activa, y ser de la casa o de esa área (si no, 404).
+  - `eventRef` va como `<app>:<referencia>`, p. ej. `booking:RES2026-80`.
+  - `reviewId` (uuid) hace la petición repetible: repetir devuelve la que ya hay con `created: false`.
+- **En un lote** (procedimiento `tasks.review_create`):
+  - el proyecto, al final del área, con el título (o el nombre de la plantilla) y la fecha;
+  - una tarea madre por zona, en el orden de la plantilla, con el oficio si todos sus ítems lo comparten;
+  - una hija por ítem: las instrucciones en la nota, el oficio en `task_trades` y prioridad alta si es crítico;
+  - `tasks.reviews` y un `tasks.review_items` por ítem, que copia de la plantilla la zona, el tipo, lo esperado, si es crítico y las instrucciones.
+  - Las hijas se asignan como cualquier tarea.
+- **Quién escribe:** `tasks.reviews` y `tasks.review_items` solo los escriben los procedimientos de la revisión (hook `tasks.validate_reviews`). Desde `commands`, 422 `INVALID_REVIEW`.
+- **Pruebas:** `tests/tasks/reviews-create.test.ts`.
