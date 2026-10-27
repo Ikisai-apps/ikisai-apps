@@ -45,7 +45,7 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
       return el('div', { class: 'qcard account-card', role: 'listitem' },
         el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, accountLabel(data!, a)),
           el('small', { class: 'qcard-sub muted' }, `${t.orders} ${t.orders === 1 ? 'pedido' : 'pedidos'} · ${formatEuros(t.cents)}`)),
-        canSettle ? busyButton({ class: 'secondary' }, 'Liquidar', () => settle(a, t.cents)) : el('small', { class: 'muted' }, 'La liquida quien la abrió'));
+        canSettle ? busyButton({ class: 'ghost' }, 'Liquidar', () => settle(a, t.cents)) : el('small', { class: 'muted' }, 'La liquida quien la abrió'));
     }));
   }
 
@@ -89,7 +89,7 @@ export async function chooseAccount(client: SyncClient, data: FlowData, customer
     let chosen: string | 'new' | null = null;
     const sheet = openSheet({ title: 'Cargar a cuenta', onClose: () => resolve(chosen),
       body: el('div', { class: 'flow-pick' },
-        ...open.map((a) => el('button', { type: 'button', class: 'secondary', onclick: () => { chosen = a.id; sheet.close(); } }, accountLabel(data, a))),
+        ...open.map((a) => el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = a.id; sheet.close(); } }, accountLabel(data, a))),
         el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = 'new'; sheet.close(); } }, 'Abrir cuenta nueva…')) });
   });
   if (picked !== 'new') return picked;

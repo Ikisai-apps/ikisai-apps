@@ -96,7 +96,7 @@ export function mountEditor(mode: 'new' | 'edit'): ViewMount {
       };
       replace(templates, ...[...latest.keys()].sort().map((k) => {
         const base = all.find((t) => t.template_key === k && t.version === latest.get(k))?.label_base ?? k;
-        return el('button', { type: 'button', class: 'secondary', 'data-key': k, onclick: () => pick(k) }, `${base} · v${latest.get(k)}`);
+        return el('button', { type: 'button', class: 'ghost', 'data-key': k, onclick: () => pick(k) }, `${base} · v${latest.get(k)}`);
       }), el('button', { type: 'button', class: 'ghost', 'data-key': '', onclick: () => pick(null) }, 'En blanco'));
       pick(latest.has('barra') ? 'barra' : null);
     }

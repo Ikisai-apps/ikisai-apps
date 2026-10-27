@@ -31,9 +31,9 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
     const searchInput = el('input', { type: 'search', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Número de cliente', 'aria-label': 'Buscar por número de cliente', autocomplete: 'off',
       oninput: () => { search = searchInput.value.replace(/\D/g, ''); paint(); } });
     const newButton = el('button', { type: 'button', class: 'primary', onclick: newOrder }, icon('plus', 18), el('span', null, 'Nuevo pedido'));
-    const accountsButton = el('button', { type: 'button', class: 'secondary', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
+    const accountsButton = el('button', { type: 'button', class: 'ghost', hidden: true, onclick: () => { if (ctx.projectId) openAccountsSheet(client, ctx.projectId); } }, 'Cuentas');
     const found = el('p', { class: 'muted small', role: 'status' });
-    const customerButton = el('button', { type: 'button', class: 'secondary', hidden: true,
+    const customerButton = el('button', { type: 'button', class: 'ghost', hidden: true,
       onclick: () => { if (ctx.projectId && search) openCustomerSheet(client, ctx.projectId, Number(search)); } }, 'Ficha del cliente');
     const listEl = el('div', { class: 'fqueue', role: 'list' });
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true });
@@ -120,7 +120,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       return new Promise((resolve) => {
         let chosen: CartaMenu | null = null;
         const sheet = openSheet({ title: 'Elige la carta de Food', onClose: () => resolve(chosen),
-          body: el('div', { class: 'flow-actions' }, ...menus.map((m) => el('button', { type: 'button', class: 'secondary', onclick: () => { chosen = m; sheet.close(); } }, `${m.name} (${m.lines.length})`))) });
+          body: el('div', { class: 'flow-actions' }, ...menus.map((m) => el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = m; sheet.close(); } }, `${m.name} (${m.lines.length})`))) });
       });
     }
 

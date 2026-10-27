@@ -92,8 +92,8 @@ test('flow · sin crear recorridos ni flujos desde la interfaz; «Volver» y «C
   await page.goto(`${baseURL}/#/recorridos`);
   await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Nuevo recorrido' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '‹ Volver' })).toBeVisible();
-  await page.getByRole('button', { name: '✕ Cerrar y volver a la entrada' }).click();
+  await expect(page.getByRole('button', { name: 'Volver', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar y volver a la entrada' }).click();
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   // Sin el enlace de prueba, «nuevo» lleva a la entrada; con él, abre el editor y deja volver.
   await page.goto(`${baseURL}/#/recorridos/nuevo`);
@@ -102,6 +102,6 @@ test('flow · sin crear recorridos ni flujos desde la interfaz; «Volver» y «C
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   await page.goto(`${baseURL}/#/recorridos/nuevo?prueba`);
   await expect(page.getByRole('heading', { name: 'Nuevo recorrido' })).toBeVisible();
-  await page.getByRole('button', { name: '‹ Volver' }).click();
+  await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();
 });
