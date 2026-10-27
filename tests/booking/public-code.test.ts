@@ -22,7 +22,7 @@ test('código público: al confirmar, 10 caracteres sin ambigüedades y único; 
   assert.notEqual(a.code, b.code);
   const read = (code: unknown) => t.rpc('core_public_read', { p_name: 'booking_event', p_args: { code } }) as Promise<any>;
   assert.deepEqual(await read(a.code.toLowerCase()), {
-    code: a.code, name: 'Carrera sintética', starts_on: '2031-10-30', ends_on: '2031-11-01', kind: 'jornadas_abiertas', status: 'abierto', joinable: true, summary: 'Carrera y comida.',
+    code: a.code, name: 'Carrera sintética', starts_on: '2031-10-30', ends_on: '2031-11-01', kind: 'jornadas_abiertas', status: 'abierto', joinable: true, summary: 'Carrera y comida.', lodging: false,
   });
   // no visible para huéspedes: se ve, pero sin resumen y sin apuntarse
   const other = await read(b.code);
