@@ -180,6 +180,9 @@ export interface FakeApi {
   setBarService(rows: Array<{ event_id: string; day: string; data: Record<string, unknown>; updated_at?: string }>): void;
   /** Ofertas de comida de Food (`GET /read/food.event_offers_projection`, filtradas por `where[event_id]`). */
   setOffers(rows: Array<Record<string, unknown>>): void;
+  /** Envíos de cobros del alojamiento a la carta a Finance (`POST walkins/:id/send/finance`); `financeAccess(false)` responde NEEDS_ACCESS. */
+  walkinSends(): string[];
+  financeAccess(ok: boolean): void;
   /** Hace que esa lectura responda con el estado HTTP indicado (`null` la restablece). */
   failCosts(status: number | null): void;
   /** Fija lo que devolverá `GET /calendar/status`. */
@@ -551,6 +554,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let cartaRows: Array<Record<string, unknown>> = [];
   let barRows: Array<Record<string, unknown>> = [];
   let offerRows: Array<Record<string, unknown>> = [];
+  const walkinSent: string[] = [];
+  let financeOk = true;
   let costFailure: number | null = null;
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
@@ -698,6 +703,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { rows, total: rows.length });
       }
       if (path === 'invoke/booking.portal_access_run' && method === 'POST') return json(res, 200, { created: 0, removed: 0 });
+      if (/^walkins\/[^/]+\/send\/finance$/.test(path) && method === 'POST') {
+        if (!financeOk) throw new Fault(403, 'NEEDS_ACCESS', 'Pide acceso a Finance: tu cuenta no puede enviarle cobros.');
+        const id = path.split('/')[1]!;
+        const charge = data.get('booking.walkin_charges')?.get(id);
+        if (!charge) throw new Fault(404, 'NOT_FOUND', 'Ese cobro no existe.');
+        if (!charge.paid_at) throw new Fault(409, 'NOT_PAID', 'Todavía no está cobrado.');
+        walkinSent.push(id);
+        return json(res, 200, { status: 'sent', result: { entry_id: '00000000-0000-4000-8000-00000000f1a0', status: 'created' } });
+      }
       if (path === 'portal-links' || path.startsWith('portal-links/')) {
         if (portalRole === 'reader') throw new Fault(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura gestiona enlaces.');
         if (path === 'portal-links' && method === 'POST') {
@@ -916,6 +930,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     setCartas: (rows) => { cartaRows = rows; },
     setBarService: (rows) => { barRows = rows; },
     setOffers: (rows) => { offerRows = rows; },
+    walkinSends: () => [...walkinSent],
+    financeAccess: (ok) => { financeOk = ok; },
     failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
