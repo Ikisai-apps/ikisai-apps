@@ -32,6 +32,7 @@
 - **Catálogo** (`scripts/feature-catalog.mjs`): el `feature-catalog.json` de cada versión trae dos listas nuevas.
   - `fields`: `{ fieldId, app, screen, route, anchorId, label, type, entity, prop, required, permission, sensitivity, since, source, file, line }`.
   - `fieldsUninstrumented`: los `input`, `select` y `textarea` (sin `hidden`, `submit`, `button`, `reset` ni `image`) y los campos del kit sin declarar, con su `data-feedback-id` si lo tienen.
+  - `fieldsDynamic`: lo que no se puede leer (ids no literales, preguntas de `createStepForm` fuera de la llamada). Va aparte para que `dynamic` siga siendo solo de funciones.
   - Cada campo declarado entra también en `features` con `kind: 'field'`. Lo de antes no cambia: en Booking, Tasks y Central, `features` y `dynamic` salen iguales que en main.
 - **Informe «campos sin instrumentar»**: `node packages/ui-kit/scripts/feature-catalog.mjs --fields-report [--app booking] [--out informe.md]`. Hoy en main hay 0 campos declarados y 588 sin instrumentar:
 

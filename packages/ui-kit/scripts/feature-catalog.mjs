@@ -442,11 +442,13 @@ export function buildFields(found) {
 /** Informe «Campos sin instrumentar» en Markdown, a partir de catálogos ya generados. */
 export function fieldReport(catalogs) {
   const lines = ['# Campos sin instrumentar', '', 'Sale de `node packages/ui-kit/scripts/feature-catalog.mjs --fields-report`. Solo metadatos del código, ningún valor.', '',
-    '| App | Declarados | Sin instrumentar | Sin entidad | Sin sensibilidad |', '|---|---:|---:|---:|---:|'];
-  for (const c of catalogs) lines.push(`| ${c.app} | ${c.fields.length} | ${c.fieldsUninstrumented.length} | ${c.fields.filter((f) => !f.entity).length} | ${c.fields.filter((f) => !f.sensitivity).length} |`);
+    '| App | Declarados | Sin instrumentar | Sin leer (id no literal) | Sin entidad | Sin sensibilidad |', '|---|---:|---:|---:|---:|---:|'];
+  for (const c of catalogs) lines.push(`| ${c.app} | ${c.fields.length} | ${c.fieldsUninstrumented.length} | ${c.fieldsDynamic?.length ?? 0} | ${c.fields.filter((f) => !f.entity).length} | ${c.fields.filter((f) => !f.sensitivity).length} |`);
   for (const c of catalogs) {
-    if (!c.fieldsUninstrumented.length) continue;
+    const unread = c.fieldsDynamic ?? [];
+    if (!c.fieldsUninstrumented.length && !unread.length) continue;
     lines.push('', `## ${c.app} (${c.fieldsUninstrumented.length})`, '');
+    for (const d of unread) lines.push(`- \`${d.file}:${d.line}\` · sin leer: ${d.expr}`);
     for (const u of c.fieldsUninstrumented) lines.push(`- \`${u.file}:${u.line}\` · ${u.tag}${u.type ? ` (${u.type})` : ''}${u.label ? ` · «${u.label}»` : ''}${u.anchorId ? ` · ${u.anchorId}` : ''}`);
   }
   return lines.join('\n') + '\n';
@@ -490,13 +492,15 @@ export function generateCatalog({ app, root = process.cwd(), src = [], release, 
   const dynamic = [];
   const fields = [];
   const fieldsUninstrumented = [];
+  const fieldsDynamic = [];
   for (const file of files) {
     const rel = relative(root, file).replace(/\\/g, '/');
     const text = readFileSync(file, 'utf8');
     const result = extractFeatures(text, rel);
     const own = extractFields(text, rel, app);
     found.push(...result.features);
-    dynamic.push(...result.dynamic, ...own.dynamic);
+    dynamic.push(...result.dynamic);
+    fieldsDynamic.push(...own.dynamic);
     fields.push(...own.fields);
     fieldsUninstrumented.push(...own.uninstrumented);
     // Cada campo declarado es también una función (su ancla), de tipo `field`.
@@ -514,6 +518,7 @@ export function generateCatalog({ app, root = process.cwd(), src = [], release, 
     dynamic,
     fields: buildFields(fields),
     fieldsUninstrumented,
+    fieldsDynamic,
   };
   if (write) {
     mkdirSync(dirname(target), { recursive: true });
@@ -534,7 +539,7 @@ if (invoked) {
       process.exit(0);
     }
     const { catalog, target, files } = generateCatalog({ ...args, root: args.root ?? process.cwd() });
-    console.log(`feature-catalog: ${catalog.features.length} funciones de ${files} archivos → ${relative(process.cwd(), target)}${catalog.dynamic.length ? ` (${catalog.dynamic.length} ids dinámicos sin catalogar)` : ''}; ${catalog.fields.length} campos declarados y ${catalog.fieldsUninstrumented.length} sin instrumentar`);
+    console.log(`feature-catalog: ${catalog.features.length} funciones de ${files} archivos → ${relative(process.cwd(), target)}${catalog.dynamic.length ? ` (${catalog.dynamic.length} ids dinámicos sin catalogar)` : ''}; ${catalog.fields.length} campos declarados y ${catalog.fieldsUninstrumented.length} sin instrumentar${catalog.fieldsDynamic.length ? ` (${catalog.fieldsDynamic.length} sin leer)` : ''}`);
   } catch (error) {
     console.error(`feature-catalog: ${error.message}`);
     process.exit(1);
