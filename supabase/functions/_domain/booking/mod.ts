@@ -16,6 +16,7 @@ export * from './sesRules.ts';
 export * from './priceCalendar.ts';
 export * from './experience.ts';
 export * from './walkin.ts';
+export * from './flowReady.ts';
 /** «Monta el dormitorio» (tanda 36): cuadrantes y camas. */
 export * as dorm from './dormLayout.ts';
 /** «Montaje» del evento: decoración específica sobre la general y sus tareas. */

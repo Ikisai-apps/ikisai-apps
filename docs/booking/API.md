@@ -1863,3 +1863,17 @@ En jornadas abiertas, «Alojar a alguien» anota las noches y el precio por noch
 - **Decoración del evento:** la escribe la ficha en Recursos con la sesión de la persona (editor u owner de Booking): `POST /api/v1/resources/commands` con `resources.set_event_decor({event_id, put?, delete?})` (Recursos §2.7). Se lee con `resources.plans_with_decor({event_id})`, las dos capas sin resolver; lo que se dibuja lo resuelve `montage.resolveEventDecor`.
 - **Tareas:** `POST /api/v1/montage/:reservationId/sync` de booking-api (editor u owner, y miembro de Recursos para leer la decoración) manda a Tasks (`worker/requests/task`, Tasks §42) la madre «Montaje del evento» (`external_ref` `RES<código>-MONTAJE`, en el proyecto `RES<código>`) con una hija por cambio (`external_ref` = id de la fila de decoración; «Montar: …», «Retirar: …», «Sustituir: … por …»), siempre la lista ENTERA. Respuestas: `{status: 'sent', children, taskId}`; `{status: 'nothing'}` si no hay cambios y nunca se mandó; 409 `PROJECT_NOT_READY` si el proyecto del retiro aún no está en Tasks; 403 `NEEDS_ACCESS` sin Recursos.
 - **Lecturas y acciones:** `booking.montage_source({reservation_id})` (editor, owner) y `booking.montage_mark` (sistema), que anota en `booking.tasks_projects` la madre, cuántas hijas y cuándo.
+
+## 35. «Listo para Flow» (migración 0492; Core 27-10-2026)
+
+- **Para qué:** que la ficha del evento diga si Flow verá a sus huéspedes (`booking.flow_guests_of`, §0486) y, si no, qué falla, en una línea. Así se evita un «sale vacío» sin saber por qué.
+- **Lectura:** `booking.flow_readiness({reservation_id})` (reader, editor, owner) → `{event_id, failing, status, guests, preview, anonymized}`. `failing` es la primera condición de Booking que falla, en el orden de la cadena:
+  - `reservation_closed`: la reserva está cancelada o perdida;
+  - `no_event`: no hay evento vivo;
+  - `no_guests`: no hay ningún huésped vivo, que no sea de muestra ni esté anonimizado;
+  - `null`: todo se cumple.
+
+  `guests` cuenta lo mismo que `booking.flow_guests_projection`. Solo devuelve cuentas.
+- **Flujo enlazado:** que exista un `flow.projects` con `booking_event_id` lo tiene que publicar Flow. Booking no lee el schema flow. La ficha lee `flow.booking_event_flows_projection` (`event_id`, `project_id`, abierta a Booking) y, mientras no exista, muestra «Sin comprobar» en vez de «Listo».
+- **Ámbito:** cada persona de Flow necesita además el flujo en su ámbito (`flow.in_scope`, 0916). Eso se mira en Flow.
+- **Texto:** `flowReadyLine(readiness, flujos)` del dominio.
