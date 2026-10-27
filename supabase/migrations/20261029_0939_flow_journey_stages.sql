@@ -185,7 +185,11 @@ begin
       perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'fixed or inherited step', 'key', v_k));
     end if;
   end loop;
-  v_cur := jsonb_set(v_cur, '{values}', coalesce(v_cur->'values', '{}'::jsonb) || v_vals);
+  -- Las claves con puntos («supplier.name») se guardan anidadas, como las pone el servidor y como las lee `default_from`.
+  for v_k in select jsonb_object_keys(v_vals) loop
+    if v_k !~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,3}$' then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'bad key', 'key', v_k)); end if;
+    v_cur := jsonb_set(v_cur, '{values}', flow.json_set_path(coalesce(v_cur->'values', '{}'::jsonb), v_k, v_vals->v_k));
+  end loop;
   if length(v_cur::text) > 20000 then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'values too large')); end if;
   perform flow.upd(p, 'flow.executions', v.id, v.revision, jsonb_build_object('stages',
     (select jsonb_agg(case when (s->>'position')::int = v_pos then v_cur else s end order by (s->>'position')::int) from jsonb_array_elements(v.stages) s)));

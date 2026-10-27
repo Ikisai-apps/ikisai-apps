@@ -71,11 +71,11 @@ test('tramos · ejecutar: fijo y heredado los pone el servidor; error y reintent
   const s1 = await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor);
   assert.deepEqual(s1.values, { currency: 'EUR' });
   assert.equal(await code([call(PROCEDURES.saveStageValues, { execution_id: ex, position: 1, values: { currency: 'USD' } })], app.tokens.editor), 'INVALID_OPERATION');
-  await ok([call(PROCEDURES.saveStageValues, { execution_id: ex, position: 1, values: { total: 12.1 } })], app.tokens.editor);
+  await ok([call(PROCEDURES.saveStageValues, { execution_id: ex, position: 1, values: { total: 12.1, 'supplier.name': 'Proveedor de prueba' } })], app.tokens.editor);
   // La capacidad falla: el tramo queda en error y se reintenta con lo ya respondido.
   await ok([call(PROCEDURES.finishStage, { execution_id: ex, position: 1, status: 'error', error: { code: 'APP_UNAVAILABLE' } })], app.tokens.editor);
   const retry = await ok([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor);
-  assert.deepEqual(retry.values, { currency: 'EUR', total: 12.1 });
+  assert.deepEqual(retry.values, { currency: 'EUR', total: 12.1, supplier: { name: 'Proveedor de prueba' } });
   await ok([call(PROCEDURES.finishStage, { execution_id: ex, position: 1, status: 'done', result: { invoice_id: 'F-0001' } })], app.tokens.editor);
   assert.equal(await code([call(PROCEDURES.startStage, { execution_id: ex, position: 1 })], app.tokens.editor), 'STAGE_FINISHED');
   // El tramo 2 hereda la factura del resultado del 1.
