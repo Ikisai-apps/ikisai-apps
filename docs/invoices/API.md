@@ -2230,3 +2230,21 @@ VG decidió el 27-10 «Stripe primero, Redsys después». Esta parte es solo el 
 - **Devoluciones:** REST `trataPeticionREST`, tipo 3. Redsys no tiene idempotencia, así que la app no repite una devolución hecha.
 
 **Secretos** (solo en la Edge, nunca en el repo): `REDSYS_SECRET_KEY`, `REDSYS_MERCHANT_CODE`, `REDSYS_TERMINAL` y `REDSYS_ENV`.
+
+### 19.6 Redsys en Finance: interruptor, página de paso y aviso (migración 0262)
+
+- **Interruptor** (`index.ts`):
+  - cada pasarela se crea si tiene sus secretos;
+  - `PAYMENTS_PROVIDER` (`stripe` por defecto, o `redsys`) dice cuál crea los **enlaces nuevos**;
+  - las demás se siguen conciliando (`paymentsOthers`), así que cambiar de pasarela no deja enlaces huérfanos.
+- **Secretos de Redsys:** `REDSYS_SECRET_KEY`, `REDSYS_MERCHANT_CODE`, `REDSYS_TERMINAL` (por defecto `1`) y `REDSYS_ENV` (`real` o, por defecto, `pruebas`).
+- **Enlace:** `…/invoices-api/api/v1/public/payments/redsys/go/<pedido>`, sin sesión.
+  - Sirve el formulario firmado (`payment_links.gateway_form`) solo si el enlace está abierto y sin caducar.
+  - Si no, muestra una página «ya pagado» (`410`), «ya no vale» (`410`) o «no válido» (`404`).
+  - El formulario no lleva datos de quien paga.
+- **Aviso:** `POST …/public/payments/redsys`, con los campos de formulario de Redsys.
+  - Vale solo con la firma de `REDSYS_SECRET_KEY`; sin ella, `400` y nada cambia.
+  - Pasa por el mismo `payment_event_apply`, con `method`: Bizum (`Ds_ProcessedPayMethod` 68) cobra como `bizum` y lo demás como `tarjeta`.
+  - Los avisos de otra app (`Ds_MerchantData.app`) se ignoran.
+  - En el comercio de Redsys, la «URL de notificación» la pone el propio pedido (`DS_MERCHANT_MERCHANTURL`).
+- **Conciliación:** a Redsys no se le pregunta. Los enlaces abiertos ya caducados, o cancelados, se marcan cerrados (`payment_link_gateway_closed`).
