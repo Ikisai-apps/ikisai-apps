@@ -17,6 +17,9 @@ const RESTRICTIONS: TableName = TABLES.restrictions;
 const GUEST_RESTRICTION_SPECS: FieldSpec[] = RESTRICTION_SPECS.filter((spec) => spec.key !== 'servings');
 
 const PERSONAL_KEYS = new Set(['first_name', 'last_name_1', 'last_name_2', 'birth_date', 'nationality', 'document_type', 'document_number', 'document_support_number', 'residence_address', 'residence_postal_code', 'residence_city', 'residence_country', 'guardian_name', 'kinship', 'notes']);
+/** Sugerencias del grupo de comensal (texto libre; Food cruza sus ofertas con esta etiqueta). */
+const MEAL_GROUP_SUGGESTIONS = ['Huéspedes', 'Ponentes', 'Niños', 'Familia', 'VIP', 'Equipo'] as const;
+
 const GUEST_SPECS: FieldSpec[] = [  { key: 'first_name', label: 'Nombre', type: 'text', max: 120, section: 'Identidad' },
   { key: 'last_name_1', label: 'Primer apellido', type: 'text', max: 120 },
   { key: 'last_name_2', label: 'Segundo apellido', type: 'text', max: 120 },
@@ -35,12 +38,13 @@ const GUEST_SPECS: FieldSpec[] = [  { key: 'first_name', label: 'Nombre', type: 
   { key: 'is_minor', label: 'Es menor de edad', type: 'check', section: 'Menores' },
   { key: 'guardian_name', label: 'Persona que le acompaña', type: 'text', max: 200 },
   { key: 'kinship', label: 'Parentesco', type: 'text', max: 80, hint: 'Obligatorio si es menor: madre, padre, abuela…' },
+  { key: 'meal_group', label: 'Grupo de comensal', type: 'text', max: 40, section: 'Comidas', suggestions: MEAL_GROUP_SUGGESTIONS, suggestMode: 'pick', hint: 'Para las ofertas de comida de Food: VIP, Ponentes, Niños… Vacío: con el resto de huéspedes.' },
   { key: 'data_status', label: 'Estado de los datos', type: 'select', options: OPTIONS.dataStatus, section: 'Estado' },
   { key: 'notes', label: 'Notas', type: 'textarea' },
 ].map((spec): FieldSpec => (PERSONAL_KEYS.has(spec.key) ? { ...(spec as FieldSpec), personal: true } : (spec as FieldSpec)));
 
 /** Sin SES solo se piden nombre, primer apellido, teléfono y correo (minimización: nada de documento, dirección, nacimiento ni firma). */
-const OPERATIVE_SPECS: FieldSpec[] = GUEST_SPECS.filter((spec) => (OPERATIVE_GUEST_FIELDS as readonly string[]).includes(spec.key)).map((spec) => { const { section: _omit, ...rest } = spec; return spec.key === 'first_name' ? { ...rest, section: 'Contacto' } : rest; });
+const OPERATIVE_SPECS: FieldSpec[] = GUEST_SPECS.filter((spec) => (OPERATIVE_GUEST_FIELDS as readonly string[]).includes(spec.key) || spec.key === 'meal_group').map((spec) => { const { section: _omit, ...rest } = spec; return spec.key === 'first_name' ? { ...rest, section: 'Contacto' } : rest; });
 
 const SENT_SPECS: FieldSpec[] = [
   { key: 'ses_sent_by', label: 'Quién lo envió', type: 'text', max: 200, personal: true },

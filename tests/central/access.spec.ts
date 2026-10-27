@@ -182,6 +182,17 @@ test('accesos · el owner administra cuentas, altas, agentes y registro', async 
   await page.locator('#logApp').selectOption('booking');
   await expect(page.locator('#accessLog')).toContainText('Acceso cambiado · Editor');
   await expect(page.locator('#accessLog')).not.toContainText('Clave de agente revocada');
+
+  // X1 de Tasks: desde otra app, `?app=` abre ya filtrado y en la lista corrida, aunque el dispositivo recuerde «Por persona».
+  await page.locator('#logView').getByRole('button', { name: 'Por persona' }).click();
+  await page.goto(`${baseURL}/#/accesos/registro?app=tasks`);
+  await expect(page.locator('#logApp')).toHaveValue('tasks');
+  await expect(page.locator('#logView').getByRole('button', { name: 'Por fecha' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#accessLog .accesslog')).toBeVisible();
+  await expect(page.locator('#accessLog')).toContainText('Clave de agente emitida · Tasks');
+  // La vista recordada no cambia: sin `?app`, otra vez «Por persona».
+  await page.goto(`${baseURL}/#/accesos/registro`);
+  await expect(page.locator('#logView').getByRole('button', { name: 'Por persona' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('accesos · sin red y sin haberlas leído, el aviso sustituye al vacío y el menú dice «se leen con red»', async ({ page, context }) => {
