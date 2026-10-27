@@ -8,7 +8,7 @@
  * Datos ficticios.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { buildTasksApp, EDITOR, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, E2E_WORKER_KEY, EDITOR, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { fichaBloque, openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const navigateView: any, Sync: any, IkisaiTasks: any, purchaseRun: any, openTaskEditor: any, consumptionSheet: any;
@@ -413,7 +413,11 @@ test('fichas: «Pedir 1 bote de 15 l» crea la solicitud con la tarea; − y + s
 
 test('«Compras del evento» en Suministros: lo pedido desde Flow, por proyecto, con «Ver en Flow ›»; con artículo, al recibir entra en el inventario', async () => {
   const project = await owner.evaluate(() => { const p = (window as any).tab().projects.find((x: any) => !x.system && x.status !== 'archived' && !x.deleted); return { id: p.id, title: p.title }; });
-  const asked = await owner.evaluate((pid) => Sync.core.api('/requests/purchase', { method: 'POST', json: { source: 'flow', external_ref: 'unit-e2e-1', title: 'Masilla del evento', quantity: 3, unit: 'ud', project_id: pid, external_url: 'https://flow.ikisai.com/equipo/' } }), project.id);
+  // Flow pide desde su servidor (§45): con la clave de worker y X-Ikisai-Caller, además del token de la persona.
+  const res = await server.app.call('/api/v1/requests/purchase', { headers: { 'X-Ikisai-Worker-Key': E2E_WORKER_KEY, 'X-Ikisai-Caller': 'flow' },
+    body: { source: 'flow', external_ref: 'unit-e2e-1', title: 'Masilla del evento', quantity: 3, unit: 'ud', project_id: project.id, external_url: 'https://flow.ikisai.com/equipo/' } });
+  expect(res.status, JSON.stringify(res.data)).toBe(200);
+  const asked = res.data;
   expect(asked.created).toBe(true);
   const id = asked.purchase.id as string;
   await sync(owner);
