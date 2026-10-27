@@ -35,8 +35,8 @@ export interface PaymentProvider {
   createIntent(input: PaymentIntentInput): Promise<PaymentIntent>;
   /** Comprueba la firma y traduce el aviso; `null` si no es válido o no interesa. */
   parseWebhook(request: Request): Promise<PaymentEvent | null>;
-  /** Devuelve parte o todo de un pago (1414). */
-  refund?(providerRef: string, cents: number): Promise<{ refundRef: string }>;
+  /** Devuelve parte o todo de un pago (1414). Con la misma clave, la pasarela devuelve una sola vez (1419). */
+  refund?(providerRef: string, cents: number, idempotencyKey?: string): Promise<{ refundRef: string }>;
   /** Estado de un intento, para conciliar avisos perdidos (1414). */
   fetchStatus?(providerRef: string): Promise<{ status: 'pending' | 'paid' | 'failed' | 'expired'; feeCents?: number }>;
 }
@@ -49,10 +49,19 @@ export function fakePaymentProvider(secret = 'secreto-de-pruebas'): PaymentProvi
   const intents: PaymentIntentInput[] = [];
   const refunds: Array<{ providerRef: string; cents: number }> = [];
   const states = new Map<string, 'pending' | 'paid' | 'failed' | 'expired'>();
+  const keys = new Map<string, string>();
   return {
     name: 'fake',
     intents, refunds, states,
-    async refund(providerRef, cents) { refunds.push({ providerRef, cents }); return { refundRef: `re_${refunds.length}` }; },
+    async refund(providerRef, cents, idempotencyKey) {
+      // como la pasarela de verdad: con la misma clave, la misma devolución
+      const seen = idempotencyKey ? keys.get(idempotencyKey) : undefined;
+      if (seen) return { refundRef: seen };
+      refunds.push({ providerRef, cents });
+      const refundRef = `re_${refunds.length}`;
+      if (idempotencyKey) keys.set(idempotencyKey, refundRef);
+      return { refundRef };
+    },
     async fetchStatus(providerRef) { return { status: states.get(providerRef) ?? 'pending' }; },
     async createIntent(input) {
       intents.push(input);

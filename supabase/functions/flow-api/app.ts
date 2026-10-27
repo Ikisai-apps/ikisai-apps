@@ -408,32 +408,6 @@ function tasksRoutes(supabase: Supabase, options: FlowAppOptions, workerKey: str
  * Visitante por QR (FL2, 0915): número de cliente en la barra del evento (la que atiende la carta), una vez por visitante.
  * El cliente lo crea el lote público firmado por el visitante (flow.guard lo exige así). Devuelve «Mi pedido».
  */
-/**
- * «Alójate aquí» (0936): liga el cliente web de la carta (`X-Flow-Customer`) al visitante del kit (`X-Visitor`), para que
- * «Mi pedido» siga a la misma persona en ven.ikisai.com. Una vez; si ya tiene visitante o el visitante ya tiene cliente en
- * ese flujo, no cambia nada.
- */
-function customerVisitorRoute(): PublicRoute {
-  return {
-    method: 'POST', pattern: 'customer_visitor', handler: async ({ request, visitor, apply, read }) => {
-      if (!visitor) fail(401, 'VISITOR_REQUIRED', 'Falta el visitante.');
-      const token = (request.headers.get(CUSTOMER_HEADER) ?? '').trim().toLowerCase();
-      if (!TOKEN.test(token)) fail(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
-      const c = await read('flow_customer_for_link', { token_hash: await sha256Hex(token) }) as { customerId?: string; revision?: number; origin?: string; visitorId?: string | null } | null;
-      if (!c?.customerId) fail(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
-      if (c.origin !== 'web' || c.visitorId) return { linked: c.visitorId === visitor.id };
-      try {
-        await apply([{ op: 'update', table: TABLES.customers, id: c.customerId, expectedRevision: c.revision, fields: { visitor_id: visitor.id } }]);
-      } catch (error) {
-        // Ese visitante ya tiene cliente en el flujo (índice único): se queda como está.
-        if (isFault(error) && (error.status === 409 || error.code === 'CONSTRAINT_VIOLATION')) return { linked: false };
-        throw error;
-      }
-      return { linked: true };
-    },
-  };
-}
-
 function visitorJoinRoute(): PublicRoute {
   return {
     method: 'POST', pattern: 'visitor_join', handler: async ({ json, visitor, apply, read }) => {
@@ -559,7 +533,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
   const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
-    publicRoutes: [visitorJoinRoute(), customerVisitorRoute()],
+    publicRoutes: [visitorJoinRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership),
       // FL3: los `call` del historial (argumentos y resultado: nombres de huéspedes, titulares de cuentas…) solo los ve el
       // owner y quien hizo la llamada; los demás miembros no los reciben.
@@ -583,14 +557,8 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
 
     try {
       if (route === 'menu' && request.method === 'GET') {
-        const out = await supabase.rpc<{ project: string | null; products: unknown[]; eventCode?: string | null } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
-        // «Alójate aquí» (0936): solo si el evento del flujo admite alojamiento según Booking. Si Booking no responde, sin enlace.
-        let lodging: { eventCode: string } | null = null;
-        if (out?.eventCode) {
-          const events = await supabase.rpc<{ items?: Array<{ code: string; lodging?: boolean }> } | null>('core_public_read', { p_name: 'booking_public_events', p_args: {} }).catch(() => null);
-          if (events?.items?.some((e) => e.code === out.eventCode && e.lodging)) lodging = { eventCode: out.eventCode };
-        }
-        return reply({ project: out?.project ?? null, products: Array.isArray(out?.products) ? out.products : [], lodging }, 200, { 'Cache-Control': 'public, max-age=30' });
+        const out = await supabase.rpc<{ project: string | null; products: unknown[] } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
+        return reply({ project: out?.project ?? null, products: Array.isArray(out?.products) ? out.products : [] }, 200, { 'Cache-Control': 'public, max-age=30' });
       }
       if (route === 'mine' && request.method === 'GET') {
         const hash = await customerHash();

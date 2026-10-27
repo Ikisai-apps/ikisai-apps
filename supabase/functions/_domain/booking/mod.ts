@@ -21,3 +21,4 @@ export * from './flowReady.ts';
 export * as dorm from './dormLayout.ts';
 /** «Montaje» del evento: decoración específica sobre la general y sus tareas. */
 export * as montage from './montage.ts';
+export * from './stayCancel.ts';
