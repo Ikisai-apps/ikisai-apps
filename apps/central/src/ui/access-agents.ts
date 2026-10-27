@@ -54,7 +54,7 @@ export async function mountAgents(body: HTMLElement, admin: AdminApi, state: Acc
   const list = el('div', { id: 'agentList', 'data-feedback-id': 'central.accesos.agentes.lista', 'data-feedback-label': 'Claves de agentes' });
   const note = el('div', { 'data-feedback-id': 'central.accesos.agentes.aviso', 'data-feedback-label': 'Aviso de agentes' });
   replace(body, cards, el('h3', null, 'Claves'), el('p', { class: 'muted' }, 'Las claves las emite el propietario de cada app. Revocar una clave la corta en todas las apps y revoca sus propuestas abiertas.'), note, list);
-  mountAgentCards(cards, client, usage, () => lastKeys, () => state.alive);
+  mountAgentCards(cards, client, usage, () => lastKeys, () => state.alive, admin, () => { void load(); });
   let binds: Array<() => void> = [];
   state.cleanups.push(() => { for (const b of binds) b(); });
 
