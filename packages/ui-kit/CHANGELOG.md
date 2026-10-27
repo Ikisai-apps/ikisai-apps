@@ -1,5 +1,18 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.3 · 27 de octubre de 2026
+
+**Guiado mínimo en las apps sin ids sueltos.** El Guiado mínimo rompía las pruebas de ids de feedback en Guests (#946), Central (#947) y Food (#952). Se arregla en el kit, una vez para todas las apps:
+
+- **Id recomendado:** `guide: { feedbackId: '<app>.cabecera.guia' }`. Va bajo `cabecera`, una raíz que todas las apps ya reconocen como pieza de la cáscara, así que no hay que añadir `guia` a la lista de raíces de cada app.
+- **Catálogo:**
+  - recoge el aviso del paso («Paso del recorrido») y sus botones `.ver` («Ver el campo») y `.cerrar` («Cerrar el aviso»);
+  - una comparación como `dataset.feedbackId === id` ya no cuenta como id dinámico.
+- **`revealAnchor`:**
+  - abre solo los `<details>` cerrados que contienen el anclaje;
+  - si no basta, llama a la función de `registerReveal` con `(id, nodo)`, donde el nodo es el anclaje aunque esté escondido. La app ya no tiene que buscarlo por id (`querySelector` con el id, o comparar `dataset.feedbackId`).
+- Pruebas: `tests/v75.spec.ts`.
+
 ## 0.69.1 · 27 de octubre de 2026
 
 **«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.

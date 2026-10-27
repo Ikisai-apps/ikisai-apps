@@ -89,7 +89,8 @@ export interface AppShellOptions {
    * señala. Implica `returnTo`. Por defecto, no.
    * Con `?guia=<ejecución>` y `client` (el `SyncClient` de la app) y `app`, monta la guía completa (`createGuide`) con los
    * pasos de esa app, leídos de Flow (`flow.guide_read`) y confirmados en Flow (`flow.guide_confirm`), sin valores.
-   * Una app lo monta en una línea: `guide: { client, app: 'booking', feedbackId: 'booking.guia' }`.
+   * Una app lo monta en una línea: `guide: { feedbackId: '<app>.cabecera.guia' }` (nivel mínimo). El id va bajo `cabecera`, raíz que
+   * todas las apps ya reconocen como pieza de la cáscara; sus botones son `.ver` y `.cerrar`. Guía completa: añadir `client` y `app`.
    */
   guide?: boolean | { feedbackId?: string; client?: GuideApiClient; app?: string; source?: GuideSource };
 }
