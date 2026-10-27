@@ -189,4 +189,11 @@ test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y dat
   await page.reload();
   await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
   await expect(page.locator('#lodgeForm')).toHaveCount(0);
+
+  // Recepción cobra con su número (Booking 1401): la pantalla pasa a «Esta noche duermes en …».
+  const request = (await api.booking.t.db.query<{ id: string }>(`select r.id from booking.visitor_requests r join booking.events e on e.id = r.event_id where e.public_code = $1 and r.kind = 'stay' order by r.created_at desc limit 1`, [d.code])).rows[0]!.id;
+  await api.bookingCommit([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: request, decision: 'accept', method: 'cash' } }]);
+  await page.reload();
+  await expect(page.locator('#lodgeTonight')).toContainText('Esta noche duermes en');
+  await expect(page.locator('#lodgeTonight')).toContainText('Cama 1');
 });

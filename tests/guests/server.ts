@@ -15,6 +15,8 @@ export interface GuestsTestServer {
   booking: TestApp;
   /** Reserva confirmada (con su evento); `ses: false` la deja en modo operativo. Devuelve reserva y evento. */
   reservation(options: { title: string; start?: string; end?: string; ses?: boolean; arrival?: string }): Promise<{ id: string; event: string }>;
+  /** Un lote de Booking como el personal (owner), p. ej. recepción cobrando (`booking.join_from_visitor` con `method`). */
+  bookingCommit(operations: unknown[]): Promise<void>;
   /** Jornadas abiertas con alojamiento (Booking 0498/0499, como `openDays` de tests/booking): 2 camas y una tarifa de 20 € por persona y noche. */
   openDays(start: string, end: string, fields?: Record<string, unknown>): Promise<{ id: string; event: string; code: string; rate: string }>;
   /** Huésped dado de alta por el personal (procedencia «staff»). */
@@ -223,6 +225,7 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       }
       return menuId;
     },
+    bookingCommit: (operations) => commit(operations),
     async openDays(start, end, fields = {}) {
       const res = uuid(); const event = uuid(); const space = uuid(); const rate = uuid();
       await commit([
