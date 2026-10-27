@@ -414,8 +414,10 @@ export function mountReservation(id: string): ViewMount {
               { key: 'public_summary', label: 'Resumen público', type: 'textarea', max: 500, optional: true },
               // jornadas abiertas (0499): cómo se pagan las noches que se piden por el QR
               ...(isOpenDays(reservation.event_type) ? [
-                { key: 'lodging_pay_mode', label: 'Noches por el QR', type: 'select' as const, options: [['hold', 'Reserva la plaza unas horas y se paga en recepción'], ['pay_first', 'No reserva hasta pagar']] as Array<[string, string]> },
+                { key: 'lodging_pay_mode', label: 'Noches por el QR', type: 'select' as const, options: [['hold', 'Reserva la plaza unas horas y se paga en recepción'], ['pay_first', 'No reserva hasta pagar'], ['online', 'Se paga en línea (necesita la pasarela activa)']] as Array<[string, string]> },
                 { key: 'lodging_hold_hours', label: 'Horas que se guarda la plaza', type: 'number' as const },
+                // 1418 (vg-38): con «en línea», dejar también pagar en recepción
+                { key: 'lodging_pay_on_site', label: 'En línea, o también en recepción', type: 'check' as const, hint: 'Solo con «Se paga en línea». El visitante elige: pagar ahora o en recepción.' },
               ] : []),
             ] }) }, 'Editar') : null),
         el('p', { id: 'openRetreatState' }, el('span', { class: `chip${visible ? ' ok' : ''}` }, visible ? 'Visible' : 'No visible'),

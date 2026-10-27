@@ -2100,3 +2100,31 @@ Análisis: `MUELA/equipo/feedback/booking/VENTA_EN_LINEA_ANALISIS.md`. La pasare
 - Si no puede alojar (por ejemplo, la cama ya no está libre), el pago queda anotado (`accepted: false`) y recepción lo ve como «Pagado en línea».
 - El envoltorio de B7 deja pasar la llamada de sistema (`core.is_system_call()`) solo para aceptar `online`; el personal sigue necesitando el ámbito de huéspedes.
 
+**Cancelar noches pagadas en línea (migración 1419; política de VG, vg-38):**
+- **Política:**
+  - 100 % hasta 7 días antes de la llegada; 50 % hasta 48 h antes; nada después.
+  - Si la casa cancela el evento (`cancelada` o `perdida`), siempre el 100 %.
+  - La llegada cuenta desde las 00:00 (Europe/Madrid) del primer día, y lo ya devuelto se descuenta.
+  - La calculan `booking.stay_cancel_quote_of` en la base y `stayCancelPercent` y `stayCancelRefund` en el dominio, con el mismo resultado.
+- **El visitante** ve en su solicitud `cancel: {percent, tier, paid_cents, refund_cents, full_until, half_until}`, solo si pagó en línea y no ha cancelado.
+- **`POST public/stay/cancel {stay_id, confirm?}`** (X-Visitor):
+  - Sin `confirm`, devuelve la propuesta (`status: 'quote'`).
+  - Con `confirm: true`:
+    1. reserva el importe en el pago (`claim`, con el pago bloqueado);
+    2. pide la devolución a la pasarela con la clave de idempotencia `booking-stay-cancel-<id>`;
+    3. cancela: la solicitud queda `descartada`; si ya estaba alojado, se borran sus fichas y camas y lo devuelto se anota en sus cobros (`refund_method: 'online'`). El apunte de Finance queda por reenviar.
+  - Repetirlo, también a la vez, no devuelve dos veces.
+  - Errores: sin pago en línea, 409 `NOT_PAID_ONLINE`; si ya llegó, 409 `ALREADY_ARRIVED`; si la solicitud es de otro visitante, 404; sin pasarela, 503 `PAYMENTS_OFF`.
+- **Recepción:** «Devolver…» de un cobro `online` muestra lo que propone la política.
+- **Adaptador:** `refund(providerRef, cents, idempotencyKey?)` admite la clave.
+**Elegir pago en línea o en recepción (migración 1418; VG, vg-38):**
+- `reservations.lodging_pay_on_site` (por defecto `false`). Con `lodging_pay_mode = 'online'` deja además pagar en recepción. En Booking es la casilla «En línea, o también en recepción» de «Visible para huéspedes».
+- La oferta pública (`booking_public_lodging`) añade `pay_options`:
+  - `["online", "on_site"]` si el evento deja las dos; `["online"]` si es solo en línea; `["on_site"]` en `hold` y `pay_first`.
+  - `hold_hours` sale también cuando se puede pagar en recepción.
+- `POST public/stay` admite `pay: 'online' | 'on_site'`. Sin `pay`, se usa el modo del evento.
+  - `on_site` guarda la plaza `lodging_hold_hours` (`pay: 'hold'` en la respuesta).
+  - `online` la guarda 20 minutos (`lodging_online_minutes`).
+  - Un modo que el evento no deja responde 422 `PAY_MODE_NOT_ALLOWED`.
+- Antes de pagar en línea hace falta un correo: el de `contact` (o `email` suelto en `public/stay`) o el del borrador del primer viajero (`public/stay/traveler`). Sin correo, `public/stay/pay` responde 422 `EMAIL_REQUIRED`. Los datos de SES se completan al llegar o desde el enlace.
+
