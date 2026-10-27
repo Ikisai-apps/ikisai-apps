@@ -8,6 +8,7 @@ import { describeError } from '../app/client.ts';
 import { watchData, type FlowData } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
+import { mountPresence } from './presence.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
 import { mountQueue } from './prep.ts';
@@ -43,8 +44,13 @@ const COLUMN_VIEWS: Record<string, ColumnView> = {
   ingredients: { slug: 'ingredientes', icon: 'tag', mount: mountQueue('ingredients') },
   service: { slug: 'servicio', icon: 'check', mount: mountOrders('service') },
   logistics: { slug: 'logistica', icon: 'list', mount: mountQueue('logistics') },
+  // Check-in (0911): Llegada → Cama → Firma → Salida.
+  arrival: { slug: 'llegada', icon: 'guest', mount: mountPresence('arrival') },
+  bed: { slug: 'cama', icon: 'bed', mount: mountPresence('bed') },
+  signature: { slug: 'firma', icon: 'edit', mount: mountPresence('signature') },
+  departure: { slug: 'salida', icon: 'logout', mount: mountPresence('departure') },
 };
-const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check', quick_steps: 'board', free_task: 'list' };
+const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check', quick_steps: 'board', free_task: 'list', guest_presence: 'guest' };
 
 interface FlowColumn { key: string; label: string; behavior: ColumnBehavior; position: number; project_id: string; deleted_at: string | null }
 

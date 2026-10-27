@@ -25,6 +25,8 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 
 - Migración `20261027_0096_core_visitors.sql` (C11): visitantes anónimos (`core.visitors`, `visitor_create/resolve/revoke`, `core.current_visitor()`), lote público firmado por visitante; kit `visitors.ts` (`issueVisitor`, `resolveVisitor`, `requireVisitor`, `publicReadWithVisitor`), `GET public/<nombre>` genérico, `publicRoutes` por app y orígenes del proyecto en `public/*`. Prueba `tests/core/visitors.test.ts`.
 
+- Migraciones `20261027_0097_core_capabilities.sql` (catálogo de capacidades: registro, lista por permisos reales, comprobación, recibos) y `20261027_0098_core_scope_resolvers.sql` (ámbito de la app lectora). Kit `capabilities.ts` y rutas `capabilities`, `capabilities/:id/invoke`, `capabilities/receipts` en toda Edge. Prueba `tests/core/capabilities.test.ts`.
+
 ## Equipos
 
 - UI: `packages/ui-kit/ESTADO.md` (0.1.0 publicado; Invoices lo adopta desde la PR #5).

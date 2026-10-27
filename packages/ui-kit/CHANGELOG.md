@@ -1,5 +1,54 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.60.0 · 27 de octubre de 2026
+
+**`renderQr(text, { size, label, margin })`** → `SVGSVGElement` (petición de Booking, visión V0.2: el QR de entrada de visitantes que se imprime en la ficha del evento).
+- **Sin red y sin dependencias**: codificador propio (`src/print/qr.ts`) en modo byte UTF-8.
+  - Nivel de corrección M. Versiones 1 a 10, hasta 213 bytes; una URL corta como `https://ven.ikisai.com/e/AB12CD` sale en la versión 3.
+  - Se queda la máscara con menos penalización (reglas 1 a 4 de ISO/IEC 18004).
+  - Con un texto más largo lanza un error que dice cuánto cabe.
+- **Negro sobre blanco en los dos temas**, para imprimir: los colores van fijos en el SVG.
+  - `size` en px (por defecto 160).
+  - `margin` en módulos (por defecto 4, el de la norma).
+  - `role="img"` y `aria-label`, que es `label` o, si no se da, el propio texto.
+  - Clase `qr-code`.
+- **Pruebas** (`tests/v64.spec.ts`, con un lector propio en `tests/qr-read.ts` que no usa el codificador):
+  - se leen de vuelta textos de 1 a 213 bytes, con los síndromes Reed-Solomon a cero;
+  - la información de versión (7 a 10) coincide con la tabla de la norma, y las dos copias del formato son iguales;
+  - el SVG se lee desde su propio dibujo.
+
+## 0.59.0 · 27 de octubre de 2026
+
+**Inventario semántico de campos** (visión V0.2, encargo de Core; la forma está acordada con Central para «Uso y cobertura»). Cada campo de un formulario declara qué es, nunca lo que se escribe en él: no se toca la telemetría de valores. Sin declarar nada, no cambia nada.
+
+- **Convención y helper** (`src/fields/field-mark.ts`): `FieldSpec` `{ id, entity, prop, type, required, permission, sensitivity, since, route, anchor, label }`.
+  - El `id` es estable y tiene la forma `<app>.<pantalla>.<campo>`, como los de feedback.
+  - `required` vale `true`, `false` o la condición en palabras.
+  - `sensitivity` vale `'public'`, `'internal'`, `'personal'` o `'sensitive'`.
+  - `fieldAttrs(spec)` da los atributos `data-field-*` para `el()`; `markField(nodo, spec)` marca un nodo ya creado, y en el HTML valen los mismos atributos.
+  - Si el campo no tiene `data-feedback-id`, lleva el mismo id: es su ancla para el feedback y el uso. `markField` no pisa uno que ya exista.
+- **Los campos del kit se marcan solos** con la opción `field`, y ponen ellos el tipo y «obligatorio»: `createDateField`, `createQuantityField`, `createSuggestField`, `createColorField`, `createLabelPicker`, `createLevelStar` y `createSignaturePad`.
+- **`createStepForm({ feedbackId })`** marca cada pregunta como `<feedbackId>.<id>`, en minúsculas (`checkIn` pasa a `check_in`), con su tipo y su texto. `StepQuestion.field` añade entidad, propiedad, permiso, sensibilidad…
+- **Catálogo** (`scripts/feature-catalog.mjs`): el `feature-catalog.json` de cada versión trae dos listas nuevas.
+  - `fields`: `{ fieldId, app, screen, route, anchorId, label, type, entity, prop, required, permission, sensitivity, since, source, file, line }`.
+  - `fieldsUninstrumented`: los `input`, `select` y `textarea` (sin `hidden`, `submit`, `button`, `reset` ni `image`) y los campos del kit sin declarar, con su `data-feedback-id` si lo tienen.
+  - `fieldsDynamic`: lo que no se puede leer (ids no literales, preguntas de `createStepForm` fuera de la llamada). Va aparte para que `dynamic` siga siendo solo de funciones.
+  - Cada campo declarado entra también en `features` con `kind: 'field'`. Lo de antes no cambia: en Booking, Tasks y Central, `features` y `dynamic` salen iguales que en main.
+- **Informe «campos sin instrumentar»**: `node packages/ui-kit/scripts/feature-catalog.mjs --fields-report [--app booking] [--out informe.md]`. Hoy en main hay 0 campos declarados y 588 sin instrumentar:
+
+  | App | Sin instrumentar |
+  |---|---:|
+  | Booking | 36 |
+  | Central | 112 |
+  | Flow | 18 |
+  | Food | 54 |
+  | Guests | 22 |
+  | Invoices | 120 |
+  | Organizers | 74 |
+  | Tasks | 152 |
+- `since`: si no se declara, lo pondrá el núcleo con la primera versión en que vea el campo; la carga es de Core (`usage_catalog_ingest.py` aún sube solo `features`).
+- Pruebas: `tests/v63.spec.ts`.
+
 ## 0.58.0 · 26 de octubre de 2026
 
 **Tres peticiones de Tasks** (K1, K2 y K3 de `docs/tasks/PETICIONES.md`). Todo es opcional: sin las opciones nuevas no cambia nada.

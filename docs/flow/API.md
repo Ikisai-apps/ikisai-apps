@@ -255,3 +255,14 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **`flow.portal_customer({reservation_id, guest_id})`** (lectura de Guests, `core.portal_in_scope`): `{number, carta_url, account_open}`. `carta_url = https://flow.ikisai.com/?invitacion=<cliente>.<caducidad>.<firma>` (10 min) solo si hay clave y su flujo atiende la carta; si no, `null`.
 - **Firma**: HMAC-SHA256 (`flow.hmac_sha256_hex`, RFC 2104 con `sha256()` de Postgres, sin pgcrypto) sobre `<cliente>.<caducidad>` con `flow.portal_key()`: el secreto `flow_portal_key` del Vault; en pruebas, el ajuste de sesión `flow.portal_key`; sin ninguno, `null`. `portal_key()` no se concede a anon ni authenticated.
 - **Canje** `POST public/invitation {invitation}` → `{token, number}`: valida (`flow_guest_link`), y el lote público rota el `token_hash` de ese cliente de huésped (el navegador anterior deja de valer). `404 INVITATION_INVALID`, `410 INVITATION_EXPIRED`. El lote público solo crea clientes `web` y de un cliente `guest` solo cambia el token.
+## 25. Check-in del evento (migración `0911`, paso 5)
+
+- **Comportamiento `guest_presence`** (`config.stage`: `arrival` | `bed` | `signature` | `departure`). Las columnas Llegada → Cama → Firma → Salida enseñan los huéspedes del evento ligado. Los datos salen de `booking.flow_guests_projection`: nombre corto, cama, noches, llegada, salida y firma. La app la lee por `GET checkin/:project/guests` cada 10 s con la pantalla visible. flow-api comprueba el ámbito del flujo y filtra por su evento, así que nadie ve los huéspedes de un evento que no es de sus flujos.
+- **Plantillas**: `flow.template_columns` (`template_key`, `version`, `label_base`, `key`, `label`, `behavior`, `config`, `position`) y `create_flow({template_key, project_id, name?, booking_event_id?, starts_on?, ends_on?})`, solo owner y desde la última versión de la plantilla. Ya existe la plantilla `checkin` v1. El editor de flujos (paso 6) las ampliará.
+- **Llegada y Salida**: `POST checkin/:project/guests/:guest/arrive|leave {undo?}`.
+  - flow-api comprueba tres cosas: rol editor u owner, que el flujo esté en el ámbito de la persona (`flow.checkin_target`) y que el huésped sea del evento del flujo.
+  - Luego llama a `booking.guest_arrive` / `booking.guest_leave` por booking-api con el token de la persona.
+  - Los errores de Booking llegan tal cual: `SES_ALREADY_REGISTERED`, `GUEST_ALREADY_LEFT`, `TEAM_GUEST`. Sin acceso a Booking, `NEEDS_ACCESS`. Sin evento ligado, `NO_BOOKING_EVENT`.
+- **Cama** («en su cama»): marca de Flow `flow.presence_marks`, solo por procedimiento: `mark_presence({project_id, guest_id, step: 'bed', undo?})`.
+- **Firma**: solo avisa. El parte se firma en Huéspedes y la tarjeta pasa sola a hecha.
+- La barra no cambia.

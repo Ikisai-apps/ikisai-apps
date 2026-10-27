@@ -135,3 +135,17 @@ test('admin · registro filtrado por cuenta y «lo grave» (P12)', async () => {
   assert.equal((await app.call('/api/v1/admin/access-log?only=todo')).status, 422);
   assert.equal((await app.call('/api/v1/admin/access-log?user=nadie')).status, 422);
 });
+
+test('admin · un outsider (nivel de casa) recibe sus ámbitos desde Central; el rol no se da ni se quita aquí (P14, 0101)', async () => {
+  const fresh = await app.t.createUser();
+  const notYet = await app.call('/api/v1/admin/memberships', { body: { app: 'flow', userId: fresh, role: 'outsider', scopes: { projects: ['p1'] } } });
+  assert.equal(notYet.status, 422); assert.equal(notYet.data.error.code, 'INVALID_ROLE');
+  await app.t.db.query(`select core.apply_house_level($1, 'outsider')`, [fresh]);
+  const noScopes = await app.call('/api/v1/admin/memberships', { body: { app: 'flow', userId: fresh, role: 'outsider' } });
+  assert.equal(noScopes.status, 422); assert.equal(noScopes.data.error.code, 'INVALID_OPERATION');
+  const ok = await app.call('/api/v1/admin/memberships', { body: { app: 'flow', userId: fresh, role: 'outsider', scopes: { projects: ['p1', 'p2'] } } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal(ok.data.role, 'outsider'); assert.deepEqual(ok.data.scopes, { projects: ['p1', 'p2'] });
+  const row = await app.t.db.query<{ role: string; scopes: any }>(`select role, scopes from core.memberships where app = 'flow' and user_id = $1`, [fresh]);
+  assert.deepEqual(row.rows[0], { role: 'outsider', scopes: { projects: ['p1', 'p2'] } });
+});

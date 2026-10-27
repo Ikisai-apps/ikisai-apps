@@ -45,6 +45,7 @@ export { createSuggestionSource, proposalFromSuggestion, changesFromPreview, sug
 export { createQuantityField, parseQuantity, formatQuantity, type QuantityField, type QuantityFieldOptions, type QuantityUnit, type QuantityValue } from './fields/quantity.ts';
 export { openImportSheet, createJsonSource, renderImportHeader, renderImportLines, renderImportTaxes, renderImportReconciliation, renderSchemaErrors, formatMoney, TAX_TYPE_LABELS, type ImportPreviewDocument, type ImportPreviewRecalc, type ImportParseResult, type ImportSheetOptions, type ImportSheet, type JsonSource, type SchemaErrorLike } from './import/import-preview.ts';
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
+export { renderQr, type QrOptions } from './print/qr.ts';
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
 export { deadlineText, deadlineInfo, type DeadlineInfo, type DeadlineOptions } from './fields/deadline.ts';
 export { renderMedal, initialsOf, type MedalOptions } from './pieces/medal.ts';
@@ -100,6 +101,7 @@ export { createMovementForm, MOVEMENT_FORM_MARKS, type MovementForm, type Moveme
 export { createCountSession, COUNT_SESSION_MARKS, type CountSession, type CountSessionOptions, type CountDifference } from './items/count-session.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
+export { fieldAttrs, markField, fieldRequired, FIELD_SENSITIVITIES, type FieldSpec, type FieldSensitivity } from './fields/field-mark.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';
 export { createSignaturePad, type SignaturePad, type SignaturePadOptions } from './fields/signature.ts';
 export { createInstallPrompt, isAppInstalled, installPlatform, type InstallPrompt, type InstallPromptOptions, type InstallPlatform } from './shell/install.ts';

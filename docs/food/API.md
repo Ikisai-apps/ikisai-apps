@@ -317,7 +317,26 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
     - con los alérgenos vacíos y sin revisar, hasta tener las etiquetas reales (§8.4).
   - Las 4 bebidas y las palomitas son artículos de Recursos. Core los crea con ids fijos en `20261026_0811_resources_barra_items.sql`.
   - Se siembra en producción cuando están esos artículos. En las pruebas, se llama a mano.
-- **En la app (tanda 1):** las pantallas del menú cerrado no enseñan la carta (`closedMenus`). Su vista llega en la tanda 2.
+- **En la app (tanda 2, `ui/carta.ts`):**
+  - **Menús:** el bloque «Cartas», con las cartas guardadas y «Nueva carta». Las pantallas del menú cerrado no enseñan la carta (`closedMenus`).
+  - **`#/cartas/<id>`:** nombre y evento (ligar o desligar), y «Usar en otro evento», que copia la carta con sus líneas y sin las ventas (`copyCartaOperations`). Los bloques Clásicos, Gourmet y Barra; en cada línea, el código, la imagen (miniatura de Flow, `https://flow.ikisai.com/assets/<clave>/miniatura.webp`), el precio editable, el coste de `food.carta_projection` (con red), el margen, «Disponible», «Alérgenos sin revisar» y «Quitar». «Añadir a…» admite una receta o un artículo de Recursos, con un código libre del bloque.
+  - **Ficha del evento:** la carta del evento («Abrir la carta») o, si no tiene, «Usar esta carta» (copia una guardada) y «Carta nueva». En jornadas abiertas, también las cartas que marca Booking (`carta_ids` de `booking.food_event_projection`, Booking 0484).
+- **Evento familiar** (`event_type = 'familiar'`, Booking 0482): come del menú de casa. No pide menú propio (`needsMenu`), sale con el chip «Menú de casa» y su ficha lleva «Abrir el menú de casa».
+
+### 2.11 Previsión de la carta (26-10-2026, encargo de VG; migración 1110)
+
+- **Datos:**
+  - `carta_lines.expected_units`: unidades que se esperan vender; null si no hay previsión.
+  - `carta_lines.per_person` y `menus.expected_attendance` (ajuste de VG del 27-10): consumo por persona y asistentes esperados de la carta (si faltan, las personas del evento). Total = por persona × asistentes, redondeado hacia arriba porque son máximos a cubrir. La app guarda los dos y, al editar uno, recalcula el otro. Las cuentas del servidor usan siempre `expected_units`.
+  - `menus.prep_split` (solo cartas): `{mesa, nevera, fresco}` en %, que suman 100. Sin él, 30/20/50.
+  - `recipe_ingredients.station`: estación del 1 al 4. La de las recetas de la semilla se pasa de la nota a la columna (`food.backfill_carta_stations`).
+- **Conversiones, sin inventar nada** (`food.to_item_base`): de la cantidad de la receta a la unidad base del artículo, por la misma familia de unidad o por una conversión del artículo sin proveedor.
+  - Una línea en rodajas va en «unidad» con la nota «rodaja», y solo vale la conversión «rodaja» del artículo (en su ficha), no la de la pieza entera.
+  - Sin conversión, la cantidad sale null y `convertible = false`.
+  - El consumo de las ventas (`food.carta_line_usage`) sigue la misma regla.
+- **`food.carta_prep_projection`** (Flow y Food), una fila por línea y componente: `menu_id`, `line_id`, `scope`, `code`, `ingredient_id`, `item_id`, `component_key = coalesce(item_id, ingredient_id)::text`, `name`, `unit` (base del artículo), `per_unit`, `expected_units`, `need_total`, `mesa`, `nevera`, `fresco`, `station`, `convertible`, `line_revision` y `menu_revision`. En las bebidas y los extras, `mesa`, `nevera`, `fresco` y `station` son null.
+- **`food.carta_prep_totals_projection`** (Flow y Food), una fila por componente con las líneas sumadas: `menu_id`, `component_key`, `item_id`, `ingredient_id`, `name`, `unit`, `need_total`, `mesa`, `nevera`, `fresco`, `convertible` (falso si alguna línea no lo es) y `station` (si el ingrediente va en estaciones distintas, la menor).
+- **Lista de la compra de una carta:** `food.regenerate_shopping` con el `menu_id` de la carta, sin rango. Suma las unidades esperadas por lo que gasta cada una, convertido a la unidad del artículo si se puede y, si no, en la unidad de la receta. Las bebidas y los extras entran por su ingrediente de Food, que se crea enlazado a su artículo si falta (`food.carta_ensure_ingredients`, id estable). Las fuentes (`food.carta_shopping_sources`) son las líneas, las recetas, sus cantidades y los ingredientes.
 
 ### 2.3 Compra, preparación y stock
 

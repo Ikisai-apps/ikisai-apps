@@ -82,7 +82,7 @@ export const mountDecisions: ViewMount = (ctx) => {
   const deckHost = el('section', { class: 'ctl-block', id: 'decisionVote', 'data-feedback-id': 'central.decisiones.votar', 'data-feedback-label': '¿Se mantienen?' });
   const chipsHost = el('div', { class: 'ctl-chiprows', 'data-feedback-id': 'central.decisiones.filtros', 'data-feedback-label': 'Filtros' });
   const host = el('div', { id: 'decisionList', 'data-feedback-id': 'central.decisiones.lista', 'data-feedback-label': 'Lista de decisiones' });
-  const search = el('input', { type: 'search', id: 'decisionSearch', 'data-feedback-id': 'central.decisiones.buscar', 'data-feedback-label': 'Buscar decisión', placeholder: 'Buscar en las decisiones', 'aria-label': 'Buscar decisión',
+  const search = el('input', { type: 'search', id: 'decisionSearch', 'data-field-id': 'central.decisiones.decision_search', 'data-feedback-id': 'central.decisiones.buscar', 'data-feedback-label': 'Buscar decisión', placeholder: 'Buscar en las decisiones', 'aria-label': 'Buscar decisión',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value; paintList(); } }) as HTMLInputElement;
   replace(main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.decisiones.cabecera', 'data-feedback-label': 'Cabecera de Decisiones' },
@@ -269,22 +269,22 @@ function openDecisionEditor(ctx: ViewContext, d: Decision | null, data: Data, on
   const people = new Map(data.people.map((p) => [p.id, p.display_name]));
   let sheet: Sheet | null = null;
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.decisiones.editar.error', 'data-feedback-label': 'Error del formulario' });
-  const date = el('input', { id: 'dc-date', type: 'date', value: d?.decided_on ?? todayInMadrid() }) as HTMLInputElement;
-  const name = el('input', { id: 'dc-name', type: 'text', maxlength: '160', value: d?.name ?? '' }) as HTMLInputElement;
-  const summary = el('textarea', { id: 'dc-summary', rows: '4', maxlength: '2000' }) as HTMLTextAreaElement;
+  const date = el('input', { id: 'dc-date', 'data-field-id': 'central.decisiones.date', type: 'date', value: d?.decided_on ?? todayInMadrid() }) as HTMLInputElement;
+  const name = el('input', { id: 'dc-name', 'data-field-id': 'central.decisiones.name', type: 'text', maxlength: '160', value: d?.name ?? '' }) as HTMLInputElement;
+  const summary = el('textarea', { id: 'dc-summary', 'data-field-id': 'central.decisiones.summary', rows: '4', maxlength: '2000' }) as HTMLTextAreaElement;
   summary.value = d?.summary ?? '';
-  const technical = el('textarea', { id: 'dc-technical', rows: '5', maxlength: '8000' }) as HTMLTextAreaElement;
+  const technical = el('textarea', { id: 'dc-technical', 'data-field-id': 'central.decisiones.technical', rows: '5', maxlength: '8000' }) as HTMLTextAreaElement;
   technical.value = d?.technical ?? '';
-  const statusSel = el('select', { id: 'dc-status' }, ...DECISION_STATUSES.map((s) => el('option', { value: s, selected: (d?.status ?? 'vigente') === s }, DECISION_STATUS_LABELS[s]))) as HTMLSelectElement;
+  const statusSel = el('select', { id: 'dc-status', 'data-field-id': 'central.decisiones.status' }, ...DECISION_STATUSES.map((s) => el('option', { value: s, selected: (d?.status ?? 'vigente') === s }, DECISION_STATUS_LABELS[s]))) as HTMLSelectElement;
   const others = rows.filter((r) => !r.deleted_at && r.id !== d?.id).sort((a, b) => b.decided_on.localeCompare(a.decided_on));
-  const supersededBy = el('select', { id: 'dc-superseded', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Elige la decisión nueva'),
+  const supersededBy = el('select', { id: 'dc-superseded', 'data-field-id': 'central.decisiones.superseded', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Elige la decisión nueva'),
     ...others.map((r) => el('option', { value: r.id, selected: d?.superseded_by === r.id }, `${r.code ?? ''} ${r.name}`))) as HTMLSelectElement;
   const supersededField = el('label', { class: 'field', 'data-feedback-id': 'central.decisiones.editar.campo_sustituida_por', 'data-feedback-label': 'Sustituida por' }, el('span', null, 'Sustituida por'), supersededBy);
-  const responsible = el('select', { id: 'dc-responsible', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Sin responsable'),
+  const responsible = el('select', { id: 'dc-responsible', 'data-field-id': 'central.decisiones.responsible', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Sin responsable'),
     ...[...people].sort((a, b) => a[1].localeCompare(b[1], 'es')).map(([id, n]) => el('option', { value: id, selected: d?.responsible_person_id === id }, n))) as HTMLSelectElement;
   const scopeBoxes = DECISION_SCOPES.map((s) => el('input', { type: 'checkbox', value: s, 'data-feedback-id': 'central.decisiones.editar.area', 'data-feedback-label': 'Área afectada', checked: (d?.scopes ?? []).includes(s) }) as HTMLInputElement);
-  const linkUrl = el('input', { id: 'dc-link', 'data-feedback-ignore': '', type: 'url', maxlength: '500', placeholder: 'https://…', value: d?.link_url ?? '' }) as HTMLInputElement;
-  const linkLabel = el('input', { id: 'dc-link-label', type: 'text', maxlength: '120', placeholder: 'PR #123, documento, tarea…', value: d?.link_label ?? '' }) as HTMLInputElement;
+  const linkUrl = el('input', { id: 'dc-link', 'data-field-id': 'central.decisiones.link', 'data-feedback-ignore': '', type: 'url', maxlength: '500', placeholder: 'https://…', value: d?.link_url ?? '' }) as HTMLInputElement;
+  const linkLabel = el('input', { id: 'dc-link-label', 'data-field-id': 'central.decisiones.link_label', type: 'text', maxlength: '120', placeholder: 'PR #123, documento, tarea…', value: d?.link_label ?? '' }) as HTMLInputElement;
   const sync = () => { supersededField.hidden = statusSel.value !== 'sustituida'; };
   sync();
   statusSel.addEventListener('change', sync);
