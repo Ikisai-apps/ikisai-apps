@@ -124,6 +124,8 @@ export interface RequestRouteRow extends BaseRow {
   /** Responsable de Central (P2, PR 3), que pasa a la tarea: una persona o un grupo por nivel de casa. */
   owner_person_id?: Uuid | null;
   owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
+  /** Oficio de Central de la regla (0353): lo que entra por ella lo lleva en sus oficios. */
+  trade_id?: Uuid | null;
 }
 
 /**
@@ -218,7 +220,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'need_quantity', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position', 'source_app', 'source_ref', 'source_url', 'paid_total', 'receipt_kind', 'invoice_number', 'receipt_file_id', 'finance_status', 'finance_invoice_id', 'finance_code', 'finance_error'],
-  'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
+  'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level', 'trade_id'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of', 'space_id'],
   'tasks.settings': ['key', 'value'],
   'tasks.day_plans': ['actor_id', 'day', 'items', 'reviewed'],

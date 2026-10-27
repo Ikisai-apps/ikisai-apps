@@ -145,7 +145,17 @@ Actualizado: 27 de octubre de 2026. **Las cuatro pantallas construidas, Calendar
   - **Salida** (1402): libera la cama y pide la limpieza a Tasks (`booking.bed_cleaning`, Tasks #933).
   - **Ajustes y devoluciones** (1403): un solo apunte en Finance por cobro.
   - **Visitante solo de jornada** (1404): sin SES.
-  - **Prueba de punta a punta:** `tests/booking/lodging-weekend-e2e.test.ts`.
+  - **Pruebas:** de punta a punta (`tests/booking/lodging-weekend-e2e.test.ts`) y de carga del sábado (`tests/booking/lodging-load.test.ts`: 30 a la vez por la última cama y dos recepciones con el mismo número).
+  - **Resumen del modelo:** API §44.
+  - **En recepción:**
+    - «Ampliar…» suma noches o cambia de cama en un lote con su cobro (aceptación C);
+    - el alta de «Alojar a alguien» pide apellido, teléfono o correo y si es menor.
+- **Venta de noches en línea, booking-22 (API §45; apagada por defecto):**
+  - modo `online` por evento y `stay_payments`, que solo escribe la cuenta de servicio;
+  - `POST public/stay/pay` y el webhook firmado `public/payments/:provider`;
+  - conciliación (`worker/payments/reconcile`) y devolución por la pasarela;
+  - la pasarela va detrás de un adaptador (`booking-api/payments.ts`), con una falsa para las pruebas.
+  - Pendiente: la pasarela real (decisión de VG, vg-38) y que el servidor aloje solo al pagarse (núcleo: la cuenta de servicio de Booking en Booking).
 - **Seguridad (auditoría del 27-10):**
   - B2: lecturas de huéspedes con ámbito (0494).
   - B3: `flow_guests_projection` cerrada (0495).

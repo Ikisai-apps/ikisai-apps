@@ -26,6 +26,11 @@ export interface NavItem {
   soon?: boolean;
   /** Contador (conflictos, pendientes). */
   badge?: number;
+  /**
+   * Nombre corto para la barra de abajo («Cobro» por «Pedido y cobro»). Se usa solo si los nombres no caben (seis secciones a
+   * 390 px); el lector de pantalla sigue diciendo el nombre entero.
+   */
+  short?: string;
 }
 
 export interface AppShellOptions {
@@ -167,7 +172,8 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
         : options.launcher
           ? (() => { const b = el('button', { type: 'button', class: 'mark markbtn', id: 'appLauncher' }, icon(options.markIcon ?? 'mark', 20)); options.launcher.attach(b); return b; })()
           : el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
-      el('h1', null, `Ikisai ${options.appName}`, subtitle),
+      // «Ikisai» se esconde a la vista (no al lector) si el nombre no cabe junto a las herramientas (revisión móvil del 27-10).
+      el('h1', null, el('span', { class: 'brand-ikisai' }, 'Ikisai '), options.appName, subtitle),
     ),
     search,
     status.element,
@@ -187,7 +193,8 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     const count = badges.get(item.hash) ?? item.badge ?? 0;
     const link = el('a', { class: `navbtn${extra ? ' navextra' : ''}`, href: item.hash, dataset: { hash: item.hash }, onclick: (event: Event) => { event.preventDefault(); navigate(item.hash); } },
       icon(item.icon),
-      el('span', null, item.label),
+      el('span', { class: 'navlabel' }, item.label),
+      item.short ? el('span', { class: 'navshort', 'aria-hidden': 'true' }, item.short) : null,
       item.soon ? el('span', { class: 'soon', 'aria-label': kt('pendiente de la fase 1') }, kt('fase 1')) : null,
       count ? el('span', { class: 'badge', 'aria-label': kt('{count} avisos', { count }) }, String(count)) : null,
     );
@@ -255,6 +262,19 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   let element: HTMLElement | null = null;
   paintNav(options.nav, options.more);
   const bar = options.navLayout === 'bar' || !!menu?.column;
+  /** Si el título o los nombres de la barra no caben: la forma apretada (sin «Ikisai» a la vista; nombres cortos). */
+  function fit(): void {
+    if (!header.isConnected) return;
+    const h1 = header.querySelector('h1');
+    header.classList.remove('brand-tight');
+    if (h1 && h1.scrollWidth > h1.clientWidth + 1) header.classList.add('brand-tight');
+    nav.classList.remove('navtight');
+    if (nav.querySelector('.navshort') && [...nav.querySelectorAll<HTMLElement>('.navlabel')].some((s) => s.scrollWidth > s.clientWidth + 1)) nav.classList.add('navtight');
+  }
+  const fitObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
+  fitObserver?.observe(header);
+  fitObserver?.observe(nav);
+  requestAnimationFrame(() => fit());
   element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, returnLink, pointer?.element ?? null, banners, main));
   // La app pinta su pantalla después: el campo se busca cuando aparezca.
   if (pointer) queueMicrotask(() => void pointer.point());
@@ -293,6 +313,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     menu,
     destroy() {
       stopScrollHints();
+      fitObserver?.disconnect();
       guide?.destroy();
       menu?.destroy();
       status.destroy();
