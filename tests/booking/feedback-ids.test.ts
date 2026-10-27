@@ -80,6 +80,10 @@ test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', 
   const allowed = new Set([
     'inicio', 'reservas', 'reserva', 'huespedes', 'calendario', 'espacios', 'tarifas', 'propuesta', 'ses', 'pendientes', 'cabecera', 'navegacion', 'avisos',
     'estancias',
+    // Guiado del kit (0.68).
+    'guia',
+    // Recepción del alojamiento como la barra (1401).
+    'recepcion',
     // Menú lateral común (tanda 27, kit 0.47).
     'menu',
   ]);

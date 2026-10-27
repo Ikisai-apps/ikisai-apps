@@ -173,6 +173,7 @@ KIT_CHILDREN.createVoteDeck = [['a_favor', 'A favor', 'button'], ['en_contra', '
 KIT_CHILDREN.createStepForm = [['opcion', 'Opción', 'button'], ['aceptar', 'Aceptar', 'button'], ['atras', 'Atrás', 'button'], ['saltar', 'Saltar', 'button']];
 KIT_CHILDREN.createFreeForm = [['preguntas', 'Pregunta a pregunta', 'section'], ['foto', 'Hacer o elegir foto', 'button'], ['cambiar', 'Cambiar', 'button'], ['registrar', 'Registrar', 'button'], ['nuevo', 'Nuevo registro', 'button']];
 KIT_CHILDREN.createChecklist = [['item', 'Ítem', 'checkbox']];
+KIT_CHILDREN.createProjection = [['abrir', 'Abrir en la app', 'link'], ['accion', 'Acción de la fila', 'button']];
 // `src/pieces/lanes.ts`.
 KIT_CHILDREN.createLanes = [['vista', 'Pestañas o lado a lado', 'button'], ['carril', 'Carril', 'tab'], ['desplegar', 'Desplegar el carril', 'button']];
 KIT_CHILDREN.createProposalList = [['estado', 'Estado de las propuestas', 'button'], ['tipo', 'Tipo de propuesta', 'button'], ['abrir', 'Ver propuesta', 'button'], ['aprobar', 'Aprobar propuesta', 'button'], ['descartar', 'Descartar propuesta', 'button'], ['retirar', 'Retirar propuesta', 'button'], ['proponer', 'Proponer', 'button']];
@@ -235,7 +236,7 @@ export function extractFeatures(text, file = '') {
     const when = call ? KIT_CHILDREN_WHEN[call] : null;
     const children = call && KIT_CHILDREN[call] ? KIT_CHILDREN[call].filter(([suffix]) => !when?.[suffix] || when[suffix].test(callText)) : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta', createLanes: 'Carriles', createFreeForm: 'Formulario libre', createChecklist: 'Lista de comprobación' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createSpaceMap: 'Mapa de zonas', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta', createLanes: 'Carriles', createFreeForm: 'Formulario libre', createChecklist: 'Lista de comprobación', createProjection: 'Proyección' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }
@@ -266,7 +267,8 @@ export function extractFeatures(text, file = '') {
 // Inventario de campos (src/fields/field-mark.ts): `fields` (declarados) y `fieldsUninstrumented` (inputs sin `data-field-id`).
 // Solo metadatos del código: ningún valor ni contenido.
 
-const FIELD_KEYS = ['type', 'entity', 'prop', 'required', 'permission', 'sensitivity', 'since', 'route'];
+const FIELD_KEYS = ['type', 'entity', 'prop', 'required', 'permission', 'sensitivity', 'since', 'route', 'confirm', 'validator'];
+const CONFIRMS = new Set(['save', 'event', 'none']);
 const SENSITIVITIES = new Set(['public', 'internal', 'personal', 'sensitive']);
 /** Campos del kit y el tipo que ponen solos. Mantener al día con los `fieldAttrs(options.field, { type })` de `src/fields/`. */
 const KIT_FIELDS = { createDateField: 'date', createQuantityField: 'number', createSuggestField: 'text', createColorField: 'color', createLabelPicker: 'labels', createLevelStar: 'level', createSignaturePad: 'signature' };
@@ -324,6 +326,8 @@ function fieldEntry(app, spec, defaults, source, file, line) {
     fieldId: s.id, app, screen: screenOf(s.id), route: s.route ?? null, anchorId: s.anchor ?? s.id, label: s.label ?? null,
     type: s.type ?? 'text', entity: s.entity ?? null, prop: s.prop ?? null, required: requiredOf(s.required),
     permission: s.permission ?? null, sensitivity: SENSITIVITIES.has(s.sensitivity) ? s.sensitivity : null, since: s.since ?? null,
+    // Guiado: solo si se declaran (así los catálogos de siempre no cambian).
+    ...(CONFIRMS.has(s.confirm) ? { confirm: s.confirm } : {}), ...(typeof s.validator === 'string' && /^[a-z][a-z0-9_]{0,40}$/.test(s.validator) ? { validator: s.validator } : {}),
     source, file, line,
   };
 }

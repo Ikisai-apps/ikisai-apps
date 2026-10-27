@@ -4,6 +4,11 @@ Actualizado: 27 de octubre de 2026. Agente UI-kit (La Muela, RELEVO-001), direct
 
 ## Hecho
 
+- v0.69.0: `createProjection`, un carril que lee de otra app con una capacidad y actúa por fila con otra (idempotente; vuelve a leer en vez de dar por hecho).
+- v0.68.0: Guiado, tanda 3. `createAppShell({ guide: { client, app } })` monta la guía completa leyendo la ejecución de Flow (`flow.guide_read` / `flow.guide_confirm`, sin valores); `flowGuideSource` valida lo que llega. Falta la parte de Flow.
+- v0.67.0: Guiado, tanda 2. `createGuide` con foco y burbuja, avance solo con la confirmación real, recálculo de lo pendiente, «Saltar», «Anterior», píldora y «Volver a…».
+- v0.66.0: Guiado, tanda 1. Anclajes semánticos (`confirm`, `validator`), aviso de guardado sin valores, `registerReveal`, `withGuideLink` y `createAppShell({ guide })` con el campo señalado al llegar.
+- v0.65.0: `groupLanes`, que agrupa los carriles por cualquier clave (persona, fase, espacio…) sin tocar `createLanes`.
 - v0.64.0: piezas genéricas para Flow. Formulario libre a partir de un esquema (pregunta a pregunta, revisión y «Registrar») y lista de comprobación con quién y cuándo. `createStepForm` admite controles propios, «Saltar» y texto largo.
 - v0.63.0: decoración y finca en `createSpaceMap`. Retícula de 5 m, 1 m y 0,5 m; capa de decoración y modo colocar; camas con icono; alturas y cotas; bajar de la finca al edificio y a la habitación con miga.
 - v0.62.0: K4 y K5 de Tasks. Sugeridos en `createItemPicker` (`suggested`, `suggestedLabel`; `searchItems({ boost })`), y búsqueda de artículos por palabras en cualquier orden con «→ completa» a un nombre que ya existe.

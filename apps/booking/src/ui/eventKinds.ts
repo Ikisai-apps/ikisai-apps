@@ -221,6 +221,52 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: pay });
   }
 
+  /** Guarda un cambio del cobro y, si ya estaba en Finance, lo reenvía (el reenvío sustituye el apunte; 1403). */
+  async function saveCharge(charge: Row, fields: Record<string, unknown>, sheet: Sheet, button: HTMLButtonElement): Promise<void> {
+    button.disabled = true;
+    try {
+      const { requestId } = await o.client.commit([{ op: 'update', table: WALKINS, id: charge.id, expectedRevision: charge.revision, fields }]);
+      const rejected = navigator.onLine ? await settleBatch(o.client, requestId) : null;
+      if (rejected) { toast(describeError(rejected.error)); button.disabled = false; return; }
+      await sheet.close(true);
+      const fresh = ((await o.client.list(WALKINS)) as Row[]).find((c) => c.id === charge.id);
+      if (fresh?.paid_at && !fresh.finance_sent_at && navigator.onLine && o.client.status().pendingCommands === 0) await sendWalkinToFinance(o.client, fresh);
+    } catch (e) { toast(describeError(e)); button.disabled = false; }
+  }
+
+  /** Ajustar noches o precio por noche: el importe vuelve a ser noches × precio. */
+  function adjust(charge: Row): void {
+    const nights = el('input', { id: 'adjustNights', type: 'number', min: 1, max: 60, step: 1, value: String(charge.nights), inputmode: 'numeric' }) as HTMLInputElement;
+    const price = el('input', { id: 'adjustPrice', type: 'number', min: 0, step: '0.01', value: (Number(charge.price_cents) / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
+    const ok = el('button', { class: 'primary', type: 'button', id: 'adjustSave', onclick: () => {
+      const n = Math.round(Number(nights.value)); const cents = Math.round(Number(price.value) * 100);
+      if (!Number.isInteger(n) || n < 1 || n > 60 || !Number.isFinite(cents) || cents < 0) return void toast('Revisa las noches y el precio.');
+      if (n * cents < Number(charge.refund_cents ?? 0)) return void toast('El importe no puede quedar por debajo de lo devuelto.');
+      void saveCharge(charge, { nights: n, price_cents: cents, amount_cents: n * cents }, sheet, ok);
+    } }, 'Guardar el ajuste') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({ title: 'Ajustar el cobro', body: el('div', null,
+      el('label', { class: 'field' }, el('span', null, 'Noches'), nights), el('label', { class: 'field' }, el('span', null, 'Precio por noche (€)'), price),
+      charge.finance_sent_at ? el('p', { class: 'hint' }, 'Ya está en Finance: al guardar se reenvía y sustituye el apunte.') : null),
+      foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: nights });
+  }
+
+  /** Devolver parte o todo lo cobrado: un solo apunte en Finance por lo cobrado menos lo devuelto. */
+  function refund(charge: Row): void {
+    const max = Number(charge.amount_cents);
+    const amount = el('input', { id: 'refundAmount', type: 'number', min: 0, step: '0.01', value: (Number(charge.refund_cents ?? 0) / 100 || max / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
+    const method = el('select', { id: 'refundMethod' }, WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
+    method.value = charge.refund_method ?? charge.method ?? 'cash';
+    const ok = el('button', { class: 'primary', type: 'button', id: 'refundSave', onclick: () => {
+      const cents = Math.round(Number(amount.value) * 100);
+      if (!Number.isFinite(cents) || cents < 0 || cents > max) return void toast(`La devolución va de 0 a ${euros(max)}.`);
+      void saveCharge(charge, cents === 0 ? { refund_cents: 0, refund_method: null, refunded_at: null } : { refund_cents: cents, refund_method: method.value, refunded_at: new Date().toISOString() }, sheet, ok);
+    } }, 'Guardar la devolución') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({ title: 'Devolver', body: el('div', null,
+      el('label', { class: 'field' }, el('span', null, `Importe devuelto (de ${euros(max)})`), amount), el('label', { class: 'field' }, el('span', null, 'Cómo se devuelve'), method),
+      el('p', { class: 'hint' }, 'Con 0 se quita la devolución. En Finance queda un solo apunte por lo cobrado menos lo devuelto.')),
+      foot: el('div', { class: 'choices' }, ok, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: amount });
+  }
+
   const chargeRow = (c: Row) => {
     const a = assignmentOf.get(c.assignment_id);
     const state = !c.paid_at ? el('span', { class: 'chip warn' }, 'Pendiente')
@@ -229,8 +275,12 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     return el('li', { class: 'row', dataset: { charge: c.id }, 'data-feedback-ignore': '' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, guestName(guestOf.get(c.guest_id) ?? {} as Row)), el('span', { class: 'chip' }, euros(c.amount_cents)), state),
       el('div', { class: 'row-meta' }, `${plural(Number(c.nights), 'noche', 'noches')} × ${euros(c.price_cents)}${a ? ` · ${bedOf.get(a.bed_id)?.label ?? 'Sin cama'}` : ''}${c.finance_error && !c.finance_sent_at ? ` · ${c.finance_error}` : ''}`),
+      Number(c.refund_cents) > 0 ? el('div', { class: 'row-meta' }, `Devuelto ${euros(c.refund_cents)} (${WALKIN_METHOD_LABELS[c.refund_method as keyof typeof WALKIN_METHOD_LABELS] ?? c.refund_method})`) : null,
+      o.editable ? el('div', { class: 'row-actions' },
+        el('button', { class: 'ghost small', type: 'button', 'data-action': 'adjust', 'data-feedback-id': 'booking.reserva.alacarta.ajustar', 'data-feedback-label': 'Ajustar cobro', onclick: () => adjust(c) }, 'Ajustar…'),
+        c.paid_at ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'refund', 'data-feedback-id': 'booking.reserva.alacarta.devolver', 'data-feedback-label': 'Devolver', onclick: () => refund(c) }, 'Devolver…') : null) : null,
       o.editable && !c.paid_at ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-action': 'collect', onclick: () => collect(c) }, 'Cobrar…')) : null,
-      o.editable && c.paid_at && !c.finance_sent_at ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-action': 'send', onclick: () => void sendWalkinToFinance(o.client, c) }, 'Enviar a Finance')) : null);
+      o.editable && c.paid_at && !c.finance_sent_at ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-action': 'send', onclick: () => void sendWalkinToFinance(o.client, c) }, c.finance_entry_id ? 'Reenviar a Finance' : 'Enviar a Finance')) : null);
   };
 
   return el('article', { class: 'card', id: 'blockWalkIn', 'data-feedback-id': 'booking.reserva.alacarta', 'data-feedback-label': 'Alojamiento a la carta' },

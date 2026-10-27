@@ -1,5 +1,115 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.69.2 · 27 de octubre de 2026
+
+**Con el dedo, nada por debajo de 44 px.** Sale de la revisión móvil a 390 px (`MUELA/equipo/feedback/ui-kit/REVISION_MOVIL_27-10.md`). Lo que más se repetía en las apps eran controles de 36 px.
+
+- En pantallas táctiles (`@media (pointer: coarse)`), `--tap-sm` pasa de 36 a 44 px. Eso sube `.small`, `.iconbtn.small` y los controles `.compact` (p. ej. los `select` de filtros). Con ratón, nada cambia.
+- `.tabpill`, `.linkbtn`, `.pl-tabs button` y `.space-quick-chip` pasan a 44 px de alto, y `.tabtool` a 44 × 44 px, en pantallas táctiles.
+- «¿Sin red?» del inicio de sesión (`.login summary`, en todas las apps) pasa de 28 a 44 px de alto en pantallas táctiles.
+- Arregla sin tocar las apps los toques señalados en Booking (calendario), Central (Inicio, Cumplimiento, Inventario), Finance (Facturas, Compras) y Food (filtros del Recetario).
+
+## 0.69.1 · 27 de octubre de 2026
+
+**«Trabajos de hoy» compuesto en la muestra** (encargo de Core): una pantalla de Flow hecha solo con piezas del kit. Es la referencia del cableado que hará Flow, con la receta en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`.
+
+- **Carriles:** `createLanes` agrupados por persona, oficio o espacio con `groupLanes`.
+- **Contenido de cada carril:** un `createProjection` del Plan de hoy de Tasks (`tasks.review_projection`) con «Hecha» (`tasks.complete`) como acción.
+- **Guiado:** el título de cada tarjeta abre la tarea en Tasks con el Guiado (`withGuideLink`, `?guia=`) y «Volver a Trabajos de hoy».
+- **Cliente:** es de mentira; las capacidades de Tasks están pendientes.
+- Sin cambios en la API del kit. Pruebas: `tests/v74.spec.ts`, a 390 px y en escritorio.
+
+## 0.69.0 · 27 de octubre de 2026
+
+**Proyección** (`createProjection`, `src/pieces/projection.ts`; encargo de Core, diseño en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Es un carril que pinta las filas leídas de otra app y tiene una acción por fila que invoca una capacidad del catálogo. Con ella, «Trabajos de hoy», «Recepción» o «Avance por aplicaciones» son composiciones. No copia datos.
+
+- **Lectura:** `read` es una capacidad invocada con el cliente de la app y el token de la persona, y `rows(result)` la convierte en filas `{ id, title, meta, chip, href, data }`.
+  - Se vuelve a leer cada `refreshMs`, al volver a la pestaña, al recuperar la red y tras cada acción.
+  - Las filas se validan (ids, títulos) y los enlaces solo pueden ser internos o de `*.ikisai.com`.
+- **Acción por fila** (`action: { label, capability, input, when?, confirm? }`):
+  - es idempotente (`requestId` estable por fila y acción) y dice «Haciendo…» mientras dura;
+  - **no se marca como hecha en local**: se vuelve a leer y manda la app dueña;
+  - los errores se dicen en palabras («Tu cuenta no puede hacer esto en Booking», «Booking no responde ahora mismo»);
+  - `confirm` pregunta antes.
+- **Sin red:** la última lectura, con «Sin conexión: puede no estar al día» y sin acciones.
+- `onCount(n)` es para el recuento del carril (`createLanes` / `groupLanes`).
+- Demo: «Proyección (Recepción, leyendo de Booking)». Pruebas: `tests/v73.spec.ts`.
+
+## 0.68.0 · 27 de octubre de 2026
+
+**Guiado, tanda 3: el shell monta la guía leyendo la ejecución de Flow.** Contrato aprobado por Core el 27-10; la parte de Flow está pendiente.
+
+- `createAppShell({ guide: { client, app, feedbackId } })`: con eso, cada app monta el Guiado en una línea.
+  - Con `?guia=<ejecución>`, monta la guía completa (`createGuide`) con los pasos de esa app.
+  - Con `?campo=…`, el nivel mínimo (0.66).
+  - `guide: true` sigue siendo solo el nivel mínimo.
+- `flowGuideSource(client, { app })` (`src/guide/flow-source.ts`) usa dos capacidades del catálogo del núcleo, invocadas con la Edge de la app y el token de la persona (`POST capabilities/<id>/invoke`):
+  - `flow.guide_read {execution_id, app}` → la ejecución con sus pasos (`done` lo calcula Flow);
+  - `flow.guide_confirm {requestId, execution_id, step_id, how, pending}`, idempotente por `requestId` y **sin valores de campo**: `save` sale del aviso de guardado de `createSaveState`, nunca de leer el campo.
+- Lo que llega de Flow se valida (`sanitizeGuideRun`, `safeRoute`):
+  - anclajes con el formato del inventario;
+  - rutas solo internas (`#/…` o `/…`);
+  - textos acotados e ids sin repetir.
+  - Si Flow no responde, la guía lo dice, con «Reintentar» y «Volver a Flow».
+- Demo: la línea del shell en la sección del Guiado. Pruebas: `tests/v72.spec.ts`, con un cliente falso.
+
+## 0.67.0 · 27 de octubre de 2026
+
+**Guiado, tanda 2: `createGuide`** (`src/guide/guide.ts`), la guía completa dentro de la app real. No bloquea nada: se puede trabajar libremente y volver a la guía.
+
+- **Foco y burbuja:**
+  - un anillo sigue al anclaje del paso y el resto de la pantalla se oscurece un poco, sin capturar toques;
+  - la burbuja va abajo en el móvil y a la derecha en el ordenador, con «Paso 2 de 5», la barra, el título y la explicación;
+  - el campo sube bajo la cabecera, así que lo que le sigue («Guardar») queda a la vista.
+- **Avanza solo con la confirmación real:**
+  - `confirm: 'save' | 'event'` espera el aviso de guardado de ese campo (0.66, sin valores);
+  - `manual` pide «Hecho»;
+  - `none` informa y tiene «Siguiente».
+  - Cada confirmación llama a `onConfirmed(step, { how, pending })`, para que quien guía la registre.
+- **Lo pendiente se recalcula:**
+  - `load()` devuelve los pasos con `done` y se vuelve a llamar al volver a la pestaña, al desplegar la guía y con `refresh()`;
+  - lo hecho fuera de la guía no se repregunta;
+  - «Anterior» vuelve a un paso ya hecho para cambiarlo.
+- **Escondido o en otra pantalla:** pide a la app que lo enseñe (`registerReveal`). Si no está, lo dice y ofrece «Ir allí» con la `route` del paso.
+- **Otros controles:**
+  - «Saltar» en los pasos no esenciales;
+  - «Ocultar» la deja en una píldora («Guía · paso 2 de 5»);
+  - «Volver a…» usa la convención K9;
+  - en `mode: 'learn'` sale la etiqueta «Practicando».
+- Demo: «Guía completa» en la sección del Guiado. Pruebas: `tests/v71.spec.ts`.
+
+## 0.66.0 · 27 de octubre de 2026
+
+**Guiado, tanda 1: anclajes semánticos y campo señalado.** Es el nivel mínimo y el primer paso del Guiado completo que decidió VG el 27-10; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`.
+
+- **Anclajes** (`src/guide/anchors.ts`): un anclaje es un id del inventario (`data-field-id` o `data-feedback-id`), nunca un selector.
+  - `findAnchor(id)` devuelve el nodo, solo si se ve: un `<details>` cerrado o `display: none` no cuentan.
+  - `registerReveal(prefijo, fn)`: la app enseña lo escondido (abrir una hoja, cambiar de pestaña).
+  - `revealAnchor(id)` pide que se enseñe y espera a que aparezca; si no aparece, devuelve `null`.
+  - `pointAt(nodo)` lo trae a la vista, le da el foco y lo resalta.
+- **Confirmación de guardado, sin valores:**
+  - `FieldSpec` gana `confirm` (`'save' | 'event' | 'none'`) y `validator` (un nombre, no código). Van a `data-field-confirm`/`-validator` y al catálogo; solo aparecen si se declaran, así que los catálogos de siempre no cambian.
+  - `createSaveState` avisa solo cuando la clave es un id de campo (`confirm: 'save'`). Para el resto está `announceSaved(id)`. Se escucha con `onSaved(fn)`.
+  - El aviso lleva solo el id y si quedó en cola sin red.
+- **Enlace** (`src/guide/link.ts`): `withGuideLink(url, { field, step, run, from, title })` es la convención de «Volver a…» más `campo`, `paso` y `guia`. `readGuideLink()` lo lee al llegar, lo guarda en la pestaña y limpia la URL.
+- **Shell:** `createAppShell({ guide: true })` monta el Guiado en una línea e implica `returnTo`.
+  - Al llegar con `?campo=…&paso=…`, una línea arriba explica el paso y el campo queda señalado.
+  - Hay «Ver el campo» y «Cerrar». Si no encuentra el campo, lo dice.
+  - El texto del paso se pinta como texto, nunca como HTML.
+- Clases con el prefijo nuevo `guia-` (`guide-` ya lo usa una app). Demo: «Guiado: campo señalado». Pruebas: `tests/v70.spec.ts`.
+
+## 0.65.0 · 27 de octubre de 2026
+
+**Carriles por cualquier clave** (traspaso de Flow v03, §12; diseño en `MUELA/equipo/feedback/flow/GUIADO.md`). `groupLanes(items, { key, title?, order?, hideEmpty?, noneTitle?, emptyText?, card | mount })` (`src/pieces/lanes-group.ts`) devuelve los `lanes` de `createLanes` agrupados por persona, agente, fase, espacio u objetivo. `createLanes` no cambia.
+
+- La clave es el id del carril, así que al cambiar de agrupación con `setLanes` se conserva el carril elegido si sigue existiendo.
+- Orden:
+  - `order` fija carriles en ese orden, aunque estén vacíos (`hideEmpty` los quita);
+  - los demás van detrás, ordenados por título;
+  - lo que no tiene clave va al final, en «Sin asignar» (`LANE_NONE`).
+- Dentro de cada carril, una `card(item)` por elemento, o `mount(body, items, key)` para montarlo a mano. Un carril vacío dice «Nada aquí» y en «Lado a lado» se pliega.
+- Demo: «Carriles por cualquier clave», con «Agrupar por» persona, fase o espacio. Pruebas: `tests/v69.spec.ts`.
+
 ## 0.64.0 · 27 de octubre de 2026
 
 **Piezas genéricas para el catálogo de Flow** (encargo de Core; cómo las monta Flow en `MUELA/equipo/feedback/flow/PIEZAS_GENERICAS.md`). Ninguna guarda nada por su cuenta: solo registran a través de la app.

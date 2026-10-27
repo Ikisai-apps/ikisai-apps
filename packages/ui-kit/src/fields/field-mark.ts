@@ -10,6 +10,8 @@
  * Si el campo no tiene ya un `data-feedback-id`, se le pone el mismo id (el ancla del feedback y del uso).
  */
 export type FieldSensitivity = 'public' | 'internal' | 'personal' | 'sensitive';
+export type FieldConfirm = 'save' | 'event' | 'none';
+export const FIELD_CONFIRMS: readonly FieldConfirm[] = ['save', 'event', 'none'];
 
 export interface FieldSpec {
   /** Estable: `<app>.<pantalla>.<campo>` en minúsculas y sin acentos, como los ids de feedback. */
@@ -30,6 +32,13 @@ export interface FieldSpec {
   route?: string;
   /** `data-feedback-id` del campo, si es otro que `id`. */
   anchor?: string;
+  /**
+   * Qué prueba que se guardó, para el Guiado: `save` (lo guarda `createSaveState` con este id como clave y avisa solo),
+   * `event` (la app llama a `announceSaved(id)` al confirmarlo) o `none` (no se confirma por sí solo).
+   */
+  confirm?: FieldConfirm;
+  /** Nombre del validador que aplica la app (`dni`, `fecha_futura`); nunca código. */
+  validator?: string;
   label?: string;
 }
 
@@ -58,6 +67,8 @@ export function fieldAttrs(spec: FieldSpec | null | undefined, defaults: Partial
     'data-field-sensitivity': s.sensitivity && FIELD_SENSITIVITIES.includes(s.sensitivity) ? s.sensitivity : null,
     'data-field-since': s.since ?? null,
     'data-field-route': s.route ?? null,
+    'data-field-confirm': s.confirm && FIELD_CONFIRMS.includes(s.confirm) ? s.confirm : null,
+    'data-field-validator': s.validator && /^[a-z][a-z0-9_]{0,40}$/.test(s.validator) ? s.validator : null,
     'data-feedback-id': s.anchor ?? s.id,
     'data-feedback-label': s.label ?? null,
   };

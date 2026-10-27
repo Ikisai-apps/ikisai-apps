@@ -1375,6 +1375,8 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 | `booking.staff_needs_open` | count | actual | down | refuerzos sin cubrir de eventos que no han terminado |
 | `booking.occupancy_rate` | pct | mensual (12 meses anteriores, el actual y 3 siguientes) | up | personas-noche asignadas en el mes (asignaciones de alojamiento de reservas vivas, noches [entrada, salida)) / (plazas base × días del mes) × 100; plazas base = camas activas no supletorias de habitaciones activas y reservables; `null` si no hay plazas |
 | `booking.occupancy_weekend` | pct | actual (viernes → domingo del fin de semana que viene; el sábado, el que está en curso) | up | personas-noche asignadas las noches de viernes y sábado / (plazas base × 2) × 100; `null` si no hay plazas (migración 0493, panel de Dirección V2 de Central) |
+| `booking.beds_free_tonight` | count | actual (hoy → mañana) | up | plazas de cama libres esta noche según `booking.free_beds` (sin asignación, estancia ni retención viva; migración 1412) |
+| `booking.stay_requests_unpaid` | count | actual | down | solicitudes de noches del QR pendientes de cobrar en recepción, sin las de retención caducada (1412) |
 
 `booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
 
@@ -1932,4 +1934,100 @@ Lecturas públicas para Guests (`ven.ikisai.com`). Los nombres y las formas est�
   - `booking_visitor_requests` da también `id`, `from`, `to`, `persons`, `mode_id`, `total_cents`, `pay`, `hold_until` y `hold_expired`;
   - `booking_public_lodging` da también `pay` y `hold_hours`.
 - **Cobro en recepción:** Bizum, metálico y Bitcoin, como en la caja de Flow. Lo recoge la tarjeta 3, al aceptar. El pago en línea queda a la espera de la pasarela (vg-27).
+
+## 38. Alojamiento libre «como la barra» (migración 1400; VG 27-10-2026, contrato con Guests)
+
+El visitante, desde «Alójate aquí»:
+1. elige noches y cama, o se le asigna una;
+2. mete sus datos en borrador;
+3. pulsa «Ir a pagar» y recibe un **número corto** por evento (como el de la barra);
+4. va a recepción, que busca el número, completa, cobra y aloja (§39).
+
+- **`booking_public_beds({event_code, from, to})`** (cliente) devuelve `{nights, price_night_cents, rooms:[{id, name, beds:[{id, label, kind, places, free, resource_bed_id}]}]}`.
+  - `name` es el nombre público de la habitación.
+  - `free` dice si la cama está libre todas las noches de `[from, to)`.
+  - Nunca personas.
+- **`POST /api/v1/public/stay`** recibe `{event_code, from, to, persons, name?, mode_id?, bed_id? | bed_ids?, assign?, traveler?: objeto | lista, contact?, note?}`.
+  - Sin `mode_id` se usa la primera modalidad que valga.
+  - Las camas elegidas tienen que estar libres todas las noches; si no, 409 `BED_TAKEN`. Si no llegan a las personas, se completan solas.
+  - En `hold` se retienen el plazo del evento; en `pay_first` quedan como preferencia.
+  - Responde `{id, number, status, stay_status, from, to, persons, mode_id, total_cents, pay, hold_until, beds:[{room, label}], bed, paid_at, missing}`.
+- **`POST /api/v1/public/stay/traveler`** recibe `{request_id | stay_id, traveler | fields}`.
+  - Guarda o actualiza el borrador de cada persona. Solo puede hacerlo el visitante dueño, y mientras la solicitud está pendiente; si no, 404 o 409 `REQUEST_CLOSED`.
+  - Responde `{missing:[[campo…] por persona]}`, con la regla de `missingForSes` (`booking.draft_missing`).
+- **`booking.stay_travelers`**: el borrador, uno por persona, con los campos de `booking.guests`. Es dato de huésped: la Edge solo lo da con el ámbito de huéspedes (`visibleBookingRow`). Al alojar se pasa a la ficha y se borra (§39).
+- **`booking_visitor_stay({event_code})`** (cliente, con el visitante) devuelve la última solicitud de noches. **`booking_visitor_requests`** añade por item `number`, `stay_status`, `beds`, `paid_at` y `missing`.
+- **Valores de `stay_status`:**
+  - `por_pagar`;
+  - `caducada`: el bloqueo de `hold` ha vencido;
+  - `pagada`: hay cobro registrado;
+  - `alojado`: `arrived_at`;
+  - `salida`: `left_at`;
+  - `descartada`.
+- **`booking_stay_drafts`** (solo servidor) da los ids y las revisiones de los borradores del visitante, para actualizarlos.
+
+## 39. «Recepción» del alojamiento como la barra (migración 1401; VG 27-10-2026)
+
+- **Pantalla `#/recepcion`** (menú Huéspedes → Recepción; editor y owner):
+  - lista las solicitudes de noches pendientes por número, con buscador;
+  - cada una muestra noches, personas, cama, total, si la plaza sigue retenida y qué falta por persona (solo con el ámbito de huéspedes);
+  - acciones: «Cobrar y alojar», con el método (Bizum, efectivo, Bitcoin o tarjeta), y «Descartar».
+- **`booking.join_from_visitor({request_id, decision: 'accept', method?})`** hace en un lote, para una solicitud `stay`:
+  - una ficha por persona con su borrador (`stay_travelers`, que se borra). Sin borrador, la primera lleva el nombre de la solicitud y el resto quedan como «Acompañante n de …»;
+  - las camas con las fechas, en este orden: las retenidas si el bloqueo sigue vivo; las elegidas si siguen libres; si no, las libres ahora. Si no queda ninguna, 409 `NO_AVAILABILITY` y no se crea nada;
+  - un cobro por cama: noches × precio de la tarifa × personas de la cama. Con `method` queda cobrado; sin él, pendiente.
+  - repetirla no duplica nada.
+- **Finance:** después del gesto, la pantalla manda cada cobro con `sendWalkinToFinance`, que va con las cabeceras de servidor (#867).
+- **Bitcoin:** `walkin_charges.method` admite `bitcoin`, que a Finance va con la clave `bitcoin`, igual que la caja de Flow.
+- **`booking.visitor_claim({visitor_id, request_id})`** (sistema) devuelve `{guest_id, reservation_id}` de una solicitud aceptada de ese visitante. Es para «Tu ficha está lista» en Guests.
+
+## 40. La salida libera la cama y pide la limpieza (migración 1402; VG 27-10-2026)
+
+- **`booking.guest_leave`**, además de anotar `left_at`:
+  - acorta cada asignación viva del huésped que seguía después de hoy (hora de Madrid) para que termine hoy, con al menos una noche;
+  - guarda la salida prevista en `room_assignments.planned_to_date`;
+  - la cama queda libre esa misma noche;
+  - devuelve `freed: [{assignment_id, bed_id}]`.
+- **Deshacer** (`undo: true`) devuelve la salida prevista. Si otra persona ya ocupa la cama, el lote falla con `BED_OVERBOOKED` y no cambia nada.
+- **Limpieza:** booking-api (`afterCommit`) pide a Tasks, por `worker/requests/task`, una tarea por asignación liberada:
+  - tipo `booking.bed_cleaning`, `external_ref` `LIMP-<id de asignación>`, título «Limpiar <habitación> · <cama>» y `due` hoy;
+  - sin datos de la persona;
+  - si Tasks falla, la salida queda hecha igualmente.
+
+  Los datos salen de `booking.cleaning_source` (sistema). **Pendiente de Tasks:** aceptar el tipo `booking.bed_cleaning`.
+
+## 41. Ajustes y devoluciones del cobro del alojamiento (migración 1403; VG 27-10-2026)
+
+- **Ajuste:** en «Alojamiento a la carta», «Ajustar…» cambia las noches o el precio por noche, y el importe vuelve a ser noches × precio.
+- **Devolución:** «Devolver…» guarda `walkin_charges.refund_cents` (hasta lo cobrado), `refund_method` y `refunded_at`. Con 0 se quita.
+- **Un solo apunte en Finance por cobro** (`booking:stay:<id del cobro>`): `walkinFinanceEntry` lo manda por lo cobrado menos lo devuelto.
+  - El método de la devolución va en negativo y el desglose lleva una línea «Devolución» negativa, así que métodos y desglose suman el importe.
+  - Un cambio de importe, cobro o devolución en un cobro ya enviado borra `finance_sent_at` (disparador `walkin_charge_stale`) y la ficha ofrece «Reenviar a Finance».
+  - El reenvío sustituye el apunte (patrón F1, con las cabeceras de servidor del #867). Si el apunte ya está en la gestoría, Finance responde `ENTRY_LOCKED`.
+- **Retención de la plaza por defecto:** 2 horas, por decisión de Core en nombre de VG. Se cambia por evento.
+- **Para Finance (#904):** `booking.event_reservations_for_invoices({event_ids})`, legible por invoices, devuelve `[{reservation_id, event_id, status}]` sin datos personales. Admite hasta 200 eventos.
+
+## 42. Visitante solo de jornada: sin pernocta, sin SES (migración 1404; aceptación H)
+
+- **Al aceptar a un visitante del QR que pidió apuntarse sin noches** (`kind = 'join'`) en unas jornadas abiertas, su ficha nace con `ses_status = 'no_aplica'` y `data_status = 'no_aplica'`. Lo hace el disparador `visitor_day_only`.
+  - Huéspedes lo enseña como «Sin pernocta · sin SES» y no pide el documento.
+  - El parte de viajeros (`ses_guest_report_source_base`) lo deja fuera aunque llegue.
+- **Si después se le da cama** (una asignación con él), vuelve a `pendiente_envio` y `pendiente_datos` (`assignment_needs_ses`).
+- **En un retiro**, apuntarse es venir a dormir: nada cambia.
+
+## 43. Carriles de Recepción (traspaso §4.3; Core 27-10-2026)
+
+`#/recepcion` muestra la misma estancia en carriles filtrados (`createLanes` del kit; pestañas o lado a lado, y la elección se recuerda en el dispositivo). Sirve para las jornadas abiertas en curso.
+
+- **Carriles:**
+  - **Por confirmar:** las solicitudes del QR con número.
+  - **Entradas de hoy:** quien tiene cama desde hoy y no ha llegado.
+  - **En estancia:** quien ha llegado y no ha salido.
+  - **Salidas y limpieza:** quien sale hoy o ya ha salido hoy (su limpieza se pide al salir, §40).
+  - **Excepciones:** cobro pendiente con la cama ocupada, datos incompletos el día de entrada o dentro, retención caducada o sin cama. Es un filtro encima de los otros carriles.
+- **Cuatro indicadores independientes por ficha:** plaza, cobro, datos y presencia. Que uno esté bien no da los otros por hechos. Sin el ámbito de huéspedes no salen ni nombres ni datos.
+- **Acciones:**
+  - «Cobrar y alojar» y «Descartar», en las solicitudes;
+  - «Llega» (`guest_arrive`), «Sale» (`guest_leave`) y «Ficha», en los huéspedes.
+- **La regla** está en `apps/booking/src/app/receptionLanes.ts` (`receptionCards`, `laneCards`). Es pura y tiene prueba en `tests/booking/reception-lanes.test.ts`.
 

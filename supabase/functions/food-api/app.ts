@@ -356,6 +356,8 @@ function eventShoppingRoutes(supabase: Supabase, events: EventReader, options: F
     tasks<Purchase>(ctx, 'requests/purchase', {
       source: 'food', external_ref: ref, project_id: projectId, title: eventPurchaseTitle(row, quantity, event.title),
       quantity, unit: row.unit,
+      // El artículo de Recursos (Tasks #874, API §39.6): al recibirla, Tasks apunta la entrada de stock con su coste.
+      ...(row.item_id ? { item_id: row.item_id } : {}),
       note: [row.supplier ? `Proveedor: ${row.supplier}` : null, `Sale de: ${row.menus.join(', ')}`, 'Lista de la compra del evento en Food.'].filter(Boolean).join(' · '),
       due: dayBefore(event.start_date), external_url: `${FOOD_ORIGINS[0]}/#/eventos/${eventId}/compra`,
     });

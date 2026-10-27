@@ -5,13 +5,15 @@
  * (correo y teléfono; WhatsApp cuando Central publique `contact.whatsapp`), que salen de Central, nunca fijas en el código.
  * El tercer paso («con tu código», reenviar el enlace sin sesión con el localizador de la reserva) llegará cuando el
  * núcleo publique ese reenvío (petición de la tanda 31); hasta entonces no se ofrece. La cuenta permanente (Google y
- * código por correo) solo sale cuando el núcleo la active; nunca un «pronto».
+ * código por correo) solo sale cuando el núcleo la active; nunca un «pronto». Sin enlace (sin error), antes del marco, los
+ * eventos abiertos al público: la puerta de ven.ikisai.com sin invitación ni QR.
  */
 import { el, icon, replace } from '@ikisai/ui-kit';
 import { describeError, errorCode, isNetworkError } from '../app/client.ts';
 import { contactEmail, contactPhone } from '../app/common-texts.ts';
 import { formatDate, t } from '../app/i18n.ts';
 import { languageSelect } from './language.ts';
+import { openEvents } from './visitor.ts';
 
 export interface EntryOptions {
   /** Error del canje del enlace, si se llegó por `/i/<token>`. */
@@ -60,6 +62,8 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
       el('h2', { id: 'entryTitle', 'data-feedback-id': 'guests.entrada.enlace.error', 'data-feedback-label': 'Mensaje de entrada' }, title),
       el('p', { id: 'entryText' }, text),
       offline && options.retry ? el('button', { type: 'button', class: 'primary wide', id: 'entryRetry', 'data-feedback-id': 'guests.entrada.enlace.reintentar', 'data-feedback-label': 'Reintentar', onclick: () => options.retry!() }, icon('sync', 18), t('common.retry')) : null,
+      // Sin invitación ni QR (ENTRADA_PUBLICA.md): los eventos abiertos, para entrar como visitante.
+      options.error ? null : openEvents(),
       el('section', { class: 'gentry-frame', 'aria-labelledby': 'findTitle' },
         el('p', { class: 'gentry-frame-h', id: 'findTitle' }, icon('search', 20), ' ', t('entry.findTitle')),
         el('ol', { class: 'gentry-steps' },

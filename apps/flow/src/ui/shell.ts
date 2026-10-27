@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, openFeedbackCenter, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, openFeedbackCenter, registerReveal, replace, toast,
   type Lanes, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
@@ -56,15 +56,28 @@ const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check'
 
 interface FlowColumn { key: string; label: string; behavior: ColumnBehavior; position: number; project_id: string; deleted_at: string | null }
 
+/**
+ * Nombres cortos para la barra inferior (revisión móvil de UI-kit, 27-10): con seis secciones a 390 px, los nombres largos
+ * se cortaban («Prepara…», «Ingredie…»). El nombre completo sigue en el título de la pantalla y del carril.
+ */
+const NAV_SHORT: Record<string, string> = { order: 'Caja', prep: 'Cocina', ingredients: 'Ingred.', service: 'Entrega', logistics: 'Logística' };
+const NAV_MAX = 9;
+export function navLabel(key: string, label: string): string {
+  if (label.length <= NAV_MAX) return label;
+  if (NAV_SHORT[key]) return NAV_SHORT[key]!;
+  const first = label.split(/\s+/)[0] ?? label;
+  return first.length <= NAV_MAX ? first : `${first.slice(0, NAV_MAX - 1)}.`;
+}
+
 /** Barra inferior de un flujo: la casa + sus columnas, en su orden (§2.1). */
-function navFor(projectId: string, columns: FlowColumn[]): NavItem[] {
+function navFor(projectId: string, columns: FlowColumn[], short: boolean): NavItem[] {
   const base = `#/p/${projectId}`;
   return [
     { hash: base, label: 'Inicio', icon: 'home', matches: [base] },
     ...columns.map((c) => {
       const view = COLUMN_VIEWS[c.key];
       const hash = `${base}/${view?.slug ?? c.key}`;
-      return { hash, label: c.label, icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
+      return { hash, label: short ? navLabel(c.key, c.label) : c.label, icon: (view?.icon ?? BEHAVIOR_ICON[c.behavior]) as NavItem['icon'], matches: [hash] };
     }),
   ];
 }
@@ -113,6 +126,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     navLayout: 'bar',
+    // Guiado mínimo del kit (0.68): ?campo= señala el campo; ?paso= lo explica y pone «Volver a…». Sin cliente: no lee nada de Flow.
+    guide: { feedbackId: 'flow.guia' },
     tools: [service.button],
     returnTo: { feedbackId: 'flow.cabecera.volver' },
     menu: {
@@ -199,7 +214,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     columns = await loadColumns(projectId);
     boardable = (await loadProjects(client)).some((p) => p.id === projectId && !p.frozen);
     if (currentProject !== projectId) return;
-    shell.setNav(navFor(projectId, columns));
+    // La v1 congelada no cambia (VG: «Barra · v1» se congela); los nombres cortos, en lo que no está congelado.
+    shell.setNav(navFor(projectId, columns, boardable));
     offBadges = watchData(client, (d) => paintBadges(projectId, d), projectId);
   }
 
@@ -268,7 +284,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     });
     vctx.main.append(lanes.element);
     board = { projectId, lanes };
-    return () => { lanes.destroy(); board = null; };
+    // Guiado: un campo de otra columna está en otro carril; se elige ese carril para que aparezca (`flow.<pantalla>…`).
+    const offReveals = columns.map((c) => registerReveal(`flow.${COLUMN_VIEWS[c.key]?.slug ?? c.key}`, () => lanes.select(c.key)));
+    return () => { offReveals.forEach((off) => off()); lanes.destroy(); board = null; };
   }
 
   const offStatus = client.onStatus((status) => {

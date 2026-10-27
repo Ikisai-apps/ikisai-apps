@@ -418,6 +418,31 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Con eso, Finance y Tasks reservan `source_app`/`source: 'flow'` a Flow (Finance: `403 SOURCE_MISMATCH` si no coincide).
 - A Food y a Booking no se les manda la clave.
 
+## 39. Ligar un flujo a un evento exige acceso en Booking (FL4, migración `0925`)
+
+- Al fijar o cambiar `flow.projects.booking_event_id` (por `create_flow`, «Nueva versión» o editando el proyecto), quien lo hace tiene que ver el evento en Booking (`booking.event_projection`) y ser miembro de Booking o estar en el personal de ese evento (`booking.event_staff_projection`). Si no, `403 EVENT_NOT_ACCESSIBLE`.
+- Sin actor (sistema), no se comprueba. Prueba: `tests/flow/event-access.test.ts`.
+
+## 40. El envío del cierre lo anota el servidor (FL9, migración `0927`)
+
+- `closures/:id/send/food` y `…/finance` anotan en el cierre `<target>_status` (`sent` o `error`), `_sent_at` y `_result` con el lote público del servidor, como los justificantes. El navegador ya no marca nada: `flow.mark_closure_sent` desaparece.
+- `flow.guard_closures` solo deja al lote público cambiar los campos de envío.
+
 ## 41. La carta pública solo pide en un flujo abierto (FL11, migración `0928`)
 
 - En lote público, un pedido o una línea entra solo si su flujo está activo y vivo; para un cliente web, además, el flujo tiene que atender la carta pública (`serves_public`). Huéspedes y visitantes piden en el flujo de su evento. Si no, `409 MENU_CLOSED` («La barra no está abierta ahora mismo.»).
+
+## 42. Huéspedes solo del evento (FL12, migración `0935`)
+
+- `assign_guest_numbers` y `mark_presence` preguntan a Booking por el núcleo (`core.read` de `booking.flow_guests_of`, con el ámbito de quien actúa) y fallan con `422 GUEST_NOT_IN_EVENT` si algún `guest_id` no es de ese evento. Un flujo sin evento no tiene huéspedes: `409 NO_BOOKING_EVENT`.
+
+## 43. «Avance por aplicaciones»: tarjetas como unidades (migración `0937`)
+
+- `flow.units` gana `lane_key` (carril: el agente), `prio` (`urgente` | `importante` | `secundario` | `opcional`) y `board_flag` (`pr` | `backlog`), indexadas por proyecto. Tipos nuevos `card` y `recurring` (en servicio: cuenta como hecha, sin urgencia). Estado: `pending` · `in_progress` · `done`; nunca `cancelled`. Título hasta 300.
+- Las tarjetas solo se escriben por procedimiento (`flow.board_card`, siguiente paso). `flow.guard_board` comprueba el carril: owner, todos; editor u outsider, los de `scopes.lanes` de su membresía y con el proyecto en su ámbito (`403 LANE_FORBIDDEN`).
+- Plantilla `avance` v1: una columna `avance` («Avance»).
+
+## 44. «Avance»: `flow.board_card` y la capacidad del catálogo (migración `0938`)
+
+- Procedimiento `flow.board_card({project_id, card_id?, lane_key, title?, status?, prio?, flag?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?})` (`tipo`, el oficio: arreglo · funcion · prueba · decision · ajuste, en payload; `order`, el orden en el carril, en `idx`): sin `card_id` (o uno nuevo) crea; con uno que existe cambia solo lo dado (`prio`/`flag`/campos de payload a `null` los quitan). `done` pone `done_at`; volver de `done` lo quita. Una recurrente nunca lleva urgencia. `url` solo https; hasta 30 pasos de 300.
+- Capacidad `flow.board_card` (`POST board-card`, editor, owner u outsider): idempotente por `requestId` (recibo del núcleo por persona); devuelve `{card_id, created, replayed}`. El carril lo decide el guard (`403 LANE_FORBIDDEN`).

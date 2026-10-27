@@ -364,6 +364,34 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gentry-card{display:grid;gap:12px}
 .gentry .login-card h2{margin:6px 0 0}
 .gentry-hero{min-height:110px;border-radius:14px;display:flex;align-items:flex-end;padding:12px;color:#fff;font-weight:800;font-size:1.1rem;background:linear-gradient(150deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#1f2a22))}
+/* Eventos abiertos al público (ven.ikisai.com sin invitación ni QR) */
+.gopen-events{display:grid;gap:8px;margin:4px 0 8px}
+.gopen-events h2{margin:0;font-size:1.1rem}
+/* «Dormir aquí» (entrada pública, tarjeta 2) */
+.gstay{display:grid;gap:10px}
+.gstay-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.gstay-modes{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.gstay-mode{display:grid;gap:4px}
+.gstay-mode.off{opacity:.7}
+.gstay-ask{display:grid;gap:8px;padding-top:8px;border-top:1px solid var(--line)}
+.gstay-sent{display:block}
+/* «Alójate aquí» (como la barra): número grande y «Esta noche duermes en …» */
+.gvisitor-tabs{margin:8px 0}
+.glodge{display:grid;gap:10px}
+.glodge-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.glodge-beds{display:grid;gap:6px;border:0;padding:0;margin:0}
+.glodge-room{display:grid;gap:4px;padding-left:4px}
+.glodge-room-name{margin:6px 0 0;font-weight:700}
+.glodge-bed-opt{display:flex;align-items:center;gap:8px;min-height:46px}
+.glodge-number,.glodge-done{text-align:center}
+.glodge-n{font-size:3.5rem;font-weight:800;line-height:1;margin:4px 0}
+.glodge-bed{font-size:1.6rem;font-weight:800;margin:4px 0}
+/* «Guarda tu acceso» (correo optativo y código) */
+.gaccess-body{display:grid;gap:8px;margin-top:8px}
+.gaccess-body form{display:grid;gap:8px}
+/* «Tu ficha está lista» y «Unir este móvil a mi ficha» */
+.gclaim{display:block;margin-top:6px}
+.gvlink{display:grid;gap:8px}
 .gentry-frame{display:grid;gap:10px;padding:12px;border-radius:16px;border:2px solid var(--accent-deep);background:var(--paper)}
 .gentry-frame-h{display:flex;align-items:center;gap:6px;margin:0;font-weight:800}
 .gentry-steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
@@ -616,3 +644,6 @@ a.gmaterial.glink,.gmaterial>.glink{flex-direction:row;align-items:center;min-he
 .gvisitor-sent{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .gvisitor-foot{margin:24px 0 0;display:grid;gap:8px}
 .gvisitor-foot button,#visitorEnter,#visitorJoin,#visitorLeave{min-height:46px}
+/* Revisión móvil de UI-kit (27-10): a 390 px «Ikisai Guests · nombre» no cabía en la cabecera (121 px en 108). En móvil se
+   quita el nombre de la cuenta (sale en el menú y, con la familia, en el selector de personas). */
+@media (max-width:420px){#shellSubtitle{display:none}}

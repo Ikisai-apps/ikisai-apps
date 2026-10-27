@@ -3,9 +3,9 @@
  * Booking manda a Finance (`invoices.record_app_entry`) al cobrar. Sin DOM ni red.
  */
 
-export const WALKIN_METHODS = ['cash', 'bizum', 'card'] as const;
+export const WALKIN_METHODS = ['cash', 'bizum', 'bitcoin', 'card'] as const;
 export type WalkinMethod = (typeof WALKIN_METHODS)[number];
-export const WALKIN_METHOD_LABELS: Record<WalkinMethod, string> = { cash: 'Efectivo', bizum: 'Bizum', card: 'Tarjeta (datáfono)' };
+export const WALKIN_METHOD_LABELS: Record<WalkinMethod, string> = { cash: 'Efectivo', bizum: 'Bizum', bitcoin: 'Bitcoin', card: 'Tarjeta (datáfono)' };
 
 interface RateLike {
   id: string; service?: string | null; unit?: string | null; amount?: number | string | null; active?: boolean | null;
@@ -30,18 +30,32 @@ export function walkinNightPrice(rates: readonly RateLike[], eventType: string, 
 export interface WalkinForSend {
   id: string; event_id: string; nights: number; price_cents: number; amount_cents: number; method: WalkinMethod | null;
   paid_day: string | null; title: string; guest: string | null; space: string | null; bed: string | null;
+  /** 1403: lo devuelto (céntimos) y con qué método; el apunte va por lo cobrado menos lo devuelto. */
+  refund_cents?: number | null; refund_method?: WalkinMethod | null;
 }
 
-/** El apunte para Finance (§17.2 de invoices). Idempotente por `source_ref`: reenviar sustituye o no cambia nada. */
+/**
+ * El apunte para Finance (§17.2 de invoices). Idempotente por `source_ref`: reenviar sustituye o no cambia nada.
+ * Con devolución (1403), un solo apunte por lo cobrado menos lo devuelto: el método de la devolución en negativo y una línea
+ * de detalle negativa, para que métodos y desglose sumen el importe (lo exige Finance).
+ */
 export function walkinFinanceEntry(c: WalkinForSend) {
   if (!c.method || !c.paid_day) throw new Error('walkin not paid');
   const where = [c.space, c.bed].filter(Boolean).join(' · ') || 'Sin cama';
+  const refund = Math.max(0, Math.min(Number(c.refund_cents) || 0, c.amount_cents));
+  const methods: Record<string, number> = { [c.method]: c.amount_cents };
+  if (refund > 0) {
+    const back = c.refund_method ?? c.method;
+    methods[back] = (methods[back] ?? 0) - refund;
+  }
+  const detail = [{ code: 'noche', name: `Noche en ${where}`, quantity: c.nights, amount_cents: c.amount_cents }];
+  if (refund > 0) detail.push({ code: 'devolucion', name: 'Devolución', quantity: 1, amount_cents: -refund });
   return {
     source_app: 'booking', source_ref: `booking:stay:${c.id}`, kind: 'income', entry_date: c.paid_day,
-    description: `Alojamiento · ${c.title}${c.guest ? ` · ${c.guest}` : ''} · ${c.nights} ${c.nights === 1 ? 'noche' : 'noches'}`.slice(0, 200),
-    amount_cents: c.amount_cents, tax_rate: 10,
-    methods: { [c.method]: c.amount_cents },
-    detail: [{ code: 'noche', name: `Noche en ${where}`, quantity: c.nights, amount_cents: c.amount_cents }],
+    description: `Alojamiento · ${c.title}${c.guest ? ` · ${c.guest}` : ''} · ${c.nights} ${c.nights === 1 ? 'noche' : 'noches'}${refund > 0 ? ' · con devolución' : ''}`.slice(0, 200),
+    amount_cents: c.amount_cents - refund, tax_rate: 10,
+    methods,
+    detail,
     event_id: c.event_id,
   };
 }

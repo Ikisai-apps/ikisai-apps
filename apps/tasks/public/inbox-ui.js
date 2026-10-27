@@ -21,6 +21,7 @@ const KNOWN_KINDS=[
   {kind:'booking.organizer_confirm',label:'Organizador · Quiere confirmar',suggest:{project:/comercial/i,area:/comercial|gesti/i}},
   {kind:'booking.proposal_comment',label:'Organizador · Comentario a la propuesta',suggest:{project:/comercial/i,area:/comercial|gesti/i}},
   {kind:'booking.ses_deadline',label:'SES · Plazo legal',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
+  {kind:'booking.bed_cleaning',label:'Limpieza · Salida de huésped',suggest:{project:/limpieza/i,area:/limpieza|mantenimiento|casa/i}},
   {kind:'central.compliance_due',label:'Central · Vencimientos',suggest:{project:/cumplimiento/i,area:/gesti/i}},
   {kind:'core.user_task',label:'Core · Tarea para ti',suggest:{project:/tareas de core/i,area:/aplicaciones/i}},
   {kind:'invoices.drive_review',label:'Finance · Facturas de Drive por revisar',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},

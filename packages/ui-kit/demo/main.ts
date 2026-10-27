@@ -8,6 +8,14 @@ import {
   markField,
   renderQr,
   createLanes,
+  groupLanes,
+  createProjection,
+  createFieldPointer,
+  registerReveal,
+  onSaved,
+  withGuideLink,
+  announceSaved,
+  createGuide,
   createFeedbackProgressiveForm,
   openFeedbackCenter,
   createFeedbackReview,
@@ -1796,9 +1804,171 @@ const checklist = createChecklist({ label: 'Apertura del albergue', feedbackId: 
   checked: { luces: { by: 'Luis', at: '2026-10-27T08:05:00' } },
   onToggle: async (id, on) => { await new Promise((r) => setTimeout(r, 30)); clistLog.push(`${id}:${on ? 'sí' : 'no'}`); clistOut.textContent = clistLog.join(', '); },
 });
+const groupWork = [
+  { id: 't1', text: 'Revisar la ducha 3', who: 'Ana', phase: 'hoy', place: 'Albergue' },
+  { id: 't2', text: 'Cloro de la piscina', who: 'Luis', phase: 'hoy', place: 'Piscina' },
+  { id: 't3', text: 'Cambiar sábanas Hab 2', who: 'Ana', phase: 'manana', place: 'Albergue' },
+  { id: 't4', text: 'Leña para la cúpula', who: null, phase: 'hoy', place: 'Salas' },
+  { id: 't5', text: 'Pedir pan', who: 'Marta', phase: 'hecho', place: null },
+];
+const groupBy = {
+  who: { key: (t: typeof groupWork[number]) => t.who },
+  phase: { key: (t: typeof groupWork[number]) => t.phase, order: ['hoy', 'manana', 'semana', 'hecho'], title: (k: string) => ({ hoy: 'Hoy', manana: 'Mañana', semana: 'Esta semana', hecho: 'Hecho' } as Record<string, string>)[k] ?? k },
+  place: { key: (t: typeof groupWork[number]) => t.place },
+};
+const groupCard = (t: typeof groupWork[number]) => el('div', { class: 'card', style: 'padding:10px 12px' }, t.text);
+const groupedLanes = createLanes({ label: 'Trabajo agrupado', feedbackId: 'demo.agrupar.carriles', view: 'side', lanes: groupLanes(groupWork, { ...groupBy.who, card: groupCard }) });
+const groupPick = el('div', { class: 'demo-row', role: 'group', 'aria-label': 'Agrupar por', id: 'groupPick' },
+  ...(['who', 'phase', 'place'] as const).map((k) => el('button', { type: 'button', class: 'ghost small', dataset: { group: k }, 'aria-pressed': String(k === 'who'),
+    onclick: (e: Event) => {
+      for (const b of groupPick.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b === e.currentTarget));
+      groupedLanes.setLanes(groupLanes(groupWork, { ...groupBy[k], card: groupCard }));
+    } }, { who: 'Persona', phase: 'Fase', place: 'Espacio' }[k])));
+
+// --- Guiado, nivel mínimo: campo señalado (0.66) --------------------------------------------------------------
+const guideSave = createSaveState();
+const guideSaved: string[] = [];
+const guideSavedOut = el('output', { id: 'guideSavedOut' }, '—');
+onSaved((id, info) => { if (id.startsWith('demo.guia.')) { guideSaved.push(`${id}${info.pending ? ' (pendiente)' : ''}`); guideSavedOut.textContent = guideSaved.join(', '); } });
+const arrival = el('input', { id: 'guideArrival', type: 'time', ...fieldAttrs({ id: 'demo.guia.llegada', entity: 'booking.stays', prop: 'arrival_time', confirm: 'save', label: 'Hora de llegada' }) });
+const plate = el('input', { id: 'guidePlate', type: 'text', ...fieldAttrs({ id: 'demo.guia.matricula', entity: 'booking.stays', prop: 'car_plate', confirm: 'event', validator: 'matricula', sensitivity: 'personal', label: 'Matrícula' }) });
+const moreData = el('details', { id: 'guideMore' }, el('summary', null, 'Más datos'), el('label', { for: 'guidePlate' }, 'Matrícula'), plate,
+  el('button', { type: 'button', class: 'ghost small', onclick: () => announceSaved('demo.guia.matricula') }, 'Guardar matrícula'));
+registerReveal('demo.guia', (id) => { if (id === 'demo.guia.matricula') moreData.open = true; });
+const guideHost = el('div', { id: 'guideHost' });
+const pointTo = (field: string, step: string) => { const p = createFieldPointer({ field, step, run: null }, { feedbackId: 'demo.guia.aviso' }); guideHost.replaceChildren(p.element); void p.point(); };
+// Guiado completo (0.67): la «ejecución» vive aquí en memoria; en una app la lee Flow.
+const guideRunDone = new Set<string>();
+const guideLog: string[] = [];
+const guideLogOut = el('output', { id: 'guideLogOut' }, '—');
+let demoGuide: ReturnType<typeof createGuide> | null = null;
+const startDemoGuide = () => {
+  demoGuide?.destroy();
+  guideRunDone.clear(); guideLog.length = 0; guideLogOut.textContent = '—';
+  demoGuide = createGuide({ feedbackId: 'demo.guia.completa', returnTo: { url: '#guiado', title: 'la muestra' },
+    load: async () => ({ id: 'demo-1', title: 'Alojar a alguien', mode: 'run', steps: [
+      { id: 'llegada', title: 'Pon la hora de llegada', explain: 'Así recepción sabe cuándo esperarle.', anchor: 'demo.guia.llegada', confirm: 'save', done: guideRunDone.has('llegada') },
+      { id: 'matricula', title: 'Apunta la matrícula', explain: 'Está en «Más datos». Si no viene en coche, sáltalo.', anchor: 'demo.guia.matricula', confirm: 'event', essential: false, done: guideRunDone.has('matricula') },
+      { id: 'repaso', title: 'Repasa la ficha', explain: 'Mira que la hora y la matrícula estén bien.', confirm: 'manual', done: guideRunDone.has('repaso') },
+    ] }),
+    onConfirmed: (s, info) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:${info.how}`); guideLogOut.textContent = guideLog.join(', '); },
+    onSkipped: (s) => { guideRunDone.add(s.id); guideLog.push(`${s.id}:saltado`); guideLogOut.textContent = guideLog.join(', '); },
+    onExit: () => { demoGuide = null; },
+  });
+  document.body.append(demoGuide.element);
+  void demoGuide.start();
+};
+
+const guideSection = section('guiado', 'Guiado: campo señalado', 'Nivel mínimo del Guiado: un enlace de otra app (withGuideLink) abre la pantalla con el campo señalado y una línea con el paso; el shell lo monta con `guide: true`. Guardar avisa con el id del campo, nunca con el valor.',
+  el('div', { class: 'demo-row' },
+    el('button', { type: 'button', class: 'ghost small', id: 'guidePointArrival', onclick: () => pointTo('demo.guia.llegada', 'Pon la hora a la que llega') }, 'Señalar la hora'),
+    el('button', { type: 'button', class: 'ghost small', id: 'guidePointPlate', onclick: () => pointTo('demo.guia.matricula', 'Apunta la matrícula') }, 'Señalar la matrícula (escondida)'),
+    el('button', { type: 'button', class: 'ghost small', id: 'guidePointMissing', onclick: () => pointTo('demo.guia.no_existe', 'Un campo que no está') }, 'Señalar uno que no está')),
+  guideHost,
+  el('div', { class: 'card', style: 'display:grid;gap:8px;padding:14px' },
+    el('label', { for: 'guideArrival' }, 'Hora de llegada'), arrival,
+    el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'primary', onclick: () => void guideSave.track('demo.guia.llegada', new Promise((r) => setTimeout(r, 30))) }, 'Guardar hora'), guideSave.element),
+    moreData),
+  el('p', null, 'Guardados: ', guideSavedOut),
+  el('h3', null, 'Guía completa'),
+  el('div', { class: 'demo-row' },
+    el('button', { type: 'button', class: 'primary', id: 'guideStart', onclick: startDemoGuide }, 'Empezar la guía «Alojar a alguien»'),
+    el('button', { type: 'button', class: 'ghost small', id: 'guideOutside', onclick: () => { guideRunDone.add('llegada'); void demoGuide?.refresh(); } }, 'Hacer la hora fuera de la guía')),
+  el('p', null, 'Confirmados: ', guideLogOut),
+  el('p', { class: 'hint' }, 'En una app, una línea en el shell: ', el('code', { style: 'overflow-wrap:anywhere' }, "createAppShell(root, { …, guide: { client, app: 'booking', feedbackId: 'booking.guia' } })"),
+    '. Con ?guia=<ejecución> lee los pasos de Flow (flow.guide_read) y confirma en Flow (flow.guide_confirm), sin valores; con ?campo=… señala el campo.'),
+  el('p', { class: 'hint', style: 'overflow-wrap:anywhere' }, 'Enlace de ejemplo: ', el('code', { style: 'overflow-wrap:anywhere;word-break:break-all' }, withGuideLink('https://booking.ikisai.com/#/reservas/123', { field: 'booking.ficha.llegada', step: 'Pon la hora de llegada', from: 'flow', title: 'Flow', url: 'https://flow.ikisai.com/#/recepcion' }))),
+);
+
+// Proyección (0.69): «Recepción» leyendo de Booking con un cliente de mentira (en una app, su SyncClient).
+const demoArrivals = [
+  { id: 'r1', name: 'Ana Ruiz', room: 'Hab 2', time: '17:00', status: 'expected' },
+  { id: 'r2', name: 'Luis Gil', room: 'Hab 4', time: '18:30', status: 'expected' },
+  { id: 'r3', name: 'Marta Sanz', room: 'Hab 1', time: '12:10', status: 'arrived' },
+];
+const projCalls: string[] = [];
+const projOut = el('output', { id: 'projOut' }, '—');
+const demoBooking = { api: async <T,>(path: string, init?: { json?: any }): Promise<T> => {
+  await new Promise((r) => setTimeout(r, 40));
+  projCalls.push(path.replace('/capabilities/', '').replace('/invoke', '')); projOut.textContent = projCalls.join(', ');
+  if (path.includes('booking.arrivals_today')) return { result: { arrivals: demoArrivals.map((a) => ({ ...a })) } } as T;
+  if (path.includes('booking.check_in')) {
+    if (init?.json?.reservation_id === 'r2') throw Object.assign(new Error('forbidden'), { status: 403, code: 'NEEDS_ACCESS' });
+    const a = demoArrivals.find((x) => x.id === init?.json?.reservation_id); if (a) a.status = 'arrived';
+    return { result: { id: a?.id, replayed: false } } as T;
+  }
+  throw new Error('404');
+} };
+const projection = createProjection({ label: 'Llegadas de hoy', client: demoBooking, appName: 'Booking', feedbackId: 'demo.recepcion.llegadas', refreshMs: 0,
+  read: { capability: 'booking.arrivals_today', input: () => ({ day: '2026-10-27' }) },
+  rows: (r) => ((r as { arrivals: typeof demoArrivals }).arrivals).map((a) => ({ id: a.id, title: a.name, meta: [a.room, a.time], chip: a.status === 'arrived' ? { text: 'Ha llegado', tone: 'ok' as const } : { text: 'Por llegar' }, href: `#/reservas/${a.id}`, data: { status: a.status } })),
+  action: { label: 'Ya ha llegado', capability: 'booking.check_in', input: (row) => ({ reservation_id: row.id }), when: (row) => row.data?.status === 'expected' },
+  empty: 'No llega nadie más hoy',
+});
+
+// --- «Trabajos de hoy» compuesto (0.69.1): createLanes + groupLanes + createProjection + Guiado ------------------------
+// Cliente falso del Plan de hoy de Tasks. Capacidades acordadas con Core (pendientes en Tasks): `tasks.review_projection`
+// (lectura) y `tasks.complete` (acción idempotente). En una app es su SyncClient.
+type TodayTask = { id: string; title: string; who: string | null; trade: string; place: string; done: boolean };
+const todayTasks: TodayTask[] = [
+  { id: 't1', title: 'Revisar la ducha 3', who: 'Ana', trade: 'Mantenimiento', place: 'Albergue', done: false },
+  { id: 't2', title: 'Cloro de la piscina', who: 'Luis', trade: 'Mantenimiento', place: 'Piscina', done: false },
+  { id: 't3', title: 'Cambiar sábanas Hab 2', who: 'Ana', trade: 'Limpieza', place: 'Albergue', done: false },
+  { id: 't4', title: 'Leña para la cúpula', who: null, trade: 'Logística', place: 'Salas', done: false },
+  { id: 't5', title: 'Pedir pan para el sábado', who: 'Marta', trade: 'Cocina', place: 'Albergue', done: false },
+  { id: 't6', title: 'Barrer el porche', who: 'Luis', trade: 'Limpieza', place: 'Albergue', done: true },
+];
+const todayCalls: string[] = [];
+const todayClient = { api: async <T,>(path: string, init?: { json?: any }): Promise<T> => {
+  await new Promise((r) => setTimeout(r, 30));
+  const cap = path.replace('/capabilities/', '').replace('/invoke', '');
+  todayCalls.push(cap);
+  if (cap === 'tasks.review_projection') {
+    const { by, key } = init?.json ?? {};
+    const match = (t: TodayTask) => !by ? true : (by === 'who' ? (t.who ?? '__none') : by === 'trade' ? t.trade : t.place) === key;
+    return { result: { tasks: todayTasks.filter((t) => !t.done && match(t)).map((t) => ({ ...t })) } } as T;
+  }
+  if (cap === 'tasks.complete') { const t = todayTasks.find((x) => x.id === init?.json?.task_id); if (t) t.done = true; return { result: { id: t?.id, replayed: false } } as T; }
+  throw new Error('404');
+} };
+type TodayBy = 'who' | 'trade' | 'place';
+const todayGroupKey: Record<TodayBy, (t: TodayTask) => string | null> = { who: (t) => t.who, trade: (t) => t.trade, place: (t) => t.place };
+const todayCounts = el('output', { id: 'todayCounts' }, '—');
+let todayBy: TodayBy = 'who';
+const todayLanes = createLanes({ label: 'Trabajos de hoy', feedbackId: 'demo.hoy.carriles', storageKey: 'demo-hoy', lanes: [] });
+async function regroupToday(by: TodayBy): Promise<void> {
+  todayBy = by;
+  // Una lectura para saber qué grupos hay; cada carril lee lo suyo y actúa con su proyección.
+  const all = (await todayClient.api<{ result: { tasks: TodayTask[] } }>('/capabilities/tasks.review_projection/invoke', { json: {} })).result.tasks;
+  const counts: Record<string, number> = {};
+  todayLanes.setLanes(groupLanes(all, { key: todayGroupKey[by], ...(by === 'trade' ? { order: ['Mantenimiento', 'Limpieza', 'Cocina', 'Logística'] } : {}),
+    mount: (body, _items, key) => {
+      const p = createProjection({ label: 'Tareas', client: todayClient, appName: 'Tasks', refreshMs: 0, feedbackId: 'demo.hoy.tareas',
+        read: { capability: 'tasks.review_projection', input: () => ({ by, key }) },
+        rows: (r) => (r as { tasks: TodayTask[] }).tasks.map((t) => ({ id: t.id, title: t.title,
+          meta: [by !== 'who' ? t.who ?? 'Sin asignar' : null, by !== 'trade' ? t.trade : null, by !== 'place' ? t.place : null].filter((x): x is string => !!x),
+          // «Guiado» por tarjeta: abre la tarea en Tasks con la guía de su ejecución y vuelve aquí.
+          href: withGuideLink(`https://tasks.ikisai.com/#/t/${t.id}`, { run: `hoy_${t.id}`, from: 'flow', title: 'Trabajos de hoy', url: 'https://flow.ikisai.com/#/hoy' }) })),
+        action: { label: 'Hecha', capability: 'tasks.complete', input: (row) => ({ task_id: row.id }) },
+        onCount: (n) => { counts[key] = n; todayCounts.textContent = Object.entries(counts).map(([k, v]) => `${k === '__none' ? 'Sin asignar' : k}: ${v}`).join(' · '); },
+        empty: 'Nada pendiente aquí' });
+      body.append(p.element);
+      return () => p.destroy();
+    } }));
+  for (const b of todayPick.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.by === by));
+}
+const todayPick = el('div', { class: 'demo-row', role: 'group', 'aria-label': 'Agrupar por', id: 'todayPick' },
+  ...(['who', 'trade', 'place'] as const).map((k) => el('button', { type: 'button', class: 'ghost small', dataset: { by: k }, 'aria-pressed': String(k === 'who'), onclick: () => void regroupToday(k) },
+    { who: 'Persona', trade: 'Oficio', place: 'Espacio' }[k])));
+void regroupToday('who');
+const todaySection = section('hoy', 'Trabajos de hoy (composición)', 'Una pantalla de Flow hecha solo con piezas: carriles (createLanes) agrupados por persona, oficio o espacio (groupLanes), cada uno con una proyección del Plan de hoy de Tasks (createProjection) y «Hecha» como acción; el título abre la tarea en Tasks con el Guiado (?guia=) y «Volver a Trabajos de hoy». Cliente de mentira.',
+  todayPick, el('div', { id: 'todayHost' }, todayLanes.element), el('p', null, 'Pendientes por carril: ', todayCounts));
+
 const genericSection = section('genericas', 'Piezas genéricas (formulario libre y lista)', 'Para el catálogo de piezas de Flow: un formulario que sale de un esquema (pregunta a pregunta, revisión y «Registrar») y una lista de comprobación con quién y cuándo.',
   el('h3', null, 'Formulario libre'), el('div', { id: 'freeFormHost' }, freeForm.element, el('p', null, 'Registrado: ', formOut)),
   el('h3', null, 'Lista de comprobación'), el('div', { id: 'checklistHost' }, checklist.element, el('p', null, 'Cambios: ', clistOut)),
+  el('h3', null, 'Proyección (Recepción, leyendo de Booking)'), el('div', { id: 'projHost', class: 'card', style: 'padding:6px 14px' }, projection.element), el('p', null, 'Llamadas: ', projOut),
+  el('h3', null, 'Carriles por cualquier clave'), el('p', null, 'Agrupar por: '), groupPick, el('div', { id: 'groupLanesHost' }, groupedLanes.element),
 );
 
 const piecesB2Section = section('piecesb2', 'Piezas comunes (lote B2)', 'MUELA-075: paso a paso con lo siguiente en grande, una cosa cada vez (con «Deshacer»), votar deslizando (con botones y flechas) y pregunta a pregunta (solo lo que falta).',
@@ -1924,7 +2094,7 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
 };
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, createItemPicker };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget, renderCover, listRow, renderChecks, renderGroups, renderSteps, bindOnline, renderOfflineReason, renderMoneyBreakdown, renderMedal, readableColor, createFocus, spaceShortPath, demoSpaces, floorPlanFromRow, createSpaceMap, createMemorySpaceSource, Envase, createShelves, renderTile, renderStats, renderTabBar, openFeedbackCenter, createStepForm, createFreeForm, createChecklist, createDateField, createQuantityField, createSuggestField, createLevelStar, fieldAttrs, markField, renderQr, createLanes, groupLanes, createItemPicker, createFieldPointer, registerReveal, onSaved, announceSaved, withGuideLink, createSaveState, createGuide, createProjection };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
@@ -1935,5 +2105,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, genericSection, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, spaceMapSection, envaseSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, genericSection, todaySection, guideSection, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

@@ -72,15 +72,26 @@ jobs:
           code=$(grep -E '^code=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2)
           # Sin código, ningún Playwright (una PR solo de documentación).
           [ "$code" = true ] || { full=""; smoke=false; }
-          items=""
+          # Matriz de Playwright: {app, label, dirs, grep}. La app tocada (o sin pruebas @smoke), su suite completa en su job.
+          # El humo de las apps no tocadas va junto en dos jobs, no uno por app: el plan Free da 20 jobs a la vez a todo el
+          # repo y, con unas 30 PR abiertas, la release esperaba runner (27-10-2026: 16 min en cola).
+          items=""; smokes=""
           for app in $apps; do
             [ -n "$(find tests/$app -name '*.spec.ts' 2>/dev/null | head -1)" ] || continue
-            grep=""
             if echo " $full " | grep -q " $app "; then :
             elif [ "$smoke" = true ]; then
-              grep -rq "@smoke" tests/$app && grep="@smoke"
+              if grep -rq "@smoke" tests/$app; then smokes="$smokes $app"; continue; fi
             else continue; fi
-            items="$items{\"app\":\"$app\",\"grep\":\"$grep\"},"
+            items="$items{\"app\":\"$app\",\"label\":\"$app\",\"dirs\":\"tests/$app\",\"grep\":\"\"},"
+          done
+          set -- $smokes; n=$#; half=$(( (n + 1) / 2 )); part=0; i=0; list=""
+          for app in $smokes; do
+            i=$((i + 1)); list="$list $app"
+            if [ "$i" -eq "$half" ] || [ "$i" -eq "$n" ]; then
+              part=$((part + 1)); names=$(echo $list | sed 's/ /, /g'); dirs=$(for a in $list; do printf 'tests/%s ' "$a"; done)
+              items="$items{\"app\":\"humo-$part\",\"label\":\"$names (humo)\",\"dirs\":\"${dirs% }\",\"grep\":\"@smoke\"},"
+              list=""
+            fi
           done
           echo "e2e=[${items%,}]" >> "$GITHUB_OUTPUT"
           echo "uikit=$uikit" >> "$GITHUB_OUTPUT"
@@ -146,11 +157,12 @@ jobs:
           [ "${{ needs.lint.result }}" = success ] || { echo "Lint de migraciones o typecheck: ${{ needs.lint.result }}"; exit 1; }
           [ "${{ needs.pglite.result }}" = success ] || { echo "Pruebas PGlite: ${{ needs.pglite.result }}"; exit 1; }
   e2e:
-    name: Playwright · ${{ matrix.app }}${{ matrix.grep && ' (humo)' || '' }}
+    name: Playwright · ${{ matrix.label }}
     needs: cambios
     if: needs.cambios.outputs.e2e != '[]'
     runs-on: ubuntu-24.04
-    # Un job por app: el tiempo total es el de la app más lenta, no la suma. Si una app supera esto, se parte su suite.
+    # Un job por app tocada y dos para el humo del resto: el tiempo total es el del más lento. Si una app supera esto, se
+    # parte su suite.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -165,12 +177,12 @@ jobs:
       - run: npm ci
       - name: Instalar Chromium
         uses: ./.github/actions/chromium
-      - name: Pruebas end-to-end de ${{ matrix.app }}
+      - name: Pruebas end-to-end de ${{ matrix.label }}
         shell: bash
         run: |
           # --retries=2: una prueba que falla por tiempos y pasa al repetir queda marcada «flaky», no tumba la CI.
           # --workers=2: cada archivo levanta su servidor en un puerto libre; el runner tiene 4 núcleos.
-          npx playwright test tests/${{ matrix.app }} --retries=2 --workers=2 ${{ matrix.grep && format('--grep {0}', matrix.grep) || '' }}
+          npx playwright test ${{ matrix.dirs }} --retries=2 --workers=2 ${{ matrix.grep && format('--grep {0}', matrix.grep) || '' }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

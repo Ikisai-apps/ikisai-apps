@@ -1,7 +1,8 @@
 /* Cloudflare Pages (advanced mode): proxy de mismo origen hacia la Edge Function de Booking.
    El bundle no lleva ninguna credencial privada; solo reenvía /api/v1/* y rechaza orígenes cruzados. */
 const BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/booking-api';
-const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'accept'];
+// `x-visitor`: el visitante del kit en las rutas públicas (`/api/v1/public/*`).
+const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'accept', 'x-visitor'];
 
 export default {
   async fetch(request, env) {
@@ -18,6 +19,10 @@ export default {
     const headers = new Headers();
     for (const key of FORWARDED_HEADERS) if (request.headers.has(key)) headers.set(key, request.headers.get(key));
     headers.set('Origin', url.origin);
+    // IP del cliente para los frenos por IP del núcleo (visitantes, códigos por correo, traspaso): la de CF-Connecting-IP, no la
+    // de salida de Cloudflare. La pone siempre el proxy; la que mande el navegador no se reenvía (no está en FORWARDED_HEADERS).
+    const ip = request.headers.get('cf-connecting-ip');
+    if (ip) headers.set('X-Ikisai-Client-Ip', ip);
     // Sesión única (contrato §3.4): solo en las rutas de sesión, el pase de la cookie común viaja a la Edge como cabecera.
     if (url.pathname.startsWith('/api/v1/auth/')) {
       const pass = (request.headers.get('cookie') || '').match(/(?:^|;\s*)ikisai_sso=([A-Za-z0-9_-]{43})/);

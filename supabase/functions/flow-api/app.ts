@@ -105,7 +105,7 @@ async function checkFiles(supabase: Supabase, operations: Operation[], ctx: Requ
 const COLUMN_SLUGS: Record<string, string> = { order: 'caja', prep: 'preparacion', ingredients: 'ingredientes', service: 'servicio', logistics: 'logistica' };
 
 interface ClosureForSend {
-  closure: { id: string; project_id: string; day: string; data: DayData };
+  closure: { id: string; revision: number; project_id: string; day: string; data: DayData };
   project: { id: string; name: string; test_mode: boolean; food_menu_id: string | null; booking_event_id: string | null };
 }
 interface DayData {
@@ -193,7 +193,7 @@ function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 /**
  * Envíos del Cierre del día (contratos con Food y Finance del 26-10): desde aquí, con la sesión de la persona, a la API de
  * cada app (como Central con Tasks). Nunca desde el navegador. Quien envía tiene que ser miembro de esa app: si no, la
- * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el cliente con `flow.mark_closure_sent`.
+ * respuesta lo dice (`NEEDS_ACCESS`). El resultado lo anota el servidor (lote público, solo los campos de envío; FL9).
  */
 function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions, publicWrite: PublicWriter): AppRoute[] {
   const callApp = appCaller(base, options);
@@ -207,6 +207,21 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
 
   const digest = async (value: unknown) => (await sha256Hex(JSON.stringify(value))).slice(0, 24);
 
+  /** Envía y anota el resultado en el cierre (enviado o error). El navegador no puede marcarlo (0927). */
+  async function sendAndMark(c: ClosureForSend['closure'], target: 'food' | 'finance', send: () => Promise<unknown>) {
+    const mark = (status: string, result: unknown) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.dayClosures, id: c.id, expectedRevision: c.revision,
+      fields: { [`${target}_status`]: status, [`${target}_sent_at`]: new Date().toISOString(), [`${target}_result`]: result } }]);
+    let result: unknown;
+    try {
+      result = await send();
+    } catch (error) {
+      await mark('error', { code: isFault(error) ? error.code : 'ERROR' }).catch(() => undefined);
+      throw error;
+    }
+    await mark('sent', result ?? null);
+    return { status: 'sent', result };
+  }
+
   return [
     {
       // Ventas por línea de la carta de Food (food.record_carta_sales, idempotente por carta y día).
@@ -215,8 +230,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
         if (!project.food_menu_id) fail(409, 'NO_FOOD_MENU', 'Este flujo no está ligado a una carta de Food: actualiza la carta desde Food primero.');
         const lines = c.data.units_by_product.filter((u) => u.source_line_id).map((u) => ({ line_id: u.source_line_id, quantity: u.units }));
         const args = { menu_id: project.food_menu_id, day: c.day, lines };
-        const result = await callApp(ctx, 'food-api', 'Food', `flow:food:${c.id}:${await digest(args)}`, 'food.record_carta_sales', args);
-        return { status: 'sent', result };
+        const requestId = `flow:food:${c.id}:${await digest(args)}`;
+        return sendAndMark(c, 'food', () => callApp(ctx, 'food-api', 'Food', requestId, 'food.record_carta_sales', args));
       },
     },
     {
@@ -250,8 +265,8 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
         };
-        const result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
-        return { status: 'sent', result };
+        const requestId = `flow:${sourceRef}:${await digest(args)}`;
+        return sendAndMark(c, 'finance', () => callApp(ctx, 'invoices-api', 'Finance', requestId, 'invoices.record_app_entry', args));
       },
     },
     {
@@ -431,6 +446,26 @@ function capabilityRoutes(supabase: Supabase): AppRoute[] {
       },
     },
     {
+      // «Avance» (0938): crear o cambiar una tarjeta en el carril de quien llama (el guard comprueba scopes.lanes).
+      // Idempotente por requestId (recibo del núcleo por persona); el id de una tarjeta nueva lo pone la Edge.
+      method: 'POST', pattern: 'board-card', handler: async ({ ctx, json }) => {
+        if (!['editor', 'owner', 'outsider'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Tu cuenta no puede escribir en el Avance.');
+        const body = (await json().catch(() => ({}))) ?? {};
+        const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
+        if (!requestId) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        const KEYS = ['project_id', 'card_id', 'lane_key', 'title', 'status', 'prio', 'flag', 'kind', 'tipo', 'order', 'ref', 'url', 'url_text', 'steps', 'note'];
+        const args: Record<string, unknown> = Object.fromEntries(KEYS.filter((k) => k in body).map((k) => [k, body[k]]));
+        if (!args.card_id) args.card_id = crypto.randomUUID();
+        const operations = [{ op: 'call', procedure: 'flow.board_card', args }];
+        const { card_id: _new, ...digestOf } = args;
+        const out = await supabase.rpc<{ replayed?: boolean; results?: Array<{ result?: { card_id?: string; created?: boolean } }> }>('core_commit', {
+          p_app: ctx.app, p_actor: ctx.user.id, p_request_id: `cap:${requestId}`,
+          p_digest: await sha256Hex(JSON.stringify(body.card_id ? args : digestOf)), p_expected_cursor: null, p_operations: operations, p_confirmation: null });
+        const result = out?.results?.[0]?.result ?? {};
+        return { card_id: result.card_id ?? null, created: !!result.created, replayed: !!out?.replayed };
+      },
+    },
+    {
       method: 'POST', pattern: 'logistics-task', handler: async ({ ctx, json }) => {
         const body = (await json().catch(() => ({}))) ?? {};
         const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : null;
@@ -462,7 +497,11 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
   const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute()],
-    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership), beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
+    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership),
+      // FL3: los `call` del historial (argumentos y resultado: nombres de huéspedes, titulares de cuentas…) solo los ve el
+      // owner y quien hizo la llamada; los demás miembros no los reciben.
+      visibleCall: (change, ctx) => ctx.membership.role === 'owner' || change.actorId === ctx.user.id,
+      beforeCommit: (operations, ctx) => checkFiles(supabase, operations, ctx) } });
 
   const ipAllowed = createIpLimiter();
   async function handlePublic(request: Request, route: string): Promise<Response> {

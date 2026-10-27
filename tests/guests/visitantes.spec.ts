@@ -108,3 +108,166 @@ test('§9.19 · nunca en blanco: un evento que ya no abre y un acceso de visitan
   await expect(page.locator('#visitorLeaveBox')).toBeVisible();
   await expect(page.locator('#visitorRenewed')).toHaveCount(0);
 });
+
+test('ENTRADA_PUBLICA · sin invitación ni QR: ven.ikisai.com enseña los eventos abiertos y se entra como visitante', async ({ page }) => {
+  const r = await api.reservation({ title: 'Jornada abierta de la finca', start: day(6), end: day(6) });
+  await api.booking.t.db.query(`update booking.reservations set guests_visible = true, event_type = 'jornadas_abiertas' where id = $1`, [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+
+  await page.goto(`${baseURL}/`);
+  const open = page.locator('#openEvents');
+  const card = open.locator(`a[data-code="${code}"]`);
+  await expect(card).toContainText('Jornada abierta de la finca');
+  await expect(card).toContainText('Jornadas abiertas');
+  // Mirar no crea identidad: solo al «Entrar».
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).toBeNull();
+  await card.click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Jornada abierta de la finca');
+  await page.locator('#visitorEnter').click();
+  await expect(page.locator('#visitorLeaveBox')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).not.toBeNull();
+});
+
+test('ENTRADA_PUBLICA · «Reservar antes de venir»: precios y plazas para todas las noches y la solicitud con la plaza guardada', async ({ page }) => {
+  const d = await api.openDays(day(10), day(14), { lodging_pay_mode: 'hold', lodging_hold_hours: 24 });
+  // «Reservar antes de venir» va dentro de «Alójate aquí» (abierta por el QR), plegada.
+  await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  await page.locator('#lodgeLater > summary').click();
+  const stay = page.locator('#pubStay');
+  await expect(stay).toBeVisible();
+  // Mirar no pide nada ni crea identidad.
+  await stay.locator('#pubStayFrom').fill(day(11));
+  await stay.locator('#pubStayTo').fill(day(13));
+  await stay.locator('#pubStayPersons').fill('3');
+  await stay.locator('#pubStayLook').click();
+  await expect(stay.locator('#pubStayAvailable')).toContainText('Quedan 2 plazas todas esas noches (2 noches)');
+  await expect(stay.locator('#pubStayModes button')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('ikisai-visitor'))).toBeNull();
+
+  await stay.locator('#pubStayPersons').fill('1');
+  await stay.locator('#pubStayLook').click();
+  const mode = stay.locator(`#pubStayModes [data-mode="${d.rate}"]`);
+  await expect(mode).toContainText(/20,00.*la noche.*40,00.*en total/);
+  await mode.getByRole('button', { name: 'Elegir' }).click();
+  await expect(stay.locator('#pubStayPay')).toContainText('Te guardamos la plaza 24 horas y se paga en recepción.');
+  // El nombre es lo único obligatorio.
+  await stay.locator('#pubStaySend').click();
+  await expect(stay.locator('#pubStayName')).toBeFocused();
+  await stay.locator('#pubStayName').fill('Noa');
+  await stay.locator('#pubStaySend').click();
+  await expect(page.locator('#visitorSent')).toContainText('Noches · Pendiente');
+  await expect(page.locator('#visitorSent')).toContainText('plaza guardada hasta');
+  await expect(page.locator('#visitorSent')).toContainText(/40,00/);
+});
+
+test('«Alójate aquí» (como la barra): por QR se abre la pestaña; cama y datos en borrador, «Ir a pagar» y su número', async ({ page, browser }) => {
+  const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  // Sin QR (desde la raíz pública), no hay pestaña de alojamiento.
+  const other = await browser.newPage();
+  await other.goto(`${baseURL}/#/v/${d.code}`);
+  await expect(other.locator('#retreatTitle')).toBeVisible();
+  await expect(other.locator('#visitorTabs')).toHaveCount(0);
+  await other.close();
+
+  await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  await expect(page).toHaveURL(new RegExp(`/#/v/${d.code}/alojate$`));
+  await expect(page.locator('#visitorTabs a[data-tab="alojate"]')).toHaveClass(/on/);
+  const beds = page.locator('#lodgeBeds');
+  await expect(beds.getByLabel('Asignadme una')).toBeChecked();
+  await expect(page.locator('#lodgePrice')).toContainText(/20,00.*la noche/);
+  await beds.getByLabel('Cama 1').check();
+  // Solo el nombre es obligatorio; el documento, no.
+  await page.locator('#lodgeGo').click();
+  await expect(page.locator('#lodge_first_name')).toBeFocused();
+  await page.locator('#lodge_first_name').fill('Noa');
+  await page.locator('#lodgeGo').click();
+  await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
+  await expect(page.locator('#lodgePay')).toContainText('Ve a recepción y di tu número para pagar.');
+  await expect(page.locator('#lodgePay')).toContainText('Cama 1');
+  await expect(page.locator('#lodgeMissing')).toContainText('Número de documento');
+  // Al volver, la misma estancia (no se pide otra vez).
+  await page.reload();
+  await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
+  await expect(page.locator('#lodgeForm')).toHaveCount(0);
+
+  // Recepción cobra con su número (Booking 1401): la pantalla pasa a «Esta noche duermes en …».
+  const request = (await api.booking.t.db.query<{ id: string }>(`select r.id from booking.visitor_requests r join booking.events e on e.id = r.event_id where e.public_code = $1 and r.kind = 'stay' order by r.created_at desc limit 1`, [d.code])).rows[0]!.id;
+  await api.bookingCommit([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: request, decision: 'accept', method: 'cash' } }]);
+  await page.reload();
+  await expect(page.locator('#lodgeTonight')).toContainText('Esta noche duermes en');
+  await expect(page.locator('#lodgeTonight')).toContainText('Cama 1');
+});
+
+test('ENTRADA_PUBLICA · «Guarda tu acceso»: correo y código, y se recupera en otro móvil con lo pedido', async ({ page, browser }) => {
+  const r = await api.reservation({ title: 'Jornada para guardar acceso', start: day(7), end: day(7) });
+  await api.booking.t.db.query('update booking.reservations set guests_visible = true where id = $1', [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+  const email = `noa-${Date.now()}@example.invalid`;
+
+  await page.goto(`${baseURL}/e/${code}`);
+  await page.locator('#visitorEnter').click();
+  await page.locator('#visitorLeaveBox > summary').click();
+  await page.locator('#visitorContact').fill('noa@example.invalid');
+  await page.locator('#visitorLeave').click();
+  await expect(page.locator('#visitorSent')).toContainText('Pendiente');
+
+  const box = page.locator('#visitorAccess');
+  await box.locator('summary').click();
+  await box.locator('#accessEmail').fill('no-es-un-correo');
+  await box.locator('#accessSend').click();
+  await expect(box.locator('#accessWhy')).toContainText('Escribe un correo válido.');
+  await box.locator('#accessEmail').fill(email);
+  await box.locator('#accessSend').click();
+  await expect(box.locator('#accessSent')).toContainText(email);
+  await box.locator('#accessCode').fill('000000');
+  await box.locator('#accessVerify').click();
+  await expect(box.locator('#accessWhy')).toContainText('no vale o ha caducado');
+  await box.locator('#accessCode').fill('123456');
+  await box.locator('#accessVerify').click();
+  await expect(box.locator('#accessSaved')).toContainText('Guardado con');
+
+  // Otro móvil, desde «Mis eventos» (vacía): el mismo correo recupera el acceso, la lista (núcleo 0107) y lo pedido.
+  const other = await browser.newPage();
+  await other.goto(`${baseURL}/#/v`);
+  await expect(other.locator('#visitorEmpty')).toBeVisible();
+  const box2 = other.locator('#visitorAccess');
+  await box2.locator('summary').click();
+  await box2.locator('#accessEmail').fill(email);
+  await box2.locator('#accessSend').click();
+  await box2.locator('#accessCode').fill('123456');
+  await box2.locator('#accessVerify').click();
+  await expect(other.locator('#visitor-before')).toContainText('Jornada para guardar acceso');
+  await other.locator(`#visitor-before a[data-code="${code}"]`).click();
+  await expect(other.locator('#visitorSent')).toContainText('Pendiente');
+  await other.close();
+});
+
+test('ENTRADA_PUBLICA · «Tu ficha está lista» y «Unir este móvil a mi ficha»: sin emparejar por nombre', async ({ page }) => {
+  const r = await api.reservation({ title: 'Retiro con apuntarme', start: day(8), end: day(9) });
+  await api.booking.t.db.query('update booking.reservations set guests_visible = true where id = $1', [r.id]);
+  const code = (await api.booking.t.db.query<{ public_code: string }>('select public_code from booking.events where id = $1', [r.event])).rows[0]!.public_code;
+  await page.goto(`${baseURL}/e/${code}`);
+  await page.locator('#visitorEnter').click();
+  await page.locator('#visitorName').fill('Iria');
+  await page.locator('#visitorJoin').click();
+  await expect(page.locator('#visitorSent')).toContainText('Pendiente');
+  // Sin aceptar, no hay ficha que reclamar.
+  await expect(page.locator('#visitorSent .gclaim')).toHaveCount(0);
+
+  // El personal la acepta: Booking crea la ficha y la liga a la petición.
+  const request = (await api.booking.t.db.query<{ id: string }>(`select id from booking.visitor_requests where event_id = $1 and kind = 'join' order by created_at desc limit 1`, [r.event])).rows[0]!.id;
+  await api.bookingCommit([{ op: 'call', procedure: 'booking.join_from_visitor', args: { request_id: request, decision: 'accept' } }]);
+  await page.reload();
+  await page.locator(`#visitorSent .gclaim[data-request="${request}"]`).click();
+  // Entra en su ficha con el enlace de un solo uso (aviso de datos de la primera entrada).
+  await expect(page.locator('#privacyOk')).toBeVisible();
+  await page.locator('#privacyOk').click();
+  await expect(page.locator('#retreatTitle')).toBeVisible();
+  // En el portal del huésped, este móvil (que fue visitante) puede unirse a la ficha y deshacerlo.
+  const link = page.locator('#visitorLink');
+  await expect(link).toBeVisible();
+  await link.locator('#visitorLinkGo').click();
+  await expect(link.locator('#visitorLinked')).toBeVisible();
+  await link.locator('#visitorUnlink').click();
+  await expect(link.locator('#visitorLinkGo')).toBeVisible();
+});

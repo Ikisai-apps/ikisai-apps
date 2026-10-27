@@ -9,6 +9,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { seedBookingEvent } from './booking-event.ts';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFlowApp, FLOW_ORIGINS } from '../../supabase/functions/flow-api/app.ts';
 import { planSync, PROCEDURES, TABLES, type CartaMenu } from '../../supabase/functions/_domain/flow/mod.ts';
@@ -137,13 +138,16 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
   // El mismo payload, el mismo requestId (idempotente en el núcleo de Finance).
   await app.call(`/api/v1/closures/${c.id}/send/finance`, { body: {} });
   assert.equal(calls[2]!.body.requestId, calls[1]!.body.requestId);
-  // Anotar el resultado.
-  await ok([call(PROCEDURES.markClosureSent, { closure_id: c.id, target: 'finance', status: 'sent', result: { status: 'created' } })], app.tokens.owner);
-  assert.equal((await row(TABLES.dayClosures, c.id)).finance_status, 'sent');
+  // El resultado lo anotó flow-api (FL9): enviado a Food y a Finance; el navegador no puede marcarlo.
+  const marked = await row(TABLES.dayClosures, c.id);
+  assert.equal(marked.finance_status, 'sent'); assert.equal(marked.food_status, 'sent');
+  assert.notEqual((await commit([call('flow.mark_closure_sent', { closure_id: c.id, target: 'finance', status: 'sent' })], app.tokens.owner)).status, 200);
+  assert.notEqual((await commit([{ op: 'update', table: TABLES.dayClosures, id: c.id, expectedRevision: marked.revision, fields: { finance_status: 'error' } }], app.tokens.owner)).status, 200);
   // Sin acceso a la otra app: el aviso lo dice.
   reply = () => Response.json({ error: { code: 'NO_MEMBERSHIP', message: 'x', details: null } }, { status: 403 });
   const denied = await app.call(`/api/v1/closures/${c.id}/send/food`, { body: {} });
   assert.equal(denied.status, 403); assert.equal(denied.data.error.code, 'NEEDS_ACCESS'); assert.match(denied.data.error.message, /Pide acceso a Food/);
+  assert.equal((await row(TABLES.dayClosures, c.id)).food_status, 'error'); // el fallo también queda anotado
   reply = () => Response.json({ results: [{ result: { status: 'created' } }] });
   // El modo pruebas ya no decide nada sobre Finance (VG 27-10): el resumen va siempre, como proceso.
   const p = await row(TABLES.projects, PROJECT);
@@ -157,6 +161,7 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
 
 test('flow · Booking lee el resumen del servicio por su proyección cuando el flujo tiene evento', async () => {
   const event = uuid();
+  await seedBookingEvent(app.t.db, event, [app.users.owner]);
   const p = await row(TABLES.projects, PROJECT);
   await ok([{ op: 'update', table: TABLES.projects, id: PROJECT, expectedRevision: p.revision, fields: { booking_event_id: event } }], app.tokens.owner);
   const view = await app.t.db.query<{ event_id: string; day: string; data: any }>(`select * from flow.booking_service_projection where event_id = $1`, [event]);

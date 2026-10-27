@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { icon, confirmDialog, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type AppMenuRow, type AppMenuSection, type LauncherCatalog, type NavItem, type PaletteItem } from '@ikisai/ui-kit';
+import { icon, confirmDialog, registerReveal, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type AppMenuRow, type AppMenuSection, type LauncherCatalog, type NavItem, type PaletteItem } from '@ikisai/ui-kit';
 import { foldText } from '@ikisai/domain-booking';
 import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } from '../app/client.ts';
 import { clearCostCache } from '../app/costs.ts';
@@ -18,6 +18,8 @@ import { mountSpaces } from './spaces.ts';
 import { mountRates } from './rates.ts';
 import { mountSes } from './ses.ts';
 import { mountStays } from './stays.ts';
+import { mountReception } from './reception.ts';
+import { revealFor } from './guide.ts';
 import { mountProposalEditor } from './proposalEditor.ts';
 import { mountProposalDocument } from './proposalDoc.ts';
 import { fbMark } from './feedback.ts';
@@ -56,6 +58,8 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> 
   '#/tarifas': { title: 'Tarifas y condiciones', slug: 'tarifas', mount: mountRates },
   '#/ses': { title: 'SES.HOSPEDAJES', slug: 'ses', mount: mountSes },
   '#/estancias': { title: 'Estancias', slug: 'estancias', mount: mountStays },
+  // alojamiento como la barra (VG 27-10-2026): solicitudes del QR por número
+  '#/recepcion': { title: 'Recepción', slug: 'recepcion', mount: mountReception },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -142,6 +146,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         ...(canRead(client, STAYS) ? [row('Estancias', '#/estancias', 'booking.menu.estancias')] : []),
       ] },
       { key: 'huespedes', label: 'Huéspedes', icon: 'people', summary: 'Huéspedes y lo que queda por resolver', rows: [
+        ...(canWrite(client) ? [row('Recepción', '#/recepcion', 'booking.menu.recepcion')] : []),
         row('Huéspedes', '#/huespedes', 'booking.menu.huespedes'), row('Por resolver', PENDING, 'booking.menu.pendientes'),
         ...(canRead(client, SES_SETTINGS) ? [row('SES.HOSPEDAJES', '#/ses', 'booking.menu.ses')] : []),
       ] },
@@ -151,6 +156,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       ] },
     ];
   };
+  // un campo dentro de un <details> cerrado, en cualquier pantalla: se abre (las pantallas pueden registrar uno más preciso)
+  registerReveal('booking', (id) => revealFor(document, id));
   const shell = createAppShell(root, {
     appName: 'Booking',
     markIcon: 'bed',
@@ -160,6 +167,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     returnTo: { feedbackId: 'booking.cabecera.volver_app' },
+    // Guiado mínimo (kit 0.68): ?campo= señala un campo del inventario y ?paso= explica, con «Volver a…»
+    guide: { feedbackId: 'booking.guia' },
     search: { onOpen: () => palette.open(), label: 'Buscar en Booking…', feedbackId: 'booking.cabecera.buscar' },
     menu: {
       // En el ordenador, columna fija de 316 px (y la navegación abajo); en el móvil, el cajón. Desde el kit 0.50 (P11) la

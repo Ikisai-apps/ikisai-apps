@@ -137,6 +137,8 @@ export const EN: Dictionary = {
   'Demasiados intentos. Espera un minuto y vuelve a probar.': 'Too many attempts. Wait a minute and try again.',
   'Tu acceso ya está guardado: si cambias de móvil, cierras la sesión o pierdes el enlace, entra con un código que te mandamos al correo con el que te escribimos.': 'Your access is already saved: if you change phones, sign out or lose the link, sign in with a code we send to the email we wrote to you at.',
   'En la pantalla de entrada, escribe tu correo y pulsa «Enviarme un código».': 'On the sign-in screen, type your email and tap “Send me a code”.',
+  'Idioma': 'Language',
+  'En uso': 'In use',
   'Para entrar, abre el enlace que te enviamos por correo o por WhatsApp.': 'To get in, open the link we sent you by email or WhatsApp.',
   'Este enlace ya no está activo': 'This link is no longer active',
   'Pídenos uno nuevo y volverás a ver todos tus retiros, también los pasados.': 'Ask us for a new one and you will see all your retreats again, past ones included.',

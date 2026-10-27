@@ -1,0 +1,22 @@
+/* Revisión móvil del 27-10-2026 (UI-kit, REVISION_MOVIL_27-10.md): contraste en oscuro y toques de 44 px en los controles
+   propios de Tasks (los del kit los arregla #934). Va la última: corrige lo de las hojas anteriores. */
+
+/* Inicio en oscuro: la cabecera va sobre el papel oscuro (theme.css), así que su texto es el claro, no el del acento. */
+html.dark .homehead,html.dark .homehead[style*="--item-color"]{--hero-ink:var(--ink);color:var(--ink)}
+
+/* Botones primarios en oscuro: blanco sobre un verde que llega a 4,5:1 también al tocar (el «hover» se queda en el móvil). */
+html.dark .primary{background:#5f6d4a;color:#fff}
+html.dark .primary:hover,html.dark .primary:focus-visible{background:#55623f}
+
+/* Toques de al menos 44 px. */
+.brandrow .syncbadge{min-height:44px}
+.tabstrip .tabpill,.tabpill.generalicon{min-height:44px}
+.tabpill.generalicon{min-width:44px}
+.facettools .softbtn{width:44px;height:44px}
+.filterchip,.filtersheet .chip,.facet .filterchip{min-height:44px}
+.statusfilter,.statusselect,select.compact{min-height:44px}
+
+/* Guiado del kit (guia-ui.js): el aviso del paso y «Volver a…» flotan arriba, porque Tasks repinta #app entero. */
+.tkguia{position:fixed;z-index:70;top:calc(env(safe-area-inset-top,0px) + 8px);left:12px;right:12px;display:grid;gap:6px;pointer-events:none}
+.tkguia>*{pointer-events:auto}
+.tkguia .tkguia-back{justify-self:start;min-height:44px;display:inline-flex;align-items:center;padding:0 14px;border-radius:22px;background:var(--paper);border:1px solid var(--line);color:var(--ink);font-weight:650;text-decoration:none;box-shadow:var(--shadow-2)}

@@ -9,13 +9,14 @@ import { createAgents } from './agents.ts';
 import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
 import { createAdmin } from './admin.ts';
-import { createPortalLinks, resolvePortalLink } from './portal.ts';
 import { createFeedback, createFeedbackWorker } from './feedback.ts';
 import { createUsage } from './usage.ts';
 import { createFilesGc } from './files-gc.ts';
 import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
 import { applyPublicOperations, type PublicOperation } from './public-write.ts';
 import { isPublicOrigin, issueVisitor, publicReadWithVisitor, resolveVisitor, type Visitor } from './visitors.ts';
+import { claimVisitor, clientIp, createVisitorHandoff, forgetVisitorEmail, linkVisitorToGuest, logoutVisitor, redeemVisitorHandoff, requestVisitorEmail, unlinkVisitorFromGuest, verifyVisitorEmail, visitorMe, visitorVisit } from './visitors-v2.ts';
+import { createPortalLinks, resolvePortalLink, PORTAL_DOMAINS, portalUserFor } from './portal.ts';
 import { createCapabilities, type CapabilitiesOptions } from './capabilities.ts';
 
 export interface AppConfig extends SupabaseConfig {
@@ -273,6 +274,11 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'POST', pattern: 'admin/accounts/:userId/name', handler: async ({ ctx, params, json }) => admin.setDisplayName(ctx, params.userId ?? '', await json()) },
     );
   }
+  // C11 v2: el huésped, con su sesión en el portal, une o separa el móvil de visitante (X-Visitor) de su ficha.
+  routes.push(
+    { method: 'POST', pattern: 'visitor-link', handler: async ({ ctx, request, json }) => linkVisitorToGuest(supabase, ctx, request, await json()) },
+    { method: 'DELETE', pattern: 'visitor-link/:guestId', handler: ({ ctx, params }) => unlinkVisitorFromGuest(supabase, ctx, params.guestId ?? '') },
+  );
   if (config.portalIssuer) {
     const links = createPortalLinks(supabase, config.app);
     routes.push(
@@ -427,7 +433,19 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/public/visitor' && request.method === 'POST') {
         const body = await readJson() as { eventCode?: unknown; event_code?: unknown };
         const code = body.eventCode ?? body.event_code;
-        return json(await issueVisitor(supabase, typeof code === 'string' ? code : null));
+        return json(await issueVisitor(supabase, typeof code === 'string' ? code : null, clientIp(request)));
+      }
+      // Visitantes v2 (C11 v2, 0106): varios móviles, correo optativo y reclamación de la ficha del huésped.
+      if (path === '/api/v1/public/visitor/logout' && request.method === 'POST') return json(await logoutVisitor(supabase, request));
+      if (path === '/api/v1/public/visitor/email' && request.method === 'POST') return json(await requestVisitorEmail(supabase, request, await readJson()));
+      if (path === '/api/v1/public/visitor/email/verify' && request.method === 'POST') return json(await verifyVisitorEmail(supabase, request, await readJson()));
+      if (path === '/api/v1/public/visitor/email/forget' && request.method === 'POST') return json(await forgetVisitorEmail(supabase, request));
+      if (path === '/api/v1/public/visitor/me' && request.method === 'GET') return json(await visitorMe(supabase, request));
+      if (path === '/api/v1/public/visitor/visit' && request.method === 'POST') return json(await visitorVisit(supabase, request, await readJson()));
+      if (path === '/api/v1/public/visitor/handoff' && request.method === 'POST') return json(await createVisitorHandoff(supabase, request));
+      if (path === '/api/v1/public/visitor/handoff/redeem' && request.method === 'POST') return json(await redeemVisitorHandoff(supabase, request, await readJson()));
+      if (path === '/api/v1/public/visitor/claim' && request.method === 'POST') {
+        return json(await claimVisitor(supabase, request, await readJson(), PORTAL_DOMAINS.guests!, (person, app, scope) => portalUserFor(supabase, person, app, scope)));
       }
       if (path.startsWith('/api/v1/public/')) {
         const relative = path.slice('/api/v1/public/'.length);

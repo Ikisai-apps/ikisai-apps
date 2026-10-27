@@ -4,7 +4,8 @@ import { createMontage } from './montage.ts';
 import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderPublicCode, renderVisitorRequests, renderWalkIn, specsFor } from './eventKinds.ts';
 import { renderBarService } from './barService.ts';
 import { renderFlowReady } from './flowReady.ts';
-import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
+import { revealFor } from './guide.ts';
+import { confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, experienceOf, guestCompleteness, missingForConfirmation, nights, requiresEvent, type ExperienceInput, type ReservationStatus,
@@ -170,6 +171,8 @@ export function mountReservation(id: string): ViewMount {
     const datesBlock = createDatesBlock();
     const sesBlock = createSesBlock();
     const layout = createFichaLayout();
+    // Guiado (kit 0.68): un campo de la ficha en otra pestaña o en un <details> cerrado se enseña antes de señalarlo
+    const offReveal = registerReveal('booking.reserva', (fieldId) => revealFor(host, fieldId, layout.goTo));
     let requested = takeRequestedBlock(id);
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let collectedTried = false;
@@ -730,7 +733,7 @@ export function mountReservation(id: string): ViewMount {
     if (writable && canRead(client, DATE_OPTIONS)) offs.push(client.onTable(DATE_OPTIONS, () => void paint()));
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, PORTAL_REQUESTS, EXTRA_REQUESTS, RATES]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
     offs.push(onLogos(() => void paint()), onSesPending(() => void paint()));
-    return () => { montageCard?.card.destroy(); layout.destroy(); offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
+    return () => { offReveal(); montageCard?.card.destroy(); layout.destroy(); offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
   };
 }
 

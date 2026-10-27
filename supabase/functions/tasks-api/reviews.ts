@@ -1,0 +1,63 @@
+/**
+ * Ikisai Tasks · «Revisión de apertura» (encargo de VG por Core, 27-10-2026; docs/tasks/API.md §46). Las revisiones y sus
+ * resultados solo se escriben con sus procedimientos: la app los pide por estas rutas, con la persona (su rol y su ámbito
+ * los vuelve a comprobar el SQL), nunca con un `call` desde `commands`.
+ *
+ * - `POST reviews {templateId, tabId, title?, eventRef?, due?, reviewId?}`: crea la revisión desde su plantilla
+ *   (`tasks.review_create`): el proyecto, una madre por zona y una hija por ítem. `reviewId` (uuid) hace la petición
+ *   repetible; sin él, uno nuevo. Responde `{reviewId, projectId, created, items?}`.
+ * - `POST reviews/result {itemId, result: ok|fail, value?, text?, fileId?}`: el resultado de un ítem
+ *   (`tasks.review_item_result`, §46.3). Un fallo crea la correctiva y «volver a comprobar»; solo un nuevo «ok» verifica.
+ *   Es la capacidad `tasks.review_item_result` del catálogo (Flow marca desde su lista de comprobación).
+ */
+import { createSync, fail, type AppRoute, type Supabase } from '../_kit/mod.ts';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const EVENT_REF = /^[a-z][a-z0-9_-]{1,30}:[A-Za-z0-9_.:/-]{1,150}$/;
+
+export function reviewRoutes(supabase: Supabase): AppRoute[] {
+  const internal = createSync(supabase, 'tasks', {});
+  // Los procedimientos comprueban rol y ámbito en SQL. Los agentes no pasan por aquí: esto sería saltarse su revisión de riesgo.
+  const call = async (ctx: Parameters<typeof internal.commit>[0], procedure: string, args: Record<string, unknown>) => {
+    if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente no marca ni abre revisiones por esta ruta.');
+    return ((await internal.commit(ctx, { requestId: `${procedure}-${crypto.randomUUID()}`, operations: [{ op: 'call', procedure, args }] })).results[0] as { result?: unknown })?.result;
+  };
+
+  return [{
+    method: 'POST', pattern: 'reviews', handler: async ({ ctx, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Crear una revisión necesita permiso de edición en Tasks.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
+      const id = (field: string, required: boolean): string | undefined => {
+        const v = body[field];
+        if (v === undefined || v === null) return required ? invalid(field, `Falta ${field}.`) : undefined;
+        if (typeof v !== 'string' || !UUID.test(v)) invalid(field, `${field} debe ser un uuid.`);
+        return (v as string).toLowerCase();
+      };
+      const templateId = id('templateId', true)!, tabId = id('tabId', true)!, reviewId = id('reviewId', false) ?? crypto.randomUUID();
+      const title = body.title;
+      if (title !== undefined && (typeof title !== 'string' || title.length > 200)) invalid('title', 'title es texto de hasta 200 caracteres.');
+      const eventRef = body.eventRef;
+      if (eventRef !== undefined && eventRef !== null && (typeof eventRef !== 'string' || !EVENT_REF.test(eventRef))) invalid('eventRef', 'eventRef va como <app>:<referencia>, p. ej. booking:RES2026-80.');
+      const due = body.due;
+      if (due !== undefined && due !== null && (typeof due !== 'string' || !DATE.test(due) || Number.isNaN(Date.parse(due)))) invalid('due', 'due va como AAAA-MM-DD.');
+      return await call(ctx, 'tasks.review_create', { reviewId, templateId, tabId, title: title ?? null, eventRef: eventRef ?? null, due: due ?? null });
+    },
+  }, {
+    method: 'POST', pattern: 'reviews/result', handler: async ({ ctx, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Marcar una revisión necesita permiso de edición en Tasks.');
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
+      for (const key of Object.keys(body)) if (!['requestId', 'itemId', 'result', 'value', 'text', 'fileId'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
+      if (typeof body.itemId !== 'string' || !UUID.test(body.itemId)) invalid('itemId', 'itemId debe ser un uuid.');
+      if (body.result !== 'ok' && body.result !== 'fail') invalid('result', 'result es ok o fail.');
+      if (body.value !== undefined && body.value !== null && (typeof body.value !== 'number' || !Number.isFinite(body.value))) invalid('value', 'value es un número.');
+      if (body.text !== undefined && body.text !== null && (typeof body.text !== 'string' || body.text.length > 2000)) invalid('text', 'text es texto de hasta 2000 caracteres.');
+      if (body.fileId !== undefined && body.fileId !== null && (typeof body.fileId !== 'string' || !UUID.test(body.fileId))) invalid('fileId', 'fileId debe ser un uuid.');
+      return await call(ctx, 'tasks.review_item_result', {
+        itemId: (body.itemId as string).toLowerCase(), result: body.result, value: body.value ?? null, text: body.text ?? null, fileId: typeof body.fileId === 'string' ? body.fileId.toLowerCase() : null,
+      });
+    },
+  }];
+}

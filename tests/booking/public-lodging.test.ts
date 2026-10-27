@@ -45,6 +45,9 @@ test('booking_public_events: abiertos, visibles y sin terminar; lodging si vende
   const mine = items.find((i) => i.code === open.code)!;
   assert.deepEqual(Object.keys(mine).sort(), ['code', 'ends_on', 'joinable', 'kind', 'lodging', 'name', 'starts_on', 'status', 'summary']);
   assert.equal(mine.lodging, true);
+  // 1410: la lectura de un evento por su código lo dice igual
+  assert.equal((await read('booking_event', { code: open.code })).lodging, true);
+  assert.equal((await read('booking_event', { code: retreat.code })).lodging, false);
   assert.equal(items.find((i) => i.code === retreat.code)!.lodging, false);
   assert.ok(!JSON.stringify(items).includes('Persona Sintética'));
 });

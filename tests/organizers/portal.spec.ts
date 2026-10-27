@@ -316,13 +316,21 @@ test('organizers · en inglés: navegador en inglés, selector ES | EN y textos 
   await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
   await expect(page.locator('#logoutButton')).toHaveAttribute('aria-label', 'Sign out');
 
-  // Cambio manual a español: se repinta y se recuerda en el dispositivo.
-  await page.locator('#langSelect [data-locale="es"]').click();
+  // Cambio manual a español: se repinta y se recuerda en el dispositivo. En el móvil (390 px) el selector de la cabecera
+  // no se ve, para que quepa el título: el idioma se elige en el menú.
+  await expect(page.locator('#langSelect')).toBeHidden();
+  const chooseLanguage = async (tile: string, name: string) => {
+    await page.locator('#appLauncher').click();
+    const drawer = page.locator('.appmenu-drawer');
+    await drawer.locator('.appmenu-tile', { hasText: tile }).click();
+    await drawer.getByRole('link', { name }).click();
+  };
+  await chooseLanguage('Language', 'Español');
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
   await expect(page.locator('#tab-asistentes')).toHaveText('Asistentes');
   await page.reload();
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
-  await page.locator('#langSelect [data-locale="en"]').click();
+  await chooseLanguage('Idioma', 'English');
   await page.locator('#tab-asistentes').click();
   await page.locator('#addGuest').click();
   await expect(page.locator('#declarationText')).toContainText('this information with the knowledge of my attendees');

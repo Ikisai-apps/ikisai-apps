@@ -10,6 +10,7 @@ import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
 import { requestPurchaseId, requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
 import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import { receiptEntryOperation } from '../../supabase/functions/_domain/tasks/purchases.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
@@ -131,4 +132,23 @@ test('procedencia (0342): app, referencia y enlace de vuelta; inmutables; el enl
   assert.equal((await commit([{ op: 'insert', table: 'tasks.purchase_requests', id: plain, fields: { tab_id: TAB, project_id: BARRA, title: 'Papel', position: 1 } }])).status, 200);
   const p = (await rows('tasks.purchase_requests')).find((r) => r.id === plain);
   assert.deepEqual([p.source_app, p.source_ref, p.source_url], [null, null, null]);
+});
+
+test('con artículo de Recursos (item_id, Food #848): la compra lo lleva y, al recibirla, sale la entrada de stock', async () => {
+  const HARINA = uuid();
+  const seeded = await app.call('/api/v1/resources/commands', { body: { requestId: `harina-${++seq}`, operations: [{ op: 'insert', table: 'resources.items', id: HARINA, fields: { name: 'Harina', kind: 'material', base_unit: 'kg', min_quantity: 5, reorder_quantity: 10 } }] } });
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.data));
+  const first = await ask({ source: 'food', external_ref: 'lista-2026-10-31-harina', title: 'Harina de trigo', quantity: 10, item_id: HARINA.toUpperCase(), project_id: BARRA }, app.tokens.editor);
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.deepEqual([first.data.purchase.itemId, first.data.purchase.unit], [HARINA, 'kg'], 'sin unidad, la base del artículo');
+  const row = (await rows('tasks.purchase_requests')).find((r) => r.id === first.data.purchase.id);
+  assert.equal(row.item_id, HARINA);
+  // Al recibirla, la misma entrada que cualquier compra de Tasks con artículo.
+  const entry = receiptEntryOperation(row, { id: uuid(), spaceId: uuid(), item: { base_unit: 'kg' }, units: [] }) as any;
+  assert.deepEqual([entry.table, entry.fields.item_id, entry.fields.quantity, entry.fields.kind, entry.fields.source_app], ['resources.movements', HARINA, 10, 'entrada_manual', 'tasks']);
+  // Repetir no la cambia; un artículo que no existe o que no es un uuid, no.
+  assert.equal((await ask({ source: 'food', external_ref: 'lista-2026-10-31-harina', title: 'Otra', quantity: 99, item_id: HARINA, project_id: BARRA }, app.tokens.editor)).data.purchase.quantity, 10);
+  const missing = await ask({ source: 'food', external_ref: 'lista-x', title: 'x', item_id: uuid(), project_id: BARRA }, app.tokens.editor);
+  assert.deepEqual([missing.status, missing.data.error.details.field], [404, 'item_id']);
+  assert.equal((await ask({ source: 'food', external_ref: 'lista-y', title: 'x', item_id: 'harina', project_id: BARRA }, app.tokens.editor)).status, 422);
 });

@@ -53,7 +53,8 @@ test('reserva la plaza N horas: bloquea camas, la última plaza es de uno solo, 
   await ask(d.code, ana, { ...night, persons: 1, total_cents: 1 });
   const [a1] = await rowsOf(ana);
   assert.deepEqual([a1!.status, a1!.pay_mode, a1!.total_cents, a1!.hold_bed_ids.length], ['pendiente', 'hold', 2000 * 2 * 1, 1]);
-  assert.ok(new Date(a1!.hold_until).getTime() > Date.now() + 23 * 3600_000, '24 horas por defecto');
+  // 1403: la retención por defecto es de 2 horas
+  assert.ok(new Date(a1!.hold_until).getTime() > Date.now() + 1.5 * 3600_000 && new Date(a1!.hold_until).getTime() <= Date.now() + 2 * 3600_000 + 60_000, '2 horas por defecto');
   assert.equal(await free('2032-03-02', '2032-03-04', d.space), 1);
   assert.equal(await codeOf(ask(d.code, bea, { ...night, persons: 2 })), 'NO_AVAILABILITY');
   assert.equal((await rowsOf(bea)).length, 0, 'sin reserva fantasma');
@@ -95,7 +96,8 @@ test('no reserva hasta pagar: comprueba el hueco pero no bloquea; errores de fec
   const v = await visitorOf(d.code);
   await ask(d.code, v, { from_date: '2032-04-01', to_date: '2032-04-03', rate_id: d.rate, persons: 2 });
   const [r] = await rowsOf(v);
-  assert.deepEqual([r!.pay_mode, r!.hold_bed_ids, r!.hold_until, r!.total_cents], ['pay_first', null, null, 2000 * 2 * 2]);
+  // 1400: en pay_first las camas quedan como preferencia, sin bloqueo
+  assert.deepEqual([r!.pay_mode, r!.hold_bed_ids.length, r!.hold_until, r!.total_cents], ['pay_first', 2, null, 2000 * 2 * 2]);
   assert.equal(await free('2032-04-01', '2032-04-03', d.space), 2, 'no bloquea');
   const w = await visitorOf(d.code);
   // la disponibilidad es de toda la casa: una persona más de las que caben
