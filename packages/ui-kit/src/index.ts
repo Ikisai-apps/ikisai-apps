@@ -73,6 +73,7 @@ export { createGuide, type Guide, type GuideConfirm, type GuideOptions, type Gui
 export { flowGuideSource, safeRoute, sanitizeGuideRun, type GuideApiClient, type GuideSource } from './guide/flow-source.ts';
 export { createProjection, type Projection, type ProjectionAction, type ProjectionClient, type ProjectionOptions, type ProjectionRow } from './pieces/projection.ts';
 export { classifyCoverage, coverageFromCore, COVERAGE_CLASSES, renderCoverage, type CoreFieldCoverage, type Coverage, type CoverageClass, type CoverageField, type CoverageLink, type CoverageOptions, type CoverageRow, type CoverageUsage, type FlowCoverageStep } from './pieces/coverage.ts';
+export { installScrollHints, SCROLL_HINT_SELECTOR, watchScrollHint } from './scroll-hint.ts';
 export { groupLanes, LANE_NONE, type GroupLanesOptions } from './pieces/lanes-group.ts';
 export { createLanes, type Lane, type Lanes, type LanesOptions, type LanesView } from './pieces/lanes.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion, type StepRenderContext } from './pieces/step-form.ts';
