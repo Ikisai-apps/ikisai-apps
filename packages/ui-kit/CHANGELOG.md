@@ -6,6 +6,7 @@
 
 - En pantallas táctiles (`@media (pointer: coarse)`), `--tap-sm` pasa de 36 a 44 px. Eso sube `.small`, `.iconbtn.small` y los controles `.compact` (p. ej. los `select` de filtros). Con ratón, nada cambia.
 - `.tabpill`, `.linkbtn`, `.pl-tabs button` y `.space-quick-chip` pasan a 44 px de alto, y `.tabtool` a 44 × 44 px, en pantallas táctiles.
+- «¿Sin red?» del inicio de sesión (`.login summary`, en todas las apps) pasa de 28 a 44 px de alto en pantallas táctiles.
 - Arregla sin tocar las apps los toques señalados en Booking (calendario), Central (Inicio, Cumplimiento, Inventario), Finance (Facturas, Compras) y Food (filtros del Recetario).
 
 ## 0.69.1 · 27 de octubre de 2026
