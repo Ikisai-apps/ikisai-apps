@@ -1,6 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderWalkIn, specsFor } from './eventKinds.ts';
+import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, renderWalkIn, specsFor } from './eventKinds.ts';
 import { renderBarService } from './barService.ts';
 import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
@@ -139,6 +139,8 @@ export function mountReservation(id: string): ViewMount {
 
     // «Servicio de barra» (Flow): una lectura por evento y visita, no una por repintado.
     let barService: { eventId: string; element: HTMLElement } | null = null;
+    // «Ofertas de comida» (Food): igual, una lectura por evento y visita.
+    let offers: { eventId: string; element: HTMLElement } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
       try {
         await client.commit(operations);
@@ -500,6 +502,7 @@ export function mountReservation(id: string): ViewMount {
             ['Tipo de menú', `${label(reservation.menu_style_requested)} solicitado · ${label(liveEvent?.menu_style_confirmed)} confirmado`],
             reservation.meal_notes ? ['Notas', reservation.meal_notes] : null),
         (family || openDays) && reservation.meal_notes ? kv(['Notas', reservation.meal_notes]) : null,
+        liveEvent ? (offers && offers.eventId === liveEvent.id ? offers : (offers = { eventId: liveEvent.id, element: renderOffers({ client, eventId: liveEvent.id }) })).element : null,
         liveEvent ? [
           el('div', { class: 'sectionlabel' }, 'Restricciones', el('span', { class: 'count' }, String(restrictions.length))),
           restrictions.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : [
