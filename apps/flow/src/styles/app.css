@@ -184,3 +184,7 @@
 .account-card{display:flex;align-items:center;gap:10px;padding:10px 12px}
 .account-card .qcard-text{flex:1;min-width:0}
 .carta-notice{margin:0 16px 10px;padding:10px 12px;border-radius:10px;background:var(--surface-2,#f2efe9)}
+/* Check-in (Llegada → Cama → Firma → Salida) */
+.presence-card{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.presence-card .qcard-text{flex:1;min-width:0}
+.presence-card.is-done{opacity:.6}
