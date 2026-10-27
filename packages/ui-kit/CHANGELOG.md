@@ -20,6 +20,13 @@
   - agrupar por clase, app o pantalla;
   - por campo: sus recorridos, su uso en el periodo y la utilidad declarada por Central (`declared`);
   - `onOpen` para «Ir al campo».
+- **Del núcleo:** `coverageFromCore(salida de core.field_coverage, pasos de Flow, extra)` toma la vista del núcleo (#1055, 0111) tal cual y la cruza con los pasos y reglas de Flow.
+  - Un paso con el anclaje del campo es `direct` y una regla, `automatic`.
+  - Un paso que invoca una capacidad que lee o escribe su dato es `indirect`.
+  - Sin pasos, se queda la clase parcial del núcleo.
+  - Los duplicados del núcleo mandan, porque ya traen el modo «label». `used` sin recuento sale como «Con uso propio».
+  - Se enseñan las capacidades que leen o escriben el campo.
+- **Utilidad (decisiones de VG, vg-39):** primero el estimado de la app (`estimate`: audiencia, impacto, frecuencia) y luego la declarada por Dirección (`declared`).
 - Marcas de feedback: `filtro`, `agrupar` y `abrir`; `abrir` solo se cataloga si la llamada usa `onOpen`.
 - Demo: «Cobertura de campos por flujos (Revisor)». Pruebas: `tests/v83.spec.ts`.
 

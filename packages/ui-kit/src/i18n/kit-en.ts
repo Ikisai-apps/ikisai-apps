@@ -979,6 +979,12 @@ export const KIT_EN: Dictionary = {
   '{n} de {m} hechas': '{n} of {m} done',
 
   // Cobertura de campos (0.69.11)
+  'Con uso propio': 'Used on its own',
+  'Duplicado de {list}': 'Duplicate of {list}',
+  'Estimado de la app: {text}': "The app's estimate: {text}",
+  'Lo usan: {list}': 'Used by: {list}',
+  'escribe': 'writes',
+  'lee': 'reads',
   '1 uso en {d} días': '1 use in {d} days',
   'Agrupar por': 'Group by',
   'App': 'App',
