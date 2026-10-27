@@ -20,6 +20,7 @@ import { renderProposal } from './proposal.ts';
 import { renderPayments } from './payments.ts';
 import { renderExperience } from './experience.ts';
 import { renderOffers } from './offers.ts';
+import { renderRetreatComments } from './retreat-comments.ts';
 import { renderKitchen } from './kitchen.ts';
 import { pendingJoins, type JoinRequest } from './joins.ts';
 import { stagesText } from './retreats.ts';
@@ -322,6 +323,8 @@ function renderSummary(ctx: ViewContext, reservationId: string, data: RetreatDat
       el('p', null, text),
       g.confirmed ? el('button', { type: 'button', class: 'ghost', id: 'goGuests', 'data-feedback-id': 'organizers.retiro.resumen.ver_asistentes', 'data-feedback-label': 'Ver asistentes', onclick: go('asistentes') }, t('Ver asistentes')) : null));
   }
+  // Lo que cuentan los asistentes desde Guests; sale solo si hay algo (necesita red).
+  out.push(renderRetreatComments(ctx, reservationId, g.items));
   out.push(section(t('Cocina'), { id: 'summaryKitchen', 'data-feedback-id': 'organizers.retiro.resumen.cocina', 'data-feedback-label': 'Resumen de cocina' },
     el('p', null, totals.length ? totals.map((x) => `${restrictionText(x)} · ${x.servings}`).join(' · ') : t('Sin requisitos especiales por ahora.')),
     el('button', { type: 'button', class: 'ghost', id: 'goKitchen', 'data-feedback-id': 'organizers.retiro.resumen.ver_cocina', 'data-feedback-label': 'Ver cocina', onclick: go('cocina') }, t('Ver cocina'))));
