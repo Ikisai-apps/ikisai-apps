@@ -317,7 +317,11 @@ Food tiene dos tipos de menú: el **cerrado** de siempre (`menus.kind` 'retiro' 
     - con los alérgenos vacíos y sin revisar, hasta tener las etiquetas reales (§8.4).
   - Las 4 bebidas y las palomitas son artículos de Recursos. Core los crea con ids fijos en `20261026_0811_resources_barra_items.sql`.
   - Se siembra en producción cuando están esos artículos. En las pruebas, se llama a mano.
-- **En la app (tanda 1):** las pantallas del menú cerrado no enseñan la carta (`closedMenus`). Su vista llega en la tanda 2.
+- **En la app (tanda 2, `ui/carta.ts`):**
+  - **Menús:** el bloque «Cartas», con las cartas guardadas y «Nueva carta». Las pantallas del menú cerrado no enseñan la carta (`closedMenus`).
+  - **`#/cartas/<id>`:** nombre y evento (ligar o desligar), y «Usar en otro evento», que copia la carta con sus líneas y sin las ventas (`copyCartaOperations`). Los bloques Clásicos, Gourmet y Barra; en cada línea, el código, la imagen (miniatura de Flow, `https://flow.ikisai.com/assets/<clave>/miniatura.webp`), el precio editable, el coste de `food.carta_projection` (con red), el margen, «Disponible», «Alérgenos sin revisar» y «Quitar». «Añadir a…» admite una receta o un artículo de Recursos, con un código libre del bloque.
+  - **Ficha del evento:** la carta del evento («Abrir la carta») o, si no tiene, «Usar esta carta» (copia una guardada) y «Carta nueva». En jornadas abiertas, también las cartas que marca Booking (`carta_ids` de `booking.food_event_projection`, Booking 0484).
+- **Evento familiar** (`event_type = 'familiar'`, Booking 0482): come del menú de casa. No pide menú propio (`needsMenu`), sale con el chip «Menú de casa» y su ficha lleva «Abrir el menú de casa».
 
 ### 2.3 Compra, preparación y stock
 

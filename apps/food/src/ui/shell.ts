@@ -11,6 +11,7 @@ import { mountRecipes } from './recipes.ts';
 import { CASA_HASH, lastCasaTab, mountCasa } from './casa.ts';
 import { mountEvents } from './events.ts';
 import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
+import { mountCarta } from './carta.ts';
 import { HOUSE_SUGGESTIONS_HASH, mountHouseSuggestions } from './house-suggestions.ts';
 import { mountConflicts } from './conflicts.ts';
 import { KITCHEN_HASH, mountKitchen } from './kitchen.ts';
@@ -208,21 +209,25 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     // `#/menus/<id>` es la ficha de un menú y `#/menus/<id>/compra` una de sus pestañas; el resto son rutas fijas.
     const [, menuId, menuTab] = hash.match(/^#\/menus\/([0-9a-f-]{36})(?:\/(compra|preparacion|organizador|cierre))?$/i) ?? [];
+    // `#/cartas/<id>`: la vista de una carta (tanda 2 de la carta), bajo «Menús».
+    const [, cartaId] = hash.match(/^#\/cartas\/([0-9a-f-]{36})$/i) ?? [];
     // Las rutas fijas admiten parámetros tras «?» (p. ej. `#/recetario?receta=<id>` abre esa receta).
     const path = hash.split('?')[0]!;
     // `#/casa` abre la última pestaña que se usó (la Despensa o la Maquinaria), con su pantalla.
     const casa = path === CASA_HASH ? ROUTES[lastCasaTab() === 'maquinaria' ? '#/maquinaria' : '#/despensa']! : null;
-    const entry = menuId ? { title: 'Menú', screen: 'food.menu', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') } : casa ?? ROUTES[path] ?? ROUTES['#/']!;
+    const entry = menuId ? { title: 'Menú', screen: 'food.menu', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') }
+      : cartaId ? { title: 'Carta', screen: 'food.carta', mount: mountCarta(cartaId) }
+      : casa ?? ROUTES[path] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(menuId ? '#/menus' : path);
+    shell.setRoute(menuId || cartaId ? '#/menus' : path);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     screen = { id: entry.screen, label: entry.title };
     // Recientes del menú lateral: las tres últimas pantallas, sin repetir y sin la actual.
     const at = recents.findIndex((r) => r.href === hash);
     if (at >= 0) recents.splice(at, 1);
-    recents.unshift({ label: entry.title, sub: menuId ? 'Menú' : null, href: hash });
+    recents.unshift({ label: entry.title, sub: menuId ? 'Menú' : cartaId ? 'Carta' : null, href: hash });
     recents.splice(4);
     shell.menu?.refresh();
     main.setAttribute('data-feedback-id', screen.id);

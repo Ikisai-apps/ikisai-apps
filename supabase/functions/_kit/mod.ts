@@ -18,5 +18,7 @@ export { applyPublicOperations } from './public-write.ts';
 export type { PublicOperation, PublicBatchResult } from './public-write.ts';
 export { issueVisitor, resolveVisitor, requireVisitor, publicReadWithVisitor, isPublicOrigin, VISITOR_HEADER } from './visitors.ts';
 export type { Visitor } from './visitors.ts';
+export { createCapabilities } from './capabilities.ts';
+export type { CapabilitiesOptions, CapabilityCheck } from './capabilities.ts';
 export { createStorage, r2ConfigFromEnv, type StorageAccess, type StoredObject, type ProviderName } from './storage.ts';
 export { createGoogleTokenSource, parseServiceAccount, GoogleAuthError, type GoogleServiceAccount } from './google.ts';
