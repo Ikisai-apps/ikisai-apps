@@ -50,6 +50,9 @@ test('v2 · un visitante guarda su acceso con un código al correo y lo recupera
   token2 = rec.data.token; assert.notEqual(token2, token1);
   const me = await pub('/api/v1/public/visitor/me', { visitor: token2 });
   assert.equal(me.data.emailSaved, true); assert.equal(me.data.emailHint, 'v•••@e•••.invalid'); assert.equal(me.data.devices, 2);
+  // «Mis eventos» se rehace desde el núcleo: el alta por QR cuenta, y Guests anota las visitas siguientes.
+  assert.equal((await pub('/api/v1/public/visitor/visit', { body: { eventCode: 'EVT_Y' }, visitor: token2 })).status, 200);
+  assert.deepEqual((await pub('/api/v1/public/visitor/me', { visitor: token2 })).data.eventCodes, ['EVT_Y', 'EVT_X']);
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from core.visitors where id = $1 and auth_user_id is not null`, [visitorId])).rows[0]!.n, 1);
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from core.visitor_email_requests`)).rows[0]!.n, 3, 'el núcleo guarda solo el hash del correo');
 });

@@ -15,7 +15,7 @@ import { createFilesGc } from './files-gc.ts';
 import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
 import { applyPublicOperations, type PublicOperation } from './public-write.ts';
 import { isPublicOrigin, issueVisitor, publicReadWithVisitor, resolveVisitor, type Visitor } from './visitors.ts';
-import { claimVisitor, createVisitorHandoff, forgetVisitorEmail, linkVisitorToGuest, logoutVisitor, redeemVisitorHandoff, requestVisitorEmail, unlinkVisitorFromGuest, verifyVisitorEmail, visitorMe } from './visitors-v2.ts';
+import { claimVisitor, createVisitorHandoff, forgetVisitorEmail, linkVisitorToGuest, logoutVisitor, redeemVisitorHandoff, requestVisitorEmail, unlinkVisitorFromGuest, verifyVisitorEmail, visitorMe, visitorVisit } from './visitors-v2.ts';
 import { createPortalLinks, resolvePortalLink, PORTAL_DOMAINS, portalUserFor } from './portal.ts';
 import { createCapabilities, type CapabilitiesOptions } from './capabilities.ts';
 
@@ -426,6 +426,7 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/public/visitor/email/verify' && request.method === 'POST') return json(await verifyVisitorEmail(supabase, request, await readJson()));
       if (path === '/api/v1/public/visitor/email/forget' && request.method === 'POST') return json(await forgetVisitorEmail(supabase, request));
       if (path === '/api/v1/public/visitor/me' && request.method === 'GET') return json(await visitorMe(supabase, request));
+      if (path === '/api/v1/public/visitor/visit' && request.method === 'POST') return json(await visitorVisit(supabase, request, await readJson()));
       if (path === '/api/v1/public/visitor/handoff' && request.method === 'POST') return json(await createVisitorHandoff(supabase, request));
       if (path === '/api/v1/public/visitor/handoff/redeem' && request.method === 'POST') return json(await redeemVisitorHandoff(supabase, request, await readJson()));
       if (path === '/api/v1/public/visitor/claim' && request.method === 'POST') {
