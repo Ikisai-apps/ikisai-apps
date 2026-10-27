@@ -647,6 +647,57 @@ Lo que le toca a cada persona, por día y servicio, de la lectura de portal de F
 - **Sin red:** las ofertas, de la caché como el menú; «Abrir la carta» necesita red.
 - **Pruebas:** `tests/guests/offers.test.ts` (cruce, internas, modos, precio y enlace). La de Playwright llega cuando FD3 esté en `main`.
 
+### 9.19 Visitantes por QR: ven.ikisai.com sin invitación (encargo de VG por Core, 27-10-2026; modelo de pantallas)
+
+VG aprueba `ven.ikisai.com` como puerta pública **sin invitación**. Quien escanea el QR de un evento entra como **visitante**: una identidad anónima del núcleo (`core.visitors`, la hace Core), con su token en el móvil y **ningún dato al entrar**. Este apartado es el modelo de pantallas; el código llega cuando estén el contrato de Core (C11) y las lecturas de Booking, Food y Flow.
+
+**Reglas fuertes**
+- Un visitante **nunca ve a otros** visitantes ni huéspedes.
+- **Nunca se liga a un huésped de Booking por el nombre**; solo por un vínculo consentido: su enlace de invitación (`/i/<token>`) o un código que le dan.
+- Lo que deja (nombre, correo, teléfono) es **voluntario**, con su para qué escrito al lado, y se puede borrar.
+- Repo público: los ejemplos y fixtures usan nombres sintéticos y `example.invalid`.
+
+#### Entrada (`/e/<código>`, como `/i/<token>`)
+
+1. `main.ts` reconoce `/e/<código>` (10 caracteres de Booking, BG17), lo quita de la URL antes de pintar y lo guarda solo en memoria.
+2. Lee el evento: `GET public/event?code=…` en `guests-api`, que llama a `booking.public_event` (BG19, lectura pública cacheable). Código desconocido o evento cerrado: «Este código no es de ningún evento abierto», con el contacto público y sin decir si existió.
+3. **Identidad de visitante:** si el móvil ya tiene un token de visitante, se recupera (`resolve`); si no, se crea al tocar «Entrar» (`create`, C11), sin pedir nada. Si el móvil tiene además una sesión de huésped (enlace personal), las dos conviven: el evento se ve como visitante salvo que la persona use «Ya tengo invitación» (más abajo).
+4. Se abre el **evento** (`#/v/<código>`).
+
+#### Evento del visitante (`#/v/<código>`)
+
+- **Cabecera:** nombre, fechas, tipo («Jornadas abiertas», «Retiro», «Familiar») y el resumen público (`summary`). Nada de precios ni del organizador.
+- **Qué hay para comer** (Food, FD5): las ofertas marcadas públicas, por día y servicio, con la misma pieza de §9.18 (`offersBlock`) y su línea de alérgenos. Sin persona ni restricciones, no hay cruce personal; sí el aviso común «Si tienes alergias, pregunta en cocina».
+- **«Mi pedido»** (Flow, FL2): su número de cliente, «Abrir la carta» (enlace de un solo uso, pedido en cada toque) y sus pedidos con su estado. Si tiene cuenta abierta, «Tienes una cuenta abierta»; si no, «Si quieres pagar al final, pide en caja que te abran una cuenta».
+- **«Apuntarme»** (si `joinable`): una sugerencia a Booking (BG18) con los datos que quiera dejar («¿Cómo te llamamos?», obligatorio solo aquí; correo o teléfono, opcionales y con su para qué). Queda «Pedido · pendiente» hasta que el personal la acepta. Al aceptarla, Booking crea la ficha **ligada a este visitante por esta petición**, y el evento pasa a verse como huésped.
+- **«Déjanos un dato»** (opcional, sin apuntarse): por ejemplo, el correo para avisarle de la próxima jornada, con su para qué y «Borrar».
+- **«Ya tengo invitación»:** pegar o abrir su enlace personal (`/i/<token>`). Es el vínculo consentido con su ficha de huésped.
+
+#### «Mis eventos» (`#/v`)
+
+- Los eventos en los que ha entrado ese visitante, en curso, próximos y pasados (la misma pieza que «Mis retiros», §9.17), con su estado («Abierto», «Cerrado») y el de su «Apuntarme».
+
+#### Guardar y mover la identidad
+
+- **Recuperar por correo (opcional):** «Guarda tu acceso» → correo → el núcleo envía un enlace (C11). Abrirlo en otro móvil recupera la identidad. Sin correo, el acceso vive solo en ese móvil, y se dice así.
+- **Pasar a otro móvil (explícito):** en el móvil viejo, «Pasar a otro móvil» enseña un código o QR de un solo uso que caduca en minutos (C11). En el nuevo, «Tengo un código». Al completarse, el viejo deja de tener la identidad y se dice en los dos.
+- **Salir de este móvil:** borra el token y la caché del visitante (como `onSessionEnd`).
+
+#### Sin red
+
+El evento, sus ofertas y «Mis eventos», de la caché por visitante con la hora de los datos. Entrar, apuntarse, dejar un dato, recuperar, pasar de móvil y «Abrir la carta» necesitan red.
+
+#### Lo que necesita Guests
+
+| Id | De | Qué |
+|---|---|---|
+| C11 | Core | Visitantes: `create` y `resolve` públicos (token solo en el móvil), ámbito por evento, sugerencias del visitante, recuperación por correo (enlace) y transferencia con código de un solo uso; cliente en `sync-client` |
+| BG17 | Booking | `booking.events.public_code` (10 caracteres sin ambigüedades, al azar, único; «Regenerar» invalida el anterior) |
+| BG18 | Booking | «Apuntarme» de visitante como sugerencia, con {code, name, contact?}; al aceptarla, la ficha ligada a ese visitante |
+| BG19 | Booking | `booking.public_event({code})` → `{code, name, starts_on, ends_on, kind, status, joinable, summary}`, lectura pública; Guests la sirve en `GET public/event` |
+| FD5 | Food | `food.visitor_offers({event_code})`, solo ofertas marcadas públicas, con la forma de `portal_offers` |
+| FL2 | Flow | `flow.visitor_customer({event_code})` → `{number, carta_url, account_open, orders}` del visitante |
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:
