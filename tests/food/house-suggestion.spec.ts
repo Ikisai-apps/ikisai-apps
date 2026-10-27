@@ -173,6 +173,22 @@ test('platos sugeridos · entrada, votar en el mazo, decidir con «Deshacer», r
     await expect(page.locator('#approveSuggestion')).toBeDisabled();
   });
 
+  await test.step('«Elegir varias» (F-SUG-5): marcar las dos que quedan, descartarlas juntas y deshacerlo con un solo «Deshacer»', async () => {
+    await page.locator('#suggestionsBatchToggle').click();
+    const rows = page.locator('#suggestionBatch li');
+    await expect(rows).toHaveCount(2);
+    for (const box of await rows.locator('input[type=checkbox]').all()) await box.check();
+    // Con «Sopa de ayer» marcada no se puede aprobar: ese día ya pasó.
+    await expect(page.locator('#approveBatch')).toBeDisabled();
+    await expect(page.locator('#rejectBatch')).toHaveText('Descartar (2)');
+    await page.locator('#rejectBatch').click();
+    await expect(page.locator('.toast.show')).toContainText('Descartadas: 2 sugerencias');
+    await page.locator('.toast.show').getByRole('button', { name: 'Deshacer' }).click();
+    await expect(decide(page).locator('h3')).toHaveText('Para decidir (2)');
+    await page.waitForTimeout(5500); // pasado el plazo, nada se ha enviado
+    expect(api.suggestions().filter((x) => x.status === 'rejected').length).toBe(1); // solo las lentejas, de antes
+  });
+
   await test.step('«Ver todas en lista»: aprobadas con su enlace al menú de casa; el plato está en su día', async () => {
     await page.locator('#suggestionsAll').click();
     await page.locator('.pl-tabs button', { hasText: 'Aprobadas' }).click();
