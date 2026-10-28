@@ -578,3 +578,8 @@
 .avance-orig .car .graf .gfoot{grid-column:3;align-self:center;justify-content:flex-end}}
 .avance-orig .it .cid{all:unset;cursor:pointer;display:inline-block;font:700 10.5px/1 var(--sans);letter-spacing:.03em;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 6px;margin:0 6px 4px 0;vertical-align:middle;user-select:all}
 .avance-orig .it .cid:active,.avance-orig .it .cid.ok{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+/* Hitos (VG, 28-10): los pasos se ven todos a la vez, con su nombre entero y su marca de hecho, en vez de una fila con desplazamiento lateral. */
+.avance-orig .car .hs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;overflow:visible;padding-bottom:0}
+.avance-orig .car .hs .ar{display:none}
+.avance-orig .car .hs .hp{max-width:none;align-items:flex-start;padding:6px 9px}
+.avance-orig .car .hs .hp span{white-space:normal;overflow:visible;text-overflow:clip}
