@@ -1,6 +1,6 @@
 /**
  * Ikisai Tasks · «Trabajos de hoy» para Flow (encargo de Core, 27-10-2026; docs/tasks/API.md §47).
- * - `GET today/projection?date=AAAA-MM-DD&projectId=…`: lo de hoy del equipo en el ámbito de quien lee
+ * - `GET today/projection?date=AAAA-MM-DD&projectId=…&spaceId=…|none`: lo de hoy del equipo en el ámbito de quien lee
  *   (`tasks.today_projection`; capacidad del mismo nombre). Sin el Plan de hoy de cada cual, que es privado (0339).
  * - `POST tasks/complete {taskId, requestId?}`: marca hecha una tarea que la persona ve (capacidad `tasks.complete`).
  *   Idempotente: si ya estaba hecha devuelve `changed: false`. No marca sus hijas.
@@ -17,11 +17,13 @@ export function todayRoutes(supabase: Supabase): AppRoute[] {
   const internal = createSync(supabase, 'tasks', {});
   return [{
     method: 'GET', pattern: 'today/projection', handler: async ({ ctx, url }) => {
-      const date = url.searchParams.get('date'), projectId = url.searchParams.get('projectId');
+      const date = url.searchParams.get('date'), projectId = url.searchParams.get('projectId'), spaceId = url.searchParams.get('spaceId');
       if (date !== null && (!DATE.test(date) || Number.isNaN(Date.parse(date)))) fail(422, 'INVALID_INPUT', 'date va como AAAA-MM-DD.', { field: 'date' });
       if (projectId !== null && !UUID.test(projectId)) fail(422, 'INVALID_INPUT', 'projectId debe ser un uuid.', { field: 'projectId' });
+      // 0366: un espacio (con lo que tiene dentro) o «none», lo que no tiene espacio.
+      if (spaceId !== null && spaceId !== 'none' && !UUID.test(spaceId)) fail(422, 'INVALID_INPUT', 'spaceId es un uuid o none.', { field: 'spaceId' });
       return await supabase.rpc('core_read', { p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.today_projection',
-        p_args: { ...(date ? { date } : {}), ...(projectId ? { projectId: projectId.toLowerCase() } : {}) } });
+        p_args: { ...(date ? { date } : {}), ...(projectId ? { projectId: projectId.toLowerCase() } : {}), ...(spaceId ? { spaceId: spaceId.toLowerCase() } : {}) } });
     },
   }, {
     method: 'POST', pattern: 'tasks/complete', handler: async ({ ctx, json }) => {

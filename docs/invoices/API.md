@@ -2068,6 +2068,52 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
 - El cierre del día de Flow ya no lleva lo enviado antes como cobro fiscal, así que nada cuenta dos veces.
 - Lógica en `apps/invoices/src/app/cash-count.ts`, prueba en `tests/invoices/cash-count.test.ts`.
 
+### 17.13 Factura con NIF a petición de un cobro (vg-38, migración 0263)
+
+El justificante de un cobro de otra app es el ticket de Finance. Si quien pagó pide factura con NIF, el **servidor** de la app del cobro la pide y Finance crea un **borrador a revisar** (VG, 27-10). Hoy solo Booking (las noches, `booking:stay:<cobro>`). Diseño: `MUELA/equipo/feedback/finance/FACTURA_A_PETICION_vg-38.md`.
+
+**Pedirla.** `POST /api/v1/worker/entry-invoice`, con `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: booking`:
+
+```
+{ "request_id": "<uuid, idempotente>", "source": "booking:stay:<cobro>",
+  "customer": { "name": "…", "tax_id": "…", "id_type": "NIF", "country": "ES", "kind": "particular" | "empresa",
+                "address": { "line", "postal_code", "city", "province", "country" } } }
+```
+
+- **Destinatario:**
+  - `id_type` es `NIF` (NIF, NIE o CIF) por defecto, o `02`–`06` como en el resto de emitidas.
+  - Con `NIF` y país `ES`, se comprueba el dígito de control y se normaliza.
+  - El domicilio es obligatorio para `empresa`.
+  - Finance no guarda correos: la app del cobro envía la factura con su propio contacto.
+- **Respuesta:** `{ request_id, issued_invoice_id, status, full_number, issue_date }`.
+  - `status` es `pendiente`, `emitida`, `anulada` o `descartada` (el borrador se borró en Finance; se puede volver a pedir).
+  - Repetir el mismo `request_id` devuelve lo mismo con `replayed: true`.
+- **Errores:**
+  - `422 TAX_ID_INVALID`;
+  - `422 INVALID_ARGS` (con `field`);
+  - `404 ENTRY_NOT_FOUND`: el apunte aún no ha llegado, así que se reintenta;
+  - `409 ENTRY_NOT_INVOICEABLE`: no es un ingreso fiscal o está devuelto entero;
+  - `409 ALREADY_REQUESTED`: ya hay una factura viva del cobro, con su `request_id` y su estado;
+  - `403 CALLER_REJECTED`: otra app.
+- **Estado:** `GET /api/v1/worker/entry-invoice?source=…` (mismas cabeceras) devuelve la última petición del cobro, o `404 NOT_REQUESTED`.
+
+**El borrador:**
+- **Datos:** F1 en la primera serie ordinaria de emisión, con el destinatario y la fecha de operación del cobro.
+- **Líneas:** las del desglose del apunte, sin las devoluciones pendientes, con IVA incluido (`prices_include_vat`) y cuota exacta, así que suman lo cobrado.
+- **Cobro:** nace **cobrada**, con la fecha del apunte y su medio mayor.
+- **Ficha:** la etiqueta dice «Pedida: revisar y emitir» y, ya emitida, «Sustituye al ticket».
+- **Vínculo:** `issued_invoices.from_entry_id` apunta al apunte. Solo lo pone la petición (`ENTRY_INVOICE_PROCEDURE_ONLY`) y las rectificativas lo heredan.
+- **Sin duplicados:** una factura viva por apunte.
+
+**Nada suma dos veces.** La venta es el apunte: su IVA va en su periodo y cuenta en lo cobrado y en el arqueo. Una factura con `from_entry_id`, y sus rectificativas, quedan fuera de:
+- `issued_summary_for`;
+- `issuedSummary`;
+- los KPIs de `central_kpi_projection`.
+
+El libro de emitidas de la entrega (`issued_manifest`) sí la lleva, con `replaces_entry` (`source_ref`, `entry_date`, `receipt_number`) para la gestoría.
+
+**Pendiente con la gestoría, antes de encender Verifactu:** ¿F1 o F3? Con Verifactu, esa factura iría a la AEAT con su IVA.
+
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 
 Ficha de capacidad para el catálogo del núcleo:
@@ -2248,3 +2294,20 @@ VG decidió el 27-10 «Stripe primero, Redsys después». Esta parte es solo el 
   - Los avisos de otra app (`Ds_MerchantData.app`) se ignoran.
   - En el comercio de Redsys, la «URL de notificación» la pone el propio pedido (`DS_MERCHANT_MERCHANTURL`).
 - **Conciliación:** a Redsys no se le pregunta. Los enlaces abiertos ya caducados, o cancelados, se marcan cerrados (`payment_link_gateway_closed`).
+
+### 19.7 «Cobros sin casar» (migración 0264)
+
+Es la pantalla de Dirección (`#/cobros-sin-casar`, desde Inicio) para lo que la pasarela cobró o devolvió y Finance no pudo casar sola con una factura:
+- `mismatch`: la factura ya no estaba por cobrar o el importe no coincide;
+- `unknown`: un pago de un enlace que Finance no conoce;
+- devoluciones: hay que hacer su rectificativa.
+
+- **Lectura:** `invoices.payment_events_review {all?}` (editor u owner).
+  - Por defecto, solo lo pendiente; con `all`, también lo revisado.
+  - Cada aviso trae su importe y su factura (número, total, estado y cobro), y `pending` con el recuento.
+  - Sin datos de quien paga.
+- **Revisado:** `invoices.payment_event_resolve {id, note}` (procedimiento, editor u owner). La nota, de 1 a 500 caracteres, dice qué se hizo; marcarlo otra vez cambia la nota.
+- **Pantalla:**
+  - cada aviso explica qué pasó y qué hacer (`apps/invoices/src/app/unmatched.ts`);
+  - «Abrir la factura» lleva a `#/facturas?vista=emitidas&abrir=<id>`, que abre esa ficha;
+  - necesita red.

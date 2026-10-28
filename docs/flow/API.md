@@ -536,6 +536,17 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - «Hacerlo de verdad»: al terminar un ensayo de una versión publicada, una ejecución `run` nueva con `practice_of` = el ensayo (propio, terminado y de esa versión; si no, `422`). `start_stage` parte de lo respondido en ese tramo del ensayo; lo fijo y lo heredado lo vuelve a poner el servidor.
 - El enlace de «ir a otra app» lleva `guia=<ejecución>` para el Guiado del kit (`flow.guide_read`).
 
+## 55. «Preparación y revisión de apertura»: pieza `review` (migración `0955`)
+
+- Segundo flujo de VG. Los datos viven en Tasks (diseño `MUELA/equipo/feedback/tasks/REVISION_APERTURA.md`; `docs/tasks/API.md` §46.3, §46.4 y §59). Flow solo compone, con las capacidades del catálogo y el token de la persona (`POST capabilities/:id/invoke`).
+- Pieza `review` («Revisión de apertura», `inspect_confirm`; `flow.piece_behavior`). Su pantalla `#/p/<flujo>/revision`:
+  1. las revisiones del día (`tasks.reviews_day`): las que vencen hoy y las que siguen sin abrir de días anteriores, con hechos, incidencias y críticos;
+  2. al tocar una, sus ítems por zona (`tasks.review_projection`): instrucciones, lo esperado, si es crítico, su estado y si la correctiva está hecha. «Lista para abrir» cuando todos los críticos están bien;
+  3. «Bien» o «Incidencia» por ítem (`tasks.review_item_result`). La incidencia pide nota; una cantidad o una lectura piden su valor. En Tasks quedan «Arreglar» y «Volver a comprobar», y solo un nuevo «Bien» verifica.
+- Las fotos y abrir la revisión se hacen en Tasks («Abrir en Tasks», `tasks.revision.abrir`).
+- Si el flujo tiene evento de Booking, arriba: «Camas para esta noche: X de Y listas» y, por habitación, lo que falta (por limpiar, sin colocar en el plano, inactivas), con `booking.lodging_readiness` (Booking 1426).
+- Plantilla `apertura` v1: «Preparación» (`logistics`, tareas libres) y «Revisión» (`review`).
+
 ## 56. La barra sobre el motor genérico (migración `0957`)
 
 - Los datos de la barra siguen en sus tablas (pedidos, líneas, cobros, cierres). Cada uno tiene además su unidad del motor, que escribe el servidor por el registro del núcleo, en el mismo lote que cambia el pedido, la preparación o el cierre:

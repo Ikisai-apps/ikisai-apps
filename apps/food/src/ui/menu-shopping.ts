@@ -115,7 +115,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
   const fresh = (item: ItemRow) => items.find((i) => i.id === item.id) ?? null;
 
   /** A la Despensa lo que cruza entre pendiente y no (`app/shopping-stock.ts`). */
-  const recordPurchases = (lines: ItemRow[]) => recordShoppingPurchases(r, lines, data?.ingredients ?? []);
+  const recordPurchases = (lines: ItemRow[]) => recordShoppingPurchases(client, lines, data?.ingredients ?? []);
 
   /** Cambia el estado de varias líneas en un commit y apunta en la Despensa las que cruzan entre pendiente y no. */
   async function setStatuses(lines: ItemRow[], status: ShoppingItemStatus, event = 'food.compra.marcar'): Promise<boolean> {

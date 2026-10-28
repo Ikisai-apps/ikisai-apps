@@ -14,7 +14,7 @@ const SRC = path.resolve(here, '../../apps/invoices/src');
 const PATTERN = /^invoices(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `invoices.…` del código que no son ids de feedback: procedimientos, lecturas y tablas del servidor. */
-const NOT_IDS = /^invoices\.(issue|rectify|series_start|annul|annul_issued|validate|import_v1|create_export|mark_delivered|archive_period|close_series|take_issuer|vf_records_of|document_text|[a-z_]+_summary|customers|issued_[a-z_]+|invoices|suppliers|allocations|invoice_[a-z_]+|tax_lines|exports|export_items|supplier_templates|app_entries)$/;
+const NOT_IDS = /^invoices\.(issue|payment_[a-z_]+|rectify|series_start|annul|annul_issued|validate|import_v1|create_export|mark_delivered|archive_period|close_series|take_issuer|vf_records_of|document_text|[a-z_]+_summary|customers|issued_[a-z_]+|invoices|suppliers|allocations|invoice_[a-z_]+|tax_lines|exports|export_items|supplier_templates|app_entries)$/;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -73,7 +73,7 @@ test('cada data-feedback-id escrito en un el(...) lleva su etiqueta, y cada marc
 
 test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', () => {
   const roots = new Set(collect().map((f) => f.id.split('.')[1]));
-  const allowed = new Set(['inicio', 'facturas', 'emitidas', 'compras', 'gestoria', 'proveedores', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'apuntes', 'evento', 'justificante', 'guia', 'arqueo', 'menu']);
+  const allowed = new Set(['inicio', 'facturas', 'emitidas', 'compras', 'gestoria', 'proveedores', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'apuntes', 'evento', 'justificante', 'guia', 'arqueo', 'menu', 'cobros_sin_casar']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 

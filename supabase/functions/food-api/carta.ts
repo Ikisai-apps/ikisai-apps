@@ -44,7 +44,8 @@ export async function syncCartaStock(supabase: Supabase, menuId: string, day: st
   const digest = await sha256Hex(stable(ops));
   await supabase.rpc('core_commit', {
     p_app: 'resources', p_actor: actor, p_request_id: `food-carta-stock:${digest.slice(0, 40)}`, p_digest: digest,
-    p_expected_cursor: null, p_operations: ops, p_confirmation: null,
+    // Origen `server` (0118): Recursos guarda el `source_app` declarado, 'food' (FO4, 0820).
+    p_expected_cursor: null, p_operations: ops, p_confirmation: null, p_origin: 'server',
   });
   out.consumed = operations.filter((o) => o.kind === 'consume').length;
   out.returned = operations.length - out.consumed;

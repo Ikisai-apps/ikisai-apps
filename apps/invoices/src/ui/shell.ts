@@ -6,6 +6,7 @@ import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountAppEntries, mountEvent, mountReceipt } from './app-entries.ts';
 import { mountCashCount } from './cash-count.ts';
+import { mountUnmatched } from './unmatched.ts';
 import { startValidationConflictWatcher } from './invoices.ts';
 import { mountInvoices } from './invoice-list.ts';
 import { mergesAreOwn } from './undo.ts';
@@ -32,7 +33,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/apuntes', '#/evento', '#/justificante', '#/arqueo'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/apuntes', '#/evento', '#/justificante', '#/arqueo', '#/cobros-sin-casar'] },
   { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
   { hash: '#/compras', label: 'Compras', icon: 'cart' },
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
@@ -50,6 +51,7 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/evento': { title: 'Evento', screen: 'invoices.evento', mount: mountEvent },
   '#/justificante': { title: 'Justificante', screen: 'invoices.justificante', mount: mountReceipt },
   '#/arqueo': { title: 'Arqueo del día', screen: 'invoices.arqueo', mount: mountCashCount },
+  '#/cobros-sin-casar': { title: 'Cobros sin casar', screen: 'invoices.cobros_sin_casar', mount: mountUnmatched },
   '#/facturas': { title: 'Facturas', screen: 'invoices.facturas', mount: mountInvoices },
   '#/compras': { title: 'Compras', screen: 'invoices.compras', mount: mountPurchases },
   '#/gestoria': { title: 'Gestoría', screen: 'invoices.gestoria', mount: mountAccounting },
@@ -112,6 +114,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       { key: 'caja', label: 'Cobros y caja', icon: 'euro', summary: 'Barra, recepción y eventos', rows: [
         { label: 'Ingresos de apps', sub: 'Barra, alojamiento y resultado por evento', href: '#/apuntes', feedbackId: 'invoices.menu.caja.apuntes' },
         { label: 'Arqueo del día', sub: 'Lo cobrado por medio, para cuadrar caja', href: '#/arqueo', feedbackId: 'invoices.menu.caja.arqueo' },
+        { label: 'Cobros sin casar', sub: 'Pagos en línea que no cuadran con su factura', href: '#/cobros-sin-casar', feedbackId: 'invoices.menu.caja.cobros_sin_casar' },
       ] },
       { key: 'sync', label: 'Sincronización', icon: 'sync', summary: trouble ? `${trouble} por resolver` : 'Todo en orden',
         badge: trouble ? { text: String(trouble), tone: 'alert' } : null, rows: [

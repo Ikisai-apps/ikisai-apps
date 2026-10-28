@@ -96,6 +96,7 @@ export const PIECES: ReadonlyArray<{ key: string; label: string; behavior: Colum
   { key: 'bed', label: 'Cama', behavior: 'guest_presence', hint: 'Acompañar a su cama' },
   { key: 'signature', label: 'Firma', behavior: 'guest_presence', hint: 'Parte de viajeros pendiente' },
   { key: 'departure', label: 'Salida', behavior: 'guest_presence', hint: 'Huéspedes que se van (Booking)' },
+  { key: 'review', label: 'Revisión de apertura', behavior: 'inspect_confirm', hint: 'Ítems de Tasks por zona: bien o incidencia' },
 ];
 
 /** Paso de una columna `guest_presence` (check-in, 0911). */

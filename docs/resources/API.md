@@ -197,6 +197,12 @@ Sin red, el cliente puede sumar `movements` de su espejo.
   - `item_costs` cuenta los contrarios.
 - **Lectura desde otras apps:** sus migraciones pueden leer `items`, `item_kinds`, `item_units`, `lots`, `movements`, `movement_costs`, `stock_levels` e `item_costs`, como los espacios.
 
+## 3.0 El oficio de un artículo (migración 0819, R2 de Tasks, 27-10-2026)
+
+- `resources.items.trade_id` (opcional): un oficio de Central, como las tareas de Tasks. Sin clave foránea; el hook `resources.check_item_trades` lo valida con `central.trade_alive` al crearlo o cambiarlo (`INVALID_TRADE` si está retirado o no existe).
+- `category` (texto) se conserva para lo que ya hay.
+- Tasks y Food lo leen en `resources.items`, como el resto del artículo. El selector de oficio va en la ficha del artículo de Central (`central.trade_options`).
+
 ## 3.1 EPI y lo que pide cada máquina (migración 0813, R3 de Tasks)
 
 - **Tipo `epi`** («EPI»; se cuenta, no se gasta). Cada EPI guarda en `attributes.body_parts` qué protege: una o varias de `head`, `eyes`, `ears`, `mouth_nose`, `hands`, `feet`, `legs`, `knees`, `body`, `harness`, sin repetir.
