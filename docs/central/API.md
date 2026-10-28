@@ -496,6 +496,7 @@ La ficha no es una cuenta: se apoya en la cuenta de agente del núcleo (`core.pr
 | `active` | `boolean` | `false` por defecto. Sin responsable no se activa. |
 | `successor_id` | `uuid` | El agente que le sigue. Nunca él mismo. |
 | `notes` | `text` | Hasta 500. |
+| `flow_project`, `flow_lane` | `uuid`, `text` | El proyecto del Avance de Flow (uuid) y la clave de su carril (`^[a-z][a-z0-9_]{1,30}$`), uno por agente (`1524`). Flow lee `central.agent_lanes_projection` (proyecto, carril → ficha) para enlazar la ficha desde el Avance. Con los dos, la ficha enlaza a `flow.ikisai.com/#/p/<proyecto>/avance?carril=<carril>`; el Avance enlaza la ficha con `central.ikisai.com/#/accesos/agentes?agente=<id>`. |
 
 Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). El agente no cambia su ficha: lo que proponga irá por `core.proposals` cuando la pantalla lo admita.
 
