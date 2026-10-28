@@ -473,6 +473,8 @@ export async function reconcileResourceEntries(supabase: Supabase, ctx: RequestC
       p_app: 'resources', p_actor: ctx.user.id, p_request_id: i ? `${requestPrefix}-${i / 50}` : requestPrefix, p_digest: await sha256Hex(stable(operations)),
       p_expected_cursor: null, p_operations: operations,
       p_confirmation: ctx.user.kind === 'agent' ? { required: false, id: null, risk: { required: false, reasons: ['invoices:resource_entries'] } } : null,
+      // Lo construye la Edge (no el navegador): Recursos (0820) solo acepta reconcile_entries desde el servidor (núcleo 0118)
+      p_origin: 'server',
     });
     movements += ((out.results?.[0] as { movements?: unknown[] } | undefined)?.movements ?? []).length;
   }
@@ -513,7 +515,7 @@ export async function applyResourceLinks(supabase: Supabase, ctx: RequestContext
     const operations = [...items.values()].map((item) => ({ op: 'insert', table: 'resources.items', id: item.id, fields: item.fields }));
     await supabase.rpc<CommitResult>('core_commit', {
       p_app: 'resources', p_actor: ctx.user.id, p_request_id: `invoices-links-items-${preview.digest}`, p_digest: await sha256Hex(stable(operations)),
-      p_expected_cursor: null, p_operations: operations, p_confirmation: null,
+      p_expected_cursor: null, p_operations: operations, p_confirmation: null, p_origin: 'server',
     });
   }
   const revisions = new Map<string, number>();
