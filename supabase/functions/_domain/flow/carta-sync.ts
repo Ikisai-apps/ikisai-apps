@@ -35,8 +35,12 @@ export function planSync(project: SyncProject, menu: CartaMenu, products: SyncPr
   const live = products.filter((p) => !p.deleted_at && p.project_id === project.id);
   const seen = new Set<string>();
   for (const line of menu.lines) {
+    // Primero por su línea de Food; si no, el mismo producto por código, aunque venga de otra carta (p. ej. la copiada de otra
+    // barra, VG 28-10): se reaprovecha en vez de crear otro igual.
+    const lineIds = new Set(menu.lines.map((l) => l.line_id));
     const current = live.find((p) => p.source_line_id === line.line_id)
-      ?? live.find((p) => p.scope === line.scope && p.code === line.code && !p.source_line_id);
+      ?? live.filter((p) => !seen.has(p.id) && p.scope === line.scope && p.code === line.code && !(p.source_line_id && lineIds.has(p.source_line_id)))
+        .sort((a, b) => Number(!!b.active) - Number(!!a.active))[0];
     const fields = {
       name: line.name, description: line.description, price_cents: line.sale_price_cents, active: line.active, image_key: line.image_key,
       allergens: line.allergens ?? [], allergens_checked: !!line.allergens_checked, source_line_id: line.line_id, position: Math.round(Number(line.position) || 0),
@@ -56,7 +60,8 @@ export function planSync(project: SyncProject, menu: CartaMenu, products: SyncPr
     }
   }
   for (const p of live) {
-    if (!seen.has(p.id) && p.active && !menu.lines.some((l) => l.scope === p.scope && l.code === p.code)) {
+    // Lo que la carta de Food no trae se retira, también un duplicado del mismo código que quedó sin línea.
+    if (!seen.has(p.id) && p.active) {
       ops.push({ op: 'update', table: TABLES.products, id: p.id, expectedRevision: p.revision, fields: { active: false } });
       deactivated++;
     }
