@@ -87,3 +87,10 @@ test('editor · plantilla «apertura» (0955): Preparación y Revisión, la piez
   const cols = (await app.t.db.query<{ key: string; behavior: string }>(`select key, behavior from flow.columns where project_id = $1 and deleted_at is null order by position`, [id])).rows;
   assert.deepEqual(cols.map((c) => `${c.key}:${c.behavior}`), ['logistics:free_task', 'review:inspect_confirm']);
 });
+
+test('editor · plantilla «alojamiento» (0958): recepción por puestos', async () => {
+  const id = uuid();
+  await ok([call(PROCEDURES.createFlow, { project_id: id, template_key: 'alojamiento', name: 'Alojamiento de prueba' })]);
+  const cols = (await app.t.db.query<{ key: string }>(`select key from flow.columns where project_id = $1 and deleted_at is null order by position`, [id])).rows;
+  assert.deepEqual(cols.map((c) => c.key), ['rec_solicitud', 'rec_camas', 'rec_registro', 'rec_peticiones', 'rec_salida']);
+});

@@ -564,3 +564,17 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - `flow.guard_board` (0937) se limita al tablero del Avance (columna `avance`).
 - **Entrada común:** un flujo congelado deja de ofrecerse en cuanto hay otro vivo de su misma plantilla sobre el motor (fuera de pruebas). Sigue accesible por su enlace.
 - La barra genérica del evento y el paso de la carta pública a ella se hacen con una carga (`MUELA/cargas/flow/flow-29-barra-generica.sql`), no desde la interfaz.
+
+## 57. Recepción «por puestos» del alojamiento libre (migración `0958`)
+
+- Decisión de VG (28-10): como la barra, un carril por puesto. Las piezas nuevas (`inspect_confirm`) son:
+  - `rec_solicitud` («Solicitud y cobro»);
+  - `rec_camas` («Camas», con comidas y extras);
+  - `rec_registro` («Registro» de viajeros);
+  - `rec_peticiones` («Peticiones» de huéspedes, puesto continuo, una tarjeta por petición);
+  - `rec_salida` («Salida»).
+- La plantilla `alojamiento` v1 lleva los cinco puestos.
+- **Datos:** son de Booking. Cada carril lee `booking.reception_board {event_id, day}` (el evento del flujo, hoy) por su capacidad, con el token de la persona, y se queda con las tarjetas de su puesto. Cada tarjeta lleva «Abrir en Booking ↗», que abre su pantalla real (`route`) con el campo señalado (`anchor`) y «Volver a Flow».
+  - Una solicitud saca trabajo en varios puestos a la vez; no hay tarjeta que viaje.
+  - Se relee al volver a la pestaña y cada 30 s.
+- Sin «cama libre frente a lista», sin concurrencia especial y sin pago de grupo.
