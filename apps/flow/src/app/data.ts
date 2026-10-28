@@ -45,6 +45,8 @@ export interface FlowData {
   accounts: Account[];
   /** La caja de este flujo lleva cuentas (config `accounts` de su columna, solo v2). */
   accountsEnabled: boolean;
+  /** Flujos cuya caja lleva cuentas (para las fichas, que se abren sin flujo). */
+  accountsProjects: Set<string>;
   /** Quien entrega puede dar por hecho lo que quede y entregar de una vez (config de Servicio, solo v2; 0912). */
   completeOnDelivery: Set<string>;
   /** Caja profunda (config de Caja `deep_checkout`, solo v2; 0917): ficha del cliente y «Pagar». */
@@ -84,6 +86,8 @@ export async function loadData(client: SyncClient, projectId?: string | null): P
     accounts: inProject(live<Account>(accounts)),
     accountsEnabled: !!projectId && live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
       .some((c) => c.project_id === projectId && c.key === 'order' && c.config?.accounts === true),
+    accountsProjects: new Set(live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
+      .filter((c) => c.key === 'order' && c.config?.accounts === true).map((c) => c.project_id)),
     completeOnDelivery: new Set(live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)
       .filter((c) => c.key === 'service' && c.config?.complete_on_delivery === true).map((c) => c.project_id)),
     deepCheckout: new Set(live<{ project_id: string; key: string; config: Record<string, unknown> | null } & Row>(columns)

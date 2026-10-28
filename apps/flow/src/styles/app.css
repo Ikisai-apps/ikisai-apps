@@ -192,7 +192,7 @@
 .accounts-list{display:grid;gap:8px}
 .account-card{display:flex;align-items:center;gap:10px;padding:10px 12px}
 .account-card .qcard-text{flex:1;min-width:0}
-.carta-notice{margin:0 16px 10px;padding:10px 12px;border-radius:10px;background:var(--surface-2,#f2efe9)}
+.carta-notice{margin:0 16px 10px;padding:10px 12px;border-radius:10px;background:var(--paper-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
 /* Check-in (Llegada → Cama → Firma → Salida) */
 .presence-card{display:flex;align-items:center;gap:10px;padding:10px 12px}
 .presence-card .qcard-text{flex:1;min-width:0}
@@ -238,6 +238,12 @@
 
 /* Tablero de carriles (createLanes): la altura disponible bajo la cabecera y sobre la barra */
 .app-main .lanes{--lanes-height:calc(100dvh - 180px)}
+/* Lado a lado en ordenador (VG, 28-10): el tablero usa todo el ancho, no la columna de lectura de 960 px, y cada carril
+   tiene un ancho cómodo. */
+@media (min-width:900px){
+  .main:has(.lanes[data-view="side"]){width:100%;max-width:none}
+  .lanes[data-view="side"] .lanes-lane{flex:1 0 300px;max-width:none}
+}
 
 /* «Avance por aplicaciones» (0937–0938): copiado de la página del artefacto v94 con los tokens del kit. */
 .avance{display:grid;gap:10px}
@@ -378,3 +384,26 @@
 .review-item .pill.is-critical{color:var(--alert);border-color:var(--alert)}
 .review-value{max-width:8rem;min-height:44px}
 .qcard-state.is-ready{color:var(--ok-ink,var(--ok));font-weight:600}
+.station-now{margin:0 0 8px}.station-now strong{font-size:1.1rem}
+.station-tech{margin-top:8px}.station-tech>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--muted)}
+.param-row{display:grid;gap:4px;margin:0 0 10px}
+.param-name{all:unset;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;min-height:32px}
+.param-name:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.param-i{color:var(--muted);font-weight:400}
+.param-tip{justify-self:start;max-width:28ch;font-size:13px;line-height:1.35;background:var(--ink);color:var(--bg);border-radius:10px;padding:6px 10px;position:relative}
+.param-tip::before{content:'';position:absolute;top:-5px;left:14px;border:5px solid transparent;border-top:0;border-bottom-color:var(--ink)}
+.param-mid{margin-top:4px;padding-top:8px;border-top:1px solid var(--line);font-size:13px}
+.param-mid .param-name{font-weight:500;font-size:13px}
+/* Tablero del flujo: en pestañas, la barra inferior ya elige la columna; arriba solo queda «Pestañas / Lado a lado» (VG, 28-10). */
+.flow-board .lanes-sum{visibility:hidden}
+.flow-board[data-view="tabs"] .lanes-tabs{display:none}
+.flow-pick-title{margin:10px 0 2px;font-size:.9rem;color:var(--muted)}
+/* Cabecera de Flow (VG, 28-10): sin el estado de sincronización (está en el menú y los avisos salen como banda), sin cerrar
+   sesión (en el menú); el interruptor del tablero arriba y sin su fila sobre el contenido. */
+.topbar .statusbar{display:none}
+#logoutButton{display:none}
+.flow-board .lanes-bar{display:none}
+.flow-viewswitch{display:inline-flex;padding:3px;border-radius:999px;background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--line)}
+.flow-viewswitch[hidden]{display:none}
+.flow-viewbtn{min-height:36px;padding:0 10px;border:0;border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:650;cursor:pointer;white-space:nowrap}
+.flow-viewbtn[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}

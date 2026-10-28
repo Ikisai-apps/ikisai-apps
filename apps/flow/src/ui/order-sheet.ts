@@ -20,7 +20,7 @@ import { openDeliverySheet } from './delivery-sheet.ts';
  * - Con cuentas (v2, 0910): «A cuenta» lo carga a una cuenta abierta (o abre una). Mientras la cuenta está abierta, el
  *   pedido no se corrige ni se anula; liquidada, se corrige pero no se anula (su dinero está en el pago de la cuenta).
  */
-export function openOrderSheet(client: SyncClient, orderId: string): void {
+export function openOrderSheet(client: SyncClient, orderId: string, opts: { onClose?: () => void } = {}): void {
   const actions = flowActions(client);
   const me = client.bootstrap()?.profile.userId ?? null;
   const role = client.bootstrap()?.membership.role ?? 'reader';
@@ -45,7 +45,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
   const body = el('div', { class: 'order-body' });
   const totalEl = el('p', { class: 'order-total' });
   const foot = el('div', { class: 'flow-actions' });
-  const sheet = openSheet({ title: 'Pedido', body: el('div', { class: 'order-sheet' }, head, body, totalEl), foot, onClose: () => offData() });
+  const sheet = openSheet({ title: 'Pedido', body: el('div', { class: 'order-sheet' }, head, body, totalEl), foot, onClose: () => { offData(); opts.onClose?.(); } });
 
   const order = (): Order | undefined => data?.orders.find((o) => o.id === orderId);
   const lines = () => data?.linesByOrder.get(orderId) ?? [];
@@ -71,7 +71,10 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
 
   function catalog(onChange: (productId: string, q: number) => void, value: (productId: string) => number, max?: (productId: string) => number): HTMLElement[] {
     qtyFields.clear();
-    return groupMenu([...data!.products.values()].filter((p) => p.active).map(asMenu)).map((g) => el('section', { class: 'order-group' },
+    // Solo la carta del flujo de este pedido (los datos traen los productos de todos los flujos: salían repetidos y se podía
+    // elegir el de otra barra, VG 28-10).
+    const project = data!.orders.find((x) => x.id === orderId)?.project_id;
+    return groupMenu([...data!.products.values()].filter((p) => p.active && p.project_id === project).map(asMenu)).map((g) => el('section', { class: 'order-group' },
       el('h3', null, g.label),
       ...g.products.map((mp) => {
         const product = data!.products.get(mp.id)!;
@@ -211,11 +214,12 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
         } catch (error) { toast(describeError(error)); }
       });
       const cash = pay('cash'); const bizum = pay('bizum');
-      const onAccount = data?.accountsEnabled ? [act({ class: 'ghost', 'data-method': 'account' }, 'A cuenta', async () => {
+      // La ficha se abre sin flujo: las cuentas se miran en el flujo del pedido (no salía «A cuenta», VG 28-10).
+      const onAccount = data?.accountsProjects.has(o.project_id) ? [act({ class: 'ghost', 'data-method': 'account' }, 'Cargar a cuenta', async () => {
         if (!isOnline(client)) { toast('Cargar a cuenta necesita conexión.'); return; }
         const fresh = order();
         if (!fresh || !data) return;
-        const accountId = await chooseAccount(client, data, fresh.customer_id);
+        const accountId = await chooseAccount(client, data, fresh.customer_id, fresh.project_id);
         if (!accountId) return;
         try {
           const out = await actions.chargeToAccount(fresh.id, accountId, order()?.revision ?? fresh.revision);
@@ -226,7 +230,8 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
       const deep = data?.deepCheckout.has(o.project_id)
         ? [el('button', { type: 'button', class: 'primary', onclick: () => { sheet.close(); openPaySheet(client, o.project_id, [o.id]); } }, 'Pagar')] as HTMLButtonElement[] : null;
       for (const b of [cash, bizum, ...onAccount, ...(deep ?? [])]) b.disabled = empty || lines().some((l) => l._pending);
-      if (deep) replace(foot, ...deep, ...onAccount); else replace(foot, cash, bizum, ...onAccount);
+      // «Cargar a cuenta» antes de pagar (VG, 28-10).
+      if (deep) replace(foot, ...onAccount, ...deep); else replace(foot, ...onAccount, cash, bizum);
     } else if (mode === 'correct') {
       const save = (method: PayMethod) => act({ class: 'primary' }, `Guardar (${PAY_METHOD_LABELS[method].toLowerCase()})`, () => saveCorrection(method));
       replace(foot, el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'view'; correction = null; shape = ''; paint(); } }, 'Cancelar'), save('cash'), save('bizum'));

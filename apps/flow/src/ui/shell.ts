@@ -1,11 +1,11 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, icon, openFeedbackCenter, registerReveal, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, icon, openFeedbackCenter, openSheet, registerReveal, replace, toast,
   type Lanes, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
-import { loadProjects, watchData, type FlowData } from '../app/data.ts';
+import { loadProjects, watchData, type FlowData, type Project } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
@@ -17,7 +17,7 @@ import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
-import { mountQueue } from './prep.ts';
+import { mountBreadBanner, mountQueue } from './prep.ts';
 import { createServiceMode } from './service-mode.ts';
 
 export interface ShellContext {
@@ -30,6 +30,10 @@ export interface ViewContext extends ShellContext {
   navigate(hash: string): void;
   /** Flujo (proyecto) en el que se está; `null` en la lista de flujos. */
   projectId: string | null;
+  /** Nombre de la columna del flujo (el que se pone en «Columnas del flujo»), para el título de su pantalla. */
+  columnLabel?: string;
+  /** Logística lleva también lo de Ingredientes (un solo carril en la barra, VG 28-10). */
+  mergeIngredients?: boolean;
 }
 
 export type ViewMount = (ctx: ViewContext) => () => void;
@@ -102,6 +106,9 @@ function navFor(projectId: string, columns: FlowColumn[], short: boolean): NavIt
  * Cáscara común del kit: cabecera, menú lateral (MUELA-013) con el lanzador de apps y «Sugerencias y QA», «‹ Volver a…»
  * (K9) cuando se llega desde otra app, barra de estado y navegación. Rutas propias de Flow, por ahora solo Inicio.
  */
+/** El botón del modo servicio (pantalla encendida y aviso de pedido nuevo), que pinta Preparación. */
+export let serviceToggle: HTMLElement | null = null;
+
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { client } = ctx;
   let unmountView: (() => void) | null = null;
@@ -132,7 +139,39 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   });
 
   const boot = client.bootstrap();
+  /** Flujos que ve la persona, para el menú (se refrescan con la tabla). */
+  let menuProjects: Project[] = [];
+  const refreshMenuProjects = () => void loadProjects(client).then((ps) => { menuProjects = ps.filter((p) => p.status === 'active'); }).catch(() => undefined);
+  const RECENT_KEY = 'flow-recientes';
+  const readRecent = (): string[] => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as string[]; } catch { return []; } };
+  const pushRecent = (id: string) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((x) => x !== id)].slice(0, 3))); } catch { /* sin almacenamiento */ } };
+  const KINDS: Array<[string, string, string[]]> = [['barra', 'Barra', ['barra']], ['alojamiento', 'Alojamiento', ['alojamiento', 'checkin']],
+    ['avance', 'Avance', ['avance']], ['apertura', 'Revisión de apertura', ['apertura']]];
+  const projectRow = (p: Project) => ({ label: p.name, sub: p.test_mode ? 'pruebas' : null, href: `#/p/${p.id}` });
+  function menuRecents() {
+    return readRecent().map((id) => menuProjects.find((p) => p.id === id)).filter((p): p is Project => !!p && !p.frozen).map(projectRow);
+  }
+  function menuSections() {
+    const live = menuProjects.filter((p) => !p.frozen);
+    const known = new Set(KINDS.flatMap(([, , keys]) => keys));
+    const sections = KINDS.map(([key, label, keys]) => ({ key, label, rows: live.filter((p) => !p.test_mode && keys.includes(p.template_key ?? '')).map(projectRow) }))
+      .concat([{ key: 'otros', label: 'Otros flujos', rows: live.filter((p) => !p.test_mode && !known.has(p.template_key ?? '')).map(projectRow) },
+        { key: 'pruebas', label: 'Pruebas', rows: live.filter((p) => p.test_mode).map(projectRow) }])
+      .filter((s) => s.rows.length);
+    return [...sections, { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }] }];
+  }
+  refreshMenuProjects();
+  client.onTable(TABLES.projects, refreshMenuProjects);
   const service = createServiceMode();
+  serviceToggle = service.button;
+  /** «Pestañas / Lado a lado» del tablero, en la cabecera (VG, 28-10): solo dentro de un flujo con tablero. */
+  const tabsBtn = el('button', { type: 'button', class: 'flow-viewbtn', 'aria-pressed': 'true', onclick: () => board?.lanes.setView('tabs') }, 'Pestañas');
+  const sideBtn = el('button', { type: 'button', class: 'flow-viewbtn', 'aria-pressed': 'false', onclick: () => board?.lanes.setView('side') }, 'Lado a lado');
+  const viewSwitch = el('div', { class: 'flow-viewswitch', role: 'group', 'aria-label': 'Vista del tablero', hidden: true }, tabsBtn, sideBtn);
+  const paintViewSwitch = (view: string | null) => {
+    viewSwitch.hidden = !view;
+    tabsBtn.setAttribute('aria-pressed', String(view === 'tabs')); sideBtn.setAttribute('aria-pressed', String(view === 'side'));
+  };
   const backButton = el('button', { type: 'button', class: 'iconbtn flow-nav-btn', 'aria-label': 'Volver', title: 'Volver', hidden: true,
     'data-feedback-id': 'flow.navegacion.volver', onclick: () => { if (navParent) navigate(navParent); } }, el('span', { class: 'flow-nav-chev', 'aria-hidden': 'true' }, '‹'));
   const closeButton = el('button', { type: 'button', class: 'iconbtn flow-nav-btn', 'aria-label': 'Cerrar y volver a la entrada', title: 'Cerrar y volver a la entrada', hidden: true,
@@ -148,13 +187,18 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navLayout: 'bar',
     // Guiado mínimo del kit (0.68): ?campo= señala el campo; ?paso= lo explica y pone «Volver a…». Sin cliente: no lee nada de Flow.
     guide: { feedbackId: 'flow.guia' },
-    tools: [backButton, closeButton, service.button],
+    // Cabecera limpia (VG, 28-10): sin ‹ (abajo está Inicio), sin sincronizar ni cerrar sesión (en el menú); el modo servicio va a
+    // Preparación. Queda el interruptor del tablero y ✕ en el Inicio del flujo.
+    tools: [viewSwitch, closeButton],
     returnTo: { feedbackId: 'flow.cabecera.volver' },
     menu: {
       label: 'Menú de Flow',
       profile: { name: boot?.profile.displayName ?? 'Tu cuenta', role: ROLE_LABELS[boot?.membership.role ?? 'reader'] ?? '' },
       theme: true,
       launcher,
+      // Menú (VG, 28-10): los tres últimos flujos abiertos y, debajo, los flujos por tipo y los recorridos.
+      recents: () => menuRecents(),
+      sections: () => menuSections(),
       signalHere: () => { void feedback.open({ id: screen.id, path: [screen.label], element: main, fallback: true }, main); },
       column: true,
       feedbackId: 'flow.menu',
@@ -175,12 +219,46 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
   function paintFlowNav(hash: string, projectId: string | null, isEntry: boolean): void {
     navParent = isEntry ? null : parentOf(hash, projectId);
-    backButton.hidden = !navParent;
-    closeButton.hidden = !navParent;
+    // VG (28-10): en el Inicio de un flujo, solo ✕ (vuelve a la entrada); en sus carriles y en el resto, solo ‹.
+    const home = !!projectId && hash === `#/p/${projectId}`;
+    backButton.hidden = !navParent || home;
+    // Fuera de un flujo (Recorridos y sus pantallas, sin barra inferior) también ✕, para no quedarse dentro.
+    closeButton.hidden = !navParent || (!!projectId && !home);
+  }
+
+  /** Lista de lo que el servidor rechazó: qué era, por qué, y reintentar o descartar cada uno. */
+  async function showRejected(): Promise<void> {
+    const host = el('div', { class: 'rejected-list' });
+    const sheet = openSheet({ title: 'Cambios rechazados', meta: 'El servidor no los aceptó: no entraron. Reinténtalo (si ya está arreglado) o descártalo.', body: host });
+    const TABLE_NAMES: Record<string, string> = { 'flow.columns': 'columnas del flujo', 'flow.orders': 'pedido', 'flow.order_lines': 'línea de pedido', 'flow.units': 'tarea', 'flow.products': 'carta', 'flow.accounts': 'cuenta', 'flow.projects': 'flujo' };
+    async function paint(): Promise<void> {
+      const list = await client.rejected();
+      if (!list.length) { sheet.close(); paintBanners(client.status()); return; }
+      replace(host, ...list.map((b) => {
+        const what = [...new Set(b.operations.map((o) => o.op === 'call' ? `acción ${(o as { procedure?: string }).procedure ?? ''}` : `${o.op === 'insert' ? 'alta' : o.op === 'delete' ? 'baja' : 'cambio'} de ${TABLE_NAMES[(o as { table: string }).table] ?? (o as { table: string }).table}`))].join(', ');
+        return el('div', { class: 'qcard rejected-item' },
+          el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, what || 'Cambio'),
+            el('small', { class: 'qcard-sub' }, describeError(b.error))),
+          el('div', { class: 'flow-actions' },
+            el('button', { type: 'button', class: 'ghost', onclick: async () => { await client.discardRejected(b.requestId); void paint(); } }, 'Descartar'),
+            el('button', { type: 'button', class: 'primary', onclick: async () => {
+              try { await client.retryRejected(b.requestId); await client.sync(); } catch (error) { toast(describeError(error)); }
+              void paint();
+            } }, 'Reintentar')));
+      }));
+    }
+    await paint();
   }
 
   function paintBanners(status: SyncStatus): void {
-    shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply }, staleBanner(status));
+    shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply,
+      // Rechazados (VG, 28-10): «Ver» abre la lista con el motivo de cada uno; «Descartar» los quita todos.
+      onShowRejected: () => void showRejected(),
+      onDiscardRejected: async () => {
+        if (!(await confirmDialog({ title: 'Descartar cambios rechazados', text: 'Se quitan de este dispositivo; en el servidor no había entrado nada.', confirmLabel: 'Descartar', danger: true }))) return;
+        for (const b of await client.rejected()) await client.discardRejected(b.requestId);
+        paintBanners(client.status());
+      } }, staleBanner(status));
   }
 
   /**
@@ -230,6 +308,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   let currentProject: string | null = null;
   let columns: FlowColumn[] = [];
+  let mergeIngredients = false;
   /** Carriles (VG 27-10; createLanes del kit): en los flujos no congelados las columnas van en un tablero con dos vistas
       intercambiables, pestañas o lado a lado, recordada en el dispositivo. La v1 congelada sigue con una columna por pantalla. */
   let boardable = false;
@@ -246,9 +325,14 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   async function enterProject(projectId: string | null): Promise<void> {
     if (projectId === currentProject) return;
     currentProject = projectId;
+    if (projectId) pushRecent(projectId);
     offBadges?.(); offBadges = null; lastPrepPending = null;
     if (!projectId) { columns = []; boardable = false; shell.setNav([]); return; }
     columns = await loadColumns(projectId);
+    // Barra (no congelada): Ingredientes va dentro de Logística, un solo carril con las dos cosas (VG, 28-10).
+    const frozenNow = (await loadProjects(client)).some((p) => p.id === projectId && p.frozen);
+    mergeIngredients = !frozenNow && columns.some((c) => c.key === 'logistics') && columns.some((c) => c.key === 'ingredients');
+    if (mergeIngredients) columns = columns.filter((c) => c.key !== 'ingredients');
     // El Avance ya trae sus carriles (por agente): no va dentro del tablero de columnas.
     boardable = (await loadProjects(client)).some((p) => p.id === projectId && !p.frozen) && !columns.some((c) => c.key === 'avance');
     if (currentProject !== projectId) return;
@@ -262,10 +346,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const prepPending = d.units.filter((u) => u.kind === 'prep' && u.status === 'pending').length;
     if (lastPrepPending !== null && prepPending > lastPrepPending) service.notifyNew();
     lastPrepPending = prepPending;
-    shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open').length);
+    // Abiertos con algo pedido: un «Nuevo pedido» vacío no cuenta (VG, 28-10: salía 4 con uno solo).
+    shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open' && (d.linesByOrder.get(o.id)?.length ?? 0) > 0).length);
     shell.setBadge(`${base}/preparacion`, d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
     shell.setBadge(`${base}/servicio`, d.orders.filter((o) => o.status === 'paid').length);
-    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'logistics' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && (u.column_key === 'logistics' || (mergeIngredients && u.column_key === 'ingredients')) && ['proposed', 'pending', 'in_progress'].includes(u.status)).length);
     shell.setBadge(`${base}/ingredientes`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'ingredients' && ['proposed', 'pending', 'in_progress'].includes(u.status)).length);
   }
 
@@ -304,7 +389,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(projectId ? hash : '#/');
     paintFlowNav(hash, projectId, entry.slug === 'flujos');
     replace(main);
-    unmountView = entry.mount({ ...ctx, main, navigate, projectId });
+    unmountView = entry.mount({ ...ctx, main, navigate, projectId, columnLabel: m?.[2] ? columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m[2])?.label : undefined });
     screen = { id: `flow.${entry.slug}`, label: entry.title };
     main.setAttribute('data-feedback-id', screen.id);
     main.setAttribute('data-feedback-label', screen.label);
@@ -319,17 +404,23 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const projectId = vctx.projectId!;
     const lanes = createLanes({
       label: 'Columnas del flujo', storageKey: 'flow-board', selected, feedbackId: 'flow.tablero',
-      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body }) })),
+      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body, columnLabel: c.label, mergeIngredients }) })),
+      onView: (view) => paintViewSwitch(view),
       onSelect: (id) => {
         const h = `#/p/${projectId}/${COLUMN_VIEWS[id]?.slug ?? id}`;
         if (location.hash !== h) { history.replaceState(null, '', h); shell.setRoute(h); }
       },
     });
-    vctx.main.append(lanes.element);
+    lanes.element.classList.add('flow-board');
+    // El pan, a la vista desde cualquier carril (VG, 28-10).
+    const breadHost = el('p', { class: 'station-notice flow-bread', role: 'status', hidden: true });
+    const offBread = mountBreadBanner(client, projectId, breadHost);
+    vctx.main.append(breadHost, lanes.element);
     board = { projectId, lanes };
+    paintViewSwitch(lanes.view());
     // Guiado: un campo de otra columna está en otro carril; se elige ese carril para que aparezca (`flow.<pantalla>…`).
     const offReveals = columns.map((c) => registerReveal(`flow.${COLUMN_VIEWS[c.key]?.slug ?? c.key}`, () => lanes.select(c.key)));
-    return () => { offReveals.forEach((off) => off()); lanes.destroy(); board = null; };
+    return () => { offReveals.forEach((off) => off()); offBread(); lanes.destroy(); board = null; paintViewSwitch(null); };
   }
 
   const offStatus = client.onStatus((status) => {

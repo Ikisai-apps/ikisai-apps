@@ -37,7 +37,7 @@ export async function loadGuests(client: SyncClient, projectId: string): Promise
 }
 
 export function mountPresence(stage: PresenceStage): ViewMount {
-  return ({ main, client, projectId }) => {
+  return ({ main, client, projectId, columnLabel }) => {
     const canEdit = ['editor', 'owner'].includes(client.bootstrap()?.membership.role ?? '');
     let guests: Guest[] = [];
     let marks = new Set<string>();
@@ -49,7 +49,7 @@ export function mountPresence(stage: PresenceStage): ViewMount {
       oninput: () => { search = searchInput.value.trim().toLocaleLowerCase('es'); paint(); } });
     const count = el('p', { class: 'muted small', role: 'status' });
     const listEl = el('div', { class: 'fqueue presence-list', role: 'list' });
-    main.append(el('h1', { class: 'col-title' }, TITLES[stage]), el('div', { class: 'orders-tools' }, searchInput), count, listEl);
+    main.append(el('h1', { class: 'col-title' }, columnLabel ?? TITLES[stage]), el('div', { class: 'orders-tools' }, searchInput), count, listEl);
 
     /** ¿Le falta este paso? ¿Lo tiene hecho? (los que no tocan esta columna, ni una cosa ni otra) */
     function state(g: Guest): 'todo' | 'done' | null {
