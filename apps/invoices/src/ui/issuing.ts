@@ -6,7 +6,7 @@
  * sincronizar. Una emitida no se edita: se rectifica (PR 3). El envío a la AEAT está apagado y no se construye aún.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createPrintView, el, fieldAttrs, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { fb, type FbMark } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
@@ -60,18 +60,18 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     return;
   }
   const a: IssuedAddress = draft?.recipient_address ?? prefill?.recipient_address ?? {};
-  const series = select('draftSeries', seriesList.map((s) => [s.code, `${s.code} · siguiente ${nextNumber(s)}`] as [string, string]), draft?.series_code ?? seriesList[0]!.code, { 'data-feedback-id': 'invoices.emitidas.borrador.serie', 'data-feedback-label': 'Serie' });
-  const kind = select('draftRecipientKind', Object.entries(RECIPIENT_KIND_LABELS), draft?.recipient_kind ?? prefill?.recipient_kind ?? 'empresa', { 'data-feedback-id': 'invoices.emitidas.borrador.tipo_cliente', 'data-feedback-label': 'Tipo de destinatario' });
-  const name = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftRecipientName', maxlength: '200', autocomplete: 'organization', value: draft?.recipient_name ?? prefill?.recipient_name ?? '' });
-  const taxId = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftRecipientTaxId', maxlength: '40', autocapitalize: 'characters', value: draft?.recipient_tax_id ?? prefill?.recipient_tax_id ?? '' });
-  const line = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftAddressLine', maxlength: '200', autocomplete: 'street-address', value: a.line ?? '' });
-  const postal = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftPostalCode', maxlength: '12', autocomplete: 'postal-code', value: a.postal_code ?? '' });
-  const city = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftCity', maxlength: '80', value: a.city ?? '' });
-  const province = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftProvince', maxlength: '80', value: a.province ?? '' });
-  const country = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
+  const series = select('draftSeries', seriesList.map((s) => [s.code, `${s.code} · siguiente ${nextNumber(s)}`] as [string, string]), draft?.series_code ?? seriesList[0]!.code, { ...fieldAttrs({ id: 'invoices.emitidas.borrador.serie', label: 'Serie', type: 'select', entity: 'invoices.issued_invoices', prop: 'series_code', sensitivity: 'internal', confirm: 'none' }) });
+  const kind = select('draftRecipientKind', Object.entries(RECIPIENT_KIND_LABELS), draft?.recipient_kind ?? prefill?.recipient_kind ?? 'empresa', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.tipo_cliente', label: 'Tipo de destinatario', type: 'select', entity: 'invoices.issued_invoices', prop: 'recipient_kind', sensitivity: 'internal', confirm: 'none' }) });
+  const name = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.destinatario', label: 'Nombre o razón social', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_name', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftRecipientName', maxlength: '200', autocomplete: 'organization', value: draft?.recipient_name ?? prefill?.recipient_name ?? '' });
+  const taxId = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.destinatario_nif', label: 'NIF', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_tax_id', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftRecipientTaxId', maxlength: '40', autocapitalize: 'characters', value: draft?.recipient_tax_id ?? prefill?.recipient_tax_id ?? '' });
+  const line = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.domicilio', label: 'Domicilio', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_address', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftAddressLine', maxlength: '200', autocomplete: 'street-address', value: a.line ?? '' });
+  const postal = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.codigo_postal', label: 'Código postal', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_address', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftPostalCode', maxlength: '12', autocomplete: 'postal-code', value: a.postal_code ?? '' });
+  const city = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.localidad', label: 'Localidad', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_address', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftCity', maxlength: '80', value: a.city ?? '' });
+  const province = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.provincia', label: 'Provincia', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_address', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftProvince', maxlength: '80', value: a.province ?? '' });
+  const country = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.pais', label: 'País', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_country', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
   const addressNote = el('span', { class: 'hint', id: 'draftAddressNote' });
   // Directorio de clientes (ronda 46): buscar por nombre o NIF rellena NIF, tipo, país y domicilio fiscal.
-  const customerSearch = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.buscar_cliente', 'data-feedback-label': 'Buscar cliente guardado', type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
+  const customerSearch = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.buscar_cliente', storage: 'none', label: 'Buscar cliente guardado', type: 'search', sensitivity: 'personal', confirm: 'none' }), type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
   const customerResults = el('div', { 'data-feedback-ignore': '', class: 'customer-results', id: 'draftCustomerResults' });
   function useCustomer(c: LocalCustomer): void {
     name.value = c.name; taxId.value = c.tax_id; if (c.kind) kind.value = c.kind;
@@ -95,12 +95,12 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     if (!line.value.trim() && !postal.value.trim() && !city.value.trim()) { line.value = ad.line ?? ''; postal.value = ad.postal_code ?? ''; city.value = ad.city ?? ''; province.value = ad.province ?? ''; }
     taxId.value = c.tax_id;
   });
-  const description = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.concepto', 'data-feedback-label': 'Concepto', type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
-  const operationDate = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.fecha_operacion', 'data-feedback-label': 'Fecha de la operación', type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
-  const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null, { 'data-feedback-id': 'invoices.emitidas.borrador.categoria', 'data-feedback-label': 'Categoría de ingreso' });
-  const purpose = select('draftPurpose', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], draft?.purpose ?? null, { 'data-feedback-id': 'invoices.emitidas.borrador.concepto_cobro', 'data-feedback-label': 'Concepto del cobro' });
+  const description = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.concepto', label: 'Concepto', type: 'text', entity: 'invoices.issued_invoices', prop: 'description', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
+  const operationDate = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.fecha_operacion', label: 'Fecha de la operación', type: 'date', entity: 'invoices.issued_invoices', prop: 'operation_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
+  const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null, { ...fieldAttrs({ id: 'invoices.emitidas.borrador.categoria', label: 'Categoría de ingreso', type: 'select', entity: 'invoices.issued_invoices', prop: 'income_category', sensitivity: 'internal', confirm: 'none' }) });
+  const purpose = select('draftPurpose', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], draft?.purpose ?? null, { ...fieldAttrs({ id: 'invoices.emitidas.borrador.concepto_cobro', label: 'Concepto del cobro', type: 'select', entity: 'invoices.issued_invoices', prop: 'purpose', sensitivity: 'internal', confirm: 'none' }) });
   // Precios con IVA incluido (las tarifas de Booking lo están): base y cuota se guardan exactas por línea.
-  const includeVat = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.iva_incluido', 'data-feedback-label': 'Precios con IVA incluido', type: 'checkbox', id: 'draftPricesIncludeVat', checked: draft?.prices_include_vat ?? prefill?.prices_include_vat ?? false });
+  const includeVat = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.iva_incluido', label: 'Precios con IVA incluido', type: 'toggle', entity: 'invoices.issued_invoices', prop: 'prices_include_vat', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', id: 'draftPricesIncludeVat', checked: draft?.prices_include_vat ?? prefill?.prices_include_vat ?? false });
   const totals = el('p', { 'data-feedback-ignore': '', class: 'hint', id: 'draftTotals' });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const linesHost = el('div', { id: 'draftLineInputs' });
@@ -122,14 +122,14 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   const text = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
   function addLine(initial?: PricedLine): void {
     const n = lineInputs.length + 1;
-    const d = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.linea_concepto', 'data-feedback-label': 'Concepto de la línea', type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, value: initial?.description ?? '' });
-    const q = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.linea_cantidad', 'data-feedback-label': 'Cantidad de la línea', type: 'text', inputmode: 'decimal', placeholder: 'Cant.', 'aria-label': `Cantidad de la línea ${n}`, value: initial?.quantity === null || initial?.quantity === undefined ? '1' : text(initial.quantity) });
-    const p = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: includeVat.checked ? 'Precio con IVA' : 'Precio sin IVA', 'aria-label': `Precio de la línea ${n}`, value: initial ? text(initial.unit_price) : '' });
-    const dto = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Dto.', 'aria-label': `Descuento de la línea ${n}`, value: initial?.discount_amount ? text(initial.discount_amount) : '' });
+    const d = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.linea_concepto', label: 'Concepto de la línea', type: 'text', entity: 'invoices.issued_invoice_lines', prop: 'description', sensitivity: 'internal', confirm: 'none' }), type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, value: initial?.description ?? '' });
+    const q = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.linea_cantidad', label: 'Cantidad de la línea', type: 'number', entity: 'invoices.issued_invoice_lines', prop: 'quantity', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'decimal', placeholder: 'Cant.', 'aria-label': `Cantidad de la línea ${n}`, value: initial?.quantity === null || initial?.quantity === undefined ? '1' : text(initial.quantity) });
+    const p = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.linea_precio', label: 'Precio de la línea', type: 'number', entity: 'invoices.issued_invoice_lines', prop: 'unit_price', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: includeVat.checked ? 'Precio con IVA' : 'Precio sin IVA', 'aria-label': `Precio de la línea ${n}`, value: initial ? text(initial.unit_price) : '' });
+    const dto = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.borrador.linea_descuento', label: 'Dto.', type: 'number', entity: 'invoices.issued_invoice_lines', prop: 'discount_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Dto.', 'aria-label': `Descuento de la línea ${n}`, value: initial?.discount_amount ? text(initial.discount_amount) : '' });
     const suggested = initial ? (initial.vat_rate === null ? '0' : String(Number(initial.vat_rate))) : category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
     const options: Array<[string, string]> = [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']];
     if (!options.some(([v]) => v === suggested)) options.push([suggested, `IVA ${suggested.replace('.', ',')} %`]);
-    const rate = select('', options, suggested, { 'data-feedback-id': 'invoices.emitidas.borrador.linea_iva', 'data-feedback-label': 'IVA de la línea', 'aria-label': `IVA de la línea ${n}` });
+    const rate = select('', options, suggested, { ...fieldAttrs({ id: 'invoices.emitidas.borrador.linea_iva', label: 'IVA de la línea', type: 'select', entity: 'invoices.issued_invoice_lines', prop: 'vat_rate', sensitivity: 'internal', confirm: 'none' }), 'aria-label': `IVA de la línea ${n}` });
     rate.addEventListener('change', () => { rate.dataset.touched = '1'; });
     if (initial) rate.dataset.touched = '1';
     const row = el('div', { class: 'draft-line' }, d, q, p, dto, rate);
@@ -386,9 +386,9 @@ const RECTIFY_REASONS: Array<[string, string]> = [
 export async function rectifyIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData): Promise<void> {
   const { client } = ctx;
   if (!emissionSeries(data, 'rectificativa').length) { toast('Falta una serie de rectificativas.'); openIssuingSettings(ctx, data); return; }
-  const kind = select('rectifyKind', [['I', 'Por diferencias: solo lo que cambia (por defecto)'], ['S', 'Por sustitución: la factura entera corregida']], 'I', { 'data-feedback-id': 'invoices.emitidas.rectificar.tipo', 'data-feedback-label': 'Tipo de rectificación' });
-  const code = select('rectifyCode', RECTIFY_REASONS, 'R4', { 'data-feedback-id': 'invoices.emitidas.rectificar.causa', 'data-feedback-label': 'Causa' });
-  const reason = el('input', { 'data-feedback-id': 'invoices.emitidas.rectificar.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'rectifyReason', maxlength: '400', placeholder: 'Devolución de una noche, NIF erróneo…' });
+  const kind = select('rectifyKind', [['I', 'Por diferencias: solo lo que cambia (por defecto)'], ['S', 'Por sustitución: la factura entera corregida']], 'I', { ...fieldAttrs({ id: 'invoices.emitidas.rectificar.tipo', label: 'Tipo de rectificación', type: 'select', entity: 'invoices.issued_invoices', prop: 'rectification_kind', sensitivity: 'internal', confirm: 'none' }) });
+  const code = select('rectifyCode', RECTIFY_REASONS, 'R4', { ...fieldAttrs({ id: 'invoices.emitidas.rectificar.causa', label: 'Causa', type: 'select', entity: 'invoices.issued_invoices', prop: 'invoice_type', sensitivity: 'internal', confirm: 'none' }) });
+  const reason = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.rectificar.motivo', label: 'Motivo', type: 'text', entity: 'invoices.issued_invoices', prop: 'rectification_reason', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'rectifyReason', maxlength: '400', placeholder: 'Devolución de una noche, NIF erróneo…' });
   const ok = await confirmDialog({ title: `Rectificar ${numberOf(invoice)}`, text: el('div', null,
     el('p', null, 'Se crea un borrador de rectificativa con las líneas de esta factura. Revísalo y emítelo; al emitirlo, esta queda como rectificada.'),
     field('Tipo', kind), invoice.invoice_type === 'F2' ? null : field('Causa', code), field('Motivo', reason)), confirmLabel: 'Crear rectificativa' });
@@ -474,9 +474,9 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
   function createRow(kind: 'ordinaria' | 'rectificativa', suggested: string, label: string, buttonMark: FbMark): HTMLElement | null {
     if (!canEdit || emissionSeries(data, kind).length) return null;
     const year = Number(todayIso().slice(0, 4));
-    const code = el('input', { type: 'text', id: `newSeries-${kind}`, maxlength: '10', value: suggested, 'aria-label': `Código de la serie de ${label}` });
-    const format = select(`newSeriesFormat-${kind}`, SERIES_FORMATS, SERIES_FORMATS[0]![0], { 'aria-label': `Formato del número de ${label}` });
-    const last = el('input', { type: 'text', inputmode: 'numeric', id: `newSeriesLast-${kind}`, maxlength: '6', value: '0', 'aria-label': `Último número ya emitido de ${label}` });
+    const code = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.series.codigo', label: 'Código de la serie', type: 'text', entity: 'invoices.issued_series', prop: 'code', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: `newSeries-${kind}`, maxlength: '10', value: suggested, 'aria-label': `Código de la serie de ${label}` });
+    const format = select(`newSeriesFormat-${kind}`, SERIES_FORMATS, SERIES_FORMATS[0]![0], { ...fieldAttrs({ id: 'invoices.emitidas.series.formato', label: 'Formato del número', type: 'select', entity: 'invoices.issued_series', prop: 'format', sensitivity: 'internal', confirm: 'none' }), 'aria-label': `Formato del número de ${label}` });
+    const last = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.series.ultimo_emitido', label: 'Último número ya emitido', type: 'number', entity: 'invoices.issued_series', prop: 'counter_last', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'numeric', id: `newSeriesLast-${kind}`, maxlength: '6', value: '0', 'aria-label': `Último número ya emitido de ${label}` });
     const preview = el('span', { class: 'hint', id: `newSeriesNext-${kind}` });
     const paintNext = () => {
       const n = Number(last.value) || 0;
@@ -495,9 +495,6 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
       if (lastNumber > 0) ops.push({ op: 'call', procedure: 'invoices.series_start', args: { code: c, last_number: lastNumber, year } });
       if (await commitSafely(client, ops, `Serie ${c} creada.`)) await closeSheet(true);
     } }, icon('plus', 16), `Crear serie de ${label}`);
-    fb(code, { feedbackId: 'invoices.emitidas.series.codigo', feedbackLabel: 'Código de la serie' });
-    fb(format, { feedbackId: 'invoices.emitidas.series.formato', feedbackLabel: 'Formato del número' });
-    fb(last, { feedbackId: 'invoices.emitidas.series.ultimo_emitido', feedbackLabel: 'Último número ya emitido' });
     fb(button, buttonMark);
     return el('div', { class: 'series-new' }, el('div', { class: 'row2' }, code, format), el('div', { class: 'row2' }, last, button), preview);
   }
@@ -505,10 +502,8 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
   /** Una serie sin emitidas todavía admite cambiar su formato y su último número (p. ej. continuar la hoja: F_02_26 → F_03_26). */
   async function adjustSeries(s: LocalIssuedSeries): Promise<void> {
     const year = s.valid_year ?? Number(todayIso().slice(0, 4));
-    const format = select('adjustSeriesFormat', SERIES_FORMATS.some(([f]) => f === s.format) ? SERIES_FORMATS : [[s.format, s.format], ...SERIES_FORMATS], s.format, { 'aria-label': 'Formato del número' });
-    const last = el('input', { type: 'text', inputmode: 'numeric', id: 'adjustSeriesLast', maxlength: '6', value: String(s.counter_last ?? 0), 'aria-label': 'Último número ya emitido' });
-    fb(format, { feedbackId: 'invoices.emitidas.series.ajustar.formato', feedbackLabel: 'Formato del número' });
-    fb(last, { feedbackId: 'invoices.emitidas.series.ajustar.ultimo', feedbackLabel: 'Último número ya emitido' });
+    const format = select('adjustSeriesFormat', SERIES_FORMATS.some(([f]) => f === s.format) ? SERIES_FORMATS : [[s.format, s.format], ...SERIES_FORMATS], s.format, { ...fieldAttrs({ id: 'invoices.emitidas.series.ajustar.formato', label: 'Formato del número', type: 'select', entity: 'invoices.issued_series', prop: 'format', sensitivity: 'internal', confirm: 'none' }), 'aria-label': 'Formato del número' });
+    const last = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.series.ajustar.ultimo', label: 'Último número ya emitido', type: 'number', entity: 'invoices.issued_series', prop: 'counter_last', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'numeric', id: 'adjustSeriesLast', maxlength: '6', value: String(s.counter_last ?? 0), 'aria-label': 'Último número ya emitido' });
     const ok = await confirmDialog({ title: `Ajustar la serie ${s.code}`, text: el('div', null,
       el('p', null, `Solo mientras no haya emitido ninguna factura. La siguiente será la del último número más uno, en ${year}.`),
       field('Formato', format), field('Último número ya emitido', last)), confirmLabel: 'Guardar' });
@@ -522,7 +517,7 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
   }
 
   async function closeSeries(s: LocalIssuedSeries): Promise<void> {
-    const last = el('input', { 'data-feedback-id': 'invoices.emitidas.series.ultimo_numero', 'data-feedback-label': 'Último número', type: 'text', id: 'closeSeriesLast', maxlength: '40', placeholder: '2026-0123' });
+    const last = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.series.ultimo_numero', label: 'Último número', type: 'text', entity: 'invoices.issued_series', prop: 'closed_last_number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'closeSeriesLast', maxlength: '40', placeholder: '2026-0123' });
     const ok = await confirmDialog({ title: `¿Cerrar la serie ${s.code}?`, text: el('div', null,
       el('p', null, 'No admitirá más facturas, ni registradas ni importadas. Indica el último número que se emitió con ella.'), field('Último número', last)),
       confirmLabel: 'Cerrar serie', danger: true });

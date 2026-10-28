@@ -1,5 +1,5 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { bindOnline, closeSheet, confirmDialog, createQueue, el, formatDate, icon, openSheet, renderMedal, renderStats, replace, toast, toastWithAction, type QueueItem } from '@ikisai/ui-kit';
+import { bindOnline, closeSheet, confirmDialog, createQueue, el, fieldAttrs, formatDate, icon, openSheet, renderMedal, renderStats, replace, toast, toastWithAction, type QueueItem } from '@ikisai/ui-kit';
 import { INVOICES, ISSUED_INVOICES, SETTINGS, describeError } from '../app/client.ts';
 import { linksEnabled } from '../app/resources.ts';
 import { fb } from './feedback.ts';
@@ -373,7 +373,7 @@ export const mountHome: ViewMount = (ctx) => {
     try {
       const issued = await client.api<{ token: string }>('/agents', { json: { name: 'Claude · lectura de facturas', role: 'editor' } });
       const command = `claude mcp add --transport http ikisai-finance ${location.origin}/api/v1/mcp --header "Authorization: Bearer ${issued.token}"`;
-      const box = el('textarea', { 'data-feedback-ignore': '', readonly: true, rows: '4', id: 'claudeCommand', style: 'width:100%;font-family:monospace' });
+      const box = el('textarea', { ...fieldAttrs({ id: 'invoices.inicio.claude.comando', storage: 'none', label: 'Comando para conectar Claude', type: 'text', sensitivity: 'sensitive', confirm: 'none' }), 'data-feedback-ignore': '', readonly: true, rows: '4', id: 'claudeCommand', style: 'width:100%;font-family:monospace' });
       box.value = command;
       openSheet({
         title: 'Conectar Claude',
@@ -433,7 +433,7 @@ export const mountHome: ViewMount = (ctx) => {
         .catch(() => []);
       linksPreview = preview; paintLinks();
       const c = preview.counts;
-      const space = el('select', { 'data-feedback-id': 'invoices.inicio.inventario.sitio', 'data-feedback-label': 'Sitio habitual', id: 'resourceLinksSpace' },
+      const space = el('select', { ...fieldAttrs({ id: 'invoices.inicio.inventario.sitio', label: 'Sitio habitual', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'resourceLinksSpace' },
         el('option', { value: '' }, 'Sin sitio (no entran al inventario)'), ...spaces.map((x) => el('option', { value: x.id }, x.name)));
       const group = (action: ResourceLinkRow['action'], title: string) => {
         const rows = preview.rows.filter((r) => r.action === action);
