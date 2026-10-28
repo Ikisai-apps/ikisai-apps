@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, registerReveal, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, registerReveal, replace, toast, type AppMenuRow, type AppMenuSection, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
@@ -32,10 +32,12 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos', '#/apuntes', '#/evento', '#/justificante', '#/arqueo'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/apuntes', '#/evento', '#/justificante', '#/arqueo'] },
   { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
   { hash: '#/compras', label: 'Compras', icon: 'cart' },
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
+  // Proveedores en el menú (VG, 28-10: «un dato útil a mostrar bien accesible»; antes solo se llegaba desde Inicio)
+  { hash: '#/proveedores', label: 'Proveedores', icon: 'people' },
 ];
 
 // `screen`: raíz de la ruta de etiquetas de «Sugerencias y QA» (`<main>` lleva `invoices.<screen>`).
@@ -89,11 +91,39 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     review,
     center: () => { openFeedbackCenter({ api, app: 'invoices', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
+  // Menú lateral común (MUELA-013, como el resto de apps; VG, 28-10): perfil, recientes y secciones agrupadas que no repiten
+  // la barra de abajo (buzones de Facturas, emitidas, cobros y caja, gestoría y sincronización).
+  const recents: AppMenuRow[] = [];
+  const roleLabel = () => ({ owner: 'Propietario', editor: 'Edición', reader: 'Solo lectura' } as Record<string, string>)[client.bootstrap()?.membership.role ?? 'reader'] ?? '—';
+  const sections = (): AppMenuSection[] => {
+    const status = client.status();
+    const trouble = status.conflicts + (status.rejected ?? 0);
+    return [
+      { key: 'recibidas', label: 'Facturas recibidas', icon: 'invoice', summary: 'Por resolver, sin pagar y más', rows: [
+        { label: 'Por resolver', sub: 'Sin datos o por revisar', href: '#/facturas?filtro=por_resolver', feedbackId: 'invoices.menu.recibidas.por_resolver' },
+        { label: 'Sin pagar', href: '#/facturas?filtro=sin_pagar', feedbackId: 'invoices.menu.recibidas.sin_pagar' },
+        { label: 'Llegadas por Drive', href: '#/facturas?filtro=drive', feedbackId: 'invoices.menu.recibidas.drive' },
+        { label: 'Sin documento', href: '#/facturas?filtro=sin_documento', feedbackId: 'invoices.menu.recibidas.sin_documento' },
+        { label: 'Anuladas', href: '#/facturas?filtro=anulada', feedbackId: 'invoices.menu.recibidas.anuladas' },
+      ] },
+      { key: 'emitidas', label: 'Facturas emitidas', icon: 'invoice', summary: 'Las que hace Ikisai', rows: [
+        { label: 'Emitidas', sub: 'Borradores, por cobrar y cobradas', href: '#/facturas?vista=emitidas', feedbackId: 'invoices.menu.emitidas.lista' },
+      ] },
+      { key: 'caja', label: 'Cobros y caja', icon: 'euro', summary: 'Barra, recepción y eventos', rows: [
+        { label: 'Ingresos de apps', sub: 'Barra, alojamiento y resultado por evento', href: '#/apuntes', feedbackId: 'invoices.menu.caja.apuntes' },
+        { label: 'Arqueo del día', sub: 'Lo cobrado por medio, para cuadrar caja', href: '#/arqueo', feedbackId: 'invoices.menu.caja.arqueo' },
+      ] },
+      { key: 'sync', label: 'Sincronización', icon: 'sync', summary: trouble ? `${trouble} por resolver` : 'Todo en orden',
+        badge: trouble ? { text: String(trouble), tone: 'alert' } : null, rows: [
+          { label: 'Conflictos y rechazados', href: '#/conflictos', count: trouble ? { text: `${trouble} por resolver`, tone: 'alert' } : null, feedbackId: 'invoices.menu.conflictos' },
+        ] },
+    ];
+  };
   // El panel de la guía lo crea el kit (sin rótulo propio): solo su id de feedback.
   const GUIDE_FEEDBACK_ID = 'invoices.guia';
   const shell = createAppShell(root, {
     appName: 'Finance',
-    launcher,
+    markIcon: 'invoice',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: NAV,
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
@@ -101,6 +131,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navigate,
     // Guiado mínimo (kit 0.68): `?campo=` señala el campo y `?paso=` lo explica con «Volver a…». Sin client: no lee de Flow.
     guide: { feedbackId: GUIDE_FEEDBACK_ID },
+    returnTo: { feedbackId: 'invoices.cabecera.volver' },
+    menu: {
+      label: 'Menú de Finance', feedbackId: 'invoices.menu',
+      profile: { name: client.bootstrap()?.profile.displayName ?? 'Tu cuenta', role: roleLabel(), href: '#/' },
+      theme: true,
+      launcher,
+      recents: () => recents.slice(1, 4),
+      sections,
+      signalHere: () => { void feedback.signal(main); },
+      onResolveConflicts: () => navigate('#/conflictos'),
+    },
   });
   const { main } = shell;
   // Lo que vive en un desplegable cerrado: la guía lo abre antes de señalarlo.
@@ -121,6 +162,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     '#/facturas': { feedbackId: 'invoices.navegacion.facturas', feedbackLabel: 'Facturas' },
     '#/compras': { feedbackId: 'invoices.navegacion.compras', feedbackLabel: 'Compras' },
     '#/gestoria': { feedbackId: 'invoices.navegacion.gestoria', feedbackLabel: 'Gestoría' },
+    '#/proveedores': { feedbackId: 'invoices.navegacion.proveedores', feedbackLabel: 'Proveedores' },
   };
   for (const link of shell.nav.querySelectorAll<HTMLElement>('a.navbtn')) {
     const mark = NAV_MARKS[link.dataset.hash ?? ''];
@@ -192,6 +234,12 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     screen = { id: entry.screen, label: entry.title };
+    // Recientes del menú lateral: las tres últimas pantallas, sin repetir y sin la actual.
+    const at = recents.findIndex((r) => r.href === full);
+    if (at >= 0) recents.splice(at, 1);
+    recents.unshift({ label: entry.title, href: full });
+    recents.splice(4);
+    shell.menu?.refresh();
     main.setAttribute('data-feedback-id', screen.id);
     main.setAttribute('data-feedback-label', screen.label);
     document.title = `${entry.title} · Ikisai Finance`;

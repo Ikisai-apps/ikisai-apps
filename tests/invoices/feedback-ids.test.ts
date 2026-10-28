@@ -61,9 +61,9 @@ test('cada data-feedback-id escrito en un el(...) lleva su etiqueta, y cada marc
     if (ids !== labels) bad.push(`${rel}: ${ids} data-feedback-id y ${labels} data-feedback-label`);
     // Las piezas del kit de la tanda 27 (renderStats, renderGroups, createQueue) nombran su nodo con su `label`: vale
     // un `label: '…'` literal en la misma línea que el `feedbackId`. `renderTile` lo nombra con su `title`, y
-    // `renderConflicts` pone «Conflicto» y la etiqueta de cada botón.
+    // `renderConflicts` pone «Conflicto» y la etiqueta de cada botón. `returnTo` del kit escribe «Volver a…» él mismo.
     const lines = text.split('\n');
-    const pieceMarks = lines.filter((l) => /feedbackId: '/.test(l) && !/feedbackLabel: '/.test(l) && (/\blabel: '/.test(l) || /renderTile\(\{ title: /.test(l) || /renderConflicts\(/.test(l))).reduce((n, l) => n + (l.match(/feedbackId: '/g) ?? []).length, 0);
+    const pieceMarks = lines.filter((l) => /feedbackId: '/.test(l) && !/feedbackLabel: '/.test(l) && (/\blabel: '/.test(l) || /renderTile\(\{ title: /.test(l) || /renderConflicts\(/.test(l) || /returnTo: \{ feedbackId: /.test(l))).reduce((n, l) => n + (l.match(/feedbackId: '/g) ?? []).length, 0);
     const marks = (text.match(/feedbackId: '/g) ?? []).length - pieceMarks;
     const markLabels = (text.match(/feedbackLabel: '/g) ?? []).length;
     if (marks !== markLabels) bad.push(`${rel}: ${marks} feedbackId y ${markLabels} feedbackLabel`);
@@ -73,7 +73,7 @@ test('cada data-feedback-id escrito en un el(...) lleva su etiqueta, y cada marc
 
 test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', () => {
   const roots = new Set(collect().map((f) => f.id.split('.')[1]));
-  const allowed = new Set(['inicio', 'facturas', 'emitidas', 'compras', 'gestoria', 'proveedores', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'apuntes', 'evento', 'justificante', 'guia', 'arqueo']);
+  const allowed = new Set(['inicio', 'facturas', 'emitidas', 'compras', 'gestoria', 'proveedores', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'apuntes', 'evento', 'justificante', 'guia', 'arqueo', 'menu']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 

@@ -242,13 +242,16 @@ test('@smoke PWA: manifest, service worker y shell en caché', async ({ page }) 
   expect(cached.some((p) => p.startsWith('/api/'))).toBeFalsy();
 });
 
-test('@smoke lanzador común: la marca de la cabecera abre las apps de la cuenta con Finance marcada', async ({ page }) => {
+test('@smoke menú lateral común: la marca abre el menú de Finance con sus secciones y las apps de Ikisai dentro', async ({ page }) => {
   await login(page);
   await page.locator('#appLauncher').click();
-  const sheet = page.locator('.sheet[role="dialog"]');
-  await expect(sheet).toContainText('Apps de Ikisai');
-  await expect(sheet).toContainText('Tasks');
-  await expect(sheet).toContainText('Guests');
-  await expect(sheet.getByText('Finance', { exact: false }).first()).toBeVisible();
-  await expect(sheet).toContainText('Aquí');
+  const menu = page.getByRole('dialog', { name: 'Menú de Finance' });
+  await expect(menu).toBeVisible();
+  // Secciones agrupadas (no repiten la barra) y las apps (sin Finance: es la de aquí)
+  await expect(menu).toContainText('Facturas recibidas');
+  await expect(menu).toContainText('Cobros y caja');
+  await expect(menu.getByRole('region', { name: 'Apps de Ikisai' })).toBeVisible();
+  await expect(menu).toContainText('Tasks');
+  await expect(menu).toContainText('Guests');
+  await page.keyboard.press('Escape');
 });
