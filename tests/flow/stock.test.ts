@@ -29,7 +29,7 @@ async function rows(table: string): Promise<any[]> { const s = await app.call(`/
 const row = async (table: string, id: string) => (await rows(table)).find((r) => r.id === id);
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure, args });
 const level = async (place: string) => Number((await rows(TABLES.buffers)).find((b) => b.project_id === v2 && b.key === `${JAMON}:${place}`)?.level);
-const ingredientUnits = async () => (await rows(TABLES.units)).filter((u) => u.project_id === v2 && u.column_key === 'ingredients').sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(!!a.payload?.purchase) - Number(!!b.payload?.purchase)); // misma transacción: la compra, al final
+const ingredientUnits = async () => (await rows(TABLES.units)).filter((u) => u.project_id === v2 && u.column_key === 'ingredients').sort((a, b) => Number(!!a.payload?.purchase) - Number(!!b.payload?.purchase) || a.created_at.localeCompare(b.created_at)); // la compra, al final (aunque otra unidad nazca después en el mismo milisegundo)
 async function step(id: string) { const u = await row(TABLES.units, id); return ok([call(PROCEDURES.unitStep, { unit_id: id, from: u.status })]); }
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
