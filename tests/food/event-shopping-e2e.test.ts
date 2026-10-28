@@ -107,7 +107,10 @@ test('punta a punta · pedida en Food, recibida en Tasks, una sola entrada en Re
     const row = (await q(`select * from tasks.purchase_requests where id = $1`, [p.id]))[0];
     const entry = receiptEntryOperation(row, { id: uuid(), spaceId: KITCHEN, item: { base_unit: 'kg' }, units: [] });
     assert.ok(entry, 'con artículo hay entrada');
-    await ok('resources/commands', [entry]);
+    // La entrada la escribe Tasks desde su servidor (FO4, Recursos 0820): origen `server` y `source_app` 'tasks'.
+    const actor = (await q(`select user_id from core.memberships where app = 'resources' and role in ('owner', 'editor') order by user_id limit 1`))[0].user_id;
+    await q(`select public.core_commit('resources', $1, $2, $3, null, $4::jsonb, null, 'server')`,
+      [actor, `e2e-entrada-${p.id}`, 'e2e', JSON.stringify([entry])]);
     const dataset = { ...emptyDataset(), 'tasks.purchase_requests': [row] } as never;
     const received = await tasksCall('/api/v1/commands', { requestId: `e2e-recibir-${p.id}`, operations: receivePurchaseOps(dataset, p.id) });
     assert.equal(received.status, 200, JSON.stringify(received.data));
