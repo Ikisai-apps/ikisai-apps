@@ -44,14 +44,16 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   const swSlot = el('span', { class: 'swslot' });
   const host = el('section', { class: 'car', 'aria-label': 'Carriles: el trabajo que le queda a cada agente' });
   replace(main, el('div', { class: 'avance-orig', 'data-feedback-id': 'flow.avance', 'data-feedback-label': 'Avance' },
-    el('div', { class: 'top' }, hora, swSlot), host));
+    // Cabecera del original: título, la hora pequeña arriba a la derecha y el conmutador como submenú.
+    el('header', { class: 'top' }, el('h1', null, 'Avance por aplicación'), el('span', { class: 'lft' }, swSlot), hora), host));
 
   let units: BoardUnit[] = [];
   let history: Snap[] = [];
   const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado));
 
   function paint(): void {
-    const board = units.filter((u) => u.column_key === 'avance' && !u.deleted_at);
+    // Como `flow.board_counts`: todas las tarjetas e hitos del proyecto, estén en la columna que estén.
+    const board = units.filter((u) => (!projectId || u.project_id === projectId) && !u.deleted_at);
     const cards: OrigCard[] = board.filter((u) => u.kind === 'card' || u.kind === 'recurring').map((u) => {
       const p = u.payload ?? {};
       return { id: u.id.slice(0, 8), uid: u.id, agente: agentName(u.lane_key ?? ''), estado: stateOf(u), nombre: u.label ?? '', nota: p.note ?? null, ref: p.ref ?? null,
