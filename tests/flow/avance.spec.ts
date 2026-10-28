@@ -78,8 +78,8 @@ test('avance · caja general, discos, filtros, hitos y tarjeta con pasos que se 
   // Urgencia: solo la urgente.
   await page.locator('.fc[data-pr="urgente"]').click();
   await expect(page.locator('.fc[data-pr="urgente"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.lanes .it')).toHaveCount(1);
-  await expect(page.locator('.lanes .it')).toContainText('«Alójate aquí»');
+  await expect(page.locator('.lanes .it', { hasText: '«Alójate aquí»' })).toHaveCount(1);
+  await expect(page.locator('.lanes .it', { hasText: 'Probar el alojamiento' })).toHaveCount(0); // importante, no urgente
   await page.locator('.fc[data-pr="urgente"]').click();
   // Flow solo: «Pantalla nueva» espera a un paso de Core, que no está en el filtro → plegada aparte.
   await page.locator('.circ[data-sum="Flow"]').click();
