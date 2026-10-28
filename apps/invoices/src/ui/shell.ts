@@ -133,7 +133,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     guide: { feedbackId: GUIDE_FEEDBACK_ID },
     returnTo: { feedbackId: 'invoices.cabecera.volver' },
     menu: {
-      label: 'Menú de Finance',
+      label: 'Menú de Finance', feedbackId: 'invoices.menu',
       profile: { name: client.bootstrap()?.profile.displayName ?? 'Tu cuenta', role: roleLabel(), href: '#/' },
       theme: true,
       launcher,
@@ -141,7 +141,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       sections,
       signalHere: () => { void feedback.signal(main); },
       onResolveConflicts: () => navigate('#/conflictos'),
-      feedbackId: 'invoices.menu',
     },
   });
   const { main } = shell;
