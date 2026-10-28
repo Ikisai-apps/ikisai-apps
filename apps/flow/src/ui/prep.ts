@@ -25,6 +25,8 @@ export const VISIBLE_DONE = 10;
 
 /** Columna de unidades con toques: Preparación (unidades de producto), Logística e Ingredientes (tareas). */
 export type QueueKind = 'prep' | 'logistics' | 'ingredients';
+/** Los ajustes que entiende cualquiera; el resto va en «Ajustes técnicos». */
+const SIMPLE_PARAMS = ['machine_capacity', 'warmup_min', 'min_target'];
 /** Ajustes de los puestos con nombre que se entiende (VG, 28-10: salían las claves internas). */
 const PARAM_LABELS: Record<string, string> = {
   warmup_min: 'Minutos que tarda en calentarse', lead_min: 'Minutos de adelanto', lookback_min: 'Minutos para medir el ritmo',
@@ -185,7 +187,18 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const inputs = Object.entries(params).filter(([, v]) => typeof v === 'number')
         .map(([k, v]) => [k, el('input', { ...fieldAttrs({ id: 'flow.preparacion.ingrediente', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
       const sheet = openSheet({ title: `Parámetros · ${u.label ?? ''}`,
-        body: el('div', { class: 'station-params' }, ...inputs.map(([k, input]) => el('label', null, el('span', null, PARAM_LABELS[k] ?? k), input))),
+        body: (() => {
+          // Lo que importa arriba (cuántos panes poner ahora y lo básico de la máquina); lo técnico, plegado.
+          const mv = metrics.get(u.id)?.value as Record<string, number> | undefined;
+          const row = ([k, input]: readonly [string, HTMLInputElement]) => el('label', null, el('span', null, PARAM_LABELS[k] ?? k), input);
+          const simple = inputs.filter(([k]) => SIMPLE_PARAMS.includes(k));
+          const tech = inputs.filter(([k]) => !SIMPLE_PARAMS.includes(k));
+          return el('div', { class: 'station-params' },
+            mv ? el('p', { class: 'station-now' }, el('strong', null, `Ahora: ${mv.target ?? 0} panes calentándose`),
+              el('small', { class: 'muted' }, ` (${mv.firm ?? 0} de pedidos ya cobrados + ${Math.round(mv.forecast ?? 0)} que se esperan)`)) : null,
+            ...simple.map(row),
+            tech.length ? el('details', { class: 'station-tech' }, el('summary', null, 'Ajustes técnicos (no hace falta tocarlos)'), ...tech.map(row)) : null);
+        })(),
         foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
           const next = Object.fromEntries(inputs.map(([k, input]) => [k, Number(input.value)]));
           try { await callProcedure(client, PROCEDURES.stationSetParams, { unit_id: u.id, params: next, expected_revision: u.revision }); sheet.close(); void refreshMetrics(); }

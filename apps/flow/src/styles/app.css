@@ -378,3 +378,5 @@
 .review-item .pill.is-critical{color:var(--alert);border-color:var(--alert)}
 .review-value{max-width:8rem;min-height:44px}
 .qcard-state.is-ready{color:var(--ok-ink,var(--ok));font-weight:600}
+.station-now{margin:0 0 8px}.station-now strong{font-size:1.1rem}
+.station-tech{margin-top:8px}.station-tech>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--muted)}
