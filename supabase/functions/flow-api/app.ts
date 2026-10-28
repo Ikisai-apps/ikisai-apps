@@ -654,6 +654,8 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         // de flujo mandaba productos de la barra anterior y en cocina salían sin nombre (VG, 28-10).
         const current = await supabase.rpc<{ projectId?: string | null; products?: Array<{ id: string }> } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
         const known = new Set((current?.products ?? []).map((pr) => pr.id));
+        // Ya no se sirve la carta (o la barra está cerrada): lo mismo que al entrar.
+        if (!current?.projectId) return error(409, 'MENU_CLOSED', 'La barra no está abierta ahora mismo.');
         // Su número es de otro flujo (la carta pasó a otro): se le da uno nuevo (la carta lo pide sola con CUSTOMER_UNKNOWN).
         if (current?.projectId !== me.projectId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
         if (lines.some((l) => !known.has(l.productId as string))) return error(409, 'MENU_CHANGED', 'La carta ha cambiado. Recárgala y vuelve a pedir.');
