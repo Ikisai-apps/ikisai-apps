@@ -601,3 +601,6 @@
 .avance-orig .car .gprog .gc{flex:none;margin:0;gap:6px}
 .avance-orig .car .gprog .gf{order:9;flex-basis:100%;justify-content:center}
 .avance-orig .car .gchev{display:none}
+/* Gráfico siempre al 100 % del ancho, sin desplazamiento lateral (VG, 28-10). */
+.avance-orig .car .graf{overflow:hidden;max-width:100%}
+.avance-orig .car .graf svg{max-width:100%}
