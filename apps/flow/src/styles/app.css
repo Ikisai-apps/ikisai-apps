@@ -397,3 +397,4 @@
 /* Tablero del flujo: en pestañas, la barra inferior ya elige la columna; arriba solo queda «Pestañas / Lado a lado» (VG, 28-10). */
 .flow-board .lanes-sum{visibility:hidden}
 .flow-board[data-view="tabs"] .lanes-tabs{display:none}
+.flow-pick-title{margin:10px 0 2px;font-size:.9rem;color:var(--muted)}

@@ -219,7 +219,7 @@ export function openOrderSheet(client: SyncClient, orderId: string, opts: { onCl
         if (!isOnline(client)) { toast('Cargar a cuenta necesita conexión.'); return; }
         const fresh = order();
         if (!fresh || !data) return;
-        const accountId = await chooseAccount(client, data, fresh.customer_id);
+        const accountId = await chooseAccount(client, data, fresh.customer_id, fresh.project_id);
         if (!accountId) return;
         try {
           const out = await actions.chargeToAccount(fresh.id, accountId, order()?.revision ?? fresh.revision);

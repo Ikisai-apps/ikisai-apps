@@ -26,7 +26,6 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
     if (!isOnline(client)) { toast('Abrir una cuenta necesita conexión.'); return; }
     const customer = number.value.replace(/\D/g, '');
     if (!holder.value.trim() && !customer) { toast('Pon a nombre de quién o su número de cliente.'); return; }
-    if (central && !central.includes(holder.value.trim())) { toast('Las cuentas son para personas de Central: elige un nombre de la lista.'); return; }
     try {
       const out = await actions.openAccount(projectId, holder.value.trim(), customer || null);
       holder.value = ''; number.value = '';
@@ -40,17 +39,16 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
   /** Nombre → número de cliente, para rellenarlo solo al elegir a alguien de la lista. */
   let numberOf = new Map<string, number>();
   holder.addEventListener('input', () => { const n = numberOf.get(holder.value.trim()); if (n && !number.value) number.value = String(n); });
-  /** Personas de Central (VG, 28-10: las cuentas solo a su nombre). null mientras no se puedan leer. */
+  /** Personas de Central: sugerencias al escribir (VG, 28-10). null mientras no se puedan leer. */
   let central: string[] | null = null;
   void client.api<{ rows: Array<{ name: string }> }>('/read/central.people_options?limit=1000')
     .then((r) => { central = [...new Set((r.rows ?? []).map((x) => x.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')); if (data) paintPeople(data); })
     .catch(() => { central = null; });
   function paintPeople(d: FlowData): void {
-    if (central) { replace(people, ...central.map((n) => el('option', { value: n }))); holder.placeholder = 'A nombre de (elige de Central)'; return; }
     numberOf = new Map();
     for (const c of d.customers.values()) if (c.display_name) numberOf.set(c.display_name, c.number);
     for (const a of d.accounts) { const c = a.customer_id ? d.customers.get(a.customer_id) : undefined; if (c && !numberOf.has(a.holder)) numberOf.set(a.holder, c.number); }
-    const names = [...new Set([...d.accounts.map((a) => a.holder), ...[...d.customers.values()].map((c) => c.display_name ?? '')].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+    const names = [...new Set([...d.accounts.map((a) => a.holder), ...[...d.customers.values()].map((c) => c.display_name ?? ''), ...(central ?? [])].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
     replace(people, ...names.map((n) => el('option', { value: n }, numberOf.get(n) ? `nº ${numberOf.get(n)}` : '')));
   }
 
@@ -103,24 +101,43 @@ function chooseSettleMethod(holder: string, cents: number): Promise<SettleMethod
  * «A cuenta» desde la ficha de un pedido abierto: elegir una cuenta abierta (primero la de su cliente) o abrir una nueva.
  * Devuelve el id de la cuenta, o `null` si se cancela.
  */
-export async function chooseAccount(client: SyncClient, data: FlowData, customerId: string | null): Promise<string | null> {
-  const open = data.accounts.filter((a) => a.status === 'open')
+/**
+ * «Cargar a cuenta» (VG, 28-10): las cuentas abiertas del flujo; las personas de Central como cuentas por defecto (si no tiene
+ * cuenta abierta, se le abre al elegirla); y abrir una nueva sobre la marcha con cualquier nombre.
+ */
+export async function chooseAccount(client: SyncClient, data: FlowData, customerId: string | null, projectId: string): Promise<string | null> {
+  const open = data.accounts.filter((a) => a.status === 'open' && a.project_id === projectId)
     .sort((a, b) => Number(b.customer_id === customerId && !!customerId) - Number(a.customer_id === customerId && !!customerId) || a.holder.localeCompare(b.holder, 'es'));
-  const picked = await new Promise<string | 'new' | null>((resolve) => {
-    let chosen: string | 'new' | null = null;
+  let central: string[] = [];
+  try {
+    const r = await client.api<{ rows: Array<{ name: string }> }>('/read/central.people_options?limit=1000');
+    const taken = new Set(open.map((a) => a.holder));
+    central = [...new Set((r.rows ?? []).map((x) => x.name).filter((n) => n && !taken.has(n)))].sort((a, b) => a.localeCompare(b, 'es'));
+  } catch { central = []; }
+  const picked = await new Promise<{ account: string } | { person: string } | 'new' | null>((resolve) => {
+    let chosen: { account: string } | { person: string } | 'new' | null = null;
+    const pick = (v: typeof chosen) => () => { chosen = v; sheet.close(); };
     const sheet = openSheet({ title: 'Cargar a cuenta', onClose: () => resolve(chosen),
       body: el('div', { class: 'flow-pick' },
-        ...open.map((a) => el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = a.id; sheet.close(); } }, accountLabel(data, a))),
-        el('button', { type: 'button', class: 'ghost', onclick: () => { chosen = 'new'; sheet.close(); } }, 'Abrir cuenta nueva…')) });
+        el('button', { type: 'button', class: 'primary', onclick: pick('new') }, 'Abrir cuenta nueva…'),
+        ...(open.length ? [el('h3', { class: 'flow-pick-title' }, 'Cuentas abiertas')] : []),
+        ...open.map((a) => el('button', { type: 'button', class: 'ghost', onclick: pick({ account: a.id }) }, accountLabel(data, a))),
+        ...(central.length ? [el('h3', { class: 'flow-pick-title' }, 'Personas de Central')] : []),
+        ...central.map((n) => el('button', { type: 'button', class: 'ghost', onclick: pick({ person: n }) }, n))) });
   });
-  if (picked !== 'new') return picked;
+  if (!picked) return null;
+  if (typeof picked === 'object' && 'account' in picked) return picked.account;
+  if (typeof picked === 'object' && 'person' in picked) {
+    try { return (await flowActions(client).openAccount(projectId, picked.person, null)).account_id; }
+    catch (error) { toast(describeError(error)); return null; }
+  }
   const customer = customerId ? data.customers.get(customerId) ?? null : null;
   const input = el('input', { ...fieldAttrs({ id: 'flow.cliente.nombre', entity: 'flow.customers', prop: 'display_name', type: 'text' }), type: 'text', maxlength: '80', placeholder: 'A nombre de', 'aria-label': 'A nombre de', value: customer?.display_name ?? '' });
   const ok = await confirmDialog({ title: 'Abrir cuenta', text: customer ? `Del cliente ${customer.number}.` : 'A nombre de quien paga al final.', body: input, confirmLabel: 'Abrir y cargar' });
   if (!ok) return null;
   if (!input.value.trim() && !customer) { toast('Pon a nombre de quién.'); return null; }
   try {
-    const out = await flowActions(client).openAccount(data.project!.id, input.value.trim(), customer ? String(customer.number) : null);
+    const out = await flowActions(client).openAccount(projectId, input.value.trim(), customer ? String(customer.number) : null);
     return out.account_id;
   } catch (error) { toast(describeError(error)); return null; }
 }
