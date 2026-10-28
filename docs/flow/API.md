@@ -547,6 +547,13 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Si el flujo tiene evento de Booking, arriba: «Camas para esta noche: X de Y listas» y, por habitación, lo que falta (por limpiar, sin colocar en el plano, inactivas), con `booking.lodging_readiness` (Booking 1426).
 - Plantilla `apertura` v1: «Preparación» (`logistics`, tareas libres) y «Revisión» (`review`).
 
+## 52. Cobertura de anclajes y reglas (migración `0946`; Revisor de Central, núcleo 0111)
+
+- `POST anchor-coverage {app?}` (capacidad `flow.anchor_coverage`, lectura; también `core.read` de Central con `flow.anchor_coverage_read`): `{anchors, rules}`, solo metadatos.
+  - `anchors`: por anclaje usado en pasos (o tramos «ir a otra app») de recorridos publicados, `{anchor_id, app, uses: [{flow_key, flow_name, version, stage, stage_kind, step}]}` → «directo».
+  - `rules`: los automatismos de Flow (`flow.rules_catalog()`), `{id, name, observes, writes}` con `{app, entity, prop}` → «automático». Se mantiene con los automatismos.
+  - Con `app`, solo los anclajes de esa app y las reglas que la observan o escriben.
+
 ## 57. Recepción «por puestos» del alojamiento libre (migración `0958`)
 
 - Decisión de VG (28-10): como la barra, un carril por puesto. Las piezas nuevas (`inspect_confirm`) son:
