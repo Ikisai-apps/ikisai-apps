@@ -1,4 +1,4 @@
-// Factura con NIF a petición de un cobro de otra app (vg-38, API.md §17.13, migración 0261). La pide el servidor de la
+// Factura con NIF a petición de un cobro de otra app (vg-38, API.md §17.13, migración 0263). La pide el servidor de la
 // app dueña del apunte (hoy Booking, con `X-Ikisai-Caller: booking`) y Finance crea un borrador que alguien revisa y emite.
 import { ensureServiceActor, fail, type WorkerRoute } from '../_kit/mod.ts';
 import { validSpanishTaxId } from '../_domain/invoices/mod.ts';

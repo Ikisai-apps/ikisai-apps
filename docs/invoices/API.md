@@ -2068,7 +2068,7 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
 - El cierre del día de Flow ya no lleva lo enviado antes como cobro fiscal, así que nada cuenta dos veces.
 - Lógica en `apps/invoices/src/app/cash-count.ts`, prueba en `tests/invoices/cash-count.test.ts`.
 
-### 17.13 Factura con NIF a petición de un cobro (vg-38, migración 0261)
+### 17.13 Factura con NIF a petición de un cobro (vg-38, migración 0263)
 
 El justificante de un cobro de otra app es el ticket de Finance. Si quien pagó pide factura con NIF, el **servidor** de la app del cobro la pide y Finance crea un **borrador a revisar** (VG, 27-10). Hoy solo Booking (las noches, `booking:stay:<cobro>`). Diseño: `MUELA/equipo/feedback/finance/FACTURA_A_PETICION_vg-38.md`.
 

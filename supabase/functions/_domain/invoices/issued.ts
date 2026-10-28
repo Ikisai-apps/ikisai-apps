@@ -198,7 +198,7 @@ export interface IssuedInvoiceRow extends SyncedColumns {
   sent_at: string | null;
   payment_method: string | null;
   /**
-   * 0261: la factura pedida de un cobro de otra app (el apunte que sustituye). No suma en el resumen: la venta ya la
+   * 0263: la factura pedida de un cobro de otra app (el apunte que sustituye). No suma en el resumen: la venta ya la
    * cuenta el apunte. Las rectificativas lo heredan.
    */
   from_entry_id?: string | null;

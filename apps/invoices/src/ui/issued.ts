@@ -197,7 +197,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     if (i.status === 'anulada') labels.push({ text: 'Anulada', kind: 'alert' });
     if (i.review_reason === 'REVISAR IMPORTES') labels.push({ text: 'Revisar importes', kind: 'alert' });
     if (i.status === 'borrador') labels.push({ text: 'Borrador', kind: 'warn' });
-    // Factura pedida de un cobro (0261): sustituye al ticket y no suma otra vez
+    // Factura pedida de un cobro (0263): sustituye al ticket y no suma otra vez
     if (i.from_entry_id) labels.push(i.status === 'borrador' ? { text: 'Pedida: revisar y emitir', kind: 'warn' } : { text: 'Sustituye al ticket' });
     if (i.payment_status === 'cobrada') labels.push({ text: 'Cobrada', kind: 'ok' });
     if (i.status === 'rectificada') labels.push({ text: 'Rectificada' });

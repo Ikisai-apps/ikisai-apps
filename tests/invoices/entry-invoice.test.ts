@@ -1,5 +1,5 @@
 /**
- * Factura con NIF a petición de un cobro (vg-38, API.md §17.13, migración 0261): el servidor de Booking pide la factura
+ * Factura con NIF a petición de un cobro (vg-38, API.md §17.13, migración 0263): el servidor de Booking pide la factura
  * de un cobro de alojamiento y Finance crea un borrador a revisar, con las líneas del apunte, cobrado y sin sumar dos
  * veces (la venta la cuenta el apunte). Datos sintéticos.
  */
