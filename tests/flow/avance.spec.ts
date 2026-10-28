@@ -38,6 +38,13 @@ test.beforeAll(async () => {
   await card({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'importante', tipo: 'prueba', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
   await card({ lane_key: 'core', title: 'Revisar CI', kind: 'recurring' });
   await card({ lane_key: 'food', title: 'Más adelante', flag: 'backlog' });
+  // Un hito de dos pasos (0947): el primero sin hacer bloquea; el segundo queda en espera.
+  const hito = crypto.randomUUID();
+  await api.app.t.db.query(`select flow.import_board($1, $2::jsonb)`, [board, JSON.stringify({
+    hitos: [{ hito_id: hito, title: 'Mudanza del Avance', orden: 1 }],
+    cards: [{ card_id: crypto.randomUUID(), lane_key: 'core', title: 'Exportar el tablero', status: 'pending', hito_id: hito, paso: 1 },
+      { card_id: crypto.randomUUID(), lane_key: 'flow', title: 'Pantalla nueva', status: 'pending', hito_id: hito, paso: 2 }],
+  })]);
   await buildFlowApp();
   server = await preview({
     configFile,
@@ -64,8 +71,12 @@ async function enter(page: Page): Promise<void> {
 
 test('avance · caja general, discos, filtros y tarjeta con pasos que se marca hecha', async ({ page }) => {
   await enter(page);
-  // 5 tarjetas, 1 en backlog: 4 en juego; hechas = la de Flow y la recurrente (cuenta como hecha).
-  await expect(page.locator('.avance-total .gt')).toHaveText('2 hechas de 4');
+  // 7 tarjetas, 1 en backlog: 6 en juego; hechas = la de Flow y la recurrente (cuenta como hecha).
+  await expect(page.locator('.avance-total .gt')).toHaveText('2 hechas de 6');
+  // Hitos: numerado, el primer paso sin hacer «bloquea» y el siguiente, en espera.
+  await expect(page.locator('.avance-hito')).toHaveCount(1);
+  await expect(page.locator('.avance-chain li.is-blocking')).toHaveCount(1);
+  await expect(page.locator('.avance-chain li.is-waiting')).toHaveCount(1); // los carriles se montan al verse: se mira en la cadena
   await expect(page.locator('.avance-disc')).toHaveCount(4);
   // Filtro de urgencia: solo «Urgente».
   await page.locator('.avance-chip', { hasText: 'Urgente' }).click();
@@ -75,11 +86,27 @@ test('avance · caja general, discos, filtros y tarjeta con pasos que se marca h
   await page.reload();
   await expect(page.locator('.avance-chip', { hasText: 'Urgente' })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.avance-chip', { hasText: 'Urgente' }).click();
+  // Filtro de agentes: la bloqueada por un paso de un agente fuera del filtro va aparte, plegada, con lo que la bloquea (VG, 27-10).
+  await page.locator('.avance-disc', { hasText: 'Flow' }).click();
+  const blocked = page.locator('details.avance-blocked');
+  await expect(blocked.locator('summary')).toHaveText('Bloqueadas (1)');
+  await expect(blocked.locator('.avance-card', { hasText: 'Pantalla nueva' })).toContainText('bloqueada por: «Exportar el tablero» (Core)');
+  await expect(page.locator('.avance-card:visible', { hasText: 'Pantalla nueva' })).toHaveCount(0);
+  // Con Core también en el filtro, sale en su sitio con «en espera».
+  await page.locator('.avance-disc', { hasText: 'Core' }).first().click();
+  await expect(page.locator('details.avance-blocked')).toHaveCount(0);
+  await expect(page.locator('.avance-card.is-waiting', { hasText: 'Pantalla nueva' })).toHaveCount(1);
+  await page.locator('.avance-disc', { hasText: 'Core' }).first().click();
+  await page.locator('.avance-disc', { hasText: 'Flow' }).click();
   // La tarjeta de Víctor despliega sus pasos y se marca hecha.
   await page.locator('.avance-disc', { hasText: 'Víctor' }).click();
   const victor = page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first();
-  await victor.click();
-  await expect(victor.locator('.avance-steps li')).toHaveCount(2);
-  await victor.getByRole('button', { name: 'Hecha' }).click();
+  await victor.locator('.avance-card-title').click();
+  await expect(page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first().locator('.avance-steps li')).toHaveCount(2);
+  await page.locator('.avance-card', { hasText: 'Probar el alojamiento' }).first().getByRole('button', { name: 'Hecha' }).click();
+  // Nota opcional al cerrar (VG).
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByLabel('Nota (opcional)').fill('Probado en el móvil');
+  await dialog.getByRole('button', { name: 'Hecha' }).click();
   await expect(page.locator('.avance-card.is-hecho', { hasText: 'Probar el alojamiento' })).toBeVisible({ timeout: 15_000 });
 });

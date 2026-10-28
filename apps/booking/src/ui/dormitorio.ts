@@ -5,16 +5,20 @@
  *   Supletoria; mover (flechas, arrastrar con encaje), girar 90° (R o «↻ Girar») y quitar (Supr o «Quitar»). Se trabaja
  *   sobre un borrador y «Guardar» lo envía en un lote (sin red, al reconectar, como el resto de Booking).
  * - No deja salirse ni montarse sobre otra cama, ni quitar una con asignaciones vivas, y lo dice.
- * - Con los espacios en Recursos, las camas se añaden y se quitan allí; aquí solo se colocan.
+ * - Con los espacios en Recursos (vg-52, VG 28-10: los espacios se gestionan en Central, las camas en Booking), las camas
+ *   también se añaden, se quitan y se cambian de tipo y de plazas desde aquí: se guardan primero en Recursos (`resources.spaces`,
+ *   tipo `cama`, con `bed_kind`, `capacity` y `extra_capacity`), y su sitio en el dibujo cuando el espejo las trae a Booking.
  * - Se dibujan piezas (`dorm.pieces`): una cama de Recursos partida en fija y supletoria es una sola pieza, y las
  *   inactivas no se dibujan (FB_2026_047, 050 y 051). El texto va siempre en horizontal (FB_2026_046).
  * - La doble ocupa 2×2 cuadrantes; las demás, 2×1 (FB_2026_052).
  */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
-import { el, plural, replace, toast } from '@ikisai/ui-kit';
+import { createSyncClient } from '@ikisai/sync-client';
+import { el, fieldAttrs, plural, replace, toast } from '@ikisai/ui-kit';
 import { dorm } from '@ikisai/domain-booking';
 import { BEDS, SPACES, describeError } from '../app/client.ts';
 import { label } from '../app/labels.ts';
+import { syncMirror } from './spacesResources.ts';
 
 type Row = SyncedRow & Record<string, any>;
 type Cell = dorm.Cell;
@@ -30,7 +34,7 @@ export interface DormOptions {
   occupied: ReadonlySet<string>;
   /** Solo dirección. */
   canEdit: boolean;
-  /** Con los espacios en Recursos, las camas se añaden y se quitan allí. */
+  /** Con los espacios en Recursos, las camas se guardan allí (y su sitio, aquí). */
   fromResources: boolean;
 }
 
@@ -48,7 +52,9 @@ const DIRS: Array<{ dir: dorm.Direction; text: string; arrow: string; key: strin
   { dir: 'right', text: 'Mover a la derecha', arrow: '→', key: 'ArrowRight' },
 ];
 
-interface DraftBed { id: string; label: string; kind: string; seats: number; extras: number; parts: Row[]; isNew: boolean }
+interface DraftBed { id: string; label: string; kind: string; seats: number; extras: number; parts: Row[]; isNew: boolean; edited?: boolean }
+/** Tipos de cama de Recursos (la supletoria sola es una individual de 0 fijas y 1 supletoria). */
+const RESOURCE_KINDS: Array<[string, string]> = [['litera', 'Litera'], ['individual', 'Individual'], ['doble', 'Doble (de matrimonio)'], ['sofa_cama', 'Sofá cama']];
 
 /** Pinta «Monta el dormitorio» en un contenedor propio y lo devuelve. */
 export function createDormitorio(o: DormOptions): { element: HTMLElement; editing(): boolean; destroy(): void } {
@@ -145,7 +151,71 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     paint();
   }
 
+  /**
+   * Con los espacios en Recursos: primero las camas en Recursos (nuevas, quitadas y con tipo o plazas cambiados); después el
+   * espejo las trae a Booking y aquí se guarda la rejilla y el sitio de cada una (las nuevas, por su `resource_id`).
+   */
+  async function saveToResources(): Promise<void> {
+    const parent = o.space.resource_id as string | null;
+    if (!parent) return say('Esta estancia no está enlazada con Recursos: no se pueden guardar sus camas.');
+    const resources = createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: o.client, clearOnLogout: true });
+    const resOps: RowOperation[] = [];
+    const placeNew = new Map<string, Cell>();
+    try {
+      await resources.start();
+      const rowOf = async (id: string) => (await resources.get('resources.spaces' as never, id)) as Row | null;
+      const attrs = (b: DraftBed) => ({ bed_kind: b.kind === 'supletoria' ? 'individual' : b.kind, capacity: b.seats, extra_capacity: b.extras });
+      let pos = o.beds.reduce((max, b) => Math.max(max, Number(b.position) || 0), 0);
+      for (const b of beds) {
+        if (b.isNew) {
+          pos += 1024;
+          resOps.push({ op: 'insert', table: 'resources.spaces' as never, id: b.id, fields: { kind: 'cama', name: b.label, parent_id: parent, position: pos, attributes: attrs(b) } });
+          const cell = cells.get(b.id);
+          if (cell) placeNew.set(b.id, cell);
+        } else if (b.edited) {
+          const rid = b.parts.find((r) => r.resource_id)?.resource_id as string | undefined;
+          const row = rid ? await rowOf(rid) : null;
+          if (!row) return say(`No encuentro ${b.label} en Recursos. Sincroniza y vuelve a intentarlo.`);
+          resOps.push({ op: 'update', table: 'resources.spaces' as never, id: row.id, expectedRevision: row.revision, fields: { attributes: { ...(row.attributes ?? {}), ...attrs(b) } } });
+        }
+      }
+      for (const rid of new Set(removed.map((r) => r.resource_id as string | null).filter((x): x is string => !!x))) {
+        const row = await rowOf(rid);
+        if (row && row.active) resOps.push({ op: 'update', table: 'resources.spaces' as never, id: row.id, expectedRevision: row.revision, fields: { active: false } });
+      }
+      if (resOps.length) await resources.commit(resOps);
+      if (resOps.length && navigator.onLine) { await resources.sync(); await syncMirror(o.client); await o.client.sync(); }
+    } catch (error) {
+      return say(`No se ha guardado en Recursos: ${describeError(error)}`);
+    } finally {
+      resources.stop();
+    }
+    // la rejilla y el sitio de cada cama en Booking (las nuevas ya traídas por el espejo)
+    const ops: RowOperation[] = [];
+    const layoutChanged = !dorm.validGrid(o.space.layout) || o.space.layout.cols !== grid.cols || o.space.layout.rows !== grid.rows;
+    if (layoutChanged) ops.push({ op: 'update', table: SPACES, id: o.space.id, expectedRevision: o.space.revision, fields: { layout: grid } });
+    const mirrored = placeNew.size ? ((await o.client.list(BEDS)) as Row[]).filter((r) => !r.deleted_at && placeNew.has(String(r.resource_id))) : [];
+    for (const r of mirrored) ops.push({ op: 'update', table: BEDS, id: r.id, expectedRevision: r.revision, fields: { cell: placeNew.get(String(r.resource_id))! } });
+    for (const b of beds) {
+      if (b.isNew) continue;
+      const cell = cells.get(b.id) ?? null;
+      for (const row of b.parts) {
+        const before = dorm.validCell(row.cell) ? row.cell : null;
+        if (!before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { cell } });
+      }
+    }
+    try {
+      if (ops.length) await o.client.commit(ops);
+      editing = false;
+      const waiting = placeNew.size - new Set(mirrored.map((r) => String(r.resource_id))).size;
+      toast(!resOps.length && !ops.length ? 'Sin cambios.' : waiting > 0 ? 'Camas guardadas en Recursos. Las nuevas se colocan en cuanto lleguen a Booking: vuelve a abrir el dormitorio en un momento.' : 'Distribución guardada.');
+    } catch (error) {
+      say(`No se ha guardado el sitio de las camas: ${describeError(error)}`);
+    }
+  }
+
   async function save(): Promise<void> {
+    if (o.fromResources) return saveToResources();
     const ops: RowOperation[] = [];
     const layoutChanged = !dorm.validGrid(o.space.layout) || o.space.layout.cols !== grid.cols || o.space.layout.rows !== grid.rows;
     if (layoutChanged) ops.push({ op: 'update', table: SPACES, id: o.space.id, expectedRevision: o.space.revision, fields: { layout: grid } });
@@ -197,7 +267,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
         const d = DIRS.find((x) => x.key === event.key);
         if (d) { event.preventDefault(); selected = b.id; move(b.id, d.dir); }
         else if (event.key === 'r' || event.key === 'R') { event.preventDefault(); selected = b.id; rotate(b.id); }
-        else if ((event.key === 'Delete' || event.key === 'Supr') && !o.fromResources) { event.preventDefault(); remove(b.id); }
+        else if (event.key === 'Delete' || event.key === 'Supr') { event.preventDefault(); remove(b.id); }
       }) as EventListener,
       onpointerdown: ((event: PointerEvent) => {
         if (!editing || event.button !== 0) return;
@@ -239,7 +309,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     replace(host,
       el('p', { class: 'bk-dorm-summary' }, beds.length === 0 ? 'Sin camas.' : `${plural(beds.length, 'cama', 'camas')} · ${plural(total, 'plaza', 'plazas')}${extras ? ` + ${plural(extras, 'supletoria', 'supletorias')}` : ''}`),
       beds.length === 0 && !editing
-        ? el('p', { class: 'hint', id: 'dormEmpty' }, o.canEdit && !o.fromResources ? 'Sin camas: añade la primera para usarla como dormitorio.' : o.fromResources ? 'Sin camas. Se añaden en Recursos.' : 'Sin camas.')
+        ? el('p', { class: 'hint', id: 'dormEmpty' }, o.canEdit ? 'Sin camas: añade la primera para usarla como dormitorio.' : 'Sin camas.')
         : board,
       outside.length ? el('p', { class: 'hint' }, `Sin sitio en el dibujo: ${outside.map((b) => b.label).join(', ')}.`) : null,
       inactive.length ? el('p', { class: 'hint', id: 'dormInactive' }, `${inactive.length === 1 ? 'Archivada, no se dibuja' : 'Archivadas, no se dibujan'}: ${inactive.map((b) => String(b.label)).join(', ')}.`) : null,
@@ -248,8 +318,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       editing ? el('div', { class: 'bk-dorm-tools', id: 'dormTools' },
         el('div', { class: 'bk-dorm-size' },
           sizer('Ancho', 'cols'), sizer('Fondo', 'rows')),
-        o.fromResources ? el('p', { class: 'hint' }, 'Las camas se añaden y se quitan en Recursos; aquí se colocan.')
-          : el('div', { class: 'btnrow', id: 'dormAdd' }, el('span', { class: 'hint' }, 'Añadir:'), ...NEW_BEDS.map((n) => el('button', {
+        el('div', { class: 'btnrow', id: 'dormAdd' }, el('span', { class: 'hint' }, 'Añadir:'), ...NEW_BEDS.map((n) => el('button', {
             type: 'button', class: 'ghost small', id: `dormAdd-${n.kind}`, 'data-feedback-id': 'booking.espacios.dormitorio.anadir', 'data-feedback-label': 'Añadir cama',
             onclick: () => add(n.kind, n.text, n.capacity),
           }, n.text))),
@@ -257,14 +326,39 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
           el('strong', null, sel.label),
           el('button', { type: 'button', class: 'ghost small', id: 'dormRotate', 'data-feedback-id': 'booking.espacios.dormitorio.girar', 'data-feedback-label': 'Girar', onclick: () => rotate(sel.id) }, '↻ Girar'),
           ...DIRS.map((d) => el('button', { type: 'button', class: 'ghost small bk-dorm-arrow', 'aria-label': `${d.text}: ${sel.label}`, 'data-feedback-id': 'booking.espacios.dormitorio.mover', 'data-feedback-label': 'Mover', onclick: () => move(sel.id, d.dir) }, d.arrow)),
-          o.fromResources ? null : el('button', { type: 'button', class: 'ghost small danger', id: 'dormRemove', 'data-feedback-id': 'booking.espacios.dormitorio.quitar', 'data-feedback-label': 'Quitar', onclick: () => remove(sel.id) }, 'Quitar'))
-          : el('p', { class: 'hint' }, 'Toca una cama para moverla o girarla. En el ordenador: flechas, R para girar y Supr para quitar; también se arrastra.'),
+          el('button', { type: 'button', class: 'ghost small danger', id: 'dormRemove', 'data-feedback-id': 'booking.espacios.dormitorio.quitar', 'data-feedback-label': 'Quitar', onclick: () => remove(sel.id) }, 'Quitar'))
+          : el('p', { class: 'hint' }, 'Toca una cama para moverla, girarla, quitarla o cambiar sus plazas. En el ordenador: flechas, R para girar y Supr para quitar; también se arrastra.'),
+        sel && o.fromResources ? seatsEditor(sel) : null,
         el('div', { class: 'btnrow' },
           el('button', { type: 'button', class: 'primary', id: 'dormSave', 'data-feedback-id': 'booking.espacios.dormitorio.guardar', 'data-feedback-label': 'Guardar la distribución', onclick: () => void save() }, 'Guardar'),
           el('button', { type: 'button', class: 'ghost', id: 'dormDiscard', 'data-feedback-id': 'booking.espacios.dormitorio.descartar', 'data-feedback-label': 'Descartar los cambios', onclick: () => { editing = false; reset(); say('Cambios descartados.'); paint(); } }, 'Descartar')))
         : o.canEdit ? el('p', null, el('button', { type: 'button', class: 'ghost small', id: 'dormEdit', 'data-feedback-id': 'booking.espacios.dormitorio.editar', 'data-feedback-label': 'Editar la distribución', onclick: () => { editing = true; say(''); paint(); } }, 'Editar la distribución')) : null,
       live);
     if (focus) host.querySelector<HTMLElement>(`#dormBed-${CSS.escape(focus)}`)?.focus({ preventScroll: true });
+  }
+
+  /** Tipo y plazas fijas y supletorias de la cama elegida (con los espacios en Recursos). */
+  function seatsEditor(b: DraftBed): HTMLElement {
+    const kindNow = b.kind === 'supletoria' ? 'individual' : b.kind;
+    const kind = el('select', { id: 'dormKind', ...fieldAttrs({ id: 'booking.espacios.dormitorio.tipo', entity: 'resources.spaces', prop: 'attributes', label: 'Tipo de cama', confirm: 'event' }),
+      onchange: () => change() }, RESOURCE_KINDS.map(([v, t]) => el('option', { value: v }, t))) as HTMLSelectElement;
+    kind.value = RESOURCE_KINDS.some(([v]) => v === kindNow) ? kindNow : 'individual';
+    const num = (id: string, fid: string, text: string, value: number) => el('input', { id, type: 'number', min: 0, max: 2, step: 1, inputmode: 'numeric', value: String(value),
+      ...fieldAttrs({ id: fid, entity: 'resources.spaces', prop: 'attributes', label: text, confirm: 'event' }), onchange: () => change() }) as HTMLInputElement;
+    const seats = num('dormSeats', 'booking.espacios.dormitorio.fijas', 'Plazas fijas', b.seats);
+    const extras = num('dormExtras', 'booking.espacios.dormitorio.supletorias', 'Plazas supletorias', b.extras);
+    function change(): void {
+      const f = Math.round(Number(seats.value)); const x = Math.round(Number(extras.value));
+      if (![f, x].every((n) => Number.isInteger(n) && n >= 0 && n <= 2) || f + x < 1) return say('Las plazas van de 0 a 2, y al menos una en total.');
+      b.kind = kind.value; b.seats = f; b.extras = x; b.edited = true;
+      sizes.set(b.id, dorm.sizeOfKind(b.kind));
+      say(`${b.label}: ${label(b.kind)}, ${placesText(b)}. Se guarda al pulsar «Guardar».`);
+      paint(b.id);
+    }
+    return el('div', { class: 'bk-dorm-seats', id: 'dormSeatsEditor', 'data-feedback-id': 'booking.espacios.dormitorio.plazas', 'data-feedback-label': 'Tipo y plazas de la cama' },
+      el('label', { class: 'field' }, el('span', null, 'Tipo'), kind),
+      el('label', { class: 'field' }, el('span', null, 'Fijas'), seats),
+      el('label', { class: 'field' }, el('span', null, 'Supletorias'), extras));
   }
 
   function sizer(text: string, axis: 'cols' | 'rows'): HTMLElement {

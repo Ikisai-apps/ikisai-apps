@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { eur, loadMirror, supplierName, todayIso, type Mirror } from '../app/data.ts';
-import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, renderGroups, renderMedal, renderMoneyBreakdown, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, el, fieldAttrs, formatDate, icon, listRow, openSheet, renderGroups, renderMedal, renderMoneyBreakdown, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { movesOf, supplierDebt, upcomingOf, type SupplierDebt } from '../app/supplier-state.ts';
 import { linkedItem, linksEnabled } from '../app/resources.ts';
 import { fbRows } from './feedback.ts';
@@ -66,7 +66,7 @@ export const mountSuppliers: ViewMount = ({ main, client, navigate }) => {
   let mirror: Mirror | null = null;
   let sheet: Sheet | null = null;
 
-  const search = el('input', { 'data-feedback-id': 'invoices.proveedores.buscar', 'data-feedback-label': 'Buscar proveedores', type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.buscar', storage: 'none', label: 'Buscar proveedores', type: 'search', sensitivity: 'internal', confirm: 'none' }),type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   const list = el('div', { id: 'supplierList', 'data-feedback-id': 'invoices.proveedores.lista', 'data-feedback-label': 'Proveedores' });
   const chips = el('div', { class: 'inv-boxes', role: 'group', 'aria-label': 'Filtrar proveedores', id: 'supplierFilter', 'data-feedback-id': 'invoices.proveedores.filtro', 'data-feedback-label': 'Filtrar proveedores' });
@@ -220,17 +220,17 @@ export const mountSuppliers: ViewMount = ({ main, client, navigate }) => {
     const expectedRevision = row?.revision ?? null;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
 
-    const name = el('input', { 'data-feedback-ignore': '', id: 'f-name', name: 'name', type: 'text', required: true, maxlength: '200', autocomplete: 'organization', value: initial.name });
-    const label = el('input', { 'data-feedback-ignore': '', id: 'f-label', name: 'label', type: 'text', maxlength: '120', autocomplete: 'off', value: initial.label, placeholder: 'Cómo lo llamas tú (p. ej. «Makro»)' });
-    const taxId = el('input', { 'data-feedback-ignore': '', id: 'f-tax', name: 'tax_id', type: 'text', maxlength: '32', autocomplete: 'off', spellcheck: 'false', value: initial.tax_id, style: 'text-transform:uppercase' });
-    const category = el('select', { 'data-feedback-id': 'invoices.proveedores.ficha.categoria', 'data-feedback-label': 'Categoría por defecto', id: 'f-category', name: 'default_category' },
+    const name = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.razon_social', label: 'Razón social (la de la factura)', type: 'text', entity: 'invoices.suppliers', prop: 'name', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'f-name', name: 'name', type: 'text', required: true, maxlength: '200', autocomplete: 'organization', value: initial.name });
+    const label = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.mi_nombre', label: 'Mi nombre', type: 'text', entity: 'invoices.suppliers', prop: 'label', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'f-label', name: 'label', type: 'text', maxlength: '120', autocomplete: 'off', value: initial.label, placeholder: 'Cómo lo llamas tú (p. ej. «Makro»)' });
+    const taxId = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.nif', label: 'NIF', type: 'text', entity: 'invoices.suppliers', prop: 'tax_id', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'f-tax', name: 'tax_id', type: 'text', maxlength: '32', autocomplete: 'off', spellcheck: 'false', value: initial.tax_id, style: 'text-transform:uppercase' });
+    const category = el('select', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.categoria', label: 'Categoría por defecto', type: 'select', entity: 'invoices.suppliers', prop: 'default_category', sensitivity: 'internal', confirm: 'none' }), id: 'f-category', name: 'default_category' },
       el('option', { value: '' }, 'Sin categoría'),
       ...CATEGORIES.map((c) => el('option', { value: c, selected: initial.default_category === c }, CATEGORY_LABELS[c])),
     );
-    const notes = el('textarea', { 'data-feedback-ignore': '', id: 'f-notes', name: 'notes', rows: '3' });
+    const notes = el('textarea', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.notas', label: 'Notas', type: 'text', entity: 'invoices.suppliers', prop: 'notes', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'f-notes', name: 'notes', rows: '3' });
     notes.value = initial.notes;
-    const aliases = el('input', { 'data-feedback-ignore': '', id: 'f-aliases', name: 'aliases', type: 'text', autocomplete: 'off', value: initial.aliases, placeholder: 'MAKRO ESPAÑA S.A., Makro Alcorcón' });
-    const investment = el('input', { 'data-feedback-id': 'invoices.proveedores.ficha.inversion', 'data-feedback-label': 'Suelen ser inversión', id: 'f-investment', name: 'default_is_investment', type: 'checkbox', checked: initial.default_is_investment });
+    const aliases = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.alias', label: 'Alias', type: 'text', entity: 'invoices.suppliers', prop: 'aliases', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'f-aliases', name: 'aliases', type: 'text', autocomplete: 'off', value: initial.aliases, placeholder: 'MAKRO ESPAÑA S.A., Makro Alcorcón' });
+    const investment = el('input', { ...fieldAttrs({ id: 'invoices.proveedores.ficha.inversion', label: 'Suelen ser inversión', type: 'toggle', entity: 'invoices.suppliers', prop: 'default_is_investment', sensitivity: 'internal', confirm: 'none' }), id: 'f-investment', name: 'default_is_investment', type: 'checkbox', checked: initial.default_is_investment });
 
     const current = (): FormValues => ({ name: name.value, label: label.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, default_is_investment: investment.checked, aliases: aliases.value, notes: notes.value });
     const isDirty = () => !sameValues(current(), initial);

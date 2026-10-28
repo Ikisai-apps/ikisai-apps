@@ -21,7 +21,7 @@ let server: PreviewServer;
 let baseURL: string;
 let seq = 0;
 const uuid = () => crypto.randomUUID();
-const ids = { albergue: uuid(), despensa: uuid(), harina: uuid(), aceite: uuid() };
+const ids = { albergue: uuid(), despensa: uuid(), harina: uuid(), aceite: uuid(), factura: uuid() };
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);
@@ -40,10 +40,12 @@ test.beforeAll(async () => {
   ]);
   expect(first.status, JSON.stringify(first.data)).toBe(200);
   const second = await resources([
-    { op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: ids.aceite, space_id: ids.despensa, quantity: 5000, kind: 'entrada_factura', unit_cost: 0.004, source_app: 'invoices', source_ref: 'line:ficticia' } },
+    { op: 'insert', table: 'resources.movements', id: ids.factura, fields: { item_id: ids.aceite, space_id: ids.despensa, quantity: 5000, kind: 'entrada_factura', unit_cost: 0.004, source_app: 'invoices', source_ref: 'line:ficticia' } },
     { op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: ids.aceite, space_id: ids.despensa, quantity: -1500, kind: 'salida_manual', reason: 'uso' } },
   ]);
   expect(second.status, JSON.stringify(second.data)).toBe(200);
+  // El origen lo pone el servidor (Recursos #1175): desde un lote del navegador quedaría vacío. Aquí, el que pondría Finance.
+  await db.query(`update resources.movements set source_app = 'invoices', source_ref = 'line:ficticia' where id = $1`, [ids.factura]);
   // La cuenta del owner, enlazada a su ficha: los movimientos dicen quién por su nombre en Personas.
   const person = await api.app.call('/api/v1/commands', { body: { requestId: 'inv-person', operations: [
     { op: 'insert', table: 'central.people', id: uuid(), fields: { display_name: 'Olga Ficticia', relation: 'equipo', user_id: owner } },

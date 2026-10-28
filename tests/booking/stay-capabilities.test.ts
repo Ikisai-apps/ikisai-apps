@@ -23,7 +23,7 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
   method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://guests.ikisai.com', ...headers }, body: JSON.stringify(body) }));
 
 test('las dos capacidades están en el catálogo con lo que leen y escriben', async () => {
-  const caps = (await app.t.db.query<{ id: string; route: string; reads: string[]; writes: string[] }>(`select id, route, reads, writes from core.capabilities where app = 'booking' order by id`)).rows;
+  const caps = (await app.t.db.query<{ id: string; route: string; reads: string[]; writes: string[] }>(`select id, route, reads, writes from core.capabilities where id in ('booking.accept_stay', 'booking.cancel_stay_online') order by id`)).rows;
   assert.deepEqual(caps.map((c) => [c.id, c.route]), [['booking.accept_stay', 'POST stays/:id/accept'], ['booking.cancel_stay_online', 'POST stays/:id/cancel/online']]);
   for (const c of caps) {
     assert.ok(c.reads.length > 0 && c.writes.length > 0, c.id);

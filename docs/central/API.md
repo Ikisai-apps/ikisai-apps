@@ -496,6 +496,7 @@ La ficha no es una cuenta: se apoya en la cuenta de agente del núcleo (`core.pr
 | `active` | `boolean` | `false` por defecto. Sin responsable no se activa. |
 | `successor_id` | `uuid` | El agente que le sigue. Nunca él mismo. |
 | `notes` | `text` | Hasta 500. |
+| `flow_project`, `flow_lane` | `uuid`, `text` | El proyecto del Avance de Flow (uuid) y la clave de su carril (`^[a-z][a-z0-9_]{1,30}$`), uno por agente (`1524`). Flow lee `central.agent_lanes_projection` (proyecto, carril → ficha) para enlazar la ficha desde el Avance. Con los dos, la ficha enlaza a `flow.ikisai.com/#/p/<proyecto>/avance?carril=<carril>`; el Avance enlaza la ficha con `central.ikisai.com/#/accesos/agentes?agente=<id>`. |
 
 Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). El agente no cambia su ficha: lo que proponga irá por `core.proposals` cuando la pantalla lo admita.
 
@@ -747,6 +748,8 @@ select core.allow_read('central', 'booking.central_kpi_projection', 'view');
 | `central.trades_archived_with_people` | oficios archivados con capacidades vivas | down |
 
 **Temas** (R7, sin tocar el contrato): `KPI_SECTIONS` en `_domain/central/kpis.ts` reparte las claves en Cumplimiento, Personas, Oficios, Espacios e Inventario, en ese orden. Una clave sin tema va al final de su app, sin subtítulo; una app sin temas se pinta como siempre, por clave y periodo.
+
+**P7 · Food y Flow (pedido de Central, 27-10).** Food añade `food.carta_sales_yesterday` (eur, up), `food.recipes_allergens_unchecked_30d` y `food.equipment_notices_open` (count, down) a lo que ya publica. Flow publica `flow.central_kpi_projection` con `flow.sales_yesterday` (eur, up), `flow.day_closures_pending`, `flow.orders_unfinished_past` y `flow.buffers_below_target` (count, down). Mientras Dirección no fije otros, valen los **objetivos de partida** de `KPI_DEFAULT_TARGETS` (`targetOrDefault`): con «menos es mejor», 0 de objetivo y atención desde el primero (en existencias bajo el umbral, desde 2).
 
 **Objetivos y estado.** `central.kpi_targets` (§2.7) guarda objetivo, umbral de atención, umbral crítico y sentido por clave y periodo (`*`, `AAAA`, `AAAA-MM`, `AAAAT1`): se aplica el del periodo exacto, si no el del año y si no el general. El estado `ok | atencion | critico` de C01 lo calcula `GET dashboard` (`kpiState` de `_domain/central/kpis.ts`); solo el owner fija objetivos.
 

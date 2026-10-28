@@ -1,6 +1,6 @@
 /** Bloque «Alojamiento» de la ficha (docs/booking/API.md §15.1): asignaciones del evento a habitaciones, camas, salas y zonas. */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
-import { el, icon, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { fieldAttrs, el, icon, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsCharged, isBookable, isExtraBed, staysOnBed, validateFields } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, EXTRA_BEDS, RESERVATIONS, SPACES, STAYS, canRead, describeError, shortDay } from '../app/client.ts';
 import { guard } from '../app/guard.ts';
@@ -75,16 +75,16 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
   const spaceOptions = data.spaces.filter((s) => isBookable(s as any) || s.id === assignment?.space_id);
   const input = (attrs: Record<string, string | number | boolean>) => el('input', { autocomplete: 'off', ...attrs });
 
-  const spaceSelect = el('select', { id: 'f-space_id' },
+  const spaceSelect = el('select', { id: 'f-space_id', ...fieldAttrs({ id: 'booking.reserva.alojamiento.space_id', entity: 'booking.room_assignments', prop: 'space_id', label: 'Espacio', confirm: 'event' }) },
     assignment ? null : el('option', { value: '' }, '— Elige un espacio —'),
     spaceOptions.map((s) => el('option', { value: s.id }, `${s.name}${s.zone ? ` · ${s.zone}` : ''}`))) as HTMLSelectElement;
-  const bedSelect = el('select', { id: 'f-bed_id' }) as HTMLSelectElement;
-  const guestSelect = el('select', { id: 'f-guest_id' }, el('option', { value: '' }, 'Ninguno: es un grupo'),
+  const bedSelect = el('select', { id: 'f-bed_id', ...fieldAttrs({ id: 'booking.reserva.alojamiento.bed_id', entity: 'booking.room_assignments', prop: 'bed_id', label: 'Cama', confirm: 'event' }) }) as HTMLSelectElement;
+  const guestSelect = el('select', { id: 'f-guest_id', ...fieldAttrs({ id: 'booking.reserva.alojamiento.guest_id', entity: 'booking.room_assignments', prop: 'guest_id', label: 'Huésped', confirm: 'event' }) }, el('option', { value: '' }, 'Ninguno: es un grupo'),
     guests.map((g) => el('option', { value: g.id }, guestName(g)))) as HTMLSelectElement;
-  const group = input({ id: 'f-group_label', type: 'text', maxlength: 120 }) as HTMLInputElement;
-  const persons = input({ id: 'f-persons', type: 'number', min: 1, step: 1, inputmode: 'numeric' }) as HTMLInputElement;
-  const from = input({ id: 'f-from_date', type: 'date' }) as HTMLInputElement;
-  const to = input({ id: 'f-to_date', type: 'date' }) as HTMLInputElement;
+  const group = input({ id: 'f-group_label', ...fieldAttrs({ id: 'booking.reserva.alojamiento.group_label', entity: 'booking.room_assignments', prop: 'group_label', label: 'Grupo', confirm: 'event' }), type: 'text', maxlength: 120 }) as HTMLInputElement;
+  const persons = input({ id: 'f-persons', ...fieldAttrs({ id: 'booking.reserva.alojamiento.persons', entity: 'booking.room_assignments', prop: 'persons', label: 'Personas', confirm: 'event' }), type: 'number', min: 1, step: 1, inputmode: 'numeric' }) as HTMLInputElement;
+  const from = input({ id: 'f-from_date', ...fieldAttrs({ id: 'booking.reserva.alojamiento.from_date', entity: 'booking.room_assignments', prop: 'from_date', label: 'Desde', confirm: 'event' }), type: 'date' }) as HTMLInputElement;
+  const to = input({ id: 'f-to_date', ...fieldAttrs({ id: 'booking.reserva.alojamiento.to_date', entity: 'booking.room_assignments', prop: 'to_date', label: 'Hasta', confirm: 'event' }), type: 'date' }) as HTMLInputElement;
   const conflict = el('p', { class: 'formerror', id: 'bedConflict', role: 'alert', hidden: true });
   const activates = el('p', { class: 'hint', id: 'bedActivates', hidden: true }, 'Esta supletoria no está activada: al guardar se activa para este retiro y se cobra como extra.');
   const error = el('p', { class: 'formerror', role: 'alert', hidden: true });

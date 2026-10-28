@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { fieldAttrs, announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
   COMMERCIAL_STAGES, EVENT_TYPES, PHASES, PHASE_LABELS, TABLES, canHoldStatus, commercialStageLabel, dayNumber, foldText, missingForConfirmation, nextText, nights, validateFields,
   type CommercialStage, type Phase, type ReservationStatus,
@@ -92,7 +92,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   const writable = canWrite(client);
   resetSesWatch();
 
-  const search = el('input', { type: 'search', id: 'reservationSearch', 'data-feedback-id': 'booking.reservas.buscador.campo', 'data-feedback-label': 'Buscar reservas', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
+  const search = el('input', { type: 'search', id: 'reservationSearch', ...fieldAttrs({ id: 'booking.reservas.buscador.campo', label: 'Buscar reservas', confirm: 'none', storage: 'none' }), 'data-feedback-id': 'booking.reservas.buscador.campo', 'data-feedback-label': 'Buscar reservas', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
     'aria-describedby': 'reservationSearchScope', oninput: () => { query = foldText(search.value); paint(); } });
   const searchScope = el('p', { class: 'hint', id: 'reservationSearchScope', 'aria-live': 'polite' });
   const filterBar = el('div', { class: 'filters bk-filters', role: 'group', 'aria-label': 'Filtrar reservas', 'data-feedback-id': 'booking.reservas.filtros', 'data-feedback-label': 'Filtros' });
@@ -304,7 +304,13 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   function openForm(dates: { start?: string; end?: string } = {}): void {
     const initial = valuesOf(dates);
     const blank = valuesOf();
-    const field = (label: string, control: HTMLElement, key: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reservas.alta.${key}`, 'data-feedback-label': label }, el('span', null, label), control);
+    // inventario de campos (P15): el control lleva `data-field-*` con su columna; el aviso de guardado es el de «Guardar»
+    const COLUMN: Record<string, string> = { titulo: 'title', tipo: 'event_type', estado: 'status', inicio: 'start_date', fin: 'end_date', personas: 'expected_guests',
+      contacto: 'contact_name', telefono: 'contact_phone', pago_noches: 'lodging_pay_mode', horas_plaza: 'lodging_hold_hours' };
+    const field = (label: string, control: HTMLElement, key: string) => {
+      for (const [k, v] of Object.entries(fieldAttrs({ id: `booking.reservas.alta.${key}`, entity: 'booking.reservations', prop: COLUMN[key], label, confirm: 'none' }))) if (v !== null && k !== 'data-feedback-id') control.setAttribute(k, v);
+      return el('label', { class: 'field', 'data-feedback-id': `booking.reservas.alta.${key}`, 'data-feedback-label': label }, el('span', null, label), control);
+    };
     const input = (id: string, type: string, value: string, extra: Record<string, string | number | boolean> = {}) =>
       el('input', { id, type, value, autocomplete: 'off', oninput: onChange, ...extra });
     const select = (id: string, options: Array<[string, string]>, value: string) => {

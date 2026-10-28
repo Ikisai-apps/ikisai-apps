@@ -1,5 +1,17 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.72.0 · 28 de octubre de 2026
+
+Inventario de campos: lo que no es un dato y lo que no va a una columna.
+
+### #1158
+
+**Inventario de campos: «no es un campo».** `NOT_A_FIELD` (atributo `data-field-none`) marca los controles que no guardan ningún dato (buscadores, filtros, selección de filas, rangos al generar). `feature-catalog.mjs` ya no los pone en `fieldsUninstrumented`, así que el recuento de «sin anclaje» de cada app puede llegar a 0. Lo propuso Food.
+
+**`FieldSpec.storage`**: `device` (solo en el dispositivo: una calculadora, un borrador local) o `none` (no se guarda: un cartel que se dibuja, un código de un solo uso). Sale como `data-field-storage` y en el catálogo, y el informe ya no cuenta esos campos como «sin entidad». Por omisión, `server`. Lo propuso Organizers.
+
+**`@field-caller`**: en un ayudante genérico que recibe los atributos de quien lo llama (`...mark`), un comentario con `@field-caller` en la línea del `el()` o en la anterior hace que el extractor no lo cuente como «sin anclaje»; el campo se declara en la llamada. Lo pidió Food.
+
 ## 0.71.0 · 27 de octubre de 2026
 
 Segunda tanda del 27-10: el Guiado listo para el móvil, la cobertura por candidatos, la pista de desplazamiento (K4) y las pestañas con enlaces. Los tipos de la decisión por grupo se exportan desde #1120.
