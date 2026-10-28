@@ -231,7 +231,18 @@ export function openOrderSheet(client: SyncClient, orderId: string, opts: { onCl
         ? [el('button', { type: 'button', class: 'primary', onclick: () => { sheet.close(); openPaySheet(client, o.project_id, [o.id]); } }, 'Pagar')] as HTMLButtonElement[] : null;
       for (const b of [cash, bizum, ...onAccount, ...(deep ?? [])]) b.disabled = empty || lines().some((l) => l._pending);
       // «Cargar a cuenta» antes de pagar (VG, 28-10).
-      if (deep) replace(foot, ...onAccount, ...deep); else replace(foot, ...onAccount, cash, bizum);
+      // Cancelar un pedido sin cobrar (VG, 28-10): se retira entero; uno cobrado se anula con «Anular cobro».
+      const cancel = el('button', { type: 'button', class: 'ghost danger-text', 'data-action': 'cancel-order', onclick: async () => {
+        const fresh = order();
+        if (!fresh || fresh.status !== 'open') return;
+        if (!(await confirmDialog({ title: 'Cancelar el pedido', text: 'El pedido se retira y no se cobra.', confirmLabel: 'Cancelar pedido', cancelLabel: 'Volver' }))) return;
+        try {
+          await client.commit([{ op: 'delete', table: TABLES.orders, id: fresh.id, expectedRevision: order()?.revision ?? fresh.revision }]);
+          toast('Pedido cancelado.');
+          sheet.close();
+        } catch (error) { toast(describeError(error)); }
+      } }, 'Cancelar pedido');
+      if (deep) replace(foot, ...onAccount, ...deep, cancel); else replace(foot, ...onAccount, cash, bizum, cancel);
     } else if (mode === 'correct') {
       const save = (method: PayMethod) => act({ class: 'primary' }, `Guardar (${PAY_METHOD_LABELS[method].toLowerCase()})`, () => saveCorrection(method));
       replace(foot, el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'view'; correction = null; shape = ''; paint(); } }, 'Cancelar'), save('cash'), save('bizum'));
