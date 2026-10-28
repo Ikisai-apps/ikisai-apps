@@ -12,8 +12,8 @@
 import { announceSaved, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
-import { errorCodeOf, myStay, publicBeds, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
-import { portalMap, withBedLayouts } from './plan.ts';
+import { errorCodeOf, myRequests, myStay, publicBeds, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
+import { estateOf, portalMap, withBedLayouts } from './plan.ts';
 import { loading, whyNote } from './common.ts';
 
 const addDays = (day: string, n: number) => {
@@ -143,27 +143,31 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
   };
 
   /**
-   * «Ver las camas en el plano» (VG, 27-10-2026): plegado; al abrirlo, el plano de la casa (`GET public/plans`, solo con la
-   * identidad de visitante y habiendo entrado en el evento) con las camas libres todas esas noches para tocar y elegir;
-   * las demás, ocupadas y sin nombre de nadie. Tocar una marca su opción en la lista, que sigue siendo la que manda.
+   * La cama, en el plano (VG, 28-10-2026): se abre solo, en el dibujo donde quedan camas libres (si todas están en un
+   * edificio, ese; si no, la finca), con solo las habitaciones que tienen alguna libre; se toca la habitación y dentro la
+   * cama. Las camas salen de su sitio en Booking (`bedShape`, 1417). La lista se esconde cuando el plano sirve; sin dibujo
+   * o sin camas colocadas, se queda la lista (y «Asignadme una» siempre).
    */
-  const planBox = (beds: PublicBeds): HTMLElement => {
+  const planChooser = (beds: PublicBeds, listRooms: HTMLElement[]): HTMLElement => {
     const byResource = new Map(beds.rooms.flatMap((r) => r.beds.filter((b) => b.resource_bed_id).map((b) => [b.resource_bed_id!, b] as const)));
-    const inner = el('div', { id: 'lodgePlan', 'aria-live': 'polite' });
-    const box = el('details', { class: 'glodge-plan', id: 'lodgePlanBox', 'data-feedback-id': 'guests.visitante.alojate.plano', 'data-feedback-label': 'Ver las camas en el plano' },
-      el('summary', null, icon('pin', 16), ' ', t('lodge.planOpen')), inner) as HTMLDetailsElement;
-    let done = false;
+    const box = el('div', { class: 'glodge-plan', id: 'lodgePlanBox', 'aria-live': 'polite', 'data-feedback-id': 'guests.visitante.alojate.plano', 'data-feedback-label': 'La cama en el plano' }, loading());
     const load = () => {
-      done = true;
-      replace(inner, loading());
-      void visitorPlans(code).then((data) => {
-        if (!byResource.size || !data.plans.length) { replace(inner, whyNote('lodgePlanWhy', t('lodge.planNone'))); return; }
-        const map = portalMap(withBedLayouts(data, beds.rooms), {
-          mode: 'map', label: t('lodge.planLabel'), feedbackId: 'guests.visitante.alojate.plano.mapa', showDecor: false,
-          layer: (s) => {
-            const bed = byResource.get(s.id);
-            return bed ? (bed.free ? { state: 'free' } : { state: 'occupied' }) : null;
-          },
+      replace(box, loading());
+      void visitorPlans(code).then((raw) => {
+        const data = withBedLayouts(raw, beds.rooms);
+        const byId = new Map(data.spaces.map((s) => [s.id, s]));
+        const free = data.spaces.filter((s) => s.kind === 'cama' && s.planShape && byResource.get(s.id)?.free);
+        if (!free.length || !data.plans.length) { replace(box); return; }
+        // Lo que se enseña: las camas libres y todo lo que las contiene (habitación, edificio…).
+        const shown = new Set<string>();
+        for (const bed of free) for (let at: string | null = bed.id; at && !shown.has(at); at = byId.get(at)?.parentId ?? null) shown.add(at);
+        const roomPlans = new Set(free.map((b) => byId.get(b.parentId ?? '')?.planId).filter((p): p is string => !!p));
+        const start = roomPlans.size === 1 ? [...roomPlans][0]! : estateOf(data);
+        const map = portalMap(data, {
+          mode: 'map', label: t('lodge.planLabel'), feedbackId: 'guests.visitante.alojate.plano.mapa', showDecor: false, drill: true,
+          ...(start ? { plan: start } : {}),
+          filter: (s) => shown.has(s.id),
+          layer: (s) => (byResource.get(s.id)?.free ? { state: 'free' } : null),
           onPick: (s) => {
             const bed = byResource.get(s.id);
             if (!bed?.free) return;
@@ -172,14 +176,15 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
             map.select(s.id);
           },
         });
-        replace(inner, map.element);
+        replace(box, map.element);
+        // El plano manda: la lista de camas, escondida (sigue en el formulario para la elección).
+        listRooms.forEach((r) => { r.hidden = true; });
       }).catch((error) => {
-        done = false;
-        replace(inner, whyNote('lodgePlanWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('lodge.planFailed')),
+        replace(box, whyNote('lodgePlanWhy', errorCodeOf(error) === 'NETWORK' ? t('error.offline') : t('lodge.planFailed')),
           el('button', { type: 'button', class: 'ghost small', id: 'lodgePlanRetry', onclick: load }, t('common.retry')));
       });
     };
-    box.addEventListener('toggle', () => { if (box.open && !done) load(); });
+    load();
     return box;
   };
 
@@ -196,6 +201,11 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
     const bedsHost = el('div', { id: 'lodgeBeds', 'aria-live': 'polite' });
     let picked: string | null = null;
     const form = travelerForm('lodge_');
+    // Lo que ya dejó en «Tus datos» (VG, 28-10): su nombre, ya puesto, si aún no ha escrito nada.
+    void myRequests(code).then((list) => {
+      const mine = list.find((r) => (r.kind === 'join' || r.kind === 'contact') && r.status !== 'descartada' && r.name);
+      if (mine?.name && !form.first.value) form.first.value = mine.name;
+    }).catch(() => undefined);
     const why = el('div', { 'aria-live': 'polite' });
     const go = el('button', { type: 'submit', class: 'primary wide', id: 'lodgeGo', 'data-feedback-id': 'guests.visitante.alojate.pagar', 'data-feedback-label': 'Ir a pagar' }, t('lodge.go')) as HTMLButtonElement;
 
@@ -211,17 +221,18 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         const radio = (value_: string, label: HTMLElement | string, checked = false) => el('label', { class: 'glodge-bed-opt' },
           el('input', { type: 'radio', name: 'lodgeBed', value: value_, ...(checked ? { checked: '' } : {}), onchange: () => { picked = value_ || null; },
             'data-field-id': 'guests.visitante.alojate.cama' }), label);
+        const listRooms = value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
+          el('p', { class: 'small glodge-room-name' }, r.name),
+          ...r.beds.filter((b) => b.free).map((b) => radio(b.id, b.label))));
         replace(bedsHost,
           el('p', { class: 'small', id: 'lodgePrice' }, value.price_night_cents !== null
             ? t('lodge.price', { night: money(value.price_night_cents), total: money(value.price_night_cents * value.nights), nights: t('stay.nights', { count: value.nights }) }) : ''),
           free.length
             ? el('fieldset', { class: 'glodge-beds', ...fieldAttrs({ id: 'guests.visitante.alojate.cama', entity: 'booking.visitor_requests', prop: 'hold_bed_ids', type: 'select', required: false, sensitivity: 'internal', confirm: 'event' }) }, el('legend', null, t('lodge.bedTitle')),
               radio('', el('strong', null, t('lodge.assign')), true),
-              ...value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
-                el('p', { class: 'small glodge-room-name' }, r.name),
-                ...r.beds.filter((b) => b.free).map((b) => radio(b.id, b.label)))))
+              ...listRooms)
             : whyNote('lodgeFull', t('stay.full', { nights: t('stay.nights', { count: value.nights }) })));
-        if (free.length) bedsHost.append(planBox(value));
+        if (free.length) bedsHost.append(planChooser(value, listRooms));
         go.disabled = !free.length;
       } catch (error) {
         replace(bedsHost, whyNote('lodgeBedsWhy', lodgeError(error)), el('button', { type: 'button', class: 'ghost small', id: 'lodgeBedsRetry', onclick: () => void beds() }, t('common.retry')));

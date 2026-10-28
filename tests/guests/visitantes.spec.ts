@@ -325,12 +325,14 @@ test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, n
   expect(anonymous.status()).toBe(401);
 
   await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  // El plano se abre solo, en el dibujo con camas libres, y la lista queda escondida (VG, 28-10).
   const box = page.locator('#lodgePlanBox');
-  await box.locator('summary').click();
   const bed2 = box.locator(`.map-svg [data-space-id="${ids['Cama 2']}"]`);
   await expect(bed2).toBeVisible();
   await bed2.click();
   await expect(page.locator(`#lodgeBeds input[name="lodgeBed"][value="${byLabel['Cama 2']}"]`)).toBeChecked();
+  await expect(page.locator('#lodgeBeds .glodge-room').first()).toBeHidden();
+  await expect(page.locator('#lodgeBeds').getByLabel('Asignadme una')).toBeVisible();
   // Sin datos de nadie en el plano.
   await expect(box).not.toContainText('Noa');
 });
@@ -352,4 +354,15 @@ test('«Alójate aquí» · Guiado de Flow en ven.ikisai.com: señala el campo, 
   await page.locator('#lodgeGo').click();
   await expect(page.locator('#lodgeNumber')).toHaveText(/\S+/);
   await expect(page.getByText('Hecho. Puedes volver a la guía.')).toBeVisible();
+});
+
+test('«Alójate aquí» · lo que dejó en «Tus datos» sale ya puesto (VG, 28-10)', async ({ page }) => {
+  const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  await page.goto(`${baseURL}/e/${d.code}`);
+  await page.locator('#visitorEnter').click();
+  await page.locator('#visitorName').fill('Iria Prueba');
+  await page.locator('#visitorJoin').click();
+  await expect(page.locator('#visitorSent')).toContainText('Pendiente');
+  await page.goto(`${baseURL}/e/${d.code}?alojate`);
+  await expect(page.locator('#lodge_first_name')).toHaveValue('Iria Prueba');
 });
