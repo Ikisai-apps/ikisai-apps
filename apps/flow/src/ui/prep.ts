@@ -8,7 +8,7 @@ import { askTasks, quickPurchase } from '../app/links.ts';
 import { customerNumber, fillMetricText, loadStationMetrics, steadyMetrics, watchData, type FlowData, type StationMetric, type Unit } from '../app/data.ts';
 import { loadPeople, personName } from '../app/people.ts';
 import { createStableList } from './stable-list.ts';
-import type { ViewMount } from './shell.ts';
+import { serviceToggle, type ViewMount } from './shell.ts';
 
 /**
  * Cola de unidades con toques sucesivos (canon V1 §5 y §7; FLOW-DIR-001 §5–6). La usan Preparación (montaditos) y
@@ -84,6 +84,8 @@ export function mountQueue(kind: QueueKind): ViewMount {
       ? [el('div', { class: 'orders-owner' }, el('button', { type: 'button', class: 'ghost', onclick: () => void generate() }, 'Generar tareas de ingredientes'))] : [];
     main.append(
       el('h1', { class: 'col-title' }, ctx.columnLabel ?? QUEUE_TITLE[kind]),
+      // Modo servicio (pantalla encendida, aviso de pedido nuevo): aquí, donde se usa (VG, 28-10).
+      ...(kind === 'prep' && serviceToggle ? [el('div', { class: 'orders-owner' }, serviceToggle)] : []),
       noticeEl,
       ...ownerTools,
       ...(kind === 'prep' ? [el('p', { class: 'muted small' }, 'Toca para tomar un montadito, otra vez cuando esté listo para servir. Un tercer toque lo devuelve a pendiente.')] : []),

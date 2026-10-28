@@ -104,6 +104,9 @@ function navFor(projectId: string, columns: FlowColumn[], short: boolean): NavIt
  * Cáscara común del kit: cabecera, menú lateral (MUELA-013) con el lanzador de apps y «Sugerencias y QA», «‹ Volver a…»
  * (K9) cuando se llega desde otra app, barra de estado y navegación. Rutas propias de Flow, por ahora solo Inicio.
  */
+/** El botón del modo servicio (pantalla encendida y aviso de pedido nuevo), que pinta Preparación. */
+export let serviceToggle: HTMLElement | null = null;
+
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { client } = ctx;
   let unmountView: (() => void) | null = null;
@@ -135,6 +138,15 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   const boot = client.bootstrap();
   const service = createServiceMode();
+  serviceToggle = service.button;
+  /** «Pestañas / Lado a lado» del tablero, en la cabecera (VG, 28-10): solo dentro de un flujo con tablero. */
+  const tabsBtn = el('button', { type: 'button', class: 'flow-viewbtn', 'aria-pressed': 'true', onclick: () => board?.lanes.setView('tabs') }, 'Pestañas');
+  const sideBtn = el('button', { type: 'button', class: 'flow-viewbtn', 'aria-pressed': 'false', onclick: () => board?.lanes.setView('side') }, 'Lado a lado');
+  const viewSwitch = el('div', { class: 'flow-viewswitch', role: 'group', 'aria-label': 'Vista del tablero', hidden: true }, tabsBtn, sideBtn);
+  const paintViewSwitch = (view: string | null) => {
+    viewSwitch.hidden = !view;
+    tabsBtn.setAttribute('aria-pressed', String(view === 'tabs')); sideBtn.setAttribute('aria-pressed', String(view === 'side'));
+  };
   const backButton = el('button', { type: 'button', class: 'iconbtn flow-nav-btn', 'aria-label': 'Volver', title: 'Volver', hidden: true,
     'data-feedback-id': 'flow.navegacion.volver', onclick: () => { if (navParent) navigate(navParent); } }, el('span', { class: 'flow-nav-chev', 'aria-hidden': 'true' }, '‹'));
   const closeButton = el('button', { type: 'button', class: 'iconbtn flow-nav-btn', 'aria-label': 'Cerrar y volver a la entrada', title: 'Cerrar y volver a la entrada', hidden: true,
@@ -150,7 +162,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navLayout: 'bar',
     // Guiado mínimo del kit (0.68): ?campo= señala el campo; ?paso= lo explica y pone «Volver a…». Sin cliente: no lee nada de Flow.
     guide: { feedbackId: 'flow.guia' },
-    tools: [backButton, closeButton, service.button],
+    // Cabecera limpia (VG, 28-10): sin ‹ (abajo está Inicio), sin sincronizar ni cerrar sesión (en el menú); el modo servicio va a
+    // Preparación. Queda el interruptor del tablero y ✕ en el Inicio del flujo.
+    tools: [viewSwitch, closeButton],
     returnTo: { feedbackId: 'flow.cabecera.volver' },
     menu: {
       label: 'Menú de Flow',
@@ -356,6 +370,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const lanes = createLanes({
       label: 'Columnas del flujo', storageKey: 'flow-board', selected, feedbackId: 'flow.tablero',
       lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body, columnLabel: c.label }) })),
+      onView: (view) => paintViewSwitch(view),
       onSelect: (id) => {
         const h = `#/p/${projectId}/${COLUMN_VIEWS[id]?.slug ?? id}`;
         if (location.hash !== h) { history.replaceState(null, '', h); shell.setRoute(h); }
@@ -364,9 +379,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     lanes.element.classList.add('flow-board');
     vctx.main.append(lanes.element);
     board = { projectId, lanes };
+    paintViewSwitch(lanes.view());
     // Guiado: un campo de otra columna está en otro carril; se elige ese carril para que aparezca (`flow.<pantalla>…`).
     const offReveals = columns.map((c) => registerReveal(`flow.${COLUMN_VIEWS[c.key]?.slug ?? c.key}`, () => lanes.select(c.key)));
-    return () => { offReveals.forEach((off) => off()); lanes.destroy(); board = null; };
+    return () => { offReveals.forEach((off) => off()); lanes.destroy(); board = null; paintViewSwitch(null); };
   }
 
   const offStatus = client.onStatus((status) => {

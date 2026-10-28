@@ -398,3 +398,12 @@
 .flow-board .lanes-sum{visibility:hidden}
 .flow-board[data-view="tabs"] .lanes-tabs{display:none}
 .flow-pick-title{margin:10px 0 2px;font-size:.9rem;color:var(--muted)}
+/* Cabecera de Flow (VG, 28-10): sin el estado de sincronización (está en el menú y los avisos salen como banda), sin cerrar
+   sesión (en el menú); el interruptor del tablero arriba y sin su fila sobre el contenido. */
+.topbar .statusbar{display:none}
+#logoutButton{display:none}
+.flow-board .lanes-bar{display:none}
+.flow-viewswitch{display:inline-flex;padding:3px;border-radius:999px;background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--line)}
+.flow-viewswitch[hidden]{display:none}
+.flow-viewbtn{min-height:36px;padding:0 10px;border:0;border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:650;cursor:pointer;white-space:nowrap}
+.flow-viewbtn[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
