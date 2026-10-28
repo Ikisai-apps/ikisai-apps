@@ -102,3 +102,37 @@ test('avance · caja general, discos, filtros, hitos y tarjeta con pasos que se 
   await dialog.getByRole('button', { name: 'Hecha' }).click();
   await expect(page.locator('.circ[data-sum="Víctor"]')).toHaveClass(/full/, { timeout: 15_000 });
 });
+
+test('avance · vista «Por hitos»: pasos que se despliegan, «+N ocultas» con filtros y hitos plegables', async ({ page }) => {
+  await enter(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('#cvHitos').click();
+  await expect(page.locator('#cvHitos')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.avance-orig .lanes')).toHaveCount(0);
+  await expect(page.locator('.hitos.sinhito')).toBeVisible();
+  const hito = page.locator('.hitos:not(.sinhito) .hito');
+  // Una de otro agente: dos toques (ficha → tarjeta → ficha).
+  await hito.locator('button.hp', { hasText: 'Exportar el tablero' }).click();
+  await expect(hito.locator('.it', { hasText: 'Exportar el tablero' })).toHaveCount(1);
+  await hito.locator('.it', { hasText: 'Exportar el tablero' }).click();
+  await expect(hito.locator('button.hp', { hasText: 'Exportar el tablero' })).toHaveCount(1);
+  // Una tuya: tres toques (ficha → tarjeta → abierta con pasos y estados → ficha).
+  const sin = page.locator('.hitos.sinhito');
+  await sin.locator('button.hp', { hasText: 'Probar el alojamiento' }).click();
+  const card = sin.locator('.it', { hasText: 'Probar el alojamiento' });
+  await expect(card.locator('.acts')).toHaveCount(0);
+  await card.click();
+  await expect(card.locator('.pasos li')).toHaveCount(2);
+  await expect(card.locator('.acts button')).toHaveCount(3);
+  await card.click();
+  await expect(sin.locator('button.hp', { hasText: 'Probar el alojamiento' })).toHaveCount(1);
+  // Con filtro de Flow, el paso de Core (pendiente) queda oculto y se cuenta.
+  await page.locator('.circ[data-sum="Flow"]').click();
+  await expect(hito.locator('.hp.hid')).toHaveText('+1 oculta');
+  await page.locator('.circ[data-sum="Flow"]').click();
+  // Plegar el hito.
+  await hito.locator('.hfold').click();
+  await expect(hito.locator('.hs')).toHaveCount(0);
+  await hito.locator('.hfold').click();
+  await expect(hito.locator('.hs')).toHaveCount(1);
+});

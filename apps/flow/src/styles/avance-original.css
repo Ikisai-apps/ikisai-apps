@@ -583,3 +583,12 @@
 .avance-orig .car .hs .ar{display:none}
 .avance-orig .car .hs .hp{max-width:none;align-items:flex-start;padding:6px 9px}
 .avance-orig .car .hs .hp span{white-space:normal;overflow:visible;text-overflow:clip}
+/* Hitos interactivos (VG, 28-10): plegar cada hito, pasos que se despliegan en su tarjeta, «+N ocultas» por los filtros. */
+.avance-orig .car .hrow{display:flex;align-items:center;gap:6px}
+.avance-orig .car .hrow .hh{flex:1 1 auto;min-width:0}
+.avance-orig .car .hfold{all:unset;cursor:pointer;flex:none;display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font:600 13px/1 var(--sans)}
+.avance-orig .car .hs button.hp{font:500 11.5px/1.25 var(--sans);text-align:left;cursor:pointer;color:var(--ink)}
+.avance-orig .car .hs button.hp.hecho{color:#fff}
+.avance-orig .car .hs .hp.hid{border-style:dashed;color:var(--muted);background:transparent;justify-content:center;font:600 11.5px/1.2 var(--sans)}
+.avance-orig .car .hs .it{grid-column:1/-1;margin:0}
+.avance-orig .car .hp .ti{font-style:normal;font-size:13px;line-height:1;flex:none}
