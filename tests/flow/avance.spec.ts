@@ -123,7 +123,8 @@ test('avance · vista «Por hitos»: pasos que se despliegan, «+N ocultas» con
   await expect(card.locator('.acts')).toHaveCount(0);
   await card.click();
   await expect(card.locator('.pasos li')).toHaveCount(2);
-  await expect(card.locator('.acts button')).toHaveCount(3);
+  await expect(card.locator('.acts button[data-state]')).toHaveCount(3);
+  await expect(card.locator('[data-apps]')).toHaveCount(1);
   await card.click();
   await expect(sin.locator('button.hp', { hasText: 'Probar el alojamiento' })).toHaveCount(1);
   // Con filtro de Flow, el paso de Core (pendiente) queda oculto y se cuenta.
