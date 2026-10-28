@@ -98,6 +98,8 @@ async function commitReconcile(supabase: Supabase, ctx: RequestContext, requestI
     p_app: 'resources', p_actor: ctx.user.id, p_request_id: `tasks-reconcile-${digest.slice(0, 40)}`, p_digest: digest,
     p_expected_cursor: null, p_operations: operations,
     p_confirmation: ctx.user.kind === 'agent' ? { required: false, id: null, risk: { required: false, reasons: ['tasks:reconcile_receipts'] } } : null,
+    // 0118: el lote lo confirma el servidor, no el navegador (Recursos 0820 pone así el origen de los movimientos).
+    p_origin: 'server',
   });
   return { movements: ((out.results?.[0] as { movements?: unknown[] } | undefined)?.movements ?? []).length, costs: added };
 }

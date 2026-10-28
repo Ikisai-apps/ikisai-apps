@@ -9,7 +9,7 @@
  * Nada se valida: validar sigue siendo cosa de una persona.
  */
 import type { RowOperation } from '@ikisai/sync-client';
-import { closeSheet, el, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { closeSheet, el, fieldAttrs, openSheet, replace, toast } from '@ikisai/ui-kit';
 import {
   detectRectification, extractWithTemplates, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, importOperations, matchSupplier, negateDocument,
   partialFillOperations, readingMessage, readingSummary, type ImportDocument, type PdfTextItem, type TemplateExtraction,
@@ -30,7 +30,7 @@ type Outcome = 'leida' | 'parcial' | 'sin_leer' | 'duplicada' | 'error';
 const OUTCOME_LABELS: Record<Outcome, string> = { leida: 'Leída', parcial: 'Lectura parcial: complétala', sin_leer: 'Sin leer: complétala después', duplicada: 'Duplicada: no se sube', error: 'Error' };
 
 export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirror>, onDone: () => void, shared: File[] = []): void {
-  const input = el('input', { 'data-feedback-id': 'invoices.facturas.lote.archivos', 'data-feedback-label': 'Facturas', type: 'file', id: 'batchFiles', accept: ACCEPT_ATTR, multiple: true });
+  const input = el('input', { ...fieldAttrs({ id: 'invoices.facturas.lote.archivos', label: 'Facturas', type: 'file', sensitivity: 'internal', confirm: 'none' }), type: 'file', id: 'batchFiles', accept: ACCEPT_ATTR, multiple: true });
   const list = el('ol', { class: 'batch-list', id: 'batchList', 'data-feedback-ignore': '' });
   const summary = el('p', { class: 'hint', id: 'batchSummary', role: 'status' }, 'Elige todas las facturas a la vez (PDF o fotos). Cada una se convierte en una factura.');
   const start = el('button', { 'data-feedback-id': 'invoices.facturas.lote.subir', 'data-feedback-label': 'Subir', class: 'primary', type: 'button', id: 'batchStart', disabled: true, onclick: () => void run() }, 'Subir');

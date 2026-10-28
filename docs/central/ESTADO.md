@@ -134,6 +134,7 @@
 - 2026-10-28 · **Acciones de la revisión semanal** (VG, vg-41): migración `1523` (`weekly_actions`); cada punto acaba en una decisión o en una tarea de Tasks (`POST weekly/:id/task`, kind `central.weekly_action`, aceptado por Tasks en la #1088). La revisión siguiente enseña cómo van. Prueba `weekly-actions.test.ts`.
 - 2026-10-28 · **«Colocar» empieza por el dibujo** (VG probó el Albergue, 27-10): primero las formas que ya trae el SVG, cada una con «Elige qué estancia es» y «Llamarla como en el dibujo»; lo demás, en «¿Falta alguna? Ponla en el dibujo». «Guardado a las HH:MM» a la vista; lo pendiente se guarda al salir. Aviso de estancias repetidas y de camas que aún no salen. Prueba en `plans.spec.ts`.
 - 2026-10-28 · **Revisor › cobertura de campos por pantalla** (VG 27-10): solo los candidatos del núcleo, por app y pantalla; utilidad heredada del estimado de la app y del uso; decisión por grupo («dejar», «revisar más tarde», «retirar») en `central.field_group_reviews` (1522). «Ver todo» con `renderCoverage`. Pantalla `#/revision/campos`. Prueba `field-coverage.test.ts`.
+- 2026-10-28 · **P7 · Food y Flow en Dirección**: Flow en `KPI_SOURCES`; temas de Food (Cocina y menús, Despensa y equipos, Carta) y de Flow (Día a día); objetivos de partida (`KPI_DEFAULT_TARGETS`, `targetOrDefault`) mientras Dirección no fije otros. Claves pedidas a Food y a Flow (API.md §7.2).
 
 ## Pendiente
 

@@ -18,6 +18,8 @@ export const KPI_SOURCES: ReadonlyArray<{ app: string; projection: string }> = [
   { app: 'invoices', projection: 'invoices.central_kpi_projection' },
   { app: 'tasks', projection: 'tasks.central_kpi_projection' },
   { app: 'food', projection: 'food.central_kpi_projection' },
+  // Flow (P7): el día a día del servicio. Sale en «Aún sin indicadores» hasta que Flow publique su proyección.
+  { app: 'flow', projection: 'flow.central_kpi_projection' },
 ];
 
 /**
@@ -42,6 +44,12 @@ export const KPI_SECTIONS: ReadonlyArray<{ title: string; kpis: readonly string[
   { title: 'Cobros', kpis: ['invoices.collected_today', 'invoices.collected_event_today', 'invoices.pending_collection', 'invoices.pending_collection_count'] },
   { title: 'Facturas recibidas', kpis: ['invoices.pending_review', 'invoices.unassigned', 'invoices.unpaid', 'invoices.unpaid_amount'] },
   { title: 'Mes y trimestre', kpis: ['invoices.income_issued_month', 'invoices.expenses_month', 'invoices.vat_quarter'] },
+  // Food (P7): primero lo que falta en cocina y menús, después despensa y equipos, y la carta.
+  { title: 'Cocina y menús', kpis: ['food.events_without_menu_30d', 'food.menus_unvalidated_30d', 'food.recipes_allergens_unchecked_30d'] },
+  { title: 'Despensa y equipos', kpis: ['food.equipment_notices_open', 'food.shopping_lists_open'] },
+  { title: 'Carta', kpis: ['food.carta_sales_yesterday'] },
+  // Flow (P7): el día a día del servicio.
+  { title: 'Día a día', kpis: ['flow.day_closures_pending', 'flow.orders_unfinished_past', 'flow.buffers_below_target', 'flow.sales_yesterday'] },
 ];
 
 /** Tema de una clave y su posición en el panel (`null` si no tiene). */
@@ -152,6 +160,25 @@ export function canSeeKpi(unit: string, role: string): boolean {
 export function targetFor(targets: readonly KpiTarget[], kpi: string, period: string): KpiTarget | null {
   const mine = targets.filter((t) => t.kpi === kpi);
   return mine.find((t) => t.period === period) ?? mine.find((t) => period.startsWith(t.period) && t.period !== '*') ?? mine.find((t) => t.period === '*') ?? null;
+}
+
+/**
+ * Objetivos de partida que propone Central (P7), mientras Dirección no fije otros en `central.kpi_targets` (que siempre
+ * mandan). Con «menos es mejor», el estado empeora **por encima** del umbral: `warn_at: 0` es «atención desde 1».
+ */
+export const KPI_DEFAULT_TARGETS: readonly KpiTarget[] = [
+  { kpi: 'food.events_without_menu_30d', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
+  { kpi: 'food.menus_unvalidated_30d', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
+  { kpi: 'food.recipes_allergens_unchecked_30d', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
+  { kpi: 'food.equipment_notices_open', period: '*', target: 0, warn_at: 0, critical_at: 2, direction: 'down' },
+  { kpi: 'flow.day_closures_pending', period: '*', target: 0, warn_at: 0, critical_at: 1, direction: 'down' },
+  { kpi: 'flow.orders_unfinished_past', period: '*', target: 0, warn_at: 0, critical_at: 4, direction: 'down' },
+  { kpi: 'flow.buffers_below_target', period: '*', target: 0, warn_at: 1, critical_at: 4, direction: 'down' },
+];
+
+/** El objetivo de Dirección y, si no hay, el de partida. */
+export function targetOrDefault(targets: readonly KpiTarget[], kpi: string, period: string): KpiTarget | null {
+  return targetFor(targets, kpi, period) ?? targetFor(KPI_DEFAULT_TARGETS, kpi, period);
 }
 
 /**

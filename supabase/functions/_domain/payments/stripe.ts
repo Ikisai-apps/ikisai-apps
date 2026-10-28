@@ -29,7 +29,7 @@ export interface CheckoutRequest {
 }
 
 export interface CheckoutSession {
-  provider: 'stripe';
+  provider: 'stripe' | 'redsys';
   id: string;
   url: string;
   expiresAt: string;
@@ -42,6 +42,11 @@ export interface CheckoutSession {
   metadata: Record<string, string>;
   /** El pago de Stripe (`pi_…`) cuando lo hay: hace falta para devolver. */
   paymentIntent: string | null;
+  /**
+   * Solo Redsys: el formulario firmado que hay que mandar por POST desde el navegador (Redsys no da una URL de pago). La app
+   * lo guarda y lo sirve en su página de paso (`url`).
+   */
+  form?: { action: string; fields: Record<string, string> };
 }
 
 /** Aviso de la pasarela ya normalizado (lo que necesitan Finance y Booking, sin nada de la tarjeta). */
@@ -59,7 +64,9 @@ export interface PaymentEvent {
 }
 
 export interface PaymentGateway {
-  provider: 'stripe';
+  provider: 'stripe' | 'redsys';
+  /** Si se puede preguntar por una sesión (`getCheckout`) y caducarla en la pasarela. Redsys no: lo lleva la app. */
+  queryable?: boolean;
   createCheckout(request: CheckoutRequest): Promise<CheckoutSession>;
   getCheckout(id: string): Promise<CheckoutSession>;
   /** Caduca a mano una sesión abierta (al anular o cobrar a mano la factura). */

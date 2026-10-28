@@ -3,7 +3,7 @@
  * y en recepción, las devoluciones aparte y el total a cuadrar en caja. Imprimible como el ticket (página del kit,
  * «Imprimir / Guardar PDF»). Funciona sin red con el espejo del dispositivo; el emisor de Central necesita red.
  */
-import { createPrintView, el, replace } from '@ikisai/ui-kit';
+import { createPrintView, el, fieldAttrs, replace } from '@ikisai/ui-kit';
 import { APP_ENTRIES, type LocalAppEntry } from '../app/client.ts';
 import { eur, onAnyTable, shortDate } from '../app/data.ts';
 import { dayCashCount, type CashEntry } from '../app/cash-count.ts';
@@ -18,7 +18,7 @@ export const mountCashCount: ViewMount = (ctx) => {
   const asked = new URLSearchParams(location.hash.split('?')[1] ?? '').get('dia');
   const day = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today();
   const host = el('div', { id: 'cashCountPage', 'data-feedback-id': 'invoices.arqueo', 'data-feedback-label': 'Arqueo del día' });
-  const picker = el('input', { type: 'date', id: 'cashCountDay', value: day, 'aria-label': 'Día del arqueo', 'data-feedback-id': 'invoices.arqueo.dia', 'data-feedback-label': 'Día',
+  const picker = el('input', { ...fieldAttrs({ id: 'invoices.arqueo.dia', storage: 'none', label: 'Día', type: 'date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'cashCountDay', value: day, 'aria-label': 'Día del arqueo',
     onchange: (e: Event) => { const v = (e.target as HTMLInputElement).value; if (v) navigate(`#/arqueo?dia=${v}`); } }) as HTMLInputElement;
   replace(main, host);
 
