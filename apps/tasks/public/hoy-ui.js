@@ -127,12 +127,14 @@ function tkhSpaceModel(){const tasks=[],seen=new Set(),add=t=>{if(!t||seen.has(t
     const nodes=new Set();for(const s of spaces){for(const n of tkhChain(s))nodes.add(n);const top=tkhTopOf(s);if(top)tops.add(top)}
     for(const n of nodes)count.set(n,(count.get(n)||0)+1)}
   if(none)count.set(TKH_NONE,none);
+  // VG (28-10): arriba toda la estructura de la casa, tenga tareas o no (con 0 y atenuado), no solo lo que sale en la pantalla.
+  for(const r of (typeof spaceRows==='function'?spaceRows():[]))if(!r.parentId&&r.active!==false){const kids=tkhKids(r.id);tops.add(r.kind==='altura'&&kids.length===1?kids[0].id:r.id)}
   const topList=[...tops].sort((a,b)=>tkhByPlace(tkhChain(a).at(-1),tkhChain(b).at(-1))||tkhByPlace(a,b));if(none)topList.push(TKH_NONE);
   return {count,tops:topList}}
 /* Los hijos de un nodo que tienen tareas en la pantalla. */
-function tkhChildren(m,id){if(id===TKH_NONE)return [];return tkhKids(id).map(k=>k.id).filter(k=>m.count.has(k)).sort(tkhByPlace)}
+function tkhChildren(m,id){if(id===TKH_NONE)return [];return tkhKids(id).map(k=>k.id).sort(tkhByPlace)}
 function tkhTopIdOf(m,id){return id===TKH_NONE?TKH_NONE:m.tops.find(t=>tkhChain(id).includes(t))||null}
-function tkhSpaceFilter(){const m=tkhSpaceModel(),sel=new Set([...tkhSpaceSel()].filter(id=>m.count.has(id)&&tkhTopIdOf(m,id)));
+function tkhSpaceFilter(){const m=tkhSpaceModel(),sel=new Set([...tkhSpaceSel()].filter(id=>(id===TKH_NONE?m.count.has(id):!!tkhNode(id))&&tkhTopIdOf(m,id)));
   const on=sel.size>0&&!m.tops.every(t=>sel.has(t));
   const ids=[...sel].filter(id=>id!==TKH_NONE);
   return {...m,sel,on,match:t=>{if(!on)return true;const spaces=tkhSpacesOf(t);if(!spaces.length)return sel.has(TKH_NONE);return spaces.some(s=>{const c=tkhChain(s);return ids.some(id=>c.includes(id))})}}}
@@ -141,7 +143,7 @@ function tkhSelUnder(f,id){return [...f.sel].filter(s=>s===id||(id!==TKH_NONE&&s
 function tkhPath(f,top){const deep=tkhSelUnder(f,top).sort((a,b)=>tkhChain(b).length-tkhChain(a).length)[0];if(!deep)return [];const c=tkhChain(deep);return c.slice(0,c.indexOf(top)+1).reverse()}
 function tkhChip(f,id,parent){const under=tkhSelUnder(f,id),on=under.length>0,deep=under.find(s=>s!==id);
   const label=deep&&!parent?`${tkhSpaceName(id)} › ${tkhSpaceName(deep)}`:tkhSpaceName(id);
-  return `<button type="button" class="tkh-space ${id===TKH_NONE?'none':''}" data-tkh-space="${esc(id)}" data-tkh-parent="${esc(parent||'')}" aria-pressed="${on?'true':'false'}" data-feedback-id="tasks.hoy.espacio" data-feedback-label="Filtrar por espacio">${on?'<span class="tkh-space-check" aria-hidden="true">✓</span>':''}${esc(label)} <span class="tkh-space-n">${f.count.get(id)||0}</span></button>`}
+  return `<button type="button" class="tkh-space ${id===TKH_NONE?'none':''} ${f.count.get(id)?'':'empty'}" data-tkh-space="${esc(id)}" data-tkh-parent="${esc(parent||'')}" aria-pressed="${on?'true':'false'}" data-feedback-id="tasks.hoy.espacio" data-feedback-label="Filtrar por espacio">${on?'<span class="tkh-space-check" aria-hidden="true">✓</span>':''}${esc(label)} <span class="tkh-space-n">${f.count.get(id)||0}</span></button>`}
 function tkhSpaceBar(f){if(f.tops.length<2)return '';
   // El de arriba abierto: el último tocado o, al volver (otra sesión), el primero que tiene un hijo marcado.
   const top=tkhSpaceFocus&&f.tops.includes(tkhSpaceFocus)&&tkhSelUnder(f,tkhSpaceFocus).length?tkhSpaceFocus:f.tops.find(t=>tkhSelUnder(f,t).some(x=>x!==t))||null;

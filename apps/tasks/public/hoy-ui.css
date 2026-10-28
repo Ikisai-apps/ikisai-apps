@@ -121,3 +121,4 @@ html.dark .tkh-carryback{color:var(--ink)}
 /* Los hijos del que se ha tocado, en su propia fila debajo, algo metida; «Sin espacio» con borde discontinuo. */
 .tkh-spaces-sub{margin-top:6px;padding-left:12px;border-left:2px solid color-mix(in srgb,var(--ink) 30%,var(--paper))}
 .tkh-spaces .tkh-space.none{border-style:dashed}
+.tkh-spaces .tkh-space.empty{opacity:.6}
