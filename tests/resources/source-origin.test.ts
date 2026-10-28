@@ -13,8 +13,8 @@ const uuid = () => crypto.randomUUID();
 let app: TestApp;
 let seq = 0;
 let item = ''; let space = '';
-const commit = (operations: unknown[], server = false) => app.call('/api/v1/resources/commands', {
-  token: app.tokens.editor, body: { requestId: `so-${++seq}`, operations },
+const commit = (operations: unknown[], server = false, token?: string) => app.call('/api/v1/resources/commands', {
+  token: token ?? app.tokens.editor, body: { requestId: `so-${++seq}`, operations },
   ...(server ? { headers: { 'X-Ikisai-Worker-Key': WORKER_KEY, 'X-Ikisai-Caller': 'invoices' } } : {}),
 });
 const sourceOf = async (id: string) => (await app.t.db.query<{ s: string | null }>(`select source_app s from resources.movements where id = $1`, [id])).rows[0]?.s ?? null;
@@ -32,7 +32,7 @@ test.before(async () => {
     { op: 'insert', table: 'resources.spaces', id: building, fields: { parent_id: a3, kind: 'edificio', name: 'Casa del origen' } },
     { op: 'insert', table: 'resources.spaces', id: space, fields: { parent_id: building, kind: 'almacen', name: 'Despensa del origen' } },
     { op: 'insert', table: 'resources.items', id: item, fields: { name: 'Sal', kind: 'ingrediente', base_unit: 'g' } },
-  ]);
+  ], false, app.tokens.owner); // crear espacios es del owner
   assert.equal(res.status, 200, JSON.stringify(res.data));
 });
 test.after(async () => { await app.close(); });
