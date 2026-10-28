@@ -2,9 +2,12 @@
  * Fase R2 de Recursos (RECURSOS.md §4.2 y §17): «Espacios y camas» con el árbol común del kit cuando el interruptor está en
  * `resources`, y la tarjeta del owner para pasar a Recursos (vista previa del enlace, «Enlazar» e interruptor).
  * Decisión del usuario (13-10-2026): crear, cambiar o quitar espacios y camas, solo dirección (owner).
+ * vg-52 (VG, 28-10-2026): los espacios se crean, renombran y mueven solo en Central › Planos › Colocar. Aquí el árbol es de
+ * lectura para los espacios, con el enlace a Central, y Booking se queda con las camas: «Añadir cama» y «Quitar» (dirección)
+ * y sus plazas (fijas y supletorias) y tipo («Plazas», también el editor).
  */
 import { createSyncClient, type RowOperation, type SyncClient, type SyncedRow, type TableName } from '@ikisai/sync-client';
-import { confirmDialog, createSpaceTree, createSyncSpaceSource, el, replace, toast, type SpaceRowAction } from '@ikisai/ui-kit';
+import { confirmDialog, createSpaceTree, createSyncSpaceSource, el, fieldAttrs, openSheet, replace, toast, type Sheet, type SpaceRow, type SpaceRowAction } from '@ikisai/ui-kit';
 import { TABLES } from '@ikisai/domain-booking';
 import { describeError } from '../app/client.ts';
 
@@ -31,32 +34,75 @@ async function syncMirror(client: SyncClient): Promise<void> {
 }
 
 const BOOKING_KINDS = new Set(['edificio', 'habitacion', 'sala', 'exterior', 'cama']);
+/** Central › Planos (vg-52): ahí se crean, renombran y colocan los espacios. */
+export const CENTRAL_PLANS_URL = 'https://central.ikisai.com/#/entidad/planos';
+const BED_KINDS: Array<[string, string]> = [['litera', 'Litera'], ['individual', 'Individual'], ['doble', 'Doble'], ['sofa_cama', 'Sofá cama']];
 
 /** Árbol de Recursos limitado a lo que usa Booking (alturas y edificios, para la ruta, y lo de dentro). */
 export function mountResourcesSpaces(host: HTMLElement, client: SyncClient): () => void {
   const role = client.bootstrap()?.membership.role;
   const owner = role === 'owner';
+  const writer = owner || role === 'editor';
   const resources = createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: client, clearOnLogout: true });
   const source = createSyncSpaceSource(resources, { onError: (message) => toast(`No se ha guardado: ${message}`) });
   const container = el('div');
   let timer: ReturnType<typeof setTimeout> | null = null;
   const tree = createSpaceTree({
     source, container, label: 'Espacios y camas', feedbackId: 'booking.espacios.arbol', storageKey: 'booking.espacios.arbol',
-    permissions: { edit: role === 'editor' || owner, structure: owner },
+    // vg-52: de lectura para los espacios (ni crear, ni renombrar, ni mover: eso es de Central)
+    permissions: { edit: false, structure: false },
     filter: (row) => BOOKING_KINDS.has(row.kind),
-    // «Añadir cama» y «Duplicar» a un toque en la fila, como hoy (solo dirección). Texto corto para que quepa en el móvil:
-    // el kit ya pone el nombre del espacio en la etiqueta accesible («Añadir cama: Hab 1»).
-    rowActions: (row): SpaceRowAction[] => !owner || !['habitacion', 'sala'].includes(row.kind) ? [] : [
-      { label: 'Añadir cama', feedbackId: 'booking.espacios.arbol.anadir_cama', onClick: (r) => tree.create(r.id, 'cama') },
-      { label: 'Duplicar', feedbackId: 'booking.espacios.arbol.duplicar', onClick: (r) => void tree.duplicate(r.id) },
-    ],
+    // Las camas, a un toque en la fila. Texto corto para que quepa en el móvil: el kit pone el nombre en la etiqueta accesible.
+    rowActions: (row): SpaceRowAction[] => {
+      if (!row.active) return [];
+      if (['habitacion', 'sala'].includes(row.kind)) return owner ? [{ label: 'Añadir cama', feedbackId: 'booking.espacios.arbol.anadir_cama', onClick: (r) => tree.create(r.id, 'cama') }] : [];
+      if (row.kind !== 'cama') return [];
+      return [
+        ...(writer ? [{ label: 'Plazas', feedbackId: 'booking.espacios.arbol.plazas', onClick: (r: SpaceRow) => openSeats(r) }] : []),
+        ...(owner ? [{ label: 'Quitar', feedbackId: 'booking.espacios.arbol.quitar_cama', onClick: (r: SpaceRow) => void removeBed(r) }] : []),
+      ];
+    },
   });
+
+  /** Tipo de cama y plazas fijas y supletorias (Recursos: `bed_kind`, `capacity`, `extra_capacity`). */
+  function openSeats(r: SpaceRow): void {
+    const a = r.attributes ?? {};
+    const kind = el('select', { id: 'bedKind', ...fieldAttrs({ id: 'booking.espacios.cama.tipo', entity: 'resources.spaces', prop: 'attributes', label: 'Tipo de cama', confirm: 'event' }) },
+      BED_KINDS.map(([v, t]) => el('option', { value: v }, t))) as HTMLSelectElement;
+    kind.value = String(a.bed_kind ?? 'individual');
+    const num = (id: string, fid: string, label: string, value: unknown) => el('input', { id, type: 'number', min: 0, max: 2, step: 1, inputmode: 'numeric', value: String(Number(value ?? 0)),
+      ...fieldAttrs({ id: fid, entity: 'resources.spaces', prop: 'attributes', label, confirm: 'event' }) }) as HTMLInputElement;
+    const fixed = num('bedFixed', 'booking.espacios.cama.fijas', 'Plazas fijas', a.capacity ?? 1);
+    const extra = num('bedExtra', 'booking.espacios.cama.supletorias', 'Plazas supletorias', a.extra_capacity ?? 0);
+    const save = el('button', { class: 'primary', type: 'button', id: 'bedSeatsSave', 'data-feedback-id': 'booking.espacios.cama.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
+      const f = Math.round(Number(fixed.value)); const x = Math.round(Number(extra.value));
+      if (![f, x].every((n) => Number.isInteger(n) && n >= 0 && n <= 2) || f + x < 1) return void toast('Las plazas van de 0 a 2, y al menos una en total.');
+      save.disabled = true;
+      try {
+        await source.update(r.id, { attributes: { ...a, bed_kind: kind.value, capacity: f, extra_capacity: x } });
+        await sheet.close(true);
+        toast('Plazas guardadas.');
+      } catch (error) { toast(describeError(error)); save.disabled = false; }
+    } }, 'Guardar') as HTMLButtonElement;
+    const sheet: Sheet = openSheet({ title: `Plazas · ${r.name}`, body: el('div', { 'data-feedback-id': 'booking.espacios.cama', 'data-feedback-label': 'Plazas de la cama' },
+      el('label', { class: 'field' }, el('span', null, 'Tipo'), kind),
+      el('label', { class: 'field' }, el('span', null, 'Plazas fijas'), fixed),
+      el('label', { class: 'field' }, el('span', null, 'Plazas supletorias (la de arriba de una litera, un sofá cama)'), extra)),
+      foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')), initialFocus: kind });
+  }
+
+  async function removeBed(r: SpaceRow): Promise<void> {
+    if (!await confirmDialog({ title: `Quitar ${r.name}`, text: 'La cama se archiva en Recursos y deja de ofrecerse. Se puede recuperar desde Central.', confirmLabel: 'Quitar' })) return;
+    try { await source.archive([r.id]); toast('Cama quitada.'); } catch (error) { toast(describeError(error)); }
+  }
   const off = owner ? resources.onTable('resources.spaces' as TableName, () => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void syncMirror(client), 800);
   }) : () => undefined;
   void resources.start();
-  replace(host, el('p', { class: 'hint' }, owner ? 'Los espacios y las camas son los de Recursos, comunes a todas las apps.' : 'Los espacios y las camas son los de Recursos. Solo dirección los crea, mueve o quita.'),
+  replace(host, el('p', { class: 'hint' }, 'Los espacios y las camas son los de Recursos, comunes a todas las apps. Las camas y sus plazas se gestionan aquí; los espacios se crean, renombran y colocan en Central.'),
+    el('p', null, el('a', { class: 'ghost small', href: CENTRAL_PLANS_URL, target: '_blank', rel: 'noopener', id: 'spacesInCentral', 'data-feedback-id': 'booking.espacios.central', 'data-feedback-label': 'Crear o renombrar espacios en Central' },
+      'Crear, renombrar o colocar espacios en Central › Planos')),
     tree.element, container);
   return () => {
     if (timer) clearTimeout(timer);
