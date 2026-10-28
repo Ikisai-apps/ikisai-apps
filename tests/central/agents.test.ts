@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { AGENTS_TABLE, TABLES, agentCardUrl, flowLaneUrl, hasResponsible, successorChain, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
+import { AGENTS_TABLE, TABLES, agentCardUrl, agentProposalIssue, flowLaneUrl, hasResponsible, proposalDecider, successorChain, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
 
 let app: TestApp;
 let seq = 0;
