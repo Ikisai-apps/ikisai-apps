@@ -546,3 +546,17 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - Las fotos y abrir la revisión se hacen en Tasks («Abrir en Tasks», `tasks.revision.abrir`).
 - Si el flujo tiene evento de Booking, arriba: «Camas para esta noche: X de Y listas» y, por habitación, lo que falta (por limpiar, sin colocar en el plano, inactivas), con `booking.lodging_readiness` (Booking 1426).
 - Plantilla `apertura` v1: «Preparación» (`logistics`, tareas libres) y «Revisión» (`review`).
+
+## 57. Recepción «por puestos» del alojamiento libre (migración `0958`)
+
+- Decisión de VG (28-10): como la barra, un carril por puesto. Las piezas nuevas (`inspect_confirm`) son:
+  - `rec_solicitud` («Solicitud y cobro»);
+  - `rec_camas` («Camas», con comidas y extras);
+  - `rec_registro` («Registro» de viajeros);
+  - `rec_peticiones` («Peticiones» de huéspedes, puesto continuo, una tarjeta por petición);
+  - `rec_salida` («Salida»).
+- La plantilla `alojamiento` v1 lleva los cinco puestos.
+- **Datos:** son de Booking. Cada carril lee `booking.reception_board {event_id, day}` (el evento del flujo, hoy) por su capacidad, con el token de la persona, y se queda con las tarjetas de su puesto. Cada tarjeta lleva «Abrir en Booking ↗», que abre su pantalla real (`route`) con el campo señalado (`anchor`) y «Volver a Flow».
+  - Una solicitud saca trabajo en varios puestos a la vez; no hay tarjeta que viaje.
+  - Se relee al volver a la pestaña y cada 30 s.
+- Sin «cama libre frente a lista», sin concurrencia especial y sin pago de grupo.

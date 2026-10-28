@@ -12,6 +12,7 @@ import { mountPresence } from './presence.ts';
 import { mountEditor } from './editor.ts';
 import { mountAvance } from './avance.ts';
 import { mountReview } from './review.ts';
+import { mountReception } from './reception.ts';
 import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
@@ -58,6 +59,12 @@ const COLUMN_VIEWS: Record<string, ColumnView> = {
   avance: { slug: 'avance', icon: 'board', mount: mountAvance },
   // Revisión de apertura (0955): ítems de Tasks por zona, «Bien» o «Incidencia».
   review: { slug: 'revision', icon: 'check', mount: mountReview },
+  // Recepción por puestos del alojamiento libre (0958): tarjetas de Booking que abren su pantalla real.
+  rec_solicitud: { slug: 'solicitud', icon: 'euro', mount: mountReception('solicitud_cobro') },
+  rec_camas: { slug: 'camas', icon: 'bed', mount: mountReception('camas') },
+  rec_registro: { slug: 'registro', icon: 'edit', mount: mountReception('registro') },
+  rec_peticiones: { slug: 'peticiones', icon: 'help', mount: mountReception('peticiones') },
+  rec_salida: { slug: 'salida-alojamiento', icon: 'logout', mount: mountReception('salida') },
 };
 const BEHAVIOR_ICON: Record<ColumnBehavior, string> = { inspect_confirm: 'check', quick_steps: 'board', free_task: 'list', guest_presence: 'guest' };
 

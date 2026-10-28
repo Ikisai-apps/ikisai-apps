@@ -97,6 +97,11 @@ export const PIECES: ReadonlyArray<{ key: string; label: string; behavior: Colum
   { key: 'signature', label: 'Firma', behavior: 'guest_presence', hint: 'Parte de viajeros pendiente' },
   { key: 'departure', label: 'Salida', behavior: 'guest_presence', hint: 'Huéspedes que se van (Booking)' },
   { key: 'review', label: 'Revisión de apertura', behavior: 'inspect_confirm', hint: 'Ítems de Tasks por zona: bien o incidencia' },
+  { key: 'rec_solicitud', label: 'Solicitud y cobro', behavior: 'inspect_confirm', hint: 'Recepción: solicitudes por cobrar (Booking)' },
+  { key: 'rec_camas', label: 'Camas', behavior: 'inspect_confirm', hint: 'Recepción: camas, comidas y extras por colocar (Booking)' },
+  { key: 'rec_registro', label: 'Registro', behavior: 'inspect_confirm', hint: 'Recepción: registro de viajeros pendiente (Booking)' },
+  { key: 'rec_peticiones', label: 'Peticiones', behavior: 'inspect_confirm', hint: 'Recepción: peticiones de huéspedes, una tarjeta por petición' },
+  { key: 'rec_salida', label: 'Salida', behavior: 'inspect_confirm', hint: 'Recepción: salidas del día (Booking)' },
 ];
 
 /** Paso de una columna `guest_presence` (check-in, 0911). */
