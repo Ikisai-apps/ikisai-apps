@@ -85,15 +85,13 @@ test('flow · llegar desde otra app con returnTo muestra «Volver a…» y limpi
   expect(page.url()).not.toContain('volver=');
 });
 
-test('flow · sin crear recorridos ni flujos desde la interfaz; «Volver» y «Cerrar» en las pantallas de recorridos', async ({ page }) => {
+test('flow · sin crear recorridos ni flujos desde la interfaz; ✕ para volver a la entrada desde las pantallas de recorridos', async ({ page }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Volver', exact: true })).toBeHidden(); // en la entrada común no hace falta
   await expect(page.getByRole('button', { name: 'Cerrar y volver a la entrada' })).toBeHidden();
   await page.goto(`${baseURL}/#/recorridos`);
   await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Nuevo recorrido' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Volver', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar y volver a la entrada' }).click();
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   // Sin el enlace de prueba, «nuevo» lleva a la entrada; con él, abre el editor y deja volver.
@@ -103,6 +101,6 @@ test('flow · sin crear recorridos ni flujos desde la interfaz; «Volver» y «C
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
   await page.goto(`${baseURL}/#/recorridos/nuevo?prueba`);
   await expect(page.getByRole('heading', { name: 'Nuevo recorrido' })).toBeVisible();
-  await page.getByRole('button', { name: 'Volver', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar y volver a la entrada' }).click();
+  await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
 });

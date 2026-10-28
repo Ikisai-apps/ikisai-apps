@@ -222,7 +222,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     // VG (28-10): en el Inicio de un flujo, solo ✕ (vuelve a la entrada); en sus carriles y en el resto, solo ‹.
     const home = !!projectId && hash === `#/p/${projectId}`;
     backButton.hidden = !navParent || home;
-    closeButton.hidden = !navParent || !home;
+    // Fuera de un flujo (Recorridos y sus pantallas, sin barra inferior) también ✕, para no quedarse dentro.
+    closeButton.hidden = !navParent || (!!projectId && !home);
   }
 
   /** Lista de lo que el servidor rechazó: qué era, por qué, y reintentar o descartar cada uno. */
