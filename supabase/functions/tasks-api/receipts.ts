@@ -12,8 +12,13 @@
  *   pudo hacer) —, `invoiced` (lo asignado en Finance), `estimated`, `diff` y `codes`. Si falla el lote de Recursos, las
  *   que tenían factura vuelven con `error` (200): la app las apunta en su cola y las reintenta.
  * Un fallo aquí no deshace la recepción: la app lo enseña y lo reintenta.
+ * - `POST purchases/:id/receipt {spaceId}` (Recursos 0820, FO4): la entrada en Recursos de lo recibido la escribe el servidor,
+ *   con origen `server` y `source_app: 'tasks'` (Finance busca así las entradas de Tasks), y no el navegador. Mismo id estable
+ *   que antes (`tasks-receipt:<id>`), así que repetir, o lo que ya apuntó el navegador, no suma dos veces. Sin artículo o
+ *   sin cantidad no hay entrada. Devuelve `{recorded, movementId?}`.
  */
 import { fail, sha256Hex, stable, type AppRoute, type CommitResult, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { receiptEntryOperation, type ItemUnitRow, type PurchaseRequestRow } from '../_domain/tasks/mod.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,6 +27,45 @@ async function stableUuid(seed: string): Promise<string> {
   const hex = await sha256Hex(seed);
   const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** El uuid estable de la app (apps/tasks/src/core.ts): el de la entrada de una recepción, igual que cuando la escribía el navegador. */
+async function appStableUuid(seed: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed))).slice(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40; bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function snapshotRows<T>(supabase: Supabase, app: string, role: string, table: string): Promise<T[]> {
+  const out: T[] = [];
+  for (let offset = 0; ; offset += 2000) {
+    const page = await supabase.rpc<{ rows: T[] }>('core_snapshot_table', { p_app: app, p_role: role, p_table: table, p_include_deleted: false, p_limit: 2000, p_offset: offset });
+    out.push(...page.rows);
+    if (page.rows.length < 2000) return out;
+  }
+}
+
+/** La entrada en Recursos de una solicitud recibida, desde el servidor (ver arriba). */
+export async function recordReceipt(supabase: Supabase, ctx: RequestContext, requestId: string, spaceId: string): Promise<{ recorded: boolean; movementId?: string }> {
+  // La solicitud, si quien llama la ve (tasks.targets aplica su ámbito).
+  const target = await supabase.rpc<{ id?: string; deleted?: boolean } | null>('core_read', {
+    p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.targets', p_args: { kind: 'purchase_request', id: requestId } }).catch(() => null);
+  if (!target?.id || target.deleted) fail(404, 'NOT_FOUND', 'No existe esa solicitud o no la ves.');
+  const request = (await snapshotRows<PurchaseRequestRow>(supabase, 'tasks', ctx.membership.role, 'tasks.purchase_requests')).find((r) => r.id === requestId);
+  if (!request?.item_id || !(Number(request.quantity) > 0)) return { recorded: false };
+  const item = (await supabase.rpc<{ item?: { base_unit: string } | null }>('core_read', {
+    p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.supply_item', p_args: { itemId: request.item_id } }).catch(() => null))?.item ?? null;
+  const units = await snapshotRows<ItemUnitRow>(supabase, 'resources', ctx.membership.role, 'resources.item_units');
+  const id = await appStableUuid(`tasks-receipt:${request.id}`);
+  if ((await snapshotRows<{ id: string }>(supabase, 'resources', ctx.membership.role, 'resources.movements')).some((m) => m.id === id)) return { recorded: false, movementId: id };
+  const op = receiptEntryOperation(request, { id, spaceId, item, units });
+  if (!op) return { recorded: false };
+  await supabase.rpc<CommitResult>('core_commit', {
+    p_app: 'resources', p_actor: ctx.user.id, p_request_id: `tasks-receipt-${request.id}`, p_digest: await sha256Hex(stable([op])),
+    p_expected_cursor: null, p_operations: [op], p_confirmation: null, p_origin: 'server',
+  });
+  return { recorded: true, movementId: id };
 }
 
 interface EntriesRead { source_app: string; entries: unknown[]; refs: string[]; skipped?: unknown[]; costs?: Array<{ movement_id: string; unit_cost: number; source_ref: string }> }
@@ -114,6 +158,15 @@ export function receiptRoutes(supabase: Supabase): AppRoute[] {
         fail(422, 'INVALID_OPERATION', 'requestIds es una lista de 1 a 100 ids de solicitud.');
       }
       return reconcileReceipts(supabase, ctx, (ids as string[]).map((id) => id.toLowerCase()));
+    },
+  }, {
+    method: 'POST', pattern: 'purchases/:id/receipt', handler: async ({ ctx, params, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Recibir compras necesita permiso de edición en Tasks.');
+      const id = String(params.id ?? '');
+      if (!UUID.test(id)) fail(422, 'INVALID_INPUT', 'El id de la solicitud debe ser un uuid.', { field: 'id' });
+      const body = (await json().catch(() => ({}))) as Record<string, unknown>;
+      if (typeof body.spaceId !== 'string' || !UUID.test(body.spaceId)) fail(422, 'SPACE_REQUIRED', 'Elige dónde se guarda lo recibido.', { field: 'spaceId' });
+      return recordReceipt(supabase, ctx, id.toLowerCase(), (body.spaceId as string).toLowerCase());
     },
   }];
 }
