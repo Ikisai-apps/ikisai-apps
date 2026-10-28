@@ -24,10 +24,12 @@ export interface PlanGrid {
 export interface DecorItem {
   id: string;
   planId: string;
-  /** Icono del catálogo (para la app); el kit pinta `iconUrl`. */
+  /** Icono del catálogo (para la app); el kit pinta `iconUrl`. Sin él, es una baliza: imagen propia o solo texto. */
   iconId?: string | null;
-  /** URL del icono (SVG, PNG o GIF), ya resuelta por la app. */
-  iconUrl: string;
+  /** URL del icono o de la imagen subida (SVG, PNG, GIF, JPG o WebP), ya resuelta por la app. Sin ella, baliza de texto (`label`). */
+  iconUrl?: string | null;
+  /** Imagen propia subida por la app (`decor_items.file_id`, Recursos 0821); el kit pinta su `iconUrl`. */
+  fileId?: string | null;
   cellX: number;
   cellY: number;
   /** Escala de las celdas en las que está. */
@@ -35,9 +37,15 @@ export interface DecorItem {
   /** 1 celda o 4 (2×2). */
   size: 1 | 4;
   rotation: 0 | 90 | 180 | 270;
-  /** Nombre del objeto («Planta grande»): en el modo colocar y para el lector de pantalla. */
+  /** Nombre del objeto («Planta grande»): en el modo colocar y para el lector de pantalla. En una baliza, su texto. */
   label?: string | null;
 }
+
+/** Texto de una baliza, tal como se pinta (una línea corta; el entero va en `aria-label`). */
+export const beaconText = (label: string | null | undefined): string => {
+  const t = (label ?? '').trim().replace(/\s+/g, ' ');
+  return t.length > 24 ? `${t.slice(0, 23)}…` : t;
+};
 
 /** Icono que se puede poner (catálogo de Central). */
 export interface DecorIcon {

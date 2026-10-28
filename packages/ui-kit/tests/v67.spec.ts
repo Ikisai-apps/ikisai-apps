@@ -27,10 +27,11 @@ test.describe('ui-kit v0.63 · decoración y finca en createSpaceMap', () => {
     const ids = (code: string) => extractFeatures(code).features.map((f: { id: string }) => f.id.split('.').pop());
     expect(ids("createSpaceMap({ source, feedbackId: 'tasks.plano' })")).toEqual(['plano', 'vista', 'dibujo', 'espacio', 'fila']);
     expect(ids("createSpaceMap({ source, drill: true, feedbackId: 'guests.camas' })")).toEqual(['camas', 'vista', 'dibujo', 'espacio', 'fila', 'miga', 'volver']);
-    expect(ids("createSpaceMap({ source, decorEdit: { icons, onDecorChange }, feedbackId: 'central.colocar' })")).toHaveLength(11);
+    expect(ids("createSpaceMap({ source, decorEdit: { icons, onDecorChange }, feedbackId: 'central.colocar' })")).toHaveLength(12);
+    expect(ids("createSpaceMap({ source, decorEdit: { icons, onDecorChange, onUpload }, feedbackId: 'central.colocar' })")).toContain('deco-imagen');
   });
 
-  async function setup(page: Page, opts: { plan?: string; edit?: boolean; grid?: number; showDecor?: boolean }): Promise<void> {
+  async function setup(page: Page, opts: { plan?: string; edit?: boolean; upload?: boolean; grid?: number; showDecor?: boolean }): Promise<void> {
     await page.goto('/');
     await page.evaluate((opts) => {
       const K = (window as any).ikisaiKit;
@@ -55,12 +56,13 @@ test.describe('ui-kit v0.63 · decoración y finca en createSpaceMap', () => {
         { id: 'p-alb', buildingId: 'albergue', floor: 'Planta baja', position: 1, fileId: null, width: 800, height: 600, grid: { metersPerUnit: 0.02 } },
       ];
       const decor = [{ id: 'd1', planId: 'p-alb', iconId: 'planta', iconUrl: icon('#4a8a3a'), cellX: 22, cellY: 3, scale: 0.5, size: 4, rotation: 0, label: 'Planta' }];
-      w.changes = []; w.entered = []; w.picked = [];
+      w.changes = []; w.items = []; w.entered = []; w.picked = [];
       w.map = K.createSpaceMap({
         source: K.createMemorySpaceSource(rows), plans, decor, bedIcons: true, drill: true, plan: opts.plan ?? 'p-finca', feedbackId: 'central.colocar.mapa',
         ...(opts.grid ? { grid: opts.grid } : {}), ...(opts.showDecor === false ? { showDecor: false } : {}),
         onEnterBuilding: (b: any, p: any) => w.entered.push(`${b.id}>${p.id}`), onPick: (s: any) => w.picked.push(s.id),
-        ...(opts.edit ? { decorEdit: { icons: [{ id: 'planta', url: icon('#4a8a3a'), label: 'Planta', size: 4 }, { id: 'mesa', url: icon('#a0703a'), label: 'Mesa', size: 1 }], onDecorChange: (c: any) => w.changes.push(`${c.type}:${c.item.cellX},${c.item.cellY},${c.item.rotation}`) } } : {}),
+        ...(opts.edit ? { decorEdit: { icons: [{ id: 'planta', url: icon('#4a8a3a'), label: 'Planta', size: 4 }, { id: 'mesa', url: icon('#a0703a'), label: 'Mesa', size: 1 }], onDecorChange: (c: any) => { w.changes.push(`${c.type}:${c.item.cellX},${c.item.cellY},${c.item.rotation}`); w.items.push(c.item); },
+          ...(opts.upload ? { onUpload: async () => ({ url: icon('#3366aa'), fileId: 'f1' }) } : {}) } } : {}),
       });
       document.body.replaceChildren(w.map.element);
     }, opts);
@@ -105,6 +107,24 @@ test.describe('ui-kit v0.63 · decoración y finca en createSpaceMap', () => {
     await setup(page, { plan: 'p-alb', showDecor: false, grid: 1 });
     await expect(page.locator('.map-decor')).toHaveCount(0);
     expect(await page.locator('.map-grid').getAttribute('data-scale')).toBe('1');
+  });
+
+  test('balizas: «Texto» pone una baliza con texto y «Subir imagen» la imagen de la app, con su fileId', async ({ page }, info) => {
+    test.skip(info.project.name !== 'escritorio', 'el modo colocar es de ordenador');
+    await setup(page, { plan: 'p-alb', edit: true, upload: true });
+    const box = (await page.locator('.map-decor-hit').boundingBox())!;
+    await page.locator('.map-decorbar [data-key="__texto"]').click();
+    await expect(page.locator('.map-decor-beacon input[type=text]')).toBeFocused();
+    await page.keyboard.type('Recepción aquí');
+    await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.8);
+    await expect(page.locator('.map-deco-beacon text')).toHaveText('Recepción aquí');
+    await page.locator('.map-decorbar [data-key="__imagen"]').click();
+    await page.locator('.map-decor-beacon input[type=file]').setInputFiles({ name: 'cartel.png', mimeType: 'image/png', buffer: Buffer.from([137, 80, 78, 71]) });
+    await expect(page.locator('.map-decor-hint')).toHaveText('Toca el plano para poner la imagen.');
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.8);
+    const items = await page.evaluate(() => (window as any).items.map((i: any) => [i.iconId, i.fileId ?? null, i.label, !!i.iconUrl]));
+    expect(items).toEqual([[null, null, 'Recepción aquí', false], [null, 'f1', 'Recepción aquí', true]]);
+    await expect(page.locator('.map-deco image')).toHaveCount(2);
   });
 
   test('colocar decoración: poner, flechas, R, arrastrar por celdas, escala y quitar', async ({ page }, info) => {
