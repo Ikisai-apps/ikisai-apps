@@ -93,7 +93,11 @@ function installLinker(client: SyncClient, r: SyncClient): () => void {
 /** Enlaza lo que falte y copia al artículo lo que haya cambiado en Food. Devuelve cuántos pasos ha dado. */
 export async function linkResources(client: SyncClient, r: SyncClient): Promise<number> {
   if (!navigator.onLine || !canWrite(client.bootstrap()?.membership.role) || !canWrite(r.bootstrap()?.membership.role)) return 0;
-  if (client.status().conflicts > 0 || r.status().conflicts > 0) return 0;
+  // Con algo en conflicto o rechazado, no se planea otro lote: se repetiría el mismo rechazo en cada vuelta (28-10).
+  const blocked = (s: ReturnType<SyncClient['status']>) => s.conflicts > 0 || s.rejected > 0;
+  if (blocked(client.status()) || blocked(r.status())) return 0;
+  // Sin una primera sincronización de Recursos, su espejo puede estar vacío y todo parecería sin enlazar.
+  if (!r.status().lastPullAt) return 0;
   const [ingredients, equipment, items] = await Promise.all([
     client.list(T.ingredients) as Promise<Array<Mirror<Ingredient>>>,
     client.list(T.equipment) as Promise<Array<Mirror<Equipment>>>,
@@ -111,6 +115,7 @@ export async function linkResources(client: SyncClient, r: SyncClient): Promise<
     await r.commit(ops.resources as RowOperation[]);
     await r.sync();
     if (r.status().pendingCommands > 0) return 0; // aún no está en el servidor: la próxima vez
+    if (blocked(r.status())) return 0; // Recursos lo rechazó: el lote de Food no sale (lo rechazaría con INVALID_ITEM)
   }
   if (ops.food.length) await client.commit(ops.food as RowOperation[]);
   return steps.length;

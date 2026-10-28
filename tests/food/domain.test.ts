@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cartaLastSales, convert, ingredientKey, outputUnit, retreatInContext, round3, similarRecipes, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
+import { cartaLastSales, convert, linkPlan, ingredientKey, outputUnit, retreatInContext, round3, similarRecipes, toBase, unitFamily, validateOperation, validateOperations } from '../../supabase/functions/_domain/food/mod.ts';
 
 const RECIPE = '11111111-1111-4111-8111-111111111111';
 const INGREDIENT = '22222222-2222-4222-8222-222222222222';
@@ -193,4 +193,12 @@ test('carta · lo vendido del último día cerrado en Flow, por línea y en tota
   assert.equal(out?.day, '2026-10-31');
   assert.deepEqual([...out!.byLine], [['a', 12], ['b', 5]]);
   assert.equal(out?.units, 17);
+});
+
+test('enlace · con el espejo de Recursos vacío, un ingrediente ya enlazado no se vuelve a enlazar (INVALID_ITEM del 28-10)', () => {
+  const ingredient = { id: 'g1', name: 'Pan de montadito', item_id: 'item-pan', deleted_at: null } as never;
+  assert.deepEqual(linkPlan([ingredient], [], []), []);
+  // Sin enlazar, sí: crea el artículo y lo enlaza.
+  const loose = { id: 'g2', name: 'Miel', item_id: null, deleted_at: null } as never;
+  assert.deepEqual(linkPlan([loose], [], [], () => 'nuevo').map((s) => s.kind), ['create', 'link']);
 });
