@@ -360,17 +360,12 @@ export class TasksCore {
     const request = this.data['tasks.purchase_requests'].find((r) => r.id === requestId && !r.deleted_at);
     if (!request) throw new DomainError(404, 'NOT_FOUND', 'No existe esa solicitud.');
     if (!request.item_id || !(Number(request.quantity) > 0)) return false;
-    if (!this.resources) throw new DomainError(503, 'RESOURCES_UNAVAILABLE', 'El inventario no está disponible ahora mismo.');
     if (!spaceId) throw new DomainError(422, 'SPACE_REQUIRED', 'Elige dónde se guarda lo recibido.');
-    const id = await stableUuid(`tasks-receipt:${request.id}`);
-    if ((await this.resources.list('resources.movements' as TableName)).some((m) => (m as { id?: string }).id === id)) return false;
-    // Entra lo comprado (envases enteros), en la unidad base del artículo (MUELA-094 §4): lo calcula el dominio.
-    const item = (await this.resources.list('resources.items' as TableName)).find((i) => (i as { id?: string }).id === request.item_id) as { base_unit: string } | undefined;
-    const units = (await this.resources.list('resources.item_units' as TableName)) as unknown as ItemUnitRow[];
-    const op = receiptEntryOperation(request, { id, spaceId, item: item ?? null, units });
-    if (!op) return false;
-    await this.resources.commit([op as RowOperation], { requestId: `tasks-receipt-${request.id}` });
-    return true;
+    // Recursos 0820 (FO4): la entrada la escribe el servidor, con origen `server` y `source_app: 'tasks'`; mismo id estable.
+    const out = await this.client.api<{ recorded: boolean }>(`/purchases/${request.id}/receipt`, { method: 'POST', json: { spaceId } });
+    // Lo apuntado lo trae el espejo de Recursos; así el stock se ve al momento, como cuando lo escribía el navegador.
+    if (out.recorded && this.resources) { await this.resources.sync().catch(() => undefined); await this.readInventory(); }
+    return !!out.recorded;
   }
 
   private async readSpaces(): Promise<void> {
