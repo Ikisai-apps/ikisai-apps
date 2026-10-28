@@ -410,6 +410,25 @@ function readinessRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] 
   }];
 }
 
+/**
+ * Recepción por puestos (1427; capacidad `booking.reception_board`, para Flow): las tarjetas de trabajo de un evento y un
+ * día. Personal con permiso de escritura y el ámbito de huéspedes (llevan el nombre de pila).
+ */
+function receptionBoardRoutes(supabase: Supabase): AppRoute[] {
+  return [{
+    method: 'GET', pattern: 'reception/board',
+    handler: async ({ ctx, url }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura ve la recepción por puestos.');
+      if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', GUESTS_FORBIDDEN);
+      const day = url.searchParams.get('day') ?? '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) fail(422, 'INVALID_FIELDS', 'Día no válido.', { field: 'day' });
+      const eventId = uuidOrFail(url.searchParams.get('event_id'), 'event_id');
+      const out = await supabase.rpc<{ items: unknown[] }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.reception_board', p_args: { event_id: eventId, day } });
+      return { event_id: eventId, day, items: out?.items ?? [] };
+    },
+  }];
+}
+
 function montageRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] {
   return [{
     method: 'POST', pattern: 'montage/:reservationId/sync',
@@ -739,6 +758,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
     ...staffStayRoutes(supabase, payments),
     ...montageRoutes(supabase, ses),
     ...readinessRoutes(supabase, ses),
+    ...receptionBoardRoutes(supabase),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
       // Todos los roles: es la imagen del retiro, no un dato personal. URL firmada de corta duración; el `sha256` deja al
