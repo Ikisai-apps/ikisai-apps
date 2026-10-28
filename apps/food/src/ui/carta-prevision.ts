@@ -17,7 +17,7 @@ import { el, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
-import { watchEvents } from '../app/events.ts';
+import { watchEvents, type EventsSnapshot } from '../app/events.ts';
 
 interface PrevisionContext { client: SyncClient; menuId: string; host: HTMLElement; canWrite: boolean; navigate(hash: string): void }
 
@@ -320,7 +320,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       totals = null;
       totalsError = true;
     }
-    paintPlan();
+    if (typing()) deferred = true; else paintPlan();
   }
 
   async function load(): Promise<void> {
@@ -335,18 +335,38 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     lines = allLines;
     recipes = new Map(allRecipes.map((r) => [r.id, r]));
     items = new Map(allItems.map((i) => [i.id, i]));
+    eventGuests = guestsOf();
+    paintAll();
+  }
+
+  /**
+   * Repintar sustituye los campos: con uno en uso, el móvil cierra el teclado (VG, 28-10). Mientras se escribe en
+   * Previsión, el repintado espera a que se salga del campo.
+   */
+  let deferred = false;
+  const typing = () => { const a = document.activeElement; return !!a && host.contains(a) && a.matches('input, select, textarea'); };
+  function paintAll(): void {
+    if (typing()) { deferred = true; return; }
+    deferred = false;
     paintSplit();
     paintUnits();
     paintYield();
     paintPlan();
   }
+  const onFocusOut = () => setTimeout(() => { if (deferred && !typing()) paintAll(); }, 0);
+  host.addEventListener('focusout', onFocusOut);
 
   void load().then(loadTotals);
+  // Las personas del evento (Booking). Los eventos pueden llegar antes que la carta (de la caché): se recalculan también
+  // al cargarla; si no, se quedaban en blanco aunque el evento tuviera asistentes (VG, 28-10).
+  let snapshot: EventsSnapshot | null = null;
+  const guestsOf = () => (menu?.event_id && snapshot ? snapshot.events.find((e) => e.event_id === menu!.event_id)?.guest_count ?? null : null);
   const offEvents = watchEvents(client, (next) => {
-    const guests = menu?.event_id ? next.events.find((e) => e.event_id === menu!.event_id)?.guest_count ?? null : null;
-    if (guests !== eventGuests) { eventGuests = guests; paintUnits(); }
+    snapshot = next;
+    const guests = guestsOf();
+    if (guests !== eventGuests) { eventGuests = guests; if (typing()) deferred = true; else paintUnits(); }
   });
   // Tras guardar (o sincronizar) unidades o reparto, el plan se vuelve a pedir al servidor.
   const offs = [T.menus, T.cartaLines, T.recipeIngredients, T.ingredients].map((table) => client.onTable(table, () => void load().then(loadTotals)));
-  return () => { offEvents(); offs.forEach((off) => off()); document.body.classList.remove('carta-printing'); };
+  return () => { host.removeEventListener('focusout', onFocusOut); offEvents(); offs.forEach((off) => off()); document.body.classList.remove('carta-printing'); };
 }

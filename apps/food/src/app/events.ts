@@ -165,6 +165,8 @@ export const bookingReservationUrl = (event: Pick<FoodEvent, 'reservation_id'>) 
 
 /** Evento «familiar» de Booking (event_type desde la 0482): come del menú de casa, no lleva menú propio (VG, 26-10). */
 export const isFamilyEvent = (event: Pick<FoodEvent, 'event_type'>) => event.event_type === 'familiar';
+/** Jornadas abiertas, o un evento con carta elegida en Booking: se come de la carta, sin comidas de grupo (VG, 28-10). */
+export const isCartaEvent = (event: Pick<FoodEvent, 'event_type' | 'carta_ids'>) => event.event_type === 'jornadas_abiertas' || (event.carta_ids ?? []).length > 0;
 /**
  * Personas de los eventos familiares que comen en casa un día (VG, 26-10: el familiar come del menú de casa). Se suman a
  * las de casa al poner raciones; los cancelados no cuentan.

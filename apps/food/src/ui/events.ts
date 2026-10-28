@@ -6,7 +6,7 @@ import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, isFamilyEvent, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, restrictionSummary, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
+  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, isFamilyEvent, dateRange, guestsLabel, isCancelled, isCartaEvent, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, restrictionSummary, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
@@ -41,6 +41,7 @@ export function menuChip(event: FoodEvent, menu: Mirror<Menu> | undefined): HTML
     return el('span', { class: menu.status === 'validado' || menu.status === 'cerrado' ? 'chip ok' : 'chip' }, `Menú: ${MENU_STATUS_LABELS[menu.status].toLowerCase()}`);
   }
   if (isFamilyEvent(event)) return el('span', { class: 'chip ok' }, 'Menú de casa');
+  if (isCartaEvent(event)) return el('span', { class: 'chip ok' }, 'Come de la carta');
   if (noMealsInBooking(event)) return el('span', { class: 'chip trash' }, 'Sin comidas en Booking');
   return el('span', { class: 'chip' }, 'Sin menú');
 }
@@ -142,7 +143,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const menu = menuOf(event);
     const restrictions = sortedRestrictions(event.dietary_restrictions);
     // Régimen con el que proponer servicios: el de Booking si lo hay; si no, lo elige la cocina (o ninguno).
-    const gap = mealsGap(event);
+    // En jornadas abiertas (o con carta elegida en Booking) «sin comidas» es lo correcto: se come de la carta.
+    const openDay = isCartaEvent(event) || !!cartaOf(event);
+    const gap = openDay ? null : mealsGap(event);
     const plan = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.eventos.ficha.regimen', 'data-feedback-label': 'Régimen de la propuesta', id: 'proposalPlan', 'aria-label': 'Proponer servicios como', onchange: () => paintPicks() },
       el('option', { value: '' }, 'Ninguno: añadiré los servicios a mano'),
       ...['pension_completa', 'media_pension', 'desayuno'].map((value) => el('option', { value, selected: event.meal_plan === value }, MEAL_PLAN_LABELS[value]!)));
@@ -184,6 +187,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
         el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.eventos.ficha.abrir_casa', 'data-feedback-label': 'Abrir el menú de casa', class: 'ghost', type: 'button', id: 'openHouseMenu',
           onclick: () => { void sheet?.close(true); navigate(HOUSE_MENU_HASH); } }, 'Abrir el menú de casa'))) : null,
       !menu && !cancelled && !family && !canWrite() ? el('p', { class: 'muted' }, 'Tu cuenta es de solo lectura: el menú lo crea alguien de cocina.') : null,
+      canCreate && openDay ? el('p', { class: 'muted', id: 'cartaEventNote' }, 'Se come de la carta: sin comidas de grupo. Si además hay alguna, puedes crear el menú.') : null,
       canCreate && gap ? el('div', { 'data-feedback-id': 'food.eventos.ficha.aviso_comidas', 'data-feedback-label': 'Aviso de comidas', class: 'banner warn notice', id: 'mealsGap', role: 'note' },
         el('div', { 'data-feedback-ignore': '' }, el('strong', null, gap), ' Puedes crear el menú igualmente. Si este grupo come aquí, corrígelo también en Booking',
           event.reservation_code ? ` (reserva ${event.reservation_code})` : '', ' para que los datos coincidan.'),
