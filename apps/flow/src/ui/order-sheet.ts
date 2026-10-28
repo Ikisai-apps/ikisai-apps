@@ -214,7 +214,8 @@ export function openOrderSheet(client: SyncClient, orderId: string, opts: { onCl
         } catch (error) { toast(describeError(error)); }
       });
       const cash = pay('cash'); const bizum = pay('bizum');
-      const onAccount = data?.accountsEnabled ? [act({ class: 'ghost', 'data-method': 'account' }, 'A cuenta', async () => {
+      // La ficha se abre sin flujo: las cuentas se miran en el flujo del pedido (no salía «A cuenta», VG 28-10).
+      const onAccount = data?.accountsProjects.has(o.project_id) ? [act({ class: 'ghost', 'data-method': 'account' }, 'Cargar a cuenta', async () => {
         if (!isOnline(client)) { toast('Cargar a cuenta necesita conexión.'); return; }
         const fresh = order();
         if (!fresh || !data) return;
@@ -229,7 +230,8 @@ export function openOrderSheet(client: SyncClient, orderId: string, opts: { onCl
       const deep = data?.deepCheckout.has(o.project_id)
         ? [el('button', { type: 'button', class: 'primary', onclick: () => { sheet.close(); openPaySheet(client, o.project_id, [o.id]); } }, 'Pagar')] as HTMLButtonElement[] : null;
       for (const b of [cash, bizum, ...onAccount, ...(deep ?? [])]) b.disabled = empty || lines().some((l) => l._pending);
-      if (deep) replace(foot, ...deep, ...onAccount); else replace(foot, cash, bizum, ...onAccount);
+      // «Cargar a cuenta» antes de pagar (VG, 28-10).
+      if (deep) replace(foot, ...onAccount, ...deep); else replace(foot, ...onAccount, cash, bizum);
     } else if (mode === 'correct') {
       const save = (method: PayMethod) => act({ class: 'primary' }, `Guardar (${PAY_METHOD_LABELS[method].toLowerCase()})`, () => saveCorrection(method));
       replace(foot, el('button', { type: 'button', class: 'ghost', onclick: () => { mode = 'view'; correction = null; shape = ''; paint(); } }, 'Cancelar'), save('cash'), save('bizum'));
