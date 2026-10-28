@@ -753,6 +753,9 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       const light = (on: boolean) => { lit = on ? shape.name : null; editor.querySelector(`[data-svg-shape="${CSS.escape(shape.name)}"].ctl-placeghost`)?.classList.toggle('lit', on); };
       select.addEventListener('focus', () => light(true));
       select.addEventListener('blur', () => light(false));
+      const create = holder ? null : el('button', { type: 'button', class: 'softbtn small', 'aria-label': `Crear la estancia «${shape.name.replace(/[_-]+/g, ' ')}»`,
+        'data-feedback-id': 'central.planos.colocar.crear_estancia', 'data-feedback-label': 'Crear la estancia con el nombre del dibujo', onclick: () => newSpaceFor(plan, shape) },
+        icon('plus', 16), `Crear «${shape.name.replace(/[_-]+/g, ' ')}»`);
       const rename = holder && foldName(holder.name) !== foldName(shape.name.replace(/[_-]+/g, ' '))
         ? el('button', { type: 'button', class: 'linkbtn small', 'data-feedback-id': 'central.planos.colocar.renombrar', 'data-feedback-label': 'Renombrar como en el dibujo', onclick: () => void renameTo(holder, shape.name.replace(/[_-]+/g, ' ')) }, `Llamarla «${shape.name.replace(/[_-]+/g, ' ')}»`)
         : null;
@@ -762,7 +765,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       const row = el('li', { class: `ctl-shaperow${holder ? '' : ' warn'}`, 'data-shape-row': shape.name },
         el('div', { class: 'ctl-shapehead' }, el('span', { class: 'ctl-shapenum', 'aria-hidden': 'true' }, String(index + 1)),
           el('span', null, el('strong', null, holder ? holder.name : 'Sin estancia'), el('span', { class: 'muted small' }, ` · en el dibujo «${shape.name.replace(/[_-]+/g, ' ')}»`))),
-        select, rename, manage);
+        select, create, rename, manage);
       row.addEventListener('mouseenter', () => light(true));
       row.addEventListener('mouseleave', () => light(false));
       return row;
@@ -793,7 +796,13 @@ export const mountPlans: ViewMount = ({ main, client }) => {
           shapesHere === 'loading' ? el('p', { class: 'muted', id: 'placeShapesLoading' }, 'Leyendo las formas del dibujo…') : null,
           drawn.length ? el('h4', { class: 'sectionlabel', id: 'placeShapesHead' }, `Formas del dibujo · ${pendingShapes.length ? `${pendingShapes.length} sin estancia` : 'todas con su estancia'}`) : null,
           drawn.length ? el('p', { class: 'muted small' }, 'Cada número es una forma del dibujo. Elige qué estancia es; si no está en la lista, «Otra» y escribe su nombre. También puedes tocar la forma en el dibujo.') : null,
-          drawn.length ? el('ul', { class: 'ctl-shapes', id: 'placeShapes', 'data-feedback-id': 'central.planos.colocar.formas', 'data-feedback-label': 'Formas del dibujo' }, ...drawn.map(shapeRow)) : null,
+          drawn.length ? el('div', { id: 'placeShapes', 'data-feedback-id': 'central.planos.colocar.formas', 'data-feedback-label': 'Formas del dibujo' },
+            pendingShapes.length
+              ? el('ul', { class: 'ctl-shapes' }, ...drawn.map((x, i) => [x, i] as const).filter(([x]) => !holderOf(plan, x)).map(([x, i]) => shapeRow(x, i)))
+              : el('p', { class: 'hint' }, icon('check', 16), ' Todas las formas del dibujo tienen su estancia.'),
+            drawn.length > pendingShapes.length ? el('details', { class: 'ctl-shapesdone', id: 'placeShapesDone', open: pendingShapes.length === 0 },
+              el('summary', null, `Con su estancia (${drawn.length - pendingShapes.length})`),
+              el('ul', { class: 'ctl-shapes compact' }, ...drawn.map((x, i) => [x, i] as const).filter(([x]) => !!holderOf(plan, x)).map(([x, i]) => shapeRow(x, i)))) : null) : null,
           current ? el('div', { class: 'toolbar' }, el('button', { type: 'button', class: 'ghost', id: 'unplace', 'data-feedback-id': 'central.planos.colocar.quitar', 'data-feedback-label': 'Quitar del plano', onclick: () => unplace(current) }, `Quitar «${current.name}» del plano`)) : null,
           fill(missing, el('summary', null, drawn.length ? `¿Falta alguna? Ponla en el dibujo (${review.length})` : `Por revisar · ${review.length}`),
           el('div', { class: 'toolbar' }, autoBtn),
@@ -1161,7 +1170,14 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       if (!local && typeof plan.fileId !== 'string') { svgShapes.delete(plan.id); return; }
       const text = await (await fetch(local ?? await r.fileUrl(plan.fileId as string))).text();
       const read = /<svg[\s>]/i.test(text) ? readSvgPlan(text) : null;
-      const shapes = (read?.shapes ?? []).filter((x) => !x.problem && !generatedName(x.name) && x.points.length >= 3);
+      const named = (read?.shapes ?? []).filter((x) => !x.problem && !generatedName(x.name) && x.points.length >= 3);
+      // Fuera lo que envuelve a otras formas (el contorno del edificio, el grupo «estancias», los muros): no son estancias.
+      const box = (x: SvgShape) => { const xs = x.points.map((q) => q[0]); const ys = x.points.map((q) => q[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as const; };
+      const centre = (x: SvgShape) => { const [a, b, c, d] = box(x); return [(a + c) / 2, (b + d) / 2] as const; };
+      const shapes = named.filter((x) => {
+        const [a, b, c, d] = box(x);
+        return named.filter((y) => y !== x && (() => { const [cx, cy] = centre(y); return cx > a && cx < c && cy > b && cy < d; })()).length < 2;
+      });
       svgShapes.set(plan.id, shapes.length ? shapes : 'none');
     } catch { svgShapes.delete(plan.id); }
     if (alive && editing === plan.id) paintEditor();
