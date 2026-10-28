@@ -80,6 +80,14 @@ function show(): void {
     });
     return;
   }
+  // Sin sesión y sin enlace (ven.ikisai.com, única entrada pública; VG, 28-10): directamente los eventos abiertos, como
+  // visitante. La entrada de huéspedes invitados queda para cuando un enlace falla.
+  if (!entryError) {
+    history.replaceState(null, '', '/#/v');
+    visitorMode = true;
+    unmount = renderVisitor(root!, client);
+    return;
+  }
   const paintEntry = (permanentAccount?: boolean) => {
     unmount?.();
     unmount = renderEntry(root!, { error: entryError, retry: () => location.reload(), ...(permanentAccount ? { permanentAccount } : {}) });
