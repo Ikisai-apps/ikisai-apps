@@ -203,6 +203,11 @@ Sin red, el cliente puede sumar `movements` de su espejo.
 - `category` (texto) se conserva para lo que ya hay.
 - Tasks y Food lo leen en `resources.items`, como el resto del artículo. El selector de oficio va en la ficha del artículo de Central (`central.trade_options`).
 
+## 3.0b Quién pone el origen de un movimiento (migración 0820, FO4; núcleo 0118)
+
+- `source_app` de `movements` y `movement_costs`: en un lote del navegador, la app del lote (en Recursos, ninguno), ignorando lo que mande el cliente; en uno de servidor (clave de worker + `X-Ikisai-Caller`, sistema o migración), el declarado si la app existe (`INVALID_FIELDS` si no). Fuera de un lote, sin cambios. Inmutable al editar.
+- `consume`: del navegador, el origen es la app del lote (también para `once`). `reconcile_entries`: solo desde servidor (`FORBIDDEN`).
+
 ## 3.1 EPI y lo que pide cada máquina (migración 0813, R3 de Tasks)
 
 - **Tipo `epi`** («EPI»; se cuenta, no se gasta). Cada EPI guarda en `attributes.body_parts` qué protege: una o varias de `head`, `eyes`, `ears`, `mouth_nose`, `hands`, `feet`, `legs`, `knees`, `body`, `harness`, sin repetir.
