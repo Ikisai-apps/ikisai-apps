@@ -39,6 +39,15 @@ test('agentes · dominio: solo el owner; responsable coherente; sin responsable 
   assert.equal(flowLaneUrl({ flow_project: 'a b', flow_lane: 'x' }), null);
   assert.equal(agentCardUrl('a1'), 'https://central.ikisai.com/#/accesos/agentes?agente=a1');
   assert.equal(validateOperations(ins({ flow_lane: 'no vale' }), owner)?.details.field, 'flow_lane');
+  // Propuestas del agente (vg-51): decide la persona responsable con cuenta; con servicio o sin cuenta, el owner (null).
+  const people = [{ id: 'p1', user_id: 'u1', active: true }, { id: 'p2', user_id: null, active: true }];
+  assert.equal(proposalDecider({ responsible_kind: 'person', responsible_person_id: 'p1' }, people), 'u1');
+  assert.equal(proposalDecider({ responsible_kind: 'person', responsible_person_id: 'p2' }, people), null);
+  assert.equal(proposalDecider({ responsible_kind: 'service', responsible_person_id: null }, people), null);
+  const agents = [{ id: 'a1', display_name: 'A', user_id: 'ag' }, { id: 'a2', display_name: 'B', user_id: 'other' }];
+  assert.equal(agentProposalIssue([{ op: 'update', table: AGENTS_TABLE, id: 'a1', fields: { mission: 'Nueva' } }], 'ag', agents), null);
+  assert.match(agentProposalIssue([{ op: 'update', table: AGENTS_TABLE, id: 'a2', fields: { mission: 'x' } }], 'ag', agents)!, /propia ficha/);
+  assert.match(agentProposalIssue([{ op: 'update', table: AGENTS_TABLE, id: 'a1', fields: { active: true } }], 'ag', agents)!, /active/);
   const chain = successorChain([{ id: 'a', display_name: 'A', successor_id: 'b' }, { id: 'b', display_name: 'B', successor_id: 'c' }, { id: 'c', display_name: 'C', successor_id: 'a' }], 'a');
   assert.deepEqual(chain.map((r) => r.id), ['b', 'c'], 'la cadena se corta al volver al primero');
 });

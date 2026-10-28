@@ -53,3 +53,33 @@ export function successorChain(agents: readonly AgentRow[], id: string): AgentRo
   }
   return out;
 }
+
+/**
+ * Propuestas del agente sobre su propia ficha (vg-51, decisión de VG del 28-10; análisis en
+ * MUELA/equipo/feedback/central/PROPUESTAS_AGENTE.md). El agente propone por `core.proposals` y decide su responsable:
+ * la persona responsable, si tiene cuenta; si el responsable es una entidad de servicio (o la persona no tiene cuenta), el
+ * owner de Central (`null`: decide el owner, como siempre).
+ */
+export const AGENT_PROPOSABLE_FIELDS = ['mission', 'work_areas', 'notes'] as const;
+
+/** Quién decide una propuesta del agente: la cuenta de la persona responsable, o `null` (el owner de Central). */
+export function proposalDecider(agent: Pick<AgentRow, 'responsible_kind' | 'responsible_person_id'>, people: ReadonlyArray<{ id: string; user_id?: string | null; active?: boolean | null; deleted_at?: string | null }>): string | null {
+  if ((agent.responsible_kind ?? 'person') !== 'person' || !agent.responsible_person_id) return null;
+  const person = people.find((p) => p.id === agent.responsible_person_id && !p.deleted_at && p.active !== false);
+  return person?.user_id ?? null;
+}
+
+/**
+ * ¿Puede proponer el agente estas operaciones? Solo actualizar su propia ficha y solo misión, dónde trabaja y notas. Devuelve
+ * el motivo si no, o `null` si vale.
+ */
+export function agentProposalIssue(operations: ReadonlyArray<{ op: string; table?: string; id?: string; fields?: Record<string, unknown> }>, agentUserId: string, agents: readonly AgentRow[]): string | null {
+  const own = agents.find((a) => a.user_id === agentUserId);
+  if (!own) return 'el agente no tiene ficha en Central';
+  for (const o of operations) {
+    if (o.table !== AGENTS_TABLE || o.op !== 'update' || o.id !== own.id) return 'un agente solo propone cambios en su propia ficha';
+    const extra = Object.keys(o.fields ?? {}).filter((f) => !(AGENT_PROPOSABLE_FIELDS as readonly string[]).includes(f));
+    if (extra.length) return `un agente no propone cambiar ${extra.join(', ')}`;
+  }
+  return null;
+}
