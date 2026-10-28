@@ -96,7 +96,7 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
   /** Buscador (solo con «todos»): esconde lo que no coincide, abre los grupos con coincidencias y dice cuántos hay. */
   function searchBox(): HTMLElement {
     const result = el('p', { class: 'hint', id: 'retreatSearchResult', 'aria-live': 'polite' });
-    const input = el('input', { ...fieldAttrs({ id: 'organizers.retiros.buscador.campo', label: 'Buscar retiros', type: 'search', sensitivity: 'internal', confirm: 'none' }),
+    const input = el('input', { ...fieldAttrs({ id: 'organizers.retiros.buscador.campo', storage: 'none', label: 'Buscar retiros', type: 'search', sensitivity: 'internal', confirm: 'none' }),
       type: 'search', id: 'retreatSearch', placeholder: t('Buscar por nombre o código'), 'aria-label': t('Buscar retiros'), autocomplete: 'off',
       'aria-describedby': 'retreatSearchResult', 'data-feedback-id': 'organizers.retiros.buscador.campo', 'data-feedback-label': 'Buscar retiros',
     }) as HTMLInputElement;
