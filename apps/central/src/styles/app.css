@@ -448,3 +448,10 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-itemtrade{margin:12px 0}
 .ctl-itemtrade select{min-height:var(--tap,46px);max-width:100%}
 .ctl-giveextra summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;color:var(--muted)}
+.ctl-shapetools{display:flex;gap:12px;flex-wrap:wrap}
+.ctl-shapetools .linkbtn{min-height:var(--tap,46px)}
+.ctl-shapesdone{margin:12px 0}
+.ctl-shapesdone summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--muted)}
+.ctl-shapes.compact .ctl-shaperow{padding:6px 8px;gap:4px;background:none;border-bottom:1px solid var(--line);border-radius:0}
+.ctl-shapes.compact .ctl-shapenum{width:22px;height:22px;font-size:.75rem}
+.ctl-shapes.compact select{min-height:36px;font-size:var(--text-sm,.875rem)}
