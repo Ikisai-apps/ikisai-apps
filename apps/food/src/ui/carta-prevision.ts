@@ -138,8 +138,19 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
           const people = attendance();
           await save(value !== null && people ? { expected_units: value, per_person: perPersonFromUnits(value, people) } : { expected_units: value });
         } }) as HTMLInputElement;
+      // Capacidad material (food-13): para cuántas hay material, aparte de lo que se espera vender; nadie las cuadra.
+      const capacity = el('input', { 'data-field-id': 'food.carta.prevision.capacidad_linea', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'capacity_units', 'data-feedback-id': 'food.carta.prevision.capacidad_linea', 'data-feedback-label': 'Capacidad material', type: 'number', inputmode: 'numeric',
+        min: '0', step: '1', value: line.capacity_units === null || line.capacity_units === undefined ? '' : String(line.capacity_units), disabled: !canWrite,
+        id: `capacity-${line.id}`, 'aria-label': `Capacidad material de ${nameOf(line)}`, class: 'carta-units',
+        onchange: async () => {
+          const value = capacity.value.trim() === '' ? null : Number(capacity.value);
+          if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de unidades.'); return; }
+          if (value === (line.capacity_units ?? null)) return;
+          await save({ capacity_units: value });
+        } }) as HTMLInputElement;
       return el('li', { class: 'carta-unitrow' }, el('span', { class: 'carta-code' }, line.code), el('span', { class: 'carta-unitname' }, nameOf(line)),
-        el('label', { class: 'field' }, el('span', null, 'Por persona'), perPerson), el('label', { class: 'field' }, el('span', null, 'Total'), units));
+        el('label', { class: 'field' }, el('span', null, 'Por persona'), perPerson), el('label', { class: 'field' }, el('span', null, 'Total'), units),
+        el('label', { class: 'field' }, el('span', null, 'Material para'), capacity));
     };
     replace(unitsHost,
       el('h3', null, 'Unidades a cubrir'),

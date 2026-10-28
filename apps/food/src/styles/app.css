@@ -499,7 +499,7 @@
 .carta-split{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .carta-split input,.carta-units{width:100%;min-height:var(--tap,46px)}
 .carta-units-list{display:grid;gap:6px}
-.carta-unitrow{display:grid;grid-template-columns:auto minmax(0,1fr) 96px 96px;gap:8px;align-items:end}
+.carta-unitrow{display:grid;grid-template-columns:auto minmax(0,1fr) repeat(3,80px);gap:8px;align-items:end}
 .carta-unitrow .field{margin:0}
 .carta-unitname{overflow-wrap:anywhere}
 .carta-planhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}

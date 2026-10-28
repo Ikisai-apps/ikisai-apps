@@ -34,6 +34,8 @@ export interface CartaLine extends SyncedColumns {
   image_key: string | null;
   /** Unidades que se esperan vender (previsión, 1110); null sin previsión. */
   expected_units?: number | null;
+  /** Capacidad material (1123, food-13): para cuántas hay material; aparte de lo que se espera vender. */
+  capacity_units?: number | null;
   /** Consumo por persona (1110): con los asistentes, da `expected_units`. */
   per_person?: number | string | null;
 }
@@ -131,6 +133,7 @@ export function copyCartaOperations(args: {
       // Lo que viene de la base puede llegar como texto (numeric): se pasa a número.
       name: l.name, description: l.description, sale_price_cents: Number(l.sale_price_cents), active: l.active, position: Number(l.position), image_key: l.image_key,
       ...(l.expected_units !== undefined && l.expected_units !== null ? { expected_units: Number(l.expected_units) } : {}),
+      ...(l.capacity_units !== undefined && l.capacity_units !== null ? { capacity_units: Number(l.capacity_units) } : {}),
       ...(l.per_person !== undefined && l.per_person !== null ? { per_person: Number(l.per_person) } : {}),
     } });
   }
