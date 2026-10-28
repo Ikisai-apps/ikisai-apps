@@ -275,6 +275,55 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await expect(page.locator('#f-email')).toHaveValue('rosa@example.invalid');
 });
 
+test('organizers · comentarios de tus asistentes y respuestas de la casa (vg-22, #1166): «Nuevo», recuentos en Mis retiros y vistos', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con comentarios', confirm: true });
+  const other = await api.reservation({ title: 'Otro retiro de Lola', confirm: true });
+  await enter(page, await api.organizerLink([reservation, other], 'lola-cr@example.invalid', 'Lola'));
+  const base = page.url().split('#')[0];
+  const lola = (await api.booking.t.db.query<{ u: string }>(`select user_id u from core.portal_links where app = 'organizers' and scope->>'reservation_id' = $1 order by created_at desc limit 1`, [reservation])).rows[0]!.u;
+  const report = async (reporter: string, kind: 'guest' | 'organizer', message: string) => {
+    const id = crypto.randomUUID();
+    await api.booking.t.db.query(`insert into core.feedback_reports (id, code, request_id, digest, reporter_user_id, reporter_kind, origin_app, subject, intent, message, category, scope, destination, routing_status)
+      values ($1, $8, $9, 'd', $2, $3, $4, 'event', 'problem', $5, null, $6::jsonb, $7, 'none')`,
+    [id, reporter, kind, kind === 'guest' ? 'guests' : 'organizers', message, JSON.stringify({ reservation_id: reservation, guest_id: crypto.randomUUID() }), kind === 'guest' ? 'organizer' : 'operations',
+      `FB_CR_${id.slice(0, 6)}`, `cr-${id}`]);
+    return id;
+  };
+  await report(api.booking.users.reader, 'guest', 'La cena del sábado, estupenda.');
+  const mine = await report(lola, 'organizer', 'Falta la llave del aula.');
+  const replied = await api.booking.call(`/api/v1/feedback/${mine}/replies`, { token: api.booking.tokens.editor, body: { message: 'Mañana a las 9 la tenéis en recepción.' } });
+  expect(replied.status, JSON.stringify(replied.data)).toBe(200);
+
+  // Mis retiros: la tarjeta del retiro cuenta lo que Lola aún no ha visto.
+  await page.goto('about:blank');
+  await page.goto(`${base}#/`);
+  const card = page.locator('.orgretreat', { hasText: 'Retiro con comentarios' });
+  await expect(card.locator('.orgunread')).toHaveText('1 comentario nuevo');
+  await expect(card.locator('.orgreplies')).toHaveText('1 respuesta de Ikisai');
+  await expect(page.locator('.orgretreat', { hasText: 'Otro retiro de Lola' }).locator('.orgunread, .orgreplies')).toHaveCount(0);
+
+  // Resumen: el comentario lleva «Nuevo»; tras verlo un segundo, al volver ya no.
+  await card.click();
+  const comment = page.locator('#retreatComments li.orgcomment', { hasText: 'La cena del sábado' });
+  await expect(comment.locator('.orgcomment-newchip')).toHaveText('Nuevo');
+  await comment.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await api.booking.t.db.query(`select 1 from organizers.comment_reads where user_id = $1 and deleted_at is null`, [lola])).rows.length, { timeout: 8000 }).toBe(1);
+  await page.reload();
+  await expect(page.locator('#retreatComments li.orgcomment', { hasText: 'La cena del sábado' })).toBeVisible();
+  await expect(page.locator('#retreatComments .orgcomment-newchip')).toHaveCount(0);
+
+  // «Lo que me has enviado»: la respuesta firmada «Ikisai»; al enseñarla, cuenta como vista.
+  await page.locator('#appLauncher').click();
+  await page.locator('.launcher-center').click();
+  const reply = page.locator('#helpMine .orgreply', { hasText: 'Mañana a las 9' });
+  await expect(reply).toContainText('Ikisai');
+  await expect.poll(async () => (await api.booking.t.db.query<{ r: string | null }>(`select read_at r from core.feedback_replies where report_id = $1`, [mine])).rows[0]?.r ?? null).not.toBeNull();
+  await page.goto('about:blank');
+  await page.goto(`${base}#/`);
+  await expect(page.locator('.orgretreat', { hasText: 'Retiro con comentarios' })).toBeVisible();
+  await expect(page.locator('.orgretreat', { hasText: 'Retiro con comentarios' }).locator('.orgunread, .orgreplies')).toHaveCount(0);
+});
+
 test('organizers · ayuda y sugerencias: enviar con doble toque llega una vez, se cierra y se ve el aviso; también con teclado @smoke', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con comentario', confirm: true });
   await enter(page, await api.organizerLink([reservation], 'eva@example.invalid'));
