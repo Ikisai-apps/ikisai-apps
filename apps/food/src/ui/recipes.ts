@@ -6,7 +6,7 @@ import {
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
-import { loadCartaImages, recipeMedal } from './recipe-medal.ts';
+import { cartaImageKey, loadCartaImages, recipeMedal } from './recipe-medal.ts';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -257,6 +257,24 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   const needsOf = (recipeId: string) => needs.filter((n) => n.recipe_id === recipeId && !n.deleted_at);
 
   /** `track` envuelve el envío para medir el uso (p. ej. `usage.run` al guardar); el error sigue llegando al `catch`. */
+  /** La imagen de la carta, como foto de la receta: la baja food-api de Flow y se sube como cualquier foto. */
+  async function saveCartaPhoto(recipe: RecipeRow, button: HTMLButtonElement): Promise<void> {
+    const key = cartaImageKey(recipe.id);
+    if (!key) return;
+    button.disabled = true;
+    try {
+      const out = await client.api<{ contentType: string; data: string }>(`/carta/image?key=${encodeURIComponent(key)}`);
+      const bytes = Uint8Array.from(atob(out.data), (ch) => ch.charCodeAt(0));
+      const prepared = await preparePhoto(new Blob([bytes], { type: out.contentType }));
+      const photo = await usage.run('food.recetario.foto', () => stagePhoto(client, prepared));
+      if (await commitSafely([{ op: 'update', table: T.recipes, id: recipe.id, expectedRevision: recipe.revision, fields: photo }], 'Foto guardada en la receta.')) await sheet?.close(true);
+    } catch (error) {
+      toast(`No se ha podido guardar la foto: ${describeError(error)}`);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function commitSafely(operations: RowOperation[], okMessage: string, track: (send: () => Promise<unknown>) => Promise<unknown> = (send) => send()): Promise<boolean> {
     const issue = localIssue(operations);
     if (issue) { toast(issue); return false; }
@@ -385,6 +403,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         el('div', null, el('strong', null, 'Plato rápido.'), ' Complétalo (alérgenos e ingredientes) para usarlo en un retiro.'),
         canWrite() ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.ficha.completar', 'data-feedback-label': 'Completar plato rápido', class: 'ghost', type: 'button', id: 'completeQuick', onclick: () => openEditor(recipe) }, 'Completar')) : null) : null,
       coverHost,
+      // La imagen solo está en la carta (VG, 28-10): si la carta cambia o se borra, se pierde. Un toque la guarda en la receta.
+      !recipe.photo_file_id && cartaImageKey(recipe.id) ? el('div', { 'data-feedback-id': 'food.recetario.ficha.foto_carta', 'data-feedback-label': 'Imagen solo en la carta', class: 'banner warn notice', id: 'cartaPhotoNotice', role: 'note' },
+        el('div', null, el('strong', null, 'La imagen solo está en la carta.'), ' La receta no tiene foto: si la carta cambia, se pierde.'),
+        canWrite() ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.ficha.foto_carta_guardar', 'data-feedback-label': 'Guardar como foto de la receta', class: 'ghost', type: 'button', id: 'saveCartaPhoto',
+          onclick: (e: Event) => void saveCartaPhoto(recipe, e.currentTarget as HTMLButtonElement) }, 'Guardar como foto de la receta')) : null) : null,
       // El nombre público solo se repite si es distinto del interno.
       (recipe.public_name && recipe.public_name.trim() !== recipe.name.trim()) || recipe.public_description
         ? el('div', { 'data-feedback-id': 'food.recetario.ficha.presentacion', 'data-feedback-label': 'Presentación pública', class: 'ficha-public' }, recipe.public_name && recipe.public_name.trim() !== recipe.name.trim() ? el('strong', null, recipe.public_name) : null, recipe.public_description ? el('p', null, recipe.public_description) : null)

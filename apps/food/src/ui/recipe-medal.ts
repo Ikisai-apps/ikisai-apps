@@ -29,6 +29,9 @@ export async function loadCartaImages(client: SyncClient): Promise<void> {
   for (const l of lines) if (!l.deleted_at && l.recipe_id && l.image_key && !cartaImages.has(l.recipe_id)) cartaImages.set(l.recipe_id, l.image_key);
 }
 
+/** La clave de la imagen de la carta de una receta, si tiene. */
+export const cartaImageKey = (recipeId: string): string | undefined => cartaImages.get(recipeId);
+
 export function recipeMedal(recipe: { id?: string; name: string; category: RecipeCategory }, size = 56): HTMLElement {
   const key = recipe.id ? cartaImages.get(recipe.id) : undefined;
   return renderMedal({ name: recipe.name, color: recipeColor(recipe.category), size, ...(key ? { image: cartaImage(key) } : {}) });
