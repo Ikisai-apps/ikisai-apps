@@ -543,16 +543,25 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
         continue;
       }
       if (off && !use) continue;
+      // Ampliada: la estancia ampliada no se rotula encima de sus camas (su nombre ya está en la miga).
+      if (crop && s.id === crop.id) continue;
       const name = nameOf(s);
       // En el dibujo, lo corto si la app lo da («2»); la frase entera va al lector de pantalla y a la lista.
       const text = layer.short ?? stateText(s, layer);
-      const size = Math.max(Math.min(bw / Math.max(name.length * 0.62, 1), bh / (text ? 3.2 : 2.2), unit * 0.03), unit * 0.012, px(12));
+      // Cabe lo que cabe: en el móvil, como mucho 13 px en pantalla; si a 10 px no cabe, se recorta con «…»; y en una
+      // estancia demasiado pequeña no se pinta (el nombre ya va en la lista, en la miga y en el lector de pantalla).
+      const narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 719px)').matches;
+      const fit = Math.min(bw / Math.max(name.length * 0.62, 1), bh / (text ? 3.2 : 2.2), unit * 0.03, narrow ? px(13) : Infinity);
+      const size = Math.max(fit, px(10));
+      const chars = Math.floor(bw / (size * 0.62));
+      if (chars < 3 || bh < size * (text ? 2.6 : 1.4)) continue;
+      const shown = name.length > chars ? `${name.slice(0, Math.max(chars - 1, 2)).trimEnd()}…` : name;
       // Si dentro hay camas dibujadas, el rótulo va abajo para no taparlas.
       const bedsInside = here.some(({ s: b }) => b.parentId === s.id && b.kind === 'cama');
       const bottom = Math.max(...shape.points.map((p) => p[1])) * h;
       const y = bedsInside ? bottom - size * (text ? 2.1 : 1) : c.y * h - (text ? size * 0.55 : 0);
-      labels.append(svg('text', { class: 'map-room-txt', x: c.x * w, y, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, name));
-      if (text && layer.short) labels.append(svg('text', { class: 'map-room-short', x: c.x * w, y: y + size * 1.3, 'font-size': Math.max(size * 1.15, px(15)).toFixed(1), 'dominant-baseline': 'central' }, text));
+      labels.append(svg('text', { class: 'map-room-txt', x: c.x * w, y, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, shown));
+      if (text && layer.short) labels.append(svg('text', { class: 'map-room-short', x: c.x * w, y: y + size * 1.3, 'font-size': Math.min(Math.max(size * 1.15, px(13)), bh / 2.4).toFixed(1), 'dominant-baseline': 'central' }, text));
       else if (text) labels.append(svg('text', { class: 'map-room-state', x: c.x * w, y: y + size * 1.15, 'font-size': Math.max(size * 0.82, px(11)).toFixed(1), 'dominant-baseline': 'central' }, text));
     }
     // Bandas (alturas de la finca): línea arriba y abajo y el nombre a la izquierda.
