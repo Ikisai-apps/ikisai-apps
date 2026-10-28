@@ -49,11 +49,11 @@ test.after(async () => { await app.close(); });
 
 test('orden inverso: validada antes de recibir; al recibir y cuadrar, el stock suma una vez y el coste pasa a Tasks', async () => {
   assert.equal(await stock(), 4);
-  // Tasks recibe: su entrada (como recordReceipt) y el estado.
-  const tasksEntry = uuid();
-  const res = await app.call('/api/v1/resources/commands', { body: { requestId: `tasks-receipt-${REQUEST}`, operations: [
-    { op: 'insert', table: 'resources.movements', id: tasksEntry, fields: { item_id: ITEM, space_id: SPACE, quantity: 4, kind: 'entrada_manual', source_app: 'tasks', source_ref: `purchase_request:${REQUEST}` } }] } });
+  // Tasks recibe: su entrada, desde el servidor como recordReceipt (Recursos 0820: origen server, source_app tasks).
+  const res = await app.call(`/api/v1/purchases/${REQUEST}/receipt`, { body: { spaceId: SPACE } });
   assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.equal(res.data.recorded, true);
+  const tasksEntry = res.data.movementId as string;
   assert.equal(await stock(), 8, 'antes de cuadrar, entraría dos veces');
   const out = await reconcile([REQUEST]);
   assert.equal(out.status, 200, JSON.stringify(out.data));
