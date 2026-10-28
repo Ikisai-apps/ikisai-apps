@@ -117,8 +117,8 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
       off && m !== 'card' ? `${CHECKOUT_METHOD_LABELS[m]} · ${off}` : CHECKOUT_METHOD_LABELS[m], () => (m === 'btc_ln' || m === 'btc_chain' ? bitcoin(m, total) : pay(m, total)));
     const noAddress = 'pendiente de dirección';
     replace(foot, method('cash'), method('bizum'), method('card', 'Aún no disponible'),
-      method('btc_ln', settings?.lightning_address ? null : noAddress), method('btc_chain', settings?.bitcoin_address ? null : noAddress));
-    if (!settings?.lightning_address && !settings?.bitcoin_address) {
+      ...(BITCOIN_ENABLED ? [method('btc_ln', settings?.lightning_address ? null : noAddress), method('btc_chain', settings?.bitcoin_address ? null : noAddress)] : []));
+    if (BITCOIN_ENABLED && !settings?.lightning_address && !settings?.bitcoin_address) {
       body.append(el('p', { class: 'muted small', 'data-note': 'bitcoin' }, 'Bitcoin: pendiente de dirección. La pone el encargado en el Inicio del flujo, «Cobro con Bitcoin».'));
     }
   }
@@ -177,6 +177,9 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
     body: rows, foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: () => sheet.close() }, 'Cerrar')) });
   paint();
 }
+
+/** Bitcoin y Lightning, fuera por ahora (VG, 28-10: al backlog): ni en la caja ni en el Inicio. El código se queda. */
+export const BITCOIN_ENABLED = false;
 
 /** Owner: direcciones de cobro con Bitcoin del flujo (ajustes del proyecto). */
 export async function editBitcoinSettings(client: SyncClient, projectId: string): Promise<void> {
