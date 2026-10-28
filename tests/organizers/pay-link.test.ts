@@ -68,12 +68,13 @@ test('pago en curso · la vuelta de la pasarela se lee del final de la ruta', ()
 });
 
 
-test('pagar en línea · sin enlace se pide al pulsar: solo la emitida sin cobrar, con importe y sin enlace vigente', () => {
+test('pagar en línea · sin enlace se pide al pulsar: emitida o registrada sin cobrar, con importe y sin enlace vigente', () => {
   assert.equal(payOnDemand(invoice({ payment_link: null }), NOW), true);
+  assert.equal(payOnDemand(invoice({ payment_link: null, status: 'registrada' }), NOW), true, 'el estado por defecto de las emitidas de Finance');
   assert.equal(payOnDemand(invoice({ payment_link: { url: 'https://checkout.stripe.com/x', expires_at: '2026-11-01T00:00:00Z' } }), NOW), true, 'caducado: se pide otro');
   assert.equal(payOnDemand(invoice(), NOW), false, 'con enlace vigente, se usa ese');
   for (const [why, over] of [['cobrada', { collected: true }], ['rectificada', { status: 'rectificada' as const }],
-    ['registrada (otra herramienta)', { status: 'registrada' as const }], ['a cero', { total: 0 }]] as const) {
+    ['a cero', { total: 0 }]] as const) {
     assert.equal(payOnDemand(invoice({ payment_link: null, ...over } as Partial<PortalInvoice>), NOW), false, why);
   }
 });

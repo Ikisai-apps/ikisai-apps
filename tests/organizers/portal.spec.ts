@@ -620,6 +620,47 @@ test('organizers · pago en línea (PAGO_EN_CURSO.md): «Pagar ahora» → «Pag
   await expect(page.locator('#payOnline')).toHaveCount(0);
 });
 
+test('organizers · pagar ahora de punta a punta (F5): Finance real con el Stripe falso, vuelta a Pagos y cobrada por el aviso de Stripe', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con pago real', confirm: true });
+  const invoice = await api.registeredInvoice(reservation, '2026-0450', 450, false);
+  api.setPayments(true);
+  try {
+    let gateway = '';
+    await page.context().route('https://checkout.stripe.com/**', (route) => { gateway = route.request().url(); return route.fulfill({ contentType: 'text/html', body: '<p>pasarela</p>' }); });
+    await enter(page, await api.organizerLink([reservation], 'pago-real@example.invalid', 'Rocío'));
+    const base = page.url().split('#')[0];
+    await page.locator('#tab-pagos').click();
+    // Sin enlace todavía: «Pagar ahora» lo pide a Finance, que crea la sesión de Stripe con el total de la factura.
+    const pay = page.locator(`#payOnline button[data-invoice="${invoice}"]`);
+    await expect(pay).toHaveText('Pagar ahora');
+    await pay.click();
+    await page.waitForURL('https://checkout.stripe.com/**');
+    expect(gateway).toMatch(/^https:\/\/checkout\.stripe\.com\/c\/pay\/cs_test_/);
+    const sent = api.stripe.requests.at(-1)!;
+    expect(sent.amountCents).toBe(45000);
+    expect(sent.successUrl).toContain(`#/retiro/${reservation}/pagos?factura=${invoice}&pago=ok`);
+    expect(sent.cancelUrl).toContain(`#/retiro/${reservation}/pagos?factura=${invoice}&pago=cancelado`);
+
+    // Vuelve de la pasarela (la URL de vuelta, en el servidor de pruebas): aviso y «Pago en curso» hasta que Finance cobre.
+    await page.goto('about:blank');
+    await page.goto(`${base}#/retiro/${reservation}/pagos?factura=${invoice}&pago=ok`);
+    await expect(page.locator('.toast.show')).toContainText('Hemos recibido tu pago');
+    const row = page.locator(`#payOnline li[data-invoice-id="${invoice}"]`);
+    await expect(row).toHaveAttribute('data-pay-state', 'en_curso');
+    // «Volver a la pasarela» reutiliza el enlace abierto (ya viene en la lectura del portal).
+    await expect(row.getByRole('link', { name: 'Volver a la pasarela' })).toHaveAttribute('href', gateway);
+
+    // Stripe avisa a Finance (webhook firmado) y Finance la marca cobrada: «Pagar en línea» desaparece al releer.
+    await api.stripePays(gateway);
+    await page.reload();
+    await expect(page.locator('#moneyStatement')).toBeVisible();
+    await expect(page.locator('#payOnline')).toHaveCount(0);
+    await expect(page.locator('#moneyCollected')).toHaveText(/450,00/);
+  } finally {
+    api.setPayments(false);
+  }
+});
+
 test('organizers · pagar ahora sin enlace (F5): se pide a Finance al pulsar, se va a la pasarela y vuelve «Pago en curso»', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con pago bajo demanda', confirm: true });
   const invoice = crypto.randomUUID();

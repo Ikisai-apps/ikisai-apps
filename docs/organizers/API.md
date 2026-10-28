@@ -794,7 +794,7 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 
 ## 24. «Pagar ahora» sin enlace (F5; Finance API.md §19.3, #1057)
 
-- **Cuándo sale:** en «Pagar en línea», junto a las facturas que traen enlace, salen las emitidas sin cobrar, con importe y sin enlace vigente (`payOnDemand`), si `GET payments/config` dice `{online: true}`.
+- **Cuándo sale:** en «Pagar en línea», junto a las facturas que traen enlace, salen las que no están cobradas, tienen importe y no tienen enlace vigente (`payOnDemand`), si `GET payments/config` dice `{online: true}`. Valen «emitida» y «registrada», que es el estado por defecto de las emitidas de Finance, como en su regla `payable` (0255). Una rectificada, no.
 - **Encendido:** la Edge lo enciende con `IKISAI_PORTAL_PAYMENTS=1`. Apagado, no sale el botón y `POST payments/link` responde `503 PAYMENTS_OFF`.
 - **`POST payments/link {reservation_id, issued_invoice_id}`** (editor u owner):
   - organizers-api llama a `invoices-api/api/v1/worker/payment-links/portal` con `IKISAI_WORKER_KEY` y `X-Ikisai-Caller: organizers`, en nombre de quien pulsa (`actor`);
@@ -808,6 +808,7 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Pruebas:**
   - `tests/organizers/pay-now.test.ts`: las tres Edge sobre PGlite con el Stripe falso. Comprueba el importe, las URL de vuelta, la reutilización, la lectura del portal con el enlace, el ámbito y el apagado.
   - `pay-link.test.ts` y `portal.spec.ts`.
+  - **De punta a punta** (`portal.spec.ts`, con la Finance real y el Stripe falso del servidor de pruebas, `setPayments` y `stripePays`): pulsar, la sesión con el total, la vuelta con «Pago en curso» y «Volver a la pasarela», y cobrada por el webhook firmado de Stripe.
 
 ## 25. Avisos por correo de comentarios nuevos (migración 0709; línea de Core del 28-10)
 
