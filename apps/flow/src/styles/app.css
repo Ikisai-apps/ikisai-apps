@@ -238,6 +238,12 @@
 
 /* Tablero de carriles (createLanes): la altura disponible bajo la cabecera y sobre la barra */
 .app-main .lanes{--lanes-height:calc(100dvh - 180px)}
+/* Lado a lado en ordenador (VG, 28-10): el tablero usa todo el ancho, no la columna de lectura de 960 px, y cada carril
+   tiene un ancho cómodo. */
+@media (min-width:900px){
+  .main:has(.lanes[data-view="side"]){width:100%;max-width:none}
+  .lanes[data-view="side"] .lanes-lane{flex:1 0 300px;max-width:none}
+}
 
 /* «Avance por aplicaciones» (0937–0938): copiado de la página del artefacto v94 con los tokens del kit. */
 .avance{display:grid;gap:10px}
