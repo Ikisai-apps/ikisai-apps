@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, icon, openFeedbackCenter, registerReveal, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, icon, openFeedbackCenter, openSheet, registerReveal, replace, toast,
   type Lanes, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
@@ -183,8 +183,39 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     closeButton.hidden = !navParent || !home;
   }
 
+  /** Lista de lo que el servidor rechazó: qué era, por qué, y reintentar o descartar cada uno. */
+  async function showRejected(): Promise<void> {
+    const host = el('div', { class: 'rejected-list' });
+    const sheet = openSheet({ title: 'Cambios rechazados', meta: 'El servidor no los aceptó: no entraron. Reinténtalo (si ya está arreglado) o descártalo.', body: host });
+    const TABLE_NAMES: Record<string, string> = { 'flow.columns': 'columnas del flujo', 'flow.orders': 'pedido', 'flow.order_lines': 'línea de pedido', 'flow.units': 'tarea', 'flow.products': 'carta', 'flow.accounts': 'cuenta', 'flow.projects': 'flujo' };
+    async function paint(): Promise<void> {
+      const list = await client.rejected();
+      if (!list.length) { sheet.close(); paintBanners(client.status()); return; }
+      replace(host, ...list.map((b) => {
+        const what = [...new Set(b.operations.map((o) => o.op === 'call' ? `acción ${(o as { procedure?: string }).procedure ?? ''}` : `${o.op === 'insert' ? 'alta' : o.op === 'delete' ? 'baja' : 'cambio'} de ${TABLE_NAMES[(o as { table: string }).table] ?? (o as { table: string }).table}`))].join(', ');
+        return el('div', { class: 'qcard rejected-item' },
+          el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, what || 'Cambio'),
+            el('small', { class: 'qcard-sub' }, describeError(b.error))),
+          el('div', { class: 'flow-actions' },
+            el('button', { type: 'button', class: 'ghost', onclick: async () => { await client.discardRejected(b.requestId); void paint(); } }, 'Descartar'),
+            el('button', { type: 'button', class: 'primary', onclick: async () => {
+              try { await client.retryRejected(b.requestId); await client.sync(); } catch (error) { toast(describeError(error)); }
+              void paint();
+            } }, 'Reintentar')));
+      }));
+    }
+    await paint();
+  }
+
   function paintBanners(status: SyncStatus): void {
-    shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply }, staleBanner(status));
+    shell.setBanners(status, { onRetry: syncNow, describeError: (error) => describeError(error), updateApply,
+      // Rechazados (VG, 28-10): «Ver» abre la lista con el motivo de cada uno; «Descartar» los quita todos.
+      onShowRejected: () => void showRejected(),
+      onDiscardRejected: async () => {
+        if (!(await confirmDialog({ title: 'Descartar cambios rechazados', text: 'Se quitan de este dispositivo; en el servidor no había entrado nada.', confirmLabel: 'Descartar', danger: true }))) return;
+        for (const b of await client.rejected()) await client.discardRejected(b.requestId);
+        paintBanners(client.status());
+      } }, staleBanner(status));
   }
 
   /**
