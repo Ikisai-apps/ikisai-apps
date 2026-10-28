@@ -169,6 +169,7 @@ test('tramos · probar un borrador (solo el owner) y «hacerlo de verdad» tras 
   assert.equal((await rows(TABLES.executions)).find((x) => x.id === real).practice_of, practice);
   // Solo desde un ensayo propio y terminado de esa versión.
   assert.equal(await code([call(PROCEDURES.startExecution, { execution_id: uuid(), version_id: V, mode: 'run', practice_of: practice })], app.tokens.editor), 'INVALID_OPERATION');
+});
 
 test('tramos · recepción v2 (0954): en «Revisa su ficha», abrirla no cierra el tramo; el documento guardado en Booking, sí', async () => {
   const VERSION = '0f10a000-0000-4000-8000-00000000d302';
