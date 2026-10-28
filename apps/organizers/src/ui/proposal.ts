@@ -198,7 +198,7 @@ export function renderProposal(ctx: ViewContext, reservationId: string): HTMLEle
     const foot = (label: string, x: string, y: string, change: string) => el('tr', { class: 'orgcompare-foot' }, el('th', { scope: 'row' }, label), el('td', { class: 'num' }, x), el('td', { class: 'num' }, y), el('td', { class: 'num' }, change));
     const diff = (x: number | null, y: number | null) => (x === null || y === null ? '' : changeText(Math.round((x - y) * 100) / 100));
     const picker = others.length >= 2 ? el('label', { class: 'field' }, el('span', null, t('Comparar con')),
-      el('select', { ...fieldAttrs({ id: 'organizers.propuesta.comparar', label: 'Comparar con', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'compareWith', onchange: (e: Event) => { compareWith = Number((e.target as HTMLSelectElement).value); paint(); (host.querySelector('#compareWith') as HTMLElement | null)?.focus(); } },
+      el('select', { ...fieldAttrs({ id: 'organizers.propuesta.comparar', storage: 'none', label: 'Comparar con', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'compareWith', onchange: (e: Event) => { compareWith = Number((e.target as HTMLSelectElement).value); paint(); (host.querySelector('#compareWith') as HTMLElement | null)?.focus(); } },
         ...others.map((p) => el('option', { value: String(p.version), selected: p === b ? '' : null }, t('Versión {n}', { n: p.version }))))) : null;
     return el('section', { id: 'proposalCompare', class: 'card orgcard' }, heading, picker,
       el('div', { role: 'region', tabindex: '0', 'aria-label': t('Versión {a} frente a versión {b}', { a: a.version, b: b.version }), class: 'orgscrollx' },

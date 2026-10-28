@@ -1,6 +1,6 @@
 /** Bloque «Propuesta» de la ficha (docs/booking/API.md §15.2): versión vigente, acciones por estado e historial de versiones. */
 import type { RejectedBatch, SyncClient, TableName } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, openSheet, renderMoneyBreakdown, toast, type Child } from '@ikisai/ui-kit';
+import { fieldAttrs, confirmDialog, el, icon, openSheet, renderMoneyBreakdown, toast, type Child } from '@ikisai/ui-kit';
 import { PROCEDURES } from '@ikisai/domain-booking';
 import { CONDITIONS, PROPOSALS, PROPOSAL_LINES, TIERS, describeError, fullDay, today } from '../app/client.ts';
 import { RATE_LABELS } from '../app/labels.ts';
@@ -145,7 +145,7 @@ export function renderProposalBlock(options: ProposalBlockOptions): HTMLElement 
     return new Promise((resolve) => {
       let done = false;
       const finish = (value: string | null) => { if (done) return; done = true; resolve(value); };
-      const input = el('textarea', { id: 'belowMinimumReason', rows: '3', maxlength: '500', 'aria-label': 'Motivo de la excepción',
+      const input = el('textarea', { id: 'belowMinimumReason', ...fieldAttrs({ id: 'booking.propuesta.excepcion.motivo', entity: 'booking.proposals', prop: 'below_minimum_reason', label: 'Motivo de la excepción', confirm: 'event' }), rows: '3', maxlength: '500', 'aria-label': 'Motivo de la excepción',
         'data-feedback-id': 'booking.reserva.propuesta.minimo.motivo', 'data-feedback-label': 'Motivo de la excepción' }) as HTMLTextAreaElement;
       const error = el('p', { class: 'formerror', role: 'alert' });
       const sheet = openSheet({

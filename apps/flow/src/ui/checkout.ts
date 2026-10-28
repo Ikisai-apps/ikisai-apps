@@ -45,7 +45,7 @@ export function openCustomerSheet(client: SyncClient, projectId: string, number:
     if (!orders.length) { replace(list, el('p', { class: 'muted' }, 'Este cliente aún no tiene pedidos.')); replace(foot); return; }
     replace(list, ...orders.map((o) => {
       const items = (data!.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
-      const box = el('input', { ...fieldAttrs({ id: 'flow.servicio.elegir_pedido', type: 'checkbox' }), type: 'checkbox', checked: chosen.has(o.id), disabled: o.status === 'delivered', 'aria-label': `Elegir pedido ${o.pay_seq ?? ''}`,
+      const box = el('input', { ...fieldAttrs({ id: 'flow.servicio.elegir_pedido', type: 'checkbox', storage: 'none' }), type: 'checkbox', checked: chosen.has(o.id), disabled: o.status === 'delivered', 'aria-label': `Elegir pedido ${o.pay_seq ?? ''}`,
         onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) chosen.add(o.id); else chosen.delete(o.id); paintFoot(); } });
       return el('label', { class: `qcard checkout-order is-${o.status}`, role: 'listitem' }, box,
         el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, `${o.pay_seq ? `Pedido ${o.pay_seq}` : 'Sin cobrar'} · ${stateOf(data!, o)}`),
@@ -110,7 +110,7 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
         el('strong', null, `${formatEuros(orderTotal(data!, o))}`),
         ' · ', (data!.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} × ${data!.products.get(l.product_id)?.name ?? ''}`).join(', ')))),
       ...(os.length > 1 ? [el('label', { class: 'editor-option' },
-        el('input', { ...fieldAttrs({ id: 'flow.servicio.unificar', type: 'checkbox' }), type: 'checkbox', checked: unify, onchange: (e: Event) => { unify = (e.target as HTMLInputElement).checked; } }),
+        el('input', { ...fieldAttrs({ id: 'flow.servicio.unificar', type: 'checkbox', storage: 'none' }), type: 'checkbox', checked: unify, onchange: (e: Event) => { unify = (e.target as HTMLInputElement).checked; } }),
         el('span', null, 'Un solo pago (si no, cada pedido con su justificante)'))] : []));
     // Sin dirección cargada, el método de Bitcoin sale apagado y lo dice en el botón (no un error al tocarlo).
     const method = (m: CheckoutMethod, off: string | null = null) => busyButton({ class: m === 'cash' ? 'primary' : 'secondary', 'data-method': m, ...(off ? { disabled: 'disabled', title: off } : {}) },

@@ -1,6 +1,6 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { compressImage, compressedFilename, confirmDialog, registerReveal, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
+import { fieldAttrs, compressImage, compressedFilename, confirmDialog, registerReveal, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
 import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
@@ -136,7 +136,7 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
     function openSign(guest: Row, onDate: string): void {
       const own = signsOwnEntry(guest as GuestLike, onDate);
       const pad = signaturePad();
-      const signer = el('input', { id: 'signerName', type: 'text', 'data-feedback-id': 'booking.huespedes.firma.nombre', 'data-feedback-label': 'Quién firma', maxlength: 200, value: own ? fullName(guest) : guest.guardian_name ?? '' });
+      const signer = el('input', { id: 'signerName', type: 'text', ...fieldAttrs({ id: 'booking.huespedes.firma.nombre', entity: 'booking.guests', label: 'Quién firma', sensitivity: 'personal', confirm: 'event' }), 'data-feedback-id': 'booking.huespedes.firma.nombre', 'data-feedback-label': 'Quién firma', maxlength: 200, value: own ? fullName(guest) : guest.guardian_name ?? '' });
       const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
       const save = el('button', { class: 'primary', type: 'button', id: 'saveSignature', 'data-feedback-id': 'booking.huespedes.firma.guardar', 'data-feedback-label': 'Guardar firma', onclick: async () => {
         const blob = await pad.toBlob();
@@ -312,7 +312,7 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
     }
 
     function openSent(guest: Row): void {
-      const file = el('input', { type: 'file', id: 'receiptFile', 'data-feedback-id': 'booking.huespedes.envio_ses.justificante', 'data-feedback-label': 'Justificante', accept: 'application/pdf,image/*' });
+      const file = el('input', { type: 'file', id: 'receiptFile', ...fieldAttrs({ id: 'booking.huespedes.envio_ses.justificante', entity: 'booking.guests', label: 'Justificante', confirm: 'event' }), 'data-feedback-id': 'booking.huespedes.envio_ses.justificante', 'data-feedback-label': 'Justificante', accept: 'application/pdf,image/*' });
       const fileField = el('label', { class: 'field' }, el('span', null, 'Justificante (PDF o imagen)'), file,
         el('span', { class: 'hint' }, 'Opcional. Las imágenes se reducen antes de guardarse.'));
       sheet = openRowSheet({
@@ -439,7 +439,7 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
       }
       if (!eventId || !events.some((e) => e.event.id === eventId)) eventId = events[0]!.event.id;
       const current = events.find((e) => e.event.id === eventId)!;
-      const select = el('select', { id: 'eventSelect', 'data-feedback-id': 'booking.huespedes.evento.selector', 'data-feedback-label': 'Evento', 'aria-label': 'Evento', onchange: () => navigate(`#/huespedes/${select.value}`) },
+      const select = el('select', { id: 'eventSelect', ...fieldAttrs({ id: 'booking.huespedes.evento.selector', label: 'Evento', confirm: 'none', storage: 'none' }), 'data-feedback-id': 'booking.huespedes.evento.selector', 'data-feedback-label': 'Evento', 'aria-label': 'Evento', onchange: () => navigate(`#/huespedes/${select.value}`) },
         events.map(({ event, reservation }) => el('option', { value: event.id }, `${reservation.title} · ${dateRange(reservation)}`)));
       select.value = eventId;
       replace(selectHost, el('label', { class: 'field' }, el('span', null, 'Evento'), select));
@@ -520,7 +520,7 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
           out.push(el('button', { class: 'ghost small', type: 'button', dataset: { act: 'notArrived' }, 'aria-label': `No ha llegado: ${name}`, 'data-feedback-id': 'booking.huespedes.llegada.no_ha_llegado', 'data-feedback-label': 'No ha llegado', onclick: () => void run([{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { arrived_at: null } }], 'Llegada deshecha.') }, 'No ha llegado'));
         }
         if (g.is_minor !== true) {
-          const box = el('input', { type: 'checkbox', checked: !!g.document_checked_at, 'aria-label': `Documento comprobado de ${name}`, onchange: async () => {
+          const box = el('input', { type: 'checkbox', ...fieldAttrs({ id: 'booking.huespedes.registro.documento', entity: 'booking.guests', prop: 'document_checked_at', label: 'Documento comprobado', confirm: 'event' }), checked: !!g.document_checked_at, 'aria-label': `Documento comprobado de ${name}`, onchange: async () => {
             const on = box.checked;
             const ok = await run([{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { document_checked_at: on ? new Date().toISOString() : null, document_checked_by: on ? boot?.profile.userId ?? null : null } }], on ? 'Documento comprobado.' : 'Documento sin comprobar.');
             if (!ok) void paint(false);

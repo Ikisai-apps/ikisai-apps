@@ -530,6 +530,12 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
 - **Historial** `flow.board_history (project_id, taken_at, hecho, pr, curso, pend, backlog, total)` (en el JSON importado, `t`): foto al escribir una tarjeta si cambian los recuentos y la última tiene más de 10 min, o si no cambian y tiene más de 6 h. Solo lectura para la pantalla.
 - **Importación** `flow.import_board(p_project uuid, p_payload jsonb)` (solo service_role): `{hitos: [{hito_id, title, orden, done_at?}], cards: [{card_id, lane_key, title, status, flag?, prio?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?, hito_id?, paso?, done_at?}], history: [{t, hecho, pr, curso, pend, backlog, total}]}`. Idempotente por id; escribe por el registro del núcleo (`core.apply_migration_operations`, lotes de 400), así llega a los móviles. Con `p_project` null crea el flujo (plantilla `avance`, columna «Avance», nombre en `name`). Devuelve `{project_id, hitos, cards, history}`.
 
+## 53. Recorridos: probar un borrador y «hacerlo de verdad» (flow-14, migración `0945`)
+
+- `start_execution({execution_id, version_id, mode, practice_of?})`: el owner puede ensayar (`learn`) una versión en borrador («Probar» en el editor); ejecutar (`run`) sigue pidiendo una versión publicada.
+- «Hacerlo de verdad»: al terminar un ensayo de una versión publicada, una ejecución `run` nueva con `practice_of` = el ensayo (propio, terminado y de esa versión; si no, `422`). `start_stage` parte de lo respondido en ese tramo del ensayo; lo fijo y lo heredado lo vuelve a poner el servidor.
+- El enlace de «ir a otra app» lleva `guia=<ejecución>` para el Guiado del kit (`flow.guide_read`).
+
 ## 55. «Preparación y revisión de apertura»: pieza `review` (migración `0955`)
 
 - Segundo flujo de VG. Los datos viven en Tasks (diseño `MUELA/equipo/feedback/tasks/REVISION_APERTURA.md`; `docs/tasks/API.md` §46.3, §46.4 y §59). Flow solo compone, con las capacidades del catálogo y el token de la persona (`POST capabilities/:id/invoke`).

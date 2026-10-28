@@ -22,7 +22,7 @@ export async function copyText(text: string, done = t('Copiado. Ya puedes pegarl
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    const area = el('textarea', { ...fieldAttrs({ id: 'organizers.comun.copiar_texto', label: 'Texto para copiar', type: 'text', sensitivity: 'internal', confirm: 'none' }), readonly: '', style: 'position:fixed;opacity:0' }, text) as HTMLTextAreaElement;
+    const area = el('textarea', { ...fieldAttrs({ id: 'organizers.comun.copiar_texto', storage: 'none', label: 'Texto para copiar', type: 'text', sensitivity: 'internal', confirm: 'none' }), readonly: '', style: 'position:fixed;opacity:0' }, text) as HTMLTextAreaElement;
     document.body.append(area);
     area.select();
     document.execCommand('copy');

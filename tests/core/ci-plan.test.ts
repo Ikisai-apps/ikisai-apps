@@ -47,6 +47,15 @@ test('ci por app · el servidor de una app: también las que nombran su schema (
     [{ name: 'booking', folders: 'booking' }, { name: 'dependientes', folders: 'food' }]);
 });
 
+test('ci por app · muchas dependientes: el grupo «dependientes» va en dos trozos', () => {
+  const root = fakeRepo();
+  assert.deepEqual(plan({ root, split: 1, files: ['supabase/migrations/20261001_0400_booking_x.sql'] }).groups, [
+    { name: 'booking', folders: 'booking' },
+    { name: 'dependientes 1/2', folders: 'food', shard: '1/2' },
+    { name: 'dependientes 2/2', folders: 'food', shard: '2/2' },
+  ]);
+});
+
 test('ci por app · dos apps tocadas: cada una en su grupo, y una dependiente que también es tocada no se repite', () => {
   const root = fakeRepo();
   const out = plan({ root, files: ['supabase/migrations/20261001_0400_booking_x.sql', 'apps/food/a.ts'] });

@@ -8,6 +8,7 @@
  */
 import { ensureServiceActor, fail, type Supabase } from '../_kit/mod.ts';
 import { defaultExpiry, normalizeStripeEvent, PaymentGatewayError, verifyStripeSignature, type PaymentGateway } from '../_domain/payments/stripe.ts';
+import { normalizeRedsysNotification, redsysGoPage, verifyRedsysNotification } from '../_domain/payments/redsys.ts';
 
 export interface PaymentLink { id: string; url: string; provider: string; provider_ref: string; amount: number; expires_at: string }
 
@@ -15,8 +16,17 @@ export interface PaymentLinksOptions {
   /** A dónde vuelve quien paga. Por defecto, la ficha de las emitidas en Finance. */
   successUrl?: (issuedInvoiceId: string) => string;
   cancelUrl?: (issuedInvoiceId: string) => string;
+  /**
+   * Las otras pasarelas configuradas (no la activa): sus enlaces ya creados se siguen conciliando aunque el interruptor
+   * `PAYMENTS_PROVIDER` haya cambiado (API.md §19.6).
+   */
+  others?: PaymentGateway[];
   now?: () => number;
 }
+
+const html = (body: string, status = 200) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
+const notice = (title: string, text: string) => `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>`
+  + `<body style="font-family:system-ui,sans-serif;padding:2rem;text-align:center"><h1 style="font-size:1.25rem">${title}</h1><p>${text}</p></body></html>`;
 
 const FINANCE = 'https://finance.ikisai.com';
 
@@ -54,7 +64,7 @@ export function createPaymentLinks(supabase: Supabase, gateway: PaymentGateway |
     }
     const saved = await invoke<PaymentLink>('invoices.payment_link_save', {
       issued_invoice_id: issuedInvoiceId, provider: session.provider, provider_ref: session.id, url: session.url, amount: amountCents / 100,
-      currency: session.currency.toUpperCase(), expires_at: session.expiresAt, requested_by: requestedBy, requested_from: from,
+      currency: session.currency.toUpperCase(), expires_at: session.expiresAt, requested_by: requestedBy, requested_from: from, form: session.form ?? null,
     });
     return { ...saved, reused: false };
   }
@@ -89,20 +99,32 @@ export function createPaymentLinks(supabase: Supabase, gateway: PaymentGateway |
    * abierto (por si se perdió un aviso) y cierra en la pasarela los cancelados, para que nadie pague uno cancelado.
    */
   async function reconcile(): Promise<{ checked: number; paid: number; closed: number; errors: number }> {
-    if (!gateway) return { checked: 0, paid: 0, closed: 0, errors: 0 };
+    const gateways = [gateway, ...(options.others ?? [])].filter((g): g is PaymentGateway => !!g);
+    if (!gateways.length) return { checked: 0, paid: 0, closed: 0, errors: 0 };
     await ensureService();
-    const { items } = await invoke<{ items: Array<{ provider: string; provider_ref: string; status: string }> }>('invoices.payment_links_to_check', { limit: 50 });
+    const { items } = await invoke<{ items: Array<{ provider: string; provider_ref: string; status: string; expires_at: string }> }>('invoices.payment_links_to_check', { limit: 50 });
     let paid = 0; let closed = 0; let errors = 0;
     for (const l of items) {
       try {
-        let s = await gateway.getCheckout(l.provider_ref);
-        if (l.status !== 'abierto' && s.status === 'open') s = await gateway.expireCheckout(l.provider_ref);
+        const gw = gateways.find((g) => g.provider === l.provider);
+        if (!gw) continue;
+        // Redsys no se pregunta ni se caduca en la pasarela: el pago llega por su aviso y la caducidad la lleva Finance (la
+        // página de paso ya no sirve el formulario de un enlace caducado o cancelado).
+        if (gw.queryable === false) {
+          if (l.status !== 'abierto' || Date.parse(l.expires_at) <= now()) {
+            await invoke('invoices.payment_link_gateway_closed', { provider: l.provider, provider_ref: l.provider_ref });
+            closed += 1;
+          }
+          continue;
+        }
+        let s = await gw.getCheckout(l.provider_ref);
+        if (l.status !== 'abierto' && s.status === 'open') s = await gw.expireCheckout(l.provider_ref);
         if (s.status === 'complete' && s.paymentStatus === 'paid') {
-          const out = await invoke<{ outcome: string }>('invoices.payment_event_apply', { provider: 'stripe', event_id: `reconcile:${s.id}`, kind: 'paid', provider_ref: s.id,
+          const out = await invoke<{ outcome: string }>('invoices.payment_event_apply', { provider: l.provider, event_id: `reconcile:${s.id}`, kind: 'paid', provider_ref: s.id,
             amount_cents: s.amountCents, payment_ref: s.paymentIntent, paid_at: new Date(now()).toISOString() });
           if (out.outcome === 'applied') paid += 1;
         } else if (s.status === 'expired') {
-          await invoke('invoices.payment_link_gateway_closed', { provider: 'stripe', provider_ref: s.id });
+          await invoke('invoices.payment_link_gateway_closed', { provider: l.provider, provider_ref: s.id });
           closed += 1;
         }
       } catch { errors += 1; }
@@ -110,5 +132,38 @@ export function createPaymentLinks(supabase: Supabase, gateway: PaymentGateway |
     return { checked: items.length, paid, closed, errors };
   }
 
-  return { ensure, webhook, reconcile };
+  /**
+   * Aviso de Redsys (`POST public/payments/redsys`, API.md §19.6): llega como formulario (`Ds_SignatureVersion`,
+   * `Ds_MerchantParameters`, `Ds_Signature`) y vale solo con la firma de `REDSYS_SECRET_KEY`. Bizum cuenta como «bizum».
+   */
+  async function redsysWebhook(request: Request, secretKey: string | null): Promise<Response> {
+    if (!secretKey) return Response.json({ error: { code: 'PAYMENTS_OFF' } }, { status: 503 });
+    const fields = Object.fromEntries(new URLSearchParams(await request.text()));
+    let n;
+    try {
+      n = await verifyRedsysNotification(fields, secretKey);
+    } catch (error) {
+      return Response.json({ error: { code: error instanceof PaymentGatewayError ? error.code : 'SIGNATURE_INVALID' } }, { status: 400 });
+    }
+    const e = normalizeRedsysNotification(n);
+    if (e.metadata.app && e.metadata.app !== 'invoices') return Response.json({ received: true, outcome: 'ignored' });
+    await ensureService();
+    const out = await invoke<{ outcome: string }>('invoices.payment_event_apply', {
+      provider: 'redsys', event_id: e.eventId, kind: e.kind, provider_ref: e.sessionId, amount_cents: e.amountCents, refunded_cents: e.refundedCents,
+      payment_ref: e.paymentIntent, paid_at: new Date(now()).toISOString(), method: n.Ds_ProcessedPayMethod === '68' ? 'bizum' : 'tarjeta',
+    });
+    return Response.json({ received: true, outcome: out.outcome });
+  }
+
+  /** Página de paso de Redsys (`GET public/payments/redsys/go/<pedido>`): manda el formulario si el enlace sigue valiendo. */
+  async function redsysGo(order: string): Promise<Response> {
+    if (!/^\d{4}[0-9a-z]{8}$/.test(order)) return html(notice('Enlace no válido', 'Pide un enlace de pago nuevo.'), 404);
+    const out = await invoke<{ status: string; form: { action: string; fields: Record<string, string> } | null }>('invoices.payment_link_form', { provider_ref: order });
+    if (out.form) return html(redsysGoPage(out.form));
+    if (out.status === 'pagado') return html(notice('Ya está pagado', 'Este pago ya se hizo. Gracias.'), 410);
+    if (out.status === 'desconocido') return html(notice('Enlace no válido', 'Pide un enlace de pago nuevo.'), 404);
+    return html(notice('Este enlace ya no vale', 'Ha caducado o se ha cancelado. Pide un enlace de pago nuevo.'), 410);
+  }
+
+  return { ensure, webhook, reconcile, redsysWebhook, redsysGo };
 }

@@ -9,6 +9,7 @@
  *   API, su dominio o su app; si solo cambia su cliente o sus pruebas, las que importan `apps/<x>/`. Las de las apps
  *   tocadas van en sus grupos de siempre; las dependientes, todas juntas en UN solo grupo («dependientes»), en serie: una
  *   PR de Flow o de Booking pedía 8 jobs y, con unas 30 PR abiertas y 20 runners, la release esperaba (27-10-2026, Core).
+ *   Si las dependientes son muchas (desde SPLIT archivos), ese grupo va en dos trozos.
  * - Cualquier otra cosa (kit, sync-client, test-kit, _kit, núcleo, CI, scripts, dependencias) y fuera de una PR: todas.
  *
  * Salida: grupos para la matriz de PGlite, uno por carpeta grande y las pequeñas juntas, para que el tiempo sea el del
@@ -106,7 +107,7 @@ export function groups(folders, root = ROOT, split = SPLIT, pack = PACK) {
 }
 
 /** El plan de una PR (o de un run fuera de PR, `event !== 'pull_request'`: todo). */
-export function plan({ event = 'pull_request', files = [], root = ROOT } = {}) {
+export function plan({ event = 'pull_request', files = [], root = ROOT, split = SPLIT } = {}) {
   const folders = testFolders(root);
   const all = { code: true, full: true, folders, groups: groups(folders, root) };
   if (event !== 'pull_request' || !files.length) return all;
@@ -123,7 +124,12 @@ export function plan({ event = 'pull_request', files = [], root = ROOT } = {}) {
   for (const [app, server] of touched) for (const dep of dependents(app, server, folders, root)) if (!touched.has(dep)) deps.add(dep);
   const own = folders.filter((f) => touched.has(f));
   const others = folders.filter((f) => deps.has(f));
-  const extra = others.length ? [{ name: 'dependientes', folders: others.join(' ') }] : [];
+  // Las dependientes de un servidor muy usado (invoices, booking) son casi todo el repo y pasaban de los 20 min del job
+  // (#1132, run 40593237420): desde `split` archivos, en dos trozos como las carpetas muy grandes.
+  const size = others.reduce((n, f) => n + fs.readdirSync(path.join(root, 'tests', f)).filter((x) => x.endsWith('.test.ts')).length, 0);
+  const extra = !others.length ? []
+    : size >= split ? [1, 2].map((i) => ({ name: `dependientes ${i}/2`, folders: others.join(' '), shard: `${i}/2` }))
+      : [{ name: 'dependientes', folders: others.join(' ') }];
   return { code: true, full: false, folders: [...own, ...others].sort(), groups: [...groups(own, root), ...extra] };
 }
 

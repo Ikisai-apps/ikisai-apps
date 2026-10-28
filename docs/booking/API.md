@@ -2189,3 +2189,10 @@ Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no gua
   - `GET` sin petición: 404 `NOT_REQUESTED`.
 - **Apagado hasta que Finance tenga la ruta:** si Finance responde 404 sin código, 503 `INVOICES_OFF`.
 - `booking.stay_charges_of` (sistema) da los cobros de la solicitud aceptada, solo al visitante dueño.
+
+**Camas listas para la apertura (migración 1426; para Flow, «Preparación y revisión de apertura»):** `GET lodging/readiness?night=YYYY-MM-DD&event_id=` (editor, owner), que es la capacidad `booking.lodging_readiness`.
+- **Por habitación con camas:** `beds`, `places`, `ready`, `free`, `occupied`, `pending_cleaning`, `unplaced`, `inactive` y la lista de camas.
+- **Por cama:** `active`, `placed`, `free`, `event`, `cleaning` (estado en Tasks) y `ready`.
+- **Lista:** activa, colocada en el plano, libre o del propio evento, y sin limpieza en curso en Tasks.
+- **Limpieza:** es la de la última salida anticipada de esa cama en los 7 días anteriores, preguntada a Tasks (`worker/requests/status`, `booking:LIMP-<asignación>`); en curso es `pending` u `open`. Si Tasks no responde, cuenta como pendiente y `cleaning: 'unavailable'`.
+- La revisión de apertura de cada habitación va por Tasks y la cruza Flow.
