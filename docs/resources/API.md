@@ -146,6 +146,12 @@ Diseño en `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`; forma acordad
 - `resources.portal_plans` se registra como lectura pública **solo para código de Edge** (`core.allow_public_read('resources_portal_plans', …)`, sin exponerla al navegador).
 - La sirve guests-api en `GET public/plans` («Alójate aquí»), que exige la identidad de visitante, un evento con noches y que el visitante haya entrado en él. Sin sesión, nunca.
 
+## 2.10 Las camas, sin forma en el plano (migración 0818, VG 27-10-2026)
+
+- Camas con un solo modelo: la posición de cada cama vive en Booking (`booking.bed_layout_projection`), y su forma en el dibujo se deriva de la de su habitación con `bedShape` del kit. Guests, Central y Booking ya la pintan así.
+- Las camas (`kind = 'cama'`) pierden `plan_id` y `plan_shape`; siguen con su habitación, su tipo y su pareja de Booking.
+- Colocar una cama en un dibujo, al crearla o después, se rechaza con `INVALID_FIELDS` (`reason: 'beds are placed in Booking'`, hook `resources.check_bed_shapes`).
+
 ## 3. Inventario (fase R3, migración 0802)
 
 Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de artículo, solo el owner. Huéspedes, organizadores y outsiders no lo ven.

@@ -33,6 +33,7 @@ import { createSesBlock } from './ses.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
 import type { ViewMount } from './shell.ts';
+import { createOrganizerComments } from './organizerComments.ts';
 
 const RESTRICTIONS: TableName = TABLES.restrictions;
 const CHECKLIST: TableName = TABLES.checklist;
@@ -149,6 +150,7 @@ export function mountReservation(id: string): ViewMount {
     let flowReady: { eventId: string; element: HTMLElement } | null = null;
     // «Montaje» (VG 27-10-2026): se conserva entre repintados; se rehace si cambia el evento o el permiso
     let montageCard: { key: string; card: ReturnType<typeof createMontage> } | null = null;
+    let organizerComments: { key: string; card: ReturnType<typeof createOrganizerComments> } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
       try {
         await client.commit(operations);
@@ -550,6 +552,9 @@ export function mountReservation(id: string): ViewMount {
       if (liveEvent && (!flowReady || flowReady.eventId !== liveEvent.id)) flowReady = { eventId: liveEvent.id, element: renderFlowReady({ client, reservationId: id, eventId: liveEvent.id }) };
       const flowReadyCard = liveEvent ? flowReady!.element : null;
       const portalRequestsCard = portalData && editable ? renderPortalRequests({ data: portalData, proposals: proposalData?.proposals ?? [], run }) : null;
+      // B22: lo que ha escrito quien organiza (se conserva entre repintados; necesita red)
+      const commentsKey = `${id}:${editable}`;
+      if (organizerComments?.key !== commentsKey) organizerComments = { key: commentsKey, card: createOrganizerComments({ client, reservationId: id, editable }) };
       const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
 
       // Factura: la prepara Finance leyendo booking.reservation_invoice_source (API.md §19); si ya hay una, Finance lo avisa.
@@ -711,7 +716,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
+        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, organizerComments.card.element, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
           // familiar: sin propuesta, cobro ni coste
           family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard, flowReadyCard,
           liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null,

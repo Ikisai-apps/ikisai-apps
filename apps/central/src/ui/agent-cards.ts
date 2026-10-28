@@ -5,12 +5,12 @@
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import { el, icon, openSheet, renderSecretOnce, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
-import { RESPONSIBLE_KIND_LABELS, hasResponsible, successorChain, validateOperations, type AgentRow, type ResponsibleKind } from '@ikisai/domain-central';
+import { RESPONSIBLE_KIND_LABELS, flowLaneUrl, hasResponsible, successorChain, validateOperations, type AgentRow, type ResponsibleKind } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import type { AdminApi, AgentKey } from '../app/admin.ts';
 import { fbMark } from './feedback.ts';
 
-type Row = AgentRow & { revision: number; code?: string | null; mission?: string | null; work_areas?: string | null; notes?: string | null; deleted_at?: string | null };
+type Row = AgentRow & { revision: number; code?: string | null; mission?: string | null; work_areas?: string | null; notes?: string | null; deleted_at?: string | null; flow_project?: string | null; flow_lane?: string | null };
 type Person = { id: string; display_name: string; active?: boolean; deleted_at?: string | null; merged_into?: string | null };
 
 /** «Responde: Marga», «Responde: Servicio de guardia (servicio)» o «Sin responsable». */
@@ -45,9 +45,15 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
     };
   }
 
+  const wanted = new URLSearchParams(location.hash.split('?')[1] ?? '').get('agente');
   async function paint(): Promise<void> {
     const { agents, people } = await data();
     if (!alive()) return;
+    queueMicrotask(() => {
+      if (!wanted) return;
+      const row = list.querySelector<HTMLElement>(`[data-agent="${CSS.escape(wanted)}"]`);
+      if (row) { row.classList.add('ctl-agentfocus'); row.scrollIntoView({ block: 'center' }); }
+    });
     replace(list, agents.length
       ? el('ul', { class: 'list' }, ...agents.map((a) => {
         const next = successorChain(agents, a.id)[0];
@@ -60,7 +66,8 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
             el('div', { class: 'muted small', 'data-agent-meta': '' }, [responsibleText(a, people), account, accessOf(a.user_id)].filter(Boolean).join(' · ')),
             a.mission ? el('div', { class: 'small' }, a.mission) : null,
             a.work_areas ? el('div', { class: 'muted small' }, `Trabaja en: ${a.work_areas}`) : null,
-            next ? el('div', { class: 'muted small', 'data-agent-successor': '' }, `Le sigue: ${next.display_name}`) : null),
+            next ? el('div', { class: 'muted small', 'data-agent-successor': '' }, `Le sigue: ${next.display_name}`) : null,
+            flowLaneUrl(a) ? el('a', { class: 'linkbtn small', href: flowLaneUrl(a)!, target: '_blank', rel: 'noopener', 'data-agent-lane': '', 'data-feedback-id': 'central.accesos.agentes.fichas.carril', 'data-feedback-label': 'Su carril en Flow' }, 'Su carril en el Avance de Flow') : null),
           el('button', { class: 'small', type: 'button', 'aria-label': `Editar: ${a.display_name}`, 'data-feedback-id': 'central.accesos.agentes.fichas.editar', 'data-feedback-label': 'Editar ficha de agente', onclick: () => void edit(a) }, 'Editar'));
       }))
       : el('p', { class: 'empty hint' }, 'Aún no hay fichas de agente. Crea una para dejar escrito quién responde por cada agente.'));
@@ -152,6 +159,8 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
     const active = fbMark(el('input', { id: 'ag-active', 'data-field-id': 'central.accesos.agent_active', 'data-field-entity': 'central.agents', 'data-field-prop': 'active', type: 'checkbox', checked: !!current?.active }) as HTMLInputElement, 'central.accesos.agentes.fichas.activo', 'Activo');
     const successor = fbMark(el('select', { id: 'ag-successor', 'data-field-id': 'central.accesos.agent_successor', 'data-field-entity': 'central.agents', 'data-field-prop': 'successor_id' }, el('option', { value: '' }, 'Nadie'),
       ...agents.filter((a) => a.id !== current?.id).map((a) => el('option', { value: a.id, selected: current?.successor_id === a.id }, a.display_name))) as HTMLSelectElement, 'central.accesos.agentes.fichas.sucesor', 'Le sigue');
+    const project = fbMark(el('input', { id: 'ag-flow-project', 'data-field-id': 'central.accesos.agent_flow_project', 'data-field-entity': 'central.agents', 'data-field-prop': 'flow_project', maxlength: 36, value: v(current?.flow_project), placeholder: 'Id del proyecto del Avance (uuid)' }) as HTMLInputElement, 'central.accesos.agentes.fichas.proyecto_flow', 'Proyecto del Avance');
+    const lane = fbMark(el('input', { id: 'ag-flow-lane', 'data-field-id': 'central.accesos.agent_flow_lane', 'data-field-entity': 'central.agents', 'data-field-prop': 'flow_lane', maxlength: 31, value: v(current?.flow_lane), placeholder: 'Clave de su carril' }) as HTMLInputElement, 'central.accesos.agentes.fichas.carril_flow', 'Carril del Avance');
     const notes = fbMark(el('textarea', { id: 'ag-notes', 'data-field-id': 'central.accesos.agent_notes', 'data-field-entity': 'central.agents', 'data-field-prop': 'notes', maxlength: 500, rows: 2 }, v(current?.notes)) as HTMLTextAreaElement, 'central.accesos.agentes.fichas.notas', 'Notas');
     const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.accesos.agentes.fichas.error', 'data-feedback-label': 'Error de la ficha' });
     const text = (x: HTMLInputElement | HTMLTextAreaElement) => x.value.trim() || null;
@@ -162,6 +171,7 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
         display_name: name.value.trim(), user_id: account.value || null, mission: text(mission), work_areas: text(areas),
         responsible_kind: k, responsible_person_id: k === 'person' ? person.value || null : null, responsible_service: k === 'service' ? text(service) : null,
         active: active.checked, successor_id: successor.value || null, notes: text(notes),
+        flow_project: text(project), flow_lane: text(lane),
       };
       const operations = current
         ? [{ op: 'update' as const, table: T.agents, id: current.id, expectedRevision: Number(current.revision), fields }]
@@ -189,6 +199,7 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
         personField, serviceField,
         el('label', { class: 'ctl-agentactive' }, active, el('span', null, 'Activo')),
         el('label', { class: 'field' }, el('span', null, 'Le sigue'), successor),
+        el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Avance de Flow: proyecto'), project), el('label', { class: 'field' }, el('span', null, 'Carril'), lane)),
         el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
         error),
       foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.accesos.agentes.fichas.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],

@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createStorage, createSupabase, createUploads, fail, generateAgentKey, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  BED_LAYOUT_PROJECTION, FIELD_COVERAGE_READ, canDeclareUtility, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
+  BED_LAYOUT_PROJECTION, FIELD_COVERAGE_READ, canDeclareUtility, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetOrDefault, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
   type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -259,7 +259,7 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
             for (const row of out.rows) {
               if (!canSeeKpi(String(row.unit), ctx.membership.role)) continue;
               const value = row.value === null || row.value === undefined ? null : Number(row.value);
-              const target = targetFor(targets, row.kpi, row.period);
+              const target = targetOrDefault(targets, row.kpi, row.period);
               items.push({ app: source.app, kpi: row.kpi, label: row.label, value, unit: row.unit, period: row.period,
                 periodStart: row.period_start, periodEnd: row.period_end, direction: row.direction, link: row.link, computedAt: row.computed_at,
                 target: target?.target ?? null, state: kpiState(value, target) });
