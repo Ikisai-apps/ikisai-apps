@@ -136,3 +136,12 @@ test('avance · vista «Por hitos»: pasos que se despliegan, «+N ocultas» con
   await hito.locator('.hfold').click();
   await expect(hito.locator('.hs')).toHaveCount(1);
 });
+
+test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu carril; la caja general, en una fila', async ({ page }) => {
+  await enter(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('#cvApp').click();
+  await expect(page.locator('#cvApp')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Probar el alojamiento' })).toHaveCount(1);
+  await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
+});

@@ -107,3 +107,16 @@ test('avance · sin proyecto, la importación crea el flujo «avance» (para hac
   const cols = (await app.t.db.query<any>(`select key from flow.columns where project_id = $1 and deleted_at is null`, [out.project_id])).rows;
   assert.deepEqual(cols.map((c: any) => c.key), ['avance']);
 });
+
+test('avance · las aplicaciones de una tarjeta (0959): board_card las pone, una recarga del tablero las conserva y null las quita', async () => {
+  let r = await commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: BOARD, card_id: C4, lane_key: 'victor', apps: ['flow', 'finance'] } }]);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual((await unit(C4)).payload.apps, ['flow', 'finance']);
+  await importBoard();
+  assert.deepEqual((await unit(C4)).payload.apps, ['flow', 'finance']);
+  const bad = await commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: BOARD, card_id: C4, apps: ['Flow!'] } }]);
+  assert.equal(bad.status, 422, JSON.stringify(bad.data));
+  r = await commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: BOARD, card_id: C4, apps: null } }]);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await unit(C4)).payload.apps, undefined);
+});
