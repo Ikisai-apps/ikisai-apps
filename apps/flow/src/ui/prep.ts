@@ -146,7 +146,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
         medal.setAttribute('data-k', medalKey);
         replace(medal as HTMLElement, product ? productMedal(product, 44) : renderMedal({ icon: 'list', size: 44 }));
       }
-      node.querySelector('.qcard-title')!.textContent = product ? product.name : (u.label ?? '');
+      node.querySelector('.qcard-title')!.textContent = product ? product.name : (u.label ?? 'Producto que ya no está en la carta');
       const who = status === 'done' ? personName(people, u.done_by, me) : status === 'in_progress' ? personName(people, u.assigned_to, me) : '';
       const number = order ? customerNumber(data!, order) : null;
       const load = u.payload?.qty !== undefined ? `${fmtQty(u.payload.qty, u.payload.unit)}${u.payload.to ? ` a ${u.payload.to}` : ''}${u.payload.from ? ` desde ${u.payload.from}` : ''}` : '';

@@ -650,6 +650,13 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
             return error(422, 'INVALID_ORDER', 'Hay un producto o una cantidad que no vale.');
           }
         }
+        // Solo productos de la carta que se sirve ahora y del flujo de este cliente: una carta abierta desde antes de cambiar
+        // de flujo mandaba productos de la barra anterior y en cocina salían sin nombre (VG, 28-10).
+        const current = await supabase.rpc<{ projectId?: string | null; products?: Array<{ id: string }> } | null>('core_public_read', { p_name: PUBLIC_MENU, p_args: {} });
+        const known = new Set((current?.products ?? []).map((pr) => pr.id));
+        // Su número es de otro flujo (la carta pasó a otro): se le da uno nuevo (la carta lo pide sola con CUSTOMER_UNKNOWN).
+        if (current?.projectId !== me.projectId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
+        if (lines.some((l) => !known.has(l.productId as string))) return error(409, 'MENU_CHANGED', 'La carta ha cambiado. Recárgala y vuelve a pedir.');
         const orderId = crypto.randomUUID();
         await publicWrite(supabase, APP, [
           { op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: me.projectId, origin: 'public', customer_id: me.customerId } },
