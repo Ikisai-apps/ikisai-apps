@@ -25,7 +25,7 @@ export async function spacesSource(client: SyncClient): Promise<'booking' | 'res
 }
 
 /** Manda al espejo de Booking lo que falta tras un cambio en Recursos (el tick lo haría en un minuto; así no se espera). */
-async function syncMirror(client: SyncClient): Promise<void> {
+export async function syncMirror(client: SyncClient): Promise<void> {
   if (!navigator.onLine) return;
   try {
     const pending = await client.api<{ operations: RowOperation[] }>('/read/booking.spaces_mirror_pending', { method: 'POST', json: {} });
