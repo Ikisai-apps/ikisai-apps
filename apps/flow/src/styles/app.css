@@ -363,3 +363,18 @@
 /* Revisión móvil de los recorridos (UI-kit): «Esencial» con zona de toque de 44 px. */
 .editor-option{min-height:44px;display:inline-flex;align-items:center;gap:8px}
 @media (pointer:coarse){.editor-option input[type=checkbox]{width:22px;height:22px}}
+/* Revisión de apertura (0955): ítems de Tasks por zona. */
+.review{display:grid;gap:12px}
+.review-head{display:grid;gap:4px}
+.review-title{margin:0;font-size:1.1rem}
+.review-ready{margin:0;color:var(--warn-ink,#7a5414);font-weight:600}
+.review-ready.is-ready{color:var(--ok-ink,var(--ok))}
+.review-zone h3{margin:8px 0 4px;font-size:1rem;color:var(--muted)}
+.review-items{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.review-item{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:4px;background:var(--paper,var(--surface))}
+.review-item.is-failed{border-color:var(--alert)}
+.review-item.is-ok,.review-item.is-verified{opacity:.85}
+.review-item-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.review-item .pill.is-critical{color:var(--alert);border-color:var(--alert)}
+.review-value{max-width:8rem;min-height:44px}
+.qcard-state.is-ready{color:var(--ok-ink,var(--ok));font-weight:600}
