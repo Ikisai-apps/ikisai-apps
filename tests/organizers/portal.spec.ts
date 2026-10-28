@@ -284,8 +284,9 @@ test('organizers · comentarios de tus asistentes y respuestas de la casa (vg-22
   const report = async (reporter: string, kind: 'guest' | 'organizer', message: string) => {
     const id = crypto.randomUUID();
     await api.booking.t.db.query(`insert into core.feedback_reports (id, code, request_id, digest, reporter_user_id, reporter_kind, origin_app, subject, intent, message, category, scope, destination, routing_status)
-      values ($1, 'FB_CR_' || substr($1::text, 1, 6), $1::text, 'd', $2, $3, $4, 'event', 'problem', $5, null, $6::jsonb, $7, 'none')`,
-    [id, reporter, kind, kind === 'guest' ? 'guests' : 'organizers', message, JSON.stringify({ reservation_id: reservation, guest_id: crypto.randomUUID() }), kind === 'guest' ? 'organizer' : 'operations']);
+      values ($1, $8, $9, 'd', $2, $3, $4, 'event', 'problem', $5, null, $6::jsonb, $7, 'none')`,
+    [id, reporter, kind, kind === 'guest' ? 'guests' : 'organizers', message, JSON.stringify({ reservation_id: reservation, guest_id: crypto.randomUUID() }), kind === 'guest' ? 'organizer' : 'operations',
+      `FB_CR_${id.slice(0, 6)}`, `cr-${id}`]);
     return id;
   };
   await report(api.booking.users.reader, 'guest', 'La cena del sábado, estupenda.');
