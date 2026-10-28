@@ -5,7 +5,7 @@ import {
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
-import { loadProjects, watchData, type FlowData } from '../app/data.ts';
+import { loadProjects, watchData, type FlowData, type Project } from '../app/data.ts';
 import { mountHome } from './home.ts';
 import { mountProjects } from './projects.ts';
 import { mountPresence } from './presence.ts';
@@ -137,6 +137,29 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   });
 
   const boot = client.bootstrap();
+  /** Flujos que ve la persona, para el menú (se refrescan con la tabla). */
+  let menuProjects: Project[] = [];
+  const refreshMenuProjects = () => void loadProjects(client).then((ps) => { menuProjects = ps.filter((p) => p.status === 'active'); }).catch(() => undefined);
+  const RECENT_KEY = 'flow-recientes';
+  const readRecent = (): string[] => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as string[]; } catch { return []; } };
+  const pushRecent = (id: string) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((x) => x !== id)].slice(0, 3))); } catch { /* sin almacenamiento */ } };
+  const KINDS: Array<[string, string, string[]]> = [['barra', 'Barra', ['barra']], ['alojamiento', 'Alojamiento', ['alojamiento', 'checkin']],
+    ['avance', 'Avance', ['avance']], ['apertura', 'Revisión de apertura', ['apertura']]];
+  const projectRow = (p: Project) => ({ label: p.name, sub: p.test_mode ? 'pruebas' : null, href: `#/p/${p.id}` });
+  function menuRecents() {
+    return readRecent().map((id) => menuProjects.find((p) => p.id === id)).filter((p): p is Project => !!p && !p.frozen).map(projectRow);
+  }
+  function menuSections() {
+    const live = menuProjects.filter((p) => !p.frozen);
+    const known = new Set(KINDS.flatMap(([, , keys]) => keys));
+    const sections = KINDS.map(([key, label, keys]) => ({ key, label, rows: live.filter((p) => !p.test_mode && keys.includes(p.template_key ?? '')).map(projectRow) }))
+      .concat([{ key: 'otros', label: 'Otros flujos', rows: live.filter((p) => !p.test_mode && !known.has(p.template_key ?? '')).map(projectRow) },
+        { key: 'pruebas', label: 'Pruebas', rows: live.filter((p) => p.test_mode).map(projectRow) }])
+      .filter((s) => s.rows.length);
+    return [...sections, { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }] }];
+  }
+  refreshMenuProjects();
+  client.onTable(TABLES.projects, refreshMenuProjects);
   const service = createServiceMode();
   serviceToggle = service.button;
   /** «Pestañas / Lado a lado» del tablero, en la cabecera (VG, 28-10): solo dentro de un flujo con tablero. */
@@ -171,6 +194,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       profile: { name: boot?.profile.displayName ?? 'Tu cuenta', role: ROLE_LABELS[boot?.membership.role ?? 'reader'] ?? '' },
       theme: true,
       launcher,
+      // Menú (VG, 28-10): los tres últimos flujos abiertos y, debajo, los flujos por tipo y los recorridos.
+      recents: () => menuRecents(),
+      sections: () => menuSections(),
       signalHere: () => { void feedback.open({ id: screen.id, path: [screen.label], element: main, fallback: true }, main); },
       column: true,
       feedbackId: 'flow.menu',
@@ -295,6 +321,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   async function enterProject(projectId: string | null): Promise<void> {
     if (projectId === currentProject) return;
     currentProject = projectId;
+    if (projectId) pushRecent(projectId);
     offBadges?.(); offBadges = null; lastPrepPending = null;
     if (!projectId) { columns = []; boardable = false; shell.setNav([]); return; }
     columns = await loadColumns(projectId);
