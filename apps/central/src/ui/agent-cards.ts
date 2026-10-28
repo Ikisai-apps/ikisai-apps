@@ -4,7 +4,7 @@
  * claves, del núcleo) y quién le sigue. Solo el owner de Central las cambia; van por `commands`, también sin red.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { el, icon, openSheet, renderSecretOnce, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, openSheet, renderSecretOnce, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
 import { RESPONSIBLE_KIND_LABELS, hasResponsible, successorChain, validateOperations, type AgentRow, type ResponsibleKind } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import type { AdminApi, AgentKey } from '../app/admin.ts';
@@ -191,7 +191,19 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
         el('label', { class: 'field' }, el('span', null, 'Le sigue'), successor),
         el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
         error),
-      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.accesos.agentes.fichas.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      foot: [
+        // Borrar la ficha (VG, 28-10: una ficha sin cuenta no se puede «revocar»). Borrado lógico; con cuenta, se revoca antes su clave.
+        current ? el('button', { class: 'ghost danger', type: 'button', id: 'ag-delete', 'data-feedback-id': 'central.accesos.agentes.fichas.borrar', 'data-feedback-label': 'Borrar la ficha', onclick: async () => {
+          if (current.user_id && keys().some((k) => k.userId === current.user_id && !k.revokedAt)) { error.textContent = 'Antes, revoca su clave en «Claves».'; return; }
+          if (!(await confirmDialog({ title: `¿Borrar la ficha «${current.display_name}»?`, text: 'Deja de salir en Agentes. No toca ninguna cuenta.', confirmLabel: 'Borrar', danger: true }))) return;
+          try {
+            await usage.run('central.accesos.agentes.fichas.borrar', () => client.commit([{ op: 'delete', table: T.agents, id: current.id, expectedRevision: Number(current.revision) }]));
+            toast('Ficha borrada.');
+            await sheet?.close(true);
+            await paint();
+          } catch (e) { error.textContent = describeError(e); }
+        } }, 'Borrar la ficha') : null,
+        el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.accesos.agentes.fichas.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],
       initialFocus: name });
   }
 
