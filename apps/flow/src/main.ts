@@ -1,5 +1,6 @@
 import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
+import './styles/avance-original.css';
 import { applyTheme, initAppUpdates, renderLogin } from '@ikisai/ui-kit';
 import { createClient, describeError } from './app/client.ts';
 import { safeToUpdate } from './app/guard.ts';
