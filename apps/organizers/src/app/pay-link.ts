@@ -21,11 +21,12 @@ export function payLinkOf(invoice: PortalInvoice, now: number = Date.now()): str
 }
 
 /**
- * «Pagar ahora» sin enlace (F5, Finance §19.3): una emitida sin cobrar, con importe y sin enlace vigente, cuyo enlace se pide
- * al pulsar (`POST payments/link`). Finance vuelve a comprobar si se puede cobrar (`409 PAYMENT_NOT_ALLOWED`).
+ * «Pagar ahora» sin enlace (F5, Finance §19.3): una factura sin cobrar, con importe y sin enlace vigente, cuyo enlace se pide
+ * al pulsar (`POST payments/link`). Como Finance (0255, `payable`): vale «emitida» y «registrada» (el estado por defecto de
+ * sus emitidas); una rectificada, no. Finance vuelve a comprobar si se puede cobrar (`409 PAYMENT_NOT_ALLOWED`).
  */
 export function payOnDemand(invoice: PortalInvoice, now: number = Date.now()): boolean {
-  return invoice.status === 'emitida' && !invoice.collected && Number(invoice.total) > 0 && payLinkOf(invoice, now) === null;
+  return invoice.status !== 'rectificada' && !invoice.collected && Number(invoice.total) > 0 && payLinkOf(invoice, now) === null;
 }
 
 /** Las facturas con enlace de pago vigente, en el orden de Finance. */

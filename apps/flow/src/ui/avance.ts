@@ -102,6 +102,15 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   let history: Snap[] = [];
   let updatedAt: string | null = null;
   let filters = readFilters();
+  // `?carril=<agente>` (enlace de la ficha del agente en Central, #1148): entra filtrado por ese carril.
+  const linked = new URLSearchParams(location.hash.split('?')[1] ?? '').get('carril');
+  if (linked && /^[a-z][a-z0-9_]{1,30}$/.test(linked)) filters = { ag: [linked], est: [], pr: [], tipo: [], ley: [], hito: [] };
+  /** Ficha de cada agente en Central (`central.agent_lanes_projection`): carril → id de la ficha. */
+  let agentIds = new Map<string, string>();
+  if (projectId) {
+    void client.api<{ rows: Array<{ flow_project: string; flow_lane: string; agent_id: string; active: boolean }> }>(`/read/central.agent_lanes_projection?flow_project=${projectId}&limit=100`)
+      .then((r) => { agentIds = new Map((r.rows ?? []).filter((a) => a.active !== false).map((a) => [a.flow_lane, a.agent_id])); paint(); }).catch(() => undefined);
+  }
   let chartOpen = false;
   const open = new Set<string>();
   const role = client.bootstrap()?.membership.role;
@@ -336,6 +345,10 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
         bar(all, cards.length), chartOpen ? chart() : null),
       el('div', { class: 'avance-discs', 'aria-label': 'Resumen por agente' }, row(ROW1), row(ROW2),
         ...(lanesKeys.some((k) => !AGENT_NAME.has(k)) ? [el('div', { class: 'avance-discs-row' }, ...lanesKeys.filter((k) => !AGENT_NAME.has(k)).map((k) => disc(k, maxN)))] : [])),
+      // Con un solo agente elegido, su ficha en Central.
+      filters.ag.length === 1 && agentIds.get(filters.ag[0]!) ? el('p', { class: 'avance-agent-link small' },
+        el('a', { href: `https://central.ikisai.com/#/accesos/agentes?agente=${encodeURIComponent(agentIds.get(filters.ag[0]!)!)}`, target: '_blank', rel: 'noopener' },
+          `Ficha de ${agentName(filters.ag[0]!)} en Central ↗`)) : null,
       el('div', { class: 'avance-filters' },
         el('div', { class: 'fgrp' }, el('small', { class: 'fl' }, 'Estado'), el('div', { class: 'frow', role: 'group', 'aria-label': 'Filtrar por estado' },
           ...STATES.map(([k, color, label, glyph]) => chip('est', k, color, label, glyph, nE[k] ?? 0, all[k])))),

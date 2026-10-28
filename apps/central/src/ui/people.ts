@@ -1007,7 +1007,15 @@ export function mountPerson(personId: string): ViewMount {
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
       if (!person.user_id) {
-        return [el('p', { class: 'muted' }, 'Sin cuenta: no entra en ninguna app.'),
+        const pendingNote = el('p', { class: 'muted small', id: 'pendingAccess' });
+        void pendingOf(person).then((list) => {
+          const flow = list.find((p) => p.app === 'flow');
+          const ids = flow ? flowProjectsOf(flow.scopes) ?? [] : [];
+          if (!ids.length) return;
+          const names = ids.map((id) => admin.cached.flowProjects?.find((x) => x.id === id)?.name ?? 'un proyecto');
+          pendingNote.textContent = `Al darle cuenta entrará en Flow en: ${names.join(', ')}.`;
+        });
+        return [el('p', { class: 'muted' }, 'Sin cuenta: no entra en ninguna app.'), pendingNote,
           el('div', { class: 'zone', 'data-feedback-id': 'central.persona.cuenta.acciones', 'data-feedback-label': 'Acciones de la cuenta' },
             el('button', { class: 'primary', type: 'button', id: 'giveAccount', 'data-feedback-id': 'central.persona.cuenta.dar', 'data-feedback-label': 'Dar cuenta', onclick: () => void openGiveAccount(person, priv) }, icon('plus', 18), 'Dar cuenta'),
             el('button', { class: 'ghost', type: 'button', id: 'linkAccount', 'data-feedback-id': 'central.persona.cuenta.enlazar', 'data-feedback-label': 'Enlazar cuenta existente', onclick: () => void openLinkAccount(person) }, 'Enlazar cuenta existente'))];
@@ -1232,6 +1240,23 @@ export function mountPerson(personId: string): ViewMount {
       }));
     }
 
+    /** Accesos que se dejaron pendientes (1525; p. ej. sus proyectos de Flow): se aplican al darle la cuenta. */
+    async function pendingOf(person: Person): Promise<Array<{ id: string; revision: number; app: string; scopes: Record<string, unknown> }>> {
+      const rows = (await client.list(T.pendingAccess).catch(() => [])) as unknown as Array<{ id: string; revision: number; person_id: string; app: string; scopes: Record<string, unknown>; deleted_at?: string | null }>;
+      return rows.filter((r) => r.person_id === person.id && !r.deleted_at);
+    }
+    async function applyPending(person: Person, userId: string): Promise<void> {
+      for (const p of await pendingOf(person)) {
+        const want = person.house_level ? HOUSE_LEVEL_DOORS[person.house_level][p.app] : undefined;
+        const role = want && 'role' in want ? want.role : null;
+        if (!role) continue;
+        try {
+          await admin.setMembership({ app: p.app, userId, role, scopes: p.scopes });
+          await client.commit([{ op: 'delete', table: T.pendingAccess, id: p.id, expectedRevision: Number(p.revision) }]);
+        } catch (e) { toast(`No se ha podido aplicar su acceso pendiente en ${p.app}: ${describeError(e)}`); }
+      }
+    }
+
     async function openGiveAccount(person: Person, priv: Private | null): Promise<void> {
       if (!navigator.onLine) { toast('Dar cuenta necesita conexión.'); return; }
       let catalog;
@@ -1280,6 +1305,7 @@ export function mountPerson(personId: string): ViewMount {
           await client.commit([{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: out.userId } }]);
           await sheet?.close(true);
           accounts = null;
+          await applyPending(person, out.userId);
           if (out.temporaryPassword) showSecret(out.temporaryPassword, out.email);
           else toast('Ya tenía cuenta con ese correo: se han añadido los accesos y queda enlazada.');
           void loadAccounts();

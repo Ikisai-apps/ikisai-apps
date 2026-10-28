@@ -5,7 +5,7 @@ import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, rend
 import { renderBarService } from './barService.ts';
 import { renderFlowReady } from './flowReady.ts';
 import { revealFor } from './guide.ts';
-import { announceSaved, confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
+import { fieldAttrs, announceSaved, confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, experienceOf, guestCompleteness, missingForConfirmation, nights, requiresEvent, type ExperienceInput, type ReservationStatus,
@@ -326,7 +326,7 @@ export function mountReservation(id: string): ViewMount {
       // «Fecha definitiva»: el organizador la ve fija y no propone otras. Sin entrada y salida no se puede marcar.
       const definitive = reservation.dates_definitive === true;
       const hasDates = !!reservation.start_date && !!reservation.end_date;
-      const definitiveCheck = el('input', { type: 'checkbox', id: 'datesDefinitive', checked: definitive, disabled: !editable,
+      const definitiveCheck = el('input', { type: 'checkbox', id: 'datesDefinitive', ...fieldAttrs({ id: 'booking.reserva.fechas.definitivas', entity: 'booking.reservations', prop: 'dates_definitive', label: 'Fechas definitivas', confirm: 'event' }), checked: definitive, disabled: !editable,
         onchange: (event: Event) => {
           const box = event.target as HTMLInputElement;
           if (box.checked && !hasDates) { box.checked = false; return void toast('Para marcar la fecha como definitiva indica antes la entrada y la salida.'); }
@@ -444,7 +444,7 @@ export function mountReservation(id: string): ViewMount {
       // Un ítem de la lista: checkbox y botón de editar (el asa y los botones «Subir/Bajar» los pone el kit).
       const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) }, 'data-feedback-id': 'booking.reserva.checklist.tarea', 'data-feedback-label': 'Tarea' },
         el('label', { class: 'check', 'data-feedback-id': 'booking.reserva.checklist.tarea.casilla', 'data-feedback-label': 'Marcar como hecha' },
-          el('input', { type: 'checkbox', checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
+          el('input', { type: 'checkbox', ...fieldAttrs({ id: 'booking.reserva.checklist.tarea.casilla', entity: 'booking.checklist_items', prop: 'status', label: 'Marcar como hecha', confirm: 'event' }), checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
             onchange: () => void run([{ op: 'update', table: CHECKLIST, id: item.id, expectedRevision: item.revision, fields: { status: item.status === 'hecho' ? 'pendiente' : 'hecho' } }], 'Checklist actualizado.') }),
           el('span', null, item.label, item.status === 'no_aplica' ? ' (no aplica)' : '')),
         editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${item.label}`, 'data-feedback-id': 'booking.reserva.checklist.tarea.editar', 'data-feedback-label': 'Editar tarea', onclick: () => openRowSheet({

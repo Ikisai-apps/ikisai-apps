@@ -499,7 +499,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
       body: el('div', { id: 'libraryBody' },
         items.length
           ? el('div', { class: 'orgitems' }, ...items.map((r) => el('label', { class: 'field check', 'data-library': r.id },
-            el('input', { ...fieldAttrs({ id: 'organizers.experiencia.biblioteca.elegir', label: 'Elegir de tu biblioteca', type: 'toggle', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) picked.add(r.id); else picked.delete(r.id); } }),
+            el('input', { ...fieldAttrs({ id: 'organizers.experiencia.biblioteca.elegir', storage: 'none', label: 'Elegir de tu biblioteca', type: 'toggle', sensitivity: 'internal', confirm: 'none' }), type: 'checkbox', onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) picked.add(r.id); else picked.delete(r.id); } }),
             el('span', null, el('strong', null, String(r.title ?? r.label)),
               el('span', { class: 'muted small' }, ` · ${isMaterial ? t(KINDS[String(r.kind)] ?? '') : label(TYPES, r.type)}${r.is_logo ? ` · ${t('Logotipo')}` : ''}`)))))
           : el('p', { class: 'muted' }, t('No hay nada más que traer de tus otros retiros.')),

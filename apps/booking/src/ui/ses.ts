@@ -1,6 +1,6 @@
 /** SES.HOSPEDAJES (API §17): bloque «Registro de viajeros» de la ficha (interruptores y comunicaciones) y ajuste global (entorno y pausa). */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
-import { confirmDialog, deadlineText, el, formatDate, openSheet, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { fieldAttrs, confirmDialog, deadlineText, el, formatDate, openSheet, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { SES_DISABLED_REASONS, guestModeOf } from '@ikisai/domain-booking';
 import { RESERVATIONS, SES_SETTINGS, canRead, canWrite, describeError, fullDay, type ReservationRow } from '../app/client.ts';
 import { createSesTray } from './sesTray.ts';
@@ -191,8 +191,8 @@ export function createSesBlock(): SesBlock {
       run([{ op: 'update', table: RESERVATIONS, id: reservation.id, expectedRevision: reservation.revision, fields }], message);
 
     function openReason(): void {
-      const radios = new Map<string, HTMLInputElement>(SES_DISABLED_REASONS.map((reason) => [reason, el('input', { type: 'radio', name: 'sesReason', value: reason, id: `sesReason-${reason}` })]));
-      const note = el('input', { type: 'text', id: 'sesNote', 'data-feedback-id': 'booking.reserva.ses.motivo.nota', 'data-feedback-label': 'Motivo escrito', maxlength: 300, 'aria-label': 'Motivo (texto)', placeholder: 'Escribe el motivo', autocomplete: 'off',
+      const radios = new Map<string, HTMLInputElement>(SES_DISABLED_REASONS.map((reason) => [reason, el('input', { type: 'radio', name: 'sesReason', value: reason, id: `sesReason-${reason}`, ...fieldAttrs({ id: 'booking.reserva.ses.motivo', entity: 'booking.reservations', prop: 'ses_disabled_reason', label: 'Motivo', confirm: 'event' }) })]));
+      const note = el('input', { type: 'text', id: 'sesNote', ...fieldAttrs({ id: 'booking.reserva.ses.motivo.nota', entity: 'booking.reservations', prop: 'ses_disabled_note', label: 'Motivo escrito', confirm: 'event' }), 'data-feedback-id': 'booking.reserva.ses.motivo.nota', 'data-feedback-label': 'Motivo escrito', maxlength: 300, 'aria-label': 'Motivo (texto)', placeholder: 'Escribe el motivo', autocomplete: 'off',
         oninput: () => { if (note.value) radios.get('otro')!.checked = true; error.hidden = true; } });
       const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
       const chosen = () => [...radios.values()].find((r) => r.checked)?.value ?? null;
@@ -226,14 +226,14 @@ export function createSesBlock(): SesBlock {
       });
     }
 
-    const toggle = el('input', { type: 'checkbox', id: 'sesToggle', 'data-feedback-id': 'booking.reserva.ses.interruptor', 'data-feedback-label': 'Comunicar a SES.HOSPEDAJES', checked: enabled, disabled: !editable, onchange: () => {
+    const toggle = el('input', { type: 'checkbox', id: 'sesToggle', ...fieldAttrs({ id: 'booking.reserva.ses.interruptor', entity: 'booking.reservations', prop: 'ses_enabled', label: 'Comunicar a SES.HOSPEDAJES', confirm: 'event' }), 'data-feedback-id': 'booking.reserva.ses.interruptor', 'data-feedback-label': 'Comunicar a SES.HOSPEDAJES', checked: enabled, disabled: !editable, onchange: () => {
       if (!toggle.checked) return openReason();
       // Reactivar es un clic; el aviso dice qué cambia. El motivo anterior se conserva.
       void update({ ses_enabled: true }, 'SES reactivado. Se pedirán los datos legales que falten.').then((ok) => { if (!ok) paintSwitch(); });
     } });
     function paintSwitch(): void { toggle.checked = reservation.ses_enabled !== false; }
 
-    const collect = el('input', { type: 'checkbox', id: 'sesCollect', 'data-feedback-id': 'booking.reserva.ses.pedir_datos', 'data-feedback-label': 'Pedir datos a los huéspedes', checked: reservation.collect_guest_data !== false, disabled: !editable, onchange: () => {
+    const collect = el('input', { type: 'checkbox', id: 'sesCollect', ...fieldAttrs({ id: 'booking.reserva.ses.pedir_datos', entity: 'booking.reservations', prop: 'collect_guest_data', label: 'Pedir datos a los huéspedes', confirm: 'event' }), 'data-feedback-id': 'booking.reserva.ses.pedir_datos', 'data-feedback-label': 'Pedir datos a los huéspedes', checked: reservation.collect_guest_data !== false, disabled: !editable, onchange: () => {
       void update({ collect_guest_data: collect.checked }, collect.checked ? 'Se pedirán datos a los huéspedes.' : 'Sin lista de huéspedes para esta reserva.').then((ok) => { if (!ok) collect.checked = !collect.checked; });
     } });
 
@@ -318,7 +318,7 @@ export const mountSes: ViewMount = ({ main, client, navigate }) => {
       }
     };
     const offline = !navigator.onLine;
-    const environment = el('select', { id: 'sesEnvironment', 'data-feedback-id': 'booking.ses.ajustes.entorno', 'data-feedback-label': 'Entorno', 'aria-label': 'Entorno', 'aria-describedby': offline ? 'sesEnvironmentWhy' : null, disabled: !editable, onchange: async () => {
+    const environment = el('select', { id: 'sesEnvironment', ...fieldAttrs({ id: 'booking.ses.ajustes.entorno', entity: 'booking.ses_settings', prop: 'environment', label: 'Entorno', confirm: 'event' }), 'data-feedback-id': 'booking.ses.ajustes.entorno', 'data-feedback-label': 'Entorno', 'aria-label': 'Entorno', 'aria-describedby': offline ? 'sesEnvironmentWhy' : null, disabled: !editable, onchange: async () => {
       const value = environment.value;
       if (value === 'prod' && !navigator.onLine) {
         environment.value = String(settings.environment);
@@ -331,7 +331,7 @@ export const mountSes: ViewMount = ({ main, client, navigate }) => {
       await save({ environment: value }, value === 'prod' ? 'Entorno real activado.' : 'Entorno de pruebas activado.');
     } }, Object.entries(SES_ENVIRONMENT_LABELS).map(([value, text]) => el('option', { value, disabled: value === 'prod' && offline && settings.environment !== 'prod' }, text)));
     environment.value = String(settings.environment);
-    const paused = el('input', { type: 'checkbox', id: 'sesPaused', 'data-feedback-id': 'booking.ses.ajustes.pausa', 'data-feedback-label': 'Pausar envíos', checked: settings.paused === true, disabled: !editable, onchange: () => {
+    const paused = el('input', { type: 'checkbox', id: 'sesPaused', ...fieldAttrs({ id: 'booking.ses.ajustes.pausa', entity: 'booking.ses_settings', prop: 'paused', label: 'Pausar envíos', confirm: 'event' }), 'data-feedback-id': 'booking.ses.ajustes.pausa', 'data-feedback-label': 'Pausar envíos', checked: settings.paused === true, disabled: !editable, onchange: () => {
       void save({ paused: paused.checked }, paused.checked ? 'Envíos pausados.' : 'Envíos reanudados.').then((ok) => { if (!ok) paused.checked = !paused.checked; });
     } });
     replace(host, el('article', { class: 'card sessettings', id: 'sesSettings', 'data-feedback-id': 'booking.ses.ajustes.tarjeta', 'data-feedback-label': 'Entorno y pausa' },

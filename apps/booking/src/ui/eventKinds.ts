@@ -5,7 +5,7 @@
  * - Familiar: sin propuesta, cobro, tarifas ni alojamiento; come del menú de casa de Food.
  */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
-import { confirmDialog, el, openSheet, plural, renderQr, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, openSheet, plural, renderQr, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { PROCEDURES, WALKIN_METHODS, WALKIN_METHOD_LABELS, assignmentNights, dayNumber, isExtraBed, newPublicCode, stayCancelPercent, stayCancelRefund, visitorUrl, walkinNightPrice } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, EVENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shortDay, today } from '../app/client.ts';
 import type { FieldSpec } from './form.ts';
@@ -147,16 +147,16 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     const start = String(o.reservation.start_date ?? day);
     const fromDefault = day < start ? start : day;
     const rate = walkinNightPrice(o.rates as never, String(o.reservation.event_type), fromDefault);
-    const name = el('input', { id: 'walkName', type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
+    const name = el('input', { id: 'walkName', ...fieldAttrs({ id: 'booking.reserva.alacarta.nombre', entity: 'booking.guests', prop: 'first_name', label: 'Nombre', confirm: 'event' }), type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
     // lo mínimo para SES desde el alta (hueco 10 del inventario): apellido, contacto y si es menor; lo demás, en Huéspedes
-    const surname = el('input', { id: 'walkSurname', type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
-    const contact = el('input', { id: 'walkContact', type: 'text', maxlength: 320, autocomplete: 'off', inputmode: 'email', placeholder: 'Teléfono o correo' }) as HTMLInputElement;
-    const minor = el('input', { id: 'walkMinor', type: 'checkbox' }) as HTMLInputElement;
-    const from = el('input', { id: 'walkFrom', type: 'date', value: fromDefault }) as HTMLInputElement;
-    const nights = el('input', { id: 'walkNights', type: 'number', min: 1, max: 60, step: 1, value: '1', inputmode: 'numeric' }) as HTMLInputElement;
-    const bed = el('select', { id: 'walkBed' }) as HTMLSelectElement;
-    const price = el('input', { id: 'walkPrice', type: 'number', min: 0, step: '0.01', inputmode: 'decimal', value: rate ? (rate.cents / 100).toFixed(2) : '' }) as HTMLInputElement;
-    const pay = el('select', { id: 'walkPay' }, el('option', { value: '' }, 'Pendiente de cobrar'), WALKIN_METHODS.map((m) => el('option', { value: m }, `Cobrado: ${WALKIN_METHOD_LABELS[m]}`))) as HTMLSelectElement;
+    const surname = el('input', { id: 'walkSurname', ...fieldAttrs({ id: 'booking.reserva.alacarta.apellido', entity: 'booking.guests', prop: 'last_name_1', label: 'Primer apellido', confirm: 'event' }), type: 'text', maxlength: 120, autocomplete: 'off' }) as HTMLInputElement;
+    const contact = el('input', { id: 'walkContact', ...fieldAttrs({ id: 'booking.reserva.alacarta.contacto', entity: 'booking.guests', label: 'Teléfono o correo', confirm: 'event' }), type: 'text', maxlength: 320, autocomplete: 'off', inputmode: 'email', placeholder: 'Teléfono o correo' }) as HTMLInputElement;
+    const minor = el('input', { id: 'walkMinor', ...fieldAttrs({ id: 'booking.reserva.alacarta.menor', entity: 'booking.guests', prop: 'is_minor', label: 'Menor de edad', confirm: 'event' }), type: 'checkbox' }) as HTMLInputElement;
+    const from = el('input', { id: 'walkFrom', ...fieldAttrs({ id: 'booking.reserva.alacarta.desde', entity: 'booking.room_assignments', prop: 'from_date', label: 'Desde', confirm: 'event' }), type: 'date', value: fromDefault }) as HTMLInputElement;
+    const nights = el('input', { id: 'walkNights', ...fieldAttrs({ id: 'booking.reserva.alacarta.noches', entity: 'booking.walkin_charges', prop: 'nights', label: 'Noches', confirm: 'event' }), type: 'number', min: 1, max: 60, step: 1, value: '1', inputmode: 'numeric' }) as HTMLInputElement;
+    const bed = el('select', { id: 'walkBed', ...fieldAttrs({ id: 'booking.reserva.alacarta.cama', entity: 'booking.room_assignments', prop: 'bed_id', label: 'Cama', confirm: 'event' }) }) as HTMLSelectElement;
+    const price = el('input', { id: 'walkPrice', ...fieldAttrs({ id: 'booking.reserva.alacarta.precio', entity: 'booking.walkin_charges', prop: 'price_cents', label: 'Precio por noche', confirm: 'event' }), type: 'number', min: 0, step: '0.01', inputmode: 'decimal', value: rate ? (rate.cents / 100).toFixed(2) : '' }) as HTMLInputElement;
+    const pay = el('select', { id: 'walkPay', ...fieldAttrs({ id: 'booking.reserva.alacarta.cobro', entity: 'booking.walkin_charges', prop: 'method', label: 'Cobro', confirm: 'event' }) }, el('option', { value: '' }, 'Pendiente de cobrar'), WALKIN_METHODS.map((m) => el('option', { value: m }, `Cobrado: ${WALKIN_METHOD_LABELS[m]}`))) as HTMLSelectElement;
     const total = el('p', { class: 'hint', id: 'walkTotal' });
     const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
     const cents = () => Math.round(Number(price.value) * 100);
@@ -222,7 +222,7 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
 
   /** Cobrar uno pendiente: el método y, con red, el envío a Finance. */
   function collect(charge: Row): void {
-    const pay = el('select', { id: 'collectMethod' }, WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
+    const pay = el('select', { id: 'collectMethod', ...fieldAttrs({ id: 'booking.reserva.alacarta.cobrar.metodo', entity: 'booking.walkin_charges', prop: 'method', label: 'Cómo paga', confirm: 'event' }) }, WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
     const ok = el('button', { class: 'primary', type: 'button', id: 'collectSave', onclick: async () => {
       ok.disabled = true;
       try {
@@ -252,8 +252,8 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
 
   /** Ajustar noches o precio por noche: el importe vuelve a ser noches × precio. */
   function adjust(charge: Row): void {
-    const nights = el('input', { id: 'adjustNights', type: 'number', min: 1, max: 60, step: 1, value: String(charge.nights), inputmode: 'numeric' }) as HTMLInputElement;
-    const price = el('input', { id: 'adjustPrice', type: 'number', min: 0, step: '0.01', value: (Number(charge.price_cents) / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
+    const nights = el('input', { id: 'adjustNights', ...fieldAttrs({ id: 'booking.reserva.alacarta.ajuste.noches', entity: 'booking.walkin_charges', prop: 'nights', label: 'Noches', confirm: 'event' }), type: 'number', min: 1, max: 60, step: 1, value: String(charge.nights), inputmode: 'numeric' }) as HTMLInputElement;
+    const price = el('input', { id: 'adjustPrice', ...fieldAttrs({ id: 'booking.reserva.alacarta.ajuste.precio', entity: 'booking.walkin_charges', prop: 'price_cents', label: 'Precio por noche', confirm: 'event' }), type: 'number', min: 0, step: '0.01', value: (Number(charge.price_cents) / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
     const ok = el('button', { class: 'primary', type: 'button', id: 'adjustSave', onclick: () => {
       const n = Math.round(Number(nights.value)); const cents = Math.round(Number(price.value) * 100);
       if (!Number.isInteger(n) || n < 1 || n > 60 || !Number.isFinite(cents) || cents < 0) return void toast('Revisa las noches y el precio.');
@@ -278,8 +278,8 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
   /** Devolver parte o todo lo cobrado: un solo apunte en Finance por lo cobrado menos lo devuelto. */
   function refund(charge: Row): void {
     const max = Number(charge.amount_cents);
-    const amount = el('input', { id: 'refundAmount', type: 'number', min: 0, step: '0.01', value: (Number(charge.refund_cents ?? 0) / 100 || max / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
-    const method = el('select', { id: 'refundMethod' }, WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
+    const amount = el('input', { id: 'refundAmount', ...fieldAttrs({ id: 'booking.reserva.alacarta.devolucion.importe', entity: 'booking.walkin_charges', prop: 'refund_cents', label: 'Importe devuelto', confirm: 'event' }), type: 'number', min: 0, step: '0.01', value: (Number(charge.refund_cents ?? 0) / 100 || max / 100).toFixed(2), inputmode: 'decimal' }) as HTMLInputElement;
+    const method = el('select', { id: 'refundMethod', ...fieldAttrs({ id: 'booking.reserva.alacarta.devolucion.metodo', entity: 'booking.walkin_charges', prop: 'refund_method', label: 'Cómo se devuelve', confirm: 'event' }) }, WALKIN_METHODS.map((m) => el('option', { value: m }, WALKIN_METHOD_LABELS[m]))) as HTMLSelectElement;
     method.value = charge.refund_method ?? charge.method ?? 'cash';
     const ok = el('button', { class: 'primary', type: 'button', id: 'refundSave', onclick: () => {
       const cents = Math.round(Number(amount.value) * 100);
@@ -313,8 +313,8 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     const until = String(o.reservation.end_date).slice(0, 10);
     const maxNights = Math.max(1, dayNumber(until)! - dayNumber(from)!);
     const nightsNow = Number(charge.nights) || 1;
-    const nights = el('input', { id: 'extendNights', type: 'number', min: 1, max: maxNights, step: 1, value: String(nightsNow), inputmode: 'numeric' }) as HTMLInputElement;
-    const bed = el('select', { id: 'extendBed' }) as HTMLSelectElement;
+    const nights = el('input', { id: 'extendNights', ...fieldAttrs({ id: 'booking.reserva.alacarta.ampliar.noches', entity: 'booking.room_assignments', prop: 'to_date', label: 'Noches', confirm: 'event' }), type: 'number', min: 1, max: maxNights, step: 1, value: String(nightsNow), inputmode: 'numeric' }) as HTMLInputElement;
+    const bed = el('select', { id: 'extendBed', ...fieldAttrs({ id: 'booking.reserva.alacarta.ampliar.cama', entity: 'booking.room_assignments', prop: 'bed_id', label: 'Cama', confirm: 'event' }) }) as HTMLSelectElement;
     const note = el('p', { class: 'hint', id: 'extendNote' });
     const fill = () => {
       const n = Math.min(Math.max(Math.round(Number(nights.value)) || 1, 1), maxNights);
