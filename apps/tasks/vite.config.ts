@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import postcss, { type Plugin as PostcssPlugin } from 'postcss';
-import { build, defineConfig, type Plugin } from 'vite';
+import { build, defineConfig, loadEnv, type Plugin } from 'vite';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const alias = [
@@ -128,13 +128,19 @@ function kitBundle(): Plugin {
  * Se compilan dos piezas: el núcleo del adaptador, `src/core.ts` → `dist/sync-core.js` (IIFE, `window.IkisaiTasks`),
  * que index.html carga justo antes de `sync.js`, y el kit de interfaz común, `src/kit.ts` → `dist/kit.js` + `dist/kit.css`.
  */
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Corrección en caliente (MUELA/equipo/CORRECCION_EN_CALIENTE.md): con VITE_API_PROXY (en .env.local, no se sube), `/api`
+  // va a producción con la cabecera Origin del dominio público, que es la única que aceptan el worker y la Edge.
+  const target = process.env.VITE_API_PROXY ?? loadEnv(mode, root, 'VITE_').VITE_API_PROXY;
+  const proxy = target ? { '/api': { target, changeOrigin: true, secure: true, headers: { origin: new URL(target).origin } } } : undefined;
+  return {
   root,
   base: '/',
   publicDir: 'public',
   resolve: { alias },
   plugins: [kitBundle()],
-  preview: { port: 4175, strictPort: false },
+  server: { proxy },
+  preview: { port: 4175, strictPort: false, proxy },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -147,4 +153,5 @@ export default defineConfig({
       fileName: () => 'sync-core.js',
     },
   },
+  };
 });
