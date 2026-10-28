@@ -26,12 +26,28 @@ export const VISIBLE_DONE = 10;
 /** Columna de unidades con toques: Preparación (unidades de producto), Logística e Ingredientes (tareas). */
 export type QueueKind = 'prep' | 'logistics' | 'ingredients';
 /** Los ajustes que entiende cualquiera; el resto va en «Ajustes técnicos». */
-const SIMPLE_PARAMS = ['machine_capacity', 'warmup_min', 'min_target'];
+const SIMPLE_PARAMS = ['warmup_min', 'bread_per_unit', 'machine_capacity', 'min_target'];
+/** Nivel intermedio: se entienden, pero se tocan poco (van debajo, más pequeños). */
+const MID_PARAMS = ['lead_min', 'lookback_min'];
+/** Qué es cada ajuste, en una frase (bocadillo al tocar su nombre). */
+const PARAM_HELP: Record<string, string> = {
+  warmup_min: 'Lo que tarda un pan en estar listo desde que entra a calentar.',
+  bread_per_unit: 'Cuántos panes lleva cada montadito.',
+  machine_capacity: 'Máximo de panes que caben calentándose a la vez.',
+  min_target: 'Panes que siempre deben estar calentándose aunque no haya pedidos.',
+  lead_min: 'Cuántos minutos por delante se calienta pan para lo que se espera vender.',
+  lookback_min: 'Cuántos minutos atrás se miran las ventas para calcular el ritmo.',
+  smooth_min: 'Ventana para suavizar el ritmo y que la cifra no salte con cada pedido.',
+  smooth_weight: 'Cuánto pesa el ritmo de los últimos minutos frente al de antes (0 nada, 1 todo).',
+  hysteresis: 'La cifra solo cambia si se mueve al menos estos panes, para que no baile.',
+  per_order_cap: 'Máximo de panes que cuenta un solo pedido grande, para que no dispare la cifra.',
+};
 /** Ajustes de los puestos con nombre que se entiende (VG, 28-10: salían las claves internas). */
 const PARAM_LABELS: Record<string, string> = {
   warmup_min: 'Minutos que tarda en calentarse', lead_min: 'Minutos de adelanto', lookback_min: 'Minutos para medir el ritmo',
   machine_capacity: 'Panes que caben a la vez', smooth_min: 'Minutos para suavizar', smooth_weight: 'Peso del ritmo reciente (0 a 1)',
   bread_per_unit: 'Panes por montadito', hysteresis: 'Cambio mínimo para avisar (panes)', min_target: 'Panes mínimos calentándose',
+  per_order_cap: 'Tope de panes por pedido',
 };
 const QUEUE_TITLE: Record<QueueKind, string> = { prep: 'Preparación', logistics: 'Logística', ingredients: 'Ingredientes' };
 const QUEUE_EMPTY: Record<QueueKind, string> = {
@@ -190,13 +206,22 @@ export function mountQueue(kind: QueueKind): ViewMount {
         body: (() => {
           // Lo que importa arriba (cuántos panes poner ahora y lo básico de la máquina); lo técnico, plegado.
           const mv = metrics.get(u.id)?.value as Record<string, number> | undefined;
-          const row = ([k, input]: readonly [string, HTMLInputElement]) => el('label', null, el('span', null, PARAM_LABELS[k] ?? k), input);
+          // Cada nombre se toca para ver qué es: un bocadillo pequeño debajo, sin tapar la pantalla.
+          const row = ([k, input]: readonly [string, HTMLInputElement]) => {
+            const tip = el('span', { class: 'param-tip', role: 'note', hidden: true }, PARAM_HELP[k] ?? 'Ajuste técnico del cálculo.');
+            const name = el('button', { type: 'button', class: 'param-name', 'aria-expanded': 'false', onclick: (e: Event) => {
+              e.preventDefault(); tip.hidden = !tip.hidden; name.setAttribute('aria-expanded', String(!tip.hidden)); } },
+              PARAM_LABELS[k] ?? k, el('span', { class: 'param-i', 'aria-hidden': 'true' }, 'ⓘ'));
+            return el('div', { class: 'param-row' }, name, tip, input);
+          };
           const simple = inputs.filter(([k]) => SIMPLE_PARAMS.includes(k));
-          const tech = inputs.filter(([k]) => !SIMPLE_PARAMS.includes(k));
+          const mid = inputs.filter(([k]) => MID_PARAMS.includes(k));
+          const tech = inputs.filter(([k]) => !SIMPLE_PARAMS.includes(k) && !MID_PARAMS.includes(k));
           return el('div', { class: 'station-params' },
             mv ? el('p', { class: 'station-now' }, el('strong', null, `Ahora: ${mv.target ?? 0} panes calentándose`),
               el('small', { class: 'muted' }, ` (${mv.firm ?? 0} de pedidos ya cobrados + ${Math.round(mv.forecast ?? 0)} que se esperan)`)) : null,
             ...simple.map(row),
+            mid.length ? el('div', { class: 'param-mid' }, ...mid.map(row)) : null,
             tech.length ? el('details', { class: 'station-tech' }, el('summary', null, 'Ajustes técnicos (no hace falta tocarlos)'), ...tech.map(row)) : null);
         })(),
         foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
