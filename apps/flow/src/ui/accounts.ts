@@ -26,6 +26,7 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
     if (!isOnline(client)) { toast('Abrir una cuenta necesita conexión.'); return; }
     const customer = number.value.replace(/\D/g, '');
     if (!holder.value.trim() && !customer) { toast('Pon a nombre de quién o su número de cliente.'); return; }
+    if (central && !central.includes(holder.value.trim())) { toast('Las cuentas son para personas de Central: elige un nombre de la lista.'); return; }
     try {
       const out = await actions.openAccount(projectId, holder.value.trim(), customer || null);
       holder.value = ''; number.value = '';
@@ -39,7 +40,13 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
   /** Nombre → número de cliente, para rellenarlo solo al elegir a alguien de la lista. */
   let numberOf = new Map<string, number>();
   holder.addEventListener('input', () => { const n = numberOf.get(holder.value.trim()); if (n && !number.value) number.value = String(n); });
+  /** Personas de Central (VG, 28-10: las cuentas solo a su nombre). null mientras no se puedan leer. */
+  let central: string[] | null = null;
+  void client.api<{ rows: Array<{ name: string }> }>('/read/central.people_options?limit=1000')
+    .then((r) => { central = [...new Set((r.rows ?? []).map((x) => x.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')); if (data) paintPeople(data); })
+    .catch(() => { central = null; });
   function paintPeople(d: FlowData): void {
+    if (central) { replace(people, ...central.map((n) => el('option', { value: n }))); holder.placeholder = 'A nombre de (elige de Central)'; return; }
     numberOf = new Map();
     for (const c of d.customers.values()) if (c.display_name) numberOf.set(c.display_name, c.number);
     for (const a of d.accounts) { const c = a.customer_id ? d.customers.get(a.customer_id) : undefined; if (c && !numberOf.has(a.holder)) numberOf.set(a.holder, c.number); }
