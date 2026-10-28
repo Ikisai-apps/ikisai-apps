@@ -71,7 +71,10 @@ export function openOrderSheet(client: SyncClient, orderId: string, opts: { onCl
 
   function catalog(onChange: (productId: string, q: number) => void, value: (productId: string) => number, max?: (productId: string) => number): HTMLElement[] {
     qtyFields.clear();
-    return groupMenu([...data!.products.values()].filter((p) => p.active).map(asMenu)).map((g) => el('section', { class: 'order-group' },
+    // Solo la carta del flujo de este pedido (los datos traen los productos de todos los flujos: salían repetidos y se podía
+    // elegir el de otra barra, VG 28-10).
+    const project = data!.orders.find((x) => x.id === orderId)?.project_id;
+    return groupMenu([...data!.products.values()].filter((p) => p.active && p.project_id === project).map(asMenu)).map((g) => el('section', { class: 'order-group' },
       el('h3', null, g.label),
       ...g.products.map((mp) => {
         const product = data!.products.get(mp.id)!;
