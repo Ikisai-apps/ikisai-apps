@@ -132,7 +132,11 @@ function tkhSpaceModel(){const tasks=[],seen=new Set(),add=t=>{if(!t||seen.has(t
   const topList=[...tops].sort((a,b)=>tkhByPlace(tkhChain(a).at(-1),tkhChain(b).at(-1))||tkhByPlace(a,b));if(none)topList.push(TKH_NONE);
   return {count,tops:topList}}
 /* Los hijos de un nodo que tienen tareas en la pantalla. */
-function tkhChildren(m,id){if(id===TKH_NONE)return [];return tkhKids(id).map(k=>k.id).sort(tkhByPlace)}
+/* Los hijos de un nodo: todos los activos y, además, cualquiera que tenga tareas en la pantalla aunque esté desactivado en
+   Recursos (si no, esa tarea no saldría en ningún chip: ni en su sitio ni en «Sin espacio»). */
+function tkhChildren(m,id){if(id===TKH_NONE)return [];const out=new Set(tkhKids(id).map(k=>k.id));
+  for(const k of m.count.keys())if(k!==TKH_NONE&&tkhNode(k)?.parentId===id)out.add(k);
+  return [...out].sort(tkhByPlace)}
 function tkhTopIdOf(m,id){return id===TKH_NONE?TKH_NONE:m.tops.find(t=>tkhChain(id).includes(t))||null}
 function tkhSpaceFilter(){const m=tkhSpaceModel(),sel=new Set([...tkhSpaceSel()].filter(id=>(id===TKH_NONE?m.count.has(id):!!tkhNode(id))&&tkhTopIdOf(m,id)));
   const on=sel.size>0&&!m.tops.every(t=>sel.has(t));
