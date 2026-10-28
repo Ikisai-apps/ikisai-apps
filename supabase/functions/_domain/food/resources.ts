@@ -83,6 +83,9 @@ export function linkPlan(
       return diff;
     };
     const current = row.item_id ? byId.get(row.item_id) : undefined;
+    // Ya enlazado con un artículo que este espejo no ve (Recursos aún sincronizando, o sin permiso para verlo): no se
+    // toca. Volver a enlazarlo crearía otro artículo y el servidor rechazaría el cambio (INVALID_ITEM, 28-10).
+    if (row.item_id && !current) return;
     if (current) {
       // Enlazado (también si nació enlazado desde el recetario): el artículo lleva la referencia de Food.
       const diff = { ...diffOf(current), ...(current.source_refs.includes(ref) ? {} : { source_refs: [...current.source_refs, ref] }) };
