@@ -2294,3 +2294,20 @@ VG decidió el 27-10 «Stripe primero, Redsys después». Esta parte es solo el 
   - Los avisos de otra app (`Ds_MerchantData.app`) se ignoran.
   - En el comercio de Redsys, la «URL de notificación» la pone el propio pedido (`DS_MERCHANT_MERCHANTURL`).
 - **Conciliación:** a Redsys no se le pregunta. Los enlaces abiertos ya caducados, o cancelados, se marcan cerrados (`payment_link_gateway_closed`).
+
+### 19.7 «Cobros sin casar» (migración 0264)
+
+Es la pantalla de Dirección (`#/cobros-sin-casar`, desde Inicio) para lo que la pasarela cobró o devolvió y Finance no pudo casar sola con una factura:
+- `mismatch`: la factura ya no estaba por cobrar o el importe no coincide;
+- `unknown`: un pago de un enlace que Finance no conoce;
+- devoluciones: hay que hacer su rectificativa.
+
+- **Lectura:** `invoices.payment_events_review {all?}` (editor u owner).
+  - Por defecto, solo lo pendiente; con `all`, también lo revisado.
+  - Cada aviso trae su importe y su factura (número, total, estado y cobro), y `pending` con el recuento.
+  - Sin datos de quien paga.
+- **Revisado:** `invoices.payment_event_resolve {id, note}` (procedimiento, editor u owner). La nota, de 1 a 500 caracteres, dice qué se hizo; marcarlo otra vez cambia la nota.
+- **Pantalla:**
+  - cada aviso explica qué pasó y qué hacer (`apps/invoices/src/app/unmatched.ts`);
+  - «Abrir la factura» lleva a `#/facturas?vista=emitidas&abrir=<id>`, que abre esa ficha;
+  - necesita red.

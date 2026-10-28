@@ -128,6 +128,9 @@ export const mountHome: ViewMount = (ctx) => {
     // Ingresos y gastos de otras apps (0244): la lista, el resultado por evento y «facturado» con un toque
     fb(el('a', { class: 'inv-tool', id: 'toolAppEntries', href: '#/apuntes', onclick: (e: Event) => { e.preventDefault(); navigate('#/apuntes'); } },
       icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Ingresos de apps'), el('span', { class: 'inv-tool-hint' }, appEntriesHintText)), { feedbackId: 'invoices.inicio.apuntes', feedbackLabel: 'Ingresos y gastos de apps' }),
+    // Cobros de la pasarela que no casan con su factura (API.md §19.7)
+    fb(el('a', { class: 'inv-tool', id: 'toolUnmatched', href: '#/cobros-sin-casar', onclick: (e: Event) => { e.preventDefault(); navigate('#/cobros-sin-casar'); } },
+      icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Cobros sin casar'), el('span', { class: 'inv-tool-hint' }, 'Pagos en línea por revisar')), { feedbackId: 'invoices.inicio.cobros_sin_casar', feedbackLabel: 'Cobros sin casar' }),
     tool('sync', 'toolSync', 'Sincronización', 'sync', () => el('div', null,
       el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Conflictos y rechazados'), conflicts, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), roleText),
       el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.sincronizacion.ver_conflictos', 'data-feedback-label': 'Ver conflictos', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/conflictos'); } }, 'Ver conflictos'))), { feedbackId: 'invoices.inicio.sincronizacion', feedbackLabel: 'Sincronización' }),
