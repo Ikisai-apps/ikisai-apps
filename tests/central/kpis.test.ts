@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { collapseSeries, COMPLIANCE_TABLES, currentPeriod, formatKpi, formatPeriod, groupBySection, kpiState, seriesLength, stateSummary, targetFor, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
+import { collapseSeries, COMPLIANCE_TABLES, currentPeriod, targetOrDefault, formatKpi, formatPeriod, groupBySection, kpiState, seriesLength, stateSummary, targetFor, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 const madrid = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
@@ -63,7 +63,7 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no, y las que publican
   // solo para otros roles (p. ej. Guests, {owner}) se omiten para el lector. No depende de cuáles sean.
   const published = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and name <> 'central.central_kpi_projection'`)).rows.map((r) => r.app);
-  const expected = ['booking', 'guests', 'organizers', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
+  const expected = ['booking', 'guests', 'organizers', 'invoices', 'tasks', 'food', 'flow'].filter((a) => !published.includes(a));
   assert.deepEqual(dash.data.unavailable, expected);
   const forReader = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and not ('reader' = any(roles))`)).rows.map((r) => r.app);
   for (const hidden of forReader) assert.equal(dash.data.items.some((i: any) => i.app === hidden), false, `${hidden}: el lector no la ve`);
@@ -133,6 +133,17 @@ test('kpis · R7: temas del panel en su orden; lo que no tiene tema va detrás, 
     ['Facturas recibidas', ['invoices.unpaid']],
     ['Mes y trimestre', ['invoices.expenses_month', 'invoices.vat_quarter']],
   ]);
+  // Food y Flow (P7): sus temas, y los objetivos de partida mientras Dirección no ponga otros.
+  assert.deepEqual(groupBySection(['food.shopping_lists_open', 'food.events_without_menu_30d', 'flow.sales_yesterday', 'flow.day_closures_pending'].map((kpi) => ({ kpi }))).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
+    ['Cocina y menús', ['food.events_without_menu_30d']],
+    ['Despensa y equipos', ['food.shopping_lists_open']],
+    ['Día a día', ['flow.day_closures_pending', 'flow.sales_yesterday']],
+  ]);
+  assert.equal(kpiState(0, targetOrDefault([], 'flow.day_closures_pending', 'actual')), 'ok');
+  assert.equal(kpiState(1, targetOrDefault([], 'flow.day_closures_pending', 'actual')), 'atencion');
+  assert.equal(kpiState(2, targetOrDefault([], 'flow.day_closures_pending', 'actual')), 'critico');
+  assert.equal(targetOrDefault([{ kpi: 'flow.day_closures_pending', period: '*', target: 0, warn_at: 5, critical_at: 9, direction: 'down' }], 'flow.day_closures_pending', 'actual')!.warn_at, 5, 'manda el de Dirección');
+  assert.equal(targetOrDefault([], 'flow.sales_yesterday', 'actual'), null);
   // Una app sin claves con tema se queda en un solo bloque y en el orden de llegada.
   assert.deepEqual(groupBySection([{ kpi: 'tasks.b' }, { kpi: 'tasks.a' }]).map((g) => [g.title, g.items.map((i) => i.kpi)]), [[null, ['tasks.b', 'tasks.a']]]);
   assert.deepEqual(stateSummary([{ state: 'critico' }, { state: 'atencion' }, { state: 'atencion' }, { state: null }, { state: 'ok' }]), { critico: 1, atencion: 2, total: 5 });

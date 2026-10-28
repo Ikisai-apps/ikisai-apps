@@ -89,7 +89,7 @@ test('dirección · R7: grupos plegables con su resumen, Central por temas y Rec
   // Hoy era «un grupo por app, sin plegar ni subtítulos»: ahora cada cabecera pliega, y el orden es el de KPI_SOURCES.
   const labels = await page.locator('.kpigrouphead .sectionlabel').allTextContents();
   expect(labels.slice(0, 2)).toEqual(['Central', 'Recursos']);
-  const order = ['Central', 'Recursos', 'Booking', 'Guests', 'Organizers', 'Finance', 'Tasks', 'Food'];
+  const order = ['Central', 'Recursos', 'Booking', 'Guests', 'Organizers', 'Finance', 'Tasks', 'Food', 'Flow'];
   expect(labels.map((l) => order.indexOf(l))).toEqual([...labels.map((l) => order.indexOf(l))].sort((a, b) => a - b));
   const central = page.locator('.kpigroup[data-app="central"]');
   await expect(central.locator('.kpisection')).toHaveText(['Cumplimiento', 'Personas', 'Oficios']);
