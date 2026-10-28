@@ -16,15 +16,16 @@ import {
 } from '@ikisai/domain-food';
 import { toast } from '@ikisai/ui-kit';
 import { describeError } from './client.ts';
-import { R } from './resources.ts';
+import { R, commitFoodStock, resourcesClient } from './resources.ts';
 
 type Article = ResourceItem & { default_space_id: string | null };
 export type StockLine = Pick<ShoppingListItem, 'id' | 'ingredient_id' | 'purchase_quantity' | 'unit' | 'status' | 'supplier' | 'purchase_ref'>;
 
-export async function recordShoppingPurchases(r: SyncClient, lines: StockLine[], ingredients: Array<Pick<Ingredient, 'id' | 'name' | 'item_id'>>): Promise<void> {
+export async function recordShoppingPurchases(client: SyncClient, lines: StockLine[], ingredients: Array<Pick<Ingredient, 'id' | 'name' | 'item_id'>>): Promise<void> {
   const linked = lines.filter((line) => !line.purchase_ref)
     .map((line) => ({ line, ingredient: ingredients.find((i) => i.id === line.ingredient_id) })).filter((x) => x.ingredient?.item_id);
   if (!linked.length) return;
+  const r = resourcesClient(client);
   try {
     const [all, spaces, moves, conversions] = await Promise.all([
       r.list(R.items) as unknown as Promise<Article[]>,
@@ -46,7 +47,8 @@ export async function recordShoppingPurchases(r: SyncClient, lines: StockLine[],
       if (movement) operations.push({ op: 'insert', table: R.movements, id: crypto.randomUUID(), fields: movement });
     }
     if (unconvertible.length) toast(`No se ha dado entrada a ${unconvertible.join('; ')}.`);
-    if (operations.length) await r.commit(operations);
+    // Con origen Food, por el servidor (FO4): Finance le pone el coste buscando ese origen.
+    if (operations.length) await commitFoodStock(client, operations);
   } catch (error) {
     toast(`No se ha anotado en el inventario: ${describeError(error)}`);
   }

@@ -90,8 +90,9 @@ test('worker · anota y descuenta lo vencido; reintenta lo que se quedó a media
   assert.equal((await q(`select count(*)::int as n from core.profiles where service_name = 'food'`))[0].n, 1, 'la cuenta se reutiliza');
 
   // Un dispositivo sin red confirmó el mismo plato antes de las 24 h y sincroniza ahora: `once` no descuenta otra vez.
-  const late2 = await app.call('/api/v1/resources/commands', { body: { requestId: `cw-${++counter}`, operations: [{ op: 'call', procedure: 'resources.consume',
-    args: { item_id: riceItem, quantity: 2, kind: 'consumo_servicio', source_app: 'food', source_ref: menuItemRef(late), once: true } }] } });
+  // Como la app: por food-api `stock/commands` (FO4), que lo confirma con origen Food.
+  const late2 = await app.call('/api/v1/stock/commands', { body: { requestId: `cw-${++counter}`, operations: [{ op: 'call', procedure: 'resources.consume',
+    args: { item_id: riceItem, quantity: 2, kind: 'consumo_servicio', source_ref: menuItemRef(late), once: true } }] } });
   assert.equal(late2.status, 200, JSON.stringify(late2.data));
   assert.equal(late2.data.results[0].result.skipped, 'already_consumed');
   assert.deepEqual(await moved(late), [['consumo_servicio', -2]]);

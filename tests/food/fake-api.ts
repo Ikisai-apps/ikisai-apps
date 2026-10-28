@@ -325,7 +325,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           const spaces: string[] | null = Array.isArray(args.space_ids) ? args.space_ids : null;
           const order = [...levels.values()].filter((l) => l.quantity > 0 && (!spaces || spaces.includes(l.space_id)))
             .sort((a, b) => String(lots.get(a.lot_id ?? '')?.expires_on ?? '9999').localeCompare(String(lots.get(b.lot_id ?? '')?.expires_on ?? '9999')));
-          if (args.once && movements.some((m) => m.source_app === args.source_app && m.source_ref === args.source_ref && String(m.kind).startsWith('consumo_'))) {
+          // FO4 (Recursos 0820): el origen es la app del lote (aquí, food); lo que mande el cliente no cuenta.
+          if (args.once && movements.some((m) => m.source_app === 'food' && m.source_ref === args.source_ref && String(m.kind).startsWith('consumo_'))) {
             results.push({ op: 'call', procedure, result: { itemId: args.item_id, skipped: 'already_consumed' } });
             return;
           }
@@ -333,7 +334,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           const take = (space: string, lot: string | null, quantity: number) => {
             const row: FakeRow = { id: randomUUID(), revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null };
             for (const column of tables['resources.movements']!) row[column] = null;
-            Object.assign(row, { item_id: args.item_id, space_id: space, lot_id: lot, quantity: -quantity, kind: args.kind, source_app: args.source_app, source_ref: args.source_ref, note: args.note ?? null });
+            Object.assign(row, { item_id: args.item_id, space_id: space, lot_id: lot, quantity: -quantity, kind: args.kind, source_app: 'food', source_ref: args.source_ref, note: args.note ?? null });
             stagedTable('resources.movements').set(row.id, row);
             batchChanges.push(record('resources.movements', 'insert', row, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
           };
@@ -570,13 +571,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (allowed.includes('name') && !['food.menus', 'food.carta_lines'].includes(op.table) && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? DEFAULTS[op.table]?.[column] ?? null;
+        // FO4: el origen de un movimiento lo pone el servidor con la app del lote, no el cliente.
+        if (op.table === 'resources.movements') row.source_app = 'food';
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });
         if (op.expectedRevision !== row.revision) {
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: op.table, id: op.id, expectedRevision: op.expectedRevision, currentRevision: row.revision, current: { ...row } });
         }
-        if (op.op === 'update') Object.assign(row, fields);
+        if (op.op === 'update') Object.assign(row, op.table === 'resources.movements' ? { ...fields, source_app: row.source_app } : fields);
         if (op.op === 'delete') row.deleted_at = now;
         if (op.op === 'restore') {
           if (!row.deleted_at) throw new Fault(409, 'ROW_NOT_DELETED', 'La fila no está borrada.');
@@ -779,6 +782,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore });
       }
       if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId, scope));
+      // FO4: lo comprado y el consumo con origen Food, por el servidor (food-api `stock/commands`): un lote de Recursos.
+      if (path === 'stock/commands' && method === 'POST' && scope === 'food') return json(res, 200, commit(await readJson(req), session.userId, 'resources'));
       // Sugerencias del núcleo (contrato §3.10), lo justo para la cola de Food: listar, ver, aprobar y descartar.
       if (path === 'suggestions' && method === 'GET') {
         const scope = url.searchParams.get('scope') ?? 'mine';

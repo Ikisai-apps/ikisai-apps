@@ -36,6 +36,16 @@ export function resourcesClient(client: SyncClient): SyncClient {
   return resources;
 }
 
+/**
+ * Lo comprado y el consumo de un plato, a Recursos con origen Food (FO4; food-api `POST stock/commands`). Desde el
+ * navegador, Recursos no se fía del `source_app` del cliente, y Finance (coste de lo comprado) y el `once` del consumo
+ * lo necesitan: lo confirma el servidor. Necesita red. Después se trae Recursos para ver el movimiento.
+ */
+export async function commitFoodStock(client: SyncClient, operations: unknown[]): Promise<void> {
+  await client.api('/stock/commands', { method: 'POST', json: { requestId: crypto.randomUUID(), operations } });
+  await resourcesClient(client).sync().catch(() => undefined);
+}
+
 /** Arranca Recursos y el enlace, sin esperar: Food funciona igual mientras tanto. */
 export function startResources(client: SyncClient): void {
   const r = resourcesClient(client);
