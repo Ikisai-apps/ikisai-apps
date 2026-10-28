@@ -2323,3 +2323,8 @@ button.cal-sheet-event{cursor:pointer}
 [data-more-end]:not([data-more-start]){-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent)}
 [data-more-start]:not([data-more-end]){-webkit-mask-image:linear-gradient(to right,transparent,#000 32px);mask-image:linear-gradient(to right,transparent,#000 32px)}
 [data-more-start][data-more-end]{-webkit-mask-image:linear-gradient(to right,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to right,transparent,#000 32px,#000 calc(100% - 32px),transparent)}
+/* Baliza de decoración (texto o imagen propia; src/spaces/map.ts). */
+.map-deco-text{fill:var(--ink);font-weight:700;paint-order:stroke;stroke:var(--paper);stroke-width:.25em;stroke-linejoin:round}
+.map-deco-beacon .map-deco-tag{fill:var(--paper);stroke:var(--accent);stroke-width:.4}
+.map-decor-beacon{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px}
+.map-decor-beacon .field{flex:1 1 200px;min-width:0}
