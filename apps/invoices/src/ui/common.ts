@@ -19,7 +19,12 @@ export function field(label: string, control: HTMLElement, hint?: string): HTMLE
   return el('label', { class: 'field' }, el('span', null, label), control, hint ? el('span', { class: 'hint' }, hint) : null);
 }
 
+/**
+ * Desplegable. Para el inventario de campos, quien llama expande en `extra` las marcas del kit con la especificación literal
+ * (así la lee el catálogo; criterio de UI-kit, #1158).
+ */
 export function select(id: string, options: Array<[string, string]>, value: string | null | undefined, extra: Record<string, unknown> = {}): HTMLSelectElement {
+  // @field-caller
   return el('select', { id, ...extra }, ...options.map(([v, label]) => el('option', { value: v, selected: (value ?? '') === v }, label)));
 }
 

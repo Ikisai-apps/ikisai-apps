@@ -88,7 +88,8 @@ test('flow · llegar desde otra app con returnTo muestra «Volver a…» y limpi
 test('flow · sin crear recorridos ni flujos desde la interfaz; «Volver» y «Cerrar» en las pantallas de recorridos', async ({ page }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: 'Flujos' })).toBeVisible();
-  await expect(page.locator('nav.flow-nav')).toBeHidden(); // en la entrada común no hace falta
+  await expect(page.getByRole('button', { name: 'Volver', exact: true })).toBeHidden(); // en la entrada común no hace falta
+  await expect(page.getByRole('button', { name: 'Cerrar y volver a la entrada' })).toBeHidden();
   await page.goto(`${baseURL}/#/recorridos`);
   await expect(page.getByRole('heading', { name: 'Recorridos' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Nuevo recorrido' })).toHaveCount(0);

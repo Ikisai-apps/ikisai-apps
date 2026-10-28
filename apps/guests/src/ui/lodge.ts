@@ -63,10 +63,10 @@ function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerF
   const rows = FIELDS.map((f) => {
     const id = `${prefix}${f.key}`;
     const input = f.key === 'document_type'
-      ? el('select', { id, class: 'input', ...f.mark }, el('option', { value: '' }, '—'), ...DOCUMENT_TYPES.map((d) => el('option', { value: d }, d))) as HTMLSelectElement
+      ? el('select', { id, class: 'input', ...f.mark /* data-field-id y anclaje literales en FIELDS (fieldAttrs) */ }, el('option', { value: '' }, '—'), ...DOCUMENT_TYPES.map((d) => el('option', { value: d }, d))) as HTMLSelectElement
       : el('input', { id, class: 'input', type: f.type ?? 'text', maxlength: '120', ...(f.auto ? { autocomplete: f.auto } : {}), ...(f.required ? { required: '' } : {}),
         // El número de documento, sin corrector ni mayúsculas automáticas a medias (la letra del DNI o el NIE).
-        ...(f.key === 'document_number' ? { autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' } : {}), ...f.mark }) as HTMLInputElement;
+        ...(f.key === 'document_number' ? { autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' } : {}), ...f.mark /* data-field-id y anclaje literales en FIELDS (fieldAttrs) */ }) as HTMLInputElement;
     inputs.set(f.key, input);
     return el('label', { class: 'field', for: id }, el('span', null, t(`lodge.f.${f.key}`)), input);
   });
@@ -209,7 +209,8 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         const { value } = await publicBeds(code, from.value, to.value);
         const free = value.rooms.flatMap((r) => r.beds.filter((b) => b.free).map((b) => ({ room: r, bed: b })));
         const radio = (value_: string, label: HTMLElement | string, checked = false) => el('label', { class: 'glodge-bed-opt' },
-          el('input', { type: 'radio', name: 'lodgeBed', value: value_, ...(checked ? { checked: '' } : {}), onchange: () => { picked = value_ || null; } }), label);
+          el('input', { type: 'radio', name: 'lodgeBed', value: value_, ...(checked ? { checked: '' } : {}), onchange: () => { picked = value_ || null; },
+            'data-field-id': 'guests.visitante.alojate.cama' }), label);
         replace(bedsHost,
           el('p', { class: 'small', id: 'lodgePrice' }, value.price_night_cents !== null
             ? t('lodge.price', { night: money(value.price_night_cents), total: money(value.price_night_cents * value.nights), nights: t('stay.nights', { count: value.nights }) }) : ''),

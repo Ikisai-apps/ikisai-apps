@@ -6,7 +6,7 @@
  * en recepción; `pay_first`: no se guarda hasta pagar) y lo mínimo: nombre; contacto y nota, optativos. Nunca camas
  * concretas ni huéspedes.
  */
-import { el, replace } from '@ikisai/ui-kit';
+import { el, fieldAttrs, replace } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
 import { errorCodeOf, publicLodging, type PublicEvent, type PublicLodging, type VisitorRequest } from '../app/visitor.ts';
@@ -58,9 +58,9 @@ export function stayRequestText(r: VisitorRequest): string {
 export function stayBlock(event: PublicEvent, today: string, options: StayOptions = {}): HTMLElement {
   const first = event.starts_on && event.starts_on > today ? event.starts_on : today;
   const last = event.ends_on ?? addDays(first, 1);
-  const from = el('input', { type: 'date', id: 'pubStayFrom', class: 'input', value: first, min: first, max: last }) as HTMLInputElement;
-  const to = el('input', { type: 'date', id: 'pubStayTo', class: 'input', value: addDays(first, 1), min: addDays(first, 1), max: addDays(last, 1) }) as HTMLInputElement;
-  const persons = el('input', { type: 'number', id: 'pubStayPersons', class: 'input', value: '1', min: '1', max: '20', inputmode: 'numeric' }) as HTMLInputElement;
+  const from = el('input', { type: 'date', id: 'pubStayFrom', class: 'input', value: first, min: first, max: last, ...fieldAttrs({ id: 'guests.visitante.reservar.llegada', entity: 'booking.visitor_requests', prop: 'from_date', type: 'date', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
+  const to = el('input', { type: 'date', id: 'pubStayTo', class: 'input', value: addDays(first, 1), min: addDays(first, 1), max: addDays(last, 1), ...fieldAttrs({ id: 'guests.visitante.reservar.salida', entity: 'booking.visitor_requests', prop: 'to_date', type: 'date', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
+  const persons = el('input', { type: 'number', id: 'pubStayPersons', class: 'input', value: '1', min: '1', max: '20', inputmode: 'numeric', ...fieldAttrs({ id: 'guests.visitante.reservar.personas', entity: 'booking.visitor_requests', prop: 'persons', type: 'number', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
   const result = el('div', { id: 'pubStayResult', 'aria-live': 'polite' });
   from.addEventListener('change', () => {
     to.min = addDays(from.value, 1);
@@ -79,9 +79,9 @@ export function stayBlock(event: PublicEvent, today: string, options: StayOption
   };
   /** La solicitud de una modalidad: resumen, cómo se paga y lo mínimo (nombre; contacto y nota, optativos). */
   const ask = (m: PublicLodging['modes'][number], l: PublicLodging) => {
-    const name = el('input', { id: 'pubStayName', class: 'input', autocomplete: 'given-name', maxlength: '80', required: '' }) as HTMLInputElement;
-    const contact = el('input', { id: 'pubStayContact', class: 'input', autocomplete: 'email', maxlength: '200' }) as HTMLInputElement;
-    const note = el('input', { id: 'pubStayNote', class: 'input', maxlength: '300' }) as HTMLInputElement;
+    const name = el('input', { id: 'pubStayName', class: 'input', autocomplete: 'given-name', maxlength: '80', required: '', ...fieldAttrs({ id: 'guests.visitante.reservar.nombre', entity: 'booking.visitor_requests', prop: 'name', type: 'text', required: true, sensitivity: 'personal' }) }) as HTMLInputElement;
+    const contact = el('input', { id: 'pubStayContact', class: 'input', autocomplete: 'off', maxlength: '200', ...fieldAttrs({ id: 'guests.visitante.reservar.contacto', entity: 'booking.visitor_requests', prop: 'contact', type: 'text', required: false, sensitivity: 'personal' }) }) as HTMLInputElement;
+    const note = el('input', { id: 'pubStayNote', class: 'input', maxlength: '300', ...fieldAttrs({ id: 'guests.visitante.reservar.nota', entity: 'booking.visitor_requests', prop: 'note', type: 'text', required: false, sensitivity: 'personal' }) }) as HTMLInputElement;
     const send = el('button', { type: 'submit', class: 'primary', id: 'pubStaySend', 'data-feedback-id': 'guests.visitante.noches.pedir', 'data-feedback-label': 'Pedir las noches' }, t('stay.send')) as HTMLButtonElement;
     const why = el('div', { 'aria-live': 'polite' });
     const form = el('form', { class: 'gstay-ask', id: 'pubStayAsk', novalidate: '',

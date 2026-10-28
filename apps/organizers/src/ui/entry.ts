@@ -54,7 +54,7 @@ function codeForm(api: NonNullable<EntryOptions['emailCode']>): HTMLElement {
   const email = el('input', { type: 'email', id: 'codeEmail', autocomplete: 'email', inputmode: 'email', required: true, value: typed.email,
     ...fieldAttrs({ id: 'organizers.entrada.codigo.correo', label: 'Tu correo', entity: 'auth.users', prop: 'email', type: 'email', required: true, sensitivity: 'personal' }) }) as HTMLInputElement;
   const code = el('input', { type: 'text', id: 'codeInput', autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: '12',
-    ...fieldAttrs({ id: 'organizers.entrada.codigo.codigo', label: 'Código del correo', type: 'text', required: true, sensitivity: 'sensitive' }) }) as HTMLInputElement;
+    ...fieldAttrs({ id: 'organizers.entrada.codigo.codigo', storage: 'none', label: 'Código del correo', type: 'text', required: true, sensitivity: 'sensitive' }) }) as HTMLInputElement;
   const sendButton = el('button', { type: 'button', class: typed.sent ? 'ghost' : 'primary', id: 'codeSend', 'data-feedback-id': 'organizers.entrada.codigo.enviar', 'data-feedback-label': 'Enviarme un código' },
     typed.sent ? t('Enviar otro código') : t('Enviarme un código'));
   const enterButton = el('button', { type: 'button', class: 'primary', id: 'codeEnter', 'data-feedback-id': 'organizers.entrada.codigo.entrar', 'data-feedback-label': 'Entrar con el código' }, t('Entrar'));

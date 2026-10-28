@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
-import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, createUploads, fail, generateAgentKey, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  BED_LAYOUT_PROJECTION, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
+  BED_LAYOUT_PROJECTION, FIELD_COVERAGE_READ, canDeclareUtility, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetOrDefault, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
   type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -169,9 +169,72 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
         return { actionId, created: out.created, task: out.task };
       },
     },
+    // Alta de un agente desde Central (VG, 27-10: no encontraba cómo darle lectura en todas las apps). Como el alta de agentes
+    // del kit, pero en varias apps de una vez: crea la cuenta de agente, le da su rol (lector, salvo que se pida editor) en
+    // cada app elegida donde quien la da es propietario, y emite una clave que solo se ve en la respuesta. Nunca en Central.
+    {
+      method: 'POST', pattern: 'agents/new', handler: async ({ ctx, json }) => {
+        if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo quien administra Central da de alta agentes.');
+        const body = (await json().catch(() => ({}))) ?? {};
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name || name.length > 100) fail(422, 'INVALID_OPERATION', 'Pon un nombre de hasta 100 caracteres.');
+        const role = body.role === 'editor' ? 'editor' : 'reader';
+        const apps = Array.isArray(body.apps)
+          ? [...new Set((body.apps as unknown[]).filter((a): a is string => typeof a === 'string' && /^[a-z][a-z0-9_]*$/.test(a) && a !== 'central'))].slice(0, 20)
+          : [];
+        if (!apps.length) fail(422, 'INVALID_OPERATION', 'Elige al menos una app (Central no admite agentes).');
+        let expiresAt: string | null = null;
+        if (typeof body.expiresAt === 'string' && body.expiresAt) {
+          const when = new Date(body.expiresAt);
+          if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) fail(422, 'INVALID_OPERATION', 'La caducidad debe ser una fecha futura.');
+          expiresAt = when.toISOString();
+        }
+        const bytes = new Uint8Array(18); crypto.getRandomValues(bytes);
+        const password = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '');
+        const created = await supabase.remote('/auth/v1/admin/users', {
+          service: true, method: 'POST',
+          body: { email: `agent-${crypto.randomUUID().slice(0, 8)}@agents.ikisai.invalid`, password, email_confirm: true, user_metadata: { kind: 'agent', name } },
+        });
+        if (typeof created?.id !== 'string') fail(502, 'AUTH_ADMIN_FAILED', 'No se pudo crear la cuenta del agente.');
+        const token = generateAgentKey();
+        const digest = await sha256Hex(new TextEncoder().encode(token));
+        let keyId: string | null = null;
+        const results: Array<{ app: string; ok: boolean; code?: string }> = [];
+        for (const app of apps) {
+          const first: boolean = keyId === null;
+          try {
+            const out: { keyId: string | null } | null = await supabase.rpc<{ keyId: string | null }>('core_agent_key_issue', {
+              p_app: app, p_actor: ctx.user.id, p_user: created.id, p_name: name, p_role: role, p_scopes: null,
+              p_digest: first ? digest : null, p_hint: first ? token.slice(-4) : null, p_expires_at: first ? expiresAt : null,
+            });
+            if (first) keyId = out?.keyId ?? null;
+            results.push({ app, ok: true });
+          } catch (error) {
+            results.push({ app, ok: false, code: isFault(error) ? error.code : 'ERROR' });
+          }
+        }
+        if (keyId === null) fail(403, 'FORBIDDEN', 'No eres propietario de ninguna de esas apps: el agente no tiene acceso a ninguna.', { apps: results });
+        return { userId: created.id, keyId, name, role, token, apps: results };
+      },
+    },
     // Panel de dirección (API.md §7.2): lee la proyección de KPIs de cada app con la clave de servicio y la registración
     // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`; si la app
     // la publica solo para otros roles (FORBIDDEN), se omite: no es que no tenga indicadores, es que este rol no los ve.
+    // Revisor › cobertura de campos: lo que da el núcleo (`core_field_coverage`, 0111) y lo que da Flow (anclajes de los
+    // pasos y reglas, `flow.anchor_coverage_read`). Solo metadatos. Para Dirección; si Flow no responde, `flowAvailable: false`
+    // y las clases «directo» y «automático» no salen (no se dice que no las haya).
+    {
+      method: 'GET', pattern: 'coverage/fields', handler: async ({ ctx, url }) => {
+        if (!canDeclareUtility(ctx.membership)) fail(403, 'FORBIDDEN', 'La cobertura de campos es para Dirección.');
+        const app = url.searchParams.get('app') || null;
+        if (app !== null && !/^[a-z][a-z0-9_]*$/.test(app)) fail(422, 'INVALID_ARGS', 'App no válida.');
+        const core = await supabase.rpc<{ fields: unknown[]; declared: unknown }>('core_field_coverage', { p_actor: ctx.user.id, p_app: app, p_duplicates: 'exact' });
+        let flow: { anchors: unknown[]; rules: unknown[] } = { anchors: [], rules: [] };
+        let flowAvailable = true;
+        try { flow = await read<{ anchors: unknown[]; rules: unknown[] }>(ctx, FIELD_COVERAGE_READ, app ? { app } : {}); } catch { flowAvailable = false; }
+        return { fields: core?.fields ?? [], declared: core?.declared ?? null, anchors: flow?.anchors ?? [], rules: flow?.rules ?? [], flowAvailable };
+      },
+    },
     // Camas en el plano con un solo modelo (VG, 27-10): la disposición de cada cama la guarda Booking y Central la lee aquí
     // para derivar su forma. Si Booking no responde, ninguna cama en el plano (`available: false`), nunca la forma vieja.
     {
@@ -196,7 +259,7 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
             for (const row of out.rows) {
               if (!canSeeKpi(String(row.unit), ctx.membership.role)) continue;
               const value = row.value === null || row.value === undefined ? null : Number(row.value);
-              const target = targetFor(targets, row.kpi, row.period);
+              const target = targetOrDefault(targets, row.kpi, row.period);
               items.push({ app: source.app, kpi: row.kpi, label: row.label, value, unit: row.unit, period: row.period,
                 periodStart: row.period_start, periodEnd: row.period_end, direction: row.direction, link: row.link, computedAt: row.computed_at,
                 target: target?.target ?? null, state: kpiState(value, target) });

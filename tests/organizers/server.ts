@@ -13,6 +13,8 @@ import { build } from 'vite';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { createOrganizersApp, ORGANIZERS_ORIGINS } from '../../supabase/functions/organizers-api/app.ts';
+import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
+import { createFakeStripe, type FakeStripe } from '../../supabase/functions/_domain/payments/fake.ts';
 import { JOIN_PROCEDURE, JOIN_SUGGESTION_KIND, PROCEDURES, TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
 
 export interface OrganizersTestServer {
@@ -61,6 +63,15 @@ export interface OrganizersTestServer {
    * cada uno con sus alérgenos y `checked` (`allergens_checked` de la receta). Se valida al final.
    */
   menu(reservationId: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; allergens: string[]; checked: boolean }> }>): Promise<void>;
+  /**
+   * «Pagar ahora» de punta a punta (F5): con `on`, organizers-api tiene el pago en línea encendido y llama al worker de la
+   * Finance real (invoices-api sobre el mismo PGlite) con el Stripe falso. Apagado por defecto, como en producción.
+   */
+  setPayments(on: boolean): void;
+  /** El Stripe falso de Finance (las sesiones creadas, para pagar una). */
+  stripe: FakeStripe;
+  /** Quien paga termina en Stripe y Stripe avisa a Finance (webhook firmado): Finance marca la factura cobrada. */
+  stripePays(sessionUrl: string): Promise<void>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -121,7 +132,17 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
     app: 'booking', slug: 'booking-api', origin: BOOKING_ORIGINS[0]!,
     createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!] }),
   });
-  const organizers = createOrganizersApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, origins: [origin], release: 'test', emailCode: true });
+  const WORKER_KEY = 'clave-de-worker-de-pruebas';
+  const WEBHOOK_SECRET = 'whsec_pruebas_organizers';
+  const stripe = createFakeStripe();
+  const base = { url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, release: 'test', workerKey: WORKER_KEY };
+  // Finance real con el Stripe falso: organizers-api la llama por HTTP; aquí, directamente a su handler.
+  const invoices = createInvoicesApp({ ...base, origins: [INVOICES_ORIGINS[0]!], drive: { api: null }, payments: stripe, paymentsWebhookSecret: WEBHOOK_SECRET });
+  const toFinance = ((input: RequestInfo | URL, init?: RequestInit) => invoices(new Request(input, init))) as typeof fetch;
+  const organizersOff = createOrganizersApp({ ...base, origins: [origin], emailCode: true });
+  const organizersPaying = createOrganizersApp({ ...base, origins: [origin], emailCode: true, payments: { enabled: true, fetch: toFinance } });
+  let paying = false;
+  const organizers = (request: Request) => (paying ? organizersPaying : organizersOff)(request);
   // Textos legales y de contacto de Central (#281): en producción los siembra la migración; aquí, a mano.
   await booking.t.db.query('select central.seed_texts()');
   await booking.t.db.query('select central.seed_texts_payment()');
@@ -305,6 +326,16 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
         }
       }
       await db.query(`update food.menus set status = 'validado', validated_at = now() where id = $1`, [menuId]);
+    },
+    setPayments(on) { paying = on; },
+    stripe,
+    async stripePays(sessionUrl) {
+      const id = sessionUrl.split('/').at(-1)!.split(/[?#]/)[0]!;
+      stripe.pay(id);
+      const { body, signature } = await stripe.webhook(id, 'checkout.session.completed', WEBHOOK_SECRET);
+      const res = await invoices(new Request(`${booking.supabase.url}/functions/v1/invoices-api/api/v1/public/payments/stripe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': signature }, body }));
+      if (!res.ok) throw new Error(`webhook ${res.status}: ${await res.text()}`);
     },
     setOffline(on) { offline = on; },
     close: async () => {

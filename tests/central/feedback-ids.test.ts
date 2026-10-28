@@ -14,7 +14,7 @@ const SRC = path.resolve(here, '../../apps/central/src');
 const PATTERN = /^central(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `central.…` del código que no son ids de feedback: tablas, lecturas y claves de KPIs y de Tasks. */
-const NOT_IDS = (id: string) => /^central\.(texts|text_history|text_version|people|person_private|person_records|teams|person_teams|entity|requirements|key_documents|requirement_tasks|kpi_targets|agents|trades|person_trades|review_screens|weekly_reviews|weekly_review_items|weekly_actions|weekly_action|decisions|compliance_due|common_|central_kpi_projection|app_catalog|record_file|requirement_brief|legal_|blocking_|risks_|documents_|people_active|people_records_)/.test(id);
+const NOT_IDS = (id: string) => /^central\.(texts|text_history|text_version|people|person_private|person_records|teams|person_teams|entity|requirements|key_documents|requirement_tasks|kpi_targets|agents|pending_access|field_group_reviews|trades|person_trades|review_screens|weekly_reviews|weekly_review_items|weekly_actions|weekly_action|decisions|compliance_due|common_|central_kpi_projection|app_catalog|record_file|requirement_brief|legal_|blocking_|risks_|documents_|people_active|people_records_)/.test(id);
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -79,7 +79,7 @@ test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', 
   const roots = new Set(collect().filter((f) => !f.dynamic).map((f) => f.id.split('.')[1]));
   const allowed = new Set([
     'inicio', 'direccion', 'accesos', 'entidad', 'textos', 'personas', 'persona', 'equipos', 'oficios', 'cumplimiento', 'obligacion', 'decisiones', 'conflictos',
-    'inventario', 'articulo', 'decision', 'revision', 'planos', 'uso', 'semana',
+    'inventario', 'articulo', 'decision', 'revision', 'planos', 'uso', 'semana', 'campos',
     'cabecera', 'navegacion', 'avisos', 'menu',
   ]);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);

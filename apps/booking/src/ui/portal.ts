@@ -4,7 +4,7 @@
  * respuesta de la emisión: se enseña una vez en una hoja y no se guarda en ningún sitio.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, el, formatDate, openSheet, toast, type Sheet } from '@ikisai/ui-kit';
+import { fieldAttrs, confirmDialog, el, formatDate, openSheet, toast, type Sheet } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { buildForm, type FieldSpec } from './form.ts';
 
@@ -79,7 +79,7 @@ export function createPortalBlock(): PortalBlock {
 
   /** Hoja con la URL recién emitida: es la única vez que se ve. Al cerrarla, el DOM que la contiene desaparece. */
   function showIssued(issued: Issued, name: string): void {
-    const field = el('textarea', { id: 'portalUrl', class: 'portal-url', rows: 3, readonly: true, spellcheck: false, 'aria-label': 'Enlace del organizador', onfocus: (e: Event) => (e.target as HTMLTextAreaElement).select() }, issued.url);
+    const field = el('textarea', { id: 'portalUrl', ...fieldAttrs({ id: 'booking.reserva.portal.enlace', label: 'Enlace del organizador', confirm: 'none', storage: 'none' }), class: 'portal-url', rows: 3, readonly: true, spellcheck: false, 'aria-label': 'Enlace del organizador', onfocus: (e: Event) => (e.target as HTMLTextAreaElement).select() }, issued.url);
     const copy = async () => {
       try { await navigator.clipboard.writeText(issued.url); toast('Enlace copiado'); } catch { field.select(); toast('No se pudo copiar. Selecciona el enlace y cópialo a mano.'); }
     };

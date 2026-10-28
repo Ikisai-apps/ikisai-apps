@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { closeSheet, el, openSheet } from '@ikisai/ui-kit';
+import { closeSheet, el, fieldAttrs, openSheet } from '@ikisai/ui-kit';
 import { PAYMENT_METHODS } from '@ikisai/domain-invoices';
 import { INVOICES, type LocalInvoice } from '../app/client.ts';
 import { PAYMENT_METHOD_LABELS, eur } from '../app/data.ts';
@@ -14,9 +14,9 @@ const PAY_FIELDS = ['payment_status', 'paid_at', 'payment_method', 'payment_sour
  * los cuatro campos del pago como estaban.
  */
 export function openPaySheet(client: SyncClient, invoice: LocalInvoice, title: string): void {
-  const date = el('input', { 'data-feedback-id': 'invoices.facturas.pago.fecha', 'data-feedback-label': 'Fecha de pago', type: 'date', id: 'rowPaidAt', value: invoice.paid_at ?? invoice.invoice_date ?? '', required: true }) as HTMLInputElement;
+  const date = el('input', { ...fieldAttrs({ id: 'invoices.facturas.pago.fecha', label: 'Fecha de pago', type: 'date', entity: 'invoices.invoices', prop: 'paid_at', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'rowPaidAt', value: invoice.paid_at ?? invoice.invoice_date ?? '', required: true }) as HTMLInputElement;
   const method = select('rowPaidMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, PAYMENT_METHOD_LABELS[m] ?? m] as [string, string])], invoice.payment_method,
-    { 'data-feedback-id': 'invoices.facturas.pago.metodo', 'data-feedback-label': 'Método de pago' });
+    { ...fieldAttrs({ id: 'invoices.facturas.pago.metodo', label: 'Método de pago', type: 'select', entity: 'invoices.invoices', prop: 'payment_method', sensitivity: 'internal', confirm: 'none' }) });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const form = el('form', { class: 'inv-form', id: 'payForm', novalidate: true, onsubmit: (e: Event) => {
     e.preventDefault();

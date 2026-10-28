@@ -46,9 +46,9 @@ async function boot(): Promise<void> {
       const grant = (await client.loginWithLink(match[1] ?? '')).grant as { guest_id?: unknown } | null | undefined;
       linkedGuestId = typeof grant?.guest_id === 'string' ? grant.guest_id.toLowerCase() : null;
     } catch (error) {
+      // Sin callejón (VG, 28-10): una app instalada desde un enlace de un solo uso vuelve a él en cada arranque. Si ya hay
+      // sesión guardada, se sigue con ella; si no, la entrada dice que caducó y enseña los eventos abiertos.
       entryError = error;
-      show();
-      return;
     }
   }
   try {
@@ -56,6 +56,7 @@ async function boot(): Promise<void> {
   } catch (error) {
     console.warn('[guests] arranque sin red o sin sesión', error);
   }
+  if (entryError && client.session()) entryError = null;
   show();
 }
 

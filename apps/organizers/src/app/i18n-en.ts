@@ -474,6 +474,8 @@ export const EN: Dictionary = {
   'Nuevo': 'New',
   '1 nuevo': '1 new',
   '1 comentario nuevo': '1 new comment',
+  '1 respuesta de Ikisai': '1 reply from Ikisai',
+  '{n} respuestas de Ikisai': '{n} replies from Ikisai',
   '{n} comentarios nuevos': '{n} new comments',
   '{n} nuevos': '{n} new',
   'Pagar en línea': 'Pay online',

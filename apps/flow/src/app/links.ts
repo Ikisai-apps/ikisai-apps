@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { el, openSheet, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, openSheet, toast } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from './actions.ts';
 import { describeError } from './client.ts';
@@ -100,8 +100,8 @@ export async function quickPurchase(client: SyncClient, unit: Unit): Promise<voi
 
 /** «Pedir a Tasks» desde una tarea: tarea, o compra con cantidad. */
 export function askTasks(client: SyncClient, unit: Unit): void {
-  const qty = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: unit.payload?.qty !== undefined ? String(unit.payload.qty) : '', 'aria-label': 'Cantidad' });
-  const measure = el('input', { type: 'text', maxlength: '20', value: unit.payload?.unit ?? '', 'aria-label': 'Unidad', placeholder: 'kg, ud…' });
+  const qty = el('input', { ...fieldAttrs({ id: 'flow.logistica.cantidad', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: unit.payload?.qty !== undefined ? String(unit.payload.qty) : '', 'aria-label': 'Cantidad' });
+  const measure = el('input', { ...fieldAttrs({ id: 'flow.logistica.unidad', entity: 'flow.units', prop: 'payload', type: 'text' }), type: 'text', maxlength: '20', value: unit.payload?.unit ?? '', 'aria-label': 'Unidad', placeholder: 'kg, ud…' });
   const send = async (type: 'task' | 'purchase') => {
     if (!isOnline(client)) { toast('Pedir a Tasks necesita conexión.'); return; }
     try {

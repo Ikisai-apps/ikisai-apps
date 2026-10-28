@@ -783,7 +783,9 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 ## 23. Comentarios leídos y sin leer (migración 0706; diseño en `MUELA/equipo/feedback/organizers/COMENTARIOS_LEIDOS.md`)
 
 - **En el resumen del retiro:** en «Comentarios de tus asistentes», lo que esta persona no ha visto lleva «Nuevo» y el título dice cuántos. Un comentario cuenta como visto tras un segundo en pantalla (`IntersectionObserver`); la marca se queda hasta la próxima vez que se abre.
-- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora, sin purga.
+- **`organizers.comment_reads`** (`reservation_id`, `report_id`, `user_id`, `read_at`): solo ids y la hora.
+  - **Conservación (0710):** se borra a los 180 días, o cuando el retiro terminó hace más de 90. Si el retiro está borrado, cancelado o perdido, a los 90 días de leerla.
+  - Va en la misma vuelta que las respuestas (`organizers.retention_run`, B18), en un lote del sistema, para que los dispositivos también borren su copia. Nadie más la borra.
   - Cada persona escribe solo su fila (`user_id` = actor), también Dirección con «todos», de un comentario de asistente (`guests`, `subject = event`) de ese retiro.
   - No se cambia ni se borra (`IMMUTABLE_FIELD`).
   - Cada persona ve solo sus filas: lo que lee una coorganizadora no cuenta para la otra.
@@ -792,7 +794,7 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 
 ## 24. «Pagar ahora» sin enlace (F5; Finance API.md §19.3, #1057)
 
-- **Cuándo sale:** en «Pagar en línea», junto a las facturas que traen enlace, salen las emitidas sin cobrar, con importe y sin enlace vigente (`payOnDemand`), si `GET payments/config` dice `{online: true}`.
+- **Cuándo sale:** en «Pagar en línea», junto a las facturas que traen enlace, salen las que no están cobradas, tienen importe y no tienen enlace vigente (`payOnDemand`), si `GET payments/config` dice `{online: true}`. Valen «emitida» y «registrada», que es el estado por defecto de las emitidas de Finance, como en su regla `payable` (0255). Una rectificada, no.
 - **Encendido:** la Edge lo enciende con `IKISAI_PORTAL_PAYMENTS=1`. Apagado, no sale el botón y `POST payments/link` responde `503 PAYMENTS_OFF`.
 - **`POST payments/link {reservation_id, issued_invoice_id}`** (editor u owner):
   - organizers-api llama a `invoices-api/api/v1/worker/payment-links/portal` con `IKISAI_WORKER_KEY` y `X-Ikisai-Caller: organizers`, en nombre de quien pulsa (`actor`);
@@ -806,6 +808,7 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Pruebas:**
   - `tests/organizers/pay-now.test.ts`: las tres Edge sobre PGlite con el Stripe falso. Comprueba el importe, las URL de vuelta, la reutilización, la lectura del portal con el enlace, el ámbito y el apagado.
   - `pay-link.test.ts` y `portal.spec.ts`.
+  - **De punta a punta** (`portal.spec.ts`, con la Finance real y el Stripe falso del servidor de pruebas, `setPayments` y `stripePays`): pulsar, la sesión con el total, la vuelta con «Pago en curso» y «Volver a la pasarela», y cobrada por el webhook firmado de Stripe.
 
 ## 25. Avisos por correo de comentarios nuevos (migración 0709; línea de Core del 28-10)
 
@@ -825,4 +828,14 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Pruebas:** `tests/organizers/comment-notices.test.ts`:
   - el texto del correo, las cabeceras sin inyección y el diálogo SMTP con una conexión doble;
   - el envío en PGlite: lo suyo sin leer, la espera de una hora, cada organizadora lo suyo y nada con el aviso apagado.
+
+## 26. La casa contesta (núcleo 0117; diseño en `MUELA/equipo/feedback/organizers/RESPUESTAS_CASA.md`)
+
+- **Qué ve quien organiza:** lo que escribe a Ikisai sobre su retiro («Ayuda y sugerencias») puede recibir respuesta de la casa, desde Booking (B22).
+  - En **Mis retiros**, la tarjeta del retiro lleva «N respuestas de Ikisai» con las que no ha visto.
+  - En **«Lo que me has enviado»**, cada informe muestra sus respuestas firmadas «Ikisai», con la fecha. Al enseñarlas, cuentan como vistas.
+- **Rutas del kit** (contrato §3.7): `GET feedback/replies` y `POST feedback/replies/read {ids}`. Las respuestas solo las escribe la casa (`POST feedback/:id/replies`).
+- **Cliente:** `app/replies.ts` (`loadReplies`, `unreadRepliesByReservation`, `repliesOf`, `markRepliesRead`).
+- **Sin correo todavía:** se sumará al aviso de la 0709 (§25) cuando se encienda.
+- **Pruebas:** `tests/core/feedback-replies.test.ts`.
 
