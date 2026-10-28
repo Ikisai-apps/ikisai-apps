@@ -83,6 +83,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 - **Ofertas de comida por evento** (migración 1111; API.md §2.12): `food.event_offers`, la conversión de lo de hoy, `food.event_offers_projection` para Booking, `food.portal_offers` para Organizers y Guests (las internas solo a Guests, marcadas), `food.event_needs` y el bloque «Ofertas de comida» en la ficha del evento. Prueba: `offers.test.ts`.
 
+- **Imagen de la carta en el recetario** (VG, 28-10): una receta sin foto propia usa en su medallón la imagen de su línea de la carta (los montaditos, servidas por Flow).
 - **Capacidad material** (food-13, pedido de VG del 28-10; migración 1123): cada línea de la carta tiene «Material para» (`capacity_units`), aparte de las unidades esperadas; nadie las cuadra (400 que se venden, 800 de material). Se edita en Previsión y Flow lee las dos en `food.carta_projection`. Prueba: `carta-prevision.test.ts`.
 - **Rendimiento del ingrediente** (migración 1112; API.md §2.13): «1 tomate = 8 rodajas» en el ingrediente; las cuentas de la carta y la previsión para Flow (`prep_unit`, `prep_need_total`, `purchase_unit` y `yield`); la sección «Rendimiento» en Previsión. Prueba: `carta-rendimiento.test.ts`.
 

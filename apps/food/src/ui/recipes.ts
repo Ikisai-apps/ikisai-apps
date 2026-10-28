@@ -6,7 +6,7 @@ import {
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createFocus, createLabelPicker, el, formatDate, icon, listRow, openSheet, renderCover, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
-import { recipeMedal } from './recipe-medal.ts';
+import { loadCartaImages, recipeMedal } from './recipe-medal.ts';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -231,6 +231,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       client.list(T.recipeIngredients, { includeDeleted: true }) as Promise<LineRow[]>,
       client.list(T.equipment) as Promise<EquipmentRow[]>,
       client.list(T.recipeEquipment, { includeDeleted: true }) as Promise<NeedRow[]>,
+      // La imagen de la carta de cada receta (los montaditos): su medallón la usa si no tiene foto propia.
+      loadCartaImages(client).catch(() => undefined),
     ]);
     cross = null;
     paint();
