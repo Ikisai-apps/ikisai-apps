@@ -15,10 +15,10 @@ let counter = 0;
 const insert = (table: string, id: string, fields: Record<string, unknown>) => ({ op: 'insert', table, id, fields });
 const q = async <T = any>(sql: string, params: unknown[] = []) => (await app.t.db.query<T>(sql, params)).rows;
 
-async function commit(path: 'commands' | 'resources/commands', operations: unknown[]) {
+async function commit(path: 'commands' | 'resources/commands' | 'stock/commands', operations: unknown[]) {
   return app.call(`/api/v1/${path}`, { body: { requestId: `co-${++counter}`, operations } });
 }
-async function ok(path: 'commands' | 'resources/commands', operations: unknown[]) {
+async function ok(path: 'commands' | 'resources/commands' | 'stock/commands', operations: unknown[]) {
   const res = await commit(path, operations);
   assert.equal(res.status, 200, JSON.stringify(res.data));
   return res.data;
@@ -93,7 +93,9 @@ test('consumo · se descuenta en Recursos por lotes (primero lo que caduca antes
   const calls = consumption.map((line) => consumeCall({ line, quantity: line.quantity, menuItemId: dish, spaceIds: kitchenIds, fallbackSpaceId: pantry, note: 'Arroz blanco · comida' })).filter(Boolean);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]!.args.quantity, 1.6, 'en la unidad base del artículo (kg)');
-  await ok('resources/commands', calls);
+  // FO4: con origen Food, por el servidor (food-api `stock/commands`); el cliente ya no manda `source_app`.
+  assert.equal('source_app' in calls[0]!.args, false);
+  await ok('stock/commands', calls);
   await ok('commands', [insert('food.consumptions', uuid(), { menu_item_id: dish, status: 'confirmado' })]);
 
   const moved = (await rows('resources/', 'resources.movements')).filter((m) => m.source_ref === menuItemRef(dish));
@@ -121,4 +123,17 @@ test('consumo · un plato, un consumo; el plato tiene que existir; un menú vali
   const locked = await commit('commands', [{ op: 'update', table: 'food.menu_items', id: retreatDish, expectedRevision: 1, fields: { servings: 23 } }]);
   assert.equal(locked.data.error.code, 'MENU_LOCKED');
   await ok('commands', [insert('food.consumptions', uuid(), { menu_item_id: retreatDish, status: 'confirmado' })]);
+});
+
+test('FO4 · stock/commands solo admite lo comprado y el consumo de un plato, y los apunta como de Food', async () => {
+  const bad = async (operations: unknown[], reason: string) => {
+    const res = await commit('stock/commands', operations);
+    assert.equal(res.status, 422, JSON.stringify(res.data));
+    assert.equal(res.data.error.details.reason, reason, JSON.stringify(res.data));
+  };
+  const item = uuid();
+  await bad([{ op: 'insert', table: 'resources.items', id: uuid(), fields: { name: 'X' } }], 'op');
+  await bad([{ op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: item, quantity: 1, kind: 'entrada_manual', source_ref: 'otra:cosa' } }], 'source_ref');
+  await bad([{ op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: item, quantity: 1, kind: 'recuento', source_ref: `shopping_item:${uuid()}` } }], 'kind');
+  await bad([{ op: 'call', procedure: 'resources.consume', args: { item_id: item, quantity: 1, kind: 'consumo_servicio', source_ref: `menu_item:${uuid()}`, lot_id: uuid() } }], 'args');
 });

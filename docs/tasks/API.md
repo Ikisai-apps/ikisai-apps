@@ -2434,3 +2434,13 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 
   Las tres declaran `reads` y `writes` (0364 y 0365).
 - **Pruebas:** `tests/tasks/reviews-day.test.ts`.
+
+## 60. «Hoy» por espacio, también para Central (migración `0366`; encargo de Core)
+
+- **`GET today/projection?…&spaceId=<uuid>|none`** (capacidad `tasks.today_projection`, que lo declara): con un espacio, solo lo de ese espacio y todo lo que tiene dentro (árbol de Recursos). Con `none`, lo que no tiene espacio.
+- **`tasks.central_blocked_by_space`:** vista para Central (`core.allow_read('central', …, 'view')`, como `central_kpi_projection`). Por espacio de primer nivel da `space_id`, `open` (pendientes) y `blocked` (bloqueadas).
+  - **Primer nivel:** la altura, o lo único que tiene una altura, como en el filtro de la pantalla «Hoy». `space_id` nulo es «sin espacio».
+  - **Bloqueadas:** misma regla que el indicador `tasks.blocked` (dependencia, paso anterior o material).
+  - **Solo ids y recuentos:** los nombres los pone Central.
+- **Ayudantes:** `tasks.space_within(espacio, nodo)` y `tasks.space_top(espacio)`.
+- **Pruebas:** `tests/tasks/today-by-space.test.ts`.

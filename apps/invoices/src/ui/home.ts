@@ -53,7 +53,7 @@ const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
  *   (valida al momento, con «Deshacer», que la devuelve a «Pendiente de revisión»; lo aprendido se queda); si le falta
  *   algo, «Completar en la ficha»;
  * - el recorrido con su cifra: Llegan · Por resolver · Por pagar · Por cobrar · Por repartir · Gestoría;
- * - Herramientas en una fila, cada una con su hoja (Drive, Claude, Inventario, Proveedores, Sincronización, Instalar,
+ * - Herramientas en una fila, cada una con su hoja (Drive, Claude, Inventario, Sincronización, Instalar,
  *   Cuenta), con los mismos permisos y los mismos ids de siempre; sin red, lo que necesita red se apaga con su motivo;
  * - con todo al día, «Todo al día» y tres accesos.
  */
@@ -80,7 +80,6 @@ export const mountHome: ViewMount = (ctx) => {
   const linksFigures = el('div', { id: 'resourceLinksFigures', 'data-feedback-ignore': '' });
   const linksSwitch = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.interruptor', 'data-feedback-label': 'Encender o apagar el enlace', class: 'ghost', type: 'button', id: 'resourceLinksSwitch', onclick: () => void switchResourceLinks() }, '…') as HTMLButtonElement;
   const linksPreviewButton = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa');
-  const supplierCount = el('span', { id: 'statSuppliers' }, '…');
   const appEntriesHintText = el('span', { id: 'statAppEntries' }, '…');
   const network = el('dd'); const pending = el('dd'); const conflicts = el('dd'); const lastPull = el('dd'); const roleText = el('dd');
   const driveRun = isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null;
@@ -129,9 +128,9 @@ export const mountHome: ViewMount = (ctx) => {
     // Ingresos y gastos de otras apps (0244): la lista, el resultado por evento y «facturado» con un toque
     fb(el('a', { class: 'inv-tool', id: 'toolAppEntries', href: '#/apuntes', onclick: (e: Event) => { e.preventDefault(); navigate('#/apuntes'); } },
       icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Ingresos de apps'), el('span', { class: 'inv-tool-hint' }, appEntriesHintText)), { feedbackId: 'invoices.inicio.apuntes', feedbackLabel: 'Ingresos y gastos de apps' }),
-    // La única entrada a Proveedores (no está en el menú)
-    fb(el('a', { class: 'inv-tool', id: 'toolSuppliers', href: '#/proveedores', onclick: (e: Event) => { e.preventDefault(); navigate('#/proveedores'); } },
-      icon('people', 20), el('span', { class: 'inv-tool-label' }, 'Proveedores'), el('span', { class: 'inv-tool-hint' }, supplierCount)), { feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }),
+    // Cobros de la pasarela que no casan con su factura (API.md §19.7)
+    fb(el('a', { class: 'inv-tool', id: 'toolUnmatched', href: '#/cobros-sin-casar', onclick: (e: Event) => { e.preventDefault(); navigate('#/cobros-sin-casar'); } },
+      icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Cobros sin casar'), el('span', { class: 'inv-tool-hint' }, 'Pagos en línea por revisar')), { feedbackId: 'invoices.inicio.cobros_sin_casar', feedbackLabel: 'Cobros sin casar' }),
     tool('sync', 'toolSync', 'Sincronización', 'sync', () => el('div', null,
       el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Conflictos y rechazados'), conflicts, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), roleText),
       el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.sincronizacion.ver_conflictos', 'data-feedback-label': 'Ver conflictos', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/conflictos'); } }, 'Ver conflictos'))), { feedbackId: 'invoices.inicio.sincronizacion', feedbackLabel: 'Sincronización' }),
@@ -344,7 +343,6 @@ export const mountHome: ViewMount = (ctx) => {
     const drive = live.filter((r) => r.invoice.drive_file_id && (r.invoice.status === 'pendiente_datos' || r.invoice.status === 'pendiente_revision'));
     fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((r) => r.invoice.status === 'pendiente_datos').length} sin leer)` : '0';
     if (toolHint.drive) toolHint.drive.textContent = drive.length ? `${drive.length} por revisar` : 'Al día';
-    supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
     void appEntriesHint(client).then((text) => { appEntriesHintText.textContent = text; }).catch(() => undefined);
     // El interruptor ha cambiado (aquí o en otro dispositivo): la vista previa se vuelve a pedir
     const on = linksEnabled();

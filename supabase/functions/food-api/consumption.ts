@@ -34,6 +34,8 @@ export async function runConsumptionTick(supabase: Supabase, options: { limit?: 
   const actor = await ensureServiceActor(supabase, FOOD_SERVICE);
   const commit = async (app: string, requestId: string, operations: unknown[]) => supabase.rpc('core_commit', {
     p_app: app, p_actor: actor, p_request_id: requestId, p_digest: await sha256Hex(stable(operations)), p_expected_cursor: null, p_operations: operations, p_confirmation: null,
+    // Origen `server` (0118): en Recursos cuenta el `source_app: 'food'` declarado (FO4, 0820), el mismo que pone `stock/commands`.
+    p_origin: 'server',
   });
   const due = await supabase.rpc<{ kitchen: string[]; items: DueItem[] }>('core_read', {
     p_app: 'food', p_actor: actor, p_name: 'food.consumption_due', p_args: { limit: options.limit ?? 50 },

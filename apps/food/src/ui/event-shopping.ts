@@ -14,7 +14,6 @@ import {
 } from '@ikisai/domain-food';
 import { el, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { T, describeError, formatQuantity } from '../app/client.ts';
-import { resourcesClient } from '../app/resources.ts';
 import { recordShoppingPurchases } from '../app/shopping-stock.ts';
 import { usage } from '../app/usage.ts';
 import { cartaHash } from './carta.ts';
@@ -30,7 +29,6 @@ const rememberProject = (id: string) => { try { localStorage.setItem(PROJECT_KEY
 export function mountEventShopping(eventId: string): ViewMount {
   return ({ main, client, navigate }) => {
     const writable = canWrite(client);
-    const resources = resourcesClient(client);
     let alive = true;
     let data: EventShopping | null = null;
     let title = 'Evento';
@@ -134,7 +132,7 @@ export function mountEventShopping(eventId: string): ViewMount {
       try {
         await usage.run('food.eventos.compra.comprado', () => client.commit(ops));
         const ingredients = await client.list(T.ingredients) as unknown as Ingredient[];
-        await recordShoppingPurchases(resources, lines.map((l) => ({ id: l.id, ingredient_id: r.ingredient_id, purchase_quantity: Number(l.quantity), unit: r.unit as never,
+        await recordShoppingPurchases(client, lines.map((l) => ({ id: l.id, ingredient_id: r.ingredient_id, purchase_quantity: Number(l.quantity), unit: r.unit as never,
           status: 'comprado', supplier: r.supplier, purchase_ref: null })), ingredients);
         toast(`${r.name}: comprado.`);
       } catch (error) {

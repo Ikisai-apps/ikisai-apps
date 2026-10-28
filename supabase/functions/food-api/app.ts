@@ -10,6 +10,7 @@ import {
 
 export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pages.dev'];
 import { runEquipmentTick } from './equipment.ts';
+import { stockRoutes } from './stock.ts';
 
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
 
@@ -442,7 +443,7 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
       // La carta: las ventas registradas mueven el stock de Recursos (carta.ts). Un fallo no deshace las ventas.
       afterCommit: async (result) => { await afterCartaSales(supabase, result); },
     },
-    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events), ...eventShoppingRoutes(supabase, events, options)],
+    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events), ...stockRoutes(supabase), ...eventShoppingRoutes(supabase, events, options)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
     // Tanda 27: el estado de las peticiones de máquina en Tasks, para «En reparación» (migración 1106).
     workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) },

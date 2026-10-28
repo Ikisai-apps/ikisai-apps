@@ -75,6 +75,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - `#/cartas/<id>`, con sus bloques, el precio, el coste, el margen y «Disponible».
   - «Usar en otro evento» y la carta en la ficha del evento, incluidas las que marca Booking en jornadas abiertas.
   - El evento familiar come del menú de casa.
+  - **Para el servicio del sábado** (27-10, guion de Core): la cabecera y cada línea dicen lo vendido el último día que Flow cerró («Enviar a Food»). Al marcar «Disponible», el aviso recuerda que Flow no lo ve hasta «Actualizar carta desde Food». Pruebas: `carta.spec.ts` y `domain.test.ts`.
   - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
   - **Iconos de comida del kit** (K13, ui-kit 0.69.10, línea de Core del 27-10): cada bloque de la carta lleva el suyo (Clásicos, plato; Gourmet, gorro; Barra, vaso) y en Cocina cada servicio el de su momento (`SERVICE_ICONS` en `events.ts`), siempre junto al nombre.
 
@@ -100,6 +101,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 - **Platos sugeridos** (27-10, línea de Core): «Ese día en casa» dice cuántos comen en cada servicio (F-SUG-1); aprobada como plato rápido nuevo, un aviso con «Completar la receta» lleva a su ficha (F-SUG-2).
 - **Seguridad FO2** (auditoría del 27-10; Tasks #852): las peticiones a Tasks llevan la clave de worker y `X-Ikisai-Caller: food`.
 - **Seguridad FO1** (auditoría del 27-10; migración 1118): las ofertas de visitante, por el código público del evento y sin `event_id`. Necesita que Booking añada `public_code` a `booking.food_event_projection`.
+- **Seguridad FO4** (auditoría del 27-10; núcleo 0118, Recursos 0820): lo comprado y el consumo de un plato van a Recursos por food-api (`POST stock/commands`, origen `server`, `source_app` 'food'); el cliente ya no manda el origen. El worker y la carta confirman con origen `server`. La cantidad de Maquinaria va sin origen. Pruebas: `consumption.test.ts`, `consumption-worker.test.ts` y `compra-envase.test.ts`.
 - **Seguridad FO3** (auditoría del 27-10; migración 1119): los avisos de avería (`food.equipment_notices`) solo los escribe la cuenta de servicio `food`.
 
 ## Aceptación del usuario (6 de octubre de 2026)

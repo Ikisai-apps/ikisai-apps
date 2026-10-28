@@ -10,6 +10,7 @@ import {
 import { zipStream, type ZipEntrySource } from './zip.ts';
 import { createQuickPurchase } from './quick-purchase.ts';
 import { createPaymentLinks } from './payment-links.ts';
+import { entryInvoiceRoutes } from './entry-invoice.ts';
 import type { PaymentGateway } from '../_domain/payments/stripe.ts';
 import { checkAppEntrySources, withServerCaller } from './app-entries-caller.ts';
 import { createGoogleDriveApi, READER_VERSION, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
@@ -477,6 +478,8 @@ export async function reconcileResourceEntries(supabase: Supabase, ctx: RequestC
       p_app: 'resources', p_actor: ctx.user.id, p_request_id: i ? `${requestPrefix}-${i / 50}` : requestPrefix, p_digest: await sha256Hex(stable(operations)),
       p_expected_cursor: null, p_operations: operations,
       p_confirmation: ctx.user.kind === 'agent' ? { required: false, id: null, risk: { required: false, reasons: ['invoices:resource_entries'] } } : null,
+      // Lo construye la Edge (no el navegador): Recursos (0820) solo acepta reconcile_entries desde el servidor (núcleo 0118)
+      p_origin: 'server',
     });
     movements += ((out.results?.[0] as { movements?: unknown[] } | undefined)?.movements ?? []).length;
   }
@@ -517,7 +520,7 @@ export async function applyResourceLinks(supabase: Supabase, ctx: RequestContext
     const operations = [...items.values()].map((item) => ({ op: 'insert', table: 'resources.items', id: item.id, fields: item.fields }));
     await supabase.rpc<CommitResult>('core_commit', {
       p_app: 'resources', p_actor: ctx.user.id, p_request_id: `invoices-links-items-${preview.digest}`, p_digest: await sha256Hex(stable(operations)),
-      p_expected_cursor: null, p_operations: operations, p_confirmation: null,
+      p_expected_cursor: null, p_operations: operations, p_confirmation: null, p_origin: 'server',
     });
   }
   const revisions = new Map<string, number>();
@@ -947,7 +950,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         const out = await paymentLinks.ensure(String(body!.issued_invoice_id).toLowerCase(), String(body!.actor), 'portal', { success, cancel });
         return { url: out.url, provider: out.provider, expires_at: out.expires_at, amount: out.amount, reused: out.reused };
       },
-    } satisfies WorkerRoute, { method: 'POST', pattern: 'payments/reconcile', handler: () => paymentLinks.reconcile() } satisfies WorkerRoute],
+    } satisfies WorkerRoute, { method: 'POST', pattern: 'payments/reconcile', handler: () => paymentLinks.reconcile() } satisfies WorkerRoute, ...entryInvoiceRoutes()],
     // Aviso de la pasarela (finance-18, API.md §19.4): sin sesión; vale solo con la firma de Stripe.
     publicRoutes: [{ method: 'POST', pattern: 'payments/stripe', handler: ({ request }) => paymentLinks.webhook(request, base.paymentsWebhookSecret ?? null) },
       // Redsys (API.md §19.6): su aviso firmado y la página de paso que manda el formulario a Redsys.
