@@ -123,7 +123,8 @@ test('avance · vista «Por hitos»: pasos que se despliegan, «+N ocultas» con
   await expect(card.locator('.acts')).toHaveCount(0);
   await card.click();
   await expect(card.locator('.pasos li')).toHaveCount(2);
-  await expect(card.locator('.acts button')).toHaveCount(3);
+  await expect(card.locator('.acts button[data-state]')).toHaveCount(3);
+  await expect(card.locator('[data-apps]')).toHaveCount(1);
   await card.click();
   await expect(sin.locator('button.hp', { hasText: 'Probar el alojamiento' })).toHaveCount(1);
   // Con filtro de Flow, el paso de Core (pendiente) queda oculto y se cuenta.
@@ -135,4 +136,13 @@ test('avance · vista «Por hitos»: pasos que se despliegan, «+N ocultas» con
   await expect(hito.locator('.hs')).toHaveCount(0);
   await hito.locator('.hfold').click();
   await expect(hito.locator('.hs')).toHaveCount(1);
+});
+
+test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu carril; la caja general, en una fila', async ({ page }) => {
+  await enter(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('#cvApp').click();
+  await expect(page.locator('#cvApp')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Probar el alojamiento' })).toHaveCount(1);
+  await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
 });

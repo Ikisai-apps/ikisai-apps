@@ -592,3 +592,12 @@
 .avance-orig .car .hs .hp.hid{border-style:dashed;color:var(--muted);background:transparent;justify-content:center;font:600 11.5px/1.2 var(--sans)}
 .avance-orig .car .hs .it{grid-column:1/-1;margin:0}
 .avance-orig .car .hp .ti{font-style:normal;font-size:13px;line-height:1;flex:none}
+/* Caja general en una sola fila (VG, 28-10): %, «n hechas de t», la barra en lo que sobra y los contadores; la caja entera abre el gráfico (sin flecha). */
+.avance-orig .car .gprog{display:block}
+.avance-orig .car .gprog .gl{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0}
+.avance-orig .car .gprog .gl b{flex:none}
+.avance-orig .car .gprog .gt{flex:none;white-space:nowrap}
+.avance-orig .car .gprog .gl .gbar{flex:1 1 30px;min-width:24px;height:12px;margin:0}
+.avance-orig .car .gprog .gc{flex:none;margin:0;gap:6px}
+.avance-orig .car .gprog .gf{order:9;flex-basis:100%;justify-content:center}
+.avance-orig .car .gchev{display:none}

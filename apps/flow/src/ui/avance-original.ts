@@ -8,12 +8,14 @@
  */
 export interface OrigCard { id: string; uid: string; agente: string; estado: string; nombre: string; nota?: string | null; ref?: string | null;
   url?: string | null; urlTexto?: string | null; pasos?: string[]; prio?: string | null; tipo?: string | null; recurrente?: boolean; orden?: number;
-  hito?: { id: string; paso?: number | null } | null }
+  hito?: { id: string; paso?: number | null } | null;
+  /** Aplicaciones en las que se hace (vista «Por app»): las puestas a mano o las de sus enlaces; si no, su agente. */
+  apps?: string[]; appsManual?: boolean }
 export interface OrigHito { id: string; nombre: string; orden: number; done_at: number | null }
 export interface OrigSnap { t: number; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number }
 
 export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW_SLOT: HTMLElement, CAN_EDIT: boolean,
-  ON_STATE: (uid: string, estado: string) => void, MINE: string[] = []): { setData(ruta: OrigCard[], hitos: OrigHito[], hist: OrigSnap[], agentes: string[]): void } {
+  ON_STATE: (uid: string, estado: string) => void, MINE: string[] = [], ON_APPS: (uid: string) => void = () => {}): { setData(ruta: OrigCard[], hitos: OrigHito[], hist: OrigSnap[], agentes: string[]): void } {
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   var RUTA=[],RMETA=null;var CV='';var CSEL='';try{CV=localStorage.getItem('avance-car-vista')||'';CSEL=localStorage.getItem('avance-car-sel')||'';}catch(e){}
   var CMORE={};
@@ -104,8 +106,8 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
     // Intersección: lo que pasaría cada botón con los demás filtros activos (para atenuar lo que no cruza con nada).
     var passEx=function(x,skip){var e=x.estado||'pend';if(skip!=='est'&&fEst&&!CF.est[e])return false;if(skip!=='pr'&&fPr&&!CF.pr[x.prio||'sin'])return false;if(skip!=='tipo'&&fTi&&!CF.tipo[x.tipo||'sin'])return false;if(skip!=='hito'&&fHi&&!CF.hito[hid(x)])return false;if(skip!=='flag'&&fFl&&!flagOk(x))return false;if(skip!=='ag'&&fAg&&!CF.ag[x.agente])return false;return true;};
     var nE={},nP={},nA={},nT={},nTt={};items.forEach(function(x){var e=x.estado||'pend',k=x.prio||'sin',ti=x.tipo||'sin';nTt[ti]=(nTt[ti]||0)+1;if(passEx(x,'est'))nE[e]=(nE[e]||0)+1;if(passEx(x,'pr'))nP[k]=(nP[k]||0)+1;if(passEx(x,'tipo'))nT[ti]=(nT[ti]||0)+1;if(passEx(x,'ag'))nA[x.agente]=(nA[x.agente]||0)+1;});
-    var h='<div class="gprog'+(GOPEN?' open':'')+'" role="button" tabindex="0" aria-expanded="'+GOPEN+'" aria-label="Estado del proyecto; pulsa para ver la evolución"><div class="gl"><b>'+gpct+'%</b><span class="gt">'+n.hecho+' hechas de '+scope+'</span>'+(anyF?'<span class="gf" title="Con los filtros activos">'+nVis+' visibles de '+(scope-n.hecho)+' por hacer de '+scope+'</span>':'')+'<span class="gc">'+EST.map(function(e){return '<em style="color:'+e[1]+'" title="'+e[2]+'">'+e[3]+'<u>'+n[e[0]]+'</u></em>';}).join('')+'</span></div>'
-      +'<span class="bar gbar">'+seg(n,items.length||1)+'</span><span class="gchev" aria-hidden="true">'+(GOPEN?'▴':'▾')+'</span></div>'+(GOPEN?grafHtml(n):'');
+    var h='<div class="gprog'+(GOPEN?' open':'')+'" role="button" tabindex="0" aria-expanded="'+GOPEN+'" aria-label="Estado del proyecto; pulsa para ver la evolución"><div class="gl"><b>'+gpct+'%</b><span class="gt">'+n.hecho+' hechas de '+scope+'</span>'+(anyF?'<span class="gf" title="Con los filtros activos">'+nVis+' visibles de '+(scope-n.hecho)+' por hacer de '+scope+'</span>':'')+'<span class="bar gbar">'+seg(n,items.length||1)+'</span><span class="gc">'+EST.map(function(e){return '<em style="color:'+e[1]+'" title="'+e[2]+'">'+e[3]+'<u>'+n[e[0]]+'</u></em>';}).join('')+'</span></div>'
+      +'</div>'+(GOPEN?grafHtml(n):'');
     var chip=function(attr,k,color,label,glyph,cnt,tot,on){var num=anyF?cnt+'<span class="de"> de '+tot+'</span>':String(tot);return '<button type="button" class="fc'+(cnt?'':' off')+'" '+attr+'="'+k+'" aria-pressed="'+on+'" style="--c:'+color+'" title="'+label+(anyF?': '+cnt+' con los filtros, '+tot+' en total':'')+'"><span class="g">'+glyph+'</span><strong>'+num+'</strong><small>'+label+'</small></button>';};
     var FILAS=[['Dirección',['Víctor'],'👤'],['Núcleo',['Core','Core Ops','UI-kit'],'⚙️'],['Generales',['Central','Flow'],'🧭'],['Específicas',['Food','Finance','Tasks','Booking'],'🧰'],['Personas',['Guests','Organizers'],'👥']];var CAT={};FILAS.forEach(function(f){f[1].forEach(function(a){CAT[a]=f;});});
     var usados={};var filas=FILAS.map(function(f){return [f[0],f[1].filter(function(a){if(ags.indexOf(a)>=0){usados[a]=1;return true;}return false;})];}).filter(function(f){return f[1].length;});
@@ -139,7 +141,7 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
         h+='<div class="hito'+(CF.hito[z.q.id]?' on':'')+'"><div class="hrow">'+hfold(z.q.id)+'<button type="button" class="hh" data-hito="'+esc(z.q.id)+'" aria-pressed="'+!!CF.hito[z.q.id]+'"><b><em class="hnum">'+z.num+'</em> '+esc(z.q.nombre)+'</b><span class="bar"><i class="s-hecho" style="width:'+(100*done/z.ps.length)+'%"></i></span><small>'+done+' de '+z.ps.length+(blk?' · bloquea: '+agIco(blk.agente)+esc(blk.agente):' · completo')+'</small></button>';
         h+='</div>'+(HFOLD[z.q.id]?'':'<div class="hs">'+hsteps(z.ps,blk)+'</div>')+'</div>';});
       h+='</section>';}
-    h+='<div class="sw" role="group" aria-label="Vista de los carriles"><button type="button" id="cvTabs" aria-pressed="'+(vista==='tabs')+'">Pestañas</button><button type="button" id="cvLado" aria-pressed="'+(vista==='lado')+'">Lado a lado</button><button type="button" id="cvHitos" aria-pressed="'+(vista==='hitos')+'">Por hitos</button></div>';
+    h+='<div class="sw" role="group" aria-label="Vista de los carriles"><button type="button" id="cvTabs" aria-pressed="'+(vista==='tabs')+'">Pestañas</button><button type="button" id="cvLado" aria-pressed="'+(vista==='lado')+'">Lado a lado</button><button type="button" id="cvHitos" aria-pressed="'+(vista==='hitos')+'">Por hitos</button><button type="button" id="cvApp" aria-pressed="'+(vista==='app')+'">Por app</button></div>';
     if(vista==='hitos'){
     // Por hitos: lo que no tiene hito va en «Sin hito», que se pliega y filtra igual.
     var sinH=items.filter(function(x){return !hid(x);}).sort(function(a,b){return ((isOpen(a)?0:1)-(isOpen(b)?0:1))||(prk(a)-prk(b))||((a.orden||0)-(b.orden||0));});
@@ -148,13 +150,15 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       h+='<section class="hitos sinhito" aria-label="Sin hito"><div class="hito"><div class="hrow">'+hfold('_sin')+'<div class="hh"><b>Sin hito</b><span class="bar"><i class="s-hecho" style="width:'+(100*sd/sinH.length)+'%"></i></span><small>'+sd+' de '+sinH.length+'</small></div></div>'+(HFOLD._sin?'':'<div class="hs">'+hsteps(sinH,null)+'</div>')+'</div></section>';}
     if(!hl.length&&!sinV)h+='<div class="vacio" style="padding:12px">Nada coincide con los filtros.</div>';
     } else {
+    // Por app (VG, 28-10): cada tarjeta, en el carril de cada aplicación en la que se hace; las tuyas sin aplicación, en el tuyo.
+    var inL=function(x,a){return vista==='app'?(x.apps&&x.apps.length?x.apps:[x.agente]).indexOf(a)>=0:x.agente===a;};
     var sel=agsF.indexOf(CSEL)>=0?CSEL:(agsF[0]||'');
-    var busy=agsF.filter(function(a){return shown.some(function(x){return x.agente===a&&(anyF||isOpen(x));});});
-    if(anyF)busy=busy.filter(function(a){return shown.some(function(x){return x.agente===a;});});
+    var busy=agsF.filter(function(a){return shown.some(function(x){return inL(x,a)&&(anyF||isOpen(x));});});
+    if(anyF)busy=busy.filter(function(a){return shown.some(function(x){return inL(x,a);});});
     var idle=anyF?[]:agsF.filter(function(a){return busy.indexOf(a)<0;});
     h+='<div class="lanes'+(vista==='tabs'?' one':'')+'">';
     if(!busy.length)h+='<div class="vacio" style="padding:12px">Nada coincide con los filtros.</div>';
-    busy.forEach(function(a){if(!a)return;var mine=shown.filter(function(x){return x.agente===a;});var open=mine.filter(isOpen);var done=mine.filter(function(x){return !isOpen(x);});
+    busy.forEach(function(a){if(!a)return;var mine=shown.filter(function(x){return inL(x,a);});var open=mine.filter(isOpen);var done=mine.filter(function(x){return !isOpen(x);});
       h+='<section class="lane" aria-label="'+esc(a)+'"><h2><span>'+agIco(a)+esc(a)+'</span><small>'+open.filter(function(x){return x.estado!=='backlog';}).length+' por hacer</small></h2><div class="ls">';
       if(!open.length&&!done.length)h+='<div class="vacio">Nada.</div>';
       // Con filtros, las bloqueadas por un paso anterior de su hito van aparte, plegadas, con quién las bloquea (VG, 27-10 noche).
@@ -163,11 +167,11 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       // Se pliega si el paso que la bloquea no pasa TODOS los filtros activos (agentes, estado, urgencia, oficio, hito, leyenda); VG, 27-10 noche.
       var outside=function(x){var w=wfor(x);return !!w&&anyF&&!(pass(w)&&(!fAg||CF.ag[w.agente]));};
       // Las bloqueadas se cuentan sobre todas las abiertas del carril (pasen o no el filtro): cuanto más estrecho el filtro, más cosas esperan a alguien de fuera.
-      var allOpen=items.filter(function(x){return x.agente===a&&isOpen(x);});
+      var allOpen=items.filter(function(x){return inL(x,a)&&isOpen(x);});
       var ready=open.filter(function(x){return !outside(x);}), wait=anyF?allOpen.filter(outside):[];
-      ready.forEach(function(x){h+=item(x);});
+      ready.forEach(function(x){h+=item(x,null,false,null,a);});
       if(wait.length){h+='<details class="wait" data-wait="'+esc(a)+'"'+(WOPEN[a]?' open':'')+'><summary>⏳ '+wait.length+' bloqueada'+(wait.length>1?'s':'')+' por pasos fuera del filtro</summary>';wait.forEach(function(x){var w=wfor(x);h+='<div class="wby">bloqueada por: paso '+esc(String(w.hito.paso||''))+' · '+agIco(w.agente)+esc(w.agente)+' · '+esc(w.nombre.length>60?w.nombre.slice(0,58)+'…':w.nombre)+'</div>'+item(x);});h+='</details>';}
-      done.forEach(function(x){h+=item(x);});
+      done.forEach(function(x){h+=item(x,null,false,null,a);});
       h+='</div></section>';});
     if(vista!=='tabs'&&idle.length){h+='<section class="lane mini" aria-label="Agentes sin tareas"><h2>Sin tareas</h2><div class="ls">';idle.forEach(function(a){h+='<button type="button" data-idle="'+esc(a)+'">'+esc(a)+'</button>';});h+='</div></section>';}
     h+='</div>';
@@ -184,13 +188,17 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       return '<button type="button" class="'+cls+'" data-hx="'+esc(x.id)+'" aria-expanded="false" title="'+esc(x.agente+' · '+x.nombre+(isB?' · bloquea el hito':''))+'"><em>'+esc(String((x.hito&&x.hito.paso)||i+1))+'</em>'+tico(x)+(x.estado==='hecho'?'<i class="ok" aria-label="hecho">✔</i>':'')+(x.prio==='urgente'?'<i class="pu" aria-label="urgente">★</i>':'')+'<span>'+esc(x.nombre)+'</span>'+(isB?'<small class="bk">bloquea</small>':'')+'</button>';}
     v.innerHTML=h;
     (function(){var sw=v.querySelector('.sw'),sl=SW_SLOT;if(sw&&sl){sl.innerHTML='';sl.appendChild(sw);}})();
-    function item(x,fo,noActs,attr){var steps=Array.isArray(x.pasos)&&x.pasos.length;var open=fo!=null?fo:!!COPEN[x.id];var cls='it '+esc(x.estado||'pend')+' tap'+(x.recurrente?' rec':'');
+    function item(x,fo,noActs,attr,lane){var steps=Array.isArray(x.pasos)&&x.pasos.length;var open=fo!=null?fo:!!COPEN[x.id];var cls='it '+esc(x.estado||'pend')+' tap'+(x.recurrente?' rec':'');
       var PR={urgente:'Urgente',importante:'Importante',secundario:'Secundario',opcional:'Opcional'};
       var inner='<button type="button" class="cid" data-cid="'+esc(x.id)+'" title="Copiar el código de la tarjeta">'+esc(x.id)+'</button>'+(x.tipo&&TIPO[x.tipo]?'<span class="tipo" style="--c:'+TIPO[x.tipo][3]+'" title="'+TIPO[x.tipo][1]+'">'+TIPO[x.tipo][2]+' '+TIPO[x.tipo][1]+'</span>':'')+(x.prio&&PR[x.prio]?'<span class="prio p-'+esc(x.prio)+'">'+PRI[x.prio]+PR[x.prio]+'</span>':'')+'<b>'+(x.recurrente?'⟳ ':'')+esc(x.nombre)+'</b>'+((x.nota||x.ref)?'<div class="n">'+esc(x.nota||'')+(x.ref?(x.nota?' · ':'')+esc(x.ref):'')+'</div>':'')+(x.url&&/^https:\/\//.test(x.url)?'<div class="n"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.urlTexto||'Abrir')+' ↗</a></div>':'');
       if(x.hito&&x.hito.id){var hh=null;HITOS.forEach(function(q){if(q.id===x.hito.id)hh=q;});var w=wfor(x);if(hh)inner+='<div class="n hn'+(w?' wt':'')+'">⛳ '+esc(hh.nombre)+' · paso '+esc(String(x.hito.paso||''))+(w?' · <b>⏳ en espera</b> del paso '+esc(String(w.hito.paso||''))+' ('+esc(w.agente)+')':'')+'</div>';}
+      if(vista==='app'&&lane){var otras=(x.apps||[]).filter(function(n){return n!==lane;});var ajena=lane!==x.agente;if(ajena||otras.length)inner+='<div class="n tb">'+(ajena?'👤 '+esc(x.agente):'')+(ajena&&otras.length?' · ':'')+(otras.length?'también en '+esc(otras.join(', ')):'')+'</div>';}
       if(steps){inner+=open?'<ol class="pasos">'+x.pasos.map(function(p){return '<li>'+esc(p)+'</li>';}).join('')+'</ol>':'<div class="hint">Toca para ver los pasos</div>';}
+      if(open&&CAN_EDIT&&!x.recurrente&&!noActs&&MINE.indexOf(x.agente)>=0)inner+='<div class="acts"><button type="button" class="act" data-apps="'+esc(x.uid)+'">Aplicaciones'+(x.appsManual?' (a mano)':'')+'…</button></div>';
       if(open&&CAN_EDIT&&!x.recurrente&&!noActs){inner+='<div class="acts">'+[['pend','Pendiente'],['curso','En curso'],['hecho','Hecha']].map(function(s){return '<button type="button" class="act'+(x.estado===s[0]?' on':'')+'" data-state="'+s[0]+'" data-card="'+esc(x.uid)+'" aria-pressed="'+(x.estado===s[0])+'">'+s[1]+'</button>';}).join('')+'</div>';}
       return '<div class="'+cls+'" role="button" tabindex="0" aria-expanded="'+open+'" '+(attr||'data-item')+'="'+esc(x.id)+'"><span class="dot" aria-hidden="true"></span><div>'+inner+'</div></div>';}
+    SW_SLOT.querySelector('#cvApp').onclick=function(){CV='app';try{localStorage.setItem('avance-car-vista',CV);}catch(e){}rRender();};
+    v.querySelectorAll('[data-apps]').forEach(function(b){b.onclick=function(e){e.stopPropagation();ON_APPS(b.getAttribute('data-apps'));};});
     SW_SLOT.querySelector('#cvHitos').onclick=function(){CV='hitos';try{localStorage.setItem('avance-car-vista',CV);}catch(e){}rRender();};
     v.querySelectorAll('[data-hfold]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-hfold');HFOLD[id]=!HFOLD[id];try{localStorage.setItem('avance-hitos-plegados',JSON.stringify(HFOLD));}catch(e){}rRender();};});
     v.querySelectorAll('[data-hx]').forEach(function(b){var f=function(){var id=b.getAttribute('data-hx');var x=null;items.forEach(function(y){if(y.id===id)x=y;});var mine=!!x&&MINE.indexOf(x.agente)>=0;var st=HX[id]||0;HX[id]=mine?(st+1)%3:(st?0:1);rRender();};b.onclick=f;if(b.tagName!=='BUTTON')b.onkeydown=function(e){if(e.target===b&&(e.key==='Enter'||e.key===' ')){e.preventDefault();f();}};});

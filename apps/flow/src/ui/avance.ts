@@ -15,7 +15,7 @@ import type { ViewMount } from './shell.ts';
 
 type BoardUnit = Omit<Unit, 'kind' | 'payload'> & { kind: string; class?: string; parent_id?: string | null; lane_key: string | null; prio: string | null;
   board_flag: string | null; done_at?: string | null;
-  payload: { ref?: string; url?: string; url_text?: string; steps?: string[]; note?: string; tipo?: string; paso?: number; orden?: number } | null };
+  payload: { ref?: string; url?: string; url_text?: string; steps?: string[]; note?: string; tipo?: string; paso?: number; orden?: number; apps?: string[] } | null };
 interface Snap { taken_at: string; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number; deleted_at: string | null; project_id: string }
 
 /** Agentes en el orden del original. */
@@ -23,6 +23,18 @@ const AGENTS: Array<[string, string]> = [['victor', 'Víctor'], ['core', 'Core']
   ['food', 'Food'], ['finance', 'Finance'], ['tasks', 'Tasks'], ['booking', 'Booking'], ['guests', 'Guests'], ['organizers', 'Organizers']];
 const NAME = new Map(AGENTS);
 const agentName = (lane: string) => NAME.get(lane) ?? lane;
+/** Aplicación de cada dominio (enlaces de apertura de las tarjetas): `ven` es la puerta de Guests e `invoices`, Finance. */
+const HOST_APP: Record<string, string> = { flow: 'flow', food: 'food', finance: 'finance', invoices: 'finance', tasks: 'tasks', booking: 'booking',
+  guests: 'guests', ven: 'guests', organizers: 'organizers', central: 'central' };
+/** Aplicaciones a las que llevan los enlaces de una tarjeta (el de apertura y los de sus pasos y nota), en orden y sin repetir. */
+function linkedApps(texts: Array<string | undefined>): string[] {
+  const out: string[] = [];
+  for (const t of texts) for (const m of (t ?? '').matchAll(/https:\/\/([a-z0-9-]+)\.ikisai\.com/g)) {
+    const app = HOST_APP[m[1]!];
+    if (app && !out.includes(app)) out.push(app);
+  }
+  return out;
+}
 
 function stateOf(u: BoardUnit): string {
   if (u.board_flag === 'backlog') return 'backlog';
@@ -51,7 +63,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   let history: Snap[] = [];
   // «Tuyas» (tres toques en los pasos de los hitos): los carriles de la persona; owner sin carriles declarados, el de Víctor.
   const lanes = ((client.bootstrap()?.membership.scopes ?? {}) as { lanes?: string[] }).lanes ?? (role === 'owner' ? ['victor'] : []);
-  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName));
+  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName), (uid) => void setApps(uid));
 
   function paint(): void {
     // Como `flow.board_counts`: todas las tarjetas e hitos del proyecto, estén en la columna que estén.
@@ -60,15 +72,46 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       const p = u.payload ?? {};
       return { id: u.id.slice(0, 8), uid: u.id, agente: agentName(u.lane_key ?? ''), estado: stateOf(u), nombre: u.label ?? '', nota: p.note ?? null, ref: p.ref ?? null,
         url: p.url ?? null, urlTexto: p.url_text ?? null, pasos: Array.isArray(p.steps) ? p.steps : [], prio: u.kind === 'recurring' ? null : u.prio, tipo: p.tipo ?? null,
-        recurrente: u.kind === 'recurring', orden: u.idx ?? 0, hito: u.parent_id ? { id: u.parent_id, paso: typeof p.paso === 'number' ? p.paso : null } : null };
+        recurrente: u.kind === 'recurring', orden: u.idx ?? 0, hito: u.parent_id ? { id: u.parent_id, paso: typeof p.paso === 'number' ? p.paso : null } : null,
+        ...appsOf(u) };
     });
     const hitos: OrigHito[] = board.filter((u) => u.class === 'objective')
       .map((u, i) => ({ id: u.id, nombre: u.label ?? 'Hito', orden: u.payload?.orden ?? i + 1, done_at: u.done_at ? Date.parse(u.done_at) : null }));
     const hist: OrigSnap[] = history.map((s) => ({ t: Date.parse(s.taken_at), hecho: s.hecho, pr: s.pr, curso: s.curso, pend: s.pend, backlog: s.backlog, total: s.total }))
       .sort((a, b) => a.t - b.t);
-    const present = new Set(cards.map((c) => c.agente));
+    const present = new Set(cards.flatMap((c) => [c.agente, ...(c.apps ?? [])]));
     const agentes = [...AGENTS.map(([, n]) => n).filter((n) => present.has(n)), ...[...present].filter((n) => !AGENTS.some(([, m]) => m === n))];
     view.setData(cards, hitos, hist, agentes);
+  }
+
+  /**
+   * Vista «Por app» (VG, 28-10): las tareas de la persona van a las aplicaciones puestas a mano o, si no, a las de sus enlaces;
+   * sin ninguna, se quedan en su carril. Las de los agentes, en el suyo salvo que se pongan a mano.
+   */
+  function appsOf(u: BoardUnit): { apps: string[]; appsManual: boolean } {
+    const p = u.payload ?? {};
+    if (Array.isArray(p.apps) && p.apps.length) return { apps: p.apps.map(agentName), appsManual: true };
+    const auto = lanes.includes(u.lane_key ?? '') ? linkedApps([p.url, p.note, ...(Array.isArray(p.steps) ? p.steps : [])]) : [];
+    return { apps: auto.length ? auto.map(agentName) : [agentName(u.lane_key ?? '')], appsManual: false };
+  }
+
+  /** Elegir a mano en qué aplicaciones se hace una tarea tuya (ninguna marcada: vuelve a lo que digan sus enlaces). */
+  async function setApps(uid: string): Promise<void> {
+    const u = units.find((x) => x.id === uid);
+    if (!u) return;
+    if (!isOnline(client)) { toast('Cambiar una tarjeta necesita conexión.'); return; }
+    const current = Array.isArray(u.payload?.apps) ? u.payload!.apps! : [];
+    const boxes = AGENTS.filter(([k]) => !lanes.includes(k)).map(([k, n]) => {
+      const box = el('input', { type: 'checkbox', value: k, checked: current.includes(k) }) as HTMLInputElement;
+      return { box, row: el('label', { class: 'apps-row' }, box, ' ', n) };
+    });
+    const body = el('div', { class: 'apps-pick' }, el('p', { class: 'muted small' }, 'Sin ninguna marcada, va a las aplicaciones de sus enlaces o se queda en tu carril.'), ...boxes.map((b) => b.row));
+    if (!(await confirmDialog({ title: 'Aplicaciones de la tarea', text: u.label ?? '', confirmLabel: 'Guardar', body }))) return;
+    const apps = boxes.filter((b) => b.box.checked).map((b) => b.box.value);
+    try {
+      await callProcedure(client, PROCEDURES.boardCard, { project_id: projectId, card_id: u.id, lane_key: u.lane_key, apps: apps.length ? apps : null });
+      void client.sync();
+    } catch (error) { toast(describeError(error)); }
   }
 
   async function setState(uid: string, estado: string): Promise<void> {
