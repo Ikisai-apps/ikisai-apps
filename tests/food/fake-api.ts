@@ -325,7 +325,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           const spaces: string[] | null = Array.isArray(args.space_ids) ? args.space_ids : null;
           const order = [...levels.values()].filter((l) => l.quantity > 0 && (!spaces || spaces.includes(l.space_id)))
             .sort((a, b) => String(lots.get(a.lot_id ?? '')?.expires_on ?? '9999').localeCompare(String(lots.get(b.lot_id ?? '')?.expires_on ?? '9999')));
-          if (args.once && movements.some((m) => m.source_app === args.source_app && m.source_ref === args.source_ref && String(m.kind).startsWith('consumo_'))) {
+          // FO4 (Recursos 0820): el origen es la app del lote (aquí, food); lo que mande el cliente no cuenta.
+          if (args.once && movements.some((m) => m.source_app === 'food' && m.source_ref === args.source_ref && String(m.kind).startsWith('consumo_'))) {
             results.push({ op: 'call', procedure, result: { itemId: args.item_id, skipped: 'already_consumed' } });
             return;
           }
@@ -333,7 +334,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           const take = (space: string, lot: string | null, quantity: number) => {
             const row: FakeRow = { id: randomUUID(), revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null };
             for (const column of tables['resources.movements']!) row[column] = null;
-            Object.assign(row, { item_id: args.item_id, space_id: space, lot_id: lot, quantity: -quantity, kind: args.kind, source_app: args.source_app, source_ref: args.source_ref, note: args.note ?? null });
+            Object.assign(row, { item_id: args.item_id, space_id: space, lot_id: lot, quantity: -quantity, kind: args.kind, source_app: 'food', source_ref: args.source_ref, note: args.note ?? null });
             stagedTable('resources.movements').set(row.id, row);
             batchChanges.push(record('resources.movements', 'insert', row, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
           };
@@ -781,6 +782,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore });
       }
       if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId, scope));
+      // FO4: lo comprado y el consumo con origen Food, por el servidor (food-api `stock/commands`): un lote de Recursos.
+      if (path === 'stock/commands' && method === 'POST' && scope === 'food') return json(res, 200, commit(await readJson(req), session.userId, 'resources'));
       // Sugerencias del núcleo (contrato §3.10), lo justo para la cola de Food: listar, ver, aprobar y descartar.
       if (path === 'suggestions' && method === 'GET') {
         const scope = url.searchParams.get('scope') ?? 'mine';

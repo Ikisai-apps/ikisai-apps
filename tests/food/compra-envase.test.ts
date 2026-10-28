@@ -18,7 +18,7 @@ const insert = (table: string, id: string, fields: Record<string, unknown>) => (
 const call = (procedure: string, args: Record<string, unknown>) => ({ op: 'call', procedure: `food.${procedure}`, args });
 const q = async <T = any>(sql: string, params: unknown[] = []) => (await app.t.db.query<T>(sql, params)).rows;
 
-async function ok(path: 'commands' | 'resources/commands', operations: unknown[]) {
+async function ok(path: 'commands' | 'resources/commands' | 'stock/commands', operations: unknown[]) {
   const res = await app.call(`/api/v1/${path}`, { body: { requestId: `ce-${++counter}`, operations } });
   assert.equal(res.status, 200, JSON.stringify(res.data));
   return res.data;
@@ -69,10 +69,9 @@ test('S5 y H-C5 · envases enteros del habitual; regenerar no toca «En casa» n
   const bought = await line(list, rice);
   await ok('commands', [{ op: 'update', table: 'food.shopping_list_items', id: bought.id, expectedRevision: bought.revision, fields: { status: 'comprado' } }]);
   // Lo comprado entra en la Despensa (como hace la app) y el arroz pasa a tener envase habitual de 1 kg.
-  await ok('resources/commands', [
-    insert('resources.movements', uuid(), { item_id: riceItem, space_id: pantry, quantity: 2.2, kind: 'entrada_manual', source_app: 'food', source_ref: `shopping_item:${bought.id}` }),
-    insert('resources.item_units', uuid(), { item_id: riceItem, unit: 'paquete de 1 kg', factor: 1, usual: true }),
-  ]);
+  // La entrada va con origen Food por el servidor (FO4, food-api `stock/commands`).
+  await ok('stock/commands', [insert('resources.movements', uuid(), { item_id: riceItem, space_id: pantry, quantity: 2.2, kind: 'entrada_manual', source_ref: `shopping_item:${bought.id}` })]);
+  await ok('resources/commands', [insert('resources.item_units', uuid(), { item_id: riceItem, unit: 'paquete de 1 kg', factor: 1, usual: true })]);
   // Más raciones: el arroz comprado conserva lo que se compró; el aceite pendiente se recalcula.
   const servings = (await q(`select revision from food.menu_items where id = $1`, [dish]))[0].revision;
   await ok('commands', [{ op: 'update', table: 'food.menu_items', id: dish, expectedRevision: servings, fields: { servings: 30 } }]);

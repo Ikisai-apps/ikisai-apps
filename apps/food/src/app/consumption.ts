@@ -12,7 +12,7 @@ import {
   type Ingredient, type ItemConversion, type LotLike,
 } from '@ikisai/domain-food';
 import { T, type Mirror } from './client.ts';
-import { R, resourcesClient } from './resources.ts';
+import { R, commitFoodStock, resourcesClient } from './resources.ts';
 
 export interface InventoryData {
   items: Array<ResourceItem & { default_space_id?: string | null }>;
@@ -53,7 +53,8 @@ export async function confirmConsumption(client: SyncClient, graph: MenuGraph, i
       if (call) calls.push(call as unknown as RowOperation);
     });
   }
-  if (calls.length) await resourcesClient(client).commit(calls);
+  // Con origen Food, por el servidor (FO4): `once` coincide con el del worker de las 24 h.
+  if (calls.length) await commitFoodStock(client, calls);
   await client.commit(decisions.map((d) => ({
     op: 'insert', table: T.consumptions, id: crypto.randomUUID(),
     fields: { menu_item_id: d.menuItemId, status: d.done ? 'confirmado' : 'omitido', automatic: options.automatic === true },
