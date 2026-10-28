@@ -1,0 +1,1 @@
+Documentación de `createSpaceMap`: el ejemplo de `planUrl` usaba la ruta de la API (`/api/v1/resources/files/:id`), que responde JSON `{ url }`, y el plano no cargaba. Ahora el ejemplo usa `client.fileUrl(fileId)`, el enlace firmado. Lo detectó Booking.

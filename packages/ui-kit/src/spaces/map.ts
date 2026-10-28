@@ -6,7 +6,8 @@
  * ```ts
  * const source = createSyncSpaceSource(resources);
  * const map = createSpaceMap({
- *   source, plans: source.plans, planUrl: (fileId) => `/api/v1/resources/files/${fileId}`,
+ *   // `planUrl` da el enlace firmado del archivo (`client.fileUrl`), no la ruta de la API: esa devuelve JSON `{ url }`.
+ *   source, plans: source.plans, planUrl: (fileId) => client.fileUrl(fileId),
  *   layer: (space) => (space.kind === 'cama' ? { state: bedState(space) } : null),
  *   onPick: (space) => openRoomSheet(space),
  * });
@@ -138,7 +139,10 @@ export interface SpaceMapOptions {
   mode?: 'map' | 'list' | 'both' | 'plan';
   /** `all`: todos los dibujos a la vez (dos por fila en el ordenador, uno en el móvil). Por defecto `switch`, el selector. */
   layout?: 'switch' | 'all';
-  /** URL del dibujo (`/api/v1/resources/files/:id`); puede ser una promesa (p. ej. un `blob:` con el token). */
+  /**
+   * URL del dibujo, la que se puede pintar: el enlace firmado (`client.fileUrl(fileId)`, que lo pide a
+   * `/api/v1/resources/files/:id`) o un `blob:`. No la ruta de la API, que responde JSON `{ url }` y el dibujo no carga.
+   */
   planUrl?: (fileId: string) => string | Promise<string>;
   /** Nombre que se pinta; por defecto `name` (en los portales, `publicName ?? name`). */
   nameOf?: (space: SpaceRow) => string;
