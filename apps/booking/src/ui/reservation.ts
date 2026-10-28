@@ -5,7 +5,7 @@ import { isFamily, isOpenDays, renderCartas, renderHouseMenu, renderOffers, rend
 import { renderBarService } from './barService.ts';
 import { renderFlowReady } from './flowReady.ts';
 import { revealFor } from './guide.ts';
-import { announceSaved, confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
+import { fieldAttrs, announceSaved, confirmDialog, createSortableList, registerReveal, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, experienceOf, guestCompleteness, missingForConfirmation, nights, requiresEvent, type ExperienceInput, type ReservationStatus,
@@ -14,6 +14,7 @@ import { onSesPending, sesCandidates, takeRequestedBlock } from '../app/experien
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import { createFichaLayout } from './fichaLayout.ts';
 import { ASSIGNMENTS, BEDS, DATE_OPTIONS, VISITOR_REQUESTS, WALKINS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
+import { settleBatch } from '../app/settle.ts';
 import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../app/joins.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
@@ -32,6 +33,7 @@ import { createSesBlock } from './ses.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
 import type { ViewMount } from './shell.ts';
+import { createOrganizerComments } from './organizerComments.ts';
 
 const RESTRICTIONS: TableName = TABLES.restrictions;
 const CHECKLIST: TableName = TABLES.checklist;
@@ -148,6 +150,7 @@ export function mountReservation(id: string): ViewMount {
     let flowReady: { eventId: string; element: HTMLElement } | null = null;
     // «Montaje» (VG 27-10-2026): se conserva entre repintados; se rehace si cambia el evento o el permiso
     let montageCard: { key: string; card: ReturnType<typeof createMontage> } | null = null;
+    let organizerComments: { key: string; card: ReturnType<typeof createOrganizerComments> } | null = null;
     async function run(operations: RowOperation[], message: string): Promise<boolean> {
       try {
         await client.commit(operations);
@@ -242,7 +245,9 @@ export function mountReservation(id: string): ViewMount {
         try {
           const { requestId } = await client.commit([{ op: 'call', procedure: PROCEDURES.confirmReservation, args: { reservation_id: id, event_id: crypto.randomUUID(), from_status: reservation!.status } }]);
           setConfirmMark({ reservationId: id, requestId });
-          announceSaved('booking.reserva.acciones.confirmar', { pending: !navigator.onLine });
+          // Guiado: cuando la base ha creado el evento (sin red, como pendiente)
+          if (!navigator.onLine) announceSaved('booking.reserva.acciones.confirmar', { pending: true });
+          else void settleBatch(client, requestId).then((rejected) => { if (!rejected) announceSaved('booking.reserva.acciones.confirmar'); });
           toast(navigator.onLine ? 'Confirmación enviada.' : 'Confirmación pendiente de enviar. Se enviará al reconectar.');
           void paint();
         } catch (error) {
@@ -323,7 +328,7 @@ export function mountReservation(id: string): ViewMount {
       // «Fecha definitiva»: el organizador la ve fija y no propone otras. Sin entrada y salida no se puede marcar.
       const definitive = reservation.dates_definitive === true;
       const hasDates = !!reservation.start_date && !!reservation.end_date;
-      const definitiveCheck = el('input', { type: 'checkbox', id: 'datesDefinitive', checked: definitive, disabled: !editable,
+      const definitiveCheck = el('input', { type: 'checkbox', id: 'datesDefinitive', ...fieldAttrs({ id: 'booking.reserva.fechas.definitivas', entity: 'booking.reservations', prop: 'dates_definitive', label: 'Fechas definitivas', confirm: 'event' }), checked: definitive, disabled: !editable,
         onchange: (event: Event) => {
           const box = event.target as HTMLInputElement;
           if (box.checked && !hasDates) { box.checked = false; return void toast('Para marcar la fecha como definitiva indica antes la entrada y la salida.'); }
@@ -441,7 +446,7 @@ export function mountReservation(id: string): ViewMount {
       // Un ítem de la lista: checkbox y botón de editar (el asa y los botones «Subir/Bajar» los pone el kit).
       const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) }, 'data-feedback-id': 'booking.reserva.checklist.tarea', 'data-feedback-label': 'Tarea' },
         el('label', { class: 'check', 'data-feedback-id': 'booking.reserva.checklist.tarea.casilla', 'data-feedback-label': 'Marcar como hecha' },
-          el('input', { type: 'checkbox', checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
+          el('input', { type: 'checkbox', ...fieldAttrs({ id: 'booking.reserva.checklist.tarea.casilla', entity: 'booking.checklist_items', prop: 'status', label: 'Marcar como hecha', confirm: 'event' }), checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
             onchange: () => void run([{ op: 'update', table: CHECKLIST, id: item.id, expectedRevision: item.revision, fields: { status: item.status === 'hecho' ? 'pendiente' : 'hecho' } }], 'Checklist actualizado.') }),
           el('span', null, item.label, item.status === 'no_aplica' ? ' (no aplica)' : '')),
         editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${item.label}`, 'data-feedback-id': 'booking.reserva.checklist.tarea.editar', 'data-feedback-label': 'Editar tarea', onclick: () => openRowSheet({
@@ -547,6 +552,9 @@ export function mountReservation(id: string): ViewMount {
       if (liveEvent && (!flowReady || flowReady.eventId !== liveEvent.id)) flowReady = { eventId: liveEvent.id, element: renderFlowReady({ client, reservationId: id, eventId: liveEvent.id }) };
       const flowReadyCard = liveEvent ? flowReady!.element : null;
       const portalRequestsCard = portalData && editable ? renderPortalRequests({ data: portalData, proposals: proposalData?.proposals ?? [], run }) : null;
+      // B22: lo que ha escrito quien organiza (se conserva entre repintados; necesita red)
+      const commentsKey = `${id}:${editable}`;
+      if (organizerComments?.key !== commentsKey) organizerComments = { key: commentsKey, card: createOrganizerComments({ client, reservationId: id, editable }) };
       const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
 
       // Factura: la prepara Finance leyendo booking.reservation_invoice_source (API.md §19); si ya hay una, Finance lo avisa.
@@ -708,7 +716,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
+        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, organizerComments.card.element, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard,
           // familiar: sin propuesta, cobro ni coste
           family ? null : proposalBlock, family ? null : extract, family ? null : cobro, family ? null : costs, barCard, flowReadyCard,
           liveEvent ? renderPublicCode({ client, event: liveEvent, editable, run }) : null,

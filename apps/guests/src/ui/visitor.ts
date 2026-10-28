@@ -5,7 +5,7 @@
  * es su cliente de Flow (FL2: `visitor_join` al tocar, `flow_visitor_customer` para pintar); sin Flow, la carta pública.
  * Un visitante nunca ve a otros.
  */
-import { clearGuideLink, clearReturnTo, createFieldPointer, createGuide, currentGuideLink, currentReturnTo, el, flowGuideSource, icon, onSaved, replace, toast, type GuideApiClient } from '@ikisai/ui-kit';
+import { clearGuideLink, clearReturnTo, createFieldPointer, createGuide, currentGuideLink, currentReturnTo, el, fieldAttrs, flowGuideSource, type GuideApiClient, icon, onSaved, replace, toast } from '@ikisai/ui-kit';
 import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
@@ -22,6 +22,8 @@ import { mountLodge } from './lodge.ts';
 import { stayBlock, stayRequestText } from './stay.ts';
 
 const LIST = '#/v';
+/** Nombres visibles de las apps (para «Entras como…»). */
+const APP_NAMES: Record<string, string> = { guests: 'Guests', flow: 'Flow', booking: 'Booking', food: 'Food', invoices: 'Finance', tasks: 'Tasks', central: 'Central', organizers: 'Organizers', resources: 'Recursos' };
 const EVENT = /^#\/v\/([A-Za-z0-9]{10})(?:\/(alojate|datos))?$/;
 
 /** ¿Es una ruta del portal del visitante? */
@@ -76,10 +78,11 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
       await ensureVisitor(code);
       await bindMember(session.token);
       const me = await visitorMe();
-      if (me.member && alive) replace(memberLine, icon('guest', 14), ' ', t('visitor.asMember', { name: me.member.displayName ?? t('visitor.memberSomeone'), apps: me.member.apps.map((a) => a.app).join(', ') }));
+      const apps = [...new Set((me.member?.apps ?? []).map((a) => APP_NAMES[a.app] ?? null).filter((n): n is string => !!n))].join(', ');
+      if (me.member && alive) replace(memberLine, icon('guest', 14), ' ', t(apps ? 'visitor.asMember' : 'visitor.asMemberNoApps', { name: me.member.displayName ?? t('visitor.memberSomeone'), apps }));
     } catch { /* sin pertenencia o sin red */ }
   };
-  const offSaved = !guide && link?.field ? onSaved((id) => { if (id === link.field) toast(t('visitor.guideSaved')); }) : null;
+  const offSaved = !guide && link?.field ? onSaved((id) => { if (id === link.field) toast(t(origin ? 'visitor.guideSaved' : 'visitor.guideDone')); }) : null;
   replace(root, el('div', { class: 'gvisitor-shell' },
     el('header', { class: 'gvisitor-top' },
       el('a', { class: 'gvisitor-brand', href: LIST, 'data-feedback-id': 'guests.visitante.cabecera.eventos', 'data-feedback-label': 'Mis eventos' },
@@ -223,7 +226,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
       lodging ? step('alojate', t('lodge.tab'), { href: `#/v/${code}/alojate`, 'data-feedback-id': 'guests.visitante.recorrido.alojate', 'data-feedback-label': 'Alójate aquí' }) : null);
     const done = (key: 'carta' | 'datos' | 'alojate') => {
       const item = routes.querySelector<HTMLElement>(`[data-route="${key}"]`);
-      if (item && !item.dataset.done) { item.dataset.done = 'true'; item.querySelector('.gvisitor-route-mark')?.replaceChildren(icon('check', 14)); item.setAttribute('aria-label', `${item.textContent ?? ''} · ${t('visitor.routeDone')}`); }
+      if (item && !item.dataset.done) { item.dataset.done = 'true'; item.querySelector('.gvisitor-route-mark')?.replaceChildren(icon('check', 14)); const go = item.querySelector<HTMLElement>('.gvisitor-route-go'); go?.setAttribute('aria-label', `${go.textContent ?? ''} · ${t('visitor.routeDone')}`); }
     };
     replace(main, loaded.stale ? staleNote(loaded.at) : null, head, tabs, el('section', { class: 'card gcard', id: 'visitorRoutesBox' }, el('h3', null, t('visitor.routes')), routes),
       offersHost, orderHost, requestsHost, invitation(), footer());
@@ -253,17 +256,28 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
    * «Pedir en la barra»: se une a la carta (`visitor_join`, idempotente) y la abre con el traspaso de esta identidad
    * (`?v=`), para que la carta de Flow sea el mismo visitante. Sin Flow, la carta pública.
    */
+  let cartaBusy = false;
   async function openCarta(code: string, host: HTMLElement, mine: number): Promise<void> {
+    if (cartaBusy) return;
+    cartaBusy = true;
+    // Un toque a la vez: si no, cada uno abre otra pestaña y pide otro traspaso.
+    const buttons = [...main.querySelectorAll<HTMLButtonElement>('#visitorCarta, .gvisitor-route[data-route="carta"] button')];
+    buttons.forEach((b) => { b.disabled = true; b.setAttribute('aria-busy', 'true'); });
     const win = window.open('about:blank', '_blank'); // en el toque, para que el navegador no la bloquee
-    let url: string | null = FLOW_CARTA;
     try {
-      url = safeUrl((await visitorJoin(code)).carta_url) ?? FLOW_CARTA;
-    } catch (error) {
-      if (errorCodeOf(error) === 'NO_FLOW') { win?.close(); toast(t('visitor.noFlow')); return; }
+      let url: string | null = FLOW_CARTA;
+      try {
+        url = safeUrl((await visitorJoin(code)).carta_url) ?? FLOW_CARTA;
+      } catch (error) {
+        if (errorCodeOf(error) === 'NO_FLOW') { win?.close(); toast(t('visitor.noFlow')); return; }
+      }
+      const target = withHandoff(url, await createHandoff());
+      if (win) { win.opener = null; win.location.href = target; } else window.location.href = target;
+      void paintOrder(code, host, mine);
+    } finally {
+      cartaBusy = false;
+      buttons.forEach((b) => { b.disabled = false; b.removeAttribute('aria-busy'); });
     }
-    const target = withHandoff(url, await createHandoff());
-    if (win) { win.opener = null; win.location.href = target; } else window.location.href = target;
-    void paintOrder(code, host, mine);
   }
 
   /**
@@ -277,7 +291,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
       customer?.number ? t('visitor.number', { number: customer.number }) : customer ? t('visitor.noNumber') : t('visitor.orderText'),
       customer?.number ? ` ${customer.account_open ? t('offers.accountOpen') : t('offers.accountClosed')}` : '');
     const open = el('button', { type: 'button', class: 'primary goffer-open', id: 'visitorCarta', 'data-feedback-id': 'guests.visitante.pedido.abrir', 'data-feedback-label': 'Abrir la carta',
-      onclick: () => void openCarta(code, host, mine) }, icon('menu', 16), ' ', t('offers.openCarta'));
+      onclick: () => void openCarta(code, host, mine) }, icon('menu', 16), ' ', t('visitor.routeCarta'));
     const orders = customer?.orders.length ? el('ul', { class: 'gvisitor-sent', id: 'visitorOrders' }, ...customer.orders.map((o) => el('li', { dataset: { status: o.status } },
       el('strong', null, o.summary || t('visitor.order')), ' · ', orderText(o.status), o.preparing ? ` · ${t('visitor.preparing')}` : '', o.number ? ` · ${t('visitor.number', { number: o.number })}` : ''))) : null;
     replace(host, el('h3', null, t('visitor.order')), status, open, orders);
@@ -307,17 +321,17 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
           catch (error) { button.disabled = false; toast(errorCodeOf(error) === 'NOT_FOUND' ? t('vlink.notReady') : visitorError(error)); }
         } }, t('vlink.ready')) : null))) : null;
 
-    const field = (id: string, label: string, help: string | null, attrs: Record<string, string> = {}) => {
-      const input = el('input', { id, class: 'input', ...attrs }) as HTMLInputElement;
+    const field = (id: string, label: string, help: string | null, attrs: Record<string, string | null> = {}) => {
+      const input = el('input', { id, class: 'input', ...attrs /* data-field-id literal en cada llamada (fieldAttrs) */ }) as HTMLInputElement;
       return { input, row: el('label', { class: 'field', for: id }, el('span', null, label), input, help ? el('span', { class: 'small' }, help) : null) };
     };
     const keep = el('p', { class: 'small' }, t('visitor.keep'));
 
     let join: HTMLElement | null = null;
     if (event.joinable && !joined) {
-      const name = field('visitorName', t('visitor.name'), null, { autocomplete: 'given-name', maxlength: '80', required: '' });
-      const contact = field('visitorJoinContact', t('visitor.contactOptional'), t('visitor.contactWhy'), { autocomplete: 'email', maxlength: '200' });
-      const note = field('visitorNote', t('visitor.note'), null, { maxlength: '300' });
+      const name = field('visitorName', t('visitor.name'), null, { autocomplete: 'given-name', maxlength: '80', required: '', ...fieldAttrs({ id: 'guests.visitante.apuntarme.nombre', entity: 'booking.visitor_requests', prop: 'name', type: 'text', required: true, sensitivity: 'personal' }) });
+      const contact = field('visitorJoinContact', t('visitor.contactOptional'), t('visitor.contactWhy'), { autocomplete: 'off', maxlength: '200', ...fieldAttrs({ id: 'guests.visitante.apuntarme.contacto', entity: 'booking.visitor_requests', prop: 'contact', type: 'text', required: false, sensitivity: 'personal' }) });
+      const note = field('visitorNote', t('visitor.note'), null, { maxlength: '300', ...fieldAttrs({ id: 'guests.visitante.apuntarme.nota', entity: 'booking.visitor_requests', prop: 'note', type: 'text', required: false, sensitivity: 'personal' }) });
       const send = el('button', { type: 'submit', class: 'primary', id: 'visitorJoin', 'data-feedback-id': 'guests.visitante.apuntarme.enviar', 'data-feedback-label': 'Apuntarme como visitante' }, t('retreats.join'));
       join = el('form', { class: 'card gcard', id: 'visitorJoinForm', novalidate: '',
         onsubmit: async (e: Event) => {
@@ -332,7 +346,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
     const pendingContact = list.some((r) => r.kind === 'contact' && r.status === 'pendiente');
     let leave: HTMLElement | null = null;
     if (!pendingContact) {
-      const contact = field('visitorContact', t('visitor.contact'), t('visitor.contactWhyNext'), { autocomplete: 'email', maxlength: '200' });
+      const contact = field('visitorContact', t('visitor.contact'), t('visitor.contactWhyNext'), { autocomplete: 'off', maxlength: '200', ...fieldAttrs({ id: 'guests.visitante.dato.contacto', entity: 'booking.visitor_requests', prop: 'contact', type: 'text', required: true, sensitivity: 'personal' }) });
       const send = el('button', { type: 'submit', class: 'ghost', id: 'visitorLeave', 'data-feedback-id': 'guests.visitante.dato.enviar', 'data-feedback-label': 'Dejar un dato' }, t('visitor.leave'));
       leave = el('details', { class: 'card gcard', id: 'visitorLeaveBox', 'data-feedback-id': 'guests.visitante.dato.abrir', 'data-feedback-label': 'Déjanos un dato' },
         el('summary', null, t('visitor.leaveTitle')),
@@ -350,7 +364,7 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
 
   /** «Ya tengo invitación»: el vínculo consentido con su ficha es su propio enlace (`/i/<token>`). */
   function invitation(): HTMLElement {
-    const input = el('input', { id: 'visitorInvite', class: 'input', type: 'url', inputmode: 'url', autocomplete: 'off', placeholder: 'https://guests.ikisai.com/i/…' }) as HTMLInputElement;
+    const input = el('input', { id: 'visitorInvite', class: 'input', type: 'url', inputmode: 'url', autocomplete: 'off', placeholder: 'https://guests.ikisai.com/i/…', ...fieldAttrs({ id: 'guests.visitante.invitacion.enlace', type: 'url', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
     return el('details', { class: 'card gcard', id: 'visitorInviteBox', 'data-feedback-id': 'guests.visitante.invitacion.abrir', 'data-feedback-label': 'Ya tengo invitación' },
       el('summary', null, t('visitor.invite')),
       el('p', { class: 'small' }, t('visitor.inviteText')),

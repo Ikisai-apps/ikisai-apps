@@ -4,6 +4,9 @@
  * ve todo; el resto, solo sus proyectos. La lista de proyectos la publica Flow en `flow.projects_projection`.
  */
 
+/** Accesos pendientes de una persona sin cuenta (1525): lo que tendrá en cada app al darle la cuenta. */
+export const PENDING_ACCESS_TABLE = 'central.pending_access';
+
 /** Lectura de Flow con sus proyectos vivos (la abre Flow a Central con `core.allow_read`). */
 export const FLOW_PROJECTS_READ = 'flow.projects_projection';
 

@@ -29,6 +29,10 @@ const SHA256 = /^[0-9a-f]{64}$/;
 export interface InvoicesAppOptions {
   /** Pasarela de pago (finance-18): Stripe si hay `STRIPE_SECRET_KEY` (index.ts); en las pruebas, el falso. Sin ella, PAYMENTS_OFF. */
   payments?: PaymentGateway | null;
+  /** Las otras pasarelas configuradas (no la activa del interruptor `PAYMENTS_PROVIDER`): se siguen conciliando sus enlaces. */
+  paymentsOthers?: PaymentGateway[];
+  /** Clave del comercio de Redsys (`REDSYS_SECRET_KEY`) para comprobar sus avisos; sin ella, su aviso responde 503. */
+  redsysSecretKey?: string | null;
   /** Secreto de la firma del webhook de Stripe (`STRIPE_WEBHOOK_SECRET`); sin él, el webhook responde 503. */
   paymentsWebhookSecret?: string | null;
   /** Base de la API de Tareas (`https://tasks.ikisai.com` o la función `tasks-api` directa en QA). */
@@ -885,7 +889,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
   // Capacidad «Registrar compra rápida» (API.md §18): operaciones de fila por el commit de siempre, con hooks y riesgo.
   const quickSync = createSync(supabase, 'invoices', hooks);
   const idOf = keyedStableUuid(base.workerKey);
-  const paymentLinks = createPaymentLinks(supabase, base.payments ?? null);
+  const paymentLinks = createPaymentLinks(supabase, base.payments ?? null, { others: base.paymentsOthers ?? [] });
   const registerQuickPurchase = createQuickPurchase({ supabase, commit: (ctx, body) => quickSync.commit(ctx, body), allRows: <T,>(ctx: RequestContext, table: string) => allRows<T>(supabase, ctx, table), stableUuid: idOf });
   const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { uuid: idOf, readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
     notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
@@ -946,7 +950,10 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
       },
     } satisfies WorkerRoute, { method: 'POST', pattern: 'payments/reconcile', handler: () => paymentLinks.reconcile() } satisfies WorkerRoute, ...entryInvoiceRoutes()],
     // Aviso de la pasarela (finance-18, API.md §19.4): sin sesión; vale solo con la firma de Stripe.
-    publicRoutes: [{ method: 'POST', pattern: 'payments/stripe', handler: ({ request }) => paymentLinks.webhook(request, base.paymentsWebhookSecret ?? null) }],
+    publicRoutes: [{ method: 'POST', pattern: 'payments/stripe', handler: ({ request }) => paymentLinks.webhook(request, base.paymentsWebhookSecret ?? null) },
+      // Redsys (API.md §19.6): su aviso firmado y la página de paso que manda el formulario a Redsys.
+      { method: 'POST', pattern: 'payments/redsys', handler: ({ request }) => paymentLinks.redsysWebhook(request, base.redsysSecretKey ?? null) },
+      { method: 'GET', pattern: 'payments/redsys/go/:order', handler: ({ params }) => paymentLinks.redsysGo(String(params.order ?? '')) }],
   });
   return withServerCaller(handler, base.workerKey);
 }

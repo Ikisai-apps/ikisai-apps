@@ -56,15 +56,17 @@ test('catálogo · cada capacidad dice qué campos lee y escribe (0111): `food.<
 });
 
 test('inventario · cada campo de Food que declara `entity` y `prop` apunta a una columna que existe (0111)', async () => {
-  const columns = new Set((await q(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'food'`)).map((r) => `food.${r.c}`));
+  // Casi todos son de Food; alguno guarda en otro schema (la cantidad del consumo, en Recursos; el comentario, en el núcleo).
+  const columns = new Set((await q(`select table_schema || '.' || table_name || '.' || column_name as c from information_schema.columns`)).map((r) => r.c));
   const dir = new URL('../../apps/food/src/ui/', import.meta.url);
   const declared: string[] = [];
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
     const text = readFileSync(new URL(file, dir), 'utf8');
     for (const m of text.matchAll(/'data-field-entity': '([a-z_.]+)', 'data-field-prop': '([a-z_]+)'/g)) declared.push(`${m[1]}.${m[2]}`);
+    for (const m of text.matchAll(/field: \{ id: '[^']+', entity: '([a-z_.]+)', prop: '([a-z_]+)' \}/g)) declared.push(`${m[1]}.${m[2]}`);
   }
   assert.ok(declared.length >= 70, `solo ${declared.length} campos declarados`);
-  for (const f of declared) assert.ok(columns.has(f), `${f} no es una columna de Food`);
+  for (const f of declared) assert.ok(columns.has(f), `${f} no es una columna`);
 });
 
 test('uso · el primer estimado de Food (1121): las 46 funcionalidades de USO_ESTIMADO.md, con frecuencia y equipos', async () => {

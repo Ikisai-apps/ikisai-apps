@@ -62,8 +62,9 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
       el('h2', { id: 'entryTitle', 'data-feedback-id': 'guests.entrada.enlace.error', 'data-feedback-label': 'Mensaje de entrada' }, title),
       el('p', { id: 'entryText' }, text),
       offline && options.retry ? el('button', { type: 'button', class: 'primary wide', id: 'entryRetry', 'data-feedback-id': 'guests.entrada.enlace.reintentar', 'data-feedback-label': 'Reintentar', onclick: () => options.retry!() }, icon('sync', 18), t('common.retry')) : null,
-      // Sin invitación ni QR (ENTRADA_PUBLICA.md): los eventos abiertos, para entrar como visitante.
-      options.error ? null : openEvents(),
+      // Sin invitación ni QR (ENTRADA_PUBLICA.md): los eventos abiertos, para entrar como visitante. También con el enlace
+      // caducado o roto: nunca un callejón sin salida (VG, 28-10).
+      openEvents(),
       el('section', { class: 'gentry-frame', 'aria-labelledby': 'findTitle' },
         el('p', { class: 'gentry-frame-h', id: 'findTitle' }, icon('search', 20), ' ', t('entry.findTitle')),
         el('ol', { class: 'gentry-steps' },

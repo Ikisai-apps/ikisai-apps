@@ -143,3 +143,30 @@ test('tramos · «Alojamiento libre · recepción»: cuatro tramos «ir a Bookin
   }
   assert.equal((await rows(TABLES.executions)).find((x) => x.id === ex).status, 'done');
 });
+
+test('tramos · probar un borrador (solo el owner) y «hacerlo de verdad» tras el ensayo, con lo respondido', async () => {
+  const D = uuid(), V = uuid(), S = uuid();
+  await ok([
+    ins(TABLES.definitions, D, { key: 'nota_de_barra', name: 'Nota de barra' }),
+    ins(TABLES.definitionVersions, V, { definition_id: D, version: 1, status: 'draft' }),
+    ins(TABLES.definitionStages, S, { version_id: V, position: 1, kind: 'record', title: 'Nota' }),
+    ins(TABLES.definitionSteps, uuid(), { version_id: V, stage_id: S, position: 1, key: 'texto', title: '¿Qué pasa?', input_type: 'text', essential: true }),
+  ]);
+  // Ensayar el borrador: el owner sí; el editor no; ejecutarlo de verdad, nadie.
+  assert.equal(await code([call(PROCEDURES.startExecution, { execution_id: uuid(), version_id: V, mode: 'learn' })], app.tokens.editor), 'NOT_FOUND');
+  assert.equal(await code([call(PROCEDURES.startExecution, { execution_id: uuid(), version_id: V, mode: 'run' })]), 'NOT_FOUND');
+  const practice = uuid();
+  await ok([call(PROCEDURES.startExecution, { execution_id: practice, version_id: V, mode: 'learn' })]);
+  await ok([call(PROCEDURES.startStage, { execution_id: practice, position: 1 })]);
+  await ok([call(PROCEDURES.saveStageValues, { execution_id: practice, position: 1, values: { texto: 'Falta hielo' } })]);
+  await ok([call(PROCEDURES.finishStage, { execution_id: practice, position: 1, status: 'practiced' })]);
+  // Publicado, «hacerlo de verdad» parte de lo respondido en el ensayo.
+  await ok([call(PROCEDURES.publishVersion, { version_id: V })]);
+  const real = uuid();
+  await ok([call(PROCEDURES.startExecution, { execution_id: real, version_id: V, mode: 'run', practice_of: practice })]);
+  const s1 = await ok([call(PROCEDURES.startStage, { execution_id: real, position: 1 })]);
+  assert.deepEqual(s1.values, { texto: 'Falta hielo' });
+  assert.equal((await rows(TABLES.executions)).find((x) => x.id === real).practice_of, practice);
+  // Solo desde un ensayo propio y terminado de esa versión.
+  assert.equal(await code([call(PROCEDURES.startExecution, { execution_id: uuid(), version_id: V, mode: 'run', practice_of: practice })], app.tokens.editor), 'INVALID_OPERATION');
+});

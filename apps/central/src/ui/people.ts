@@ -6,7 +6,7 @@ import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
   FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATIONS, RELATION_LABELS,
   DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, OUTSIDER_ACCESS_TEXT, proposeHouseLevel, relationForLevel, type HouseGrant, type HouseLevel,
-  houseDoors, pendingDoors, PORTAL_REACH_LABELS, type HouseDoor,
+  HOUSE_LEVEL_DOORS, houseDoors, pendingDoors, PORTAL_REACH_LABELS, type HouseDoor,
   flowProjectsOf, flowScopeSummary, sortFlowProjects, withFlowProjects, type FlowProject,
   canSeeReserved, dueState, personStatus, recordTypesFor, todayInMadrid, validateOperations, type RecordKind,
 } from '@ikisai/domain-central';
@@ -412,14 +412,14 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   const { client } = ctx;
   let sheet: Sheet | null = null;
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.editar.error', 'data-feedback-label': 'Error del formulario' });
-  const name = el('input', { id: 'p-name', 'data-field-id': 'central.persona.name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', required: true, value: person?.display_name ?? '' }) as HTMLInputElement;
-  const initials = el('input', { id: 'p-initials', 'data-field-id': 'central.persona.initials', 'data-feedback-ignore': '', type: 'text', maxlength: '4', autocomplete: 'off', value: person?.initials ?? '' }) as HTMLInputElement;
-  const relation = el('select', { id: 'p-relation', 'data-field-id': 'central.persona.relation' }, ...options(RELATIONS, RELATION_LABELS, person?.relation ?? 'equipo')) as HTMLSelectElement;
+  const name = el('input', { id: 'p-name', 'data-field-id': 'central.persona.name', 'data-field-entity': 'central.people', 'data-field-prop': 'display_name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', required: true, value: person?.display_name ?? '' }) as HTMLInputElement;
+  const initials = el('input', { id: 'p-initials', 'data-field-id': 'central.persona.initials', 'data-field-entity': 'central.people', 'data-field-prop': 'initials', 'data-feedback-ignore': '', type: 'text', maxlength: '4', autocomplete: 'off', value: person?.initials ?? '' }) as HTMLInputElement;
+  const relation = el('select', { id: 'p-relation', 'data-field-id': 'central.persona.relation', 'data-field-entity': 'central.people', 'data-field-prop': 'relation' }, ...options(RELATIONS, RELATION_LABELS, person?.relation ?? 'equipo')) as HTMLSelectElement;
   const levelsOn = houseLevelsOn;
   // «Área principal» sin las funciones de dirección (las sustituye el nivel), salvo la que ya tenga la ficha.
   const areas = levelsOn ? BASE_ROLES.filter((r) => !DIRECTION_BASE_ROLES.includes(r) || r === person?.base_role) : BASE_ROLES;
-  const baseRole = el('select', { id: 'p-role', 'data-field-id': 'central.persona.role' }, ...options(areas, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
-  const houseLevel = el('select', { id: 'p-level', 'data-field-id': 'central.persona.p_level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : defaults.level ?? 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
+  const baseRole = el('select', { id: 'p-role', 'data-field-id': 'central.persona.role', 'data-field-entity': 'central.people', 'data-field-prop': 'base_role' }, ...options(areas, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
+  const houseLevel = el('select', { id: 'p-level', 'data-field-id': 'central.persona.p_level', 'data-field-entity': 'central.people', 'data-field-prop': 'house_level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : defaults.level ?? 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
   // O4: qué accesos da o quita el nivel elegido, antes de guardar.
   const levelHint = el('p', { class: 'muted small', id: 'p-level-hint', 'aria-live': 'polite', 'data-feedback-id': 'central.persona.editar.aviso_nivel', 'data-feedback-label': 'Qué da el nivel de casa' });
   const paintLevelHint = () => {
@@ -441,11 +441,11 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   houseLevel.addEventListener('change', paintLevelDoors);
   paintLevelHint();
   paintLevelDoors();
-  const coverage = el('select', { id: 'p-coverage', 'data-field-id': 'central.persona.coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
-  const availability = el('select', { id: 'p-availability', 'data-field-id': 'central.persona.availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
-  const notes = el('textarea', { id: 'p-notes', 'data-field-id': 'central.persona.p_notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
+  const coverage = el('select', { id: 'p-coverage', 'data-field-id': 'central.persona.coverage', 'data-field-entity': 'central.people', 'data-field-prop': 'coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
+  const availability = el('select', { id: 'p-availability', 'data-field-id': 'central.persona.availability', 'data-field-entity': 'central.people', 'data-field-prop': 'availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
+  const notes = el('textarea', { id: 'p-notes', 'data-field-id': 'central.persona.p_notes', 'data-field-entity': 'central.people', 'data-field-prop': 'availability_notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
   notes.value = person?.availability_notes ?? '';
-  const committed = el('input', { type: 'checkbox', id: 'p-committed', 'data-field-id': 'central.persona.committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
+  const committed = el('input', { type: 'checkbox', id: 'p-committed', 'data-field-id': 'central.persona.committed', 'data-field-entity': 'central.people', 'data-field-prop': 'committed_post', checked: person?.committed_post ?? false }) as HTMLInputElement;
 
   const values = (): Record<string, unknown> => {
     const common = { display_name: name.value.trim(), initials: text(initials.value), base_role: baseRole.value, availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked };
@@ -706,7 +706,7 @@ export function mountPerson(personId: string): ViewMount {
       const taken = new Set(data.capabilities.filter((x) => x.person_id === person.id).map((x) => x.trade_id));
       const tree = tradeTree(data.trades).filter((x) => c ? x.trade.id === c.trade_id : !taken.has(x.trade.id));
       if (!c && !tree.length) { toast(data.trades.some((t) => !t.deleted_at) ? 'Ya tiene todos los oficios del catálogo.' : 'Todavía no hay oficios: créalos en Personas › Oficios.'); return; }
-      const tradeSelect = el('select', { id: 'pt-trade', 'data-field-id': 'central.persona.trade', disabled: !!c }, ...tree.map((x) => el('option', { value: x.trade.id }, `${'· '.repeat(x.depth)}${x.trade.name}`))) as HTMLSelectElement;
+      const tradeSelect = el('select', { id: 'pt-trade', 'data-field-id': 'central.persona.trade', 'data-field-entity': 'central.person_trades', 'data-field-prop': 'trade_id', disabled: !!c }, ...tree.map((x) => el('option', { value: x.trade.id }, `${'· '.repeat(x.depth)}${x.trade.name}`))) as HTMLSelectElement;
       // Lo heredado del padre es el mínimo (1510): la estrella no baja de ahí y un aviso lo dice antes de guardar.
       const minOf = () => inheritedLevel(data.trades, data.capabilities, person.id, c?.trade_id ?? tradeSelect.value);
       let level = Math.max(c?.level ?? 1, minOf()?.level ?? 0);
@@ -725,7 +725,7 @@ export function mountPerson(personId: string): ViewMount {
       };
       tradeSelect.addEventListener('change', paintMin);
       paintMin();
-      const note = el('input', { id: 'pt-note', 'data-field-id': 'central.persona.note', type: 'text', maxlength: '300', value: c?.note ?? '', placeholder: 'Por ejemplo: solo instalaciones pequeñas' }) as HTMLInputElement;
+      const note = el('input', { id: 'pt-note', 'data-field-id': 'central.persona.note', 'data-field-entity': 'central.person_trades', 'data-field-prop': 'note', type: 'text', maxlength: '300', value: c?.note ?? '', placeholder: 'Por ejemplo: solo instalaciones pequeñas' }) as HTMLInputElement;
       const save = el('button', { class: 'primary', type: 'button', id: 'savePersonTrade', 'data-feedback-id': 'central.persona.oficios.editor.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
         const min = minOf();
         const fields = { level: Math.max(level, min?.level ?? 0), note: note.value.trim() || null };
@@ -797,7 +797,7 @@ export function mountPerson(personId: string): ViewMount {
       // Sin cuenta: correo para dársela ahora (los accesos de outsider llegan solos al enlazarla) y, como hoy, otros accesos opcionales.
       let catalog: Awaited<ReturnType<typeof admin.catalog>> = [];
       if (navigator.onLine) { try { catalog = await admin.catalog(); } catch { catalog = []; } }
-      const email = el('input', { id: 'co-email', 'data-field-id': 'central.persona.co_email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
+      const email = el('input', { id: 'co-email', 'data-field-id': 'central.persona.co_email', 'data-field-entity': 'central.person_private', 'data-field-prop': 'email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
       const selects = new Map<string, HTMLSelectElement>();
       const rows = catalog.filter((app) => app.id !== 'guests' && app.id !== 'tasks').map((app) => {
         const s = el('select', { id: `co-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
@@ -857,7 +857,7 @@ export function mountPerson(personId: string): ViewMount {
     /** «Quitar de outsider» (decisión del usuario): se pregunta a qué nivel pasa, con «Sin nivel» por defecto. No se borra nada. */
     function openRemoveOutsider(person: Person): void {
       let sheet: Sheet | null = null;
-      const target = el('select', { id: 'ro-level', 'data-field-id': 'central.persona.ro_level', 'aria-label': 'Pasa a' },
+      const target = el('select', { id: 'ro-level', 'data-field-id': 'central.persona.ro_level', 'data-field-entity': 'central.people', 'data-field-prop': 'house_level', 'aria-label': 'Pasa a' },
         el('option', { value: '' }, 'Sin nivel (fuera del directorio)'), el('option', { value: 'staff' }, HOUSE_LEVEL_LABELS.staff)) as HTMLSelectElement;
       const submit = el('button', { class: 'primary', type: 'button', id: 'removeOutsiderSubmit', 'data-feedback-id': 'central.persona.outsider.quitar_confirmar', 'data-feedback-label': 'Quitar', onclick: async () => {
         const lv = (target.value || null) as HouseLevel | null;
@@ -1007,7 +1007,15 @@ export function mountPerson(personId: string): ViewMount {
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
       if (!person.user_id) {
-        return [el('p', { class: 'muted' }, 'Sin cuenta: no entra en ninguna app.'),
+        const pendingNote = el('p', { class: 'muted small', id: 'pendingAccess' });
+        void pendingOf(person).then((list) => {
+          const flow = list.find((p) => p.app === 'flow');
+          const ids = flow ? flowProjectsOf(flow.scopes) ?? [] : [];
+          if (!ids.length) return;
+          const names = ids.map((id) => admin.cached.flowProjects?.find((x) => x.id === id)?.name ?? 'un proyecto');
+          pendingNote.textContent = `Al darle cuenta entrará en Flow en: ${names.join(', ')}.`;
+        });
+        return [el('p', { class: 'muted' }, 'Sin cuenta: no entra en ninguna app.'), pendingNote,
           el('div', { class: 'zone', 'data-feedback-id': 'central.persona.cuenta.acciones', 'data-feedback-label': 'Acciones de la cuenta' },
             el('button', { class: 'primary', type: 'button', id: 'giveAccount', 'data-feedback-id': 'central.persona.cuenta.dar', 'data-feedback-label': 'Dar cuenta', onclick: () => void openGiveAccount(person, priv) }, icon('plus', 18), 'Dar cuenta'),
             el('button', { class: 'ghost', type: 'button', id: 'linkAccount', 'data-feedback-id': 'central.persona.cuenta.enlazar', 'data-feedback-label': 'Enlazar cuenta existente', onclick: () => void openLinkAccount(person) }, 'Enlazar cuenta existente'))];
@@ -1093,11 +1101,11 @@ export function mountPerson(personId: string): ViewMount {
       const legal = input('pp-legal', priv?.legal_name, { maxlength: '160', 'data-feedback-ignore': '' });
       const phone = input('pp-phone', priv?.phone, { maxlength: '32', type: 'tel', 'data-feedback-ignore': '' });
       const email = input('pp-email', priv?.email, { maxlength: '320', type: 'email', 'data-feedback-ignore': '' });
-      const engagement = el('select', { id: 'pp-engagement', 'data-field-id': 'central.persona.engagement' }, ...options(ENGAGEMENTS, ENGAGEMENT_LABELS, priv?.engagement, 'Sin indicar')) as HTMLSelectElement;
+      const engagement = el('select', { id: 'pp-engagement', 'data-field-id': 'central.persona.engagement', 'data-field-entity': 'central.person_private', 'data-field-prop': 'engagement' }, ...options(ENGAGEMENTS, ENGAGEMENT_LABELS, priv?.engagement, 'Sin indicar')) as HTMLSelectElement;
       const from = input('pp-from', priv?.engaged_from, { type: 'date', 'data-feedback-id': 'central.persona.contacto.editar.desde', 'data-feedback-label': 'Desde' });
       const until = input('pp-until', priv?.engaged_until, { type: 'date', 'data-feedback-id': 'central.persona.contacto.editar.hasta', 'data-feedback-label': 'Hasta' });
       const emergency = input('pp-emergency', priv?.emergency_contact, { maxlength: '160', placeholder: 'Nombre y teléfono', 'data-feedback-ignore': '' });
-      const notes = el('textarea', { id: 'pp-notes', 'data-field-id': 'central.persona.pp_notes', 'data-feedback-ignore': '', rows: '3', maxlength: '1000' }) as HTMLTextAreaElement;
+      const notes = el('textarea', { id: 'pp-notes', 'data-field-id': 'central.persona.pp_notes', 'data-field-entity': 'central.person_private', 'data-field-prop': 'notes', 'data-feedback-ignore': '', rows: '3', maxlength: '1000' }) as HTMLTextAreaElement;
       notes.value = priv?.notes ?? '';
       const values = (): Record<string, unknown> => ({
         legal_name: text(legal.value), phone: text(phone.value), email: text(email.value)?.toLowerCase() ?? null, engagement: engagement.value || null,
@@ -1143,19 +1151,19 @@ export function mountPerson(personId: string): ViewMount {
       let staged: Blob | null = null;
       let stagedName = '';
       const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.documentacion.editar.error', 'data-feedback-label': 'Error del formulario' });
-      const kind = el('select', { id: 'r-kind', 'data-field-id': 'central.persona.kind' }, ...options(RECORD_KINDS, { documento: 'Documento', formacion: 'Formación' }, record?.kind ?? 'documento')) as HTMLSelectElement;
-      const type = el('select', { id: 'r-type', 'data-field-id': 'central.persona.type' }) as HTMLSelectElement;
+      const kind = el('select', { id: 'r-kind', 'data-field-id': 'central.persona.kind', 'data-field-entity': 'central.person_records', 'data-field-prop': 'kind' }, ...options(RECORD_KINDS, { documento: 'Documento', formacion: 'Formación' }, record?.kind ?? 'documento')) as HTMLSelectElement;
+      const type = el('select', { id: 'r-type', 'data-field-id': 'central.persona.type', 'data-field-entity': 'central.person_records', 'data-field-prop': 'record_type' }) as HTMLSelectElement;
       const fillTypes = () => replace(type, ...options(recordTypesFor(kind.value as RecordKind), RECORD_TYPE_LABELS, record?.kind === kind.value ? record.record_type : recordTypesFor(kind.value as RecordKind)[0]));
       fillTypes();
-      const title = el('input', { id: 'r-title', 'data-field-id': 'central.persona.title', type: 'text', maxlength: '120', value: record?.title ?? '' }) as HTMLInputElement;
+      const title = el('input', { id: 'r-title', 'data-field-id': 'central.persona.title', 'data-field-entity': 'central.person_records', 'data-field-prop': 'title', type: 'text', maxlength: '120', value: record?.title ?? '' }) as HTMLInputElement;
       const titleField = el('label', { class: 'field', 'data-feedback-id': 'central.persona.documentacion.editar.campo_titulo', 'data-feedback-label': 'Título' }, el('span', null, 'Título'), title);
-      const status = el('select', { id: 'r-status', 'data-field-id': 'central.persona.status' }, ...options(RECORD_STATUSES, RECORD_STATUS_LABELS, record?.status ?? 'pendiente')) as HTMLSelectElement;
-      const issued = el('input', { id: 'r-issued', 'data-field-id': 'central.persona.issued', type: 'date', value: record?.issued_on ?? '' }) as HTMLInputElement;
-      const expires = el('input', { id: 'r-expires', 'data-field-id': 'central.persona.expires', type: 'date', value: record?.expires_on ?? '' }) as HTMLInputElement;
-      const reviewed = el('input', { id: 'r-reviewed', 'data-field-id': 'central.persona.reviewed', type: 'date', value: record?.reviewed_on ?? '' }) as HTMLInputElement;
-      const notes = el('textarea', { id: 'r-notes', 'data-field-id': 'central.persona.r_notes', 'data-feedback-ignore': '', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
+      const status = el('select', { id: 'r-status', 'data-field-id': 'central.persona.status', 'data-field-entity': 'central.person_records', 'data-field-prop': 'status' }, ...options(RECORD_STATUSES, RECORD_STATUS_LABELS, record?.status ?? 'pendiente')) as HTMLSelectElement;
+      const issued = el('input', { id: 'r-issued', 'data-field-id': 'central.persona.issued', 'data-field-entity': 'central.person_records', 'data-field-prop': 'issued_on', type: 'date', value: record?.issued_on ?? '' }) as HTMLInputElement;
+      const expires = el('input', { id: 'r-expires', 'data-field-id': 'central.persona.expires', 'data-field-entity': 'central.person_records', 'data-field-prop': 'expires_on', type: 'date', value: record?.expires_on ?? '' }) as HTMLInputElement;
+      const reviewed = el('input', { id: 'r-reviewed', 'data-field-id': 'central.persona.reviewed', 'data-field-entity': 'central.person_records', 'data-field-prop': 'reviewed_on', type: 'date', value: record?.reviewed_on ?? '' }) as HTMLInputElement;
+      const notes = el('textarea', { id: 'r-notes', 'data-field-id': 'central.persona.r_notes', 'data-field-entity': 'central.person_records', 'data-field-prop': 'notes', 'data-feedback-ignore': '', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
       notes.value = record?.notes ?? '';
-      const fileInput = el('input', { id: 'r-file', 'data-field-id': 'central.persona.file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.persona.documentacion.editar.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
+      const fileInput = el('input', { id: 'r-file', 'data-field-id': 'central.persona.file', 'data-field-entity': 'central.person_records', 'data-field-prop': 'file_id', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.persona.documentacion.editar.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
       const fileState = el('span', { class: 'muted small', id: 'r-file-state', 'data-feedback-id': 'central.persona.documentacion.editar.estado_archivo', 'data-feedback-label': 'Estado del archivo' }, record?.file_id ? 'Tiene archivo adjunto.' : 'Sin archivo.');
       const syncTitle = () => { titleField.hidden = !FREE_RECORD_TYPES.includes(type.value); };
       syncTitle();
@@ -1232,6 +1240,23 @@ export function mountPerson(personId: string): ViewMount {
       }));
     }
 
+    /** Accesos que se dejaron pendientes (1525; p. ej. sus proyectos de Flow): se aplican al darle la cuenta. */
+    async function pendingOf(person: Person): Promise<Array<{ id: string; revision: number; app: string; scopes: Record<string, unknown> }>> {
+      const rows = (await client.list(T.pendingAccess).catch(() => [])) as unknown as Array<{ id: string; revision: number; person_id: string; app: string; scopes: Record<string, unknown>; deleted_at?: string | null }>;
+      return rows.filter((r) => r.person_id === person.id && !r.deleted_at);
+    }
+    async function applyPending(person: Person, userId: string): Promise<void> {
+      for (const p of await pendingOf(person)) {
+        const want = person.house_level ? HOUSE_LEVEL_DOORS[person.house_level][p.app] : undefined;
+        const role = want && 'role' in want ? want.role : null;
+        if (!role) continue;
+        try {
+          await admin.setMembership({ app: p.app, userId, role, scopes: p.scopes });
+          await client.commit([{ op: 'delete', table: T.pendingAccess, id: p.id, expectedRevision: Number(p.revision) }]);
+        } catch (e) { toast(`No se ha podido aplicar su acceso pendiente en ${p.app}: ${describeError(e)}`); }
+      }
+    }
+
     async function openGiveAccount(person: Person, priv: Private | null): Promise<void> {
       if (!navigator.onLine) { toast('Dar cuenta necesita conexión.'); return; }
       let catalog;
@@ -1247,6 +1272,9 @@ export function mountPerson(personId: string): ViewMount {
         fbMark(s, 'central.persona.cuenta.dar.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
         return el('label', { class: 'approw', 'data-feedback-id': 'central.persona.cuenta.dar.app', 'data-feedback-label': 'Acceso a una app' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, ''))), s);
       });
+      // Con nivel de casa, sus accesos llegan solos al enlazar la cuenta: basta el correo (las apps, opcionales y plegadas).
+      const byLevel = houseLevelsOn && person.house_level ? person.house_level : null;
+      const levelApps = byLevel ? Object.keys(HOUSE_LEVEL_DOORS[byLevel]).map((id) => catalog.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id) : [];
       const submit = el('button', { class: 'primary', type: 'submit', form: 'giveForm', id: 'giveSubmit', 'data-feedback-id': 'central.persona.cuenta.dar.enviar', 'data-feedback-label': 'Dar cuenta' }, 'Dar cuenta') as HTMLButtonElement;
       const form = el('form', { novalidate: true, id: 'giveForm', 'data-feedback-id': 'central.persona.cuenta.dar.formulario', 'data-feedback-label': 'Formulario de cuenta', onsubmit: async (event: Event) => {
         event.preventDefault();
@@ -1254,7 +1282,7 @@ export function mountPerson(personId: string): ViewMount {
         const mail = email.value.trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { error.textContent = 'Escribe un correo válido.'; return; }
         const memberships = [...selects].filter(([, s]) => s.value).map(([app, s]) => ({ app, role: s.value as Role }));
-        if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
+        if (!memberships.length && !byLevel) { error.textContent = 'Elige al menos una app.'; return; }
         submit.disabled = true;
         try {
           // Una persona, una ficha, una cuenta: si el correo ya tiene cuenta, se avisa y se elige antes de dar el alta.
@@ -1277,6 +1305,7 @@ export function mountPerson(personId: string): ViewMount {
           await client.commit([{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: out.userId } }]);
           await sheet?.close(true);
           accounts = null;
+          await applyPending(person, out.userId);
           if (out.temporaryPassword) showSecret(out.temporaryPassword, out.email);
           else toast('Ya tenía cuenta con ese correo: se han añadido los accesos y queda enlazada.');
           void loadAccounts();
@@ -1287,7 +1316,13 @@ export function mountPerson(personId: string): ViewMount {
         }
       } },
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.cuenta.dar.campo_correo', 'data-feedback-label': 'Correo de la cuenta' }, el('span', null, 'Correo de la cuenta'), email),
-      el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.persona.cuenta.dar.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'), ...rows, error);
+      byLevel ? el('p', { class: 'muted small', id: 'giveByLevel', 'data-feedback-id': 'central.persona.cuenta.dar.por_nivel', 'data-feedback-label': 'Accesos por nivel de casa' },
+        `Escribe su correo delante de la persona. Sus accesos los da su nivel «${HOUSE_LEVEL_LABELS[byLevel]}»: ${levelApps.join(', ')}. Después verás una contraseña temporal una sola vez.`) : null,
+      byLevel
+        ? el('details', { class: 'ctl-giveextra', 'data-feedback-id': 'central.persona.cuenta.dar.otros', 'data-feedback-label': 'Otros accesos' },
+          el('summary', null, 'Otros accesos (opcional)'), ...rows)
+        : el('div', null, el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.persona.cuenta.dar.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'), ...rows),
+      error);
       sheet = ignoreSheetMeta(openSheet({
         title: 'Dar cuenta', meta: person.display_name, body: form,
         panelAttrs: { 'data-feedback-id': 'central.persona.cuenta.dar', 'data-feedback-label': 'Dar cuenta' },
@@ -1304,7 +1339,7 @@ export function mountPerson(personId: string): ViewMount {
       const free = accounts.filter((a) => a.kind !== 'agent' && !linked.has(a.userId));
       if (!free.length) { toast('No hay cuentas sin enlazar. Usa «Dar cuenta».'); return; }
       let sheet: Sheet | null = null;
-      const select = el('select', { id: 'la-account', 'data-field-id': 'central.persona.account', 'data-feedback-ignore': '' }, ...free.map((a) => el('option', { value: a.userId }, `${a.displayName || a.email} · ${a.email ?? ''}`))) as HTMLSelectElement;
+      const select = el('select', { id: 'la-account', 'data-field-id': 'central.persona.account', 'data-field-entity': 'central.people', 'data-field-prop': 'user_id', 'data-feedback-ignore': '' }, ...free.map((a) => el('option', { value: a.userId }, `${a.displayName || a.email} · ${a.email ?? ''}`))) as HTMLSelectElement;
       const submit = el('button', { class: 'primary', type: 'button', id: 'linkSubmit', 'data-feedback-id': 'central.persona.cuenta.enlazar_hoja.enviar', 'data-feedback-label': 'Enlazar', onclick: async () => {
         const fresh = data.people.find((p) => p.id === person.id) ?? person;
         if (await commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: select.value } }], 'Cuenta enlazada.')) {

@@ -1,12 +1,12 @@
-import { createQuantityField, el, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
-import { lodgingLink, myOrders, PublicApiError, readCustomer, redeemInvitation, submitOrder, type MyOrder } from './customer.ts';
+import { createQuantityField, el, fieldAttrs, icon, openSheet, renderMedal, replace, type Sheet } from '@ikisai/ui-kit';
+import { linkCustomerToVisitor, lodgingLink, myOrders, PublicApiError, readCustomer, redeemInvitation, redeemVisitorHandoff, submitOrder, venLink, type MyOrder } from './customer.ts';
 import {
   basketLines, basketTotal, formatEuros, groupMenu, productAssets, setQuantity, SCOPE_LABELS,
   type Basket, type MenuProduct,
 } from '@ikisai/domain-flow';
 
 /**
- * Carta pública en la raíz de flow.ikisai.com (canon V1 §3; FLOW-DIR-001 §1 y §8): sin login. Tres bloques (Clásicos,
+ * Carta pública en flow.ikisai.com/recorridos/carta, a la que se llega desde ven.ikisai.com (URLS_ENTRADA, 27-10; antes en la raíz): sin login. Tres bloques (Clásicos,
  * Gourmet y Barra), cada producto con su medallón de código, nombre, descripción, precio y «− n +» en la propia tarjeta;
  * «Mi pedido» con cantidades y total, y «Ver carta solo» con la carta completa. «Enviar a barra» manda la cesta y da un
  * número que el navegador conserva («Soy el 142»): **el pago se hace en barra**, enviar no es pagar. Mientras no se envía,
@@ -30,11 +30,12 @@ export async function loadMenu(fetcher: typeof fetch = fetch): Promise<MenuProdu
 }
 
 /** La carta y, si el evento del flujo admite alojamiento (Booking), su código para «Alójate aquí» (0936). */
-export async function loadCarta(fetcher: typeof fetch = fetch): Promise<{ products: MenuProduct[]; lodging: { eventCode: string } | null }> {
+export async function loadCarta(fetcher: typeof fetch = fetch): Promise<{ products: MenuProduct[]; lodging: { eventCode: string } | null; eventCode: string | null }> {
   const res = await fetcher('/api/v1/public/menu', { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`menu ${res.status}`);
-  const data = await res.json() as { products?: MenuProduct[]; lodging?: { eventCode?: string } | null };
-  return { products: Array.isArray(data.products) ? data.products : [], lodging: data.lodging?.eventCode ? { eventCode: data.lodging.eventCode } : null };
+  const data = await res.json() as { products?: MenuProduct[]; lodging?: { eventCode?: string } | null; eventCode?: string | null };
+  return { products: Array.isArray(data.products) ? data.products : [], lodging: data.lodging?.eventCode ? { eventCode: data.lodging.eventCode } : null,
+    eventCode: typeof data.eventCode === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(data.eventCode) ? data.eventCode : null };
 }
 
 export function mountCarta(root: HTMLElement): () => void {
@@ -65,10 +66,19 @@ export function mountCarta(root: HTMLElement): () => void {
       replace(notice, error instanceof PublicApiError ? error.message : 'No se ha podido usar el enlace.');
     });
   }
+  // Traspaso desde ven.ikisai.com (`?v=`): se quita de la dirección y se canjea una vez, solo si este navegador no tiene visitante.
+  const handoff = new URLSearchParams(location.search).get('v');
+  if (handoff) {
+    const rest = new URLSearchParams(location.search);
+    rest.delete('v');
+    history.replaceState(null, '', location.pathname + (rest.toString() ? `?${rest}` : '') + location.hash);
+    void redeemVisitorHandoff(handoff).catch(() => undefined); // si caducó, la carta sigue igual
+  }
   const bar = el('div', { class: 'carta-bar', id: 'cartaBar', role: 'region', 'aria-label': 'Mi pedido' });
   // «Alójate aquí»: solo si el evento admite alojamiento; lleva a ven.ikisai.com con este móvil (traspaso de un uso).
   const lodgingButton = el('button', { type: 'button', class: 'ghost carta-lodging', id: 'alojate', hidden: true }, 'Alójate aquí') as HTMLButtonElement;
   let lodgingCode: string | null = null;
+  let eventCode: string | null = null;
   lodgingButton.addEventListener('click', async () => {
     if (!lodgingCode || lodgingButton.dataset.busy) return;
     lodgingButton.dataset.busy = '1'; lodgingButton.disabled = true;
@@ -109,7 +119,7 @@ export function mountCarta(root: HTMLElement): () => void {
   }
 
   function productCard(product: MenuProduct): HTMLElement {
-    const field = createQuantityField({
+    const field = createQuantityField({ field: { id: 'flow.carta.cantidad', entity: 'flow.order_lines', prop: 'quantity', type: 'number' },
       label: `Cantidad de ${product.name}`, name: `q-${product.id}`, value: basket[product.id] ?? 0, decimals: 0, min: 0, max: 99, step: 1,
       onChange: (value) => change(product.id, value.value ?? 0),
     });
@@ -183,8 +193,9 @@ export function mountCarta(root: HTMLElement): () => void {
         basket = {}; saveBasket(basket);
         for (const f of fields.values()) f.set(0);
         paintBar(); paintMine();
+        void linkCustomerToVisitor().catch(() => undefined);
         sheet.close();
-        showSent(out.number);
+        showSent(out.number, out.orderId);
       } catch (error) {
         send.disabled = false;
         replace(status, error instanceof PublicApiError ? error.message : 'No se ha podido enviar. Enséñalo en la barra.');
@@ -210,13 +221,41 @@ export function mountCarta(root: HTMLElement): () => void {
   }
 
   /** Solo con la respuesta del servidor: el pedido está en barra y este es tu número. */
-  function showSent(number: number | null): void {
+  function showSent(number: number | null, orderId: string): void {
+    const test = el('p', { class: 'carta-test', role: 'status', hidden: true });
+    // Si quien pide es del equipo (visitante atado a un miembro, 0952), el pedido es de prueba y se dice.
+    void myOrders().then((m) => {
+      const o = m?.orders.find((x) => x.id === orderId);
+      if (o?.testName) { test.hidden = false; replace(test, o.testExcluded ? `Pedido de prueba (${o.testName}): no cuenta en caja.` : `Pedido del equipo (${o.testName}): se ajusta en Finance.`); }
+    }).catch(() => undefined);
     openSheet({
       title: 'Pedido enviado',
       body: el('div', { class: 'carta-sent' },
+        test,
         el('p', { class: 'carta-number' }, el('small', null, 'Di en la barra'), el('strong', { id: 'numeroCliente' }, number ? `Soy el ${number}` : 'Tu pedido')),
-        el('p', null, 'Paga en la barra: allí lo revisan contigo y lo cobran. Hasta entonces no se prepara.')),
+        el('p', null, 'Paga en la barra: allí lo revisan contigo y lo cobran. Hasta entonces no se prepara.'),
+        // El siguiente recorrido, en ven.ikisai.com con este móvil (URLS_ENTRADA, 27-10).
+        eventCode ? el('div', { class: 'carta-next', 'data-feedback-id': 'flow.carta.siguiente' },
+          el('p', { class: 'muted small' }, 'Cuando quieras, sigue con:'),
+          el('div', { class: 'flow-actions' },
+            nextButton('datos', 'Tus datos'),
+            lodgingCode ? nextButton('alojate', 'Alójate aquí') : null)) : null),
     });
+  }
+
+  function nextButton(next: 'datos' | 'alojate', label: string): HTMLElement {
+    const button = el('button', { type: 'button', class: 'ghost', 'data-next': next }, label) as HTMLButtonElement;
+    button.addEventListener('click', async () => {
+      if (button.disabled || !eventCode) return;
+      button.disabled = true;
+      try { location.href = await venLink(next === 'alojate' ? lodgingCode ?? eventCode : eventCode, next); }
+      catch (error) {
+        notice.hidden = false;
+        replace(notice, error instanceof PublicApiError ? error.message : 'No se ha podido abrir. Vuelve a intentarlo.');
+        button.disabled = false;
+      }
+    });
+    return button;
   }
 
   const MINE_STATE: Record<MyOrder['status'], string> = { open: 'Por cobrar en barra', paid: 'Cobrado', delivered: 'Entregado' };
@@ -230,6 +269,7 @@ export function mountCarta(root: HTMLElement): () => void {
       if (!out || !out.orders.length) { replace(body, el('p', { class: 'muted' }, 'Aún no has enviado pedidos desde este dispositivo.')); paintMine(); return; }
       replace(body, ...out.orders.map((o) => el('section', { class: 'carta-mine-order' },
         el('h3', null, `${MINE_STATE[o.status]}${o.status === 'paid' && o.preparing ? ' · preparando' : o.status === 'paid' ? ' · listo para recoger' : ''}`),
+        o.testName ? el('p', { class: 'carta-test' }, o.testExcluded ? `Pedido de prueba (${o.testName})` : `Pedido del equipo (${o.testName})`) : null,
         el('ul', { class: 'carta-summary-list' }, ...o.lines.map((l) => el('li', null,
           el('span', { class: 'carta-code' }, l.code),
           el('span', null, `${l.quantity} × ${l.name}`),
@@ -247,10 +287,11 @@ export function mountCarta(root: HTMLElement): () => void {
 
   replace(main, el('p', { class: 'muted' }, 'Cargando la carta…'));
   let alive = true;
-  loadCarta().then(({ products: items, lodging }) => {
+  loadCarta().then(({ products: items, lodging, eventCode: code }) => {
     if (!alive) return;
     products = items;
     lodgingCode = lodging?.eventCode ?? null;
+    eventCode = code ?? lodgingCode;
     lodgingButton.hidden = !lodgingCode;
     // Fuera de la cesta lo que ya no está en la carta (agotado o retirado).
     basket = Object.fromEntries(Object.entries(basket).filter(([id]) => products.some((p) => p.id === id)));

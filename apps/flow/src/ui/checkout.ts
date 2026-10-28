@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, el, openSheet, renderQr, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, openSheet, renderQr, replace, toast } from '@ikisai/ui-kit';
 import { CHECKOUT_METHOD_LABELS, formatEuros, ORDER_STATUS_LABELS, PROCEDURES, TABLES, type CheckoutMethod } from '@ikisai/domain-flow';
 import { callProcedure, errorCode, flowActions, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -45,7 +45,7 @@ export function openCustomerSheet(client: SyncClient, projectId: string, number:
     if (!orders.length) { replace(list, el('p', { class: 'muted' }, 'Este cliente aún no tiene pedidos.')); replace(foot); return; }
     replace(list, ...orders.map((o) => {
       const items = (data!.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
-      const box = el('input', { type: 'checkbox', checked: chosen.has(o.id), disabled: o.status === 'delivered', 'aria-label': `Elegir pedido ${o.pay_seq ?? ''}`,
+      const box = el('input', { ...fieldAttrs({ id: 'flow.servicio.elegir_pedido', type: 'checkbox', storage: 'none' }), type: 'checkbox', checked: chosen.has(o.id), disabled: o.status === 'delivered', 'aria-label': `Elegir pedido ${o.pay_seq ?? ''}`,
         onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) chosen.add(o.id); else chosen.delete(o.id); paintFoot(); } });
       return el('label', { class: `qcard checkout-order is-${o.status}`, role: 'listitem' }, box,
         el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, `${o.pay_seq ? `Pedido ${o.pay_seq}` : 'Sin cobrar'} · ${stateOf(data!, o)}`),
@@ -59,7 +59,7 @@ export function openCustomerSheet(client: SyncClient, projectId: string, number:
     const toPay = sel.filter((o) => o.status === 'open');
     const toDeliver = sel.filter((o) => o.status === 'paid');
     replace(foot,
-      busyButton({ class: 'secondary', ...(toDeliver.length ? {} : { disabled: 'disabled' }) }, `Entregar (${toDeliver.length})`, () => deliver(toDeliver)),
+      busyButton({ class: 'ghost', ...(toDeliver.length ? {} : { disabled: 'disabled' }) }, `Entregar (${toDeliver.length})`, () => deliver(toDeliver)),
       busyButton({ class: 'primary', ...(toPay.length ? {} : { disabled: 'disabled' }) }, `Pagar (${toPay.length})`, async () => { openPaySheet(client, projectId, toPay.map((o) => o.id)); }));
   }
 
@@ -110,7 +110,7 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
         el('strong', null, `${formatEuros(orderTotal(data!, o))}`),
         ' · ', (data!.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} × ${data!.products.get(l.product_id)?.name ?? ''}`).join(', ')))),
       ...(os.length > 1 ? [el('label', { class: 'editor-option' },
-        el('input', { type: 'checkbox', checked: unify, onchange: (e: Event) => { unify = (e.target as HTMLInputElement).checked; } }),
+        el('input', { ...fieldAttrs({ id: 'flow.servicio.unificar', type: 'checkbox', storage: 'none' }), type: 'checkbox', checked: unify, onchange: (e: Event) => { unify = (e.target as HTMLInputElement).checked; } }),
         el('span', null, 'Un solo pago (si no, cada pedido con su justificante)'))] : []));
     // Sin dirección cargada, el método de Bitcoin sale apagado y lo dice en el botón (no un error al tocarlo).
     const method = (m: CheckoutMethod, off: string | null = null) => busyButton({ class: m === 'cash' ? 'primary' : 'secondary', 'data-method': m, ...(off ? { disabled: 'disabled', title: off } : {}) },
@@ -165,7 +165,7 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
           onclick: () => window.open(`https://finance.ikisai.com/#/justificante?ref=${encodeURIComponent(`flow:receipt:${r.receipt_id}`)}`, '_blank', 'noopener') }, 'Imprimir ticket'),
         el('button', { type: 'button', class: 'ghost', disabled: true, title: 'Pronto' }, 'Enviar por correo'),
         sent.has(r.receipt_id) ? el('span', { class: 'muted small' }, 'Enviado a Finance')
-          : busyButton({ class: 'secondary' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));
+          : busyButton({ class: 'ghost' }, 'Enviar a Finance', () => sendToFinance(r.receipt_id))))));
   }
   async function sendToFinance(id: string): Promise<void> {
     // El estado del envío lo anota flow-api con la respuesta de Finance.
@@ -182,8 +182,8 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
 export async function editBitcoinSettings(client: SyncClient, projectId: string): Promise<void> {
   const rows = (await client.list(TABLES.projectSettings)) as unknown as Array<Settings & { id: string; revision: number }>;
   const current = rows.find((s) => s.project_id === projectId && !s.deleted_at);
-  const ln = el('input', { type: 'text', maxlength: '200', placeholder: 'nombre@walletofsatoshi.com', 'aria-label': 'Dirección Lightning', value: current?.lightning_address ?? '' });
-  const chain = el('input', { type: 'text', maxlength: '100', placeholder: 'bc1…', 'aria-label': 'Dirección Bitcoin', value: current?.bitcoin_address ?? '' });
+  const ln = el('input', { ...fieldAttrs({ id: 'flow.ajustes.lightning', entity: 'flow.project_settings', prop: 'lightning_address', type: 'text' }), type: 'text', maxlength: '200', placeholder: 'nombre@walletofsatoshi.com', 'aria-label': 'Dirección Lightning', value: current?.lightning_address ?? '' });
+  const chain = el('input', { ...fieldAttrs({ id: 'flow.ajustes.bitcoin', entity: 'flow.project_settings', prop: 'bitcoin_address', type: 'text' }), type: 'text', maxlength: '100', placeholder: 'bc1…', 'aria-label': 'Dirección Bitcoin', value: current?.bitcoin_address ?? '' });
   const ok = await confirmDialog({ title: 'Cobro con Bitcoin', text: 'Las direcciones salen como QR en la caja. Vacías, ese método queda desactivado.', confirmLabel: 'Guardar',
     body: el('div', { class: 'editor-head' }, el('label', null, 'Dirección Lightning', ln), el('label', null, 'Dirección Bitcoin', chain)) });
   if (!ok) return;

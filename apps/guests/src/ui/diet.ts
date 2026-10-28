@@ -5,7 +5,7 @@
  * «Quitar»; el consentimiento para compartir las alergias con el organizador, aparte; y el aviso de Central, sin promesas
  * clínicas. Cada cambio envía la lista entera (`portal_set_restrictions` sustituye todas, también las del organizador).
  */
-import { el, icon, replace } from '@ikisai/ui-kit';
+import { el, fieldAttrs, icon, replace } from '@ikisai/ui-kit';
 import type { Restriction } from '../app/api.ts';
 import { commonText } from '../app/common-texts.ts';
 import type { GuestContext } from '../app/context.ts';
@@ -54,8 +54,8 @@ export function mountDiet(main: HTMLElement, ctx: GuestContext, base: string): (
   function addForm(): HTMLElement {
     let type: string = 'alergia';
     let severity: string | null = null;
-    const subject = el('input', { id: 'r-subject', type: 'text', maxlength: '120', 'data-feedback-ignore': '' }) as HTMLInputElement;
-    const notes = el('input', { id: 'r-notes', type: 'text', maxlength: '200', placeholder: t('diet.notes'), 'data-feedback-ignore': '' }) as HTMLInputElement;
+    const subject = el('input', { id: 'r-subject', type: 'text', maxlength: '120', 'data-feedback-ignore': '', ...fieldAttrs({ id: 'guests.alimentacion.restriccion.que', type: 'text', required: true, sensitivity: 'sensitive' }) }) as HTMLInputElement;
+    const notes = el('input', { id: 'r-notes', type: 'text', maxlength: '200', placeholder: t('diet.notes'), 'data-feedback-ignore': '', ...fieldAttrs({ id: 'guests.alimentacion.restriccion.notas', type: 'text', required: false, sensitivity: 'sensitive' }) }) as HTMLInputElement;
     const error = el('p', { class: 'ghint', id: 'r-error', role: 'alert' });
     const types = el('div', { class: 'ask-choices', role: 'group', 'aria-labelledby': 'typeQ' });
     const sev = el('div', { class: 'ask-choices', role: 'group', 'aria-labelledby': 'sevQ' });

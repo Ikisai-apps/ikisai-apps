@@ -110,7 +110,7 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
   // --- La cuenta del retiro ----------------------------------------------------------------------------------------
   const accountTop = el('div', { class: 'orgacct-top' });
   const accountTotal = el('ul', { class: 'orgacct-rows' });
-  const otherInput = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.otros_ingresos', label: 'Otros ingresos', type: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: 'offersOther', placeholder: '0',
+  const otherInput = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.otros_ingresos', storage: 'device', label: 'Otros ingresos', type: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: 'offersOther', placeholder: '0',
     // Al escribir solo se repinta la cuenta (ni la lista ni el cartel).
     oninput: (e: Event) => { other = (e.target as HTMLInputElement).value; void cache.saveDraft(ctx.userId, otherKey, other); paintAccount(); } }) as HTMLInputElement;
   const bar = (value: number, max: number, kind: 'in' | 'out') => el('span', { class: `orgacct-bar ${kind}`, 'aria-hidden': 'true' },
@@ -351,13 +351,13 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
     let background = backgrounds[0] ?? null;
     const img = (entry: { row: Row; url: string } | null) => (entry ? posterImage(api, ctx.userId, fileIdOf(entry.row.file_id)!, entry.url) : Promise.resolve(null));
     const placeText = await venue;
-    const placeInput = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.lugar', label: 'Lugar del cartel', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'poster-place', maxlength: '160', value: placeText || 'Ikisai', oninput: () => void draw() }) as HTMLInputElement;
-    const note = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.nota', label: 'Nota del cartel', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'poster-note', maxlength: '160', placeholder: t('Plazas limitadas · reserva en…'), oninput: () => void draw() }) as HTMLInputElement;
+    const placeInput = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.lugar', storage: 'none', label: 'Lugar del cartel', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'poster-place', maxlength: '160', value: placeText || 'Ikisai', oninput: () => void draw() }) as HTMLInputElement;
+    const note = el('input', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.nota', storage: 'none', label: 'Nota del cartel', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'poster-note', maxlength: '160', placeholder: t('Plazas limitadas · reserva en…'), oninput: () => void draw() }) as HTMLInputElement;
     const canvas = el('canvas', { id: 'posterCanvas', class: 'orgposter-canvas', 'aria-label': t('Vista previa del cartel') }) as HTMLCanvasElement;
     const choose = <T extends string>(id: string, pairs: Array<[T, string]>, current: T, set: (v: T) => void, field: Record<string, string | null>) => el('select', { ...field, /* data-field-id y demás: los pone fieldAttrs, con literales, en cada llamada */ id,
       onchange: (e: Event) => { set((e.target as HTMLSelectElement).value as T); void draw(); } }, ...pairs.map(([v, l]) => el('option', { value: v, selected: v === current ? '' : null }, t(l))));
     const backgroundSelect = backgrounds.length > 1 ? el('label', { class: 'field' }, el('span', null, t('Foto')),
-      el('select', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.foto', label: 'Foto del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'poster-background', onchange: (e: Event) => { background = backgrounds.find((b) => b.row.id === (e.target as HTMLSelectElement).value) ?? background; void draw(); } },
+      el('select', { ...fieldAttrs({ id: 'organizers.ofertas.cartel.foto', storage: 'none', label: 'Foto del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }), id: 'poster-background', onchange: (e: Event) => { background = backgrounds.find((b) => b.row.id === (e.target as HTMLSelectElement).value) ?? background; void draw(); } },
         ...backgrounds.map((b) => el('option', { value: b.row.id }, String(b.row.title))))) : null;
     async function drawAt(f: PosterFormat): Promise<void> {
       drawPoster(canvas, content({
@@ -373,8 +373,8 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
       panelAttrs: { id: 'posterSheet' },
       body: el('div', { id: 'posterBody' },
         el('div', { class: 'orggrid' },
-          el('label', { class: 'field' }, el('span', null, t('Diseño')), choose('poster-template', TEMPLATES, template, (v) => { template = v; }, fieldAttrs({ id: 'organizers.ofertas.cartel.diseno', label: 'Diseño del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }))),
-          el('label', { class: 'field' }, el('span', null, t('Formato')), choose('poster-format', FORMATS, format, (v) => { format = v; }, fieldAttrs({ id: 'organizers.ofertas.cartel.formato', label: 'Formato del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }))),
+          el('label', { class: 'field' }, el('span', null, t('Diseño')), choose('poster-template', TEMPLATES, template, (v) => { template = v; }, fieldAttrs({ id: 'organizers.ofertas.cartel.diseno', storage: 'none', label: 'Diseño del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }))),
+          el('label', { class: 'field' }, el('span', null, t('Formato')), choose('poster-format', FORMATS, format, (v) => { format = v; }, fieldAttrs({ id: 'organizers.ofertas.cartel.formato', storage: 'none', label: 'Formato del cartel', type: 'select', sensitivity: 'internal', confirm: 'none' }))),
           backgroundSelect),
         el('label', { class: 'field' }, el('span', null, t('Lugar')), placeInput),
         el('label', { class: 'field' }, el('span', null, t('Línea final (opcional)')), note),

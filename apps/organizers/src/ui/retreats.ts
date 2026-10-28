@@ -15,6 +15,7 @@ import { countdownText, groupRetreats, isCoorganizer, matchesRetreat, phaseOf, s
 import { createCoverLoader } from '../app/covers.ts';
 import { loadGuestFeedback } from '../app/retreat-comments.ts';
 import { allReadIds, unreadByReservation } from '../app/comment-reads.ts';
+import { loadReplies, unreadRepliesByReservation } from '../app/replies.ts';
 import { proposalReservation } from '../../../../supabase/functions/_domain/organizers/mod.ts';
 import { failure, loading, staleNote } from './common.ts';
 import type { ViewMount } from './shell.ts';
@@ -95,7 +96,7 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
   /** Buscador (solo con «todos»): esconde lo que no coincide, abre los grupos con coincidencias y dice cuántos hay. */
   function searchBox(): HTMLElement {
     const result = el('p', { class: 'hint', id: 'retreatSearchResult', 'aria-live': 'polite' });
-    const input = el('input', { ...fieldAttrs({ id: 'organizers.retiros.buscador.campo', label: 'Buscar retiros', type: 'search', sensitivity: 'internal', confirm: 'none' }),
+    const input = el('input', { ...fieldAttrs({ id: 'organizers.retiros.buscador.campo', storage: 'none', label: 'Buscar retiros', type: 'search', sensitivity: 'internal', confirm: 'none' }),
       type: 'search', id: 'retreatSearch', placeholder: t('Buscar por nombre o código'), 'aria-label': t('Buscar retiros'), autocomplete: 'off',
       'aria-describedby': 'retreatSearchResult', 'data-feedback-id': 'organizers.retiros.buscador.campo', 'data-feedback-label': 'Buscar retiros',
     }) as HTMLInputElement;
@@ -166,6 +167,18 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
     }
   }
 
+  /** Respuestas de la casa sin ver (0117, RESPUESTAS_CASA.md): «N respuestas» en la tarjeta. Se leen en «Ayuda y sugerencias». */
+  async function markReplies(): Promise<void> {
+    const counts = unreadRepliesByReservation(await loadReplies(client).catch(() => []));
+    if (!alive) return;
+    for (const [id, card] of cards) {
+      const n = counts.get(id.toLowerCase()) ?? 0;
+      const chips = card.node.querySelector('.chips');
+      chips?.querySelector('.orgreplies')?.remove();
+      if (n) chips?.append(el('span', { class: 'chip warn orgreplies' }, n === 1 ? t('1 respuesta de Ikisai') : t('{n} respuestas de Ikisai', { n })));
+    }
+  }
+
   async function load(): Promise<void> {
     replace(host, loading());
     try {
@@ -198,6 +211,7 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
         fold('cancelled', groups.cancelled, today));
       void markProposals();
       void markComments();
+      void markReplies();
     } catch (error) {
       if (alive) replace(host, failure(error, () => void load()));
     }

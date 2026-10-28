@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { AGENTS_TABLE, TABLES, hasResponsible, successorChain, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
+import { AGENTS_TABLE, TABLES, agentCardUrl, flowLaneUrl, hasResponsible, successorChain, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
 
 let app: TestApp;
 let seq = 0;
@@ -33,6 +33,12 @@ test('agentes · dominio: solo el owner; responsable coherente; sin responsable 
   assert.equal(validateOperations(ins({ responsible_service: 'Servicio' }), owner)?.details.field, 'responsible_service');
   assert.equal(validateOperations(ins({ successor_id: 'a1' }), owner)?.details.field, 'successor_id');
   assert.equal(hasResponsible({ responsible_kind: 'service', responsible_service: '  ' }), false);
+  // Carril del Avance de Flow (1524): con proyecto y carril, el enlace; si falta uno o no es válido, nada.
+  assert.equal(flowLaneUrl({ flow_project: '11111111-2222-4333-8444-555555555555', flow_lane: 'central' }), 'https://flow.ikisai.com/#/p/11111111-2222-4333-8444-555555555555/avance?carril=central');
+  assert.equal(flowLaneUrl({ flow_project: '11111111-2222-4333-8444-555555555555', flow_lane: null }), null);
+  assert.equal(flowLaneUrl({ flow_project: 'a b', flow_lane: 'x' }), null);
+  assert.equal(agentCardUrl('a1'), 'https://central.ikisai.com/#/accesos/agentes?agente=a1');
+  assert.equal(validateOperations(ins({ flow_lane: 'no vale' }), owner)?.details.field, 'flow_lane');
   const chain = successorChain([{ id: 'a', display_name: 'A', successor_id: 'b' }, { id: 'b', display_name: 'B', successor_id: 'c' }, { id: 'c', display_name: 'C', successor_id: 'a' }], 'a');
   assert.deepEqual(chain.map((r) => r.id), ['b', 'c'], 'la cadena se corta al volver al primero');
 });

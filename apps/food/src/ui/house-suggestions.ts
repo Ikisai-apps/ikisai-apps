@@ -223,7 +223,7 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const pastOf = (s: VoteSuggestion) => { const a = argsOf(s); return !a || a.date < todayKey(); };
     const rows = list.map((s) => {
       const a = argsOf(s);
-      const box = el('input', { type: 'checkbox', id: `batch-${s.id}`, checked: batch!.has(s.id),
+      const box = el('input', { 'data-field-none': '', type: 'checkbox', id: `batch-${s.id}`, checked: batch!.has(s.id),
         onchange: () => { if (box.checked) batch!.add(s.id); else batch!.delete(s.id); paintSheet(); } }) as HTMLInputElement;
       return el('li', null, el('label', { class: 'checkline', for: box.id }, box,
         el('span', { 'data-feedback-ignore': '' }, nameOf(s), a ? el('span', { class: 'muted' }, ` · ${SERVICE_LABELS[a.service] ?? a.service} del ${longDay(a.date)}`) : null),
@@ -297,14 +297,14 @@ export const mountHouseSuggestions: ViewMount = ({ main, client, navigate }) => 
     const past = !!a && a.date < todayKey();
     const t = tally(current.id);
     const mine = myVote(current.id);
-    const comment = el('textarea', { 'data-feedback-id': 'food.menus.sugeridos.comentario', 'data-feedback-label': 'Comentario', id: 'suggestionComment', rows: '2', maxlength: '500', placeholder: 'Opcional: lo verá quien lo propuso' }) as HTMLTextAreaElement;
+    const comment = el('textarea', { 'data-field-id': 'food.menus.sugeridos.comentario', 'data-field-entity': 'core.suggestions', 'data-field-prop': 'comment', 'data-feedback-id': 'food.menus.sugeridos.comentario', 'data-feedback-label': 'Comentario', id: 'suggestionComment', rows: '2', maxlength: '500', placeholder: 'Opcional: lo verá quien lo propuso' }) as HTMLTextAreaElement;
     comment.value = comments.get(current.id) ?? '';
     comment.addEventListener('input', () => comments.set(current.id, comment.value));
     const options = recipes.filter((r) => r.status !== 'archivada').sort((x, y) => x.name.localeCompare(y.name, 'es'));
     // Arriba, las más parecidas por el nombre (hallazgo F-SUG-3); debajo, el resto por orden alfabético, sin repetirlas.
     const close = a ? similarRecipes(a.name, a.service, options.filter((r) => r.id !== known(a)?.id)) : [];
     const option = (r: (typeof options)[number]) => el('option', { value: r.id, selected: similar.get(current.id) === r.id }, r.name);
-    const pick = el('select', { 'data-feedback-id': 'food.menus.sugeridos.receta_parecida', 'data-feedback-label': 'Usar receta parecida', id: 'similarRecipe' },
+    const pick = el('select', { 'data-field-id': 'food.menus.sugeridos.receta_parecida', 'data-field-entity': 'food.menu_items', 'data-field-prop': 'recipe_id', 'data-feedback-id': 'food.menus.sugeridos.receta_parecida', 'data-feedback-label': 'Usar receta parecida', id: 'similarRecipe' },
       el('option', { value: '' }, a && known(a) ? `La del Recetario: ${known(a)!.name}` : 'Nueva: plato rápido por completar'),
       ...(close.length
         ? [el('optgroup', { label: 'Más parecidas' }, ...close.map(option)), el('optgroup', { label: 'Todas' }, ...options.filter((r) => !close.includes(r)).map(option))]

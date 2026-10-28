@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, openFeedbackCenter, registerReveal, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createLanes, createFeedback, createFeedbackReview, el, icon, openFeedbackCenter, registerReveal, replace, toast,
   type Lanes, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { APP, TABLES, type ColumnBehavior } from '@ikisai/domain-flow';
@@ -123,6 +123,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   const boot = client.bootstrap();
   const service = createServiceMode();
+  const backButton = el('button', { type: 'button', class: 'iconbtn flow-nav-btn', 'aria-label': 'Volver', title: 'Volver', hidden: true,
+    'data-feedback-id': 'flow.navegacion.volver', onclick: () => { if (navParent) navigate(navParent); } }, el('span', { class: 'flow-nav-chev', 'aria-hidden': 'true' }, '‹'));
+  const closeButton = el('button', { type: 'button', class: 'iconbtn flow-nav-btn', 'aria-label': 'Cerrar y volver a la entrada', title: 'Cerrar y volver a la entrada', hidden: true,
+    'data-feedback-id': 'flow.navegacion.cerrar', onclick: () => navigate('#/') }, icon('close', 20));
   const shell = createAppShell(root, {
     appName: 'Flow',
     markIcon: 'sync',
@@ -134,7 +138,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navLayout: 'bar',
     // Guiado mínimo del kit (0.68): ?campo= señala el campo; ?paso= lo explica y pone «Volver a…». Sin cliente: no lee nada de Flow.
     guide: { feedbackId: 'flow.guia' },
-    tools: [service.button],
+    tools: [backButton, closeButton, service.button],
     returnTo: { feedbackId: 'flow.cabecera.volver' },
     menu: {
       label: 'Menú de Flow',
@@ -149,24 +153,20 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { main } = shell;
 
   /**
-   * «Volver» y «Cerrar» siempre a la vista (VG, 27-10: se quedó atrapado en una pantalla): en todas las pantallas menos la
-   * entrada común. «Volver» sube un nivel (pantalla del flujo → su Inicio → entrada; editor → Recorridos → entrada); «Cerrar»
-   * vuelve a la entrada común.
+   * «Volver» y «Cerrar» (VG, 27-10): una sola vez, discretos, en la cabecera: iconos de 40 px con su nombre accesible, nunca
+   * repetidos en la pantalla. En todas menos la entrada común. «Volver» sube un nivel (pantalla del flujo → su Inicio →
+   * entrada; editor → Recorridos → entrada); «Cerrar» vuelve a la entrada común.
    */
-  const flowNav = el('nav', { class: 'flow-nav', 'aria-label': 'Volver o cerrar', 'data-feedback-id': 'flow.navegacion', hidden: true });
-  main.before(flowNav);
+  let navParent: string | null = null;
   function parentOf(hash: string, projectId: string | null): string | null {
     if (projectId) return hash === `#/p/${projectId}` ? '#/' : `#/p/${projectId}`;
     if (hash.startsWith('#/recorridos/')) return '#/recorridos';
     return hash === '#/' ? null : '#/';
   }
-  function paintFlowNav(hash: string, projectId: string | null): void {
-    const parent = parentOf(hash, projectId);
-    flowNav.hidden = !parent;
-    replace(flowNav, ...(parent ? [
-      el('button', { type: 'button', class: 'ghost', 'data-feedback-id': 'flow.navegacion.volver', onclick: () => navigate(parent) }, '‹ Volver'),
-      el('button', { type: 'button', class: 'ghost', 'data-feedback-id': 'flow.navegacion.cerrar', onclick: () => navigate('#/') }, '✕ Cerrar y volver a la entrada'),
-    ] : []));
+  function paintFlowNav(hash: string, projectId: string | null, isEntry: boolean): void {
+    navParent = isEntry ? null : parentOf(hash, projectId);
+    backButton.hidden = !navParent;
+    closeButton.hidden = !navParent;
   }
 
   function paintBanners(status: SyncStatus): void {
@@ -292,7 +292,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView?.();
     unmountView = null;
     shell.setRoute(projectId ? hash : '#/');
-    paintFlowNav(hash, projectId);
+    paintFlowNav(hash, projectId, entry.slug === 'flujos');
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, projectId });
     screen = { id: `flow.${entry.slug}`, label: entry.title };

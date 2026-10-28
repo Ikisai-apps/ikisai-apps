@@ -285,6 +285,9 @@ test('acceso a algunos proyectos: almacén y planes son del área entera; ve las
   await server.app.t.db.query(`update core.memberships set scopes = $1 where app = 'tasks' and user_id = $2`, [JSON.stringify({ tabs: [], projects: { [ID.ikisai!]: [project] } }), server.app.users.editor]);
   await editor.reload();
   await settled(editor);
+  // Al arrancar, la app pinta con el espejo local y después rehace el espejo con el ámbito nuevo (sync-client, cambio de
+  // pertenencia). Se espera a eso: lo que ya no ve («Guantes», de otro proyecto) tiene que haber salido del dispositivo.
+  await expect.poll(() => editor.evaluate(() => (Sync.core?.data?.['tasks.purchase_requests'] ?? []).some((r: any) => r.title === 'Guantes' && !r.deleted_at)), { timeout: 15_000 }).toBe(false);
   await editor.evaluate((t) => { state.activeTab = t; }, ID.ikisai);
   await go(editor, 'supplies');
   await expect(editor.locator('main .notice')).toHaveText('El almacén es del área entera; tu acceso es a algunos proyectos.');

@@ -10,7 +10,7 @@ export function fbIgnore<T extends Element>(node: T): T {
   return node;
 }
 
-/** Marca una pieza con su id y etiqueta (literales: el catálogo de la publicación los recoge de `fbMark(nodo, 'id', 'etiqueta')`). */
+/** Marca una pieza con su id y etiqueta (los dos, literales: el catálogo de la publicación los recoge de cada llamada a esta función). */
 export function fbMark<T extends Element>(node: T, id: string, label: string): T {
   node.setAttribute('data-feedback-id', id);
   node.setAttribute('data-feedback-label', label);
@@ -22,7 +22,7 @@ export async function copyText(text: string, done = t('Copiado. Ya puedes pegarl
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    const area = el('textarea', { ...fieldAttrs({ id: 'organizers.comun.copiar_texto', label: 'Texto para copiar', type: 'text', sensitivity: 'internal', confirm: 'none' }), readonly: '', style: 'position:fixed;opacity:0' }, text) as HTMLTextAreaElement;
+    const area = el('textarea', { ...fieldAttrs({ id: 'organizers.comun.copiar_texto', storage: 'none', label: 'Texto para copiar', type: 'text', sensitivity: 'internal', confirm: 'none' }), readonly: '', style: 'position:fixed;opacity:0' }, text) as HTMLTextAreaElement;
     document.body.append(area);
     area.select();
     document.execCommand('copy');

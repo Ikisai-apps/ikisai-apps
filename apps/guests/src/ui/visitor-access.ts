@@ -52,7 +52,7 @@ export function accessBox(eventCode: string | null, changed: () => void): HTMLEl
   /** Paso 1: el correo. Paso 2: el código que llega. */
   const askEmail = () => {
     const email = el('input', { id: 'accessEmail', class: 'input', type: 'email', inputmode: 'email', autocomplete: 'email', maxlength: '200',
-      ...fieldAttrs({ id: 'guests.visitante.acceso.correo', entity: 'core.visitors', prop: 'email', type: 'email', required: false, sensitivity: 'personal', confirm: 'event' }) }) as HTMLInputElement;
+      ...fieldAttrs({ id: 'guests.visitante.acceso.correo', type: 'email', required: false, sensitivity: 'personal', confirm: 'event', storage: 'none' }) }) as HTMLInputElement;
     const why = el('div', { 'aria-live': 'polite' });
     const send = el('button', { type: 'submit', class: 'primary', id: 'accessSend', 'data-feedback-id': 'guests.visitante.acceso.enviar', 'data-feedback-label': 'Enviarme un código' }, t('vaccess.send')) as HTMLButtonElement;
     replace(body,
@@ -77,7 +77,7 @@ export function accessBox(eventCode: string | null, changed: () => void): HTMLEl
 
   const askCode = (email: string) => {
     const code = el('input', { id: 'accessCode', class: 'input', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '10',
-      ...fieldAttrs({ id: 'guests.visitante.acceso.codigo', type: 'text', required: true, sensitivity: 'internal', confirm: 'event' }) }) as HTMLInputElement;
+      ...fieldAttrs({ id: 'guests.visitante.acceso.codigo', type: 'text', required: true, sensitivity: 'internal', confirm: 'event', storage: 'none' }) }) as HTMLInputElement;
     const why = el('div', { 'aria-live': 'polite' });
     const ok = el('button', { type: 'submit', class: 'primary', id: 'accessVerify', 'data-feedback-id': 'guests.visitante.acceso.verificar', 'data-feedback-label': 'Guardar el acceso' }, t('vaccess.verify')) as HTMLButtonElement;
     replace(body,
