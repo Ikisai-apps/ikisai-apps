@@ -488,8 +488,9 @@
 .carta-line-title strong{overflow-wrap:anywhere}
 .carta-line-money{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:end}
 .carta-line-money .field{margin:0}
+.carta-line-money:has(.carta-sold){grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(0,1fr))}
 .carta-price{width:100%;min-height:var(--tap,46px)}
-.carta-cost,.carta-margin{display:grid;gap:2px;font-size:.92rem}
+.carta-sold,.carta-cost,.carta-margin{display:grid;gap:2px;font-size:.92rem}
 .carta-line-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}
 .carta-line-foot .checkline,.carta-line-foot button{min-height:var(--tap,46px)}
 .carta-inline{display:flex;gap:8px;align-items:center}

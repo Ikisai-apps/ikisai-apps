@@ -274,6 +274,19 @@ export function distributeUnits(total: number, count: number, weights?: number[]
   return out;
 }
 
+/**
+ * Lo vendido de una carta en su último día con ventas (lo apunta Flow al cerrar el día con `food.record_carta_sales`):
+ * unidades por línea y en total. `null` si aún no hay ninguna.
+ */
+export function cartaLastSales(sales: Array<Pick<CartaSale, 'menu_id' | 'line_id' | 'day' | 'quantity' | 'deleted_at'>>, menuId: string): { day: string; byLine: Map<string, number>; units: number } | null {
+  const own = sales.filter((s) => s.menu_id === menuId && !s.deleted_at);
+  if (!own.length) return null;
+  const day = own.reduce((max, s) => (s.day > max ? s.day : max), own[0]!.day);
+  const byLine = new Map<string, number>();
+  for (const s of own) if (s.day === day) byLine.set(s.line_id, (byLine.get(s.line_id) ?? 0) + Number(s.quantity));
+  return { day, byLine, units: [...byLine.values()].reduce((a, b) => a + b, 0) };
+}
+
 /** La previsión de una carta está vacía si ninguna línea disponible tiene unidades a cubrir (Flow no puede preparar nada). */
 export function cartaPrevisionEmpty(lines: Array<Pick<CartaLine, 'menu_id' | 'active' | 'deleted_at' | 'expected_units'>>, menuId: string): boolean {
   return !lines.some((l) => l.menu_id === menuId && !l.deleted_at && l.active && (l.expected_units ?? 0) > 0);

@@ -75,6 +75,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - `#/cartas/<id>`, con sus bloques, el precio, el coste, el margen y «Disponible».
   - «Usar en otro evento» y la carta en la ficha del evento, incluidas las que marca Booking en jornadas abiertas.
   - El evento familiar come del menú de casa.
+  - **Para el servicio del sábado** (27-10, guion de Core): la cabecera y cada línea dicen lo vendido el último día que Flow cerró («Enviar a Food»). Al marcar «Disponible», el aviso recuerda que Flow no lo ve hasta «Actualizar carta desde Food». Pruebas: `carta.spec.ts` y `domain.test.ts`.
   - **Pruebas:** `carta.spec.ts` y lo nuevo de `carta.test.ts`.
   - **Iconos de comida del kit** (K13, ui-kit 0.69.10, línea de Core del 27-10): cada bloque de la carta lleva el suyo (Clásicos, plato; Gourmet, gorro; Barra, vaso) y en Cocina cada servicio el de su momento (`SERVICE_ICONS` en `events.ts`), siempre junto al nombre.
 
