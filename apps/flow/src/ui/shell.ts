@@ -297,7 +297,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const prepPending = d.units.filter((u) => u.kind === 'prep' && u.status === 'pending').length;
     if (lastPrepPending !== null && prepPending > lastPrepPending) service.notifyNew();
     lastPrepPending = prepPending;
-    shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open').length);
+    // Abiertos con algo pedido: un «Nuevo pedido» vacío no cuenta (VG, 28-10: salía 4 con uno solo).
+    shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open' && (d.linesByOrder.get(o.id)?.length ?? 0) > 0).length);
     shell.setBadge(`${base}/preparacion`, d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
     shell.setBadge(`${base}/servicio`, d.orders.filter((o) => o.status === 'paid').length);
     shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'logistics' && (u.status === 'pending' || u.status === 'in_progress')).length);
