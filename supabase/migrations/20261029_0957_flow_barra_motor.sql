@@ -13,11 +13,21 @@
 alter table flow.units drop constraint units_kind_check;
 alter table flow.units add constraint units_kind_check check (kind in ('prep', 'task', 'station', 'card', 'recurring', 'order', 'closure'));
 
--- El guard de carriles del Avance (0937) es para su tablero: los carriles de la barra no son de agentes ni de procedimiento.
+-- El guard de carriles del Avance (0937) sigue cerrado por defecto (tarjetas y cualquier carril), con una sola excepción: el
+-- carril de la barra que sale de su columna (`flow.barra_lane`), en unidades que no son tarjetas. Las unidades del motor de la
+-- barra (pedido y cierre) solo las escribe el servidor.
 create or replace function flow.guard_board() returns trigger language plpgsql as $$
 declare v_actor uuid := nullif(current_setting('core' || '.actor', true), '')::uuid;
 begin
-  if not (new.column_key = 'avance' or (tg_op = 'UPDATE' and old.column_key = 'avance')) then
+  if (new.kind in ('order', 'closure') or (tg_op = 'UPDATE' and old.kind in ('order', 'closure'))) and not flow.in_proc() then
+    perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.units', 'reason', 'flow engine units'));
+  end if;
+  if not (new.kind in ('card', 'recurring') or new.lane_key is not null
+          or (tg_op = 'UPDATE' and (old.kind in ('card', 'recurring') or old.lane_key is not null))) then
+    return new;
+  end if;
+  if new.kind not in ('card', 'recurring') and new.lane_key is not distinct from flow.barra_lane(new.column_key)
+     and (tg_op = 'INSERT' or (old.kind not in ('card', 'recurring') and (old.lane_key is null or old.lane_key is not distinct from flow.barra_lane(old.column_key)))) then
     return new;
   end if;
   if not flow.in_proc() then perform core.fail('PROCEDURE_ONLY', 422, jsonb_build_object('table', 'flow.units', 'reason', 'board cards')); end if;

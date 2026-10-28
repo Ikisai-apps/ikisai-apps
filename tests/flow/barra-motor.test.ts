@@ -88,3 +88,14 @@ test('barra genérica · el pedido de la carta (lote público) nace con su unida
   const u = await orderUnit(r.data.orderId);
   assert.deepEqual([u.class, u.lane_key, u.status], ['operation', 'caja', 'pending']);
 });
+
+test('barra genérica · las unidades del motor (pedido, cierre) solo las escribe el servidor; un carril que no es de la barra, tampoco a mano', async () => {
+  const r = await commit([{ op: 'insert', table: TABLES.units, id: uuid(), fields: { project_id: PROJECT, column_key: 'order', kind: 'order', label: 'Falso', status: 'pending' } }]);
+  assert.notEqual(r.status, 200);
+  const r2 = await commit([{ op: 'insert', table: TABLES.units, id: uuid(), fields: { project_id: PROJECT, column_key: 'logistics', kind: 'task', label: 'Carril ajeno', status: 'pending', lane_key: 'core' } }]);
+  assert.notEqual(r2.status, 200);
+  // Una tarea de logística normal sí, y su carril sale solo («barra»).
+  const id = uuid();
+  await ok([{ op: 'insert', table: TABLES.units, id, fields: { project_id: PROJECT, column_key: 'logistics', kind: 'task', label: 'Reponer hielo', status: 'pending' } }]);
+  assert.equal((await q(`select lane_key from flow.units where id = $1`, [id]))[0].lane_key, 'barra');
+});
