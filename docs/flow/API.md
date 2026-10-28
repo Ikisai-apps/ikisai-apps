@@ -509,10 +509,29 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - **carta → ven:** tras enviar el pedido, «Tus datos» y, si el evento admite alojamiento, «Alójate aquí» abren `https://ven.ikisai.com/e/<código>?siguiente=datos|alojate&v=<traspaso nuevo>` (con `alojate`, también `?alojate`).
 - `GET public/menu` añade `eventCode`: el código público del evento del flujo, solo si Booking lo da como abierto.
 
-## 54. Pedido de prueba de un miembro (migración `0952`, con el núcleo `0115`)
+## 54. Lo que pide un miembro desde la carta (migraciones `0952` y `0953`, vg-48, con el núcleo `0115`)
 
 - Dirección y staff entran en ven.ikisai.com con su identidad (visitante atado a su cuenta, `POST public/visitor/as-member`) y pueden pedir desde la carta.
 - Un pedido cuyo cliente tiene un visitante de una persona del equipo (`core.visitor_member`) nace con `test_by` (quién) y `test_name` (su nombre). Una ampliación hereda la marca. La pone el trigger `flow.orders_member_test`; nadie la cambia (no es columna escribible).
+- **Fuera del horario del evento** (`test_excluded = true`): es de prueba y no cuenta en caja ni en Finance. `flow.day_summary` (cierre, envíos a Food y Finance) y `flow.central_kpi_projection` lo dejan fuera. Aviso «Pedido de prueba (nombre)».
+- **Durante el evento:** cuenta como el de cualquier huésped. El resumen del día lo lista en `member_orders: [{order_id, name, amount_cents}]` (con su suma en `member_cents`) para que Finance reste su pago. Aviso «Pedido del equipo (nombre), se ajusta en Finance».
+- Horario (`flow.in_event_window(project, at)`, 0953): las horas de servicio del día (`service_hours` de `booking.event_projection`, Booking 1425); sin ellas, los días del evento ligado (`starts_on..ends_on`) o, sin evento, los del flujo. En hora de Madrid.
+- Se prepara y se entrega como cualquier otro. En la carta: al enviarlo y en «Mis pedidos» (`testName`, `testExcluded` en `public/mine`).
+
 - No cuenta en caja ni en Finance: `flow.day_summary` (cierre, envío a Food y a Finance) y `flow.central_kpi_projection` lo dejan fuera. Se prepara y se entrega como cualquier otro.
 - Se ve: en Caja y Servicio, «Pedido de prueba (nombre)» en la tarjeta; en la carta, al enviarlo y en «Mis pedidos» (`testName` en `public/mine`).
 - Recomendación de vg-48 (VG aún no la ha contestado): si decide cobrarlo como a un huésped, se quita el filtro y la marca queda solo como aviso.
+
+## 51. «Avance» para la mudanza: hitos, historial e importación (migración `0947`)
+
+- **Hito**: unidad `class = 'objective'` del tablero, sin criterios, con `payload.orden`; sus pasos son tarjetas hijas (`parent_id`) con `payload.paso`. Cumplido cuando todas sus hijas que no son backlog están hechas (recurrentes cuentan) y hay al menos una: `done` con `done_at`; si se reabre, `pending` y sin fecha. Lo recalcula `board_card` al escribir.
+- `board_card` admite `hito_id` (colgar o descolgar, `null`) y `paso`.
+- **Hito = ejecución de una cadena** (VG): cada hito tiene su definición (`cadena_<id>`, publicada) y una ejecución (`units.execution_id` en el objetivo). Cada tarjeta hija es un tramo `handoff` con su `lane_key` (`units.execution_id` y `stage_position`, en orden de paso). Tarjeta hecha → tramo `done`; backlog → `skipped`; con ninguno en `draft`, la ejecución queda `done`. Lo crean `import_board` y `board_card` (`flow.hito_chain_ops`). Estas cadenas no salen en «Recorridos».
+- **Historial** `flow.board_history (project_id, taken_at, hecho, pr, curso, pend, backlog, total)` (en el JSON importado, `t`): foto al escribir una tarjeta si cambian los recuentos y la última tiene más de 10 min, o si no cambian y tiene más de 6 h. Solo lectura para la pantalla.
+- **Importación** `flow.import_board(p_project uuid, p_payload jsonb)` (solo service_role): `{hitos: [{hito_id, title, orden, done_at?}], cards: [{card_id, lane_key, title, status, flag?, prio?, kind?, tipo?, order?, ref?, url?, url_text?, steps?, note?, hito_id?, paso?, done_at?}], history: [{t, hecho, pr, curso, pend, backlog, total}]}`. Idempotente por id; escribe por el registro del núcleo (`core.apply_migration_operations`, lotes de 400), así llega a los móviles. Con `p_project` null crea el flujo (plantilla `avance`, columna «Avance», nombre en `name`). Devuelve `{project_id, hitos, cards, history}`.
+
+## 53. Recorridos: probar un borrador y «hacerlo de verdad» (flow-14, migración `0945`)
+
+- `start_execution({execution_id, version_id, mode, practice_of?})`: el owner puede ensayar (`learn`) una versión en borrador («Probar» en el editor); ejecutar (`run`) sigue pidiendo una versión publicada.
+- «Hacerlo de verdad»: al terminar un ensayo de una versión publicada, una ejecución `run` nueva con `practice_of` = el ensayo (propio, terminado y de esa versión; si no, `422`). `start_stage` parte de lo respondido en ese tramo del ensayo; lo fijo y lo heredado lo vuelve a poner el servidor.
+- El enlace de «ir a otra app» lleva `guia=<ejecución>` para el Guiado del kit (`flow.guide_read`).

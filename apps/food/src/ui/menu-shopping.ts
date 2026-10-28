@@ -249,8 +249,9 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
   // La baldosa
   // -------------------------------------------------------------------------------------------------------------------
 
-  function quantityInput(item: ItemRow, value: number | null, label: string, onValue: (value: number | null) => void, disabled: boolean, mark: FbMark): HTMLInputElement {
-    const input = fb(el('input', { type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(value), 'aria-label': label, disabled,
+  function quantityInput(item: ItemRow, value: number | null, label: string, onValue: (value: number | null) => void, disabled: boolean, mark: FbMark, field: Record<string, string>): HTMLInputElement {
+    // @field-caller: el campo (lo que hay en casa o lo que se compra) lo declara quien llama.
+    const input = fb(el('input', { ...field, type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(value), 'aria-label': label, disabled,
       onchange: () => {
         const raw = input.value.trim();
         const parsed = raw === '' ? null : parseQuantity(raw);
@@ -341,11 +342,13 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
       await updateQuantities(line, line.manual_override || line.manual ? { stock_quantity: value }
         : { stock_quantity: value, purchase_quantity: defaultPurchase(Number(line.required_quantity), value, min, line.status !== 'pendiente' ? null : packSize) });
       purchaseInput.value = formatQuantity(Number(cur().purchase_quantity));
-    })(), disabled, { feedbackId: 'food.menu.compra.linea.en_casa', feedbackLabel: 'En casa' });
+    })(), disabled, { feedbackId: 'food.menu.compra.linea.en_casa', feedbackLabel: 'En casa' },
+      { 'data-field-id': 'food.menu.compra.linea.en_casa', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'stock_quantity' });
     const purchaseInput = quantityInput(item, Number(item.purchase_quantity), `Comprar de ${name}`, (value) => {
       const line = cur();
       void updateQuantities(line, line.manual ? { purchase_quantity: value ?? 0 } : { purchase_quantity: value ?? 0, manual_override: true });
-    }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' });
+    }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' },
+      { 'data-field-id': 'food.menu.compra.linea.comprar', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'purchase_quantity' });
     sheet = openSheet({
       title: name,
       body: el('div', { 'data-feedback-id': 'food.menu.compra.linea.hoja', 'data-feedback-label': 'Producto de la compra', class: 'fd-linesheet' },

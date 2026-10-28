@@ -31,8 +31,8 @@ export const samePeriod = (a: Period, b: { period_start?: string | null; period_
 export function periodBar(onChange: () => void): HTMLElement {
   const period = housePeriod();
   const set = (next: Period) => { setHousePeriod(next); onChange(); };
-  const from = el('input', { 'data-feedback-id': 'food.menu.casa.rango.desde', 'data-feedback-label': 'Desde', id: 'periodStart', type: 'date', class: 'compact', value: period.start, 'aria-label': 'Desde' });
-  const to = el('input', { 'data-feedback-id': 'food.menu.casa.rango.hasta', 'data-feedback-label': 'Hasta', id: 'periodEnd', type: 'date', class: 'compact', value: period.end, 'aria-label': 'Hasta' });
+  const from = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.menu.casa.rango.desde', 'data-feedback-label': 'Desde', id: 'periodStart', type: 'date', class: 'compact', value: period.start, 'aria-label': 'Desde' });
+  const to = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.menu.casa.rango.hasta', 'data-feedback-label': 'Hasta', id: 'periodEnd', type: 'date', class: 'compact', value: period.end, 'aria-label': 'Hasta' });
   const apply = () => {
     const next = { start: from.value, end: to.value };
     if (!next.start || !next.end) return;

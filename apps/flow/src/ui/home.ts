@@ -1,4 +1,4 @@
-import { confirmDialog, createCoverCarousel, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, createCoverCarousel, el, fieldAttrs, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
@@ -58,7 +58,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
         project.frozen ? null : el('button', { type: 'button', class: 'ghost', onclick: () => void editBitcoinSettings(client, project.id) }, 'Cobro con Bitcoin'),
         el('button', { type: 'button', class: 'ghost', onclick: () => pickFile('image/*', (file) => setCover(client, project, file, file.name || 'portada.webp').then(() => toast('Portada cambiada.'))) }, 'Cambiar portada'),
         el('button', { type: 'button', class: 'ghost', onclick: () => manageDocuments() }, 'Gestionar documentos'),
-        el('label', { class: 'flow-public-switch' }, el('input', { type: 'checkbox', checked: project.serves_public, onchange: (e: Event) => void servePublic(project, (e.target as HTMLInputElement).checked) }),
+        el('label', { class: 'flow-public-switch' }, el('input', { ...fieldAttrs({ id: 'flow.inicio.carta_publica', entity: 'flow.projects', prop: 'serves_public', type: 'checkbox' }), type: 'checkbox', checked: project.serves_public, onchange: (e: Event) => void servePublic(project, (e.target as HTMLInputElement).checked) }),
           el('span', null, 'Atiende la carta pública'))),
       // Enlaces del flujo (owner): su evento de Booking y su proyecto de Tasks.
       el('div', { class: 'orders-owner flow-links' },
@@ -121,7 +121,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
 
   /** Elegir un archivo del dispositivo. */
   function pickFile(accept: string, then: (file: File) => Promise<void>): void {
-    const input = el('input', { type: 'file', accept }) as HTMLInputElement;
+    const input = el('input', { ...fieldAttrs({ id: 'flow.inicio.documento', entity: 'flow.project_documents', prop: 'file_id', type: 'file' }), type: 'file', accept }) as HTMLInputElement;
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
@@ -144,7 +144,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
           .then((ok) => (ok ? removeDocument(client, projectId, d.rowId!).then(paintList) : undefined)) }, icon('trash', 18))))
         : [el('li', { class: 'muted' }, 'Aún no hay documentos subidos.')]));
     };
-    const title = el('input', { type: 'text', maxlength: '120', placeholder: 'Título del documento', 'aria-label': 'Título' }) as HTMLInputElement;
+    const title = el('input', { ...fieldAttrs({ id: 'flow.inicio.documento_titulo', entity: 'flow.project_documents', prop: 'title', type: 'text' }), type: 'text', maxlength: '120', placeholder: 'Título del documento', 'aria-label': 'Título' }) as HTMLInputElement;
     openSheet({
       title: 'Documentos del flujo',
       body: el('div', null, list, el('div', { class: 'flow-docs-add' }, title)),
@@ -202,8 +202,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
     if (!buffers.length) { toast('Aún no hay puntos de existencias: genera las tareas de ingredientes.'); return; }
     const inputs = new Map<string, { c: HTMLInputElement; per: HTMLInputElement }>();
     const body = el('div', { class: 'containers-list' }, ...buffers.map((b) => {
-      const c = el('input', { type: 'number', min: '1', max: '99', step: '1', inputmode: 'numeric', value: b.containers ?? '', 'aria-label': `Recipientes de ${b.name} en ${b.location}` }) as HTMLInputElement;
-      const per = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: b.per_container ?? '', 'aria-label': `${b.unit} por recipiente` }) as HTMLInputElement;
+      const c = el('input', { ...fieldAttrs({ id: 'flow.inicio.recipientes', entity: 'flow.buffers', prop: 'containers', type: 'number' }), type: 'number', min: '1', max: '99', step: '1', inputmode: 'numeric', value: b.containers ?? '', 'aria-label': `Recipientes de ${b.name} en ${b.location}` }) as HTMLInputElement;
+      const per = el('input', { ...fieldAttrs({ id: 'flow.inicio.por_recipiente', entity: 'flow.buffers', prop: 'per_container', type: 'number' }), type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: b.per_container ?? '', 'aria-label': `${b.unit} por recipiente` }) as HTMLInputElement;
       inputs.set(b.id, { c, per });
       return el('div', { class: 'containers-row' }, el('span', null, `${b.name} · ${b.location}`), c, el('span', { class: 'muted' }, '×'), per, el('span', { class: 'muted small' }, b.unit));
     }));

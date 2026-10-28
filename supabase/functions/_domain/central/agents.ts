@@ -6,6 +6,19 @@
 
 export const AGENTS_TABLE = 'central.agents';
 
+/** Ids del Avance de Flow (1524): el proyecto y el carril, tal como los usa Flow en sus enlaces. */
+export const FLOW_PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const FLOW_LANE_ID = /^[a-z][a-z0-9_]{1,30}$/;
+
+/** El carril del agente en el Avance de Flow, o `null` si falta el proyecto o el carril. */
+export function flowLaneUrl(a: { flow_project?: string | null; flow_lane?: string | null }): string | null {
+  if (!a.flow_project || !a.flow_lane || !FLOW_PROJECT_ID.test(a.flow_project) || !FLOW_LANE_ID.test(a.flow_lane)) return null;
+  return `https://flow.ikisai.com/#/p/${encodeURIComponent(a.flow_project)}/avance?carril=${encodeURIComponent(a.flow_lane)}`;
+}
+
+/** La ficha del agente en Central, para que el Avance de Flow la enlace. */
+export const agentCardUrl = (id: string) => `https://central.ikisai.com/#/accesos/agentes?agente=${encodeURIComponent(id)}`;
+
 /** Quién responde por el agente: una persona de Central (por defecto) o una entidad de servicio (decisión de VG, 27-10). */
 export const RESPONSIBLE_KINDS = ['person', 'service'] as const;
 export type ResponsibleKind = typeof RESPONSIBLE_KINDS[number];

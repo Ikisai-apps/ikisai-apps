@@ -409,4 +409,8 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 /* Leídos y sin leer (0706) */
 .orgcomment-new{border-left:3px solid var(--warn);padding-left:10px}
 #retreatComments h3 .orgcomments-new{margin-left:8px;vertical-align:middle}
+/* Respuestas de la casa (0117) */
+.orgreply{margin:6px 0 0 12px;padding-left:10px;border-left:2px solid var(--line)}
+.orgreply>p{margin:0}
+.orgreply-new{border-left-color:var(--warn)}
 .orgcomment-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}

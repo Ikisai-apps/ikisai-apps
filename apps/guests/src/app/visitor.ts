@@ -130,7 +130,13 @@ async function call<T>(path: string, init: { method?: string; json?: unknown; vi
     throw new PublicError(0, 'NETWORK', 'Sin conexión');
   }
   const body = await res.json().catch(() => null) as ({ error?: { code?: string; message?: string; details?: unknown } } & Record<string, unknown>) | null;
-  if (!res.ok) throw new PublicError(res.status, body?.error?.code ?? 'HTTP_' + res.status, body?.error?.message ?? '', body?.error?.details ?? null);
+  if (!res.ok) {
+    const code = body?.error?.code ?? 'HTTP_' + res.status;
+    // Un visitante guardado que ya no vale (revocado o de antes de 0106): se olvida aquí, sea cual sea la llamada, y la
+    // siguiente crea uno nuevo sin pedir nada (VG, 28-10: nada de callejones en ven).
+    if (code === 'VISITOR_INVALID' && token) { try { store()?.removeItem(TOKEN_KEY); store()?.setItem(RENEWED_KEY, '1'); } catch { /* nada */ } }
+    throw new PublicError(res.status, code, body?.error?.message ?? '', body?.error?.details ?? null);
+  }
   return body as T;
 }
 

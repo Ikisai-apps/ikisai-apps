@@ -138,6 +138,12 @@ const withHeaders = (body: unknown, extra: Record<string, string>, status = 200)
 export function createApp(config: AppConfig): AppHandler {
   const supabase = createSupabase(config);
   const auth = createAuth(supabase);
+  /** 0118: origen de un lote de /commands. 'server' solo con la clave de worker correcta y X-Ikisai-Caller (otra Edge con identidad de servicio). */
+  const batchOrigin = (request: Request | undefined): 'server' | 'browser' => {
+    const key = request?.headers.get('x-ikisai-worker-key') ?? '';
+    const caller = request?.headers.get('x-ikisai-caller') ?? '';
+    return config.workerKey && key && caller && timingSafeEqual(key, config.workerKey) ? 'server' : 'browser';
+  };
   const sync = createSync(supabase, config.app, config.hooks ?? {});
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const storage = createStorage(supabase, {
@@ -172,7 +178,7 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
     { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => sync.snapshot(ctx, url.searchParams) },
     { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => sync.changes(ctx, url.searchParams) },
-    { method: 'POST', pattern: 'commands', handler: async ({ ctx, json }) => sync.commit(ctx, await json()) },
+    { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => sync.commit(ctx, await json(), { origin: batchOrigin(request) }) },
     { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => sync.history(ctx, url.searchParams) },
     { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => sync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
     { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => sync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },
@@ -238,6 +244,11 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'feedback', handler: async ({ ctx, json }) => feedback.create(ctx, await json()) },
     { method: 'GET', pattern: 'feedback', handler: ({ ctx, url }) => feedback.list(ctx, url.searchParams) },
     { method: 'GET', pattern: 'feedback/tree', handler: ({ ctx, url }) => feedback.tree(ctx, url.searchParams) },
+    // Respuestas de la casa (0117): antes de `feedback/:id`, para que `replies` no se lea como un id.
+    { method: 'GET', pattern: 'feedback/replies', handler: ({ ctx }) => feedback.replies.mine(ctx) },
+    { method: 'POST', pattern: 'feedback/replies/read', handler: async ({ ctx, json }) => feedback.replies.read(ctx, await json()) },
+    { method: 'GET', pattern: 'feedback/:id/replies', handler: ({ ctx, params }) => feedback.replies.of(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'feedback/:id/replies', handler: async ({ ctx, params, json }) => feedback.replies.create(ctx, params.id ?? '', await json()) },
     { method: 'GET', pattern: 'feedback/:id', handler: ({ ctx, params }) => feedback.get(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'feedback/:id/support', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'support', {}) },
     { method: 'POST', pattern: 'feedback/:id/verify', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'verify', await json()) },
@@ -325,7 +336,7 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
       { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => moduleSync.snapshot(ctx, url.searchParams) },
       { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => moduleSync.changes(ctx, url.searchParams) },
-      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json }) => moduleSync.commit(ctx, await json()) },
+      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => moduleSync.commit(ctx, await json(), { origin: batchOrigin(request) }) },
       { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => moduleSync.history(ctx, url.searchParams) },
       { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => moduleSync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
       { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => moduleSync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },

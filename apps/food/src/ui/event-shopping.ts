@@ -73,7 +73,7 @@ export function mountEventShopping(eventId: string): ViewMount {
     }
 
     function row(r: EventShoppingRow, index: number): HTMLElement {
-      const box = pickable(r) ? el('input', { 'data-feedback-id': 'food.eventos.compra.elegir', 'data-feedback-label': 'Pedir esta fila a Tasks', type: 'checkbox', id: `evpick-${index}`,
+      const box = pickable(r) ? el('input', { 'data-field-none': '', 'data-feedback-id': 'food.eventos.compra.elegir', 'data-feedback-label': 'Pedir esta fila a Tasks', type: 'checkbox', id: `evpick-${index}`,
         checked: picked.has(r.key), 'aria-label': `Pedir ${r.name} a Tasks`, onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) picked.add(r.key); else picked.delete(r.key); paintFoot(); } }) : null;
       const requestedShort = r.purchase_ref && Number(r.requested) > 0 && Number(r.pending) > Number(r.requested) + 1e-9;
       return el('li', { class: 'evshop-row', id: `evshop-${index}` },

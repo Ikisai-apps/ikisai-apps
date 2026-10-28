@@ -275,6 +275,55 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await expect(page.locator('#f-email')).toHaveValue('rosa@example.invalid');
 });
 
+test('organizers · comentarios de tus asistentes y respuestas de la casa (vg-22, #1166): «Nuevo», recuentos en Mis retiros y vistos', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con comentarios', confirm: true });
+  const other = await api.reservation({ title: 'Otro retiro de Lola', confirm: true });
+  await enter(page, await api.organizerLink([reservation, other], 'lola-cr@example.invalid', 'Lola'));
+  const base = page.url().split('#')[0];
+  const lola = (await api.booking.t.db.query<{ u: string }>(`select user_id u from core.portal_links where app = 'organizers' and scope->>'reservation_id' = $1 order by created_at desc limit 1`, [reservation])).rows[0]!.u;
+  const report = async (reporter: string, kind: 'guest' | 'organizer', message: string) => {
+    const id = crypto.randomUUID();
+    await api.booking.t.db.query(`insert into core.feedback_reports (id, code, request_id, digest, reporter_user_id, reporter_kind, origin_app, subject, intent, message, category, scope, destination, routing_status)
+      values ($1, $8, $9, 'd', $2, $3, $4, 'event', 'problem', $5, null, $6::jsonb, $7, 'none')`,
+    [id, reporter, kind, kind === 'guest' ? 'guests' : 'organizers', message, JSON.stringify({ reservation_id: reservation, guest_id: crypto.randomUUID() }), kind === 'guest' ? 'organizer' : 'operations',
+      `FB_CR_${id.slice(0, 6)}`, `cr-${id}`]);
+    return id;
+  };
+  await report(api.booking.users.reader, 'guest', 'La cena del sábado, estupenda.');
+  const mine = await report(lola, 'organizer', 'Falta la llave del aula.');
+  const replied = await api.booking.call(`/api/v1/feedback/${mine}/replies`, { token: api.booking.tokens.editor, body: { message: 'Mañana a las 9 la tenéis en recepción.' } });
+  expect(replied.status, JSON.stringify(replied.data)).toBe(200);
+
+  // Mis retiros: la tarjeta del retiro cuenta lo que Lola aún no ha visto.
+  await page.goto('about:blank');
+  await page.goto(`${base}#/`);
+  const card = page.locator('.orgretreat', { hasText: 'Retiro con comentarios' });
+  await expect(card.locator('.orgunread')).toHaveText('1 comentario nuevo');
+  await expect(card.locator('.orgreplies')).toHaveText('1 respuesta de Ikisai');
+  await expect(page.locator('.orgretreat', { hasText: 'Otro retiro de Lola' }).locator('.orgunread, .orgreplies')).toHaveCount(0);
+
+  // Resumen: el comentario lleva «Nuevo»; tras verlo un segundo, al volver ya no.
+  await card.click();
+  const comment = page.locator('#retreatComments li.orgcomment', { hasText: 'La cena del sábado' });
+  await expect(comment.locator('.orgcomment-newchip')).toHaveText('Nuevo');
+  await comment.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await api.booking.t.db.query(`select 1 from organizers.comment_reads where user_id = $1 and deleted_at is null`, [lola])).rows.length, { timeout: 8000 }).toBe(1);
+  await page.reload();
+  await expect(page.locator('#retreatComments li.orgcomment', { hasText: 'La cena del sábado' })).toBeVisible();
+  await expect(page.locator('#retreatComments .orgcomment-newchip')).toHaveCount(0);
+
+  // «Lo que me has enviado»: la respuesta firmada «Ikisai»; al enseñarla, cuenta como vista.
+  await page.locator('#appLauncher').click();
+  await page.locator('.launcher-center').click();
+  const reply = page.locator('#helpMine .orgreply', { hasText: 'Mañana a las 9' });
+  await expect(reply).toContainText('Ikisai');
+  await expect.poll(async () => (await api.booking.t.db.query<{ r: string | null }>(`select read_at r from core.feedback_replies where report_id = $1`, [mine])).rows[0]?.r ?? null).not.toBeNull();
+  await page.goto('about:blank');
+  await page.goto(`${base}#/`);
+  await expect(page.locator('.orgretreat', { hasText: 'Retiro con comentarios' })).toBeVisible();
+  await expect(page.locator('.orgretreat', { hasText: 'Retiro con comentarios' }).locator('.orgunread, .orgreplies')).toHaveCount(0);
+});
+
 test('organizers · ayuda y sugerencias: enviar con doble toque llega una vez, se cierra y se ve el aviso; también con teclado @smoke', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con comentario', confirm: true });
   await enter(page, await api.organizerLink([reservation], 'eva@example.invalid'));
@@ -618,6 +667,47 @@ test('organizers · pago en línea (PAGO_EN_CURSO.md): «Pagar ahora» → «Pag
   await page.reload();
   await expect(page.locator('#moneyStatement')).toBeVisible();
   await expect(page.locator('#payOnline')).toHaveCount(0);
+});
+
+test('organizers · pagar ahora de punta a punta (F5): Finance real con el Stripe falso, vuelta a Pagos y cobrada por el aviso de Stripe', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con pago real', confirm: true });
+  const invoice = await api.registeredInvoice(reservation, '2026-0450', 450, false);
+  api.setPayments(true);
+  try {
+    let gateway = '';
+    await page.context().route('https://checkout.stripe.com/**', (route) => { gateway = route.request().url(); return route.fulfill({ contentType: 'text/html', body: '<p>pasarela</p>' }); });
+    await enter(page, await api.organizerLink([reservation], 'pago-real@example.invalid', 'Rocío'));
+    const base = page.url().split('#')[0];
+    await page.locator('#tab-pagos').click();
+    // Sin enlace todavía: «Pagar ahora» lo pide a Finance, que crea la sesión de Stripe con el total de la factura.
+    const pay = page.locator(`#payOnline button[data-invoice="${invoice}"]`);
+    await expect(pay).toHaveText('Pagar ahora');
+    await pay.click();
+    await page.waitForURL('https://checkout.stripe.com/**');
+    expect(gateway).toMatch(/^https:\/\/checkout\.stripe\.com\/c\/pay\/cs_test_/);
+    const sent = api.stripe.requests.at(-1)!;
+    expect(sent.amountCents).toBe(45000);
+    expect(sent.successUrl).toContain(`#/retiro/${reservation}/pagos?factura=${invoice}&pago=ok`);
+    expect(sent.cancelUrl).toContain(`#/retiro/${reservation}/pagos?factura=${invoice}&pago=cancelado`);
+
+    // Vuelve de la pasarela (la URL de vuelta, en el servidor de pruebas): aviso y «Pago en curso» hasta que Finance cobre.
+    await page.goto('about:blank');
+    await page.goto(`${base}#/retiro/${reservation}/pagos?factura=${invoice}&pago=ok`);
+    await expect(page.locator('.toast.show')).toContainText('Hemos recibido tu pago');
+    const row = page.locator(`#payOnline li[data-invoice-id="${invoice}"]`);
+    await expect(row).toHaveAttribute('data-pay-state', 'en_curso');
+    // «Volver a la pasarela» reutiliza el enlace abierto (ya viene en la lectura del portal).
+    await expect(row.getByRole('link', { name: 'Volver a la pasarela' })).toHaveAttribute('href', gateway);
+
+    // Stripe avisa a Finance (webhook firmado) y Finance la marca cobrada: «Pagar en línea» desaparece al releer.
+    await api.stripePays(gateway);
+    await page.reload();
+    await expect(page.locator('#moneyStatement')).toBeVisible();
+    await expect(page.locator('#payOnline')).toHaveCount(0);
+    await expect(page.locator('#moneyCollected')).toHaveText(/450,00/);
+  } finally {
+    api.setPayments(false);
+  }
 });
 
 test('organizers · pagar ahora sin enlace (F5): se pide a Finance al pulsar, se va a la pasarela y vuelve «Pago en curso»', async ({ page }) => {

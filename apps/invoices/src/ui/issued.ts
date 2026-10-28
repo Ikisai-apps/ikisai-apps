@@ -4,7 +4,7 @@
  * motivo y su número sigue ocupado; solo los borradores se borran.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { bindOnline, closeSheet, confirmDialog, createPrintView, el, icon, listRow, openSheet, renderGroups, renderList, renderStages, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { bindOnline, closeSheet, confirmDialog, createPrintView, el, fieldAttrs, icon, listRow, openSheet, renderGroups, renderList, renderStages, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
@@ -134,7 +134,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   let box: IssuedBox = 'por_cobrar';
   let moreOpen = false;
   let opened: { id: string; sheet: Sheet } | null = null;
-  const search = el('input', { 'data-feedback-id': 'invoices.emitidas.buscar', 'data-feedback-label': 'Buscar emitidas', type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente, NIF, concepto o reserva', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
+  const search = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.buscar', storage: 'none', label: 'Buscar emitidas', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente, NIF, concepto o reserva', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   // Buzones (mismo id que el desplegable de antes): Por cobrar · Cobradas · Borradores · Todas · Más
   const boxes = el('div', { 'data-feedback-id': 'invoices.emitidas.filtro', 'data-feedback-label': 'Buzones de emitidas', class: 'inv-boxes', role: 'group', 'aria-label': 'Buzones de emitidas', id: 'issuedFilter' });
@@ -316,9 +316,9 @@ function openCollectSheet(client: SyncClient, i: LocalIssuedInvoice, after?: () 
  * Fecha real del cobro (propone hoy, nunca la pone sola) y el medio, con su «Guardar». `onSave` recibe los campos.
  */
 function collectForm(invoice: LocalIssuedInvoice, onSave: (fields: Record<string, unknown>) => Promise<void>): HTMLElement {
-  const date = el('input', { 'data-feedback-id': 'invoices.emitidas.cobro.fecha', 'data-feedback-label': 'Fecha del cobro', type: 'date', id: 'collectedAt', value: invoice.paid_at ?? todayIso(), max: todayIso(), required: true }) as HTMLInputElement;
+  const date = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.cobro.fecha', label: 'Fecha del cobro', type: 'date', entity: 'invoices.issued_invoices', prop: 'paid_at', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'collectedAt', value: invoice.paid_at ?? todayIso(), max: todayIso(), required: true }) as HTMLInputElement;
   const method = select('collectedMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, methodLabel(m)] as [string, string])], invoice.payment_method ?? null,
-    { 'data-feedback-id': 'invoices.emitidas.cobro.medio', 'data-feedback-label': 'Medio del cobro' });
+    { ...fieldAttrs({ id: 'invoices.emitidas.cobro.medio', label: 'Medio del cobro', type: 'select', entity: 'invoices.issued_invoices', prop: 'payment_method', sensitivity: 'internal', confirm: 'none' }) });
   const error = el('p', { class: 'formerror', role: 'alert' });
   return el('form', { class: 'inv-form', id: 'collectForm', novalidate: true, onsubmit: (e: Event) => {
     e.preventDefault();
@@ -429,7 +429,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   }
   async function toggleSent(): Promise<void> {
     if (invoice.sent_at) { await undoable({ sent_at: null }, 'Marcada como no enviada.', 'Vuelve a estar enviada.'); return; }
-    const date = el('input', { 'data-feedback-id': 'invoices.emitidas.ficha.envio.fecha', 'data-feedback-label': 'Fecha de envío', type: 'date', id: 'sentAt', value: todayIso(), max: todayIso() }) as HTMLInputElement;
+    const date = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.ficha.envio.fecha', label: 'Fecha de envío', type: 'date', entity: 'invoices.issued_invoices', prop: 'sent_at', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'sentAt', value: todayIso(), max: todayIso() }) as HTMLInputElement;
     const ok = await confirmDialog({ title: 'Marcar como enviada', text: el('div', null, el('p', null, 'Desde el envío cuenta lo que tarda en cobrarse.'), field('Enviada el', date)), confirmLabel: 'Marcar enviada' });
     if (!ok) return;
     if (!date.value) { toast('Indica la fecha de envío.'); return; }
@@ -437,7 +437,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   }
 
   async function annul(): Promise<void> {
-    const reason = el('input', { 'data-feedback-id': 'invoices.emitidas.ficha.anular.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'annulIssuedReason', maxlength: '500', placeholder: 'Emitida por error, sustituida…' });
+    const reason = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.ficha.anular.motivo', label: 'Motivo', type: 'text', entity: 'invoices.issued_invoices', prop: 'annulled_reason', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'annulIssuedReason', maxlength: '500', placeholder: 'Emitida por error, sustituida…' });
     const ok = await confirmDialog({ title: `¿Anular ${numberOf(invoice)}?`, text: el('div', null,
       el('p', null, fromApp
         ? 'Solo si la factura no debió emitirse y no llegó al cliente: se genera el registro de anulación y su número sigue ocupado. Si el cliente ya la tiene, lo correcto es una rectificativa.'
@@ -460,7 +460,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         canEdit ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.tomar_emisor', 'data-feedback-label': 'Tomar el emisor actual', class: 'softbtn small', type: 'button', id: 'takeIssuer', onclick: () => void fillIssuers(client, [invoice]) }, 'Tomar el emisor actual') : null),
     invoice.status === 'anulada' ? el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `Anulada: ${invoice.annulled_reason ?? ''}`)) : null,
     canEdit && !isDraft ? el('div', { class: 'row2' }, field('Concepto del cobro', select('issuedPurposeSelect', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], invoice.purpose ?? null,
-      { 'data-feedback-id': 'invoices.emitidas.ficha.concepto_cobro', 'data-feedback-label': 'Concepto del cobro', onchange: (e: Event) => void commitSafely(client, [{ op: 'update', table: ISSUED_INVOICES, id: invoice.id, expectedRevision: invoice.revision,
+      { ...fieldAttrs({ id: 'invoices.emitidas.ficha.concepto_cobro', label: 'Concepto del cobro', type: 'select', entity: 'invoices.issued_invoices', prop: 'purpose', sensitivity: 'internal', confirm: 'none' }), onchange: (e: Event) => void commitSafely(client, [{ op: 'update', table: ISSUED_INVOICES, id: invoice.id, expectedRevision: invoice.revision,
         fields: { purpose: (e.target as HTMLSelectElement).value || null } }], 'Concepto del cobro guardado.') }))) : null,
     invoice.review_reason === 'REVISAR IMPORTES' ? el('div', { class: 'banner warn', id: 'issuedReview' }, icon('warn', 18), el('span', null, `El total del documento no cuadra con el desglose (diferencia ${eur(Number(invoice.totals_delta ?? 0))}).`)) : null,
     el('div', { 'data-feedback-id': 'invoices.emitidas.ficha.totales', 'data-feedback-label': 'Totales', 'data-feedback-ignore': '', class: 'inv-totals' },
@@ -566,10 +566,10 @@ function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, all
   let choice: TargetChoice | null = null;
   const kinds = el('div', { 'data-feedback-id': 'invoices.emitidas.asignar.tipo', 'data-feedback-label': 'Tipo de destino', class: 'segmented', role: 'tablist' }, ...([['reservation', 'Reserva'], ['event', 'Evento'], ['general', 'General']] as Array<[typeof kind, string]>).map(([value, label]) =>
     el('button', { ...ISSUED_KIND_MARKS[value], type: 'button', role: 'tab', class: value === kind ? 'on' : '', dataset: { kind: value }, onclick: () => { kind = value; choice = null; paintKind(); } }, label)));
-  const query = el('input', { 'data-feedback-id': 'invoices.emitidas.asignar.buscar', 'data-feedback-label': 'Buscar', type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
+  const query = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.asignar.buscar', storage: 'none', label: 'Buscar', type: 'search', sensitivity: 'internal', confirm: 'none' }), type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
   const results = el('div', { id: 'issuedTargetResults' });
   const chosen = el('p', { class: 'hint', id: 'issuedChosenTarget' });
-  const amount = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedAllocAmount', value: String(rest).replace('.', ',') });
+  const amount = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.asignar.importe', label: 'Importe', type: 'number', entity: 'invoices.issued_allocations', prop: 'allocated_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedAllocAmount', value: String(rest).replace('.', ',') });
   const error = el('p', { class: 'formerror', role: 'alert' });
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -643,7 +643,7 @@ function storeMapping(header: string[], mapping: IssuedCsvMapping): void {
 }
 
 function issuedChatgptSteps(onPaste: () => void): HTMLElement {
-  const promptText = el('textarea', { class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de emitidas' });
+  const promptText = el('textarea', { ...fieldAttrs({ id: 'invoices.emitidas.prompt.texto', storage: 'none', label: 'Prompt de emitidas', type: 'text', sensitivity: 'internal', confirm: 'none' }), class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de emitidas' });
   promptText.value = ISSUED_EXTRACTION_PROMPT;
   const copy = async () => {
     try { await navigator.clipboard.writeText(ISSUED_EXTRACTION_PROMPT); toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF de la factura.'); }
@@ -669,9 +669,9 @@ function defaultSeriesCode(data: IssuedData): string {
 
 export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options: { text?: string; files?: File[]; fromChatgpt?: boolean } = {}): void {
   const { client } = ctx;
-  const textarea = el('textarea', { 'data-feedback-ignore': '', id: 'issuedCsvText', rows: '6', spellcheck: 'false', placeholder: options.fromChatgpt ? 'Pega aquí el CSV que devolvió ChatGPT…' : 'Pega aquí las filas copiadas del Sheet (con la cabecera)…' });
-  const fileInput = el('input', { 'data-feedback-id': 'invoices.emitidas.csv.archivo', 'data-feedback-label': 'Archivo CSV', type: 'file', id: 'issuedCsvFile', accept: '.csv,text/csv,text/plain,.tsv' });
-  const defaultSeries = el('input', { 'data-feedback-id': 'invoices.emitidas.csv.serie', 'data-feedback-label': 'Serie por defecto', type: 'text', id: 'issuedCsvSeries', maxlength: '20', value: defaultSeriesCode(data), placeholder: 'A' });
+  const textarea = el('textarea', { ...fieldAttrs({ id: 'invoices.emitidas.csv.texto', label: 'Filas pegadas', type: 'text', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', id: 'issuedCsvText', rows: '6', spellcheck: 'false', placeholder: options.fromChatgpt ? 'Pega aquí el CSV que devolvió ChatGPT…' : 'Pega aquí las filas copiadas del Sheet (con la cabecera)…' });
+  const fileInput = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.csv.archivo', label: 'Archivo CSV', type: 'file', sensitivity: 'personal', confirm: 'none' }), type: 'file', id: 'issuedCsvFile', accept: '.csv,text/csv,text/plain,.tsv' });
+  const defaultSeries = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.csv.serie', label: 'Serie por defecto', type: 'text', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'issuedCsvSeries', maxlength: '20', value: defaultSeriesCode(data), placeholder: 'A' });
   const mappingHost = el('div', { 'data-feedback-id': 'invoices.emitidas.csv.columnas', 'data-feedback-label': 'Columnas', id: 'issuedCsvMapping' });
   const previewHost = el('div', { 'data-feedback-id': 'invoices.emitidas.csv.vista_previa', 'data-feedback-label': 'Vista previa', id: 'issuedCsvPreview' });
   const error = el('p', { class: 'formerror', role: 'alert' });
@@ -693,7 +693,7 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
     replace(mappingHost, el('details', { class: 'inv-block', open: ISSUED_CSV_REQUIRED.some((f) => mapping[f] === undefined) },
       el('summary', null, el('span', null, 'Columnas'), el('span', { class: 'hint' }, `${Object.keys(mapping).length} de ${ISSUED_CSV_FIELDS.length} reconocidas`)),
       el('div', { class: 'csv-mapping' }, ...ISSUED_CSV_FIELDS.map((f) => {
-        const s = select(`csvMap_${f}`, columns, mapping[f] === undefined ? '' : String(mapping[f]), { 'data-feedback-id': 'invoices.emitidas.csv.columna', 'data-feedback-label': 'Columna', 'aria-label': `Columna de ${ISSUED_CSV_FIELD_LABELS[f]}`,
+        const s = select(`csvMap_${f}`, columns, mapping[f] === undefined ? '' : String(mapping[f]), { ...fieldAttrs({ id: 'invoices.emitidas.csv.columna', label: 'Columna', type: 'select', sensitivity: 'internal', confirm: 'none' }), 'aria-label': `Columna de ${ISSUED_CSV_FIELD_LABELS[f]}`,
           onchange: () => { if (s.value === '') delete mapping[f]; else mapping[f] = Number(s.value); storeMapping(header, mapping); paintPreview(); } });
         return field(`${ISSUED_CSV_FIELD_LABELS[f]}${ISSUED_CSV_REQUIRED.includes(f) ? ' *' : ''}`, s);
       }))));
@@ -772,24 +772,24 @@ interface LineInputs { row: HTMLElement; description: HTMLInputElement; net: HTM
 export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
   const { client } = ctx;
   const liveSeries = data.series.filter((s) => s.active && s.mode !== 'emision' && !s.closed_at).sort((a, b) => a.code.localeCompare(b.code));
-  const series = select('issuedSeries', [...liveSeries.map((s) => [s.code, s.description ? `${s.code} · ${s.description}` : s.code] as [string, string]), [NEW_SERIES, '+ Nueva serie…']], liveSeries[0]?.code ?? NEW_SERIES, { 'data-feedback-id': 'invoices.emitidas.registrar.serie', 'data-feedback-label': 'Serie' });
-  const newSeries = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.serie_nueva', 'data-feedback-label': 'Serie nueva', type: 'text', id: 'issuedNewSeries', maxlength: '20', placeholder: 'A, R, 2026-A…' });
+  const series = select('issuedSeries', [...liveSeries.map((s) => [s.code, s.description ? `${s.code} · ${s.description}` : s.code] as [string, string]), [NEW_SERIES, '+ Nueva serie…']], liveSeries[0]?.code ?? NEW_SERIES, { ...fieldAttrs({ id: 'invoices.emitidas.registrar.serie', label: 'Serie', type: 'select', entity: 'invoices.issued_invoices', prop: 'series_code', sensitivity: 'internal', confirm: 'none' }) });
+  const newSeries = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.serie_nueva', label: 'Serie nueva', type: 'text', entity: 'invoices.issued_series', prop: 'code', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'issuedNewSeries', maxlength: '20', placeholder: 'A, R, 2026-A…' });
   const newSeriesField = field('Código de la serie nueva', newSeries);
   const syncSeries = () => { newSeriesField.hidden = series.value !== NEW_SERIES; };
   series.addEventListener('change', syncSeries); syncSeries();
-  const number = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.numero', 'data-feedback-label': 'Número', type: 'text', id: 'issuedNumber', maxlength: '40', placeholder: '2026-0001' });
-  const issueDate = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.fecha', 'data-feedback-label': 'Fecha de expedición', type: 'date', id: 'issuedDate', value: todayIso() });
-  const operationDate = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.fecha_operacion', 'data-feedback-label': 'Fecha de operación', type: 'date', id: 'issuedOperationDate' });
-  const type = select('issuedType', ISSUED_TYPES.map((t) => [t, `${t} · ${ISSUED_TYPE_LABELS[t]}`] as [string, string]), 'F1', { 'data-feedback-id': 'invoices.emitidas.registrar.tipo', 'data-feedback-label': 'Tipo' });
-  const rectKind = select('issuedRectKind', [['I', RECTIFICATION_KIND_LABELS.I!], ['S', RECTIFICATION_KIND_LABELS.S!]], 'I', { 'data-feedback-id': 'invoices.emitidas.registrar.tipo_rectificacion', 'data-feedback-label': 'Tipo de rectificación' });
-  const rectNumber = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.rectifica', 'data-feedback-label': 'Rectifica a', type: 'text', id: 'issuedRectified', placeholder: 'Número de la factura que rectifica' });
-  const rectReason = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'issuedRectReason', maxlength: '500', placeholder: 'Motivo' });
+  const number = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.numero', label: 'Número', type: 'text', entity: 'invoices.issued_invoices', prop: 'number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'issuedNumber', maxlength: '40', placeholder: '2026-0001' });
+  const issueDate = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.fecha', label: 'Fecha de expedición', type: 'date', entity: 'invoices.issued_invoices', prop: 'issue_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'issuedDate', value: todayIso() });
+  const operationDate = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.fecha_operacion', label: 'Fecha de operación', type: 'date', entity: 'invoices.issued_invoices', prop: 'operation_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'issuedOperationDate' });
+  const type = select('issuedType', ISSUED_TYPES.map((t) => [t, `${t} · ${ISSUED_TYPE_LABELS[t]}`] as [string, string]), 'F1', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.tipo', label: 'Tipo', type: 'select', entity: 'invoices.issued_invoices', prop: 'invoice_type', sensitivity: 'internal', confirm: 'none' }) });
+  const rectKind = select('issuedRectKind', [['I', RECTIFICATION_KIND_LABELS.I!], ['S', RECTIFICATION_KIND_LABELS.S!]], 'I', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.tipo_rectificacion', label: 'Tipo de rectificación', type: 'select', entity: 'invoices.issued_invoices', prop: 'rectification_kind', sensitivity: 'internal', confirm: 'none' }) });
+  const rectNumber = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.rectifica', label: 'Rectifica a', type: 'text', entity: 'invoices.issued_invoices', prop: 'rectified', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'issuedRectified', placeholder: 'Número de la factura que rectifica' });
+  const rectReason = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.motivo', label: 'Motivo', type: 'text', entity: 'invoices.issued_invoices', prop: 'rectification_reason', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'issuedRectReason', maxlength: '500', placeholder: 'Motivo' });
   const rectFields = el('div', { id: 'issuedRectFields' }, el('div', { class: 'row2' }, field('Rectifica a', rectNumber), field('Tipo de rectificación', rectKind)), field('Motivo', rectReason));
-  const recipientName = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientName', maxlength: '200', autocomplete: 'organization' });
-  const recipientTaxId = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientTaxId', maxlength: '40', autocapitalize: 'characters' });
-  const description = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.concepto', 'data-feedback-label': 'Concepto', type: 'text', id: 'issuedDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches' });
-  const purpose = select('issuedPurposeNew', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], null, { 'data-feedback-id': 'invoices.emitidas.registrar.concepto_cobro', 'data-feedback-label': 'Concepto del cobro' });
-  const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], null, { 'data-feedback-id': 'invoices.emitidas.registrar.categoria', 'data-feedback-label': 'Categoría de ingreso' });
+  const recipientName = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.destinatario', label: 'Destinatario', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_name', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientName', maxlength: '200', autocomplete: 'organization' });
+  const recipientTaxId = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.destinatario_nif', label: 'NIF', type: 'text', entity: 'invoices.issued_invoices', prop: 'recipient_tax_id', sensitivity: 'personal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientTaxId', maxlength: '40', autocapitalize: 'characters' });
+  const description = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.concepto', label: 'Concepto', type: 'text', entity: 'invoices.issued_invoices', prop: 'description', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'issuedDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches' });
+  const purpose = select('issuedPurposeNew', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], null, { ...fieldAttrs({ id: 'invoices.emitidas.registrar.concepto_cobro', label: 'Concepto del cobro', type: 'select', entity: 'invoices.issued_invoices', prop: 'purpose', sensitivity: 'internal', confirm: 'none' }) });
+  const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], null, { ...fieldAttrs({ id: 'invoices.emitidas.registrar.categoria', label: 'Categoría de ingreso', type: 'select', entity: 'invoices.issued_invoices', prop: 'income_category', sensitivity: 'internal', confirm: 'none' }) });
   // IVA sugerido por categoría (ronda 26): valor de partida editable; solo cambia las líneas cuyo IVA no se ha tocado a mano.
   category.addEventListener('change', () => {
     const suggested = category.value ? INCOME_CATEGORY_VAT[category.value as IncomeCategory] : null;
@@ -797,9 +797,9 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     for (const l of lineInputs) if (!l.rate.dataset.touched) l.rate.value = String(suggested);
     preview();
   });
-  const withholding = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedWithholding', placeholder: '0' });
-  const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedSourceTotal', placeholder: 'Opcional: el total que figura en el documento' });
-  const files = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.documento', 'data-feedback-label': 'PDF de la factura', type: 'file', id: 'issuedFiles', accept: ACCEPT_ATTR, multiple: true });
+  const withholding = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.retencion', label: 'Retención IRPF (importe)', type: 'number', entity: 'invoices.issued_invoices', prop: 'withholding_total', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedWithholding', placeholder: '0' });
+  const sourceTotal = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.total_documento', label: 'Total del documento', type: 'number', entity: 'invoices.issued_invoices', prop: 'source_total', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedSourceTotal', placeholder: 'Opcional: el total que figura en el documento' });
+  const files = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.documento', label: 'PDF de la factura', type: 'file', entity: 'invoices.issued_invoice_files', prop: 'file_id', sensitivity: 'internal', confirm: 'none' }), type: 'file', id: 'issuedFiles', accept: ACCEPT_ATTR, multiple: true });
   const totals = el('p', { class: 'hint', id: 'issuedPreviewTotals' });
   // «Extraer con ChatGPT» para emitidas: el prompt pide una fila CSV de la plantilla, que se pega en la importación con este PDF.
   const chatgpt = issuedChatgptSteps(async () => {
@@ -823,10 +823,10 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
 
   function addLine(): void {
     const n = lineInputs.length + 1;
-    const d = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.linea_concepto', 'data-feedback-label': 'Concepto de la línea', type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, dataset: { line: 'description' } });
-    const net = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base de la línea ${n}`, dataset: { line: 'net' } });
+    const d = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.linea_concepto', label: 'Concepto de la línea', type: 'text', entity: 'invoices.issued_invoice_lines', prop: 'description', sensitivity: 'internal', confirm: 'none' }), type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, dataset: { line: 'description' } });
+    const net = el('input', { ...fieldAttrs({ id: 'invoices.emitidas.registrar.linea_base', label: 'Base', type: 'number', entity: 'invoices.issued_invoice_lines', prop: 'net_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base de la línea ${n}`, dataset: { line: 'net' } });
     const suggested = category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
-    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %'], ['', 'Sin IVA']], suggested, { 'data-feedback-id': 'invoices.emitidas.registrar.linea_iva', 'data-feedback-label': 'IVA de la línea', 'aria-label': `IVA de la línea ${n}`, dataset: { line: 'rate' } });
+    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %'], ['', 'Sin IVA']], suggested, { ...fieldAttrs({ id: 'invoices.emitidas.registrar.linea_iva', label: 'IVA de la línea', type: 'select', entity: 'invoices.issued_invoice_lines', prop: 'vat_rate', sensitivity: 'internal', confirm: 'none' }), 'aria-label': `IVA de la línea ${n}`, dataset: { line: 'rate' } });
     rate.addEventListener('change', () => { rate.dataset.touched = '1'; });
     const row = el('div', { class: 'row2 issued-line' }, d, net, rate);
     lineInputs.push({ row, description: d, net, rate });

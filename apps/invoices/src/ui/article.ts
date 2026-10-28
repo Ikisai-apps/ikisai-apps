@@ -13,7 +13,7 @@
  * Una conversión nueva creada en Recursos se queda: sirve para las siguientes.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { createItemPicker, createSyncItemSource, createSyncSpaceSource, el, formatQuantity, replace, unitsFor, type ItemPick } from '@ikisai/ui-kit';
+import { createItemPicker, createSyncItemSource, createSyncSpaceSource, el, fieldAttrs, formatQuantity, replace, unitsFor, type ItemPick } from '@ikisai/ui-kit';
 import { describeError, type LocalInvoice, type LocalInvoiceLine } from '../app/client.ts';
 import { INVOICE_LINES } from '../app/client.ts';
 import { R, dropDeferred, foodEntriesWithoutCost, linkLine, linkedItem, resourcesClient, spaceName } from '../app/resources.ts';
@@ -66,7 +66,7 @@ export function articleForm(client: SyncClient, invoice: LocalInvoice, line: Loc
       replace(unitArea, el('p', { class: 'hint', id: 'articleEquivalence' }, quantity === null ? `En ${unit}` : `${formatQuantity(quantity)} ${unit} = ${formatQuantity(quantity * (factor ?? 1))} ${item.baseUnit}`));
     } else {
       needsConversion = true;
-      conversion = el('input', { 'data-feedback-id': 'invoices.facturas.articulo.conversion', 'data-feedback-label': 'Conversión del proveedor', type: 'text', inputmode: 'decimal', id: 'articleConversion', value: factor !== null ? String(factor).replace('.', ',') : '', oninput: () => paintPreview() }) as HTMLInputElement;
+      conversion = el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.conversion', label: 'Conversión del proveedor', type: 'number', entity: 'invoices.invoice_lines', prop: 'item_factor', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'decimal', id: 'articleConversion', value: factor !== null ? String(factor).replace('.', ',') : '', oninput: () => paintPreview() }) as HTMLInputElement;
       replace(unitArea, field(`1 ${unit} =`, el('span', { class: 'inline-field' }, conversion, ` ${item.baseUnit}`), `La factura viene en «${unit}». Se guarda como conversión de este proveedor para las siguientes.`));
     }
     // «Ya entró desde la compra de Food»
@@ -74,7 +74,7 @@ export function articleForm(client: SyncClient, invoice: LocalInvoice, line: Loc
     if (entered && !food.some((f) => f.id === entered)) entered = null;
     if (!food.length) return;
     const option = (value: string | null, text: string) => el('label', { class: 'check' },
-      el('input', { type: 'radio', name: 'articleEntered', value: value ?? '', checked: entered === value, onchange: () => { entered = value; paintPreview(); } }), ` ${text}`);
+      el('input', { ...fieldAttrs({ id: 'invoices.facturas.articulo.entrada', label: '¿Cómo entra al inventario?', type: 'radio', entity: 'invoices.invoice_lines', prop: 'entered_movement_id', sensitivity: 'internal', confirm: 'none' }), type: 'radio', name: 'articleEntered', value: value ?? '', checked: entered === value, onchange: () => { entered = value; paintPreview(); } }), ` ${text}`);
     replace(foodArea, el('fieldset', { class: 'field' }, el('legend', null, '¿Cómo entra al inventario?'),
       option(null, 'Entra con esta factura'),
       ...food.slice(0, 5).map((f) => option(f.id, `Ya entró desde la compra de Food: ${formatQuantity(f.quantity)} ${item.baseUnit}, ${new Date(f.at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`)),

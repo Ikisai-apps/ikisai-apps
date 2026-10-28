@@ -1,5 +1,5 @@
 /**
- * «Cobros sin casar» (API.md §19.7, migración 0263): los avisos de la pasarela que no casaron salen para revisar, se marcan
+ * «Cobros sin casar» (API.md §19.7, migración 0264): los avisos de la pasarela que no casaron salen para revisar, se marcan
  * revisados con nota (editor u owner; el lector no) y dejan de salir salvo con «ver también los revisados». Las
  * explicaciones de la pantalla. Datos sintéticos.
  */

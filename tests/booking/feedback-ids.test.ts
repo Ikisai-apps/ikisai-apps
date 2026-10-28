@@ -35,6 +35,8 @@ function collect(): Found[] {
     for (const match of text.matchAll(/(['"`])(booking\.[^'"`\n]*)\1/g)) {
       const id = match[2]!;
       if (NOT_IDS.has(id)) continue;
+      // `entity: 'booking.tabla'` de `fieldAttrs` (inventario de campos) es una tabla, no un id de pantalla
+      if (/entity:\s*$/.test(text.slice(Math.max(0, match.index! - 12), match.index))) continue;
       const line = text.slice(0, match.index).split('\n').length;
       found.push({ id, file: rel, line, dynamic: id.includes('${') });
     }

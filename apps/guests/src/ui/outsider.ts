@@ -12,7 +12,7 @@
  * «Mis tareas» llega cuando Tasks publique el rol outsider.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { bindOnline, createProposalList, createSuggestionSource, el, icon, replace, toast } from '@ikisai/ui-kit';
+import { bindOnline, createProposalList, createSuggestionSource, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { SERVICE_TYPES, type ServiceType } from '@ikisai/domain-food';
 import { describeError, isNetworkError, online } from '../app/client.ts';
 import { formatDate, t } from '../app/i18n.ts';
@@ -150,7 +150,7 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
           const key = `${d}:${service}`;
           const isOpen = openSlot === key;
           const canSuggest = d >= today;
-          const input = el('input', { type: 'text', id: `dish-${key}`, maxlength: '160', autocomplete: 'off', 'aria-label': t('outsider.dishFor', { service: t(`menu.${service}`).toLowerCase(), day: formatDate(d, { weekday: 'long', day: 'numeric' }) }) }) as HTMLInputElement;
+          const input = el('input', { type: 'text', id: `dish-${key}`, maxlength: '160', autocomplete: 'off', ...fieldAttrs({ id: 'guests.outsider.casa.plato', type: 'text', required: false, sensitivity: 'internal' }), 'aria-label': t('outsider.dishFor', { service: t(`menu.${service}`).toLowerCase(), day: formatDate(d, { weekday: 'long', day: 'numeric' }) }) }) as HTMLInputElement;
           const send = el('button', { type: 'submit', class: 'primary small', 'data-feedback-id': 'guests.outsider.plato.sugerir', 'data-feedback-label': 'Sugerir un plato' }, t('outsider.dishSend')) as HTMLButtonElement;
           return el('div', { class: 'goutslot', dataset: { service } },
             el('div', { class: 'goutslot-head' }, el('strong', null, t(`menu.${service}`)), slotNote(d, service),
@@ -164,9 +164,9 @@ export function mountOutsider(main: HTMLElement, header: HTMLElement | null, act
 
   /** «Otro día u otra comida»: el formulario de siempre (cualquier día desde hoy y las seis comidas). */
   function otherForm(): HTMLElement {
-    const name = el('input', { id: 'dishName', type: 'text', maxlength: '160', autocomplete: 'off', required: '' }) as HTMLInputElement;
-    const date = el('input', { id: 'dishDate', type: 'date', value: todayMadrid(), min: todayMadrid() }) as HTMLInputElement;
-    const service = el('select', { id: 'dishService' }, ...SERVICE_TYPES.map((type) => el('option', { value: type, selected: type === 'comida' ? '' : null }, t(`menu.${type}`)))) as HTMLSelectElement;
+    const name = el('input', { id: 'dishName', type: 'text', maxlength: '160', autocomplete: 'off', required: '', ...fieldAttrs({ id: 'guests.outsider.sugerir.plato', type: 'text', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
+    const date = el('input', { id: 'dishDate', type: 'date', value: todayMadrid(), min: todayMadrid(), ...fieldAttrs({ id: 'guests.outsider.sugerir.dia', type: 'date', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
+    const service = el('select', { id: 'dishService', ...fieldAttrs({ id: 'guests.outsider.sugerir.servicio', type: 'select', required: true, sensitivity: 'internal' }) }, ...SERVICE_TYPES.map((type) => el('option', { value: type, selected: type === 'comida' ? '' : null }, t(`menu.${type}`)))) as HTMLSelectElement;
     const send = needsNet(el('button', { type: 'submit', class: 'primary', id: 'dishSend', 'data-feedback-id': 'guests.outsider.plato.sugerir_otro', 'data-feedback-label': 'Sugerir un plato para otro día' }, t('outsider.dishSend')) as HTMLButtonElement, dayUnbinds);
     return el('details', { class: 'gothers', id: 'outsiderOtherDay', 'data-feedback-id': 'guests.outsider.plato.otro_dia', 'data-feedback-label': 'Otro día u otra comida' },
       el('summary', null, t('outsider.otherDay')),
