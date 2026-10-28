@@ -361,6 +361,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         if (location.hash !== h) { history.replaceState(null, '', h); shell.setRoute(h); }
       },
     });
+    lanes.element.classList.add('flow-board');
     vctx.main.append(lanes.element);
     board = { projectId, lanes };
     // Guiado: un campo de otra columna está en otro carril; se elige ese carril para que aparezca (`flow.<pantalla>…`).

@@ -394,3 +394,6 @@
 .param-tip::before{content:'';position:absolute;top:-5px;left:14px;border:5px solid transparent;border-top:0;border-bottom-color:var(--ink)}
 .param-mid{margin-top:4px;padding-top:8px;border-top:1px solid var(--line);font-size:13px}
 .param-mid .param-name{font-weight:500;font-size:13px}
+/* Tablero del flujo: en pestañas, la barra inferior ya elige la columna; arriba solo queda «Pestañas / Lado a lado» (VG, 28-10). */
+.flow-board .lanes-sum{visibility:hidden}
+.flow-board[data-view="tabs"] .lanes-tabs{display:none}
