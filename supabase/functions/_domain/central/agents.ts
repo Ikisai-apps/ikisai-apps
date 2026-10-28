@@ -59,7 +59,11 @@ export function successorChain(agents: readonly AgentRow[], id: string): AgentRo
  * MUELA/equipo/feedback/central/PROPUESTAS_AGENTE.md). El agente propone por `core.proposals` y decide su responsable:
  * la persona responsable, si tiene cuenta; si el responsable es una entidad de servicio (o la persona no tiene cuenta), el
  * owner de Central (`null`: decide el owner, como siempre).
+ * Central no admite agentes (Core, 28-10): el agente prepara la propuesta desde su propia app con su cuenta y la dirige a
+ * Central (`target_app = 'central'`, núcleo 0119). Al llegar, Central la valida con `agentProposalIssue` y fija el decisor con
+ * `proposalDecider` (`decider_user_id`).
  */
+export const CENTRAL_TARGET_APP = 'central';
 export const AGENT_PROPOSABLE_FIELDS = ['mission', 'work_areas', 'notes'] as const;
 
 /** Quién decide una propuesta del agente: la cuenta de la persona responsable, o `null` (el owner de Central). */
