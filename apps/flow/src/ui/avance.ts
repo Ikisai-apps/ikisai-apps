@@ -49,7 +49,9 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
 
   let units: BoardUnit[] = [];
   let history: Snap[] = [];
-  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado));
+  // «Tuyas» (tres toques en los pasos de los hitos): los carriles de la persona; owner sin carriles declarados, el de Víctor.
+  const lanes = ((client.bootstrap()?.membership.scopes ?? {}) as { lanes?: string[] }).lanes ?? (role === 'owner' ? ['victor'] : []);
+  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName));
 
   function paint(): void {
     // Como `flow.board_counts`: todas las tarjetas e hitos del proyecto, estén en la columna que estén.
