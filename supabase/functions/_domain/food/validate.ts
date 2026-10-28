@@ -175,6 +175,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       position: { kind: 'number', min: -1e9, max: 1e9 },
       image_key: { kind: 'text', max: 120, nullable: true },
       expected_units: { kind: 'number', min: 0, max: 1_000_000, integer: true, nullable: true },
+      capacity_units: { kind: 'number', min: 0, max: 1_000_000, integer: true, nullable: true },
       per_person: { kind: 'number', min: 0, max: 1000, nullable: true },
     },
   },

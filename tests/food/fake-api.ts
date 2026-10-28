@@ -144,7 +144,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.suggestion_votes': ['suggestion_id', 'voter_id', 'vote'],
   'food.equipment_notices': ['equipment_id', 'notified_on', 'equipment_status', 'task_id', 'request_status'],
   // La carta (1109): líneas y ventas (estas, en la app real, solo por food.record_carta_sales).
-  'food.carta_lines': ['menu_id', 'recipe_id', 'item_id', 'scope', 'code', 'name', 'description', 'sale_price_cents', 'active', 'position', 'image_key', 'expected_units', 'per_person'],
+  'food.carta_lines': ['menu_id', 'recipe_id', 'item_id', 'scope', 'code', 'name', 'description', 'sale_price_cents', 'active', 'position', 'image_key', 'expected_units', 'per_person', 'capacity_units'],
   'food.carta_sales': ['menu_id', 'line_id', 'day', 'quantity'],
   // Ofertas de comida por evento (1111).
   'food.event_offers': ['event_id', 'menu_id', 'name', 'audience', 'meal_groups', 'days', 'services', 'place', 'space_id', 'payer', 'charge_when', 'position', 'notes', 'public'],

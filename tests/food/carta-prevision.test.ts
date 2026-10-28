@@ -108,6 +108,14 @@ test('compra · la lista de una carta: unidades esperadas × lo que gasta cada u
   assert.equal((await q(`select count(*)::int as n from food.ingredients where item_id = $1 and deleted_at is null`, [AGUA_ITEM]))[0].n, 1);
 });
 
+test('food-13 · la capacidad material va aparte de las ventas esperadas y Flow lee las dos', async () => {
+  await ok('commands', [update('food.carta_lines', CAPRESE, await rev('food.carta_lines', CAPRESE), { expected_units: 50, capacity_units: 100 })]);
+  const row = (await q(`select expected_units, capacity_units from food.carta_projection where line_id = $1`, [CAPRESE]))[0];
+  assert.deepEqual([row.expected_units, row.capacity_units], [50, 100], 'nadie las cuadra');
+  const res = await app.call('/api/v1/commands', { body: { requestId: `prev-${++counter}`, operations: [update('food.carta_lines', CAPRESE, await rev('food.carta_lines', CAPRESE), { capacity_units: -1 })] } });
+  assert.notEqual(res.status, 200);
+});
+
 test('dominio · el reparto', () => {
   assert.equal(prepSplitProblem({ mesa: 30, nevera: 20, fresco: 50 }), null);
   assert.equal(prepSplitProblem(null), null);
