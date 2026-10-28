@@ -95,31 +95,75 @@ function tkhWho(userId){if(!userId)return '';if(userId===Sync.actor?.id)return '
 function tkhAgo(iso){const at=Date.parse(iso||'');if(isNaN(at))return '';const min=Math.max(0,Math.round((Date.now()-at)/60000));if(min<1)return 'ahora';if(min<60)return `hace ${min} min`;
   const day=new Date(at);day.setHours(0,0,0,0);const days=Math.round((homeToday()-day)/86400000);if(days<=0)return `hace ${Math.round(min/60)} h`;if(days===1)return 'ayer';return `hace ${days} días`}
 function tkhDaysAgo(iso){const at=Date.parse(iso||'');if(isNaN(at))return 99;const day=new Date(at);day.setHours(0,0,0,0);return Math.round((homeToday()-day)/86400000)}
-/* Filtro por espacio (encargo de VG, 27-10): arriba, un chip por cada espacio que aparece en la pantalla (el plan y «Para
-   coger»), con su recuento de tareas. Un toque marca y otro desmarca; ninguno o todos marcados, se ve todo; varios, lo que esté
-   en cualquiera de ellos. Lo marcado se recuerda en el dispositivo. Mientras filtra, lo apuntado «solo hoy» (sin espacio) no se
-   ve y el plan no se reordena (el orden es del plan entero). */
-const TKH_SPACES_KEY='tasks.hoy.espacios';
+/* Filtro por espacio (encargo de VG, 27-10), por el árbol de espacios de Recursos y no en una fila plana:
+   - Arriba, solo lo de primer nivel que tiene tareas en la pantalla (el plan y «Para coger»): cada altura y, si una altura tiene
+     una sola cosa dentro (un edificio, un exterior), esa cosa en su lugar. Más «Sin espacio» si hay tareas sin espacio, para
+     encontrarlas y ponérselo. Cada chip con su recuento de tareas (de todo lo que tiene debajo).
+   - Al pulsar uno, filtra por él (con todo lo de dentro) y debajo salen sus hijos con tareas. Elegir un hijo filtra por el hijo;
+     volver a pulsarlo, vuelta al padre. Si el hijo tiene hijos, otra fila. Pulsar otra vez el de arriba lo quita.
+   - Varios de arriba marcados, lo que esté en cualquiera (OR); ninguno o todos (sin bajar a un hijo), se ve todo. Se recuerda en
+     el dispositivo. Mientras filtra, lo apuntado «solo hoy» no se ve y el plan no se reordena (el orden es del plan entero). */
+const TKH_SPACES_KEY='tasks.hoy.espacios',TKH_NONE='__none';
+let tkhSpaceFocus=null;
 function tkhSpaceSel(){try{const v=JSON.parse(localStorage.getItem(TKH_SPACES_KEY)||'[]');return new Set(Array.isArray(v)?v.filter(x=>typeof x==='string'):[])}catch(e){return new Set()}}
 function tkhSpaceSave(set){try{localStorage.setItem(TKH_SPACES_KEY,JSON.stringify([...set]))}catch(e){}}
-function tkhSpacesOf(t){return [...new Set(t?.spaces||[])].filter(id=>typeof spaceById!=='function'||spaceById(id))}
-function tkhSpaceName(id){return (typeof spaceById==='function'?spaceById(id)?.name:'')||id}
-function tkhSpaceCounts(){const n=new Map(),seen=new Set(),add=t=>{if(!t||seen.has(t.id))return;seen.add(t.id);for(const s of tkhSpacesOf(t))n.set(s,(n.get(s)||0)+1)};
+function tkhNode(id){return typeof spaceById==='function'?spaceById(id)||null:null}
+function tkhSpacesOf(t){return [...new Set(t?.spaces||[])].filter(id=>tkhNode(id))}
+function tkhSpaceName(id){return id===TKH_NONE?'Sin espacio':tkhNode(id)?.name||''}
+/* Del espacio hacia arriba: [él, su padre, …, la raíz]. */
+function tkhChain(id){const out=[];let n=tkhNode(id);while(n&&out.length<12){out.push(n.id);n=n.parentId?tkhNode(n.parentId):null}return out}
+function tkhKids(id){return (typeof spaceRows==='function'?spaceRows():[]).filter(r=>r.parentId===id&&r.active!==false)}
+/* El de primer nivel de un espacio: su altura, o lo único que hay en ella. */
+function tkhTopOf(id){const chain=tkhChain(id),root=chain[chain.length-1];if(!root)return null;const r=tkhNode(root);
+  if(r?.kind==='altura'){const kids=tkhKids(root);if(kids.length===1&&chain.includes(kids[0].id))return kids[0].id}
+  return root}
+function tkhByPlace(a,b){const x=tkhNode(a),y=tkhNode(b);return (Number(x?.position)||0)-(Number(y?.position)||0)||tkhSpaceName(a).localeCompare(tkhSpaceName(b),'es')}
+/* Las tareas de la pantalla y, por nodo del árbol, cuántas tienen algo debajo de él. */
+function tkhSpaceModel(){const tasks=[],seen=new Set(),add=t=>{if(!t||seen.has(t.id))return;seen.add(t.id);tasks.push(t)};
   for(const it of tkhItems())if(it.task_id)add(tkhFind(it.task_id)?.t);
   if(tkhCanPick())for(const x of tkhCandidates())add(x.t);
-  return n}
-function tkhSpaceFilter(){const counts=tkhSpaceCounts(),sel=new Set([...tkhSpaceSel()].filter(id=>counts.has(id))),on=sel.size>0&&sel.size<counts.size;
-  return {counts,sel,on,match:t=>!on||tkhSpacesOf(t).some(id=>sel.has(id))}}
-function tkhSpaceBar(f){if(f.counts.size<2)return '';
-  const list=[...f.counts].sort((a,b)=>tkhSpaceName(a[0]).localeCompare(tkhSpaceName(b[0]),'es'));
-  return `<div class="ikisai-kit tkh-spaces-wrap"><div class="scrollrow tkh-spaces" id="tkhSpaces" role="group" aria-label="Filtrar por espacio">${list.map(([id,n])=>`<button type="button" class="tkh-space" data-tkh-space="${esc(id)}" aria-pressed="${f.sel.has(id)?'true':'false'}" data-feedback-id="tasks.hoy.espacio" data-feedback-label="Filtrar por espacio">${f.sel.has(id)?'<span class="tkh-space-check" aria-hidden="true">✓</span>':''}${esc(tkhSpaceName(id))} <span class="tkh-space-n">${n}</span></button>`).join('')}</div></div>`}
-/* Lo que se filtra, dicho en una línea (role=status) con «Quitar filtro»: los nombres marcados. */
-function tkhSpaceNames(f){return [...f.sel].map(tkhSpaceName).sort((a,b)=>a.localeCompare(b,'es')).join(', ')}
+  const count=new Map(),tops=new Set();let none=0;
+  for(const t of tasks){const spaces=tkhSpacesOf(t);if(!spaces.length){none++;continue}
+    const nodes=new Set();for(const s of spaces){for(const n of tkhChain(s))nodes.add(n);const top=tkhTopOf(s);if(top)tops.add(top)}
+    for(const n of nodes)count.set(n,(count.get(n)||0)+1)}
+  if(none)count.set(TKH_NONE,none);
+  const topList=[...tops].sort((a,b)=>tkhByPlace(tkhChain(a).at(-1),tkhChain(b).at(-1))||tkhByPlace(a,b));if(none)topList.push(TKH_NONE);
+  return {count,tops:topList}}
+/* Los hijos de un nodo que tienen tareas en la pantalla. */
+function tkhChildren(m,id){if(id===TKH_NONE)return [];return tkhKids(id).map(k=>k.id).filter(k=>m.count.has(k)).sort(tkhByPlace)}
+function tkhTopIdOf(m,id){return id===TKH_NONE?TKH_NONE:m.tops.find(t=>tkhChain(id).includes(t))||null}
+function tkhSpaceFilter(){const m=tkhSpaceModel(),sel=new Set([...tkhSpaceSel()].filter(id=>m.count.has(id)&&tkhTopIdOf(m,id)));
+  const on=sel.size>0&&!m.tops.every(t=>sel.has(t));
+  const ids=[...sel].filter(id=>id!==TKH_NONE);
+  return {...m,sel,on,match:t=>{if(!on)return true;const spaces=tkhSpacesOf(t);if(!spaces.length)return sel.has(TKH_NONE);return spaces.some(s=>{const c=tkhChain(s);return ids.some(id=>c.includes(id))})}}}
+/* Lo marcado debajo de un nodo (él incluido). */
+function tkhSelUnder(f,id){return [...f.sel].filter(s=>s===id||(id!==TKH_NONE&&s!==TKH_NONE&&tkhChain(s).includes(id)))}
+function tkhPath(f,top){const deep=tkhSelUnder(f,top).sort((a,b)=>tkhChain(b).length-tkhChain(a).length)[0];if(!deep)return [];const c=tkhChain(deep);return c.slice(0,c.indexOf(top)+1).reverse()}
+function tkhChip(f,id,parent){const under=tkhSelUnder(f,id),on=under.length>0,deep=under.find(s=>s!==id);
+  const label=deep&&!parent?`${tkhSpaceName(id)} › ${tkhSpaceName(deep)}`:tkhSpaceName(id);
+  return `<button type="button" class="tkh-space ${id===TKH_NONE?'none':''}" data-tkh-space="${esc(id)}" data-tkh-parent="${esc(parent||'')}" aria-pressed="${on?'true':'false'}" data-feedback-id="tasks.hoy.espacio" data-feedback-label="Filtrar por espacio">${on?'<span class="tkh-space-check" aria-hidden="true">✓</span>':''}${esc(label)} <span class="tkh-space-n">${f.count.get(id)||0}</span></button>`}
+function tkhSpaceBar(f){if(f.tops.length<2)return '';
+  // El de arriba abierto: el último tocado o, al volver (otra sesión), el primero que tiene un hijo marcado.
+  const top=tkhSpaceFocus&&f.tops.includes(tkhSpaceFocus)&&tkhSelUnder(f,tkhSpaceFocus).length?tkhSpaceFocus:f.tops.find(t=>tkhSelUnder(f,t).some(x=>x!==t))||null;
+  // Las filas de hijos: del de arriba que se ha tocado, bajando por lo marcado.
+  const rows=[];if(top){let at=top;const path=tkhPath(f,top);for(let i=0;i<4&&at;i++){const kids=tkhChildren(f,at);if(!kids.length)break;
+      rows.push(`<div class="scrollrow tkh-spaces tkh-spaces-sub" role="group" aria-label="${esc(`Dentro de ${tkhSpaceName(at)}`)}">${kids.map(k=>tkhChip(f,k,at)).join('')}</div>`);
+      at=path.find(p=>kids.includes(p))||null}}
+  return `<div class="ikisai-kit tkh-spaces-wrap"><div class="scrollrow tkh-spaces" id="tkhSpaces" role="group" aria-label="Filtrar por espacio">${f.tops.map(t=>tkhChip(f,t,'')).join('')}</div>${rows.join('')}</div>`}
+/* Lo que se filtra, en una línea (role=status) con «Quitar filtro»: cada marcado con su camino desde arriba. */
+function tkhSpaceLabel(f,id){if(id===TKH_NONE)return 'Sin espacio';const top=tkhTopIdOf(f,id),c=tkhChain(id);return c.slice(0,c.indexOf(top)+1).reverse().map(tkhSpaceName).join(' › ')}
+function tkhSpaceNames(f){return [...f.sel].map(id=>tkhSpaceLabel(f,id)).sort((a,b)=>a.localeCompare(b,'es')).join(', ')}
 function tkhClearButton(){return '<button type="button" class="linkbtn tkh-clear" data-tkh-clear data-feedback-id="tasks.hoy.espacio.quitar" data-feedback-label="Quitar filtro">Quitar filtro</button>'}
-function tkhSpaceNotice(f){return f.on?`<p class="tkh-filtering" role="status">Solo ${esc(tkhSpaceNames(f))}. Mientras filtras, lo apuntado «solo hoy» no se ve y el plan no se reordena. ${tkhClearButton()}</p>`:''}
-function tkhSpaceClear(){tkhSpaceSave(new Set());render();document.getElementById('tkhSpaces')?.querySelector('[data-tkh-space]')?.focus()}
-function tkhSpaceToggle(id){const f=tkhSpaceFilter(),sel=f.sel;if(sel.has(id))sel.delete(id);else sel.add(id);tkhSpaceSave(sel);render();
-  [...document.querySelectorAll('[data-tkh-space]')].find(b=>b.dataset.tkhSpace===id)?.focus()}
+function tkhSpaceNotice(f){if(!f.on)return '';const none=f.sel.has(TKH_NONE)?' Sin espacio: ponles uno desde su ficha y saldrán en su sitio.':'';
+  return `<p class="tkh-filtering" role="status">Solo ${esc(tkhSpaceNames(f))}.${none} Mientras filtras, lo apuntado «solo hoy» no se ve y el plan no se reordena. ${tkhClearButton()}</p>`}
+function tkhSpaceClear(){tkhSpaceSave(new Set());tkhSpaceFocus=null;render();document.getElementById('tkhSpaces')?.querySelector('[data-tkh-space]')?.focus()}
+/* Tocar uno de arriba: lo pone (y abre sus hijos) o, si ya estaba (él o algo suyo), lo quita. Tocar un hijo: filtra por él en
+   lugar de su padre; volver a tocarlo, vuelta al padre. */
+function tkhSpaceToggle(id,parent){const f=tkhSpaceFilter(),sel=f.sel;
+  if(!parent){const under=tkhSelUnder(f,id);if(under.length){for(const s of under)sel.delete(s);if(tkhSpaceFocus===id)tkhSpaceFocus=null}else{sel.add(id);tkhSpaceFocus=id}}
+  else{const was=sel.has(id);for(const s of tkhSelUnder(f,parent))sel.delete(s);sel.add(was?parent:id);tkhSpaceFocus=tkhTopIdOf(f,parent)}
+  tkhSpaceSave(sel);render();
+  [...document.querySelectorAll('[data-tkh-space]')].find(b=>b.dataset.tkhSpace===id&&b.dataset.tkhParent===(parent||''))?.focus()}
 function tkhStrips(){const F=tkhSpaceFilter(),all=tkhCandidates().filter(x=>F.match(x.t)),seen=new Set(),take=(list,n=TKH_TAKE_STRIP)=>{const out=[];for(const x of list){if(out.length>=n)break;if(seen.has(x.t.id))continue;seen.add(x.t.id);out.push(x)}return out};
   const me=Sync.actor?.id;
   const touched=all.filter(x=>x.t.updatedBy&&x.t.updatedBy===me).sort((a,b)=>String(b.t.updatedAt||'').localeCompare(String(a.t.updatedAt||''))).map(x=>({...x,meta:`la tocaste ${tkhAgo(x.t.updatedAt)}`}));
@@ -163,8 +207,8 @@ function tkhRowNode(it){const K=IkisaiKit,hit=it.task_id?tkhFind(it.task_id):nul
 /* FB_2026_059: oficio y lugar de la tarea (los chips de Central y de Recursos, si la casa los usa); personas no. */
 function tkhPlaceChips(t){const html=(typeof tradeChips==='function'?tradeChips(t.trades||[]):'')+(typeof spaceChips==='function'?spaceChips(t.spaces||[]):'');return html?`<span class="chips tkh-place">${html}</span>`:''}
 function tkhView(){const F=tkhSpaceFilter(),all=tkhItems(),items=F.on?all.filter(it=>it.task_id&&F.match(tkhFind(it.task_id)?.t)):all,done=items.filter(it=>!tkhItemGone(it)&&tkhItemDone(it)).length,total=items.filter(it=>!tkhItemGone(it)).length,pick=tkhCanPick(),left=tkhLeftovers();
-  const line=pick?`<form class="tkh-find" role="search" id="tkhFind" aria-label="Buscar o apuntar para hoy"><label class="tkh-vh" for="tkhInput">Busca una tarea o apunta algo para hoy</label><input id="tkhInput" type="search" autocomplete="off" enterkeyhint="done" maxlength="300" placeholder="Busca o apunta algo…" value="${esc(tkhQuery)}" data-feedback-id="tasks.hoy.buscar" data-feedback-label="Buscar o apuntar"><button type="submit" class="tkh-note" data-feedback-id="tasks.hoy.apuntar" data-feedback-label="Apuntar">Apuntar</button></form><p class="tkh-vh" aria-live="polite" id="tkhCount"></p><div id="tkhResults" class="tkh-results-box"></div>`
-    :tkhCanWrite()?`<form class="tkh-find solo" id="tkhFind" aria-label="Apunta aquí lo tuyo"><label class="tkh-solo-label" for="tkhInput">Apunta aquí lo tuyo</label><input id="tkhInput" type="text" autocomplete="off" enterkeyhint="done" maxlength="300" placeholder="Algo que hacer hoy…" value="${esc(tkhQuery)}" data-feedback-id="tasks.hoy.apuntar_lector" data-feedback-label="Apunta aquí lo tuyo"><button type="submit" class="tkh-note" data-feedback-id="tasks.hoy.apuntar" data-feedback-label="Apuntar">Apuntar</button></form>`:'';
+  const line=pick?`<form class="tkh-find" role="search" id="tkhFind" aria-label="Buscar o apuntar para hoy"><label class="tkh-vh" for="tkhInput">Busca una tarea o apunta algo para hoy</label><input data-field-id="tasks.hoy.buscar" data-field-storage="none" id="tkhInput" type="search" autocomplete="off" enterkeyhint="done" maxlength="300" placeholder="Busca o apunta algo…" value="${esc(tkhQuery)}" data-feedback-id="tasks.hoy.buscar" data-feedback-label="Buscar o apuntar"><button type="submit" class="tkh-note" data-feedback-id="tasks.hoy.apuntar" data-feedback-label="Apuntar">Apuntar</button></form><p class="tkh-vh" aria-live="polite" id="tkhCount"></p><div id="tkhResults" class="tkh-results-box"></div>`
+    :tkhCanWrite()?`<form class="tkh-find solo" id="tkhFind" aria-label="Apunta aquí lo tuyo"><label class="tkh-solo-label" for="tkhInput">Apunta aquí lo tuyo</label><input data-field-id="tasks.hoy.apuntar_lector" data-field-entity="tasks.day_plans" data-field-prop="items" id="tkhInput" type="text" autocomplete="off" enterkeyhint="done" maxlength="300" placeholder="Algo que hacer hoy…" value="${esc(tkhQuery)}" data-feedback-id="tasks.hoy.apuntar_lector" data-feedback-label="Apunta aquí lo tuyo"><button type="submit" class="tkh-note" data-feedback-id="tasks.hoy.apuntar" data-feedback-label="Apuntar">Apuntar</button></form>`:'';
   return `<main class="screen tkh ${pick?'':'small'}"><section class="tkh-head">${tkhArc(done,total)}<div class="tkh-headtext"><h1 class="title">${esc(tkhDateLabel())}</h1><p class="subtitle">${pick?'Tu plan de hoy. Añade desde aquí o con ☀ en cualquier tarea.':'Tu plan de hoy. Apunta aquí lo tuyo.'}</p></div></section>
     ${tkhSpaceBar(F)}${tkhSpaceNotice(F)}
     ${line}
@@ -175,7 +219,7 @@ function tkhView(){const F=tkhSpaceFilter(),all=tkhItems(),items=F.on?all.filter
    sobre #view (vigila también las filas que aparecen en cada render). */
 function tkhScrollHints(){const v=document.getElementById('view');if(!v||v.dataset.tkhHints||typeof window.IkisaiKit?.installScrollHints!=='function')return;
   try{window.IkisaiKit.installScrollHints(v);v.dataset.tkhHints='1'}catch(e){console.error(e)}}
-function tkhMount(){tkhScrollHints();document.querySelectorAll('[data-tkh-space]').forEach(b=>b.onclick=()=>tkhSpaceToggle(b.dataset.tkhSpace));
+function tkhMount(){tkhScrollHints();document.querySelectorAll('[data-tkh-space]').forEach(b=>b.onclick=()=>tkhSpaceToggle(b.dataset.tkhSpace,b.dataset.tkhParent||''));
   document.querySelectorAll('[data-tkh-clear]').forEach(b=>b.onclick=tkhSpaceClear);
   const host=document.getElementById('tkhList');tkhSortable=null;if(host){const F=tkhSpaceFilter(),items=tkhItems().filter(it=>!F.on||(it.task_id&&F.match(tkhFind(it.task_id)?.t)));
     tkhSortable=IkisaiKit.createSortableList({items,key:it=>it.id,name:it=>(it.task_id?tkhFind(it.task_id)?.t.text:it.text)||'Tarea',render:it=>tkhRowNode(it),label:'Tu plan de hoy',rowClass:'tkh-sortrow',buttons:false,disabled:!tkhCanWrite()||F.on,

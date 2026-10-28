@@ -150,6 +150,9 @@ export function createAdminApi(client: SyncClient) {
       memory.agents = { at: new Date().toISOString(), items: out.items };
       return out.items;
     },
+    /** Alta de un agente en varias apps de una vez (`POST agents/new`): la clave vuelve una sola vez. */
+    createAgent: (body: { name: string; role: 'reader' | 'editor'; apps: string[]; expiresAt?: string | null }) =>
+      call<{ userId: string; keyId: string; name: string; role: string; token: string; apps: Array<{ app: string; ok: boolean; code?: string }> }>('/agents/new', { method: 'POST', json: body }),
     revokeAgent: (keyId: string) => call<{ keyId: string; revoked: boolean; proposalsRevoked: number }>(`/admin/agents/${keyId}`, { method: 'DELETE' }),
     /** Registro de accesos (P12, #640): `user` = lo que hizo esa cuenta, lo que la afecta y lo de sus claves; `grave` = solo lo grave. */
     accessLog: (params: { app?: string; user?: string; grave?: boolean; before?: number; limit?: number }) => {

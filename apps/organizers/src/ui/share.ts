@@ -16,7 +16,7 @@ export function openShareSheet(options: ShareOptions): void {
     title: t('Enlace de {nombre}', { nombre: name }),
     body: el('div', { id: 'shareSheet' },
       el('p', { class: 'banner info' }, t('Este enlace es personal: envíaselo solo a {nombre}.', { nombre: name })),
-      fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), el('textarea', { ...fieldAttrs({ id: 'organizers.comun.mensaje_compartir', label: 'Mensaje para compartir', type: 'text', sensitivity: 'internal', confirm: 'none' }), id: 'shareText', readonly: '', rows: '6' }, text))),
+      fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), el('textarea', { ...fieldAttrs({ id: 'organizers.comun.mensaje_compartir', storage: 'none', label: 'Mensaje para compartir', type: 'text', sensitivity: 'internal', confirm: 'none' }), id: 'shareText', readonly: '', rows: '6' }, text))),
       el('p', { class: 'muted small' }, t('Por seguridad, el enlace solo se muestra ahora. Si se pierde, podrás enviar uno nuevo y el anterior dejará de funcionar.'))),
     foot: el('div', { class: 'btnrow' },
       canShare ? el('button', {

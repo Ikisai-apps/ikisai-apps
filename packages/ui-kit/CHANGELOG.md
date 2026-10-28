@@ -1,5 +1,61 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.72.0 · 28 de octubre de 2026
+
+Inventario de campos: lo que no es un dato y lo que no va a una columna.
+
+### #1158
+
+**Inventario de campos: «no es un campo».** `NOT_A_FIELD` (atributo `data-field-none`) marca los controles que no guardan ningún dato (buscadores, filtros, selección de filas, rangos al generar). `feature-catalog.mjs` ya no los pone en `fieldsUninstrumented`, así que el recuento de «sin anclaje» de cada app puede llegar a 0. Lo propuso Food.
+
+**`FieldSpec.storage`**: `device` (solo en el dispositivo: una calculadora, un borrador local) o `none` (no se guarda: un cartel que se dibuja, un código de un solo uso). Sale como `data-field-storage` y en el catálogo, y el informe ya no cuenta esos campos como «sin entidad». Por omisión, `server`. Lo propuso Organizers.
+
+**`@field-caller`**: en un ayudante genérico que recibe los atributos de quien lo llama (`...mark`), un comentario con `@field-caller` en la línea del `el()` o en la anterior hace que el extractor no lo cuente como «sin anclaje»; el campo se declara en la llamada. Lo pidió Food.
+
+## 0.71.0 · 27 de octubre de 2026
+
+Segunda tanda del 27-10: el Guiado listo para el móvil, la cobertura por candidatos, la pista de desplazamiento (K4) y las pestañas con enlaces. Los tipos de la decisión por grupo se exportan desde #1120.
+
+### #1125
+
+`.segmented` admite enlaces (`<a>`) además de botones: misma altura (44 px), sin subrayado, y la activa con `.on` o `aria-current="page"`. Lo pidió la revisión móvil de Guests: sus pestañas «El evento» / «Alójate aquí» son rutas y salían como enlaces sueltos de unos 20 px.
+
+### #1100
+
+Guiado listo para un recorrido real en el móvil y encajado con Flow (0940):
+- `createGuide`: en el móvil, mientras la persona escribe en la app (foco en un campo tocado o teclado abierto), la burbuja queda en una tira arriba que no tapa el campo, el teclado ni «Guardar». El foco que pone la guía al llegar no la pliega. Lo guardado sin red (`pending`) se reconfirma al guardarse de verdad.
+- `flowGuideSource`: «Saltar» va como `how: 'none'` (`requestId` `…:skip`); `pending` lleva `requestId` propio (`…:p`); en modo `learn` no se confirma.
+- `createAppShell({ guide })`: si no se da `app`, sale del primer segmento de `feedbackId`.
+
+### #1065
+
+**`renderCoverage` toma la vista del núcleo** (`core.field_coverage`, #1055, 0111). Completa #1036: este cambio no llegó a entrar con ella.
+
+- **`coverageFromCore(salida del núcleo, pasos de Flow, extra)`** cruza la vista del núcleo con los pasos y reglas de Flow:
+  - un paso con el anclaje del campo es `direct`, y una regla, `automatic`;
+  - un paso que invoca una capacidad que lee o escribe su dato es `indirect`;
+  - sin pasos, se queda la clase parcial del núcleo, marcada «Sin cobertura de Flow».
+- **Duplicados:** los del núcleo mandan, porque ya traen el modo «label».
+- **Uso:** `used` sin recuento sale como «Con uso propio».
+- **Capacidades:** se enseñan las que leen o escriben el campo.
+- **Utilidad (decisiones de VG, vg-39):** primero el estimado de la app (`estimate`) y luego lo declarado por Dirección (`declared`).
+- Pruebas: `tests/v83.spec.ts`, con un caso con la forma del núcleo.
+
+**Cobertura por candidatos** (decisión de VG, 27-10: no se decide campo a campo). `renderCoverage` abre por defecto en los candidatos del núcleo (`candidate`), por app → pantalla (`screenLabel` si viene), con recuento, usos en 30 días y la utilidad heredada (`estimate`, frecuencia y audiencia) por campo. Cada grupo lleva Dejar · Revisar más tarde · Retirar (`onDecide(decision | null, { app, screen, fieldIds })`; Retirar pide un segundo toque; «Deshacer» envía `null`; lo ya decidido llega en `field.decision`) y «Ajustar utilidad» (`onDeclare`). «Ver todo» abre el detalle por clase (`view: 'all'`, `setView()`). `coverageFromCore` lee `candidate`, `screenLabel`, `estimate` y `activations30d`, y devuelve `usage`.
+
+### #1015
+
+**K4: pista de desplazamiento en las filas horizontales** (`equipo/Revisor/KIT_PETICIONES.md`, abierta por Core el 27-10). Una fila de chips más ancha que la pantalla no decía que había más.
+
+- **`.scrollrow`**: fila de chips o botones en una línea, con desplazamiento horizontal y sin barra.
+- **La pista:** el borde que tiene contenido detrás se difumina (`data-more-start` / `data-more-end`, con máscara). Solo cuando la fila desborda, y cambia al desplazar o al cambiar el ancho o los hijos.
+- **`installScrollHints(root)`** vigila `.scrollrow` y las tiras del kit (`.viewstrip`, `.daytabs`, `.lanes-tabs`, `.stk-tabs`, `.pl-tabs`, `.fb-tabs`), también las que aparecen después.
+  - **`createAppShell` lo instala sola**: las apps no tienen que hacer nada; les basta con usar `.scrollrow` en sus filas de chips.
+- **`watchScrollHint(nodo)`**, para una fila suelta.
+- Demo: «Fila de chips con pista de desplazamiento (K4)». Pruebas: `tests/v79.spec.ts`.
+=======
+- `.scrollrow` lleva `contain:inline-size` y `width:100%`: una fila larga no ensancha la página (en la muestra, 823 px en un móvil de 390).
+
 ## 0.70.0 · 27 de octubre de 2026
 
 Versión de la tanda del 27-10 (las PR del kit ya dejan su nota en `changes/` y no tocan la versión). La cobertura de campos de #1036 ya está en la 0.69.11.

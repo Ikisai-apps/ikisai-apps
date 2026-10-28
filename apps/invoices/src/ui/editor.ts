@@ -8,7 +8,7 @@
  *   una vez. Mientras haya algo sin guardar, la ficha no se repinta (guard.dirtyEditor).
  */
 import type { RowOperation } from '@ikisai/sync-client';
-import { confirmDialog, el, replace, toast } from '@ikisai/ui-kit';
+import { confirmDialog, el, fieldAttrs, replace, toast } from '@ikisai/ui-kit';
 import { validSpanishTaxId, type FieldProvenance } from '@ikisai/domain-invoices';
 import { CATEGORIES, CATEGORY_LABELS, INVOICES, INVOICE_LINES, SUPPLIERS, TAX_LINES, type LocalInvoice } from '../app/client.ts';
 import { eur, loadMirror, parseAmount, supplierName, type Mirror } from '../app/data.ts';
@@ -79,8 +79,8 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
   }
 
   // --- Proveedor por NIF (o el de la factura), con alta rápida
-  const taxId = el('input', { 'data-feedback-id': 'invoices.facturas.manual.nif', 'data-feedback-label': 'NIF del proveedor', type: 'text', id: 'manualTaxId', maxlength: '20', autocapitalize: 'characters', placeholder: 'B12345674', value: placeholder ? '' : current?.tax_id ?? '' });
-  const name = el('input', { 'data-feedback-id': 'invoices.facturas.manual.nombre', 'data-feedback-label': 'Nombre del proveedor', type: 'text', id: 'manualName', maxlength: '160', placeholder: 'Nombre o razón social', value: placeholder ? '' : current?.name ?? '' });
+  const taxId = el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.nif', label: 'NIF del proveedor', type: 'text', entity: 'invoices.suppliers', prop: 'tax_id', sensitivity: 'personal', confirm: 'none' }), type: 'text', id: 'manualTaxId', maxlength: '20', autocapitalize: 'characters', placeholder: 'B12345674', value: placeholder ? '' : current?.tax_id ?? '' });
+  const name = el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.nombre', label: 'Nombre del proveedor', type: 'text', entity: 'invoices.suppliers', prop: 'name', sensitivity: 'personal', confirm: 'none' }), type: 'text', id: 'manualName', maxlength: '160', placeholder: 'Nombre o razón social', value: placeholder ? '' : current?.name ?? '' });
   const supplierNote = el('p', { class: 'hint', id: 'manualSupplierNote' });
   const findByTaxId = () => {
     const id = validSpanishTaxId(taxId.value) ?? taxId.value.replace(/[\s.-]/g, '').toUpperCase();
@@ -120,10 +120,10 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
   name.addEventListener('change', () => void saveSupplier());
 
   // --- Cabecera
-  const number = el('input', { 'data-feedback-id': 'invoices.facturas.manual.numero', 'data-feedback-label': 'Número de factura', type: 'text', id: 'manualNumber', maxlength: '64', value: invoice.invoice_number ?? '' });
-  const date = el('input', { 'data-feedback-id': 'invoices.facturas.manual.fecha', 'data-feedback-label': 'Fecha de la factura', type: 'date', id: 'manualDate', value: invoice.invoice_date ?? '' });
-  const total = el('input', { 'data-feedback-id': 'invoices.facturas.manual.total', 'data-feedback-label': 'Total de la factura', type: 'text', inputmode: 'decimal', id: 'manualTotal', placeholder: 'Total que imprime la factura', value: money(invoice.source_total === null ? null : Number(invoice.source_total)) });
-  const category = select('manualCategory', [['', 'Elige categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], invoice.expense_category ?? null, { 'data-feedback-id': 'invoices.facturas.manual.categoria', 'data-feedback-label': 'Categoría de gasto' });
+  const number = el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.numero', label: 'Número de factura', type: 'text', entity: 'invoices.invoices', prop: 'invoice_number', sensitivity: 'internal', confirm: 'none' }), type: 'text', id: 'manualNumber', maxlength: '64', value: invoice.invoice_number ?? '' });
+  const date = el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.fecha', label: 'Fecha de la factura', type: 'date', entity: 'invoices.invoices', prop: 'invoice_date', sensitivity: 'internal', confirm: 'none' }), type: 'date', id: 'manualDate', value: invoice.invoice_date ?? '' });
+  const total = el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.total', label: 'Total de la factura', type: 'number', entity: 'invoices.invoices', prop: 'source_total', sensitivity: 'internal', confirm: 'none' }), type: 'text', inputmode: 'decimal', id: 'manualTotal', placeholder: 'Total que imprime la factura', value: money(invoice.source_total === null ? null : Number(invoice.source_total)) });
+  const category = select('manualCategory', [['', 'Elige categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], invoice.expense_category ?? null, { ...fieldAttrs({ id: 'invoices.facturas.manual.categoria', label: 'Categoría de gasto', type: 'select', entity: 'invoices.invoices', prop: 'expense_category', sensitivity: 'internal', confirm: 'none' }) });
   number.addEventListener('change', () => void saveField({ invoice_number: number.value.trim() || null }, 'Número guardado.'));
   date.addEventListener('change', () => void saveField({ invoice_date: date.value || null }, 'Fecha guardada.'));
   total.addEventListener('change', () => { const v = parseAmount(total.value); if (total.value.trim() && v === null) { toast('Importe inválido.'); return; } void saveField({ source_total: v }, 'Total guardado.'); });
@@ -136,9 +136,9 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
   const onAmounts = () => { if (!pendingFill) amountsDirty = true; markDirty(); paint(); };
   const addRow = (rate = '21') => {
     const row: Row = {
-      base: el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base imponible ${rows.length + 1}` }),
-      rate: select('', RATES, rate, { 'data-feedback-ignore': '', 'aria-label': `Tipo de IVA ${rows.length + 1}` }),
-      quota: el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Cuota', 'aria-label': `Cuota de IVA ${rows.length + 1}` }),
+      base: el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.base', label: 'Base', type: 'number', entity: 'invoices.invoice_lines', prop: 'net_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base imponible ${rows.length + 1}` }),
+      rate: select('', RATES, rate, { ...fieldAttrs({ id: 'invoices.facturas.manual.iva', label: 'Tipo de IVA', type: 'select', entity: 'invoices.invoice_lines', prop: 'vat_rate', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', 'aria-label': `Tipo de IVA ${rows.length + 1}` }),
+      quota: el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.cuota', label: 'Cuota', type: 'number', entity: 'invoices.invoice_lines', prop: 'vat_amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Cuota', 'aria-label': `Cuota de IVA ${rows.length + 1}` }),
       touched: false,
     };
     const autoQuota = () => { if (row.touched) return; const b = parseAmount(row.base.value); row.quota.value = b === null ? '' : money(Math.round(b * Number(row.rate.value)) / 100); };
@@ -149,8 +149,8 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
     rowsHost.appendChild(el('div', { class: 'row3 manual-row' }, row.base, row.rate, row.quota));
     return row;
   };
-  const withholdingKind = select('manualWithholding', WITHHOLDINGS, '', { 'data-feedback-id': 'invoices.facturas.manual.retencion', 'data-feedback-label': 'Retención' });
-  const withholdingAmount = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'manualWithholdingAmount', placeholder: 'Importe retenido', hidden: true });
+  const withholdingKind = select('manualWithholding', WITHHOLDINGS, '', { ...fieldAttrs({ id: 'invoices.facturas.manual.retencion', label: 'Retención', type: 'select', entity: 'invoices.tax_lines', prop: 'rate', sensitivity: 'internal', confirm: 'none' }) });
+  const withholdingAmount = el('input', { ...fieldAttrs({ id: 'invoices.facturas.manual.retencion_importe', label: 'Importe retenido', type: 'number', entity: 'invoices.tax_lines', prop: 'amount', sensitivity: 'internal', confirm: 'none' }), 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'manualWithholdingAmount', placeholder: 'Importe retenido', hidden: true });
   withholdingKind.addEventListener('change', onAmounts);
   withholdingAmount.addEventListener('input', onAmounts);
   total.addEventListener('input', () => paint());

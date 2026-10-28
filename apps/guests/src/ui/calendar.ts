@@ -23,7 +23,7 @@
  * casillas para quitar a alguien y un mensaje opcional. Después, su estado: enviada (con «Retirar»), con el organizador,
  * aceptada o descartada (con el comentario).
  */
-import { confirmDialog, createCalendar, daysBetween, el, icon, openSheet, renderTimeline, replace, timelineWindow, toast, type CalendarDayInfo, type CalendarEvent, type TimelineItem, type TimelineLane } from '@ikisai/ui-kit';
+import { type CalendarDayInfo, type CalendarEvent, confirmDialog, createCalendar, daysBetween, el, fieldAttrs, icon, openSheet, renderTimeline, replace, type TimelineItem, type TimelineLane, timelineWindow, toast } from '@ikisai/ui-kit';
 import type { Suggestion } from '@ikisai/sync-client';
 import { describeError, isNetworkError, online } from '../app/client.ts';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
@@ -104,7 +104,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   function pickPersons(title: string, people: Array<{ key: string; name: string }>, checked: boolean, extra: HTMLElement[] = [], okLabel = t('calendar.stayForOk')): Promise<{ keys: string[]; form: HTMLFormElement } | null> {
     return new Promise((resolve) => {
       let done = false;
-      const boxes = people.map((p) => el('input', { type: 'checkbox', value: p.key, checked: checked ? '' : null, id: `who-${p.key.replace(/[^a-z0-9]/gi, '')}` }) as HTMLInputElement);
+      const boxes = people.map((p) => el('input', { type: 'checkbox', value: p.key, checked: checked ? '' : null, id: `who-${p.key.replace(/[^a-z0-9]/gi, '')}`, ...fieldAttrs({ id: 'guests.calendario.estancia.quien', type: 'multi', required: true, sensitivity: 'personal' }) }) as HTMLInputElement);
       const form = el('form', { class: 'gform', id: 'whoForm', onsubmit: (event: Event) => {
         event.preventDefault();
         const keys = boxes.filter((b) => b.checked).map((b) => b.value);
@@ -168,8 +168,8 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   /** «Separar»: unas personas de la estancia pasan a otra, con sus fechas y la misma cama. */
   async function splitStay(stay: Stay): Promise<void> {
     if (!out) return;
-    const from = el('input', { type: 'date', id: 'splitFrom', value: stay.from }) as HTMLInputElement;
-    const to = el('input', { type: 'date', id: 'splitTo', value: stay.to }) as HTMLInputElement;
+    const from = el('input', { type: 'date', id: 'splitFrom', value: stay.from, ...fieldAttrs({ id: 'guests.calendario.dividir.desde', type: 'date', required: true, sensitivity: 'internal', confirm: 'none' }) }) as HTMLInputElement;
+    const to = el('input', { type: 'date', id: 'splitTo', value: stay.to, ...fieldAttrs({ id: 'guests.calendario.dividir.hasta', type: 'date', required: true, sensitivity: 'internal', confirm: 'none' }) }) as HTMLInputElement;
     const picked = await pickPersons(t('calendar.staySplitTitle'), stay.persons.map((p) => ({ key: p.person_key, name: p.name })), false, [
       el('div', { class: 'gfield-row' },
         el('div', { class: 'gfield' }, el('label', { for: 'splitFrom' }, t('calendar.splitFrom')), from),
@@ -199,8 +199,8 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
 
   function addNote(day: string): void {
     if (!out) return;
-    const time = el('input', { type: 'time', id: 'noteTime', value: '18:00' }) as HTMLInputElement;
-    const text = el('textarea', { id: 'noteText', rows: '3', maxlength: '500' }) as HTMLTextAreaElement;
+    const time = el('input', { type: 'time', id: 'noteTime', value: '18:00', ...fieldAttrs({ id: 'guests.calendario.nota.hora', type: 'time', required: false, sensitivity: 'internal' }) }) as HTMLInputElement;
+    const text = el('textarea', { id: 'noteText', rows: '3', maxlength: '500', ...fieldAttrs({ id: 'guests.calendario.nota.texto', type: 'text', required: true, sensitivity: 'personal' }) }) as HTMLTextAreaElement;
     const save = el('button', { type: 'submit', class: 'primary wide', id: 'noteSave', 'data-feedback-id': 'guests.calendario.nota.guardar', 'data-feedback-label': 'Guardar nota' }, t('calendar.noteSave')) as HTMLButtonElement;
     const sheet = openSheet({
       title: t('calendar.noteTitle', { day: dateRange(day, null) }),
@@ -236,7 +236,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
     if (!actions.join) return;
     if (!online()) { toast(t('outsider.needsNetwork')); return; }
     const people = actions.join.persons();
-    const message = el('textarea', { id: 'joinMessage', rows: '3', maxlength: '500' }) as HTMLTextAreaElement;
+    const message = el('textarea', { id: 'joinMessage', rows: '3', maxlength: '500', ...fieldAttrs({ id: 'guests.calendario.unirse.mensaje', type: 'text', required: false, sensitivity: 'personal' }) }) as HTMLTextAreaElement;
     const picked = await pickPersons(t('calendar.joinTitle', { title: o.title }), people.map((p, i) => ({ key: `p${i}`, name: p.name })), true, [
       el('p', { class: 'muted small' }, dateRange(o.start_date, o.end_date)),
       el('div', { class: 'gfield' }, el('label', { for: 'joinMessage' }, t('calendar.joinMessage')), message),
@@ -429,8 +429,8 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   function openStaySheet(): void {
     if (!out) return;
     const plus = (n: number) => new Date(Date.parse(`${today}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-    const from = el('input', { type: 'date', id: 'stayFrom', value: plus(5), min: today }) as HTMLInputElement;
-    const to = el('input', { type: 'date', id: 'stayTo', value: plus(8), min: today }) as HTMLInputElement;
+    const from = el('input', { type: 'date', id: 'stayFrom', value: plus(5), min: today, ...fieldAttrs({ id: 'guests.calendario.estancia.desde', type: 'date', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
+    const to = el('input', { type: 'date', id: 'stayTo', value: plus(8), min: today, ...fieldAttrs({ id: 'guests.calendario.estancia.hasta', type: 'date', required: true, sensitivity: 'internal' }) }) as HTMLInputElement;
     const nights = el('p', { class: 'gnights', role: 'status' });
     const save = el('button', { type: 'submit', class: 'primary wide', id: 'staySave', 'data-feedback-id': 'guests.calendario.estancia.guardar', 'data-feedback-label': 'Guardar estancia' }, t('calendar.staySave')) as HTMLButtonElement;
     const update = () => {

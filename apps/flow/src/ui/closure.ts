@@ -1,4 +1,4 @@
-import { el, replace, toast } from '@ikisai/ui-kit';
+import { el, fieldAttrs, replace, toast } from '@ikisai/ui-kit';
 import { formatEuros, PROCEDURES, TABLES } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
 import { callProcedure, isOnline } from '../app/actions.ts';
@@ -27,7 +27,7 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
   if (!isOwner || !projectId) { main.append(el('p', { class: 'muted' }, 'El cierre del día lo hace el encargado.')); return () => undefined; }
   let project: Project | null = null;
   let day = madridToday();
-  const dayInput = el('input', { type: 'date', value: day, 'aria-label': 'Día', onchange: () => { day = dayInput.value || madridToday(); void paint(); } });
+  const dayInput = el('input', { ...fieldAttrs({ id: 'flow.cierre.dia', entity: 'flow.day_closures', prop: 'day', type: 'date' }), type: 'date', value: day, 'aria-label': 'Día', onchange: () => { day = dayInput.value || madridToday(); void paint(); } });
   const summary = el('section', { class: 'closure-summary', 'aria-live': 'polite' });
   const sends = el('section', { class: 'closure-sends' });
   main.append(

@@ -118,3 +118,6 @@ html.dark .tkh-carryback{color:var(--ink)}
 .tkh-space-check{font-weight:800}
 .tkh-filtering{margin:0 0 12px;font-size:14px}
 .tkh-clear{min-height:44px;font-weight:700}
+/* Los hijos del que se ha tocado, en su propia fila debajo, algo metida; «Sin espacio» con borde discontinuo. */
+.tkh-spaces-sub{margin-top:6px;padding-left:12px;border-left:2px solid color-mix(in srgb,var(--ink) 30%,var(--paper))}
+.tkh-spaces .tkh-space.none{border-style:dashed}

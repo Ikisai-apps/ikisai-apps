@@ -1,5 +1,5 @@
 /** Calendario (API §9.3): ocupación mensual de días completos y estado de la sincronización con Google Calendar. */
-import { confirmDialog, createCalendar, el, replace, toast, type CalendarEvent, type Sheet } from '@ikisai/ui-kit';
+import { fieldAttrs, confirmDialog, createCalendar, el, replace, toast, type CalendarEvent, type Sheet } from '@ikisai/ui-kit';
 import { priceCalendar } from '@ikisai/domain-booking';
 import type { SyncedRow } from '@ikisai/sync-client';
 import { CONDITIONS, DATE_BLOCKS, DATE_OPTIONS, RATES, RESERVATIONS, STAYS, STAY_PERSONS, canRead, canWrite, dateRange, describeError, fullDay, today, type ReservationRow } from '../app/client.ts';
@@ -90,7 +90,7 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const layers = readLayers();
   let people: HousePerson[] = [];
   const layerSwitch = (key: keyof Layers, label: string, id: string) => el('label', { class: 'layer', dataset: { layer: key }, 'data-feedback-id': `booking.calendario.capas.${key}`, 'data-feedback-label': label },
-    el('input', { type: 'checkbox', id, checked: layers[key], onchange: (event: Event) => { layers[key] = (event.target as HTMLInputElement).checked; saveLayers(layers); void calendar.refresh(); } }),
+    el('input', { type: 'checkbox', id, ...fieldAttrs({ id: `booking.calendario.capas.${key}`, label, confirm: 'none', storage: 'device' }), checked: layers[key], onchange: (event: Event) => { layers[key] = (event.target as HTMLInputElement).checked; saveLayers(layers); void calendar.refresh(); } }),
     el('span', { class: 'swatch', style: `background:${STAY_COLORS[key]}` }), label);
   const layersBar = showStays ? el('div', { class: 'layers', id: 'calendarLayers', 'data-feedback-id': 'booking.calendario.capas', 'data-feedback-label': 'Capas' },
     layerSwitch('outsider', 'Estancias de outsiders', 'layerOutsider'), layerSwitch('staff', 'Presencia del staff', 'layerStaff'),

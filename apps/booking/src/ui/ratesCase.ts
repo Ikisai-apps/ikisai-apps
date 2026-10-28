@@ -4,7 +4,7 @@
  * (`priceCalendar`, con la regla de disponibilidad de siempre, `rangeAvailability`), y «Lo que ve el organizador»: el
  * mismo caso solo con lo visible en su portal, y lo que no ve. No guarda nada.
  */
-import { el, openSheet, plural, replace, type Sheet } from '@ikisai/ui-kit';
+import { NOT_A_FIELD, fieldAttrs, el, openSheet, plural, replace, type Sheet } from '@ikisai/ui-kit';
 import {
   EVENT_TYPES, applyMinimum, priceCalendar, proposalTotals, round2, suggestLines,
   type AvailabilityInput, type ConditionsLike, type PriceMonth, type RateLike, type ReservationForRates, type WeekendPrice,
@@ -45,7 +45,7 @@ export function openPriceSheet(o: {
   onPick: (w: WeekendPrice) => void; extra?: (w: WeekendPrice) => HTMLElement | null; manualDate?: (iso: string) => void; feedbackId: string;
 }): Sheet {
   const body = el('div', { class: 'bk-fd-sheet', 'data-feedback-id': o.feedbackId, 'data-feedback-label': o.title });
-  const persons = o.onPersons ? el('input', { type: 'number', id: 'priceSheetPersons', min: 1, step: 1, value: String(o.persons), inputmode: 'numeric', 'aria-label': 'Para cuántas personas',
+  const persons = o.onPersons ? el('input', { type: 'number', id: 'priceSheetPersons', ...fieldAttrs({ id: 'booking.tarifas.caso.personas', label: 'Para cuántas personas', confirm: 'none', storage: 'none' }), min: 1, step: 1, value: String(o.persons), inputmode: 'numeric', 'aria-label': 'Para cuántas personas',
     onchange: () => { const n = Number(persons!.value); if (n > 0) o.onPersons!(n); } }) : null;
   const weekend = (w: WeekendPrice) => {
     const busy = w.availability === 'ocupado';
@@ -63,7 +63,7 @@ export function openPriceSheet(o: {
     o.extra?.(w) ?? null);
   };
   const manual = o.manualDate ? el('details', { class: 'bk-fold' }, el('summary', null, 'Escribir otra fecha'),
-    el('label', { class: 'field' }, el('span', null, 'Llegada'), el('input', { type: 'date', id: 'priceSheetDate', onchange: (e: Event) => { const v = (e.target as HTMLInputElement).value; if (v) o.manualDate!(v); } }))) : null;
+    el('label', { class: 'field' }, el('span', null, 'Llegada'), el('input', { type: 'date', id: 'priceSheetDate', ...fieldAttrs({ id: 'booking.tarifas.caso.llegada', label: 'Llegada', confirm: 'none', storage: 'none' }), onchange: (e: Event) => { const v = (e.target as HTMLInputElement).value; if (v) o.manualDate!(v); } }))) : null;
   replace(body,
     persons ? el('label', { class: 'field' }, el('span', null, 'Para cuántas personas'), persons) : null,
     ...o.months.map((m) => el('section', { class: 'bk-fd-month', 'aria-label': monthName(m.month) },
@@ -119,10 +119,10 @@ export function createRatesCase() {
     const conditions = conditionsOf();
     const result = caseTotals(state, activeRates(), conditions as never);
     const num = (id: string, label: string, value: number, min: number, set: (n: number) => void) => el('label', { class: 'field' }, el('span', null, label),
-      el('input', { id, type: 'number', min, step: 1, inputmode: 'numeric', value: String(value), onchange: (e: Event) => { const n = Number((e.target as HTMLInputElement).value); if (Number.isFinite(n) && n >= min) { set(n); paint(); } } }));
-    const type = el('select', { id: 'caseType', onchange: () => { state.eventType = type.value; paint(); } }, EVENT_TYPES.map((t) => el('option', { value: t }, EVENT_TYPE_LABELS[t])));
+      el('input', { id, ...NOT_A_FIELD, type: 'number', min, step: 1, inputmode: 'numeric', value: String(value), onchange: (e: Event) => { const n = Number((e.target as HTMLInputElement).value); if (Number.isFinite(n) && n >= min) { set(n); paint(); } } }));
+    const type = el('select', { id: 'caseType', ...fieldAttrs({ id: 'booking.tarifas.caso.tipo', label: 'Tipo de evento', confirm: 'none', storage: 'none' }), onchange: () => { state.eventType = type.value; paint(); } }, EVENT_TYPES.map((t) => el('option', { value: t }, EVENT_TYPE_LABELS[t])));
     type.value = state.eventType;
-    const conds = el('select', { id: 'caseConditions', onchange: () => { state.conditionsId = conds.value || null; paint(); } },
+    const conds = el('select', { id: 'caseConditions', ...fieldAttrs({ id: 'booking.tarifas.caso.condiciones', label: 'Condiciones', confirm: 'none', storage: 'none' }), onchange: () => { state.conditionsId = conds.value || null; paint(); } },
       (data.conditions ?? []).filter((c) => c.active !== false).map((c) => el('option', { value: c.id }, `${c.name}${c.is_default ? ' (por defecto)' : ''}`)));
     if (conditions) conds.value = conditions.id;
     replace(caseHost,

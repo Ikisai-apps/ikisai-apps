@@ -366,6 +366,50 @@ function onlineRefundRoutes(supabase: Supabase, payments: PaymentProvider | null
   }];
 }
 
+/**
+ * Camas listas para la apertura (1426; capacidad `booking.lodging_readiness`, para Flow). La base da cada cama por habitación
+ * y la limpieza que puede tener pendiente; su estado se pregunta a Tasks (`worker/requests/status`). Lista = activa, colocada,
+ * libre o del evento, y sin limpieza en curso (`pending` u `open`). Sin Tasks, la limpieza cuenta como pendiente y
+ * `cleaning: 'unavailable'` lo dice.
+ */
+function readinessRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] {
+  return [{
+    method: 'GET', pattern: 'lodging/readiness',
+    handler: async ({ ctx, url }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura revisa la apertura.');
+      const night = url.searchParams.get('night') ?? '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) fail(422, 'INVALID_FIELDS', 'Noche no válida.', { field: 'night' });
+      const eventId = url.searchParams.get('event_id');
+      const base = await supabase.rpc<{ night: string; event_id: string | null; rooms: Array<{ space_id: string; name: string; resource_space_id: string | null; layout: unknown;
+        beds: Array<{ bed_id: string; label: string; kind: string; capacity: number; active: boolean; placed: boolean; free: boolean; event: boolean; cleaning_ref: string | null }> | null }> }>(
+        'core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.lodging_readiness', p_args: { night, ...(eventId ? { event_id: eventId } : {}) } });
+      const refs = [...new Set(base.rooms.flatMap((r) => (r.beds ?? []).map((b) => b.cleaning_ref).filter((x): x is string => !!x)))].slice(0, 200);
+      const post = ses.tasksPost === null ? undefined : ses.tasksPost ?? createTasksPost(ses.env ?? denoEnv, fetch, supabase.base);
+      let states: Map<string, string> | null = refs.length ? null : new Map();
+      if (refs.length && post) {
+        try {
+          const res = await post('requests/status', { externalRefs: refs });
+          if (res.status === 200) states = new Map(((res.data?.items ?? []) as Array<{ externalRef: string; status: string }>).map((i) => [i.externalRef, i.status]));
+        } catch { states = null; }
+      }
+      const pending = (ref: string | null) => !!ref && (states ? ['pending', 'open'].includes(states.get(ref) ?? 'unknown') : true);
+      const rooms = base.rooms.map((r) => {
+        const beds = (r.beds ?? []).map((b) => {
+          const cleaning = pending(b.cleaning_ref);
+          return { ...b, cleaning: b.cleaning_ref ? (states?.get(b.cleaning_ref) ?? (states ? 'unknown' : 'unavailable')) : null,
+            ready: b.active && b.placed && (b.free || b.event) && !cleaning };
+        });
+        return { space_id: r.space_id, resource_space_id: r.resource_space_id, name: r.name, layout: r.layout,
+          beds: beds.length, places: beds.filter((b) => b.active).reduce((n, b) => n + Number(b.capacity || 0), 0),
+          ready: beds.filter((b) => b.ready).length, free: beds.filter((b) => b.active && b.free).length,
+          occupied: beds.filter((b) => b.active && !b.free).length, pending_cleaning: beds.filter((b) => pending(b.cleaning_ref)).length,
+          unplaced: beds.filter((b) => b.active && !b.placed).length, inactive: beds.filter((b) => !b.active).length, bed_list: beds };
+      });
+      return { night: base.night, event_id: base.event_id, cleaning: states ? 'tasks' : 'unavailable', rooms };
+    },
+  }];
+}
+
 function montageRoutes(supabase: Supabase, ses: BookingSesConfig): AppRoute[] {
   return [{
     method: 'POST', pattern: 'montage/:reservationId/sync',
@@ -694,6 +738,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
     ...onlineRefundRoutes(supabase, payments),
     ...staffStayRoutes(supabase, payments),
     ...montageRoutes(supabase, ses),
+    ...readinessRoutes(supabase, ses),
     {
       // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
       // Todos los roles: es la imagen del retiro, no un dato personal. URL firmada de corta duración; el `sha256` deja al

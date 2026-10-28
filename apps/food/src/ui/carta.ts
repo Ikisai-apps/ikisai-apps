@@ -285,16 +285,19 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
       if (!codes.length) { toast(`${CARTA_SCOPE_LABELS[scope]} ya tiene los ocho códigos.`); return; }
       const liveRecipes = [...recipes.values()].filter((r) => !r.deleted_at && r.status !== 'archivada').sort((a, b) => a.name.localeCompare(b.name, 'es'));
       const liveItems = [...items.values()].filter((i) => i.active !== false && !(i as { deleted_at?: string | null }).deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-      const origin = el('select', { 'data-feedback-id': 'food.carta.anadir.origen', 'data-feedback-label': 'Receta o artículo', id: 'cartaAddOrigin', 'aria-label': 'De dónde sale',
+      const origin = el('select', { 'data-field-none': '', 'data-feedback-id': 'food.carta.anadir.origen', 'data-feedback-label': 'Receta o artículo', id: 'cartaAddOrigin', 'aria-label': 'De dónde sale',
         onchange: () => paintPick() },
         el('option', { value: 'receta', selected: scope !== 'barra' }, 'Una receta (se prepara)'),
         el('option', { value: 'articulo', selected: scope === 'barra' }, 'Un artículo del inventario (bebida, extra)'));
       const pickHost = el('div');
-      let pick = el('select');
+      let pick = el('select', { 'data-field-none': '' });
       function paintPick(): void {
         const list = origin.value === 'receta' ? liveRecipes.map((r) => [r.id, r.name] as const) : liveItems.map((i) => [i.id, i.name] as const);
-        pick = el('select', { 'data-feedback-id': 'food.carta.anadir.producto', 'data-feedback-label': 'Producto', id: 'cartaAddPick', 'aria-label': 'Producto' },
-          ...list.map(([id, label]) => el('option', { value: id }, label)));
+        const options = list.map(([id, label]) => el('option', { value: id }, label));
+        // Una receta va a `recipe_id` y un artículo a `item_id`: un control por columna.
+        pick = origin.value === 'receta'
+          ? el('select', { 'data-field-id': 'food.carta.anadir.receta', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'recipe_id', 'data-feedback-id': 'food.carta.anadir.producto', 'data-feedback-label': 'Producto', id: 'cartaAddPick', 'aria-label': 'Producto' }, ...options)
+          : el('select', { 'data-field-id': 'food.carta.anadir.articulo', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'item_id', 'data-feedback-id': 'food.carta.anadir.producto', 'data-feedback-label': 'Producto', id: 'cartaAddPick', 'aria-label': 'Producto' }, ...options);
         replace(pickHost, el('label', { class: 'field' }, el('span', null, origin.value === 'receta' ? 'Receta' : 'Artículo'), list.length ? pick : el('span', { class: 'muted' }, origin.value === 'receta' ? 'No hay recetas.' : 'No hay artículos en este dispositivo.')));
       }
       paintPick();
