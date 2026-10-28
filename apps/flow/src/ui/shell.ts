@@ -17,7 +17,7 @@ import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
-import { mountQueue } from './prep.ts';
+import { mountBreadBanner, mountQueue } from './prep.ts';
 import { createServiceMode } from './service-mode.ts';
 
 export interface ShellContext {
@@ -32,6 +32,8 @@ export interface ViewContext extends ShellContext {
   projectId: string | null;
   /** Nombre de la columna del flujo (el que se pone en «Columnas del flujo»), para el título de su pantalla. */
   columnLabel?: string;
+  /** Logística lleva también lo de Ingredientes (un solo carril en la barra, VG 28-10). */
+  mergeIngredients?: boolean;
 }
 
 export type ViewMount = (ctx: ViewContext) => () => void;
@@ -305,6 +307,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   let currentProject: string | null = null;
   let columns: FlowColumn[] = [];
+  let mergeIngredients = false;
   /** Carriles (VG 27-10; createLanes del kit): en los flujos no congelados las columnas van en un tablero con dos vistas
       intercambiables, pestañas o lado a lado, recordada en el dispositivo. La v1 congelada sigue con una columna por pantalla. */
   let boardable = false;
@@ -325,6 +328,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offBadges?.(); offBadges = null; lastPrepPending = null;
     if (!projectId) { columns = []; boardable = false; shell.setNav([]); return; }
     columns = await loadColumns(projectId);
+    // Barra (no congelada): Ingredientes va dentro de Logística, un solo carril con las dos cosas (VG, 28-10).
+    const frozenNow = (await loadProjects(client)).some((p) => p.id === projectId && p.frozen);
+    mergeIngredients = !frozenNow && columns.some((c) => c.key === 'logistics') && columns.some((c) => c.key === 'ingredients');
+    if (mergeIngredients) columns = columns.filter((c) => c.key !== 'ingredients');
     // El Avance ya trae sus carriles (por agente): no va dentro del tablero de columnas.
     boardable = (await loadProjects(client)).some((p) => p.id === projectId && !p.frozen) && !columns.some((c) => c.key === 'avance');
     if (currentProject !== projectId) return;
@@ -342,7 +349,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setBadge(`${base}/caja`, d.orders.filter((o) => o.status === 'open' && (d.linesByOrder.get(o.id)?.length ?? 0) > 0).length);
     shell.setBadge(`${base}/preparacion`, d.units.filter((u) => u.kind === 'prep' && (u.status === 'pending' || u.status === 'in_progress')).length);
     shell.setBadge(`${base}/servicio`, d.orders.filter((o) => o.status === 'paid').length);
-    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'logistics' && (u.status === 'pending' || u.status === 'in_progress')).length);
+    shell.setBadge(`${base}/logistica`, d.units.filter((u) => u.kind === 'task' && (u.column_key === 'logistics' || (mergeIngredients && u.column_key === 'ingredients')) && ['proposed', 'pending', 'in_progress'].includes(u.status)).length);
     shell.setBadge(`${base}/ingredientes`, d.units.filter((u) => u.kind === 'task' && u.column_key === 'ingredients' && ['proposed', 'pending', 'in_progress'].includes(u.status)).length);
   }
 
@@ -396,7 +403,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const projectId = vctx.projectId!;
     const lanes = createLanes({
       label: 'Columnas del flujo', storageKey: 'flow-board', selected, feedbackId: 'flow.tablero',
-      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body, columnLabel: c.label }) })),
+      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body, columnLabel: c.label, mergeIngredients }) })),
       onView: (view) => paintViewSwitch(view),
       onSelect: (id) => {
         const h = `#/p/${projectId}/${COLUMN_VIEWS[id]?.slug ?? id}`;
@@ -404,12 +411,15 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       },
     });
     lanes.element.classList.add('flow-board');
-    vctx.main.append(lanes.element);
+    // El pan, a la vista desde cualquier carril (VG, 28-10).
+    const breadHost = el('p', { class: 'station-notice flow-bread', role: 'status', hidden: true });
+    const offBread = mountBreadBanner(client, projectId, breadHost);
+    vctx.main.append(breadHost, lanes.element);
     board = { projectId, lanes };
     paintViewSwitch(lanes.view());
     // Guiado: un campo de otra columna está en otro carril; se elige ese carril para que aparezca (`flow.<pantalla>…`).
     const offReveals = columns.map((c) => registerReveal(`flow.${COLUMN_VIEWS[c.key]?.slug ?? c.key}`, () => lanes.select(c.key)));
-    return () => { offReveals.forEach((off) => off()); lanes.destroy(); board = null; paintViewSwitch(null); };
+    return () => { offReveals.forEach((off) => off()); offBread(); lanes.destroy(); board = null; paintViewSwitch(null); };
   }
 
   const offStatus = client.onStatus((status) => {

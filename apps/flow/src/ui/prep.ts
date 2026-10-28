@@ -1,3 +1,4 @@
+import type { SyncClient } from '@ikisai/sync-client';
 import { confirmDialog, el, fieldAttrs, icon, openSheet, renderMedal, replace, toast } from '@ikisai/ui-kit';
 import { nextUnitStatus, PROCEDURES, UNIT_STATUS_LABELS, type UnitStatus } from '@ikisai/domain-flow';
 import { describeError } from '../app/client.ts';
@@ -49,6 +50,7 @@ const PARAM_LABELS: Record<string, string> = {
   bread_per_unit: 'Panes por montadito', hysteresis: 'Cambio mínimo para avisar (panes)', min_target: 'Panes mínimos calentándose',
   per_order_cap: 'Tope de panes por pedido',
 };
+const isBread = (u: Unit) => (u.payload as { metric?: string } | null)?.metric === 'bread_v2';
 const QUEUE_TITLE: Record<QueueKind, string> = { prep: 'Preparación', logistics: 'Logística', ingredients: 'Ingredientes' };
 const QUEUE_EMPTY: Record<QueueKind, string> = {
   prep: 'No hay montaditos cobrados todavía.',
@@ -80,7 +82,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
     const nextButton = el('button', { type: 'button', class: 'primary fqueue-next', hidden: true, onclick: goToNext }, icon('chevronDown', 18), el('span', null, 'Ir al siguiente pendiente'));
     const empty = el('p', { class: 'muted fqueue-empty', hidden: true }, QUEUE_EMPTY[kind]);
     const head = kind === 'prep' ? null : taskForm();
-    const ownerTools = kind === 'ingredients' && isOwner
+    const ownerTools = (kind === 'ingredients' || (kind === 'logistics' && ctx.mergeIngredients)) && isOwner
       ? [el('div', { class: 'orders-owner' }, el('button', { type: 'button', class: 'ghost', onclick: () => void generate() }, 'Generar tareas de ingredientes'))] : [];
     main.append(
       el('h1', { class: 'col-title' }, ctx.columnLabel ?? QUEUE_TITLE[kind]),
@@ -97,7 +99,9 @@ export function mountQueue(kind: QueueKind): ViewMount {
 
     function units(): Unit[] {
       if (!data) return [];
-      const all = data.units.filter((u) => (kind === 'prep' ? u.kind === 'prep' && u.column_key === 'prep' : (u.kind === 'task' || u.kind === 'station') && u.column_key === kind));
+      // El pan no es una tarjeta (VG, 28-10): es una cifra arriba, sin toques.
+      const cols = kind === 'logistics' && ctx.mergeIngredients ? ['logistics', 'ingredients'] : [kind];
+      const all = data.units.filter((u) => (kind === 'prep' ? u.kind === 'prep' && u.column_key === 'prep' : (u.kind === 'task' || (u.kind === 'station' && !isBread(u))) && cols.includes(u.column_key)));
       return all.sort(kind === 'prep'
         ? (a, b) => (a.pay_seq ?? 0) - (b.pay_seq ?? 0) || a.idx - b.idx || a.id.localeCompare(b.id)
         : (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
@@ -157,7 +161,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
       node.querySelector('.qcard-sub')!.textContent = sub;
       // En una columna con propuestas, «pendiente» es «confirmada» (propuesta → confirmada → asignada → hecha). Un puesto: libre u ocupado.
       const label = u.kind === 'station' ? (status === 'in_progress' ? 'Lo llevas tú o alguien: toca para soltarlo' : 'Libre: toca para encargarte')
-        : kind === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
+        : u.column_key === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
       if (u.kind === 'station') {
         const mv = metrics.get(u.id)?.value as Record<string, number> | undefined;
         // El pan (bread_v2): solo lo que hace falta saber; lo demás está en sus ajustes.
@@ -190,47 +194,17 @@ export function mountQueue(kind: QueueKind): ViewMount {
       metrics = steadyMetrics(metrics, await loadStationMetrics(client, ctx.projectId));
       for (const u of units()) if (u.kind === 'station') repaintOne(u);
       // Aviso pequeño en la cabecera de las columnas que lo pidan (notice_in).
-      const notes = data!.units.filter((u) => u.kind === 'station' && (u.payload?.notice_in ?? []).includes(kind))
+      const notes = data!.units.filter((u) => u.kind === 'station' && !isBread(u) && (u.payload?.notice_in ?? []).includes(kind))
         .map((u) => fillMetricText(u.payload?.notice, metrics.get(u.id))).filter(Boolean);
+      replace(noticeEl, notes.join(' · '));
       noticeEl.hidden = !notes.length;
-      noticeEl.textContent = notes.join(' · ');
     }
     const metricsTimer = setInterval(() => void refreshMetrics(), 20_000);
 
     /** Owner: parámetros numéricos de la métrica de un puesto. */
     function editParams(id: string): void {
       const u = data?.units.find((x) => x.id === id);
-      if (!u) return;
-      const params = (u.payload?.params ?? {}) as Record<string, unknown>;
-      const inputs = Object.entries(params).filter(([, v]) => typeof v === 'number')
-        .map(([k, v]) => [k, el('input', { ...fieldAttrs({ id: 'flow.preparacion.ingrediente', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
-      const sheet = openSheet({ title: `Parámetros · ${u.label ?? ''}`,
-        body: (() => {
-          // Lo que importa arriba (cuántos panes poner ahora y lo básico de la máquina); lo técnico, plegado.
-          const mv = metrics.get(u.id)?.value as Record<string, number> | undefined;
-          // Cada nombre se toca para ver qué es: un bocadillo pequeño debajo, sin tapar la pantalla.
-          const row = ([k, input]: readonly [string, HTMLInputElement]) => {
-            const tip = el('span', { class: 'param-tip', role: 'note', hidden: true }, PARAM_HELP[k] ?? 'Ajuste técnico del cálculo.');
-            const name = el('button', { type: 'button', class: 'param-name', 'aria-expanded': 'false', onclick: (e: Event) => {
-              e.preventDefault(); tip.hidden = !tip.hidden; name.setAttribute('aria-expanded', String(!tip.hidden)); } },
-              PARAM_LABELS[k] ?? k, el('span', { class: 'param-i', 'aria-hidden': 'true' }, 'ⓘ'));
-            return el('div', { class: 'param-row' }, name, tip, input);
-          };
-          const simple = inputs.filter(([k]) => SIMPLE_PARAMS.includes(k));
-          const mid = inputs.filter(([k]) => MID_PARAMS.includes(k));
-          const tech = inputs.filter(([k]) => !SIMPLE_PARAMS.includes(k) && !MID_PARAMS.includes(k));
-          return el('div', { class: 'station-params' },
-            mv ? el('p', { class: 'station-now' }, el('strong', null, `Ahora: ${mv.target ?? 0} panes calentándose`),
-              el('small', { class: 'muted' }, ` (${mv.firm ?? 0} de pedidos ya cobrados + ${Math.round(mv.forecast ?? 0)} que se esperan)`)) : null,
-            ...simple.map(row),
-            mid.length ? el('div', { class: 'param-mid' }, ...mid.map(row)) : null,
-            tech.length ? el('details', { class: 'station-tech' }, el('summary', null, 'Ajustes técnicos (no hace falta tocarlos)'), ...tech.map(row)) : null);
-        })(),
-        foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
-          const next = Object.fromEntries(inputs.map(([k, input]) => [k, Number(input.value)]));
-          try { await callProcedure(client, PROCEDURES.stationSetParams, { unit_id: u.id, params: next, expected_revision: u.revision }); sheet.close(); void refreshMetrics(); }
-          catch (error) { toast(describeError(error)); }
-        } }, 'Guardar')) });
+      if (u) openStationParams(client, u, metrics.get(u.id)?.value as Record<string, number> | undefined, () => void refreshMetrics());
     }
 
     /** Revisar la cantidad antes de confirmar o hacer la tarea (FLOW-DIR VG 27-10). */
@@ -353,4 +327,60 @@ export function mountQueue(kind: QueueKind): ViewMount {
 
     return () => { offData(); clearInterval(metricsTimer); window.removeEventListener('scroll', onScroll); };
   };
+}
+
+/** Owner: parámetros numéricos de la métrica de un puesto (lo simple arriba, lo intermedio debajo, lo técnico plegado). */
+export function openStationParams(client: SyncClient, u: Unit, mv: Record<string, number> | undefined, onSaved: () => void): void {
+    const params = (u.payload?.params ?? {}) as Record<string, unknown>;
+    const inputs = Object.entries(params).filter(([, v]) => typeof v === 'number')
+      .map(([k, v]) => [k, el('input', { ...fieldAttrs({ id: 'flow.preparacion.ingrediente', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
+    const sheet = openSheet({ title: `Parámetros · ${u.label ?? ''}`,
+      body: (() => {
+        // Lo que importa arriba (cuántos panes poner ahora y lo básico de la máquina); lo técnico, plegado.
+        // Cada nombre se toca para ver qué es: un bocadillo pequeño debajo, sin tapar la pantalla.
+        const row = ([k, input]: readonly [string, HTMLInputElement]) => {
+          const tip = el('span', { class: 'param-tip', role: 'note', hidden: true }, PARAM_HELP[k] ?? 'Ajuste técnico del cálculo.');
+          const name = el('button', { type: 'button', class: 'param-name', 'aria-expanded': 'false', onclick: (e: Event) => {
+            e.preventDefault(); tip.hidden = !tip.hidden; name.setAttribute('aria-expanded', String(!tip.hidden)); } },
+            PARAM_LABELS[k] ?? k, el('span', { class: 'param-i', 'aria-hidden': 'true' }, 'ⓘ'));
+          return el('div', { class: 'param-row' }, name, tip, input);
+        };
+        const simple = inputs.filter(([k]) => SIMPLE_PARAMS.includes(k));
+        const mid = inputs.filter(([k]) => MID_PARAMS.includes(k));
+        const tech = inputs.filter(([k]) => !SIMPLE_PARAMS.includes(k) && !MID_PARAMS.includes(k));
+        return el('div', { class: 'station-params' },
+          mv ? el('p', { class: 'station-now' }, el('strong', null, `Ahora: ${mv.target ?? 0} panes calentándose`),
+            el('small', { class: 'muted' }, ` (${mv.firm ?? 0} de pedidos ya cobrados + ${Math.round(mv.forecast ?? 0)} que se esperan)`)) : null,
+          ...simple.map(row),
+          mid.length ? el('div', { class: 'param-mid' }, ...mid.map(row)) : null,
+          tech.length ? el('details', { class: 'station-tech' }, el('summary', null, 'Ajustes técnicos (no hace falta tocarlos)'), ...tech.map(row)) : null);
+      })(),
+      foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
+        const next = Object.fromEntries(inputs.map(([k, input]) => [k, Number(input.value)]));
+        try { await callProcedure(client, PROCEDURES.stationSetParams, { unit_id: u.id, params: next, expected_revision: u.revision }); sheet.close(); onSaved(); }
+        catch (error) { toast(describeError(error)); }
+      } }, 'Guardar')) });
+  }
+
+/**
+ * El pan (VG, 28-10): una cifra encima del tablero, a la vista desde cualquier carril; se calcula sola con lo cobrado y lo
+ * previsto, sin toques. El owner abre sus ajustes desde ahí.
+ */
+export function mountBreadBanner(client: SyncClient, projectId: string, host: HTMLElement): () => void {
+  const isOwner = client.bootstrap()?.membership.role === 'owner';
+  let bread: Unit | undefined;
+  let metrics = new Map<string, StationMetric>();
+  async function refresh(): Promise<void> {
+    if (!bread) { host.hidden = true; return; }
+    metrics = steadyMetrics(metrics, await loadStationMetrics(client, projectId));
+    const mv = metrics.get(bread.id)?.value as Record<string, number> | undefined;
+    host.hidden = !mv;
+    if (!mv) return;
+    const u = bread;
+    replace(host, el('strong', null, `Pan: calentando ${mv.target ?? 0}`), ` (${mv.firm ?? 0} cobrados + ${Math.round(mv.forecast ?? 0)} previstos)`,
+      ...(isOwner ? [' ', el('button', { type: 'button', class: 'linkbtn', onclick: () => openStationParams(client, u, mv, () => void refresh()) }, 'Ajustes')] : []));
+  }
+  const off = watchData(client, (d) => { bread = d.units.find((u) => u.kind === 'station' && isBread(u) && u.status !== 'cancelled'); void refresh(); }, projectId);
+  const timer = setInterval(() => void refresh(), 20_000);
+  return () => { off(); clearInterval(timer); };
 }
