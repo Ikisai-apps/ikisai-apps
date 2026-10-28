@@ -12,8 +12,13 @@ export class OfflineError extends Error {
   constructor() { super('Esta acción necesita conexión.'); }
 }
 
-export function isOnline(client: SyncClient): boolean {
-  return typeof navigator === 'undefined' ? true : navigator.onLine && client.status().network !== 'offline';
+/**
+ * ¿Hay red para intentarlo? Solo cuenta lo que dice el navegador: el estado de la sincronización se queda en «offline» tras un
+ * fallo pasajero hasta el siguiente reintento, y bloqueaba cambios con conexión (VG, 28-10, al marcar una tarjeta del Avance).
+ * Si de verdad no llega, la llamada falla y se dice («No hay conexión con el servidor»).
+ */
+export function isOnline(_client: SyncClient): boolean {
+  return typeof navigator === 'undefined' ? true : navigator.onLine;
 }
 
 export async function callProcedure<T = Record<string, unknown>>(client: SyncClient, procedure: string, args: Record<string, unknown>): Promise<T> {
