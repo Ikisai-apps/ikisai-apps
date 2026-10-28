@@ -42,7 +42,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       el('button', { type: 'button', class: 'ghost', onclick: () => void syncFromFood() }, 'Actualizar carta desde Food'),
       el('a', { class: 'ghost button-link', href: `#/p/${ctx.projectId}/cierre` }, 'Cierre del día'))] : [];
     main.append(
-      el('h1', { class: 'col-title' }, kind === 'order' ? 'Pedido y cobro' : 'Servicio y entrega'),
+      el('h1', { class: 'col-title' }, ctx.columnLabel ?? (kind === 'order' ? 'Pedido y cobro' : 'Servicio y entrega')),
       ...ownerTools,
       el('div', { class: 'orders-tools' }, searchInput, ...(kind === 'order' && canEdit ? [newButton, accountsButton] : [])),
       el('div', { class: 'orders-found' }, found, customerButton), listEl, empty,
@@ -54,6 +54,8 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       if (!data) return [];
       let all = data.orders;
       if (kind === 'service') all = all.filter((o) => o.status !== 'open');
+      // Un pedido de caja abierto y sin líneas es un «Nuevo pedido» que no se usó: no se enseña.
+      all = all.filter((o) => !(o.status === 'open' && o.origin === 'counter' && !(data!.linesByOrder.get(o.id)?.length)));
       if (search) all = all.filter((o) => String(customerNumber(data!, o) ?? '') === search);
       // Pedido y cobro: los abiertos arriba (por llegada); luego los cobrados por número. Servicio: por número.
       const open = all.filter((o) => o.status === 'open').sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
@@ -129,8 +131,16 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       const id = crypto.randomUUID();
       try {
         await client.commit([{ op: 'insert', table: TABLES.orders, id, fields: { project_id: data.project.id, origin: 'counter' } }]);
-        openOrderSheet(client, id);
+        // Si se cierra sin poner nada, no queda un pedido vacío «Caja» (VG, 28-10).
+        openOrderSheet(client, id, { onClose: () => void dropIfEmpty(id) });
       } catch (error) { toast(describeError(error)); }
+    }
+
+    async function dropIfEmpty(id: string): Promise<void> {
+      const o = ((await client.list(TABLES.orders)) as unknown as Array<{ id: string; status: string; revision: number; deleted_at: string | null }>).find((x) => x.id === id);
+      const lines = ((await client.list(TABLES.orderLines)) as unknown as Array<{ order_id: string; deleted_at: string | null }>).filter((l) => l.order_id === id && !l.deleted_at);
+      if (!o || o.deleted_at || o.status !== 'open' || lines.length) return;
+      try { await client.commit([{ op: 'delete', table: TABLES.orders, id, expectedRevision: o.revision }]); } catch { /* si no se puede, queda; se oculta abajo */ }
     }
 
     function paint(): void {

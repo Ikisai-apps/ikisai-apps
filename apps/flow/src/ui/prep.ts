@@ -25,6 +25,12 @@ export const VISIBLE_DONE = 10;
 
 /** Columna de unidades con toques: Preparación (unidades de producto), Logística e Ingredientes (tareas). */
 export type QueueKind = 'prep' | 'logistics' | 'ingredients';
+/** Ajustes de los puestos con nombre que se entiende (VG, 28-10: salían las claves internas). */
+const PARAM_LABELS: Record<string, string> = {
+  warmup_min: 'Minutos que tarda en calentarse', lead_min: 'Minutos de adelanto', lookback_min: 'Minutos para medir el ritmo',
+  machine_capacity: 'Panes que caben a la vez', smooth_min: 'Minutos para suavizar', smooth_weight: 'Peso del ritmo reciente (0 a 1)',
+  bread_per_unit: 'Panes por montadito', hysteresis: 'Cambio mínimo para avisar (panes)', min_target: 'Panes mínimos calentándose',
+};
 const QUEUE_TITLE: Record<QueueKind, string> = { prep: 'Preparación', logistics: 'Logística', ingredients: 'Ingredientes' };
 const QUEUE_EMPTY: Record<QueueKind, string> = {
   prep: 'No hay montaditos cobrados todavía.',
@@ -59,7 +65,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
     const ownerTools = kind === 'ingredients' && isOwner
       ? [el('div', { class: 'orders-owner' }, el('button', { type: 'button', class: 'ghost', onclick: () => void generate() }, 'Generar tareas de ingredientes'))] : [];
     main.append(
-      el('h1', { class: 'col-title' }, QUEUE_TITLE[kind]),
+      el('h1', { class: 'col-title' }, ctx.columnLabel ?? QUEUE_TITLE[kind]),
       noticeEl,
       ...ownerTools,
       ...(kind === 'prep' ? [el('p', { class: 'muted small' }, 'Toca para tomar un montadito, otra vez cuando esté listo para servir. Un tercer toque lo devuelve a pendiente.')] : []),
@@ -130,10 +136,14 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const sub = [order?.pay_seq ? `Pedido ${order.pay_seq}` : '', number ? `cliente ${number}` : '', load, ext, u.priority ? 'prioritaria' : '', who].filter(Boolean).join(' · ');
       node.querySelector('.qcard-sub')!.textContent = sub;
       // En una columna con propuestas, «pendiente» es «confirmada» (propuesta → confirmada → asignada → hecha). Un puesto: libre u ocupado.
-      const label = u.kind === 'station' ? (status === 'in_progress' ? 'Ocupado' : 'Libre')
+      const label = u.kind === 'station' ? (status === 'in_progress' ? 'Lo llevas tú o alguien: toca para soltarlo' : 'Libre: toca para encargarte')
         : kind === 'ingredients' && status === 'pending' ? 'Confirmada' : UNIT_STATUS_LABELS[status];
       if (u.kind === 'station') {
-        const live = fillMetricText(u.payload?.text, metrics.get(u.id));
+        const mv = metrics.get(u.id)?.value as Record<string, number> | undefined;
+        // El pan (bread_v2): solo lo que hace falta saber; lo demás está en sus ajustes.
+        const live = u.payload?.metric === 'bread_v2' && mv
+          ? `Calentando ahora: ${mv.target ?? 0} panes (${mv.firm ?? 0} ya cobrados + ${Math.round(mv.forecast ?? 0)} previstos)`
+          : fillMetricText(u.payload?.text, metrics.get(u.id));
         node.querySelector('.qcard-sub')!.textContent = [live, status === 'in_progress' ? personName(people, u.assigned_to, me) : ''].filter(Boolean).join(' · ');
       }
       node.querySelector('.qcard-state')!.textContent = pending ? `${label} · pendiente de confirmar` : label;
@@ -175,7 +185,7 @@ export function mountQueue(kind: QueueKind): ViewMount {
       const inputs = Object.entries(params).filter(([, v]) => typeof v === 'number')
         .map(([k, v]) => [k, el('input', { ...fieldAttrs({ id: 'flow.preparacion.ingrediente', entity: 'flow.units', prop: 'payload', type: 'number' }), type: 'number', step: 'any', min: '0', value: String(v), 'aria-label': k }) as HTMLInputElement] as const);
       const sheet = openSheet({ title: `Parámetros · ${u.label ?? ''}`,
-        body: el('div', { class: 'station-params' }, ...inputs.map(([k, input]) => el('label', null, el('span', null, k), input))),
+        body: el('div', { class: 'station-params' }, ...inputs.map(([k, input]) => el('label', null, el('span', null, PARAM_LABELS[k] ?? k), input))),
         foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: async () => {
           const next = Object.fromEntries(inputs.map(([k, input]) => [k, Number(input.value)]));
           try { await callProcedure(client, PROCEDURES.stationSetParams, { unit_id: u.id, params: next, expected_revision: u.revision }); sheet.close(); void refreshMetrics(); }

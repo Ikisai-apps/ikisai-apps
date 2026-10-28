@@ -20,7 +20,7 @@ import { openDeliverySheet } from './delivery-sheet.ts';
  * - Con cuentas (v2, 0910): «A cuenta» lo carga a una cuenta abierta (o abre una). Mientras la cuenta está abierta, el
  *   pedido no se corrige ni se anula; liquidada, se corrige pero no se anula (su dinero está en el pago de la cuenta).
  */
-export function openOrderSheet(client: SyncClient, orderId: string): void {
+export function openOrderSheet(client: SyncClient, orderId: string, opts: { onClose?: () => void } = {}): void {
   const actions = flowActions(client);
   const me = client.bootstrap()?.profile.userId ?? null;
   const role = client.bootstrap()?.membership.role ?? 'reader';
@@ -45,7 +45,7 @@ export function openOrderSheet(client: SyncClient, orderId: string): void {
   const body = el('div', { class: 'order-body' });
   const totalEl = el('p', { class: 'order-total' });
   const foot = el('div', { class: 'flow-actions' });
-  const sheet = openSheet({ title: 'Pedido', body: el('div', { class: 'order-sheet' }, head, body, totalEl), foot, onClose: () => offData() });
+  const sheet = openSheet({ title: 'Pedido', body: el('div', { class: 'order-sheet' }, head, body, totalEl), foot, onClose: () => { offData(); opts.onClose?.(); } });
 
   const order = (): Order | undefined => data?.orders.find((o) => o.id === orderId);
   const lines = () => data?.linesByOrder.get(orderId) ?? [];

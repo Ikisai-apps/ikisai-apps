@@ -30,6 +30,8 @@ export interface ViewContext extends ShellContext {
   navigate(hash: string): void;
   /** Flujo (proyecto) en el que se está; `null` en la lista de flujos. */
   projectId: string | null;
+  /** Nombre de la columna del flujo (el que se pone en «Columnas del flujo»), para el título de su pantalla. */
+  columnLabel?: string;
 }
 
 export type ViewMount = (ctx: ViewContext) => () => void;
@@ -175,8 +177,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
   function paintFlowNav(hash: string, projectId: string | null, isEntry: boolean): void {
     navParent = isEntry ? null : parentOf(hash, projectId);
-    backButton.hidden = !navParent;
-    closeButton.hidden = !navParent;
+    // VG (28-10): en el Inicio de un flujo, solo ✕ (vuelve a la entrada); en sus carriles y en el resto, solo ‹.
+    const home = !!projectId && hash === `#/p/${projectId}`;
+    backButton.hidden = !navParent || home;
+    closeButton.hidden = !navParent || !home;
   }
 
   function paintBanners(status: SyncStatus): void {
@@ -304,7 +308,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(projectId ? hash : '#/');
     paintFlowNav(hash, projectId, entry.slug === 'flujos');
     replace(main);
-    unmountView = entry.mount({ ...ctx, main, navigate, projectId });
+    unmountView = entry.mount({ ...ctx, main, navigate, projectId, columnLabel: m?.[2] ? columns.find((c) => (COLUMN_VIEWS[c.key]?.slug ?? c.key) === m[2])?.label : undefined });
     screen = { id: `flow.${entry.slug}`, label: entry.title };
     main.setAttribute('data-feedback-id', screen.id);
     main.setAttribute('data-feedback-label', screen.label);
@@ -319,7 +323,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const projectId = vctx.projectId!;
     const lanes = createLanes({
       label: 'Columnas del flujo', storageKey: 'flow-board', selected, feedbackId: 'flow.tablero',
-      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body }) })),
+      lanes: columns.map((c) => ({ id: c.key, title: c.label, mount: (body: HTMLElement) => COLUMN_VIEWS[c.key]?.mount({ ...vctx, main: body, columnLabel: c.label }) })),
       onSelect: (id) => {
         const h = `#/p/${projectId}/${COLUMN_VIEWS[id]?.slug ?? id}`;
         if (location.hash !== h) { history.replaceState(null, '', h); shell.setRoute(h); }
