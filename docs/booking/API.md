@@ -2196,3 +2196,16 @@ Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no gua
 - **Lista:** activa, colocada en el plano, libre o del propio evento, y sin limpieza en curso en Tasks.
 - **Limpieza:** es la de la última salida anticipada de esa cama en los 7 días anteriores, preguntada a Tasks (`worker/requests/status`, `booking:LIMP-<asignación>`); en curso es `pending` u `open`. Si Tasks no responde, cuenta como pendiente y `cleaning: 'unavailable'`.
 - La revisión de apertura de cada habitación va por Tasks y la cruza Flow.
+
+## 48. Recepción por puestos (migración 1427; para Flow, recepción de VG)
+
+`GET reception/board?event_id=&day=YYYY-MM-DD` (editor y owner con el ámbito de huéspedes) es la capacidad `booking.reception_board`. Devuelve `{event_id, day, items: [{puesto, ref, title, subtitle, status, route, anchor}]}`.
+- **Puestos (`puesto`):**
+  - `solicitud_cobro`: solicitudes de noches por decidir o pagadas en línea sin alojar, y alojados sin cobrar;
+  - `camas`: camas que preparar para quien llega ese día, supletorias pedidas, comidas (restricciones) y extras contratados;
+  - `registro`: quien duerme esa noche con el parte por completar o el documento sin ver;
+  - `peticiones`: datos que deja un visitante y lo que pide quien organiza, una tarjeta por petición;
+  - `salida`: quien sale ese día.
+- **Estado (`status`):** `pendiente`, `en_curso` o `hecho`.
+- **Cada tarjeta:** `ref` estable y la ruta y el anclaje de la pantalla de Booking donde se hace el trabajo.
+- **Datos personales:** solo el número y el nombre de pila.
