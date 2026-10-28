@@ -554,6 +554,17 @@ Para dar de alta un flujo nuevo hoy hay que crear el proyecto y sus columnas (da
   - `rules`: los automatismos de Flow (`flow.rules_catalog()`), `{id, name, observes, writes}` con `{app, entity, prop}` → «automático». Se mantiene con los automatismos.
   - Con `app`, solo los anclajes de esa app y las reglas que la observan o escriben.
 
+## 56. La barra sobre el motor genérico (migración `0957`)
+
+- Los datos de la barra siguen en sus tablas (pedidos, líneas, cobros, cierres). Cada uno tiene además su unidad del motor, que escribe el servidor por el registro del núcleo, en el mismo lote que cambia el pedido, la preparación o el cierre:
+  - **Pedido:** unidad `operation`, kind `order`, `source_ref` = `flow.orders:<id>` (no `order_id`, que es de las unidades de preparación). Nace al pedir, también desde la carta, en el carril `caja`. Cobrado, pasa a `cocina` mientras le quede preparación y después a `servicio`. Entregado, queda hecho; si se reabre o se anula, vuelve atrás.
+  - **Cierre del día:** unidad `result`, kind `closure`, con `result_link {app, kind: 'day_closure', id}`, hecha y verificada por quien cierra.
+  - **Carriles por puesto** (`lane_key`, `flow.barra_lane`): `order`→caja, `prep`→cocina, `service`→servicio, `ingredients`→ingredientes, `logistics`→barra (con sus puestos continuos `station`, como el pan). Se ponen solos si la unidad no trae carril.
+- Solo en los flujos no congelados con columna de pedidos (`flow.engine_barra`). La v1 congelada no se toca.
+- `flow.guard_board` (0937) se limita al tablero del Avance (columna `avance`).
+- **Entrada común:** un flujo congelado deja de ofrecerse en cuanto hay otro vivo de su misma plantilla sobre el motor (fuera de pruebas). Sigue accesible por su enlace.
+- La barra genérica del evento y el paso de la carta pública a ella se hacen con una carga (`MUELA/cargas/flow/flow-29-barra-generica.sql`), no desde la interfaz.
+
 ## 57. Recepción «por puestos» del alojamiento libre (migración `0958`)
 
 - Decisión de VG (28-10): como la barra, un carril por puesto. Las piezas nuevas (`inspect_confirm`) son:

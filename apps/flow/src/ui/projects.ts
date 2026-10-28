@@ -107,7 +107,10 @@ export const mountProjects: ViewMount = ({ main, client, navigate }) => {
     };
 
     const byGroup = new Map<Group, Project[]>();
-    for (const p of projects) { const g = groupOf(p, today); if (g === 'test' && !isOwner) continue; byGroup.set(g, [...(byGroup.get(g) ?? []), p]); }
+    // Un flujo congelado (la barra v1, codificada a mano) deja de ofrecerse en cuanto hay uno vivo de su plantilla sobre el
+    // motor genérico (VG, 28-10): sigue en Git y por su enlace, pero no aquí.
+    const superseded = (p: Project) => !!p.frozen && projects.some((x) => x.id !== p.id && !x.frozen && !x.test_mode && x.template_key && x.template_key === p.template_key && x.status === 'active');
+    for (const p of projects) { if (superseded(p)) continue; const g = groupOf(p, today); if (g === 'test' && !isOwner) continue; byGroup.set(g, [...(byGroup.get(g) ?? []), p]); }
     if (!byGroup.size) { replace(host, el('p', { class: 'muted' }, 'Aún no tienes ningún flujo asignado. Pide acceso a Dirección.')); return; }
     replace(host, ...GROUPS.filter(([g]) => byGroup.get(g)?.length).map(([g, label]) => {
       const items = el('div', { class: 'flows', role: 'list', 'aria-label': label }, ...byGroup.get(g)!.map(card));
