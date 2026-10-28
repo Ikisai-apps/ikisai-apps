@@ -135,6 +135,8 @@ Diseño en `MUELA/equipo/feedback/recursos/DECORACION_Y_FINCA.md`; forma acordad
   - `resources.plans_with_decor` (miembros de Recursos: Central y Booking): lo mismo con las dos capas sin resolver (`layer`, `eventId`, `op`, `replacesItemId`). Con `{event_id}`, la general y la de ese evento.
 - **Pruebas:** `tests/resources/decor-estate.test.ts`.
 
+- **Balizas con texto e imagen propia (migración 0821, 28-10-2026):** `decor_items.label` (1 a 60 caracteres) y `file_id` (imagen del módulo, verificada, SVG, PNG, JPG, WebP o GIF de hasta 1 MB, bucket `resources-plans`). Con `op` add o replace basta con icono, texto o imagen (o varios); `set_event_decor` los pasa en la capa de evento.
+
 ## 2.8 Tipo de cama y silueta de cabecera en los portales (migración 0816, 27-10-2026)
 
 - **`bedKind`** en cada cama de `portal_plans` y `plans_with_decor` que tenga `attributes.bed_kind` (`individual` · `doble` · `litera` · `sofa_cama`): el mapa del kit pinta su icono (`bedIcons`). Ningún otro atributo sale.
