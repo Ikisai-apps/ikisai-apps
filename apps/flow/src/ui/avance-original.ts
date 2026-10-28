@@ -53,7 +53,13 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
         +'<div class="gside"><div><b>'+n.pr+'</b> esperando fusión <small>máx. '+maxPr+'</small></div><div><b>'+n.curso+'</b> en marcha ahora</div></div>'
         +'<div class="gfoot"><span><b>'+sg(ult.pend-a24.pend)+'</b> pendientes en 24 h</span><span><b>'+hd+'</b> hitos cumplidos</span><span><b>'+(ult.total-ult.backlog)+'</b> tareas en total</span><span><b>'+S.length+'</b> fotos desde el '+d0.getDate()+'/'+(d0.getMonth()+1)+'</span></div></div>';}
     if(S.length<2)return '<section class="graf"><p class="gnote">Registrando desde hoy: el tablero guarda una foto de los estados cada vez que cambian (como mucho una cada 10 minutos) y, si no cambian, cada 6 horas. Las banderas marcarán cada hito cumplido. El gráfico se irá llenando con los días.</p>'+nums+'</section>';
-    var W=680,H=190,L=34,R=44,T=30,B=22;var t0=S[0].t,t1=Math.max(ult.t,t0+3600e3);var X=function(t){return L+(W-L-R)*(t-t0)/(t1-t0);};
+    var W=680,H=190,L=34,R=44,T=30,B=22;var t0=S[0].t,t1=Math.max(ult.t,t0+3600e3);
+    // Tiempo de actividad (VG, 28-10): entre dos fotos solo cuenta el rato si algo cambió (y como mucho media hora); las noches y los
+    // ratos sin tocar el tablero no ocupan sitio. Todo el historial cabe siempre en el ancho: se va comprimiendo al crecer.
+    var KS=['hecho','pr','curso','pend','backlog','total'];var TA=[0];for(var ti=1;ti<S.length;ti++){var ch=KS.some(function(k){return (S[ti][k]||0)!==(S[ti-1][k]||0);});TA.push(TA[ti-1]+(ch?Math.min(S[ti].t-S[ti-1].t,1800e3):0));}
+    var tN=TA[TA.length-1];var lin=!(tN>0);
+    var tau=function(t){if(lin)return t-t0;if(t<=S[0].t)return 0;for(var k=1;k<S.length;k++){if(t<=S[k].t){var f=(t-S[k-1].t)/((S[k].t-S[k-1].t)||1);return TA[k-1]+(TA[k]-TA[k-1])*f;}}return tN;};
+    var X=function(t){return L+(W-L-R)*tau(t)/(lin?(t1-t0):tN);};
     var flags=HITOS.filter(function(q){return q.done_at&&q.done_at>=t0-1&&q.done_at<=t1+1;}).sort(function(a,b){return a.done_at-b.done_at;});
     // curva suave (Catmull-Rom → Bézier)
     var smooth=function(P){if(P.length<3)return P.map(function(q,i){return (i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1);}).join(' ');var d='M'+P[0][0].toFixed(1)+' '+P[0][1].toFixed(1);for(var i=0;i<P.length-1;i++){var p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||p2;var c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6;d+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+' '+c2x.toFixed(1)+' '+c2y.toFixed(1)+' '+p2[0].toFixed(1)+' '+p2[1].toFixed(1);}return d;};
@@ -61,8 +67,10 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
     var panel=function(keys,title,full){var mx=1;S.forEach(function(p){keys.forEach(function(k){if((p[k[0]]||0)>mx)mx=p[k[0]]||0;});});mx=Math.ceil(mx*1.15)||1;var Y=function(v){return T+(H-T-B)*(1-v/mx);};var y0=Y(0);
       var g='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+title+'"><defs>'+keys.map(function(k){uid++;k.g='gg'+uid;return '<linearGradient id="'+k.g+'" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="'+k[1]+'" stop-opacity=".28"/><stop offset="1" stop-color="'+k[1]+'" stop-opacity="0"/></linearGradient>';}).join('')+'</defs>';
       for(var i=0;i<=4;i++){var v=mx*i/4,y=Y(v);g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="currentColor" stroke-opacity="'+(i?'.07':'.22')+'"/><text x="'+(L-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="9.5" fill="currentColor" opacity=".55">'+Math.round(v)+'</text>';}
-      var span=t1-t0;var step=span>2*86400e3?86400e3:(span>6*3600e3?6*3600e3:3600e3);if(span>60*86400e3)step=7*86400e3;var d=new Date(t0);d.setMinutes(0,0,0);if(step>=86400e3)d.setHours(0,0,0,0);var tt=d.getTime();while(tt<t0)tt+=step;
-      for(;tt<=t1;tt+=step){var x=X(tt),dd=new Date(tt);var lab=step>=86400e3?dd.getDate()+'/'+(dd.getMonth()+1):('0'+dd.getHours()).slice(-2)+':00';g+='<text x="'+x.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".55">'+lab+'</text>';}
+      // Fechas en el eje: el primer momento de cada día (o de cada hora si todo es de un día), sin pisarse.
+      var oneDay=new Date(t0).toDateString()===new Date(ult.t).toDateString();var lastX=-99,lastKey='';
+      S.forEach(function(p){var dd=new Date(p.t);var key=oneDay?dd.getHours():dd.toDateString();if(key===lastKey)return;lastKey=key;var x=X(p.t);if(x-lastX<34)return;lastX=x;
+        var lab=oneDay?('0'+dd.getHours()).slice(-2)+':00':dd.getDate()+'/'+(dd.getMonth()+1);g+='<text x="'+x.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".55">'+lab+'</text>';});
       keys.forEach(function(k){var P=S.map(function(p){return [X(p.t),Y(p[k[0]]||0)];});var ln=smooth(P);var area=ln+' L'+P[P.length-1][0].toFixed(1)+' '+y0.toFixed(1)+' L'+P[0][0].toFixed(1)+' '+y0.toFixed(1)+' Z';
         g+='<path class="ar" d="'+area+'" fill="url(#'+k.g+')"/><path class="ln" pathLength="1" d="'+ln+'" fill="none" stroke="'+k[1]+'" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"'+(k[3]?' stroke-dasharray=".012 .008"':'')+'/>';});
       // banderas de hitos cumplidos
