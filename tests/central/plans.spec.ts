@@ -281,6 +281,15 @@ test('planos · un giro se coloca bien; lo que no se lee, «Por revisar» con el
   await expect.poll(async () => (await api.app.t.db.query<{ k: string; p: string | null }>(`select kind as k, plan_id as p from resources.spaces where name = 'Cuarto de calderas' and deleted_at is null`)).rows[0] ?? null)
     .toMatchObject({ k: 'instalacion' });
   await expect(page.locator('#placeShapes [data-shape-row="Cuarto_de_calderas"]')).toContainText('Cuarto de calderas');
+  // Los espacios se gestionan en Central (VG, vg-52): renombrar y dar de baja desde su forma.
+  const calderas = page.locator('#placeShapes [data-shape-row="Cuarto_de_calderas"]');
+  await calderas.getByRole('button', { name: 'Renombrar Cuarto de calderas' }).click();
+  await page.locator('#renameSpaceName').fill('Sala de calderas');
+  await page.locator('#renameSpaceSave').click();
+  await expect.poll(async () => (await api.app.t.db.query(`select 1 from resources.spaces where name = 'Sala de calderas' and deleted_at is null`)).rows.length).toBe(1);
+  await calderas.getByRole('button', { name: 'Dar de baja Sala de calderas' }).click();
+  await page.getByRole('button', { name: 'Dar de baja', exact: true }).last().click();
+  await expect.poll(async () => (await api.app.t.db.query<{ a: boolean }>(`select active as a from resources.spaces where name = 'Sala de calderas'`)).rows[0]?.a).toBe(false);
   await page.locator('#placeMissing').evaluate((d) => { (d as HTMLDetailsElement).open = true; });
   const pantry = page.locator(`#placeReview [data-space="${ids.pantry}"]`);
   await expect(pantry).toContainText('No se ha colocado sola: el SVG la gira o la deforma de una manera que no se puede leer.');

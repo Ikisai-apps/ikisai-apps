@@ -756,10 +756,13 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       const rename = holder && foldName(holder.name) !== foldName(shape.name.replace(/[_-]+/g, ' '))
         ? el('button', { type: 'button', class: 'linkbtn small', 'data-feedback-id': 'central.planos.colocar.renombrar', 'data-feedback-label': 'Renombrar como en el dibujo', onclick: () => void renameTo(holder, shape.name.replace(/[_-]+/g, ' ')) }, `Llamarla «${shape.name.replace(/[_-]+/g, ' ')}»`)
         : null;
+      const manage = holder ? el('div', { class: 'ctl-shapetools' },
+        el('button', { type: 'button', class: 'linkbtn small', 'aria-label': `Renombrar ${holder.name}`, 'data-feedback-id': 'central.planos.colocar.renombrar_estancia', 'data-feedback-label': 'Renombrar la estancia', onclick: () => renameSpace(holder) }, 'Renombrar'),
+        el('button', { type: 'button', class: 'linkbtn small', 'aria-label': `Dar de baja ${holder.name}`, 'data-feedback-id': 'central.planos.colocar.baja_estancia', 'data-feedback-label': 'Dar de baja la estancia', onclick: () => void archiveSpace(holder) }, 'Dar de baja')) : null;
       const row = el('li', { class: `ctl-shaperow${holder ? '' : ' warn'}`, 'data-shape-row': shape.name },
         el('div', { class: 'ctl-shapehead' }, el('span', { class: 'ctl-shapenum', 'aria-hidden': 'true' }, String(index + 1)),
           el('span', null, el('strong', null, holder ? holder.name : 'Sin estancia'), el('span', { class: 'muted small' }, ` · en el dibujo «${shape.name.replace(/[_-]+/g, ' ')}»`))),
-        select, rename);
+        select, rename, manage);
       row.addEventListener('mouseenter', () => light(true));
       row.addEventListener('mouseleave', () => light(false));
       return row;
@@ -1167,7 +1170,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   const sameShape = (shape: PlanShape | null | undefined, points: Array<[number, number]>) =>
     !!shape?.points && shape.points.length === points.length && shape.points.every(([x, y], i) => near(x, points[i]![0]) && near(y, points[i]![1]));
   /** La estancia que ya ocupa esa forma del dibujo, si la hay. */
-  const holderOf = (plan: FloorPlan, shape: SvgShape) => rows.find((s) => s.planId === plan.id && s.kind !== 'cama' && sameShape(s.planShape as PlanShape | null, shape.points)) ?? null;
+  const holderOf = (plan: FloorPlan, shape: SvgShape) => rows.find((s) => s.active && s.planId === plan.id && s.kind !== 'cama' && sameShape(s.planShape as PlanShape | null, shape.points)) ?? null;
 
   /** «Esta forma es…»: la estancia elegida toma la forma; si otra la tenía, la deja. Un «Deshacer». */
   function assignShape(plan: FloorPlan, shape: SvgShape, spaceId: string): void {
@@ -1208,6 +1211,33 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
 
   /** Cambiar el nombre de la estancia por el del dibujo (Recursos). */
+  /** Renombrar una estancia (Recursos) desde «Colocar». */
+  function renameSpace(space: SpaceRow): void {
+    let sheet: Sheet | null = null;
+    const name = el('input', { id: 'renameSpaceName', 'data-field-id': 'central.planos.rename_space', 'data-field-entity': 'resources.spaces', 'data-field-prop': 'name', maxlength: 80, value: space.name }) as HTMLInputElement;
+    const save = el('button', { class: 'primary', type: 'button', id: 'renameSpaceSave', 'data-feedback-id': 'central.planos.colocar.renombrar_estancia.guardar', 'data-feedback-label': 'Guardar el nombre', onclick: async () => {
+      const text = name.value.trim();
+      if (!text) { toast('Escribe el nombre.'); return; }
+      await renameTo(space, text);
+      await sheet?.close(true);
+    } }, 'Guardar');
+    sheet = openSheet({ title: 'Renombrar', meta: space.name,
+      body: el('div', { 'data-feedback-id': 'central.planos.colocar.renombrar_estancia.hoja', 'data-feedback-label': 'Renombrar la estancia' },
+        el('p', { class: 'muted small' }, 'El nombre nuevo sale en todas las apps: Booking, Guests, Tasks…'),
+        el('label', { class: 'field' }, el('span', null, 'Nombre'), name)),
+      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.planos.colocar.renombrar_estancia.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      initialFocus: name });
+  }
+
+  /** Dar de baja una estancia (Recursos la archiva; el servidor se niega si tiene reservas futuras, stock o tareas abiertas). */
+  async function archiveSpace(space: SpaceRow): Promise<void> {
+    if (!(await confirmDialog({ title: `¿Dar de baja «${space.name}»?`, text: 'Deja de salir en el plano y en las apps. Se puede recuperar en Booking › Espacios y camas (archivadas). Si tiene reservas, stock o tareas abiertas, no se puede.', confirmLabel: 'Dar de baja', danger: true }))) return;
+    try {
+      await spaces.archive([space.id]);
+      toast(`«${space.name}» dada de baja.`);
+    } catch (e) { toast(describeError(e)); }
+  }
+
   async function renameTo(space: SpaceRow, name: string): Promise<void> {
     try {
       await spaces.update(space.id, { name: name.slice(0, 80) });
