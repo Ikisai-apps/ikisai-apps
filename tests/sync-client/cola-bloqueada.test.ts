@@ -53,7 +53,7 @@ test('cabeza de cola: un lote con 5xx seguidos pasa a rechazado tras cinco ciclo
   const rejected = await client.rejected();
   assert.equal(rejected.length, 1, 'solo el lote en cabeza se aparta');
   assert.equal(rejected[0]!.error.status, 503);
-  assert.equal(rejected[0]!.operations[0]!.id, stuck);
+  assert.equal((rejected[0]!.operations[0] as { id?: string }).id, stuck);
   assert.equal(hits.get(stuck), 5, 'exactamente cinco 5xx seguidos antes de apartarlo');
   assert.ok((hits.get(next) ?? 0) >= 1, 'el siguiente lote ya intenta subir');
   assert.equal(client.status().pendingCommands, 1, 'el segundo lote sigue en la cola, con su propio contador');
