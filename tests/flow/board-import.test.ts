@@ -41,7 +41,7 @@ const history = async () => (await app.t.db.query<any>(`select * from flow.board
 
 test('avance · importar: hitos, tarjetas con paso e historial; un hito con todo hecho (sin contar backlog) queda cumplido', async () => {
   const out = await importBoard();
-  assert.deepEqual(out, { project_id: BOARD, hitos: 2, cards: 4, history: 2 });
+  assert.deepEqual(out, { project_id: BOARD, hitos: 2, cards: 4, changed: 4, history: 2 });
   const h1 = await unit(H1); const h2 = await unit(H2);
   assert.equal(h1.class, 'objective'); assert.equal(h1.status, 'pending'); assert.equal(h1.payload.orden, 1);
   assert.equal(h2.status, 'done'); assert.equal(new Date(h2.done_at).toISOString(), '2026-10-27T18:00:00.000Z');
@@ -63,7 +63,11 @@ test('avance · importar: hitos, tarjetas con paso e historial; un hito con todo
 
 test('avance · importar otra vez no duplica nada', async () => {
   const before = (await app.t.db.query<{ n: number }>(`select count(*)::int n from flow.units where project_id = $1`, [BOARD])).rows[0]!.n;
-  assert.deepEqual(await importBoard(), { project_id: BOARD, hitos: 2, cards: 4, history: 0 });
+  const revs = async () => (await app.t.db.query<{ id: string; revision: number }>(`select id, revision from flow.units where project_id = $1 order by id`, [BOARD])).rows;
+  const r0 = await revs();
+  // Sin cambios en la carga, no se escribe nada (0960): ni revisiones nuevas ni cambios que bajarse.
+  assert.deepEqual(await importBoard(), { project_id: BOARD, hitos: 2, cards: 4, changed: 0, history: 0 });
+  assert.deepEqual(await revs(), r0);
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from flow.units where project_id = $1`, [BOARD])).rows[0]!.n, before);
   assert.equal((await history()).length, 2);
 });
