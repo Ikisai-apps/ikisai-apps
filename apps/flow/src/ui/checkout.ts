@@ -44,7 +44,7 @@ export function openCustomerSheet(client: SyncClient, projectId: string, number:
     for (const id of [...chosen]) if (!orders.some((o) => o.id === id && o.status !== 'delivered')) chosen.delete(id);
     if (!orders.length) { replace(list, el('p', { class: 'muted' }, 'Este cliente aún no tiene pedidos.')); replace(foot); return; }
     replace(list, ...orders.map((o) => {
-      const items = (data!.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
+      const items = (data!.linesByOrder.get(o.id) ?? []).map((l) => { const pr = data!.products.get(l.product_id); return `${l.quantity} ${pr ? `${pr.code} ${pr.name}` : ''}`; }).join(' · ');
       const box = el('input', { ...fieldAttrs({ id: 'flow.servicio.elegir_pedido', type: 'checkbox', storage: 'none' }), type: 'checkbox', checked: chosen.has(o.id), disabled: o.status === 'delivered', 'aria-label': `Elegir pedido ${o.pay_seq ?? ''}`,
         onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) chosen.add(o.id); else chosen.delete(o.id); paintFoot(); } });
       return el('label', { class: `qcard checkout-order is-${o.status}`, role: 'listitem' }, box,

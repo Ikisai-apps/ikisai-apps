@@ -9,7 +9,8 @@ export type Scope = typeof SCOPES[number];
 
 export const SCOPE_LABELS: Record<Scope, string> = { clasico: 'Clásicos', gourmet: 'Gourmet', barra: 'Barra' };
 
-export const CODES = ['A', 'B', 'C', 'D', 'α', 'β', 'γ', 'δ'] as const;
+/** Códigos de producto: letras de la carta y, desde 0962, números (las bebidas de la barra, para no chocar con los montaditos). */
+export const CODES = ['A', 'B', 'C', 'D', 'α', 'β', 'γ', 'δ', '1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 
 /** Producto tal como lo publica `GET public/menu`. */
 export interface MenuProduct {
