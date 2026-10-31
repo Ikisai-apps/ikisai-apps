@@ -78,7 +78,7 @@ export function mountOrders(kind: 'order' | 'service'): ViewMount {
       const finished = kind === 'order' ? o.status !== 'open' : o.status === 'delivered';
       node.className = `qcard order-card is-${o.status}${finished ? ' is-done' : ''}${o._pending ? ' is-unconfirmed' : ''}${o.test_by ? ' is-test' : ''}`;
       node.querySelector('.order-badge')!.textContent = o.pay_seq ? String(o.pay_seq) : '·';
-      const items = (data.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
+      const items = (data.linesByOrder.get(o.id) ?? []).map((l) => { const pr = data!.products.get(l.product_id); return `${l.quantity} ${pr ? `${pr.code} ${pr.name}` : ''}`; }).join(' · ');
       const account = o.account_id ? data.accounts.find((a) => a.id === o.account_id) : null;
       // Pedido de un miembro (0952, vg-48): fuera del horario, de prueba (no cuenta); durante el evento, cuenta y Finance lo ajusta.
       node.querySelector('.qcard-title')!.textContent = [o.test_by ? (o.test_excluded ? `Pedido de prueba (${o.test_name ?? 'equipo'})` : `Pedido del equipo (${o.test_name ?? 'equipo'}), se ajusta en Finance`) : '', number ? `Cliente ${number}` : o.origin === 'public' ? 'Desde la carta' : 'Caja', o.parent_id ? 'ampliación' : '',
