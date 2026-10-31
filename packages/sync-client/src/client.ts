@@ -159,6 +159,16 @@ export function collectBlobMarkers(operations: RowOperation[]): string[] {
 /** Errores de subida que no se arreglan reintentando: el lote que los provoca pasa a `rejected`. */
 const DEFINITIVE_UPLOAD_ERRORS = new Set(['BLOB_MISSING', 'UNSUPPORTED_MEDIA', 'PAYLOAD_TOO_LARGE', 'INVALID_OPERATION', 'FORBIDDEN', 'FILE_MISMATCH']);
 
+/**
+ * Cabeza de cola (Flow, 31-10): un lote que el servidor nunca llega a aplicar (5xx seguidos, p. ej. un procedimiento que agota
+ * el tiempo de la Edge) no puede taponar para siempre todo lo que el dispositivo haga después. Tras estos ciclos seguidos con
+ * 5xx para el mismo requestId, el lote pasa a `rejected` con su error (el usuario lo ve y puede «Reintentar») y la cola sigue.
+ * Sin red o con la sesión caducada no cuenta: ahí la cola espera, como siempre.
+ */
+const MAX_SERVER_FAILURES = 5;
+/** Reintentos del ciclo con la cola vacía para que el estado de red se recupere solo tras un fallo pasajero (≈ 17 s). */
+const HEAL_RETRIES = 6;
+
 /** Copia de las operaciones con cada marcador sustituido por su `fileId`. Lanza BLOB_MISSING si falta alguno. */
 export function substituteBlobMarkers(operations: RowOperation[], fileIds: ReadonlyMap<string, string>): RowOperation[] {
   const resolve = (sha: string): string => {
@@ -310,6 +320,8 @@ export class SyncClientImpl implements SyncClient {
   private listenersInstalled = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryAttempts = 0;
+  /** Ciclos seguidos con 5xx por requestId del lote en cabeza de cola (MAX_SERVER_FAILURES). */
+  private readonly serverFailures = new Map<string, number>();
   private started = false;
   private readonly onOnline = () => {
     this.setStatus({ network: 'online' });
@@ -454,8 +466,10 @@ export class SyncClientImpl implements SyncClient {
     this.recordError(error);
     if (isNetworkError(error)) {
       this.setStatus({ network: 'offline' });
-      this.scheduleRetry();
     } else this.setStatus({ network: 'error' });
+    // Flow (31-10): tras un fallo pasajero el estado se quedaba en offline/error hasta el siguiente ciclo, aunque la cola
+    // estuviera vacía, y las apps que miran `network` bloqueaban acciones con conexión. Se reintenta solo, con tope.
+    this.scheduleRetry();
   }
 
   /**
@@ -468,7 +482,8 @@ export class SyncClientImpl implements SyncClient {
     this.retryAttempts += 1;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      if (!this.sess || !this.started || this.state.pendingCommands + this.state.pendingBlobs === 0) {
+      const idle = this.state.pendingCommands + this.state.pendingBlobs === 0;
+      if (!this.sess || !this.started || (idle && (this.state.network === 'online' || this.retryAttempts > HEAL_RETRIES))) {
         this.retryAttempts = 0;
         return;
       }
@@ -1330,7 +1345,18 @@ export class SyncClientImpl implements SyncClient {
         result = await this.api<CommandResult>('/commands', { method: 'POST', json: outgoing });
       } catch (error) {
         if (!isApiError(error) || isNetworkError(error) || error.status === 401 || error.status >= 500) {
-          // Sin red, sesión caducada sin refresco posible o fallo del servidor: la cola espera tal cual.
+          // Sin red, sesión caducada sin refresco posible o fallo del servidor: la cola espera tal cual…
+          if (isApiError(error) && error.status >= 500) {
+            // …salvo que el mismo lote lleve MAX_SERVER_FAILURES ciclos seguidos con 5xx: entonces se aparta como rechazado
+            // para que no tapone la cola (cabeza de cola, Flow 31-10).
+            const failures = (this.serverFailures.get(entry.requestId) ?? 0) + 1;
+            this.serverFailures.set(entry.requestId, failures);
+            if (failures >= MAX_SERVER_FAILURES) {
+              this.serverFailures.delete(entry.requestId);
+              await this.reject(entry, error);
+              continue;
+            }
+          }
           this.handleFailure(error);
           return false;
         }
@@ -1365,6 +1391,7 @@ export class SyncClientImpl implements SyncClient {
         return false;
       }
 
+      this.serverFailures.delete(entry.requestId);
       await this.applyCommandResult(entry, result);
       await this.refreshCounts();
     }
