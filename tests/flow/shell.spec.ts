@@ -72,6 +72,10 @@ test('flow · login → flujos → Inicio de la barra con las guías y sus cinco
   await expect(drawer).toContainText('Propietario');
   // En el móvil, «Cerrar sesión» va dentro del menú (kit, MUELA-013).
   await drawer.getByRole('button', { name: 'Cerrar sesión' }).click();
+  // Salir rehace los datos del dispositivo (clearOnLogout): se avisa antes.
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('se bajan de nuevo desde cero');
+  await dialog.getByRole('button', { name: 'Salir' }).click();
   await expect(page.getByLabel('Correo electrónico')).toBeVisible();
 });
 

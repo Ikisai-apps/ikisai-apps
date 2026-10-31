@@ -292,8 +292,14 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   async function logout(): Promise<void> {
+    // Salir rehace los datos de este dispositivo (se borran y se bajan de nuevo al entrar): antes, se intenta enviar lo pendiente.
+    await client.sync().catch(() => undefined);
     const status = client.status();
-    if (status.pendingCommands > 0 && !(await confirmDialog({ title: '¿Cerrar sesión?', text: `Tienes ${status.pendingCommands} cambios sin sincronizar. Seguirán en este dispositivo hasta que vuelvas a entrar.`, confirmLabel: 'Cerrar sesión' }))) return;
+    const left = status.pendingCommands + status.rejected + status.conflicts;
+    if (!(await confirmDialog({ title: 'Salir', confirmLabel: left > 0 ? 'Salir y perderlos' : 'Salir',
+      text: left > 0
+        ? `Tienes ${left} ${left === 1 ? 'cambio que no ha llegado' : 'cambios que no han llegado'} al servidor. Al salir se borran los datos de este dispositivo y se perderán. Al volver a entrar, todo se baja de nuevo.`
+        : 'Se borran los datos guardados en este dispositivo y, al volver a entrar, se bajan de nuevo desde cero (arregla un dispositivo descuadrado).' }))) return;
     try {
       await client.logout();
     } finally {
