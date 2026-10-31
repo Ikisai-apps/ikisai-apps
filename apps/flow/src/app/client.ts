@@ -8,6 +8,8 @@ export function createClient(): SyncClient {
     apiBase: '/api/v1',
     tables: Object.values(TABLES),
     pullIntervalMs: PULL_INTERVAL_MS,
+    // Salir borra el espejo de este dispositivo: al volver a entrar se rehace desde cero (VG, 31-10: reinicio tras errores).
+    clearOnLogout: true,
   });
 }
 
