@@ -52,8 +52,10 @@ const DIRS: Array<{ dir: dorm.Direction; text: string; arrow: string; key: strin
   { dir: 'right', text: 'Mover a la derecha', arrow: '→', key: 'ArrowRight' },
 ];
 
-interface DraftBed { id: string; label: string; kind: string; seats: number; extras: number; parts: Row[]; isNew: boolean; edited?: boolean }
+interface DraftBed { id: string; label: string; kind: string; seats: number; extras: number; parts: Row[]; isNew: boolean; edited?: boolean; team: boolean }
 /** Tipos de cama de Recursos (la supletoria sola es una individual de 0 fijas y 1 supletoria). */
+/** Se apilan en el mismo sitio: una litera doble son dos camas, abajo y arriba (VG, 28-10). */
+const STACKABLE = new Set(['litera', 'doble']);
 const RESOURCE_KINDS: Array<[string, string]> = [['litera', 'Litera'], ['individual', 'Individual'], ['doble', 'Doble (de matrimonio)'], ['sofa_cama', 'Sofá cama']];
 
 /** Pinta «Monta el dormitorio» en un contenedor propio y lo devuelve. */
@@ -76,14 +78,17 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     const p = dorm.pieces(o.beds as Array<Row & dorm.BedPart>);
     sizes.clear();
     for (const x of p.pieces) sizes.set(x.id, dorm.sizeOfKind(x.main.kind));
-    const a = dorm.arrange(o.space.layout, p.pieces.map((x) => ({ id: x.id, cell: x.main.cell })), sizes);
+    const kinds = new Map(p.pieces.map((x) => [x.id, String(x.main.kind)]));
+    const a = dorm.arrange(o.space.layout, p.pieces.map((x) => ({ id: x.id, cell: x.main.cell })), sizes, (x, y) => STACKABLE.has(kinds.get(x) ?? '') && STACKABLE.has(kinds.get(y) ?? ''));
     grid = a.grid; cells = a.cells; removed = []; inactive = p.inactive;
-    beds = p.pieces.map((x) => ({ id: x.id, label: String(x.main.label), kind: String(x.main.kind), seats: x.seats, extras: x.extras, parts: x.parts, isNew: false }));
+    beds = p.pieces.map((x) => ({ id: x.id, label: String(x.main.label), kind: String(x.main.kind), seats: x.seats, extras: x.extras, parts: x.parts, isNew: false, team: x.parts.some((r) => r.team_bed === true) }));
     selected = null;
   }
   reset();
 
   const bedOf = (id: string) => beds.find((b) => b.id === id);
+  /** Dos literas o dos dobles del mismo tamaño se pueden apilar en el mismo sitio (litera doble). */
+  const stackable = (a: string, b: string) => STACKABLE.has(bedOf(a)?.kind ?? '') && STACKABLE.has(bedOf(b)?.kind ?? '');
   const partIds = (id: string) => new Set(bedOf(id)?.parts.map((r) => r.id) ?? [id]);
   const blockers = (id: string) => { const ids = partIds(id); return o.assignments.filter((a) => ids.has(a.bed_id)).length; };
   const isOccupied = (b: DraftBed) => b.parts.some((r) => o.occupied.has(r.id));
@@ -100,7 +105,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   }
 
   function tryPlace(id: string, cell: Cell, done: string): boolean {
-    const problem = dorm.placeProblem(grid, cells, id, cell, sizes);
+    const problem = dorm.placeProblem(grid, cells, id, cell, sizes, stackable);
     if (problem?.reason === 'fuera') { say('No cabe ahí: se saldría de la estancia.'); return false; }
     if (problem?.reason === 'encima') { say(`No cabe ahí: se montaría sobre ${nameOf(problem.other)}.`); return false; }
     cells.set(id, cell);
@@ -137,7 +142,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     while (!cell && grid.rows < dorm.GRID_LIMITS.maxRows) { grid = { ...grid, rows: grid.rows + 1 }; cell = dorm.firstFree(grid, cells, id, sizes); }
     if (!cell) { sizes.delete(id); return say('No cabe otra cama: la estancia ya tiene el fondo máximo.'); }
     const extra = kind === 'supletoria';
-    beds.push({ id, label: `${text} ${same}`, kind, seats: extra ? 0 : capacity, extras: extra ? capacity : 0, parts: [], isNew: true });
+    beds.push({ id, label: `${text} ${same}`, kind, seats: extra ? 0 : capacity, extras: extra ? capacity : 0, parts: [], isNew: true, team: false });
     cells.set(id, cell);
     say(`${text} ${same} añadida en el primer hueco.`);
     paint(id);
@@ -186,22 +191,24 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       if (resOps.length) await resources.commit(resOps);
       if (resOps.length && navigator.onLine) { await resources.sync(); await syncMirror(o.client); await o.client.sync(); }
     } catch (error) {
-      return say(`No se ha guardado en Recursos: ${describeError(error)}`);
-    } finally {
       resources.stop();
+      return say(`No se ha guardado en Recursos: ${describeError(error)}`);
     }
     // la rejilla y el sitio de cada cama en Booking (las nuevas ya traídas por el espejo)
     const ops: RowOperation[] = [];
     const layoutChanged = !dorm.validGrid(o.space.layout) || o.space.layout.cols !== grid.cols || o.space.layout.rows !== grid.rows;
     if (layoutChanged) ops.push({ op: 'update', table: SPACES, id: o.space.id, expectedRevision: o.space.revision, fields: { layout: grid } });
     const mirrored = placeNew.size ? ((await o.client.list(BEDS)) as Row[]).filter((r) => !r.deleted_at && placeNew.has(String(r.resource_id))) : [];
-    for (const r of mirrored) ops.push({ op: 'update', table: BEDS, id: r.id, expectedRevision: r.revision, fields: { cell: placeNew.get(String(r.resource_id))! } });
+    const teamNew = new Set(beds.filter((b) => b.isNew && b.team).map((b) => b.id));
+    for (const r of mirrored) ops.push({ op: 'update', table: BEDS, id: r.id, expectedRevision: r.revision, fields: { cell: placeNew.get(String(r.resource_id))!, ...(teamNew.has(String(r.resource_id)) ? { team_bed: true } : {}) } });
     for (const b of beds) {
       if (b.isNew) continue;
       const cell = cells.get(b.id) ?? null;
       for (const row of b.parts) {
         const before = dorm.validCell(row.cell) ? row.cell : null;
-        if (!before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { cell } });
+        const moved = !before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot;
+        const team = (row.team_bed === true) !== b.team;
+        if (moved || team) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { ...(moved ? { cell } : {}), ...(team ? { team_bed: b.team } : {}) } });
       }
     }
     try {
@@ -211,6 +218,8 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       toast(!resOps.length && !ops.length ? 'Sin cambios.' : waiting > 0 ? 'Camas guardadas en Recursos. Las nuevas se colocan en cuanto lleguen a Booking: vuelve a abrir el dormitorio en un momento.' : 'Distribución guardada.');
     } catch (error) {
       say(`No se ha guardado el sitio de las camas: ${describeError(error)}`);
+    } finally {
+      resources.stop();
     }
   }
 
@@ -225,15 +234,15 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       const cell = cells.get(b.id) ?? null;
       if (b.isNew) {
         pos += 1024;
-        ops.push({ op: 'insert', table: BEDS, id: b.id, fields: { space_id: o.space.id, label: b.label, kind: b.kind, capacity: b.seats + b.extras, active: true, position: pos, cell } });
+        ops.push({ op: 'insert', table: BEDS, id: b.id, fields: { space_id: o.space.id, label: b.label, kind: b.kind, capacity: b.seats + b.extras, active: true, position: pos, cell, team_bed: b.team } });
         continue;
       }
-      // Todas las partes de la pieza guardan el mismo sitio.
+      // Todas las partes de la pieza guardan el mismo sitio (y si es de equipo).
       for (const row of b.parts) {
         const before = dorm.validCell(row.cell) ? row.cell : null;
-        if (!before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot) {
-          ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { cell } });
-        }
+        const moved = !before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot;
+        const team = (row.team_bed === true) !== b.team;
+        if (moved || team) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { ...(moved ? { cell } : {}), ...(team ? { team_bed: b.team } : {}) } });
       }
     }
     for (const row of removed) ops.push({ op: 'delete', table: BEDS, id: row.id, expectedRevision: row.revision });
@@ -256,7 +265,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       type: 'button', class: `bk-dorm-bed${onlyExtra(b) ? ' extra' : b.extras ? ' mixed' : ''}${occupied ? ' occupied' : ''}${selected === b.id ? ' picked' : ''}`,
       id: `dormBed-${b.id}`, dataset: { bed: b.id, kind: b.kind, rot: String(cell.rot) },
       style: `grid-column: ${r.x + 1} / span ${r.w}; grid-row: ${r.y + 1} / span ${r.h}`,
-      'aria-label': `${b.label}, ${label(b.kind)}, ${placesText(b)}, ${state}${cell.rot === 90 ? ', a lo largo' : ''}`,
+      'aria-label': `${b.label}, ${label(b.kind)}, ${placesText(b)}, ${b.team ? 'cama de equipo, ' : ''}${state}${cell.rot === 90 ? ', a lo largo' : ''}`,
       title: b.label,
       'aria-pressed': editing ? String(selected === b.id) : null,
       tabindex: editing ? '0' : '-1',
@@ -290,7 +299,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
         else paint(id);
       }) as EventListener,
     }, el('span', { class: 'bk-dorm-bed-name', 'aria-hidden': 'true' }, dorm.shortName(b.label)),
-      el('span', { class: 'bk-dorm-bed-kind', 'aria-hidden': 'true' }, `${b.extras && b.seats ? `${b.seats} + ${b.extras}` : label(b.kind)} · ${state.split(' ')[0]}`));
+      el('span', { class: 'bk-dorm-bed-kind', 'aria-hidden': 'true' }, `${b.extras && b.seats ? `${b.seats} + ${b.extras}` : label(b.kind)} · ${b.team ? 'Equipo · ' : ''}${state.split(' ')[0]}`));
     return button;
   }
 
@@ -299,10 +308,16 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     const outside = beds.filter((b) => !cells.has(b.id));
     const board = el('div', {
       class: `bk-dorm-board${editing ? ' editing' : ''}`, role: 'group', 'aria-label': `${o.space.name}: ${grid.cols} de ancho por ${grid.rows} de fondo`,
-      style: `grid-template-columns: repeat(${grid.cols}, 1fr); grid-template-rows: repeat(${grid.rows}, var(--bk-dorm-cell))`,
+      // cuadrantes cuadrados (1 m × 1 m): el ancho no estira las columnas; en el móvil, el cuadrante encoge para que quepa
+      style: `--bk-dorm-cell: min(44px, calc((100vw - 72px) / ${grid.cols})); grid-template-columns: repeat(${grid.cols}, var(--bk-dorm-cell)); grid-template-rows: repeat(${grid.rows}, var(--bk-dorm-cell))`,
     },
       ...Array.from({ length: grid.cols * grid.rows }, (_, i) => el('span', { class: 'bk-dorm-cell', 'aria-hidden': 'true', style: `grid-column: ${(i % grid.cols) + 1}; grid-row: ${Math.floor(i / grid.cols) + 1}` })),
-      ...placed.map(bedButton));
+      ...placed.map((b, i) => {
+        const button = bedButton(b);
+        const c = cells.get(b.id)!;
+        if (placed.slice(0, i).some((x) => { const d = cells.get(x.id)!; return d.x === c.x && d.y === c.y && d.rot === c.rot; })) button.classList.add('stacked');
+        return button;
+      }));
     const sel = selected ? bedOf(selected) : null;
     const total = beds.reduce((s, b) => s + b.seats, 0);
     const extras = beds.reduce((s, b) => s + b.extras, 0);
@@ -328,7 +343,10 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
           ...DIRS.map((d) => el('button', { type: 'button', class: 'ghost small bk-dorm-arrow', 'aria-label': `${d.text}: ${sel.label}`, 'data-feedback-id': 'booking.espacios.dormitorio.mover', 'data-feedback-label': 'Mover', onclick: () => move(sel.id, d.dir) }, d.arrow)),
           el('button', { type: 'button', class: 'ghost small danger', id: 'dormRemove', 'data-feedback-id': 'booking.espacios.dormitorio.quitar', 'data-feedback-label': 'Quitar', onclick: () => remove(sel.id) }, 'Quitar'))
           : el('p', { class: 'hint' }, 'Toca una cama para moverla, girarla, quitarla o cambiar sus plazas. En el ordenador: flechas, R para girar y Supr para quitar; también se arrastra.'),
-        sel && o.fromResources ? seatsEditor(sel) : null,
+        sel ? el('div', { class: 'bk-dorm-seats' }, o.fromResources ? seatsEditor(sel) : null, el('label', { class: 'field check', id: 'dormTeam', 'data-feedback-id': 'booking.espacios.dormitorio.equipo', 'data-feedback-label': 'Cama de equipo' },
+          el('input', { type: 'checkbox', checked: sel.team, ...fieldAttrs({ id: 'booking.espacios.dormitorio.equipo', entity: 'booking.beds', prop: 'team_bed', label: 'Cama de equipo', confirm: 'event' }),
+            onchange: (e: Event) => { sel.team = (e.target as HTMLInputElement).checked; say(`${sel.label}: ${sel.team ? 'cama de equipo' : 'para huéspedes'}. Se guarda al pulsar «Guardar».`); paint(sel.id); } }),
+          el('span', { title: 'Solo el organizador, el personal y dirección; los huéspedes no la ven' }, 'Equipo'))) : null,
         el('div', { class: 'btnrow' },
           el('button', { type: 'button', class: 'primary', id: 'dormSave', 'data-feedback-id': 'booking.espacios.dormitorio.guardar', 'data-feedback-label': 'Guardar la distribución', onclick: () => void save() }, 'Guardar'),
           el('button', { type: 'button', class: 'ghost', id: 'dormDiscard', 'data-feedback-id': 'booking.espacios.dormitorio.descartar', 'data-feedback-label': 'Descartar los cambios', onclick: () => { editing = false; reset(); say('Cambios descartados.'); paint(); } }, 'Descartar')))
@@ -355,7 +373,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       say(`${b.label}: ${label(b.kind)}, ${placesText(b)}. Se guarda al pulsar «Guardar».`);
       paint(b.id);
     }
-    return el('div', { class: 'bk-dorm-seats', id: 'dormSeatsEditor', 'data-feedback-id': 'booking.espacios.dormitorio.plazas', 'data-feedback-label': 'Tipo y plazas de la cama' },
+    return el('div', { class: 'bk-dorm-seats-fields', id: 'dormSeatsEditor', 'data-feedback-id': 'booking.espacios.dormitorio.plazas', 'data-feedback-label': 'Tipo y plazas de la cama' },
       el('label', { class: 'field' }, el('span', null, 'Tipo'), kind),
       el('label', { class: 'field' }, el('span', null, 'Fijas'), seats),
       el('label', { class: 'field' }, el('span', null, 'Supletorias'), extras));

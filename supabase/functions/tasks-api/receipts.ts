@@ -17,7 +17,7 @@
  *   que antes (`tasks-receipt:<id>`), así que repetir, o lo que ya apuntó el navegador, no suma dos veces. Sin artículo o
  *   sin cantidad no hay entrada. Devuelve `{recorded, movementId?}`.
  */
-import { fail, sha256Hex, stable, type AppRoute, type CommitResult, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { fail, sha256Hex, stable, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import { receiptEntryOperation, type ItemUnitRow, type PurchaseRequestRow } from '../_domain/tasks/mod.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,6 +66,40 @@ export async function recordReceipt(supabase: Supabase, ctx: RequestContext, req
     p_expected_cursor: null, p_operations: [op], p_confirmation: null, p_origin: 'server',
   });
   return { recorded: true, movementId: id };
+}
+
+/**
+ * «Confirmar consumo» (R6 PR 3), por el servidor como Food (Recursos 0820, FO4). El navegador solo manda qué material de una
+ * tarea y cuánto se gastó; el servidor lee el material, comprueba que quien llama ve su tarea y construye él la operación
+ * (`resources.consume`, `consumo_tarea`, `task_material:<id>`, `source_app: 'tasks'`, `once`). Nada de lo que mande el
+ * cliente llega tal cual a Recursos, así que no se puede descontar otro artículo ni en nombre de otro material.
+ */
+export async function consumeMaterials(supabase: Supabase, ctx: RequestContext, lines: unknown): Promise<Operation[]> {
+  if (!Array.isArray(lines) || lines.length === 0 || lines.length > 200) fail(422, 'INVALID_INPUT', 'Entre 1 y 200 materiales.');
+  const wanted = (lines as unknown[]).map((raw, index) => {
+    const l = (raw ?? {}) as Record<string, unknown>;
+    if (typeof l.materialId !== 'string' || !UUID.test(l.materialId)) fail(422, 'INVALID_INPUT', 'materialId debe ser un uuid.', { index });
+    if (typeof l.consumed !== 'number' || !Number.isFinite(l.consumed) || l.consumed <= 0 || l.consumed >= 1e9) fail(422, 'INVALID_QUANTITY', 'Lo gastado es un número mayor que 0.', { index });
+    return { id: (l.materialId as string).toLowerCase(), consumed: Math.round((l.consumed as number) * 1000) / 1000 };
+  });
+  const materials = await snapshotRows<{ id: string; task_id: string; item_id: string }>(supabase, 'tasks', ctx.membership.role, 'tasks.task_materials');
+  const ops: Operation[] = [];
+  for (const w of wanted) {
+    const m = materials.find((x) => x.id === w.id);
+    if (!m) fail(404, 'NOT_FOUND', 'Ese material no existe.', { materialId: w.id });
+    // Su tarea, si quien llama la ve (tasks.targets aplica su ámbito).
+    const task = await supabase.rpc<{ items: Array<{ id: string; visible?: boolean; deleted?: boolean }> }>('core_read', {
+      p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.targets', p_args: { kind: 'task', ids: [m!.task_id] } }).catch(() => null);
+    const t = task?.items?.[0];
+    if (!t || t.visible === false || t.deleted) fail(404, 'NOT_FOUND', 'Ese material no existe o no ves su tarea.', { materialId: w.id });
+    const item = (await supabase.rpc<{ item?: { default_space_id?: string | null } | null }>('core_read', {
+      p_app: 'tasks', p_actor: ctx.user.id, p_name: 'tasks.supply_item', p_args: { itemId: m!.item_id } }).catch(() => null))?.item ?? null;
+    ops.push({ op: 'call', procedure: 'resources.consume', args: {
+      item_id: m!.item_id, quantity: w.consumed, kind: 'consumo_tarea', source_app: 'tasks', source_ref: `task_material:${m!.id}`, once: true,
+      ...(item?.default_space_id ? { default_space_id: item.default_space_id } : {}),
+    } } as unknown as Operation);
+  }
+  return ops;
 }
 
 interface EntriesRead { source_app: string; entries: unknown[]; refs: string[]; skipped?: unknown[]; costs?: Array<{ movement_id: string; unit_cost: number; source_ref: string }> }
@@ -167,6 +201,18 @@ export function receiptRoutes(supabase: Supabase): AppRoute[] {
       const body = (await json().catch(() => ({}))) as Record<string, unknown>;
       if (typeof body.spaceId !== 'string' || !UUID.test(body.spaceId)) fail(422, 'SPACE_REQUIRED', 'Elige dónde se guarda lo recibido.', { field: 'spaceId' });
       return recordReceipt(supabase, ctx, id.toLowerCase(), (body.spaceId as string).toLowerCase());
+    },
+  }, {
+    method: 'POST', pattern: 'stock/consume', handler: async ({ ctx, json }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Confirmar el consumo necesita permiso de edición en Tasks.');
+      const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      const operations = await consumeMaterials(supabase, ctx, body.lines);
+      const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : `tasks-consume-${crypto.randomUUID()}`;
+      const out = await supabase.rpc<CommitResult>('core_commit', {
+        p_app: 'resources', p_actor: ctx.user.id, p_request_id: requestId, p_digest: await sha256Hex(stable(operations)),
+        p_expected_cursor: null, p_operations: operations, p_confirmation: null, p_origin: 'server',
+      });
+      return { results: out.results ?? [] };
     },
   }];
 }

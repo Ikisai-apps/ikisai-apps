@@ -266,7 +266,7 @@ export const mountPeople: ViewMount = (ctx) => {
     let sheet: Sheet | null = null;
     const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.personas.nivel.error', 'data-feedback-label': 'Error del nivel de casa' });
     const rows = alive.map((p) => {
-      const select = el('select', { id: `lv-${p.id}`, 'aria-label': `Nivel de casa de ${p.display_name}`, 'data-person': p.id },
+      const select = el('select', { id: `lv-${p.id}`, 'data-field-id': 'central.persona.list_level', 'data-field-entity': 'central.people', 'data-field-prop': 'house_level', 'aria-label': `Nivel de casa de ${p.display_name}`, 'data-person': p.id },
         ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, proposeHouseLevel(p), 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
       return { p, select, node: el('div', { class: 'approw', 'data-feedback-id': 'central.personas.nivel.fila', 'data-feedback-label': 'Nivel de una persona' },
         el('span', { class: 'appname' }, el('strong', { 'data-feedback-ignore': '' }, p.display_name),
@@ -682,7 +682,7 @@ export function mountPerson(personId: string): ViewMount {
       const fromPath = min && min.level > c.level ? tradeTree(data.trades, true).find((x) => x.trade.id === min.from)?.path ?? null : null;
       let star: HTMLElement;
       if (reserved && !person.deleted_at) {
-        const control = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: shown, name: `Nivel en ${path}`,
+        const control = createLevelStar({ field: { id: 'central.persona.trade_level_row', entity: 'central.person_trades', prop: 'level' }, levels: 3, labels: [...TRADE_LEVEL_LABELS], value: shown, name: `Nivel en ${path}`,
           onChange: (picked) => {
             const level = min && picked < min.level ? min.level : picked;
             if (level !== picked) control.set(level);
@@ -711,7 +711,7 @@ export function mountPerson(personId: string): ViewMount {
       const minOf = () => inheritedLevel(data.trades, data.capabilities, person.id, c?.trade_id ?? tradeSelect.value);
       let level = Math.max(c?.level ?? 1, minOf()?.level ?? 0);
       const minHint = el('p', { class: 'muted small', id: 'pt-min', 'aria-live': 'polite', 'data-feedback-id': 'central.persona.oficios.editor.minimo', 'data-feedback-label': 'Mínimo heredado del padre' });
-      const star = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: level, name: 'Nivel', showLabel: true, onChange: (v) => {
+      const star = createLevelStar({ field: { id: 'central.persona.trade_level', entity: 'central.person_trades', prop: 'level' }, levels: 3, labels: [...TRADE_LEVEL_LABELS], value: level, name: 'Nivel', showLabel: true, onChange: (v) => {
         const min = minOf();
         level = min && v < min.level ? min.level : v;
         if (level !== v) star.set(level);
@@ -800,7 +800,7 @@ export function mountPerson(personId: string): ViewMount {
       const email = el('input', { id: 'co-email', 'data-field-id': 'central.persona.co_email', 'data-field-entity': 'central.person_private', 'data-field-prop': 'email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
       const selects = new Map<string, HTMLSelectElement>();
       const rows = catalog.filter((app) => app.id !== 'guests' && app.id !== 'tasks').map((app) => {
-        const s = el('select', { id: `co-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
+        const s = el('select', { id: `co-${app.id}`, 'data-field-id': 'central.persona.convert_role', 'data-field-entity': 'core.memberships', 'data-field-prop': 'role', 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
           ...(['reader', 'editor', 'owner'] as Role[]).map((r) => el('option', { value: r }, ROLE_LABELS[r]))) as HTMLSelectElement;
         selects.set(app.id, s);
         fbMark(s, 'central.persona.outsider.otro_acceso', 'Otro acceso').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
@@ -973,7 +973,7 @@ export function mountPerson(personId: string): ViewMount {
       const before = m.scopes;
       const current = new Set(flowProjectsOf(m.scopes) ?? []);
       const list = sortFlowProjects(flowProjects ?? [], todayInMadrid());
-      const boxes = list.map((pr) => el('input', { type: 'checkbox', value: pr.id, checked: current.has(pr.id), 'data-feedback-id': 'central.persona.proyectos_flow.editar.proyecto', 'data-feedback-label': 'Proyecto de Flow' }) as HTMLInputElement);
+      const boxes = list.map((pr) => el('input', { type: 'checkbox', value: pr.id, checked: current.has(pr.id), 'data-field-id': 'central.persona.flow_project', 'data-field-entity': 'core.memberships', 'data-field-prop': 'scopes', 'data-feedback-id': 'central.persona.proyectos_flow.editar.proyecto', 'data-feedback-label': 'Proyecto de Flow' }) as HTMLInputElement);
       const when = (pr: FlowProject) => [pr.starts_on ? day(pr.starts_on) : null, pr.status === 'closed' ? 'cerrado' : null, pr.test_mode ? 'en pruebas' : null].filter(Boolean).join(' · ');
       const save = el('button', { class: 'primary', type: 'button', id: 'saveFlowProjects', 'data-feedback-id': 'central.persona.proyectos_flow.editar.guardar', 'data-feedback-label': 'Guardar proyectos', onclick: async () => {
         const ids = boxes.filter((b) => b.checked).map((b) => b.value);
@@ -1045,7 +1045,7 @@ export function mountPerson(personId: string): ViewMount {
     function openTeamsEditor(person: Person): void {
       let sheet: Sheet | null = null;
       const current = new Map(data.personTeams.filter((x) => x.person_id === person.id && !x.deleted_at).map((x) => [x.team_id, x]));
-      const boxes = data.teams.map((t) => el('input', { type: 'checkbox', value: t.id, 'data-feedback-id': 'central.persona.equipos.editar.equipo', 'data-feedback-label': 'Equipo', checked: current.has(t.id) }) as HTMLInputElement);
+      const boxes = data.teams.map((t) => el('input', { type: 'checkbox', value: t.id, 'data-field-id': 'central.persona.team', 'data-field-entity': 'central.person_teams', 'data-field-prop': 'team_id', 'data-feedback-id': 'central.persona.equipos.editar.equipo', 'data-feedback-label': 'Equipo', checked: current.has(t.id) }) as HTMLInputElement);
       const save = el('button', { class: 'primary', type: 'button', id: 'saveTeams', 'data-feedback-id': 'central.persona.equipos.editar.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
         const wanted = new Set(boxes.filter((b) => b.checked).map((b) => b.value));
         const operations: RowOperation[] = [
@@ -1263,10 +1263,10 @@ export function mountPerson(personId: string): ViewMount {
       try { catalog = await admin.catalog(); } catch (e) { toast(describeError(e)); return; }
       let sheet: Sheet | null = null;
       const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.cuenta.dar.error', 'data-feedback-label': 'Error del formulario' });
-      const email = el('input', { id: 'ga-email', 'data-field-id': 'central.persona.ga_email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
+      const email = el('input', { id: 'ga-email', 'data-field-id': 'central.persona.ga_email', 'data-field-entity': 'auth.users', 'data-field-prop': 'email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
       const selects = new Map<string, HTMLSelectElement>();
       const rows = catalog.map((app) => {
-        const s = el('select', { id: `ga-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
+        const s = el('select', { id: `ga-${app.id}`, 'data-field-id': 'central.persona.give_role', 'data-field-entity': 'core.memberships', 'data-field-prop': 'role', 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
           ...(['reader', 'editor', 'owner'] as Role[]).map((r) => el('option', { value: r }, ROLE_LABELS[r]))) as HTMLSelectElement;
         selects.set(app.id, s);
         fbMark(s, 'central.persona.cuenta.dar.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);

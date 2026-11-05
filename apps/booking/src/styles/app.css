@@ -327,7 +327,15 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .bk-space-open { padding: 0; min-height: var(--tap-sm); text-align: left; }
 .bk-dorm { --bk-dorm-cell: 44px; display: grid; gap: 10px; }
 .bk-dorm-summary { margin: 0; font-weight: 600; }
-.bk-dorm-board { display: grid; gap: 3px; padding: 6px; border-radius: var(--radius-sm); background: var(--paper-2); border: 1px solid var(--line); max-width: 100%; overflow: hidden; }
+.bk-dorm-board { display: grid; gap: 3px; padding: 6px; border-radius: var(--radius-sm); background: var(--paper-2); border: 1px solid var(--line); width: max-content; max-width: 100%; overflow: hidden; justify-self: start; }
+/* Tipo, fijas, supletorias y cama de equipo de la cama elegida: en una fila y pequeños (VG, 28-10) */
+.bk-dorm-seats, .bk-dorm-seats-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 10px; }
+.bk-dorm-seats .field { margin: 0; gap: 2px; font-size: var(--text-xs); }
+.bk-dorm-seats select { width: auto; min-width: 7.5em; padding-block: 4px; }
+.bk-dorm-seats input[type=number] { width: 3.6em; padding-block: 4px; }
+#dormTeam { margin: 0; font-size: var(--text-xs); align-self: center; }
+/* Litera doble (VG, 28-10): la cama de arriba, desplazada para que se vean las dos */
+.bk-dorm-bed.stacked { z-index: 2; transform: translate(6px, 6px); box-shadow: 0 1px 4px rgba(0,0,0,.25); }
 .bk-dorm-cell { border: 1px dashed var(--line); border-radius: 6px; min-width: 0; }
 .bk-dorm-board.editing .bk-dorm-cell { border-style: solid; }
 .bk-dorm-bed { z-index: 1; min-width: 0; min-height: var(--bk-dorm-cell); display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 6px; border-radius: 8px; border: 2px solid var(--bed-free-line); background: var(--bed-free); color: var(--ink); font: inherit; font-size: var(--text-xs); text-align: left; overflow: hidden; cursor: default; }
@@ -369,3 +377,23 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
   body.bk-print-one .bk-print-target .btnrow { display: none; }
 }
 
+
+/* Portada de la ficha: tocarla abre «Editar reserva»; el lápiz, en el ordenador o al pasar por encima (VG, 28-10) */
+.bk-cover-edit { position: relative; cursor: pointer; }
+.bk-cover-pencil { position: absolute; top: 8px; right: 8px; display: none; padding: 4px; border-radius: 999px; background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+@media (hover: hover) { .bk-cover-edit:hover .bk-cover-pencil, .bk-cover-edit:focus-visible .bk-cover-pencil { display: inline-flex; } }
+@media (min-width: 1024px) { .bk-cover-pencil { display: inline-flex; } }
+
+/* Recepción: la ficha no se corta; nombre, noches y cuándo llegó el pedido en líneas propias (VG, 28-10) */
+.reception-list .row { grid-template-columns: 1fr; }
+.reception-list .row-title .name { white-space: normal; overflow: visible; text-overflow: clip; }
+.reception-list .reception-indicators { display: flex; flex-wrap: wrap; gap: 4px 6px; white-space: normal; }
+.reception-list .reception-when { white-space: normal; }
+
+/* Portada de Reservas: se toca para abrir (VG, 28-10) */
+.bk-cover-tap { cursor: pointer; }
+/* Recepción «Lado a lado» en el ordenador: carriles más anchos (el kit los deja en 240 px; VG, 28-10) */
+@media (min-width: 1024px) { [data-feedback-id="booking.recepcion"] .lanes-lane:not(.lanes-mini) { flex: 1 0 clamp(260px, 22vw, 420px); } }
+
+/* Inicio: la tarjeta de «Lo primero» se toca para abrir la reserva (VG, 28-10) */
+.bk-lead-tap .lead-card, .bk-lead-tap .lead-line { cursor: pointer; }

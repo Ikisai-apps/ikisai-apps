@@ -46,7 +46,7 @@ test('Inicio, Reservas y la ficha por pestañas; vaciar la papelera sin red, des
     await expect(page.locator('#nextCover')).toHaveCount(0); // con búsqueda, sin portada
     await page.getByLabel('Buscar reservas').fill('');
     await page.locator('.filters [data-filter="proximas"]').click();
-    await page.locator('#nextCoverOpen').click();
+    await page.locator('#nextCover').getByText('La próxima').click(); // tocar la portada la abre (VG, 28-10)
     await expect(page.getByRole('heading', { name: 'Retiro Pestañas', level: 2 })).toBeVisible();
   });
 
@@ -91,7 +91,7 @@ test('Inicio, Reservas y la ficha por pestañas; vaciar la papelera sin red, des
     await nav('Reservas');
     await page.locator('#reservationList .row', { hasText: 'Retiro Pestañas' }).click();
     await page.locator('#reservationTabs [data-tab="todo"]').click();
-    await page.locator('#moreActions summary').click();
+    await page.locator('#reservationCover').click();
     await page.locator('#trashReservation').click();
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.locator('#trash')).toBeVisible();

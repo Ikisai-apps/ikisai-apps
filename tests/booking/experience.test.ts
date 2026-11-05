@@ -92,3 +92,12 @@ test('experiencia · jornadas abiertas y familiar: sin propuesta ni señal; «Co
   const retiro = experienceOf({ reservation: base({ status: 'pre_reservada', event_type: 'retiro' }), proposals: [], finance: { deposit_required: 600, deposit_paid: 0 } }, TODAY);
   assert.ok(retiro.steps.some((s) => s.key === 'propuesta'), 'el retiro sigue igual');
 });
+
+// Jornadas abiertas (VG, 28-10): la gente llega sin lista; ni número final que pedir ni huéspedes que completar.
+test('experiencia · jornadas abiertas: sin «Pedir el número final» ni «Completar huéspedes»', () => {
+  const input = (type: string): ExperienceInput => ({ reservation: base({ event_type: type }), event: { id: 'e1', final_guests: null, closed_at: null }, guests: [], proposals: [] });
+  const open = experienceOf(input('jornadas_abiertas'), TODAY);
+  assert.ok(!open.steps.some((s) => s.key === 'finales' || s.key === 'huespedes'), JSON.stringify(open.steps));
+  assert.ok(!open.areas.some((a) => a.key === 'huespedes'));
+  assert.ok(experienceOf(input('retiro'), TODAY).steps.some((s) => s.key === 'finales'), 'el retiro sigue pidiéndolo');
+});

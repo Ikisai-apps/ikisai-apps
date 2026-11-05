@@ -742,7 +742,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     const pendingShapes = drawn.filter((x) => !holderOf(plan, x));
     const shapeRow = (shape: SvgShape, index: number) => {
       const holder = holderOf(plan, shape);
-      const select = el('select', { 'aria-label': `Qué estancia es la forma ${index + 1} («${shape.name}»)`, 'data-svg-shape': shape.name },
+      const select = el('select', { 'data-field-id': 'central.planos.shape_space', 'data-field-entity': 'resources.spaces', 'data-field-prop': 'plan_shape', 'aria-label': `Qué estancia es la forma ${index + 1} («${shape.name}»)`, 'data-svg-shape': shape.name },
         el('option', { value: '' }, 'Elige qué estancia es'),
         ...candidates.map((c) => el('option', { value: c.id, selected: holder?.id === c.id }, c.name)),
         el('option', { value: NEW_SPACE }, 'Otra: escribir el nombre…')) as HTMLSelectElement;
@@ -913,7 +913,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
       })) : el('p', { class: 'hint' }, 'Aún no hay iconos. Sube uno (SVG, PNG o GIF, visto desde arriba).'),
       isEstate(plan) ? el('h4', { class: 'sectionlabel' }, 'Cota de cada altura') : null,
       isEstate(plan) ? el('ul', { class: 'list', id: 'decorElevations' }, ...alturas.map((a, n) => {
-        const input = el('input', { type: 'number', step: 'any', min: '-500', max: '9000', id: `elev-${n}`, value: elevationOf(a) ?? '', 'aria-label': `Cota de ${a.name} en metros sobre el mar` }) as HTMLInputElement;
+        const input = el('input', { type: 'number', step: 'any', min: '-500', max: '9000', id: `elev-${n}`, 'data-field-id': 'central.planos.elevation', 'data-field-entity': 'resources.spaces', 'data-field-prop': 'attributes',  value: elevationOf(a) ?? '', 'aria-label': `Cota de ${a.name} en metros sobre el mar` }) as HTMLInputElement;
         input.addEventListener('change', () => void saveElevation(a, input.value));
         return el('li', { class: 'agentrow', dataset: { space: a.id } }, el('label', { class: 'field' }, el('span', null, a.name), input),
           el('span', { class: 'muted small' }, lines[n]?.toNext !== null && lines[n]?.toNext !== undefined ? `+${lines[n]!.toNext} m hasta la siguiente` : ''));

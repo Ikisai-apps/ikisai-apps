@@ -90,3 +90,17 @@ test('pagado en línea (1413): sale «Pagado en línea» y no caduca aunque haya
   assert.deepEqual([card!.cobro.tone, card!.cobro.text, card!.plaza.tone, card!.why], ['ok', 'Pagado en línea 50,00 €', 'warn', []]);
 });
 
+
+test('jornadas futuras (VG, 28-10): sus pedidos salen ya en Recepción, con noches; las pasadas no', () => {
+  const i = base();
+  i.reservations.push({ id: 'rf', event_type: 'jornadas_abiertas', status: 'confirmada', start_date: '2032-06-20', end_date: '2032-06-22' },
+    { id: 'rp', event_type: 'jornadas_abiertas', status: 'confirmada', start_date: '2032-05-20', end_date: '2032-05-22' });
+  i.events.push({ id: 'ef', reservation_id: 'rf' }, { id: 'ep', reservation_id: 'rp' });
+  i.requests = [
+    { id: 'qf', kind: 'stay', status: 'pendiente', event_id: 'ef', number: 1, name: 'Futura', persons: 1, total_cents: 1800, pay_mode: 'hold', hold_until: '2032-06-06T12:00:00Z', from_date: '2032-06-20', to_date: '2032-06-22', created_at: '2032-06-05T10:00:00Z' },
+    { id: 'qp', kind: 'stay', status: 'pendiente', event_id: 'ep', number: 2, name: 'Pasada', persons: 1, total_cents: 1800, pay_mode: 'hold', hold_until: '2032-06-06T12:00:00Z' },
+  ];
+  const all = cards(i);
+  assert.deepEqual(laneCards(all, 'confirmar').map((c) => c.number), [1]);
+  assert.deepEqual([all[0]!.nights, all[0]!.when], ['2032-06-20 → 2032-06-22', '2032-06-05T10:00:00Z']);
+});

@@ -17,6 +17,13 @@ export interface FlowTestServer {
 export async function startFlowServer(): Promise<FlowTestServer> {
   const origin = FLOW_ORIGINS[0]!;
   const app = await createTestApp({ app: 'flow', slug: 'flow-api', origin, createHandler: (config) => createFlowApp({ ...config, origins: [origin] }) });
+  // La semilla fecha la barra del 30-10 al 01-11 de 2026: pasada esa fecha cae en «Pasados y cerrados» (plegado) y las pruebas
+  // no la encuentran. Se desplazan las fechas de los flujos sembrados para que el 31-10 de la semilla sea hoy.
+  await app.t.db.query(`set session_replication_role = replica`);
+  try {
+    await app.t.db.query(`update flow.projects set starts_on = starts_on + (current_date - date '2026-10-31'), ends_on = ends_on + (current_date - date '2026-10-31')
+      where starts_on is not null and current_date > date '2026-10-31'`);
+  } finally { await app.t.db.query(`set session_replication_role = origin`); }
   for (const token of Object.values(app.tokens)) {
     const res = await app.call('/api/v1/usage/consent', { token, body: {} });
     if (res.status !== 200) throw new Error(`usage/consent ${res.status}: ${JSON.stringify(res.data)}`);

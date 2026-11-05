@@ -5,7 +5,7 @@
  * salen de Recursos para que la miga tenga dónde subir. Lo usan «Espacios y camas» y la hoja «Asignar alojamiento».
  */
 import { createSyncClient, type SyncClient, type SyncedRow } from '@ikisai/sync-client';
-import { createSpaceMap, createSyncSpaceSource, type FloorPlan, type SpaceMap, type SpaceMapLayer, type SpaceRow, type SpaceSource } from '@ikisai/ui-kit';
+import { bedShape, createSpaceMap, createSyncSpaceSource, type FloorPlan, type SpaceMap, type SpaceMapLayer, type SpaceRow, type SpaceSource } from '@ikisai/ui-kit';
 
 type Row = SyncedRow & Record<string, any>;
 
@@ -42,11 +42,34 @@ export function bookingMapRows(resourceRows: readonly SpaceRow[], spaces: readon
       id: s.id, parentId: up(s.resource_id), kind: MAP_KIND[s.kind] ?? 'otro', name: String(s.name), publicName: s.public_name ?? null, code: s.code ?? null,
       position: Number(s.position) || 0, active: s.active !== false, notes: null, attributes: {}, planId: shape(s.resource_id)?.planId ?? null, planShape: shape(s.resource_id)?.planShape ?? null,
     })),
-    ...beds.map((b): SpaceRow => ({
-      id: b.id, parentId: b.space_id, kind: 'cama', name: String(b.label), publicName: null, code: null,
-      position: Number(b.position) || 0, active: b.active !== false, notes: null, attributes: {}, planId: shape(b.resource_id)?.planId ?? null, planShape: shape(b.resource_id)?.planShape ?? null,
-    })),
+    // la cama se dibuja dentro de su habitación con su sitio de «Monta el dormitorio» (un solo modelo, kit `bedShape`): así,
+    // al tocar la habitación se amplía y se puede tocar la cama (VG, 28-10)
+    ...beds.map((b): SpaceRow => {
+      const room = spaces.find((s) => s.id === b.space_id);
+      const roomShape = room ? shape(room.resource_id) : undefined;
+      const layout = room?.layout as { cols?: number; rows?: number } | null | undefined;
+      const cell = b.cell as { x?: number; y?: number; rot?: number } | null | undefined;
+      const derived = roomShape?.planShape && layout?.cols && layout?.rows && cell && Number.isInteger(cell.x) && Number.isInteger(cell.y)
+        ? bedShape(roomShape.planShape, { cols: layout.cols, rows: layout.rows }, { x: cell.x!, y: cell.y!, rot: cell.rot === 90 ? 90 : 0 }) : null;
+      return {
+        id: b.id, parentId: b.space_id, kind: 'cama', name: String(b.label), publicName: null, code: null,
+        position: Number(b.position) || 0, active: b.active !== false, notes: null, attributes: {},
+        planId: derived ? roomShape!.planId ?? null : shape(b.resource_id)?.planId ?? null, planShape: derived ?? shape(b.resource_id)?.planShape ?? null,
+        ...(derived ? { shapeLocked: true } : {}),
+      };
+    }),
   ];
+}
+
+/**
+ * Los dibujos de Recursos cuelgan de su edificio de Recursos; en el plano de Booking el edificio enlazado es su fila de
+ * Booking (`resource_id`), así que el dibujo se cuelga de esa fila. Sin esto, al tocar el Albergue no se bajaba a sus
+ * habitaciones (VG, 28-10).
+ */
+export function bookingPlans(plans: readonly FloorPlan[], spaces: readonly Row[]): FloorPlan[] {
+  const linked = new Map<string, string>();
+  for (const s of spaces) if (typeof s.resource_id === 'string') linked.set(s.resource_id, s.id);
+  return plans.map((p) => ({ ...p, buildingId: linked.get(p.buildingId) ?? p.buildingId }));
 }
 
 /** El dibujo de la finca (`kind = 'estate'`), por donde se empieza a bajar. */
@@ -70,6 +93,8 @@ export interface BedPlanOptions {
   beds: Row[];
   /** Estado de cada cama (libre, ocupada…); lo demás sin capa. */
   layer?: (space: SpaceRow) => SpaceMapLayer | null | undefined;
+  /** Camas que no se pintan (p. ej. supletorias no disponibles). */
+  hideBed?: (bed: Row) => boolean;
   /** Se ha tocado una cama de Booking. */
   onPickBed: (bed: Row) => void;
   label: string;
@@ -90,8 +115,8 @@ export function createBedPlan(o: BedPlanOptions): { element: HTMLElement; destro
     let plans: FloorPlan[] = [];
     let estate: string | null = null;
     try {
-      rows = bookingMapRows(await rs.list(), o.spaces, o.beds);
-      plans = await rs.plans.list();
+      rows = bookingMapRows(await rs.list(), o.spaces, o.hideBed ? o.beds.filter((b) => !o.hideBed!(b)) : o.beds);
+      plans = bookingPlans(await rs.plans.list(), o.spaces);
       estate = estatePlanId(await resources.list(FLOOR_PLANS));
     } catch { rows = bookingMapRows([], o.spaces, o.beds); }
     if (destroyed) return;
@@ -99,8 +124,15 @@ export function createBedPlan(o: BedPlanOptions): { element: HTMLElement; destro
     if (!map) {
       map = createSpaceMap({
         source: staticSource(() => rows, listeners), plans, mode: 'plan', drill: true, showDecor: false, ...(estate ? { plan: estate } : {}),
-        label: o.label, feedbackId: o.feedbackId, planUrl: (fileId) => `/api/v1/resources/files/${fileId}`,
-        ...(o.layer ? { layer: o.layer } : {}),
+        label: o.label, feedbackId: o.feedbackId, planUrl: (fileId) => resources.fileUrl(fileId),
+        ...(o.layer ? { layer: (sp: SpaceRow) => {
+          if (sp.kind === 'cama') return o.layer!(sp);
+          const inside = rows.filter((r) => r.kind === 'cama' && r.parentId === sp.id);
+          if (!inside.length) return null;
+          const free = inside.filter((r) => { const st = o.layer!(r)?.state; return st === 'free' || st === 'picked'; }).length;
+          // solo el número, con la letra pequeña del estado (`short` lo pinta enorme)
+          return { label: String(free) };
+        } } : {}),
         onPick: (s) => { const bed = s.kind === 'cama' ? o.beds.find((b) => b.id === s.id) : null; if (bed) o.onPickBed(bed); },
       });
       host.replaceChildren(map.element);

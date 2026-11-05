@@ -28,6 +28,8 @@ const SES_FIELD: Record<string, string> = {
   contact: 'teléfono o correo', kinship: 'parentesco del menor', document_type: 'tipo de documento', document_number: 'número de documento',
   document_support_number: 'número de soporte del documento',
 };
+const whenText = (iso: string) => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)).replace(',', ' a las');
+const shortDays = (span: string) => span.replace(/\d{4}-(\d{2})-(\d{2})/g, '$2/$1');
 const madridToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 const chip = (label: string, i: Indicator) => el('span', { class: `chip${i.tone ? ` ${i.tone}` : ''}`, title: label }, `${label}: ${i.text}`);
 
@@ -86,6 +88,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'file', 'data-feedback-id': 'booking.recepcion.ficha', 'data-feedback-label': 'Ficha', onclick: () => navigate(c.guestId ? `#/huespedes/${c.eventId}/${c.guestId}` : `#/huespedes/${c.eventId}`) }, 'Ficha'));
     return el('li', { class: 'row', dataset: { card: c.key, ...(c.number ? { number: String(c.number) } : {}) }, 'data-feedback-ignore': '' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, c.title)),
+      c.when || c.nights ? el('div', { class: 'row-meta reception-when' }, [c.nights ? `Noches ${shortDays(c.nights)}` : null, c.when ? `pedido ${whenText(c.when)}` : null].filter(Boolean).join(' · ')) : null,
       el('div', { class: 'row-meta reception-indicators' }, chip('Plaza', c.plaza), ' ', chip('Cobro', c.cobro), ' ', chip('Datos', c.docs), ' ', chip('Presencia', c.presencia)),
       c.why.length ? el('div', { class: 'row-meta' }, el('span', { class: 'chip alert' }, c.why.join(' · '))) : null,
       actions);
