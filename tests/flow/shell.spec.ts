@@ -70,6 +70,9 @@ test('flow · login → flujos → Inicio de la barra con las guías y sus cinco
   await expect(drawer).toBeVisible();
   await expect(drawer).toContainText('Owner');
   await expect(drawer).toContainText('Propietario');
+  // Desde cualquier flujo, el menú lleva a la entrada con todos los flujos (FB_2026_077).
+  await drawer.getByRole('button', { name: 'Todos los flujos' }).click();
+  await expect(drawer.getByText('Ir a la entrada con todos los flujos')).toBeVisible();
   // En el móvil, «Cerrar sesión» va dentro del menú (kit, MUELA-013).
   await drawer.getByRole('button', { name: 'Cerrar sesión' }).click();
   // Salir rehace los datos del dispositivo (clearOnLogout): se avisa antes.
