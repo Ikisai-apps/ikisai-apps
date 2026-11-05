@@ -71,6 +71,8 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
   let items: ItemRow[] = [];
   let sheet: Sheet | null = null;
   let busy = false;
+  // «Todo · Por comprar · En el carro» (FB_2026_087): qué líneas se ven; de la sesión.
+  let show: 'todo' | 'pendiente' | 'carro' = 'todo';
   // Recursos (envases, artículos y costes) y las compras de Invoices, para el envase y el dinero.
   const r = resourcesClient(client);
   let articles: Article[] = [];
@@ -466,8 +468,12 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
     const diff = sourceChanges(list.source_revisions, current);
     const stale = data.pending || isStale(list.source_revisions, current);
     const names = new Map(data.ingredients.map((i) => [i.id, i.name]));
-    const byName = (a: LineView, b: LineView) => a.name.localeCompare(b.name, 'es');
-    const views = items.map((i) => viewOf(i, names));
+    // Por el tipo del artículo de Recursos y después por nombre (FB_2026_084, decisión de VG del 05-11).
+    const KIND_ORDER = ['ingrediente', 'bebida', 'consumible'];
+    const kindRank = (v: LineView) => { const k = v.article?.kind ?? ''; const i = KIND_ORDER.indexOf(k); return i >= 0 ? i : k ? KIND_ORDER.length : KIND_ORDER.length + 1; };
+    const byName = (a: LineView, b: LineView) => kindRank(a) - kindRank(b) || a.name.localeCompare(b.name, 'es');
+    const allViews = items.map((i) => viewOf(i, names));
+    const views = allViews.filter((v) => show === 'todo' || (show === 'carro' ? v.bought : !v.bought));
     // «Ya hay en casa»: lo pendiente que no hace falta comprar (plegado, con su «⋯»). «Reponer» (R5b), aparte.
     const atHome = (v: LineView) => !v.bought && !v.item.manual && Number(v.item.purchase_quantity) === 0 && v.plan.need === 0;
     const toBuy = views.filter((v) => !v.item.restock && !atHome(v)).sort((a, b) => Number(a.item.manual) - Number(b.item.manual) || byName(a, b));
@@ -493,9 +499,16 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
     const shelfRows = (vs: Map<string, LineView[]>, keys: string[]): Array<ShelfRow<LineView>> => keys.map((shop) => ({
       key: shop, label: shop, sub: shopSub(vs.get(shop)!), medal: { name: shop, color: shop === NO_SHOP ? null : shopColor(shop) }, items: vs.get(shop)!,
     }));
-    const shelves = (rows: Array<ShelfRow<LineView>>, label: string, feedbackId: string) => createShelves<LineView>({
-      rows, key: (v) => v.item.id, name: (v) => v.name, tile: (v) => tile(v, closed), label, noun: 'tienda', feedbackId,
-    });
+    const shelves = (rows: Array<ShelfRow<LineView>>, label: string, feedbackId: string) => {
+      const s = createShelves<LineView>({ rows, key: (v) => v.item.id, name: (v) => v.name, tile: (v) => tile(v, closed), label, noun: 'tienda', feedbackId });
+      // En lista, no en baldosas (FB_2026_085, VG 05-11): misma baldosa, otra disposición (`.fd-buylist` en app.css).
+      s.element.classList.add('fd-buylist');
+      return s;
+    };
+    const filter = el('div', { 'data-feedback-id': 'food.menu.compra.filtro', 'data-feedback-label': 'Qué líneas ver', class: 'segmented', role: 'group', 'aria-label': 'Qué líneas ver', id: 'shoppingFilter' },
+      el('button', { 'data-feedback-id': 'food.menu.compra.filtro.todo', 'data-feedback-label': 'Todo', type: 'button', 'aria-pressed': String(show === 'todo'), onclick: () => { show = 'todo'; paintList(); } }, 'Todo'),
+      el('button', { 'data-feedback-id': 'food.menu.compra.filtro.pendiente', 'data-feedback-label': 'Por comprar', type: 'button', 'aria-pressed': String(show === 'pendiente'), onclick: () => { show = 'pendiente'; paintList(); } }, 'Por comprar'),
+      el('button', { 'data-feedback-id': 'food.menu.compra.filtro.carro', 'data-feedback-label': 'En el carro', type: 'button', 'aria-pressed': String(show === 'carro'), onclick: () => { show = 'carro'; paintList(); } }, 'En el carro'));
     const main = shelves(shelfRows(new Map(shopNames.map((s) => [s, shops.get(s)!.filter((v) => !v.item.restock)])), shopNames.filter((s) => shops.get(s)!.some((v) => !v.item.restock))), 'Estanterías por tienda', 'food.menu.compra.tiendas');
     // Al pie de cada estantería, el lote: «Comprado lo de Mercadona · 18 · 153,35 €».
     for (const section of main.element.querySelectorAll<HTMLElement>('.shelf-row')) {
@@ -535,6 +548,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
         el('p', { class: 'muted' }, `Generada el ${formatDate(list.generated_at)}.`),
         provisional),
       pills,
+      allViews.some((v) => v.bought) ? filter : null,
       writable ? el('div', { 'data-feedback-id': 'food.menu.compra.acciones', 'data-feedback-label': 'Acciones de la lista', class: 'btnrow menuactions' },
         list.status === 'borrador' ? button('listReviewed', 'Marcar como revisada', () => void setStatus('revisada'), { feedbackId: 'food.menu.compra.marcar_revisada', feedbackLabel: 'Marcar como revisada' }) : null,
         list.status === 'revisada' ? button('listDraft', 'Volver a borrador', () => void setStatus('borrador'), { feedbackId: 'food.menu.compra.volver_borrador', feedbackLabel: 'Volver a borrador' }) : null,
