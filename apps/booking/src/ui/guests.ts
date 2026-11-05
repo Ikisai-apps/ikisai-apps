@@ -346,8 +346,10 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
       if (!navigator.onLine) return void toast('La vista previa necesita conexión.');
       button.disabled = true;
       try {
-        // el huésped de muestra lo crea Booking (1429), sin el ámbito del organizador
-        const sample = await client.api<{ guest_id: string }>('/invoke/booking.preview_guest', { method: 'POST', json: { reservation_id: reservationId } });
+        // el huésped de muestra lo crea Booking (1429), sin el ámbito del organizador; con red, directo para tener su id
+        const done = await client.api<{ results: Array<{ result?: unknown }> }>('/commands', { method: 'POST', json: { requestId: crypto.randomUUID(),
+          operations: [{ op: 'call', procedure: 'booking.preview_guest', args: { reservation_id: reservationId } }] } });
+        const sample = done.results[0]?.result as { guest_id: string };
         const link = await client.api<{ url: string }>('/portal-links', { method: 'POST', json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: sample.guest_id },
           person: { name: 'Huésped de muestra' }, label: 'Vista previa', preview: true, replace: true } });
         const field = el('textarea', { id: 'previewUrl', rows: 3, readonly: true, 'aria-label': 'Enlace de la vista previa', 'data-field-none': '' }, link.url) as HTMLTextAreaElement;

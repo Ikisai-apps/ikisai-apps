@@ -14,7 +14,10 @@ test.before(async () => {
 test.after(async () => { await app.close(); });
 const commit = (operations: unknown[]) => app.call('/api/v1/commands', { body: { requestId: `pv-${++seq}-${uuid()}`, operations } });
 async function ok(operations: unknown[]) { const res = await commit(operations); assert.equal(res.status, 200, JSON.stringify(res.data)); return res; }
-const preview = (reservation_id: string) => app.call('/api/v1/invoke/booking.preview_guest', { body: { reservation_id } });
+async function preview(reservation_id: string) {
+  const res = await commit([{ op: 'call', procedure: 'booking.preview_guest', args: { reservation_id } }]);
+  return { status: res.status, data: res.data?.results?.[0]?.result ?? res.data };
+}
 
 test('vista previa: crea una vez el huésped de muestra del evento, fuera de las listas; sin evento, 422', async () => {
   const res = uuid(); const event = uuid(); const draft = uuid();
