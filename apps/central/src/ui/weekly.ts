@@ -9,7 +9,7 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { confirmDialog, el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  DECISION_STATUS_LABELS, canPrepareReview, formatKpi, formatPeriod, formatWeek, isoWeek, madridToday, previousNote, validateOperations, weeklySnapshot, type WeeklyKpi,
+  DECISION_STATUS_LABELS, canPrepareReview, formatKpi, objectiveProgress, quarterOf, formatPeriod, formatWeek, isoWeek, madridToday, previousNote, validateOperations, weeklySnapshot, type WeeklyKpi,
 } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import { APP_NAMES } from './dashboard.ts';
@@ -20,6 +20,7 @@ type Item = { id: string; review_id: string; app: string; kpi: string; label: st
 type Action = { id: string; review_id: string; kpi: string; label: string; kind: 'decision' | 'task'; decision_id?: string | null; task_target_id?: string | null; task_label?: string | null; deleted_at?: string | null };
 type Decision = { id: string; name: string; status: string; code?: string | null; deleted_at?: string | null };
 type TaskStatus = { id: string; title?: string; done?: boolean; deleted?: boolean; pending?: boolean; visible?: boolean };
+type Objective = { id: string; revision: number; code?: string | null; quarter: string; title: string; kpis: string[]; notes?: string | null; deleted_at?: string | null };
 type Person = { id: string; display_name: string; active?: boolean; house_level?: string | null; deleted_at?: string | null; merged_into?: string | null };
 
 const STATE_LABELS: Record<string, string> = { critico: 'Crítico', atencion: 'Atención' };
@@ -31,11 +32,12 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
   const week = isoWeek(madridToday());
   const notes = new Map<string, string>();
   const current = el('section', { id: 'weeklyCurrent', 'data-feedback-id': 'central.semana.actual', 'data-feedback-label': 'Revisión de esta semana' });
+  const okr = el('section', { id: 'weeklyOkr', 'data-feedback-id': 'central.semana.okr', 'data-feedback-label': 'Objetivos del trimestre' });
   const history = el('section', { id: 'weeklyHistory', 'data-feedback-id': 'central.semana.anteriores', 'data-feedback-label': 'Revisiones anteriores' });
   replace(main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.semana.cabecera', 'data-feedback-label': 'Cabecera de la revisión semanal' },
       el('div', null, el('h2', null, 'Revisión semanal'), el('p', null, 'Lo que Dirección ve cada semana y lo que decide.'))),
-    current, history);
+    okr, current, history);
 
   async function data() {
     const [reviews, items, people, actions, decisions] = await Promise.all([client.list(T.weeklyReviews), client.list(T.weeklyItems), client.list(T.people), client.list(T.weeklyActions), client.list(T.decisions)]);
@@ -54,6 +56,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
     guardar: (ops: RowOperation[]) => usage.run('central.semana.guardar', () => client.commit(ops)),
     cerrar: (ops: RowOperation[]) => usage.run('central.semana.cerrar', () => client.commit(ops)),
     decision: (ops: RowOperation[]) => usage.run('central.semana.enlazar_decision', () => client.commit(ops)),
+    objetivo: (ops: RowOperation[]) => usage.run('central.semana.okr.guardar', () => client.commit(ops)),
   };
   async function commit(operations: RowOperation[], done: string, how: keyof typeof send): Promise<boolean> {
     const issue = validateOperations(operations, membership);
@@ -73,6 +76,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
     const mine = reviews.find((r) => r.week === week) ?? null;
     paintCurrent(mine, reviews, items, people);
     paintHistory(reviews.filter((r) => r.status === 'cerrada'), items, people);
+    void paintOkr();
   }
 
   let ctxActions: Action[] = [];
@@ -161,7 +165,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
     const chosen = new Set(review.attendee_ids ?? []);
     const attendees = el('div', { class: 'chips', id: 'weeklyAttendees', role: 'group', 'aria-label': 'Quién estuvo', 'data-feedback-id': 'central.semana.asistentes', 'data-feedback-label': 'Quién estuvo' },
       ...(direction.length ? direction : people).slice(0, 40).map((p) => {
-        const box = el('input', { type: 'checkbox', value: p.id, checked: chosen.has(p.id), disabled: !prepares }) as HTMLInputElement;
+        const box = el('input', { type: 'checkbox', value: p.id, checked: chosen.has(p.id), 'data-field-id': 'central.semana.attendee', 'data-field-entity': 'central.weekly_reviews', 'data-field-prop': 'attendee_ids', disabled: !prepares }) as HTMLInputElement;
         return el('label', { class: 'check' }, box, el('span', null, p.display_name));
       }));
     const picked = () => [...attendees.querySelectorAll<HTMLInputElement>('input:checked')].map((b) => b.value);
@@ -191,7 +195,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
       lastRed = weeklySnapshot(d.items);
       replace(host, lastRed.length ? el('ul', { class: 'list' }, ...lastRed.map((i) => {
         const before = previousNote(reviews, items, review.week, i.kpi);
-        const note = el('textarea', { rows: 2, maxlength: 300, 'aria-label': `Nota: ${i.label}`, disabled: !prepares, 'data-kpi': i.kpi }, notes.get(i.kpi) ?? '') as HTMLTextAreaElement;
+        const note = el('textarea', { rows: 2, maxlength: 300, 'data-field-id': 'central.semana.kpi_note', 'data-field-entity': 'central.weekly_review_items', 'data-field-prop': 'note', 'aria-label': `Nota: ${i.label}`, disabled: !prepares, 'data-kpi': i.kpi }, notes.get(i.kpi) ?? '') as HTMLTextAreaElement;
         note.addEventListener('input', () => notes.set(i.kpi, note.value));
         return el('li', { class: `agentrow ${i.state === 'critico' ? 'alert' : 'warn'}`, 'data-kpi': i.kpi },
           el('div', null,
@@ -219,6 +223,51 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
       } })),
     ];
     if (await commit(operations, 'Revisión cerrada.', 'cerrar')) notes.clear();
+  }
+
+  const OKR_STATUS: Record<string, [string, string]> = { bien: ['Va bien', 'ok'], en_riesgo: ['En riesgo', 'warn'], mal: ['Va mal', 'alert'], sin_datos: ['Sin datos', ''] };
+  /** Objetivos del trimestre (1527): cada uno con sus resultados clave (indicadores del panel) y cómo van. */
+  async function paintOkr(): Promise<void> {
+    const quarter = quarterOf(madridToday());
+    const list = ((await client.list(T.objectives)) as unknown as Objective[]).filter((o) => !o.deleted_at && o.quarter === quarter);
+    let items: WeeklyKpi[] = [];
+    try { items = (await client.api<{ items: WeeklyKpi[] }>('/dashboard')).items; } catch { /* sin red: sin estado */ }
+    if (!alive) return;
+    const add = prepares ? el('button', { class: 'ghost small', type: 'button', id: 'okrNew', 'data-feedback-id': 'central.semana.okr.nuevo', 'data-feedback-label': 'Nuevo objetivo', onclick: () => editObjective(null, quarter, items) }, icon('plus', 16), 'Nuevo objetivo') : null;
+    replace(okr, el('div', { class: 'blockhead' }, el('h3', null, `Objetivos del ${quarter.replace('T', ' · ').replace(/^(\d{4}) · (\d)$/, '$2.º trimestre de $1')}`), add),
+      list.length ? el('ul', { class: 'list' }, ...list.map((o) => {
+        const p = objectiveProgress(o.kpis, items);
+        const [label, tone] = OKR_STATUS[p.status]!;
+        return el('li', { class: 'ctl-okr', 'data-objective': o.id },
+          el('div', null, el('strong', null, o.title), ' ', el('span', { class: `chip ${tone}` }, label),
+            el('div', { class: 'muted small' }, p.results.map((r) => `${r.label}${r.state ? ` (${r.state === 'ok' ? 'en objetivo' : r.state === 'atencion' ? 'atención' : 'crítico'})` : ''}`).join(' · ') || 'Sin resultados clave'),
+            o.notes ? el('div', { class: 'small' }, o.notes) : null),
+          prepares ? el('button', { class: 'linkbtn small', type: 'button', 'aria-label': `Editar: ${o.title}`, 'data-feedback-id': 'central.semana.okr.editar', 'data-feedback-label': 'Editar el objetivo', onclick: () => editObjective(o, quarter, items) }, 'Editar') : null);
+      })) : el('p', { class: 'hint' }, prepares ? 'Aún no hay objetivos este trimestre. Crea uno y elige los indicadores del panel que lo miden.' : 'Aún no hay objetivos este trimestre.'));
+  }
+
+  function editObjective(current: Objective | null, quarter: string, items: WeeklyKpi[]): void {
+    let sheet: Sheet | null = null;
+    const title = el('input', { id: 'okrTitle', 'data-field-id': 'central.semana.okr_title', 'data-field-entity': 'central.objectives', 'data-field-prop': 'title', maxlength: 160, value: current?.title ?? '' }) as HTMLInputElement;
+    const chosen = new Set(current?.kpis ?? []);
+    const kpis = [...new Map(items.map((i) => [i.kpi, i])).values()].sort((a, b) => a.label.localeCompare(b.label, 'es'));
+    const boxes = kpis.map((i) => el('input', { type: 'checkbox', value: i.kpi, checked: chosen.has(i.kpi), 'data-field-id': 'central.semana.okr_kpi', 'data-field-entity': 'central.objectives', 'data-field-prop': 'kpis' }) as HTMLInputElement);
+    const notesIn = el('textarea', { id: 'okrNotes', 'data-field-id': 'central.semana.okr_notes', 'data-field-entity': 'central.objectives', 'data-field-prop': 'notes', maxlength: 500, rows: 2 }, current?.notes ?? '') as HTMLTextAreaElement;
+    const save = el('button', { class: 'primary', type: 'button', id: 'okrSave', 'data-feedback-id': 'central.semana.okr.guardar', 'data-feedback-label': 'Guardar el objetivo', onclick: async () => {
+      const fields = { quarter, title: title.value.trim(), kpis: boxes.filter((b) => b.checked).map((b) => b.value).slice(0, 10), notes: notesIn.value.trim() || null };
+      const ops: RowOperation[] = current
+        ? [{ op: 'update', table: T.objectives, id: current.id, expectedRevision: Number(current.revision), fields }]
+        : [{ op: 'insert', table: T.objectives, id: crypto.randomUUID(), fields: { ...fields, position: 0 } }];
+      if (await commit(ops, 'Objetivo guardado.', 'objetivo')) await sheet?.close(true);
+    } }, 'Guardar');
+    sheet = openSheet({ title: current ? 'Editar el objetivo' : 'Nuevo objetivo', meta: quarter,
+      body: el('div', { 'data-feedback-id': 'central.semana.okr.hoja', 'data-feedback-label': 'Objetivo' },
+        el('label', { class: 'field' }, el('span', null, 'Objetivo'), title),
+        el('div', { class: 'field', 'data-feedback-id': 'central.semana.okr.resultados', 'data-feedback-label': 'Resultados clave' }, el('span', null, 'Resultados clave (indicadores del panel, hasta 10)'),
+          ...kpis.map((i, n) => el('label', { class: 'check' }, boxes[n]!, el('span', null, i.label)))),
+        el('label', { class: 'field' }, el('span', null, 'Notas'), notesIn)),
+      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.semana.okr.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      initialFocus: title });
   }
 
   function paintHistory(closed: Review[], items: Item[], people: Person[]): void {

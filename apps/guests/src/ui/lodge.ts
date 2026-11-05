@@ -224,7 +224,8 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         const radio = (value_: string, label: HTMLElement | string, checked = false) => el('label', { class: 'glodge-bed-opt' },
           el('input', { type: 'radio', name: 'lodgeBed', value: value_, ...(checked ? { checked: '' } : {}), onchange: () => { picked = value_ || null; },
             'data-field-id': 'guests.visitante.alojate.cama' }), label);
-        const listRooms = value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
+        // La cama se elige en el plano (G-11, 05-11): la lista, siempre escondida, guarda la elección del plano.
+        const listRooms = value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', hidden: true, dataset: { room: r.id } },
           el('p', { class: 'small glodge-room-name' }, r.name),
           ...r.beds.filter((b) => b.free).map((b) => radio(b.id, b.label))));
         replace(bedsHost,

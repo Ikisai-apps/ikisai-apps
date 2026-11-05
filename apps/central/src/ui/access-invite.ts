@@ -61,10 +61,10 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
   } catch { /* sin equipos: solo el nombre */ }
 
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.accesos.alta.error', 'data-feedback-label': 'Error del alta' });
-  const email = el('input', { id: 'inviteEmail', 'data-field-id': 'central.accesos.invite_email', 'data-feedback-ignore': '', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
-  const name = el('input', { id: 'inviteName', 'data-field-id': 'central.accesos.invite_name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
+  const email = el('input', { id: 'inviteEmail', 'data-field-id': 'central.accesos.invite_email', 'data-field-entity': 'auth.users', 'data-field-prop': 'email', 'data-feedback-ignore': '', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
+  const name = el('input', { id: 'inviteName', 'data-field-id': 'central.accesos.invite_name', 'data-field-entity': 'central.people', 'data-field-prop': 'display_name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
   const nameHelp = el('span', { class: 'muted small' });
-  const level = el('select', { id: 'inviteLevel', 'data-field-id': 'central.accesos.invite_level', 'aria-label': 'Nivel de casa' }, ...HOUSE_LEVELS.map((l) => el('option', { value: l, selected: l === 'staff' }, HOUSE_LEVEL_LABELS[l])),
+  const level = el('select', { id: 'inviteLevel', 'data-field-id': 'central.accesos.invite_level', 'data-field-entity': 'central.people', 'data-field-prop': 'house_level', 'aria-label': 'Nivel de casa' }, ...HOUSE_LEVELS.map((l) => el('option', { value: l, selected: l === 'staff' }, HOUSE_LEVEL_LABELS[l])),
     el('option', { value: '' }, 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
   const levelField = withLevels ? el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nivel', 'data-feedback-label': 'Nivel de casa' }, el('span', null, 'Nivel de casa'), level) : null;
   const like = el('select', { id: 'inviteLike', 'data-field-id': 'central.accesos.invite_like', 'aria-label': 'Como un compañero', 'data-feedback-ignore': '', onchange: () => applyLike() }, el('option', { value: '' }, 'Elegir a mano')) as HTMLSelectElement;
@@ -118,7 +118,7 @@ export async function mountInvite(body: HTMLElement, admin: AdminApi, client: Sy
     return el('div', { class: 'scopes ctl-invprojects', id: 'inviteFlowProjects', role: 'group', 'aria-label': 'Proyectos de Flow', 'data-feedback-id': 'central.accesos.alta.proyectos_flow', 'data-feedback-label': 'Proyectos de Flow' },
       el('span', { class: 'muted small' }, 'Proyectos de Flow: solo ve los marcados.'),
       ...list.map((pr) => el('label', { class: 'check' },
-        el('input', { type: 'checkbox', value: pr.id, checked: picked.has(pr.id), 'data-feedback-id': 'central.accesos.alta.proyecto_flow', 'data-feedback-label': 'Proyecto de Flow',
+        el('input', { type: 'checkbox', value: pr.id, checked: picked.has(pr.id), 'data-field-id': 'central.accesos.invite_flow_project', 'data-field-entity': 'core.memberships', 'data-field-prop': 'scopes', 'data-feedback-id': 'central.accesos.alta.proyecto_flow', 'data-feedback-label': 'Proyecto de Flow',
           onchange: (e: Event) => {
             const box = e.target as HTMLInputElement;
             if (box.checked) { picked.add(pr.id); if (!roles.has('flow')) roles.set('flow', 'editor'); } else picked.delete(pr.id);

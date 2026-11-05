@@ -18,6 +18,24 @@ export function weeklyTaskRef(code: string, requestId: string): string {
 }
 export type WeeklyStatus = typeof WEEKLY_STATUSES[number];
 
+/** OKR de Dirección (1527): un objetivo por trimestre con sus indicadores del panel como resultados clave. */
+export const OBJECTIVES_TABLE = 'central.objectives';
+export const KPI_KEY = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
+
+/** Trimestre de una fecha `AAAA-MM-DD`: `2026T4`. */
+export const quarterOf = (date: string) => `${date.slice(0, 4)}T${Math.ceil(Number(date.slice(5, 7)) / 3)}`;
+
+/**
+ * Cómo va un objetivo: por cada resultado clave (indicador), su estado en el panel (el periodo en curso del indicador). Un
+ * objetivo va «bien» si todos están en objetivo, «en riesgo» si alguno está en atención y «mal» si alguno está en crítico.
+ */
+export function objectiveProgress(kpis: readonly string[], items: ReadonlyArray<{ kpi: string; state: string | null; label: string }>): { status: 'bien' | 'en_riesgo' | 'mal' | 'sin_datos'; results: Array<{ kpi: string; label: string; state: string | null }> } {
+  const results = kpis.map((k) => { const i = items.find((x) => x.kpi === k); return { kpi: k, label: i?.label ?? k, state: i?.state ?? null }; });
+  const states = results.map((r) => r.state);
+  const status = states.includes('critico') ? 'mal' : states.includes('atencion') ? 'en_riesgo' : states.length && states.every((s) => s === 'ok') ? 'bien' : 'sin_datos';
+  return { status, results };
+}
+
 /** ¿Prepara la revisión? El owner, o un editor con `scopes.direccion = true`. */
 export function canPrepareReview(membership: { role: string; scopes?: unknown } | null | undefined): boolean {
   if (!membership) return false;

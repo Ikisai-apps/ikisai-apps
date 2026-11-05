@@ -142,7 +142,18 @@ function supplyAct(action,item){const src=inventorySources();if(!src||!canEdit()
 function openSupply(item){const src=inventorySources();if(!src)return;closeInventorySheet();
   const sheet=IkisaiKit.createItemSheet({source:src.items,itemId:item.id,spaces:src.spaces,feedbackId:'tasks.suministros.ficha',permissions:{edit:canEdit()},supplierField:itemSupplierField,
     ...(canEdit()?{actions:['spend','entry','transfer','count'],onAction:(a,it)=>supplyAct(a,it)}:{})});
-  inventoryTool=sheet;inventoryHandle=IkisaiKit.openSheet({title:item.name,body:sheet.element,onClose:()=>{sheet.destroy();if(inventoryTool===sheet)inventoryTool=null;inventoryHandle=null}})}
+  // FB_2026_056 (C-01): el oficio del artículo (Recursos 0819, `trade_id`), encima de la ficha del kit, como en Central.
+  const body=document.createElement('div');const tradeBox=document.createElement('div');tradeBox.className='tkit-trade';body.append(tradeBox,sheet.element);void supplyTradeField(tradeBox,item.id);
+  inventoryTool=sheet;inventoryHandle=IkisaiKit.openSheet({title:item.name,body,onClose:()=>{sheet.destroy();if(inventoryTool===sheet)inventoryTool=null;inventoryHandle=null}})}
+async function supplyTradeField(box,itemId){const r=Sync.core?.resources;if(!r)return;const row=await r.get('resources.items',itemId).catch(()=>null);
+  if(!row||!('trade_id' in row)||!box.isConnected)return;
+  const current=typeof row.trade_id==='string'?row.trade_id:'',rows=typeof tradeRows==='function'?tradeRows():[];
+  const opts=rows.map(t=>({id:t.id,label:t.path||t.name})).sort((a,b)=>a.label.localeCompare(b.label,'es'));
+  if(current&&!opts.some(o=>o.id===current))opts.push({id:current,label:'Oficio retirado'});
+  box.innerHTML=`<label class="field"><span>Oficio</span><select id="supplyTrade" data-field-id="tasks.suministros.ficha.oficio" data-field-entity="resources.items" data-field-prop="trade_id" data-feedback-id="tasks.suministros.ficha.oficio" data-feedback-label="Oficio del artículo" ${canEdit()?'':'disabled'}><option value="">Sin oficio</option>${opts.map(o=>`<option value="${esc(o.id)}" ${o.id===current?'selected':''}>${esc(o.label)}</option>`).join('')}</select><span class="muted small">Qué oficio lo usa o lo mantiene: en la ficha de una tarea de ese oficio, el material sale primero.</span></label>`;
+  const sel=box.querySelector('#supplyTrade');sel.onchange=async()=>{try{const now=await r.get('resources.items',itemId);
+    await r.commit([{op:'update',table:'resources.items',id:itemId,expectedRevision:Number(now?.revision??0),fields:{trade_id:sel.value||null}}]);toast(sel.value?'Oficio guardado.':'Oficio quitado.')}
+    catch(e){toast(e.message||'No se pudo guardar el oficio.')}}}
 /* «Queda poco: pedir» desde un artículo: la hoja de pedir, precargada (cantidad de reposición o lo que falta, en su unidad). */
 function reorderItem(item){const inv=Sync.core?.inventory,row=inv?.items.find(i=>i.id===item.id);if(!row)return;
   const op=IkisaiTasks.purchases.reorderItemOps(purchasesData(),{tab_id:tab().id,item:row,stock:IkisaiTasks.purchases.itemStock(inv.movements,row.id),supplier_name:supplierNameOf(row.default_supplier_id)||null})[0];
