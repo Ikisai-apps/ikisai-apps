@@ -1,7 +1,7 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import { type RowOperation, type SyncedRow, type TableName } from '@ikisai/sync-client';
 import { fieldAttrs, compressImage, compressedFilename, confirmDialog, registerReveal, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
-import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
+import { OPERATIVE_GUEST_FIELDS, PROCEDURES, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
 import { PV_IN_PROCESS, fetchSes, guestReports, type SesCommunication, deadlineOf } from '../app/ses.ts';
@@ -348,7 +348,7 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
       try {
         // el huésped de muestra lo crea Booking (1429), sin el ámbito del organizador; con red, directo para tener su id
         const done = await client.api<{ results: Array<{ result?: unknown }> }>('/commands', { method: 'POST', json: { requestId: crypto.randomUUID(),
-          operations: [{ op: 'call', procedure: 'booking.preview_guest', args: { reservation_id: reservationId } }] } });
+          operations: [{ op: 'call', procedure: PROCEDURES.previewGuest, args: { reservation_id: reservationId } }] } });
         const sample = done.results[0]?.result as { guest_id: string };
         const link = await client.api<{ url: string }>('/portal-links', { method: 'POST', json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: sample.guest_id },
           person: { name: 'Huésped de muestra' }, label: 'Vista previa', preview: true, replace: true } });
