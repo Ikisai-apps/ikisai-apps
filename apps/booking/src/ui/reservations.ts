@@ -27,7 +27,7 @@ const COVER_MAX = 5;
 
 function matches(row: ReservationRow, filter: Filter, now: number): boolean {
   switch (filter) {
-    case 'proximas': return OPEN.includes(row.status) && (dayNumber(row.end_date) ?? Infinity) >= now;
+    case 'proximas': return OPEN.includes(row.status) && (dayNumber(row.end_date ?? row.start_date) ?? Infinity) >= now;
     case 'activas': return OPEN.includes(row.status);
     case 'pre': return row.status === 'pre_reservada';
     case 'confirmadas': return row.status === 'confirmada' || row.status === 'en_ejecucion';
@@ -252,7 +252,8 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       onClick: () => navigate(`#/reservas/${r.id}`), label: `Abrir ${r.title} en la papelera` }), 'booking.reservas.papelera.fila', 'Reserva en la papelera')));
 
     // La portada de las próximas (2 a 5, sin canceladas, cerradas ni perdidas). Con búsqueda, no se pinta.
-    const nextOnes = set.views.filter((v) => ['comercial', 'preparacion', 'curso'].includes(v.x.phase) && v.reservation.start_date && (dayNumber(v.reservation.end_date) ?? Infinity) >= now)
+    // Pasado su último día (la salida o, sin ella, la entrada) sale de la portada (FB_2026_098); sigue en la lista.
+    const nextOnes = set.views.filter((v) => ['comercial', 'preparacion', 'curso'].includes(v.x.phase) && v.reservation.start_date && (dayNumber(v.reservation.end_date ?? v.reservation.start_date) ?? Infinity) >= now)
       .sort((a, b) => (dayNumber(a.reservation.start_date) ?? 0) - (dayNumber(b.reservation.start_date) ?? 0)).slice(0, COVER_MAX);
     if (searching || nextOnes.length === 0) replace(coverHost);
     else {
