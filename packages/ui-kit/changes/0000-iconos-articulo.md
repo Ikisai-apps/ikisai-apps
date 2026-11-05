@@ -1,0 +1,1 @@
+**Iconos de artículo** (C-06, con Recursos): `ITEM_ICONS` es la lista `{ key, icon, label, trade? }`. Trae maquinaria y herramienta, y un par por oficio: fontanería, electricidad, jardinería, carpintería, limpieza y pintura. Son 13 iconos nuevos en el kit. `itemIcon(key)` da el icono del kit para la clave que guarda `resources.items.icon`.
