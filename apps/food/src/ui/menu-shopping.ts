@@ -351,6 +351,17 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
       void updateQuantities(line, line.manual ? { purchase_quantity: value ?? 0 } : { purchase_quantity: value ?? 0, manual_override: true });
     }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' },
       { 'data-field-id': 'food.menu.compra.linea.comprar', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'purchase_quantity' });
+    // La tienda de esta línea (FB_2026_086): la de partida es la preferida del ingrediente; aquí se cambia para esta
+    // compra (regenerar la conserva). Sugiere las tiendas que ya hay en la lista.
+    const shopsId = `shops-${item.id}`;
+    const known = [...new Set(items.map((i) => i.supplier?.trim()).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b, 'es'));
+    const supplierInput = el('input', { 'data-field-id': 'food.menu.compra.linea.proveedor', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'supplier', 'data-feedback-id': 'food.menu.compra.linea.proveedor', 'data-feedback-label': 'Tienda',
+      type: 'text', maxlength: '120', list: shopsId, value: item.supplier ?? '', disabled, 'aria-label': `Tienda de ${name}`, placeholder: NO_SHOP,
+      onchange: () => {
+        const value = supplierInput.value.trim() || null;
+        if (value === (cur().supplier?.trim() || null)) return;
+        void commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: cur().revision, fields: { supplier: value } }]);
+      } }) as HTMLInputElement;
     sheet = openSheet({
       title: name,
       body: el('div', { 'data-feedback-id': 'food.menu.compra.linea.hoja', 'data-feedback-label': 'Producto de la compra', class: 'fd-linesheet' },
@@ -360,6 +371,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
           el('label', { class: 'buyfield' }, el('span', null, 'En casa'), stockInput),
           el('label', { class: 'buyfield' }, el('span', null, `Comprar (${UNIT_LABELS[item.unit]})`), purchaseInput)),
         el('label', { class: 'field' }, el('span', null, 'Estado'), status),
+        el('label', { class: 'field' }, el('span', null, 'Tienda'), supplierInput), el('datalist', { id: shopsId }, ...known.map((s) => el('option', { value: s }))),
         el('div', { class: 'btnrow' },
           !disabled && !item.manual && item.manual_override
             ? el('button', { 'data-feedback-id': 'food.menu.compra.linea.recalcular', 'data-feedback-label': 'Recalcular', class: 'ghost', type: 'button', 'aria-label': `Volver a calcular la compra de ${name}`,
