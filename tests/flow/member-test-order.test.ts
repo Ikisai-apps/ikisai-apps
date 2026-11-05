@@ -101,3 +101,30 @@ test('pedido de un miembro · fuera del horario es de prueba y no cuenta; durant
   const byId = (id: string) => mine.data.orders.find((o: any) => o.id === id);
   assert.deepEqual([byId(fake).testName, byId(fake).testExcluded, byId(during).testExcluded], ['Marga', true, false]);
 });
+
+test('pedido de un miembro · desde la carta elige en cada pedido si es de prueba; a los demás no les vale la marca (G-12, 0964)', async () => {
+  const db = app.t.db;
+  const member = await app.t.createUser();
+  await db.query(`insert into core.memberships (app, user_id, role) values ('flow', $1, 'editor') on conflict do nothing`, [member]);
+  await db.query(`insert into core.profiles (user_id, display_name) values ($1, 'Lola') on conflict (user_id) do update set display_name = 'Lola'`, [member]);
+  const staff = await customerWith(member);
+  const guest = await customerWith(null);
+  // Fuera del horario: sin la marca sería de prueba; con la marca manda lo que elige.
+  await db.query(`update flow.projects set booking_event_id = null, starts_on = '2020-01-01', ends_on = '2020-01-01' where id = $1`, [PROJECT]);
+  const pub = (path: string, token: string, body?: unknown) => app.call(`/api/v1/public/${path}`, { token: null, ...(body ? { body } : { method: 'GET' }), headers: { 'X-Flow-Customer': token } });
+  const mine = await pub('mine', staff.token);
+  assert.equal(mine.status, 200, JSON.stringify(mine.data)); assert.equal(mine.data.memberName, 'Lola');
+  assert.equal((await pub('mine', guest.token)).data.memberName, null);
+  const send = async (token: string, test?: boolean) => {
+    const r = await pub('orders', token, { lines: [{ productId: SERRANO, quantity: 1 }], ...(test === undefined ? {} : { test }) });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); return order(r.data.orderId);
+  };
+  let o = await send(staff.token, false);
+  assert.deepEqual([o.test_by, o.test_requested, o.test_excluded], [member, false, false]);
+  o = await send(staff.token, true);
+  assert.deepEqual([o.test_requested, o.test_excluded], [true, true]);
+  o = await send(staff.token);
+  assert.deepEqual([o.test_requested, o.test_excluded], [null, true]); // sin marca: la regla del horario (0953)
+  o = await send(guest.token, true);
+  assert.deepEqual([o.test_by, o.test_requested, o.test_excluded], [null, null, false]);
+});

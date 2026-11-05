@@ -231,6 +231,8 @@ FIELDS[TABLES.walkinCharges] = { ...FIELDS[TABLES.walkinCharges], refund_cents: 
 FIELDS[TABLES.roomAssignments] = { ...FIELDS[TABLES.roomAssignments], planned_to_date: { kind: 'date' } };
 // 1400: número corto de la solicitud (lo pone el servidor) y borrador del viajero
 FIELDS[TABLES.visitorRequests] = { ...FIELDS[TABLES.visitorRequests], number: { kind: 'int', nullable: true, min: 1 } };
+// 1428: pedido de prueba de un miembro (G-12)
+FIELDS[TABLES.visitorRequests] = { ...FIELDS[TABLES.visitorRequests], is_test: { kind: 'bool' } };
 FIELDS[TABLES.stayTravelers] = {
   request_id: { kind: 'uuid' }, position: { kind: 'int', nullable: false, min: 1 },
   first_name: text(120), last_name_1: text(120), last_name_2: text(120), sex: { kind: 'enum', values: ['H', 'M', 'X'], nullable: true },

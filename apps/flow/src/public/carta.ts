@@ -184,12 +184,16 @@ export function mountCarta(root: HTMLElement): () => void {
     const { totalCents } = basketTotal(lines);
     const status = el('p', { class: 'carta-send-status', role: 'status', 'aria-live': 'polite' });
     const send = el('button', { type: 'button', class: 'primary', id: 'enviarPedido' }, 'Enviar a barra');
+    // Quien pide es del equipo (G-12, VG 05-11): elige en cada pedido si es una prueba (no cuenta en caja ni en Finance) o se cobra.
+    const testInput = el('input', { ...fieldAttrs({ id: 'flow.carta.es_prueba', type: 'checkbox', storage: 'none' }), type: 'checkbox', id: 'esPrueba' }) as HTMLInputElement;
+    const testChoice = el('label', { class: 'carta-test-choice', hidden: true }, testInput, el('span', null, 'Es una prueba (no se cobra)'));
+    void myOrders().then((m) => { if (m?.memberName) testChoice.hidden = false; }).catch(() => undefined);
     send.addEventListener('click', async () => {
       if (send.disabled) return;
       send.disabled = true;
       replace(status, 'Enviando…');
       try {
-        const out = await submitOrder(lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })));
+        const out = await submitOrder(lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })), testChoice.hidden ? undefined : testInput.checked);
         basket = {}; saveBasket(basket);
         for (const f of fields.values()) f.set(0);
         paintBar(); paintMine();
@@ -212,6 +216,7 @@ export function mountCarta(root: HTMLElement): () => void {
           el('span', null, `${l.quantity} × ${l.product.name}`),
           el('span', { class: 'carta-price' }, formatEuros(l.subtotalCents))))),
         el('p', { class: 'carta-summary-total' }, el('span', null, 'Total'), el('strong', null, formatEuros(totalCents))),
+        testChoice,
         status,
       ),
       foot: el('div', { class: 'flow-actions' }, send, el('button', { type: 'button', class: 'ghost', onclick: () => {

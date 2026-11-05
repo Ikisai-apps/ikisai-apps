@@ -40,7 +40,14 @@ export const mountCashCount: ViewMount = (ctx) => {
         c.refundedCents ? el('div', null, el('span', null, 'Devoluciones'), el('strong', null, `−${fromCents(c.refundedCents)}`)) : null,
         el('div', null, el('span', null, 'Efectivo que tiene que haber'), el('strong', { id: 'cashCountCash' }, fromCents(c.cashCents))),
         c.pendingRefundsCents ? el('div', null, el('span', null, 'Devoluciones pendientes (aún en caja)'), el('strong', null, fromCents(c.pendingRefundsCents))) : null,
-        el('div', { class: 'total' }, el('span', null, 'TOTAL A CUADRAR'), el('strong', { id: 'cashCountTotal' }, fromCents(c.netCents)))));
+        el('div', { class: 'total' }, el('span', null, 'TOTAL A CUADRAR'), el('strong', { id: 'cashCountTotal' }, fromCents(c.netCents)))),
+      // Sin dinero (contrato fl-27 con Flow): lo que no está en caja pero ayuda a cuadrarla
+      c.receivables.length || c.onAccountCents || c.openAccounts || c.teamOrders ? el('div', { class: 'inv-totals', id: 'cashCountInfo', 'data-feedback-ignore': '' },
+        el('p', { class: 'hint' }, 'No está en caja:'),
+        ...c.receivables.map((r) => el('div', null, el('span', null, `${r.label} · pendiente de cobro`), el('strong', null, fromCents(r.cents)))),
+        c.onAccountCents ? el('div', null, el('span', null, 'Vendido a cuenta (se cobra al liquidar)'), el('strong', null, fromCents(c.onAccountCents))) : null,
+        c.openAccounts ? el('div', null, el('span', null, 'Cuentas abiertas a fin de día'), el('strong', null, String(c.openAccounts))) : null,
+        c.teamOrders ? el('div', null, el('span', null, `Pedidos del equipo (${c.teamOrders}), a precio de carta`), el('strong', null, fromCents(c.teamOrdersCents))) : null) : null);
     const view = createPrintView({
       brand: { appName: 'Finance', markIcon: 'invoice', line: entity?.legal_name ?? MISSING_ENTITY },
       title: 'Arqueo del día',

@@ -13,7 +13,7 @@ test.describe('ui-kit v0.7.1', () => {
     const box = await ortega.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(14);
     // Un evento sin abreviatura sigue siendo una barra fina.
-    const plain = host.locator('.cal-event:not([data-abbr="Ortega"]):not([data-abbr="Yoga"])').first();
+    const plain = host.locator('.cal-event:not([data-abbr="Ortega"]):not([data-abbr="Yoga"]):not(.single)').first();
     const plainBox = await plain.boundingBox();
     expect(plainBox!.height).toBeLessThanOrEqual(8);
   });
