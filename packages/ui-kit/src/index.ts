@@ -134,3 +134,4 @@ export {
 } from './agents/agents.ts';
 export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine, type MoneyMove } from './cards/money.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';
+export { rebuildDeviceData, canRebuild, type RebuildClient } from './shell/rebuild-data.ts';
