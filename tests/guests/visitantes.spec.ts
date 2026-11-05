@@ -325,8 +325,9 @@ test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, n
   expect(anonymous.status()).toBe(401);
 
   await page.goto(`${baseURL}/e/${d.code}?alojate`);
-  // El plano se abre solo, en el dibujo con camas libres, y la lista queda escondida (VG, 28-10).
+  // El plano, en el dibujo con camas libres, y la lista queda escondida (VG, 28-10). Sin identidad aún, se abre con un toque.
   const box = page.locator('#lodgePlanBox');
+  await box.locator('#lodgePlanOpen').click();
   const bed2 = box.locator(`.map-svg [data-space-id="${ids['Cama 2']}"]`);
   await expect(bed2).toBeVisible();
   await bed2.click();

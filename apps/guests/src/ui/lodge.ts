@@ -12,7 +12,7 @@
 import { announceSaved, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
-import { errorCodeOf, myRequests, myStay, publicBeds, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
+import { errorCodeOf, myRequests, myStay, publicBeds, visitorToken, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
 import { estateOf, portalMap, withBedLayouts } from './plan.ts';
 import { loading, whyNote } from './common.ts';
 
@@ -184,7 +184,10 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           el('button', { type: 'button', class: 'ghost small', id: 'lodgePlanRetry', onclick: load }, t('common.retry')));
       });
     };
-    load();
+    // Sin identidad de visitante, no se crea una sin un gesto (ENTRADA_PUBLICA): un toque abre el plano; con ella, se abre solo.
+    if (visitorToken()) load();
+    else replace(box, el('button', { type: 'button', class: 'ghost wide', id: 'lodgePlanOpen', 'data-feedback-id': 'guests.visitante.alojate.plano.abrir', 'data-feedback-label': 'Ver las camas en el plano', onclick: load },
+      icon('pin', 16), ' ', t('lodge.planOpen')));
     return box;
   };
 
