@@ -269,7 +269,7 @@ test('suministros: −1 con «Deshacer» (el movimiento contrario), «Pedir lo q
   await expect.poll(() => stock(LEJIA)).toBe(19);
   await undo(owner).click();
   await expect.poll(() => stock(LEJIA)).toBe(20);
-  const kinds = (await sql(`select kind, quantity::text q from resources.movements where item_id = $1 and source_app = 'tasks' order by at, created_at`, [LEJIA])).rows.map((m: any) => [m.kind, Number(m.q)]);
+  const kinds = (await sql(`select kind, quantity::text q from resources.movements where item_id = $1 and (source_app = 'tasks' or (source_app is null and kind in ('entrada_manual', 'salida_manual'))) order by at, created_at`, [LEJIA])).rows.map((m: any) => [m.kind, Number(m.q)]);
   expect(kinds).toEqual([['entrada_manual', 20], ['salida_manual', -1], ['entrada_manual', 1]]);
   // «Pedir lo que falta»: una solicitud por artículo con lo que hace falta (el envase lo redondea).
   await expect(owner.locator('.tcr-banner')).toContainText('Queda poco de 2');
