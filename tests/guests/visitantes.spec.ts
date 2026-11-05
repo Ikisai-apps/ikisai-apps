@@ -40,6 +40,29 @@ test.afterAll(async () => {
 /** Día en Madrid desplazado `offset` días (AAAA-MM-DD). */
 const day = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
 
+
+/**
+ * Las camas de la habitación de unas jornadas, colocadas en su dibujo (VG, 05-11: sin camas colocadas, «Alójate aquí» no
+ * sale). Dibujo de Recursos con la habitación, la pareja de cada cama y su sitio en Booking.
+ */
+async function placeBeds(d: { room: string }): Promise<{ ids: Record<string, string>; byLabel: Record<string, string> }> {
+  const db = api.booking.t.db;
+  const beds = (await db.query<{ id: string; label: string; space_id: string }>(
+    `select b.id, b.label, b.space_id from booking.beds b join booking.spaces s on s.id = b.space_id where s.name = $1 and b.deleted_at is null order by b.label`, [d.room])).rows;
+  const byLabel = Object.fromEntries(beds.map((b) => [b.label, b.id]));
+  const square = (x: number, y: number, size: number): Array<[number, number]> => [[x, y], [x + size, y], [x + size, y + size], [x, y + size]];
+  const roomName = `Plano de ${d.room}`;
+  const { ids } = await api.floorPlan([
+    { name: roomName, kind: 'habitacion', points: square(0.1, 0.1, 0.6), refs: [`booking.space:${beds[0]!.space_id}`] },
+    ...beds.map((b) => ({ name: b.label, kind: 'cama', parent: roomName, refs: [`booking.bed:${b.id}`], attributes: { bed_kind: 'individual' } })),
+  ]);
+  await api.bedLayout(beds[0]!.space_id, { cols: 4, rows: 4 }, beds.map((b, i) => [b.id, { x: (i % 2) * 2, y: Math.floor(i / 2) * 2, rot: 0 }] as [string, { x: number; y: number; rot: 0 }]));
+  for (const b of beds) await db.query('update booking.beds set resource_id = $1 where id = $2', [ids[b.label], b.id]);
+  // La habitación de Booking, con su pareja en Recursos: la cama de Recursos tiene que colgar de ella (check_resource_refs).
+  await db.query('update booking.spaces set resource_id = $1 where id = $2', [ids[roomName], beds[0]!.space_id]);
+  return { ids, byLabel };
+}
+
 test('§9.19 · por QR, sin datos: el evento, «Apuntarme» pendiente, «Mis eventos» y «Salir de este móvil»', async ({ page }) => {
   const r = await api.reservation({ title: 'Jornadas de otoño', start: day(3), end: day(4) });
   await api.booking.t.db.query('update booking.reservations set guests_visible = true, public_summary = $2 where id = $1', [r.id, 'Dos días de puertas abiertas.']);
@@ -130,6 +153,7 @@ test('ENTRADA_PUBLICA · sin invitación ni QR: ven.ikisai.com enseña los event
 
 test('ENTRADA_PUBLICA · «Reservar antes de venir»: precios y plazas para todas las noches y la solicitud con la plaza guardada', async ({ page }) => {
   const d = await api.openDays(day(10), day(14), { lodging_pay_mode: 'hold', lodging_hold_hours: 24 });
+  await placeBeds(d);
   // «Reservar antes de venir» va dentro de «Alójate aquí» (abierta por el QR), plegada.
   await page.goto(`${baseURL}/e/${d.code}?alojate`);
   await page.locator('#lodgeLater > summary').click();
@@ -162,6 +186,7 @@ test('ENTRADA_PUBLICA · «Reservar antes de venir»: precios y plazas para toda
 
 test('«Alójate aquí» (como la barra): la pestaña en el evento abierto; cama y datos en borrador, «Ir a pagar» y su número', async ({ page, browser }) => {
   const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  const { ids } = await placeBeds(d);
   // Sin QR (desde la raíz pública) también: ven.ikisai.com es la única entrada (VG, 27-10 noche; vg-48, recomendada).
   const other = await browser.newPage();
   await other.goto(`${baseURL}/#/v/${d.code}`);
@@ -175,8 +200,10 @@ test('«Alójate aquí» (como la barra): la pestaña en el evento abierto; cama
   const beds = page.locator('#lodgeBeds');
   await expect(beds.getByLabel('Asignadme una')).toBeChecked();
   await expect(page.locator('#lodgePrice')).toContainText(/20,00.*la noche/);
-  // Las camas libres son de toda la casa (la base de pruebas la comparten otras pruebas): la de su habitación.
-  await beds.locator('.glodge-room', { hasText: d.room }).getByLabel('Cama 1', { exact: true }).check();
+  // La cama, en el plano (VG, 05-11): sin identidad aún, se abre con un toque; la lista no se ve.
+  await expect(beds.locator('.glodge-room').first()).toBeHidden();
+  await page.locator('#lodgePlanOpen').click();
+  await page.locator(`#lodgePlanBox .map-svg [data-space-id="${ids['Cama 1']}"]`).click();
   // Solo el nombre es obligatorio; el documento, no.
   await page.locator('#lodgeGo').click();
   await expect(page.locator('#lodge_first_name')).toBeFocused();
@@ -305,20 +332,7 @@ test('§9.19 · «Mi pedido» (Flow FL2): «Abrir la carta» le da su número, q
 
 test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, nunca; con ella y habiendo entrado, se elige tocando', async ({ page }) => {
   const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
-  // Las dos camas recién creadas (cada fichero de pruebas tiene su base) y su pareja en Recursos, sobre un dibujo.
-  const beds = (await api.booking.t.db.query<{ id: string; label: string }>(`select id, label from booking.beds order by created_at desc, label desc limit 2`)).rows;
-  const byLabel = Object.fromEntries(beds.map((b) => [b.label, b.id]));
-  const square = (x: number, y: number, s: number): Array<[number, number]> => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
-  const { ids } = await api.floorPlan([
-    { name: 'Habitación de las jornadas', kind: 'habitacion', points: square(0.1, 0.1, 0.6) },
-    { name: 'Cama 1', kind: 'cama', parent: 'Habitación de las jornadas', refs: [`booking.bed:${byLabel['Cama 1']}`], attributes: { bed_kind: 'individual' } },
-    { name: 'Cama 2', kind: 'cama', parent: 'Habitación de las jornadas', refs: [`booking.bed:${byLabel['Cama 2']}`], attributes: { bed_kind: 'individual' } },
-  ]);
-  // Su sitio, en Booking (un solo modelo): `booking_public_beds` no da la habitación de Recursos, así que va por la de la cama.
-  const space = (await api.booking.t.db.query<{ space_id: string }>('select space_id from booking.beds where id = $1', [byLabel['Cama 1']])).rows[0]!.space_id;
-  await api.bedLayout(space, { cols: 4, rows: 4 }, [[byLabel['Cama 1']!, { x: 0, y: 0, rot: 0 }], [byLabel['Cama 2']!, { x: 2, y: 2, rot: 0 }]]);
-  // La pareja que lee Booking (`booking.beds.resource_id`, la de `booking_public_beds`).
-  for (const label of ['Cama 1', 'Cama 2']) await api.booking.t.db.query('update booking.beds set resource_id = $1 where id = $2', [ids[label], byLabel[label]]);
+  const { ids, byLabel } = await placeBeds(d);
 
   // Sin `X-Visitor`, la ruta no da el plano.
   const anonymous = await page.request.get(`${baseURL}/api/v1/public/plans?event_code=${d.code}`);
@@ -340,6 +354,7 @@ test('«Alójate aquí» · las camas en el plano: sin identidad de visitante, n
 
 test('«Alójate aquí» · Guiado de Flow en ven.ikisai.com: señala el campo, explica el paso, avisa al guardar y vuelve a la guía', async ({ page }) => {
   const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  await placeBeds(d);
   const back = 'https://flow.ikisai.com/#/guia';
   const guide = new URLSearchParams({ campo: 'guests.visitante.alojate.viajero.first_name', paso: 'Escribe tu nombre', desde: 'flow', volver: back, titulo: 'la guía' });
   await page.goto(`${baseURL}/e/${d.code}?alojate&${guide}`);
@@ -359,6 +374,7 @@ test('«Alójate aquí» · Guiado de Flow en ven.ikisai.com: señala el campo, 
 
 test('«Alójate aquí» · lo que dejó en «Tus datos» sale ya puesto (VG, 28-10)', async ({ page }) => {
   const d = await api.openDays(day(0), day(3), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  await placeBeds(d);
   await page.goto(`${baseURL}/e/${d.code}`);
   await page.locator('#visitorEnter').click();
   await page.locator('#visitorName').fill('Iria Prueba');
@@ -366,4 +382,12 @@ test('«Alójate aquí» · lo que dejó en «Tus datos» sale ya puesto (VG, 28
   await expect(page.locator('#visitorSent')).toContainText('Pendiente');
   await page.goto(`${baseURL}/e/${d.code}?alojate`);
   await expect(page.locator('#lodge_first_name')).toHaveValue('Iria Prueba');
+});
+
+test('«Alójate aquí» · sin camas colocadas en el plano, no sale (VG, 05-11)', async ({ page }) => {
+  const d = await api.openDays(day(20), day(22), { lodging_pay_mode: 'hold', lodging_hold_hours: 2 });
+  await api.booking.t.db.query('update booking.beds set cell = null');
+  await page.goto(`${baseURL}/e/${d.code}`);
+  await expect(page.locator('#retreatTitle')).toBeVisible();
+  await expect(page.locator('#visitorTabs')).toHaveCount(0);
 });
