@@ -6,7 +6,8 @@
  * ```ts
  * const source = createSyncSpaceSource(resources);
  * const map = createSpaceMap({
- *   source, plans: source.plans, planUrl: (fileId) => `/api/v1/resources/files/${fileId}`,
+ *   // `planUrl` da el enlace firmado del archivo (`client.fileUrl`), no la ruta de la API: esa devuelve JSON `{ url }`.
+ *   source, plans: source.plans, planUrl: (fileId) => client.fileUrl(fileId),
  *   layer: (space) => (space.kind === 'cama' ? { state: bedState(space) } : null),
  *   onPick: (space) => openRoomSheet(space),
  * });
@@ -36,9 +37,10 @@
  * Prefijo de clases: `map-`.
  */
 import { el, replace } from '../dom.ts';
+import { NOT_A_FIELD } from '../fields/field-mark.ts';
 import { kt } from '../i18n/i18n.ts';
 import { ancestorsOf, indexSpaces, spacePath, type SpaceRow, type SpaceSource } from './model.ts';
-import { GRID_SCALES, bedKindOf, bedSymbols, cellSize, decorBox, relToCell, safeIconUrl, validGrid, type DecorChange, type DecorIcon, type DecorItem, type GridScale, type PlanGrid } from './decor.ts';
+import { GRID_SCALES, beaconText, bedKindOf, bedSymbols, cellSize, decorBox, relToCell, safeIconUrl, validGrid, type DecorChange, type DecorIcon, type DecorItem, type GridScale, type PlanGrid } from './decor.ts';
 
 /** Dibujo de un edificio y planta (`resources.floor_plans`). */
 export interface FloorPlan {
@@ -137,7 +139,10 @@ export interface SpaceMapOptions {
   mode?: 'map' | 'list' | 'both' | 'plan';
   /** `all`: todos los dibujos a la vez (dos por fila en el ordenador, uno en el móvil). Por defecto `switch`, el selector. */
   layout?: 'switch' | 'all';
-  /** URL del dibujo (`/api/v1/resources/files/:id`); puede ser una promesa (p. ej. un `blob:` con el token). */
+  /**
+   * URL del dibujo, la que se puede pintar: el enlace firmado (`client.fileUrl(fileId)`, que lo pide a
+   * `/api/v1/resources/files/:id`) o un `blob:`. No la ruta de la API, que responde JSON `{ url }` y el dibujo no carga.
+   */
   planUrl?: (fileId: string) => string | Promise<string>;
   /** Nombre que se pinta; por defecto `name` (en los portales, `publicName ?? name`). */
   nameOf?: (space: SpaceRow) => string;
@@ -170,7 +175,11 @@ export interface SpaceMapOptions {
   /** `false` quita la decoración en esta vista (p. ej. al ordenar camas). Por defecto, con decoración. */
   showDecor?: boolean;
   /** Colocar decoración (Central, ordenador): iconos que se pueden poner y aviso de cada cambio. Sin esto, la decoración solo se ve. */
-  decorEdit?: { icons: DecorIcon[]; onDecorChange: (change: DecorChange) => void; scale?: GridScale };
+  decorEdit?: {
+    icons: DecorIcon[]; onDecorChange: (change: DecorChange) => void; scale?: GridScale;
+    /** «Subir imagen» en la paleta: la app la sube y devuelve su URL. Sin esto, solo iconos y «Texto». */
+    onUpload?: (file: File) => Promise<{ url: string; fileId?: string | null }>;
+  };
   /** Camas con el icono de su `attributes.bed_kind` (individual, doble, litera, sofá cama), además del color y el estado. */
   bedIcons?: boolean;
   /** Bandas horizontales con nombre (las alturas de la finca); por defecto, `plan.bands`. */
@@ -220,6 +229,8 @@ export const SPACE_MAP_MARKS = {
   item: ['deco-objeto', 'Objeto de decoración'],
   rotate: ['deco-girar', 'Girar 90°'],
   remove: ['deco-quitar', 'Quitar el objeto'],
+  text: ['deco-texto', 'Baliza de texto'],
+  upload: ['deco-imagen', 'Subir imagen'],
 } as const;
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -296,6 +307,10 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
   let decor: DecorItem[] = (options.decor ?? []).slice();
   const edit = options.decorEdit ?? null;
   const tool: { iconId: string | null; size: 1 | 4; scale: GridScale } = { iconId: edit?.icons[0]?.id ?? null, size: edit?.icons[0]?.size ?? 1, scale: edit?.scale ?? 1 };
+  /** Baliza: texto que se pone con «Texto» (y pie de una imagen subida) y la imagen subida que se pone al tocar. */
+  const TEXT_TOOL = '__texto';
+  const IMAGE_TOOL = '__imagen';
+  const beacon: { text: string; url: string | null; fileId: string | null; busy: boolean } = { text: '', url: null, fileId: null, busy: false };
   let decorSel: string | null = null;
   let trail: Array<{ planId: string; focus: string | null }> = [];
   let dragging = false;
@@ -543,16 +558,25 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
         continue;
       }
       if (off && !use) continue;
+      // Ampliada: la estancia ampliada no se rotula encima de sus camas (su nombre ya está en la miga).
+      if (crop && s.id === crop.id) continue;
       const name = nameOf(s);
       // En el dibujo, lo corto si la app lo da («2»); la frase entera va al lector de pantalla y a la lista.
       const text = layer.short ?? stateText(s, layer);
-      const size = Math.max(Math.min(bw / Math.max(name.length * 0.62, 1), bh / (text ? 3.2 : 2.2), unit * 0.03), unit * 0.012, px(12));
+      // Cabe lo que cabe: en el móvil, como mucho 13 px en pantalla; si a 10 px no cabe, se recorta con «…»; y en una
+      // estancia demasiado pequeña no se pinta (el nombre ya va en la lista, en la miga y en el lector de pantalla).
+      const narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 719px)').matches;
+      const fit = Math.min(bw / Math.max(name.length * 0.62, 1), bh / (text ? 3.2 : 2.2), unit * 0.03, narrow ? px(13) : Infinity);
+      const size = Math.max(fit, px(10));
+      const chars = Math.floor(bw / (size * 0.62));
+      if (chars < 3 || bh < size * (text ? 2.6 : 1.4)) continue;
+      const shown = name.length > chars ? `${name.slice(0, Math.max(chars - 1, 2)).trimEnd()}…` : name;
       // Si dentro hay camas dibujadas, el rótulo va abajo para no taparlas.
       const bedsInside = here.some(({ s: b }) => b.parentId === s.id && b.kind === 'cama');
       const bottom = Math.max(...shape.points.map((p) => p[1])) * h;
       const y = bedsInside ? bottom - size * (text ? 2.1 : 1) : c.y * h - (text ? size * 0.55 : 0);
-      labels.append(svg('text', { class: 'map-room-txt', x: c.x * w, y, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, name));
-      if (text && layer.short) labels.append(svg('text', { class: 'map-room-short', x: c.x * w, y: y + size * 1.3, 'font-size': Math.max(size * 1.15, px(15)).toFixed(1), 'dominant-baseline': 'central' }, text));
+      labels.append(svg('text', { class: 'map-room-txt', x: c.x * w, y, 'font-size': size.toFixed(1), 'dominant-baseline': 'central' }, shown));
+      if (text && layer.short) labels.append(svg('text', { class: 'map-room-short', x: c.x * w, y: y + size * 1.3, 'font-size': Math.min(Math.max(size * 1.15, px(13)), bh / 2.4).toFixed(1), 'dominant-baseline': 'central' }, text));
       else if (text) labels.append(svg('text', { class: 'map-room-state', x: c.x * w, y: y + size * 1.15, 'font-size': Math.max(size * 0.82, px(11)).toFixed(1), 'dominant-baseline': 'central' }, text));
     }
     // Bandas (alturas de la finca): línea arriba y abajo y el nombre a la izquierda.
@@ -602,11 +626,19 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
 
   function decorNode(plan: FloorPlan, item: DecorItem): SVGElement | null {
     const box = decorBox(plan, item);
-    if (!box || !safeIconUrl(item.iconUrl)) return null;
+    const url = item.iconUrl && safeIconUrl(item.iconUrl) ? item.iconUrl : null;
+    const text = item.iconId ? '' : beaconText(item.label);
+    if (!box || (!url && !text)) return null;
     const cx = box.x + box.side / 2;
     const cy = box.y + box.side / 2;
-    const image = svg('image', { class: 'map-deco-img', href: item.iconUrl, x: box.x, y: box.y, width: box.side, height: box.side, preserveAspectRatio: 'xMidYMid meet',
-      ...(item.rotation ? { transform: `rotate(${item.rotation} ${cx.toFixed(2)} ${cy.toFixed(2)})` } : {}) });
+    const turn = item.rotation ? { transform: `rotate(${item.rotation} ${cx.toFixed(2)} ${cy.toFixed(2)})` } : {};
+    const fs = Math.max(box.side * 0.22, 1);
+    const caption = text ? svg('text', { class: 'map-deco-text', x: cx, y: url ? box.y + box.side + fs : cy, 'font-size': fs.toFixed(2), 'text-anchor': 'middle', 'dominant-baseline': 'middle' }) : null;
+    if (caption) caption.textContent = text;
+    // Baliza de solo texto: una etiqueta con fondo; con imagen, la imagen y el texto debajo.
+    const image = url
+      ? svg('g', { class: 'map-deco-art' }, svg('image', { class: 'map-deco-img', href: url, x: box.x, y: box.y, width: box.side, height: box.side, preserveAspectRatio: 'xMidYMid meet', ...turn }), caption)
+      : svg('g', { class: 'map-deco-art map-deco-beacon' }, svg('rect', { class: 'map-deco-tag', x: box.x, y: cy - fs, width: box.side, height: fs * 2, rx: fs * 0.4 }), caption);
     if (!edit) return image;
     const on = decorSel === item.id;
     const g = svg('g', {
@@ -632,15 +664,19 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
     };
     hit.addEventListener('click', (e) => {
       const icon = edit.icons.find((i) => i.id === tool.iconId);
+      const text = beacon.text.trim().slice(0, 60);
+      const kind = tool.iconId === TEXT_TOOL ? (text ? 'text' : null) : tool.iconId === IMAGE_TOOL ? (beacon.url ? 'image' : null) : icon ? 'icon' : null;
       const at = toRel(e);
-      if (!icon || !at) return;
+      if (!kind || !at) { if (!kind) decorBar.querySelector<HTMLElement>('.map-decor-beacon input')?.focus(); return; }
       const cell = relToCell(plan, tool.scale, at.x, at.y);
       if (!cell) return;
       // Con 4 celdas, el objeto se centra en el toque.
       const shift = tool.size === 4 ? 0.5 : 0;
       const cs = cellSize(plan, tool.scale)!;
       const c2 = tool.size === 4 ? relToCell(plan, tool.scale, at.x - (shift * cs) / w, at.y - (shift * cs) / h) ?? cell : cell;
-      const item: DecorItem = { id: newId(), planId: plan.id, iconId: icon.id, iconUrl: icon.url, cellX: c2.cellX, cellY: c2.cellY, scale: tool.scale, size: tool.size, rotation: 0, label: icon.label };
+      const item: DecorItem = kind === 'icon'
+        ? { id: newId(), planId: plan.id, iconId: icon!.id, iconUrl: icon!.url, cellX: c2.cellX, cellY: c2.cellY, scale: tool.scale, size: tool.size, rotation: 0, label: icon!.label }
+        : { id: newId(), planId: plan.id, iconId: null, iconUrl: kind === 'image' ? beacon.url : null, fileId: kind === 'image' ? beacon.fileId : null, cellX: c2.cellX, cellY: c2.cellY, scale: tool.scale, size: tool.size, rotation: 0, label: text || null };
       decor = [...decor, item];
       decorSel = item.id;
       emit('add', item);
@@ -729,10 +765,29 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
         type: 'button', class: it.on ? 'on' : '', 'aria-pressed': String(it.on), dataset: { key: it.key }, ...mark(it.markKey), ...(it.extra ?? {}), onclick: it.act,
       }, it.text)));
     const icons = seg(kt('Icono'), edit.icons.map((icon) => ({
-      key: icon.id, on: tool.iconId === icon.id, markKey: 'icon' as const,
+      key: icon.id, on: tool.iconId === icon.id, markKey: 'icon' as keyof typeof SPACE_MAP_MARKS,
       text: el('span', { class: 'map-decor-icon' }, safeIconUrl(icon.url) ? el('img', { src: icon.url, alt: '', width: '24', height: '24', loading: 'lazy' }) : null, el('span', null, icon.label)),
       act: () => { tool.iconId = icon.id; tool.size = icon.size ?? tool.size; paint(); decorBar.querySelector<HTMLElement>(`[data-key="${CSS.escape(icon.id)}"]`)?.focus(); },
-    })));
+    })).concat([
+      { key: TEXT_TOOL, on: tool.iconId === TEXT_TOOL, markKey: 'text' as const, text: el('span', { class: 'map-decor-icon' }, kt('Texto')),
+        act: () => { tool.iconId = TEXT_TOOL; decorSel = null; paint(); decorBar.querySelector<HTMLInputElement>('.map-decor-beacon input[type=text]')?.focus(); } },
+      ...(edit.onUpload ? [{ key: IMAGE_TOOL, on: tool.iconId === IMAGE_TOOL, markKey: 'upload' as const, text: el('span', { class: 'map-decor-icon' }, kt('Subir imagen')),
+        act: () => { tool.iconId = IMAGE_TOOL; decorSel = null; paint(); decorBar.querySelector<HTMLInputElement>('.map-decor-beacon input[type=file]')?.click(); } }] : []),
+    ]));
+    // Baliza: el texto (y, con «Subir imagen», el archivo). La imagen se sube al elegirla; se pone al tocar el plano.
+    const beaconBox = tool.iconId === TEXT_TOOL || tool.iconId === IMAGE_TOOL ? el('div', { class: 'map-decor-beacon' },
+      el('label', { class: 'field' }, el('span', null, tool.iconId === TEXT_TOOL ? kt('Texto de la baliza') : kt('Pie (opcional)')),
+        el('input', { type: 'text', class: 'input', maxlength: '60', autocomplete: 'off', value: beacon.text, ...NOT_A_FIELD, oninput: (e: Event) => { beacon.text = (e.target as HTMLInputElement).value; } })),
+      tool.iconId === IMAGE_TOOL && edit.onUpload ? el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml', class: 'vh', ...NOT_A_FIELD, 'aria-label': kt('Subir imagen'),
+        onchange: async (e: Event) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file || beacon.busy) return;
+          beacon.busy = true; beacon.url = null; paint();
+          try { const up = await edit.onUpload!(file); beacon.url = safeIconUrl(up.url) ? up.url : null; beacon.fileId = beacon.url ? up.fileId ?? null : null; } catch { beacon.url = null; beacon.fileId = null; }
+          beacon.busy = false; paint();
+        } }) : null,
+      tool.iconId === IMAGE_TOOL ? el('button', { type: 'button', class: 'ghost small', disabled: beacon.busy ? true : null, onclick: () => decorBar.querySelector<HTMLInputElement>('.map-decor-beacon input[type=file]')?.click() },
+        beacon.busy ? kt('Subiendo…') : beacon.url ? kt('Cambiar imagen') : kt('Elegir imagen')) : null) : null;
     const sizes = seg(kt('Tamaño'), ([1, 4] as const).map((n) => ({
       key: `size-${n}`, on: tool.size === n, markKey: 'size' as const, text: n === 1 ? kt('1 celda') : kt('4 celdas'),
       act: () => { tool.size = n; paint(); decorBar.querySelector<HTMLElement>(`[data-key="size-${n}"]`)?.focus(); },
@@ -749,8 +804,10 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
       ? kt('Este dibujo no tiene escala: no se puede colocar decoración hasta que Recursos la ponga.')
       : chosen
         ? kt('«{name}» elegido: arrástralo, muévelo con las flechas, R para girar y Supr para quitar.', { name: decorName(chosen) })
-        : icon ? kt('Toca el plano para poner «{name}».', { name: icon.label }) : kt('Elige un icono.'));
-    replace(decorBar, icons, el('div', { class: 'map-decor-row' }, sizes, scalesSeg, actions), hint);
+        : tool.iconId === TEXT_TOOL ? kt('Escribe el texto y toca el plano para poner la baliza.')
+          : tool.iconId === IMAGE_TOOL ? (beacon.busy ? kt('Subiendo la imagen…') : beacon.url ? kt('Toca el plano para poner la imagen.') : kt('Elige una imagen para subirla.'))
+            : icon ? kt('Toca el plano para poner «{name}».', { name: icon.label }) : kt('Elige un icono.'));
+    replace(decorBar, icons, beaconBox, el('div', { class: 'map-decor-row' }, sizes, scalesSeg, actions), hint);
   }
 
   /** Pinta uno o varios dibujos y la leyenda de las camas (solo los estados que hay). */

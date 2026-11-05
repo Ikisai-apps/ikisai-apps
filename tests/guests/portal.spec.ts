@@ -92,8 +92,11 @@ test('guests · enlace no válido: pantalla clara, sin sesión @smoke', async ({
   await expect(page).not.toHaveURL(/\/i\//);
   // Nunca un callejón sin salida (VG, 28-10): con el enlace roto también salen los eventos abiertos.
   await expect(page.locator('#openEvents')).toBeVisible();
+  // Sin sesión ni enlace, ven.ikisai.com enseña los eventos abiertos (VG, 28-10), no la entrada de invitados.
   await page.goto(`${baseURL}/`);
-  await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
+  await expect(page).toHaveURL(/#\/v$/);
+  await expect(page.locator('#openEvents')).toBeVisible();
+  await expect(page.locator('#entryTitle')).toHaveCount(0);
 });
 
 test('guests · con sesión guardada, un enlace que ya no vale (la app instalada desde él) sigue con la sesión', async ({ page }) => {

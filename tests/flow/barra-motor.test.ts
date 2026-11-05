@@ -99,3 +99,15 @@ test('barra genérica · las unidades del motor (pedido, cierre) solo las escrib
   await ok([{ op: 'insert', table: TABLES.units, id, fields: { project_id: PROJECT, column_key: 'logistics', kind: 'task', label: 'Reponer hielo', status: 'pending' } }]);
   assert.equal((await q(`select lane_key from flow.units where id = $1`, [id]))[0].lane_key, 'barra');
 });
+
+test('barra genérica · cancelar un pedido sin cobrar (op delete) quita también su unidad del motor (0961)', async () => {
+  await unfreeze();
+  const id = uuid();
+  await ok([{ op: 'insert', table: TABLES.orders, id, fields: { project_id: PROJECT, origin: 'counter' } }]);
+  const u = await orderUnit(id);
+  assert.ok(u, 'el pedido abierto tiene su unidad en caja');
+  const o = (await q(`select revision from flow.orders where id = $1`, [id]))[0];
+  await ok([{ op: 'delete', table: TABLES.orders, id, expectedRevision: o.revision }]);
+  assert.equal(await orderUnit(id), undefined);
+  assert.ok((await q(`select deleted_at from flow.units where id = $1`, [u.id]))[0].deleted_at);
+});

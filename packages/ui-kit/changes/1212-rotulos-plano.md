@@ -1,0 +1,1 @@
+Rótulos del plano (`createSpaceMap`), lo vio VG en Booking y Central. En el móvil, el nombre de cada estancia mide como mucho 13 px. Si no cabe a 10 px se recorta con «…», y en una estancia demasiado pequeña no se pinta. El estado corto (`layer.short`) ya no pasa de la estancia. La estancia ampliada no se rotula encima de sus camas, porque su nombre ya está en la miga.

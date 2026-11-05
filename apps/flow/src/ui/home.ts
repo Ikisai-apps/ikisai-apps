@@ -6,7 +6,7 @@ import { loadProjects, loadStock, projectDates, projectState, type Project, type
 import { addDocument, coverUrl, loadCodeGuides, moveDocument, projectDocuments, removeDocument, setCover, type ProjectDocument } from '../app/documents.ts';
 import { assignGuestNumbers, chooseBookingEvent, chooseTasksProject } from '../app/links.ts';
 import { editorLinks } from './editor.ts';
-import { editBitcoinSettings } from './checkout.ts';
+import { BITCOIN_ENABLED, editBitcoinSettings } from './checkout.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
@@ -55,7 +55,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, projectId }) => {
         project.frozen ? el('p', { class: 'muted small' }, `Versión ${project.template_version ?? ''} congelada: su configuración no cambia.`) : null,
         project.template_key ? el('button', { type: 'button', class: 'ghost', onclick: () => void newVersion(project) }, 'Nueva versión del flujo') : null,
         project.frozen ? null : editorLinks(client, project.id),
-        project.frozen ? null : el('button', { type: 'button', class: 'ghost', onclick: () => void editBitcoinSettings(client, project.id) }, 'Cobro con Bitcoin'),
+        project.frozen || !BITCOIN_ENABLED ? null : el('button', { type: 'button', class: 'ghost', onclick: () => void editBitcoinSettings(client, project.id) }, 'Cobro con Bitcoin'),
         el('button', { type: 'button', class: 'ghost', onclick: () => pickFile('image/*', (file) => setCover(client, project, file, file.name || 'portada.webp').then(() => toast('Portada cambiada.'))) }, 'Cambiar portada'),
         el('button', { type: 'button', class: 'ghost', onclick: () => manageDocuments() }, 'Gestionar documentos'),
         el('label', { class: 'flow-public-switch' }, el('input', { ...fieldAttrs({ id: 'flow.inicio.carta_publica', entity: 'flow.projects', prop: 'serves_public', type: 'checkbox' }), type: 'checkbox', checked: project.serves_public, onchange: (e: Event) => void servePublic(project, (e.target as HTMLInputElement).checked) }),

@@ -52,7 +52,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, root, 'VITE_');
   const target = process.env.VITE_API_PROXY ?? env.VITE_API_PROXY;
   const proxy: Record<string, ProxyOptions> | undefined = target
-    ? { '/api': { target, changeOrigin: true, secure: true } }
+    // Origin del destino: el _worker publicado rechaza otros orígenes (prueba en el móvil con --host, como Food #1204).
+    ? { '/api': { target, changeOrigin: true, secure: true, headers: { Origin: new URL(target).origin } } }
     : undefined;
 
   return {

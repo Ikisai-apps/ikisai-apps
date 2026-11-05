@@ -44,7 +44,7 @@ export function openCustomerSheet(client: SyncClient, projectId: string, number:
     for (const id of [...chosen]) if (!orders.some((o) => o.id === id && o.status !== 'delivered')) chosen.delete(id);
     if (!orders.length) { replace(list, el('p', { class: 'muted' }, 'Este cliente aún no tiene pedidos.')); replace(foot); return; }
     replace(list, ...orders.map((o) => {
-      const items = (data!.linesByOrder.get(o.id) ?? []).map((l) => `${l.quantity} ${data!.products.get(l.product_id)?.code ?? ''}`).join(' · ');
+      const items = (data!.linesByOrder.get(o.id) ?? []).map((l) => { const pr = data!.products.get(l.product_id); return `${l.quantity} ${pr ? `${pr.code} ${pr.name}` : ''}`; }).join(' · ');
       const box = el('input', { ...fieldAttrs({ id: 'flow.servicio.elegir_pedido', type: 'checkbox', storage: 'none' }), type: 'checkbox', checked: chosen.has(o.id), disabled: o.status === 'delivered', 'aria-label': `Elegir pedido ${o.pay_seq ?? ''}`,
         onchange: (e: Event) => { if ((e.target as HTMLInputElement).checked) chosen.add(o.id); else chosen.delete(o.id); paintFoot(); } });
       return el('label', { class: `qcard checkout-order is-${o.status}`, role: 'listitem' }, box,
@@ -117,8 +117,8 @@ export function openPaySheet(client: SyncClient, projectId: string, orderIds: st
       off && m !== 'card' ? `${CHECKOUT_METHOD_LABELS[m]} · ${off}` : CHECKOUT_METHOD_LABELS[m], () => (m === 'btc_ln' || m === 'btc_chain' ? bitcoin(m, total) : pay(m, total)));
     const noAddress = 'pendiente de dirección';
     replace(foot, method('cash'), method('bizum'), method('card', 'Aún no disponible'),
-      method('btc_ln', settings?.lightning_address ? null : noAddress), method('btc_chain', settings?.bitcoin_address ? null : noAddress));
-    if (!settings?.lightning_address && !settings?.bitcoin_address) {
+      ...(BITCOIN_ENABLED ? [method('btc_ln', settings?.lightning_address ? null : noAddress), method('btc_chain', settings?.bitcoin_address ? null : noAddress)] : []));
+    if (BITCOIN_ENABLED && !settings?.lightning_address && !settings?.bitcoin_address) {
       body.append(el('p', { class: 'muted small', 'data-note': 'bitcoin' }, 'Bitcoin: pendiente de dirección. La pone el encargado en el Inicio del flujo, «Cobro con Bitcoin».'));
     }
   }
@@ -177,6 +177,9 @@ function openPaidSheet(client: SyncClient, receipts: Array<{ receipt_id: string;
     body: rows, foot: el('div', { class: 'flow-actions' }, el('button', { type: 'button', class: 'primary', onclick: () => sheet.close() }, 'Cerrar')) });
   paint();
 }
+
+/** Bitcoin y Lightning, fuera por ahora (VG, 28-10: al backlog): ni en la caja ni en el Inicio. El código se queda. */
+export const BITCOIN_ENABLED = false;
 
 /** Owner: direcciones de cobro con Bitcoin del flujo (ajustes del proyecto). */
 export async function editBitcoinSettings(client: SyncClient, projectId: string): Promise<void> {
