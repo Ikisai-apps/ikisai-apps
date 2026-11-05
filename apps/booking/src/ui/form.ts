@@ -50,6 +50,8 @@ export interface BuiltForm {
   showError(message: string | null): void;
   onChange(listener: () => void): void;
   first(): HTMLElement | null;
+  /** Pone el valor de un campo por código (p. ej. el contacto de un cliente ya conocido) y avisa como si se escribiera. */
+  set(key: string, value: unknown): void;
 }
 
 function normalize(spec: FieldSpec, raw: unknown): unknown {
@@ -161,6 +163,13 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     showError(message) { error.hidden = !message; error.textContent = message ?? ''; },
     onChange(listener) { listeners.push(listener); },
     first: () => controls.get(specs[0]?.key ?? '') ?? null,
+    set(key, value) {
+      const control = controls.get(key);
+      if (!control) return;
+      if (control instanceof HTMLInputElement && control.type === 'checkbox') control.checked = value === true;
+      else control.value = value === null || value === undefined ? '' : String(value);
+      fire();
+    },
   };
 }
 

@@ -20,7 +20,8 @@ import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
 import { PROGRAM, loadProgram, renderProgram } from './program.ts';
 import { balanceState, cachedCollected, cachedMovements, collectedFromMovements, fetchCollected, fetchMovements, type Movement } from '../app/collected.ts';
-import { openRowSheet, type FieldSpec } from './form.ts';
+import { openRowSheet, type BuiltForm, type FieldSpec } from './form.ts';
+import { clientNamed, pastClients } from '../app/clients.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
 import { fetchCosts, invoiceUrl, issueInvoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
@@ -224,11 +225,27 @@ export function mountReservation(id: string): ViewMount {
       if (mark && !rejectedBatch && client.status().pendingCommands === 0) { clearConfirmMark(id); mark = null; }
       const confirmPending = mark !== null && rejectedBatch === null;
 
+      // B-35: los clientes de las demás reservas; «Nombre» los sugiere y, al elegir uno, se rellena su contacto
+      const clients = writable ? pastClients((await client.list(RESERVATIONS)) as Row[], id) : [];
+      const clientContact = (merged: Record<string, unknown>, form: BuiltForm): Child => {
+        const known = merged.contact_name !== reservation.contact_name ? clientNamed(clients, merged.contact_name) : null;
+        if (!known || (!known.phone && !known.email)) return null;
+        if (!merged.contact_phone && !merged.contact_email) {
+          queueMicrotask(() => { if (known.phone) form.set('contact_phone', known.phone); if (known.email) form.set('contact_email', known.email); });
+          return el('p', { class: 'hint', id: 'clientFilled' }, `Contacto de ${known.name}, de «${known.title}».`);
+        }
+        if ((!known.phone || known.phone === merged.contact_phone) && (!known.email || known.email === merged.contact_email)) return null;
+        return el('p', { class: 'hint', id: 'clientOffer' }, `${known.name} ya es cliente («${known.title}»). `,
+          el('button', { type: 'button', class: 'linkbtn', id: 'clientUse', 'data-feedback-id': 'booking.reserva.editar.cliente', 'data-feedback-label': 'Usar su contacto',
+            onclick: () => { form.set('contact_phone', known.phone); form.set('contact_email', known.email); } }, 'Usar su teléfono y correo'));
+      };
+
       // --- acciones de cabecera
       let editSheet: ReturnType<typeof openRowSheet> | null = null;
       const editReservation = () => { editSheet = openRowSheet({
         client, title: 'Editar reserva', table: RESERVATIONS, row: reservation, feedbackId: 'booking.reserva.editar', feedbackLabel: 'Editar reserva',
-        specs: specsFor(RESERVATION_SPECS, reservation.event_type).map((spec) => spec.key !== 'status' ? spec
+        specs: specsFor(RESERVATION_SPECS, reservation.event_type).map((spec) => spec.key === 'contact_name' && clients.length ? { ...spec, suggestions: clients.map((c) => c.name), suggestMode: 'pick' as const }
+          : spec.key !== 'status' ? spec
           : { ...spec, options: OPTIONS.status.filter(([value]) => !requiresEvent(value as ReservationStatus) || liveEvent !== null || value === reservation.status) }),
         check: (merged) => {
           const row = merged as unknown as ReservationRow;
@@ -237,7 +254,7 @@ export function mountReservation(id: string): ViewMount {
         },
         savedMessage: 'Reserva guardada.',
         // archivar y la papelera, dentro de la edición (VG, 28-10)
-        extra: () => el('div', { class: 'btnrow', id: 'editReservationMore' }, archiveButton, trashButton),
+        extra: (merged, form) => [clientContact(merged, form), el('div', { class: 'btnrow', id: 'editReservationMore' }, archiveButton, trashButton)].filter((x): x is HTMLElement => x instanceof HTMLElement),
       }) };
 
       async function confirmReservation(): Promise<void> {
