@@ -230,7 +230,14 @@ let tkhOrdering=false;
 function tkhPlanRowHtml(it){const hit=it.task_id?tkhFind(it.task_id):null;
   // De otra área, la fila de «Hoy» de siempre: la de «Tareas» abre y marca en el área activa.
   if(!hit||tkhItemGone(it)||hit.area.id!==tab()?.id)return `<div class="tkh-soloslot" data-tkh-solo="${esc(it.id)}"></div>`;
-  return taskRow(hit.t,hit.p).replace(/<button class="draghandle"[^>]*>⠿<\/button>/,'')}
+  return tkhChainHtml(hit)??tkhRowHtml(hit.t,hit.p)}
+function tkhRowHtml(t,p){return taskRow(t,p).replace(/<button class="draghandle"[^>]*>⠿<\/button>/,'')}
+/* VG (C-04, FB_2026_076): una madre con pasos en orden sale en gris (depende de sus pasos), con cuántos están hechos, la fila
+   del paso siguiente y cuántos quedan después. Una hija marcada para hoy sale sola (es una fila normal). */
+function tkhChainHtml(hit){if(!hit.t.stepsInOrder)return null;const chain=typeof stepChain==='function'?stepChain(hit.t,hit.p):children(hit.p,hit.t.id);if(!chain.length)return null;
+  const done=chain.filter(k=>k.done).length,next=chain.find(k=>!k.done),rest=chain.filter(k=>!k.done).length-(next?1:0);
+  const mother=tkhRowHtml(hit.t,hit.p).replace('<article class="task ','<article class="task tkh-mother ');
+  return `<div class="tkh-chain" data-tkh-chain="${esc(hit.t.id)}">${mother}<p class="tkh-chainline">${done} de ${chain.length} pasos hechos</p>${next?tkhRowHtml(next,hit.p):''}${rest>0?`<p class="tkh-chainline">y ${rest} ${rest===1?'paso más':'pasos más'}</p>`:''}</div>`}
 const batchAvailableBeforeHoy=batchAvailable;
 batchAvailable=function(){return batchAvailableBeforeHoy()||(state.view==='today'&&!tkhOrdering&&tkhCanPick())};
 /* La pista de desplazamiento del kit (K4) en las filas .scrollrow: la instala createAppShell, que Tasks no usa; aquí, una vez

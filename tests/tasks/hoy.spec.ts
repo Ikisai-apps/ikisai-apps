@@ -79,7 +79,7 @@ test.afterAll(async () => { await context?.close(); await server?.close(); });
 const plan = async (actor = server.app.users.owner, day = madrid()) => (await server.rows('tasks.day_plans')).find((p) => p.actor_id === actor && p.day === day && !p.deleted_at);
 const planTasks = async () => ((await plan())?.items ?? []).map((i: any) => i.task_id ?? i.text);
 const localPlan = () => page.evaluate(() => IkisaiTasks.dayPlans.dayPlanItems(Sync.core.dayPlan(isoDay(0))).map((i: any) => i.task_id ?? i.text)) as Promise<string[]>;
-declare const IkisaiTasks: any, isoDay: any, spaceRows: any, taskLocation: any;
+declare const IkisaiTasks: any, isoDay: any, spaceRows: any, taskLocation: any, tkhPick: any;
 const undoButton = (message: string) => page.locator('.ikisai-toast span', { hasText: message }).locator('xpath=following-sibling::button');
 const sync = async () => { await page.evaluate(() => syncNow()); await settled(page); };
 const go = (view: string, project?: string) => page.evaluate(([v, p]) => { state.view = v; state.currentProject = p || null; render(); }, [view, project ?? null]);
@@ -385,5 +385,21 @@ test('V-01: el plan con las filas de «Tareas» y su selección múltiple; «Ord
   await expect(page.locator('#tkhRows')).toHaveCount(0);
   await page.locator('#tkhOrder').click();
   await expect(page.locator('#tkhRows')).toBeVisible();
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('C-04: una madre con pasos en orden sale en gris, con los hechos, el paso siguiente y los que quedan', async () => {
+  const valla = (await server.rows('tasks.tasks')).find((t: any) => t.id === VALLA);
+  const res = await server.commit([{ op: 'update', table: 'tasks.tasks', id: VALLA, expectedRevision: valla.revision, fields: { steps_in_order: true } }]);
+  expect(res.status, JSON.stringify(res.data)).toBe(200);
+  await sync();
+  await page.evaluate((id) => { if (!IkisaiTasks.dayPlans.dayPlanItems(Sync.core.dayPlan(isoDay(0))).some((i: any) => i.task_id === id)) tkhPick(id); }, VALLA);
+  await go('today');
+  await settled(page);
+  const chain = page.locator(`[data-tkh-chain="${VALLA}"]`);
+  await expect(chain).toContainText('2 de 4 pasos hechos');
+  await expect(chain.locator(`.task[data-row="${PASO3}"]`)).toBeVisible();
+  await expect(chain).toContainText('y 1 paso más');
+  await expect(chain.locator(`.task.tkh-mother[data-row="${VALLA}"]`)).toBeVisible();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

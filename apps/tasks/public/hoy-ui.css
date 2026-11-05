@@ -125,3 +125,6 @@ html.dark .tkh-carryback{color:var(--ink)}
 /* VG V-01: los botones del plan («Seleccionar» y «Ordenar») en una fila. */
 .tkh-plantools{gap:8px;flex-wrap:wrap;margin:0 0 8px}
 .tkh-plantools button{min-height:44px}
+/* VG C-04: la madre de una cadena de pasos, en gris, con lo hecho, el paso siguiente y lo que queda. */
+.tkh-chain .task.tkh-mother{opacity:.6}
+.tkh-chainline{margin:2px 12px;font-size:13px;color:color-mix(in srgb,var(--ink) 75%,var(--paper))}
