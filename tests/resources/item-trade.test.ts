@@ -57,6 +57,8 @@ test('icono · un artículo guarda la clave de su icono (0822); una clave mal fo
   assert.ok(bad.status >= 400, JSON.stringify(bad.data));
   ok(await commit([{ op: 'update', table: ITEMS, id: llave, expectedRevision: await rev(llave), fields: { icon: null } }], app.tokens.owner));
   assert.equal((await app.t.db.query<{ icon: string | null }>('select icon from resources.items where id = $1', [llave])).rows[0]!.icon, null);
+});
+
 test('familias · los nombres proponen sus prefijos de palabras, con cuántos artículos los comparten (0823)', async () => {
   const ok = (res: { status: number; data: any }) => assert.equal(res.status, 200, JSON.stringify(res.data));
   ok(await commit([
