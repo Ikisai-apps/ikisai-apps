@@ -1,5 +1,5 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
-import { createSyncClient, type RowOperation, type SyncedRow, type TableName } from '@ikisai/sync-client';
+import { type RowOperation, type SyncedRow, type TableName } from '@ikisai/sync-client';
 import { fieldAttrs, compressImage, compressedFilename, confirmDialog, registerReveal, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
 import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
@@ -345,9 +345,9 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
     async function openPreview(reservationId: string, button: HTMLButtonElement): Promise<void> {
       if (!navigator.onLine) return void toast('La vista previa necesita conexión.');
       button.disabled = true;
-      const organizers = createSyncClient({ app: 'organizers', apiBase: '/api/v1/organizers', sessionFrom: client, clearOnLogout: true });
       try {
-        const sample = await organizers.api<{ guest_id: string }>('/invoke/booking.portal_preview_guest', { method: 'POST', json: { reservation_id: reservationId } });
+        // el huésped de muestra lo crea Booking (1429), sin el ámbito del organizador
+        const sample = await client.api<{ guest_id: string }>('/invoke/booking.preview_guest', { method: 'POST', json: { reservation_id: reservationId } });
         const link = await client.api<{ url: string }>('/portal-links', { method: 'POST', json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: sample.guest_id },
           person: { name: 'Huésped de muestra' }, label: 'Vista previa', preview: true, replace: true } });
         const field = el('textarea', { id: 'previewUrl', rows: 3, readonly: true, 'aria-label': 'Enlace de la vista previa', 'data-field-none': '' }, link.url) as HTMLTextAreaElement;
@@ -358,7 +358,6 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
       } catch (error) {
         toast(`No se ha podido sacar la vista previa: ${describeError(error)}`);
       } finally {
-        organizers.stop();
         button.disabled = false;
       }
     }
