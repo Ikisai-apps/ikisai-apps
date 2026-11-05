@@ -374,6 +374,16 @@ export function publicBeds(code: string, from: string, to: string): Promise<Load
   });
 }
 
+/**
+ * ¿Hay camas colocadas en el plano para alojarse (VG, 05-11)? Las de la primera noche que aún se puede pedir
+ * (`booking_public_beds`, sin identidad): alguna con su sitio en Booking y su pareja en Recursos. Sin ellas, «Alójate
+ * aquí» no sale.
+ */
+export async function lodgingPlaced(code: string, from: string, to: string): Promise<boolean> {
+  const { value } = await publicBeds(code, from, to);
+  return value.rooms.some((r) => r.layout && r.beds.some((b) => b.layout && b.resource_bed_id));
+}
+
 /** Datos del viajero en borrador (los nombres de `booking.guests`); ninguno obligatorio para guardar. */
 export type TravelerFields = Partial<Record<'first_name' | 'last_name_1' | 'last_name_2' | 'document_type' | 'document_number' | 'birth_date' | 'phone' | 'email', string>>;
 
