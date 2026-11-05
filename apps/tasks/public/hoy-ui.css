@@ -122,3 +122,6 @@ html.dark .tkh-carryback{color:var(--ink)}
 .tkh-spaces-sub{margin-top:6px;padding-left:12px;border-left:2px solid color-mix(in srgb,var(--ink) 30%,var(--paper))}
 .tkh-spaces .tkh-space.none{border-style:dashed}
 .tkh-spaces .tkh-space.empty{opacity:.6}
+/* VG V-01: los botones del plan («Seleccionar» y «Ordenar») en una fila. */
+.tkh-plantools{gap:8px;flex-wrap:wrap;margin:0 0 8px}
+.tkh-plantools button{min-height:44px}
