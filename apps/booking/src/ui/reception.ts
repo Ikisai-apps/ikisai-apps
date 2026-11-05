@@ -87,7 +87,7 @@ export const mountReception: ViewMount = ({ main, client, navigate }) => {
           ? el('button', { class: 'ghost small', type: 'button', 'data-action': 'leave', 'data-feedback-id': 'booking.recepcion.sale', 'data-feedback-label': 'Sale', onclick: (e: Event) => void presence(c, PROCEDURES.guestLeave, 'Salida anotada: la cama queda libre y se pide su limpieza.', 'booking.recepcion.sale', e.currentTarget as HTMLButtonElement) }, 'Sale') : null,
         el('button', { class: 'ghost small', type: 'button', 'data-action': 'file', 'data-feedback-id': 'booking.recepcion.ficha', 'data-feedback-label': 'Ficha', onclick: () => navigate(c.guestId ? `#/huespedes/${c.eventId}/${c.guestId}` : `#/huespedes/${c.eventId}`) }, 'Ficha'));
     return el('li', { class: 'row', dataset: { card: c.key, ...(c.number ? { number: String(c.number) } : {}) }, 'data-feedback-ignore': '' },
-      el('div', { class: 'row-title' }, el('span', { class: 'name' }, c.title)),
+      el('div', { class: 'row-title' }, el('span', { class: 'name' }, c.title), c.test ? el('span', { class: 'chip', dataset: { test: '' } }, 'Prueba') : null),
       c.when || c.nights ? el('div', { class: 'row-meta reception-when' }, [c.nights ? `Noches ${shortDays(c.nights)}` : null, c.when ? `pedido ${whenText(c.when)}` : null].filter(Boolean).join(' · ')) : null,
       el('div', { class: 'row-meta reception-indicators' }, chip('Plaza', c.plaza), ' ', chip('Cobro', c.cobro), ' ', chip('Datos', c.docs), ' ', chip('Presencia', c.presencia)),
       c.why.length ? el('div', { class: 'row-meta' }, el('span', { class: 'chip alert' }, c.why.join(' · '))) : null,

@@ -510,7 +510,7 @@ function stayOut(item: Record<string, unknown>) {
   return {
     id: item.id, number: item.number, status: item.status, stay_status: item.stay_status, from: item.from, to: item.to, persons: item.persons,
     mode_id: item.mode_id, total_cents: item.total_cents, pay: item.pay, hold_until: item.hold_until, beds, bed: beds[0] ?? null,
-    paid_at: item.paid_at ?? null, missing: item.missing ?? [],
+    paid_at: item.paid_at ?? null, missing: item.missing ?? [], test: item.test === true,
   };
 }
 
@@ -566,6 +566,8 @@ export function bookingPublicRoutes(payments: PaymentProvider | null = null, fin
         { op: 'insert', table: TABLES.visitorRequests, id, fields: {
           via_code: code, visitor_id: visitor.id, kind: 'stay', name, contact: text(body.contact, 200) ?? text(body.email, 200), note: text(body.note, 500), ...(pay ? { pay_mode: pay } : {}),
           from_date: date(body.from, 'from'), to_date: date(body.to, 'to'), persons, rate_id: mode, ...(beds.length ? { hold_bed_ids: [...new Set(beds)] } : {}),
+          // 1428 (G-12): pedido de prueba, solo si el visitante es un miembro (si no, la base lo ignora)
+          ...(body.test === true ? { is_test: true } : {}),
         } },
         ...travelers.map((fields, i) => ({ op: 'insert' as const, table: TABLES.stayTravelers, id: crypto.randomUUID(), fields: { ...fields, request_id: id, position: i + 1 } })),
       ]);
