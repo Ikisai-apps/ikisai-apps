@@ -139,7 +139,8 @@ function tkhChildren(m,id){if(id===TKH_NONE)return [];const out=new Set(tkhKids(
   return [...out].sort(tkhByPlace)}
 function tkhTopIdOf(m,id){return id===TKH_NONE?TKH_NONE:m.tops.find(t=>tkhChain(id).includes(t))||null}
 function tkhSpaceFilter(){const m=tkhSpaceModel(),sel=new Set([...tkhSpaceSel()].filter(id=>(id===TKH_NONE?m.count.has(id):!!tkhNode(id))&&tkhTopIdOf(m,id)));
-  const on=sel.size>0&&!m.tops.every(t=>sel.has(t));
+  // «Todos» son los de arriba que tienen tareas: las alturas vacías (con 0) no cuentan para ver todo.
+  const on=sel.size>0&&!m.tops.filter(t=>m.count.get(t)).every(t=>sel.has(t));
   const ids=[...sel].filter(id=>id!==TKH_NONE);
   return {...m,sel,on,match:t=>{if(!on)return true;const spaces=tkhSpacesOf(t);if(!spaces.length)return sel.has(TKH_NONE);return spaces.some(s=>{const c=tkhChain(s);return ids.some(id=>c.includes(id))})}}}
 /* Lo marcado debajo de un nodo (él incluido). */
