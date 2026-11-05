@@ -101,3 +101,10 @@ test('experiencia · jornadas abiertas: sin «Pedir el número final» ni «Comp
   assert.ok(!open.areas.some((a) => a.key === 'huespedes'));
   assert.ok(experienceOf(input('retiro'), TODAY).steps.some((s) => s.key === 'finales'), 'el retiro sigue pidiéndolo');
 });
+
+// B-42 (VG, 05-11): en jornadas abiertas tampoco «Asignar N camas» (no hay trato): las piden los asistentes.
+test('experiencia · jornadas abiertas: sin «Asignar camas»', () => {
+  const input = (type: string): ExperienceInput => ({ reservation: base({ event_type: type }), event: { id: 'e1', final_guests: 24, closed_at: null }, proposals: [{ status: 'aceptada', version: 1 }], bedsAssigned: 0 });
+  assert.ok(!experienceOf(input('jornadas_abiertas'), TODAY).steps.some((s) => s.key === 'camas'));
+  assert.ok(experienceOf(input('retiro'), TODAY).steps.some((s) => s.key === 'camas'), 'el retiro sigue pidiéndolo');
+});
