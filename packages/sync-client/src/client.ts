@@ -740,6 +740,21 @@ export class SyncClientImpl implements SyncClient {
     await this.emitSessionEnd(endingUserId);
   }
 
+  /** «Rehacer los datos de este dispositivo» (K-06): borra lo local sin cerrar sesión y vuelve a hacer snapshot. */
+  async resetMirror(options: { discardPending?: boolean } = {}): Promise<void> {
+    await this.ensureReady();
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this.running) await this.running.catch(() => undefined);
+    await this.refreshCounts();
+    const { pendingCommands, pendingBlobs, conflicts, rejected } = this.state;
+    if (pendingCommands + pendingBlobs + conflicts + rejected > 0 && !options.discardPending) {
+      throw new SyncApiError(409, 'PENDING_CHANGES', 'Hay cambios de este dispositivo sin enviar', { pendingCommands, pendingBlobs, conflicts, rejected });
+    }
+    await this.clearLocalData();
+    this.serverFailures.clear();
+    if (this.sess && this.hasNetwork()) await this.sync();
+  }
+
   /** Refresca la sesión ya mismo; los clientes secundarios lo piden a su principal. */
   async refreshSessionNow(): Promise<boolean> {
     await this.ensureReady();

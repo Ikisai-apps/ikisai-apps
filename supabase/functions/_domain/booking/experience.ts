@@ -162,7 +162,7 @@ export function experienceOf(input: ExperienceInput, today: string): Experience 
 
   if (phase === 'comercial') {
     if (!r.start_date || !r.end_date) step('fechas', 'Fijar las fechas', 'blockDates');
-    if (r.expected_guests === null || r.expected_guests === undefined) step('personas', 'Indicar las personas previstas', 'blockSummary');
+    if (r.expected_guests === null || r.expected_guests === undefined) step('personas', r.event_type === 'jornadas_abiertas' ? 'Indicar los asistentes previstos' : 'Indicar las personas previstas', 'blockSummary');
     if (proposals) {
       const accepted = proposals.some((p) => p.status === 'aceptada');
       const sent = proposals.some((p) => p.status === 'enviada');
