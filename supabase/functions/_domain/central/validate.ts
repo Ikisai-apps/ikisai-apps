@@ -13,7 +13,7 @@ import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES, DECISION_VOTES, DECISION_VOTES_TABLE } from './decisions.ts';
 import { REVIEW_APPS, REVIEW_SCREENS_TABLE, REVIEW_STEPS } from './review.ts';
 import { COVERAGE_DECISIONS, COVERAGE_DECISIONS_TABLE } from './coverage.ts';
-import { WEEKLY_ACTIONS_TABLE, WEEKLY_ACTION_KINDS, WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
+import { KPI_KEY, OBJECTIVES_TABLE, WEEKLY_ACTIONS_TABLE, WEEKLY_ACTION_KINDS, WEEKLY_ITEMS_TABLE, WEEKLY_REVIEWS_TABLE, WEEKLY_STATUSES, canPrepareReview } from './weekly.ts';
 import { FIELD_GROUP_REVIEWS_TABLE, GROUP_DECISIONS, UTILITY_FREQUENCIES, canDeclareUtility } from './field-coverage.ts';
 import { PENDING_ACCESS_TABLE } from './scopes.ts';
 import { AGENTS_TABLE, FLOW_LANE_ID, RESPONSIBLE_KINDS, hasResponsible, type AgentRow, type ResponsibleKind } from './agents.ts';
@@ -261,6 +261,15 @@ const SPECS: Record<string, TableSpec> = {
     },
     required: ['key', 'title', 'body', 'kind'],
     immutable: ['key', 'lang'],
+  },
+  [OBJECTIVES_TABLE]: {
+    fields: {
+      quarter: { kind: 'text', min: 6, max: 6, pattern: /^\d{4}T[1-4]$/, patternText: 'trimestre «AAAAT1»…«T4»' },
+      title: { kind: 'text', min: 1, max: 160 },
+      notes: { kind: 'text', max: 500, nullable: true },
+      position: { kind: 'number' },
+    },
+    required: ['quarter', 'title'],
   },
   [WEEKLY_REVIEWS_TABLE]: {
     fields: {
@@ -540,7 +549,10 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     if (table === KPI_TARGETS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede fijar objetivos.', details: { index, table } };
     }
-    if ((table === WEEKLY_REVIEWS_TABLE || table === WEEKLY_ITEMS_TABLE || table === WEEKLY_ACTIONS_TABLE) && !canPrepareReview(actor)) {
+    if (table === OBJECTIVES_TABLE && 'kpis' in fields && !(Array.isArray(fields.kpis) && fields.kpis.length <= 10 && fields.kpis.every((k) => typeof k === 'string' && KPI_KEY.test(k)))) {
+      return fieldIssue(index, table, 'kpis', 'hasta 10 indicadores del panel');
+    }
+    if ((table === WEEKLY_REVIEWS_TABLE || table === WEEKLY_ITEMS_TABLE || table === WEEKLY_ACTIONS_TABLE || table === OBJECTIVES_TABLE) && !canPrepareReview(actor)) {
       return { code: 'FORBIDDEN', message: 'Preparan la revisión semanal quien administra Central y quien tiene el ámbito de Dirección.', details: { index, table } };
     }
     if (table === FIELD_GROUP_REVIEWS_TABLE && !canDeclareUtility(actor)) {
