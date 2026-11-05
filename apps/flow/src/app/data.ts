@@ -11,7 +11,7 @@ type Row = { id: string; revision: number; created_at: string; updated_at: strin
 export interface Product extends Row { project_id: string; scope: 'clasico' | 'gourmet' | 'barra'; code: string; name: string; description: string | null; price_cents: number; active: boolean; prepared: boolean; position: number; image_key: string | null; source_line_id: string | null; allergens: string[]; allergens_checked: boolean }
 export interface Customer extends Row { project_id: string; number: number; origin: 'web' | 'guest'; guest_id: string | null; display_name: string | null }
 /** Cuenta del cliente (0910): se carga a ella y se liquida con un pago único. */
-export interface Account extends Row { project_id: string; customer_id: string | null; holder: string; status: 'open' | 'settled'; opened_by: string | null; settled_at: string | null; settled_by: string | null; payment_id: string | null }
+export interface Account extends Row { project_id: string; customer_id: string | null; holder: string; status: 'open' | 'settled' | 'deferred'; opened_by: string | null; settled_at: string | null; settled_by: string | null; payment_id: string | null }
 export interface Order extends Row {
   project_id: string; origin: 'public' | 'counter'; status: OrderStatus; pay_seq: number | null; paid_at: string | null; paid_by: string | null;
   pay_method: PayMethod | 'account' | 'card' | 'btc_ln' | 'btc_chain' | null; total_cents: number | null; delivered_at: string | null; delivered_by: string | null; delivery_exception: boolean;
