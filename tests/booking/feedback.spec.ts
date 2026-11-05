@@ -81,7 +81,7 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await expect(page.locator('html.fb-mode')).toHaveCount(0);
     await expect(page.locator('.fb-pin')).toHaveCount(0);
     // El clic normal sigue funcionando igual que siempre.
-    await page.locator('#editReservation').click();
+    await page.locator('#reservationCover').click();
     await expect(page.getByRole('dialog', { name: 'Editar reserva' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Editar reserva' })).toBeHidden();
@@ -98,7 +98,7 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await hold(page, '[data-feedback-id="booking.reserva.acciones.editar"]');
     const composer = page.locator('.fb-composer');
     await expect(composer).toBeVisible();
-    await expect(composer.locator('.fb-where strong')).toHaveText('Reserva › Acciones › Editar');
+    await expect(composer.locator('.fb-where strong')).toHaveText('Reserva › Editar');
     // El clic que llegaría al soltar se anula: no se abre la hoja de edición.
     await expect(page.getByRole('dialog', { name: 'Editar reserva' })).toHaveCount(0);
   });
@@ -110,7 +110,7 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await expect.poll(() => api.feedbackReports().length).toBe(1);
     const report = api.feedbackReports()[0]!;
     expect(report.node?.id).toBe('booking.reserva.acciones.editar');
-    expect(report.node?.path).toEqual(['Reserva', 'Acciones', 'Editar']);
+    expect(report.node?.path).toEqual(['Reserva', 'Editar']);
     expect(report.message).toContain('Editar reserva');
     expect(report.originApp).toBe('booking');
     const serialized = JSON.stringify(report.context);
@@ -133,7 +133,7 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await expect(card).toHaveCount(1);
     await expect(card).toContainText('FB_2026_001');
     await expect(card).toContainText('El botón Editar debería decir');
-    await expect(card).toContainText('Reserva › Acciones › Editar');
+    await expect(card).toContainText('Reserva › Editar');
     await sheet.getByRole('tab', { name: 'Mapa' }).click();
     await expect(sheet).toContainText('Reserva');
     await page.keyboard.press('Escape');

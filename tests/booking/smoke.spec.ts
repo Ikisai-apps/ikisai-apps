@@ -101,7 +101,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await context.setOffline(true);
     await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
 
-    await page.locator('#editReservation').click();
+    await page.locator('#reservationCover').click();
     const dialog = page.getByRole('dialog', { name: 'Editar reserva' });
     await expect(dialog).toContainText('Revisión 1');
     await expect(page.locator('#saveRow')).toBeHidden(); // «Guardar» solo aparece con cambios
@@ -969,9 +969,9 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('.nav').getByText('Reservas', { exact: true }).click();
     await page.locator('.filters').getByRole('button', { name: 'Confirmadas' }).click();
     await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
-    // A 390 px «Papelera» está dentro del menú «Más».
+    // «Papelera» está dentro de «Editar reserva», que se abre tocando la portada.
     await expect(page.locator('#trashReservation')).toBeHidden();
-    await page.locator('#moreActions summary').click();
+    await page.locator('#reservationCover').click();
     await page.locator('#trashReservation').click();
     await expect(page.locator('.dialog')).toContainText('29 elementos asociados'); // 20 tareas, 2 restricciones, 4 huéspedes, 2 asignaciones, 1 supletoria activada
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
@@ -983,7 +983,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.getByRole('button', { name: 'Abrir Retiro Test en la papelera' }).click();
     await expect(page.locator('.ficha .chip.trash')).toBeVisible();
     await page.locator('#restoreReservation').click();
-    await expect(page.locator('#editReservation')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#reservationCover.bk-cover-edit')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
     await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho · 1 sin gluten'); // la del evento y la del huésped
     await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS, EXTRA_BEDS].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
@@ -999,7 +999,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(dialog).toBeHidden();
     await page.locator('.filters').getByRole('button', { name: 'Activas' }).click();
     await page.getByRole('button', { name: 'Abrir Borrador para purgar' }).click();
-    await page.locator('details.more summary').click();
+    await page.locator('#reservationCover').click();
     await page.locator('#trashReservation').click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.locator('#trashCount')).toHaveText('1');

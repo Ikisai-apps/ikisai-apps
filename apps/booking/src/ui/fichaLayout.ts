@@ -3,7 +3,7 @@
  * y las pestañas por área. Ningún bloque desaparece ni cambia de id: cada uno tiene su pestaña, y «Todo» enseña la
  * ficha entera como hasta ahora (se recuerda en el dispositivo). Lo de dentro de cada bloque lo pinta su módulo.
  */
-import { createFocus, el, renderAreaTabs, renderCover, renderStages, replace, type Focus, type FocusItem, type MedalOptions } from '@ikisai/ui-kit';
+import { createFocus, el, renderAreaTabs, renderCover, renderStages, replace, type Focus, type FocusItem, type MedalOptions, icon } from '@ikisai/ui-kit';
 import { JOURNEY, PHASE_LABELS, daysText, journeyLabel, nextText, type BlockId, type Experience, type JourneyStage, type Step } from '@ikisai/domain-booking';
 import { PHASE_COLORS } from '../app/experience.ts';
 
@@ -12,7 +12,7 @@ export type TabKey = 'resumen' | 'comercial' | 'operacion' | 'huespedes' | 'dine
 const TAB_LABELS: Record<TabKey, string> = { resumen: 'Resumen', comercial: 'Comercial', operacion: 'Operación', huespedes: 'Huéspedes', dinero: 'Dinero', todo: 'Todo' };
 
 /** Mapa bloque → pestaña: los 17 bloques de hoy (más el Extracto) tienen sitio. */
-export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockBarService' | 'blockPublicCode' | 'blockVisitorRequests' | 'blockFlowReady' | 'blockOrganizerComments', Exclude<TabKey, 'todo'>> = {
+export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockBarService' | 'blockPublicCode' | 'blockVisitorRequests' | 'blockFlowReady' | 'blockOrganizerComments' | 'blockMontage', Exclude<TabKey, 'todo'>> = {
   blockSummary: 'resumen', blockOpenRetreat: 'resumen', blockProgram: 'resumen',
   blockDates: 'comercial', blockProposal: 'comercial', blockPortal: 'comercial', blockPortalRequests: 'comercial',
   blockOperation: 'operacion', blockLodging: 'operacion', blockStaff: 'operacion', blockChecklist: 'operacion', blockMeals: 'operacion',
@@ -24,6 +24,8 @@ export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockB
   blockFlowReady: 'huespedes',
   // B22: lo que ha escrito quien organiza, con «Responder»
   blockOrganizerComments: 'comercial',
+  // «Montaje»: la decoración del evento, en Operación (antes caía en Resumen y no se encontraba)
+  blockMontage: 'operacion',
 };
 
 const REMEMBER_KEY = 'booking:ficha:todo';
@@ -32,6 +34,8 @@ const remember = (all: boolean) => { try { if (all) localStorage.setItem(REMEMBE
 
 export interface FichaLayoutOptions {
   writable: boolean;
+  /** Tocar la portada abre «Editar reserva» (VG, 28-10); en el ordenador, además, un lápiz pequeño arriba a la derecha. */
+  onEdit?: () => void;
   seesMoney: boolean;
   seesAll: boolean;
   logo: string | null;
@@ -101,6 +105,18 @@ export function createFichaLayout() {
       faces: o.faces,
     }) : null;
     cover?.setAttribute('id', 'reservationCover');
+    if (cover && o.writable && o.onEdit) {
+      const edit = o.onEdit;
+      cover.classList.add('bk-cover-edit');
+      cover.setAttribute('role', 'button');
+      cover.setAttribute('tabindex', '0');
+      cover.setAttribute('aria-label', `Editar ${title}`);
+      cover.setAttribute('data-feedback-id', 'booking.reserva.acciones.editar');
+      cover.setAttribute('data-feedback-label', 'Editar');
+      cover.addEventListener('click', edit);
+      cover.addEventListener('keydown', (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); edit(); } });
+      cover.append(el('span', { class: 'bk-cover-pencil', 'aria-hidden': 'true' }, icon('edit', 16)));
+    }
 
     // Foco: lo que toca primero en grande, «Siguiente ›» rota por lo pendiente. El lector no ve acciones.
     const items: FocusItem[] = (x?.steps ?? []).map((s, i) => ({ id: s.key, title: s.text, kicker: i === 0 ? 'Lo siguiente' : null, tone: s.tone }));
