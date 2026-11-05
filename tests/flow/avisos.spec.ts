@@ -88,7 +88,7 @@ async function enter(page: Page): Promise<void> {
   await page.locator('a.navbtn', { hasText: 'Caja' }).first().click();
 }
 
-test('avisos · caja: Bitcoin oculto mientras está en backlog (VG, 28-10); el resto de métodos, como siempre', async ({ page }) => {
+test('avisos · caja sin direcciones de Bitcoin: Bitcoin y Lightning no se ofrecen (VG, 05-11); el resto de métodos, como siempre', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await enter(page);
   await page.getByLabel('Buscar por número de cliente').first().fill(String(number));
