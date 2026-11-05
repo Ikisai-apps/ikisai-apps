@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createApp } from '../../supabase/functions/_kit/handler.ts';
 
-const ORIGIN = 'https://tasks.ikisai.com';
+// Recursos lo gestiona Central (R7, 0824): las pruebas van por su Edge.
+const ORIGIN = 'https://central.ikisai.com';
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
 let seq = 0;
@@ -27,8 +28,8 @@ let camara = '';
 
 test.before(async () => {
   app = await createTestApp({
-    app: 'tasks', slug: 'tasks-api', origin: ORIGIN,
-    createHandler: (config) => createApp({ ...config, app: 'tasks', slug: 'tasks-api', workerKey: WORKER_KEY }),
+    app: 'central', slug: 'central-api', origin: ORIGIN,
+    createHandler: (config) => createApp({ ...config, app: 'central', slug: 'central-api', workerKey: WORKER_KEY }),
   });
   const a3 = (await app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 3'`)).rows[0]!.id;
   const albergue = uuid(); despensa = uuid(); camara = uuid();

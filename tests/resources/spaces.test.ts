@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createApp } from '../../supabase/functions/_kit/handler.ts';
 
-const ORIGIN = 'https://tasks.ikisai.com';
+// Recursos lo gestiona Central (R7, 0824): las pruebas van por su Edge.
+const ORIGIN = 'https://central.ikisai.com';
 const SPACES = 'resources.spaces';
 const KINDS = 'resources.space_kinds';
 const uuid = () => crypto.randomUUID();
@@ -18,8 +19,8 @@ const row = async (id: string) => (await app.t.db.query<any>(`select * from reso
 
 test.before(async () => {
   app = await createTestApp({
-    app: 'tasks', slug: 'tasks-api', origin: ORIGIN,
-    createHandler: (config) => createApp({ ...config, app: 'tasks', slug: 'tasks-api' }),
+    app: 'central', slug: 'central-api', origin: ORIGIN,
+    createHandler: (config) => createApp({ ...config, app: 'central', slug: 'central-api' }),
   });
 });
 test.after(async () => { await app.close(); });
@@ -68,7 +69,7 @@ test('rutas · /api/v1/resources sirve bootstrap y snapshot del módulo; sin per
   const kinds = snap.data.tables.find((t: any) => t.table === KINDS).rows;
   assert.equal(kinds.length, 15);
   // La app sigue respondiendo como siempre en sus propias rutas.
-  assert.equal((await app.call('/api/v1/bootstrap')).data.app, 'tasks');
+  assert.equal((await app.call('/api/v1/bootstrap')).data.app, 'central');
 
   const stranger = await app.t.createUser();
   const denied = await app.call('/api/v1/resources/bootstrap', { token: app.supabase.tokenFor(stranger) });
