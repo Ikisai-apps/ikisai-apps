@@ -126,10 +126,3 @@ test('descartar el borrador deja volver a pedirla; emitida la F3, cuenta ella en
   const kpi = (await app.t.db.query<{ n: string }>(`select count(*) n from invoices.central_kpi_projection`)).rows[0]!.n;
   assert.equal(Number(kpi), 36, 'los KPIs siguen siendo 36');
 });
-  assert.equal(ts.invoices.registrada, 0, 'tampoco el de la app');
-  // El libro de la entrega sí la lleva, con el ticket que sustituye
-  const book = (await app.t.db.query<{ m: any[] }>(`select invoices.issued_manifest('2026-10-31', '2026-10-31') m`)).rows[0]!.m;
-  assert.equal(book.find((i) => i.id === reg)?.replaces_entry?.source_ref, source2);
-  const kpi = (await app.t.db.query<{ n: string }>(`select count(*) n from invoices.central_kpi_projection`)).rows[0]!.n;
-  assert.equal(Number(kpi), 36, 'los KPIs siguen siendo 36');
-});
