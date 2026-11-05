@@ -159,7 +159,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         { key: 'pruebas', label: 'Pruebas', rows: live.filter((p) => p.test_mode).map(projectRow) }])
       .filter((s) => s.rows.length);
     // «Todos los flujos» arriba: vuelve a la entrada desde cualquier flujo (FB_2026_077).
-    return [{ key: 'todos', label: 'Flujos', rows: [{ label: 'Todos los flujos', href: '#/' }] }, ...sections,
+    return [{ key: 'todos', label: 'Todos los flujos', rows: [{ label: 'Ir a la entrada con todos los flujos', href: '#/' }] }, ...sections,
       { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }] }];
   }
   refreshMenuProjects();
