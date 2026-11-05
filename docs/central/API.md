@@ -539,7 +539,7 @@ Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque
 
 Para Dirección (owner y editor con el ámbito `direccion`). Declarar la utilidad campo a campo es inviable (miles de campos), así que la pantalla enseña por defecto solo los **candidatos**: los que el núcleo marca así (`candidate`: sin cobertura de Flow, sin uso en 30 días y sin estimado de la app que los proteja), agrupados por app y pantalla, con la etiqueta de la pantalla y un resumen («N campos en M pantallas»). «Ver todo» enseña el resto con la pieza del kit.
 
-- **Datos:** `GET coverage/fields?app=` une `core_field_coverage` (0111, con `estimate {frequency, audience}`, `candidate` y `activations30d`) y `flow.anchor_coverage_read` (Flow 0946). Central pone «directo» y «automático» con `fieldLinks`. Si el núcleo aún no trae `candidate`, se aplica la misma regla (`isCandidate`). Si Flow no responde, `flowAvailable: false`.
+- **Datos:** `GET coverage/fields?app=` une `core_field_coverage` (0111, con `estimate {frequency, audience}`, `candidate` y `activations30d`) y `flow.anchor_coverage_read` (Flow 0946). Central pone «directo» y «automático» con `fieldLinks`. El candidato lo da el núcleo (`candidate`, 0114); Central solo quita los que usa un recorrido o una regla de Flow (`isCandidate`). Si Flow no responde, `flowAvailable: false`.
 - **Utilidad:** se hereda sola del estimado de la app y del uso real (`inheritedUtility`). Declararla es una excepción opcional por pantalla.
 - **Acción por grupo** (una sola vez): «Dejar», «Revisar más tarde» o «Retirar». Retirar no borra nada: queda anotado para el equipo de la app.
 

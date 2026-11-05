@@ -360,8 +360,19 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
       onchange: () => {
         const value = supplierInput.value.trim() || null;
         if (value === (cur().supplier?.trim() || null)) return;
-        void commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: cur().revision, fields: { supplier: value } }]);
+        void commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: cur().revision, fields: { supplier: value } }, ...usualOps(value)]);
       } }) as HTMLInputElement;
+    // «Siempre en esta tienda» (FB_2026_086, decidido en ausencia de VG: opción c): la deja como proveedor habitual del
+    // ingrediente, la de partida de las próximas compras.
+    const ingredientOf = () => data?.ingredients.find((i) => i.id === item.ingredient_id);
+    const usualBox = el('input', { 'data-field-id': 'food.menu.compra.linea.proveedor_habitual', 'data-field-entity': 'food.ingredients', 'data-field-prop': 'preferred_supplier', 'data-feedback-id': 'food.menu.compra.linea.proveedor_habitual', 'data-feedback-label': 'Siempre en esta tienda',
+      type: 'checkbox', disabled: disabled || !ingredientOf(), checked: !!item.supplier?.trim() && (ingredientOf()?.preferred_supplier?.trim() || null) === item.supplier.trim(),
+      onchange: () => { const ops = usualOps(supplierInput.value.trim() || null); if (ops.length) void commitSafely(ops); } }) as HTMLInputElement;
+    function usualOps(value: string | null): RowOperation[] {
+      const ingredient = ingredientOf();
+      if (!usualBox?.checked || !ingredient || (ingredient.preferred_supplier?.trim() || null) === value) return [];
+      return [{ op: 'update', table: T.ingredients, id: ingredient.id, expectedRevision: ingredient.revision, fields: { preferred_supplier: value } }];
+    }
     sheet = openSheet({
       title: name,
       body: el('div', { 'data-feedback-id': 'food.menu.compra.linea.hoja', 'data-feedback-label': 'Producto de la compra', class: 'fd-linesheet' },
@@ -372,6 +383,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
           el('label', { class: 'buyfield' }, el('span', null, `Comprar (${UNIT_LABELS[item.unit]})`), purchaseInput)),
         el('label', { class: 'field' }, el('span', null, 'Estado'), status),
         el('label', { class: 'field' }, el('span', null, 'Tienda'), supplierInput), el('datalist', { id: shopsId }, ...known.map((s) => el('option', { value: s }))),
+        el('label', { class: 'checkline' }, usualBox, el('span', null, 'Siempre en esta tienda (proveedor habitual del ingrediente)')),
         el('div', { class: 'btnrow' },
           !disabled && !item.manual && item.manual_override
             ? el('button', { 'data-feedback-id': 'food.menu.compra.linea.recalcular', 'data-feedback-label': 'Recalcular', class: 'ghost', type: 'button', 'aria-label': `Volver a calcular la compra de ${name}`,

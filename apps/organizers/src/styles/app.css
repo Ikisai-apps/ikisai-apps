@@ -412,5 +412,8 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 /* Respuestas de la casa (0117) */
 .orgreply{margin:6px 0 0 12px;padding-left:10px;border-left:2px solid var(--line)}
 .orgreply>p{margin:0}
+/* Plano de Ikisai en Alojamiento (FB_2026_061) */
+.orgplan{margin-bottom:12px}
+.orgplan-img{display:block;max-width:100%;height:auto;border-radius:8px}
 .orgreply-new{border-left-color:var(--warn)}
 .orgcomment-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}

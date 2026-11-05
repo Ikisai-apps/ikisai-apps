@@ -72,7 +72,7 @@ test('la propietaria nombra responsable de compras en el editor de área', async
 
 test('suministro bajo mínimo: aviso en Inicio y «Queda poco: pedir»', async () => {
   const altura = (await server.app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
-  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { parent_id: altura, kind: 'edificio', name: 'Almacén piscina', position: 1024 } }]);
+  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { source_refs: ['tasks.zone:prueba'], parent_id: altura, kind: 'edificio', name: 'Almacén piscina', position: 1024 } }]);
   await resources([{ op: 'insert', table: 'resources.items', id: CLORO, fields: { name: 'Cloro granulado', kind: 'material', base_unit: 'kg', min_quantity: 5, reorder_quantity: 10, default_space_id: ALMACEN } }]);
   await syncResources(owner);
   await go(owner, 'supplies');

@@ -35,7 +35,7 @@ test.beforeAll(async ({ browser }) => {
   server = await startE2EServer();
   ID = await seedDemo(server);
   const altura = (await server.app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
-  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { parent_id: altura, kind: 'edificio', name: 'Almacén', position: 1024 } }]);
+  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { source_refs: ['tasks.zone:prueba'], parent_id: altura, kind: 'edificio', name: 'Almacén', position: 1024 } }]);
   await resources([{ op: 'insert', table: 'resources.items', id: LEJIA, fields: { name: 'Lejía', kind: 'limpieza', base_unit: 'l', default_space_id: ALMACEN } }]);
   // Entrada con coste: 2 €/l. La tarea t1 gastó 1,5 l (apuntado al confirmar el consumo).
   await resources([{ op: 'insert', table: 'resources.movements', id: crypto.randomUUID(), fields: { item_id: LEJIA, space_id: ALMACEN, quantity: 10, kind: 'entrada_manual', unit_cost: 2 } }]);

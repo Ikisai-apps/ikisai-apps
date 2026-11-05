@@ -4,7 +4,7 @@
  * y sirve las fuentes de `@ikisai/ui-kit/fonts/` en `/fonts/`.
  */
 export { el, append, clear, replace, formatDate, plural, type Attrs, type Child } from './dom.ts';
-export { icon, registerIcons, hasIcon, type IconName } from './icons.ts';
+export { icon, registerIcons, hasIcon, itemIcon, ITEM_ICONS, type IconName } from './icons.ts';
 export { applyTheme, setTheme, toggleTheme, themePreference, effectiveTheme, inkOn, readableColor, itemColorStyle, applyAccent, type ThemePreference } from './theme.ts';
 export { toast, toastWithAction, hideToast, type ToastAction } from './toast.ts';
 export {

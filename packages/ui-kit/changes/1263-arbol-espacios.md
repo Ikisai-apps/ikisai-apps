@@ -1,0 +1,1 @@
+**Selector de espacios con árbol** (C-05, Tasks): con `createSpacePicker({ tree: true })`, «Elegir en el árbol» despliega alturas, edificios y alas. Sus espacios elegibles salen como chips que se marcan ahí mismo, sin otra pantalla, y el contenedor elegible («Ala norte») va primero. El árbol recuerda lo abierto.

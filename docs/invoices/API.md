@@ -2067,6 +2067,10 @@ A la gestoría y al IVA soportado **solo entran las facturas**. Un ticket se reg
 - **Sin red,** sale del espejo del dispositivo.
 - El cierre del día de Flow ya no lleva lo enviado antes como cobro fiscal, así que nada cuenta dos veces.
 - Lógica en `apps/invoices/src/app/cash-count.ts`, prueba en `tests/invoices/cash-count.test.ts`.
+- **Caja de Flow (fl-27, contrato en `MUELA/equipo/feedback/finance/CONTRATO_fl-27_flow.md`; migración 0265):**
+  - `a_cobrar` en `methods` no es dinero. Es una cuenta que el cierre de Flow pasó a Finance pendiente de cobro (`flow:account:<cuenta>`), y sale aparte con su nombre, en «No está en caja».
+  - Cuando llega cobrada (reenvío del mismo apunte), su dinero cuenta el día en que llegó el cobro (`received_at`, que ahora se sincroniza) y no el de la venta.
+  - El resumen del cierre (`flow:closing:<p>:<día>`, importe 0) trae información sin dinero: lo vendido a cuenta, las cuentas abiertas y los pedidos del equipo a precio de carta (`info_cents`).
 
 ### 17.13 Factura con NIF a petición de un cobro (vg-38, migración 0263)
 

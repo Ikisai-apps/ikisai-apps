@@ -148,3 +148,9 @@ test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu car
   await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(1);
   await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
 });
+
+test('avance · en el móvil abre en «Por hitos» si no hay otra vista recordada (fl-31)', async ({ page }) => {
+  await enter(page);
+  await expect(page.locator('#cvHitos')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.avance-orig .lanes')).toHaveCount(0);
+});
