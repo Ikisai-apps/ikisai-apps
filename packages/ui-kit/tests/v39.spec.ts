@@ -197,13 +197,19 @@ test.describe('ui-kit v0.35 · elegir días en Android', () => {
     const title = host(page).locator('.cal-title');
     const before = await title.innerText();
     await day(page, 8).scrollIntoViewIfNeeded();
+    // El gesto empieza en el centro de la rejilla, a la altura del día 8: según el mes, el 8 cae en la última columna y
+    // «tres días a la derecha» se salía de la pantalla (falló el 05-11-2026, con el 8 en domingo).
     const g = (await day(page, 8).boundingBox())!;
-    await touchSwipe(page, { x: g.x + g.width * 3, y: g.y + g.height / 2 }, -200);
+    const grid = (await host(page).locator('.cal-grid').boundingBox())!;
+    await touchSwipe(page, { x: grid.x + grid.width * 0.7, y: g.y + g.height / 2 }, -200);
     await expect(title).not.toHaveText(before);
     await expect(bar(page)).toContainText('ahora toca el último día');
     await day(page, 2).click();
     await expect(bar(page)).toContainText('Del ');
-    await expect(bar(page)).toContainText('6 días');
+    // Del 28 al 2 del mes siguiente: los días dependen de cuántos tiene el mes en que se ejecuta.
+    const now = new Date();
+    const inMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    await expect(bar(page)).toContainText(`${inMonth - 28 + 1 + 2} días`);
     await expect(bar(page).getByRole('button', { name: 'Guardar estancia' })).toBeEnabled();
   });
 

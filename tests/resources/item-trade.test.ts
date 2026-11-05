@@ -48,3 +48,13 @@ test('oficio · un artículo lleva un oficio vivo de Central o ninguno; uno reti
   assert.deepEqual([by.get(llave)!.trade_id, by.get(llave)!.category], [fontaneria, 'Fontanería']);
   assert.deepEqual([by.get(cinta)!.trade_id, by.get(cinta)!.category], [null, 'Fontanería']);
 });
+
+test('icono · un artículo guarda la clave de su icono (0822); una clave mal formada, no', async () => {
+  const llave = uuid();
+  const ok = (res: { status: number; data: any }) => assert.equal(res.status, 200, JSON.stringify(res.data));
+  ok(await commit([{ op: 'insert', table: ITEMS, id: llave, fields: { name: 'Llave de paso', kind: 'herramienta', base_unit: 'ud', icon: 'fontaneria-llave' } }], app.tokens.owner));
+  const bad = await commit([{ op: 'update', table: ITEMS, id: llave, expectedRevision: await rev(llave), fields: { icon: 'Icono <raro>' } }], app.tokens.owner);
+  assert.ok(bad.status >= 400, JSON.stringify(bad.data));
+  ok(await commit([{ op: 'update', table: ITEMS, id: llave, expectedRevision: await rev(llave), fields: { icon: null } }], app.tokens.owner));
+  assert.equal((await app.t.db.query<{ icon: string | null }>('select icon from resources.items where id = $1', [llave])).rows[0]!.icon, null);
+});

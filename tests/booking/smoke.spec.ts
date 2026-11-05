@@ -43,16 +43,14 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.getByText('Todavía no hay reservas')).toBeVisible();
   });
 
-  await test.step('la app explica qué falta para pre-reservar', async () => {
+  await test.step('sin campo «Estado»: la app pide el nombre; nace en pre-reserva con fechas y personas (FB_2026_095)', async () => {
     await page.getByRole('button', { name: 'Nueva reserva' }).click();
     const dialog = page.getByRole('dialog', { name: 'Nueva reserva' });
     await expect(dialog).toBeVisible();
     await page.getByRole('button', { name: 'Guardar' }).click();
     await expect(page.locator('#reservationError')).toContainText('«title»');
     await dialog.getByLabel('Nombre del grupo o evento').fill('Retiro Test');
-    await dialog.getByLabel('Estado').selectOption('pre_reservada');
-    await page.getByRole('button', { name: 'Guardar' }).click();
-    await expect(page.locator('#reservationError')).toContainText('falta la fecha de entrada');
+    await expect(dialog.getByLabel('Estado')).toHaveCount(0);
     expect(api.rows(RESERVATIONS)).toHaveLength(0);
   });
 

@@ -86,6 +86,9 @@ test('ingresos de apps: lista, notas, ficha y resultado del evento', async ({ pa
     await page.locator('.sheet[role="dialog"] .sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
     await page.locator('#appEntriesList li.row', { hasText: '31-10' }).getByText('Barra · Evento de octubre · 31-10').click();
     await page.locator('#appEntrySheet').getByRole('link').click();
+    // La hoja se cierra antes de navegar (su «atrás» no pisa la siguiente navegación)
+    await expect(page).toHaveURL(/#\/evento\?id=/);
+    await expect(page.locator('.sheet[role="dialog"]')).toHaveCount(0);
   });
 
   await test.step('justificante a página completa (API.md §17.9): por id y por la clave de la app', async () => {

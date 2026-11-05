@@ -36,6 +36,8 @@ test.beforeAll(async () => {
   await card({ lane_key: 'flow', title: 'Carta pública en producción', status: 'done', tipo: 'arreglo' });
   await card({ lane_key: 'flow', title: '«Alójate aquí»', status: 'in_progress', flag: 'pr', prio: 'urgente', ref: '#943', url: 'https://example.invalid/pr/943' });
   await card({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'importante', tipo: 'prueba', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
+  // Otra de Víctor sin enlaces que nadie marca (la de arriba la marca hecha la primera prueba): para la vista «Por app».
+  await card({ lane_key: 'victor', title: 'Revisar la carta', prio: 'secundario' });
   await card({ lane_key: 'core', title: 'Revisar CI', kind: 'recurring' });
   await card({ lane_key: 'food', title: 'Más adelante', flag: 'backlog' });
   // Un hito de dos pasos (0947): el primero sin hacer bloquea; el segundo queda en espera.
@@ -72,7 +74,7 @@ async function enter(page: Page): Promise<void> {
 test('avance · caja general, discos, filtros, hitos y tarjeta con pasos que se marca hecha (pantalla del artefacto original)', async ({ page }) => {
   await enter(page);
   await page.setViewportSize({ width: 1280, height: 900 }); // lado a lado: todos los carriles a la vista
-  await expect(page.locator('.avance-orig .gprog .gt')).toHaveText('2 hechas de 6');
+  await expect(page.locator('.avance-orig .gprog .gt')).toHaveText('2 hechas de 7');
   await expect(page.locator('.avance-orig .hito')).toHaveCount(1);
   await expect(page.locator('.avance-orig .circ')).toHaveCount(4);
   // Urgencia: solo la urgente.
@@ -100,7 +102,7 @@ test('avance · caja general, discos, filtros, hitos y tarjeta con pasos que se 
   const dialog = page.getByRole('alertdialog');
   await dialog.getByLabel('Nota (opcional)').fill('Probado en el móvil');
   await dialog.getByRole('button', { name: 'Hecha' }).click();
-  await expect(page.locator('.circ[data-sum="Víctor"]')).toHaveClass(/full/, { timeout: 15_000 });
+  await expect(page.locator('.lanes .it.hecho', { hasText: 'Probar el alojamiento' })).toHaveCount(1, { timeout: 15_000 });
 });
 
 test('avance · vista «Por hitos»: pasos que se despliegan, «+N ocultas» con filtros y hitos plegables', async ({ page }) => {
@@ -143,6 +145,6 @@ test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu car
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.locator('#cvApp').click();
   await expect(page.locator('#cvApp')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Probar el alojamiento' })).toHaveCount(1);
+  await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(1);
   await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
 });
