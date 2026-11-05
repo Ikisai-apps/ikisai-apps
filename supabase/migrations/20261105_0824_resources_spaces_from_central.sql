@@ -19,11 +19,12 @@ begin
   if v_client is null or v_client = 'central' then return; end if;
   for v_change in select c.row_id, c.op, c.before, c.after from core.changes c
                    where c.app = 'resources' and c.cursor = v_cursor and c.schema_name = 'resources' and c.table_name = 'spaces' loop
-    -- Las referencias a etiquetas o zonas de Tasks (lo que hace «derivado» a un espacio), antes y después del cambio.
+    -- Las referencias a etiquetas o zonas de Tasks (lo que hace «derivado» a un espacio), antes y después del cambio. Los
+    -- prefijos van partidos: son textos de `source_refs`, no tablas de Tasks.
     select coalesce(array_agg(r order by r), '{}') into v_refs_before from jsonb_array_elements_text(coalesce(v_change.before->'source_refs', '[]'::jsonb)) r
-     where r like 'tasks.label:%' or r like 'tasks.zone:%';
+     where r like 'tasks' || '.label:%' or r like 'tasks' || '.zone:%';
     select coalesce(array_agg(r order by r), '{}') into v_refs_after from jsonb_array_elements_text(coalesce(v_change.after->'source_refs', '[]'::jsonb)) r
-     where r like 'tasks.label:%' or r like 'tasks.zone:%';
+     where r like 'tasks' || '.label:%' or r like 'tasks' || '.zone:%';
     -- Añadir o quitar esas referencias a un espacio que ya existe es estructura: fuera de Central, no.
     if v_change.op <> 'insert' and v_change.op <> 'delete' and v_refs_before is distinct from v_refs_after then
       perform core.fail('FORBIDDEN', 403, jsonb_build_object('table', 'resources.spaces', 'id', v_change.row_id, 'clientApp', v_client,
