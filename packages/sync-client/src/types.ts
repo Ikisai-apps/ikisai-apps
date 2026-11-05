@@ -174,6 +174,13 @@ export interface SyncClient {
   /** Entra con el pase de sesión única del dispositivo si existe (contrato §3.4); null si no hay pase o acceso. */
   trySso(): Promise<Session | null>;
   logout(): Promise<void>;
+  /**
+   * «Rehacer los datos de este dispositivo» (VG, 5-11, K-06): vacía el espejo local, la cola, los conflictos, los rechazados y
+   * los adjuntos sin cerrar la sesión, y vuelve a bajar todo del servidor (snapshot). Si hay algo sin enviar (comandos,
+   * adjuntos, conflictos o rechazados) rechaza con `PENDING_CHANGES` y sus recuentos en `details`, salvo `discardPending: true`;
+   * la pieza del kit intenta antes un `sync()`, enseña lo que quede y pide confirmación (K-08 b).
+   */
+  resetMirror(options?: { discardPending?: boolean }): Promise<void>;
   session(): Session | null;
 
   /** Arranca: carga el espejo local, hace bootstrap si hay red y lanza el primer pull. */
