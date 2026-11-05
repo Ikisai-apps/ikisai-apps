@@ -15,10 +15,10 @@ import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
 import { fbIgnore, fbMark } from './feedback.ts';
 
-type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'cerradas' | 'canceladas';
+type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'realizadas' | 'cerradas' | 'canceladas';
 
 const FILTERS: Array<[Filter, string]> = [
-  ['proximas', 'Próximas'], ['activas', 'Activas'], ['pre', 'Pre-reservas'], ['confirmadas', 'Confirmadas'], ['cerradas', 'Cerradas'], ['canceladas', 'Canceladas'],
+  ['proximas', 'Próximas'], ['activas', 'Activas'], ['pre', 'Pre-reservas'], ['confirmadas', 'Confirmadas'], ['realizadas', 'Realizadas'], ['cerradas', 'Cerradas'], ['canceladas', 'Canceladas'],
 ];
 const OPEN: ReservationStatus[] = ['en_estudio', 'negociacion', 'pre_reservada', 'confirmada', 'en_ejecucion'];
 const MISSING_LABELS = { start_date: 'la fecha de entrada', end_date: 'la fecha de salida', expected_guests: 'el número de personas' } as const;
@@ -31,6 +31,8 @@ function matches(row: ReservationRow, filter: Filter, now: number): boolean {
     case 'activas': return OPEN.includes(row.status);
     case 'pre': return row.status === 'pre_reservada';
     case 'confirmadas': return row.status === 'confirmada' || row.status === 'en_ejecucion';
+    // Las que ya se hicieron (B-43, VG 05-11): confirmadas, en curso o cerradas, con su último día pasado; la más reciente primero
+    case 'realizadas': return ['confirmada', 'en_ejecucion', 'cerrada'].includes(row.status) && (dayNumber(row.end_date ?? row.start_date) ?? Infinity) < now;
     case 'cerradas': return row.status === 'cerrada';
     case 'canceladas': return row.status === 'cancelada' || row.status === 'perdida';
   }
@@ -243,7 +245,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const visible = set.views
       .filter((v) => (searching ? true : matches(v.reservation, filter, now)))
       .filter((v) => !searching || [v.reservation.title, v.reservation.contact_name, v.reservation.code].some((s) => typeof s === 'string' && foldText(s).includes(query)))
-      .sort((a, b) => (dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
+      .sort((a, b) => (!searching && filter === 'realizadas' ? -1 : 1) * ((dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity)) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
     searchScope.textContent = searching ? `Buscando en todas las reservas: ${plural(visible.length, 'resultado', 'resultados')}.` : '';
     count.textContent = String(visible.length);
     trash.hidden = deleted.length === 0;
@@ -340,7 +342,12 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const holdHours = input('resHoldHours', 'number', initial.lodging_hold_hours, { min: 1, max: 168, step: 1, inputmode: 'numeric' });
     const holdField = field('Horas que se guarda la plaza', holdHours, 'horas_plaza');
     const lodgingRow = el('div', { class: 'row2', id: 'resLodgingPay' }, field('Noches por el QR', payMode, 'pago_noches'), holdField);
-    const syncLodging = () => { lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold'; };
+    // En jornadas abiertas son asistentes, no huéspedes con lista (B-41, VG 05-11)
+    const guestsField = field('Personas previstas', guests, 'personas');
+    const syncLodging = () => {
+      lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold';
+      guestsField.querySelector('span')!.textContent = type.value === 'jornadas_abiertas' ? 'Asistentes previstos' : 'Personas previstas';
+    };
     syncLodging();
     const error = el('p', { class: 'formerror', id: 'reservationError', role: 'alert', hidden: true });
     const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', 'data-feedback-id': 'booking.reservas.alta.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
@@ -406,7 +413,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         field('Tipo', type, 'tipo'),
         lodgingRow,
         el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
-        field('Personas previstas', guests, 'personas'),
+        guestsField,
         el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto')), fbIgnore(field('Teléfono', phone, 'telefono'))),
         error,
       ),

@@ -135,6 +135,7 @@
 - 2026-10-28 · **«Colocar» empieza por el dibujo** (VG probó el Albergue, 27-10): primero las formas que ya trae el SVG, cada una con «Elige qué estancia es» y «Llamarla como en el dibujo»; lo demás, en «¿Falta alguna? Ponla en el dibujo». «Guardado a las HH:MM» a la vista; lo pendiente se guarda al salir. Aviso de estancias repetidas y de camas que aún no salen. Prueba en `plans.spec.ts`.
 - 2026-10-28 · **Revisor › cobertura de campos por pantalla** (VG 27-10): solo los candidatos del núcleo, por app y pantalla; utilidad heredada del estimado de la app y del uso; decisión por grupo («dejar», «revisar más tarde», «retirar») en `central.field_group_reviews` (1522). «Ver todo» con `renderCoverage`. Pantalla `#/revision/campos`. Prueba `field-coverage.test.ts`.
 - 2026-10-28 · **P7 · Food y Flow en Dirección**: Flow en `KPI_SOURCES`; temas de Food (Cocina y menús, Despensa y equipos, Carta) y de Flow (Día a día); objetivos de partida (`KPI_DEFAULT_TARGETS`, `targetOrDefault`) mientras Dirección no fije otros. Claves pedidas a Food y a Flow (API.md §7.2).
+- 2026-11-05 · **OKR en la revisión semanal** (X5): `central.objectives` (1527, `OKR`) con indicadores del panel como resultados clave; «Objetivos del trimestre» arriba de la revisión, con «Va bien / En riesgo / Va mal / Sin datos»; crear y editar para Dirección (owner o `direccion`, también en la base). Prueba `objectives.test.ts`.
 
 ## Pendiente
 

@@ -113,7 +113,7 @@ export const mountHome: ViewMount = (ctx) => {
       el('p', null, 'Las facturas que dejas en la carpeta «Entrada» llegan solas cada 15 minutos, leídas si el PDF tiene texto. Revísalas y valídalas.'),
       el('dl', { class: 'kv' }, el('dt', null, 'Por revisar'), fromDrive),
       el('p', { class: 'btnrow' },
-        el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/facturas?filtro=drive'); } }, 'Ver las de Drive'),
+        el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => { void closeSheet().then(() => navigate('#/facturas?filtro=drive')); } }, 'Ver las de Drive'),
         driveRun, driveReread),
       driveReason,
       isOwner ? driveState : null), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
@@ -133,7 +133,7 @@ export const mountHome: ViewMount = (ctx) => {
       icon('euro', 20), el('span', { class: 'inv-tool-label' }, 'Cobros sin casar'), el('span', { class: 'inv-tool-hint' }, 'Pagos en línea por revisar')), { feedbackId: 'invoices.inicio.cobros_sin_casar', feedbackLabel: 'Cobros sin casar' }),
     tool('sync', 'toolSync', 'Sincronización', 'sync', () => el('div', null,
       el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Conflictos y rechazados'), conflicts, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), roleText),
-      el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.sincronizacion.ver_conflictos', 'data-feedback-label': 'Ver conflictos', class: 'ghost', type: 'button', onclick: () => { void closeSheet(); navigate('#/conflictos'); } }, 'Ver conflictos'))), { feedbackId: 'invoices.inicio.sincronizacion', feedbackLabel: 'Sincronización' }),
+      el('p', null, el('button', { 'data-feedback-id': 'invoices.inicio.sincronizacion.ver_conflictos', 'data-feedback-label': 'Ver conflictos', class: 'ghost', type: 'button', onclick: () => { void closeSheet().then(() => navigate('#/conflictos')); } }, 'Ver conflictos'))), { feedbackId: 'invoices.inicio.sincronizacion', feedbackLabel: 'Sincronización' }),
     tool('install', 'toolInstall', 'Instalar', 'download', install, { feedbackId: 'invoices.inicio.instalar_hoja', feedbackLabel: 'Instalar en este dispositivo' }),
     tool('account', 'toolAccount', 'Cuenta', 'user', () => el('div', null,
       el('p', null, name ? `Sesión iniciada como ${name}.` : 'Sesión iniciada.'),
@@ -300,7 +300,7 @@ export const mountHome: ViewMount = (ctx) => {
       meta: 'Elige el artículo en la ficha de cada factura, o usa el texto sin artículo.',
       body: rows.length
         ? el('ul', { class: 'plain inv-undecided', id: 'resourceLinksUndecided' }, ...rows.map((r) => el('li', null, r.source === 'line' && r.invoice_code
-          ? el('a', { href: `#/facturas/${r.invoice_code}`, 'data-feedback-id': 'invoices.inicio.inventario.por_decidir.ficha', 'data-feedback-label': 'Abrir la ficha', onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/facturas/${r.invoice_code}`); } },
+          ? el('a', { href: `#/facturas/${r.invoice_code}`, 'data-feedback-id': 'invoices.inicio.inventario.por_decidir.ficha', 'data-feedback-label': 'Abrir la ficha', onclick: (e: Event) => { e.preventDefault(); void closeSheet().then(() => navigate(`#/facturas/${r.invoice_code}`)); } },
             el('strong', null, r.name), ` · ${r.invoice_code} · ${resourceLinkDetail(r)}`)
           : el('span', null, el('strong', null, r.name), ` · memoria · ${resourceLinkDetail(r)}`))))
         : el('p', null, 'No queda nada por decidir.'),

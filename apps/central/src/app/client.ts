@@ -23,6 +23,7 @@ export const T = {
   reviewScreens: 'central.review_screens',
   coverageDecisions: 'central.coverage_decisions',
   agents: 'central.agents',
+  objectives: 'central.objectives',
   pendingAccess: 'central.pending_access',
   weeklyActions: 'central.weekly_actions',
   weeklyReviews: 'central.weekly_reviews',
