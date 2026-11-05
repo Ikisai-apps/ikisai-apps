@@ -109,14 +109,17 @@ test('decoración · iconos del owner (SVG, PNG o GIF de hasta 1 MB) y piezas ge
 
 test('decoración · balizas con texto y con imagen propia (0821); sin icono, ni texto ni imagen, no', async () => {
   // Solo texto, solo imagen propia (subida al módulo y verificada) o icono con texto.
-  ok(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, label: 'Punto de encuentro', cell_x: 1, cell_y: 1 } }], app.tokens.owner));
-  ok(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, file_id: await file('image/png', 300_000), cell_x: 2, cell_y: 1 } }], app.tokens.owner));
-  ok(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, icon_id: icon, label: 'Fuente', cell_x: 3, cell_y: 1 } }], app.tokens.owner));
+  const made = [uuid(), uuid(), uuid()];
+  ok(await commit([{ op: 'insert', table: DECOR, id: made[0], fields: { plan_id: plan, label: 'Punto de encuentro', cell_x: 1, cell_y: 1 } }], app.tokens.owner));
+  ok(await commit([{ op: 'insert', table: DECOR, id: made[1], fields: { plan_id: plan, file_id: await file('image/png', 300_000), cell_x: 2, cell_y: 1 } }], app.tokens.owner));
+  ok(await commit([{ op: 'insert', table: DECOR, id: made[2], fields: { plan_id: plan, icon_id: icon, label: 'Fuente', cell_x: 3, cell_y: 1 } }], app.tokens.owner));
   // Nada que enseñar, una imagen que no es imagen o demasiado grande, y un texto vacío: no.
   fails(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, cell_x: 4, cell_y: 1 } }], app.tokens.owner));
   fails(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, file_id: await file('application/pdf', 2000), cell_x: 5, cell_y: 1 } }], app.tokens.owner));
   fails(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, file_id: await file('image/png', 2_000_000), cell_x: 6, cell_y: 1 } }], app.tokens.owner));
   fails(await commit([{ op: 'insert', table: DECOR, id: uuid(), fields: { plan_id: plan, label: '   ', cell_x: 7, cell_y: 1 } }], app.tokens.owner));
+  // Se quitan: las pruebas de después cuentan las piezas generales del dibujo.
+  for (const id of made) ok(await commit([{ op: 'delete', table: DECOR, id, expectedRevision: await rev(DECOR, id) }], app.tokens.owner));
 });
 
 test('decoración · la capa de un evento solo con set_event_decor, desde Booking, sobre piezas generales del mismo dibujo', async () => {
