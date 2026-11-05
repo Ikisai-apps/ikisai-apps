@@ -51,6 +51,9 @@ test('estructura · Booking solo añade camas a una habitación que ya existía'
 test('estructura · Tasks solo con sus derivados; otra app, nada; Central y sin app, todo', async () => {
   await commitAs('tasks', [space({ parent_id: building, kind: 'sala', name: 'Zona de Tasks', source_refs: ['tasks.label:zona-1'] })]);
   await assert.rejects(commitAs('tasks', [space({ parent_id: building, kind: 'sala', name: 'Sala suelta' })]), /FORBIDDEN/);
+  // Ponerle una referencia de Tasks a un espacio de Central no lo hace suyo.
+  const revRoom = Number((await app.t.db.query<{ revision: string }>(`select revision from resources.spaces where id = $1`, [room])).rows[0]!.revision);
+  await assert.rejects(commitAs('tasks', [{ op: 'update', table: SPACES, id: room, expectedRevision: revRoom, fields: { source_refs: ['tasks.label:robada'], name: 'Renombrada' } }]), /FORBIDDEN/);
   await assert.rejects(commitAs('food', [space({ parent_id: building, kind: 'sala', name: 'Sala de Food' })]), /FORBIDDEN/);
   await commitAs('central', [space({ parent_id: building, kind: 'sala', name: 'Sala de Central' })]);
   await commitAs(null, [space({ parent_id: building, kind: 'sala', name: 'Sala de la carga' })]);

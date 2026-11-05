@@ -14,10 +14,21 @@ declare
   v_cursor bigint := (p->>'cursor')::bigint;
   v_client text := core.client_app();
   v_change record;
+  v_refs_before text[]; v_refs_after text[];
 begin
   if v_client is null or v_client = 'central' then return; end if;
   for v_change in select c.row_id, c.op, c.before, c.after from core.changes c
                    where c.app = 'resources' and c.cursor = v_cursor and c.schema_name = 'resources' and c.table_name = 'spaces' loop
+    -- Las referencias a etiquetas o zonas de Tasks (lo que hace «derivado» a un espacio), antes y después del cambio.
+    select coalesce(array_agg(r order by r), '{}') into v_refs_before from jsonb_array_elements_text(coalesce(v_change.before->'source_refs', '[]'::jsonb)) r
+     where r like 'tasks.label:%' or r like 'tasks.zone:%';
+    select coalesce(array_agg(r order by r), '{}') into v_refs_after from jsonb_array_elements_text(coalesce(v_change.after->'source_refs', '[]'::jsonb)) r
+     where r like 'tasks.label:%' or r like 'tasks.zone:%';
+    -- Añadir o quitar esas referencias a un espacio que ya existe es estructura: fuera de Central, no.
+    if v_change.op <> 'insert' and v_change.op <> 'delete' and v_refs_before is distinct from v_refs_after then
+      perform core.fail('FORBIDDEN', 403, jsonb_build_object('table', 'resources.spaces', 'id', v_change.row_id, 'clientApp', v_client,
+        'reason', 'spaces are managed from Central'));
+    end if;
     -- Lo que no es estructura se deja pasar.
     if v_change.op = 'update'
        and (v_change.before->>'parent_id', v_change.before->>'kind', v_change.before->>'name', v_change.before->>'public_name',
@@ -27,9 +38,10 @@ begin
             v_change.after->>'active', v_change.after->>'deleted_at') then
       continue;
     end if;
-    -- Tasks: solo sus derivados (lo que tenga, antes o después, una referencia a sus etiquetas o zonas).
-    if v_client = 'tasks' and exists (select 1 from jsonb_array_elements_text(coalesce(v_change.after->'source_refs', '[]'::jsonb) || coalesce(v_change.before->'source_refs', '[]'::jsonb)) r
-                                       where r like 'tasks.label:%' or r like 'tasks.zone:%') then
+    -- Tasks: solo sus derivados. Uno nuevo, con su referencia; uno que ya existía, si ya era derivado antes del lote (lo que
+    -- guarda la base, no lo que manda el cliente).
+    if v_client = 'tasks' and ((v_change.op = 'insert' and cardinality(v_refs_after) > 0)
+                               or (v_change.op <> 'insert' and cardinality(v_refs_before) > 0)) then
       continue;
     end if;
     -- Booking: solo una cama nueva dentro de una habitación que ya existía.
