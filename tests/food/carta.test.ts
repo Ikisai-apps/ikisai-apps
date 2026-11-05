@@ -57,7 +57,11 @@ const moved = async (day = '2026-10-31') => Object.fromEntries((await q(`select 
 test.before(async () => {
   app = await createTestApp({
     app: 'food', slug: 'food-api', origin: FOOD_ORIGINS[0]!,
-    createHandler: (config) => createFoodApp({ ...config, origins: [FOOD_ORIGINS[0]!] }),
+    createHandler: (config) => createFoodApp({ ...config, origins: [FOOD_ORIGINS[0]!] }, {
+      // Flow falso: sus assets (la imagen de una línea de la carta).
+      flowFetch: async (input) => String(input) === 'https://flow.ikisai.com/assets/montaditos/serrano/zoom.webp'
+        ? new Response(new Uint8Array([82, 73, 70, 70]), { headers: { 'content-type': 'image/webp' } }) : new Response('no', { status: 404 }),
+    }),
   });
   const altura = (await q(`select id from resources.spaces where kind = 'altura' and name = 'Altura 1' and deleted_at is null`))[0].id;
   const house = uuid();
@@ -224,4 +228,12 @@ test('dominio · precios, códigos libres y «Usar en otro evento»', async () =
   const original = await q(`select scope, code, sale_price_cents, recipe_id is not null as recipe from food.carta_lines where menu_id = $1 and deleted_at is null order by scope, position`, [CARTA]);
   assert.deepEqual(copied, original);
   assert.equal((await q(`select count(*)::int as n from food.carta_sales where menu_id = $1`, [target]))[0].n, 0, 'las ventas no se copian');
+});
+
+test('carta/image · la imagen de la carta, bajada de Flow para guardarla en la receta; la clave se valida', async () => {
+  const ok = await app.call('/api/v1/carta/image?key=montaditos/serrano', { method: 'GET' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.deepEqual([ok.data.contentType, ok.data.data], ['image/webp', 'UklGRg==']);
+  assert.equal((await app.call('/api/v1/carta/image?key=../secreto', { method: 'GET' })).status, 422);
+  assert.equal((await app.call('/api/v1/carta/image?key=montaditos/nada', { method: 'GET' })).status, 404);
 });

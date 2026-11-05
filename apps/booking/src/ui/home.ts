@@ -166,7 +166,6 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     const lead = renderLead({
       title: FILTER_TITLES[filter], items, top: 3, max: 5, feedbackId: 'booking.inicio.primero',
       emptyText: filter === 'necesitan' ? 'Nada pendiente: ninguna reserva pide algo ahora.' : 'Ninguna reserva en este grupo.',
-      onOpen: (it) => navigate(`#/reservas/${it.id}`),
       // La acción de la fase: «Siguiente» abre la ficha en el bloque de ese paso (el lector no ve acciones).
       extra: (it) => {
         const view = set.byId.get(it.id);
@@ -176,6 +175,14 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       },
     });
     lead.id = 'upcomingList';
+    // tocar la tarjeta o la línea abre la reserva, sin botón «Abrir» (VG, 28-10); los botones de dentro siguen a lo suyo
+    lead.classList.add('bk-lead-tap');
+    lead.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('button, a, summary')) return;
+      const id = target.closest<HTMLElement>('.lead-card[data-id], .lead-line[data-id]')?.dataset.id;
+      if (id) navigate(`#/reservas/${id}`);
+    });
     replace(leadHost, lead, filter !== 'necesitan'
       ? el('p', { class: 'hint' }, el('button', { type: 'button', class: 'linkbtn', id: 'homeFilterClear', 'data-feedback-id': 'booking.inicio.cifras.quitar', 'data-feedback-label': 'Ver lo primero', onclick: () => { filter = 'necesitan'; void paintData(); } }, 'Ver lo primero'))
       : null);

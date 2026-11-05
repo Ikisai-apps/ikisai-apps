@@ -260,16 +260,21 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         label: 'Las próximas reservas', index: coverIndex, feedbackId: 'booking.reservas.portada.carrusel',
         slides: nextOnes.map((v, i) => ({ id: v.reservation.id, title: v.reservation.title, image: logos.get(v.reservation.id) ?? null, color: PHASE_COLORS[v.x.phase],
           state: `${i === 0 ? 'La próxima' : `${i + 1}.ª`} · ${statusLabel(v.reservation.status)}`, meta: [dateRange(v.reservation), v.x.people, metaOf(v.reservation)[2]].filter(Boolean).join(' · ') })),
-        onChange: (_slide, i) => { coverIndex = i; paintCoverOpen(); },
+        onChange: (_slide, i) => { coverIndex = i; },
       });
       carousel.element.id = 'nextCover';
       const arrows = carousel.element.querySelectorAll<HTMLButtonElement>('.cover-arrow');
       arrows[0]?.setAttribute('id', 'nextCoverPrev');
       arrows[1]?.setAttribute('id', 'nextCoverNext');
-      const openButton = el('button', { type: 'button', class: 'primary', id: 'nextCoverOpen', 'data-feedback-id': 'booking.reservas.portada.abrir', 'data-feedback-label': 'Abrir la reserva', onclick: () => open(nextOnes[carousel.index()]!) }, 'Abrir');
-      const paintCoverOpen = () => openButton.setAttribute('aria-label', `Abrir la portada de ${nextOnes[carousel.index()]!.reservation.title}`);
-      paintCoverOpen();
-      replace(coverHost, carousel.element, el('p', { class: 'bk-cover-open' }, openButton));
+      // tocar la portada abre la reserva (VG, 28-10): sin botón «Abrir»; las flechas y los puntos siguen moviendo el carrusel
+      carousel.element.classList.add('bk-cover-tap');
+      carousel.element.setAttribute('data-feedback-id', 'booking.reservas.portada.abrir');
+      carousel.element.setAttribute('data-feedback-label', 'Abrir la reserva');
+      carousel.element.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('button, a, [role="tab"], .cover-dots')) return;
+        open(nextOnes[carousel.index()]!);
+      });
+      replace(coverHost, carousel.element);
     }
 
     // «Corre prisa»: hasta 4 con su motivo y «y n más».

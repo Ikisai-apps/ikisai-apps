@@ -18,6 +18,8 @@ export interface FoodAppOptions {
   /** Base de la API de Tasks para las peticiones de §6.1 (en pruebas, una falsa). */
   tasksApiBase?: string;
   tasksFetch?: typeof fetch;
+  /** Para bajar de Flow la imagen de una línea de la carta (`carta/image`); en pruebas, una falsa. */
+  flowFetch?: typeof fetch;
   /**
    * Clave de worker (`IKISAI_WORKER_KEY`) para que Tasks sepa que la fuente `food` la manda el servidor de Food
    * (auditoría FO2; Tasks #852, API §45). Si no se da, la de `base.workerKey`.
@@ -255,6 +257,30 @@ function voteRoutes(supabase: Supabase): AppRoute[] {
  * La carta (1109): `POST carta/stock {menuId, day}` vuelve a dejar el stock de Recursos como dicen las ventas de ese
  * día. Lo hace solo tras registrar las ventas; esta ruta es para reintentarlo si entonces falló. Editor u owner.
  */
+/**
+ * `GET carta/image?key=<clave>`: la imagen grande de una línea de la carta, que sirve Flow (assets de VG), para guardarla
+ * como foto de su receta (VG, 28-10: que no se pierda si la carta cambia). Flow no la sirve con CORS: la baja el
+ * servidor y la devuelve en base64; la app la sube como cualquier foto. Editor u owner.
+ */
+const CARTA_IMAGE_KEY = /^[a-z0-9_]{1,40}\/[a-z0-9_]{1,40}$/;
+function cartaImageRoutes(options: FoodAppOptions): AppRoute[] {
+  return [{
+    method: 'GET', pattern: 'carta/image', handler: async ({ ctx, url }) => {
+      if (!['editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Solo quien edita puede guardar la foto.');
+      const key = url.searchParams.get('key') ?? '';
+      if (!CARTA_IMAGE_KEY.test(key)) fail(422, 'INVALID_OPERATION', 'Imagen no válida.');
+      const res = await (options.flowFetch ?? fetch)(`https://flow.ikisai.com/assets/${key}/zoom.webp`);
+      const type = res.headers.get('content-type') ?? '';
+      if (!res.ok || !type.startsWith('image/')) fail(404, 'NOT_FOUND', 'Flow no tiene esa imagen.');
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length > 5_000_000) fail(413, 'PAYLOAD_TOO_LARGE', 'La imagen es demasiado grande.');
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return { contentType: type, data: btoa(binary) };
+    },
+  }];
+}
+
 function cartaRoutes(supabase: Supabase, events: EventReader): AppRoute[] {
   return [{
     /**
@@ -443,7 +469,7 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
       // La carta: las ventas registradas mueven el stock de Recursos (carta.ts). Un fallo no deshace las ventas.
       afterCommit: async (result) => { await afterCartaSales(supabase, result); },
     },
-    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events), ...stockRoutes(supabase), ...eventShoppingRoutes(supabase, events, options)],
+    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase), ...cartaRoutes(supabase, events), ...stockRoutes(supabase), ...cartaImageRoutes(options), ...eventShoppingRoutes(supabase, events, options)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
     // Tanda 27: el estado de las peticiones de máquina en Tasks, para «En reparación» (migración 1106).
     workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) },

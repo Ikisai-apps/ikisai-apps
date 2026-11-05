@@ -188,10 +188,12 @@ export function experienceOf(input: ExperienceInput, today: string): Experience 
       if (!ok) step('senal', d === 'parcial' ? 'Cobrar el resto de la señal' : 'Cobrar la señal', 'blockFinance', daysLeft !== null && daysLeft <= 7 ? 'alert' : null);
     }
     const soon = daysLeft !== null && daysLeft <= 30;
-    if (phase === 'preparacion' && soon && (input.event?.final_guests ?? null) === null) step('finales', 'Pedir el número final de personas', 'blockOperation');
+    // jornadas abiertas: la gente llega sin lista; ni número final que pedir ni huéspedes que completar de antemano (VG, 28-10)
+    const openDays = r.event_type === 'jornadas_abiertas';
+    if (!openDays && phase === 'preparacion' && soon && (input.event?.final_guests ?? null) === null) step('finales', 'Pedir el número final de personas', 'blockOperation');
     if (phase === 'preparacion' && soon && r.briefing_received === false) step('briefing', 'Pedir el briefing final', 'blockSummary');
     const mode = guestModeOf(r);
-    if (input.guests && mode !== 'ninguno') {
+    if (input.guests && mode !== 'ninguno' && !openDays) {
       const c = reservationCompleteness(input.guests, mode);
       const want = target ?? c.total;
       const ok = want > 0 ? c.complete >= want : c.total > 0 && c.complete === c.total;
