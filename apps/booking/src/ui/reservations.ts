@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { fieldAttrs, announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { fieldAttrs, announceSaved, confirmDialog, createCalendar, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type CalendarEvent, type Sheet } from '@ikisai/ui-kit';
 import {
   COMMERCIAL_STAGES, EVENT_TYPES, PHASES, PHASE_LABELS, TABLES, canHoldStatus, commercialStageLabel, dayNumber, foldText, missingForConfirmation, nextText, nights, validateFields,
   type CommercialStage, type Phase, type ReservationStatus,
@@ -14,6 +14,7 @@ import { PHASE_COLORS, loadExperiences, onSesPending, resetSesWatch, requestBloc
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
 import { fbIgnore, fbMark } from './feedback.ts';
+import { toCalendarEvent } from './calendar.ts';
 
 type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'realizadas' | 'cerradas' | 'canceladas';
 
@@ -333,6 +334,24 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const type = select('resType', EVENT_TYPES.map((t) => [t, EVENT_TYPE_LABELS[t]]), initial.event_type);
     const start = input('resStart', 'date', initial.start_date);
     const end = input('resEnd', 'date', initial.end_date);
+    // B-34 (FB_2026_096): entrada y salida de un golpe en el calendario, con las reservas que ya hay; el mismo día dos veces,
+    // una reserva de un solo día (entrada = salida)
+    const pickDates = el('button', { type: 'button', class: 'ghost small', id: 'resPickDates', 'data-feedback-id': 'booking.reservas.alta.calendario', 'data-feedback-label': 'Elegir en el calendario',
+      onclick: () => {
+        const startValue = (start as HTMLInputElement).value; const endValue = (end as HTMLInputElement).value;
+        let picker: Sheet | null = null;
+        const calendar = createCalendar({
+          view: 'month', viewSwitch: false, daySheet: false, ...(startValue ? { date: startValue } : {}), label: 'Fechas de la reserva',
+          events: () => rows.map(toCalendarEvent).filter((e): e is CalendarEvent => e !== null),
+          select: {
+            label: 'Usar estas fechas',
+            describe: ({ from, to }) => from === to ? 'Un solo día' : plural(nights(from, to) ?? 0, 'noche', 'noches'),
+            onSelect: ({ from, to }) => { (start as HTMLInputElement).value = from; (end as HTMLInputElement).value = to; onChange(); void picker?.close(); },
+          },
+        });
+        picker = openSheet({ title: 'Elegir las fechas', body: el('div', null, el('p', { class: 'hint' }, 'Toca el día de entrada y el de salida. Para un solo día, tócalo dos veces.'), calendar.element) });
+        calendar.selectRange(startValue ? { from: startValue, to: endValue || startValue } : undefined);
+      } }, icon('calendar'), 'Elegir en el calendario');
     const guests = input('resGuests', 'number', initial.expected_guests, { min: 0, step: 1, inputmode: 'numeric' });
     const contact = input('resContact', 'text', initial.contact_name, { maxlength: 200 });
     const phone = input('resPhone', 'tel', initial.contact_phone, { maxlength: 40 });
@@ -413,6 +432,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         field('Tipo', type, 'tipo'),
         lodgingRow,
         el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
+        el('p', null, pickDates),
         guestsField,
         el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto')), fbIgnore(field('Teléfono', phone, 'telefono'))),
         error,
