@@ -1,7 +1,7 @@
 /**
- * Ikisai Tasks · las fases del proyecto en la app (fases-ui.js, docs/tasks/API.md §51): crear dos fases desde la banda,
- * poner una tarea en una fase desde su ficha, cerrar con tareas abiertas solo con nota, quitar una fase deja su tarea sin
- * fase, y la lectora ve la banda sin «+ Fase». Datos sintéticos.
+ * Ikisai Tasks · las fases del proyecto en la app (fases-ui.js, docs/tasks/API.md §51 y §61): crear dos fases desde la banda
+ * (la primera es la actual y la tarea ya está en ella), cambiar la fase de una tarea con el segmento de su ficha, cerrar con
+ * tareas abiertas solo con nota, quitar una fase pasa su tarea a la otra, y la lectora ve la banda sin «+ Fase». Datos sintéticos.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
@@ -54,12 +54,21 @@ test('crear dos fases desde la banda del proyecto', async () => {
   await showProject(owner);
   await expect(band).toContainText('Cortar');
   await expect(band).toContainText('Montar');
+  await expect(band.locator('.tkph-now')).toHaveCount(1);
+  const cortar = (await phases()).find((p: any) => p.name === 'Cortar');
+  expect(cortar.is_current, 'la primera fase es la actual').toBe(true);
+  await expect.poll(phaseOfTask, 'la tarea queda en la primera fase').toBe(cortar.id);
 });
 
-test('la tarea va a una fase desde su ficha', async () => {
-  const cortar = (await phases()).find((p: any) => p.name === 'Cortar');
+test('la tarea cambia de fase con el segmento de su ficha, sin «Sin fase»', async () => {
+  const list = await phases(), cortar = list.find((p: any) => p.name === 'Cortar'), montar = list.find((p: any) => p.name === 'Montar');
   await owner.evaluate((id) => openTaskEditor(id), taskId);
-  await owner.locator('#tkphTask').selectOption(cortar.id);
+  await expect(owner.locator('#tkphTask [data-tkph-pick]')).toHaveCount(2);
+  await expect(owner.locator('#tkphTask')).not.toContainText('Sin fase');
+  await owner.locator(`[data-tkph-pick="${montar.id}"]`).click();
+  await expect.poll(phaseOfTask).toBe(montar.id);
+  await owner.evaluate((id) => openTaskEditor(id), taskId);
+  await owner.locator(`[data-tkph-pick="${cortar.id}"]`).click();
   await expect.poll(phaseOfTask).toBe(cortar.id);
   await showProject(owner);
   await expect(owner.locator('#tkphBand')).toContainText('0 de 1');
@@ -77,13 +86,14 @@ test('cerrar con la tarea abierta pide nota', async () => {
   await expect.poll(async () => (await phases()).find((p: any) => p.id === cortar.id).status).toBe('done');
 });
 
-test('quitar una fase deja su tarea sin fase', async () => {
+test('quitar una fase pasa su tarea a la otra', async () => {
   await showProject(owner);
   const cortar = (await phases()).find((p: any) => p.name === 'Cortar');
   await owner.locator(`[data-tkph="${cortar.id}"]`).click();
   await owner.locator('#tkphDel').click();
   await expect.poll(async () => (await phases()).map((p: any) => p.name)).toEqual(['Montar']);
-  await expect.poll(phaseOfTask).toBe(null);
+  const montar = (await phases())[0];
+  await expect.poll(phaseOfTask).toBe(montar.id);
 });
 
 test('la lectora ve las fases, sin «+ Fase» ni guardar', async () => {
