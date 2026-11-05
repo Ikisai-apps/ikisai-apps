@@ -336,7 +336,9 @@ export function mountReservation(id: string): ViewMount {
         } });
       const summary = block('blockSummary', 'Resumen', [kv(
         ['Fechas', el('span', null, dateRange(reservation), ' ', el('span', { class: `chip${definitive ? ' ok' : ''}`, id: 'datesChip', 'data-feedback-id': 'booking.reserva.resumen.fechas_estado', 'data-feedback-label': 'Estado de las fechas' }, definitive ? 'Definitiva' : 'Provisional'))], ['Noches', n === null ? '—' : String(n)],
-        ['Personas', `${text(reservation.expected_guests)} previstas · ${text(liveEvent?.final_guests)} finales`],
+        // jornadas abiertas: asistentes previstos, sin número final (B-41)
+        isOpenDays(reservation.event_type) ? ['Asistentes', `${text(reservation.expected_guests)} previstos`]
+          : ['Personas', `${text(reservation.expected_guests)} previstas · ${text(liveEvent?.final_guests)} finales`],
         ['Menores', text(reservation.minors_count)], ['Tipo', label(reservation.event_type)],
         ['Contacto', el('span', { 'data-feedback-ignore': '' }, [reservation.contact_name, reservation.contact_phone, reservation.contact_email].filter(Boolean).join(' · ') || '—')],
         ['Servicios', services || '—'], ['Prioridad', label(reservation.priority)],
@@ -698,7 +700,9 @@ export function mountReservation(id: string): ViewMount {
         el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToList', 'data-feedback-id': 'booking.reserva.cabecera.volver', 'data-feedback-label': 'Volver a Reservas', onclick: () => navigate('#/reservas') }, '← Reservas')),
         el('div', { class: 'pagehead ficha', 'data-feedback-id': 'booking.reserva.cabecera', 'data-feedback-label': 'Cabecera' }, el('div', null,
           el('h2', null, reservation.title),
-          el('p', null, `${dateRange(reservation)} · ${reservation.expected_guests === null ? 'personas sin definir' : plural(reservation.expected_guests, 'persona', 'personas')} · ${reservation.code ?? 'código pendiente'}`),
+          el('p', null, `${dateRange(reservation)} · ${isOpenDays(reservation.event_type)
+            ? (reservation.expected_guests === null ? 'asistentes sin definir' : plural(reservation.expected_guests, 'asistente previsto', 'asistentes previstos'))
+            : (reservation.expected_guests === null ? 'personas sin definir' : plural(reservation.expected_guests, 'persona', 'personas'))} · ${reservation.code ?? 'código pendiente'}`),
           el('div', { class: 'chips' },
             el('span', { class: 'chip', dataset: { status: reservation.status }, id: 'statusChip', 'data-feedback-id': 'booking.reserva.cabecera.estado', 'data-feedback-label': 'Estado' }, statusLabel(reservation.status)),
             calendarChip,

@@ -27,9 +27,11 @@ export function hiddenKeys(type: unknown): Set<string> {
   if (isFamily(type)) return new Set([...MEAL_PLAN_KEYS, ...LODGING_KEYS]);
   return new Set();
 }
+/** En jornadas abiertas, «Asistentes previstos» en vez de «Personas previstas» (B-41, VG 05-11). */
+export const peopleLabel = (type: unknown): string => isOpenDays(type) ? 'Asistentes previstos' : 'Personas previstas';
 export const specsFor = (specs: FieldSpec[], type: unknown): FieldSpec[] => {
   const hidden = hiddenKeys(type);
-  return hidden.size ? specs.filter((s) => !hidden.has(s.key)) : specs;
+  return (hidden.size ? specs.filter((s) => !hidden.has(s.key)) : specs).map((s) => s.key === 'expected_guests' ? { ...s, label: peopleLabel(type) } : s);
 };
 
 /** Un carta de Food tal como la publica `food.booking_carta_projection`. */
