@@ -346,7 +346,16 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
         : 'El coste necesita conexión: se calcula con el inventario del servidor.';
     }
 
-    function paint(): void { paintHead(); if (tab === 'carta') { paintSettings(); paintBlocks(); } }
+    // Con un campo en uso (precio, «Disponible»), repintar lo sustituye y el móvil cierra el teclado (VG, 28-10): espera.
+    let deferred = false;
+    const typing = () => { const a = document.activeElement; return !!a && content.contains(a) && a.matches('input, select, textarea'); };
+    function paint(): void {
+      if (typing()) { deferred = true; return; }
+      deferred = false;
+      paintHead(); if (tab === 'carta') { paintSettings(); paintBlocks(); }
+    }
+    const onFocusOut = () => setTimeout(() => { if (deferred && !typing()) paint(); }, 0);
+    content.addEventListener('focusout', onFocusOut);
 
     async function loadCosts(): Promise<void> {
       try {
@@ -356,7 +365,7 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
       } catch {
         projectionAt = null;
       }
-      paintBlocks();
+      if (typing()) deferred = true; else paintBlocks();
     }
 
     async function load(): Promise<void> {
@@ -376,9 +385,9 @@ export function mountCarta(menuId: string, tab: CartaTab = 'carta'): ViewMount {
     }
 
     void load().then(() => (tab === 'carta' ? loadCosts() : undefined));
-    const offEvents = watchEvents(client, (next) => { snapshot = next; paintHead(); if (tab === 'carta') paintSettings(); });
+    const offEvents = watchEvents(client, (next) => { snapshot = next; if (typing()) { deferred = true; return; } paintHead(); if (tab === 'carta') paintSettings(); });
     const offTables = [T.menus, T.cartaLines, T.recipes, T.cartaSales].map((table) => client.onTable(table, () => void load().then(() => (tab === 'carta' ? loadCosts() : undefined))));
     const offItems = resources.onTable(R.items, () => void load());
-    return () => { unmountTab?.(); offEvents(); offTables.forEach((off) => off()); offItems(); };
+    return () => { content.removeEventListener('focusout', onFocusOut); unmountTab?.(); offEvents(); offTables.forEach((off) => off()); offItems(); };
   };
 }
