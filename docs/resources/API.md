@@ -204,6 +204,7 @@ Sin red, el cliente puede sumar `movements` de su espejo.
 - `resources.items.trade_id` (opcional): un oficio de Central, como las tareas de Tasks. Sin clave foránea; el hook `resources.check_item_trades` lo valida con `central.trade_alive` al crearlo o cambiarlo (`INVALID_TRADE` si está retirado o no existe).
 - `category` (texto) se conserva para lo que ya hay.
 - `resources.items.icon` (migración 0822, C-06): la clave del icono elegido del juego de UI-kit (`^[a-z][a-z0-9_-]{0,40}$`, opcional).
+- `resources.item_families` (vista, migración 0823, C-03): cada prefijo de palabras de los nombres de los artículos vivos (`family` en minúsculas, `label`, `depth`, `items`), para proponer el nombre al escribirlo.
 - Tasks y Food lo leen en `resources.items`, como el resto del artículo. El selector de oficio va en la ficha del artículo de Central (`central.trade_options`).
 
 ## 3.0b Quién pone el origen de un movimiento (migración 0820, FO4; núcleo 0118)
