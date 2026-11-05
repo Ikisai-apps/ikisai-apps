@@ -11,6 +11,7 @@ import { ASSIGNMENTS, EVENTS, GUESTS, RESERVATIONS, WALKINS, describeError, shor
 import type { FieldSpec } from './form.ts';
 import { settleBatch } from '../app/settle.ts';
 import type { LodgingData } from './lodging.ts';
+import { createBedPlan } from './bedMap.ts';
 
 type Row = SyncedRow & Record<string, any>;
 
@@ -170,6 +171,37 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
     };
     from.addEventListener('change', fill); nights.addEventListener('input', fill); price.addEventListener('input', fill);
     fill();
+    // Elegir la cama en el plano (como en la hoja de asignación): de la finca al edificio y al dormitorio; libres esas noches
+    let bedPlan: ReturnType<typeof createBedPlan> | null = null;
+    const planFold = o.data.spaces.some((sp) => sp.resource_id)
+      ? el('details', { class: 'bk-fold', id: 'walkPlan', 'data-feedback-id': 'booking.reserva.alacarta.plano', 'data-feedback-label': 'Elegir en el plano',
+        ontoggle: (e: Event) => {
+          const fold = e.currentTarget as HTMLDetailsElement;
+          if (!fold.open || bedPlan) return;
+          bedPlan = createBedPlan({
+            client: o.client, spaces: o.data.spaces as never, beds: o.data.beds as never, label: 'Plano para elegir cama', feedbackId: 'booking.reserva.alacarta.plano_mapa',
+            // la supletoria que no está disponible no se ofrece ni se pinta (VG, 28-10)
+            hideBed: (b) => isExtraBed(b as never) && !(from.value && Number(nights.value) > 0 ? freeBeds(from.value, Number(nights.value)) : []).some((x) => x.id === b.id),
+            layer: (sp) => {
+              if (sp.kind !== 'cama') return null;
+              const free = from.value && Number(nights.value) > 0 ? freeBeds(from.value, Number(nights.value)) : [];
+              const b = o.data.beds.find((x) => x.id === sp.id);
+              if (!b || b.active === false) return { state: 'off', label: 'Inactiva' };
+              // la supletoria que no está disponible no se ofrece: no se pinta (VG, 28-10)
+              if (isExtraBed(b as never) && !free.some((x) => x.id === b.id)) return { state: 'off' };
+              if (!free.some((x) => x.id === b.id)) return { state: 'occupied', label: 'Ocupada esas noches' };
+              return { state: bed.value === b.id ? 'picked' : 'free', label: bed.value === b.id ? 'Elegida' : 'Libre' };
+            },
+            onPickBed: (b) => {
+              if (![...bed.options].some((x) => x.value === b.id)) return void toast(`${b.label} no está libre esas noches.`);
+              bed.value = b.id;
+              toast(`${b.label} elegida.`);
+            },
+          });
+          fold.append(bedPlan.element);
+        } },
+        el('summary', null, 'Elegir en el plano'))
+      : null;
     const save = el('button', { class: 'primary', type: 'button', id: 'walkSave', 'data-feedback-id': 'booking.reserva.alacarta.guardar', 'data-feedback-label': 'Alojar', onclick: () => void submit() }, 'Alojar');
     async function submit(): Promise<void> {
       const n = Number(nights.value);
@@ -213,7 +245,7 @@ export function renderWalkIn(o: { client: SyncClient; reservation: Row; event: R
       body: el('form', { 'data-feedback-id': 'booking.reserva.alacarta.hoja', 'data-feedback-label': 'Alojar a alguien', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
         el('div', { class: 'rowform' }, field('Nombre', name, 'nombre'), field('Primer apellido', surname, 'apellido'), field('Teléfono o correo', contact, 'contacto'),
           el('label', { class: 'field check', 'data-feedback-id': 'booking.reserva.alacarta.menor', 'data-feedback-label': 'Menor de edad' }, minor, el('span', null, 'Menor de edad')),
-          field('Desde', from, 'desde'), field('Noches', nights, 'noches'), field('Cama', bed, 'cama'),
+          field('Desde', from, 'desde'), field('Noches', nights, 'noches'), field('Cama', bed, 'cama'), planFold,
           field('Precio por noche (€)', price, 'precio'), total, field('Cobro', pay, 'cobro'), error)),
       foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
       initialFocus: name,

@@ -199,6 +199,8 @@ export function mountCarta(root: HTMLElement): () => void {
       } catch (error) {
         send.disabled = false;
         replace(status, error instanceof PublicApiError ? error.message : 'No se ha podido enviar. Enséñalo en la barra.');
+        // La carta cambió (otro flujo o productos retirados): se vacía la cesta y se recarga con la carta de ahora.
+        if (error instanceof PublicApiError && error.code === 'MENU_CHANGED') { basket = {}; saveBasket(basket); setTimeout(() => location.reload(), 1500); }
       }
     });
     const sheet: Sheet = openSheet({

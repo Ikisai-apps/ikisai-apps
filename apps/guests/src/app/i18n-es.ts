@@ -923,7 +923,7 @@ export const ES: Dictionary = {
   'visitor.backGuide': 'la guía',
   'visitor.guideSaved': 'Hecho. Puedes volver a la guía.',
   'lodge.planOpen': 'Ver las camas en el plano',
-  'lodge.planLabel': 'Camas en el plano',
+  'lodge.planLabel': 'Elige tu cama en el plano',
   'lodge.planNone': 'Las camas aún no están en el plano. Elige en la lista.',
   'lodge.planFailed': 'No hemos podido cargar el plano. Elige en la lista.',
   'lodge.nights': 'Tus noches',

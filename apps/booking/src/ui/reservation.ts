@@ -225,7 +225,8 @@ export function mountReservation(id: string): ViewMount {
       const confirmPending = mark !== null && rejectedBatch === null;
 
       // --- acciones de cabecera
-      const editReservation = () => openRowSheet({
+      let editSheet: ReturnType<typeof openRowSheet> | null = null;
+      const editReservation = () => { editSheet = openRowSheet({
         client, title: 'Editar reserva', table: RESERVATIONS, row: reservation, feedbackId: 'booking.reserva.editar', feedbackLabel: 'Editar reserva',
         specs: specsFor(RESERVATION_SPECS, reservation.event_type).map((spec) => spec.key !== 'status' ? spec
           : { ...spec, options: OPTIONS.status.filter(([value]) => !requiresEvent(value as ReservationStatus) || liveEvent !== null || value === reservation.status) }),
@@ -235,7 +236,9 @@ export function mountReservation(id: string): ViewMount {
           return canHoldStatus(row, row.status) ? null : `Para el estado «${statusLabel(row.status)}» falta ${missingForConfirmation(row).map((key) => MISSING[key]).join(', ')}.`;
         },
         savedMessage: 'Reserva guardada.',
-      });
+        // archivar y la papelera, dentro de la edición (VG, 28-10)
+        extra: () => el('div', { class: 'btnrow', id: 'editReservationMore' }, archiveButton, trashButton),
+      }) };
 
       async function confirmReservation(): Promise<void> {
         const missing = missingForConfirmation(reservation!);
@@ -296,19 +299,15 @@ export function mountReservation(id: string): ViewMount {
       }
 
       const archived = reservation.archived_at !== null;
-      const archiveButton = el('button', { class: 'ghost', type: 'button', id: 'archiveReservation', 'data-feedback-id': 'booking.reserva.acciones.archivar', 'data-feedback-label': 'Archivar', onclick: () => void run(
+      const archiveButton = el('button', { class: 'ghost', type: 'button', id: 'archiveReservation', 'data-feedback-id': 'booking.reserva.acciones.archivar', 'data-feedback-label': 'Archivar', onclick: () => { void editSheet?.close(); void run(
         [{ op: 'update', table: RESERVATIONS, id, expectedRevision: reservation.revision, fields: { archived_at: archived ? null : new Date().toISOString() } }],
-        archived ? 'Reserva desarchivada.' : 'Reserva archivada.') }, archived ? 'Desarchivar' : 'Archivar');
-      const trashButton = el('button', { class: 'ghost', type: 'button', id: 'trashReservation', 'data-feedback-id': 'booking.reserva.acciones.papelera', 'data-feedback-label': 'Papelera', onclick: () => void trash() }, icon('trash'), 'Papelera');
+        archived ? 'Reserva desarchivada.' : 'Reserva archivada.'); } }, archived ? 'Desarchivar' : 'Archivar');
+      const trashButton = el('button', { class: 'ghost', type: 'button', id: 'trashReservation', 'data-feedback-id': 'booking.reserva.acciones.papelera', 'data-feedback-label': 'Papelera', onclick: () => { void editSheet?.close(); void trash(); } }, icon('trash'), 'Papelera');
       const actions = deleted
         ? [writable ? el('button', { class: 'primary', type: 'button', id: 'restoreReservation', 'data-feedback-id': 'booking.reserva.acciones.restaurar', 'data-feedback-label': 'Restaurar', onclick: () => void restore() }, icon('restore'), 'Restaurar') : null]
         : !writable ? [] : [
-            el('button', { class: 'primary', type: 'button', id: 'editReservation', 'data-feedback-id': 'booking.reserva.acciones.editar', 'data-feedback-label': 'Editar', onclick: editReservation }, icon('edit'), 'Editar'),
             !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)
               ? el('button', { class: 'ghost', type: 'button', id: 'confirmReservation', 'data-feedback-id': 'booking.reserva.acciones.confirmar', 'data-feedback-label': 'Confirmar', onclick: () => void confirmReservation() }, icon('check'), 'Confirmar') : null,
-            // En móvil «Archivar» y «Papelera» van a un menú «Más»; en escritorio se ven todas (CSS `.more`).
-            el('details', { class: 'more', id: 'moreActions', 'data-feedback-id': 'booking.reserva.acciones.mas', 'data-feedback-label': 'Más acciones' }, el('summary', { class: 'ghost' }, 'Más'),
-              el('div', { class: 'more-items' }, archiveButton, trashButton)),
           ];
 
       // --- bloques
@@ -726,7 +725,7 @@ export function mountReservation(id: string): ViewMount {
             return montageCard.card.element;
           })() : null,
           renderVisitorRequests({ requests: visitorRequests, editable, run })], {
-          writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
+          writable: editable, onEdit: writable && !deleted ? editReservation : undefined, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
         }, requested),
       );

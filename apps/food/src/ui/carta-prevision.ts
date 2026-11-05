@@ -17,7 +17,7 @@ import { el, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
-import { watchEvents } from '../app/events.ts';
+import { watchEvents, type EventsSnapshot } from '../app/events.ts';
 
 interface PrevisionContext { client: SyncClient; menuId: string; host: HTMLElement; canWrite: boolean; navigate(hash: string): void }
 
@@ -89,6 +89,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
 
   /** Asistentes de la carta: los suyos o, si no, las personas del evento (puente entre «por persona» y «total»). */
   const attendance = () => cartaAttendance(menu, eventGuests);
+  const fresh = (l: Mirror<CartaLine>) => lines.find((x) => x.id === l.id) ?? l;
 
   function paintUnits(): void {
     if (!menu) return;
@@ -104,11 +105,13 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       onchange: async () => {
         const value = guests.value.trim() === '' ? null : Number(guests.value);
         if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de personas.'); return; }
-        if (value === (current.expected_attendance ?? null)) return;
+        // Con el repintado aplazado (se está escribiendo), lo pintado puede ir por detrás: se usa lo último cargado.
+        const now = menu ?? current;
+        if (value === (now.expected_attendance ?? null)) return;
         const next = value ?? eventGuests ?? null;
-        const ops: RowOperation[] = [{ op: 'update', table: T.menus, id: current.id, expectedRevision: current.revision, fields: { expected_attendance: value } }];
+        const ops: RowOperation[] = [{ op: 'update', table: T.menus, id: now.id, expectedRevision: now.revision, fields: { expected_attendance: value } }];
         if (next !== null) {
-          for (const line of live) {
+          for (const line of live.map(fresh)) {
             if (line.per_person === null || line.per_person === undefined) continue;
             const units = unitsFromPerPerson(Number(line.per_person), next);
             if (units !== line.expected_units) ops.push({ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { expected_units: units } });
@@ -116,8 +119,10 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         }
         await usage.run('food.carta.prevision.asistentes', () => commit(client, ops));
       } }) as HTMLInputElement;
-    const row = (line: Mirror<CartaLine>) => {
-      const save = (fields: Record<string, unknown>) => usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields }]));
+    const row = (painted: Mirror<CartaLine>) => {
+      // La línea al día en cada cambio (el repintado puede estar aplazado): revisión y valores de lo último cargado.
+      let line = painted;
+      const save = (fields: Record<string, unknown>) => { line = fresh(painted); return usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields }])); };
       const perPerson = el('input', { 'data-field-id': 'food.carta.prevision.por_persona', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'per_person', 'data-feedback-id': 'food.carta.prevision.por_persona', 'data-feedback-label': 'Consumo por persona', type: 'number', inputmode: 'decimal',
         min: '0', step: '0.01', disabled: !canWrite, id: `perperson-${line.id}`, 'aria-label': `Por persona de ${nameOf(line)}`, class: 'carta-units',
         value: line.per_person === null || line.per_person === undefined ? '' : String(Number(line.per_person)),
@@ -134,6 +139,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         onchange: async () => {
           const value = units.value.trim() === '' ? null : Number(units.value);
           if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de unidades.'); return; }
+          line = fresh(painted);
           if (value === (line.expected_units ?? null)) return;
           const people = attendance();
           await save(value !== null && people ? { expected_units: value, per_person: perPersonFromUnits(value, people) } : { expected_units: value });
@@ -145,6 +151,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         onchange: async () => {
           const value = capacity.value.trim() === '' ? null : Number(capacity.value);
           if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de unidades.'); return; }
+          line = fresh(painted);
           if (value === (line.capacity_units ?? null)) return;
           await save({ capacity_units: value });
         } }) as HTMLInputElement;
@@ -320,7 +327,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       totals = null;
       totalsError = true;
     }
-    paintPlan();
+    if (typing()) deferred = true; else paintPlan();
   }
 
   async function load(): Promise<void> {
@@ -335,18 +342,38 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
     lines = allLines;
     recipes = new Map(allRecipes.map((r) => [r.id, r]));
     items = new Map(allItems.map((i) => [i.id, i]));
+    eventGuests = guestsOf();
+    paintAll();
+  }
+
+  /**
+   * Repintar sustituye los campos: con uno en uso, el móvil cierra el teclado (VG, 28-10). Mientras se escribe en
+   * Previsión, el repintado espera a que se salga del campo.
+   */
+  let deferred = false;
+  const typing = () => { const a = document.activeElement; return !!a && host.contains(a) && a.matches('input, select, textarea'); };
+  function paintAll(): void {
+    if (typing()) { deferred = true; return; }
+    deferred = false;
     paintSplit();
     paintUnits();
     paintYield();
     paintPlan();
   }
+  const onFocusOut = () => setTimeout(() => { if (deferred && !typing()) paintAll(); }, 0);
+  host.addEventListener('focusout', onFocusOut);
 
   void load().then(loadTotals);
+  // Las personas del evento (Booking). Los eventos pueden llegar antes que la carta (de la caché): se recalculan también
+  // al cargarla; si no, se quedaban en blanco aunque el evento tuviera asistentes (VG, 28-10).
+  let snapshot: EventsSnapshot | null = null;
+  const guestsOf = () => (menu?.event_id && snapshot ? snapshot.events.find((e) => e.event_id === menu!.event_id)?.guest_count ?? null : null);
   const offEvents = watchEvents(client, (next) => {
-    const guests = menu?.event_id ? next.events.find((e) => e.event_id === menu!.event_id)?.guest_count ?? null : null;
-    if (guests !== eventGuests) { eventGuests = guests; paintUnits(); }
+    snapshot = next;
+    const guests = guestsOf();
+    if (guests !== eventGuests) { eventGuests = guests; if (typing()) deferred = true; else paintUnits(); }
   });
   // Tras guardar (o sincronizar) unidades o reparto, el plan se vuelve a pedir al servidor.
   const offs = [T.menus, T.cartaLines, T.recipeIngredients, T.ingredients].map((table) => client.onTable(table, () => void load().then(loadTotals)));
-  return () => { offEvents(); offs.forEach((off) => off()); document.body.classList.remove('carta-printing'); };
+  return () => { host.removeEventListener('focusout', onFocusOut); offEvents(); offs.forEach((off) => off()); document.body.classList.remove('carta-printing'); };
 }

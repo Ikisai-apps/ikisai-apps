@@ -29,6 +29,8 @@ export interface ReceptionCard {
   /** Por qué está en «Excepciones» (vacío si no). */
   why: string[];
   plaza: Indicator; cobro: Indicator; docs: Indicator; presencia: Indicator;
+  /** Cuándo llegó el pedido (solicitudes) y sus noches, para la fila (VG, 28-10). */
+  when?: string | null; nights?: string | null;
 }
 
 type Row = Record<string, any>;
@@ -50,13 +52,14 @@ const live = (rows: Row[]) => rows.filter((r) => !r.deleted_at);
 const day = (value: unknown) => (typeof value === 'string' ? value.slice(0, 10) : null);
 const madridDay = (iso: unknown) => (typeof iso === 'string' ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(iso)) : null);
 
-/** Las fichas de recepción de los eventos de jornadas abiertas en curso o que empiezan hoy. */
+/** Las fichas de recepción de los eventos de jornadas abiertas que no han terminado: en curso y futuros, para los pedidos
+ *  que llegan antes (VG, 28-10). Los pasados no salen. */
 export function receptionCards(input: ReceptionInput, missing: (guest: Row) => string[]): ReceptionCard[] {
   const today = input.today;
   const reservationOf = new Map(live(input.reservations).map((r) => [r.id, r]));
   const events = live(input.events).filter((e) => {
     const r = reservationOf.get(e.reservation_id);
-    return r && r.event_type === 'jornadas_abiertas' && !['cancelada', 'perdida'].includes(r.status) && day(r.start_date)! <= today && today <= day(r.end_date)!;
+    return r && r.event_type === 'jornadas_abiertas' && !['cancelada', 'perdida'].includes(r.status) && today <= (day(r.end_date) ?? day(r.start_date) ?? today);
   });
   const eventIds = new Set(events.map((e) => e.id));
   const bedOf = new Map(live(input.beds).map((b) => [b.id, b]));
@@ -85,6 +88,7 @@ export function receptionCards(input: ReceptionInput, missing: (guest: Row) => s
       cobro: paidOnline ? { tone: 'ok', text: `Pagado en línea ${euros(q.total_cents)}` } : { tone: 'warn', text: `Por cobrar ${euros(q.total_cents)}` },
       docs: missingCount === null ? { tone: '', text: '—' } : missingCount === 0 ? { tone: 'ok', text: 'Completa' } : { tone: 'warn', text: `Faltan ${missingCount} datos` },
       presencia: { tone: '', text: 'Por llegar' },
+      when: q.created_at ?? null, nights: q.from_date && q.to_date ? `${day(q.from_date)} → ${day(q.to_date)}` : null,
     });
   }
 

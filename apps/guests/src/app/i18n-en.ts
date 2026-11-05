@@ -909,7 +909,7 @@ export const EN: Dictionary = {
   'visitor.backGuide': 'the guide',
   'visitor.guideSaved': 'Done. You can go back to the guide.',
   'lodge.planOpen': 'See the beds on the plan',
-  'lodge.planLabel': 'Beds on the plan',
+  'lodge.planLabel': 'Choose your bed on the plan',
   'lodge.planNone': 'The beds are not on the plan yet. Choose from the list.',
   'lodge.planFailed': 'We could not load the plan. Choose from the list.',
   'lodge.nights': 'Your nights',

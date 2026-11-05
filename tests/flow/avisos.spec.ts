@@ -82,13 +82,13 @@ async function enter(page: Page): Promise<void> {
   // nombre entero sigue para el lector (oculto a la vista, no a la accesibilidad).
   await expect(page.locator('.nav.navtight')).toHaveCount(1);
   const shorts = await page.locator('a.navbtn .navshort').allInnerTexts();
-  expect(shorts.length).toBeGreaterThanOrEqual(5);
+  expect(shorts.length).toBeGreaterThanOrEqual(4); // Ingredientes va dentro de Logística (VG, 28-10)
   for (const l of shorts) expect(l.trim().length, l).toBeLessThanOrEqual(9);
   await expect(page.getByRole('link', { name: /Pedido y cobro/ }).first()).toBeAttached();
   await page.locator('a.navbtn', { hasText: 'Caja' }).first().click();
 }
 
-test('avisos · caja sin direcciones de Bitcoin: «pendiente de dirección», no un error', async ({ page }) => {
+test('avisos · caja: Bitcoin oculto mientras está en backlog (VG, 28-10); el resto de métodos, como siempre', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await enter(page);
   await page.getByLabel('Buscar por número de cliente').first().fill(String(number));
@@ -98,14 +98,10 @@ test('avisos · caja sin direcciones de Bitcoin: «pendiente de dirección», no
   await boxes.nth(0).check(); await boxes.nth(1).check();
   await page.getByRole('button', { name: 'Pagar (2)' }).click();
   const methods = page.locator('.checkout-methods');
-  for (const m of ['btc_ln', 'btc_chain']) {
-    const b = methods.locator(`[data-method="${m}"]`);
-    await expect(b).toBeDisabled();
-    await expect(b).toContainText('pendiente de dirección');
-  }
+  await expect(methods.locator('[data-method="btc_ln"], [data-method="btc_chain"]')).toHaveCount(0);
   await expect(methods.locator('[data-method="card"]')).toBeDisabled();
   await expect(methods.locator('[data-method="bizum"]')).toBeEnabled();
-  await expect(page.locator('[data-note="bitcoin"]')).toContainText('Cobro con Bitcoin');
+  await expect(page.locator('[data-note="bitcoin"]')).toHaveCount(0);
 });
 
 test('avisos · si la pantalla deja de actualizarse, lo dice', async ({ page }) => {

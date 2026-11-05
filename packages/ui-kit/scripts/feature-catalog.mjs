@@ -150,7 +150,7 @@ KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
 KIT_CHILDREN.createSpaceTree = [['buscar', 'Buscar espacio', 'input'], ['nueva_altura', 'Nueva altura', 'button'], ['ver_archivados', 'Ver archivados', 'input'], ['fila', 'Espacio', 'button'], ['desplegar', 'Desplegar o plegar', 'button'], ['mover', 'Arrastrar para mover', 'button'], ['anadir', 'Añadir dentro', 'button'], ['editar', 'Editar espacio', 'button'], ['subir', 'Subir', 'button'], ['bajar', 'Bajar', 'button'], ['guardar', 'Guardar espacio', 'button'], ['duplicar', 'Duplicar', 'button'], ['archivar', 'Archivar', 'button'], ['recuperar', 'Recuperar', 'button']];
 KIT_CHILDREN.createSpacePicker = [['rapido', 'Espacio más usado', 'button'], ['buscar', 'Buscar espacio', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['quitar', 'Quitar espacio', 'button']];
 // `SPACE_MAP_MARKS` (src/spaces/map.ts).
-KIT_CHILDREN.createSpaceMap = [['vista', 'Plano o lista', 'button'], ['dibujo', 'Elegir dibujo', 'button'], ['espacio', 'Espacio en el plano', 'button'], ['fila', 'Espacio en la lista', 'button'], ['miga', 'Miga del plano', 'button'], ['volver', 'Volver', 'button'], ['deco-icono', 'Icono de decoración', 'button'], ['deco-tamano', 'Tamaño del objeto', 'button'], ['deco-escala', 'Escala de la retícula', 'button'], ['deco-objeto', 'Objeto de decoración', 'button'], ['deco-girar', 'Girar 90°', 'button'], ['deco-quitar', 'Quitar el objeto', 'button']];
+KIT_CHILDREN.createSpaceMap = [['vista', 'Plano o lista', 'button'], ['dibujo', 'Elegir dibujo', 'button'], ['espacio', 'Espacio en el plano', 'button'], ['fila', 'Espacio en la lista', 'button'], ['miga', 'Miga del plano', 'button'], ['volver', 'Volver', 'button'], ['deco-icono', 'Icono de decoración', 'button'], ['deco-tamano', 'Tamaño del objeto', 'button'], ['deco-escala', 'Escala de la retícula', 'button'], ['deco-objeto', 'Objeto de decoración', 'button'], ['deco-girar', 'Girar 90°', 'button'], ['deco-quitar', 'Quitar el objeto', 'button'], ['deco-texto', 'Baliza de texto', 'button'], ['deco-imagen', 'Subir imagen', 'button']];
 // `CALENDAR_MARKS` (src/calendar/calendar.ts) y `PROPOSAL_LIST_MARKS` (src/proposals/list.ts).
 KIT_CHILDREN.createCalendar = [['capa', 'Capa del calendario', 'button'], ['dia', 'Día del calendario', 'button'], ['guardar_dias', 'Guardar días elegidos', 'button'], ['cancelar_dias', 'Cancelar la elección de días', 'button'], ['evento_dia', 'Evento del día (hoja)', 'button']];
 // `ITEM_PICKER_MARKS` (src/items/picker.ts); con `space`, su `createSpacePicker` cuelga de `.sitio`.
@@ -207,7 +207,7 @@ const KIT_CHILDREN_WHEN = {
   renderCoverage: { abrir: /\bonOpen\b/, decidir: /\bonDecide\b/, deshacer: /\bonDecide\b/, utilidad: /\bonDeclare\b/ },
   createCalendar: { evento_dia: /\bonSelectEvent\b/ },
   createStepForm: { saltar: /\bskip\s*:/ },
-  createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/ },
+  createSpaceMap: { miga: /\bdrill\s*:/, volver: /\bdrill\s*:/, 'deco-icono': /\bdecorEdit\s*:/, 'deco-tamano': /\bdecorEdit\s*:/, 'deco-escala': /\bdecorEdit\s*:/, 'deco-objeto': /\bdecorEdit\s*:/, 'deco-girar': /\bdecorEdit\s*:/, 'deco-quitar': /\bdecorEdit\s*:/, 'deco-texto': /\bdecorEdit\s*:/, 'deco-imagen': /\bonUpload\b/ },
 };
 
 /** Extrae funciones de un texto. Exportada para las pruebas. */

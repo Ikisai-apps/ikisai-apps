@@ -1,7 +1,7 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import { icon, confirmDialog, registerReveal, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type AppMenuRow, type AppMenuSection, type LauncherCatalog, type NavItem, type PaletteItem } from '@ikisai/ui-kit';
 import { foldText } from '@ikisai/domain-booking';
-import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } from '../app/client.ts';
+import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail, STAFF } from '../app/client.ts';
 import { clearCostCache } from '../app/costs.ts';
 import { forgetHousePeople } from '../app/stays.ts';
 import { forgetLogos } from '../app/logos.ts';
@@ -23,6 +23,7 @@ import { revealFor } from './guide.ts';
 import { mountProposalEditor } from './proposalEditor.ts';
 import { mountProposalDocument } from './proposalDoc.ts';
 import { fbMark } from './feedback.ts';
+import { mountDormitories, mountStaffHub } from './hubs.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -55,6 +56,8 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> 
   '#/calendario': { title: 'Calendario', slug: 'calendario', mount: mountCalendar },
   '#/huespedes': { title: 'Huéspedes', slug: 'huespedes', mount: mountGuests(null) },
   '#/espacios': { title: 'Espacios y camas', slug: 'espacios', mount: mountSpaces },
+  '#/dormitorios': { title: 'Dormitorios', slug: 'espacios', mount: mountDormitories },
+  '#/personal': { title: 'Personal', slug: 'reservas', mount: mountStaffHub },
   '#/tarifas': { title: 'Tarifas y condiciones', slug: 'tarifas', mount: mountRates },
   '#/ses': { title: 'SES.HOSPEDAJES', slug: 'ses', mount: mountSes },
   '#/estancias': { title: 'Estancias', slug: 'estancias', mount: mountStays },
@@ -144,6 +147,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     return [
       { key: 'reservas', label: 'Reservas', icon: 'list', summary: 'Lista, calendario y estancias', rows: [
         row('Reservas', '#/reservas', 'booking.menu.reservas'), row('Calendario', '#/calendario', 'booking.menu.calendario'),
+        ...(canRead(client, STAFF) ? [row('Personal', '#/personal', 'booking.menu.personal')] : []),
         ...(canRead(client, STAYS) ? [row('Estancias', '#/estancias', 'booking.menu.estancias')] : []),
       ] },
       { key: 'huespedes', label: 'Huéspedes', icon: 'people', summary: 'Huéspedes y lo que queda por resolver', rows: [
@@ -152,7 +156,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         ...(canRead(client, SES_SETTINGS) ? [row('SES.HOSPEDAJES', '#/ses', 'booking.menu.ses')] : []),
       ] },
       { key: 'casa', label: 'La casa', icon: 'bed', summary: 'Espacios, camas y tarifas', rows: [
-        row('Espacios y camas', '#/espacios', 'booking.menu.espacios'),
+        row('Espacios y camas', '#/espacios', 'booking.menu.espacios'), row('Dormitorios', '#/dormitorios', 'booking.menu.dormitorios'),
         ...(canWrite(client) && canRead(client, RATES) ? [row('Tarifas y condiciones', '#/tarifas', 'booking.menu.tarifas')] : []),
       ] },
     ];

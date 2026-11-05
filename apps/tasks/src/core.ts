@@ -249,8 +249,11 @@ export class TasksCore {
     const items = new Map(this.inventory.items.map((i) => [i.id, i]));
     for (const line of calls) {
       const material = materials.get(line.materialId)!;
-      await this.resources.commit([consumeCall(material, line.consumed, items.get(material.item_id)?.default_space_id ?? null) as RowOperation], { requestId: `tasks-consume-${material.id}` });
+      // Por el servidor (Recursos 0820): el consumo queda con source_app 'tasks', no sin origen como un lote del navegador.
+      await this.client.api('/stock/consume', { method: 'POST', json: { requestId: `tasks-consume-${material.id}`, lines: [{ materialId: material.id, consumed: line.consumed }] } });
     }
+    await this.resources.sync().catch(() => undefined);
+    await this.readInventory();
     return calls.length;
   }
 
