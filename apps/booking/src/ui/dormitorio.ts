@@ -140,7 +140,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     cells.delete(id);
     if (!b.isNew) removed.push(...b.parts);
     // ya creada en Recursos pero aún sin traer: se archiva allí por su id
-    else if (b.inResources) removed.push({ resource_id: b.id } as Row);
+    else if (b.inResources) removed.push({ resource_id: b.id } as unknown as Row);
     selected = null;
     say(`${b.label} quitada.`);
     schedule();
@@ -310,7 +310,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     if (!ops.length) { removed = removed.filter((r) => !sentRemoved.includes(r)); return saved(); }
     try {
       await o.client.commit(ops);
-      for (const b of created) { b.isNew = false; b.parts = [{ id: b.id, cell: cells.get(b.id) ?? null, team_bed: b.team } as Row]; }
+      for (const b of created) { b.isNew = false; b.parts = [{ id: b.id, cell: cells.get(b.id) ?? null, team_bed: b.team } as unknown as Row]; }
       removed = removed.filter((r) => !sentRemoved.includes(r));
       saved();
     } catch (error) {
