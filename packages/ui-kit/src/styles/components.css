@@ -286,10 +286,9 @@
 .cal-event.starts{margin-left:0;border-radius:4px 0 0 4px}
 .cal-event.ends{margin-right:0;border-radius:0 4px 4px 0}
 .cal-event.starts.ends{border-radius:4px}
-/* B-34: un día sin salida (reserva de un día): un punto delante; en el mes del móvil, solo el punto. */
-.cal-event.single{display:flex;align-items:center;gap:4px;border-left:0;border-radius:999px;padding-left:4px}
-.cal-event.single::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:var(--event-color)}
-@media (max-width:719px){.calendar[data-view="month"] .cal-event.single{width:12px;height:12px;padding:2px;margin:1px auto;background:transparent;justify-content:center}}
+/* B-34: un día sin salida (reserva de un día): un punto delante (sin tocar el ::before de la abreviatura); en el mes del móvil, solo el punto. */
+.cal-event.single{border-left:0;border-radius:999px;padding-left:14px;background-image:radial-gradient(circle at 7px 50%,var(--event-color) 3.5px,transparent 4px)}
+@media (max-width:719px){.calendar[data-view="month"] .cal-event.single:is([data-abbr=""],:not([data-abbr])){width:12px;height:12px;padding:0;margin:1px auto;background-color:transparent;background-image:radial-gradient(circle,var(--event-color) 4px,transparent 4.5px)}}
 .cal-event:not(.starts){border-left-color:transparent}
 .cal-event:hover{filter:brightness(.97)}
 .cal-event-text{display:block;overflow:hidden;text-overflow:ellipsis}
