@@ -121,7 +121,11 @@ export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'orig
       // cursor de quien lo ha recibido; si el envío falla, se intenta en la siguiente vuelta.
       method: 'POST', pattern: 'comment-notices/tick',
       handler: async () => {
-        if (!mailOn || !mailer) return { sent: 0, errors: 0, off: true };
+        if (!mailOn || !mailer) {
+          // Apagado: 6 horas sin que la sonda vuelva a llamar (0712); al encenderlo, avisa como mucho 6 horas después.
+          await supabase.rpc('core_invoke', { p_app: 'organizers', p_actor: null, p_name: 'organizers.comment_notices_pause', p_args: { hours: 6 } }).catch(() => null);
+          return { sent: 0, errors: 0, off: true };
+        }
         const due = await supabase.rpc<Array<{ user_id: string; cursor: string; reservations: Array<{ reservation_id: string; comments: number }> }>>(
           'core_invoke', { p_app: 'organizers', p_actor: null, p_name: 'organizers.comment_notices_due', p_args: { limit: 50 } });
         let sent = 0; let errors = 0; let skipped = 0;
