@@ -1038,4 +1038,6 @@ export const KIT_EN: Dictionary = {
   'Subiendo la imagen…': 'Uploading the image…',
   'Toca el plano para poner la imagen.': 'Tap the plan to place the image.',
   'Elige una imagen para subirla.': 'Choose an image to upload.',
+  'Sin conexión: {pending}, se enviarán al volver la red.': 'Offline: {pending}, they will be sent when the connection is back.',
+  'Sin conexión: lo que guardes se enviará al volver la red.': 'Offline: what you save will be sent when the connection is back.',
 };
