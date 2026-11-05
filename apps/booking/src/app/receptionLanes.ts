@@ -31,6 +31,8 @@ export interface ReceptionCard {
   plaza: Indicator; cobro: Indicator; docs: Indicator; presencia: Indicator;
   /** Cuándo llegó el pedido (solicitudes) y sus noches, para la fila (VG, 28-10). */
   when?: string | null; nights?: string | null;
+  /** Pedido de prueba de un miembro (1428, G-12): no se cobra; se descarta, o se acepta sin cobro. */
+  test?: boolean;
 }
 
 type Row = Record<string, any>;
@@ -85,7 +87,9 @@ export function receptionCards(input: ReceptionInput, missing: (guest: Row) => s
       key: `q:${q.id}`, kind: 'request', eventId: q.event_id, title: `${q.number ?? '—'} · ${q.name ?? 'Visitante'}`, number: q.number ?? null, requestId: q.id, guestId: null,
       lanes: ['confirmar', ...(why.length ? ['excepciones' as const] : [])], why,
       plaza: expired ? { tone: 'alert', text: 'Retención caducada' } : beds ? { tone: held ? 'warn' : '', text: held ? `Retenida: ${beds}` : `Pedida: ${beds}` } : { tone: '', text: 'Por asignar' },
-      cobro: paidOnline ? { tone: 'ok', text: `Pagado en línea ${euros(q.total_cents)}` } : { tone: 'warn', text: `Por cobrar ${euros(q.total_cents)}` },
+      cobro: q.is_test === true ? { tone: '', text: 'Prueba: no se cobra' }
+        : paidOnline ? { tone: 'ok', text: `Pagado en línea ${euros(q.total_cents)}` } : { tone: 'warn', text: `Por cobrar ${euros(q.total_cents)}` },
+      test: q.is_test === true,
       docs: missingCount === null ? { tone: '', text: '—' } : missingCount === 0 ? { tone: 'ok', text: 'Completa' } : { tone: 'warn', text: `Faltan ${missingCount} datos` },
       presencia: { tone: '', text: 'Por llegar' },
       when: q.created_at ?? null, nights: q.from_date && q.to_date ? `${day(q.from_date)} → ${day(q.to_date)}` : null,

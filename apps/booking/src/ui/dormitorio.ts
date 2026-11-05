@@ -2,8 +2,8 @@
  * «Monta el dormitorio» (tanda 36, MUELA-049): la estancia en cuadrantes con sus camas, dentro de su ficha.
  * - Todos ven la distribución y el estado de cada cama esta noche (en palabras, no solo en color).
  * - «Editar la distribución», solo dirección (owner): ancho y fondo con «−» y «+»; añadir Litera, Individual, Doble o
- *   Supletoria; mover (flechas, arrastrar con encaje), girar 90° (R o «↻ Girar») y quitar (Supr o «Quitar»). Se trabaja
- *   sobre un borrador y «Guardar» lo envía en un lote (sin red, al reconectar, como el resto de Booking).
+ *   Supletoria; mover (flechas, arrastrar con encaje), girar 90° (R o «↻ Girar») y quitar (Supr o «Quitar»). Cada cambio
+ *   se guarda solo al momento, sin botón (B-40, VG 05-11; sin red, al reconectar, como el resto de Booking); «Hecho» cierra.
  * - No deja salirse ni montarse sobre otra cama, ni quitar una con asignaciones vivas, y lo dice.
  * - Con los espacios en Recursos (vg-52, VG 28-10: los espacios se gestionan en Central, las camas en Booking), las camas
  *   también se añaden, se quitan y se cambian de tipo y de plazas desde aquí: se guardan primero en Recursos (`resources.spaces`,
@@ -52,7 +52,8 @@ const DIRS: Array<{ dir: dorm.Direction; text: string; arrow: string; key: strin
   { dir: 'right', text: 'Mover a la derecha', arrow: '→', key: 'ArrowRight' },
 ];
 
-interface DraftBed { id: string; label: string; kind: string; seats: number; extras: number; parts: Row[]; isNew: boolean; edited?: boolean; team: boolean }
+/** `inResources`: la cama nueva ya está en Recursos y espera al espejo para guardar su sitio (no se vuelve a crear). */
+interface DraftBed { id: string; label: string; kind: string; seats: number; extras: number; parts: Row[]; isNew: boolean; edited?: boolean; team: boolean; inResources?: boolean }
 /** Tipos de cama de Recursos (la supletoria sola es una individual de 0 fijas y 1 supletoria). */
 /** Se apilan en el mismo sitio: una litera doble son dos camas, abajo y arriba (VG, 28-10). */
 const STACKABLE = new Set(['litera', 'doble']);
@@ -73,6 +74,13 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   const sizes = new Map<string, dorm.BedSize>();
   let drag: { id: string; pointer: number; startX: number; startY: number; from: Cell } | null = null;
   let dragged = false;
+  // Guardado solo: cada cambio programa un guardado; uno a la vez, y si llega otro cambio mientras, se repite.
+  const status = el('p', { class: 'hint bk-dorm-saved', id: 'dormSaved', role: 'status', 'aria-live': 'polite' });
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let saving: Promise<void> | null = null;
+  let again = false;
+  let waits = 0;
+  let resources: SyncClient | null = null;
 
   function reset(): void {
     const p = dorm.pieces(o.beds as Array<Row & dorm.BedPart>);
@@ -100,7 +108,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   const nameOf = (id: string) => bedOf(id)?.label ?? 'otra cama';
 
   function stateText(b: DraftBed): string {
-    if (b.isNew) return 'Nueva, sin guardar';
+    if (b.isNew) return 'Nueva';
     return isOccupied(b) ? 'Ocupada esta noche' : 'Libre esta noche';
   }
 
@@ -110,6 +118,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     if (problem?.reason === 'encima') { say(`No cabe ahí: se montaría sobre ${nameOf(problem.other)}.`); return false; }
     cells.set(id, cell);
     say(done);
+    schedule();
     return true;
   }
 
@@ -130,8 +139,11 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     beds = beds.filter((x) => x.id !== id);
     cells.delete(id);
     if (!b.isNew) removed.push(...b.parts);
+    // ya creada en Recursos pero aún sin traer: se archiva allí por su id
+    else if (b.inResources) removed.push({ resource_id: b.id } as unknown as Row);
     selected = null;
-    say(`${b.label} quitada. Se guarda al pulsar «Guardar».`);
+    say(`${b.label} quitada.`);
+    schedule();
     paint();
   }
   function add(kind: string, text: string, capacity: number): void {
@@ -145,6 +157,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     beds.push({ id, label: `${text} ${same}`, kind, seats: extra ? 0 : capacity, extras: extra ? capacity : 0, parts: [], isNew: true, team: false });
     cells.set(id, cell);
     say(`${text} ${same} añadida en el primer hueco.`);
+    schedule();
     paint(id);
   }
   function resize(axis: 'cols' | 'rows', delta: number): void {
@@ -153,6 +166,60 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
     if (!dorm.fitsIn(next, cells, sizes)) return say('No se puede encoger: alguna cama se quedaría fuera. Muévela antes.');
     grid = next;
     say(`${axis === 'cols' ? 'Ancho' : 'Fondo'}: ${next[axis]} cuadrantes.`);
+    schedule();
+    paint();
+  }
+
+  function schedule(delay = 400): void {
+    if (timer) clearTimeout(timer);
+    status.textContent = 'Guardando…';
+    timer = setTimeout(() => { timer = null; void flush(); }, delay);
+  }
+  async function flush(): Promise<void> {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (saving) { again = true; return saving; }
+    saving = (o.fromResources ? saveToResources() : save()).finally(() => { saving = null; });
+    await saving;
+    if (again) { again = false; await flush(); }
+  }
+  /** Las filas tal como están ahora en el dispositivo: cada guardado compara y manda con la revisión del momento. */
+  async function fresh(): Promise<{ space: Row; beds: Map<string, Row> }> {
+    const space = ((await o.client.get(SPACES, o.space.id)) as Row | null) ?? o.space;
+    const rows = ((await o.client.list(BEDS)) as Row[]).filter((r) => !r.deleted_at && r.space_id === o.space.id);
+    return { space, beds: new Map(rows.map((r) => [String(r.id), r])) };
+  }
+  function layoutOps(space: Row): RowOperation[] {
+    const changed = !dorm.validGrid(space.layout) || space.layout.cols !== grid.cols || space.layout.rows !== grid.rows;
+    return changed ? [{ op: 'update', table: SPACES, id: space.id, expectedRevision: space.revision, fields: { layout: grid } }] : [];
+  }
+  /** Sitio y «de equipo» de las camas ya guardadas, frente a lo que hay ahora. */
+  function placeOps(now: Map<string, Row>): RowOperation[] {
+    const ops: RowOperation[] = [];
+    for (const b of beds) {
+      if (b.isNew) continue;
+      const cell = cells.get(b.id) ?? null;
+      // Todas las partes de la pieza guardan el mismo sitio (y si es de equipo).
+      for (const part of b.parts) {
+        const row = now.get(String(part.id)) ?? part;
+        const before = dorm.validCell(row.cell) ? row.cell : null;
+        const moved = !before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot;
+        const team = (row.team_bed === true) !== b.team;
+        if (moved || team) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { ...(moved ? { cell } : {}), ...(team ? { team_bed: b.team } : {}) } });
+      }
+    }
+    return ops;
+  }
+  function saved(): void { status.textContent = navigator.onLine ? 'Guardado.' : 'Guardado en este dispositivo. Se enviará al reconectar.'; }
+  /** «Hecho»: guarda lo que quede, cierra la edición y vuelve a pintar con lo guardado. */
+  async function done(): Promise<void> {
+    await flush();
+    editing = false;
+    resources?.stop(); resources = null;
+    const now = await fresh();
+    o.space = now.space;
+    o.beds = [...now.beds.values()].sort((a, b) => (Number(a.position) || 0) - (Number(b.position) || 0));
+    reset();
+    say('');
     paint();
   }
 
@@ -162,96 +229,92 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
    */
   async function saveToResources(): Promise<void> {
     const parent = o.space.resource_id as string | null;
-    if (!parent) return say('Esta estancia no está enlazada con Recursos: no se pueden guardar sus camas.');
-    const resources = createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: o.client, clearOnLogout: true });
+    if (!parent) { status.textContent = ''; return say('Esta estancia no está enlazada con Recursos: no se pueden guardar sus camas.'); }
+    resources ??= createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: o.client, clearOnLogout: true });
     const resOps: RowOperation[] = [];
-    const placeNew = new Map<string, Cell>();
+    const created: DraftBed[] = [];
+    const sentRemoved = removed.slice();
     try {
       await resources.start();
-      const rowOf = async (id: string) => (await resources.get('resources.spaces' as never, id)) as Row | null;
+      const res = resources;
+      const rowOf = async (id: string) => (await res.get('resources.spaces' as never, id)) as Row | null;
       const attrs = (b: DraftBed) => ({ bed_kind: b.kind === 'supletoria' ? 'individual' : b.kind, capacity: b.seats, extra_capacity: b.extras });
       let pos = o.beds.reduce((max, b) => Math.max(max, Number(b.position) || 0), 0);
       for (const b of beds) {
-        if (b.isNew) {
+        if (b.isNew && !b.inResources) {
           pos += 1024;
           resOps.push({ op: 'insert', table: 'resources.spaces' as never, id: b.id, fields: { kind: 'cama', name: b.label, parent_id: parent, position: pos, attributes: attrs(b) } });
-          const cell = cells.get(b.id);
-          if (cell) placeNew.set(b.id, cell);
+          created.push(b);
         } else if (b.edited) {
-          const rid = b.parts.find((r) => r.resource_id)?.resource_id as string | undefined;
+          const rid = b.isNew ? b.id : b.parts.find((r) => r.resource_id)?.resource_id as string | undefined;
           const row = rid ? await rowOf(rid) : null;
-          if (!row) return say(`No encuentro ${b.label} en Recursos. Sincroniza y vuelve a intentarlo.`);
-          resOps.push({ op: 'update', table: 'resources.spaces' as never, id: row.id, expectedRevision: row.revision, fields: { attributes: { ...(row.attributes ?? {}), ...attrs(b) } } });
+          if (!row) { status.textContent = ''; return say(`No encuentro ${b.label} en Recursos. Sincroniza y vuelve a intentarlo.`); }
+          const a = row.attributes ?? {};
+          const want = attrs(b);
+          if (a.bed_kind !== want.bed_kind || Number(a.capacity) !== want.capacity || Number(a.extra_capacity ?? 0) !== want.extra_capacity) {
+            resOps.push({ op: 'update', table: 'resources.spaces' as never, id: row.id, expectedRevision: row.revision, fields: { attributes: { ...a, ...want } } });
+          }
         }
       }
-      for (const rid of new Set(removed.map((r) => r.resource_id as string | null).filter((x): x is string => !!x))) {
+      for (const rid of new Set(sentRemoved.map((r) => r.resource_id as string | null).filter((x): x is string => !!x))) {
         const row = await rowOf(rid);
         if (row && row.active) resOps.push({ op: 'update', table: 'resources.spaces' as never, id: row.id, expectedRevision: row.revision, fields: { active: false } });
       }
-      if (resOps.length) await resources.commit(resOps);
-      if (resOps.length && navigator.onLine) { await resources.sync(); await syncMirror(o.client); await o.client.sync(); }
+      if (resOps.length) await res.commit(resOps);
+      for (const b of created) b.inResources = true;
+      removed = removed.filter((r) => !sentRemoved.includes(r));
+      if (resOps.length && navigator.onLine) { await res.sync(); await syncMirror(o.client); await o.client.sync(); }
     } catch (error) {
-      resources.stop();
+      status.textContent = '';
       return say(`No se ha guardado en Recursos: ${describeError(error)}`);
     }
-    // la rejilla y el sitio de cada cama en Booking (las nuevas ya traídas por el espejo)
-    const ops: RowOperation[] = [];
-    const layoutChanged = !dorm.validGrid(o.space.layout) || o.space.layout.cols !== grid.cols || o.space.layout.rows !== grid.rows;
-    if (layoutChanged) ops.push({ op: 'update', table: SPACES, id: o.space.id, expectedRevision: o.space.revision, fields: { layout: grid } });
-    const mirrored = placeNew.size ? ((await o.client.list(BEDS)) as Row[]).filter((r) => !r.deleted_at && placeNew.has(String(r.resource_id))) : [];
-    const teamNew = new Set(beds.filter((b) => b.isNew && b.team).map((b) => b.id));
-    for (const r of mirrored) ops.push({ op: 'update', table: BEDS, id: r.id, expectedRevision: r.revision, fields: { cell: placeNew.get(String(r.resource_id))!, ...(teamNew.has(String(r.resource_id)) ? { team_bed: true } : {}) } });
-    for (const b of beds) {
-      if (b.isNew) continue;
-      const cell = cells.get(b.id) ?? null;
-      for (const row of b.parts) {
-        const before = dorm.validCell(row.cell) ? row.cell : null;
-        const moved = !before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot;
-        const team = (row.team_bed === true) !== b.team;
-        if (moved || team) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { ...(moved ? { cell } : {}), ...(team ? { team_bed: b.team } : {}) } });
-      }
+    // la rejilla y el sitio de cada cama en Booking; las nuevas, en cuanto el espejo las trae (por su `resource_id`)
+    const now = await fresh();
+    const ops: RowOperation[] = [...layoutOps(now.space), ...placeOps(now.beds)];
+    const mirrored = new Map([...now.beds.values()].filter((r) => r.resource_id).map((r) => [String(r.resource_id), r]));
+    const arrived: Array<[DraftBed, Row]> = [];
+    for (const b of beds.filter((x) => x.isNew && x.inResources)) {
+      const r = mirrored.get(b.id);
+      if (!r) continue;
+      arrived.push([b, r]);
+      ops.push({ op: 'update', table: BEDS, id: r.id, expectedRevision: r.revision, fields: { cell: cells.get(b.id) ?? null, ...(b.team ? { team_bed: true } : {}) } });
     }
     try {
       if (ops.length) await o.client.commit(ops);
-      editing = false;
-      const waiting = placeNew.size - new Set(mirrored.map((r) => String(r.resource_id))).size;
-      toast(!resOps.length && !ops.length ? 'Sin cambios.' : waiting > 0 ? 'Camas guardadas en Recursos. Las nuevas se colocan en cuanto lleguen a Booking: vuelve a abrir el dormitorio en un momento.' : 'Distribución guardada.');
+      for (const [b, r] of arrived) { b.isNew = false; b.parts = [r]; }
+      const waiting = beds.filter((x) => x.isNew && x.inResources).length;
+      if (waiting && waits < 5) { waits += 1; status.textContent = 'Camas guardadas en Recursos. Su sitio se guarda en cuanto lleguen a Booking…'; schedule(3000); }
+      else { waits = 0; if (waiting) status.textContent = 'Camas guardadas en Recursos. Su sitio se guardará al volver a abrir el dormitorio.'; else saved(); }
     } catch (error) {
+      status.textContent = '';
       say(`No se ha guardado el sitio de las camas: ${describeError(error)}`);
-    } finally {
-      resources.stop();
     }
   }
 
   async function save(): Promise<void> {
-    if (o.fromResources) return saveToResources();
-    const ops: RowOperation[] = [];
-    const layoutChanged = !dorm.validGrid(o.space.layout) || o.space.layout.cols !== grid.cols || o.space.layout.rows !== grid.rows;
-    if (layoutChanged) ops.push({ op: 'update', table: SPACES, id: o.space.id, expectedRevision: o.space.revision, fields: { layout: grid } });
-    const last = o.beds.reduce((max, b) => Math.max(max, Number(b.position) || 0), 0);
-    let pos = last;
-    for (const b of beds) {
-      const cell = cells.get(b.id) ?? null;
-      if (b.isNew) {
-        pos += 1024;
-        ops.push({ op: 'insert', table: BEDS, id: b.id, fields: { space_id: o.space.id, label: b.label, kind: b.kind, capacity: b.seats + b.extras, active: true, position: pos, cell, team_bed: b.team } });
-        continue;
-      }
-      // Todas las partes de la pieza guardan el mismo sitio (y si es de equipo).
-      for (const row of b.parts) {
-        const before = dorm.validCell(row.cell) ? row.cell : null;
-        const moved = !before || !cell || before.x !== cell.x || before.y !== cell.y || before.rot !== cell.rot;
-        const team = (row.team_bed === true) !== b.team;
-        if (moved || team) ops.push({ op: 'update', table: BEDS, id: row.id, expectedRevision: row.revision, fields: { ...(moved ? { cell } : {}), ...(team ? { team_bed: b.team } : {}) } });
-      }
+    const now = await fresh();
+    const ops: RowOperation[] = [...layoutOps(now.space)];
+    let pos = Math.max(0, ...o.beds.map((b) => Number(b.position) || 0), ...[...now.beds.values()].map((b) => Number(b.position) || 0));
+    const created: DraftBed[] = [];
+    for (const b of beds.filter((x) => x.isNew)) {
+      pos += 1024;
+      ops.push({ op: 'insert', table: BEDS, id: b.id, fields: { space_id: o.space.id, label: b.label, kind: b.kind, capacity: b.seats + b.extras, active: true, position: pos, cell: cells.get(b.id) ?? null, team_bed: b.team } });
+      created.push(b);
     }
-    for (const row of removed) ops.push({ op: 'delete', table: BEDS, id: row.id, expectedRevision: row.revision });
-    if (!ops.length) { editing = false; say('Sin cambios.'); return paint(); }
+    ops.push(...placeOps(now.beds));
+    const sentRemoved = removed.slice();
+    for (const part of sentRemoved) {
+      const row = now.beds.get(String(part.id));
+      if (row) ops.push({ op: 'delete', table: BEDS, id: row.id, expectedRevision: row.revision });
+    }
+    if (!ops.length) { removed = removed.filter((r) => !sentRemoved.includes(r)); return saved(); }
     try {
       await o.client.commit(ops);
-      editing = false;
-      toast(navigator.onLine ? 'Distribución guardada.' : 'Distribución guardada. Se enviará al reconectar.');
+      for (const b of created) { b.isNew = false; b.parts = [{ id: b.id, cell: cells.get(b.id) ?? null, team_bed: b.team } as unknown as Row]; }
+      removed = removed.filter((r) => !sentRemoved.includes(r));
+      saved();
     } catch (error) {
+      status.textContent = '';
       say(`No se ha guardado: ${describeError(error)}`);
     }
   }
@@ -345,12 +408,12 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
           : el('p', { class: 'hint' }, 'Toca una cama para moverla, girarla, quitarla o cambiar sus plazas. En el ordenador: flechas, R para girar y Supr para quitar; también se arrastra.'),
         sel ? el('div', { class: 'bk-dorm-seats' }, o.fromResources ? seatsEditor(sel) : null, el('label', { class: 'field check', id: 'dormTeam', 'data-feedback-id': 'booking.espacios.dormitorio.equipo', 'data-feedback-label': 'Cama de equipo' },
           el('input', { type: 'checkbox', checked: sel.team, ...fieldAttrs({ id: 'booking.espacios.dormitorio.equipo', entity: 'booking.beds', prop: 'team_bed', label: 'Cama de equipo', confirm: 'event' }),
-            onchange: (e: Event) => { sel.team = (e.target as HTMLInputElement).checked; say(`${sel.label}: ${sel.team ? 'cama de equipo' : 'para huéspedes'}. Se guarda al pulsar «Guardar».`); paint(sel.id); } }),
+            onchange: (e: Event) => { sel.team = (e.target as HTMLInputElement).checked; say(`${sel.label}: ${sel.team ? 'cama de equipo' : 'para huéspedes'}.`); schedule(); paint(sel.id); } }),
           el('span', { title: 'Solo el organizador, el personal y dirección; los huéspedes no la ven' }, 'Equipo'))) : null,
         el('div', { class: 'btnrow' },
-          el('button', { type: 'button', class: 'primary', id: 'dormSave', 'data-feedback-id': 'booking.espacios.dormitorio.guardar', 'data-feedback-label': 'Guardar la distribución', onclick: () => void save() }, 'Guardar'),
-          el('button', { type: 'button', class: 'ghost', id: 'dormDiscard', 'data-feedback-id': 'booking.espacios.dormitorio.descartar', 'data-feedback-label': 'Descartar los cambios', onclick: () => { editing = false; reset(); say('Cambios descartados.'); paint(); } }, 'Descartar')))
-        : o.canEdit ? el('p', null, el('button', { type: 'button', class: 'ghost small', id: 'dormEdit', 'data-feedback-id': 'booking.espacios.dormitorio.editar', 'data-feedback-label': 'Editar la distribución', onclick: () => { editing = true; say(''); paint(); } }, 'Editar la distribución')) : null,
+          el('button', { type: 'button', class: 'primary', id: 'dormDone', 'data-feedback-id': 'booking.espacios.dormitorio.hecho', 'data-feedback-label': 'Terminar de editar', onclick: () => void done() }, 'Hecho'),
+          el('span', { class: 'hint' }, 'Los cambios se guardan solos.'), status))
+        : o.canEdit ? el('p', null, el('button', { type: 'button', class: 'ghost small', id: 'dormEdit', 'data-feedback-id': 'booking.espacios.dormitorio.editar', 'data-feedback-label': 'Editar la distribución', onclick: () => { editing = true; say(''); status.textContent = ''; paint(); } }, 'Editar la distribución')) : null,
       live);
     if (focus) host.querySelector<HTMLElement>(`#dormBed-${CSS.escape(focus)}`)?.focus({ preventScroll: true });
   }
@@ -370,7 +433,8 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
       if (![f, x].every((n) => Number.isInteger(n) && n >= 0 && n <= 2) || f + x < 1) return say('Las plazas van de 0 a 2, y al menos una en total.');
       b.kind = kind.value; b.seats = f; b.extras = x; b.edited = true;
       sizes.set(b.id, dorm.sizeOfKind(b.kind));
-      say(`${b.label}: ${label(b.kind)}, ${placesText(b)}. Se guarda al pulsar «Guardar».`);
+      say(`${b.label}: ${label(b.kind)}, ${placesText(b)}.`);
+      schedule();
       paint(b.id);
     }
     return el('div', { class: 'bk-dorm-seats-fields', id: 'dormSeatsEditor', 'data-feedback-id': 'booking.espacios.dormitorio.plazas', 'data-feedback-label': 'Tipo y plazas de la cama' },
@@ -388,5 +452,7 @@ export function createDormitorio(o: DormOptions): { element: HTMLElement; editin
   }
 
   paint();
-  return { element: host, editing: () => editing, destroy: () => { drag = null; } };
+  // al irse sin «Hecho», lo que quede por guardar se guarda igual
+  const release = () => { resources?.stop(); resources = null; };
+  return { element: host, editing: () => editing, destroy: () => { drag = null; if (timer || saving) void flush().finally(release); else release(); } };
 }
