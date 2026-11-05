@@ -23,10 +23,10 @@ test.after(async () => { await app.close(); });
 
 test('campos · dominio: vínculos de Flow, candidatos por pantalla, resumen y utilidad heredada', () => {
   const fields = [
-    { fieldId: 'food.carta.expected_units', app: 'food', screen: 'food.carta', anchorId: 'food.carta.unidades', entity: 'carta_line', prop: 'expected_units' },
-    { fieldId: 'booking.ficha.notes', app: 'booking', screen: 'booking.ficha_reserva', activations30d: 0 },
-    { fieldId: 'booking.ficha.color', app: 'booking', screen: 'booking.ficha_reserva', activations30d: 0 },
-    { fieldId: 'booking.ficha.tag', app: 'booking', screen: 'booking.ficha_reserva', estimate: { frequency: 'semanal', audience: 'Recepción' } },
+    { fieldId: 'food.carta.expected_units', app: 'food', screen: 'food.carta', anchorId: 'food.carta.unidades', entity: 'carta_line', prop: 'expected_units', candidate: true },
+    { fieldId: 'booking.ficha.notes', app: 'booking', screen: 'booking.ficha_reserva', activations30d: 0, candidate: true },
+    { fieldId: 'booking.ficha.color', app: 'booking', screen: 'booking.ficha_reserva', activations30d: 0, candidate: true },
+    { fieldId: 'booking.ficha.tag', app: 'booking', screen: 'booking.ficha_reserva', estimate: { frequency: 'semanal', audience: 'Recepción' }, candidate: false },
     { fieldId: 'booking.lista.extra', app: 'booking', screen: 'booking.lista', screenLabel: 'Lista de reservas', candidate: true },
     { fieldId: 'food.carta.price', app: 'food', screen: 'food.carta', candidate: false },
   ];
@@ -34,11 +34,12 @@ test('campos · dominio: vínculos de Flow, candidatos por pantalla, resumen y u
   const rules = [{ id: 'flow.prevision', name: 'Previsión', observes: [{ app: 'food', entity: 'carta_line', prop: 'expected_units' }] }];
   const links = fieldLinks(fields, anchors, rules);
   assert.deepEqual(links.filter((l) => l.fieldId === 'food.carta.expected_units').map((l) => l.via), ['direct', 'automatic']);
-  // Candidatos: lo dice el núcleo; si no, sin Flow, sin uso y sin estimado.
+  // Candidatos: lo dice el núcleo; Central quita lo que usa Flow. Sin la marca del núcleo, no lo es.
   const linked = new Set(links.map((l) => l.fieldId));
   assert.equal(isCandidate(fields[1]!, linked), true);
-  assert.equal(isCandidate(fields[3]!, linked), false, 'el estimado de la app lo protege');
+  assert.equal(isCandidate(fields[3]!, linked), false, 'el estimado de la app lo protege (lo dice el núcleo)');
   assert.equal(isCandidate(fields[0]!, linked), false, 'lo usa un recorrido');
+  assert.equal(isCandidate({ fieldId: 'a.b.c', app: 'a', activations30d: 0 }, linked), false, 'sin la marca del núcleo, no');
   assert.equal(isCandidate(fields[5]!, linked), false, 'el núcleo manda');
   const groups = candidateGroups(fields, links);
   assert.deepEqual(groups.map((g) => [g.app, g.label, g.fields.length]), [['booking', 'Ficha reserva', 2], ['booking', 'Lista de reservas', 1]]);
