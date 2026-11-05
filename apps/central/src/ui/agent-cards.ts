@@ -85,7 +85,7 @@ export function mountAgentCards(host: HTMLElement, client: SyncClient, usage: Us
     const name = el('input', { id: 'na-name', 'data-field-id': 'central.accesos.new_agent_name', maxlength: 100, value: card?.display_name ?? '', required: true }) as HTMLInputElement;
     const role = el('select', { id: 'na-role', 'data-field-id': 'central.accesos.new_agent_role' },
       el('option', { value: 'reader', selected: true }, 'Lector: solo lee'), el('option', { value: 'editor' }, 'Editor: lee y propone cambios')) as HTMLSelectElement;
-    const boxes = catalog.map((a) => el('input', { type: 'checkbox', value: a.id, checked: true, 'aria-label': a.name }) as HTMLInputElement);
+    const boxes = catalog.map((a) => el('input', { type: 'checkbox', value: a.id, checked: true, 'data-field-id': 'central.accesos.new_agent_apps', 'data-field-entity': 'core.memberships', 'data-field-prop': 'app', 'aria-label': a.name }) as HTMLInputElement);
     const expires = el('input', { id: 'na-expires', 'data-field-id': 'central.accesos.new_agent_expires', type: 'date' }) as HTMLInputElement;
     const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.accesos.agentes.nuevo.error', 'data-feedback-label': 'Error del alta de agente' });
     const submit = el('button', { class: 'primary', type: 'button', id: 'na-submit', 'data-feedback-id': 'central.accesos.agentes.nuevo.crear', 'data-feedback-label': 'Crear el agente', onclick: async () => {
