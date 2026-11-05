@@ -91,7 +91,7 @@ test('Inicio, Reservas y la ficha por pestañas; vaciar la papelera sin red, des
     await nav('Reservas');
     await page.locator('#reservationList .row', { hasText: 'Retiro Pestañas' }).click();
     await page.locator('#reservationTabs [data-tab="todo"]').click();
-    await page.locator('#moreActions summary').click();
+    await page.locator('#reservationCover').click();
     await page.locator('#trashReservation').click();
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.locator('#trash')).toBeVisible();

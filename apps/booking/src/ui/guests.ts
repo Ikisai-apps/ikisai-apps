@@ -1,5 +1,5 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
-import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
+import { createSyncClient, type RowOperation, type SyncedRow, type TableName } from '@ikisai/sync-client';
 import { fieldAttrs, compressImage, compressedFilename, confirmDialog, registerReveal, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
 import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
@@ -338,6 +338,31 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
       });
     }
 
+    /**
+     * Vista previa como huésped (vg-14): el huésped de muestra del retiro (`booking.portal_preview_guest`, el de Organizers:
+     * solo lectura, no ve a nadie y no cuenta) y su enlace de Guests (`portal-links` con `preview`), para copiarlo.
+     */
+    async function openPreview(reservationId: string, button: HTMLButtonElement): Promise<void> {
+      if (!navigator.onLine) return void toast('La vista previa necesita conexión.');
+      button.disabled = true;
+      const organizers = createSyncClient({ app: 'organizers', apiBase: '/api/v1/organizers', sessionFrom: client, clearOnLogout: true });
+      try {
+        const sample = await organizers.api<{ guest_id: string }>('/invoke/booking.portal_preview_guest', { method: 'POST', json: { reservation_id: reservationId } });
+        const link = await client.api<{ url: string }>('/portal-links', { method: 'POST', json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: sample.guest_id },
+          person: { name: 'Huésped de muestra' }, label: 'Vista previa', preview: true, replace: true } });
+        const field = el('textarea', { id: 'previewUrl', rows: 3, readonly: true, 'aria-label': 'Enlace de la vista previa', 'data-field-none': '' }, link.url) as HTMLTextAreaElement;
+        const sheet: Sheet = openSheet({ title: 'Vista previa como huésped', body: el('div', null,
+          el('p', { class: 'hint' }, 'Solo lectura, con un huésped de muestra: no ve a nadie y no cuenta en las listas.'), field),
+          foot: el('div', { class: 'choices' }, el('button', { class: 'primary', type: 'button', 'data-feedback-id': 'booking.huespedes.vista_previa.copiar', 'data-feedback-label': 'Copiar el enlace',
+            onclick: () => copyText(link.url, 'Enlace copiado') }, 'Copiar el enlace'), el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cerrar')), initialFocus: field });
+      } catch (error) {
+        toast(`No se ha podido sacar la vista previa: ${describeError(error)}`);
+      } finally {
+        organizers.stop();
+        button.disabled = false;
+      }
+    }
+
     function copyText(value: string, message: string): void {
       void navigator.clipboard.writeText(value).then(() => toast(message), () => toast('No se pudo copiar.'));
     }
@@ -581,6 +606,8 @@ export function mountGuests(initialEventId: string | null, initialGuestId: strin
                   [{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { ses_status: 'listo_para_envio' } }], 'Listo para envío.') }, 'Listo para envío')] : [])],
           }), 'booking.huespedes.cola_ses.fila', 'Huésped en la cola'), '.name, .row-meta')))],
         el('div', { class: 'sectionlabel' }, 'Registro', el('span', { class: 'count', id: 'guestCount' }, String(guests.length))),
+        writable ? el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'guestPreview', 'data-feedback-id': 'booking.huespedes.vista_previa', 'data-feedback-label': 'Vista previa',
+          onclick: (e: Event) => void openPreview(current.reservation.id, e.currentTarget as HTMLButtonElement) }, 'Vista previa como huésped')) : null,
         guests.length === 0 ? null : el('p', { class: 'completeness', id: 'completeness', 'data-feedback-id': 'booking.huespedes.completitud', 'data-feedback-label': 'Completitud del registro' },
           `${totals.complete} de ${totals.total} completos · ${totals.missingData} con datos pendientes · ${totals.unsigned} sin firmar`),
         pendingGuests.length === 0 ? null : el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'copyOrganizerReminder', 'data-feedback-id': 'booking.huespedes.recordatorio_organizador', 'data-feedback-label': 'Copiar recordatorio para el organizador', onclick: () => copyText(

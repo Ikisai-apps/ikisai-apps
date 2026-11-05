@@ -1,3 +1,4 @@
+import './app/uuid-polyfill.ts';
 import '../../../packages/ui-kit/src/styles/ui-kit.css';
 import './styles/app.css';
 import { applyTheme, initAppUpdates, renderLogin } from '@ikisai/ui-kit';

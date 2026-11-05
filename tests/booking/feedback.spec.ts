@@ -81,7 +81,7 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await expect(page.locator('html.fb-mode')).toHaveCount(0);
     await expect(page.locator('.fb-pin')).toHaveCount(0);
     // El clic normal sigue funcionando igual que siempre.
-    await page.locator('#editReservation').click();
+    await page.locator('#reservationCover').click();
     await expect(page.getByRole('dialog', { name: 'Editar reserva' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Editar reserva' })).toBeHidden();
