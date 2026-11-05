@@ -315,8 +315,9 @@ test('filtro por espacio por el árbol: arriba la altura (o lo único que tiene)
   const chip = (space: string, parent = '') => page.locator(`[data-tkh-space="${space}"][data-tkh-parent="${parent}"]`);
   const view = page.locator('main.tkh');
   const ALT1 = await page.evaluate(() => spaceRows().find((r: any) => r.name === 'Altura 1').id);
-  // Arriba: «Altura 1» (dos cosas dentro), «Albergue» (lo único de la altura 3) y «Sin espacio»; nada de Huerto, Patio ni Hab 3.
-  await expect(page.locator('#tkhSpaces [data-tkh-space]')).toHaveCount(3);
+  // Arriba toda la estructura de la casa (VG, 28-10): «Altura 1» (dos cosas dentro), «Albergue» (lo único de la altura 3), las
+  // alturas sin nada (con 0) y «Sin espacio»; nada de Huerto, Patio ni Hab 3, que son hijos.
+  await expect(page.locator('#tkhSpaces .tkh-space.empty').first()).toBeVisible();
   await expect(chip(ALT1)).toContainText('Altura 1');
   await expect(chip(ALBERGUE)).toContainText('Albergue');
   await expect(chip('__none')).toContainText('Sin espacio');
