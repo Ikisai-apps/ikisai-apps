@@ -5,6 +5,8 @@
  *   («Hab 3 — Altura 3 › Albergue»). Flechas, Intro y Escape.
  * - **Elegidos:** chips con la ruta corta («Albergue › Hab 3») y «×» para quitarlos.
  * - **Filtro:** por tipos (`kinds: ['habitacion', 'sala']`) o por función (`filter: (r) => r.attributes.bookable === true`).
+ * - **Árbol** (`tree: true`, C-05 de Tasks): «Elegir en el árbol» despliega alturas, edificios y alas con sus espacios
+ *   como chips que se marcan ahí mismo, sin otra pantalla.
  * Toma las filas de una `SpaceSource` (se actualiza sola) o de `rows`.
  */
 import { el, replace } from '../dom.ts';
@@ -35,6 +37,8 @@ export interface SpacePickerOptions {
   feedbackId?: string;
   /** Cuántas chips rápidas como máximo (6). */
   quickLimit?: number;
+  /** «Elegir en el árbol»: el árbol de espacios plegable, con chips que se marcan ahí mismo. */
+  tree?: boolean;
   /** Textos para usarlo con otras filas en forma de espacio (los oficios de Tasks); sin ellos, los de espacios. */
   texts?: SpacePickerTexts;
 }
@@ -45,6 +49,8 @@ export interface SpacePickerTexts {
   empty?: string;
   /** Texto del buscador (si no se pasa `placeholder`). Hoy: «Buscar espacio…». */
   search?: string;
+  /** «Elegir en el árbol» (`tree: true`). */
+  tree?: string;
   /** Etiquetas de las marcas de feedback, por clave de `SPACE_PICKER_MARKS`. */
   feedback?: Partial<Record<keyof typeof SPACE_PICKER_MARKS, string>>;
 }
@@ -63,6 +69,7 @@ export const SPACE_PICKER_MARKS = {
   search: ['buscar', 'Buscar espacio'],
   option: ['opcion', 'Resultado de la búsqueda'],
   remove: ['quitar', 'Quitar espacio'],
+  tree: ['arbol', 'Elegir en el árbol'],
 } as const;
 
 let uid = 0;
@@ -106,6 +113,10 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
     // Al salir del campo se cierra la lista, salvo que haya vuelto a él (un toque en «×» y otra búsqueda).
     onblur: () => setTimeout(() => { if (document.activeElement !== input) close(); }, 150),
   }) as HTMLInputElement;
+  const treeOpen = new Set<string>();
+  const treeBody = el('div', { class: 'space-tree-body' });
+  const treeBox = options.tree ? el('details', { class: 'space-browse', ontoggle: (e: Event) => { if ((e.currentTarget as HTMLDetailsElement).open) paintTree(); } },
+    el('summary', mark('tree'), texts.tree ?? kt('Elegir en el árbol')), treeBody) as HTMLDetailsElement : null;
   const listbox = el('ul', { class: 'space-results', id: `${id}-list`, role: 'listbox', 'aria-label': options.label, hidden: true });
   const element = el('div', { class: `space-picker${multiple ? ' multiple' : ''}`, ...(base ? { 'data-feedback-id': base, 'data-feedback-label': options.label } : {}) },
     el('label', { class: 'space-picker-label', for: id }, options.label),
@@ -113,6 +124,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
     quickHost,
     el('div', { class: 'space-search-wrap' }, icon('search', 16), input),
     listbox,
+    treeBox,
   );
 
   function emit(): void { options.onChange?.(selected.slice()); }
@@ -133,6 +145,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
   }
 
   function paint(): void {
+    paintTree();
     replace(chips, ...selected.filter((x) => byId.has(x)).map((x) => el('span', { class: 'chip space-chip', title: spacePath(byId, x) },
       shortPath(x),
       el('button', { type: 'button', class: 'space-chip-x', 'aria-label': kt('Quitar {path}', { path: spacePath(byId, x) }), ...mark('remove'), onclick: () => { selected = selected.filter((s) => s !== x); paint(); emit(); } }, icon('close', 14)))));
@@ -141,6 +154,26 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
       el('span', { class: 'space-quick-label' }, options.quick ? kt('Más usados') : kt('Recientes')),
       ...quick.map((x) => el('button', { type: 'button', class: `filterchip space-quick-chip${selected.includes(x) ? ' on' : ''}`, 'aria-pressed': String(selected.includes(x)), title: spacePath(byId, x), ...mark('quick'), onclick: () => toggle(x, 'quick') }, byId.get(x)!.name)),
     ] : []));
+  }
+
+  /** El árbol: cada contenedor plegable (recuerda lo abierto) y sus espacios elegibles como chips. */
+  function paintTree(): void {
+    if (!treeBox?.open) return;
+    const live = rows.filter((r) => r.active);
+    const kids = (pid: string | null) => live.filter((r) => (pid ? r.parentId === pid : !r.parentId || !byId.has(r.parentId))).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+    const chip = (r: SpaceRow) => el('button', { type: 'button', class: `filterchip space-tree-chip${selected.includes(r.id) ? ' on' : ''}`, 'aria-pressed': String(selected.includes(r.id)), title: spacePath(byId, r.id), ...mark('option'),
+      onclick: () => toggle(r.id, 'quick') }, r.name);
+    const node = (r: SpaceRow): HTMLElement | null => {
+      const inner = kids(r.id).map(node).filter((n): n is HTMLElement => !!n);
+      if (!inner.length) return selectable(r) ? chip(r) : null;
+      const leaves = inner.filter((n) => n.tagName === 'BUTTON');
+      const groups = inner.filter((n) => n.tagName !== 'BUTTON');
+      return el('details', { class: 'space-tree-group', open: treeOpen.has(r.id), ontoggle: (e: Event) => { if ((e.currentTarget as HTMLDetailsElement).open) treeOpen.add(r.id); else treeOpen.delete(r.id); } },
+        el('summary', null, r.name),
+        // El propio contenedor, si se puede elegir («Toda el ala»), va primero entre sus chips.
+        selectable(r) || leaves.length ? el('div', { class: 'space-tree-chips' }, ...(selectable(r) ? [chip(r)] : []), ...leaves) : null, ...groups);
+    };
+    replace(treeBody, ...kids(null).map(node).filter((n): n is HTMLElement => !!n));
   }
 
   function search(): void {

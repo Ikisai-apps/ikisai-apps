@@ -48,8 +48,8 @@ test.beforeAll(async ({ browser }) => {
   ID = await seedDemo(server);
   const altura = (await sql(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
   await resources([
-    { op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { parent_id: altura, kind: 'edificio', name: 'Almacén', position: 1024 } },
-    { op: 'insert', table: 'resources.spaces', id: CUARTO, fields: { parent_id: altura, kind: 'edificio', name: 'Cuarto de limpieza', position: 2048 } },
+    { op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { source_refs: ['tasks.zone:prueba'], parent_id: altura, kind: 'edificio', name: 'Almacén', position: 1024 } },
+    { op: 'insert', table: 'resources.spaces', id: CUARTO, fields: { source_refs: ['tasks.zone:prueba'], parent_id: altura, kind: 'edificio', name: 'Cuarto de limpieza', position: 2048 } },
   ]);
   await resources([
     { op: 'insert', table: 'resources.items', id: LEJIA, fields: { name: 'Lejía', kind: 'limpieza', base_unit: 'l', min_quantity: 4, default_space_id: ALMACEN } },

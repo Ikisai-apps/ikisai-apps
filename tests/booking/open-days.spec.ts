@@ -26,10 +26,9 @@ test('jornadas abiertas: alta con fechas (fecha definitiva) y confirmar sin prop
   const dialog = page.getByRole('dialog', { name: 'Nueva reserva' });
   await dialog.getByLabel('Nombre del grupo o evento').fill('Jornadas de prueba');
   await dialog.locator('#resType').selectOption('jornadas_abiertas');
-  await dialog.getByLabel('Estado').selectOption('pre_reservada');
   await dialog.getByLabel('Entrada').fill(inDays(10));
   await dialog.getByLabel('Salida').fill(inDays(12));
-  await dialog.getByLabel('Personas previstas').fill('200');
+  await dialog.getByLabel('Asistentes previstos').fill('200'); // en jornadas, asistentes (B-41)
   await page.getByRole('button', { name: 'Guardar' }).click();
   await expect(dialog).toBeHidden();
 

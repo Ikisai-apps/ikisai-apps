@@ -55,7 +55,6 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await page.getByRole('button', { name: 'Nueva reserva' }).click();
     const dialog = page.getByRole('dialog', { name: 'Nueva reserva' });
     await dialog.getByLabel('Nombre del grupo o evento').fill('Retiro Feedback');
-    await dialog.getByLabel('Estado').selectOption('pre_reservada');
     await dialog.getByLabel('Entrada').fill(inDays(10));
     await dialog.getByLabel('Salida').fill(inDays(12));
     await dialog.getByLabel('Personas previstas').fill('12');

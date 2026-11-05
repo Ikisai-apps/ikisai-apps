@@ -10,7 +10,7 @@ import { contactEmail } from '../app/common-texts.ts';
 import { t } from '../app/i18n.ts';
 import { FLOW_CARTA, offersForGuest, safeUrl } from '../app/offers.ts';
 import { whenOf, type When } from '../app/roster.ts';
-import { bindMember, claimGuest, createHandoff, ensureVisitor, visitorMe, errorCodeOf, withHandoff, forgetVisitor, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
+import { bindMember, claimGuest, createHandoff, ensureVisitor, lodgingPlaced, visitorMe, errorCodeOf, withHandoff, forgetVisitor, unlockLodging, myEventCodes, myRequests, publicEvent, publicEvents, rememberEvent, sendRequest, sendStay, takeRenewed, visitorCustomer, visitorJoin, visitorOffers, visitorToken,
   EVENT_CODE, type PublicEvent, type VisitorCustomer, type VisitorRequest } from '../app/visitor.ts';
 import { failure, loading, staleNote, whyNote } from './common.ts';
 import { retreatState, shortRange } from './frame.ts';
@@ -169,9 +169,12 @@ export function renderVisitor(root: HTMLElement, client?: VisitorGuideClient | n
         el('span', { class: 'chip small gstatus' }, t(event.status === 'abierto' ? 'visitor.open' : 'visitor.closed'))),
       event.summary ? el('p', { id: 'visitorSummary' }, event.summary) : null);
 
-    // «Alójate aquí» (VG, por Core): pestaña aparte en todo evento abierto con noches (ven.ikisai.com, única entrada pública,
-    // 27-10 noche; recomendación de vg-48 mientras VG no decida: visible a cualquiera en el evento abierto).
-    const lodging = event.lodging;
+    // «Alójate aquí» (VG, por Core): pestaña aparte en todo evento abierto con noches, para cualquiera (G-11), pero solo si
+    // hay camas colocadas en el plano (G-13, 05-11): sin ellas, no sale.
+    const firstNight = event.starts_on && event.starts_on > today ? event.starts_on : today;
+    const nextDay = new Date(`${firstNight}T12:00:00Z`); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    const lodging = event.lodging && await lodgingPlaced(code, firstNight, nextDay.toISOString().slice(0, 10)).catch(() => false);
+    if (!current(mine)) return;
     const tabs = lodging ? el('nav', { class: 'segmented gvisitor-tabs', id: 'visitorTabs', 'aria-label': t('visitor.tabs') },
       ...([['evento', `#/v/${code}`, t('visitor.tabEvent')], ['alojate', `#/v/${code}/alojate`, t('lodge.tab')]] as const).map(([key, href, label]) => el('a', {
         href, class: (tab === 'datos' ? 'evento' : tab) === key ? 'on' : '', 'aria-current': (tab === 'datos' ? 'evento' : tab) === key ? 'page' : null, dataset: { tab: key },

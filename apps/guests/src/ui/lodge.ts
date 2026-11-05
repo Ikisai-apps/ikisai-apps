@@ -12,7 +12,7 @@
 import { announceSaved, el, fieldAttrs, icon, replace, toast } from '@ikisai/ui-kit';
 import { formatDate, localeTag, t } from '../app/i18n.ts';
 import { priceText } from '../app/offers.ts';
-import { errorCodeOf, myRequests, myStay, publicBeds, visitorToken, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
+import { errorCodeOf, myRequests, myStay, publicBeds, visitorMe, visitorToken, rememberEvent, saveTraveler, startStay, visitorPlans, type PublicBeds, type PublicEvent, type TravelerFields, type VisitorStay } from '../app/visitor.ts';
 import { estateOf, portalMap, withBedLayouts } from './plan.ts';
 import { loading, whyNote } from './common.ts';
 
@@ -58,7 +58,7 @@ function lodgeError(error: unknown): string {
 }
 
 /** El formulario del borrador: devuelve sus campos y cómo leerlos. */
-function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerFields; first: HTMLInputElement } {
+function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerFields; first: HTMLInputElement; fill(key: keyof TravelerFields, value: string): void } {
   const inputs = new Map<keyof TravelerFields, HTMLInputElement | HTMLSelectElement>();
   const rows = FIELDS.map((f) => {
     const id = `${prefix}${f.key}`;
@@ -74,6 +74,8 @@ function travelerForm(prefix: string): { element: HTMLElement; read(): TravelerF
     element: el('div', { class: 'glodge-fields' }, ...rows),
     read: () => Object.fromEntries([...inputs].map(([k, i]) => [k, i.value.trim()]).filter(([, v]) => v)) as TravelerFields,
     first: inputs.get('first_name') as HTMLInputElement,
+    /** Pone un valor si el campo aún está vacío (lo que ya dejó en «Tus datos»). */
+    fill: (key, value) => { const input = inputs.get(key); if (input && !input.value) input.value = value; },
   };
 }
 
@@ -207,9 +209,16 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
     // Lo que ya dejó en «Tus datos» (VG, 28-10): su nombre, ya puesto, si aún no ha escrito nada.
     void myRequests(code).then((list) => {
       const mine = list.find((r) => (r.kind === 'join' || r.kind === 'contact') && r.status !== 'descartada' && r.name);
-      if (mine?.name && !form.first.value) form.first.value = mine.name;
+      if (mine?.name) form.fill('first_name', mine.name);
+      // Su contacto: si es un teléfono, al teléfono (Booking 1428).
+      const contact = mine?.contact?.trim() ?? '';
+      if (/^\+?[\d\s().-]{6,}$/.test(contact)) form.fill('phone', contact);
     }).catch(() => undefined);
     const why = el('div', { 'aria-live': 'polite' });
+    // G-12 (VG, 05-11): dirección o staff eligen en cada pedido si es una prueba (no se cobra). Solo si entra un miembro.
+    const testBox = el('label', { class: 'check glodge-test', id: 'lodgeTestBox', hidden: true },
+      el('input', { type: 'checkbox', id: 'lodgeTest', 'data-feedback-id': 'guests.visitante.alojate.prueba', 'data-feedback-label': 'Es una prueba' }), ' ', t('lodge.test')) as HTMLLabelElement;
+    if (visitorToken()) void visitorMe().then((me) => { if (me.member) testBox.hidden = false; }).catch(() => undefined);
     const go = el('button', { type: 'submit', class: 'primary wide', id: 'lodgeGo', 'data-feedback-id': 'guests.visitante.alojate.pagar', 'data-feedback-label': 'Ir a pagar' }, t('lodge.go')) as HTMLButtonElement;
 
     const beds = async () => {
@@ -224,7 +233,8 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         const radio = (value_: string, label: HTMLElement | string, checked = false) => el('label', { class: 'glodge-bed-opt' },
           el('input', { type: 'radio', name: 'lodgeBed', value: value_, ...(checked ? { checked: '' } : {}), onchange: () => { picked = value_ || null; },
             'data-field-id': 'guests.visitante.alojate.cama' }), label);
-        const listRooms = value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', dataset: { room: r.id } },
+        // La cama se elige en el plano (G-11, 05-11): la lista, siempre escondida, guarda la elección del plano.
+        const listRooms = value.rooms.filter((r) => r.beds.some((b) => b.free)).map((r) => el('div', { class: 'glodge-room', hidden: true, dataset: { room: r.id } },
           el('p', { class: 'small glodge-room-name' }, r.name),
           ...r.beds.filter((b) => b.free).map((b) => radio(b.id, b.label))));
         replace(bedsHost,
@@ -252,7 +262,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
           if (!traveler.first_name) { form.first.focus(); replace(why, whyNote('lodgeWhy', t('visitor.nameNeeded'))); return; }
           go.disabled = true;
           try {
-            await startStay(code, { from: from.value, to: to.value, bed_id: picked, traveler });
+            await startStay(code, { from: from.value, to: to.value, bed_id: picked, traveler, test: !testBox.hidden && (testBox.querySelector('input') as HTMLInputElement).checked });
             rememberEvent(code);
             // Para el Guiado: lo que se guardó con «Ir a pagar».
             ['guests.visitante.alojate.llegada', 'guests.visitante.alojate.salida', 'guests.visitante.alojate.cama', 'guests.visitante.alojate.pagar'].forEach((id) => announceSaved(id));
@@ -273,7 +283,7 @@ export function mountLodge(host: HTMLElement, event: PublicEvent, today: string,
         el('p', { class: 'small' }, t('lodge.draftText')),
         form.element,
         el('p', { class: 'small' }, t('visitor.keep')),
-        why, go));
+        testBox, why, go));
     void beds();
   };
 

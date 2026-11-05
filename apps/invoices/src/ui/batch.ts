@@ -33,11 +33,24 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
   const input = el('input', { ...fieldAttrs({ id: 'invoices.facturas.lote.archivos', label: 'Facturas', type: 'file', sensitivity: 'internal', confirm: 'none' }), type: 'file', id: 'batchFiles', accept: ACCEPT_ATTR, multiple: true });
   const list = el('ol', { class: 'batch-list', id: 'batchList', 'data-feedback-ignore': '' });
   const summary = el('p', { class: 'hint', id: 'batchSummary', role: 'status' }, 'Elige todas las facturas a la vez (PDF o fotos). Cada una se convierte en una factura.');
-  const start = el('button', { 'data-feedback-id': 'invoices.facturas.lote.subir', 'data-feedback-label': 'Subir', class: 'primary', type: 'button', id: 'batchStart', disabled: true, onclick: () => void run() }, 'Subir');
+  // FB_2026_099: al terminar, «Subir» pasa a «Subir más» (otra tanda en la misma hoja) y «Cerrar» a «Hecho»; antes se
+  // quedaba en gris y parecía que no se podía subir.
+  let pending = shared;
+  let done = false;
+  const start = el('button', { 'data-feedback-id': 'invoices.facturas.lote.subir', 'data-feedback-label': 'Subir', class: 'primary', type: 'button', id: 'batchStart', disabled: true, onclick: () => { if (done) again(); else void run(); } }, 'Subir');
+  const close = el('button', { 'data-feedback-id': 'invoices.facturas.lote.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', id: 'batchClose', onclick: () => void closeSheet() }, 'Cerrar');
+  function again(): void {
+    done = false; pending = [];
+    input.value = ''; input.hidden = false; input.disabled = false;
+    start.textContent = 'Subir'; start.disabled = true; close.textContent = 'Cerrar';
+    replace(list);
+    replace(summary, 'Elige las siguientes facturas (PDF o fotos).');
+    input.click();
+  }
   input.addEventListener('change', () => { start.disabled = !(input.files && input.files.length); replace(summary, `${input.files?.length ?? 0} archivo${input.files?.length === 1 ? '' : 's'} elegido${input.files?.length === 1 ? '' : 's'}.`); });
 
   async function run(): Promise<void> {
-    const files = shared.length ? shared : Array.from(input.files ?? []);
+    const files = pending.length ? pending : Array.from(input.files ?? []);
     if (!files.length) return;
     start.disabled = true; input.disabled = true;
     const counts: Record<Outcome, number> = { leida: 0, parcial: 0, sin_leer: 0, duplicada: 0, error: 0 };
@@ -54,6 +67,8 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
     usage.track('invoices.facturas.lote', counts.error ? 'error' : 'success');
     replace(summary, `${counts.leida} leída${counts.leida === 1 ? '' : 's'}, ${counts.parcial ? `${counts.parcial} con lectura parcial, ` : ''}${counts.sin_leer} sin leer, ${counts.duplicada} duplicada${counts.duplicada === 1 ? '' : 's'}${counts.error ? `, ${counts.error} con error` : ''}. Revísalas y valídalas en la lista.`);
     toast(navigator.onLine ? 'Facturas subidas.' : 'Facturas guardadas en este dispositivo: se subirán al volver la conexión.');
+    done = true;
+    start.textContent = 'Subir más'; start.disabled = false; close.textContent = 'Hecho';
     onDone();
     void flushDocumentTexts(ctx.client);
   }
@@ -62,7 +77,7 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
     title: 'Subir varias facturas',
     meta: 'Los PDF con texto se leen solos; las fotos y los escaneados quedan pendientes de datos. Nada se valida.',
     body: el('div', { 'data-feedback-id': 'invoices.facturas.lote', 'data-feedback-label': 'Subir varias facturas' }, input, summary, list),
-    foot: [el('button', { 'data-feedback-id': 'invoices.facturas.lote.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar'), start],
+    foot: [close, start],
     initialFocus: input,
   });
   // Compartidas desde otra app (Gmail, WhatsApp…): se suben sin más pasos.

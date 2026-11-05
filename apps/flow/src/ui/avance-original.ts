@@ -85,7 +85,7 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       +panel([['pend','#6b6b6b','Por hacer'],['pr','#3a7cc4','Esperando fusión'],['curso','#d19a3a','En marcha'],['backlog','#c0392b','Backlog']],'Trabajo por hacer y en curso, con los hitos cumplidos',true)+'</section>';}
   function rRender(){var v=HOST;
     var meta=RMETA||{};var ags=(meta.agentes||[]).slice();RUTA.forEach(function(x){if(x.agente&&ags.indexOf(x.agente)<0)ags.push(x.agente);});
-    var mobile=window.matchMedia('(max-width: 700px)').matches;var vista=CV||(mobile?'tabs':'lado');
+    var mobile=window.matchMedia('(max-width: 700px)').matches;var vista=CV||(mobile?'hitos':'lado'); // en el móvil, «Por hitos» por defecto (VG, fl-31 b); manda la elegida si se recuerda
     var PRK={urgente:0,importante:1,secundario:2,opcional:3};var prk=function(x){return x.estado==='backlog'?9:(PRK[x.prio]!=null?PRK[x.prio]:5);};
     var hok=function(x){if(!x.hito||!x.hito.id)return 1e9;var ho=0;HITOS.forEach(function(q){if(q.id===x.hito.id)ho=q.orden||0;});return ho*1000+(+x.hito.paso||0);};
     var wfor=function(x){if(!x.hito||!x.hito.id||x.estado==='hecho')return null;var p=+x.hito.paso||0;var w=null;RUTA.forEach(function(y){if(y!==x&&y.hito&&y.hito.id===x.hito.id&&(+y.hito.paso||0)<p&&y.estado!=='hecho'&&y.estado!=='backlog'){if(!w||(+y.hito.paso||0)<(+w.hito.paso||0))w=y;}});return w;};

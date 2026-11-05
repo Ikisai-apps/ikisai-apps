@@ -34,3 +34,5 @@ html.dark .pcard .pmeta a,html.dark #taskOrigin a{color:#d9e0c3}
 #prDelete,#prUndoPurchase{min-height:46px}
 label.checkline:has(#prInvoice){display:flex;align-items:center;gap:10px;min-height:46px}
 #prInvoice{width:24px;height:24px}
+.tkit-trade{margin:0 0 12px}
+.tkit-trade select{min-height:44px}
