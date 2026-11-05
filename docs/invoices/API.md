@@ -2105,14 +2105,16 @@ El justificante de un cobro de otra app es el ticket de Finance. Si quien pagó 
 - **Vínculo:** `issued_invoices.from_entry_id` apunta al apunte. Solo lo pone la petición (`ENTRY_INVOICE_PROCEDURE_ONLY`) y las rectificativas lo heredan.
 - **Sin duplicados:** una factura viva por apunte.
 
-**Nada suma dos veces.** La venta es el apunte: su IVA va en su periodo y cuenta en lo cobrado y en el arqueo. Una factura con `from_entry_id`, y sus rectificativas, quedan fuera de:
-- `issued_summary_for`;
-- `issuedSummary`;
-- los KPIs de `central_kpi_projection`.
-
-El libro de emitidas de la entrega (`issued_manifest`) sí la lleva, con `replaces_entry` (`source_ref`, `entry_date`, `receipt_number`) para la gestoría.
-
-**Pendiente con la gestoría, antes de encender Verifactu:** ¿F1 o F3? Con Verifactu, esa factura iría a la AEAT con su IVA.
+**F3 que sustituye el ticket (decisión de VG del 06-11, migración 0266).**
+- **El borrador** es una **F3** (sustitutiva de simplificadas) y lleva en `rectified` la referencia al ticket: serie `TICKET`, su número (`receipt_number` o los 8 primeros caracteres del id), su fecha, `entry_id` y `source_ref`.
+- **Al emitirla, el ticket queda anulado solo** (`invoices.app_entry_replaced`):
+  - sale del resumen de apuntes (`app_entries_summary_for`, `appEntriesSummary`), de la entrega (`app_entries_manifest`) y del KPI del IVA;
+  - el IVA lo lleva la F3, que cuenta en el resumen de emitidas, en lo facturado y en el IVA del trimestre;
+  - así hay un solo importe ante la gestoría y Verifactu.
+- **El dinero no cambia:** lo cobrado y el arqueo siguen con el apunte. La F3 nace cobrada y no suma en lo cobrado ni en lo pendiente.
+- **Ticket ya entregado a la gestoría:** no se pide ni se emite la F3 (`409 ENTRY_DELIVERED`).
+- **El libro de emitidas** de la entrega lleva `replaces_entry`.
+- **Pendiente para cuando se encienda Verifactu:** el registro de alta de la F3 tendrá que llevar `FacturasSustituidas` con el ticket.
 
 ## 18. Capacidad «Registrar compra rápida» (V0.2, primer recorrido de Flow)
 

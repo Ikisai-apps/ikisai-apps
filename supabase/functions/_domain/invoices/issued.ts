@@ -198,8 +198,8 @@ export interface IssuedInvoiceRow extends SyncedColumns {
   sent_at: string | null;
   payment_method: string | null;
   /**
-   * 0263: la factura pedida de un cobro de otra app (el apunte que sustituye). No suma en el resumen: la venta ya la
-   * cuenta el apunte. Las rectificativas lo heredan.
+   * 0263/0266: la factura pedida de un cobro de otra app (el apunte que sustituye). Es una F3 (VG, 06-11): emitida, cuenta
+   * ella en el IVA y el ticket sale (`replacedEntryIds`). Las rectificativas lo heredan.
    */
   from_entry_id?: string | null;
   /** Emisor (la entidad de Central) copiado al registrar: NIF y nombre para Verifactu, y el resto en `issuer`. */
@@ -367,7 +367,7 @@ export interface IssuedSummaryInput {
 }
 
 export function issuedSummary(input: IssuedSummaryInput, range: { from: string; to: string }): IssuedSummary {
-  const live = input.invoices.filter((i) => !i.deleted_at && i.status !== 'borrador' && !i.from_entry_id && i.issue_date >= range.from && i.issue_date <= range.to);
+  const live = input.invoices.filter((i) => !i.deleted_at && i.status !== 'borrador' && i.issue_date >= range.from && i.issue_date <= range.to);
   const summed = live.filter((i) => ISSUED_COUNTED_STATUSES.includes(i.status));
   const ids = new Set(summed.map((i) => i.id));
   const sum = (values: Array<number | null | undefined>) => fromCents(values.reduce<number>((acc, v) => acc + toCents(Number(v ?? 0)), 0));

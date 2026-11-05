@@ -50,7 +50,9 @@ test('crea un borrador con las líneas del cobro, cobrado, y la misma petición 
   assert.deepEqual([first.data.status, first.data.request_id, first.data.full_number], ['pendiente', request_id, null]);
   const inv = (await app.t.db.query<Record<string, any>>(`select * from invoices.issued_invoices where id = $1`, [first.data.issued_invoice_id])).rows[0]!;
   assert.deepEqual([inv.status, inv.invoice_type, inv.recipient_tax_id, inv.recipient_id_type, inv.recipient_kind, inv.income_category],
-    ['borrador', 'F1', '12345678Z', 'NIF', 'particular', 'alojamiento'], 'el NIF llega normalizado');
+    ['borrador', 'F3', '12345678Z', 'NIF', 'particular', 'alojamiento'], 'el NIF llega normalizado');
+  assert.equal(inv.rectified[0].series, 'TICKET', 'la F3 referencia el ticket que sustituye (VG, 06-11)');
+  assert.equal(inv.rectified[0].entry_id, inv.from_entry_id);
   assert.deepEqual([inv.payment_status, inv.payment_method, inv.prices_include_vat], ['cobrada', 'efectivo', true], 'nace cobrada con el medio mayor');
   assert.ok(inv.from_entry_id);
   const lines = (await app.t.db.query<Record<string, any>>(`select * from invoices.issued_invoice_lines where issued_invoice_id = $1 and deleted_at is null`, [inv.id])).rows;
@@ -87,7 +89,7 @@ test('NIF con mal dígito, empresa sin domicilio, cobro ajeno o inexistente y ot
   assert.equal(manual.data.error?.code, 'INVALID_FIELDS', JSON.stringify(manual.data)); // el servidor no acepta la columna del cliente (y el SQL tampoco)
 });
 
-test('descartar el borrador deja volver a pedirla; una factura de un cobro no suma en el resumen ni en los KPIs', async () => {
+test('descartar el borrador deja volver a pedirla; emitida la F3, cuenta ella en el IVA y el ticket queda fuera', async () => {
   const source = await stay();
   const first = await ask({ request_id: uuid(), source, customer: company });
   assert.equal(first.status, 200, JSON.stringify(first.data));
@@ -97,16 +99,33 @@ test('descartar el borrador deja volver a pedirla; una factura de un cobro no su
   assert.equal((await state(source)).data.status, 'descartada');
   const again = await ask({ request_id: uuid(), source, customer: company });
   assert.deepEqual([again.status, again.data.status], [200, 'pendiente']);
-  // Una emitida de otro cobro (aquí, registrada directamente como si se hubiera emitido) no suma: la venta es el apunte
-  const source2 = await stay();
-  const entry = (await app.t.db.query<{ id: string }>(`select id from invoices.app_entries where source_ref = $1`, [source2])).rows[0]!.id;
-  const reg = uuid();
-  await app.t.db.query(`do $$ begin perform set_config('invoices.procedure', 'entry_invoice_request', true);
-    insert into invoices.issued_invoices (id, series_code, number, issue_date, invoice_type, description, recipient_name, recipient_tax_id, base_total, quota_total, total, from_entry_id)
-    values ('${reg}', 'EI', '2026-0001', '2026-10-31', 'F1', 'Alojamiento', 'Retiros Sintéticos SL', 'B12345674', 63.64, 6.36, 70, '${entry}'); end $$`);
-  const sum = (await app.t.db.query<{ s: any }>(`select invoices.issued_summary_for('2026-10-31', '2026-10-31') s`)).rows[0]!.s;
-  assert.equal(Number(sum.invoices.registrada), 0, 'el resumen de emitidas no la cuenta');
-  const ts = issuedSummary({ invoices: [{ id: reg, status: 'registrada', issue_date: '2026-10-31', base_total: 63.64, total: 70, from_entry_id: entry } as never], lines: [], taxLines: [], withFile: new Set() }, { from: '2026-10-31', to: '2026-10-31' });
+  // Se emite la F3 (aquí, como lo haría invoices.issue, sin la entidad de Central): cuenta ella y el ticket sale del IVA
+  const f3 = again.data.issued_invoice_id as string;
+  const entry = (await app.t.db.query<{ id: string }>(`select id from invoices.app_entries where source_ref = $1`, [source])).rows[0]!.id;
+  const quarter = (from: string, to: string) => app.t.db.query<{ s: any }>(`select invoices.app_entries_summary_for('${from}', '${to}') s`).then((r) => r.rows[0]!.s);
+  const before = await quarter('2026-10-01', '2026-12-31');
+  assert.equal(Number(before.income.count) >= 1, true, 'en borrador, el ticket sigue contando');
+  const today = (await app.t.db.query<{ d: string }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d`)).rows[0]!.d;
+  await app.t.db.query(`do $$ begin perform set_config('invoices.issuing', 'on', true);
+    update invoices.issued_invoices set status = 'emitida', number = '2026-0901', issued_at = now() where id = '${f3}'; end $$`);
+  assert.equal((await app.t.db.query<{ r: boolean }>(`select invoices.app_entry_replaced($1) r`, [entry])).rows[0]!.r, true);
+  const after = await quarter('2026-10-01', '2026-12-31');
+  assert.equal(Number(after.income.count), Number(before.income.count) - 1, 'el ticket sustituido sale del resumen');
+  const manifest = (await app.t.db.query<{ m: any[] }>(`select invoices.app_entries_manifest('2026-10-01', '2026-12-31') m`)).rows[0]!.m;
+  assert.equal(manifest.some((x) => x.id === entry), false, 'y de la entrega');
+  const sum = (await app.t.db.query<{ s: any }>(`select invoices.issued_summary_for($1, $1) s`, [today])).rows[0]!.s;
+  assert.ok(Number(sum.invoices.registrada) >= 1, 'la F3 cuenta en las emitidas');
+  const ts = issuedSummary({ invoices: [{ id: f3, status: 'emitida', issue_date: today, base_total: 63.64, total: 70, from_entry_id: entry } as never], lines: [], taxLines: [], withFile: new Set() }, { from: today, to: today });
+  assert.equal(ts.invoices.registrada, 1, 'también en la app');
+  // El libro de la entrega la lleva con el ticket que sustituye
+  const book = (await app.t.db.query<{ m: any[] }>(`select invoices.issued_manifest($1, $1) m`, [today])).rows[0]!.m;
+  assert.equal(book.find((i) => i.id === f3)?.replaces_entry?.source_ref, source);
+  // Ya hay una F3 viva del cobro: no se pide otra
+  const twice = await ask({ request_id: uuid(), source, customer: company });
+  assert.deepEqual([twice.status, twice.data.error?.code], [409, 'ALREADY_REQUESTED']);
+  const kpi = (await app.t.db.query<{ n: string }>(`select count(*) n from invoices.central_kpi_projection`)).rows[0]!.n;
+  assert.equal(Number(kpi), 36, 'los KPIs siguen siendo 36');
+});
   assert.equal(ts.invoices.registrada, 0, 'tampoco el de la app');
   // El libro de la entrega sí la lleva, con el ticket que sustituye
   const book = (await app.t.db.query<{ m: any[] }>(`select invoices.issued_manifest('2026-10-31', '2026-10-31') m`)).rows[0]!.m;
