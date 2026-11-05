@@ -502,7 +502,7 @@ Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). 
 
 ### 2.19 Revisión semanal de Dirección (`central.weekly_reviews`, `central.weekly_review_items`; `1521`, C01; decisiones de VG del 27-10)
 
-Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y los editores con el ámbito `direccion` (`core.memberships.scopes.direccion = true`, que se da en Accesos); el permiso se mira con el rol y los ámbitos con los que empezó el lote. Al cerrarla se guarda la foto de los indicadores en crítico o en atención; una revisión cerrada ya no cambia de foto (`REVIEW_CLOSED`). Los OKR, después.
+Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y los editores con el ámbito `direccion` (`core.memberships.scopes.direccion = true`, que se da en Accesos); el permiso se mira con el rol y los ámbitos con los que empezó el lote. Al cerrarla se guarda la foto de los indicadores en crítico o en atención; una revisión cerrada ya no cambia de foto (`REVIEW_CLOSED`). Los OKR, abajo.
 
 | `weekly_reviews` | Tipo | Notas |
 |---|---|---|
@@ -524,6 +524,17 @@ Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y
 **Acciones** (`central.weekly_actions`, `1523`; VG, vg-41): mientras la revisión está abierta, cada indicador puede acabar en una decisión vigente (`kind = 'decision'`, `decision_id`) o en una tarea de Tasks (`kind = 'task'`). La tarea la pide `POST weekly/:id/task {requestId, code, kpi, label, title, note?, due?}` con el kind `central.weekly_action`, el token de la persona y la referencia `RSM_…:requestId` (idempotente). Su estado vuelve por `requirements/tasks-status`. La revisión siguiente enseña cómo van las acciones de la anterior. Mismo permiso que la revisión; con la revisión cerrada, `REVIEW_CLOSED`.
 
 Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque puede llevar importes. La foto también se borra del dispositivo al cerrar sesión. Pantalla: `#/direccion/semana`, desde el panel de Dirección.
+
+**OKR** (`central.objectives`, `1527`; X5 del triaje del 05-11): objetivos del trimestre (`OKR_AAAA_NNN`) cuyos resultados clave son indicadores del panel. El objetivo y los umbrales de cada indicador siguen en `kpi_targets`; aquí solo se agrupan. Arriba de la revisión semanal, «Objetivos del N.º trimestre» enseña cada objetivo del trimestre en curso con sus indicadores y cómo va: «Va bien» si todos están en objetivo, «En riesgo» si alguno está en atención, «Va mal» si alguno está en crítico y «Sin datos» si falta alguno. Mismo permiso que la revisión (owner o editor con `direccion`, también en la base); leen todos los miembros.
+
+| `objectives` | Tipo | Notas |
+|---|---|---|
+| `quarter` | `text not null` | `AAAAT1`…`AAAAT4`. |
+| `title` | `text not null` | De 1 a 160. |
+| `kpis` | `text[]` | Indicadores `app.clave`, hasta 10. |
+| `notes` | `text` | Hasta 500. |
+| `position` | `numeric` | Orden. |
+
 ### 2.20 Revisor › cobertura de campos por pantalla (`central.field_group_reviews`, `1522`; decisiones de VG del 27-10)
 
 Para Dirección (owner y editor con el ámbito `direccion`). Declarar la utilidad campo a campo es inviable (miles de campos), así que la pantalla enseña por defecto solo los **candidatos**: los que el núcleo marca así (`candidate`: sin cobertura de Flow, sin uso en 30 días y sin estimado de la app que los proteja), agrupados por app y pantalla, con la etiqueta de la pantalla y un resumen («N campos en M pantallas»). «Ver todo» enseña el resto con la pieza del kit.
