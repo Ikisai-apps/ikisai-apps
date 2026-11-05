@@ -89,7 +89,7 @@ const ask = async (page: Page, v: { title: string; quantity?: string; unit?: str
 
 test('suministros: catálogo de la casa con tipo y sitio, ficha con stock y mínimo, gastar, entrada y recontar', async () => {
   const altura = (await server.app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
-  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { parent_id: altura, kind: 'edificio', name: 'Almacén limpieza', position: 1024 } }]);
+  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { source_refs: ['tasks.zone:prueba'], parent_id: altura, kind: 'edificio', name: 'Almacén limpieza', position: 1024 } }]);
   await resources([
     { op: 'insert', table: 'resources.items', id: LEJIA, fields: { name: 'Lejía', kind: 'limpieza', base_unit: 'l', min_quantity: 4, default_space_id: ALMACEN } },
     { op: 'insert', table: 'resources.items', id: BOMBILLAS, fields: { name: 'Bombillas E27', kind: 'material', base_unit: 'ud' } },

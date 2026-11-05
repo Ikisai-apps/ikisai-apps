@@ -100,7 +100,7 @@ function openEntry(ctx: ViewContext, data: Data, entry: LocalAppEntry, reload: (
         methods.length ? el('dd', null, methods.map(([k, v]) => `${methodLabel(k)} ${fromCents(Number(v))}`).join(' · ')) : null,
         el('dt', null, 'Evento'), el('dd', null, entry.event_id
           ? el('a', { href: `#/evento?id=${entry.event_id}`, 'data-feedback-id': 'invoices.apuntes.ficha.ver_evento', 'data-feedback-label': 'Ver el evento',
-            onclick: (e: Event) => { e.preventDefault(); void closeSheet(); navigate(`#/evento?id=${entry.event_id}`); } }, eventLabel(event, entry.event_id))
+            onclick: (e: Event) => { e.preventDefault(); void closeSheet().then(() => navigate(`#/evento?id=${entry.event_id}`)); } }, eventLabel(event, entry.event_id))
           : 'Sin evento'),
         el('dt', null, 'Tipo'), el('dd', { id: 'appEntryNature' }, isFiscal(entry) ? 'Fiscal: va a la gestoría y al IVA' : 'De proceso: informativo, no va a la gestoría'),
         el('dt', null, 'Justificante'), el('dd', { id: 'appEntryReceiptInfo' }, entry.receipt_kind ? `${entry.receipt_kind === 'ticket' ? 'Ticket' : 'Factura'} ` : null, entry.receipt_number ? `Nº ${entry.receipt_number}` : null,

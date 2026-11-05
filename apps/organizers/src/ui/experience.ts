@@ -19,6 +19,7 @@ import { fileIdOf, libraryOf, nextPosition, proposes, rowsOf, save, TABLES, watc
 import { uploadNow } from '../app/upload-now.ts';
 import { fbIgnore, fbMark, loading, needsNet, section } from './common.ts';
 import { renderLodging } from './lodging.ts';
+import { renderCenterPlan } from './center-plan.ts';
 import { renderMenu, type PortalMenu } from './menu.ts';
 import { renderFoodOffers } from './food-offers.ts';
 import { renderProgram, type PortalProgram } from './program.ts';
@@ -614,7 +615,12 @@ export function renderExperience(ctx: ViewContext, reservationId: string, status
       other = Object.assign(el('div', null, renderFoodOffers(ctx, reservationId), menu), { destroy: () => menu.destroy?.() });
       title = L('Menú');
     }
-    else if (current === 'alojamiento') { other = renderLodging(ctx, reservationId, () => exp, setExperience); title = L('Alojamiento'); }
+    else if (current === 'alojamiento') {
+      // El plano de Ikisai encima del reparto (FB_2026_061, O-C2 a).
+      const lodging = renderLodging(ctx, reservationId, () => exp, setExperience) as HTMLElement & { destroy?: () => void };
+      other = Object.assign(el('div', null, renderCenterPlan(ctx), lodging), { destroy: () => lodging.destroy?.() });
+      title = L('Alojamiento');
+    }
     replace(otherHost, title ? el('h3', { class: 'orgexp-title' }, t(title)) : null, other);
     // Al volver a la portada desde un apartado, sus cifras se vuelven a calcular.
     if (back) void loadExtra();

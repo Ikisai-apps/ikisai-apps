@@ -114,15 +114,14 @@ test('ficha y «Monta el dormitorio»: añadir, girar, mover sin montarse, guard
   await card.getByRole('button', { name: 'Fondo: menos' }).click();
   await expect(card.locator('#dormMessage')).toHaveText('No se puede encoger: alguna cama se quedaría fuera. Muévela antes.');
 
-  const before = new Set(api.changeLog().map((c) => c.requestId));
-  await card.locator('#dormSave').click();
+  // Sin botón «Guardar» (B-40): cada cambio se guarda solo; «Hecho» cierra la edición.
+  await expect(card.locator('#dormSave')).toHaveCount(0);
+  await card.locator('#dormDone').click();
   await expect.poll(() => api.rows(BEDS).filter((b) => b.space_id === salon.id).length).toBe(2);
   const beds = api.rows(BEDS).filter((b) => b.space_id === salon.id);
   expect(beds.find((b) => b.kind === 'litera')).toMatchObject({ capacity: 2, cell: { x: 0, y: 0, rot: 0 } });
   expect(beds.find((b) => b.kind === 'individual')).toMatchObject({ capacity: 1, cell: { x: 2, y: 1, rot: 90 } });
   await expect.poll(() => api.rows(SPACES).find((s) => s.id === salon.id)?.layout).toEqual({ cols: 4, rows: 3 });
-  // Un solo lote: el espacio y las dos camas.
-  expect(new Set(api.changeLog().map((c) => c.requestId).filter((r) => !before.has(r))).size).toBe(1);
 
   // La sala cuenta las plazas de sus camas, en la ficha y en la lista, y enseña sus camas.
   await expect(card.locator('#spaceCardPlaces')).toHaveText('3 plazas · 2 camas libres esta noche');

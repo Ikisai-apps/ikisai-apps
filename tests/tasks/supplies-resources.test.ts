@@ -18,7 +18,7 @@ test.after(async () => { await db.close(); });
 const resources = (operations: unknown[], requestId = `r6-${++seq}`) =>
   db.t.rpc('core_commit', { p_app: 'resources', p_actor: db.owner, p_request_id: requestId, p_digest: requestId, p_expected_cursor: null, p_operations: operations }) as Promise<any>;
 const resourceRows = async (table: string) => ((await db.t.rpc('core_snapshot_table', { p_app: 'resources', p_role: 'owner', p_table: table, p_include_deleted: true, p_limit: 2000, p_offset: 0 })) as { rows: any[] }).rows;
-const space = (id: string, parent: string, name: string) => ({ op: 'insert', table: 'resources.spaces', id, fields: { parent_id: parent, kind: 'edificio', name, position: 1024 } });
+const space = (id: string, parent: string, name: string) => ({ op: 'insert', table: 'resources.spaces', id, fields: { source_refs: ['tasks.zone:prueba'], parent_id: parent, kind: 'edificio', name, position: 1024 } });
 const item = (id: string, name: string, kind: string, extra: Record<string, unknown> = {}) => ({ op: 'insert', table: 'resources.items', id, fields: { name, kind, base_unit: 'l', ...extra } });
 const entry = (itemId: string, spaceId: string, quantity: number) => ({ op: 'insert', table: 'resources.movements', id: newId(), fields: { item_id: itemId, space_id: spaceId, quantity, kind: 'entrada_manual' } });
 

@@ -309,3 +309,13 @@ async function peopleToLabelsSheet(drop=false){const title='Volver a las etiquet
   const apply=document.getElementById('peopleBackApply');apply.onclick=async()=>{if(pendingWork())return;apply.disabled=true;apply.textContent='Volviendo…';
     try{await api('actions/people-to-labels',{method:'POST',body:JSON.stringify({requestId:uid('req-'),dropUnmapped:!!check?.checked})});closeSheet();toast('Las personas vuelven a ser etiquetas.');state.view='labels';await syncNow();render()}
     catch(e){toast(peopleError(e));peopleToLabelsSheet(!!check?.checked)}}}
+/* VG (6-11): la tarea nueva se asigna por defecto a quien la crea (la persona de Central de su cuenta). Al guardar: solo las
+   tareas que aún no están en el servidor y que no traen responsable (ni persona ni etiqueta). Después se cambia como siempre.
+   Solo con las personas de Central y si la cuenta tiene su ficha de persona. */
+const saveBeforeDefaultOwner=save;
+save=function(...args){try{const me=typeof myPerson==='function'?myPerson():null;
+    if(me&&Sync.core?.peopleSource?.()==='central'){const known=new Set((Sync.core.data?.['tasks.tasks']||[]).map(r=>r.id));
+      for(const a of state.tabs||[])for(const p of a.projects||[])for(const t of p.tasks||[])
+        if(!known.has(t.id)&&!t.deleted&&t.ownerPerson===undefined&&!t.owner)t.ownerPerson=me.id}}
+  catch(e){console.error(e)}
+  return saveBeforeDefaultOwner(...args)};

@@ -1,5 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { fieldAttrs, announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { attachSuggestions, fieldAttrs, announceSaved, confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
   COMMERCIAL_STAGES, EVENT_TYPES, PHASES, PHASE_LABELS, TABLES, canHoldStatus, commercialStageLabel, dayNumber, foldText, missingForConfirmation, nextText, nights, validateFields,
   type CommercialStage, type Phase, type ReservationStatus,
@@ -10,15 +10,16 @@ import {
   type ReservationRow,
 } from '../app/client.ts';
 import { settleBatch } from '../app/settle.ts';
+import { clientNamed, pastClients } from '../app/clients.ts';
 import { PHASE_COLORS, loadExperiences, onSesPending, resetSesWatch, requestBlock, type ExperienceSet, type ReservationView } from '../app/experience.ts';
 import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
 import { fbIgnore, fbMark } from './feedback.ts';
 
-type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'cerradas' | 'canceladas';
+type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'realizadas' | 'cerradas' | 'canceladas';
 
 const FILTERS: Array<[Filter, string]> = [
-  ['proximas', 'Próximas'], ['activas', 'Activas'], ['pre', 'Pre-reservas'], ['confirmadas', 'Confirmadas'], ['cerradas', 'Cerradas'], ['canceladas', 'Canceladas'],
+  ['proximas', 'Próximas'], ['activas', 'Activas'], ['pre', 'Pre-reservas'], ['confirmadas', 'Confirmadas'], ['realizadas', 'Realizadas'], ['cerradas', 'Cerradas'], ['canceladas', 'Canceladas'],
 ];
 const OPEN: ReservationStatus[] = ['en_estudio', 'negociacion', 'pre_reservada', 'confirmada', 'en_ejecucion'];
 const MISSING_LABELS = { start_date: 'la fecha de entrada', end_date: 'la fecha de salida', expected_guests: 'el número de personas' } as const;
@@ -31,6 +32,8 @@ function matches(row: ReservationRow, filter: Filter, now: number): boolean {
     case 'activas': return OPEN.includes(row.status);
     case 'pre': return row.status === 'pre_reservada';
     case 'confirmadas': return row.status === 'confirmada' || row.status === 'en_ejecucion';
+    // Las que ya se hicieron (B-43, VG 05-11): confirmadas, en curso o cerradas, con su último día pasado; la más reciente primero
+    case 'realizadas': return ['confirmada', 'en_ejecucion', 'cerrada'].includes(row.status) && (dayNumber(row.end_date ?? row.start_date) ?? Infinity) < now;
     case 'cerradas': return row.status === 'cerrada';
     case 'canceladas': return row.status === 'cancelada' || row.status === 'perdida';
   }
@@ -243,7 +246,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const visible = set.views
       .filter((v) => (searching ? true : matches(v.reservation, filter, now)))
       .filter((v) => !searching || [v.reservation.title, v.reservation.contact_name, v.reservation.code].some((s) => typeof s === 'string' && foldText(s).includes(query)))
-      .sort((a, b) => (dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
+      .sort((a, b) => (!searching && filter === 'realizadas' ? -1 : 1) * ((dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity)) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
     searchScope.textContent = searching ? `Buscando en todas las reservas: ${plural(visible.length, 'resultado', 'resultados')}.` : '';
     count.textContent = String(visible.length);
     trash.hidden = deleted.length === 0;
@@ -315,9 +318,9 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     // inventario de campos (P15): el control lleva `data-field-*` con su columna; el aviso de guardado es el de «Guardar»
     const COLUMN: Record<string, string> = { titulo: 'title', tipo: 'event_type', estado: 'status', inicio: 'start_date', fin: 'end_date', personas: 'expected_guests',
       contacto: 'contact_name', telefono: 'contact_phone', pago_noches: 'lodging_pay_mode', horas_plaza: 'lodging_hold_hours' };
-    const field = (label: string, control: HTMLElement, key: string) => {
+    const field = (label: string, control: HTMLElement, key: string, after: HTMLElement | null = null) => {
       for (const [k, v] of Object.entries(fieldAttrs({ id: `booking.reservas.alta.${key}`, entity: 'booking.reservations', prop: COLUMN[key], label, confirm: 'none' }))) if (v !== null && k !== 'data-feedback-id') control.setAttribute(k, v);
-      return el('label', { class: 'field', 'data-feedback-id': `booking.reservas.alta.${key}`, 'data-feedback-label': label }, el('span', null, label), control);
+      return el('label', { class: 'field', 'data-feedback-id': `booking.reservas.alta.${key}`, 'data-feedback-label': label }, el('span', null, label), control, after);
     };
     const input = (id: string, type: string, value: string, extra: Record<string, string | number | boolean> = {}) =>
       el('input', { id, type, value, autocomplete: 'off', oninput: onChange, ...extra });
@@ -334,13 +337,25 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const guests = input('resGuests', 'number', initial.expected_guests, { min: 0, step: 1, inputmode: 'numeric' });
     const contact = input('resContact', 'text', initial.contact_name, { maxlength: 200 });
     const phone = input('resPhone', 'tel', initial.contact_phone, { maxlength: 40 });
+    // B-35: «Contacto» sugiere los clientes de otras reservas; al elegir uno, su teléfono si aún no hay
+    const clients = pastClients(rows);
+    const clientList = clients.length ? attachSuggestions(contact as HTMLInputElement, { values: clients.map((c) => c.name), mode: 'pick', feedbackId: 'booking.reservas.alta.contacto' }).element : null;
+    contact.addEventListener('change', () => {
+      const known = clientNamed(clients, (contact as HTMLInputElement).value);
+      if (known?.phone && !(phone as HTMLInputElement).value.trim()) { (phone as HTMLInputElement).value = known.phone; onChange(); }
+    });
     // Jornadas abiertas: las noches que se piden por el QR, o reservan la plaza unas horas y se pagan en recepción, o no
     // reservan nada hasta pagar (VG 27-10-2026)
     const payMode = select('resPayMode', [['hold', 'Reserva la plaza unas horas y se paga en recepción'], ['pay_first', 'No reserva hasta pagar']], initial.lodging_pay_mode);
     const holdHours = input('resHoldHours', 'number', initial.lodging_hold_hours, { min: 1, max: 168, step: 1, inputmode: 'numeric' });
     const holdField = field('Horas que se guarda la plaza', holdHours, 'horas_plaza');
     const lodgingRow = el('div', { class: 'row2', id: 'resLodgingPay' }, field('Noches por el QR', payMode, 'pago_noches'), holdField);
-    const syncLodging = () => { lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold'; };
+    // En jornadas abiertas son asistentes, no huéspedes con lista (B-41, VG 05-11)
+    const guestsField = field('Personas previstas', guests, 'personas');
+    const syncLodging = () => {
+      lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold';
+      guestsField.querySelector('span')!.textContent = type.value === 'jornadas_abiertas' ? 'Asistentes previstos' : 'Personas previstas';
+    };
     syncLodging();
     const error = el('p', { class: 'formerror', id: 'reservationError', role: 'alert', hidden: true });
     const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', 'data-feedback-id': 'booking.reservas.alta.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
@@ -406,8 +421,8 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         field('Tipo', type, 'tipo'),
         lodgingRow,
         el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
-        field('Personas previstas', guests, 'personas'),
-        el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto')), fbIgnore(field('Teléfono', phone, 'telefono'))),
+        guestsField,
+        el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto', clientList)), fbIgnore(field('Teléfono', phone, 'telefono'))),
         error,
       ),
       foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reservas.alta.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar')),
