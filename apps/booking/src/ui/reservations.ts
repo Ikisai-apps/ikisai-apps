@@ -15,10 +15,10 @@ import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
 import { fbIgnore, fbMark } from './feedback.ts';
 
-type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'cerradas' | 'canceladas';
+type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'realizadas' | 'cerradas' | 'canceladas';
 
 const FILTERS: Array<[Filter, string]> = [
-  ['proximas', 'Próximas'], ['activas', 'Activas'], ['pre', 'Pre-reservas'], ['confirmadas', 'Confirmadas'], ['cerradas', 'Cerradas'], ['canceladas', 'Canceladas'],
+  ['proximas', 'Próximas'], ['activas', 'Activas'], ['pre', 'Pre-reservas'], ['confirmadas', 'Confirmadas'], ['realizadas', 'Realizadas'], ['cerradas', 'Cerradas'], ['canceladas', 'Canceladas'],
 ];
 const OPEN: ReservationStatus[] = ['en_estudio', 'negociacion', 'pre_reservada', 'confirmada', 'en_ejecucion'];
 const MISSING_LABELS = { start_date: 'la fecha de entrada', end_date: 'la fecha de salida', expected_guests: 'el número de personas' } as const;
@@ -31,6 +31,8 @@ function matches(row: ReservationRow, filter: Filter, now: number): boolean {
     case 'activas': return OPEN.includes(row.status);
     case 'pre': return row.status === 'pre_reservada';
     case 'confirmadas': return row.status === 'confirmada' || row.status === 'en_ejecucion';
+    // Las que ya se hicieron (B-43, VG 05-11): confirmadas, en curso o cerradas, con su último día pasado; la más reciente primero
+    case 'realizadas': return ['confirmada', 'en_ejecucion', 'cerrada'].includes(row.status) && (dayNumber(row.end_date ?? row.start_date) ?? Infinity) < now;
     case 'cerradas': return row.status === 'cerrada';
     case 'canceladas': return row.status === 'cancelada' || row.status === 'perdida';
   }
@@ -243,7 +245,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const visible = set.views
       .filter((v) => (searching ? true : matches(v.reservation, filter, now)))
       .filter((v) => !searching || [v.reservation.title, v.reservation.contact_name, v.reservation.code].some((s) => typeof s === 'string' && foldText(s).includes(query)))
-      .sort((a, b) => (dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
+      .sort((a, b) => (!searching && filter === 'realizadas' ? -1 : 1) * ((dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity)) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
     searchScope.textContent = searching ? `Buscando en todas las reservas: ${plural(visible.length, 'resultado', 'resultados')}.` : '';
     count.textContent = String(visible.length);
     trash.hidden = deleted.length === 0;
