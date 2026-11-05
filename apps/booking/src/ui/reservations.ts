@@ -60,10 +60,12 @@ export function requestNewReservation(start: string, end: string): void { reques
 
 function toFields(values: FormValues): Record<string, unknown> {
   const guests = values.expected_guests.trim();
+  // Sin campo «Estado» (FB_2026_095): nace en pre-reserva; si aún faltan entrada, salida o personas, en estudio, que no las pide.
+  const held = { start_date: values.start_date || null, end_date: values.end_date || null, expected_guests: guests === '' ? null : Number(guests) };
   return {
     title: values.title.trim(),
     event_type: values.event_type,
-    status: values.status,
+    status: canHoldStatus(held as Parameters<typeof canHoldStatus>[0], 'pre_reservada') ? 'pre_reservada' : 'en_estudio',
     start_date: values.start_date || null,
     end_date: values.end_date || null,
     expected_guests: guests === '' ? null : Number(guests),
@@ -326,8 +328,6 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
 
     const title = input('resTitle', 'text', initial.title, { maxlength: 200, required: true });
     const type = select('resType', EVENT_TYPES.map((t) => [t, EVENT_TYPE_LABELS[t]]), initial.event_type);
-    // «Confirmada» y posteriores solo se alcanzan confirmando desde la ficha (se crea el evento operativo).
-    const status = select('resStatus', (['en_estudio', 'negociacion', 'pre_reservada'] as const).map((s): [string, string] => [s, statusLabel(s)]), initial.status);
     const start = input('resStart', 'date', initial.start_date);
     const end = input('resEnd', 'date', initial.end_date);
     const guests = input('resGuests', 'number', initial.expected_guests, { min: 0, step: 1, inputmode: 'numeric' });
@@ -345,7 +345,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', 'data-feedback-id': 'booking.reservas.alta.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
 
     function current(): FormValues {
-      return { title: title.value, event_type: type.value, status: status.value, start_date: start.value, end_date: end.value, expected_guests: guests.value, contact_name: contact.value, contact_phone: phone.value,
+      return { title: title.value, event_type: type.value, status: initial.status, start_date: start.value, end_date: end.value, expected_guests: guests.value, contact_name: contact.value, contact_phone: phone.value,
         lodging_pay_mode: payMode.value, lodging_hold_hours: holdHours.value };
     }
     function dirty(): boolean {
@@ -402,7 +402,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
       title: 'Nueva reserva',
       body: el('form', { id: 'reservationForm', 'data-feedback-id': 'booking.reservas.alta', 'data-feedback-label': 'Nueva reserva', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
         field('Nombre del grupo o evento', title, 'nombre'),
-        el('div', { class: 'row2' }, field('Tipo', type, 'tipo'), field('Estado', status, 'estado')),
+        field('Tipo', type, 'tipo'),
         lodgingRow,
         el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
         field('Personas previstas', guests, 'personas'),
