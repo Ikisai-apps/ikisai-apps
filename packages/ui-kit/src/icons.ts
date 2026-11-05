@@ -85,9 +85,48 @@ const ICONS: Record<string, string> = {
   drumstick: '<path d="M18.2 4.3a5.4 5.4 0 0 1 1.5 7.4c-1.6 2.5-4.4 3-6.6 2.5l-4.4 4.4"/><path d="M18.2 4.3a5.4 5.4 0 0 0-7.4 1.5c-1.4 2.2-1 4.6.3 6.3l-4.4 4.4"/><circle cx="5.2" cy="18.8" r="1.7"/><circle cx="7.4" cy="20.6" r="1.4"/><circle cx="3.6" cy="16.6" r="1.4"/>',
   chefHat: '<path d="M6 13.5a4 4 0 0 1 1.2-7.8 5 5 0 0 1 9.6 0A4 4 0 0 1 18 13.5"/><path d="M7 13.5h10V19H7z"/><path d="M7 16.3h10"/>',
   fish: '<path d="M2.5 12c2.6-3.6 6.2-5.5 10-5.5 2.4 0 4.4.9 5.9 2.3L21.5 6v12l-3.1-2.8c-1.5 1.4-3.5 2.3-5.9 2.3-3.8 0-7.4-1.9-10-5.5z"/><circle cx="7.5" cy="11" r=".9"/><path d="M12.5 9.5c.8.7 1.2 1.5 1.2 2.5s-.4 1.8-1.2 2.5"/>',
+  // C-06: artículos por oficio (Recursos, `resources.items.icon`). Las claves que se guardan van en ITEM_ICONS.
+  machine: '<rect x="3" y="8" width="14" height="9" rx="1.5"/><path d="M17 11h2.5l1.5 3v3h-4"/><circle cx="7" cy="19" r="1.8"/><circle cx="15" cy="19" r="1.8"/><path d="M6 8V5h5v3"/>',
+  wrench: '<path d="M14.5 4.5a4.5 4.5 0 0 0-5.6 5.6L3.5 15.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.6-5.6l-2.7 2.7-2.5-.5-.5-2.5z"/>',
+  faucet: '<path d="M4 9h9a3 3 0 0 1 3 3v1"/><path d="M4 7v4"/><path d="M8 9V6h3v3"/><path d="M6.5 6h5"/><path d="M16 16c0 1-.7 2-1.5 2S13 17 13 16s1.5-3 1.5-3S16 15 16 16z"/>',
+  pipe: '<path d="M3 8h8a3 3 0 0 1 3 3v10"/><path d="M3 12h6a1 1 0 0 1 1 1v8"/><path d="M3 6v8M8 21h8"/>',
+  bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2h5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/>',
+  plug: '<path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/>',
+  wateringCan: '<path d="M5 9h10v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M15 11l5-4"/><path d="M5 11H3.5a1.5 1.5 0 0 1 0-3H5"/><path d="M8 9a2 2 0 0 1 4 0"/>',
+  sprout: '<path d="M12 21v-9"/><path d="M12 12c0-3.5-2.5-6-6.5-6 0 4 2.5 6 6.5 6z"/><path d="M12 14c0-3 2.2-5.5 6.5-5.5 0 3.5-2.2 5.5-6.5 5.5z"/>',
+  hammer: '<path d="M14 6l4 4"/><path d="M11 5.5 15.5 3l4 4-2.5 4.5z"/><path d="M13 9.5 4.5 18a1.5 1.5 0 0 0 2 2.2l8.5-8.5"/>',
+  saw: '<path d="M3 16 15 4l5 5-12 12z"/><path d="M6 13l1.5 1.5M9 10l1.5 1.5M12 7l1.5 1.5"/><path d="M15 4l2-2 5 5-2 2"/>',
+  broom: '<path d="M20 4 12 12"/><path d="M12 12l-2-.5-6 6 4 4 6-6z"/><path d="M6.5 16.5 9 19M8.5 14.5 11 17"/>',
+  bucket: '<path d="M4 8h16l-1.6 11.3A2 2 0 0 1 16.4 21H7.6a2 2 0 0 1-2-1.7z"/><path d="M6 8a6 6 0 0 1 12 0"/>',
+  brush: '<path d="M14 3h6v6"/><path d="M20 3 11 12"/><path d="M11 12a3 3 0 0 0-4.2 0c-1.3 1.3-.8 3-2.8 4.5 2.5 1.5 5.5 1.5 7.4-.4a3 3 0 0 0-.4-4.1z"/>',
 };
 
 export type IconName = keyof typeof ICONS | (string & {});
+
+/**
+ * Iconos de artículo (C-06, VG 05-11): la clave es lo que guarda Recursos en `resources.items.icon` (minúsculas, sin
+ * tildes); `icon` es el nombre en el kit. `trade`: el oficio con el que suele ir (para ordenar la lista); sin él, general.
+ */
+export const ITEM_ICONS: ReadonlyArray<{ key: string; icon: string; label: string; trade?: string }> = [
+  { key: 'maquinaria', icon: 'machine', label: 'Maquinaria' },
+  { key: 'herramienta', icon: 'wrench', label: 'Herramienta' },
+  { key: 'grifo', icon: 'faucet', label: 'Grifo', trade: 'fontaneria' },
+  { key: 'tuberia', icon: 'pipe', label: 'Tubería', trade: 'fontaneria' },
+  { key: 'bombilla', icon: 'bulb', label: 'Bombilla', trade: 'electricidad' },
+  { key: 'enchufe', icon: 'plug', label: 'Enchufe', trade: 'electricidad' },
+  { key: 'regadera', icon: 'wateringCan', label: 'Regadera', trade: 'jardineria' },
+  { key: 'planta', icon: 'sprout', label: 'Planta', trade: 'jardineria' },
+  { key: 'martillo', icon: 'hammer', label: 'Martillo', trade: 'carpinteria' },
+  { key: 'sierra', icon: 'saw', label: 'Sierra', trade: 'carpinteria' },
+  { key: 'escoba', icon: 'broom', label: 'Escoba', trade: 'limpieza' },
+  { key: 'cubo', icon: 'bucket', label: 'Cubo', trade: 'limpieza' },
+  { key: 'brocha', icon: 'brush', label: 'Brocha', trade: 'pintura' },
+];
+
+/** Nombre del icono del kit para una clave guardada (`resources.items.icon`); `null` si no es del juego. */
+export function itemIcon(key: string | null | undefined): string | null {
+  return ITEM_ICONS.find((i) => i.key === key)?.icon ?? null;
+}
 
 /** Añade o sustituye iconos (las apps registran los suyos al arrancar). */
 export function registerIcons(extra: Record<string, string>): void {
