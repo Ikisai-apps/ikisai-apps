@@ -480,7 +480,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
           // El nombre corto solo en el primer día de cada tramo (inicio o principio de semana), no repetido cortado.
           return el('button', {
             type: 'button',
-            class: `cal-event${event.start === day ? ' starts' : ''}${(event.end ?? event.start) === day ? ' ends' : ''}${layer?.style && layer.style !== 'solid' ? ` ${layer.style}` : ''}`,
+            class: `cal-event${event.start === day ? ' starts' : ''}${(event.end ?? event.start) === day ? ' ends' : ''}${(event.end ?? event.start) === event.start ? ' single' : ''}${layer?.style && layer.style !== 'solid' ? ` ${layer.style}` : ''}`,
             style: color ? `--event-color:${color}` : null,
             dataset: { eventId: event.id, status: event.status ?? '', abbr: event.abbr ?? '', ...(event.layer ? { layer: event.layer } : {}) },
             tabindex: '-1',

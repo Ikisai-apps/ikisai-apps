@@ -286,6 +286,10 @@
 .cal-event.starts{margin-left:0;border-radius:4px 0 0 4px}
 .cal-event.ends{margin-right:0;border-radius:0 4px 4px 0}
 .cal-event.starts.ends{border-radius:4px}
+/* B-34: un día sin salida (reserva de un día): un punto delante; en el mes del móvil, solo el punto. */
+.cal-event.single{display:flex;align-items:center;gap:4px;border-left:0;border-radius:999px;padding-left:4px}
+.cal-event.single::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:var(--event-color)}
+@media (max-width:719px){.calendar[data-view="month"] .cal-event.single{width:12px;height:12px;padding:2px;margin:1px auto;background:transparent;justify-content:center}}
 .cal-event:not(.starts){border-left-color:transparent}
 .cal-event:hover{filter:brightness(.97)}
 .cal-event-text{display:block;overflow:hidden;text-overflow:ellipsis}
