@@ -24,7 +24,7 @@ const cartaImages = new Map<string, string>();
 
 /** Lee las líneas de la carta: receta → clave de su imagen. Lo llama el recetario al cargar, antes de pintar. */
 export async function loadCartaImages(client: SyncClient): Promise<void> {
-  const lines = (await client.list(T.cartaLines)) as Array<{ recipe_id: string | null; image_key: string | null; deleted_at?: string | null }>;
+  const lines = (await client.list(T.cartaLines)) as unknown as Array<{ recipe_id: string | null; image_key: string | null; deleted_at?: string | null }>;
   cartaImages.clear();
   for (const l of lines) if (!l.deleted_at && l.recipe_id && l.image_key && !cartaImages.has(l.recipe_id)) cartaImages.set(l.recipe_id, l.image_key);
 }

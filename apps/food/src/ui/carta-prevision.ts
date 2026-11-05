@@ -89,6 +89,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
 
   /** Asistentes de la carta: los suyos o, si no, las personas del evento (puente entre «por persona» y «total»). */
   const attendance = () => cartaAttendance(menu, eventGuests);
+  const fresh = (l: Mirror<CartaLine>) => lines.find((x) => x.id === l.id) ?? l;
 
   function paintUnits(): void {
     if (!menu) return;
@@ -104,11 +105,13 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
       onchange: async () => {
         const value = guests.value.trim() === '' ? null : Number(guests.value);
         if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de personas.'); return; }
-        if (value === (current.expected_attendance ?? null)) return;
+        // Con el repintado aplazado (se está escribiendo), lo pintado puede ir por detrás: se usa lo último cargado.
+        const now = menu ?? current;
+        if (value === (now.expected_attendance ?? null)) return;
         const next = value ?? eventGuests ?? null;
-        const ops: RowOperation[] = [{ op: 'update', table: T.menus, id: current.id, expectedRevision: current.revision, fields: { expected_attendance: value } }];
+        const ops: RowOperation[] = [{ op: 'update', table: T.menus, id: now.id, expectedRevision: now.revision, fields: { expected_attendance: value } }];
         if (next !== null) {
-          for (const line of live) {
+          for (const line of live.map(fresh)) {
             if (line.per_person === null || line.per_person === undefined) continue;
             const units = unitsFromPerPerson(Number(line.per_person), next);
             if (units !== line.expected_units) ops.push({ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields: { expected_units: units } });
@@ -116,8 +119,10 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         }
         await usage.run('food.carta.prevision.asistentes', () => commit(client, ops));
       } }) as HTMLInputElement;
-    const row = (line: Mirror<CartaLine>) => {
-      const save = (fields: Record<string, unknown>) => usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields }]));
+    const row = (painted: Mirror<CartaLine>) => {
+      // La línea al día en cada cambio (el repintado puede estar aplazado): revisión y valores de lo último cargado.
+      let line = painted;
+      const save = (fields: Record<string, unknown>) => { line = fresh(painted); return usage.run('food.carta.prevision.unidades', () => commit(client, [{ op: 'update', table: T.cartaLines, id: line.id, expectedRevision: line.revision, fields }])); };
       const perPerson = el('input', { 'data-field-id': 'food.carta.prevision.por_persona', 'data-field-entity': 'food.carta_lines', 'data-field-prop': 'per_person', 'data-feedback-id': 'food.carta.prevision.por_persona', 'data-feedback-label': 'Consumo por persona', type: 'number', inputmode: 'decimal',
         min: '0', step: '0.01', disabled: !canWrite, id: `perperson-${line.id}`, 'aria-label': `Por persona de ${nameOf(line)}`, class: 'carta-units',
         value: line.per_person === null || line.per_person === undefined ? '' : String(Number(line.per_person)),
@@ -134,6 +139,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         onchange: async () => {
           const value = units.value.trim() === '' ? null : Number(units.value);
           if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de unidades.'); return; }
+          line = fresh(painted);
           if (value === (line.expected_units ?? null)) return;
           const people = attendance();
           await save(value !== null && people ? { expected_units: value, per_person: perPersonFromUnits(value, people) } : { expected_units: value });
@@ -145,6 +151,7 @@ export function mountPrevision({ client, menuId, host, canWrite, navigate }: Pre
         onchange: async () => {
           const value = capacity.value.trim() === '' ? null : Number(capacity.value);
           if (value !== null && (!Number.isSafeInteger(value) || value < 0)) { toast('Escribe un número entero de unidades.'); return; }
+          line = fresh(painted);
           if (value === (line.capacity_units ?? null)) return;
           await save({ capacity_units: value });
         } }) as HTMLInputElement;
