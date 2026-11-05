@@ -1719,6 +1719,10 @@ test('Subir varias (auditoría del 3T): cada archivo es una factura; los PDF con
     await sheet.locator('#batchStart').click();
     await expect(sheet.locator('#batchSummary')).toContainText('1 leída, 2 sin leer, 1 duplicada', { timeout: 60_000 });
     await expect(sheet.locator('#batchList')).toContainText('Duplicada');
+    // FB_2026_099: al terminar no queda un «Subir» en gris: «Subir más» activo y «Hecho»
+    await expect(sheet.locator('#batchStart')).toHaveText('Subir más');
+    await expect(sheet.locator('#batchStart')).toBeEnabled();
+    await expect(sheet.locator('#batchClose')).toHaveText('Hecho');
     await synced(page);
     await expect.poll(() => api.rows('invoices.invoices').length, { timeout: 20_000 }).toBe(before + 3);
     const read = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'LOTE-0001'));

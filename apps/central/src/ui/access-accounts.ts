@@ -376,7 +376,7 @@ export async function mountAccounts(body: HTMLElement, admin: AdminApi, client: 
     function appRow(app: CatalogApp): HTMLElement {
       const m = current(app.id);
       const roles = rolesFor(account, app.id);
-      const select = el('select', { id: `role-${app.id}`, 'aria-label': 'Acceso' },
+      const select = el('select', { id: `role-${app.id}`, 'data-field-id': 'central.accesos.account_role', 'data-field-entity': 'core.memberships', 'data-field-prop': 'role', 'aria-label': 'Acceso' },
         el('option', { value: '', selected: !m }, 'Sin acceso'),
         ...[...roles].reverse().map((r) => el('option', { value: r, selected: m?.role === r }, ROLE_LABELS[r])),
         // Un rol que no se da a mano (outsider, por el nivel de casa) se enseña igual, sin ofrecerlo a las demás.

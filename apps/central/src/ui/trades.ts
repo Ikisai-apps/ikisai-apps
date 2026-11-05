@@ -314,7 +314,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     let sheet: Sheet | null = null;
     const boxes = new Map<string, HTMLInputElement>();
     const rows = plan.map((n) => {
-      const box = el('input', { type: 'checkbox', id: `imp-${n.labelIds[0]}`, 'data-key': n.key, checked: !n.existingId && !n.archived, disabled: !!n.existingId }) as HTMLInputElement;
+      const box = el('input', { type: 'checkbox', id: `imp-${n.labelIds[0]}`, 'data-field-id': 'central.oficios.import_label', 'data-field-entity': 'central.trades', 'data-field-prop': 'source_label_id',  'data-key': n.key, checked: !n.existingId && !n.archived, disabled: !!n.existingId }) as HTMLInputElement;
       boxes.set(n.key, box);
       return el('label', { class: 'check importrow', style: `padding-left:${n.depth * 20}px`, 'data-feedback-id': 'central.oficios.importar.fila', 'data-feedback-label': 'Oficio que se importa' }, box,
         el('span', null, n.name),

@@ -17,7 +17,6 @@ import { estatePlanId, FLOOR_PLANS } from './bedMap.ts';
 type Row = SyncedRow & Record<string, any>;
 const DECOR = 'resources.decor_items';
 const ICONS = 'resources.decor_icons';
-const fileUrl = (id: string) => `/api/v1/resources/files/${id}`;
 
 /** Fila de `resources.decor_items` → la forma del dominio (con su revisión, para cambiarla). */
 export function decorRowOf(r: Row): montage.DecorRow & { revision: number } {
@@ -73,21 +72,32 @@ export function createMontage(o: MontageOptions): { element: HTMLElement; destro
     const [decorRows, iconRows, planRows] = await Promise.all([resources.list(DECOR), resources.list(ICONS), resources.list(FLOOR_PLANS)]).catch(() => [[], [], []] as SyncedRow[][]);
     if (destroyed) return;
     rows = live(decorRows).map(decorRowOf).filter((r) => r.layer === 'general' || r.eventId === eventId);
-    icons = new Map(live(iconRows).filter((i) => typeof i.file_id === 'string').map((i): [string, DecorIcon] => [i.id, { id: i.id, url: fileUrl(i.file_id), label: String(i.name ?? 'Objeto'), size: Number(i.default_size) === 4 ? 4 : 1 }]));
+    // los archivos de Recursos se piden con la sesión y devuelven un enlace firmado: se resuelven antes de pintar (como Central)
+    const iconRowsLive = live(iconRows).filter((i) => typeof i.file_id === 'string');
+    const urls = new Map<string, string>();
+    await Promise.all(iconRowsLive.map(async (i) => { try { urls.set(i.file_id, await resources.fileUrl(i.file_id)); } catch { /* sin red: sin icono */ } }));
+    if (destroyed) return;
+    icons = new Map(iconRowsLive.filter((i) => urls.has(i.file_id)).map((i): [string, DecorIcon] => [i.id, { id: i.id, url: urls.get(i.file_id)!, label: String(i.name ?? 'Objeto'), size: Number(i.default_size) === 4 ? 4 : 1 }]));
     const plans: FloorPlan[] = live(planRows).map((r) => ({ ...floorPlanFromRow(r), grid: r.grid ?? null }));
     const editing = canEdit();
-    note.textContent = editing
-      ? 'Cambia la decoración solo para este evento: pon, mueve, gira o quita objetos. Cada cambio es una tarea de «Montaje del evento» en Tasks.'
+    note.textContent = editing && !icons.size
+      ? 'Todavía no hay objetos de decoración (mesas, sillas, plantas…) para poner. Se suben en Central › Planos del centro › Colocar › Decoración; después, aquí: toca un edificio, luego una estancia, elige un objeto y tócala donde va.'
+      : editing
+      ? 'Toca un edificio y luego una estancia; elige un objeto y toca donde va. Mueve, gira o quita los que haya. Es solo para este evento, y cada cambio es una tarea de «Montaje del evento» en Tasks.'
       : o.editable ? 'La decoración de este evento. Se cambia desde el ordenador.' : 'La decoración de este evento.';
-    // sin planos (o sin acceso a Recursos) no hay nada que montar: la tarjeta no sale
-    element.hidden = !plans.length;
-    if (!plans.length) { map?.destroy(); map = null; mapEditing = null; replace(host); return; }
+    // sin planos (o sin acceso a Recursos) no hay nada que montar: la tarjeta sale igual y dice qué falta (VG, 28-10)
+    element.hidden = false;
+    if (!plans.length) {
+      map?.destroy(); map = null; mapEditing = null;
+      replace(host, el('p', { class: 'hint', id: 'montageNoPlans' }, 'Todavía no hay planos de la finca en Recursos, o tu cuenta no puede verlos. Se suben en Central › Planos del centro; después, aquí se pone la decoración del evento.'));
+      return;
+    }
     if (!map || mapEditing !== editing) {
       map?.destroy();
       const estate = estatePlanId(planRows);
       map = createSpaceMap({
         source, plans, mode: 'plan', drill: true, decor: items(), ...(estate ? { plan: estate } : {}),
-        label: 'Plano del montaje', feedbackId: 'booking.reserva.montaje.plano', planUrl: fileUrl,
+        label: 'Plano del montaje', feedbackId: 'booking.reserva.montaje.plano', planUrl: (fileId: string) => resources.fileUrl(fileId),
         ...(editing ? { decorEdit: { icons: [...icons.values()], onDecorChange: (change: DecorChange) => void save(change) } } : {}),
       });
       mapEditing = editing;

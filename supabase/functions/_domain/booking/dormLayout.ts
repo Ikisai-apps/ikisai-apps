@@ -41,10 +41,20 @@ export function validCell(value: unknown): value is Cell {
 }
 
 /** Por qué no cabe una cama ahí: `fuera`, `encima` (con la otra cama) o `null` si cabe. */
-export function placeProblem(grid: Grid, cells: ReadonlyMap<string, Cell>, id: string, cell: Cell, sizes?: Sizes): { reason: 'fuera' } | { reason: 'encima'; other: string } | null {
+/**
+ * ¿Qué impide poner la cama ahí? Con `stack`, dos camas que se pueden apilar (una litera doble: VG, 28-10) pueden ocupar
+ * exactamente el mismo sitio; solapar a medias sigue sin valer.
+ */
+export function placeProblem(grid: Grid, cells: ReadonlyMap<string, Cell>, id: string, cell: Cell, sizes?: Sizes, stack?: (a: string, b: string) => boolean): { reason: 'fuera' } | { reason: 'encima'; other: string } | null {
   const r = footprint(cell, sizes?.get(id));
   if (!inside(grid, r)) return { reason: 'fuera' };
-  for (const [other, c] of cells) if (other !== id && overlaps(r, footprint(c, sizes?.get(other)))) return { reason: 'encima', other };
+  for (const [other, c] of cells) {
+    if (other === id) continue;
+    const o = footprint(c, sizes?.get(other));
+    if (!overlaps(r, o)) continue;
+    if (stack?.(id, other) && r.x === o.x && r.y === o.y && r.w === o.w && r.h === o.h) continue;
+    return { reason: 'encima', other };
+  }
   return null;
 }
 
@@ -65,14 +75,14 @@ export function firstFree(grid: Grid, cells: ReadonlyMap<string, Cell>, id = '\0
  * La distribución que se pinta: la guardada si vale, y las camas sin sitio colocadas en el primer hueco. Sin
  * distribución guardada, 4 cuadrantes de ancho y el fondo justo. Devuelve también qué camas se han recolocado.
  */
-export function arrange(layout: unknown, beds: ReadonlyArray<{ id: string; cell?: unknown }>, sizes?: Sizes): { grid: Grid; cells: Map<string, Cell>; moved: string[] } {
+export function arrange(layout: unknown, beds: ReadonlyArray<{ id: string; cell?: unknown }>, sizes?: Sizes, stack?: (a: string, b: string) => boolean): { grid: Grid; cells: Map<string, Cell>; moved: string[] } {
   const grid: Grid = validGrid(layout) ? { cols: layout.cols, rows: layout.rows }
     : { cols: DEFAULT_COLS, rows: Math.min(GRID_LIMITS.maxRows, Math.max(GRID_LIMITS.minRows, Math.ceil(beds.length / Math.floor(DEFAULT_COLS / 2)))) };
   const cells = new Map<string, Cell>();
   const moved: string[] = [];
   const pending: string[] = [];
   for (const bed of beds) {
-    if (validCell(bed.cell) && !placeProblem(grid, cells, bed.id, bed.cell, sizes)) cells.set(bed.id, { x: bed.cell.x, y: bed.cell.y, rot: bed.cell.rot });
+    if (validCell(bed.cell) && !placeProblem(grid, cells, bed.id, bed.cell, sizes, stack)) cells.set(bed.id, { x: bed.cell.x, y: bed.cell.y, rot: bed.cell.rot });
     else pending.push(bed.id);
   }
   for (const id of pending) {

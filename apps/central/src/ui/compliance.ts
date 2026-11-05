@@ -354,7 +354,7 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
 // ---------------------------------------------------------------------------
 function personSelect(id: string, data: Data | null, selected: unknown): HTMLSelectElement {
   const people = (data?.people ?? []).filter((p) => p.active || p.id === selected).sort((a, b) => a.display_name.localeCompare(b.display_name, 'es'));
-  return el('select', { id, 'data-feedback-ignore': '' }, el('option', { value: '', selected: !selected }, 'Sin responsable'),
+  return el('select', { id, 'data-field-id': 'central.cumplimiento.responsible', 'data-field-entity': 'central.requirements', 'data-field-prop': 'responsible_person_id', 'data-feedback-ignore': '' }, el('option', { value: '', selected: !selected }, 'Sin responsable'),
     ...people.map((p) => el('option', { value: p.id, selected: p.id === selected }, p.display_name))) as HTMLSelectElement;
 }
 

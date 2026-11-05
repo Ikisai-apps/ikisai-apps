@@ -140,7 +140,7 @@ test('O4 conflicto disjunto: se fusiona solo', async ({ page, context }) => {
   await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   await openFicha(page);
   await offline(page, context);
-  await page.locator('#editReservation').click();
+  await page.locator('#reservationCover').click();
   await page.getByRole('dialog', { name: 'Editar reserva' }).getByLabel('Teléfono').fill('600 111 222');
   await page.locator('#saveRow').click();
   await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
@@ -159,7 +159,7 @@ test('O5 conflicto solapado: se resuelve con «Mantener la mía»', async ({ pag
   await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   await openFicha(page);
   await offline(page, context);
-  await page.locator('#editReservation').click();
+  await page.locator('#reservationCover').click();
   await page.getByRole('dialog', { name: 'Editar reserva' }).getByLabel('Personas previstas').fill('33');
   await page.locator('#saveRow').click();
   await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
@@ -228,7 +228,7 @@ test('O7 cerrar sesión borra huéspedes e importes del dispositivo', async ({ p
 
   await offline(page, context);
   await openFicha(page);
-  await page.locator('#editReservation').click();
+  await page.locator('#reservationCover').click();
   await page.getByRole('dialog', { name: 'Editar reserva' }).getByLabel('Teléfono').fill('600 333 444');
   await page.locator('#saveRow').click();
   await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');

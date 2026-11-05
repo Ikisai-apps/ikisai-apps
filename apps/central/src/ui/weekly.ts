@@ -161,7 +161,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
     const chosen = new Set(review.attendee_ids ?? []);
     const attendees = el('div', { class: 'chips', id: 'weeklyAttendees', role: 'group', 'aria-label': 'Quién estuvo', 'data-feedback-id': 'central.semana.asistentes', 'data-feedback-label': 'Quién estuvo' },
       ...(direction.length ? direction : people).slice(0, 40).map((p) => {
-        const box = el('input', { type: 'checkbox', value: p.id, checked: chosen.has(p.id), disabled: !prepares }) as HTMLInputElement;
+        const box = el('input', { type: 'checkbox', value: p.id, checked: chosen.has(p.id), 'data-field-id': 'central.semana.attendee', 'data-field-entity': 'central.weekly_reviews', 'data-field-prop': 'attendee_ids', disabled: !prepares }) as HTMLInputElement;
         return el('label', { class: 'check' }, box, el('span', null, p.display_name));
       }));
     const picked = () => [...attendees.querySelectorAll<HTMLInputElement>('input:checked')].map((b) => b.value);
@@ -191,7 +191,7 @@ export const mountWeekly: ViewMount = ({ main, client, usage }) => {
       lastRed = weeklySnapshot(d.items);
       replace(host, lastRed.length ? el('ul', { class: 'list' }, ...lastRed.map((i) => {
         const before = previousNote(reviews, items, review.week, i.kpi);
-        const note = el('textarea', { rows: 2, maxlength: 300, 'aria-label': `Nota: ${i.label}`, disabled: !prepares, 'data-kpi': i.kpi }, notes.get(i.kpi) ?? '') as HTMLTextAreaElement;
+        const note = el('textarea', { rows: 2, maxlength: 300, 'data-field-id': 'central.semana.kpi_note', 'data-field-entity': 'central.weekly_review_items', 'data-field-prop': 'note', 'aria-label': `Nota: ${i.label}`, disabled: !prepares, 'data-kpi': i.kpi }, notes.get(i.kpi) ?? '') as HTMLTextAreaElement;
         note.addEventListener('input', () => notes.set(i.kpi, note.value));
         return el('li', { class: `agentrow ${i.state === 'critico' ? 'alert' : 'warn'}`, 'data-kpi': i.kpi },
           el('div', null,

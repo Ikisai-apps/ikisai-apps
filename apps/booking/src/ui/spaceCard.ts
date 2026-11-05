@@ -12,7 +12,7 @@ import { createSyncClient, type SyncClient, type SyncedRow } from '@ikisai/sync-
 import { createSpaceMap, createSyncSpaceSource, el, plural, renderMedal, replace, type FloorPlan, type SpaceMap, type SpaceRow } from '@ikisai/ui-kit';
 import { extraCapacity, spaceCapacity } from '@ikisai/domain-booking';
 import { label } from '../app/labels.ts';
-import { bookingMapRows, estatePlanId, FLOOR_PLANS, staticSource } from './bedMap.ts';
+import { bookingMapRows, bookingPlans, estatePlanId, FLOOR_PLANS, staticSource } from './bedMap.ts';
 import { createDormitorio } from './dormitorio.ts';
 
 type Row = SyncedRow & Record<string, any>;
@@ -76,7 +76,7 @@ export function createSpaceCard(o: SpaceCardOptions) {
         estate = estatePlanId(await resources.client.list(FLOOR_PLANS));
       } catch { /* sin Recursos: la lista equivalente */ }
     }
-    return { rows: bookingMapRows(resourceRows, data.spaces, data.beds), plans, estate };
+    return { rows: bookingMapRows(resourceRows, data.spaces, data.beds), plans: bookingPlans(plans, data.spaces), estate };
   }
 
   /** Recursos solo se abre si algo está enlazado (o con los espacios en Recursos): sin enlaces no hay formas que leer. */
@@ -104,7 +104,7 @@ export function createSpaceCard(o: SpaceCardOptions) {
     if (!map) {
       map = createSpaceMap({
         source, plans, label: 'Plano de los espacios', feedbackId: 'booking.espacios.plano', drill: true, showDecor: false, ...(estate ? { plan: estate } : {}),
-        planUrl: (fileId) => `/api/v1/resources/files/${fileId}`,
+        planUrl: (fileId) => resources ? resources.client.fileUrl(fileId) : Promise.reject(new Error("sin Recursos")),
         layer: (s) => {
           if (s.kind !== 'cama') return null;
           const bed = data.beds.find((b) => b.id === s.id);
