@@ -540,6 +540,7 @@ export const EN: Dictionary = {
   'Programa': 'Programme',
   'Menú': 'Menu',
   'Plano de Ikisai': 'Ikisai map',
+  'Abrir el plano (PDF)': 'Open the map (PDF)',
   'Mensaje de bienvenida': 'Welcome message',
   'Lo verán al abrir su enlace. Opcional.': 'They will see it when they open their link. Optional.',
   'Idioma del mensaje': 'Message language',
