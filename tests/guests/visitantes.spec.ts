@@ -53,11 +53,13 @@ async function placeBeds(d: { room: string }): Promise<{ ids: Record<string, str
   const square = (x: number, y: number, size: number): Array<[number, number]> => [[x, y], [x + size, y], [x + size, y + size], [x, y + size]];
   const roomName = `Plano de ${d.room}`;
   const { ids } = await api.floorPlan([
-    { name: roomName, kind: 'habitacion', points: square(0.1, 0.1, 0.6) },
+    { name: roomName, kind: 'habitacion', points: square(0.1, 0.1, 0.6), refs: [`booking.space:${beds[0]!.space_id}`] },
     ...beds.map((b) => ({ name: b.label, kind: 'cama', parent: roomName, refs: [`booking.bed:${b.id}`], attributes: { bed_kind: 'individual' } })),
   ]);
   await api.bedLayout(beds[0]!.space_id, { cols: 4, rows: 4 }, beds.map((b, i) => [b.id, { x: (i % 2) * 2, y: Math.floor(i / 2) * 2, rot: 0 }] as [string, { x: number; y: number; rot: 0 }]));
   for (const b of beds) await db.query('update booking.beds set resource_id = $1 where id = $2', [ids[b.label], b.id]);
+  // La habitación de Booking, con su pareja en Recursos: la cama de Recursos tiene que colgar de ella (check_resource_refs).
+  await db.query('update booking.spaces set resource_id = $1 where id = $2', [ids[roomName], beds[0]!.space_id]);
   return { ids, byLabel };
 }
 
