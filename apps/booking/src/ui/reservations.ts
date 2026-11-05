@@ -342,7 +342,12 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const holdHours = input('resHoldHours', 'number', initial.lodging_hold_hours, { min: 1, max: 168, step: 1, inputmode: 'numeric' });
     const holdField = field('Horas que se guarda la plaza', holdHours, 'horas_plaza');
     const lodgingRow = el('div', { class: 'row2', id: 'resLodgingPay' }, field('Noches por el QR', payMode, 'pago_noches'), holdField);
-    const syncLodging = () => { lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold'; };
+    // En jornadas abiertas son asistentes, no huéspedes con lista (B-41, VG 05-11)
+    const guestsField = field('Personas previstas', guests, 'personas');
+    const syncLodging = () => {
+      lodgingRow.hidden = type.value !== 'jornadas_abiertas'; holdField.hidden = payMode.value !== 'hold';
+      guestsField.querySelector('span')!.textContent = type.value === 'jornadas_abiertas' ? 'Asistentes previstos' : 'Personas previstas';
+    };
     syncLodging();
     const error = el('p', { class: 'formerror', id: 'reservationError', role: 'alert', hidden: true });
     const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', 'data-feedback-id': 'booking.reservas.alta.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
@@ -408,7 +413,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         field('Tipo', type, 'tipo'),
         lodgingRow,
         el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
-        field('Personas previstas', guests, 'personas'),
+        guestsField,
         el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto')), fbIgnore(field('Teléfono', phone, 'telefono'))),
         error,
       ),
