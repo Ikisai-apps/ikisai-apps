@@ -14,6 +14,12 @@
    Prefijo de clases: `tk5-`. */
 const TK5_SYSTEM_NAMES=new Set(['persona','personas','grupo: persona','tipo: accion','oficio','oficios','zona: espacio','fase','etapa','edificio','espacio']);
 const tk5Norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/\p{M}/gu,'').trim();
+/* Marcas de feedback de cada apartado, literales (feedback-ids.test). */
+const TK5_MARKS={
+  quien:'data-feedback-id="tasks.ficha.quien" data-feedback-label="Quién"',
+  espacio:'data-feedback-id="tasks.ficha.espacio" data-feedback-label="Espacio"',
+  oficio:'data-feedback-id="tasks.ficha.oficio" data-feedback-label="Oficio"',
+};
 let tk5Open=null; // el apartado desplegado ('who' | 'space' | 'trade'), mientras la ficha siga abierta
 function tk5Loc(id){return typeof taskLocation==='function'?taskLocation(id):null}
 function tk5Can(){return canEdit()&&Sync.actor?.role!=='outsider'}
@@ -109,7 +115,7 @@ function tk5RemoveTag(id,labelId){const loc=tk5Loc(id);if(!loc)return;loc.t.labe
 /* --- El bloque -------------------------------------------------------------------------------------------------------- */
 function tk5Card(key,title,hint,inner,{wide=false,tap=null,open=false}={}){
   return `<section class="tk5-card ${wide?'wide':''}" data-tk5="${key}" aria-labelledby="tk5h-${key}"><h3 id="tk5h-${key}">${esc(title)}${hint?` <span class="tk5-hint">${esc(hint)}</span>`:''}</h3>
-    ${tap?`<button type="button" class="tk5-tap" data-tk5-tap="${key}" aria-expanded="${open}" ${tk5Can()?'':'disabled'} data-feedback-id="tasks.ficha.${key}" data-feedback-label="${esc(title)}"><span class="tk5-grow">${tap}</span><span class="tk5-chev" aria-hidden="true">${open?'⌃':'⌄'}</span></button>`:''}
+    ${tap?`<button type="button" class="tk5-tap" data-tk5-tap="${key}" aria-expanded="${open}" ${tk5Can()?'':'disabled'} ${TK5_MARKS[key]||''}><span class="tk5-grow">${tap}</span><span class="tk5-chev" aria-hidden="true">${open?'⌃':'⌄'}</span></button>`:''}
     ${inner}</section>`}
 function tk5Html(id){const loc=tk5Loc(id);if(!loc)return '';const t=loc.t,can=tk5Can(),cards=[];
   if(peopleMode())cards.push(tk5Card('quien','Quién',can?'toca para cambiar':'',tk5Open==='who'?`<div class="tk5-panel">${tk5WhoPanel(id)}</div>`:'',{tap:tk5WhoHtml(t),open:tk5Open==='who'}));
@@ -130,8 +136,7 @@ function tk5Mount(id){const s=document.getElementById('sheet'),portada=s?.queryS
   // Fase: el segmento de fases-ui.js, dentro de su tarjeta.
   const phase=s.querySelector('.tkph-field'),phHost=node.querySelector('.tk5-phasehost');if(phase&&phHost){phHost.append(phase);phase.querySelector('.tkph-label')?.remove()}
   const pencil=node.querySelector('#tk5PhaseEdit');if(pencil){pencil.innerHTML=IkisaiKit.icon?IkisaiKit.icon('edit',18).outerHTML:'✎';pencil.onclick=()=>tk5PhasesSheet(id)}
-  // Las baldosas «Quién» y «Etiquetas» se esconden: lo suyo está aquí.
-  for(const k of ['quien','etiquetas'])tiles?.querySelectorAll(`[data-tkf-tile="${k}"]`).forEach(b=>b.hidden=true);
+  // Las baldosas «Quién» y «Etiquetas» se esconden (ficha-cinco-ui.css, con el bloque presente): lo suyo está aquí.
   node.querySelectorAll('[data-tk5-tap]').forEach(b=>b.onclick=()=>{const k={quien:'who',espacio:'space',oficio:'trade'}[b.dataset.tk5Tap];if(!tk5Can()&&k==='who')return;tk5Open=tk5Open===k?null:k;tk5Mount(id)});
   node.querySelectorAll('[data-tk5-person]').forEach(b=>b.onclick=()=>{if(tk5Can())tk5ToggleWho(id,b.dataset.tk5Person)});
   const sp=node.querySelector('#tk5SpaceHost');if(sp)tk5MountSpace(id,sp);

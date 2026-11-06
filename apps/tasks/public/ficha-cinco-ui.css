@@ -1,5 +1,8 @@
 /* Ficha de la tarea · cinco apartados en su sitio (ficha-cinco-ui.js). */
 .tk5{display:grid;gap:10px;margin:10px 0 12px}
+/* Con los cinco apartados, las baldosas «Quién» y «Etiquetas» (la página con todos los campos) no se ven; la portada las
+   vuelve a pintar a menudo, así que se esconden aquí y no en el nodo. */
+.tkf-portada:has(#tk5) .tkf-tile[data-tkf-tile="quien"],.tkf-portada:has(#tk5) .tkf-tile[data-tkf-tile="etiquetas"]{display:none}
 @media (min-width:720px){.tk5{grid-template-columns:1fr 1fr}.tk5 .tk5-card.wide{grid-column:1/-1}}
 .tk5-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:0}
 .tk5-card h3{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 6px;font:600 12px/1.3 var(--sans,system-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
