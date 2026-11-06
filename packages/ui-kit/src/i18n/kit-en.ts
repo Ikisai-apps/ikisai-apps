@@ -1040,6 +1040,8 @@ export const KIT_EN: Dictionary = {
   'Elige una imagen para subirla.': 'Choose an image to upload.',
   'Elegir en el árbol': 'Choose from the tree',
   'Cuadrante {x}, {y}': 'Square {x}, {y}',
+  'Toca una estancia arriba para ver sus cuadrantes.': 'Tap a room above to see its squares.',
+  'Cuadrantes de {name}': 'Squares of {name}',
   '1 m²: {x}, {y}': '1 m²: {x}, {y}',
   'Columna {x}, fila {y}': 'Column {x}, row {y}',
   'Cuadrante: columna {x}, fila {y}': 'Square: column {x}, row {y}',

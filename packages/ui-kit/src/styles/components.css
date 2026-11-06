@@ -2346,6 +2346,9 @@ button.cal-sheet-event{cursor:pointer}
 /* La ruta se lee como tal: «Alturas › Altura 3 › Interior › Albergue › Hab 1 › Cuadrante 2, 3». */
 .place-crumb+.place-crumb::before{content:'›';margin-inline-end:8px;color:var(--muted);pointer-events:none}
 .place-here{font-weight:700}
+/* `layout: 'stacked'`: el plano arriba y, debajo, los cuadrantes de la estancia elegida. */
+.place-below{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.place-below-title{margin:0 0 4px;font-size:var(--text-sm)}
 .place-clear{margin-left:auto}
 .place-chips{display:flex;flex-wrap:wrap;gap:8px}
 .place-chip{min-height:var(--tap)}
