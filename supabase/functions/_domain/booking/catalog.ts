@@ -66,6 +66,8 @@ export const READS = {
   flowGuestsOf: 'booking.flow_guests_of',
   /** 0492: «Listo para Flow» en la ficha ({reservation_id}): la primera condición de flow_guests_of que falla. */
   flowReadiness: 'booking.flow_readiness',
+  /** 1432: la marca de un espacio en un evento, para pedir a Central el uso general ({id}). */
+  eventSpaceForUse: 'booking.event_space_for_use',
 } as const;
 
 export const PROCEDURES = {
