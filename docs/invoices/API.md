@@ -779,6 +779,26 @@ Lectura de app, no de portal: `core.allow_read('booking', 'invoices.reservation_
 - Una reserva sin facturas no sale. Como mucho 500 ids por llamada; si `reservation_ids` no es una lista o lleva un id inválido: `INVALID_OPERATION` (422).
 - Solo importes y fecha: ni clientes, ni números de factura, ni datos internos.
 
+### 7.10 Proveedores para Food (migración 0267, decisión de VG Q3 d, 06-11-2026)
+
+Food elige el proveedor habitual de cada ingrediente y el de cada línea de compra entre los de Finance. Si no existe, lo da de alta. Food guarda el id como referencia lógica, sin FK.
+
+**Lectura:** `invoices.food_supplier_projection`, con `core.allow_read('food', …, 'view')`.
+- Columnas: `id`, `name`, `tax_id`, `active`, `revision`.
+- `active: false` significa que está en la papelera de Finance. Food no lo ofrece para líneas nuevas, pero sigue enseñando su nombre en las antiguas.
+
+**Alta:** el servidor de Food llama a la ruta de worker `POST /api/v1/worker/suppliers` con `X-Ikisai-Worker-Key` y `X-Ikisai-Caller: food`. El cuerpo es `{ name, tax_id? }`.
+- **Identidad:** Finance lo escribe como «Finance (sistema)» con `invoices.register_supplier`, una acción de sistema. Las notas dicen «Alta desde Food.».
+- **Respuesta:** `{ id, name, tax_id, active, status: 'created' | 'existing', matched_by: 'tax_id' | 'name' | null }`.
+- **Sin duplicados.** Antes de crear, busca un proveedor vivo con el mismo NIF y, si no lo hay, con el mismo nombre normalizado o alias (sin tildes, mayúsculas ni signos). Si lo encuentra, lo devuelve sin tocarlo. Un nombre igual con otro NIF es otro proveedor. Uno en la papelera no cuenta.
+- **NIF:** es opcional.
+  - Un NIF español (con o sin `ES` delante) se comprueba con su dígito de control y se guarda sin `ES`.
+  - Un NIF-IVA de otro país pasa tal cual.
+  - Si no es válido, la respuesta es `TAX_ID_INVALID` (422).
+- **Errores:**
+  - otra app, `CALLER_REJECTED` (403);
+  - sin nombre, `INVALID_ARGS` (422).
+
 ## 8. Archivos
 
 **Campos de archivo y recogida de huérfanos (contrato §3.9, migración 0217):** cada columna con `file_id` está declarada con su retención. Los documentos de facturas recibidas y emitidas son `legal` y nunca se borran solos. Las extracciones y el texto leído son `operational`, porque apuntan al mismo documento, que ya es `legal`. El ZIP de la gestoría es `temporary`, porque se regenera. La recogida está activada para Invoices: un huérfano espera 30 días.
