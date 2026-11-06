@@ -6,6 +6,7 @@ import { createGuide } from '../guide/guide.ts';
 import { flowGuideSource, type GuideApiClient, type GuideSource } from '../guide/flow-source.ts';
 import { el, replace } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
+import { canRebuild, rebuildDeviceData, type RebuildClient } from './rebuild-data.ts';
 import { createStatusBar, statusBanners, type StatusBannersOptions, type StatusBarOptions } from '../status/status-bar.ts';
 import { kt } from '../i18n/i18n.ts';
 import { installKeyboardInsets } from '../overlay/keyboard.ts';
@@ -47,6 +48,8 @@ export interface AppShellOptions {
   onLogout?: () => void | Promise<void>;
   /** Texto del botón de salir (menú e icono), p. ej. «Salir (rehace los datos de este dispositivo)». Por defecto «Cerrar sesión». */
   logoutLabel?: string;
+  /** `false` quita «Rehacer datos de este dispositivo» del menú (sale solo si `status.client` sabe rehacer su espejo). */
+  rebuildData?: boolean;
   /** El botón de salir también en el móvil (portales). Por defecto, solo en el ordenador. */
   logoutOnMobile?: boolean;
   /** Herramientas extra en la cabecera (tema, alias, menú). */
@@ -158,7 +161,8 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     ? el('button', { class: `iconbtn${options.logoutOnMobile ? '' : ' desktop-only'}`, type: 'button', id: 'logoutButton', 'aria-label': options.logoutLabel || kt('Cerrar sesión'), title: options.logoutLabel || kt('Cerrar sesión'), onclick: () => void options.onLogout?.() }, icon('logout'))
     : null;
   const menu: AppMenu | null = options.menu
-    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, logoutLabel: options.logoutLabel, onSync: options.status?.onSync, navigate: (hash) => navigate(hash) })
+    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, logoutLabel: options.logoutLabel, onSync: options.status?.onSync,
+      ...(options.rebuildData !== false && canRebuild(options.status?.client) ? { onRebuild: () => rebuildDeviceData(options.status!.client as unknown as RebuildClient) } : {}), navigate: (hash) => navigate(hash) })
     : null;
   if (menu && options.status?.client) {
     menu.setStatus(options.status.client.status());

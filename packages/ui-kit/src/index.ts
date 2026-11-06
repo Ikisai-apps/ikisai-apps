@@ -135,3 +135,4 @@ export {
 export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine, type MoneyMove } from './cards/money.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';
 export { createPlacePicker, PLACE_PICKER_MARKS, type PlaceCell, type PlacePicker, type PlacePickerOptions, type PlaceValue } from './spaces/place-picker.ts';
+export { rebuildDeviceData, canRebuild, type RebuildClient } from './shell/rebuild-data.ts';
