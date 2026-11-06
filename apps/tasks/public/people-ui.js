@@ -316,6 +316,6 @@ const saveBeforeDefaultOwner=save;
 save=function(...args){try{const me=typeof myPerson==='function'?myPerson():null;
     if(me&&Sync.core?.peopleSource?.()==='central'){const known=new Set((Sync.core.data?.['tasks.tasks']||[]).map(r=>r.id));
       for(const a of state.tabs||[])for(const p of a.projects||[])for(const t of p.tasks||[])
-        if(!known.has(t.id)&&!t.deleted&&t.ownerPerson===undefined&&!t.owner)t.ownerPerson=me.id}}
+        if(!known.has(t.id)&&!t.deleted&&t.ownerPerson===undefined&&!t.owner)t.ownerPerson=me.person_id}}
   catch(e){console.error(e)}
   return saveBeforeDefaultOwner(...args)};
