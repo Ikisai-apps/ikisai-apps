@@ -2237,4 +2237,8 @@ Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no gua
   - Un espacio se marca una vez por evento; la marca no cambia de espacio (se quita y se pone otra). Un espacio borrado no se marca: 422 `INVALID_FIELDS`.
   - La escriben el editor y el owner desde «Espacios de este evento», en Operación.
 - **Usos (migración 1431):** el espejo copia `resources.spaces.uses` en `booking.spaces.uses`, también lo que ya existía en la primera pasada del tick. Montaje, árbol de Espacios y asignación enseñan los espacios con uso «alojamiento», los que tienen camas y los marcados en el evento (`apps/booking/src/app/lodgingSpaces.ts`).
-- **Después (detrás de Central #1311):** la casilla «También para todos los eventos» pide a Central `central.add_space_use`.
+- **«También para todos los eventos» (migración 1432):** debajo de cada marca de un espacio que viene de Recursos.
+  - Con confirmación, la app llama a `POST /event-spaces/:id/all-events` (`:id`, la marca; editor u owner).
+  - booking-api lee la marca (`booking.event_space_for_use`) y pide a Central `POST worker/space-use` con la clave de worker y `X-Ikisai-Caller: booking`: `{space_id: <id de Recursos>, use: 'alojamiento', source_ref: 'booking:reservation:<uuid>', requested_by}`. Devuelve `{uses, added}`.
+  - Booking no escribe en Recursos; el uso llega después por el espejo. Si ya es de alojamiento, no se pide (`added: false`).
+  - Sin `resource_id`, 409 `NOT_IN_RESOURCES`. Si Central falla (502, 503, 404 o 422), la marca del evento se queda y la app avisa.
