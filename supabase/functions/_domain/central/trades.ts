@@ -146,3 +146,13 @@ export function effectiveLevels(trades: TradeNode[], capabilities: TradeCapabili
   }
   return out;
 }
+
+/**
+ * Icono de cada oficio (VG, 06-11; `createTradePicker` del kit): claves de `TRADE_ICONS` del kit. Solo en los de arriba; las
+ * especialidades heredan el de su madre. Sin icono, el kit lo deduce del nombre («Fontanería» → fontaneria).
+ */
+export const TRADE_ICON_KEYS = ['fontaneria', 'electricidad', 'pintura', 'jardineria', 'limpieza', 'cocina', 'albanileria', 'carpinteria', 'cerrajeria', 'climatizacion', 'piscina', 'mantenimiento'] as const;
+export const TRADE_ICON_LABELS: Record<typeof TRADE_ICON_KEYS[number], string> = {
+  fontaneria: 'Fontanería', electricidad: 'Electricidad', pintura: 'Pintura', jardineria: 'Jardinería', limpieza: 'Limpieza', cocina: 'Cocina',
+  albanileria: 'Albañilería', carpinteria: 'Carpintería', cerrajeria: 'Cerrajería', climatizacion: 'Climatización', piscina: 'Piscina', mantenimiento: 'Mantenimiento',
+};

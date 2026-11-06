@@ -4,6 +4,7 @@ import { confirmDialog, el, icon, openSheet, renderGroups, renderLevelStar, repl
 /** El oficio principal de una ruta («Mantenimiento › Fontanería» → «Mantenimiento»). */
 const path0 = (path: string) => path.split(' › ')[0]!;
 import {
+  TRADE_ICON_KEYS, TRADE_ICON_LABELS,
   AVAILABILITY_LABELS, TRADE_LEVEL_LABELS, TRADE_MAX_DEPTH, canSeeReserved, effectiveLevels, inheritedLevel, planTradeImport, validateOperations, type ActionLabel, type EffectiveLevel,
 } from '@ikisai/domain-central';
 import { T, describeError, type Mirror } from '../app/client.ts';
@@ -14,7 +15,7 @@ import { fbMark } from './feedback.ts';
 export { effectiveLevels, inheritedLevel };
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null };
-export type Trade = Mirror<Base & { parent_id: string | null; name: string; position: number; active: boolean; notes: string | null; source_label_id: string | null }>;
+export type Trade = Mirror<Base & { parent_id: string | null; name: string; position: number; active: boolean; notes: string | null; source_label_id: string | null; icon?: string | null }>;
 export type PersonTrade = Mirror<Base & { person_id: string; trade_id: string; level: number; note: string | null }>;
 
 /** Árbol de oficios aplanado en orden (madre antes que hijas), con su profundidad (0 = raíz) y su ruta «Fontanería › ACS». */
@@ -246,8 +247,17 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     if (parentId) parent.value = parentId;
     const notes = el('textarea', { id: 'tr-notes', 'data-field-id': 'central.oficios.notes', 'data-field-entity': 'central.trades', 'data-field-prop': 'notes', rows: '2', maxlength: '500' }) as HTMLTextAreaElement;
     notes.value = t?.notes ?? '';
+    // Icono (VG, 06-11): solo en los de arriba; las especialidades heredan el de su madre. «Según el nombre» deja que el kit lo deduzca.
+    const iconSel = el('select', { id: 'tr-icon', 'data-field-id': 'central.oficios.icon', 'data-field-entity': 'central.trades', 'data-field-prop': 'icon' },
+      el('option', { value: '' }, 'Según el nombre'),
+      ...TRADE_ICON_KEYS.map((k) => el('option', { value: k, selected: t?.icon === k }, TRADE_ICON_LABELS[k]))) as HTMLSelectElement;
+    const iconField = el('label', { class: 'field', 'data-feedback-id': 'central.oficios.editar.campo_icono', 'data-feedback-label': 'Icono' }, el('span', null, 'Icono'), iconSel,
+      el('span', { class: 'muted small' }, 'Sale en el selector de oficios de todas las apps. Las especialidades llevan el de su oficio.')) as HTMLElement;
+    const showIcon = () => { iconField.hidden = !!parent.value; };
+    parent.addEventListener('change', showIcon);
+    showIcon();
     const save = el('button', { class: 'primary', type: 'button', id: 'saveTrade', 'data-feedback-id': 'central.oficios.editar.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
-      const fields = { name: name.value.trim(), parent_id: parent.value || null, notes: notes.value.trim() || null };
+      const fields = { name: name.value.trim(), parent_id: parent.value || null, notes: notes.value.trim() || null, icon: parent.value ? null : iconSel.value || null };
       if (!fields.name) { toast('Escribe el nombre del oficio.'); name.focus(); return; }
       const ops: RowOperation[] = t ? [{ op: 'update', table: T.trades, id: t.id, expectedRevision: t.revision, fields }]
         : [{ op: 'insert', table: T.trades, id: crypto.randomUUID(), fields: { ...fields, position: Date.now() / 1000 } }];
@@ -259,6 +269,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
         el('label', { class: 'field', 'data-feedback-id': 'central.oficios.editar.campo_nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre'), name),
         el('label', { class: 'field', 'data-feedback-id': 'central.oficios.editar.campo_madre', 'data-feedback-label': 'Dentro de' }, el('span', null, 'Dentro de'), parent,
           el('span', { class: 'muted small' }, 'Hasta tres niveles: «Fontanería › ACS».')),
+        iconField,
         el('label', { class: 'field', 'data-feedback-id': 'central.oficios.editar.campo_notas', 'data-feedback-label': 'Notas' }, el('span', null, 'Notas (opcional)'), notes)),
       panelAttrs: { 'data-feedback-id': 'central.oficios.editar', 'data-feedback-label': 'Editar oficio' },
       closeAttrs: { 'data-feedback-id': 'central.oficios.editar.cerrar', 'data-feedback-label': 'Cerrar' },
