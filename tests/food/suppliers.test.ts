@@ -13,7 +13,7 @@ function route(reply: { status: number; body: unknown }, sent: Sent[] = []) {
     sent.push({ url, headers: init.headers as Record<string, string>, body: JSON.parse(String(init.body)) });
     return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { 'Content-Type': 'application/json' } });
   }) as unknown as typeof fetch;
-  const [r] = supplierRoutes({ invoicesApiBase: 'https://finance.test', invoicesFetch, workerKey: 'clave' });
+  const [r] = supplierRoutes({ base: 'https://supabase.test' }, { invoicesFetch, workerKey: 'clave' });
   return (role: string, body: unknown) => (r!.handler as any)({ ctx: { membership: { role } }, json: async () => body });
 }
 
@@ -29,7 +29,7 @@ test('el alta va a la ruta de worker de Finance y devuelve el proveedor (creado 
   const call = route({ status: 200, body: { id: 'f-1', name: 'Frutas Paco', tax_id: null, active: true, status: 'existing', matched_by: 'name' } }, sent);
   const out = await call('editor', { name: 'frutas paco' });
   assert.deepEqual(out, { supplier: { id: 'f-1', name: 'Frutas Paco', tax_id: null, active: true }, created: false });
-  assert.equal(sent[0]!.url, 'https://finance.test/api/v1/worker/suppliers');
+  assert.equal(sent[0]!.url, 'https://supabase.test/functions/v1/invoices-api/api/v1/worker/suppliers');
   assert.equal(sent[0]!.headers['X-Ikisai-Worker-Key'], 'clave');
   assert.equal(sent[0]!.headers['X-Ikisai-Caller'], 'food');
   assert.deepEqual(sent[0]!.body, { name: 'frutas paco', tax_id: null });
@@ -39,4 +39,8 @@ test('un NIF que Finance rechaza sale como TAX_ID_INVALID; un lector no puede da
   const call = route({ status: 422, body: { error: { code: 'TAX_ID_INVALID', message: 'NIF' } } });
   await assert.rejects(call('owner', { name: 'Makro', tax_id: 'B00000000' }), (e: any) => e.code === 'TAX_ID_INVALID');
   await assert.rejects(call('reader', { name: 'Makro' }), (e: any) => e.code === 'FORBIDDEN');
+});
+
+test('sin la ruta de Finance desplegada (404 sin código), INVOICES_OFF', async () => {
+  await assert.rejects(route({ status: 404, body: {} })('editor', { name: 'Makro' }), (e: any) => e.code === 'INVOICES_OFF');
 });
