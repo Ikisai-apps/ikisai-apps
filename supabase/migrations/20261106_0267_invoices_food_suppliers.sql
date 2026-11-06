@@ -18,6 +18,12 @@ grant select on invoices.food_supplier_projection to service_role;
 select core.allow_read('food', 'invoices.food_supplier_projection', 'view');
 select core.allow_read('invoices', 'invoices.food_supplier_projection', 'view');
 
+-- Clave para comparar nombres: sin tildes, mayúsculas, signos ni espacios («Huerta, S.L.» = «huerta sl»).
+create or replace function invoices.supplier_key(p_name text)
+returns text language sql immutable as $$
+  select replace(invoices.slugify(p_name, 200), '_', '');
+$$;
+
 -- register {name, tax_id?, app} → {id, name, tax_id, active, status: created | existing, matched_by: tax_id | name | null}
 create or replace function invoices.register_supplier(p jsonb)
 returns jsonb language plpgsql as $$
@@ -34,7 +40,7 @@ begin
   if v_app = '' then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'app')); end if;
   if length(v_name) not between 1 and 200 then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'name')); end if;
   if v_tax is not null and length(v_tax) not between 2 and 32 then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'tax_id')); end if;
-  v_key := invoices.slugify(v_name, 200);
+  v_key := invoices.supplier_key(v_name);
   if v_key = '' then perform core.fail('INVALID_ARGS', 422, jsonb_build_object('field', 'name', 'reason', 'no letters or digits')); end if;
   -- Dos altas iguales a la vez: la segunda espera y encuentra la primera.
   perform pg_advisory_xact_lock(hashtext('invoices.register_supplier:' || coalesce(v_tax, v_key)));
@@ -45,7 +51,7 @@ begin
   if s.id is null then
     select * into s from invoices.suppliers x
      where x.deleted_at is null and (v_tax is null or x.tax_id is null or upper(x.tax_id) = v_tax)
-       and (invoices.slugify(x.name, 200) = v_key or exists (select 1 from unnest(x.aliases) al where invoices.slugify(al, 200) = v_key))
+       and (invoices.supplier_key(x.name) = v_key or exists (select 1 from unnest(x.aliases) al where invoices.supplier_key(al) = v_key))
      order by (x.tax_id is not null) desc, x.created_at limit 1;
     if s.id is not null then v_by := 'name'; end if;
   end if;
@@ -61,5 +67,5 @@ begin
 end $$;
 
 select core.allow_read('invoices', 'invoices.register_supplier', 'action', '{}');
-revoke all on function invoices.register_supplier(jsonb) from public, anon, authenticated;
-grant execute on function invoices.register_supplier(jsonb) to service_role;
+revoke all on function invoices.register_supplier(jsonb), invoices.supplier_key(text) from public, anon, authenticated;
+grant execute on function invoices.register_supplier(jsonb), invoices.supplier_key(text) to service_role;
