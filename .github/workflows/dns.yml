@@ -1,0 +1,65 @@
+name: DNS
+# Crea (o confirma) un CNAME <name>.ikisai.com en Cloudflare con los secretos del repositorio.
+# No sobrescribe un registro existente distinto. Lanzar a mano: gh workflow run dns.yml -f name=agram -f target=ikisai-apps.github.io
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Subdominio de ikisai.com (p. ej. agram)'
+        required: true
+        type: string
+      target:
+        description: 'Destino del CNAME (p. ej. ikisai-apps.github.io)'
+        required: true
+        type: string
+      proxied:
+        description: 'Pasar por el proxy de Cloudflare'
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  cname:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      DNS_NAME: ${{ inputs.name }}
+      DNS_TARGET: ${{ inputs.target }}
+      DNS_PROXIED: ${{ inputs.proxied }}
+    steps:
+      - name: Crear o confirmar el CNAME
+        shell: python
+        run: |
+          import json, os, re, sys, urllib.parse, urllib.request
+          token = os.environ['CLOUDFLARE_API_TOKEN']
+          zone = os.environ['CLOUDFLARE_ZONE_ID']
+          name = os.environ['DNS_NAME'].strip().lower()
+          target = os.environ['DNS_TARGET'].strip().lower()
+          proxied = os.environ.get('DNS_PROXIED', 'false') == 'true'
+          if not token or not zone:
+              sys.exit('faltan CLOUDFLARE_API_TOKEN o CLOUDFLARE_ZONE_ID')
+          if not re.fullmatch(r'[a-z0-9-]{1,63}', name) or not re.fullmatch(r'[a-z0-9.-]{3,253}', target):
+              sys.exit('entrada inválida')
+          host = name + '.ikisai.com'
+          def api(path, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request('https://api.cloudflare.com/client/v4' + path, data=data,
+                  method='POST' if body is not None else 'GET',
+                  headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  out = json.load(r)
+              if not out.get('success'):
+                  sys.exit('cloudflare: ' + json.dumps(out.get('errors')))
+              return out['result']
+          existing = api('/zones/' + zone + '/dns_records?' + urllib.parse.urlencode({'name': host}))
+          if existing:
+              r = existing[0]
+              print('existe:', r['type'], r['name'], '->', r['content'], 'proxied', r['proxied'])
+              if r['type'] == 'CNAME' and r['content'] == target:
+                  print('ok, sin cambios')
+                  sys.exit(0)
+              sys.exit('registro distinto: no se sobrescribe')
+          r = api('/zones/' + zone + '/dns_records', {'type': 'CNAME', 'name': host, 'content': target, 'proxied': proxied, 'ttl': 1})
+          print('creado:', r['type'], r['name'], '->', r['content'], 'proxied', r['proxied'])
