@@ -36,6 +36,12 @@ export interface RequestContext {
   token: string;
   membership: Membership;
   bootstrap: Bootstrap;
+  /**
+   * Ámbito del dispositivo (fl-22, 6-11): lo que este navegador quiere tener en su espejo, declarado por el cliente en la cabecera
+   * `X-Ikisai-Scope` (objeto JSON, p. ej. `{ "projects": ["…"] }`). Solo ACOTA lo que baja: los hooks `visible` de la app lo
+   * intersecan con los permisos reales; nunca amplía nada. `null` = todo lo que la persona puede ver.
+   */
+  scope: Record<string, unknown> | null;
   /** El lote que se valida es un deshacer (`POST history/:cursor/undo`): las operaciones salen de `core.undo_plan`. */
   undo?: boolean;
 }
@@ -99,9 +105,9 @@ export function integer(value: string | null, fallback: number, name = 'cursor')
 }
 
 export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}) {
-  async function context(user: Identity, token: string): Promise<RequestContext> {
+  async function context(user: Identity, token: string, scope: Record<string, unknown> | null = null): Promise<RequestContext> {
     const bootstrap = await supabase.rpc<Bootstrap>('core_bootstrap', { p_app: app, p_user: user.id });
-    return { app, user, token, membership: bootstrap.membership, bootstrap };
+    return { app, user, token, membership: bootstrap.membership, bootstrap, scope };
   }
 
   /** Lectura registrada en core.allowed_reads: función de la propia app o proyección publicada por otra. */
