@@ -55,6 +55,12 @@ export const flowActions = (client: SyncClient) => ({
     callProcedure<{ pay_seq: number; total_cents: number; units: number }>(client, PROCEDURES.chargeToAccount, { order_id: orderId, account_id: accountId, expected_revision: revision }),
   settleAccount: (accountId: string, method: SettleMethod, revision: number) =>
     callProcedure<{ total_cents: number; orders: number }>(client, PROCEDURES.settleAccount, { account_id: accountId, method, expected_revision: revision }),
+  deferAccount: (accountId: string, revision: number) =>
+    callProcedure<{ total_cents: number; orders: number }>(client, PROCEDURES.deferAccount, { account_id: accountId, expected_revision: revision }),
+  voidAccount: (accountId: string, reason: string) =>
+    callProcedure<{ total_cents: number; orders: number }>(client, PROCEDURES.voidAccount, { account_id: accountId, reason }),
+  /** La cuenta a Finance (fl-27): pendiente de cobro con su nombre o, ya liquidada, con el medio real (mismo apunte). */
+  sendAccountToFinance: (accountId: string) => client.api<{ status: string }>(`/accounts/${accountId}/send/finance`, { method: 'POST', json: {} }),
 });
 
 export type FlowActions = ReturnType<typeof flowActions>;
