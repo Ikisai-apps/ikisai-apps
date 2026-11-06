@@ -17,13 +17,13 @@ declare
   setting text; v_stamp text := to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS');
 begin
   select s.value #>> '{}' into setting from tasks.settings s where s.key = 'people_source' and s.deleted_at is null;
-  if setting = 'central' then v_keys := v_keys || 'person'; else raise notice 'tasks 0369: las personas siguen en etiquetas (falta la ida de §33).'; end if;
+  if setting = 'central' then v_keys := array_append(v_keys, 'person'); else raise notice 'tasks 0369: las personas siguen en etiquetas (falta la ida de §33).'; end if;
   setting := null;
   select s.value #>> '{}' into setting from tasks.settings s where s.key = 'trade_source' and s.deleted_at is null;
-  if setting = 'central' then v_keys := v_keys || 'trade'; else raise notice 'tasks 0369: los oficios siguen en etiquetas (falta la ida de §32).'; end if;
+  if setting = 'central' then v_keys := array_append(v_keys, 'trade'); else raise notice 'tasks 0369: los oficios siguen en etiquetas (falta la ida de §32).'; end if;
   setting := null;
   select s.value #>> '{}' into setting from tasks.settings s where s.key = 'zone_source' and s.deleted_at is null;
-  if setting = 'spaces' then v_keys := v_keys || array['space', 'building']; else raise notice 'tasks 0369: los espacios siguen en etiquetas (falta la ida de §30).'; end if;
+  if setting = 'spaces' then v_keys := v_keys || array['space', 'building']::text[]; else raise notice 'tasks 0369: los espacios siguen en etiquetas (falta la ida de §30).'; end if;
   if cardinality(v_keys) = 0 then return 0; end if;
 
   for r in
