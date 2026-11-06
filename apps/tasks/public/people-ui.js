@@ -172,7 +172,7 @@ const taskEditorBeforePeople=openTaskEditor;
 openTaskEditor=function(id,selectedOverride=null,valsOverride=null){taskEditorBeforePeople(id,selectedOverride,valsOverride);if(!peopleMode())return;
   const loc=id?taskLocation(id):null,key='task:'+(id||'new'),initial=loc?(loc.t.people||[]):(project()?.ownPeople||[]);
   mountPeopleField(document.getElementById('editLabelsBtn')?.closest('.field'),key,initial,'Personas','tasks.editor_tarea.personas');
-  const select=mountOwnerSelect(document.getElementById('teOwner'),key,loc?.t.ownerPerson);
+  const select=mountOwnerSelect(document.getElementById('teOwner'),key,loc?loc.t.ownerPerson:myPerson()?.person_id);
   rememberPeople(document.getElementById('saveTaskBtn'),select,{kind:'task',id:id||null})};
 const projectEditorBeforePeople=openProjectEditor;
 openProjectEditor=function(id,selectedOverride=null,valsOverride=null){projectEditorBeforePeople(id,selectedOverride,valsOverride);if(!peopleMode())return;
