@@ -34,6 +34,7 @@ export interface ShoppingListItem extends SyncedColumns {
   stock_quantity: number | null;
   purchase_quantity: number;
   supplier: string | null;
+  supplier_id?: string | null;
   status: ShoppingItemStatus;
   manual_override: boolean;
   manual: boolean;

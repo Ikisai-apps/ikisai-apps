@@ -14,6 +14,7 @@ import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { recordShoppingPurchases } from '../app/shopping-stock.ts';
+import { createSupplier, knownSuppliers, loadSuppliers, sameName, type FinanceSupplier } from '../app/suppliers.ts';
 import { usage } from '../app/usage.ts';
 import { fb, type FbMark } from './feedback.ts';
 import { housePeriod, periodBar, periodLabel, samePeriod, setHousePeriod } from './house-period.ts';
@@ -351,27 +352,88 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
       void updateQuantities(line, line.manual ? { purchase_quantity: value ?? 0 } : { purchase_quantity: value ?? 0, manual_override: true });
     }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' },
       { 'data-field-id': 'food.menu.compra.linea.comprar', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'purchase_quantity' });
-    // La tienda de esta línea (FB_2026_086): la de partida es la preferida del ingrediente; aquí se cambia para esta
-    // compra (regenerar la conserva). Sugiere las tiendas que ya hay en la lista.
+    // La tienda de esta línea (FB_2026_086; VG, Q3 d): se elige de los proveedores de Finance. La de partida es el habitual
+    // del ingrediente; aquí se cambia para esta compra (regenerar la conserva) o se da de alta uno nuevo en Finance. Sin
+    // acceso a Finance, texto libre con las tiendas que ya hay en la lista.
+    type Choice = { id: string | null; name: string | null };
+    const ingredientOf = () => data?.ingredients.find((i) => i.id === item.ingredient_id);
+    const finance = knownSuppliers();
+    const byNameOf = (n: string | null) => (n && finance?.find((f) => sameName(f.name, n))) || null;
+    const currentChoice = (): Choice => {
+      const line = cur(); const ingredient = ingredientOf(); const nameNow = line.supplier?.trim() || null;
+      const id = line.supplier_id ?? (ingredient?.preferred_supplier_id && sameName(ingredient.preferred_supplier, nameNow) ? ingredient.preferred_supplier_id : null) ?? byNameOf(nameNow)?.id ?? null;
+      return { id, name: nameNow };
+    };
+    const choose = (choice: Choice) => {
+      const line = cur();
+      const ops: RowOperation[] = (line.supplier?.trim() || null) === choice.name && (line.supplier_id ?? null) === choice.id ? []
+        : [{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: line.revision, fields: { supplier: choice.name, supplier_id: choice.id } }];
+      ops.push(...usualOps(choice));
+      if (ops.length) void commitSafely(ops);
+    };
     const shopsId = `shops-${item.id}`;
     const known = [...new Set(items.map((i) => i.supplier?.trim()).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b, 'es'));
     const supplierInput = el('input', { 'data-field-id': 'food.menu.compra.linea.proveedor', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'supplier', 'data-feedback-id': 'food.menu.compra.linea.proveedor', 'data-feedback-label': 'Tienda',
       type: 'text', maxlength: '120', list: shopsId, value: item.supplier ?? '', disabled, 'aria-label': `Tienda de ${name}`, placeholder: NO_SHOP,
-      onchange: () => {
-        const value = supplierInput.value.trim() || null;
-        if (value === (cur().supplier?.trim() || null)) return;
-        void commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: cur().revision, fields: { supplier: value } }, ...usualOps(value)]);
-      } }) as HTMLInputElement;
-    // «Siempre en esta tienda» (FB_2026_086, decidido en ausencia de VG: opción c): la deja como proveedor habitual del
-    // ingrediente, la de partida de las próximas compras.
-    const ingredientOf = () => data?.ingredients.find((i) => i.id === item.ingredient_id);
-    const usualBox = el('input', { 'data-field-id': 'food.menu.compra.linea.proveedor_habitual', 'data-field-entity': 'food.ingredients', 'data-field-prop': 'preferred_supplier', 'data-feedback-id': 'food.menu.compra.linea.proveedor_habitual', 'data-feedback-label': 'Siempre en esta tienda',
-      type: 'checkbox', disabled: disabled || !ingredientOf(), checked: !!item.supplier?.trim() && (ingredientOf()?.preferred_supplier?.trim() || null) === item.supplier.trim(),
-      onchange: () => { const ops = usualOps(supplierInput.value.trim() || null); if (ops.length) void commitSafely(ops); } }) as HTMLInputElement;
-    function usualOps(value: string | null): RowOperation[] {
+      onchange: () => { const n = supplierInput.value.trim() || null; choose({ id: byNameOf(n)?.id ?? null, name: n }); } }) as HTMLInputElement;
+    const start = currentChoice();
+    const NEW = '__nuevo', TEXT = '__texto';
+    const label = (f: FinanceSupplier) => f.tax_id ? `${f.name} · ${f.tax_id}` : f.name;
+    const supplierSelect = finance ? el('select', { 'data-field-id': 'food.menu.compra.linea.proveedor_finance', 'data-field-entity': 'food.shopping_list_items', 'data-field-prop': 'supplier_id', 'data-feedback-id': 'food.menu.compra.linea.proveedor_finance', 'data-feedback-label': 'Proveedor de Finance', 'aria-label': `Proveedor de ${name}`, disabled },
+      el('option', { value: '', selected: !start.id && !start.name }, NO_SHOP),
+      !start.id && start.name ? el('option', { value: TEXT, selected: true }, `${start.name} (no está en Finance)`) : null,
+      ...finance.filter((f) => f.active || f.id === start.id).map((f) => el('option', { value: f.id, selected: f.id === start.id }, f.active ? label(f) : `${f.name} (en la papelera de Finance)`)),
+      el('option', { value: NEW }, '+ Nuevo proveedor…')) as HTMLSelectElement : null;
+    const newName = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.menu.compra.linea.alta_nombre', 'data-feedback-label': 'Nombre del proveedor', type: 'text', maxlength: '200', value: start.id ? '' : start.name ?? '', 'aria-label': 'Nombre del proveedor nuevo' }) as HTMLInputElement;
+    const newTax = el('input', { 'data-field-none': '', 'data-feedback-id': 'food.menu.compra.linea.alta_nif', 'data-feedback-label': 'NIF del proveedor', type: 'text', maxlength: '32', placeholder: 'Si lo sabes', 'aria-label': 'NIF del proveedor nuevo' }) as HTMLInputElement;
+    const taxError = el('p', { class: 'hint', role: 'alert', hidden: true });
+    const newBox = el('div', { class: 'fd-newsupplier', hidden: true },
+      el('label', { class: 'field' }, el('span', null, 'Nombre'), newName),
+      el('label', { class: 'field' }, el('span', null, 'NIF'), newTax), taxError,
+      el('button', { 'data-feedback-id': 'food.menu.compra.linea.alta_proveedor', 'data-feedback-label': 'Dar de alta en Finance', type: 'button',
+        onclick: async () => {
+          if (!newName.value.trim()) { newName.focus(); return; }
+          taxError.hidden = true; newTax.removeAttribute('aria-invalid');
+          try {
+            const created = await createSupplier(client, { name: newName.value.trim(), tax_id: newTax.value.trim() || null });
+            if (supplierSelect && !finance!.some((f) => f.id === created.id)) {
+              finance!.push(created);
+              supplierSelect.insertBefore(el('option', { value: created.id }, label(created)), supplierSelect.lastChild);
+            }
+            if (supplierSelect) supplierSelect.value = created.id;
+            newBox.hidden = true;
+            choose({ id: created.id, name: created.name });
+            toast(`${created.name}: ya está en Finance.`);
+          } catch (error) {
+            if ((error as { code?: string })?.code === 'TAX_ID_INVALID') {
+              taxError.textContent = 'Ese NIF no es válido. Corrígelo o déjalo en blanco.'; taxError.hidden = false;
+              newTax.setAttribute('aria-invalid', 'true'); newTax.focus();
+            } else toast(describeError(error));
+          }
+        } }, 'Dar de alta en Finance'));
+    if (supplierSelect) supplierSelect.onchange = () => {
+      const v = supplierSelect.value;
+      newBox.hidden = v !== NEW;
+      if (v === NEW) { newName.focus(); return; }
+      if (v === TEXT) return;
+      const f = finance!.find((x) => x.id === v);
+      choose(f ? { id: f.id, name: f.name } : { id: null, name: null });
+    };
+    const selected = (): Choice => {
+      if (!supplierSelect) { const n = supplierInput.value.trim() || null; return { id: byNameOf(n)?.id ?? null, name: n }; }
+      const f = finance!.find((x) => x.id === supplierSelect.value);
+      return f ? { id: f.id, name: f.name } : supplierSelect.value === TEXT ? { id: null, name: start.name } : { id: null, name: null };
+    };
+    // «Siempre en esta tienda»: la deja como proveedor habitual del ingrediente, la de partida de las próximas compras.
+    const usualBox = el('input', { 'data-field-id': 'food.menu.compra.linea.proveedor_habitual', 'data-field-entity': 'food.ingredients', 'data-field-prop': 'preferred_supplier_id', 'data-feedback-id': 'food.menu.compra.linea.proveedor_habitual', 'data-feedback-label': 'Siempre en esta tienda',
+      type: 'checkbox', disabled: disabled || !ingredientOf(),
+      checked: !!start.name && (start.id ? ingredientOf()?.preferred_supplier_id === start.id : sameName(ingredientOf()?.preferred_supplier ?? null, start.name)),
+      onchange: () => { const ops = usualOps(selected()); if (ops.length) void commitSafely(ops); } }) as HTMLInputElement;
+    function usualOps(choice: Choice): RowOperation[] {
       const ingredient = ingredientOf();
-      if (!usualBox?.checked || !ingredient || (ingredient.preferred_supplier?.trim() || null) === value) return [];
-      return [{ op: 'update', table: T.ingredients, id: ingredient.id, expectedRevision: ingredient.revision, fields: { preferred_supplier: value } }];
+      if (!usualBox?.checked || !ingredient) return [];
+      if ((ingredient.preferred_supplier?.trim() || null) === choice.name && (ingredient.preferred_supplier_id ?? null) === choice.id) return [];
+      return [{ op: 'update', table: T.ingredients, id: ingredient.id, expectedRevision: ingredient.revision, fields: { preferred_supplier: choice.name, preferred_supplier_id: choice.id } }];
     }
     sheet = openSheet({
       title: name,
@@ -382,7 +444,10 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
           el('label', { class: 'buyfield' }, el('span', null, 'En casa'), stockInput),
           el('label', { class: 'buyfield' }, el('span', null, `Comprar (${UNIT_LABELS[item.unit]})`), purchaseInput)),
         el('label', { class: 'field' }, el('span', null, 'Estado'), status),
-        el('label', { class: 'field' }, el('span', null, 'Tienda'), supplierInput), el('datalist', { id: shopsId }, ...known.map((s) => el('option', { value: s }))),
+        supplierSelect
+          ? el('label', { class: 'field' }, el('span', null, 'Tienda (proveedores de Finance)'), supplierSelect)
+          : el('label', { class: 'field' }, el('span', null, 'Tienda'), supplierInput),
+        supplierSelect ? newBox : el('datalist', { id: shopsId }, ...known.map((s) => el('option', { value: s }))),
         el('label', { class: 'checkline' }, usualBox, el('span', null, 'Siempre en esta tienda (proveedor habitual del ingrediente)')),
         el('div', { class: 'btnrow' },
           !disabled && !item.manual && item.manual_override
@@ -615,6 +680,7 @@ export function mountShopping({ client, menuId, host, canWrite, house = false, c
   }
 
   void load();
+  void loadSuppliers(client);
   void loadPurchases(client).then((snapshot) => { purchases = snapshot; if (!sheet && !busy) paint(); }).catch(() => undefined);
   const refresh = () => { if (!sheet && !busy) void load(); };
   const offs = [...[...MENU_TABLES, T.shoppingLists, T.shoppingItems, ...(carta ? [T.cartaLines] : [])].map((table) => client.onTable(table, refresh)),
