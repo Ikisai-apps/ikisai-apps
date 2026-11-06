@@ -240,6 +240,9 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
       // no hay «modo pruebas» para Finance: el resumen se manda siempre, como `nature: 'process'`.
       method: 'POST', pattern: 'closures/:id/send/finance', handler: async ({ ctx, params }) => {
         const { closure: c, project } = await closure(ctx, params.id ?? '');
+        // Cada cuenta abierta se decide antes (fl-27, VG F-P4): cobrarla, pasarla a Finance como pendiente o anularla.
+        const undecided = await supabase.rpc<Array<{ id: string; holder: string; total_cents: number }> | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.undecided_accounts', p_args: { project_id: project.id } });
+        if (undecided?.length) fail(409, 'ACCOUNTS_UNDECIDED', 'Antes de cerrar, decide qué se hace con cada cuenta abierta: cobrarla, pasarla a Finance o anularla.', { accounts: undecided });
         const [y, m, d] = c.day.split('-');
         const sourceRef = `flow:project:${project.id}:${c.day}`;
         // Un cobro va en un solo apunte (Core/Finance 27-10): lo ya enviado como fiscal (justificantes de la caja, 0917) sale del resumen.
@@ -267,6 +270,39 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
         };
         const requestId = `flow:${sourceRef}:${await digest(args)}`;
         return sendAndMark(c, 'finance', () => callApp(ctx, 'invoices-api', 'Finance', requestId, 'invoices.record_app_entry', args));
+      },
+    },
+    {
+      // Una cuenta a Finance (fl-27, contrato del 05-11, §2c): pasada como pendiente, `flow:account:<id>` fiscal con `a_cobrar`;
+      // liquidada después, se reenvía el mismo source_ref con el medio real (Finance sustituye el apunte).
+      method: 'POST', pattern: 'accounts/:id/send/finance', handler: async ({ ctx, params }) => {
+        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede enviar a Finance.');
+        const out = await supabase.rpc<AccountForSend | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.account_for_send', p_args: { id: params.id } });
+        if (!out?.account) fail(404, 'NOT_FOUND', 'Esa cuenta no existe.');
+        const a = out.account;
+        if (a.status === 'open') fail(409, 'ACCOUNT_OPEN', 'La cuenta sigue abierta: pásala a Finance o cóbrala antes.');
+        const pending = a.status === 'deferred';
+        const total = out.orders.reduce((n, o) => n + (o.total_cents ?? 0), 0);
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(pending ? Date.now() : (a.settled_at ?? Date.now())));
+        const method = out.method === 'btc_ln' || out.method === 'btc_chain' ? 'bitcoin' : (out.method ?? 'cash');
+        const sourceRef = `flow:account:${a.id}`;
+        const args = {
+          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'fiscal', entry_date: day,
+          description: pending ? `Cuenta de ${a.holder} · pendiente de cobro` : `Cuenta de ${a.holder}`,
+          amount_cents: total, tax_rate: 10, methods: { [pending ? 'a_cobrar' : method]: total },
+          detail: out.orders.map((o) => ({ code: `P ${o.pay_seq}`, name: `Pedido ${o.pay_seq}`, quantity: 1, amount_cents: o.total_cents, order_code: `P ${o.pay_seq}` })),
+          pending_refunds_cents: 0, event_id: out.project.booking_event_id,
+        };
+        const mark = (fields: Record<string, unknown>) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.accounts, id: a.id, expectedRevision: a.revision, fields }]);
+        let result: unknown;
+        try {
+          result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+        } catch (error) {
+          await mark({ finance_status: 'error', finance_sent_at: new Date().toISOString(), finance_result: { code: isFault(error) ? error.code : 'ERROR' } }).catch(() => undefined);
+          throw error;
+        }
+        await mark({ finance_status: 'sent', finance_sent_at: new Date().toISOString(), finance_result: result ?? null });
+        return { status: 'sent', result };
       },
     },
     {
@@ -303,6 +339,12 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
   ];
 }
 
+interface AccountForSend {
+  account: { id: string; revision: number; holder: string; status: string; settled_at: string | null; finance_status: string | null };
+  method: string | null;
+  project: { id: string; name: string; booking_event_id: string | null };
+  orders: Array<{ pay_seq: number; total_cents: number }>;
+}
 interface FiscalOfDay { amount_cents: number; methods: Record<string, number>; detail: Array<{ code: string; units: number; amount_cents: number }> }
 interface ReceiptForSend {
   receipt: { id: string; revision: number; method: string; total_cents: number; order_ids: string[] };

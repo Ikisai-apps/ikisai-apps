@@ -2444,3 +2444,10 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
   - **Solo ids y recuentos:** los nombres los pone Central.
 - **Ayudantes:** `tasks.space_within(espacio, nodo)` y `tasks.space_top(espacio)`.
 - **Pruebas:** `tests/tasks/today-by-space.test.ts`.
+
+## 62. «Espacio» por selección visual: el cuadrante de 1 m² (migración `0368`; encargo de VG del 06-11)
+
+- **`tasks.task_spaces.cell`:** el cuadrante opcional dentro del espacio, `{"cellX": n, "cellY": n, "scale": 1}`, con celdas enteras de 0 a 9999 en la retícula del dibujo. Nulo = todo el espacio. Va uno por espacio de la tarea, porque cada fila puente es un sitio. Lo comprueban el dominio y la base de datos (`INVALID_SPACE`).
+- **Modelo de la interfaz:** `task.spaceCells` = `{ [spaceId]: cell }`, solo si hay alguno. Sin el campo, `decompose` no toca los cuadrantes.
+- **App:** en la ficha de la tarea, junto a los chips de «Espacio», «Elegir en el plano» abre `createPlacePicker` del kit con `cell: true`. El recorrido es altura → interior o exterior → estancia → cuadrante. Lo elegido se añade a los espacios de la tarea (sustituye a los que lo contienen) y el cuadrante se ve debajo.
+- **Pruebas:** `tests/tasks/space-cell.test.ts`.

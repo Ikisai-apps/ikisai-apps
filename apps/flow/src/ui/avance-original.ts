@@ -15,7 +15,7 @@ export interface OrigHito { id: string; nombre: string; orden: number; done_at: 
 export interface OrigSnap { t: number; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number }
 
 export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW_SLOT: HTMLElement, CAN_EDIT: boolean,
-  ON_STATE: (uid: string, estado: string) => void, MINE: string[] = [], ON_APPS: (uid: string) => void = () => {}): { setData(ruta: OrigCard[], hitos: OrigHito[], hist: OrigSnap[], agentes: string[]): void } {
+  ON_STATE: (uid: string, estado: string) => void, MINE: string[] = [], ON_APPS: (uid: string) => void = () => {}, ON_MOVE: (uid: string, from: string, to: string) => void = () => {}): { setData(ruta: OrigCard[], hitos: OrigHito[], hist: OrigSnap[], agentes: string[]): void } {
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   var RUTA=[],RMETA=null;var CV='';var CSEL='';try{CV=localStorage.getItem('avance-car-vista')||'';CSEL=localStorage.getItem('avance-car-sel')||'';}catch(e){}
   var CMORE={};
@@ -167,7 +167,7 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
     h+='<div class="lanes'+(vista==='tabs'?' one':'')+'">';
     if(!busy.length)h+='<div class="vacio" style="padding:12px">Nada coincide con los filtros.</div>';
     busy.forEach(function(a){if(!a)return;var mine=shown.filter(function(x){return inL(x,a);});var open=mine.filter(isOpen);var done=mine.filter(function(x){return !isOpen(x);});
-      h+='<section class="lane" aria-label="'+esc(a)+'"><h2><span>'+agIco(a)+esc(a)+'</span><small>'+open.filter(function(x){return x.estado!=='backlog';}).length+' por hacer</small></h2><div class="ls">';
+      h+='<section class="lane" aria-label="'+esc(a)+'" data-lane="'+esc(a)+'"><h2><span>'+agIco(a)+esc(a)+'</span><small>'+open.filter(function(x){return x.estado!=='backlog';}).length+' por hacer</small></h2><div class="ls">';
       if(!open.length&&!done.length)h+='<div class="vacio">Nada.</div>';
       // Con filtros, las bloqueadas por un paso anterior de su hito van aparte, plegadas, con quién las bloquea (VG, 27-10 noche).
       // Solo se pliega si quien bloquea es un agente que NO está en el filtro de agentes (VG, 27-10 noche): si te bloqueas tú o alguien
@@ -204,7 +204,12 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       if(steps){inner+=open?'<ol class="pasos">'+x.pasos.map(function(p){return '<li>'+esc(p)+'</li>';}).join('')+'</ol>':'<div class="hint">Toca para ver los pasos</div>';}
       if(open&&CAN_EDIT&&!x.recurrente&&!noActs&&MINE.indexOf(x.agente)>=0)inner+='<div class="acts"><button type="button" class="act" data-apps="'+esc(x.uid)+'">Aplicaciones'+(x.appsManual?' (a mano)':'')+'…</button></div>';
       if(open&&CAN_EDIT&&!x.recurrente&&!noActs){inner+='<div class="acts">'+[['pend','Pendiente'],['curso','En curso'],['hecho','Hecha']].map(function(s){return '<button type="button" class="act'+(x.estado===s[0]?' on':'')+'" data-state="'+s[0]+'" data-card="'+esc(x.uid)+'" aria-pressed="'+(x.estado===s[0])+'">'+s[1]+'</button>';}).join('')+'</div>';}
-      return '<div class="'+cls+'" role="button" tabindex="0" aria-expanded="'+open+'" '+(attr||'data-item')+'="'+esc(x.id)+'"><span class="dot" aria-hidden="true"></span><div>'+inner+'</div></div>';}
+      return '<div class="'+cls+'" role="button" tabindex="0" aria-expanded="'+open+'" '+(attr||'data-item')+'="'+esc(x.id)+'"'+(vista==='app'&&lane&&CAN_EDIT&&MINE.indexOf(x.agente)>=0?' draggable="true" data-drag="'+esc(x.uid)+'" data-from="'+esc(lane)+'"':'')+'><span class="dot" aria-hidden="true"></span><div>'+inner+'</div></div>';}
+    // «Por app» (fl-20, VG 28-10): una tarea tuya se arrastra de un carril de aplicación a otro (en el móvil, «Aplicaciones…»).
+    if(vista==='app'){
+      v.querySelectorAll('[data-drag]').forEach(function(b){b.addEventListener('dragstart',function(e){e.dataTransfer.setData('text/plain',b.getAttribute('data-drag')+'|'+b.getAttribute('data-from'));e.dataTransfer.effectAllowed='move';b.classList.add('dragging');});b.addEventListener('dragend',function(){b.classList.remove('dragging');});});
+      v.querySelectorAll('[data-lane]').forEach(function(l){l.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move';l.classList.add('drop');});l.addEventListener('dragleave',function(){l.classList.remove('drop');});l.addEventListener('drop',function(e){e.preventDefault();l.classList.remove('drop');var d=(e.dataTransfer.getData('text/plain')||'').split('|');var to=l.getAttribute('data-lane');if(d[0]&&d[1]&&to&&d[1]!==to)ON_MOVE(d[0],d[1],to);});});
+    }
     SW_SLOT.querySelector('#cvApp').onclick=function(){CV='app';try{localStorage.setItem('avance-car-vista',CV);}catch(e){}rRender();};
     v.querySelectorAll('[data-apps]').forEach(function(b){b.onclick=function(e){e.stopPropagation();ON_APPS(b.getAttribute('data-apps'));};});
     SW_SLOT.querySelector('#cvHitos').onclick=function(){CV='hitos';try{localStorage.setItem('avance-car-vista',CV);}catch(e){}rRender();};

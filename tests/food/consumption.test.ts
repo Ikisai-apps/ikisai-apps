@@ -7,7 +7,7 @@ import {
   CONSUMPTION_SINCE, HOUSE_MENU_ID, consumeCall, eventSnapshot, type FoodEvent, consumptionDue, consumptionLines, kitchenSpaceIds, menuItemRef, serviceConsumption,
   type MenuGraph, type ResourceItem,
 } from '../../supabase/functions/_domain/food/mod.ts';
-import { day, seedBookingEvent } from './helpers.ts';
+import { day, seedBookingEvent, seedSpaces } from './helpers.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -40,10 +40,8 @@ test.before(async () => {
   const altura = (await q(`select id from resources.spaces where kind = 'altura' and name = 'Altura 1' and deleted_at is null`))[0].id;
   const house = uuid(); kitchen = uuid(); pantry = uuid();
   const soon = uuid(), later = uuid();
+  await seedSpaces(app.t.db, [{ id: house, kind: 'edificio', name: 'Casa', parent_id: altura }, { id: kitchen, kind: 'cocina', name: 'Cocina', parent_id: house }, { id: pantry, kind: 'almacen', name: 'Despensa', parent_id: house }]);
   await ok('resources/commands', [
-    insert('resources.spaces', house, { kind: 'edificio', name: 'Casa', parent_id: altura }),
-    insert('resources.spaces', kitchen, { kind: 'cocina', name: 'Cocina', parent_id: house }),
-    insert('resources.spaces', pantry, { kind: 'almacen', name: 'Despensa', parent_id: house }),
     insert('resources.items', riceItem, { name: 'Arroz', kind: 'ingrediente', base_unit: 'kg' }),
     insert('resources.items', oilItem, { name: 'Aceite', kind: 'ingrediente', base_unit: 'paquete' }),
     insert('resources.lots', soon, { item_id: riceItem, code: 'A', expires_on: day(5) }),

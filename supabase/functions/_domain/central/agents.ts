@@ -65,6 +65,33 @@ export function successorChain(agents: readonly AgentRow[], id: string): AgentRo
  */
 export const CENTRAL_TARGET_APP = 'central';
 export const AGENT_PROPOSABLE_FIELDS = ['mission', 'work_areas', 'notes'] as const;
+export const AGENT_PROPOSABLE_LABELS: Record<typeof AGENT_PROPOSABLE_FIELDS[number], string> = { mission: 'Misión', work_areas: 'Dónde trabaja', notes: 'Notas' };
+
+/** Una propuesta del núcleo (`GET proposals`, 0120), lo que usa la bandeja. */
+export interface AgentProposal {
+  id: string; userId: string; effectiveApp?: string | null; targetApp?: string | null; status: string;
+  operations: Array<{ op: string; table?: string; id?: string; fields?: Record<string, unknown> }>;
+  uncertain?: unknown[] | null; expiresAt?: string | null; createdAt?: string | null;
+}
+
+/** Las que esperan decisión en Central, de la más antigua a la más nueva. */
+export function pendingAgentProposals<P extends AgentProposal>(items: readonly P[]): P[] {
+  return items.filter((p) => p.status === 'pending' && (p.effectiveApp ?? p.targetApp) === CENTRAL_TARGET_APP)
+    .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+}
+
+/** Qué cambia: por campo propuesto, lo que hay ahora y lo que propone (solo los que cambian de verdad). */
+export function agentProposalChanges(p: AgentProposal, current: Record<string, unknown> | null | undefined): Array<{ field: string; label: string; before: string; after: string; uncertain: boolean }> {
+  const text = (v: unknown) => (v == null ? '' : String(v).trim());
+  const flagged = new Set((p.uncertain ?? []).map((u) => (typeof u === 'string' ? u : (u as { field?: string })?.field ?? '')).map((f) => f.replace(/^central\.agents\./, '')));
+  const out: Array<{ field: string; label: string; before: string; after: string; uncertain: boolean }> = [];
+  for (const o of p.operations) for (const [field, value] of Object.entries(o.fields ?? {})) {
+    const label = AGENT_PROPOSABLE_LABELS[field as keyof typeof AGENT_PROPOSABLE_LABELS] ?? field;
+    if (text(value) === text(current?.[field])) continue;
+    out.push({ field, label, before: text(current?.[field]), after: text(value), uncertain: flagged.has(field) });
+  }
+  return out;
+}
 
 /** Quién decide una propuesta del agente: la cuenta de la persona responsable, o `null` (el owner de Central). */
 export function proposalDecider(agent: Pick<AgentRow, 'responsible_kind' | 'responsible_person_id'>, people: ReadonlyArray<{ id: string; user_id?: string | null; active?: boolean | null; deleted_at?: string | null }>): string | null {

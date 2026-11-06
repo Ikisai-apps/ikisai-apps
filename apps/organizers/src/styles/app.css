@@ -417,3 +417,6 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgplan-img{display:block;max-width:100%;height:auto;border-radius:8px}
 .orgreply-new{border-left-color:var(--warn)}
 .orgcomment-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px}
+.orgcomment-reply{margin:8px 0 0;padding-left:10px;border-left:3px solid var(--line)}
+.orgcomment-replyslot{margin-top:6px}
+.orgcomment-replyslot .choices{margin-top:6px}

@@ -4,7 +4,7 @@ import { formatEuros, SETTLE_METHOD_LABELS, type SettleMethod } from '@ikisai/do
 import { flowActions, isOnline } from '../app/actions.ts';
 import { describeError } from '../app/client.ts';
 import { accountTotals, watchData, type Account, type FlowData } from '../app/data.ts';
-import { busyButton } from './sheets-common.ts';
+import { askReason, busyButton } from './sheets-common.ts';
 
 /**
  * Cuentas del cliente (0910, v2): se abren a nombre de alguien o de un número de cliente, los pedidos se cargan «a cuenta»
@@ -56,14 +56,15 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
     if (!data) return;
     paintPeople(data);
     const totals = accountTotals(data);
-    const open = data.accounts.filter((a) => a.status === 'open').sort((a, b) => a.holder.localeCompare(b.holder, 'es'));
+    const open = data.accounts.filter((a) => a.status === 'open' || a.status === 'deferred')
+      .sort((a, b) => Number(a.status === 'deferred') - Number(b.status === 'deferred') || a.holder.localeCompare(b.holder, 'es'));
     if (!open.length) { replace(list, el('p', { class: 'muted' }, 'No hay cuentas abiertas.')); return; }
     replace(list, ...open.map((a) => {
       const t = totals.get(a.id) ?? { orders: 0, cents: 0 };
       const canSettle = isOwner || a.opened_by === me;
       return el('div', { class: 'qcard account-card', role: 'listitem' },
         el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, accountLabel(data!, a)),
-          el('small', { class: 'qcard-sub muted' }, `${t.orders} ${t.orders === 1 ? 'pedido' : 'pedidos'} · ${formatEuros(t.cents)}`)),
+          el('small', { class: 'qcard-sub muted' }, `${t.orders} ${t.orders === 1 ? 'pedido' : 'pedidos'} · ${formatEuros(t.cents)}${a.status === 'deferred' ? ' · pendiente de cobro en Finance' : ''}`)),
         canSettle ? busyButton({ class: 'ghost' }, 'Liquidar', () => settle(a, t.cents)) : el('small', { class: 'muted' }, 'La liquida quien la abrió'));
     }));
   }
@@ -75,10 +76,60 @@ export function openAccountsSheet(client: SyncClient, projectId: string): void {
     try {
       const out = await actions.settleAccount(a.id, method, a.revision);
       toast(`Cuenta de ${a.holder} liquidada: ${formatEuros(out.total_cents)} (${SETTLE_METHOD_LABELS[method].toLowerCase()}).`);
+      // Si estaba en Finance como pendiente, el mismo apunte pasa al medio real (contrato fl-27, §2c).
+      if (a.status === 'deferred') await actions.sendAccountToFinance(a.id).catch((error) => toast(`Liquidada, pero no se pudo avisar a Finance: ${describeError(error)}`));
     } catch (error) { toast(describeError(error)); }
   }
 
   const off = watchData(client, (d) => { data = d; if (!d.accountsEnabled) sheet.close(); else paint(); }, projectId);
+}
+
+/**
+ * Cierre del día (fl-27, VG F-P4): cada cuenta abierta con pedidos se decide aquí, una a una. Cobrarla ahora (efectivo o
+ * Bizum), pasarla a Finance como pendiente de cobro con su nombre, o anularla (solo el owner: sus pedidos no cuentan).
+ * Mientras quede alguna, el cierre no se manda a Finance (lo comprueba también flow-api). `onChange(n)`: cuántas quedan.
+ */
+export function mountAccountDecisions(client: SyncClient, projectId: string, host: HTMLElement, onChange: (left: number) => void): () => void {
+  const actions = flowActions(client);
+  const isOwner = client.bootstrap()?.membership.role === 'owner';
+  const me = client.bootstrap()?.profile.userId ?? null;
+  let data: FlowData | null = null;
+  function paint(): void {
+    if (!data) return;
+    const totals = accountTotals(data);
+    const open = data.accounts.filter((a) => a.status === 'open' && a.project_id === projectId && (totals.get(a.id)?.orders ?? 0) > 0)
+      .sort((a, b) => a.holder.localeCompare(b.holder, 'es'));
+    onChange(open.length);
+    host.hidden = !open.length;
+    if (!open.length) { replace(host); return; }
+    replace(host, el('h2', null, `Cuentas abiertas (${open.length})`),
+      el('p', { class: 'muted small' }, 'Antes de cerrar, decide qué se hace con cada una.'),
+      ...open.map((a) => {
+        const t = totals.get(a.id) ?? { orders: 0, cents: 0 };
+        const mine = isOwner || a.opened_by === me;
+        return el('div', { class: 'qcard account-card account-decide', role: 'listitem', 'data-account': a.id },
+          el('span', { class: 'qcard-text' }, el('strong', { class: 'qcard-title' }, accountLabel(data!, a)),
+            el('small', { class: 'qcard-sub muted' }, `${t.orders} ${t.orders === 1 ? 'pedido' : 'pedidos'} · ${formatEuros(t.cents)}`)),
+          el('div', { class: 'flow-actions' },
+            ...(mine ? [
+              busyButton({ class: 'primary', 'data-decide': 'cash' }, 'Cobrar: efectivo', () => decide(a, () => actions.settleAccount(a.id, 'cash', a.revision), 'cobrada en efectivo')),
+              busyButton({ class: 'primary', 'data-decide': 'bizum' }, 'Cobrar: Bizum', () => decide(a, () => actions.settleAccount(a.id, 'bizum', a.revision), 'cobrada por Bizum')),
+              busyButton({ class: 'ghost', 'data-decide': 'defer' }, 'Pasar a Finance', () => decide(a, async () => {
+                await actions.deferAccount(a.id, a.revision);
+                await actions.sendAccountToFinance(a.id);
+              }, 'pasada a Finance como pendiente de cobro')),
+            ] : [el('small', { class: 'muted' }, 'La decide quien la abrió o el encargado')]),
+            ...(isOwner ? [busyButton({ class: 'ghost danger-text', 'data-decide': 'void' }, 'Anular', async () => {
+              const reason = await askReason(`Anular la cuenta de ${a.holder}`, `Sus ${t.orders} ${t.orders === 1 ? 'pedido' : 'pedidos'} (${formatEuros(t.cents)}) no cuentan ni en ventas ni en Finance.`, 'Anular cuenta', true);
+              if (reason) await decide(a, () => actions.voidAccount(a.id, reason), 'anulada');
+            })] : [])));
+      }));
+  }
+  async function decide(a: Account, run: () => Promise<unknown>, done: string): Promise<void> {
+    if (!isOnline(client)) { toast('Necesita conexión.'); return; }
+    try { await run(); toast(`Cuenta de ${a.holder} ${done}.`); void client.sync(); } catch (error) { toast(describeError(error)); }
+  }
+  return watchData(client, (d) => { data = d; paint(); }, projectId);
 }
 
 /** «Nombre · cliente 142» o solo el nombre. */

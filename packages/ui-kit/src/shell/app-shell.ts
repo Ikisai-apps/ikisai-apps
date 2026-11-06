@@ -46,6 +46,8 @@ export interface AppShellOptions {
   status?: StatusBarOptions;
   /** Botón «Cerrar sesión» (escritorio). */
   onLogout?: () => void | Promise<void>;
+  /** Texto del botón de salir (menú e icono), p. ej. «Salir (rehace los datos de este dispositivo)». Por defecto «Cerrar sesión». */
+  logoutLabel?: string;
   /** `false` quita «Rehacer datos de este dispositivo» del menú (sale solo si `status.client` sabe rehacer su espejo). */
   rebuildData?: boolean;
   /** El botón de salir también en el móvil (portales). Por defecto, solo en el ordenador. */
@@ -156,9 +158,10 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   const subtitle = el('small', { id: 'shellSubtitle' }, options.subtitle ?? '');
   const status = createStatusBar(options.status ?? {});
   const logoutButton = options.onLogout
-    ? el('button', { class: `iconbtn${options.logoutOnMobile ? '' : ' desktop-only'}`, type: 'button', id: 'logoutButton', 'aria-label': kt('Cerrar sesión'), title: kt('Cerrar sesión'), onclick: () => void options.onLogout?.() }, icon('logout'))
+    ? el('button', { class: `iconbtn${options.logoutOnMobile ? '' : ' desktop-only'}`, type: 'button', id: 'logoutButton', 'aria-label': options.logoutLabel || kt('Cerrar sesión'), title: options.logoutLabel || kt('Cerrar sesión'), onclick: () => void options.onLogout?.() }, icon('logout'))
     : null;
   const menu: AppMenu | null = options.menu
+    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, logoutLabel: options.logoutLabel, onSync: options.status?.onSync, navigate: (hash) => navigate(hash) })
     ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, onSync: options.status?.onSync,
       ...(options.rebuildData !== false && canRebuild(options.status?.client) ? { onRebuild: () => rebuildDeviceData(options.status!.client as unknown as RebuildClient) } : {}), navigate: (hash) => navigate(hash) })
     : null;

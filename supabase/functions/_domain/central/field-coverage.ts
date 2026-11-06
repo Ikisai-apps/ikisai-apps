@@ -94,13 +94,11 @@ export const KIT_TO_DECISION: Record<'keep' | 'later' | 'retire', GroupDecision>
 export const DECISION_TO_KIT: Record<GroupDecision, 'keep' | 'later' | 'retire'> = { dejar: 'keep', revisar_mas_tarde: 'later', retirar: 'retire' };
 
 /**
- * ¿Es candidato? Lo dice el núcleo (`candidate`). Si aún no lo da, la misma regla: sin cobertura de Flow (ni paso, ni
- * capacidad, ni regla), sin uso en 30 días y sin estimado de la app que lo proteja.
+ * ¿Es candidato? Lo dice el núcleo (`candidate`, 0114: sin capacidad, sin uso en 30 días, no obligatorio y sin estimado que lo
+ * proteja). Central solo añade lo que sabe de Flow: si un recorrido o una regla lo usa, no es candidato.
  */
 export function isCandidate(f: CoreCoverageField, linked: ReadonlySet<string>): boolean {
-  if (typeof f.candidate === 'boolean') return f.candidate;
-  const estimated = !!(f.estimate?.frequency || f.estimate?.audience);
-  return !linked.has(f.fieldId) && !f.used && !(f.activations30d && f.activations30d > 0) && !estimated;
+  return f.candidate === true && !linked.has(f.fieldId);
 }
 
 /** «booking.ficha_reserva» → «Ficha reserva» (si el núcleo no trae la etiqueta de la pantalla en lenguaje de persona). */

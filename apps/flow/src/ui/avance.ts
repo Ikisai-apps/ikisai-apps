@@ -63,7 +63,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   let history: Snap[] = [];
   // «Tuyas» (tres toques en los pasos de los hitos): los carriles de la persona; owner sin carriles declarados, el de Víctor.
   const lanes = ((client.bootstrap()?.membership.scopes ?? {}) as { lanes?: string[] }).lanes ?? (role === 'owner' ? ['victor'] : []);
-  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName), (uid) => void setApps(uid));
+  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName), (uid) => void setApps(uid), (uid, from, to) => void moveApp(uid, from, to));
 
   function paint(): void {
     // Como `flow.board_counts`: todas las tarjetas e hitos del proyecto, estén en la columna que estén.
@@ -93,6 +93,19 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     if (Array.isArray(p.apps) && p.apps.length) return { apps: p.apps.map(agentName), appsManual: true };
     const auto = lanes.includes(u.lane_key ?? '') ? linkedApps([p.url, p.note, ...(Array.isArray(p.steps) ? p.steps : [])]) : [];
     return { apps: auto.length ? auto.map(agentName) : [agentName(u.lane_key ?? '')], appsManual: false };
+  }
+
+  /** Arrastrar una tarea tuya de un carril de aplicación a otro (fl-20): sale de `from` y entra en `to`; queda puesta a mano. */
+  async function moveApp(uid: string, from: string, to: string): Promise<void> {
+    const u = units.find((x) => x.id === uid);
+    if (!u) return;
+    if (!isOnline(client)) { toast('Cambiar una tarjeta necesita conexión.'); return; }
+    const keyOf = new Map(AGENTS.map(([k, n]) => [n, k]));
+    const next = [...appsOf(u).apps.filter((n) => n !== from && n !== to), to].map((n) => keyOf.get(n) ?? n);
+    try {
+      await callProcedure(client, PROCEDURES.boardCard, { project_id: projectId, card_id: u.id, lane_key: u.lane_key, apps: next });
+      void client.sync();
+    } catch (error) { toast(describeError(error)); }
   }
 
   /** Elegir a mano en qué aplicaciones se hace una tarea tuya (ninguna marcada: vuelve a lo que digan sus enlaces). */

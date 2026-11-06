@@ -70,6 +70,8 @@ export interface AppMenuOptions {
 export interface AppMenuContext {
   appName: string;
   onLogout?: () => void | Promise<void>;
+  /** Texto del botón de salir; por defecto «Cerrar sesión». */
+  logoutLabel?: string;
   onSync?: () => void | Promise<void>;
   /** «Rehacer datos de este dispositivo» (K-06): la pone la cáscara si el cliente sabe rehacer su espejo. */
   onRebuild?: () => void | Promise<unknown>;
@@ -212,6 +214,7 @@ export function createAppMenu(options: AppMenuOptions, ctx: AppMenuContext): App
       options.signalHere || feedback ? group('ayuda', kt('Comentarios y ayuda'), 'help',
         options.signalHere ? el('button', { type: 'button', class: 'appmenu-signal', ...mark('ayuda.senalar', 'Señalar un fallo aquí'), onclick: () => { close(); options.signalHere!(); } }, icon('warn', 18), kt('Señalar un fallo aquí')) : null,
         feedback) : null,
+      ctx.onLogout ? el('div', { class: 'appmenu-logout' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.salir', 'Cerrar sesión'), onclick: () => { close(); void ctx.onLogout?.(); } }, icon('logout', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, ctx.logoutLabel || kt('Cerrar sesión'))))) : null);
       ctx.onRebuild ? el('div', { class: 'appmenu-rebuild' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.rehacer', 'Rehacer datos de este dispositivo'), onclick: () => { close(); void ctx.onRebuild?.(); } }, icon('restore', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, kt('Rehacer datos de este dispositivo'))))) : null,
       ctx.onLogout ? el('div', { class: 'appmenu-logout' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.salir', 'Cerrar sesión'), onclick: () => { close(); void ctx.onLogout?.(); } }, icon('logout', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, kt('Cerrar sesión'))))) : null);
   }

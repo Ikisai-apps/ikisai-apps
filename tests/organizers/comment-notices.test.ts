@@ -141,6 +141,11 @@ test('organizers · avisos: un correo por persona con lo suyo sin leer; luego, u
 
   assert.deepEqual((await tick(organizersOff)).data, { sent: 0, errors: 0, off: true });
   assert.equal(outbox.length, 0, 'apagado no envía');
+  // Apagado, el worker pausa la sonda 6 horas (0712): no vuelve a llamar hasta entonces. Al pasar, vuelve a haber trabajo.
+  const hasWork = async () => (await booking.t.db.query<{ v: boolean }>('select organizers.comment_notices_has_work() v')).rows[0]!.v;
+  assert.equal(await hasWork(), false, 'en pausa');
+  await booking.t.db.query(`update organizers.worker_pauses set until = now() - interval '1 minute' where key = 'comment_notices'`);
+  assert.equal(await hasWork(), true, 'pasada la pausa');
 
   const first = await tick();
   assert.deepEqual(first.data, { sent: 1, errors: 0, skipped: 0 }, JSON.stringify(first.data));

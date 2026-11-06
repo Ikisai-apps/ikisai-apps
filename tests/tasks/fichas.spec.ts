@@ -38,7 +38,7 @@ const isDone = (page: Page, id: string) => page.evaluate((x) => { const loc = ta
 const undo = (page: Page, message: string) => page.locator('.ikisai-toast span', { hasText: message }).locator('xpath=following-sibling::button');
 /** Lo que un lector o un outsider podría tocar en la ficha sin que se guarde (debe estar vacío). */
 const activeControls = (page: Page) => page.evaluate(() => [...document.querySelectorAll('#sheet .tkf-portada :is(button,input,select,textarea), #sheet .tkf-store :is(button,input,select,textarea)')]
-  .filter((c: any) => !c.disabled && !c.closest('#taskComments') && c.id !== 'outsiderDone' && !c.matches('[data-child-toggle], [data-child-open], .tkf-tile'))
+  .filter((c: any) => !c.disabled && !c.closest('#taskComments') && c.id !== 'outsiderDone' && !c.matches('[data-child-toggle], [data-child-open], .tkf-tile, .tkf-proj'))
   .map((c: any) => c.id || c.getAttribute('data-feedback-id') || c.className));
 
 test('ficha de tarea: portada, baldosas en foco, el lápiz guarda el título y «Hecha» con «Deshacer»', async () => {
