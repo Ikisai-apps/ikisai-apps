@@ -214,9 +214,8 @@ export function createAppMenu(options: AppMenuOptions, ctx: AppMenuContext): App
       options.signalHere || feedback ? group('ayuda', kt('Comentarios y ayuda'), 'help',
         options.signalHere ? el('button', { type: 'button', class: 'appmenu-signal', ...mark('ayuda.senalar', 'Señalar un fallo aquí'), onclick: () => { close(); options.signalHere!(); } }, icon('warn', 18), kt('Señalar un fallo aquí')) : null,
         feedback) : null,
-      ctx.onLogout ? el('div', { class: 'appmenu-logout' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.salir', 'Cerrar sesión'), onclick: () => { close(); void ctx.onLogout?.(); } }, icon('logout', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, ctx.logoutLabel || kt('Cerrar sesión'))))) : null);
       ctx.onRebuild ? el('div', { class: 'appmenu-rebuild' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.rehacer', 'Rehacer datos de este dispositivo'), onclick: () => { close(); void ctx.onRebuild?.(); } }, icon('restore', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, kt('Rehacer datos de este dispositivo'))))) : null,
-      ctx.onLogout ? el('div', { class: 'appmenu-logout' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.salir', 'Cerrar sesión'), onclick: () => { close(); void ctx.onLogout?.(); } }, icon('logout', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, kt('Cerrar sesión'))))) : null);
+      ctx.onLogout ? el('div', { class: 'appmenu-logout' }, el('button', { type: 'button', class: 'navitem appmenu-row', ...mark('cuenta.salir', 'Cerrar sesión'), onclick: () => { close(); void ctx.onLogout?.(); } }, icon('logout', 19), el('span', { class: 'appmenu-rowtext' }, el('span', null, ctx.logoutLabel || kt('Cerrar sesión'))))) : null);
   }
 
   function paint(host: HTMLElement): void {

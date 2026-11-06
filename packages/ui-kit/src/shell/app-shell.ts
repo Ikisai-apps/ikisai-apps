@@ -161,8 +161,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     ? el('button', { class: `iconbtn${options.logoutOnMobile ? '' : ' desktop-only'}`, type: 'button', id: 'logoutButton', 'aria-label': options.logoutLabel || kt('Cerrar sesión'), title: options.logoutLabel || kt('Cerrar sesión'), onclick: () => void options.onLogout?.() }, icon('logout'))
     : null;
   const menu: AppMenu | null = options.menu
-    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, logoutLabel: options.logoutLabel, onSync: options.status?.onSync, navigate: (hash) => navigate(hash) })
-    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, onSync: options.status?.onSync,
+    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, logoutLabel: options.logoutLabel, onSync: options.status?.onSync,
       ...(options.rebuildData !== false && canRebuild(options.status?.client) ? { onRebuild: () => rebuildDeviceData(options.status!.client as unknown as RebuildClient) } : {}), navigate: (hash) => navigate(hash) })
     : null;
   if (menu && options.status?.client) {
