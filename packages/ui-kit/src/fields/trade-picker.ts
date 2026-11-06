@@ -7,9 +7,12 @@
  * - «Elegir en el árbol» (por defecto): cada oficio plegable con su chip «entero» primero y sus especialidades.
  * Las filas son las de `central.trade_options` tal cual (`trade_id`, `parent_id`, `name`, `position`) o ya en camelCase;
  * la app las lee (`client.api('/read/central.trade_options', …)`) y las pasa en `trades` o con `load`.
+ * - **Icono por oficio** (VG 06-11): el del oficio de arriba (`icon` de la fila o, sin él, por su nombre: `tradeIcon`) en el
+ *   árbol, la búsqueda y las chips; las especialidades llevan el de su oficio.
  * Es `createSpacePicker` por dentro: mismas teclas, chips y marcas de feedback.
  */
 import { kt } from '../i18n/i18n.ts';
+import { tradeIcon } from '../icons.ts';
 import { createSpacePicker, type SpacePicker } from '../spaces/picker.ts';
 import type { SpaceKind, SpaceRow } from '../spaces/model.ts';
 
@@ -21,6 +24,8 @@ export interface TradeOption {
   parentId?: string | null;
   name: string;
   path?: string;
+  /** Clave de `TRADE_ICONS` (`central.trade_options.icon`); sin ella, se deduce del nombre. */
+  icon?: string | null;
   position?: number | null;
   active?: boolean;
 }
@@ -41,6 +46,8 @@ export interface TradePickerOptions {
   recentKey?: string;
   /** «Elegir en el árbol» (por defecto, sí). */
   tree?: boolean;
+  /** Icono de cada oficio (por defecto, el de `tradeIcon` del oficio de arriba); `false`, sin iconos. */
+  icons?: false | ((trade: { id: string; name: string; icon: string | null; rootId: string; rootName: string }) => string | null);
   feedbackId?: string;
 }
 
@@ -104,9 +111,19 @@ export function createTradePicker(options: TradePickerOptions): TradePicker {
   const multiple = options.multiple !== false;
   let current: string[] = Array.isArray(options.value) ? options.value.slice() : options.value ? [options.value] : [];
   const depthOf = (id: string) => ancestors(parentOf, id).length;
+  const byTrade = () => new Map(trades.map((t) => [tradeId(t), t]));
+  let tradeById = byTrade();
+  const iconOf = (id: string): string | null => {
+    if (options.icons === false) return null;
+    const root = tradeById.get(ancestors(parentOf, id).at(-1) ?? id);
+    const own = tradeById.get(id);
+    if (!own || !root) return null;
+    if (options.icons) return options.icons({ id, name: own.name, icon: own.icon ?? null, rootId: tradeId(root), rootName: root.name });
+    return tradeIcon(own.icon, null) ?? tradeIcon(root.icon, root.name);
+  };
   const inner = createSpacePicker({
     label: options.label, rows: toRows(trades), kinds: KINDS, multiple, value: current, quick: options.quick, recentKey: options.recentKey,
-    tree: options.tree !== false, feedbackId: options.feedbackId,
+    tree: options.tree !== false, feedbackId: options.feedbackId, iconOf: (r) => iconOf(r.id),
     filter: options.filter ? (r) => options.filter!({ id: r.id, parentId: r.parentId, name: r.name, depth: depthOf(r.id) }) : undefined,
     texts: {
       empty: kt('Ningún oficio coincide con «{q}».', { q: '{q}' }), search: kt('Buscar oficio o especialidad…'), tree: kt('Elegir en la lista de oficios'),
@@ -123,6 +140,7 @@ export function createTradePicker(options: TradePickerOptions): TradePicker {
   function setTrades(next: readonly TradeOption[]): void {
     trades = next;
     parentOf = parents(trades);
+    tradeById = byTrade();
     inner.setRows(toRows(trades));
   }
   if (options.load) void options.load().then(setTrades, () => { /* sin red: siguen los de `trades` */ });

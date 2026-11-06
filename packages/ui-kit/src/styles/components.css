@@ -2338,6 +2338,8 @@ button.cal-sheet-event{cursor:pointer}
 .space-tree-group>summary{min-height:var(--tap);display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer}
 .space-tree-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px}
 .space-tree-chip{min-height:var(--tap)}
+/* createTradePicker: el icono del oficio delante del nombre. */
+.trade-picker :is(summary,.space-chip,.space-tree-chip,.space-quick-chip,.space-result-name)>svg{flex:none;vertical-align:-3px;margin-inline-end:6px}
 /* Selector visual de espacio (src/spaces/place-picker.ts). */
 .place-picker{display:grid;gap:10px}
 .place-title{margin:0;font-size:var(--text-md,1rem)}
