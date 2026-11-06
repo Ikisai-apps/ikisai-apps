@@ -44,6 +44,14 @@ const date: Check = (v, field) => {
 const position: Check = (v, field) => {
   if (typeof v !== 'number' || !Number.isFinite(v)) reject(422, 'INVALID_ORDER', 'Orden fraccional inválido.', { field });
 };
+/** Cuadrante de 1 m² (0368): `{cellX, cellY, scale: 1}`, celdas enteras de 0 a 9999. */
+const spaceCell: Check = (v, field) => {
+  const ok = !!v && typeof v === 'object' && !Array.isArray(v)
+    && Object.keys(v as object).every((k) => ['cellX', 'cellY', 'scale'].includes(k))
+    && [(v as Record<string, unknown>).cellX, (v as Record<string, unknown>).cellY].every((n) => Number.isInteger(n) && (n as number) >= 0 && (n as number) < 10000)
+    && ((v as Record<string, unknown>).scale === undefined || (v as Record<string, unknown>).scale === 1);
+  if (!ok) reject(422, 'INVALID_SPACE', 'El cuadrante es {cellX, cellY, scale: 1} con celdas enteras.', { field });
+};
 const flag = (code: string): Check => (v, field) => {
   if (typeof v !== 'boolean') reject(422, code, 'El valor debe ser verdadero o falso.', { field });
 };
@@ -254,7 +262,7 @@ const RULES: Record<TableName, TableRules> = {
     required: ['tab_id', 'project_id', 'space_id'],
   },
   'tasks.task_spaces': {
-    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), space_id: uuid('INVALID_SPACE') },
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), space_id: uuid('INVALID_SPACE'), cell: nullable(spaceCell) },
     required: ['tab_id', 'project_id', 'task_id', 'space_id'],
   },
   'tasks.project_trades': {

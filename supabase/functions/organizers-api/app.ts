@@ -13,8 +13,10 @@
  * - Avisos de comentarios nuevos (0709): `POST worker/comment-notices/tick` manda a cada persona que organiza, como mucho
  *   cada hora, un correo con los comentarios de sus asistentes que aún no ha visto. Apagado hasta `IKISAI_ORGANIZER_MAIL=1`
  *   y el SMTP (`IKISAI_SMTP_*`).
+ * - `GET plans` (O-C2 b): el mapa de zonas de Recursos (`resources.portal_plans`, 0814) con cada dibujo firmado aquí, para la
+ *   planta con camas de Alojamiento. Solo geometría y nombres públicos; quién duerme dónde lo pone la app con Booking.
  */
-import { createApp, createSupabase, ensureServiceActor, fail, type AppConfig } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, ensureServiceActor, fail, r2ConfigFromEnv, type AppConfig, type Supabase } from '../_kit/mod.ts';
 import { MATERIAL_MAX_BYTES, MATERIAL_MIME, proposalVisible, validateOperations, visibleRow } from '../_domain/organizers/mod.ts';
 import { githubEvidence, GithubError, parseRef, type EvidenceStore } from '../_domain/organizers/github.ts';
 import { commentNoticeEmail, smtpFromEnv, type Mailer } from '../_domain/organizers/mail.ts';
@@ -43,8 +45,37 @@ export function paymentReturnUrls(reservationId: string, invoiceId: string, orig
   return { success: `${at}&pago=ok`, cancel: `${at}&pago=cancelado` };
 }
 
+type StoredFile = { id: string; bucket: string; path: string; mime: string; sha256: string; provider?: 'supabase' | 'r2' | null };
+interface PortalPlansRow {
+  plans?: Array<{ file: StoredFile | null } & Record<string, unknown>>;
+  spaces?: Array<Record<string, unknown>>;
+  icons?: Array<{ file: StoredFile | null } & Record<string, unknown>>;
+  images?: Array<{ file: StoredFile | null } & Record<string, unknown>>;
+  decor?: Array<Record<string, unknown>>;
+}
+
+/**
+ * El mapa de zonas listo para la app, como en Guests (`guests-api`, `planSigner`): cada dibujo, icono e imagen con una URL
+ * de 10 minutos y su `sha256`, nunca bucket ni ruta. Los dibujos los sube Central al bucket de Recursos: se firman con la
+ * clave de servicio.
+ */
+function planSigner(supabase: Supabase) {
+  const storage = createStorage(supabase, { r2: r2ConfigFromEnv((name) => (globalThis as any).Deno?.env?.get?.(name)) });
+  return async (out: PortalPlansRow | null) => {
+    const sign = async (file: StoredFile | null) => ({
+      fileId: file?.id ?? null,
+      mime: file?.mime ?? null,
+      sha256: file?.sha256 ?? null,
+      url: file ? await storage.readUrl({ bucket: file.bucket, path: file.path, storage_provider: file.provider ?? null }, 600).catch(() => null) : null,
+    });
+    const each = <T extends { file: StoredFile | null }>(rows: T[] | undefined) => Promise.all((rows ?? []).map(async ({ file, ...row }) => ({ ...row, ...(await sign(file)) })));
+    return { plans: await each(out?.plans), spaces: out?.spaces ?? [], icons: await each(out?.icons), images: await each(out?.images), decor: out?.decor ?? [] };
+  };
+}
+
 export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'portalIssuer' | 'uploads' | 'hooks' | 'workerRoutes'> & Partial<Pick<AppConfig, 'origins'>> & { github?: OrganizersGithub; payments?: OrganizersPayments; mail?: OrganizersMail }) {
   const supabase = createSupabase(base);
+  const signPlans = planSigner(supabase);
   const { github, payments, mail, ...config } = base;
   const env = (name: string): string | undefined => (globalThis as any).Deno?.env?.get?.(name);
   const mailOn = mail?.enabled ?? env('IKISAI_ORGANIZER_MAIL') === '1';
@@ -109,6 +140,10 @@ export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'orig
         }
         return { url: data!.url, provider: data!.provider ?? null, expires_at: data!.expires_at ?? null, reused: data!.reused === true };
       },
+    }, {
+      // La planta con camas de Alojamiento (O-C2 b): el mismo mapa que ve Guests, nunca personas.
+      method: 'GET', pattern: 'plans',
+      handler: async ({ ctx }) => signPlans(await supabase.rpc<PortalPlansRow>('core_read', { p_app: 'organizers', p_actor: ctx.user.id, p_name: 'resources.portal_plans', p_args: {} })),
     }],
     workerRoutes: [{
       method: 'POST', pattern: 'retention/tick',
@@ -121,7 +156,11 @@ export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'orig
       // cursor de quien lo ha recibido; si el envío falla, se intenta en la siguiente vuelta.
       method: 'POST', pattern: 'comment-notices/tick',
       handler: async () => {
-        if (!mailOn || !mailer) return { sent: 0, errors: 0, off: true };
+        if (!mailOn || !mailer) {
+          // Apagado: 6 horas sin que la sonda vuelva a llamar (0712); al encenderlo, avisa como mucho 6 horas después.
+          await supabase.rpc('core_invoke', { p_app: 'organizers', p_actor: null, p_name: 'organizers.comment_notices_pause', p_args: { hours: 6 } }).catch(() => null);
+          return { sent: 0, errors: 0, off: true };
+        }
         const due = await supabase.rpc<Array<{ user_id: string; cursor: string; reservations: Array<{ reservation_id: string; comments: number }> }>>(
           'core_invoke', { p_app: 'organizers', p_actor: null, p_name: 'organizers.comment_notices_due', p_args: { limit: 50 } });
         let sent = 0; let errors = 0; let skipped = 0;

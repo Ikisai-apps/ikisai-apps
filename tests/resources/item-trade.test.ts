@@ -58,3 +58,17 @@ test('icono · un artículo guarda la clave de su icono (0822); una clave mal fo
   ok(await commit([{ op: 'update', table: ITEMS, id: llave, expectedRevision: await rev(llave), fields: { icon: null } }], app.tokens.owner));
   assert.equal((await app.t.db.query<{ icon: string | null }>('select icon from resources.items where id = $1', [llave])).rows[0]!.icon, null);
 });
+
+test('familias · los nombres proponen sus prefijos de palabras, con cuántos artículos los comparten (0823)', async () => {
+  const ok = (res: { status: number; data: any }) => assert.equal(res.status, 200, JSON.stringify(res.data));
+  ok(await commit([
+    { op: 'insert', table: ITEMS, id: uuid(), fields: { name: 'Tubo multicapa 20 mm', kind: 'material', base_unit: 'm' } },
+    { op: 'insert', table: ITEMS, id: uuid(), fields: { name: 'tubo multicapa 16 mm', kind: 'material', base_unit: 'm' } },
+  ], app.tokens.owner));
+  const rows = (await app.call('/api/v1/resources/read/resources.item_families', { body: { where: {} } })).data.rows as Array<{ family: string; depth: number; items: number }>;
+  const by = new Map(rows.map((r) => [r.family, r]));
+  assert.equal(by.get('tubo')?.items, 2);
+  assert.equal(by.get('tubo multicapa')?.items, 2);
+  assert.equal(by.get('tubo multicapa 20')?.items, 1);
+  assert.deepEqual([by.get('tubo multicapa 20 mm')?.depth, by.get('tubo multicapa 20 mm')?.items], [4, 1]);
+});

@@ -100,7 +100,7 @@ export const mountFieldCoverage: ViewMount = ({ main, client, usage }) => {
     if (!payload || !alive) return;
     replace(note, payload.flowAvailable ? null
       : el('p', { class: 'note', id: 'fieldCoverageNoFlow' }, 'Flow no ha respondido: faltan los pasos de los recorridos y las reglas. Lo demás está al día.'));
-    // Lo de Central por campo: candidato (si el núcleo aún no lo da, la misma regla), pantalla en lenguaje de persona,
+    // Lo de Central por campo: candidato (el del núcleo, menos lo que usa Flow), pantalla en lenguaje de persona,
     // utilidad heredada y lo ya decidido para su pantalla.
     const linked = new Set(fieldLinks(payload.fields, payload.anchors, payload.rules).map((l) => l.fieldId));
     const extra: Record<string, Partial<CoverageField>> = {};

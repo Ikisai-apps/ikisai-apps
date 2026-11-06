@@ -323,6 +323,39 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
       },
     },
     {
+      // Una cuenta a Finance (fl-27, contrato del 05-11, §2c): pasada como pendiente, `flow:account:<id>` fiscal con `a_cobrar`;
+      // liquidada después, se reenvía el mismo source_ref con el medio real (Finance sustituye el apunte).
+      method: 'POST', pattern: 'accounts/:id/send/finance', handler: async ({ ctx, params }) => {
+        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede enviar a Finance.');
+        const out = await supabase.rpc<AccountForSend | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.account_for_send', p_args: { id: params.id } });
+        if (!out?.account) fail(404, 'NOT_FOUND', 'Esa cuenta no existe.');
+        const a = out.account;
+        if (a.status === 'open') fail(409, 'ACCOUNT_OPEN', 'La cuenta sigue abierta: pásala a Finance o cóbrala antes.');
+        const pending = a.status === 'deferred';
+        const total = out.orders.reduce((n, o) => n + (o.total_cents ?? 0), 0);
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(pending ? Date.now() : (a.settled_at ?? Date.now())));
+        const method = out.method === 'btc_ln' || out.method === 'btc_chain' ? 'bitcoin' : (out.method ?? 'cash');
+        const sourceRef = `flow:account:${a.id}`;
+        const args = {
+          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'fiscal', entry_date: day,
+          description: pending ? `Cuenta de ${a.holder} · pendiente de cobro` : `Cuenta de ${a.holder}`,
+          amount_cents: total, tax_rate: 10, methods: { [pending ? 'a_cobrar' : method]: total },
+          detail: out.orders.map((o) => ({ code: `P ${o.pay_seq}`, name: `Pedido ${o.pay_seq}`, quantity: 1, amount_cents: o.total_cents, order_code: `P ${o.pay_seq}` })),
+          pending_refunds_cents: 0, event_id: out.project.booking_event_id,
+        };
+        const mark = (fields: Record<string, unknown>) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.accounts, id: a.id, expectedRevision: a.revision, fields }]);
+        let result: unknown;
+        try {
+          result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+        } catch (error) {
+          await mark({ finance_status: 'error', finance_sent_at: new Date().toISOString(), finance_result: { code: isFault(error) ? error.code : 'ERROR' } }).catch(() => undefined);
+          throw error;
+        }
+        await mark({ finance_status: 'sent', finance_sent_at: new Date().toISOString(), finance_result: result ?? null });
+        return { status: 'sent', result };
+      },
+    },
+    {
       // «Enviar a Finance» de un justificante de la caja (0917): ESE cobro como apunte fiscal, idempotente por justificante.
       method: 'POST', pattern: 'receipts/:id/send/finance', handler: async ({ ctx, params }) => {
         if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede enviar a Finance.');
@@ -670,7 +703,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         if (!hash) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
         const out = await mine(hash);
         if (!out?.customerId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
-        return reply({ number: out.number, orders: out.orders ?? [] });
+        return reply({ number: out.number, orders: out.orders ?? [], memberName: (out as { memberName?: string | null }).memberName ?? null });
       }
       if (route === 'customer' && request.method === 'POST') {
         if (!ipAllowed('customer', clientIp(request))) return error(429, 'RATE_LIMITED', PUBLIC_MESSAGES.RATE_LIMITED!);
@@ -702,7 +735,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         const hash = await customerHash();
         const me = hash ? await mine(hash) : null;
         if (!me?.customerId || !me.projectId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
-        const body = await request.json().catch(() => null) as { lines?: Array<{ productId?: unknown; quantity?: unknown }> } | null;
+        const body = await request.json().catch(() => null) as { lines?: Array<{ productId?: unknown; quantity?: unknown }>; test?: unknown } | null;
         const lines = Array.isArray(body?.lines) ? body!.lines : [];
         if (!lines.length || lines.length > MAX_PUBLIC_LINES) return error(422, 'INVALID_ORDER', `El pedido debe tener entre 1 y ${MAX_PUBLIC_LINES} productos.`);
         for (const l of lines) {
@@ -721,7 +754,8 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         if (lines.some((l) => !known.has(l.productId as string))) return error(409, 'MENU_CHANGED', 'La carta ha cambiado. Recárgala y vuelve a pedir.');
         const orderId = crypto.randomUUID();
         await publicWrite(supabase, APP, [
-          { op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: me.projectId, origin: 'public', customer_id: me.customerId } },
+          // «Es una prueba» (G-12): solo cuenta si quien pide es del equipo; el disparador lo ignora para los demás (0964).
+          { op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: me.projectId, origin: 'public', customer_id: me.customerId, ...(typeof body?.test === 'boolean' ? { test_requested: body.test } : {}) } },
           ...lines.map((l, i) => ({ op: 'insert', table: TABLES.orderLines, id: crypto.randomUUID(), fields: { order_id: orderId, product_id: l.productId, quantity: l.quantity, position: i + 1 } })),
         ]);
         return reply({ orderId, number: me.number });

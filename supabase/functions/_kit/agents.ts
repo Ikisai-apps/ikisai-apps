@@ -72,12 +72,30 @@ export function createAgents(supabase: Supabase, app: string, hooks: AppHooks, v
     if (ctx.membership.role !== 'editor') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (!body || typeof body.requestId !== 'string' || !REQUEST_ID.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
     const operations = validateOperations(body.operations);
-    if (hooks.beforeCommit) await hooks.beforeCommit(operations, ctx);
-    const risk = await assessRisk(operations, ctx, hooks);
-    if (!risk.required) fail(422, 'CONFIRMATION_NOT_NEEDED', messageFor('CONFIRMATION_NOT_NEEDED'), { risk });
+    // 0120: propuesta hacia otra app (`targetApp`), con decisor nombrado, campos tocados, grupo y marcas «por confirmar».
+    const targetApp = body.targetApp === undefined || body.targetApp === null || body.targetApp === app ? null : body.targetApp;
+    if (targetApp !== null && (typeof targetApp !== 'string' || !/^[a-z][a-z0-9_]{1,30}$/.test(targetApp))) fail(422, 'INVALID_OPERATION', 'targetApp inválida.');
+    const decider = body.deciderUserId ?? null;
+    if (decider !== null && (typeof decider !== 'string' || !UUID.test(decider))) fail(422, 'INVALID_OPERATION', 'deciderUserId debe ser un uuid.');
+    const groupKey = body.groupKey ?? null;
+    if (groupKey !== null && (typeof groupKey !== 'string' || !REQUEST_ID.test(groupKey))) fail(422, 'INVALID_OPERATION', 'groupKey inválido.');
+    const fields = body.fields ?? null;
+    if (fields !== null && (!Array.isArray(fields) || fields.length > 500 || fields.some((f: unknown) => typeof f !== 'string' || !/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(f)))) fail(422, 'INVALID_OPERATION', 'fields debe ser una lista de entity.prop.');
+    const uncertain = body.uncertain ?? null;
+    if (uncertain !== null && (!Array.isArray(uncertain) || uncertain.length > 500 || uncertain.some((u: unknown) => typeof u !== 'string' || u.length > 200))) fail(422, 'INVALID_OPERATION', 'uncertain debe ser una lista de textos.');
+    let risk;
+    if (targetApp === null) {
+      if (hooks.beforeCommit) await hooks.beforeCommit(operations, ctx);
+      risk = await assessRisk(operations, ctx, hooks);
+      if (!risk.required) fail(422, 'CONFIRMATION_NOT_NEEDED', messageFor('CONFIRMATION_NOT_NEEDED'), { risk });
+    } else {
+      // Hacia otra app los hooks de esta no aplican y toda propuesta exige decisión: la app destino la ensaya y la aplica al aprobar.
+      risk = { ...(await assessRisk(operations, ctx, hooks)), required: true, reasons: ['target-app:' + targetApp] };
+    }
     const digest = await sha256Hex(stable(operations));
     const proposal = await supabase.rpc<any>('core_proposal_prepare', {
       p_app: app, p_actor: ctx.user.id, p_key: ctx.user.keyId ?? null, p_request_id: body.requestId, p_digest: digest, p_operations: operations, p_risk: risk,
+      p_target_app: targetApp, p_decider: decider, p_fields: fields, p_group_key: groupKey, p_uncertain: uncertain,
     });
     return filterSummary(proposal, ctx);
   }
@@ -96,13 +114,22 @@ export function createAgents(supabase: Supabase, app: string, hooks: AppHooks, v
   }
 
   async function decide(ctx: RequestContext, id: string, decision: 'approve' | 'reject') {
-    requireHumanOwner(ctx);
+    // 0120: decide un owner humano de la app efectiva o el decisor nombrado; el núcleo lo comprueba.
+    if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente no administra agentes ni propuestas.');
     if (!UUID.test(id)) fail(404, 'NOT_FOUND', messageFor('NOT_FOUND'));
     const proposal = await supabase.rpc<any>('core_proposal_decide', { p_app: app, p_actor: ctx.user.id, p_id: id, p_decision: decision });
     if (proposal?.autoRejected) {
       fail(409, 'PROPOSAL_UNAVAILABLE', 'El lote ya no encaja con los datos actuales; la propuesta ha quedado rechazada y el agente debe prepararla de nuevo.', { proposal: filterSummary(proposal, ctx) });
     }
     return filterSummary(proposal, ctx);
+  }
+
+  /** 0120: decide de golpe las pendientes de un grupo («Carga asistida»: aceptar o rechazar por grupo). */
+  async function decideGroup(ctx: RequestContext, groupKey: string, decision: 'approve' | 'reject') {
+    if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente no administra agentes ni propuestas.');
+    if (!REQUEST_ID.test(groupKey)) fail(404, 'NOT_FOUND', messageFor('NOT_FOUND'));
+    const result = await supabase.rpc<any>('core_proposal_decide_group', { p_app: app, p_actor: ctx.user.id, p_group_key: groupKey, p_decision: decision });
+    return { ...result, items: Array.isArray(result?.items) ? result.items.map((p: any) => (p?.summary ? filterSummary(p, ctx) : p)) : [] };
   }
 
   // --- Claves ---------------------------------------------------------------------
@@ -166,5 +193,5 @@ export function createAgents(supabase: Supabase, app: string, hooks: AppHooks, v
     return supabase.rpc('core_access_log', { p_app: app, p_actor: ctx.user.id, p_before: before === null ? null : Number(before), p_limit: limit === null ? null : Number(limit) });
   }
 
-  return { prepare, list, get, decide, listKeys, issue, revoke, accessLog };
+  return { prepare, list, get, decide, decideGroup, listKeys, issue, revoke, accessLog };
 }

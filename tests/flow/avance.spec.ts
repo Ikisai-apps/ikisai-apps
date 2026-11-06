@@ -147,4 +147,23 @@ test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu car
   await expect(page.locator('#cvApp')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(1);
   await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
+  // Arrastrarla al carril de Flow (fl-20): pasa a hacerse en Flow y dice de quién es.
+  // Arrastrar y soltar del navegador: los eventos a mano (dragTo no siempre los genera con DataTransfer en CI).
+  await page.evaluate(() => {
+    const card = [...document.querySelectorAll<HTMLElement>('.lane[aria-label="Víctor"] .it[data-drag]')].find((x) => x.textContent?.includes('Revisar la carta'))!;
+    const lane = document.querySelector<HTMLElement>('.lane[aria-label="Flow"]')!;
+    const dt = new DataTransfer();
+    card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    lane.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    card.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+  });
+  await expect(page.locator('.lane[aria-label="Flow"] .it', { hasText: 'Revisar la carta' })).toContainText('Víctor', { timeout: 15_000 });
+  await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(0);
+});
+
+test('avance · en el móvil abre en «Por hitos» si no hay otra vista recordada (fl-31)', async ({ page }) => {
+  await enter(page);
+  await expect(page.locator('#cvHitos')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.avance-orig .lanes')).toHaveCount(0);
 });

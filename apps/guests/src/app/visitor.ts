@@ -28,7 +28,9 @@ export interface PublicEvent {
 export interface VisitorRequest {
   /** Id de la petición (Booking): para «Tu ficha está lista». */
   id?: string;
-  event_code: string; kind: 'join' | 'contact' | 'stay'; name: string | null; status: 'pendiente' | 'aceptada' | 'atendida' | 'descartada' | string;
+  event_code: string; kind: 'join' | 'contact' | 'stay'; name: string | null;
+  /** Lo que dejó para contactar (Booking 1428, solo el suyo) y si es una prueba de un miembro. */
+  contact?: string | null; test?: boolean; status: 'pendiente' | 'aceptada' | 'atendida' | 'descartada' | string;
   created_at: string; decided_at: string | null;
   /** Solo en `stay` (Booking 0499): noches, personas, total y cómo se paga; con `hold`, hasta cuándo se guarda la plaza. */
   from?: string; to?: string; persons?: number; total_cents?: number | null; pay?: 'hold' | 'pay_first' | string; hold_until?: string | null; hold_expired?: boolean;
@@ -414,11 +416,13 @@ export async function myStay(code: string): Promise<VisitorStay | null> {
 }
 
 /** «Ir a pagar»: la estancia `por_pagar` con su número; la cama elegida o «asignadme una». Crea la identidad (es un gesto). */
-export function startStay(code: string, input: { from: string; to: string; bed_id: string | null; traveler: TravelerFields }): Promise<{ id: string; number: string | null; status: string; total_cents: number | null; bed: { room: string; label: string } | null }> {
+export function startStay(code: string, input: { from: string; to: string; bed_id: string | null; traveler: TravelerFields; test?: boolean }): Promise<{ id: string; number: string | null; status: string; total_cents: number | null; bed: { room: string; label: string } | null }> {
   const traveler = Object.fromEntries(Object.entries(input.traveler).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v!.trim()]));
   return withVisitor(code, () => call('/api/booking/v1/public/stay', {
     json: { event_code: code.toUpperCase(), from: input.from, to: input.to, persons: 1, name: traveler.first_name ?? '',
-      ...(input.bed_id ? { bed_id: input.bed_id } : { assign: true }), traveler },
+      ...(input.bed_id ? { bed_id: input.bed_id } : { assign: true }), traveler,
+      // G-12 (Booking 1428): dirección o staff marcan esta estancia como prueba; Booking solo lo cuenta si el visitante es miembro.
+      ...(input.test ? { test: true } : {}) },
   }));
 }
 

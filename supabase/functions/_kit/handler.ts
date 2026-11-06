@@ -178,7 +178,7 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
     { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => sync.snapshot(ctx, url.searchParams) },
     { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => sync.changes(ctx, url.searchParams) },
-    { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => sync.commit(ctx, await json(), { origin: batchOrigin(request) }) },
+    { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => sync.commit(ctx, await json(), { origin: batchOrigin(request), clientApp: config.app }) },
     { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => sync.history(ctx, url.searchParams) },
     { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => sync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
     { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => sync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },
@@ -217,6 +217,9 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'proposals/:id', handler: ({ ctx, params }) => agents.get(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'proposals/:id/approve', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'approve') },
     { method: 'POST', pattern: 'proposals/:id/reject', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'reject') },
+    // 0120: decisión por grupo («Carga asistida»).
+    { method: 'POST', pattern: 'proposals/group/:key/approve', handler: ({ ctx, params }) => agents.decideGroup(ctx, params.key ?? '', 'approve') },
+    { method: 'POST', pattern: 'proposals/group/:key/reject', handler: ({ ctx, params }) => agents.decideGroup(ctx, params.key ?? '', 'reject') },
     // Sugerencias de personas (RECURSOS.md §14.1): staff o dirección aprueba o descarta; aprobar aplica el lote.
     { method: 'GET', pattern: 'suggestions', handler: ({ ctx, url }) => suggestions.list(ctx, url.searchParams) },
     { method: 'POST', pattern: 'suggestions', handler: async ({ ctx, json }) => suggestions.create(ctx, await json()) },
@@ -336,7 +339,7 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
       { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => moduleSync.snapshot(ctx, url.searchParams) },
       { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => moduleSync.changes(ctx, url.searchParams) },
-      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => moduleSync.commit(ctx, await json(), { origin: batchOrigin(request) }) },
+      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json, request }) => moduleSync.commit(ctx, await json(), { origin: batchOrigin(request), clientApp: config.app }) },
       { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => moduleSync.history(ctx, url.searchParams) },
       { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => moduleSync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
       { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => moduleSync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },

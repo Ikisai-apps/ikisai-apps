@@ -52,7 +52,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, root, 'VITE_');
   const target = process.env.VITE_API_PROXY ?? env.VITE_API_PROXY;
   const proxy: Record<string, ProxyOptions> | undefined = target
-    ? { '/api': { target, changeOrigin: true, secure: true } }
+    // Corrección en caliente (CORRECCION_EN_CALIENTE.md): el `_worker.js` y la Edge solo admiten el origen público.
+    ? { '/api': { target, changeOrigin: true, secure: true, headers: { origin: new URL(target).origin } } }
     : undefined;
 
   return {

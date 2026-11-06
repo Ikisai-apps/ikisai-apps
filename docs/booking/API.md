@@ -2209,3 +2209,23 @@ Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no gua
 - **Estado (`status`):** `pendiente`, `en_curso` o `hecho`.
 - **Cada tarjeta:** `ref` estable y la ruta y el anclaje de la pantalla de Booking donde se hace el trabajo.
 - **Datos personales:** solo el número y el nombre de pila.
+
+## 49. «Alójate aquí»: contacto del visitante y pedido de prueba (migración 1428; contrato con Guests, VG 05-11)
+
+- **Contacto (B-32):** `booking_visitor_requests` y `booking_visitor_stay` devuelven `contact`, el teléfono o correo que dejó el propio visitante en ese pedido. Guests lo usa para rellenar el siguiente. Las dos lecturas filtran por el `visitor_id` del visitante: nadie ve el contacto de otro.
+- **Prueba (G-12):** `POST public/stay` acepta `test: true`.
+  - Solo vale si el visitante está atado a un miembro (`core.visitor_member`). Si no, se ignora y el pedido se cobra como siempre.
+  - Una prueba no se cobra: `total_cents` 0 y, si pedía `pay: 'online'`, queda en `hold`, así que `stay/pay` devuelve 409.
+  - Si recepción la acepta, sus cobros salen a 0 € y Finance no apunta nada.
+  - Recepción la ve con el chip «Prueba» y «Prueba: no se cobra», y la puede descartar.
+- **Respuestas:** `public/stay` devuelve `test`; `booking_visitor_requests` y `booking_visitor_stay` devuelven `test` y `contact`.
+- **Tabla:** `booking.visitor_requests.is_test` (booleano, por defecto `false`).
+
+## 50. «Vista previa como huésped» desde Booking (migración 1429; B-33, vg-14)
+
+- **Procedimiento:** `booking.preview_guest({reservation_id})`, que va en un lote de comandos (`{op: 'call'}`).
+  - Lo usan el editor o el owner con el ámbito de huéspedes.
+  - Crea el huésped de muestra del evento de esa reserva, o devuelve el que ya hay: `{guest_id, created}`.
+  - Sin evento, 422 `EVENT_REQUIRED`.
+- **Diferencia con Organizers:** hace lo mismo que `booking.portal_preview_guest`, pero sin pedir el ámbito del organizador.
+- **Enlace:** el enlace de Guests lo emite `POST /portal-links` con `preview: true`, en solo lectura.

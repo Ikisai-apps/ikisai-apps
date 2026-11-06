@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import { HOUSE_MENU_ID, defaultPurchase } from '../../supabase/functions/_domain/food/mod.ts';
-import { day } from './helpers.ts';
+import { day, seedSpaces } from './helpers.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -39,11 +39,8 @@ test.before(async () => {
   // Espacios: la cocina y su despensa cuentan; el taller no.
   const altura = (await q(`select id from resources.spaces where kind = 'altura' and name = 'Altura 1' and deleted_at is null`))[0].id;
   const house = uuid(); kitchen = uuid(); pantry = uuid(); workshop = uuid();
+  await seedSpaces(app.t.db, [{ id: house, kind: 'edificio', name: 'Casa', parent_id: altura }, { id: kitchen, kind: 'cocina', name: 'Cocina', parent_id: house }, { id: pantry, kind: 'almacen', name: 'Despensa', parent_id: house }, { id: workshop, kind: 'almacen', name: 'Taller', parent_id: house }]);
   await ok('resources/commands', [
-    insert('resources.spaces', house, { kind: 'edificio', name: 'Casa', parent_id: altura }),
-    insert('resources.spaces', kitchen, { kind: 'cocina', name: 'Cocina', parent_id: house }),
-    insert('resources.spaces', pantry, { kind: 'almacen', name: 'Despensa', parent_id: house }),
-    insert('resources.spaces', workshop, { kind: 'almacen', name: 'Taller', parent_id: house }),
     insert('resources.items', riceItem, { name: 'Arroz', kind: 'ingrediente', base_unit: 'kg', min_quantity: 1 }),
     insert('resources.items', oilItem, { name: 'Aceite', kind: 'ingrediente', base_unit: 'l' }),
     insert('resources.items', saltItem, { name: 'Sal', kind: 'ingrediente', base_unit: 'g', min_quantity: 500 }),

@@ -500,6 +500,8 @@ La ficha no es una cuenta: se apoya en la cuenta de agente del núcleo (`core.pr
 
 Leen reader, editor y owner; escribe solo el owner de Central (Edge y núcleo). El agente no cambia su ficha: lo que proponga irá por `core.proposals` cuando la pantalla lo admita.
 
+**Propuestas del agente** (X1, vg-51; núcleo 0120, migración `1528`): Central no admite agentes. El agente propone desde su propia app (`POST proposals {targetApp: 'central', deciderUserId, fields, uncertain, groupKey}`) cambios en su ficha, y en Central sale en Inicio › «Propuestas de tus agentes» (`GET proposals?status=pending`). «Aplicar» (`POST proposals/:id/approve`) lo aplica en el acto, con quien decide como actor y el requestId `proposal:<id>`; «Descartar», `reject`. Deciden el owner y la persona responsable de la ficha (`deciderUserId` = la cuenta de su ficha de persona; `proposalDecider`). El hook `central.check_agent_proposals` lo hace cumplir en la base: en un lote `proposal:%` solo se actualizan fichas de agente, solo `mission`, `work_areas` y `notes`, y decide el owner o la responsable. Fuera de una propuesta, solo el owner toca las fichas (el editor puede escribir en `agents` solo para esto). «Solo su propia ficha» espera `core.proposal_author()` del núcleo.
+
 ### 2.19 Revisión semanal de Dirección (`central.weekly_reviews`, `central.weekly_review_items`; `1521`, C01; decisiones de VG del 27-10)
 
 Una revisión por semana ISO (`RSM_AAAA_NNN`). La preparan el owner de Central y los editores con el ámbito `direccion` (`core.memberships.scopes.direccion = true`, que se da en Accesos); el permiso se mira con el rol y los ámbitos con los que empezó el lote. Al cerrarla se guarda la foto de los indicadores en crítico o en atención; una revisión cerrada ya no cambia de foto (`REVIEW_CLOSED`). Los OKR, abajo.
@@ -539,7 +541,7 @@ Las revisiones las leen todos los miembros; la foto, solo editor y owner, porque
 
 Para Dirección (owner y editor con el ámbito `direccion`). Declarar la utilidad campo a campo es inviable (miles de campos), así que la pantalla enseña por defecto solo los **candidatos**: los que el núcleo marca así (`candidate`: sin cobertura de Flow, sin uso en 30 días y sin estimado de la app que los proteja), agrupados por app y pantalla, con la etiqueta de la pantalla y un resumen («N campos en M pantallas»). «Ver todo» enseña el resto con la pieza del kit.
 
-- **Datos:** `GET coverage/fields?app=` une `core_field_coverage` (0111, con `estimate {frequency, audience}`, `candidate` y `activations30d`) y `flow.anchor_coverage_read` (Flow 0946). Central pone «directo» y «automático» con `fieldLinks`. Si el núcleo aún no trae `candidate`, se aplica la misma regla (`isCandidate`). Si Flow no responde, `flowAvailable: false`.
+- **Datos:** `GET coverage/fields?app=` une `core_field_coverage` (0111, con `estimate {frequency, audience}`, `candidate` y `activations30d`) y `flow.anchor_coverage_read` (Flow 0946). Central pone «directo» y «automático» con `fieldLinks`. El candidato lo da el núcleo (`candidate`, 0114); Central solo quita los que usa un recorrido o una regla de Flow (`isCandidate`). Si Flow no responde, `flowAvailable: false`.
 - **Utilidad:** se hereda sola del estimado de la app y del uso real (`inheritedUtility`). Declararla es una excepción opcional por pantalla.
 - **Acción por grupo** (una sola vez): «Dejar», «Revisar más tarde» o «Retirar». Retirar no borra nada: queda anotado para el equipo de la app.
 

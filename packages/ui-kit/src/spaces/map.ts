@@ -6,8 +6,8 @@
  * ```ts
  * const source = createSyncSpaceSource(resources);
  * const map = createSpaceMap({
- *   // `planUrl` da el enlace firmado del archivo (`client.fileUrl`), no la ruta de la API: esa devuelve JSON `{ url }`.
- *   source, plans: source.plans, planUrl: (fileId) => client.fileUrl(fileId),
+ *   // `files: client`: el mapa pide el enlace firmado de cada dibujo (no la ruta de la API, que devuelve JSON `{ url }`).
+ *   source, plans: source.plans, files: client,
  *   layer: (space) => (space.kind === 'cama' ? { state: bedState(space) } : null),
  *   onPick: (space) => openRoomSheet(space),
  * });
@@ -144,6 +144,11 @@ export interface SpaceMapOptions {
    * `/api/v1/resources/files/:id`) o un `blob:`. No la ruta de la API, que responde JSON `{ url }` y el dibujo no carga.
    */
   planUrl?: (fileId: string) => string | Promise<string>;
+  /**
+   * Lo más sencillo: el cliente de la app (`SyncClient`, o cualquiera con `fileUrl`). El mapa pide él el enlace firmado de
+   * cada dibujo. `planUrl`, si se da, manda.
+   */
+  files?: { fileUrl(fileId: string): Promise<string> };
   /** Nombre que se pinta; por defecto `name` (en los portales, `publicName ?? name`). */
   nameOf?: (space: SpaceRow) => string;
   /** Espacio resaltado al empezar. */
@@ -493,11 +498,12 @@ export function createSpaceMap(options: SpaceMapOptions): SpaceMap {
         svg('rect', { class: 'map-grid', width: w, height: h, fill: `url(#${gid})`, 'aria-hidden': 'true', 'data-scale': gridScale })];
       })()
       : [];
-    if (plan.fileId && !failed.has(plan.fileId) && options.planUrl) {
+    const resolveUrl = options.planUrl ?? (options.files ? (fileId: string) => options.files!.fileUrl(fileId) : null);
+    if (plan.fileId && !failed.has(plan.fileId) && resolveUrl) {
       const image = svg('image', { class: 'map-bg', width: w, height: h, preserveAspectRatio: 'none' });
       const fileId = plan.fileId;
       let url = urls.get(fileId);
-      if (!url) { url = Promise.resolve(options.planUrl(fileId)); urls.set(fileId, url); }
+      if (!url) { url = Promise.resolve(resolveUrl(fileId)); urls.set(fileId, url); }
       void url.then((u) => image.setAttribute('href', u), () => { failed.add(fileId); paint(); });
       image.addEventListener('error', () => { failed.add(fileId); urls.delete(fileId); paint(); }, { once: true });
       root.append(image);

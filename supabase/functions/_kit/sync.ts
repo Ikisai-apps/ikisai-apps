@@ -212,7 +212,7 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
   }
 
   /** `origin` (0118): 'server' si la petición trae identidad de servicio (clave de worker + X-Ikisai-Caller) o viene de otro servidor; 'browser' en lo demás. */
-  async function commit(ctx: RequestContext, body: any, options: { skipHooks?: boolean; origin?: 'server' | 'browser' } = {}): Promise<CommitResult> {
+  async function commit(ctx: RequestContext, body: any, options: { skipHooks?: boolean; origin?: 'server' | 'browser'; clientApp?: string | null } = {}): Promise<CommitResult> {
     if (!body || typeof body !== 'object') fail(400, 'INVALID_JSON', messageFor('INVALID_JSON'));
     if (typeof body.requestId !== 'string' || !REQUEST_ID.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
     // El lector solo escribe donde la tabla (writable_roles) o el procedimiento (allow_reader_procedure) lo abren; lo decide core.commit.
@@ -231,6 +231,8 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     const result = await supabase.rpc<CommitResult>('core_commit', {
       p_app: app, p_actor: ctx.user.id, p_request_id: body.requestId, p_digest: digest, p_expected_cursor: expectedCursor, p_operations: operations, p_confirmation: confirmation,
       p_origin: options.origin ?? 'browser',
+      // 0119: la app cliente del lote la pone la Edge que lo sirve (nunca la cabecera Origin); null si no se sabe.
+      p_client_app: options.clientApp ?? null,
     });
     if (!result.replayed && hooks.afterCommit) await hooks.afterCommit(result, ctx);
     return result;

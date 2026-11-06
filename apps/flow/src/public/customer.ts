@@ -53,16 +53,17 @@ export async function ensureCustomer(): Promise<CustomerId> {
 }
 
 /** Envía la cesta como pedido. Solo con la respuesta del servidor se dice que el pedido está en barra. */
-export async function submitOrder(lines: Array<{ productId: string; quantity: number }>): Promise<{ orderId: string; number: number | null }> {
+export async function submitOrder(lines: Array<{ productId: string; quantity: number }>, test?: boolean): Promise<{ orderId: string; number: number | null }> {
+  const payload = JSON.stringify({ lines, ...(test === undefined ? {} : { test }) });
   let customer = await ensureCustomer();
   try {
-    return await call('orders', { method: 'POST', body: JSON.stringify({ lines }), customer });
+    return await call('orders', { method: 'POST', body: payload, customer });
   } catch (error) {
     // El servidor ya no conoce este número (otro servicio o datos borrados): se pide uno nuevo una vez.
     if (error instanceof PublicApiError && error.code === 'CUSTOMER_UNKNOWN') {
       saveCustomer(null);
       customer = await ensureCustomer();
-      return call('orders', { method: 'POST', body: JSON.stringify({ lines }), customer });
+      return call('orders', { method: 'POST', body: payload, customer });
     }
     throw error;
   }
@@ -79,11 +80,11 @@ export async function redeemInvitation(invitation: string): Promise<CustomerId> 
   return value;
 }
 
-export async function myOrders(): Promise<{ number: number | null; orders: MyOrder[] } | null> {
+export async function myOrders(): Promise<{ number: number | null; orders: MyOrder[]; memberName?: string | null } | null> {
   const customer = readCustomer();
   if (!customer) return null;
   try {
-    const out = await call<{ number: number | null; orders: MyOrder[] }>('mine', { customer });
+    const out = await call<{ number: number | null; orders: MyOrder[]; memberName?: string | null }>('mine', { customer });
     if (out.number !== customer.number) saveCustomer({ ...customer, number: out.number });
     return out;
   } catch (error) {

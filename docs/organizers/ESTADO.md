@@ -122,6 +122,10 @@
 - 2026-10-28 · **Avisos por correo de comentarios nuevos** (línea de Core; 0709; API.md §25): un correo por organizador, como mucho cada hora, con lo que aún no ha visto de sus retiros. Apagado hasta `IKISAI_ORGANIZER_MAIL=1` y el SMTP (`IKISAI_SMTP_*`).
 - 2026-10-28 · **Conservación de las lecturas de comentarios** (línea de Core; 0710; API.md §23): `retention_run` borra también las lecturas de más de 180 días o de retiros terminados hace más de 90.
 - 2026-10-28 · **La casa contesta** (línea de Core; núcleo 0117; API.md §26): respuestas de Booking a lo que quien organiza escribe sobre su retiro. En Organizers, «N respuestas de Ikisai» en Mis retiros y las respuestas en «Lo que me has enviado». La pantalla de Booking es la petición B22.
+- 2026-11-05 · **Plano de Ikisai en Alojamiento** (FB_2026_061; VG, O-C2 a): el plano del centro de Central, en un desplegable encima del reparto (imagen o PDF).
+- 2026-11-05 · **Avisos apagados sin gasto** (X5; 0712): con el aviso apagado, el tick pausa la sonda 6 horas en vez de correr cada 15 minutos.
+- 2026-11-06 · **Planta con camas en Alojamiento** (FB_2026_061; VG, O-C2 b; 0713; API.md §16.1): «Ver en la planta» en Reparto de camas, con el mapa de zonas de Recursos (`GET plans`) y la forma de cada cama sacada de Booking. En cada cama sale quién duerme, y al tocarla se asigna como en la lista. Pruebas en `bed-plan.test.ts` y `lodging.test.ts`.
+- 2026-11-06 · **Contestar a un asistente** (X6; núcleo 0121 y 0714; API.md §26): «Responder» bajo cada comentario del resumen del retiro; el asistente lo ve en Guests, en «Lo que me has enviado», con el nombre de quien organiza. Pruebas en `tests/core/feedback-replies.test.ts`.
 
 ## Pendiente
 
