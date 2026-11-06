@@ -526,6 +526,10 @@ guest_price_text  text null           lo que verá el huésped, p. ej. «+60 €
 ```
 
 - **Con `asigna_organizador`:** el organizador reparte camas en una vista por habitaciones de Booking (B17: lectura del inventario del evento y acción de asignar).
+- **La planta con camas** (FB_2026_061, O-C2 b): «Ver en la planta» en Reparto de camas pinta el reparto sobre el mapa de zonas.
+  - `GET plans` (organizers-api): `resources.portal_plans` (0814) con cada dibujo, icono e imagen firmados 10 minutos y su `sha256`. Nunca bucket ni ruta, y solo geometría y nombres públicos; pueden pedirlo `editor` y `owner`.
+  - La forma de cada cama sale de su disposición en Booking (`layout` de `booking.portal_rooms`, 1417), con `bedShape` del kit, como en Guests. Sin disposición, la cama no se pinta y queda en la lista.
+  - Quién duerme en cada cama lo pone la app con `portal_rooms` y los asistentes; al tocar una se abre la misma hoja de asignar.
 - **Con `preferencia`:** el huésped indica con quién le gustaría compartir (lo guarda Booking como nota de asignación) y el organizador lo ve al repartir.
 - **Con `elegir`:** el huésped reserva una plaza de las habitaciones abiertas con `booking.portal_choose_bed`, que es atómica, de Booking y la pide Guests. Si la habitación lleva suplemento:
   - con `organizador`, el suplemento lo asume él;
@@ -838,4 +842,5 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Cliente:** `app/replies.ts` (`loadReplies`, `unreadRepliesByReservation`, `repliesOf`, `markRepliesRead`).
 - **Sin correo todavía:** se sumará al aviso de la 0709 (§25) cuando se encienda.
 - **Pruebas:** `tests/core/feedback-replies.test.ts`.
+- **Quien organiza contesta a sus asistentes** (X6, núcleo 0121): en el resumen del retiro, «Responder» bajo cada comentario de «Comentarios de tus asistentes» (`POST feedback/:id/replies`, solo si el informe trae `canReply`). La última respuesta queda a la vista, como «Tu respuesta» o con el nombre de quien contestó. El asistente la ve en Guests, en «Lo que me has enviado» (`reply` del informe), firmada con el nombre de quien organiza. Cliente: `replyTo` en `app/retreat-comments.ts`; estimado en la 0714.
 

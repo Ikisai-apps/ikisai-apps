@@ -137,6 +137,19 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
     } catch (error) { toast(describeError(error)); }
   }
 
+  /** Arrastrar una tarea tuya de un carril de aplicación a otro (fl-20): sale de `from` y entra en `to`; queda puesta a mano. */
+  async function moveApp(uid: string, from: string, to: string): Promise<void> {
+    const u = units.find((x) => x.id === uid);
+    if (!u) return;
+    if (!isOnline(client)) { toast('Cambiar una tarjeta necesita conexión.'); return; }
+    const keyOf = new Map(AGENTS.map(([k, n]) => [n, k]));
+    const next = [...appsOf(u).apps.filter((n) => n !== from && n !== to), to].map((n) => keyOf.get(n) ?? n);
+    try {
+      await callProcedure(client, PROCEDURES.boardCard, { project_id: projectId, card_id: u.id, lane_key: u.lane_key, apps: next });
+      void client.sync();
+    } catch (error) { toast(describeError(error)); }
+  }
+
   /** Elegir a mano en qué aplicaciones se hace una tarea tuya (ninguna marcada: vuelve a lo que digan sus enlaces). */
   async function setApps(uid: string): Promise<void> {
     const u = units.find((x) => x.id === uid);

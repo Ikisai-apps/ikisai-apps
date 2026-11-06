@@ -1112,7 +1112,7 @@ export const EN: Dictionary = {
   'Alguna de esas personas ya no está en el retiro. Vuelve a elegirlas.': 'One of those people is no longer in the retreat. Choose them again.',
   // Comentarios de tus asistentes (resumen del retiro).
   'Comentarios de tus asistentes': 'Comments from your attendees',
-  'Lo que te cuentan desde su app sobre el retiro. Los lees tú; si algo es del lugar, lo atiende Ikisai.': 'What they tell you about the retreat from their app. You read them; if something is about the venue, Ikisai takes care of it.',
+  'Lo que te cuentan desde su app sobre el retiro. Puedes contestarles; si algo es del lugar, lo atiende Ikisai.': 'What they tell you about the retreat from their app. You can reply; if something is about the venue, Ikisai takes care of it.',
   'Un asistente': 'An attendee',
   '1 comentario más': '1 more comment',
   '{n} comentarios más': '{n} more comments',
@@ -1121,4 +1121,18 @@ export const EN: Dictionary = {
   'Actividades': 'Activities',
   'Comunicación': 'Communication',
   'La comida': 'Food',
+  // La planta con camas de Alojamiento (bed-plan.ts, O-C2 b)
+  'Ver en la planta': 'See on the floor plan',
+  'Planta con camas': 'Floor plan with beds',
+  'Ikisai aún no ha dibujado estas habitaciones en el plano.': 'Ikisai has not drawn these rooms on the plan yet.',
+  'Pendiente de aprobar': 'Awaiting approval',
+  'Reservada para tu grupo': 'Held for your group',
+  '{free} de {total} camas libres': '{free} of {total} beds free',
+  // Contestar a un asistente (retreat-comments.ts, X6)
+  'Responder': 'Reply',
+  'Responder otra vez': 'Reply again',
+  'Tu respuesta': 'Your reply',
+  'Lo verá en su app, firmado con tu nombre.': 'They will see it in their app, signed with your name.',
+  'Respuesta enviada': 'Reply sent',
+  'Cancelar': 'Cancel',
 };

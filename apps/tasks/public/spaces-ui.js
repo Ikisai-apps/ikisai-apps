@@ -82,16 +82,37 @@ groupToolbar=function(){const html=groupToolbarBeforeSpaces();if(!spacesMode())r
 /* --- Ficha de tarea y de proyecto ----------------------------------------------------------------------------------- */
 // Borrador del espacio mientras la ficha está abierta (sobrevive a reabrirla al elegir etiquetas) y lo que se guarda al pulsar «Guardar».
 let spaceDraft=null,spacePending=null;
-function mountSpaceField(anchor,key,initial,label,feedbackId,hint){if(!anchor)return;const ids=spaceDraft&&spaceDraft.key===key?spaceDraft.ids:[...initial];spaceDraft={key,ids:[...ids]};
+function mountSpaceField(anchor,key,initial,label,feedbackId,hint,initialCells=null){if(!anchor)return;const mine=spaceDraft&&spaceDraft.key===key;
+  const ids=mine?spaceDraft.ids:[...initial],cells=mine?spaceDraft.cells:(initialCells?{...initialCells}:null);spaceDraft={key,ids:[...ids],cells};
   const field=document.createElement('div');field.className='field spacefield ikisai-kit';
-  const picker=IkisaiKit.createSpacePicker({label,rows:spaceRows(),multiple:true,value:ids,quick:mostUsedSpaces(),feedbackId,onChange:next=>{spaceDraft={key,ids:[...next]}}});
-  field.append(picker.element);if(hint)field.insertAdjacentHTML('beforeend',`<p class="small muted">${esc(hint)}</p>`);anchor.insertAdjacentElement('beforebegin',field);
+  const picker=IkisaiKit.createSpacePicker({label,rows:spaceRows(),multiple:true,value:ids,quick:mostUsedSpaces(),feedbackId,onChange:next=>{spaceDraft={...spaceDraft,key,ids:[...next]};paintCells()}});
+  field.append(picker.element);
+  // «En el plano» (encargo de VG del 06-11, §62): el selector visual del kit, altura → interior o exterior → estancia → cuadrante.
+  const cellsBox=document.createElement('p');cellsBox.className='small muted spacecells';
+  const paintCells=()=>{const list=Object.entries(spaceDraft.cells||{}).filter(([id])=>spaceDraft.ids.includes(id));
+    cellsBox.textContent=list.map(([id,c])=>`${spaceById(id)?.name||'Espacio'}: cuadrante ${c.cellX+1}·${c.cellY+1}`).join(' · ');cellsBox.hidden=!list.length};
+  if(key.startsWith('task:')&&IkisaiKit.createPlacePicker&&spacesSource()){
+    const open=document.createElement('button');open.type='button';open.className='softbtn spaceplanbtn';open.textContent='Elegir en el plano';
+    open.dataset.feedbackId='tasks.editor_tarea.espacio.plano';open.dataset.feedbackLabel='Elegir el espacio en el plano';
+    let place=null;const host=document.createElement('div');host.className='spaceplace';host.hidden=true;
+    open.onclick=()=>{if(place){place.destroy();place=null;host.hidden=true;host.replaceChildren();open.textContent='Elegir en el plano';return}
+      const source=spacesSource(),last=spaceDraft.ids[spaceDraft.ids.length-1];
+      place=IkisaiKit.createPlacePicker({label:'Espacio en el plano',source,plans:source.plans,planUrl:fileId=>Sync.core.resources.fileUrl(fileId),cell:true,
+        value:last?{spaceId:last,cell:spaceDraft.cells?.[last]||null}:null,feedbackId:'tasks.editor_tarea.espacio.plano',
+        onChange:v=>{if(!v)return;const up=new Set(IkisaiKit.ancestorsOf(spaceCache.byId,v.spaceId).map(a=>a.id));
+          const next=[...spaceDraft.ids.filter(id=>!up.has(id)&&id!==v.spaceId),v.spaceId],cells={...(spaceDraft.cells||{})};
+          if(v.cell)cells[v.spaceId]={cellX:v.cell.cellX,cellY:v.cell.cellY,scale:1};else delete cells[v.spaceId];
+          spaceDraft={...spaceDraft,ids:next,cells};picker.set(next);paintCells()}});
+      host.append(place.element);host.hidden=false;open.textContent='Cerrar el plano'};
+    field.append(open,host)}
+  field.append(cellsBox);paintCells();
+  if(hint)field.insertAdjacentHTML('beforeend',`<p class="small muted">${esc(hint)}</p>`);anchor.insertAdjacentElement('beforebegin',field);
   if(!canEdit())field.querySelectorAll('input,button').forEach(x=>x.disabled=true)}
-function rememberSpaces(button,pending){if(button&&canEdit())button.addEventListener('click',()=>{spacePending={...pending,ids:[...(spaceDraft?.ids||[])]};setTimeout(()=>{spacePending=null})},true)}
+function rememberSpaces(button,pending){if(button&&canEdit())button.addEventListener('click',()=>{spacePending={...pending,ids:[...(spaceDraft?.ids||[])],cells:spaceDraft?.cells?{...spaceDraft.cells}:null};setTimeout(()=>{spacePending=null})},true)}
 const taskEditorBeforeSpaces=openTaskEditor;
 openTaskEditor=function(id,selectedOverride=null,valsOverride=null){taskEditorBeforeSpaces(id,selectedOverride,valsOverride);if(!spacesMode())return;
   const loc=id?taskLocation(id):null,initial=loc?(loc.t.spaces||[]):(project()?.ownSpaces||[]);
-  mountSpaceField(document.getElementById('editLabelsBtn')?.closest('.field'),'task:'+(id||'new'),initial,'Espacio','tasks.editor_tarea.espacio');
+  mountSpaceField(document.getElementById('editLabelsBtn')?.closest('.field'),'task:'+(id||'new'),initial,'Espacio','tasks.editor_tarea.espacio',undefined,loc?.t.spaceCells||null);
   rememberSpaces(document.getElementById('saveTaskBtn'),{kind:'task',id:id||null})};
 const projectEditorBeforeSpaces=openProjectEditor;
 openProjectEditor=function(id,selectedOverride=null,valsOverride=null){projectEditorBeforeSpaces(id,selectedOverride,valsOverride);if(!spacesMode())return;
@@ -101,14 +122,17 @@ openProjectEditor=function(id,selectedOverride=null,valsOverride=null){projectEd
 const closeSheetBeforeSpaces=closeSheet;
 closeSheet=function(e){closeSheetBeforeSpaces(e);if(!document.getElementById('sheetBack').classList.contains('show'))spaceDraft=null};
 function setSpaces(x,field,ids){const next=[...new Set(ids)];if(JSON.stringify(x[field]||[])===JSON.stringify(next))return;x[field]=next;if(field==='spaces')touch(x)}
+/* El cuadrante de cada espacio (0368): solo de los espacios que quedan; sin ninguno antes ni ahora, el modelo no lo lleva. */
+function setSpaceCells(t,cells){if(!cells&&!t.spaceCells)return;const ids=new Set(t.spaces||[]),next=Object.fromEntries(Object.entries(cells||{}).filter(([id])=>ids.has(id)));
+  if(JSON.stringify(t.spaceCells||{})===JSON.stringify(next))return;t.spaceCells=next;touch(t)}
 /* Al guardar: lo elegido en la ficha y, en las tareas nuevas (las que aún no están en el último modelo), el espacio de su proyecto. */
 function applySpaces(){const pending=spacePending;spacePending=null;if(!Sync.last)return;const known=new Set();
   for(const a of Sync.last)for(const p of a.projects||[]){known.add('p:'+p.id);for(const t of p.tasks||[])known.add(t.id)}
   for(const a of state.tabs)for(const p of a.projects||[]){
     if(pending?.kind==='project'&&(pending.id?p.id===pending.id:!known.has('p:'+p.id)))setSpaces(p,'ownSpaces',pending.ids);
     for(const t of p.tasks||[]){if(t.deleted)continue;
-      if(pending?.kind==='task'&&pending.id===t.id)setSpaces(t,'spaces',pending.ids);
-      else if(!known.has(t.id)){if(pending?.kind==='task'&&!pending.id)setSpaces(t,'spaces',pending.ids);else if(t.spaces===undefined&&(p.ownSpaces||[]).length)t.spaces=[...p.ownSpaces]}}}}
+      if(pending?.kind==='task'&&pending.id===t.id){setSpaces(t,'spaces',pending.ids);setSpaceCells(t,pending.cells)}
+      else if(!known.has(t.id)){if(pending?.kind==='task'&&!pending.id){setSpaces(t,'spaces',pending.ids);setSpaceCells(t,pending.cells)}else if(t.spaces===undefined&&(p.ownSpaces||[]).length)t.spaces=[...p.ownSpaces]}}}}
 const saveBeforeSpaces=save;
 save=function(){if(spacesMode())try{applySpaces()}catch(e){console.error(e)}else spacePending=null;return saveBeforeSpaces()};
 

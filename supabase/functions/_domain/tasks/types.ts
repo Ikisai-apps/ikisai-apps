@@ -61,7 +61,9 @@ export interface LabelRow extends BaseRow {
 export interface TaskLabelRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; label_id: Uuid }
 export interface ProjectLabelRow extends BaseRow { tab_id: Uuid; project_id: Uuid; label_id: Uuid }
 /** Espacio de Recursos de una tarea o un proyecto (fase R2): `space_id` apunta a `resources.spaces`, sin clave foránea. */
-export interface TaskSpaceRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; space_id: Uuid }
+/** Cuadrante de 1 m² dentro de un espacio (0368, §62), como lo da `createPlacePicker` del kit. */
+export interface SpaceCell { cellX: number; cellY: number; scale: 1 }
+export interface TaskSpaceRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; space_id: Uuid; cell?: SpaceCell | null }
 export interface ProjectSpaceRow extends BaseRow { tab_id: Uuid; project_id: Uuid; space_id: Uuid }
 /** Oficio de Central de una tarea o un proyecto (fase P2): `trade_id` apunta a `central.trades`, sin clave foránea. */
 export interface TaskTradeRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; trade_id: Uuid }
@@ -229,7 +231,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
-  'tasks.task_spaces': ['tab_id', 'project_id', 'task_id', 'space_id'],
+  'tasks.task_spaces': ['tab_id', 'project_id', 'task_id', 'space_id', 'cell'],
   'tasks.project_trades': ['tab_id', 'project_id', 'trade_id'],
   'tasks.task_trades': ['tab_id', 'project_id', 'task_id', 'trade_id'],
   'tasks.project_people': ['tab_id', 'project_id', 'person_id', 'house_level'],
