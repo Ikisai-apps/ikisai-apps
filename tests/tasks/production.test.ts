@@ -44,6 +44,7 @@ test.before(async () => {
     task(B2, 'Grapar', { parent_id: BASTIDOR }),
     task(B3, 'Lijar', { parent_id: BASTIDOR, step_free: true }),
     task(TELA, 'Tensar la tela', { phase_id: MONTAR }),
+    // Sin fase al crearla: recibe la de por defecto, Cortar (la primera sin cerrar; 0367).
     task(SUELTA, 'Pedir presupuesto de tela'),
     ins('tasks.task_dependencies', { project_id: OBRA, task_id: TELA, depends_on_id: SUELTA, position: 1024 }),
     ins('tasks.task_trades', { project_id: OBRA, task_id: B1, trade_id: CARPINTERIA }),
@@ -60,11 +61,11 @@ test('fases con sus madres hechas y abiertas, sus bloqueos y la siguiente acció
   assert.equal(out.status, 200, JSON.stringify(out.data));
   assert.deepEqual([out.data.project.id, out.data.project.title], [OBRA, 'Marcos acústicos']);
   const [cortar, montar] = out.data.phases;
-  assert.deepEqual([cortar.name, cortar.total, cortar.open, cortar.done, cortar.nextTaskId], ['Cortar', 1, 0, true, null]);
+  assert.deepEqual([cortar.name, cortar.total, cortar.open, cortar.done, cortar.nextTaskId], ['Cortar', 2, 1, false, SUELTA], 'los listones, hechos, y el presupuesto');
   // Montar: el bastidor (con pasos) y la tela, abiertos. Grapar espera a Encolar; la tela espera al presupuesto.
   assert.deepEqual([montar.name, montar.total, montar.open, montar.done, montar.blocked], ['Montar', 2, 2, false, 2]);
   assert.equal(montar.nextTaskId, B1, 'el primer paso de la cadena');
-  assert.deepEqual(out.data.next, [{ phaseId: MONTAR, taskId: B1 }]);
+  assert.deepEqual(out.data.next, [{ phaseId: CORTAR, taskId: SUELTA }, { phaseId: MONTAR, taskId: B1 }]);
 });
 
 test('las tareas: fase heredada por los pasos, contenedor, bloqueo con su motivo y sus ids', async () => {
@@ -79,7 +80,7 @@ test('las tareas: fase heredada por los pasos, contenedor, bloqueo con su motivo
   assert.deepEqual(by(LISTONES).blocked, { by: null, ids: [] }, 'lo hecho no está bloqueado');
   assert.deepEqual([by(B1).trades, by(B1).spaces], [[CARPINTERIA], [TALLER]]);
   assert.deepEqual(by(TELA).people, [{ personId: PERSONA, houseLevel: null }]);
-  assert.equal(by(SUELTA).phaseId, null);
+  assert.equal(by(SUELTA).phaseId, CORTAR, 'sin fase al crearla: la de por defecto');
   // En orden: madre y después sus pasos.
   const ids = out.data.tasks.map((t: any) => t.id);
   assert.ok(ids.indexOf(BASTIDOR) < ids.indexOf(B1) && ids.indexOf(B1) < ids.indexOf(B2));
@@ -91,8 +92,8 @@ test('los carriles cuentan trabajo (no contenedores) por oficio, espacio, person
   assert.deepEqual(lanes.bySpace[TALLER], { open: 1, done: 0 });
   assert.deepEqual(lanes.byPerson[PERSONA], { open: 1, done: 0 });
   assert.deepEqual(lanes.byPhase[MONTAR], { open: 4, done: 0 }, 'tres pasos y la tela');
-  assert.deepEqual(lanes.byPhase[CORTAR], { open: 0, done: 1 });
-  assert.deepEqual(lanes.byPhase.none, { open: 1, done: 0 });
+  assert.deepEqual(lanes.byPhase[CORTAR], { open: 1, done: 1 });
+  assert.equal(lanes.byPhase.none, undefined, 'en un proyecto con fases, toda madre tiene una');
 });
 
 test('al hacer el primer paso, la siguiente acción pasa al segundo', async () => {
