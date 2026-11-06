@@ -2,8 +2,9 @@
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { fieldAttrs, el, icon, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsCharged, isBookable, isExtraBed, staysOnBed, validateFields } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, EVENTS, EXTRA_BEDS, RESERVATIONS, SPACES, STAYS, canRead, describeError, shortDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, EVENT_SPACES, EXTRA_BEDS, RESERVATIONS, SPACES, STAYS, canRead, describeError, shortDay } from '../app/client.ts';
 import { guard } from '../app/guard.ts';
+import { lodgingSpaceIds } from '../app/lodgingSpaces.ts';
 import { settleBatch } from '../app/settle.ts';
 import { createBedPlan } from './bedMap.ts';
 
@@ -17,6 +18,8 @@ export interface LodgingData {
   beds: Row[];
   /** Asignaciones vivas de este evento. */
   assignments: Row[];
+  /** Espacios marcados en este evento (1430): se ofrecen aunque no sean de alojamiento. */
+  marked?: string[];
   /** Supletorias activadas de este evento (vacío si el rol no las lee). */
   extraBeds: Row[];
   /** Estancias vivas con cama (O2): una que coincide con el retiro se avisa en su asignación. */
@@ -36,6 +39,7 @@ export async function loadLodging(client: SyncClient, eventId: string): Promise<
     assignments: live(await client.list(ASSIGNMENTS)).filter((a) => a.event_id === eventId),
     extraBeds: canRead(client, EXTRA_BEDS) ? live(await client.list(EXTRA_BEDS)).filter((x) => x.event_id === eventId) : [],
     stays: canRead(client, STAYS) ? live(await client.list(STAYS)).filter((s) => s.bed_id) : [],
+    marked: canRead(client, EVENT_SPACES) ? live(await client.list(EVENT_SPACES)).filter((m) => m.event_id === eventId).map((m) => m.space_id) : [],
   };
 }
 
@@ -72,7 +76,9 @@ async function loadOthers(client: SyncClient): Promise<Array<{ assignment: Row; 
 export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet> {
   const { client, reservation, event, data, guests, seesGuests, assignment } = options;
   const others = await loadOthers(client);
-  const spaceOptions = data.spaces.filter((s) => isBookable(s as any) || s.id === assignment?.space_id);
+  // booking-U1 (VG 06-11): de alojamiento, con camas o marcados en el evento (y el de la asignación que se edita)
+  const shown = lodgingSpaceIds(data.spaces, data.beds, data.marked ?? []);
+  const spaceOptions = data.spaces.filter((s) => (isBookable(s as any) && shown.has(s.id)) || s.id === assignment?.space_id);
   const input = (attrs: Record<string, string | number | boolean>) => el('input', { autocomplete: 'off', ...attrs });
 
   const spaceSelect = el('select', { id: 'f-space_id', ...fieldAttrs({ id: 'booking.reserva.alojamiento.space_id', entity: 'booking.room_assignments', prop: 'space_id', label: 'Espacio', confirm: 'event' }) },
