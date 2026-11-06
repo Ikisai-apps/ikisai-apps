@@ -1,1 +1,0 @@
-`createSpaceMap({ files })` (K-05): con el cliente de la app (`SyncClient` o cualquiera con `fileUrl`), el mapa pide él el enlace firmado de cada dibujo. Así nadie vuelve a pasar la ruta de la API. `planUrl`, si se da, manda. Lo propuso Booking.
