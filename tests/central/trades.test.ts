@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { MERGE_PEOPLE_PROCEDURE, TABLES, TRADE_LEVEL_LABELS, planTradeImport, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
+import { MERGE_PEOPLE_PROCEDURE, TABLES, TRADE_ICON_KEYS, TRADE_LEVEL_LABELS, planTradeImport, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -143,4 +143,15 @@ test('P2 · central.person_alive y central.trade_alive: vivos, archivados, borra
   assert.equal(await one('trade_alive', t1), true);
   assert.equal(await one('trade_alive', t2), false);
   assert.equal(await one('trade_alive', uuid()), false);
+});
+
+test('oficios · icono (1531): clave del kit en los de arriba, publicado en trade_options', async () => {
+  assert.ok(TRADE_ICON_KEYS.includes('fontaneria'));
+  assert.equal(validateOperations([{ op: 'insert', table: TABLES.trades, id: 't', fields: { name: 'X', icon: 'Fontanería' } }], { role: 'owner' })?.details.field, 'icon');
+  const id = crypto.randomUUID();
+  const out = await commit([{ op: 'insert', table: TABLES.trades, id, fields: { name: 'Fontanería ficticia', icon: 'fontaneria', position: 0 } }]);
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  const [row] = (await app.t.db.query<{ icon: string }>(`select icon from central.trade_options where trade_id = $1`, [id])).rows;
+  assert.equal(row!.icon, 'fontaneria');
+  await assert.rejects(app.t.db.query(`update central.trades set icon = 'Con Tilde' where id = $1`, [id]));
 });

@@ -237,6 +237,7 @@ const SPECS: Record<string, TableSpec> = {
       active: { kind: 'boolean' },
       notes: { kind: 'text', max: 500, nullable: true },
       source_label_id: { kind: 'uuid', nullable: true },
+      icon: { kind: 'text', max: 31, nullable: true, pattern: /^[a-z][a-z0-9_]{1,30}$/, patternText: 'una clave de icono del kit' },
     },
     required: ['name'],
   },

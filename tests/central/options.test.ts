@@ -53,7 +53,7 @@ test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte 
   // Columnas exactas de cada lectura. El outsider lee las dos primeras; las capacidades, solo el equipo (1513).
   const columns = {
     'central.people_options': ['active', 'house_level', 'initials', 'name', 'person_id', 'user_id'],
-    'central.trade_options': ['name', 'parent_id', 'path', 'position', 'source_label_id', 'trade_id'],
+    'central.trade_options': ['icon', 'name', 'parent_id', 'path', 'position', 'source_label_id', 'trade_id'],
     'central.capability_options': ['inherited', 'level', 'person_id', 'trade_id'], // 1510: + inherited
   };
   const team = new Set(['central.capability_options']);

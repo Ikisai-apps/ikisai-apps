@@ -138,6 +138,7 @@
 - 2026-11-05 · **OKR en la revisión semanal** (X5): `central.objectives` (1527, `OKR`) con indicadores del panel como resultados clave; «Objetivos del trimestre» arriba de la revisión, con «Va bien / En riesgo / Va mal / Sin datos»; crear y editar para Dirección (owner o `direccion`, también en la base). Prueba `objectives.test.ts`.
 - 2026-11-06 · **Propuestas de tus agentes** (X1, vg-51): bandeja en Inicio con «Aplicar» y «Descartar» sobre las propuestas del núcleo (0120); hook `central.check_agent_proposals` (1528) en la base. Prueba `agent-proposals.test.ts`. «Solo su propia ficha» con `core.proposal_author()` (0122, migración 1529).
 - 2026-11-06 · **Usos de los espacios** (VG): chips marcables en Planos › Colocar (cada forma y la lista «En el plano») sobre `resources.spaces.uses` (Recursos #1305). Prueba `space-uses.test.ts`.
+- 2026-11-06 · **Icono del oficio** (VG; kit `createTradePicker`): `central.trades.icon` (1531), en `trade_options`; «Icono» en la hoja del oficio de arriba.
 
 ## Pendiente
 
