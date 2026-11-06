@@ -8,3 +8,7 @@
 label.zoneitem{cursor:pointer}
 .zoneitem .zoneaction{margin-inline-start:auto;font-size:.85em;opacity:.75}
 .zonecounts{margin:10px 0}
+/* «Elegir en el plano» en la ficha de la tarea (createPlacePicker del kit, §62). */
+.spacefield .spaceplanbtn{min-height:44px;margin-top:8px}
+.spacefield .spaceplace{margin-top:8px}
+.spacefield .spacecells{margin:6px 0 0}
