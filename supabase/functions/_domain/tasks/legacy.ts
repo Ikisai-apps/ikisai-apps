@@ -9,7 +9,7 @@
 import { statuses } from './graph.ts';
 import { fullTab, type Scopes } from './scopes.ts';
 import { personFields, personKey } from './people.ts';
-import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type DeliverableStatus, type Operation, type PhaseStatus, type Priority, type ProjectStatus, type SpaceCell, type TaskRow, type Uuid } from './types.ts';
+import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type DeliverableStatus, type Operation, type PhaseStatus, type Priority, type ProjectPhaseRow, type ProjectStatus, type SpaceCell, type TaskRow, type Uuid } from './types.ts';
 
 export interface LegacyAttachment { id: Uuid; name: string; mime?: string; size?: number; sha256?: string; url?: string }
 /** `general`: del catálogo General (tab_id nulo, FB_2026_023); sale en todas las áreas y se guarda una sola vez. */
@@ -49,6 +49,8 @@ export interface LegacyTask {
 /** Fase de un proyecto (0356, §51). `done` y `open` se calculan al componer; `decompose` los ignora. */
 export interface LegacyPhase {
   id: Uuid; name: string; order: number; status: PhaseStatus; start: string; due: string; closedNote: string; version: number;
+  /** La «actual» del proyecto (0367, §61): la que reciben las tareas nuevas. Sin el campo, no se toca. */
+  current?: boolean;
   deleted?: boolean; done?: boolean; open?: number; total?: number;
 }
 /** Entregable de un proyecto (0361, §57). `done`, `open` y `total` se calculan al componer; `decompose` los ignora. */
@@ -163,6 +165,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
         const open = list.filter((t) => !info.get(t.id)?.done).length;
         return {
           id: ph.id, name: ph.name, order: ph.position, status: ph.status, start: ph.start ?? '', due: ph.due ?? '', closedNote: ph.closed_note, version: ph.revision,
+          ...(ph.is_current ? { current: true } : {}),
           done: list.length > 0 && open === 0, open, total: list.length,
         };
       }) } : {}),
@@ -356,6 +359,8 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
           want('tasks.project_phases', ph.id, {
             name: ph.name, position: typeof ph.order === 'number' ? ph.order : (i + 1) * POSITION_STEP, status: ph.status ?? 'pending',
             start: orNull(ph.start), due: orNull(ph.due), closed_note: text(ph.closedNote),
+            // Solo si hay algo que guardar: un espejo de antes de la columna (0367) no la trae.
+            ...(ph.current !== undefined || (row as ProjectPhaseRow | undefined)?.is_current ? { is_current: !!ph.current } : {}),
             ...(row ? {} : { tab_id: tab.id, project_id: p.id }),
           }, !!ph.deleted);
         });

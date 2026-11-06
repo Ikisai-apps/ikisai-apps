@@ -241,6 +241,8 @@ const RULES: Record<TableName, TableRules> = {
     fields: {
       tab_id: uuid(), project_id: uuid(), name: text(1, 120, 'INVALID_PHASE', 'La fase necesita un nombre de hasta 120 caracteres.'), position,
       status: oneOf(PHASE_STATUSES, 'INVALID_PHASE', 'Estado de fase desconocido.'), start: nullable(date), due: nullable(date), closed_note: shortText(2000),
+      // La actual (0367): como mucho una por proyecto, lo comprueba el hook tasks.validate_phase_current al final del lote.
+      is_current: flag('INVALID_FLAG'),
     },
     required: ['tab_id', 'project_id', 'name', 'position'],
   },

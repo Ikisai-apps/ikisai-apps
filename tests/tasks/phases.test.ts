@@ -68,12 +68,12 @@ test('la fase de una tarea: una viva de su mismo proyecto y solo en una madre', 
   assert.equal((await row('tasks.tasks', madre)).phase_id, MONTAR);
 });
 
-test('mover una tarea a otro proyecto suelta su fase (trigger), también por una operación directa', async () => {
+test('mover una tarea a otro proyecto suelta su fase y toma la actual del nuevo (trigger), también por una operación directa', async () => {
   const id = uuid();
   assert.equal(await code([task(id, OBRA, { phase_id: CORTAR })]), '200 OK');
   assert.equal(await code([await update('tasks.tasks', id, { project_id: OTRA })]), '200 OK');
   const moved = await row('tasks.tasks', id);
-  assert.deepEqual([moved.project_id, moved.phase_id], [OTRA, null]);
+  assert.deepEqual([moved.project_id, moved.phase_id], [OTRA, AJENA], 'la única fase de Otra obra');
   // Escribir a propósito una fase que no es de su proyecto sigue sin valer.
   assert.equal(await code([await update('tasks.tasks', id, { phase_id: CORTAR })]), '422 INVALID_PHASE');
 });
@@ -97,11 +97,11 @@ test('una fase con tareas vivas no se borra; soltándolas en el mismo lote, sí'
   assert.equal(await code([phase(fase, OBRA, 'Lijar', 5120), task(t, OBRA, { phase_id: fase })]), '200 OK');
   const del = async (): Promise<Operation> => ({ op: 'delete', table: 'tasks.project_phases', id: fase, expectedRevision: (await row('tasks.project_phases', fase)).revision });
   assert.equal(await code([await del()]), '422 PHASE_NOT_EMPTY');
-  assert.equal(await code([await update('tasks.tasks', t, { phase_id: null }), await del()]), '200 OK');
+  assert.equal(await code([await update('tasks.tasks', t, { phase_id: CORTAR }), await del()]), '200 OK');
   assert.equal(await row('tasks.project_phases', fase), undefined, 'en la papelera (snapshot no la trae)');
 });
 
-test('el modelo de la interfaz: fases calculadas, los pasos heredan la de su madre y quitar una fase suelta sus tareas', async () => {
+test('el modelo de la interfaz: fases calculadas, los pasos heredan la de su madre y quitar una fase pasa sus tareas a la de por defecto', async () => {
   const fase = uuid(), madre = uuid(), paso = uuid();
   assert.equal(await code([phase(fase, OBRA, 'Barnizar', 6144), task(madre, OBRA, { phase_id: fase }), task(paso, OBRA, { parent_id: madre, done: true })]), '200 OK');
   let tabs = compose(await data());
@@ -126,7 +126,7 @@ test('el modelo de la interfaz: fases calculadas, los pasos heredan la de su mad
   obra.phases = obra.phases!.filter((p) => p.id !== nueva);
   for (const batch of decompose(await data(), tabs)) assert.equal(await code(batch), '200 OK');
   assert.equal(await row('tasks.project_phases', nueva), undefined, 'en la papelera');
-  assert.equal((await row('tasks.tasks', madre)).phase_id, null);
+  assert.equal((await row('tasks.tasks', madre)).phase_id, CORTAR, 'la primera sin cerrar (no hay actual)');
 });
 
 test('vaciar la papelera purga las fases de un proyecto borrado', async () => {
