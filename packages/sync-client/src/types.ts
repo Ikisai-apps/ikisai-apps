@@ -139,6 +139,12 @@ export interface SyncClientOptions {
    * una lista vacía solo esas tablas (y lo que las referencia). Por defecto `false`: solo se borra la sesión.
    */
   clearOnLogout?: boolean | TableName[];
+  /**
+   * Ámbito inicial del dispositivo (fl-22): lo que este navegador quiere en su espejo, p. ej. `{ projects: ['…'] }`. Viaja en la
+   * cabecera `X-Ikisai-Scope`; la Edge lo interseca con los permisos reales (nunca amplía). Si el dispositivo ya guardó uno con
+   * `setScope`, manda el guardado.
+   */
+  scope?: Record<string, unknown>;
   /** Sesión única entre apps de ikisai.com: al arrancar sin sesión, intenta entrar con el pase común. Por defecto true. */
   sso?: boolean;
   /**
@@ -181,6 +187,10 @@ export interface SyncClient {
    * la pieza del kit intenta antes un `sync()`, enseña lo que quede y pide confirmación (K-08 b).
    */
   resetMirror(options?: { discardPending?: boolean }): Promise<void>;
+  /** Ámbito del dispositivo actual (fl-22), o null = todo lo visible. */
+  scope(): Record<string, unknown> | null;
+  /** Cambia el ámbito del dispositivo y rehace el espejo (fl-22); con algo sin enviar rechaza con `PENDING_CHANGES` salvo `discardPending`. */
+  setScope(scope: Record<string, unknown> | null, options?: { discardPending?: boolean }): Promise<void>;
   session(): Session | null;
 
   /** Arranca: carga el espejo local, hace bootstrap si hay red y lanza el primer pull. */
