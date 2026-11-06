@@ -124,3 +124,26 @@ test('avance · las aplicaciones de una tarjeta (0959): board_card las pone, una
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal((await unit(C4)).payload.apps, undefined);
 });
+
+test('avance · una recarga no pisa el estado cambiado en Flow; con fecha posterior en el artefacto, sí (0963)', async () => {
+  // Se cambia en Flow después de la última recarga.
+  const r = await commit([{ op: 'call', procedure: PROCEDURES.boardCard, args: { project_id: BOARD, card_id: C2, lane_key: 'booking', status: 'in_progress' } }]);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  // Recarga sin fecha (el artefacto aún dice «pending»): se queda «in_progress»; el título sí llega.
+  const c2 = payload.cards.find((c) => c.card_id === C2)! as Record<string, unknown>;
+  const title = c2.title;
+  c2.title = 'Recepción y cobro';
+  await importBoard();
+  let u = await unit(C2);
+  assert.equal(u.status, 'in_progress'); assert.equal(u.label, 'Recepción y cobro');
+  // Con una fecha del artefacto anterior al cambio en Flow, tampoco.
+  c2.updated_at = '2026-01-01T00:00:00Z';
+  await importBoard();
+  assert.equal((await unit(C2)).status, 'in_progress');
+  // Con una fecha posterior, manda el artefacto.
+  c2.updated_at = new Date(Date.now() + 60_000).toISOString();
+  await importBoard();
+  u = await unit(C2);
+  assert.equal(u.status, 'pending');
+  c2.title = title; delete c2.updated_at;
+});

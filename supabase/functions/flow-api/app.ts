@@ -610,7 +610,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         if (!hash) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
         const out = await mine(hash);
         if (!out?.customerId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
-        return reply({ number: out.number, orders: out.orders ?? [] });
+        return reply({ number: out.number, orders: out.orders ?? [], memberName: (out as { memberName?: string | null }).memberName ?? null });
       }
       if (route === 'customer' && request.method === 'POST') {
         if (!ipAllowed('customer', clientIp(request))) return error(429, 'RATE_LIMITED', PUBLIC_MESSAGES.RATE_LIMITED!);
@@ -642,7 +642,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         const hash = await customerHash();
         const me = hash ? await mine(hash) : null;
         if (!me?.customerId || !me.projectId) return error(401, 'CUSTOMER_UNKNOWN', 'Este dispositivo aún no tiene número.');
-        const body = await request.json().catch(() => null) as { lines?: Array<{ productId?: unknown; quantity?: unknown }> } | null;
+        const body = await request.json().catch(() => null) as { lines?: Array<{ productId?: unknown; quantity?: unknown }>; test?: unknown } | null;
         const lines = Array.isArray(body?.lines) ? body!.lines : [];
         if (!lines.length || lines.length > MAX_PUBLIC_LINES) return error(422, 'INVALID_ORDER', `El pedido debe tener entre 1 y ${MAX_PUBLIC_LINES} productos.`);
         for (const l of lines) {
@@ -661,7 +661,8 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
         if (lines.some((l) => !known.has(l.productId as string))) return error(409, 'MENU_CHANGED', 'La carta ha cambiado. Recárgala y vuelve a pedir.');
         const orderId = crypto.randomUUID();
         await publicWrite(supabase, APP, [
-          { op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: me.projectId, origin: 'public', customer_id: me.customerId } },
+          // «Es una prueba» (G-12): solo cuenta si quien pide es del equipo; el disparador lo ignora para los demás (0964).
+          { op: 'insert', table: TABLES.orders, id: orderId, fields: { project_id: me.projectId, origin: 'public', customer_id: me.customerId, ...(typeof body?.test === 'boolean' ? { test_requested: body.test } : {}) } },
           ...lines.map((l, i) => ({ op: 'insert', table: TABLES.orderLines, id: crypto.randomUUID(), fields: { order_id: orderId, product_id: l.productId, quantity: l.quantity, position: i + 1 } })),
         ]);
         return reply({ orderId, number: me.number });

@@ -158,7 +158,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       .concat([{ key: 'otros', label: 'Otros flujos', rows: live.filter((p) => !p.test_mode && !known.has(p.template_key ?? '')).map(projectRow) },
         { key: 'pruebas', label: 'Pruebas', rows: live.filter((p) => p.test_mode).map(projectRow) }])
       .filter((s) => s.rows.length);
-    return [...sections, { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }] }];
+    // «Todos los flujos» arriba: vuelve a la entrada desde cualquier flujo (FB_2026_077).
+    return [{ key: 'todos', label: 'Todos los flujos', rows: [{ label: 'Ir a la entrada con todos los flujos', href: '#/' }] }, ...sections,
+      { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }] }];
   }
   refreshMenuProjects();
   client.onTable(TABLES.projects, refreshMenuProjects);

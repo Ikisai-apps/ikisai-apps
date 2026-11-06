@@ -828,7 +828,7 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Encendido:** `IKISAI_ORGANIZER_MAIL=1`, más el SMTP de la Edge: `IKISAI_SMTP_HOST`, `IKISAI_SMTP_PORT` (465), `IKISAI_SMTP_USER`, `IKISAI_SMTP_PASS` e `IKISAI_SMTP_FROM`.
   - Son las mismas credenciales que VG ponga en Auth: el SMTP de Auth no manda correos sueltos.
   - TLS desde el primer byte (465): la Edge de Supabase no deja salir por 25 ni 587.
-  - Apagado, el tick responde `{off: true}` y no envía nada.
+  - Apagado, el tick responde `{off: true}` y no envía nada. Además apunta una pausa de 6 horas (`organizers.worker_pauses`, 0712), así que la sonda no lo vuelve a llamar cada 15 minutos. Al encenderlo, el primer aviso sale como mucho 6 horas después.
 - **Pruebas:** `tests/organizers/comment-notices.test.ts`:
   - el texto del correo, las cabeceras sin inyección y el diálogo SMTP con una conexión doble;
   - el envío en PGlite: lo suyo sin leer, la espera de una hora, cada organizadora lo suyo y nada con el aviso apagado.
