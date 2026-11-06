@@ -323,39 +323,6 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
       },
     },
     {
-      // Una cuenta a Finance (fl-27, contrato del 05-11, §2c): pasada como pendiente, `flow:account:<id>` fiscal con `a_cobrar`;
-      // liquidada después, se reenvía el mismo source_ref con el medio real (Finance sustituye el apunte).
-      method: 'POST', pattern: 'accounts/:id/send/finance', handler: async ({ ctx, params }) => {
-        if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede enviar a Finance.');
-        const out = await supabase.rpc<AccountForSend | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.account_for_send', p_args: { id: params.id } });
-        if (!out?.account) fail(404, 'NOT_FOUND', 'Esa cuenta no existe.');
-        const a = out.account;
-        if (a.status === 'open') fail(409, 'ACCOUNT_OPEN', 'La cuenta sigue abierta: pásala a Finance o cóbrala antes.');
-        const pending = a.status === 'deferred';
-        const total = out.orders.reduce((n, o) => n + (o.total_cents ?? 0), 0);
-        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(pending ? Date.now() : (a.settled_at ?? Date.now())));
-        const method = out.method === 'btc_ln' || out.method === 'btc_chain' ? 'bitcoin' : (out.method ?? 'cash');
-        const sourceRef = `flow:account:${a.id}`;
-        const args = {
-          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'fiscal', entry_date: day,
-          description: pending ? `Cuenta de ${a.holder} · pendiente de cobro` : `Cuenta de ${a.holder}`,
-          amount_cents: total, tax_rate: 10, methods: { [pending ? 'a_cobrar' : method]: total },
-          detail: out.orders.map((o) => ({ code: `P ${o.pay_seq}`, name: `Pedido ${o.pay_seq}`, quantity: 1, amount_cents: o.total_cents, order_code: `P ${o.pay_seq}` })),
-          pending_refunds_cents: 0, event_id: out.project.booking_event_id,
-        };
-        const mark = (fields: Record<string, unknown>) => publicWrite(supabase, APP, [{ op: 'update', table: TABLES.accounts, id: a.id, expectedRevision: a.revision, fields }]);
-        let result: unknown;
-        try {
-          result = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
-        } catch (error) {
-          await mark({ finance_status: 'error', finance_sent_at: new Date().toISOString(), finance_result: { code: isFault(error) ? error.code : 'ERROR' } }).catch(() => undefined);
-          throw error;
-        }
-        await mark({ finance_status: 'sent', finance_sent_at: new Date().toISOString(), finance_result: result ?? null });
-        return { status: 'sent', result };
-      },
-    },
-    {
       // «Enviar a Finance» de un justificante de la caja (0917): ESE cobro como apunte fiscal, idempotente por justificante.
       method: 'POST', pattern: 'receipts/:id/send/finance', handler: async ({ ctx, params }) => {
         if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Tu cuenta no puede enviar a Finance.');
