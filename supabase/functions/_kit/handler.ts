@@ -217,6 +217,9 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'proposals/:id', handler: ({ ctx, params }) => agents.get(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'proposals/:id/approve', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'approve') },
     { method: 'POST', pattern: 'proposals/:id/reject', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'reject') },
+    // 0120: decisión por grupo («Carga asistida»).
+    { method: 'POST', pattern: 'proposals/group/:key/approve', handler: ({ ctx, params }) => agents.decideGroup(ctx, params.key ?? '', 'approve') },
+    { method: 'POST', pattern: 'proposals/group/:key/reject', handler: ({ ctx, params }) => agents.decideGroup(ctx, params.key ?? '', 'reject') },
     // Sugerencias de personas (RECURSOS.md §14.1): staff o dirección aprueba o descarta; aprobar aplica el lote.
     { method: 'GET', pattern: 'suggestions', handler: ({ ctx, url }) => suggestions.list(ctx, url.searchParams) },
     { method: 'POST', pattern: 'suggestions', handler: async ({ ctx, json }) => suggestions.create(ctx, await json()) },

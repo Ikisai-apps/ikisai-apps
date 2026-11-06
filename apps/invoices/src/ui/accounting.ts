@@ -28,7 +28,7 @@ import { loadIssued } from './issued.ts';
 import type { ViewMount } from './shell.ts';
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
-import { appEntriesSummary } from '../app/app-entries-state.ts';
+import { appEntriesSummary, replacedEntryIds } from '../app/app-entries-state.ts';
 
 export const mountAccounting: ViewMount = (ctx) => {
   const { main, client, navigate } = ctx;
@@ -148,7 +148,7 @@ export const mountAccounting: ViewMount = (ctx) => {
     const folder = range.kind === 'year' ? `${range.year}` : `${range.year}_${range.quarter}T`;
 
     // --- La carpeta: recorrido de la entrega y el ticket --------------------------------------------------------------
-    const apps = appEntriesSummary(appEntries, range);
+    const apps = appEntriesSummary(appEntries, range, replacedEntryIds((issued?.invoices ?? []) as never));
     const hasApps = apps.income.count + apps.expense.count + apps.process.count > 0;
     // 0247: el IVA de los gastos de apps con factura es soportado
     const balance = t || apps.income.count || apps.expense.count ? Math.round(((t?.quota ?? 0) + apps.income.quota - s.vat - apps.expense.quota) * 100) / 100 : null;
