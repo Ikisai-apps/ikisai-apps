@@ -62,7 +62,7 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
     // El resultado (enviado o error) lo anota flow-api en el cierre (FL9); aquí solo se avisa y se sincroniza.
     try {
       await client.api<{ status: string; result: unknown }>(`/closures/${c.id}/send/${target}`, { method: 'POST', json: {} });
-      toast(target === 'food' ? 'Enviado a Food.' : 'Enviado a Finance como apunte de proceso.');
+      toast(target === 'food' ? 'Enviado a Food.' : 'Enviado a Finance: las ventas del día y su resumen.');
     } catch (error) { toast(describeError(error)); }
     try { await client.sync(); } catch { /* el pull periódico lo traerá */ }
     await paint();
@@ -107,7 +107,7 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
     replace(sends,
       sendRow('Food', c, 'food', project?.food_menu_id ? null : 'Sin carta de Food: actualiza la carta desde Food en Caja'),
       sendRow('Finance', c, 'finance', undecided ? `Decide antes ${undecided === 1 ? 'la cuenta abierta' : `las ${undecided} cuentas abiertas`} (arriba)` : null),
-      el('p', { class: 'muted small' }, 'A Finance va como apunte de proceso (informativo). Lo fiscal es la factura que se emite en la caja.'),
+      el('p', { class: 'muted small' }, 'A Finance van las ventas del día que no se enviaron antes con su justificante o su cuenta, y un resumen sin dinero (cuentas, a cuenta y pedidos del equipo).'),
       el('p', { class: 'muted small' }, project?.booking_event_id ? 'Booking: lo ve solo en la ficha del evento.' : 'Booking: este flujo aún no está ligado a un evento.'));
   }
 

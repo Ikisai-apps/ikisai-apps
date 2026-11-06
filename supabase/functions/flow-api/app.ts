@@ -111,6 +111,7 @@ interface ClosureForSend {
 interface DayData {
   orders: number; sales_cents: number; sales_by_method: { cash: number; bizum: number; card?: number }; refunds_pending_cents: number;
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
+  member_orders?: Array<{ order_id: string; name: string | null; amount_cents: number }>;
 }
 
 /**
@@ -235,9 +236,10 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
       },
     },
     {
-      // Apunte de ingresos del día en Finance (invoices.record_app_entry, idempotente por source_ref). Decisión de VG del
-      // 27-10: el cierre es un apunte de PROCESO (informativo), nunca fiscal; lo fiscal es la factura de la caja. Por eso ya
-      // no hay «modo pruebas» para Finance: el resumen se manda siempre, como `nature: 'process'`.
+      // El cierre del día en Finance (contrato de fl-27, 05-11, §2): (2a) `flow:project:<p>:<día>`, FISCAL, con los cobros del
+      // día que no fueron antes con su propio apunte (justificantes «Enviar a Finance» y cuentas pasadas a Finance); y (2b)
+      // `flow:closing:<p>:<día>`, de PROCESO e importe 0, con lo informativo: cuentas abiertas, vendido a cuenta y pedidos del
+      // equipo a precio de carta (`info_cents`). Cada euro llega una sola vez. Idempotentes por source_ref.
       method: 'POST', pattern: 'closures/:id/send/finance', handler: async ({ ctx, params }) => {
         const { closure: c, project } = await closure(ctx, params.id ?? '');
         // Cada cuenta abierta se decide antes (fl-27, VG F-P4): cobrarla, pasarla a Finance como pendiente o anularla.
@@ -260,16 +262,31 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           return { code: `${u.scope}:${u.code}`, name: u.name, quantity: u.units - (f?.units ?? 0), amount_cents: u.amount_cents - (f?.amount_cents ?? 0) };
         }).filter((x) => x.quantity !== 0 || x.amount_cents !== 0);
         const args = {
-          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'process', entry_date: c.day,
-          description: `${project.name} · ${d}-${m}-${y}`,
+          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'fiscal', entry_date: c.day,
+          description: `${project.name} · ventas del ${d}-${m}-${y}`,
           amount_cents: amount, tax_rate: 10,
           methods: byMethod,
           detail,
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
         };
-        const requestId = `flow:${sourceRef}:${await digest(args)}`;
-        return sendAndMark(c, 'finance', () => callApp(ctx, 'invoices-api', 'Finance', requestId, 'invoices.record_app_entry', args));
+        const extras = await supabase.rpc<ClosingExtras | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.closing_extras', p_args: { project_id: project.id, day: c.day } });
+        const closingRef = `flow:closing:${project.id}:${c.day}`;
+        const closing = {
+          source_app: 'flow', source_ref: closingRef, kind: 'income', nature: 'process', entry_date: c.day,
+          description: `${project.name} · resumen del ${d}-${m}-${y}`, amount_cents: 0, tax_rate: 10, methods: {},
+          detail: [
+            { code: 'cuentas_abiertas', name: 'Cuentas abiertas a fin de día', quantity: extras?.open_accounts.n ?? 0, amount_cents: 0, info_cents: extras?.open_accounts.cents ?? 0 },
+            { code: 'a_cuenta', name: 'Vendido a cuenta (se cobra al liquidar)', quantity: extras?.a_cuenta.n ?? 0, amount_cents: 0, info_cents: extras?.a_cuenta.cents ?? 0 },
+            ...(c.data.member_orders ?? []).map((o) => ({ code: 'equipo', name: `Pedido del equipo · ${o.name ?? 'Equipo'}`, quantity: 1, amount_cents: 0, info_cents: o.amount_cents ?? 0, order_code: o.order_id.slice(0, 8) })),
+          ],
+          pending_refunds_cents: 0, event_id: project.booking_event_id,
+        };
+        return sendAndMark(c, 'finance', async () => {
+          const fiscalOut = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+          const processOut = await callApp(ctx, 'invoices-api', 'Finance', `flow:${closingRef}:${await digest(closing)}`, 'invoices.record_app_entry', closing);
+          return { fiscal: fiscalOut ?? null, closing: processOut ?? null };
+        });
       },
     },
     {
@@ -345,6 +362,7 @@ interface AccountForSend {
   project: { id: string; name: string; booking_event_id: string | null };
   orders: Array<{ pay_seq: number; total_cents: number }>;
 }
+interface ClosingExtras { open_accounts: { n: number; cents: number }; a_cuenta: { n: number; cents: number } }
 interface FiscalOfDay { amount_cents: number; methods: Record<string, number>; detail: Array<{ code: string; units: number; amount_cents: number }> }
 interface ReceiptForSend {
   receipt: { id: string; revision: number; method: string; total_cents: number; order_ids: string[] };
