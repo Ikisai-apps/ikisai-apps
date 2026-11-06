@@ -1,0 +1,2 @@
+### Añadido
+- `createTradePicker`: oficios en dos (o tres) niveles, «Fontanería › ACS». Se marca el oficio entero o una especialidad; marcar el padre quita sus especialidades y marcar una especialidad con el padre marcado lo acota. Busca por oficio o especialidad, con la ruta, y trae «Elegir en la lista de oficios». Toma las filas de `central.trade_options` tal cual (`trades` o `load`). Con `tradeCovers` (¿lo elegido cubre este oficio?) y `expandTrades` (lo elegido con sus especialidades). Prueba v94.
