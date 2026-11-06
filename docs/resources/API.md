@@ -61,6 +61,7 @@ Altura 1–5 › Edificio | Exterior › Habitación, Sala, Baño, Cocina, Comed
 | `notes` | text o null, hasta 1000 | Descripción (en las alturas, el subtítulo) |
 | `attributes` | jsonb | Datos propios del tipo (2.3) |
 | `source_refs` | text[] | De dónde viene: `tasks.label:<uuid>`, `booking.space:<uuid>`, `booking.bed:<uuid>`. Lo usa la fase R2 para enlazar; solo lo cambia el owner |
+| `uses` | text[] | Usos generales, válidos para todos los eventos (0825; VG, 06-11): varios de `alojamiento`, `eventos`, `trabajo`, `almacen`, `cocina`, `comedor`, `ocio`, `servicio` y `exterior`, sin repetir; por defecto `'{}'`. Solo los pone o cambia Central (o lo que va sin app; hook `resources.check_space_uses`, `FORBIDDEN` con `field: 'uses'`). Lo que ya existía salió según su tipo (habitación con camas → alojamiento, sala → eventos…). Las marcas de un evento concreto son de Booking |
 
 ### 2.2 `resources.space_kinds` (tipos ampliables)
 

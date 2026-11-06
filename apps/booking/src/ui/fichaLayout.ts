@@ -12,7 +12,7 @@ export type TabKey = 'resumen' | 'comercial' | 'operacion' | 'huespedes' | 'dine
 const TAB_LABELS: Record<TabKey, string> = { resumen: 'Resumen', comercial: 'Comercial', operacion: 'Operación', huespedes: 'Huéspedes', dinero: 'Dinero', todo: 'Todo' };
 
 /** Mapa bloque → pestaña: los 17 bloques de hoy (más el Extracto) tienen sitio. */
-export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockBarService' | 'blockPublicCode' | 'blockVisitorRequests' | 'blockFlowReady' | 'blockOrganizerComments' | 'blockMontage', Exclude<TabKey, 'todo'>> = {
+export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockBarService' | 'blockPublicCode' | 'blockVisitorRequests' | 'blockFlowReady' | 'blockOrganizerComments' | 'blockMontage' | 'blockEventSpaces', Exclude<TabKey, 'todo'>> = {
   blockSummary: 'resumen', blockOpenRetreat: 'resumen', blockProgram: 'resumen',
   blockDates: 'comercial', blockProposal: 'comercial', blockPortal: 'comercial', blockPortalRequests: 'comercial',
   blockOperation: 'operacion', blockLodging: 'operacion', blockStaff: 'operacion', blockChecklist: 'operacion', blockMeals: 'operacion',
@@ -26,6 +26,8 @@ export const TAB_OF: Record<BlockId | 'financeExtract' | 'blockWalkIn' | 'blockB
   blockOrganizerComments: 'comercial',
   // «Montaje»: la decoración del evento, en Operación (antes caía en Resumen y no se encontraba)
   blockMontage: 'operacion',
+  // 1430: qué espacios usa este evento (booking-U1)
+  blockEventSpaces: 'operacion',
 };
 
 const REMEMBER_KEY = 'booking:ficha:todo';

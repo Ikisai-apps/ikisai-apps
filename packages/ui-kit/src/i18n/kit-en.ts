@@ -1043,6 +1043,17 @@ export const KIT_EN: Dictionary = {
   'Toca una estancia arriba para ver sus cuadrantes.': 'Tap a room above to see its squares.',
   'Cuadrantes de {name}': 'Squares of {name}',
   '1 m²: {x}, {y}': '1 m²: {x}, {y}',
+
+  // Oficios (createTradePicker)
+  'Ningún oficio coincide con «{q}».': 'No trade matches “{q}”.',
+  'Buscar oficio o especialidad…': 'Search trade or specialty…',
+  'Elegir en la lista de oficios': 'Choose from the list of trades',
+  'Oficio más usado': 'Most used trade',
+  'Buscar oficio': 'Search trade',
+  'Oficio o especialidad': 'Trade or specialty',
+  'Quitar oficio': 'Remove trade',
+  'Oficio': 'Trade',
+  'Especialidad': 'Specialty',
   'Columna {x}, fila {y}': 'Column {x}, row {y}',
   'Cuadrante: columna {x}, fila {y}': 'Square: column {x}, row {y}',
   'Cuadrantes de 1 m² de {name}': '1 m² squares of {name}',

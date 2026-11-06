@@ -56,6 +56,7 @@ export interface Ingredient extends SyncedColumns {
   name: string;
   preferred_unit: Unit;
   preferred_supplier: string | null;
+  preferred_supplier_id?: string | null;
   active: boolean;
   /** Artículo de Recursos (R5a); lo rellena la app al abrirse. */
   item_id?: string | null;

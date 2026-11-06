@@ -1,5 +1,53 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.73.0 · 6-11-2026
+
+Balizas de texto e imagen, selector de sitio por plano, árbol de espacios, iconos de artículo y «Rehacer datos».
+
+### #1282
+
+**«Rehacer datos de este dispositivo»** (K-06; decisión de VG del 05-11, K-08 b). La cáscara lo pone en el menú común cuando el cliente de `status` tiene `resetMirror` (sync-client). Primero envía lo pendiente. Si aún queda algo (cambios, archivos, conflictos o rechazados), lo enseña y pide confirmación antes de borrar. Después rehace el espejo sin cerrar sesión. `rebuildData: false` lo quita. `rebuildDeviceData(client)` sirve fuera de la cáscara.
+
+### #1280
+
+**Selector visual de espacio** (`createPlacePicker`, encargo de VG del 6-11, para Tasks y reutilizable por Food, Booking y Central). Va por pasos: altura, interior o exterior, el plano solo de ese edificio (tocando la estancia; sin dibujo, en chips) y, con `cell: true`, el cuadrante de 1 m² en celdas del dibujo. Nunca carga la casa entera: cada plano se pide al llegar y los enlaces firmados se guardan en una caché común. Devuelve `{ spaceId, cell? }`, acepta un valor inicial y abre en su sitio.
+
+### #1265
+
+**Iconos de artículo** (C-06, con Recursos): `ITEM_ICONS` es la lista `{ key, icon, label, trade? }`. Trae maquinaria y herramienta, y un par por oficio: fontanería, electricidad, jardinería, carpintería, limpieza y pintura. Son 13 iconos nuevos en el kit. `itemIcon(key)` da el icono del kit para la clave que guarda `resources.items.icon`.
+
+### #1263
+
+**Selector de espacios con árbol** (C-05, Tasks): con `createSpacePicker({ tree: true })`, «Elegir en el árbol» despliega alturas, edificios y alas. Sus espacios elegibles salen como chips que se marcan ahí mismo, sin otra pantalla, y el contenedor elegible («Ala norte») va primero. El árbol recuerda lo abierto.
+
+### #1256
+
+**Reserva de un solo día** (B-34, Booking): en el calendario, un evento sin salida (o con la misma entrada y salida) lleva la clase `single` y se pinta con un punto. En el mes del móvil, se queda solo el punto. Para marcar entrada y salida de un golpe ya está `createCalendar({ select })`: dos toques, o el mismo día dos veces para una reserva de un día.
+
+### #1254
+
+**Estado de red** (K-07, decisión de VG del 05-11): sin red, `statusBanners` pone una franja arriba («Sin conexión: N cambios pendientes, se enviarán al volver la red»), además de la pastilla. `hideOffline: true` la quita. Las apps que ya usan `setBanners` la reciben sin cambiar nada.
+
+### #1229
+
+`createSpaceMap({ files })` (K-05): con el cliente de la app (`SyncClient` o cualquiera con `fileUrl`), el mapa pide él el enlace firmado de cada dibujo. Así nadie vuelve a pasar la ruta de la API. `planUrl`, si se da, manda. Lo propuso Booking.
+
+### #1225
+
+`createAppShell({ logoutLabel })`: el texto del botón de salir, en el menú y en el icono. Por defecto, «Cerrar sesión». Lo pidió Flow, que borra el espejo al salir.
+
+### #1212
+
+Rótulos del plano (`createSpaceMap`), lo vio VG en Booking y Central. En el móvil, el nombre de cada estancia mide como mucho 13 px. Si no cabe a 10 px se recorta con «…», y en una estancia demasiado pequeña no se pinta. El estado corto (`layer.short`) ya no pasa de la estancia. La estancia ampliada no se rotula encima de sus camas, porque su nombre ya está en la miga.
+
+### #1211
+
+Documentación de `createSpaceMap`: el ejemplo de `planUrl` usaba la ruta de la API (`/api/v1/resources/files/:id`), que responde JSON `{ url }`, y el plano no cargaba. Ahora el ejemplo usa `client.fileUrl(fileId)`, el enlace firmado. Lo detectó Booking.
+
+### #1210
+
+**Balizas en la decoración** (encargo de VG, Montaje de Booking). Al tocar el plano con `decorEdit`, la paleta ofrece, además de los iconos, «Texto» (una baliza con texto, de hasta 60 caracteres) y, si la app pasa `decorEdit.onUpload(file) → { url, fileId }`, «Subir imagen» con un pie opcional. `DecorItem` admite `iconId` nulo, `iconUrl` opcional (sin ella, baliza de texto) y `fileId` (contrato de Recursos 0821: `decor_items.label` y `file_id`). La decoración que ya llega con icono se pinta igual.
+
 ## 0.72.0 · 28 de octubre de 2026
 
 Inventario de campos: lo que no es un dato y lo que no va a una columna.

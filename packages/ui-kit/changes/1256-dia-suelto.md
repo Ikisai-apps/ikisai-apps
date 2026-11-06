@@ -1,1 +1,0 @@
-**Reserva de un solo día** (B-34, Booking): en el calendario, un evento sin salida (o con la misma entrada y salida) lleva la clase `single` y se pinta con un punto. En el mes del móvil, se queda solo el punto. Para marcar entrada y salida de un golpe ya está `createCalendar({ select })`: dos toques, o el mismo día dos veces para una reserva de un día.
