@@ -97,3 +97,15 @@ test('cierre · anular una cuenta (solo el owner, con motivo) deja fuera sus ped
   assert.equal((await q(`select count(*)::int n from flow.units where order_id = $1 and deleted_at is null`, [order]))[0].n, 0);
   assert.equal(await code([call(PROCEDURES.voidAccount, { account_id: account, reason: 'otra vez' })]), 'NOT_FOUND');
 });
+
+test('cierre · una cuenta de otro flujo no se manda a Finance aunque se sepa su id (0967)', async () => {
+  const { account } = await accountWithOrder('Mesa 11', 1);
+  await ok([call(PROCEDURES.deferAccount, { account_id: account, expected_revision: (await acc(account)).revision })]);
+  // El editor solo ve la v1: la cuenta (de la v2) no existe para él.
+  await app.t.db.query("update core.memberships set scopes = jsonb_build_object('projects', jsonb_build_array($1::text)) where app = 'flow' and user_id = $2", [V1, app.users.editor]);
+  const before = sent.length;
+  const r = await app.call(`/api/v1/accounts/${account}/send/finance`, { token: app.tokens.editor, body: {} });
+  assert.equal(r.status, 404, JSON.stringify(r.data));
+  assert.equal(sent.length, before);
+  assert.equal((await acc(account)).finance_status, null);
+});
