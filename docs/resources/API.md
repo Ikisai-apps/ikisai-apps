@@ -100,6 +100,11 @@ Una clave que el tipo no admite, o con otra forma, da `INVALID_SPACE_ATTRIBUTE`.
 
 En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futuras, stock o tareas abiertas.
 
+## 2.4b Quién cambia la estructura de los espacios (migración 0824, R7; núcleo 0119)
+
+- Según la app cliente del lote (`core.client_app()`): Central y lo que va sin app (sistema, migración, carga) cambian la estructura; Booking solo añade camas en habitaciones que ya existían; Tasks solo los espacios que derivan de sus etiquetas o zonas (`source_refs` con `tasks.label:` o `tasks.zone:`); cualquier otra app, nada (`FORBIDDEN`, `reason: 'spaces are managed from Central'`).
+- Estructura = crear, borrar o restaurar, o cambiar padre, tipo, nombre, nombre público o «activo». Lo demás sigue con sus reglas.
+
 ## 2.5 Lectura desde otras apps
 
 - **Hooks y vistas:** las migraciones de cualquier app pueden **leer** `resources.spaces` y `resources.space_kinds`, por ejemplo para validar un `space_id` (lo permite el lint). Nunca escriben en ellas.

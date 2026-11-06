@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createApp } from '../../supabase/functions/_kit/handler.ts';
 
-const ORIGIN = 'https://tasks.ikisai.com';
+// Recursos lo gestiona Central (R7, 0824): las pruebas van por su Edge.
+const ORIGIN = 'https://central.ikisai.com';
 const ITEMS = 'resources.items';
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -19,8 +20,8 @@ const rev = async (id: string) =>
 
 test.before(async () => {
   app = await createTestApp({
-    app: 'tasks', slug: 'tasks-api', origin: ORIGIN,
-    createHandler: (config) => createApp({ ...config, app: 'tasks', slug: 'tasks-api' }),
+    app: 'central', slug: 'central-api', origin: ORIGIN,
+    createHandler: (config) => createApp({ ...config, app: 'central', slug: 'central-api' }),
   });
 });
 test.after(async () => { await app.close(); });
