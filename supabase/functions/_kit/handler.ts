@@ -139,6 +139,16 @@ export function createApp(config: AppConfig): AppHandler {
   const supabase = createSupabase(config);
   const auth = createAuth(supabase);
   /** 0118: origen de un lote de /commands. 'server' solo con la clave de worker correcta y X-Ikisai-Caller (otra Edge con identidad de servicio). */
+  /** fl-22: ámbito del dispositivo en `X-Ikisai-Scope` (objeto JSON ≤ 2 KB); solo acota lo que baja al espejo. */
+  const deviceScope = (request: Request | undefined): Record<string, unknown> | null => {
+    const raw = request?.headers.get('x-ikisai-scope');
+    if (!raw) return null;
+    if (raw.length > 2048) fail(422, 'INVALID_OPERATION', 'X-Ikisai-Scope demasiado largo.');
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { fail(422, 'INVALID_OPERATION', 'X-Ikisai-Scope no es JSON.'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) fail(422, 'INVALID_OPERATION', 'X-Ikisai-Scope debe ser un objeto.');
+    return parsed as Record<string, unknown>;
+  };
   const batchOrigin = (request: Request | undefined): 'server' | 'browser' => {
     const key = request?.headers.get('x-ikisai-worker-key') ?? '';
     const caller = request?.headers.get('x-ikisai-caller') ?? '';
@@ -217,6 +227,9 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'proposals/:id', handler: ({ ctx, params }) => agents.get(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'proposals/:id/approve', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'approve') },
     { method: 'POST', pattern: 'proposals/:id/reject', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'reject') },
+    // 0120: decisión por grupo («Carga asistida»).
+    { method: 'POST', pattern: 'proposals/group/:key/approve', handler: ({ ctx, params }) => agents.decideGroup(ctx, params.key ?? '', 'approve') },
+    { method: 'POST', pattern: 'proposals/group/:key/reject', handler: ({ ctx, params }) => agents.decideGroup(ctx, params.key ?? '', 'reject') },
     // Sugerencias de personas (RECURSOS.md §14.1): staff o dirección aprueba o descarta; aprobar aplica el lote.
     { method: 'GET', pattern: 'suggestions', handler: ({ ctx, url }) => suggestions.list(ctx, url.searchParams) },
     { method: 'POST', pattern: 'suggestions', handler: async ({ ctx, json }) => suggestions.create(ctx, await json()) },
@@ -518,7 +531,7 @@ export function createApp(config: AppConfig): AppHandler {
       const moduleName = relative.split('/', 1)[0]!;
       const mounted = modules.get(moduleName);
       if (mounted) {
-        const moduleCtx = await mounted.sync.context(user, token!);
+        const moduleCtx = await mounted.sync.context(user, token!, deviceScope(request));
         const rest = relative.slice(moduleName.length + 1);
         const moduleGrants = (moduleCtx.membership as any)?.scopes?.grants;
         if (request.method !== 'GET' && Array.isArray(moduleGrants) && moduleGrants.length && moduleGrants.every((g: any) => g?.preview === true)
@@ -533,7 +546,7 @@ export function createApp(config: AppConfig): AppHandler {
         }
         fail(404, 'NOT_FOUND', 'Ruta desconocida.');
       }
-      const ctx = await sync.context(user, token!);
+      const ctx = await sync.context(user, token!, deviceScope(request));
       // MCP (JSON-RPC 2.0 sobre HTTP): admite lotes, así que no pasa por readJson; las notificaciones responden 202 sin cuerpo.
       if (relative === 'mcp') {
         if (request.method !== 'POST') return new Response(null, { status: 405, headers: { ...headers, Allow: 'POST' } });

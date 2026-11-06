@@ -9,7 +9,7 @@ import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/a
 import {
   HOUSE_MENU_ID, defaultPurchase, lastTicket, linePacks, linePerUnit, packUnitLabel, purchaseMovement, roundToPack, savePackOperations, usualPackSize, type FoodPurchase, type PackUnitRow,
 } from '../../supabase/functions/_domain/food/mod.ts';
-import { day } from './helpers.ts';
+import { day, seedSpaces } from './helpers.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -38,9 +38,8 @@ test.before(async () => {
   });
   const altura = (await q(`select id from resources.spaces where kind = 'altura' and name = 'Altura 1' and deleted_at is null`))[0].id;
   const house = uuid(); pantry = uuid();
+  await seedSpaces(app.t.db, [{ id: house, kind: 'edificio', name: 'Casa', parent_id: altura }, { id: pantry, kind: 'almacen', name: 'Despensa', parent_id: house }]);
   await ok('resources/commands', [
-    insert('resources.spaces', house, { kind: 'edificio', name: 'Casa', parent_id: altura }),
-    insert('resources.spaces', pantry, { kind: 'almacen', name: 'Despensa', parent_id: house }),
     insert('resources.items', riceItem, { name: 'Arroz', kind: 'ingrediente', base_unit: 'kg' }),
     insert('resources.items', oilItem, { name: 'Aceite', kind: 'ingrediente', base_unit: 'l' }),
     // El aceite se vende en garrafas de 5 l (habitual) y en botellas de 1 l.

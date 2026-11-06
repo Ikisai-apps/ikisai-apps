@@ -2338,3 +2338,19 @@ button.cal-sheet-event{cursor:pointer}
 .space-tree-group>summary{min-height:var(--tap);display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer}
 .space-tree-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px}
 .space-tree-chip{min-height:var(--tap)}
+/* Selector visual de espacio (src/spaces/place-picker.ts). */
+.place-picker{display:grid;gap:10px}
+.place-title{margin:0;font-size:var(--text-md,1rem)}
+.place-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:var(--text-sm)}
+.place-crumb{min-height:var(--tap)}
+.place-here{font-weight:700}
+.place-clear{margin-left:auto}
+.place-chips{display:flex;flex-wrap:wrap;gap:8px}
+.place-chip{min-height:var(--tap)}
+.place-side{justify-self:start}
+.place-cells{width:100%;max-height:60vh;touch-action:manipulation}
+.place-room{fill:var(--paper-2);stroke:var(--ink);stroke-width:.6%}
+.place-cell{fill:transparent;stroke:color-mix(in srgb,var(--ink) 35%,transparent);stroke-width:.3%;cursor:pointer}
+.place-cell:hover,.place-cell:focus-visible{fill:color-mix(in srgb,var(--accent) 22%,transparent);outline:none}
+.place-cell.on{fill:var(--accent);stroke:var(--accent-deep)}
+

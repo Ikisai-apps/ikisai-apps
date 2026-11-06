@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import { cartaMargin, cartaStockOperations, cartaStockRef, copyCartaOperations, formatCents, freeCartaCodes, parseEurosToCents, validateOperation, validateOperations, type CartaLine } from '../../supabase/functions/_domain/food/mod.ts';
-import { seedBookingEvent } from './helpers.ts';
+import { seedBookingEvent, seedSpaces } from './helpers.ts';
 
 const CARTA = 'f00dca7a-0000-4000-8000-000000000001';
 const LINE = (n: number) => `f00dca7a-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;
@@ -67,9 +67,8 @@ test.before(async () => {
   const house = uuid();
   kitchen = uuid();
   const existing = new Set((await q(`select id from resources.items`)).map((r) => r.id));
+  await seedSpaces(app.t.db, [{ id: house, kind: 'edificio', name: 'Casa', parent_id: altura }, { id: kitchen, kind: 'cocina', name: 'Cocina', parent_id: house }]);
   await ok('resources/commands', [
-    insert('resources.spaces', house, { kind: 'edificio', name: 'Casa', parent_id: altura }),
-    insert('resources.spaces', kitchen, { kind: 'cocina', name: 'Cocina', parent_id: house }),
     ...BAR_ITEMS.filter(([id]) => !existing.has(id)).map(([id, name, kind, base]) => insert('resources.items', id, { name, kind, base_unit: base })),
     // Coste medio: pan 0,30 €/ud; tomate 2 €/kg; jamón 20 €/kg; aceite 8 €/l; agua 0,25 €/ud.
     insert('resources.movements', uuid(), { item_id: ITEMS.pan, space_id: kitchen, quantity: 100, kind: 'entrada_manual', unit_cost: 0.3 }),

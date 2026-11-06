@@ -122,3 +122,14 @@ export async function buildFoodApp(): Promise<void> {
   }
 }
 
+
+/**
+ * Los espacios de Recursos solo se crean desde Central (R7, #1267): por la Edge de Food dan FORBIDDEN. Food solo los lee,
+ * así que las pruebas los siembran por SQL directo, fuera de un lote.
+ */
+export async function seedSpaces(db: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  spaces: Array<{ id: string; kind: string; name: string; parent_id?: string | null }>): Promise<void> {
+  for (const s of spaces) {
+    await db.query(`insert into resources.spaces (id, parent_id, kind, name) values ($1, $2, $3, $4)`, [s.id, s.parent_id ?? null, s.kind, s.name]);
+  }
+}

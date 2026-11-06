@@ -1,5 +1,6 @@
 /** Food · R5c, P17: el worker del consumo a las 24 h, contra PGlite (docs/food/API.md §2.8; migración 1100). */
 import test from 'node:test';
+import { seedSpaces } from './helpers.ts';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
@@ -36,10 +37,8 @@ test.before(async () => {
   });
   const altura = (await q(`select id from resources.spaces where kind = 'altura' and name = 'Altura 1' and deleted_at is null`))[0].id;
   const house = uuid(), kitchen = uuid(), pantry = uuid();
+  await seedSpaces(app.t.db, [{ id: house, kind: 'edificio', name: 'Casa', parent_id: altura }, { id: kitchen, kind: 'cocina', name: 'Cocina', parent_id: house }, { id: pantry, kind: 'almacen', name: 'Despensa', parent_id: house }]);
   await ok('resources/commands', [
-    insert('resources.spaces', house, { kind: 'edificio', name: 'Casa', parent_id: altura }),
-    insert('resources.spaces', kitchen, { kind: 'cocina', name: 'Cocina', parent_id: house }),
-    insert('resources.spaces', pantry, { kind: 'almacen', name: 'Despensa', parent_id: house }),
     insert('resources.items', riceItem, { name: 'Arroz', kind: 'ingrediente', base_unit: 'kg', default_space_id: pantry }),
     insert('resources.movements', uuid(), { item_id: riceItem, space_id: pantry, quantity: 10, kind: 'entrada_manual' }),
   ]);

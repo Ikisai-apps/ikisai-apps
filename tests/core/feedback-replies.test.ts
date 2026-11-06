@@ -1,5 +1,6 @@
 /**
- * Núcleo · la casa contesta a quien organiza (0117; MUELA/equipo/feedback/organizers/RESPUESTAS_CASA.md). Booking (editor)
+ * Núcleo · la casa contesta a quien organiza (0117; MUELA/equipo/feedback/organizers/RESPUESTAS_CASA.md) y quien organiza
+ * contesta a sus asistentes (0121, X6). Booking (editor)
  * contesta a un informe de quien organiza sobre su retiro; quien organiza lo ve firmado «Ikisai» y lo marca como visto. Nadie
  * más lo ve ni contesta. Las Edge de Booking y Organizers sobre PGlite; el recuento de Organizers, puro. Datos sintéticos.
  */
@@ -103,6 +104,31 @@ test('núcleo · respuestas: no contestan quien organiza, otra organizadora ni u
     assert.equal(bad.status, 422, JSON.stringify(bad.data));
   }
   assert.equal((await booking.t.db.query('select 1 from core.feedback_replies where report_id = $1', [id])).rows.length, 0);
+});
+
+test('núcleo · respuestas (0121): quien organiza contesta a un asistente de su retiro, y el asistente lo ve firmado', async () => {
+  // El asistente, una cuenta cualquiera que no es de Organizers (aquí el lector de Booking).
+  const guest = booking.users.reader;
+  const id = await report(guest, 'guest', R1);
+  // En la lista de quien organiza: puede contestar; otra organizadora, ni lo ve.
+  const listed = (await org('/api/v1/feedback?app=guests&status=all&limit=500', { token: ana.token })).data.items.find((r: any) => r.id === id);
+  assert.deepEqual([listed.canReply, listed.reply], [true, null]);
+  const other = await org(`/api/v1/feedback/${id}/replies`, { token: otra.token, body: { message: 'Hola.' } });
+  assert.deepEqual([other.status, other.data.error.code], [404, 'OUT_OF_SCOPE']);
+  const sent = await org(`/api/v1/feedback/${id}/replies`, { token: ana.token, body: { message: ' La llave está en recepción. ' } });
+  assert.equal(sent.status, 200, JSON.stringify(sent.data));
+  const row = (await booking.t.db.query<{ author_kind: string }>('select author_kind from core.feedback_replies where id = $1', [sent.data.id])).rows[0];
+  assert.equal(row?.author_kind, 'organizer');
+  // El asistente lo ve en su lista (lo que pinta Guests), con la firma de quien organiza y no «Ikisai».
+  const mine = (await booking.t.db.query<{ v: any }>(`select core.feedback_list('guests', $1, '{"mine": true, "status": "all"}'::jsonb) v`, [guest])).rows[0]!.v;
+  const reply = mine.find((r: any) => r.id === id).reply;
+  assert.equal(reply.text, 'La llave está en recepción.');
+  assert.equal(reply.kind, 'organizer');
+  assert.notEqual(reply.from, 'Ikisai');
+  assert.equal(mine.find((r: any) => r.id === id).canReply, false, 'el asistente no se contesta a sí mismo');
+  // La casa sigue sin contestar a los huéspedes.
+  const house = await booking.call(`/api/v1/feedback/${id}/replies`, { token: booking.tokens.editor, body: { message: 'Hola.' } });
+  assert.deepEqual([house.status, house.data.error.code], [403, 'FORBIDDEN']);
 });
 
 test('organizers · respuestas: «N respuestas» por retiro, solo las sin ver; las de un informe, en orden', () => {

@@ -127,3 +127,11 @@ test('supletorias con la propuesta aceptada: quedan pendientes de Ikisai', async
   assert.equal(hab.extra.wanted, 1);
   assert.equal(hab.extra_total, 0, 'aún no se cobra: lo confirma Ikisai');
 });
+
+test('GET plans: el mapa de zonas para la planta con camas (O-C2 b), sin bucket ni ruta', async () => {
+  const out = await call('/plans');
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  for (const key of ['plans', 'spaces', 'icons', 'images', 'decor']) assert.ok(Array.isArray(out.data[key]), key);
+  const text = JSON.stringify(out.data);
+  assert.ok(!text.includes('"bucket"') && !text.includes('"path"'), 'nunca bucket ni ruta');
+});

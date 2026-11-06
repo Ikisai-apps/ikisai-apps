@@ -4,6 +4,7 @@ import { describeError } from '../app/client.ts';
 import { callProcedure, isOnline } from '../app/actions.ts';
 import { loadProjects, type Project } from '../app/data.ts';
 import { busyButton } from './sheets-common.ts';
+import { mountAccountDecisions } from './accounts.ts';
 import type { ViewMount } from './shell.ts';
 
 /**
@@ -30,8 +31,13 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
   const dayInput = el('input', { ...fieldAttrs({ id: 'flow.cierre.dia', entity: 'flow.day_closures', prop: 'day', type: 'date' }), type: 'date', value: day, 'aria-label': 'Día', onchange: () => { day = dayInput.value || madridToday(); void paint(); } });
   const summary = el('section', { class: 'closure-summary', 'aria-live': 'polite' });
   const sends = el('section', { class: 'closure-sends' });
+  // Las cuentas abiertas se deciden antes de cerrar (fl-27, VG F-P4); mientras quede alguna, no se manda a Finance.
+  const decisions = el('section', { class: 'closure-accounts', hidden: true, 'aria-label': 'Cuentas abiertas' });
+  let undecided = 0;
+  const offDecisions = mountAccountDecisions(client, projectId, decisions, (n) => { if (n !== undecided) { undecided = n; void paint(); } });
   main.append(
     el('h1', { class: 'col-title' }, 'Cierre del día'),
+    decisions,
     el('div', { class: 'orders-tools' }, dayInput, busyButton({ class: 'primary' }, 'Calcular cierre', calculate)),
     summary, sends,
   );
@@ -100,12 +106,12 @@ export const mountClosure: ViewMount = ({ main, client, projectId }) => {
       el('p', { class: 'muted small' }, `Calculado a las ${hhmm(c.closed_at)}.`));
     replace(sends,
       sendRow('Food', c, 'food', project?.food_menu_id ? null : 'Sin carta de Food: actualiza la carta desde Food en Caja'),
-      sendRow('Finance', c, 'finance', null),
+      sendRow('Finance', c, 'finance', undecided ? `Decide antes ${undecided === 1 ? 'la cuenta abierta' : `las ${undecided} cuentas abiertas`} (arriba)` : null),
       el('p', { class: 'muted small' }, 'A Finance va como apunte de proceso (informativo). Lo fiscal es la factura que se emite en la caja.'),
       el('p', { class: 'muted small' }, project?.booking_event_id ? 'Booking: lo ve solo en la ficha del evento.' : 'Booking: este flujo aún no está ligado a un evento.'));
   }
 
   const off = client.onTable(TABLES.dayClosures, () => void paint());
   void paint();
-  return off;
+  return () => { off(); offDecisions(); };
 };

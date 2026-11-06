@@ -7,6 +7,7 @@ import type { GuestMode } from '../../../../supabase/functions/_domain/booking/m
 import type { IssuedDocument } from '../../../../supabase/functions/_domain/invoices/issued.ts';
 import { cache } from './cache.ts';
 import { declarationVersion } from './common-texts.ts';
+import type { PortalPlans } from './bed-plan.ts';
 
 export type ReservationStatus = 'en_estudio' | 'negociacion' | 'pre_reservada' | 'confirmada' | 'en_ejecucion' | 'cerrada' | 'cancelada' | 'perdida';
 
@@ -174,6 +175,8 @@ export interface PortalApi {
   /** URL firmada de 5 minutos de un archivo publicado a este portal por otra app (C8: fotos de Food, plano de Central, PDF de
    *  una factura registrada de Finance, K2). */
   portalFile(fileId: string): Promise<{ id: string; url: string; mime: string; filename: string; size: number; expiresAt: string }>;
+  /** `GET plans` (O-C2 b): el mapa de zonas de Recursos con los dibujos firmados 10 minutos; sin personas. */
+  plans(): Promise<PortalPlans>;
 }
 
 export function createPortalApi(client: SyncClient): PortalApi {
@@ -234,6 +237,7 @@ export function createPortalApi(client: SyncClient): PortalApi {
       json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name }, label: name, preview: true, replace: true },
     }),
     portalFile: (fileId) => client.api(`/portal-files/${encodeURIComponent(fileId)}`),
+    plans: () => client.api<PortalPlans>('/plans'),
     async authConfig() {
       try {
         const out = await client.api<{ permanentAccount?: boolean; emailCode?: boolean }>('/auth/config');
