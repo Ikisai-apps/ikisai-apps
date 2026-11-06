@@ -68,8 +68,10 @@ test.before(async () => {
   const altura = (await app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
   let res = await resources([space(S_ALB, altura, 'edificio', 'Albergue', ALB), space(S_SALAS, altura, 'edificio', 'Edificio de salas', SALAS), space(S_PISCINA, altura, 'exterior', 'Piscina', PISCINA), space(S_ROSA, altura, 'exterior', 'Rosaleda', ROSA)]);
   assert.equal(res.status, 200, JSON.stringify(res.data));
-  res = await resources([space(S_HAB3, S_ALB, 'habitacion', 'Hab 3', HAB3), space(S_BANO, S_ALB, 'bano', 'Baño Hombres', BANO), space(S_ROBLE, S_SALAS, 'sala', 'Sala Roble', ROBLE), space(S_NUEVO, S_SALAS, 'sala', 'Sala Olivo')]);
+  res = await resources([space(S_HAB3, S_ALB, 'habitacion', 'Hab 3', HAB3), space(S_BANO, S_ALB, 'bano', 'Baño Hombres', BANO), space(S_ROBLE, S_SALAS, 'sala', 'Sala Roble', ROBLE)]);
   assert.equal(res.status, 200, JSON.stringify(res.data));
+  // Un espacio que no viene de ninguna zona es de Central (Recursos R7, #1267): Tasks no lo puede crear; se siembra por SQL.
+  await app.t.db.query(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $2, 'sala', 'Sala Olivo', 1024)`, [S_NUEVO, S_SALAS]);
 });
 test.after(async () => { await app.close(); });
 
