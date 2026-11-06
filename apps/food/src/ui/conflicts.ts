@@ -34,10 +34,10 @@ const FIELD_LABELS: Record<string, string> = {
   method: 'Elaboración', method_steps: 'Elaboración (pasos)', conservation: 'Conservación', freezable: 'Congelable', regeneration: 'Regeneración', service_notes: 'Notas de servicio',
   prep_minutes: 'Antelación', status: 'Estado', diet_tags: 'Dietas', allergens: 'Alérgenos', allergens_checked: 'Alérgenos revisados',
   quick: 'Plato rápido', kind: 'Tipo de menú', house_servings: 'Personas en casa',
-  photo_file_id: 'Foto', photo_thumb_file_id: 'Miniatura', preferred_unit: 'Unidad preferida', preferred_supplier: 'Proveedor habitual', active: 'Activo',
+  photo_file_id: 'Foto', photo_thumb_file_id: 'Miniatura', preferred_unit: 'Unidad preferida', preferred_supplier: 'Proveedor habitual', preferred_supplier_id: 'Proveedor habitual (Finance)', active: 'Activo',
   quantity: 'Cantidad', unit: 'Unidad', notes: 'Notas', capacity: 'Capacidad', location: 'Ubicación', quantity_required: 'Unidades necesarias',
   servings: 'Raciones', position: 'Orden', service_date: 'Día', service_type: 'Servicio', service_time: 'Hora', closing_notes: 'Cierre de cocina',
-  required_quantity: 'Necesario', stock_quantity: 'En casa', purchase_quantity: 'Comprar', supplier: 'Proveedor', manual_override: 'Compra fijada a mano',
+  required_quantity: 'Necesario', stock_quantity: 'En casa', purchase_quantity: 'Comprar', supplier: 'Proveedor', supplier_id: 'Proveedor (Finance)', manual_override: 'Compra fijada a mano',
   text: 'Paso', scheduled_date: 'Día', scheduled_time: 'Hora', responsible: 'Responsable', done: 'Hecho', manual: 'A mano',
   deleted_at: 'Borrado',
 };
