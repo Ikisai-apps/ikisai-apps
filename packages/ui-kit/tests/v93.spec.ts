@@ -18,17 +18,17 @@ test('rebuildDeviceData: sin pendientes rehace; con pendientes los enseña y sol
       w.done = K.rebuildDeviceData(client);
     };
   });
-  const dialog = page.locator('[role="dialog"], dialog').last();
+  const dialog = page.locator('.dialog[role="alertdialog"]').last();
   // Sin pendientes: confirmar una vez y rehacer.
   await page.evaluate(() => (window as any).make(0));
-  await dialog.getByRole('button', { name: 'Rehacer' }).click();
+  await dialog.locator('#dialogConfirm').click();
   expect(await page.evaluate(() => (window as any).done)).toBe(true);
   expect(await page.evaluate(() => (window as any).calls)).toEqual(['sync', 'reset:false']);
   // Con 2 cambios que no se pudieron enviar: los enseña; «Cancelar» no borra nada.
   await page.evaluate(() => (window as any).make(2));
-  await dialog.getByRole('button', { name: 'Rehacer' }).click();
+  await dialog.locator('#dialogConfirm').click();
   await expect(dialog).toContainText('2 cambios sin enviar');
-  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+  await dialog.locator('#dialogCancel').click();
   expect(await page.evaluate(() => (window as any).done)).toBe(false);
   expect(await page.evaluate(() => (window as any).calls)).toEqual(['sync']);
 });
