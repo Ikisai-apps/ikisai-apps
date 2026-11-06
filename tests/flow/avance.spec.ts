@@ -147,6 +147,10 @@ test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu car
   await expect(page.locator('#cvApp')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(1);
   await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
+  // Arrastrarla al carril de Flow (fl-20): pasa a hacerse en Flow y dice de quién es.
+  await page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' }).dragTo(page.locator('.lane[aria-label="Flow"]'));
+  await expect(page.locator('.lane[aria-label="Flow"] .it', { hasText: 'Revisar la carta' })).toContainText('Víctor', { timeout: 15_000 });
+  await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(0);
 });
 
 test('avance · en el móvil abre en «Por hitos» si no hay otra vista recordada (fl-31)', async ({ page }) => {
