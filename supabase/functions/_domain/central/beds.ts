@@ -21,3 +21,23 @@ export interface BedLayout {
   rot: number;
   label?: string | null;
 }
+
+/**
+ * Para qué sirve cada espacio (VG, 06-11; Recursos #1305, `resources.spaces.uses`): varios por espacio, para todas las apps.
+ * Booking enseña los de alojamiento; Tasks, Food y Flow, los suyos. Solo Central los cambia. Las claves son las de Recursos;
+ * las etiquetas, de Central.
+ */
+export const SPACE_USES = ['alojamiento', 'eventos', 'trabajo', 'almacen', 'cocina', 'comedor', 'ocio', 'servicio', 'exterior'] as const;
+export type SpaceUse = typeof SPACE_USES[number];
+export const SPACE_USE_LABELS: Record<SpaceUse, string> = {
+  alojamiento: 'Alojamiento', eventos: 'Eventos', trabajo: 'Trabajo', almacen: 'Almacén', cocina: 'Cocina', comedor: 'Comedor', ocio: 'Ocio', servicio: 'Servicio', exterior: 'Exterior',
+};
+
+/** Los usos válidos de una fila, en el orden de la lista y sin repetir. */
+export function spaceUses(value: unknown): SpaceUse[] {
+  const set = new Set(Array.isArray(value) ? value : []);
+  return SPACE_USES.filter((u) => set.has(u));
+}
+
+/** «Alojamiento · Ocio», o «Sin uso marcado». */
+export const spaceUsesText = (value: unknown) => spaceUses(value).map((u) => SPACE_USE_LABELS[u]).join(' · ') || 'Sin uso marcado';

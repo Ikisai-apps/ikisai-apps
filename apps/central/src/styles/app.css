@@ -450,6 +450,9 @@ button.ctl-phoneblock:hover,button.ctl-phoneblock:focus-visible{border-color:var
 .ctl-giveextra summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;color:var(--muted)}
 .ctl-shapetools{display:flex;gap:12px;flex-wrap:wrap}
 .ctl-shapetools .linkbtn{min-height:var(--tap,46px)}
+.ctl-usechips{display:flex;flex-wrap:wrap;gap:8px}
+.ctl-usechips .chip{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,46px);padding:0 14px;cursor:pointer}
+.ctl-usechips .chip:has(input:checked){background:var(--accent-soft,#e6f0ec);border-color:var(--accent,#2f6b57)}
 .ctl-shapesdone{margin:12px 0}
 .ctl-shapesdone summary{min-height:var(--tap,46px);display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--muted)}
 .ctl-shapes.compact .ctl-shaperow{padding:6px 8px;gap:4px;background:none;border-bottom:1px solid var(--line);border-radius:0}

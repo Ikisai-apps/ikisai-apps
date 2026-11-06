@@ -36,7 +36,7 @@ import {
   type SpaceMap, type SpaceRow,
 } from '@ikisai/ui-kit';
 import type { RowOperation, TableName } from '@ikisai/sync-client';
-import { BOOKING_BEDS_URL, type BedLayout } from '@ikisai/domain-central';
+import { BOOKING_BEDS_URL, SPACE_USES, SPACE_USE_LABELS, spaceUses, spaceUsesText, type BedLayout } from '@ikisai/domain-central';
 import { describeError } from '../app/client.ts';
 import { R, startResources } from '../app/resources.ts';
 import { announceHeaderArt, centralHeader } from './header-art.ts';
@@ -142,6 +142,8 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   const planUrls = new Map<string, string>();
   // La forma del dibujo que se está mirando (la fila con el foco o el ratón): se resalta en el dibujo.
   let lit: string | null = null;
+  // Los usos de cada estancia (Recursos, `uses`; VG 06-11): el kit no los trae en su fila, se leen de la fila de Recursos.
+  const usesById = new Map<string, unknown>();
   // «Colocar» empieza por las formas que ya trae el dibujo (VG, 27-10): para cada una se dice qué estancia es.
   const svgShapes = new Map<string, SvgShape[] | 'loading' | 'none'>();
   let missingOpen: boolean | null = null;
@@ -605,7 +607,7 @@ export const mountPlans: ViewMount = ({ main, client }) => {
     if (plan) openEditor(plan.id); else toast(`No hay ningún dibujo de «${wantedText}». Súbelo con «Subir un dibujo».`);
   }
 
-  function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); }
+  function openEditor(planId: string): void { editing = planId; selected = null; tab = 'estancias'; editor.hidden = false; paintEditor(); editor.scrollIntoView({ block: 'start' }); void refreshUses().then(() => { if (editing === planId) paintEditor(); }, () => {}); }
   function closeEditor(): void { for (const b of editorBinds.splice(0)) b(); decorMap?.destroy(); decorMap = null; editing = null; selected = null; editor.hidden = true; replace(editor); }
   const tabBar = (plan: FloorPlan) => el('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Qué colocar', id: 'placeTabs', 'data-feedback-id': 'central.planos.colocar.pestanas', 'data-feedback-label': 'Estancias o decoración' },
     ...([['estancias', isEstate(plan) ? 'Edificios' : 'Estancias'], ['decoracion', 'Decoración']] as const).map(([k, label]) => el('button', { type: 'button', role: 'tab', 'aria-selected': String(tab === k), class: tab === k ? 'on' : '', dataset: { tab: k },
@@ -760,11 +762,13 @@ export const mountPlans: ViewMount = ({ main, client }) => {
         ? el('button', { type: 'button', class: 'linkbtn small', 'data-feedback-id': 'central.planos.colocar.renombrar', 'data-feedback-label': 'Renombrar como en el dibujo', onclick: () => void renameTo(holder, shape.name.replace(/[_-]+/g, ' ')) }, `Llamarla «${shape.name.replace(/[_-]+/g, ' ')}»`)
         : null;
       const manage = holder ? el('div', { class: 'ctl-shapetools' },
+        el('button', { type: 'button', class: 'linkbtn small', 'aria-label': `Usos de ${holder.name}`, 'data-feedback-id': 'central.planos.colocar.usos', 'data-feedback-label': 'Para qué sirve la estancia', onclick: () => void editUses(holder) }, 'Usos'),
         el('button', { type: 'button', class: 'linkbtn small', 'aria-label': `Renombrar ${holder.name}`, 'data-feedback-id': 'central.planos.colocar.renombrar_estancia', 'data-feedback-label': 'Renombrar la estancia', onclick: () => renameSpace(holder) }, 'Renombrar'),
         el('button', { type: 'button', class: 'linkbtn small', 'aria-label': `Dar de baja ${holder.name}`, 'data-feedback-id': 'central.planos.colocar.baja_estancia', 'data-feedback-label': 'Dar de baja la estancia', onclick: () => void archiveSpace(holder) }, 'Dar de baja')) : null;
       const row = el('li', { class: `ctl-shaperow${holder ? '' : ' warn'}`, 'data-shape-row': shape.name },
         el('div', { class: 'ctl-shapehead' }, el('span', { class: 'ctl-shapenum', 'aria-hidden': 'true' }, String(index + 1)),
-          el('span', null, el('strong', null, holder ? holder.name : 'Sin estancia'), el('span', { class: 'muted small' }, ` · en el dibujo «${shape.name.replace(/[_-]+/g, ' ')}»`))),
+          el('span', null, el('strong', null, holder ? holder.name : 'Sin estancia'), el('span', { class: 'muted small' }, ` · en el dibujo «${shape.name.replace(/[_-]+/g, ' ')}»`),
+            holder ? el('span', { class: 'muted small ctl-spaceuses', 'data-space-uses': holder.id }, ` · ${usesOf(holder.id)}`) : null)),
         select, create, rename, manage);
       row.addEventListener('mouseenter', () => light(true));
       row.addEventListener('mouseleave', () => light(false));
@@ -816,7 +820,9 @@ export const mountPlans: ViewMount = ({ main, client }) => {
             : el('p', { class: 'hint' }, 'Todas las estancias de este edificio tienen su sitio.')),
           el('h4', { class: 'sectionlabel' }, `En el plano · ${rooms.length}`),
           rooms.length ? el('ul', { class: 'list', id: 'placePlaced' }, ...rooms.map((s) => el('li', null,
-            el('button', { type: 'button', class: `linkbtn${selected === s.id ? ' on' : ''}`, 'data-space': s.id, 'data-feedback-id': 'central.planos.colocar.elegir', 'data-feedback-label': 'Elegir estancia', onclick: () => { selected = s.id; paintEditor(); } }, s.name)))) : null)));
+            el('button', { type: 'button', class: `linkbtn${selected === s.id ? ' on' : ''}`, 'data-space': s.id, 'data-feedback-id': 'central.planos.colocar.elegir', 'data-feedback-label': 'Elegir estancia', onclick: () => { selected = s.id; paintEditor(); } }, s.name),
+            el('span', { class: 'muted small ctl-spaceuses', 'data-space-uses': s.id }, ` ${usesOf(s.id)} `),
+            el('button', { type: 'button', class: 'linkbtn small', 'aria-label': `Usos de ${s.name}`, 'data-feedback-id': 'central.planos.colocar.usos_lista', 'data-feedback-label': 'Usos desde la lista', onclick: () => void editUses(s) }, 'Usos')))) : null)));
     // «Colocar solo» lee el dibujo del servidor: sin red, apagado con su motivo.
     editorBinds.push(bindOnline(autoBtn, { client: r, reason: 'Colocar solo lee el dibujo con conexión.' }));
     if (focusKey) editor.querySelector<HTMLElement | SVGElement>(focusKey)?.focus({ preventScroll: true });
@@ -1227,6 +1233,36 @@ export const mountPlans: ViewMount = ({ main, client }) => {
   }
 
   /** Cambiar el nombre de la estancia por el del dibujo (Recursos). */
+  const usesOf = (id: string) => spaceUsesText(usesById.get(id));
+  async function refreshUses(): Promise<void> {
+    for (const row of (await r.list(SPACES)) as Array<{ id: string; uses?: unknown }>) usesById.set(row.id, row.uses ?? []);
+  }
+
+  /** Para qué sirve una estancia (VG, 06-11): chips marcables; varios a la vez. Lo ven todas las apps. */
+  async function editUses(space: SpaceRow): Promise<void> {
+    await refreshUses();
+    let sheet: Sheet | null = null;
+    const chosen = new Set<string>(spaceUses(usesById.get(space.id)));
+    const chips = SPACE_USES.map((u) => el('input', { type: 'checkbox', value: u, checked: chosen.has(u), 'data-field-id': 'central.planos.space_use', 'data-field-entity': 'resources.spaces', 'data-field-prop': 'uses' }) as HTMLInputElement);
+    const save = el('button', { class: 'primary', type: 'button', id: 'spaceUsesSave', 'data-feedback-id': 'central.planos.colocar.usos.guardar', 'data-feedback-label': 'Guardar los usos', onclick: async () => {
+      const uses = chips.filter((c) => c.checked).map((c) => c.value);
+      try {
+        const current = await r.get(SPACES, space.id);
+        await r.commit([{ op: 'update', table: SPACES, id: space.id, expectedRevision: Number(current?.revision ?? 0), fields: { uses } }]);
+        usesById.set(space.id, uses);
+        toast(`«${space.name}»: ${spaceUsesText(uses)}.`);
+        await sheet?.close(true);
+        paintEditor();
+      } catch (e) { toast(describeError(e)); }
+    } }, 'Guardar');
+    sheet = openSheet({ title: 'Para qué sirve', meta: space.name,
+      body: el('div', { 'data-feedback-id': 'central.planos.colocar.usos.hoja', 'data-feedback-label': 'Usos de la estancia' },
+        el('p', { class: 'muted small' }, 'Marca todos los que tenga. Booking enseña las de alojamiento; Tasks, Food y Flow, las suyas.'),
+        el('div', { class: 'ctl-usechips' }, ...SPACE_USES.map((u, i) => el('label', { class: 'chip' }, chips[i]!, el('span', null, SPACE_USE_LABELS[u]))))),
+      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.planos.colocar.usos.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      initialFocus: chips[0] });
+  }
+
   /** Renombrar una estancia (Recursos) desde «Colocar». */
   function renameSpace(space: SpaceRow): void {
     let sheet: Sheet | null = null;
