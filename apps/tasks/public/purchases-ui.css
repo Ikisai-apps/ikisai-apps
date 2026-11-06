@@ -36,3 +36,8 @@ label.checkline:has(#prInvoice){display:flex;align-items:center;gap:10px;min-hei
 #prInvoice{width:24px;height:24px}
 .tkit-trade{margin:0 0 12px}
 .tkit-trade select{min-height:44px}
+.tkit-icon{margin:0 0 12px}
+.tkit-iconlabel{display:block;font-size:13px;color:var(--muted);margin:0 0 4px}
+.tkit-icons{display:flex;flex-wrap:wrap;gap:6px}
+.tkit-iconopt{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink)}
+.tkit-iconopt.on{border-color:var(--accent);background:var(--paper);font-weight:600}
