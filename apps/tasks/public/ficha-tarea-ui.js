@@ -94,6 +94,10 @@ function fichaLine(k,m){
 function fichaCount(k,m){return ({quien:m.faceKeys.length,comentarios:m.comments.length,pasos:m.kids,material:m.materials})[k]||0}
 
 /* --- La portada (kit) y la línea de estado --------------------------------------------------------------------------- */
+/* FB_2026_089: ir al proyecto de la tarea desde su ficha (cambia de área si hace falta). Fuera de fichaPaintHead, donde
+   `state` es el párrafo de la portada y no el estado de la app. */
+function fichaGoProject(pid){const area=(state.tabs||[]).find(a=>!a.deleted&&a.projects.some(x=>x.id===pid));
+  closeSheet();if(area)state.activeTab=area.id;state.view='project';state.currentProject=pid;persistUI();render()}
 function fichaPaintHead(s,id){const m=fichaSummary(id);if(!m)return;const K=IkisaiKit,input=document.getElementById('teText'),host=s.querySelector('.tkf-cover');if(!host)return;
   const today=fichaToday(),info=m.due?dueInfo(m.due,false):null;
   const pill=m.done?'Hecha':!m.due?null:m.due<today?`Vencida · ${fmtDate(m.due)}`:m.due===today?'Vence hoy':info?.cls==='soon'?'Vence mañana':`Vence el ${fmtDate(m.due)}`;
@@ -105,8 +109,10 @@ function fichaPaintHead(s,id){const m=fichaSummary(id);if(!m)return;const K=Ikis
     faces:m.faceKeys.map(k=>fichaFace(k,m.area)).filter(Boolean),tools,compact:true,feedbackId:'tasks.editor_tarea.portada'});
   host.replaceChildren(cover);
   const state=s.querySelector('.tkf-state');if(state){const st=m.done?'Hecha':m.due&&m.due<today?'Abierta · se pasó la fecha':'Abierta';
-    state.innerHTML=`<span class="ikisai-kit tkf-medal"></span><span><b>${esc(m.p.system==='inbox'?'Entrada':m.p.title)}</b> · <span class="tkf-st ${m.done?'ok':m.due&&m.due<today?'alert':''}">${st}</span>${m.ownerText?` · Lo lleva <b>${esc(m.ownerText)}</b>`:''}</span>`;
-    state.querySelector('.tkf-medal').append(K.renderMedal({name:m.p.system==='inbox'?'Entrada':m.p.title,image:fichaImageOf(m.p,repaint),color:m.p.color||null,size:30}))}
+    state.innerHTML=`<span class="ikisai-kit tkf-medal"></span><span><button type="button" class="linkbtn tkf-proj" data-tkf-project="${esc(m.p.id)}" data-feedback-id="tasks.editor_tarea.proyecto" data-feedback-label="Ir al proyecto"><b>${esc(m.p.system==='inbox'?'Entrada':m.p.title)}</b></button> · <span class="tkf-st ${m.done?'ok':m.due&&m.due<today?'alert':''}">${st}</span>${m.ownerText?` · Lo lleva <b>${esc(m.ownerText)}</b>`:''}</span>`;
+    state.querySelector('.tkf-medal').append(K.renderMedal({name:m.p.system==='inbox'?'Entrada':m.p.title,image:fichaImageOf(m.p,repaint),color:m.p.color||null,size:30}))
+    // FB_2026_089: el nombre del proyecto lleva al proyecto (en su área).
+    const go=state.querySelector('[data-tkf-project]');if(go)go.onclick=()=>fichaGoProject(go.dataset.tkfProject)}
   const done=document.getElementById('tkfDone');if(done)done.checked=m.done;
   fichaPaintTiles(s,id,m)}
 function fichaPaintTiles(s,id,m=fichaSummary(id)){const box=s.querySelector('.tkf-tiles');if(!box||!m)return;const P=s._tkfParts;if(!P)return;

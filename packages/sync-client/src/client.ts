@@ -322,6 +322,8 @@ export class SyncClientImpl implements SyncClient {
   private retryAttempts = 0;
   /** Ciclos seguidos con 5xx por requestId del lote en cabeza de cola (MAX_SERVER_FAILURES). */
   private readonly serverFailures = new Map<string, number>();
+  /** Ámbito del dispositivo (fl-22): lo que este navegador quiere en su espejo; viaja en `X-Ikisai-Scope`. */
+  private deviceScope: Record<string, unknown> | null = null;
   private started = false;
   private readonly onOnline = () => {
     this.setStatus({ network: 'online' });
@@ -536,6 +538,8 @@ export class SyncClientImpl implements SyncClient {
     this.lastPullAt = (byKey.get('lastPullAt') as string | undefined) ?? null;
     this.sess = (byKey.get('session') as Session | undefined) ?? null;
     this.boot = (byKey.get('bootstrap') as Bootstrap | undefined) ?? null;
+    const savedScope = byKey.get('scope');
+    this.deviceScope = savedScope && typeof savedScope === 'object' && !Array.isArray(savedScope) ? (savedScope as Record<string, unknown>) : (this.options.scope ?? null);
     await this.db.ensureStores(this.mirrorTables());
     const outbox = await this.db.getAll<OutboxEntry>(OUTBOX_STORE);
     this.seq = outbox.reduce((max, e) => Math.max(max, e.seq), 0);
@@ -755,6 +759,32 @@ export class SyncClientImpl implements SyncClient {
     if (this.sess && this.hasNetwork()) await this.sync();
   }
 
+  /** Ámbito del dispositivo actual (fl-22), o null = todo lo visible. */
+  scope(): Record<string, unknown> | null {
+    return this.deviceScope;
+  }
+
+  /**
+   * Cambia el ámbito del dispositivo (fl-22): se guarda en el dispositivo, viaja en `X-Ikisai-Scope` y, como cambia lo que debe
+   * haber en el espejo, lo rehace desde cero (misma regla que `resetMirror` con lo pendiente). Sin cambios, no hace nada.
+   */
+  async setScope(scope: Record<string, unknown> | null, options: { discardPending?: boolean } = {}): Promise<void> {
+    await this.ensureReady();
+    const next = scope && typeof scope === 'object' && !Array.isArray(scope) && Object.keys(scope).length ? scope : null;
+    const canon = (v: unknown): string => JSON.stringify(v, (_k, val) => (val && typeof val === 'object' && !Array.isArray(val))
+      ? Object.keys(val as Record<string, unknown>).sort().reduce((o: Record<string, unknown>, k) => { o[k] = (val as Record<string, unknown>)[k]; return o; }, {}) : val);
+    if (canon(next ?? {}) === canon(this.deviceScope ?? {})) return;
+    if (this.running) await this.running.catch(() => undefined);
+    await this.refreshCounts();
+    const { pendingCommands, pendingBlobs, conflicts, rejected } = this.state;
+    if (pendingCommands + pendingBlobs + conflicts + rejected > 0 && !options.discardPending) {
+      throw new SyncApiError(409, 'PENDING_CHANGES', 'Hay cambios de este dispositivo sin enviar', { pendingCommands, pendingBlobs, conflicts, rejected });
+    }
+    this.deviceScope = next;
+    await this.saveMeta('scope', next);
+    await this.resetMirror({ discardPending: true });
+  }
+
   /** Refresca la sesión ya mismo; los clientes secundarios lo piden a su principal. */
   async refreshSessionNow(): Promise<boolean> {
     await this.ensureReady();
@@ -790,6 +820,7 @@ export class SyncClientImpl implements SyncClient {
       await this.refreshIfExpiring();
       const headers = new Headers(initHeaders ?? undefined);
       if (this.sess) headers.set('Authorization', `Bearer ${this.sess.token}`);
+      if (this.deviceScope && !headers.has('X-Ikisai-Scope')) headers.set('X-Ikisai-Scope', JSON.stringify(this.deviceScope));
       let body = rest.body;
       if (json !== undefined) {
         body = JSON.stringify(json);

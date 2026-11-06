@@ -306,3 +306,9 @@ bind=function(){bindBeforePurchases();
   on('[data-plan]',b=>b.onclick=()=>planSheet(b.dataset.plan));
   on('[data-open-supplies]',b=>b.onclick=()=>navigateView('supplies'));
 };
+/* FB_2026_094: en Compras, el «+» de abajo pide una compra (la misma hoja que «Nueva solicitud»), no crea una tarea. */
+const fabBeforePurchases=fab;
+fab=function(){if(state.view!=='purchases')return fabBeforePurchases();if(!canEdit())return '';
+  return `<button class="fab" id="purchaseFab" aria-label="Pedir una compra" data-feedback-id="tasks.compras.anadir" data-feedback-label="Pedir una compra">+</button>`};
+const bindBeforePurchasesFab=bind;
+bind=function(){bindBeforePurchasesFab();const b=document.getElementById('purchaseFab');if(b)b.onclick=()=>purchaseSheet()};

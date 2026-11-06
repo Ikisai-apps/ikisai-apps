@@ -103,7 +103,7 @@ test('la ficha es de solo lectura salvo el hilo y la casilla de hecha', async ()
   await expect(outsider.locator('#saveTaskBtn')).toHaveCount(0);
   await expect(outsider.locator('#whoKnows')).toHaveCount(0);
   const active = await outsider.evaluate(() => [...document.querySelectorAll('#sheet .tkf-portada :is(button,input,select,textarea), #sheet .tkf-store :is(button,input,select,textarea)')]
-    .filter((c: any) => !c.disabled && !c.closest('#taskComments') && c.id !== 'outsiderDone' && !c.matches('[data-child-toggle], [data-child-open], .tkf-tile'))
+    .filter((c: any) => !c.disabled && !c.closest('#taskComments') && c.id !== 'outsiderDone' && !c.matches('[data-child-toggle], [data-child-open], .tkf-tile, .tkf-proj'))
     .map((c: any) => c.id || c.getAttribute('data-feedback-id') || c.className));
   expect(active, 'controles activos que no guardan').toEqual([]);
   // «Hecha» con «Deshacer»: la casilla marca de verdad y el aviso la reabre.

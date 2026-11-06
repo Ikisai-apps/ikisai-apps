@@ -7,6 +7,7 @@ import { computeDue, dueText, openDue, openMarkDone, plazo, sourceLabel, undoMar
 import { APP_NAMES, mountDashboard } from './dashboard.ts';
 import { T } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
+import { mountAgentProposals } from './agent-proposals.ts';
 import type { ViewMount } from './shell.ts';
 
 const ROLE_TEXT: Record<string, string> = {
@@ -36,6 +37,7 @@ export const mountHome: ViewMount = (ctx) => {
   const canEdit = boot?.membership.role !== 'reader';
   const summary = el('div', { class: 'homecards', id: 'homeSummary', 'data-feedback-id': 'central.inicio.resumen', 'data-feedback-label': 'Resumen de cuentas' });
   const docs = el('section', { id: 'homeDocs', class: 'ctl-block', 'data-feedback-id': 'central.inicio.vencimientos', 'data-feedback-label': 'Lo que urge' });
+  const proposals = el('section', { id: 'homeProposals', class: 'ctl-block', 'data-feedback-id': 'central.inicio.propuestas', 'data-feedback-label': 'Propuestas de tus agentes' });
   const decisions = el('section', { id: 'homeDecisionsBlock', class: 'ctl-block', 'data-feedback-id': 'central.inicio.decisiones', 'data-feedback-label': 'Últimas decisiones' });
   const dashboardHost = el('div', { 'data-feedback-id': 'central.inicio.direccion', 'data-feedback-label': 'Panel de dirección' });
   replace(
@@ -43,6 +45,7 @@ export const mountHome: ViewMount = (ctx) => {
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.inicio.cabecera', 'data-feedback-label': 'Cabecera de Inicio' }, el('div', null,
       el('h2', { 'data-feedback-ignore': '' }, boot?.profile.displayName ? `Hola, ${boot.profile.displayName}` : 'Ikisai Central'),
       el('p', null, ROLE_TEXT[boot?.membership.role ?? 'reader'] ?? ''))),
+    proposals,
     docs,
     summary,
     decisions,
@@ -184,7 +187,10 @@ export const mountHome: ViewMount = (ctx) => {
   const unmountDashboard = mountDashboard(dashboardHost, client, isAdmin, usage, focusApp ?? (location.hash.includes('direccion') ? '' : null),
     (items) => { kpis = items; paintAttention(); });
 
-  const cleanup = () => { offs.forEach((off) => off()); unmountDashboard(); };
+  // Propuestas de tus agentes: para el owner y para quien responde por un agente (el núcleo solo le da las suyas).
+  let proposalsAlive = true;
+  mountAgentProposals(proposals, client, usage, () => proposalsAlive);
+  const cleanup = () => { proposalsAlive = false; offs.forEach((off) => off()); unmountDashboard(); };
   if (!isAdmin) return cleanup;
 
   function card(id: string, title: string, value: string, hint: string, hash: string): HTMLElement {
