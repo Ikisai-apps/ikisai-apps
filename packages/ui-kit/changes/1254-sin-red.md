@@ -1,0 +1,1 @@
+**Estado de red** (K-07, decisión de VG del 05-11): sin red, `statusBanners` pone una franja arriba («Sin conexión: N cambios pendientes, se enviarán al volver la red»), además de la pastilla. `hideOffline: true` la quita. Las apps que ya usan `setBanners` la reciben sin cambiar nada.

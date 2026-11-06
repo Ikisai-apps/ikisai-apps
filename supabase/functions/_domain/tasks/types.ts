@@ -157,6 +157,8 @@ export const PHASE_STATUSES = ['pending', 'active', 'done'] as const;
 export type PhaseStatus = (typeof PHASE_STATUSES)[number];
 export interface ProjectPhaseRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; name: string; position: number; status: PhaseStatus; start: string | null; due: string | null; closed_note: string;
+  /** La «actual» del proyecto (0367, §61): la de las tareas nuevas. Como mucho una viva por proyecto. */
+  is_current?: boolean;
 }
 /** Entregables (0361, §57): el estado a mano; «hecho» se calcula con sus tareas. */
 export const DELIVERABLE_STATUSES = ['todo', 'delivered', 'installed'] as const;
@@ -227,7 +229,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref', 'owner_person_id', 'owner_house_level'],
   'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free', 'owner_person_id', 'owner_house_level', 'phase_id', 'unit_count', 'deliverable_id'],
   'tasks.project_deliverables': ['tab_id', 'project_id', 'name', 'quantity', 'status', 'space_id', 'note', 'position'],
-  'tasks.project_phases': ['tab_id', 'project_id', 'name', 'position', 'status', 'start', 'due', 'closed_note'],
+  'tasks.project_phases': ['tab_id', 'project_id', 'name', 'position', 'status', 'start', 'due', 'closed_note', 'is_current'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],

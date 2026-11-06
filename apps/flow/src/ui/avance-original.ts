@@ -10,12 +10,14 @@ export interface OrigCard { id: string; uid: string; agente: string; estado: str
   url?: string | null; urlTexto?: string | null; pasos?: string[]; prio?: string | null; tipo?: string | null; recurrente?: boolean; orden?: number;
   hito?: { id: string; paso?: number | null } | null;
   /** Aplicaciones en las que se hace (vista «Por app»): las puestas a mano o las de sus enlaces; si no, su agente. */
-  apps?: string[]; appsManual?: boolean }
+  apps?: string[]; appsManual?: boolean;
+  /** Aplicación adivinada por el texto (fl-32): se enseña «adivinada» hasta que alguien la confirme. */
+  appsGuessed?: boolean }
 export interface OrigHito { id: string; nombre: string; orden: number; done_at: number | null }
 export interface OrigSnap { t: number; hecho: number; pr: number; curso: number; pend: number; backlog: number; total: number }
 
 export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW_SLOT: HTMLElement, CAN_EDIT: boolean,
-  ON_STATE: (uid: string, estado: string) => void, MINE: string[] = [], ON_APPS: (uid: string) => void = () => {}, ON_MOVE: (uid: string, from: string, to: string) => void = () => {}): { setData(ruta: OrigCard[], hitos: OrigHito[], hist: OrigSnap[], agentes: string[]): void } {
+  ON_STATE: (uid: string, estado: string) => void, MINE: string[] = [], ON_APPS: (uid: string) => void = () => {}, ON_MOVE: (uid: string, from: string, to: string) => void = () => {}, ON_CONFIRM: (uid: string) => void = () => {}): { setData(ruta: OrigCard[], hitos: OrigHito[], hist: OrigSnap[], agentes: string[]): void } {
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   var RUTA=[],RMETA=null;var CV='';var CSEL='';try{CV=localStorage.getItem('avance-car-vista')||'';CSEL=localStorage.getItem('avance-car-sel')||'';}catch(e){}
   var CMORE={};
@@ -200,6 +202,7 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       var PR={urgente:'Urgente',importante:'Importante',secundario:'Secundario',opcional:'Opcional'};
       var inner='<button type="button" class="cid" data-cid="'+esc(x.id)+'" title="Copiar el código de la tarjeta">'+esc(x.id)+'</button>'+(x.tipo&&TIPO[x.tipo]?'<span class="tipo" style="--c:'+TIPO[x.tipo][3]+'" title="'+TIPO[x.tipo][1]+'">'+TIPO[x.tipo][2]+' '+TIPO[x.tipo][1]+'</span>':'')+(x.prio&&PR[x.prio]?'<span class="prio p-'+esc(x.prio)+'">'+PRI[x.prio]+PR[x.prio]+'</span>':'')+'<b>'+(x.recurrente?'⟳ ':'')+esc(x.nombre)+'</b>'+((x.nota||x.ref)?'<div class="n">'+esc(x.nota||'')+(x.ref?(x.nota?' · ':'')+esc(x.ref):'')+'</div>':'')+(x.url&&/^https:\/\//.test(x.url)?'<div class="n"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.urlTexto||'Abrir')+' ↗</a></div>':'');
       if(x.hito&&x.hito.id){var hh=null;HITOS.forEach(function(q){if(q.id===x.hito.id)hh=q;});var w=wfor(x);if(hh)inner+='<div class="n hn'+(w?' wt':'')+'">⛳ '+esc(hh.nombre)+' · paso '+esc(String(x.hito.paso||''))+(w?' · <b>⏳ en espera</b> del paso '+esc(String(w.hito.paso||''))+' ('+esc(w.agente)+')':'')+'</div>';}
+      if(vista==='app'&&lane&&x.appsGuessed)inner+='<div class="n tb guessed">🔎 adivinada por el texto'+(CAN_EDIT&&MINE.indexOf(x.agente)>=0?' <button type="button" class="act" data-confirm="'+esc(x.uid)+'">Confirmar</button>':'')+'</div>';
       if(vista==='app'&&lane){var otras=(x.apps||[]).filter(function(n){return n!==lane;});var ajena=lane!==x.agente;if(ajena||otras.length)inner+='<div class="n tb">'+(ajena?'👤 '+esc(x.agente):'')+(ajena&&otras.length?' · ':'')+(otras.length?'también en '+esc(otras.join(', ')):'')+'</div>';}
       if(steps){inner+=open?'<ol class="pasos">'+x.pasos.map(function(p){return '<li>'+esc(p)+'</li>';}).join('')+'</ol>':'<div class="hint">Toca para ver los pasos</div>';}
       if(open&&CAN_EDIT&&!x.recurrente&&!noActs&&MINE.indexOf(x.agente)>=0)inner+='<div class="acts"><button type="button" class="act" data-apps="'+esc(x.uid)+'">Aplicaciones'+(x.appsManual?' (a mano)':'')+'…</button></div>';
@@ -211,6 +214,7 @@ export function createAvanceOriginal(HOST: HTMLElement, HORA_EL: HTMLElement, SW
       v.querySelectorAll('[data-lane]').forEach(function(l){l.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move';l.classList.add('drop');});l.addEventListener('dragleave',function(){l.classList.remove('drop');});l.addEventListener('drop',function(e){e.preventDefault();l.classList.remove('drop');var d=(e.dataTransfer.getData('text/plain')||'').split('|');var to=l.getAttribute('data-lane');if(d[0]&&d[1]&&to&&d[1]!==to)ON_MOVE(d[0],d[1],to);});});
     }
     SW_SLOT.querySelector('#cvApp').onclick=function(){CV='app';try{localStorage.setItem('avance-car-vista',CV);}catch(e){}rRender();};
+    v.querySelectorAll('[data-confirm]').forEach(function(b){b.onclick=function(e){e.stopPropagation();ON_CONFIRM(b.getAttribute('data-confirm'));};});
     v.querySelectorAll('[data-apps]').forEach(function(b){b.onclick=function(e){e.stopPropagation();ON_APPS(b.getAttribute('data-apps'));};});
     SW_SLOT.querySelector('#cvHitos').onclick=function(){CV='hitos';try{localStorage.setItem('avance-car-vista',CV);}catch(e){}rRender();};
     v.querySelectorAll('[data-hfold]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-hfold');HFOLD[id]=!HFOLD[id];try{localStorage.setItem('avance-hitos-plegados',JSON.stringify(HFOLD));}catch(e){}rRender();};});

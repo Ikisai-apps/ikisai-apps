@@ -198,8 +198,9 @@ test('servicio del sábado · de la carta de Food al cierre del día, con huésp
   const toFinance = await app.call(`/api/v1/closures/${closed.closure_id}/send/finance`, { body: {} });
   assert.equal(toFinance.status, 200, JSON.stringify(toFinance.data));
   const processEntry = (await entries()).find((e) => e.source_ref === `flow:project:${BARRA}:${madrid()}`);
-  assert.ok(processEntry, 'Finance guarda el apunte de proceso del día');
-  assert.equal(processEntry.nature, 'process');
+  assert.ok(processEntry, 'Finance guarda las ventas del día');
+  assert.equal(processEntry.nature, 'fiscal');
+  assert.ok((await entries()).find((e) => e.source_ref === `flow:closing:${BARRA}:${madrid()}` && e.nature === 'process'), 'y el resumen de proceso');
   const unifiedTotal = (await rows(TABLES.receipts)).find((r) => r.id === receipt).total_cents;
   assert.equal(Number(processEntry.amount_cents), closed.data.sales_cents - unifiedTotal, 'el cierre no repite el cobro fiscal');
 

@@ -38,6 +38,8 @@ test.beforeAll(async () => {
   await card({ lane_key: 'victor', title: 'Probar el alojamiento', prio: 'importante', tipo: 'prueba', steps: ['Abrir la carta', 'Tocar «Alójate aquí»'] });
   // Otra de Víctor sin enlaces que nadie marca (la de arriba la marca hecha la primera prueba): para la vista «Por app».
   await card({ lane_key: 'victor', title: 'Revisar la carta', prio: 'secundario' });
+  // Sin enlaces, pero el texto nombra una aplicación: «adivinada» en Food (fl-32).
+  await card({ lane_key: 'victor', title: 'Repasar los alérgenos en Food', prio: 'secundario' });
   await card({ lane_key: 'core', title: 'Revisar CI', kind: 'recurring' });
   await card({ lane_key: 'food', title: 'Más adelante', flag: 'backlog' });
   // Un hito de dos pasos (0947): el primero sin hacer bloquea; el segundo queda en espera.
@@ -74,7 +76,7 @@ async function enter(page: Page): Promise<void> {
 test('avance · caja general, discos, filtros, hitos y tarjeta con pasos que se marca hecha (pantalla del artefacto original)', async ({ page }) => {
   await enter(page);
   await page.setViewportSize({ width: 1280, height: 900 }); // lado a lado: todos los carriles a la vista
-  await expect(page.locator('.avance-orig .gprog .gt')).toHaveText('2 hechas de 7');
+  await expect(page.locator('.avance-orig .gprog .gt')).toHaveText('2 hechas de 8');
   await expect(page.locator('.avance-orig .hito')).toHaveCount(1);
   await expect(page.locator('.avance-orig .circ')).toHaveCount(4);
   // Urgencia: solo la urgente.
@@ -147,6 +149,11 @@ test('avance · vista «Por app»: una tarea tuya sin enlaces se queda en tu car
   await expect(page.locator('#cvApp')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.lane[aria-label="Víctor"] .it', { hasText: 'Revisar la carta' })).toHaveCount(1);
   await expect(page.locator('.gprog .gl .gbar')).toHaveCount(1);
+  // Adivinada por el texto: en Food, marcada, y se confirma de un toque.
+  const guessed = page.locator('.lane[aria-label="Food"] .it', { hasText: 'Repasar los alérgenos en Food' });
+  await expect(guessed).toContainText('adivinada');
+  await guessed.locator('[data-confirm]').click();
+  await expect(guessed).not.toContainText('adivinada', { timeout: 15_000 });
   // Arrastrarla al carril de Flow (fl-20): pasa a hacerse en Flow y dice de quién es.
   // Arrastrar y soltar del navegador: los eventos a mano (dragTo no siempre los genera con DataTransfer en CI).
   await page.evaluate(() => {
