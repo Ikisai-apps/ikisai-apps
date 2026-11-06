@@ -124,6 +124,7 @@
 - 2026-10-28 · **La casa contesta** (línea de Core; núcleo 0117; API.md §26): respuestas de Booking a lo que quien organiza escribe sobre su retiro. En Organizers, «N respuestas de Ikisai» en Mis retiros y las respuestas en «Lo que me has enviado». La pantalla de Booking es la petición B22.
 - 2026-11-05 · **Plano de Ikisai en Alojamiento** (FB_2026_061; VG, O-C2 a): el plano del centro de Central, en un desplegable encima del reparto (imagen o PDF).
 - 2026-11-05 · **Avisos apagados sin gasto** (X5; 0712): con el aviso apagado, el tick pausa la sonda 6 horas en vez de correr cada 15 minutos.
+- 2026-11-06 · **Planta con camas en Alojamiento** (FB_2026_061; VG, O-C2 b; 0713; API.md §16.1): «Ver en la planta» en Reparto de camas, con el mapa de zonas de Recursos (`GET plans`) y la forma de cada cama sacada de Booking. En cada cama sale quién duerme, y al tocarla se asigna como en la lista. Pruebas en `bed-plan.test.ts` y `lodging.test.ts`.
 
 ## Pendiente
 

@@ -6,17 +6,19 @@
  * - reparto de camas, plazas pendientes de aprobar y preferencias de compañeros;
  * - supletorias por habitación (Booking #491, API §25): «Supletorias N de M» con − / +, el precio de Ikisai por plaza y noche
  *   y, con la propuesta aceptada, «Pendiente de Ikisai». Las activadas salen en el reparto marcadas «supletoria».
+ * - «Ver en la planta» (O-C2 b, `bed-plan.ts`): el reparto sobre el mapa de zonas, con quién duerme en cada cama.
  */
 import { el, fieldAttrs, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
 import type { Row } from '../app/own.ts';
+import { renderBedPlan, type BedPlanState } from './bed-plan.ts';
 import { failure, fbIgnore, loading, needsNet, offlineReason, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
-interface Bed { bed_id: string; label: string; kind: string; free: boolean; assignment_id?: string; guest_id?: string | null; group_label?: string | null; status?: string; source?: string }
+interface Bed { bed_id: string; resource_bed_id?: string | null; layout?: { x: number; y: number; rot?: number } | null; label: string; kind: string; free: boolean; assignment_id?: string; guest_id?: string | null; group_label?: string | null; status?: string; source?: string }
 interface ExtraBeds { possible: number; activated: number; wanted: number; requested: number; release_requested: number; occupied: number }
-interface Room { space_id: string; name: string; zone: string | null; capacity: number | null; en_suite: boolean; small_en_suite: boolean; option_key: string | null; open: boolean; supplement: boolean; beds: Bed[]; extra?: ExtraBeds }
+interface Room { space_id: string; resource_space_id?: string | null; layout?: { cols: number; rows: number } | null; name: string; zone: string | null; capacity: number | null; en_suite: boolean; small_en_suite: boolean; option_key: string | null; open: boolean; supplement: boolean; beds: Bed[]; extra?: ExtraBeds }
 interface ExtraRate { name: string; unit: string; amount: number | string; amount_with_vat: number | string; vat_rate: number | string }
 interface PortalRooms {
   /** La propuesta está aceptada: activar o quitar supletorias queda pendiente de Ikisai. */
@@ -51,6 +53,8 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
   let data: PortalRooms | null = null;
   let names = new Map<string, string>();
   let guestIds: string[] = [];
+  /** «Ver en la planta» sigue abierto al repintar. */
+  const planState: BedPlanState = { open: false };
   /** Aprobar, asignar, supletorias y abrir habitaciones escriben en Booking: sin red se apagan con su motivo. */
   let bound: Array<() => void> = [];
   const release = () => { for (const off of bound) off(); bound = []; };
@@ -217,6 +221,11 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
         d.extra_pending_mode && d.rooms.some((r) => (r.extra?.possible ?? 0) > 0)
           ? el('p', { class: 'muted small', id: 'lodgingExtraPending' }, t('Tu propuesta ya está aceptada: las supletorias que añadas o quites quedarán pendientes de Ikisai.'))
           : null,
+        renderBedPlan(ctx, d.rooms, nameOf, (room, bed) => {
+          const r = d.rooms.find((x) => x.space_id === room.space_id);
+          const b = r?.beds.find((x) => x.bed_id === bed.bed_id);
+          if (r && b) assign(r, b);
+        }, planState),
         roomsBlock),
       d.preferences.length ? section(t('Preferencias de tus asistentes'), { id: 'lodgingPreferences' },
         fbIgnore(el('ul', { class: 'plainlist' }, ...d.preferences.map((p) => el('li', null, el('strong', null, nameOf(p.guest_id)),

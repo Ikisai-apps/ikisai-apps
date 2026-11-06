@@ -1121,4 +1121,11 @@ export const EN: Dictionary = {
   'Actividades': 'Activities',
   'Comunicación': 'Communication',
   'La comida': 'Food',
+  // La planta con camas de Alojamiento (bed-plan.ts, O-C2 b)
+  'Ver en la planta': 'See on the floor plan',
+  'Planta con camas': 'Floor plan with beds',
+  'Ikisai aún no ha dibujado estas habitaciones en el plano.': 'Ikisai has not drawn these rooms on the plan yet.',
+  'Pendiente de aprobar': 'Awaiting approval',
+  'Reservada para tu grupo': 'Held for your group',
+  '{free} de {total} camas libres': '{free} of {total} beds free',
 };
