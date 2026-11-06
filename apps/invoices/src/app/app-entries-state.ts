@@ -182,14 +182,22 @@ export function entryDelivered(entryId: string, exports: Array<{ status: string;
   return exports.some((e) => !e.deleted_at && e.status === 'entregada' && (e.manifest?.app_entries ?? []).some((x) => x.id === entryId));
 }
 
-/** Resumen del periodo en euros, la misma cuenta que `invoices.app_entries_summary_for` (0245): solo lo fiscal; lo de proceso, aparte. */
-export function appEntriesSummary(entries: EntryLike[], range: { from: string; to: string }): {
+/** Tickets sustituidos por una F3 ya emitida (0266, VG 06-11): salen del IVA, que lleva la F3. Misma regla que `invoices.app_entry_replaced`. */
+export function replacedEntryIds(invoices: Array<{ from_entry_id?: string | null; invoice_type: string; status: string; deleted_at: string | null }>): Set<string> {
+  return new Set(invoices.filter((i) => i.from_entry_id && i.invoice_type === 'F3' && !i.deleted_at && (i.status === 'emitida' || i.status === 'rectificada')).map((i) => i.from_entry_id!));
+}
+
+/**
+ * Resumen del periodo en euros, la misma cuenta que `invoices.app_entries_summary_for` (0245, 0266): solo lo fiscal, sin los
+ * tickets sustituidos por una F3; lo de proceso, aparte.
+ */
+export function appEntriesSummary(entries: EntryLike[], range: { from: string; to: string }, replaced: Set<string> = new Set()): {
   income: { count: number; base: number; quota: number; total: number; quota_by_rate: Array<{ rate: number; base: number; quota: number }> };
   expense: { count: number; base: number; quota: number; total: number };
   process: { count: number; income: number; expense: number };
 } {
   const inRange = liveEntries(entries).filter((e) => e.entry_date >= range.from && e.entry_date <= range.to);
-  const live = inRange.filter(isFiscal);
+  const live = inRange.filter((e) => isFiscal(e) && !replaced.has(e.id));
   const proc = inRange.filter((e) => !isFiscal(e));
   const sum = (list: EntryLike[], k: 'net_cents' | 'tax_cents' | 'amount_cents') => list.reduce((n, e) => n + Number(e[k]), 0) / 100;
   const inc = live.filter((e) => e.kind === 'income');
