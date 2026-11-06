@@ -15,6 +15,7 @@ import { mountReview } from './review.ts';
 import { mountReception } from './reception.ts';
 import { mountJourneyEditor } from './journey-editor.ts';
 import { mountJourneys } from './journeys.ts';
+import { mountCarga } from './carga.ts';
 import { mountClosure } from './closure.ts';
 import { mountOrders } from './orders.ts';
 import { mountBreadBanner, mountQueue } from './prep.ts';
@@ -160,7 +161,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       .filter((s) => s.rows.length);
     // «Todos los flujos» arriba: vuelve a la entrada desde cualquier flujo (FB_2026_077).
     return [{ key: 'todos', label: 'Todos los flujos', rows: [{ label: 'Ir a la entrada con todos los flujos', href: '#/' }] }, ...sections,
-      { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }] }];
+      { key: 'recorridos', label: 'Recorridos', rows: [{ label: 'Todos los recorridos', href: '#/recorridos' }, { label: 'Carga asistida', href: '#/carga' }] }];
   }
   refreshMenuProjects();
   client.onTable(TABLES.projects, refreshMenuProjects);
@@ -370,6 +371,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     await enterProject(projectId);
     let entry: { title: string; slug: string; mount: ViewMount };
     if (!projectId && hash === '#/recorridos') entry = { title: 'Recorridos', slug: 'recorridos', mount: mountJourneys };
+    else if (!projectId && hash === '#/carga') entry = { title: 'Carga asistida', slug: 'carga', mount: mountCarga };
     // Crear recorridos y flujos no está en la interfaz (VG, 27-10: «no ahora»): solo con el enlace de prueba (`?prueba`).
     else if (!projectId && hash === '#/recorridos/nuevo' && testLink) entry = { title: 'Nuevo recorrido', slug: 'recorridos', mount: mountJourneyEditor(null) };
     else if (!projectId && /^#\/recorridos\/[a-z][a-z0-9_]{1,40}\/editar$/.test(hash)) entry = { title: 'Editar recorrido', slug: 'recorridos', mount: mountJourneyEditor(hash.split('/')[2]!) };

@@ -124,6 +124,38 @@ export function serviceHeaders(workerKey: string | undefined, slug: string): Rec
 }
 
 /** Llamada a un procedimiento de otra app por su API, con el token de la persona (su acceso decide). */
+/** Apps a las que la «Carga asistida» puede mirar propuestas (Central no admite agentes). */
+const CARGA_APPS: Record<string, { slug: string; label: string }> = {
+  booking: { slug: 'booking-api', label: 'Booking' }, finance: { slug: 'invoices-api', label: 'Finance' }, tasks: { slug: 'tasks-api', label: 'Tasks' },
+  food: { slug: 'food-api', label: 'Food' }, guests: { slug: 'guests-api', label: 'Guests' }, organizers: { slug: 'organizers-api', label: 'Organizers' },
+};
+
+/**
+ * «Carga asistida» (fl-25, núcleo 0120): Flow lee y decide, con la sesión de quien entra, las propuestas que un agente dejó
+ * hacia otra app. Solo GET de la bandeja y POST de aprobar o rechazar (una o un grupo); lo demás no pasa por aquí.
+ */
+function proposalsCaller(base: FlowBase, options: FlowAppOptions) {
+  const transport = options.appsFetch ?? fetch;
+  return async function callProposals(ctx: RequestContext, app: string, path: string, method: 'GET' | 'POST'): Promise<any> {
+    const target = CARGA_APPS[app];
+    if (!target) fail(404, 'NOT_FOUND', 'Esa app no tiene bandeja de propuestas.');
+    let res: Response;
+    try {
+      res = await transport(`${base.url.replace(/\/$/, '')}/functions/v1/${target.slug}/api/v1/${path}`, {
+        method, headers: { Authorization: 'Bearer ' + ctx.token, ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), ...serviceHeaders(base.workerKey, target.slug) },
+        ...(method === 'POST' ? { body: '{}' } : {}), signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      fail(503, 'APP_UNAVAILABLE', `${target.label} no responde ahora mismo. Inténtalo más tarde.`);
+    }
+    const out = await res.json().catch(() => ({})) as any;
+    const code = out?.error?.code as string | undefined;
+    if (res.status === 401 || res.status === 403 || code === 'NO_MEMBERSHIP') fail(403, 'NEEDS_ACCESS', `Pide acceso a ${target.label} para decidir sus propuestas.`, { app, code: code ?? null });
+    if (!res.ok) fail(res.status === 409 ? 409 : res.status === 404 ? 404 : 422, code ?? 'APP_REJECTED', out?.error?.message ?? `${target.label} no ha aceptado la decisión.`, { app });
+    return out;
+  };
+}
+
 function appCaller(base: FlowBase, options: FlowAppOptions) {
   const transport = options.appsFetch ?? fetch;
   const apiOf = (slug: string) => `${base.url.replace(/\/$/, '')}/functions/v1/${slug}/api/v1/commands`;
@@ -151,6 +183,35 @@ function appCaller(base: FlowBase, options: FlowAppOptions) {
  * Llegada y salida de huéspedes (check-in, 0911): flow-api comprueba que el flujo es de la persona y que el huésped es
  * de su evento, y llama a booking.guest_arrive / guest_leave por booking-api con su token (editor en Booking).
  */
+function cargaRoutes(base: FlowBase, options: FlowAppOptions): AppRoute[] {
+  const callProposals = proposalsCaller(base, options);
+  const ID = /^[A-Za-z0-9:_.-]{1,120}$/;
+  return [
+    {
+      // Bandeja de la app destino: las pendientes (con `grupo`, solo las de ese grupo).
+      method: 'GET', pattern: 'carga/:app/proposals', handler: async ({ ctx, params, url }) => {
+        const group = url.searchParams.get('grupo');
+        if (group !== null && !ID.test(group)) fail(422, 'INVALID_FILTER', 'Grupo inválido.');
+        const out = await callProposals(ctx, params.app ?? '', 'proposals?status=pending', 'GET');
+        const items = (Array.isArray(out?.items) ? out.items : []).filter((p: any) => group === null || p?.groupKey === group);
+        return { items };
+      },
+    },
+    {
+      method: 'POST', pattern: 'carga/:app/group/:key/:decision', handler: async ({ ctx, params }) => {
+        if (!ID.test(params.key ?? '') || !['approve', 'reject'].includes(params.decision ?? '')) fail(404, 'NOT_FOUND', 'Ruta no encontrada.');
+        return callProposals(ctx, params.app ?? '', `proposals/group/${encodeURIComponent(params.key!)}/${params.decision}`, 'POST');
+      },
+    },
+    {
+      method: 'POST', pattern: 'carga/:app/proposals/:id/:decision', handler: async ({ ctx, params }) => {
+        if (!/^[0-9a-f-]{36}$/.test(params.id ?? '') || !['approve', 'reject'].includes(params.decision ?? '')) fail(404, 'NOT_FOUND', 'Ruta no encontrada.');
+        return callProposals(ctx, params.app ?? '', `proposals/${params.id}/${params.decision}`, 'POST');
+      },
+    },
+  ];
+}
+
 function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
   const callApp = appCaller(base, options);
   /** El evento de Booking de un flujo de check-in del ámbito de la persona (si no, PROJECT_OUT_OF_SCOPE / NO_BOOKING_EVENT). */
@@ -608,7 +669,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...cargaRoutes(base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute(), customerVisitorRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership),
       // FL3: los `call` del historial (argumentos y resultado: nombres de huéspedes, titulares de cuentas…) solo los ve el
