@@ -74,6 +74,13 @@ test('cierre · con cuentas abiertas no va a Finance; pasar a Finance la deja pe
   assert.equal(r.status, 200, JSON.stringify(r.data));
   args = sent.at(-1).operations[0].args;
   assert.equal(args.source_ref, `flow:account:${account}`); assert.deepEqual(args.methods, { bizum: total }); assert.equal(args.description, 'Cuenta de Mesa 7');
+  // El cierre del día no repite ese cobro: ya fue con su propio apunte (0966).
+  const reclosed = await ok([call(PROCEDURES.closeDay, { project_id: v2, day: madrid() })]);
+  r = await app.call(`/api/v1/closures/${reclosed.closure_id}/send/finance`, { body: {} });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const day = sent.at(-2).operations[0].args;
+  assert.equal(day.source_ref, `flow:project:${v2}:${madrid()}`); assert.equal(day.nature, 'fiscal');
+  assert.equal(day.amount_cents, reclosed.data.sales_cents - total);
   // El estado de envío solo lo anota el servidor.
   assert.equal(await code([{ op: 'update', table: TABLES.accounts, id: account, expectedRevision: (await acc(account)).revision, fields: { finance_status: 'error' } }]), 'PROCEDURE_ONLY');
 });
