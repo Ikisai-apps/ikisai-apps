@@ -75,6 +75,8 @@ export const PROCEDURES = {
   guestArrive: 'booking.guest_arrive',
   joinFromVisitor: 'booking.join_from_visitor',
   guestLeave: 'booking.guest_leave',
+  /** 1429: el huésped de muestra para la vista previa como huésped ({reservation_id}). */
+  previewGuest: 'booking.preview_guest',
 } as const;
 
 /** Tipos de reserva (0482, VG 26-10-2026): retiro (la actividad principal), jornadas abiertas (venta y alojamiento a la carta) y familiar (de la casa). */
