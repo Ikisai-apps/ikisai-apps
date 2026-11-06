@@ -17,3 +17,6 @@ html.dark .tkph-seg{background:rgba(236,229,216,.08)}
 .tkph-now{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--accent);color:var(--paper)}
 .tkph-current{display:flex;align-items:center;gap:8px;min-height:44px;margin:4px 0}
 .actions #tkphUp,.actions #tkphDown{min-width:44px;min-height:44px}
+/* Las fases de antes de la actual, en gris y elegibles; la actual, marcada (VG 06-11). */
+.tkph-seg button.past:not(.on){opacity:.5}
+.tkph-seg .tkph-nowtag{display:block;font-size:10px;font-weight:600;line-height:1;color:var(--accent)}
