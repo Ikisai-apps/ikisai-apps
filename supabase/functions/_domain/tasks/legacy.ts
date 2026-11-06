@@ -9,7 +9,7 @@
 import { statuses } from './graph.ts';
 import { fullTab, type Scopes } from './scopes.ts';
 import { personFields, personKey } from './people.ts';
-import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type DeliverableStatus, type Operation, type PhaseStatus, type Priority, type ProjectStatus, type TaskRow, type Uuid } from './types.ts';
+import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type DeliverableStatus, type Operation, type PhaseStatus, type Priority, type ProjectStatus, type SpaceCell, type TaskRow, type Uuid } from './types.ts';
 
 export interface LegacyAttachment { id: Uuid; name: string; mime?: string; size?: number; sha256?: string; url?: string }
 /** `general`: del catálogo General (tab_id nulo, FB_2026_023); sale en todas las áreas y se guarda una sola vez. */
@@ -22,6 +22,8 @@ export interface LegacyTask {
   stepsInOrder?: boolean; stepFree?: boolean;
   /** Espacios de Recursos (R2). Sin el campo, `decompose` no los toca (copias y modelos de antes de R2). */
   spaces?: Uuid[];
+  /** Cuadrante de 1 m² de cada espacio (0368, §62), por id de espacio. Sin el campo, `decompose` no los toca. */
+  spaceCells?: Record<Uuid, SpaceCell>;
   /** Oficios de Central (P2). Sin el campo, `decompose` no los toca. */
   trades?: Uuid[];
   /** Personas de Central (P2, PR 3): ids de persona o `level:<nivel>`. Sin el campo, `decompose` no las toca. */
@@ -184,6 +186,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           ...(t.steps_in_order ? { stepsInOrder: true } : {}), ...(t.step_free ? { stepFree: true } : {}),
           labels: (taskLabels.get(t.id) ?? []).sort(byCreation).map((l) => l.label_id),
           ...(taskSpaces.has(t.id) ? { spaces: taskSpaces.get(t.id)!.sort(byCreation).map((s) => s.space_id) } : {}),
+          ...(taskSpaces.get(t.id)?.some((s) => s.cell) ? { spaceCells: Object.fromEntries(taskSpaces.get(t.id)!.filter((s) => s.cell).map((s) => [s.space_id, s.cell!])) } : {}),
           ...(taskTrades.has(t.id) ? { trades: taskTrades.get(t.id)!.sort(byCreation).map((s) => s.trade_id) } : {}),
           ...(taskPeople.has(t.id) ? { people: taskPeople.get(t.id)!.sort(byCreation).map(personKey) } : {}),
           ...ownerOf(t),
@@ -401,7 +404,8 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
           ...(taskRow ? {} : { tab_id: tab.id }),
         }, deletedWanted.get(t.id) ?? false);
         bridges('tasks.task_labels', 'task_id', t.id, p.id, 'label_id', t.labels ?? [], (label) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, label_id: label }));
-        if (t.spaces) bridges('tasks.task_spaces', 'task_id', t.id, p.id, 'space_id', t.spaces, (space) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, space_id: space }));
+        if (t.spaces) bridges('tasks.task_spaces', 'task_id', t.id, p.id, 'space_id', t.spaces, (space) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, space_id: space,
+          ...(t.spaceCells ? { cell: t.spaceCells[space] ?? null } : {}) }));
         if (t.trades) bridges('tasks.task_trades', 'task_id', t.id, p.id, 'trade_id', t.trades, (trade) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, trade_id: trade }));
         if (t.people) bridges('tasks.task_people', 'task_id', t.id, p.id, personRowKey, t.people, (person) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, ...personFields(person) }));
         bridges('tasks.task_dependencies', 'task_id', t.id, p.id, 'depends_on_id', t.dependsOn ?? [], (dep, i) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, depends_on_id: dep, position: (i + 1) * POSITION_STEP }));
