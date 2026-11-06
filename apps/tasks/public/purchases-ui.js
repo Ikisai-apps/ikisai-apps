@@ -143,7 +143,10 @@ function openSupply(item){const src=inventorySources();if(!src)return;closeInven
   const sheet=IkisaiKit.createItemSheet({source:src.items,itemId:item.id,spaces:src.spaces,feedbackId:'tasks.suministros.ficha',permissions:{edit:canEdit()},supplierField:itemSupplierField,
     ...(canEdit()?{actions:['spend','entry','transfer','count'],onAction:(a,it)=>supplyAct(a,it)}:{})});
   // FB_2026_056 (C-01): el oficio del artículo (Recursos 0819, `trade_id`), encima de la ficha del kit, como en Central.
-  const body=document.createElement('div');const tradeBox=document.createElement('div');tradeBox.className='tkit-trade';body.append(tradeBox,sheet.element);void supplyTradeField(tradeBox,item.id);
+  const body=document.createElement('div');const tradeBox=document.createElement('div');tradeBox.className='tkit-trade';
+  // FB_2026_090 (C-06): el icono del artículo (Recursos 0822, `icon`), de la lista del kit (ITEM_ICONS).
+  const iconBox=document.createElement('div');iconBox.className='tkit-icon';
+  body.append(tradeBox,iconBox,sheet.element);void supplyTradeField(tradeBox,item.id);void supplyIconField(iconBox,item.id);
   inventoryTool=sheet;inventoryHandle=IkisaiKit.openSheet({title:item.name,body,onClose:()=>{sheet.destroy();if(inventoryTool===sheet)inventoryTool=null;inventoryHandle=null}})}
 async function supplyTradeField(box,itemId){const r=Sync.core?.resources;if(!r)return;const row=await r.get('resources.items',itemId).catch(()=>null);
   if(!row||!('trade_id' in row)||!box.isConnected)return;
@@ -154,6 +157,18 @@ async function supplyTradeField(box,itemId){const r=Sync.core?.resources;if(!r)r
   const sel=box.querySelector('#supplyTrade');sel.onchange=async()=>{try{const now=await r.get('resources.items',itemId);
     await r.commit([{op:'update',table:'resources.items',id:itemId,expectedRevision:Number(now?.revision??0),fields:{trade_id:sel.value||null}}]);toast(sel.value?'Oficio guardado.':'Oficio quitado.')}
     catch(e){toast(e.message||'No se pudo guardar el oficio.')}}}
+async function supplyIconField(box,itemId){const r=Sync.core?.resources,list=IkisaiKit.ITEM_ICONS;if(!r||!list?.length)return;
+  const row=await r.get('resources.items',itemId).catch(()=>null);if(!row||!('icon' in row)||!box.isConnected)return;
+  let current=typeof row.icon==='string'?row.icon:'';const dis=canEdit()?'':'disabled';
+  const opt=(key,label,svg)=>`<button type="button" role="radio" aria-checked="${key===current}" class="tkit-iconopt ${key===current?'on':''}" data-supply-icon="${esc(key)}" ${dis}>${svg}<span>${esc(label)}</span></button>`;
+  const svgOf=name=>{try{return IkisaiKit.icon(name,22).outerHTML}catch{return ''}};
+  box.innerHTML=`<span class="tkit-iconlabel" id="supplyIconLabel">Icono</span><div class="tkit-icons" role="radiogroup" aria-labelledby="supplyIconLabel" data-field-id="tasks.suministros.ficha.icono" data-field-entity="resources.items" data-field-prop="icon" data-feedback-id="tasks.suministros.ficha.icono" data-feedback-label="Icono del artículo">${opt('','Sin icono','')}${list.map(i=>opt(i.key,i.label,svgOf(i.icon))).join('')}</div>`;
+  box.querySelectorAll('[data-supply-icon]').forEach(b=>b.onclick=async()=>{const key=b.dataset.supplyIcon;if(key===current)return;
+    try{const now=await r.get('resources.items',itemId);
+      await r.commit([{op:'update',table:'resources.items',id:itemId,expectedRevision:Number(now?.revision??0),fields:{icon:key||null}}]);current=key;
+      box.querySelectorAll('[data-supply-icon]').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-checked',String(on))});
+      toast(key?'Icono guardado.':'Icono quitado.')}
+    catch(e){toast(e.message||'No se pudo guardar el icono.')}})}
 /* «Queda poco: pedir» desde un artículo: la hoja de pedir, precargada (cantidad de reposición o lo que falta, en su unidad). */
 function reorderItem(item){const inv=Sync.core?.inventory,row=inv?.items.find(i=>i.id===item.id);if(!row)return;
   const op=IkisaiTasks.purchases.reorderItemOps(purchasesData(),{tab_id:tab().id,item:row,stock:IkisaiTasks.purchases.itemStock(inv.movements,row.id),supplier_name:supplierNameOf(row.default_supplier_id)||null})[0];
