@@ -153,7 +153,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await page.mouse.move(box.x + box.width / 2 - stage.width * 0.1, box.y + box.height / 2, { steps: 5 });
   await page.mouse.up();
   await expect.poll(async () => (await shapeOf(ids.lounge)).s!.points[0]![0], { timeout: 5000 }).toBeCloseTo(0.3, 2);
-  await page.locator('#placePlaced').getByRole('button', { name: 'Salón' }).click();
+  await page.locator('#placePlaced').getByRole('button', { name: 'Salón', exact: true }).click();
   const corner = page.locator('#placeEditor .ctl-placehandle').nth(2);
   await corner.scrollIntoViewIfNeeded();
   const cb = (await corner.boundingBox())!;
@@ -171,7 +171,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await expect(removeBtn).toHaveAccessibleDescription('Tiene estancias encima: para quitarlo, quítalas antes del plano.');
 
   // Quitar una del plano la devuelve a «Por revisar».
-  await page.locator('#placePlaced').getByRole('button', { name: 'Recepción' }).click();
+  await page.locator('#placePlaced').getByRole('button', { name: 'Recepción', exact: true }).click();
   await page.locator('#unplace').click();
   await expect.poll(async () => (await shapeOf(ids.desk)).p).toBeNull();
   await expect(page.locator('#placeReviewHead')).toHaveText('Por revisar · 1');
@@ -194,7 +194,7 @@ test('planos · el owner sube un SVG con nombres y se colocan solas; lo demás, 
   await expect.poll(async () => (await shapeOf(ids.room)).s!.points).toEqual(roomBefore);
   await expect.poll(topOf).toBeCloseTo(bedTop, 1);
   // Estirar el dormitorio estira también la cama, solo en pantalla.
-  await page.locator('#placePlaced').getByRole('button', { name: 'Dormitorio 3' }).click();
+  await page.locator('#placePlaced').getByRole('button', { name: 'Dormitorio 3', exact: true }).click();
   const handle = page.locator('#placeEditor .ctl-placehandle').nth(2);
   await handle.scrollIntoViewIfNeeded();
   const hb = (await handle.boundingBox())!;
