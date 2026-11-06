@@ -20,7 +20,7 @@ async function ok(operations: unknown[]) { const res = await commit(operations);
 test('marca por evento: se pone, no se repite, no cambia de espacio, no vale un espacio borrado y se quita', async () => {
   const res = uuid(); const event = uuid(); const sala = uuid(); const hab = uuid(); const gone = uuid();
   await ok([
-    { op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Retiro de prueba', status: 'pre_reservada', start_date: '2036-05-01', end_date: '2036-05-03' } },
+    { op: 'insert', table: TABLES.reservations, id: res, fields: { title: 'Retiro de prueba', status: 'pre_reservada', start_date: '2036-05-01', end_date: '2036-05-03', expected_guests: 10 } },
     { op: 'insert', table: TABLES.spaces, id: sala, fields: { name: 'Sala prueba', kind: 'sala' } },
     { op: 'insert', table: TABLES.spaces, id: hab, fields: { name: 'Hab prueba', kind: 'habitacion' } },
     { op: 'insert', table: TABLES.spaces, id: gone, fields: { name: 'Borrado prueba', kind: 'sala' } },
