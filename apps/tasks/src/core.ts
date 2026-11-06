@@ -16,7 +16,7 @@ import {
   receiptPlan, toBaseQuantity, createdRequestIds, planOf, addToPlanOps, removeFromPlanOps, moveToSupplierOps, type ItemUnitRow,
   taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, consumeCall, confirmConsumptionOps, materialRef,
   type TradeKitOption, taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost, type CostEntry, type MovementCost,
-  pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
+  pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, reclassifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   dayPlanFor, dayPlanItems, previousDayPlan, saveDayPlanOps, planWithTask, planWithTasks, planWithText, planWithout, planWithoutTask, planWithTextDone,
   planInOrder, linkPlanItem, unlinkPlanItem, DAY_PLAN_MAX_ITEMS, DAY_PLAN_TEXT_MAX, type DayPlanItem, type DayPlanRow,
   type Dataset, type LegacyTab, type Operation, type Role,
@@ -705,7 +705,7 @@ const api = {
   whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
   requests: {
-    pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
+    pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, reclassifyRequestOps, dismissRequestOps, reopenRequestOps, unrouteRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   },
 };
 

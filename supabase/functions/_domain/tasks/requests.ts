@@ -3,7 +3,7 @@
  * clasificar una petición pendiente crea su tarea con el mismo id (y con su origen) y la marca como enrutada en el mismo
  * lote, que es lo único que el hook acepta para fijar el origen de una tarea fuera de `tasks.request_task`.
  */
-import { createTaskOps, deleteTaskOps, nextPosition, type NewId } from './ops.ts';
+import { createTaskOps, deleteTaskOps, moveTaskOps, nextPosition, type NewId } from './ops.ts';
 import { reject, type Dataset, type Operation, type RequestRouteRow, type RequestRow, type Uuid } from './types.ts';
 
 const randomId: NewId = () => crypto.randomUUID();
@@ -101,6 +101,35 @@ export function unrouteRequestOps(data: Dataset, requestId: Uuid, to: 'pending' 
   if (!task) reject(422, 'INVALID_REQUEST', 'La tarea de esa petición ya no está.', { id: requestId });
   if (task!.parent_id) reject(422, 'INVALID_REQUEST', 'La tarea de esa petición ya es parte de otra: quítala desde allí.', { id: requestId });
   return [update('tasks.requests', request!, { status: to, routed_by: null }), ...deleteTaskOps(data, task!.id)];
+}
+
+/**
+ * «Cambiar clasificación» de una petición ya clasificada (V-03 b, VG 06-11): su tarea pasa a otro proyecto de la misma área
+ * (con sus pasos y lo que cuelga de ella, como `moveTaskOps`), con el responsable que se elige ahora y, si se da, el oficio
+ * (se añade si no lo tenía). El área de una tarea no cambia: para otra área hay que devolverla a «Por clasificar».
+ */
+export function reclassifyRequestOps(data: Dataset, requestId: Uuid, target: { project_id: Uuid; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null; trade_id?: Uuid | null }, newId: NewId = randomId): Operation[] {
+  const request = live(data['tasks.requests']).find((r) => r.id === requestId);
+  if (!request || request.status !== 'routed') reject(422, 'INVALID_REQUEST', 'Esa petición no está clasificada.', { id: requestId });
+  const task = live(data['tasks.tasks']).find((t) => t.id === requestId);
+  if (!task) reject(422, 'INVALID_REQUEST', 'La tarea de esa petición ya no está.', { id: requestId });
+  if (task!.parent_id) reject(422, 'INVALID_REQUEST', 'La tarea de esa petición ya es parte de otra: cámbiala desde allí.', { id: requestId });
+  const project = live(data['tasks.projects']).find((p) => p.id === target.project_id);
+  if (!project) reject(404, 'NOT_FOUND', 'No existe ese proyecto.', { id: target.project_id });
+  if (project!.status === 'archived') reject(422, 'INVALID_TARGET', 'El proyecto está archivado.', { id: project!.id });
+  if (project!.tab_id !== task!.tab_id) reject(422, 'INVALID_TARGET', 'Para llevarla a otra área, devuélvela a «Por clasificar» y clasifícala allí.', { id: project!.id });
+  const ops = moveTaskOps(data, task!.id, { project_id: project!.id });
+  const owner = { owner_label_id: target.owner_label_id ?? null, owner_person_id: target.owner_person_id ?? null, owner_house_level: target.owner_house_level ?? null };
+  const changed = Object.fromEntries(Object.entries(owner).filter(([k, v]) => ((task as unknown as Record<string, unknown>)[k] ?? null) !== v));
+  if (Object.keys(changed).length) {
+    const own = ops.find((o) => o.table === 'tasks.tasks' && o.id === task!.id);
+    if (own) Object.assign(own.fields!, changed); else ops.unshift(update('tasks.tasks', task!, changed));
+  }
+  const trade = target.trade_id;
+  if (trade && !live(data['tasks.task_trades'] ?? []).some((r) => r.task_id === task!.id && r.trade_id === trade)) {
+    ops.push({ op: 'insert', table: 'tasks.task_trades', id: newId(), fields: { tab_id: task!.tab_id, project_id: project!.id, task_id: task!.id, trade_id: trade } });
+  }
+  return ops;
 }
 
 /** «Descartar»: lo que no es trabajo. La app que pidió lo ve como descartado (`tasks.targets`). */
