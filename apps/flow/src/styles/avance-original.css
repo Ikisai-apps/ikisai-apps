@@ -604,3 +604,7 @@
 /* Gráfico siempre al 100 % del ancho, sin desplazamiento lateral (VG, 28-10). */
 .avance-orig .car .graf{overflow:hidden;max-width:100%}
 .avance-orig .car .graf svg{max-width:100%}
+/* Arrastrar en «Por app» (fl-20). */
+.avance-orig .car .it[draggable="true"]{cursor:grab}
+.avance-orig .car .it.dragging{opacity:.45}
+.avance-orig .car .lane.drop{outline:2px dashed var(--ink);outline-offset:2px}
