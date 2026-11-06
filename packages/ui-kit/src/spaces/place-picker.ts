@@ -6,6 +6,8 @@
  *    entonces sus zonas salen como chips).
  * 3. **Habitación o zona:** el plano solo de ese edificio (`createSpaceMap`), tocando la estancia. Sin dibujo, su lista.
  * 4. **Cuadrante de 1 m²** (`cell: true`, opcional): la retícula de la habitación, en celdas del dibujo (las de la decoración).
+ * La **ruta** se ve siempre arriba y cada paso se puede tocar para volver: «Alturas › Altura 3 › Interior › Albergue ›
+ * Hab 1 › Cuadrante 2, 3». `placePath` da la misma ruta en texto para la ficha («Altura 3 › Albergue › Hab 1 · 1 m²: 2, 3»).
  * Ligero: nunca se carga la casa entera. Cada plano se pide al llegar a él y los enlaces firmados se guardan en una caché
  * común a todas las instancias. Devuelve `{ spaceId, cell? }` y acepta un valor inicial (abre en su sitio).
  * Prefijo de clases: `place-`.
@@ -39,6 +41,8 @@ export interface PlacePickerOptions {
 export interface PlacePicker {
   element: HTMLElement;
   get(): PlaceValue | null;
+  /** La ruta de lo elegido en texto (`placePath`); vacía sin valor. */
+  path(): string;
   /** Cambia el valor sin llamar a `onChange`. */
   set(value: PlaceValue | null): void;
   destroy(): void;
@@ -69,6 +73,36 @@ function cachedUrl(fileId: string, resolve: (id: string) => string | Promise<str
 const CONTAINERS = new Set(['edificio', 'exterior']);
 const byPos = (a: SpaceRow, b: SpaceRow) => a.position - b.position || a.name.localeCompare(b.name);
 
+/** La retícula de 1 m² de una habitación: primera celda del dibujo y tamaño (hasta 40 × 40). Sin escala o sin forma, null. */
+function roomGrid(plans: readonly FloorPlan[], r: SpaceRow | undefined): { plan: FloorPlan; c0: { cellX: number; cellY: number }; cols: number; rws: number } | null {
+  const plan = r?.planId ? plans.find((p) => p.id === r.planId) ?? null : null;
+  const pts = r?.planShape?.points ?? [];
+  if (!plan || !validGrid(plan.grid) || pts.length < 3) return null;
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  const c0 = relToCell(plan, 1, Math.min(...xs), Math.min(...ys));
+  const c1 = relToCell(plan, 1, Math.max(...xs) - 1e-6, Math.max(...ys) - 1e-6);
+  if (!c0 || !c1) return null;
+  return { plan, c0, cols: Math.min(c1.cellX - c0.cellX + 1, 40), rws: Math.min(c1.cellY - c0.cellY + 1, 40) };
+}
+
+/** Columna y fila (desde 1) del cuadrante dentro de su habitación; sin retícula, las celdas del dibujo. */
+function cellInRoom(plans: readonly FloorPlan[], r: SpaceRow | undefined, cell: PlaceCell): { x: number; y: number } {
+  const g = roomGrid(plans, r);
+  return g ? { x: cell.cellX - g.c0.cellX + 1, y: cell.cellY - g.c0.cellY + 1 } : { x: cell.cellX, y: cell.cellY };
+}
+
+/** La ruta de un sitio en texto: «Altura 3 › Albergue › Hab 1 · 1 m²: 2, 3». Vacía si el espacio no está. */
+export function placePath(rows: readonly SpaceRow[], plans: readonly FloorPlan[], value: PlaceValue | null | undefined): string {
+  if (!value) return '';
+  const byId = indexSpaces(rows);
+  const r = byId.get(value.spaceId);
+  if (!r) return '';
+  const route = [...ancestorsOf(byId, r.id), r].map((s) => s.name).join(' › ');
+  if (!value.cell) return route;
+  const c = cellInRoom(plans, r, value.cell);
+  return `${route} · ${kt('1 m²: {x}, {y}', { x: String(c.x), y: String(c.y) })}`;
+}
+
 export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
   const base = options.feedbackId;
   const mark = (key: keyof typeof PLACE_PICKER_MARKS) => (base ? { 'data-feedback-id': `${base}.${PLACE_PICKER_MARKS[key][0]}`, 'data-feedback-label': PLACE_PICKER_MARKS[key][1] } : {});
@@ -97,6 +131,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
   // Un edificio puede tener un dibujo por planta (Recursos 0818): el primero por `position` y, en el mapa, el selector de plantas.
   const plansOf = (id: string) => plans.filter((p) => p.buildingId === id).sort((a, b) => a.position - b.position);
   const planOf = (id: string) => plansOf(id)[0] ?? null;
+  const bothSides = (aid: string) => kids(aid).some((s) => s.kind === 'edificio') && kids(aid).some((s) => s.kind === 'exterior');
   const pickable = (s: SpaceRow) => live_(s) && !CONTAINERS.has(s.kind) && s.kind !== 'altura' && s.kind !== 'cama' && (!options.filter || options.filter(s));
 
   function emit(next: PlaceValue | null): void {
@@ -123,8 +158,12 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
   function paintCrumbs(): void {
     const steps: Array<[string, () => void]> = [[kt('Alturas'), () => { altura = null; zone = null; room = null; paint(true); }]];
     if (altura) steps.push([byId.get(altura)?.name ?? '', () => { zone = null; room = null; paint(true); }]);
+    // Interior o exterior, solo si la altura tiene de los dos (si no, no hay nada que elegir).
+    if (altura && zone && bothSides(altura)) steps.push([side === 'interior' ? kt('Interior') : kt('Exterior'), () => { zone = null; room = null; paint(true); }]);
     if (zone) steps.push([byId.get(zone)?.name ?? '', () => { room = null; paint(true); }]);
     if (room) steps.push([byId.get(room)?.name ?? '', () => paint(true)]);
+    const cell = room && value?.spaceId === room ? value.cell ?? null : null;
+    if (cell) { const c = cellInRoom(plans, byId.get(room!), cell); steps.push([kt('Cuadrante {x}, {y}', { x: String(c.x), y: String(c.y) }), () => paint(true)]); }
     replace(crumbs, ...steps.map(([text, go], i) => i === steps.length - 1
       ? el('span', { class: 'place-crumb place-here', 'aria-current': 'step' }, text)
       : el('button', { type: 'button', class: 'linkbtn place-crumb', ...mark('step'), onclick: go }, text)),
@@ -199,18 +238,15 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
   /** Paso 4: la retícula de 1 m² de la habitación, en celdas del dibujo. Se pinta sola, sin la imagen del plano. */
   function paintCells(rid: string): void {
     const r = byId.get(rid)!;
-    const plan = r.planId ? plans.find((p) => p.id === r.planId) ?? null : null;
     const pts = r.planShape?.points ?? [];
-    const done = () => { emit({ spaceId: rid }); };
-    if (!plan || !validGrid(plan.grid) || pts.length < 3) {
+    const grid = roomGrid(plans, r);
+    const done = () => { emit({ spaceId: rid }); paintCrumbs(); };
+    if (!grid) {
       replace(body, el('p', { class: 'hint' }, kt('Este dibujo no tiene escala: el sitio se queda en la habitación.')),
         el('button', { type: 'button', class: 'primary small', onclick: done }, kt('Elegir {name}', { name: r.name })));
       return;
     }
-    const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
-    const c0 = relToCell(plan, 1, Math.min(...xs), Math.min(...ys))!;
-    const c1 = relToCell(plan, 1, Math.max(...xs) - 1e-6, Math.max(...ys) - 1e-6)!;
-    const cols = Math.min(c1.cellX - c0.cellX + 1, 40); const rws = Math.min(c1.cellY - c0.cellY + 1, 40);
+    const { plan, c0, cols, rws } = grid;
     const w = plan.width > 0 ? plan.width : 1000; const h = plan.height > 0 ? plan.height : 700;
     const cs = cellSize(plan, 1)!;
     const at0 = cellToRel(plan, 1, c0.cellX, c0.cellY)!;
@@ -239,7 +275,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
       rect.setAttribute('aria-label', kt('Columna {x}, fila {y}', { x: String(x + 1), y: String(y + 1) }));
       if (base) { rect.setAttribute('data-feedback-id', `${base}.${PLACE_PICKER_MARKS.cell[0]}`); rect.setAttribute('data-feedback-label', PLACE_PICKER_MARKS.cell[1]); }
       rect.dataset.cell = `${x},${y}`;
-      const pick = () => { emit({ spaceId: rid, cell: { cellX: cx, cellY: cy, scale: 1 } }); live.textContent = kt('Cuadrante: columna {x}, fila {y}', { x: String(x + 1), y: String(y + 1) }); paintCells(rid); svg.isConnected && body.querySelector<SVGElement>(`[data-cell="${x},${y}"]`)?.focus(); };
+      const pick = () => { emit({ spaceId: rid, cell: { cellX: cx, cellY: cy, scale: 1 } }); live.textContent = kt('Cuadrante: columna {x}, fila {y}', { x: String(x + 1), y: String(y + 1) }); paintCrumbs(); paintCells(rid); svg.isConnected && body.querySelector<SVGElement>(`[data-cell="${x},${y}"]`)?.focus(); };
       rect.addEventListener('click', pick);
       rect.addEventListener('keydown', (e) => {
         const k = (e as KeyboardEvent).key;
@@ -269,6 +305,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
   return {
     element,
     get: () => (value ? { ...value } : null),
+    path: () => placePath(rows, plans, value),
     set(next) { value = next; placeFromValue(); paint(); },
     destroy() { destroyed = true; offRows(); offPlans(); map?.destroy(); element.remove(); },
   };
