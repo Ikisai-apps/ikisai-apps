@@ -2347,8 +2347,16 @@ button.cal-sheet-event{cursor:pointer}
 .place-crumb+.place-crumb::before{content:'›';margin-inline-end:8px;color:var(--muted);pointer-events:none}
 .place-here{font-weight:700}
 /* `layout: 'stacked'`: el plano arriba y, debajo, los cuadrantes de la estancia elegida. */
-.place-below{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
-.place-below-title{margin:0 0 4px;font-size:var(--text-sm)}
+.place-where{display:grid;gap:8px}
+.place-maps{display:grid;gap:10px}
+.place-top,.place-below{min-width:0}
+@media (min-width:720px){.place-picker.stacked .place-maps{grid-template-columns:3fr 2fr;align-items:start}}
+.place-map-title{margin:0 0 4px;font-size:12px;color:var(--muted)}
+.place-picker.stacked .place-cells{max-height:46vh}
+.place-picker.stacked .place-room{fill:var(--paper);stroke:var(--accent);stroke-width:2%}
+.place-cell-name{fill:var(--muted);pointer-events:none}
+.place-cell.on+.place-cell-name{fill:var(--accent-ink)}
+.place-cell-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-size:13px;color:var(--muted)}
 .place-clear{margin-left:auto}
 .place-chips{display:flex;flex-wrap:wrap;gap:8px}
 .place-chip{min-height:var(--tap)}
