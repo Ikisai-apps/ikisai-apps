@@ -80,7 +80,11 @@ test('0120 · propuesta hacia otra app: solo el decisor o un owner de la app des
     const forDecider = (await db.query<{ r: any[] }>(`select core.proposal_list('invoices', $1, null, 50) as r`, [decider])).rows[0]!.r;
     assert.equal(forDecider.length, 1);
     await assert.rejects(db.query(`select core.proposal_list('invoices', $1, null, 50)`, [stranger]), /FORBIDDEN/);
-    assert.equal((await app.call('/api/v1/proposals')).data.items.length, 1, 'el owner de booking la ve en su app');
+    const fromOrigin = (await app.call('/api/v1/proposals')).data.items;
+    assert.equal(fromOrigin.length, 1, 'el owner de booking la ve en su app');
+    assert.deepEqual(fromOrigin[0].summary, []); assert.equal(fromOrigin[0].summaryHidden, true, '0123: pero sin el resumen, que son datos de invoices');
+    const forInvOwner = (await db.query<{ r: any[] }>(`select core.proposal_list('invoices', $1, null, 50) as r`, [invOwner])).rows[0]!.r;
+    assert.equal(forInvOwner[0].summaryHidden, undefined, 'el owner de invoices sí lo ve');
     assert.equal(tDecider.length > 0, true);
   } finally {
     await app.close();
