@@ -16,6 +16,15 @@ alter table core.proposals
 create index if not exists proposals_target_idx on core.proposals (target_app, created_at desc) where target_app is not null;
 create index if not exists proposals_group_idx on core.proposals (app, group_key) where group_key is not null;
 
+/** Dentro del lote que aplica una propuesta aprobada hacia otra app: el agente autor y la propuesta (como suggestion_author/suggestion_id, 0094).
+ *  Fuera de ese lote, null. Los hooks de la app destino los usan para acotar (Central: «un agente solo propone sobre su propia ficha»). */
+create or replace function core.proposal_author() returns uuid language sql stable as $$
+  select nullif(current_setting('core.proposal_author', true), '')::uuid
+$$;
+create or replace function core.proposal_id() returns uuid language sql stable as $$
+  select nullif(current_setting('core.proposal_id', true), '')::uuid
+$$;
+
 /** App efectiva de una propuesta: donde se aplican sus operaciones. */
 create or replace function core.proposal_app(p core.proposals) returns text language sql immutable as $$
   select coalesce(p.target_app, p.app)
@@ -125,7 +134,15 @@ begin
   -- Otra app: se aplica ya, como el decisor (sus permisos acotan el lote), origen servidor.
   update core.proposals set status = 'approved', decided_by = p_actor, decided_at = now() where id = p_id;
   perform set_config('core.origin', 'server', true);
-  v_result := core.commit(v_eff, p_actor, 'proposal:' || p_id::text, v_prop.digest, null, v_prop.operations, null);
+  perform set_config('core.proposal_author', v_prop.user_id::text, true);
+  perform set_config('core.proposal_id', p_id::text, true);
+  begin
+    v_result := core.commit(v_eff, p_actor, 'proposal:' || p_id::text, v_prop.digest, null, v_prop.operations, null);
+  exception when others then
+    perform set_config('core.proposal_author', '', true); perform set_config('core.proposal_id', '', true);
+    raise;
+  end;
+  perform set_config('core.proposal_author', '', true); perform set_config('core.proposal_id', '', true);
   update core.proposals set status = 'consumed', consumed_cursor = (v_result->>'cursor')::bigint where id = p_id returning * into v_prop;
   perform core.log_access(v_eff, p_actor, v_prop.key_id, 'proposal_approved', jsonb_build_object('proposalId', p_id, 'applied', true, 'cursor', v_result->'cursor', 'authorUserId', v_prop.user_id));
   perform core.log_access(v_eff, p_actor, v_prop.key_id, 'proposal_consumed', jsonb_build_object('proposalId', p_id, 'cursor', v_result->'cursor'));
@@ -194,5 +211,5 @@ language sql security definer set search_path = '' as $$ select core.proposal_pr
 create or replace function public.core_proposal_decide_group(p_app text, p_actor uuid, p_group_key text, p_decision text) returns jsonb
 language sql security definer set search_path = '' as $$ select core.proposal_decide_group(p_app, p_actor, p_group_key, p_decision) $$;
 
-revoke all on function public.core_proposal_prepare(text, uuid, uuid, text, text, jsonb, jsonb, text, uuid, jsonb, text, jsonb), public.core_proposal_decide_group(text, uuid, text, text) from public, anon, authenticated;
+revoke all on function core.proposal_author(), core.proposal_id(), public.core_proposal_prepare(text, uuid, uuid, text, text, jsonb, jsonb, text, uuid, jsonb, text, jsonb), public.core_proposal_decide_group(text, uuid, text, text) from public, anon, authenticated;
 grant execute on function public.core_proposal_prepare(text, uuid, uuid, text, text, jsonb, jsonb, text, uuid, jsonb, text, jsonb), public.core_proposal_decide_group(text, uuid, text, text) to service_role;

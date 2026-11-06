@@ -48,11 +48,18 @@ test('0120 · propuesta hacia otra app: solo el decisor o un owner de la app des
     assert.equal((await app.call(`/api/v1/proposals/${id}/approve`, { body: {} })).status, 403, 'owner de booking');
     assert.equal((await app.call(`/api/v1/proposals/${id}/approve`, { token: app.supabase.tokenFor(stranger), body: {} })).status, 403, 'otra editora de invoices sin pertenencia a booking');
     assert.equal((await app.call(`/api/v1/proposals/${id}/approve`, { token: agentKey, body: {} })).status, 403, 'el agente');
+    // Dentro del lote aplicado, la app destino conoce al agente autor y la propuesta; fuera, null.
+    await db.exec(`create table public.test_prop_authors (author uuid, proposal uuid);
+      create function invoices.test_prop_author() returns trigger language plpgsql as $$ begin insert into public.test_prop_authors values (core.proposal_author(), core.proposal_id()); return new; end $$;
+      create trigger test_prop_author after insert on invoices.suppliers for each row execute function invoices.test_prop_author();`);
+    assert.equal((await db.query<{ a: string | null }>(`select core.proposal_author() as a`)).rows[0]!.a, null);
     // La decisora no pertenece a booking: la Edge de booking la rechaza por pertenencia; decide por el núcleo (como haría la Edge de invoices).
     const decided = (await db.query<{ r: any }>(`select core.proposal_decide('invoices', $1, $2, 'approve') as r`, [decider, id])).rows[0]!.r;
     assert.equal(decided.status, 'consumed', JSON.stringify(decided)); assert.equal(decided.applied, true); assert.equal(decided.decidedBy, decider);
     const row = (await db.query<{ name: string }>(`select name from invoices.suppliers where id = $1`, [rowId])).rows[0];
     assert.equal(row?.name, 'Propuesto desde booking', 'el lote se aplicó en invoices');
+    const seen = (await db.query<{ author: string | null; proposal: string | null }>(`select author, proposal from public.test_prop_authors`)).rows;
+    assert.deepEqual(seen, [{ author: issued.data.userId, proposal: id }], 'el hook de la app destino ve al agente autor y la propuesta');
     const change = (await db.query<{ actor_id: string; request_id: string }>(`select actor_id, request_id from core.changes where app = 'invoices' and row_id = $1`, [rowId])).rows[0]!;
     assert.equal(change.actor_id, decider, 'la actora del lote es la decisora'); assert.equal(change.request_id, 'proposal:' + id);
     const events = (await db.query<{ event: string; app: string }>(`select event, app from core.access_events where meta->>'proposalId' = $1 order by id`, [id])).rows;
