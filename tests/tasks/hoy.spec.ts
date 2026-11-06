@@ -79,7 +79,7 @@ test.afterAll(async () => { await context?.close(); await server?.close(); });
 const plan = async (actor = server.app.users.owner, day = madrid()) => (await server.rows('tasks.day_plans')).find((p) => p.actor_id === actor && p.day === day && !p.deleted_at);
 const planTasks = async () => ((await plan())?.items ?? []).map((i: any) => i.task_id ?? i.text);
 const localPlan = () => page.evaluate(() => IkisaiTasks.dayPlans.dayPlanItems(Sync.core.dayPlan(isoDay(0))).map((i: any) => i.task_id ?? i.text)) as Promise<string[]>;
-declare const IkisaiTasks: any, isoDay: any, spaceRows: any;
+declare const IkisaiTasks: any, isoDay: any, spaceRows: any, taskLocation: any, tkhPick: any;
 const undoButton = (message: string) => page.locator('.ikisai-toast span', { hasText: message }).locator('xpath=following-sibling::button');
 const sync = async () => { await page.evaluate(() => syncNow()); await settled(page); };
 const go = (view: string, project?: string) => page.evaluate(([v, p]) => { state.view = v; state.currentProject = p || null; render(); }, [view, project ?? null]);
@@ -190,15 +190,15 @@ test('«Para coger»: lo último que tocaste es lo mío y en orden, «En marcha�
 test('en el plan: Hecha (toggleTask), quitar y «Llevar a…», cada uno con «Deshacer»', async () => {
   await go('today');
   // Hecha de una tarea: la de siempre, con su «Deshacer».
-  const item = await page.evaluate((x) => IkisaiTasks.dayPlans.dayPlanItems(Sync.core.dayPlan(isoDay(0))).find((i: any) => i.task_id === x).id, PERSIANA);
-  await page.locator(`[data-tkh-check="${item}"]`).click();
-  await expect(page.locator(`[data-tkh-check="${item}"]`)).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator(`[data-tkh-check="${item}"]`)).toBeFocused();
+  // VG (V-01): en el plan, la fila de «Tareas» tal cual (su casilla, su sol).
+  const done = () => page.evaluate((id) => !!taskLocation(id)?.t.done, PERSIANA);
+  await page.locator(`#tkhRows .task[data-row="${PERSIANA}"] [data-toggle-task="${PERSIANA}"]`).click();
+  await expect.poll(done).toBe(true);
   await undoButton('Tarea completada').click();
-  await expect(page.locator(`[data-tkh-check="${item}"]`)).toHaveAttribute('aria-checked', 'false');
-  // Quitar del plan, y «Deshacer» la devuelve en su sitio.
+  await expect.poll(done).toBe(false);
+  // Quitar del plan (el sol), y «Deshacer» la devuelve en su sitio.
   const order = await localPlan();
-  await page.locator(`[data-tkh-remove="${item}"]`).click();
+  await page.locator(`#tkhRows [data-tkh-sun="${PERSIANA}"]`).click();
   expect(await localPlan()).not.toContain(PERSIANA);
   await undoButton('Fuera de tu plan de hoy').click();
   expect(await localPlan()).toEqual(order);
@@ -315,8 +315,9 @@ test('filtro por espacio por el árbol: arriba la altura (o lo único que tiene)
   const chip = (space: string, parent = '') => page.locator(`[data-tkh-space="${space}"][data-tkh-parent="${parent}"]`);
   const view = page.locator('main.tkh');
   const ALT1 = await page.evaluate(() => spaceRows().find((r: any) => r.name === 'Altura 1').id);
-  // Arriba: «Altura 1» (dos cosas dentro), «Albergue» (lo único de la altura 3) y «Sin espacio»; nada de Huerto, Patio ni Hab 3.
-  await expect(page.locator('#tkhSpaces [data-tkh-space]')).toHaveCount(3);
+  // Arriba toda la estructura de la casa (VG, 28-10): «Altura 1» (dos cosas dentro), «Albergue» (lo único de la altura 3), las
+  // alturas sin nada (con 0) y «Sin espacio»; nada de Huerto, Patio ni Hab 3, que son hijos.
+  await expect(page.locator('#tkhSpaces .tkh-space.empty').first()).toBeVisible();
   await expect(chip(ALT1)).toContainText('Altura 1');
   await expect(chip(ALBERGUE)).toContainText('Albergue');
   await expect(chip('__none')).toContainText('Sin espacio');
@@ -364,5 +365,41 @@ test('filtro por espacio por el árbol: arriba la altura (o lo único que tiene)
   await expect(page.locator('#tkhSpaces [aria-pressed="true"]')).toHaveCount(0);
   await expect(view).toContainText('Revisar el riego');
   await expect(view).toContainText('Barnizar el banco');
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('V-01: el plan con las filas de «Tareas» y su selección múltiple; «Ordenar» cambia el orden del plan', async () => {
+  await go('today');
+  await settled(page);
+  const rows = page.locator('#tkhRows .task[data-row]');
+  await expect(rows.first()).toBeVisible();
+  // Selección múltiple, como en «Tareas».
+  await page.locator('#batchToggle').click();
+  await rows.first().click();
+  await expect(page.locator('#batchBar')).toContainText('1 seleccionada');
+  await page.locator('#batchToggle').click();
+  await expect(page.locator('#batchBar')).toHaveCount(0);
+  // «Ordenar»: la lista con asas del plan; «Hecho» vuelve a las filas.
+  await page.locator('#tkhOrder').click();
+  await expect(page.locator('#tkhList')).toBeVisible();
+  await expect(page.locator('#tkhRows')).toHaveCount(0);
+  await page.locator('#tkhOrder').click();
+  await expect(page.locator('#tkhRows')).toBeVisible();
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('C-04: una madre con pasos en orden sale en gris, con los hechos, el paso siguiente y los que quedan', async () => {
+  const valla = (await server.rows('tasks.tasks')).find((t: any) => t.id === VALLA);
+  const res = await server.commit([{ op: 'update', table: 'tasks.tasks', id: VALLA, expectedRevision: valla.revision, fields: { steps_in_order: true } }]);
+  expect(res.status, JSON.stringify(res.data)).toBe(200);
+  await sync();
+  await page.evaluate((id) => { if (!IkisaiTasks.dayPlans.dayPlanItems(Sync.core.dayPlan(isoDay(0))).some((i: any) => i.task_id === id)) tkhPick(id); }, VALLA);
+  await go('today');
+  await settled(page);
+  const chain = page.locator(`[data-tkh-chain="${VALLA}"]`);
+  await expect(chain).toContainText('2 de 4 pasos hechos');
+  await expect(chain.locator(`.task[data-row="${PASO3}"]`)).toBeVisible();
+  await expect(chain).toContainText('y 1 paso más');
+  await expect(chain.locator(`.task.tkh-mother[data-row="${VALLA}"]`)).toBeVisible();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
