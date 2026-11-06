@@ -36,6 +36,11 @@ test('0120 · propuesta hacia otra app: solo el decisor o un owner de la app des
     const badApp = await app.call('/api/v1/proposals', { token: agentKey, body: { requestId: 'x-2', operations: ops, targetApp: 'nadie' } });
     assert.equal(badApp.status, 422, JSON.stringify(badApp.data));
 
+    // 0124: un ensayo que falla en la app destino no devuelve al agente detalles de allí (fila actual, campos): error genérico.
+    const ghost = await app.call('/api/v1/proposals', { token: agentKey, body: { requestId: 'x-4', targetApp: 'invoices', deciderUserId: decider,
+      operations: [{ op: 'update', table: TABLE, id: uuid(), expectedRevision: 1, fields: { name: 'nada' } }] } });
+    assert.equal(ghost.status, 422, JSON.stringify(ghost.data)); assert.equal(ghost.data.error.code, 'INVALID_OPERATION');
+    assert.equal(JSON.stringify(ghost.data).includes('current'), false); assert.equal(ghost.data.error.details.targetApp, 'invoices');
     const prepared = await app.call('/api/v1/proposals', { token: agentKey, body: {
       requestId: 'p-1', operations: ops, targetApp: 'invoices', deciderUserId: decider, groupKey: 'carga-7', fields: ['supplier.name'], uncertain: ['supplier.tax_id'] } });
     assert.equal(prepared.status, 200, JSON.stringify(prepared.data));
