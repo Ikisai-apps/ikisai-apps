@@ -34,6 +34,8 @@ export const TABLES = {
   lodgingSettings: 'booking.lodging_settings',
   openRooms: 'booking.open_rooms',
   eventExtraBeds: 'booking.event_extra_beds',
+  /** 1430: qué espacios usa este evento (booking-U1, VG 06-11). */
+  eventSpaces: 'booking.event_spaces',
   moduleSettings: 'booking.module_settings',
   stays: 'booking.stays',
   stayPersons: 'booking.stay_persons',

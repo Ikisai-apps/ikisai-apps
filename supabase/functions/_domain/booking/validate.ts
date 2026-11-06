@@ -424,6 +424,10 @@ FIELDS[TABLES.eventExtraBeds] = {
   bed_id: { kind: 'uuid' },
   status: choice(['active', 'requested', 'release_requested'], false),
 };
+FIELDS[TABLES.eventSpaces] = {
+  event_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid' },
+};
 FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], guests_visible: { kind: 'bool' }, public_summary: text(500) };
 // 0484: las cartas de Food que aplican a la reserva (jornadas abiertas)
 FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], food_carta_ids: { kind: 'uuidList', max: 20 } };
@@ -486,6 +490,7 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.lodgingSettings]: 'event_id',
   [TABLES.openRooms]: 'event_id',
   [TABLES.eventExtraBeds]: 'event_id',
+  [TABLES.eventSpaces]: 'event_id',
   [TABLES.stays]: 'account_id',
   [TABLES.stayPersons]: 'stay_id',
   [TABLES.outsiderDefaults]: 'account_id',
@@ -516,6 +521,7 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.lodgingSettings]: ['event_id'],
   [TABLES.openRooms]: ['event_id'],
   [TABLES.eventExtraBeds]: ['event_id', 'bed_id'],
+  [TABLES.eventSpaces]: ['event_id', 'space_id'],
   [TABLES.stays]: ['account_id', 'from_date', 'to_date'],
   [TABLES.stayPersons]: ['stay_id', 'name'],
   [TABLES.outsiderDefaults]: ['account_id'],
