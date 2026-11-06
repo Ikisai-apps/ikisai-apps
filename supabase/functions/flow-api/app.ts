@@ -689,7 +689,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
   const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...cargaRoutes(base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute(), customerVisitorRoute()],
-    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership),
+    hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership, ctx.scope),
       // FL3: los `call` del historial (argumentos y resultado: nombres de huéspedes, titulares de cuentas…) solo los ve el
       // owner y quien hizo la llamada; los demás miembros no los reciben.
       visibleCall: (change, ctx) => ctx.membership.role === 'owner' || change.actorId === ctx.user.id,
