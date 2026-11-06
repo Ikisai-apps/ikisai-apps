@@ -103,6 +103,9 @@ test('0120 · decisión por grupo: un owner de la app aprueba de golpe las pendi
       assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.groupKey, group);
     }
     assert.equal((await app.call('/api/v1/proposals/group/g1/approve', { token: app.tokens.editor, body: {} })).status, 403, 'una editora no decide');
+    // 0122: en la propia app no hay decisor nombrado: decide solo el owner.
+    const sameApp = await app.call('/api/v1/proposals', { token: agentKey, body: { requestId: 'g-d', operations: [{ op: 'delete', table: TABLE, id: a, expectedRevision: 1 }], deciderUserId: app.users.editor } });
+    assert.equal(sameApp.status, 422, JSON.stringify(sameApp.data));
     const res = await app.call('/api/v1/proposals/group/g1/approve', { body: {} });
     assert.equal(res.status, 200, JSON.stringify(res.data));
     assert.equal(res.data.decided, 2); assert.equal(res.data.autoRejected, 0); assert.equal(res.data.skipped, 0);

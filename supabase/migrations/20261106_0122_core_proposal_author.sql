@@ -2,7 +2,8 @@
 --   - `core.proposal_author()` y `core.proposal_id()`: dentro del lote que aplica una propuesta aprobada hacia otra app devuelven el
 --     agente autor y la propuesta (como suggestion_author/suggestion_id, 0094); fuera, null. Los hooks de la app destino acotan
 --     con ellos lo que un agente puede proponer (Central: «un agente solo propone sobre su propia ficha»).
---   - El decisor nombrado tiene que ser editor u owner de la app efectiva (nunca reader): lo que aprueba se aplica con sus permisos.
+--   - El decisor nombrado solo existe en propuestas hacia otra app y tiene que ser editor u owner de esa app (nunca reader): lo que
+--     aprueba se aplica con sus permisos. En la propia app sigue decidiendo solo el owner.
 --   - El agente autor no ve el resumen antes/después de una propuesta hacia otra app (el ensayo se hace con los permisos de la app
 --     destino): `summary` solo para owners y decisor. Sus operaciones sí, que son suyas.
 
@@ -24,8 +25,8 @@ $$;
 create or replace function core.proposal_can_decide(p core.proposals, p_actor uuid) returns boolean language sql stable as $$
   select coalesce((select kind from core.profiles where user_id = p_actor) is distinct from 'agent'
      and (exists (select 1 from core.memberships m where m.app = coalesce(p.target_app, p.app) and m.user_id = p_actor and m.role = 'owner')
-          or (p.decider_user_id is not null and p.decider_user_id = p_actor
-              and exists (select 1 from core.memberships m where m.app = coalesce(p.target_app, p.app) and m.user_id = p_actor and m.role in ('editor', 'owner')))), false)
+          or (p.target_app is not null and p.decider_user_id is not null and p.decider_user_id = p_actor
+              and exists (select 1 from core.memberships m where m.app = p.target_app and m.user_id = p_actor and m.role in ('editor', 'owner')))), false)
 $$;
 
 create or replace function core.proposal_prepare(p_app text, p_actor uuid, p_key uuid, p_request_id text, p_digest text, p_operations jsonb, p_risk jsonb,
@@ -40,6 +41,8 @@ begin
   if v_role = 'reader' then perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'readers cannot write')); end if;
   if v_target is not null and not exists (select 1 from core.apps where id = v_target) then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'unknown target app', 'targetApp', v_target)); end if;
   if p_decider is not null then
+    -- Revisión 6-11: en la propia app decide solo el owner, como siempre; el decisor nombrado es para propuestas hacia otra app.
+    if v_target is null then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'decider only applies to proposals to another app')); end if;
     if (select kind from core.profiles where user_id = p_decider) = 'agent' then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'decider must be a person')); end if;
     -- Revisión 6-11: el decisor aplica el lote con sus permisos; un lector no puede ser decisor.
     if not exists (select 1 from core.memberships where app = coalesce(v_target, p_app) and user_id = p_decider and role in ('editor', 'owner')) then
