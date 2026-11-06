@@ -1039,6 +1039,10 @@ export const KIT_EN: Dictionary = {
   'Toca el plano para poner la imagen.': 'Tap the plan to place the image.',
   'Elige una imagen para subirla.': 'Choose an image to upload.',
   'Elegir en el árbol': 'Choose from the tree',
+  'Cuadrante {x}, {y}': 'Square {x}, {y}',
+  'Toca una estancia arriba para ver sus cuadrantes.': 'Tap a room above to see its squares.',
+  'Cuadrantes de {name}': 'Squares of {name}',
+  '1 m²: {x}, {y}': '1 m²: {x}, {y}',
 
   // Oficios (createTradePicker)
   'Ningún oficio coincide con «{q}».': 'No trade matches “{q}”.',
