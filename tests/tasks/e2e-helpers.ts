@@ -200,7 +200,10 @@ export async function fichaBloque(page: Page, key: string): Promise<Locator> {
     if ((await stage.getAttribute('data-tkf-open')) === key) return stage;
     await stage.locator('.tkf-back').click();
   }
-  await tile.click();
+  // «Quién» y «Etiquetas» van escondidas desde los cinco apartados de la ficha (ficha-cinco-ui.js): sus campos siguen en la
+  // hoja y se llega a ellos con el mismo toque, sin que la baldosa se vea.
+  if (await tile.isVisible().catch(() => false)) await tile.click();
+  else await tile.evaluate((b) => (b as HTMLElement).click());
   await expect(stage).toBeVisible();
   return stage;
 }

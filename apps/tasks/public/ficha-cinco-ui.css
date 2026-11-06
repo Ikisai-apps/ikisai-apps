@@ -1,0 +1,47 @@
+/* Ficha de la tarea · cinco apartados en su sitio (ficha-cinco-ui.js). */
+.tk5{display:grid;gap:10px;margin:10px 0 12px}
+/* Con los cinco apartados, las baldosas «Quién» y «Etiquetas» (la página con todos los campos) no se ven; la portada las
+   vuelve a pintar a menudo, así que se esconden aquí y no en el nodo. */
+.tkf-portada:has(#tk5) .tkf-tile[data-tkf-tile="quien"],.tkf-portada:has(#tk5) .tkf-tile[data-tkf-tile="etiquetas"]{display:none}
+@media (min-width:720px){.tk5{grid-template-columns:1fr 1fr}.tk5 .tk5-card.wide{grid-column:1/-1}}
+.tk5-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:0}
+.tk5-card h3{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 6px;font:600 12px/1.3 var(--sans,system-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tk5-hint{letter-spacing:0;text-transform:none;font-weight:400}
+.tk5-tap{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;background:none;border:0;padding:0;text-align:left;cursor:pointer;color:inherit}
+.tk5-tap:disabled{cursor:default}
+.tk5-grow{flex:1;min-width:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tk5-chev{color:var(--muted);font-size:18px}
+.tk5-panel{margin-top:8px}
+/* Quién */
+.tk5-stack{display:flex}
+.tk5-med{position:relative;width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--paper-2,#efeae0);border:2px solid var(--paper);box-shadow:0 0 0 1px var(--line)}
+.tk5-stack .tk5-med+.tk5-med{margin-left:-10px}
+.tk5-med b{font-size:13px;font-weight:700;color:var(--ink)}
+.tk5-med .tk5-group{position:absolute;right:-2px;bottom:-2px;font-size:11px;color:var(--accent)}
+.tk5-med.on{box-shadow:0 0 0 3px var(--accent)}
+.tk5-names{font-size:14px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.tk5-glabel{margin:10px 0 4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tk5-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
+.tk5-person{display:grid;justify-items:center;gap:4px;padding:6px 2px;border:0;border-radius:12px;background:none;cursor:pointer;font-size:12px;text-align:center;color:inherit;min-height:44px}
+.tk5-person .tk5-med{width:48px;height:48px}
+.tk5-person.on{background:color-mix(in srgb,var(--accent) 14%,var(--paper))}
+/* Fase */
+.tk5-card[data-tk5="fase"]{position:relative}
+.tk5-card[data-tk5="fase"] .tkph-field{margin:0}
+.tk5-pencil{position:absolute;top:6px;right:8px;min-width:40px;min-height:40px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--accent);display:grid;place-items:center;cursor:pointer}
+.tk5-card[data-tk5="fase"] h3{padding-right:48px}
+.tk5-phaselist{display:grid;gap:6px;margin:8px 0}
+.tk5-phaserow{display:flex;align-items:center;gap:6px}
+.tk5-phaserow input[type=text]{flex:1;min-height:44px}
+.tk5-phaserow label{display:flex;align-items:center;gap:4px;font-size:13px;min-height:44px}
+.tk5-phaserow .ghost{min-width:40px;min-height:44px}
+/* Espacio */
+.tk5-route{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:14px}
+.tk5-route span{padding:2px 8px;border-radius:8px;background:var(--paper-2,#efeae0)}
+.tk5-route i{font-style:normal;color:var(--muted)}
+/* Oficio y etiquetas */
+.tk5-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tk5-chip{display:inline-flex;align-items:center;gap:4px;min-height:30px;padding:2px 10px;border-radius:999px;background:var(--paper-2,#efeae0);font-size:13px}
+.tk5-chip.tk5-trade{background:color-mix(in srgb,var(--accent) 14%,var(--paper))}
+.tk5-chip button{border:0;background:none;padding:0 2px;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;min-width:28px;min-height:28px}
+.tk5-addtag{flex:1;min-width:120px;min-height:34px;border:1px dashed var(--line);border-radius:999px;background:transparent;padding:0 12px;color:var(--ink);font-size:13px}

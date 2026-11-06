@@ -2465,3 +2465,15 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **Modelo de la interfaz:** `task.spaceCells` = `{ [spaceId]: cell }`, solo si hay alguno. Sin el campo, `decompose` no toca los cuadrantes.
 - **App:** en la ficha de la tarea, junto a los chips de «Espacio», «Elegir en el plano» abre `createPlacePicker` del kit con `cell: true`. El recorrido es altura → interior o exterior → estancia → cuadrante. Lo elegido se añade a los espacios de la tarea (sustituye a los que lo contienen) y el cuadrante se ve debajo.
 - **Pruebas:** `tests/tasks/space-cell.test.ts`.
+
+## 63. La ficha con cinco apartados y las etiquetas, solo libres (migración `0369`; VG, 06-11; borrador aprobado)
+
+- **Ficha de la tarea** (`apps/tasks/public/ficha-cinco-ui.js`): en la portada, antes de las baldosas, cinco apartados que se editan en su sitio y guardan al momento.
+  1. **Quién:** medallones con las iniciales (Central no da foto). Al tocar se despliega la casa por nivel y se eligen una o varias; la primera es la responsable. Por defecto, quien crea la tarea.
+  2. **Fase:** el segmento de §61, con la actual marcada y las de antes en gris, que también se pueden elegir. El lápiz abre «Etiquetas › Fases», donde se cambian el nombre, el orden y la actual, sin fechas.
+  3. **Espacio:** `createPlacePicker` del kit en modo dos planos (`layout: 'stacked'`), con la ruta de `picker.path()`. Lo elegido sustituye al espacio editado y a los que lo contienen; el cuadrante va en `spaceCells` (§62).
+  4. **Oficio:** `createTradePicker` del kit, en árbol (el oficio entero o una especialidad).
+  5. **Etiquetas:** solo las libres, sin personas, oficios, espacios ni fases. Se añaden escribiendo (si no existe, va a la familia «Etiquetas») y se quitan con ×.
+- **Las baldosas «Quién» y «Etiquetas» se esconden:** eran la página con todos los campos. Sus campos siguen en la hoja y sus borradores se ponen al día, para que «Guardar» no deshaga lo cambiado en los apartados.
+- **Migración `0369`** (`tasks.archive_converted_families()`): archiva las familias de sistema de cada área («Persona», «Oficio», «Edificio», «Espacio») y sus etiquetas, **solo si su conversión ya está hecha** (`people_source = 'central'`, `trade_source = 'central'`, `zone_source = 'spaces'`). Sin ella no las toca y lo avisa. No borra nada: cada etiqueta recuerda si ya estaba archivada. Las fases salieron de las etiquetas en la 0367.
+- **Pruebas:** `tests/tasks/system-families.test.ts` y `tests/tasks/ficha-cinco.spec.ts`.
