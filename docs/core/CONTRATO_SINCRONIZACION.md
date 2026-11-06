@@ -177,6 +177,8 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
     - `POST feedback/replies/read {ids}`.
   - **Quién contesta:** editor u owner de Booking o el dueño del ecosistema, nunca una cuenta de portal, y solo a informes de quien organiza con reserva (`core.feedback_can_reply`). Si no, `403 FORBIDDEN`.
   - **Quién las ve:** quien puede ver el informe. A quien lo escribió se le dan sin el autor («Ikisai»), y solo él las marca como vistas.
+  - **Quien organiza contesta a sus asistentes (0121):** editor u owner de Organizers con la reserva en su ámbito, a un comentario de huésped sobre el evento (`core.feedback_can_reply_as_organizer`). La casa sigue sin contestar a los huéspedes. Cada respuesta guarda `author_kind` (`house` u `organizer`).
+  - **En el informe** (`GET feedback`, `core.feedback_json`): `reply`, la última respuesta (`{text, from, at, kind}`, con `from` «Ikisai» o el nombre de quien organiza), y `canReply`.
 - **Ciclo:**
   - Un reporte pasa a `pending_verify` cuando su código aparece en una versión publicada (`core.feedback_mark_released`) o cuando su última tarea está hecha.
   - El pin (`pin=true`) lo ven quien lo informó y el owner de Central.
