@@ -285,6 +285,39 @@ async function requestEntryInvoice(link: FinanceLink, chargeId: string, customer
   return reject(posted.res, posted.body);
 }
 
+/**
+ * «También para todos los eventos» (1432, booking-U1, VG 06-11): desde la marca de un espacio en un evento, Booking pide a
+ * Central que el espacio sea de alojamiento para todos (`worker/space-use` de central-api, `docs/central/API.md`). Booking
+ * no escribe en Recursos; Central añade el uso y el espejo lo trae. Idempotente en Central por (espacio, uso). Solo editor
+ * u owner. Si Central falla, la marca del evento se queda como está (la app avisa).
+ */
+function spaceUseRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: string | undefined): AppRoute[] {
+  return [{
+    method: 'POST', pattern: 'event-spaces/:id/all-events',
+    handler: async ({ ctx, params }) => {
+      if (ctx.membership.role !== 'editor' && ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura lo pide.');
+      const out = await supabase.rpc<{ mark: { reservation_id: string; resource_id: string | null; uses: string[] | null } | null }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.event_space_for_use', p_args: { id: uuidOrFail(params.id, 'id') } });
+      const mark = out?.mark ?? null;
+      if (!mark) fail(404, 'NOT_FOUND', 'Esa marca no existe.');
+      if (!mark.resource_id) fail(409, 'NOT_IN_RESOURCES', 'Este espacio no viene de Recursos: no se puede pedir a Central.');
+      if ((mark.uses ?? []).includes('alojamiento')) return { uses: mark.uses, added: false };
+      let res: Response;
+      try {
+        res = await appsFetch(`${supabase.base}/functions/v1/central-api/api/v1/worker/space-use`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': workerKey ?? '', 'X-Ikisai-Caller': 'booking' },
+          body: JSON.stringify({ space_id: mark.resource_id, use: 'alojamiento', source_ref: `booking:reservation:${mark.reservation_id}`, requested_by: ctx.user.id }),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch {
+        fail(503, 'APP_UNAVAILABLE', 'Central no responde ahora mismo. Inténtalo más tarde.');
+      }
+      const body = await res.json().catch(() => ({})) as any;
+      if (!res.ok) fail(res.status === 404 ? 404 : res.status === 422 ? 422 : 502, body?.error?.code ?? 'APP_REJECTED', body?.error?.message ?? 'Central no ha aceptado la petición.', { app: 'central' });
+      return { uses: body?.uses ?? null, added: body?.added === true };
+    },
+  }];
+}
+
 function walkinRoutes(supabase: Supabase, appsFetch: typeof fetch, workerKey: string | undefined): AppRoute[] {
   const commandsOf = (slug: string) => `${supabase.base}/functions/v1/${slug}/api/v1/commands`;
   const link: FinanceLink = { base: supabase.base, appsFetch, workerKey };
@@ -756,6 +789,7 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
     ...walkinRoutes(supabase, appsFetch, workerKey),
+    ...spaceUseRoutes(supabase, appsFetch, workerKey),
     ...onlineRefundRoutes(supabase, payments),
     ...staffStayRoutes(supabase, payments),
     ...montageRoutes(supabase, ses),
