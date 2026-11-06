@@ -1054,6 +1054,8 @@ export const KIT_EN: Dictionary = {
   'Solo la habitación': 'Just the room',
   'Toca el cuadrante de 1 m², o quédate en la habitación.': 'Tap the 1 m² square, or keep just the room.',
   'Zona de fuera': 'Outdoor area',
+  'Sin conexión: {pending}, se enviarán al volver la red.': 'Offline: {pending}, they will be sent when the connection is back.',
+  'Sin conexión: lo que guardes se enviará al volver la red.': 'Offline: what you save will be sent when the connection is back.',
   '¿Rehacer los datos de este dispositivo?': 'Rebuild the data on this device?',
   'Se envía lo pendiente, se borra lo guardado en este dispositivo y se vuelve a descargar. No cierra la sesión.': 'Pending changes are sent, the data stored on this device is cleared and downloaded again. You stay signed in.',
   'Rehacer': 'Rebuild',

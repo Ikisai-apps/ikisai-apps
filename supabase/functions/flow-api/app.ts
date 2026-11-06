@@ -111,6 +111,7 @@ interface ClosureForSend {
 interface DayData {
   orders: number; sales_cents: number; sales_by_method: { cash: number; bizum: number; card?: number }; refunds_pending_cents: number;
   units_by_product: Array<{ scope: string; code: string; name: string; units: number; amount_cents: number; source_line_id: string | null }>;
+  member_orders?: Array<{ order_id: string; name: string | null; amount_cents: number }>;
 }
 
 /**
@@ -124,6 +125,38 @@ export function serviceHeaders(workerKey: string | undefined, slug: string): Rec
 }
 
 /** Llamada a un procedimiento de otra app por su API, con el token de la persona (su acceso decide). */
+/** Apps a las que la «Carga asistida» puede mirar propuestas (Central no admite agentes). */
+const CARGA_APPS: Record<string, { slug: string; label: string }> = {
+  booking: { slug: 'booking-api', label: 'Booking' }, finance: { slug: 'invoices-api', label: 'Finance' }, tasks: { slug: 'tasks-api', label: 'Tasks' },
+  food: { slug: 'food-api', label: 'Food' }, guests: { slug: 'guests-api', label: 'Guests' }, organizers: { slug: 'organizers-api', label: 'Organizers' },
+};
+
+/**
+ * «Carga asistida» (fl-25, núcleo 0120): Flow lee y decide, con la sesión de quien entra, las propuestas que un agente dejó
+ * hacia otra app. Solo GET de la bandeja y POST de aprobar o rechazar (una o un grupo); lo demás no pasa por aquí.
+ */
+function proposalsCaller(base: FlowBase, options: FlowAppOptions) {
+  const transport = options.appsFetch ?? fetch;
+  return async function callProposals(ctx: RequestContext, app: string, path: string, method: 'GET' | 'POST'): Promise<any> {
+    const target = CARGA_APPS[app];
+    if (!target) fail(404, 'NOT_FOUND', 'Esa app no tiene bandeja de propuestas.');
+    let res: Response;
+    try {
+      res = await transport(`${base.url.replace(/\/$/, '')}/functions/v1/${target.slug}/api/v1/${path}`, {
+        method, headers: { Authorization: 'Bearer ' + ctx.token, ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), ...serviceHeaders(base.workerKey, target.slug) },
+        ...(method === 'POST' ? { body: '{}' } : {}), signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      fail(503, 'APP_UNAVAILABLE', `${target.label} no responde ahora mismo. Inténtalo más tarde.`);
+    }
+    const out = await res.json().catch(() => ({})) as any;
+    const code = out?.error?.code as string | undefined;
+    if (res.status === 401 || res.status === 403 || code === 'NO_MEMBERSHIP') fail(403, 'NEEDS_ACCESS', `Pide acceso a ${target.label} para decidir sus propuestas.`, { app, code: code ?? null });
+    if (!res.ok) fail(res.status === 409 ? 409 : res.status === 404 ? 404 : 422, code ?? 'APP_REJECTED', out?.error?.message ?? `${target.label} no ha aceptado la decisión.`, { app });
+    return out;
+  };
+}
+
 function appCaller(base: FlowBase, options: FlowAppOptions) {
   const transport = options.appsFetch ?? fetch;
   const apiOf = (slug: string) => `${base.url.replace(/\/$/, '')}/functions/v1/${slug}/api/v1/commands`;
@@ -151,6 +184,35 @@ function appCaller(base: FlowBase, options: FlowAppOptions) {
  * Llegada y salida de huéspedes (check-in, 0911): flow-api comprueba que el flujo es de la persona y que el huésped es
  * de su evento, y llama a booking.guest_arrive / guest_leave por booking-api con su token (editor en Booking).
  */
+function cargaRoutes(base: FlowBase, options: FlowAppOptions): AppRoute[] {
+  const callProposals = proposalsCaller(base, options);
+  const ID = /^[A-Za-z0-9:_.-]{1,120}$/;
+  return [
+    {
+      // Bandeja de la app destino: las pendientes (con `grupo`, solo las de ese grupo).
+      method: 'GET', pattern: 'carga/:app/proposals', handler: async ({ ctx, params, url }) => {
+        const group = url.searchParams.get('grupo');
+        if (group !== null && !ID.test(group)) fail(422, 'INVALID_FILTER', 'Grupo inválido.');
+        const out = await callProposals(ctx, params.app ?? '', 'proposals?status=pending', 'GET');
+        const items = (Array.isArray(out?.items) ? out.items : []).filter((p: any) => group === null || p?.groupKey === group);
+        return { items };
+      },
+    },
+    {
+      method: 'POST', pattern: 'carga/:app/group/:key/:decision', handler: async ({ ctx, params }) => {
+        if (!ID.test(params.key ?? '') || !['approve', 'reject'].includes(params.decision ?? '')) fail(404, 'NOT_FOUND', 'Ruta no encontrada.');
+        return callProposals(ctx, params.app ?? '', `proposals/group/${encodeURIComponent(params.key!)}/${params.decision}`, 'POST');
+      },
+    },
+    {
+      method: 'POST', pattern: 'carga/:app/proposals/:id/:decision', handler: async ({ ctx, params }) => {
+        if (!/^[0-9a-f-]{36}$/.test(params.id ?? '') || !['approve', 'reject'].includes(params.decision ?? '')) fail(404, 'NOT_FOUND', 'Ruta no encontrada.');
+        return callProposals(ctx, params.app ?? '', `proposals/${params.id}/${params.decision}`, 'POST');
+      },
+    },
+  ];
+}
+
 function checkinRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptions): AppRoute[] {
   const callApp = appCaller(base, options);
   /** El evento de Booking de un flujo de check-in del ámbito de la persona (si no, PROJECT_OUT_OF_SCOPE / NO_BOOKING_EVENT). */
@@ -235,9 +297,10 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
       },
     },
     {
-      // Apunte de ingresos del día en Finance (invoices.record_app_entry, idempotente por source_ref). Decisión de VG del
-      // 27-10: el cierre es un apunte de PROCESO (informativo), nunca fiscal; lo fiscal es la factura de la caja. Por eso ya
-      // no hay «modo pruebas» para Finance: el resumen se manda siempre, como `nature: 'process'`.
+      // El cierre del día en Finance (contrato de fl-27, 05-11, §2): (2a) `flow:project:<p>:<día>`, FISCAL, con los cobros del
+      // día que no fueron antes con su propio apunte (justificantes «Enviar a Finance» y cuentas pasadas a Finance); y (2b)
+      // `flow:closing:<p>:<día>`, de PROCESO e importe 0, con lo informativo: cuentas abiertas, vendido a cuenta y pedidos del
+      // equipo a precio de carta (`info_cents`). Cada euro llega una sola vez. Idempotentes por source_ref.
       method: 'POST', pattern: 'closures/:id/send/finance', handler: async ({ ctx, params }) => {
         const { closure: c, project } = await closure(ctx, params.id ?? '');
         // Cada cuenta abierta se decide antes (fl-27, VG F-P4): cobrarla, pasarla a Finance como pendiente o anularla.
@@ -260,16 +323,31 @@ function closureRoutes(supabase: Supabase, base: FlowBase, options: FlowAppOptio
           return { code: `${u.scope}:${u.code}`, name: u.name, quantity: u.units - (f?.units ?? 0), amount_cents: u.amount_cents - (f?.amount_cents ?? 0) };
         }).filter((x) => x.quantity !== 0 || x.amount_cents !== 0);
         const args = {
-          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'process', entry_date: c.day,
-          description: `${project.name} · ${d}-${m}-${y}`,
+          source_app: 'flow', source_ref: sourceRef, kind: 'income', nature: 'fiscal', entry_date: c.day,
+          description: `${project.name} · ventas del ${d}-${m}-${y}`,
           amount_cents: amount, tax_rate: 10,
           methods: byMethod,
           detail,
           pending_refunds_cents: c.data.refunds_pending_cents,
           event_id: project.booking_event_id,
         };
-        const requestId = `flow:${sourceRef}:${await digest(args)}`;
-        return sendAndMark(c, 'finance', () => callApp(ctx, 'invoices-api', 'Finance', requestId, 'invoices.record_app_entry', args));
+        const extras = await supabase.rpc<ClosingExtras | null>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'flow.closing_extras', p_args: { project_id: project.id, day: c.day } });
+        const closingRef = `flow:closing:${project.id}:${c.day}`;
+        const closing = {
+          source_app: 'flow', source_ref: closingRef, kind: 'income', nature: 'process', entry_date: c.day,
+          description: `${project.name} · resumen del ${d}-${m}-${y}`, amount_cents: 0, tax_rate: 10, methods: {},
+          detail: [
+            { code: 'cuentas_abiertas', name: 'Cuentas abiertas a fin de día', quantity: extras?.open_accounts.n ?? 0, amount_cents: 0, info_cents: extras?.open_accounts.cents ?? 0 },
+            { code: 'a_cuenta', name: 'Vendido a cuenta (se cobra al liquidar)', quantity: extras?.a_cuenta.n ?? 0, amount_cents: 0, info_cents: extras?.a_cuenta.cents ?? 0 },
+            ...(c.data.member_orders ?? []).map((o) => ({ code: 'equipo', name: `Pedido del equipo · ${o.name ?? 'Equipo'}`, quantity: 1, amount_cents: 0, info_cents: o.amount_cents ?? 0, order_code: o.order_id.slice(0, 8) })),
+          ],
+          pending_refunds_cents: 0, event_id: project.booking_event_id,
+        };
+        return sendAndMark(c, 'finance', async () => {
+          const fiscalOut = await callApp(ctx, 'invoices-api', 'Finance', `flow:${sourceRef}:${await digest(args)}`, 'invoices.record_app_entry', args);
+          const processOut = await callApp(ctx, 'invoices-api', 'Finance', `flow:${closingRef}:${await digest(closing)}`, 'invoices.record_app_entry', closing);
+          return { fiscal: fiscalOut ?? null, closing: processOut ?? null };
+        });
       },
     },
     {
@@ -345,6 +423,7 @@ interface AccountForSend {
   project: { id: string; name: string; booking_event_id: string | null };
   orders: Array<{ pay_seq: number; total_cents: number }>;
 }
+interface ClosingExtras { open_accounts: { n: number; cents: number }; a_cuenta: { n: number; cents: number } }
 interface FiscalOfDay { amount_cents: number; methods: Record<string, number>; detail: Array<{ code: string; units: number; amount_cents: number }> }
 interface ReceiptForSend {
   receipt: { id: string; revision: number; method: string; total_cents: number; order_ids: string[] };
@@ -608,7 +687,7 @@ export function createFlowApp(base: FlowBase, options: FlowAppOptions = {}) {
   const supabase = createSupabase(base);
   // Acceso por proyecto (0902): cada persona solo sincroniza las filas de sus proyectos; el owner, todas.
   const publicWrite: PublicWriter = options.publicWrite ?? ((db, app, operations) => applyPublicOperations(db, app, operations as Parameters<typeof applyPublicOperations>[2]));
-  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
+  const kit = createApp({ ...base, app: APP, slug: 'flow-api', origins, routes: [...closureRoutes(supabase, base, options, publicWrite), ...tasksRoutes(supabase, options, base.workerKey, publicWrite), ...checkinRoutes(supabase, base, options), ...cargaRoutes(base, options), ...capabilityRoutes(supabase)], uploads: FLOW_UPLOADS,
     publicRoutes: [visitorJoinRoute(), customerVisitorRoute()],
     hooks: { visible: (table, row, ctx) => visibleRow(table, row, ctx.membership),
       // FL3: los `call` del historial (argumentos y resultado: nombres de huéspedes, titulares de cuentas…) solo los ve el

@@ -139,6 +139,8 @@ export interface StatusBannersOptions {
   describeError?: (error: SyncStatus['lastError']) => string;
   /** Si hay una versión nueva lista, la acción para aplicarla. */
   updateApply?: (() => void) | null;
+  /** No mostrar la franja «Sin conexión» (la pastilla sigue diciéndolo). */
+  hideOffline?: boolean;
   /** No mostrar el banner de conflictos cuando ya estás en esa pantalla. */
   hideConflicts?: boolean;
   /** Lotes rechazados (sync-client 0.2): abrir la pantalla donde se revisan, reintentar todos o descartar todos. */
@@ -173,6 +175,14 @@ export function statusBanners(status: SyncStatus, options: StatusBannersOptions 
     items.push(el('div', { class: 'banner info', role: 'status', dataset: { banner: 'user-changed' } },
       icon('user', 18),
       el('span', null, options.userChangedText ?? kt('Ha entrado otra persona en este dispositivo: se cargaron sus datos y se retiraron los anteriores.')),
+    ));
+  }
+  // K-07 (VG, 05-11): sin red, una franja arriba además de la pastilla, con lo que queda por enviar.
+  if (status.network === 'offline' && !options.hideOffline) {
+    const n = pendingCount(status);
+    items.push(el('div', { class: 'banner warn', role: 'status', dataset: { banner: 'offline' } },
+      icon('offline', 18),
+      el('span', null, n ? kt('Sin conexión: {pending}, se enviarán al volver la red.', { pending: pendingLabel(status) }) : kt('Sin conexión: lo que guardes se enviará al volver la red.')),
     ));
   }
   if (status.lastError && status.network === 'error' && !isUserChanged(status)) {

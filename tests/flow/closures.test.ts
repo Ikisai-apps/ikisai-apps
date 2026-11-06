@@ -132,12 +132,13 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
   const fin = calls[1]!.body.operations[0];
   assert.equal(fin.procedure, 'invoices.record_app_entry');
   assert.equal(fin.args.source_ref, `flow:project:${PROJECT}:${today()}`);
-  assert.equal(fin.args.kind, 'income'); assert.equal(fin.args.tax_rate, 10); assert.equal(fin.args.nature, 'process');
+  assert.equal(fin.args.kind, 'income'); assert.equal(fin.args.tax_rate, 10); assert.equal(fin.args.nature, 'fiscal');
+  assert.equal(calls[2]!.body.operations[0].args.source_ref, `flow:closing:${PROJECT}:${today()}`); assert.equal(calls[2]!.body.operations[0].args.nature, 'process');
   assert.equal(fin.args.methods.cash + fin.args.methods.bizum, fin.args.amount_cents);
   assert.equal(fin.args.detail.reduce((s: number, d: any) => s + d.amount_cents, 0) + fin.args.pending_refunds_cents, fin.args.amount_cents);
   // El mismo payload, el mismo requestId (idempotente en el núcleo de Finance).
   await app.call(`/api/v1/closures/${c.id}/send/finance`, { body: {} });
-  assert.equal(calls[2]!.body.requestId, calls[1]!.body.requestId);
+  assert.equal(calls[3]!.body.requestId, calls[1]!.body.requestId);
   // El resultado lo anotó flow-api (FL9): enviado a Food y a Finance; el navegador no puede marcarlo.
   const marked = await row(TABLES.dayClosures, c.id);
   assert.equal(marked.finance_status, 'sent'); assert.equal(marked.food_status, 'sent');
@@ -149,12 +150,12 @@ test('flow · enviar a Food y a Finance con la sesión; requestId estable; modo 
   assert.equal(denied.status, 403); assert.equal(denied.data.error.code, 'NEEDS_ACCESS'); assert.match(denied.data.error.message, /Pide acceso a Food/);
   assert.equal((await row(TABLES.dayClosures, c.id)).food_status, 'error'); // el fallo también queda anotado
   reply = () => Response.json({ results: [{ result: { status: 'created' } }] });
-  // El modo pruebas ya no decide nada sobre Finance (VG 27-10): el resumen va siempre, como proceso.
+  // El modo pruebas ya no decide nada sobre Finance (VG 27-10): el cierre va siempre (ventas fiscales y resumen de proceso).
   const p = await row(TABLES.projects, PROJECT);
   await ok([{ op: 'update', table: TABLES.projects, id: PROJECT, expectedRevision: p.revision, fields: { test_mode: true } }], app.tokens.owner);
   const before = calls.length;
   const sent = await app.call(`/api/v1/closures/${c.id}/send/finance`, { body: {} });
-  assert.equal(sent.data.status, 'sent'); assert.equal(calls.length, before + 1); assert.equal(calls.at(-1)!.body.operations[0].args.nature, 'process');
+  assert.equal(sent.data.status, 'sent'); assert.equal(calls.length, before + 2); assert.equal(calls.at(-1)!.body.operations[0].args.nature, 'process');
   // Solo el owner envía.
   assert.equal((await app.call(`/api/v1/closures/${c.id}/send/food`, { token: app.tokens.editor, body: {} })).status, 403);
 });

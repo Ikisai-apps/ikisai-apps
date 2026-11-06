@@ -2445,6 +2445,20 @@ Diseño en `MUELA/equipo/feedback/tasks/PROYECTOS_PRODUCCION.md` §7.1; decision
 - **Ayudantes:** `tasks.space_within(espacio, nodo)` y `tasks.space_top(espacio)`.
 - **Pruebas:** `tests/tasks/today-by-space.test.ts`.
 
+## 61. «Etapa» como fase: la fase actual y siempre una fase (migración `0367`; encargo de VG del 06-11)
+
+- **`tasks.project_phases.is_current`:** la fase «actual» del proyecto, la de las tareas nuevas. Como mucho una viva por proyecto, comprobado al final del lote (hook `tasks.validate_phase_current`, `INVALID_PHASE`): cambiarla quita una y pone otra en el mismo lote, en cualquier orden. En el modelo de la interfaz, `phase.current`.
+- **Siempre una fase:** una madre viva de un proyecto con fases que llega sin fase (nueva, movida de otro proyecto o soltada a propósito) recibe la de por defecto (trigger `tasks_task_phase_zdefault`). Un paso no la lleva: hereda la de su madre.
+  - **Por defecto** (`tasks.default_phase(proyecto)`): la actual; si no hay, la primera sin cerrar; si no, la primera.
+  - **Un proyecto sin fases** sigue sin fase.
+- **Conversión** (`tasks.stage_labels_to_phases()`, en lotes del núcleo `migration:tasks-0367-…`):
+  - las etiquetas de la familia de sistema `phase` que usan las tareas o el proyecto pasan a ser fases de ese proyecto, en su orden;
+  - cada madre toma la de su etiqueta (la suya, la de un paso o la del proyecto) o, si no tiene, la actual;
+  - la actual es la «en curso» o, si no, la primera sin cerrar;
+  - las etiquetas de etapa van a la papelera y su familia queda archivada.
+- **App:** en la hoja de la fase, «Actual»; en la banda, la etiqueta «actual»; en la ficha, un segmento ordenado sin «Sin fase». Quitar una fase pasa sus tareas a la de por defecto.
+- **Pruebas:** `tests/tasks/stages.test.ts`, `tests/tasks/phases.test.ts` y `tests/tasks/fases.spec.ts`.
+
 ## 62. «Espacio» por selección visual: el cuadrante de 1 m² (migración `0368`; encargo de VG del 06-11)
 
 - **`tasks.task_spaces.cell`:** el cuadrante opcional dentro del espacio, `{"cellX": n, "cellY": n, "scale": 1}`, con celdas enteras de 0 a 9999 en la retícula del dibujo. Nulo = todo el espacio. Va uno por espacio de la tarea, porque cada fila puente es un sitio. Lo comprueban el dominio y la base de datos (`INVALID_SPACE`).

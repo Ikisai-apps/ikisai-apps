@@ -102,12 +102,15 @@ test('caja · «Enviar a Finance» manda ese cobro como fiscal; el cierre (proce
   assert.equal(marked.finance_status, 'sent');
   const other = (await rows(TABLES.receipts)).find((r) => r.id !== receipt.id);
   assert.equal(await code([{ op: 'update', table: TABLES.receipts, id: other.id, expectedRevision: other.revision, fields: { finance_status: 'sent' } }]), 'PROCEDURE_ONLY');
-  // Cierre del día: el resumen va como proceso, sin el justificante fiscal.
+  // Cierre del día (fl-27): las ventas del día van como fiscal sin el justificante ya enviado, y un resumen de proceso a 0.
   const closed = await ok([call(PROCEDURES.closeDay, { project_id: v2, day: madrid() })]);
   const fin = await app.call(`/api/v1/closures/${closed.closure_id}/send/finance`, { body: {} });
   assert.equal(fin.status, 200, JSON.stringify(fin.data));
-  const pargs = sent.at(-1).operations[0].args;
-  assert.equal(pargs.nature, 'process');
+  const pargs = sent.at(-2).operations[0].args;
+  assert.equal(pargs.nature, 'fiscal'); assert.equal(pargs.source_ref, `flow:project:${v2}:${madrid()}`);
+  const closing = sent.at(-1).operations[0].args;
+  assert.equal(closing.source_ref, `flow:closing:${v2}:${madrid()}`); assert.equal(closing.nature, 'process'); assert.equal(closing.amount_cents, 0);
+  assert.deepEqual(closing.detail.map((x: any) => x.code).slice(0, 2), ['cuentas_abiertas', 'a_cuenta']);
   assert.equal(pargs.amount_cents, closed.data.sales_cents - receipt.total_cents);
   assert.equal(pargs.methods.bitcoin ?? 0, 0);
   assert.equal(pargs.detail.reduce((s: number, d: any) => s + d.amount_cents, 0) + pargs.pending_refunds_cents, pargs.amount_cents);

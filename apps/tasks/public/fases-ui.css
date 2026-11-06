@@ -8,5 +8,12 @@
 .tkph-dates .field{flex:1 1 140px}
 .tkph-h{margin:12px 0 4px;font-size:14px}
 .tkph-field{margin:4px 0 8px}
-.tkph-field select{min-height:44px}
+.tkph-label{display:block;font-size:13px;color:var(--muted);margin:0 0 4px}
+.tkph-seg{display:flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:12px;background:rgba(31,42,34,.07)}
+.tkph-seg button{flex:1 1 auto;min-height:44px;padding:6px 12px;border:0;border-radius:10px;background:transparent;color:var(--muted)}
+.tkph-seg button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1);font-weight:600}
+.tkph-seg button.done:not(.on){opacity:.7}
+html.dark .tkph-seg{background:rgba(236,229,216,.08)}
+.tkph-now{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--accent);color:var(--paper)}
+.tkph-current{display:flex;align-items:center;gap:8px;min-height:44px;margin:4px 0}
 .actions #tkphUp,.actions #tkphDown{min-width:44px;min-height:44px}

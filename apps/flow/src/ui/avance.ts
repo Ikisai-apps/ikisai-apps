@@ -26,6 +26,17 @@ const agentName = (lane: string) => NAME.get(lane) ?? lane;
 /** Aplicación de cada dominio (enlaces de apertura de las tarjetas): `ven` es la puerta de Guests e `invoices`, Finance. */
 const HOST_APP: Record<string, string> = { flow: 'flow', food: 'food', finance: 'finance', invoices: 'finance', tasks: 'tasks', booking: 'booking',
   guests: 'guests', ven: 'guests', organizers: 'organizers', central: 'central' };
+/**
+ * Aplicaciones que nombra el texto de una tarjeta (fl-32, VG 06-11): «Flow», «Food», «Finance»… como palabra suelta.
+ * Es una propuesta: la tarjeta sale «adivinada» hasta que alguien la confirme.
+ */
+const GUESS: Array<[RegExp, string]> = [[/\bflow\b/i, 'flow'], [/\bfood\b/i, 'food'], [/\bfinance\b|\bfacturas?\b/i, 'finance'], [/\btasks\b/i, 'tasks'],
+  [/\bbooking\b/i, 'booking'], [/\bguests\b|\bven\b/i, 'guests'], [/\borganizers\b/i, 'organizers'], [/\bcentral\b/i, 'central'], [/\bui-?kit\b|\bkit\b/i, 'ui_kit']];
+function guessedApps(texts: Array<string | undefined>): string[] {
+  const text = texts.filter(Boolean).join(' · ');
+  return GUESS.filter(([re]) => re.test(text)).map(([, app]) => app);
+}
+
 /** Aplicaciones a las que llevan los enlaces de una tarjeta (el de apertura y los de sus pasos y nota), en orden y sin repetir. */
 function linkedApps(texts: Array<string | undefined>): string[] {
   const out: string[] = [];
@@ -63,7 +74,7 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
   let history: Snap[] = [];
   // «Tuyas» (tres toques en los pasos de los hitos): los carriles de la persona; owner sin carriles declarados, el de Víctor.
   const lanes = ((client.bootstrap()?.membership.scopes ?? {}) as { lanes?: string[] }).lanes ?? (role === 'owner' ? ['victor'] : []);
-  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName), (uid) => void setApps(uid), (uid, from, to) => void moveApp(uid, from, to));
+  const view = createAvanceOriginal(host, hora, swSlot, canEdit, (uid, estado) => void setState(uid, estado), lanes.map(agentName), (uid) => void setApps(uid), (uid, from, to) => void moveApp(uid, from, to), (uid) => void confirmApps(uid));
 
   function paint(): void {
     // Como `flow.board_counts`: todas las tarjetas e hitos del proyecto, estén en la columna que estén.
@@ -88,11 +99,29 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
    * Vista «Por app» (VG, 28-10): las tareas de la persona van a las aplicaciones puestas a mano o, si no, a las de sus enlaces;
    * sin ninguna, se quedan en su carril. Las de los agentes, en el suyo salvo que se pongan a mano.
    */
-  function appsOf(u: BoardUnit): { apps: string[]; appsManual: boolean } {
+  function appsOf(u: BoardUnit): { apps: string[]; appsManual: boolean; appsGuessed: boolean } {
     const p = u.payload ?? {};
-    if (Array.isArray(p.apps) && p.apps.length) return { apps: p.apps.map(agentName), appsManual: true };
-    const auto = lanes.includes(u.lane_key ?? '') ? linkedApps([p.url, p.note, ...(Array.isArray(p.steps) ? p.steps : [])]) : [];
-    return { apps: auto.length ? auto.map(agentName) : [agentName(u.lane_key ?? '')], appsManual: false };
+    if (Array.isArray(p.apps) && p.apps.length) return { apps: p.apps.map(agentName), appsManual: true, appsGuessed: false };
+    const steps = Array.isArray(p.steps) ? p.steps : [];
+    const own = lanes.includes(u.lane_key ?? '');
+    const linked = own ? linkedApps([p.url, p.note, ...steps]) : [];
+    if (linked.length) return { apps: linked.map(agentName), appsManual: false, appsGuessed: false };
+    // Sin aplicación ni enlaces: se adivina por el texto (fl-32); si no se adivina, en el carril de su dueño.
+    const guessed = own ? guessedApps([u.label ?? undefined, p.note, ...steps]) : [];
+    if (guessed.length) return { apps: guessed.map(agentName), appsManual: false, appsGuessed: true };
+    return { apps: [agentName(u.lane_key ?? '')], appsManual: false, appsGuessed: false };
+  }
+
+  /** Confirmar de un toque la aplicación adivinada: queda puesta a mano. */
+  async function confirmApps(uid: string): Promise<void> {
+    const u = units.find((x) => x.id === uid);
+    if (!u) return;
+    if (!isOnline(client)) { toast('Cambiar una tarjeta necesita conexión.'); return; }
+    const keyOf = new Map(AGENTS.map(([k, n]) => [n, k]));
+    try {
+      await callProcedure(client, PROCEDURES.boardCard, { project_id: projectId, card_id: u.id, lane_key: u.lane_key, apps: appsOf(u).apps.map((n) => keyOf.get(n) ?? n) });
+      void client.sync();
+    } catch (error) { toast(describeError(error)); }
   }
 
   /** Arrastrar una tarea tuya de un carril de aplicación a otro (fl-20): sale de `from` y entra en `to`; queda puesta a mano. */
@@ -118,9 +147,11 @@ export const mountAvance: ViewMount = ({ main, client, projectId }) => {
       const box = el('input', { type: 'checkbox', value: k, checked: current.includes(k) }) as HTMLInputElement;
       return { box, row: el('label', { class: 'apps-row' }, box, ' ', n) };
     });
-    const body = el('div', { class: 'apps-pick' }, el('p', { class: 'muted small' }, 'Sin ninguna marcada, va a las aplicaciones de sus enlaces o se queda en tu carril.'), ...boxes.map((b) => b.row));
+    const none = el('input', { type: 'checkbox', value: 'none', checked: current.length === 1 && lanes.includes(current[0]!) }) as HTMLInputElement;
+    const body = el('div', { class: 'apps-pick' }, el('p', { class: 'muted small' }, 'Sin ninguna marcada, va a las aplicaciones de sus enlaces o a la adivinada por el texto.'),
+      el('label', { class: 'apps-row' }, none, ' ', 'Ninguna: se queda en mi carril'), ...boxes.map((b) => b.row));
     if (!(await confirmDialog({ title: 'Aplicaciones de la tarea', text: u.label ?? '', confirmLabel: 'Guardar', body }))) return;
-    const apps = boxes.filter((b) => b.box.checked).map((b) => b.box.value);
+    const apps = none.checked ? [u.lane_key ?? 'victor'] : boxes.filter((b) => b.box.checked).map((b) => b.box.value);
     try {
       await callProcedure(client, PROCEDURES.boardCard, { project_id: projectId, card_id: u.id, lane_key: u.lane_key, apps: apps.length ? apps : null });
       void client.sync();
