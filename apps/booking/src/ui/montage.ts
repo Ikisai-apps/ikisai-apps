@@ -10,7 +10,8 @@
 import { createSyncClient, type SyncClient, type SyncedRow } from '@ikisai/sync-client';
 import { createSpaceMap, createSyncSpaceSource, el, floorPlanFromRow, plural, replace, toast, type DecorChange, type DecorIcon, type DecorItem, type FloorPlan, type SpaceMap } from '@ikisai/ui-kit';
 import { montage } from '@ikisai/domain-booking';
-import { describeError } from '../app/client.ts';
+import { BEDS, EVENT_SPACES, SPACES, canRead, describeError } from '../app/client.ts';
+import { lodgingResourceIds, showsResource } from '../app/lodgingSpaces.ts';
 import { settleBatch } from '../app/settle.ts';
 import { estatePlanId, FLOOR_PLANS } from './bedMap.ts';
 
@@ -53,6 +54,8 @@ export function createMontage(o: MontageOptions): { element: HTMLElement; destro
   let destroyed = false;
   let busy = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // booking-U1 (VG 06-11): en el plano, los espacios de alojamiento, con camas o marcados en este evento
+  const shown = new Set<string>();
   const canEdit = () => o.editable && o.wide.matches;
 
   function items(): DecorItem[] {
@@ -70,6 +73,9 @@ export function createMontage(o: MontageOptions): { element: HTMLElement; destro
   async function load(): Promise<void> {
     const live = (list: SyncedRow[]) => (list as Row[]).filter((r) => !r.deleted_at);
     const [decorRows, iconRows, planRows] = await Promise.all([resources.list(DECOR), resources.list(ICONS), resources.list(FLOOR_PLANS)]).catch(() => [[], [], []] as SyncedRow[][]);
+    const marks = canRead(o.client, EVENT_SPACES) ? live(await o.client.list(EVENT_SPACES)).filter((m) => m.event_id === eventId).map((m) => m.space_id) : [];
+    const ids = lodgingResourceIds(live(await o.client.list(SPACES)), live(await o.client.list(BEDS)), marks);
+    shown.clear(); ids.forEach((id) => shown.add(id));
     if (destroyed) return;
     rows = live(decorRows).map(decorRowOf).filter((r) => r.layer === 'general' || r.eventId === eventId);
     // los archivos de Recursos se piden con la sesión y devuelven un enlace firmado: se resuelven antes de pintar (como Central)
@@ -96,7 +102,7 @@ export function createMontage(o: MontageOptions): { element: HTMLElement; destro
       map?.destroy();
       const estate = estatePlanId(planRows);
       map = createSpaceMap({
-        source, plans, mode: 'plan', drill: true, decor: items(), ...(estate ? { plan: estate } : {}),
+        source, plans, mode: 'plan', drill: true, decor: items(), filter: (space) => showsResource(shown, space), ...(estate ? { plan: estate } : {}),
         label: 'Plano del montaje', feedbackId: 'booking.reserva.montaje.plano', planUrl: (fileId: string) => resources.fileUrl(fileId),
         ...(editing ? { decorEdit: { icons: [...icons.values()], onDecorChange: (change: DecorChange) => void save(change) } } : {}),
       });
@@ -142,7 +148,8 @@ export function createMontage(o: MontageOptions): { element: HTMLElement; destro
     }
   }
 
-  const offs = [resources.onTable(DECOR, () => void load()), resources.onTable(ICONS, () => void load()), source.subscribe(() => void map?.refresh())];
+  const offs = [resources.onTable(DECOR, () => void load()), resources.onTable(ICONS, () => void load()), source.subscribe(() => void map?.refresh()),
+    ...[SPACES, BEDS, EVENT_SPACES].filter((t) => canRead(o.client, t)).map((t) => o.client.onTable(t, () => void load().then(() => map?.refresh())))];
   const onWide = () => void load();
   o.wide.addEventListener('change', onWide);
   void resources.start().then(() => load(), () => load());

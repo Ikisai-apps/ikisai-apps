@@ -2229,3 +2229,12 @@ Siempre hay ticket de Finance, y factura con NIF solo si se pide. Booking no gua
   - Sin evento, 422 `EVENT_REQUIRED`.
 - **Diferencia con Organizers:** hace lo mismo que `booking.portal_preview_guest`, pero sin pedir el ámbito del organizador.
 - **Enlace:** el enlace de Guests lo emite `POST /portal-links` con `preview: true`, en solo lectura.
+
+## 51. Espacios de un evento (migración 1430; booking-U1, VG 06-11)
+
+- **Tabla:** `booking.event_spaces` (`event_id`, `space_id`), una fila por espacio que usa ESTE evento.
+  - Los usos generales de cada espacio (`resources.spaces.uses`: alojamiento, eventos…) son de Recursos y los edita Central. Aquí solo va lo propio de la reserva.
+  - Un espacio se marca una vez por evento; la marca no cambia de espacio (se quita y se pone otra). Un espacio borrado no se marca: 422 `INVALID_FIELDS`.
+  - La escriben el editor y el owner desde «Espacios de este evento», en Operación.
+- **Usos (migración 1431):** el espejo copia `resources.spaces.uses` en `booking.spaces.uses`, también lo que ya existía en la primera pasada del tick. Montaje, árbol de Espacios y asignación enseñan los espacios con uso «alojamiento», los que tienen camas y los marcados en el evento (`apps/booking/src/app/lodgingSpaces.ts`).
+- **Después (detrás de Central #1311):** la casilla «También para todos los eventos» pide a Central `central.add_space_use`.

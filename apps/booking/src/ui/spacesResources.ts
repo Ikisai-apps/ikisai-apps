@@ -9,7 +9,8 @@
 import { createSyncClient, type RowOperation, type SyncClient, type SyncedRow, type TableName } from '@ikisai/sync-client';
 import { confirmDialog, createSpaceTree, createSyncSpaceSource, el, fieldAttrs, openSheet, replace, toast, type Sheet, type SpaceRow, type SpaceRowAction } from '@ikisai/ui-kit';
 import { TABLES } from '@ikisai/domain-booking';
-import { describeError } from '../app/client.ts';
+import { BEDS, SPACES, describeError } from '../app/client.ts';
+import { lodgingResourceIds, showsResource } from '../app/lodgingSpaces.ts';
 
 type Row = SyncedRow & Record<string, any>;
 export const MODULE_SETTINGS: TableName = TABLES.moduleSettings as TableName;
@@ -47,11 +48,17 @@ export function mountResourcesSpaces(host: HTMLElement, client: SyncClient): () 
   const source = createSyncSpaceSource(resources, { onError: (message) => toast(`No se ha guardado: ${message}`) });
   const container = el('div');
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // booking-U1 (VG 06-11): solo los espacios de alojamiento (uso en Recursos), los que tienen camas y sus camas
+  const lodging = new Set<string>();
+  const readLodging = async () => {
+    const ids = lodgingResourceIds((await client.list(SPACES)) as Row[], (await client.list(BEDS)) as Row[]);
+    lodging.clear(); ids.forEach((id) => lodging.add(id));
+  };
   const tree = createSpaceTree({
     source, container, label: 'Espacios y camas', feedbackId: 'booking.espacios.arbol', storageKey: 'booking.espacios.arbol',
     // vg-52: de lectura para los espacios (ni crear, ni renombrar, ni mover: eso es de Central)
     permissions: { edit: false, structure: false },
-    filter: (row) => BOOKING_KINDS.has(row.kind),
+    filter: (row) => BOOKING_KINDS.has(row.kind) && showsResource(lodging, row),
     // Las camas, a un toque en la fila. Texto corto para que quepa en el móvil: el kit pone el nombre en la etiqueta accesible.
     rowActions: (row): SpaceRowAction[] => {
       if (!row.active) return [];
@@ -99,6 +106,8 @@ export function mountResourcesSpaces(host: HTMLElement, client: SyncClient): () 
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void syncMirror(client), 800);
   }) : () => undefined;
+  void readLodging().then(() => tree.refresh());
+  const offMirror = [SPACES, BEDS].map((table) => client.onTable(table, () => void readLodging().then(() => tree.refresh())));
   void resources.start();
   replace(host, el('p', { class: 'hint' }, 'Los espacios y las camas son los de Recursos, comunes a todas las apps. Las camas y sus plazas se gestionan aquí; los espacios se crean, renombran y colocan en Central.'),
     el('p', null, el('a', { class: 'ghost small', href: CENTRAL_PLANS_URL, target: '_blank', rel: 'noopener', id: 'spacesInCentral', 'data-feedback-id': 'booking.espacios.central', 'data-feedback-label': 'Crear o renombrar espacios en Central' },
@@ -107,6 +116,7 @@ export function mountResourcesSpaces(host: HTMLElement, client: SyncClient): () 
   return () => {
     if (timer) clearTimeout(timer);
     off();
+    offMirror.forEach((f) => f());
     tree.destroy();
     source.destroy();
   };
