@@ -10,7 +10,7 @@
  * Toma las filas de una `SpaceSource` (se actualiza sola) o de `rows`.
  */
 import { el, replace } from '../dom.ts';
-import { icon } from '../icons.ts';
+import { hasIcon, icon, type IconName } from '../icons.ts';
 import { kt } from '../i18n/i18n.ts';
 import { normalizeName } from '../fields/suggest.ts';
 import { DEFAULT_SPACE_KINDS, ancestorsOf, indexSpaces, kindLabel, spaceMatches, spacePath, spaceShortPath, type SpaceKind, type SpaceRow, type SpaceSource } from './model.ts';
@@ -39,6 +39,8 @@ export interface SpacePickerOptions {
   quickLimit?: number;
   /** «Elegir en el árbol»: el árbol de espacios plegable, con chips que se marcan ahí mismo. */
   tree?: boolean;
+  /** Icono del kit delante del nombre (los oficios de `createTradePicker`); `null`, sin icono. */
+  iconOf?: (row: SpaceRow) => string | null;
   /** Textos para usarlo con otras filas en forma de espacio (los oficios de Tasks); sin ellos, los de espacios. */
   texts?: SpacePickerTexts;
 }
@@ -102,6 +104,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
 
   const selectable = (r: SpaceRow) => r.active && (!options.kindFilter || options.kindFilter.includes(r.kind)) && (!options.filter || options.filter(r));
   const shortPath = (rid: string) => spaceShortPath(byId, rid);
+  const glyph = (r: SpaceRow | undefined) => { const n = r && options.iconOf?.(r); return n && hasIcon(n) ? icon(n as IconName, 16) : null; };
 
   const chips = el('div', { class: 'space-picked', 'aria-live': 'polite' });
   const quickHost = el('div', { class: 'space-quick' });
@@ -147,12 +150,12 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
   function paint(): void {
     paintTree();
     replace(chips, ...selected.filter((x) => byId.has(x)).map((x) => el('span', { class: 'chip space-chip', title: spacePath(byId, x) },
-      shortPath(x),
+      glyph(byId.get(x)), shortPath(x),
       el('button', { type: 'button', class: 'space-chip-x', 'aria-label': kt('Quitar {path}', { path: spacePath(byId, x) }), ...mark('remove'), onclick: () => { selected = selected.filter((s) => s !== x); paint(); emit(); } }, icon('close', 14)))));
     const quick = quickIds();
     replace(quickHost, ...(quick.length ? [
       el('span', { class: 'space-quick-label' }, options.quick ? kt('Más usados') : kt('Recientes')),
-      ...quick.map((x) => el('button', { type: 'button', class: `filterchip space-quick-chip${selected.includes(x) ? ' on' : ''}`, 'aria-pressed': String(selected.includes(x)), title: spacePath(byId, x), ...mark('quick'), onclick: () => toggle(x, 'quick') }, byId.get(x)!.name)),
+      ...quick.map((x) => el('button', { type: 'button', class: `filterchip space-quick-chip${selected.includes(x) ? ' on' : ''}`, 'aria-pressed': String(selected.includes(x)), title: spacePath(byId, x), ...mark('quick'), onclick: () => toggle(x, 'quick') }, glyph(byId.get(x)), byId.get(x)!.name)),
     ] : []));
   }
 
@@ -162,14 +165,14 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
     const live = rows.filter((r) => r.active);
     const kids = (pid: string | null) => live.filter((r) => (pid ? r.parentId === pid : !r.parentId || !byId.has(r.parentId))).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
     const chip = (r: SpaceRow) => el('button', { type: 'button', class: `filterchip space-tree-chip${selected.includes(r.id) ? ' on' : ''}`, 'aria-pressed': String(selected.includes(r.id)), title: spacePath(byId, r.id), ...mark('option'),
-      onclick: () => toggle(r.id, 'quick') }, r.name);
+      onclick: () => toggle(r.id, 'quick') }, glyph(r), r.name);
     const node = (r: SpaceRow): HTMLElement | null => {
       const inner = kids(r.id).map(node).filter((n): n is HTMLElement => !!n);
       if (!inner.length) return selectable(r) ? chip(r) : null;
       const leaves = inner.filter((n) => n.tagName === 'BUTTON');
       const groups = inner.filter((n) => n.tagName !== 'BUTTON');
       return el('details', { class: 'space-tree-group', open: treeOpen.has(r.id), ontoggle: (e: Event) => { if ((e.currentTarget as HTMLDetailsElement).open) treeOpen.add(r.id); else treeOpen.delete(r.id); } },
-        el('summary', null, r.name),
+        el('summary', null, glyph(r), r.name),
         // El propio contenedor, si se puede elegir («Toda el ala»), va primero entre sus chips.
         selectable(r) || leaves.length ? el('div', { class: 'space-tree-chips' }, ...(selectable(r) ? [chip(r)] : []), ...leaves) : null, ...groups);
     };
@@ -195,7 +198,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
       const parentPath = ancestorsOf(byId, r.id).map((a) => a.name).join(' › ');
       return el('li', { role: 'option', id: `${id}-opt-${i}`, class: `space-result${i === active ? ' active' : ''}`, 'aria-selected': String(selected.includes(r.id)), ...mark('option'),
         onmousedown: (e: Event) => e.preventDefault(), onclick: () => pick(r.id) },
-        el('span', { class: 'space-result-name' }, r.name, selected.includes(r.id) ? el('span', { class: 'space-result-check' }, icon('check', 14)) : null),
+        el('span', { class: 'space-result-name' }, glyph(r), r.name, selected.includes(r.id) ? el('span', { class: 'space-result-check' }, icon('check', 14)) : null),
         el('span', { class: 'space-result-path' }, [parentPath, kindLabel(kinds, r.kind)].filter(Boolean).join(' · ')));
     }) : open ? [el('li', { class: 'space-result empty', role: 'option', 'aria-disabled': 'true' }, emptyText(q))] : []));
     if (active >= 0) input.setAttribute('aria-activedescendant', `${id}-opt-${active}`); else input.removeAttribute('aria-activedescendant');

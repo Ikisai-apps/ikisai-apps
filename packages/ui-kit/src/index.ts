@@ -4,7 +4,7 @@
  * y sirve las fuentes de `@ikisai/ui-kit/fonts/` en `/fonts/`.
  */
 export { el, append, clear, replace, formatDate, plural, type Attrs, type Child } from './dom.ts';
-export { icon, registerIcons, hasIcon, itemIcon, ITEM_ICONS, type IconName } from './icons.ts';
+export { icon, registerIcons, hasIcon, itemIcon, ITEM_ICONS, tradeIcon, TRADE_ICONS, type IconName } from './icons.ts';
 export { applyTheme, setTheme, toggleTheme, themePreference, effectiveTheme, inkOn, readableColor, itemColorStyle, applyAccent, type ThemePreference } from './theme.ts';
 export { toast, toastWithAction, hideToast, type ToastAction } from './toast.ts';
 export {
@@ -135,5 +135,5 @@ export {
 export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine, type MoneyMove } from './cards/money.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';
 export { createTradePicker, expandTrades, tradeCovers, type TradeOption, type TradePicker, type TradePickerOptions } from './fields/trade-picker.ts';
-export { createPlacePicker, PLACE_PICKER_MARKS, type PlaceCell, type PlacePicker, type PlacePickerOptions, type PlaceValue } from './spaces/place-picker.ts';
+export { createPlacePicker, placePath, cellName, PLACE_PICKER_MARKS, type PlaceCell, type PlacePicker, type PlacePickerOptions, type PlaceValue } from './spaces/place-picker.ts';
 export { rebuildDeviceData, canRebuild, type RebuildClient } from './shell/rebuild-data.ts';

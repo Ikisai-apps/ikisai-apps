@@ -1039,6 +1039,13 @@ export const KIT_EN: Dictionary = {
   'Toca el plano para poner la imagen.': 'Tap the plan to place the image.',
   'Elige una imagen para subirla.': 'Choose an image to upload.',
   'Elegir en el árbol': 'Choose from the tree',
+  'Cuadrante {name}': 'Square {name}',
+  'cuadrante {name}': 'square {name}',
+  'Toda la estancia': 'The whole room',
+  'Elige la altura.': 'Choose the level.',
+  '{name}: toca la estancia': '{name}: tap the room',
+  'Elige una estancia en el plano de arriba y aquí sale con sus cuadrantes de 1 m².': 'Choose a room on the plan above and it shows here with its 1 m² squares.',
+  '{name} ({w} × {h} m): toca un cuadrante si hace falta': '{name} ({w} × {h} m): tap a square if needed',
 
   // Oficios (createTradePicker)
   'Ningún oficio coincide con «{q}».': 'No trade matches “{q}”.',
@@ -1050,8 +1057,6 @@ export const KIT_EN: Dictionary = {
   'Quitar oficio': 'Remove trade',
   'Oficio': 'Trade',
   'Especialidad': 'Specialty',
-  'Columna {x}, fila {y}': 'Column {x}, row {y}',
-  'Cuadrante: columna {x}, fila {y}': 'Square: column {x}, row {y}',
   'Cuadrantes de 1 m² de {name}': '1 m² squares of {name}',
   'Elegido': 'Chosen',
   'Elegido: {name}': 'Chosen: {name}',

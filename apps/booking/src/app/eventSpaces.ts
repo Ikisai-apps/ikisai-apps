@@ -7,7 +7,13 @@
 type Row = Record<string, any>;
 const live = (rows: Row[]) => rows.filter((r) => !r.deleted_at);
 
-export interface EventSpaceItem { id: string; name: string; zone: string | null; marked: boolean; markId: string | null; markRevision: number | null }
+export interface EventSpaceItem {
+  id: string; name: string; zone: string | null; marked: boolean; markId: string | null; markRevision: number | null;
+  /** Ya es de alojamiento para todos los eventos (uso general en Recursos, 1431). */
+  lodging: boolean;
+  /** Viene de Recursos: se puede pedir a Central su uso general (1432). */
+  fromResources: boolean;
+}
 
 /** Los espacios vivos y activos, por zona y orden, con su marca para el evento. Un espacio inactivo ya marcado sigue saliendo. */
 export function eventSpaceItems(spaces: Row[], marks: Row[], eventId: string): EventSpaceItem[] {
@@ -16,7 +22,8 @@ export function eventSpaceItems(spaces: Row[], marks: Row[], eventId: string): E
     .sort((a, b) => String(a.zone ?? '').localeCompare(String(b.zone ?? ''), 'es') || Number(a.position ?? 0) - Number(b.position ?? 0) || String(a.name).localeCompare(String(b.name), 'es'))
     .map((s) => {
       const m = markOf.get(s.id);
-      return { id: s.id, name: s.public_name || s.name, zone: s.zone ?? null, marked: !!m, markId: m?.id ?? null, markRevision: m ? Number(m.revision) : null };
+      return { id: s.id, name: s.public_name || s.name, zone: s.zone ?? null, marked: !!m, markId: m?.id ?? null, markRevision: m ? Number(m.revision) : null,
+        lodging: Array.isArray(s.uses) && s.uses.includes('alojamiento'), fromResources: !!s.resource_id };
     });
 }
 

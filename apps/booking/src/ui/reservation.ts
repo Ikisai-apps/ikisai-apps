@@ -748,7 +748,7 @@ export function mountReservation(id: string): ViewMount {
             if (montageCard?.key !== key) { montageCard?.card.destroy(); montageCard = { key, card: createMontage({ client, reservationId: id, event: liveEvent, editable, wide }) }; }
             return montageCard.card.element;
           })() : null,
-          liveEvent && eventSpaces ? renderEventSpaces({ event: liveEvent, ...eventSpaces, editable, run }) : null,
+          liveEvent && eventSpaces ? renderEventSpaces({ client, event: liveEvent, ...eventSpaces, editable, run }) : null,
           renderVisitorRequests({ requests: visitorRequests, editable, run })], {
           writable: editable, onEdit: writable && !deleted ? editReservation : undefined, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
           onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },

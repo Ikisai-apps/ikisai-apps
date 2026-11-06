@@ -99,6 +99,10 @@ const ICONS: Record<string, string> = {
   broom: '<path d="M20 4 12 12"/><path d="M12 12l-2-.5-6 6 4 4 6-6z"/><path d="M6.5 16.5 9 19M8.5 14.5 11 17"/>',
   bucket: '<path d="M4 8h16l-1.6 11.3A2 2 0 0 1 16.4 21H7.6a2 2 0 0 1-2-1.7z"/><path d="M6 8a6 6 0 0 1 12 0"/>',
   brush: '<path d="M14 3h6v6"/><path d="M20 3 11 12"/><path d="M11 12a3 3 0 0 0-4.2 0c-1.3 1.3-.8 3-2.8 4.5 2.5 1.5 5.5 1.5 7.4-.4a3 3 0 0 0-.4-4.1z"/>',
+  // Oficios (TRADE_ICONS): los que faltaban, dibujados por Tasks en el trazo del kit.
+  brick: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/>',
+  fan: '<circle cx="12" cy="12" r="1.6"/><path d="M12 10.4c-1-3.4-.2-6.4 2.3-6.4 2.2 0 2.6 3-.7 6.6"/><path d="M13.4 12.8c3.4.9 5.7 3 4.5 5.2-1.1 1.9-3.9.8-5.3-3.9"/><path d="M10.6 12.8c-2.4 2.6-5.4 3.4-6.6 1.2-1.1-1.9 1.3-3.7 6.1-2.8"/>',
+  pool: '<path d="M3 17c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0"/><path d="M3 20.5c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0"/><path d="M8 14V6a2 2 0 0 1 4 0M14 14V6a2 2 0 0 1 4 0M8 9h6M8 12h6"/>',
 };
 
 export type IconName = keyof typeof ICONS | (string & {});
@@ -126,6 +130,38 @@ export const ITEM_ICONS: ReadonlyArray<{ key: string; icon: string; label: strin
 /** Nombre del icono del kit para una clave guardada (`resources.items.icon`); `null` si no es del juego. */
 export function itemIcon(key: string | null | undefined): string | null {
   return ITEM_ICONS.find((i) => i.key === key)?.icon ?? null;
+}
+
+/**
+ * Iconos de oficio (VG 06-11): la clave es la que guarda Central en `central.trades.icon` (minúsculas, sin tildes) y
+ * publica en `central.trade_options.icon`. Sin clave, `tradeIcon` la deduce del nombre («Fontanería» → fontaneria).
+ */
+export const TRADE_ICONS: ReadonlyArray<{ key: string; icon: string; label: string }> = [
+  { key: 'fontaneria', icon: 'faucet', label: 'Fontanería' },
+  { key: 'electricidad', icon: 'bulb', label: 'Electricidad' },
+  { key: 'pintura', icon: 'brush', label: 'Pintura' },
+  { key: 'jardineria', icon: 'sprout', label: 'Jardinería' },
+  { key: 'limpieza', icon: 'broom', label: 'Limpieza' },
+  { key: 'cocina', icon: 'pot', label: 'Cocina' },
+  { key: 'albanileria', icon: 'brick', label: 'Albañilería' },
+  { key: 'carpinteria', icon: 'saw', label: 'Carpintería' },
+  { key: 'cerrajeria', icon: 'lock', label: 'Cerrajería' },
+  { key: 'climatizacion', icon: 'fan', label: 'Climatización' },
+  { key: 'piscina', icon: 'pool', label: 'Piscina' },
+  { key: 'mantenimiento', icon: 'wrench', label: 'Mantenimiento' },
+];
+
+const tradeKey = (s: string): string => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/** Nombre del icono del kit para un oficio: por su clave (`icon` de la fila) o, sin ella, por su nombre. `null` si no hay. */
+export function tradeIcon(keyOrName: string | null | undefined, name?: string | null): string | null {
+  for (const s of [keyOrName, name]) {
+    if (!s) continue;
+    const k = tradeKey(s);
+    const hit = TRADE_ICONS.find((i) => i.key === k);
+    if (hit) return hit.icon;
+  }
+  return null;
 }
 
 /** Añade o sustituye iconos (las apps registran los suyos al arrancar). */

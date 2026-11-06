@@ -329,6 +329,8 @@ test('herencia: las personas del proyecto pasan a sus tareas nuevas (ficha y alt
     const task = tasks.find((t) => t.title === title);
     expect(task, title).toBeTruthy();
     expect(await taskPeople(task.id), title).toEqual([P_VG, 'level:staff'].sort());
+    // La tarea nueva lleva de responsable a quien la crea (VG 06-11): la persona de Central enlazada a la cuenta.
+    expect([task.owner_label_id, task.owner_person_id], title).toEqual([null, P_VG]);
   }
 });
 

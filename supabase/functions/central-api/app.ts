@@ -1,8 +1,8 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
-import { createApp, createStorage, createSupabase, createUploads, fail, generateAgentKey, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, createUploads, ensureServiceActor, fail, generateAgentKey, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig, type WorkerRoute } from '../_kit/mod.ts';
 import {
   BED_LAYOUT_PROJECTION, FIELD_COVERAGE_READ, canDeclareUtility, COMPLIANCE_TABLES, ENTITY_TABLE, type BedLayout, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, accountGuardIssue, accountGuardTargets, TASK_KIND, TASK_KIND_LABEL, kpiState, targetOrDefault, taskExternalRef, WEEKLY_ACTIONS_TABLE, WEEKLY_TASK_KIND, WEEKLY_TASK_KIND_LABEL, canPrepareReview, weeklyTaskRef, validateOperations, visibleRow,
-  type HouseGrant, type KpiRow, type KpiTarget,
+  type HouseGrant, type KpiRow, type KpiTarget, checkSpaceUseRequest, spaceUseRequestId, type SpaceUseRequest,
 } from '../_domain/central/mod.ts';
 
 export const CENTRAL_ORIGINS = ['https://central.ikisai.com', 'https://ikisai-central.pages.dev'];
@@ -302,6 +302,43 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
   ];
 }
 
+/**
+ * «También para todos los eventos» (VG, 06-11; central-U1, acordado con Booking): `POST worker/space-use` con la clave de worker
+ * y `X-Ikisai-Caller: booking`, cuerpo `{space_id, use, source_ref, requested_by}`. Solo añade el uso (nunca quita), idempotente
+ * por espacio y uso. Escribe en Recursos como «Central (sistema)» (editor en resources, núcleo 0125) con client_app central: la
+ * estructura la sigue escribiendo solo Central. El rastro (de qué reserva, qué uso y quién lo pidió) va en el requestId del lote.
+ */
+export function spaceUseRoute(supabase: Supabase): WorkerRoute {
+  return {
+    method: 'POST', pattern: 'space-use',
+    handler: async ({ request, json }) => {
+      if (request.headers.get('x-ikisai-caller') !== 'booking') fail(403, 'FORBIDDEN', 'Solo Booking pide usos de espacio por aquí.');
+      const checked = checkSpaceUseRequest(await json().catch(() => ({})));
+      if ('field' in checked) fail(422, 'INVALID_FIELDS', 'Revisa la petición.', { field: checked.field });
+      const req = (checked as { request: SpaceUseRequest }).request;
+      const actor = await ensureServiceActor(supabase, 'central');
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const out = await supabase.rpc<{ space: { id: string; revision: number; uses: string[] | null } | null }>('core_read', { p_app: 'resources', p_actor: actor, p_name: 'central.space_use_target', p_args: { id: req.space_id } });
+        const space = out?.space ?? null;
+        if (!space) fail(404, 'NOT_FOUND', 'Ese espacio no existe o está dado de baja.');
+        const uses = space!.uses ?? [];
+        if (uses.includes(req.use)) return { uses, added: false };
+        const next = [...uses, req.use];
+        const operations = [{ op: 'update', table: 'resources.spaces', id: space!.id, expectedRevision: Number(space!.revision), fields: { uses: next } }];
+        try {
+          await supabase.rpc('core_commit', { p_app: 'resources', p_actor: actor, p_request_id: spaceUseRequestId(req), p_digest: await sha256Hex(stable(operations)), p_expected_cursor: null, p_operations: operations, p_confirmation: null, p_origin: 'server', p_client_app: 'central' });
+          return { uses: next, added: true };
+        } catch (error) {
+          // Otro cambio a la vez en el espacio: se relee una vez.
+          if (attempt === 0 && isFault(error) && error.code === 'VERSION_CONFLICT') continue;
+          throw error;
+        }
+      }
+      fail(409, 'VERSION_CONFLICT', 'El espacio ha cambiado a la vez; vuelve a intentarlo.');
+    },
+  };
+}
+
 export function createCentralApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads' | 'admin'> & Partial<Pick<AppConfig, 'origins' | 'uploads'>>, options: CentralAppOptions = {}) {
   const supabase = createSupabase(base);
   const uploads = base.uploads ?? CENTRAL_UPLOADS;
@@ -334,5 +371,6 @@ export function createCentralApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
       },
     },
     routes: centralRoutes(supabase, uploads, options, storage),
+    workerRoutes: [...(base.workerRoutes ?? []), spaceUseRoute(supabase)],
   });
 }

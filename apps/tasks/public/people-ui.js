@@ -172,7 +172,7 @@ const taskEditorBeforePeople=openTaskEditor;
 openTaskEditor=function(id,selectedOverride=null,valsOverride=null){taskEditorBeforePeople(id,selectedOverride,valsOverride);if(!peopleMode())return;
   const loc=id?taskLocation(id):null,key='task:'+(id||'new'),initial=loc?(loc.t.people||[]):(project()?.ownPeople||[]);
   mountPeopleField(document.getElementById('editLabelsBtn')?.closest('.field'),key,initial,'Personas','tasks.editor_tarea.personas');
-  const select=mountOwnerSelect(document.getElementById('teOwner'),key,loc?.t.ownerPerson);
+  const select=mountOwnerSelect(document.getElementById('teOwner'),key,loc?loc.t.ownerPerson:myPerson()?.person_id);
   rememberPeople(document.getElementById('saveTaskBtn'),select,{kind:'task',id:id||null})};
 const projectEditorBeforePeople=openProjectEditor;
 openProjectEditor=function(id,selectedOverride=null,valsOverride=null){projectEditorBeforePeople(id,selectedOverride,valsOverride);if(!peopleMode())return;
@@ -316,6 +316,6 @@ const saveBeforeDefaultOwner=save;
 save=function(...args){try{const me=typeof myPerson==='function'?myPerson():null;
     if(me&&Sync.core?.peopleSource?.()==='central'){const known=new Set((Sync.core.data?.['tasks.tasks']||[]).map(r=>r.id));
       for(const a of state.tabs||[])for(const p of a.projects||[])for(const t of p.tasks||[])
-        if(!known.has(t.id)&&!t.deleted&&t.ownerPerson===undefined&&!t.owner)t.ownerPerson=me.id}}
+        if(!known.has(t.id)&&!t.deleted&&t.ownerPerson===undefined&&!t.owner)t.ownerPerson=me.person_id}}
   catch(e){console.error(e)}
   return saveBeforeDefaultOwner(...args)};

@@ -2338,12 +2338,27 @@ button.cal-sheet-event{cursor:pointer}
 .space-tree-group>summary{min-height:var(--tap);display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer}
 .space-tree-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px}
 .space-tree-chip{min-height:var(--tap)}
+/* createTradePicker: el icono del oficio delante del nombre. */
+.trade-picker :is(summary,.space-chip,.space-tree-chip,.space-quick-chip,.space-result-name)>svg{flex:none;vertical-align:-3px;margin-inline-end:6px}
 /* Selector visual de espacio (src/spaces/place-picker.ts). */
 .place-picker{display:grid;gap:10px}
 .place-title{margin:0;font-size:var(--text-md,1rem)}
 .place-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:var(--text-sm)}
 .place-crumb{min-height:var(--tap)}
+/* La ruta se lee como tal: «Alturas › Altura 3 › Interior › Albergue › Hab 1 › Cuadrante 2, 3». */
+.place-crumb+.place-crumb::before{content:'›';margin-inline-end:8px;color:var(--muted);pointer-events:none}
 .place-here{font-weight:700}
+/* `layout: 'stacked'`: el plano arriba y, debajo, los cuadrantes de la estancia elegida. */
+.place-where{display:grid;gap:8px}
+.place-maps{display:grid;gap:10px}
+.place-top,.place-below{min-width:0}
+@media (min-width:720px){.place-picker.stacked .place-maps{grid-template-columns:3fr 2fr;align-items:start}}
+.place-map-title{margin:0 0 4px;font-size:12px;color:var(--muted)}
+.place-picker.stacked .place-cells{max-height:46vh}
+.place-picker.stacked .place-room{fill:var(--paper);stroke:var(--accent);stroke-width:2%}
+.place-cell-name{fill:var(--muted);pointer-events:none}
+.place-cell.on+.place-cell-name{fill:var(--accent-ink)}
+.place-cell-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-size:13px;color:var(--muted)}
 .place-clear{margin-left:auto}
 .place-chips{display:flex;flex-wrap:wrap;gap:8px}
 .place-chip{min-height:var(--tap)}
