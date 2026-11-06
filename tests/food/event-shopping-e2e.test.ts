@@ -12,7 +12,7 @@ import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 import { receiptEntryOperation, receivePurchaseOps } from '../../supabase/functions/_domain/tasks/purchases.ts';
 import { emptyDataset } from '../../supabase/functions/_domain/tasks/types.ts';
 import { eventSnapshot, type EventShopping, type FoodEvent } from '../../supabase/functions/_domain/food/mod.ts';
-import { day, seedBookingEvent } from './helpers.ts';
+import { day, seedBookingEvent, seedSpaces } from './helpers.ts';
 
 const uuid = () => crypto.randomUUID();
 const WORKER_KEY = 'clave-de-worker-de-prueba';
@@ -64,12 +64,11 @@ test.before(async () => {
   assert.equal(project.status, 200, JSON.stringify(project.data));
 
   // Recursos: arroz y sal en kg, y la cocina (donde Food cuenta su Despensa).
+  // Una cocina cuelga de un edificio (Recursos no admite una cocina en la raíz).
+  await seedSpaces(app.t.db, [{ id: HOUSE, kind: 'edificio', name: 'Casa' }, { id: KITCHEN, kind: 'cocina', name: 'Cocina', parent_id: HOUSE }]);
   await ok('resources/commands', [
     insert('resources.items', ARROZ, { name: 'Arroz', kind: 'ingrediente', base_unit: 'kg' }),
     insert('resources.items', SAL, { name: 'Sal', kind: 'ingrediente', base_unit: 'kg' }),
-    // Una cocina cuelga de un edificio (Recursos no admite una cocina en la raíz).
-    insert('resources.spaces', HOUSE, { kind: 'edificio', name: 'Casa' }),
-    insert('resources.spaces', KITCHEN, { kind: 'cocina', name: 'Cocina', parent_id: HOUSE }),
   ]);
   event = await seedBookingEvent(app, { title: 'Retiro con barra', start: day(20), end: day(21) });
   const snapshot = (await app.call(`/api/v1/events/${event}`)).data.event as FoodEvent;
