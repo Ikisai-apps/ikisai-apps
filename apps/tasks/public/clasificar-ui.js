@@ -11,6 +11,9 @@
    - Sin la referencia «R…» a la vista (PERDIDAS §1): sigue en la ficha de la tarea y en «Abrir en …».
    - Se conservan: «Gestionar entradas», la regla nueva, «Quitar regla», «Mover también las que esperaban», el aviso de los
      retiros, «Abrir en <app>», el responsable de Central en «Mover a…» y solo para quien tiene la app entera.
+   «Cambiar clasificación» (V-03 b, VG 06-11): en la petición misma, sin ir a «Gestionar entradas». Por clasificar o ya
+   clasificada (desde la ficha de su tarea): área y proyecto, responsable y oficio, y «Aplicar también a las próximas como
+   esta», que crea o ajusta la regla de su tipo en el mismo lote. Ya clasificada, el área no cambia (su tarea es de esa área).
    Prefijo de clases: `tkc-`. */
 const TKC_BEHALF={guest:'De parte de un huésped',organizer:'De parte de una organizadora',internal:'De parte de alguien de la casa'};
 function tkcToday(){return typeof isoDay==='function'?isoDay(0):new Date().toISOString().slice(0,10)}
@@ -39,7 +42,7 @@ function tkcRow(r,head){const dest=tkcDestination(r),u=urgencyOf(r,tkcToday()),a
     ${meta.length?`<span class="pmeta">${meta.map(esc).join(' · ')}</span>`:''}
     ${space?`<span class="pmeta tkc-space" data-request-space="${esc(r.space_id)}">Sitio: ${esc(space)}</span>`:''}
     <span class="pmeta tkc-dest">${dest?`Va a <strong>${esc(dest.name)}</strong>`:'Sin destino propuesto: elige con «Mover a…»'}${r.external_url?` · <a href="${esc(r.external_url)}" target="_blank" rel="noopener" data-feedback-id="tasks.por_clasificar.lista.abrir_origen" data-feedback-label="Abrir en la app de origen">Abrir en ${esc(appName(r.source))}</a>`:''}</span>
-    <div class="pactions tkc-actions">${dest?`<button class="primary small tkc-classify" data-request-classify="${r.id}" type="button" aria-label="Clasificar «${esc(r.title)}» en ${esc(dest.name)}" data-feedback-id="tasks.por_clasificar.lista.clasificar" data-feedback-label="Clasificar en el destino propuesto">✓ Clasificar</button>`:''}<button class="softbtn small" data-request-move="${r.id}" type="button" data-feedback-id="tasks.por_clasificar.lista.mover" data-feedback-label="Mover petición a…">Mover a…</button><button class="ghost small" data-request-dismiss="${r.id}" type="button" aria-label="Descartar «${esc(r.title)}»" data-feedback-id="tasks.por_clasificar.lista.descartar" data-feedback-label="Descartar petición">✕ Descartar</button></div></div></div>`;
+    <div class="pactions tkc-actions">${dest?`<button class="primary small tkc-classify" data-request-classify="${r.id}" type="button" aria-label="Clasificar «${esc(r.title)}» en ${esc(dest.name)}" data-feedback-id="tasks.por_clasificar.lista.clasificar" data-feedback-label="Clasificar en el destino propuesto">✓ Clasificar</button>`:''}<button class="softbtn small" data-request-move="${r.id}" type="button" data-feedback-id="tasks.por_clasificar.lista.mover" data-feedback-label="Cambiar clasificación">Cambiar clasificación</button><button class="ghost small" data-request-dismiss="${r.id}" type="button" aria-label="Descartar «${esc(r.title)}»" data-feedback-id="tasks.por_clasificar.lista.descartar" data-feedback-label="Descartar petición">✕ Descartar</button></div></div></div>`;
   return li}
 /* Cabecera de cada tipo dentro de su banda: la regla a la vista, «Siempre a …» y «✓ Clasificar las N». */
 function tkcKindHead(kind){const data=Sync.core.data,route=R().routeFor(data,kind.kind),items=kind.items,dests=items.map(tkcDestination),same=dests.every(d=>d&&d.name===dests[0]?.name);
@@ -82,3 +85,40 @@ bind=function(){bindBeforeClasificar();if(state.view!=='triage')return;
   document.querySelectorAll('[data-request-classify]').forEach(b=>b.onclick=()=>tkcClassify([b.dataset.requestClassify]));
   document.querySelectorAll('[data-classify-kind]').forEach(b=>b.onclick=()=>tkcClassify(R().pendingRequests(Sync.core.data,b.dataset.classifyKind).map(r=>r.id)));
   document.querySelectorAll('[data-request-dismiss]').forEach(b=>b.onclick=()=>tkcDismiss(b.dataset.requestDismiss))};
+
+/* --- «Cambiar clasificación» -------------------------------------------------------------------------------------- */
+function tkcRequestTask(r){return r?.status==='routed'?inboxRows('tasks.tasks').find(t=>t.id===r.id&&!t.parent_id):null}
+function tkcCurrentOf(r){const task=tkcRequestTask(r);
+  if(task){const p=inboxRows('tasks.projects').find(x=>x.id===task.project_id),trade=inboxRows('tasks.task_trades').find(x=>x.task_id===task.id);
+    return {tab_id:task.tab_id,project_id:p?.system==='inbox'?null:task.project_id,owner_label_id:task.owner_label_id||null,
+      owner_member:task.owner_person_id||(task.owner_house_level?'level:'+task.owner_house_level:null),trade_id:trade?.trade_id??null}}
+  const route=R().routeFor(Sync.core.data,r.kind),d=tkcDestination(r),p=d?inboxRows('tasks.projects').find(x=>x.id===d.project_id):null;
+  return p?{tab_id:p.tab_id,project_id:p.system==='inbox'?null:p.id,trade_id:route?.trade_id??null}:{trade_id:route?.trade_id??null}}
+function tkcReclassifySheet(id,current=null){const r=inboxRows('tasks.requests').find(x=>x.id===id);if(!r||!canTriage())return;
+  const task=tkcRequestTask(r);if(r.status==='routed'&&!task)return toast('La tarea de esta petición es parte de otra: cámbiala desde allí.');
+  const cur=current||tkcCurrentOf(r),route=R().routeFor(Sync.core.data,r.kind),also=!!cur.also,kind=kindName(r.kind,r.kind_label);
+  openSheet(`<h2 class="sheettitle">Cambiar clasificación</h2><p>${originChip(r.source)} ${esc(r.title)}</p>
+    ${destinationFields(task?{...cur,tab_id:task.tab_id}:cur)}
+    ${task?'<p class="small muted" id="tkcSameArea">Ya está clasificada: cambia de proyecto dentro de su área. Para otra área, deshaz la clasificación y vuelve a clasificarla.</p>':''}
+    ${routeTradeField(cur.trade_id??null,r.kind,false)}
+    ${canManageRoutes()?`<label class="tkc-also"><input type="checkbox" id="tkcAlso" ${also?'checked':''} data-field-id="tasks.cambiar_clasificacion.regla" data-field-storage="none" data-feedback-id="tasks.cambiar_clasificacion.regla" data-feedback-label="Aplicar también a las próximas como esta"> Aplicar también a las próximas como esta <span class="small muted">(${esc(kind)}${route?': cambia su regla':': crea su regla'})</span></label>`:''}
+    <div class="actions"><button class="primary" id="moveRequest" type="button" data-feedback-id="tasks.mover_peticion.crear_tarea" data-feedback-label="${task?'Guardar la clasificación':'Crear la tarea aquí'}">${task?'Guardar':'Crear la tarea aquí'}</button></div>`);
+  if(task){const t=document.getElementById('destTab');if(t)t.disabled=true}
+  const alsoNow=()=>!!document.getElementById('tkcAlso')?.checked;
+  bindDestination(c=>tkcReclassifySheet(id,{...c,...routeTradeValue(),also:alsoNow()}));
+  document.getElementById('moveRequest').onclick=()=>{const d=destinationValue(),trade=routeTradeValue(),rule=alsoNow();
+    if(!d.target_project)return toast('Elige un proyecto.');
+    const done=purchaseRun(data=>[...d.labelOps,
+      ...(task?R().reclassifyRequestOps(data,id,{project_id:d.target_project,...d.owner,...trade}):R().classifyRequestOps(data,id,{project_id:d.target_project,...d.owner,...trade})),
+      ...(rule?R().saveRouteOps(data,{kind:r.kind,kind_label:r.kind_label||route?.kind_label||null,tab_id:d.tab_id,project_id:d.project_id,...d.owner,...trade}):[])],
+      task?(rule?'Clasificación cambiada, también para las próximas.':'Clasificación cambiada.'):(rule?'Tarea creada; las próximas irán igual.':'Tarea creada.'));
+    if(!done)return;usage.track(rule?'tasks.cambiar_clasificacion.con_regla':task?'tasks.cambiar_clasificacion':'tasks.por_clasificar.mover');inboxDone()}}
+moveRequestSheet=function(id,current){return tkcReclassifySheet(id,current&&Object.keys(current).length?current:null)};
+/* En la ficha de la tarea de una petición clasificada: «Cambiar clasificación», junto a su origen. */
+const openTaskEditorBeforeReclassify=openTaskEditor;
+openTaskEditor=function(id,...rest){const out=openTaskEditorBeforeReclassify(id,...rest);
+  try{const r=id&&canTriage()?inboxRows('tasks.requests').find(x=>x.id===id&&x.status==='routed'):null,origin=document.getElementById('taskOrigin');
+    if(r&&origin&&tkcRequestTask(r)&&!document.getElementById('tkcReclassify')){
+      origin.insertAdjacentHTML('beforeend',' · <button type="button" class="linkbtn" id="tkcReclassify" data-feedback-id="tasks.ficha_tarea.cambiar_clasificacion" data-feedback-label="Cambiar clasificación">Cambiar clasificación</button>');
+      document.getElementById('tkcReclassify').onclick=()=>tkcReclassifySheet(id)}}catch(e){console.error(e)}
+  return out};
