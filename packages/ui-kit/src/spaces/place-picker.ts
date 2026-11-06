@@ -6,10 +6,13 @@
  *    entonces sus zonas salen como chips).
  * 3. **Habitación o zona:** el plano solo de ese edificio (`createSpaceMap`), tocando la estancia. Sin dibujo, su lista.
  * 4. **Cuadrante de 1 m²** (`cell: true`, opcional): la retícula de la habitación, en celdas del dibujo (las de la decoración).
- * **Dos planos a la vez** (`layout: 'stacked'`, VG 06-11): arriba el del edificio o planta, donde se toca la estancia;
- * debajo, la retícula de cuadrantes de la estancia elegida. Tocar otra arriba cambia la de abajo. Trae el paso 4 sin `cell`.
- * La **ruta** se ve siempre arriba y cada paso se puede tocar para volver: «Alturas › Altura 3 › Interior › Albergue ›
- * Hab 1 › Cuadrante 2, 3». `placePath` da la misma ruta en texto para la ficha («Altura 3 › Albergue › Hab 1 · 1 m²: 2, 3»).
+ * **Dos planos a la vez** (`layout: 'stacked'`, borrador de la ficha de Tasks aprobado por VG el 06-11): encima, la altura
+ * y el interior o exterior en chips («Interior · Albergue»), siempre a la vista; debajo, el plano del edificio o zona,
+ * donde se toca la estancia (ya es el valor), y a su lado o debajo la estancia con su retícula de 1 m², con los cuadrantes
+ * nombrados («B3») y «Toda la estancia». Tocar otra estancia arriba cambia la de abajo. Sin migas: la app pinta `path()`.
+ * La **ruta** (modo por pasos) se ve siempre arriba y cada paso se puede tocar para volver: «Alturas › Altura 3 › Interior ›
+ * Albergue › Hab 1 › Cuadrante B3». `placePath` la da en texto para la ficha: «Altura 3 › Interior · Albergue › Hab 1 ›
+ * cuadrante B3» (el lado solo si la altura tiene más de una zona).
  * Ligero: nunca se carga la casa entera. Cada plano se pide al llegar a él y los enlaces firmados se guardan en una caché
  * común a todas las instancias. Devuelve `{ spaceId, cell? }` y acepta un valor inicial (abre en su sitio).
  * Prefijo de clases: `place-`.
@@ -89,22 +92,39 @@ function roomGrid(plans: readonly FloorPlan[], r: SpaceRow | undefined): { plan:
   return { plan, c0, cols: Math.min(c1.cellX - c0.cellX + 1, 40), rws: Math.min(c1.cellY - c0.cellY + 1, 40) };
 }
 
+/** Nombre del cuadrante dentro de su estancia: la fila en letra y la columna en número, desde la esquina («B3»). */
+export function cellName(x: number, y: number): string {
+  const row = y < 26 ? String.fromCharCode(65 + y) : String.fromCharCode(64 + Math.floor(y / 26)) + String.fromCharCode(65 + (y % 26));
+  return `${row}${x + 1}`;
+}
+
 /** Columna y fila (desde 1) del cuadrante dentro de su habitación; sin retícula, las celdas del dibujo. */
 function cellInRoom(plans: readonly FloorPlan[], r: SpaceRow | undefined, cell: PlaceCell): { x: number; y: number } {
   const g = roomGrid(plans, r);
   return g ? { x: cell.cellX - g.c0.cellX + 1, y: cell.cellY - g.c0.cellY + 1 } : { x: cell.cellX, y: cell.cellY };
 }
 
-/** La ruta de un sitio en texto: «Altura 3 › Albergue › Hab 1 · 1 m²: 2, 3». Vacía si el espacio no está. */
+/** «Interior · Albergue» o «Exterior · Patio»: el edificio o la zona con su lado. */
+function zoneLabel(z: SpaceRow): string {
+  return `${z.kind === 'exterior' ? kt('Exterior') : kt('Interior')} · ${z.name}`;
+}
+
+/**
+ * La ruta de un sitio en texto: «Altura 3 › Interior · Albergue › Hab 1 › cuadrante B3». El lado solo sale si la altura
+ * tiene más de un edificio o zona. Vacía si el espacio no está.
+ */
 export function placePath(rows: readonly SpaceRow[], plans: readonly FloorPlan[], value: PlaceValue | null | undefined): string {
   if (!value) return '';
   const byId = indexSpaces(rows);
   const r = byId.get(value.spaceId);
   if (!r) return '';
-  const route = [...ancestorsOf(byId, r.id), r].map((s) => s.name).join(' › ');
-  if (!value.cell) return route;
-  const c = cellInRoom(plans, r, value.cell);
-  return `${route} · ${kt('1 m²: {x}, {y}', { x: String(c.x), y: String(c.y) })}`;
+  const parts = [...ancestorsOf(byId, r.id), r].map((s) => {
+    if (!CONTAINERS.has(s.kind)) return s.name;
+    const siblings = rows.filter((x) => x.parentId === s.parentId && x.active && CONTAINERS.has(x.kind)).length;
+    return s.parentId && siblings > 1 ? zoneLabel(s) : s.name;
+  });
+  if (value.cell) { const c = cellInRoom(plans, r, value.cell); parts.push(kt('cuadrante {name}', { name: cellName(c.x - 1, c.y - 1) })); }
+  return parts.join(' › ');
 }
 
 export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
@@ -162,6 +182,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
   }
 
   function paintCrumbs(): void {
+    if (stacked) { crumbs.hidden = true; return; }
     const steps: Array<[string, () => void]> = [[kt('Alturas'), () => { altura = null; zone = null; room = null; paint(true); }]];
     if (altura) steps.push([byId.get(altura)?.name ?? '', () => { zone = null; room = null; paint(true); }]);
     // Interior o exterior, solo si la altura tiene de los dos (si no, no hay nada que elegir).
@@ -169,7 +190,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
     if (zone) steps.push([byId.get(zone)?.name ?? '', () => { room = null; paint(true); }]);
     if (room) steps.push([byId.get(room)?.name ?? '', () => paint(true)]);
     const cell = room && value?.spaceId === room ? value.cell ?? null : null;
-    if (cell) { const c = cellInRoom(plans, byId.get(room!), cell); steps.push([kt('Cuadrante {x}, {y}', { x: String(c.x), y: String(c.y) }), () => paint(true)]); }
+    if (cell) { const c = cellInRoom(plans, byId.get(room!), cell); steps.push([kt('Cuadrante {name}', { name: cellName(c.x - 1, c.y - 1) }), () => paint(true)]); }
     replace(crumbs, ...steps.map(([text, go], i) => i === steps.length - 1
       ? el('span', { class: 'place-crumb place-here', 'aria-current': 'step' }, text)
       : el('button', { type: 'button', class: 'linkbtn place-crumb', ...mark('step'), onclick: go }, text)),
@@ -183,6 +204,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
 
   function paint(focus = false): void {
     if (destroyed) return;
+    if (stacked) { paintStacked(focus); return; }
     paintCrumbs();
     if (!altura) {
       const alturas = rows.filter((r) => r.kind === 'altura' && live_(r)).sort(byPos);
@@ -206,31 +228,53 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
     } else if (room && withCells && !stacked) {
       paintCells(room, body);
     } else {
-      paintZone(zone);
+      paintZone(zone, body);
     }
-    if (focus && stacked && room) body.querySelector<SVGElement>('.place-cell[tabindex="0"]')?.focus({ preventScroll: true });
-    else if (focus) body.querySelector<HTMLElement>('button[aria-pressed="true"], button, [tabindex="0"]')?.focus({ preventScroll: true });
+    if (focus) body.querySelector<HTMLElement>('button[aria-pressed="true"], button, [tabindex="0"]')?.focus({ preventScroll: true });
+  }
+
+  /** `layout: 'stacked'`: chips de altura y de lado arriba; el plano y la estancia con su retícula, a la vez. */
+  function paintStacked(focus: boolean): void {
+    paintCrumbs();
+    const alturas = rows.filter((r) => r.kind === 'altura' && live_(r)).sort(byPos);
+    const zones = altura ? kids(altura).filter((s) => CONTAINERS.has(s.kind)) : [];
+    const where = el('div', { class: 'place-where' },
+      alturas.length ? el('div', { class: 'place-chips', role: 'group', 'aria-label': kt('Altura') },
+        ...alturas.map((a) => chip(a.name, a.id === altura, 'altura', () => {
+          // Al elegir la altura se abre ya su edificio (o su única zona): un toque menos.
+          const z = kids(a.id).filter((s) => CONTAINERS.has(s.kind));
+          altura = a.id; zone = (z.length === 1 ? z[0] : z.find((s) => s.kind === 'edificio') ?? z[0])?.id ?? null; room = null;
+          prefetch(z.map((s) => s.id));
+          paint(true);
+        }))) : el('p', { class: 'hint' }, kt('No hay alturas en Recursos.')),
+      zones.length > 1 ? el('div', { class: 'place-chips', role: 'group', 'aria-label': kt('Interior o exterior') },
+        ...zones.map((z) => chip(zoneLabel(z), z.id === zone, 'side', () => { zone = z.id; room = null; paint(true); }))) : null);
+    const top = el('div', { class: 'place-top' });
+    const below = el('div', { class: 'place-below' });
+    if (!altura) top.append(el('p', { class: 'hint' }, kt('Elige la altura.')));
+    else if (!zone) top.append(el('p', { class: 'hint' }, kt('Nada en esta altura.')));
+    else paintZone(zone, top);
+    if (room) paintCells(room, below);
+    else below.append(el('p', { class: 'place-map-title' }, kt('Elige una estancia en el plano de arriba y aquí sale con sus cuadrantes de 1 m².')));
+    replace(body, where, el('div', { class: 'place-maps' }, top, below));
+    if (focus) where.querySelector<HTMLElement>('button[aria-pressed="true"]')?.focus({ preventScroll: true });
   }
 
   /** Paso 3: el plano de ese edificio o zona (solo ese) o, sin dibujo, sus estancias como chips. */
-  function paintZone(zid: string): void {
+  function paintZone(zid: string, host: HTMLElement): void {
     const plan = planOf(zid);
     const inZone = new Set(spaceDescendants(rows, zid));
     const choose = (s: SpaceRow) => {
       room = s.id;
-      if (!withCells) emit({ spaceId: s.id });
+      // En `stacked` la estancia ya es el valor; el cuadrante, si hace falta, la afina.
+      if (!withCells || stacked) emit({ spaceId: s.id });
       live.textContent = kt('Elegido: {name}', { name: s.name });
-      paint(true);
+      paint(!stacked);
     };
-    // Con `stacked`, los cuadrantes de la estancia elegida van debajo del plano (o de las chips).
-    const below = stacked ? el('div', { class: 'place-below' }) : null;
-    if (below) {
-      if (room && inZone.has(room)) paintCells(room, below);
-      else below.append(el('p', { class: 'hint' }, kt('Toca una estancia arriba para ver sus cuadrantes.')));
-    }
+    const title = stacked ? el('p', { class: 'place-map-title' }, kt('{name}: toca la estancia', { name: byId.get(zid)?.name ?? '' })) : null;
     if (!plan) {
-      replace(body, el('div', { class: 'place-chips', role: 'group', 'aria-label': kt('Estancia') },
-        ...rows.filter((r) => inZone.has(r.id) && pickable(r)).sort(byPos).map((r) => chip(r.name, (room ?? value?.spaceId) === r.id, 'room', () => choose(r)))), below);
+      replace(host, title, el('div', { class: 'place-chips', role: 'group', 'aria-label': kt('Estancia') },
+        ...rows.filter((r) => inZone.has(r.id) && pickable(r)).sort(byPos).map((r) => chip(r.name, (room ?? value?.spaceId) === r.id, 'room', () => choose(r)))));
       return;
     }
     if (!map || mapZone !== zid) {
@@ -245,7 +289,7 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
         feedbackId: base ? `${base}.plano` : undefined,
       });
     } else map.repaint();
-    replace(body, map.element, below);
+    replace(host, title, map.element);
   }
 
   /** Paso 4: la retícula de 1 m² de la habitación, en celdas del dibujo. Se pinta sola, sin la imagen del plano. */
@@ -253,10 +297,10 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
     const r = byId.get(rid)!;
     const pts = r.planShape?.points ?? [];
     const grid = roomGrid(plans, r);
-    const done = () => { emit({ spaceId: rid }); paintCrumbs(); };
+    const done = () => { emit({ spaceId: rid }); paintCrumbs(); if (stacked) paintCells(rid, host); };
     if (!grid) {
       replace(host, el('p', { class: 'hint' }, kt('Este dibujo no tiene escala: el sitio se queda en la habitación.')),
-        el('button', { type: 'button', class: 'primary small', onclick: done }, kt('Elegir {name}', { name: r.name })));
+        stacked ? null : el('button', { type: 'button', class: 'primary small', onclick: done }, kt('Elegir {name}', { name: r.name })));
       return;
     }
     const { plan, c0, cols, rws } = grid;
@@ -278,17 +322,21 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
     for (let y = 0; y < rws; y++) for (let x = 0; x < cols; x++) {
       const cx = c0.cellX + x; const cy = c0.cellY + y;
       const on = !!sel && sel.cellX === cx && sel.cellY === cy;
+      const name = cellName(x, y);
       const rect = document.createElementNS(NS, 'rect');
       const a = cellToRel(plan, 1, cx, cy)!;
-      for (const [k, v] of Object.entries({ x: (a.x * w).toFixed(2), y: (a.y * h).toFixed(2), width: cs.toFixed(2), height: cs.toFixed(2) })) rect.setAttribute(k, v);
+      // En `stacked`, cada cuadrante algo separado y redondeado, con su nombre dentro (como el borrador).
+      const inset = stacked ? cs * 0.04 : 0;
+      for (const [k, v] of Object.entries({ x: (a.x * w + inset).toFixed(2), y: (a.y * h + inset).toFixed(2), width: (cs - 2 * inset).toFixed(2), height: (cs - 2 * inset).toFixed(2), ...(stacked ? { rx: (cs * 0.08).toFixed(2) } : {}) })) rect.setAttribute(k, v);
       rect.setAttribute('class', `place-cell${on ? ' on' : ''}`);
       rect.setAttribute('role', 'button');
       rect.setAttribute('tabindex', on || (!sel && x === 0 && y === 0) ? '0' : '-1');
       rect.setAttribute('aria-pressed', String(on));
-      rect.setAttribute('aria-label', kt('Columna {x}, fila {y}', { x: String(x + 1), y: String(y + 1) }));
+      rect.setAttribute('aria-label', kt('Cuadrante {name}', { name }));
       if (base) { rect.setAttribute('data-feedback-id', `${base}.${PLACE_PICKER_MARKS.cell[0]}`); rect.setAttribute('data-feedback-label', PLACE_PICKER_MARKS.cell[1]); }
       rect.dataset.cell = `${x},${y}`;
-      const pick = () => { emit({ spaceId: rid, cell: { cellX: cx, cellY: cy, scale: 1 } }); live.textContent = kt('Cuadrante: columna {x}, fila {y}', { x: String(x + 1), y: String(y + 1) }); paintCrumbs(); paintCells(rid, host); host.querySelector<SVGElement>(`[data-cell="${x},${y}"]`)?.focus(); };
+      // En `stacked`, tocar el cuadrante elegido lo quita (vuelve a toda la estancia).
+      const pick = () => { emit(stacked && on ? { spaceId: rid } : { spaceId: rid, cell: { cellX: cx, cellY: cy, scale: 1 } }); live.textContent = stacked && on ? kt('Toda la estancia') : kt('Cuadrante {name}', { name }); paintCrumbs(); paintCells(rid, host); host.querySelector<SVGElement>(`[data-cell="${x},${y}"]`)?.focus(); };
       rect.addEventListener('click', pick);
       rect.addEventListener('keydown', (e) => {
         const k = (e as KeyboardEvent).key;
@@ -301,9 +349,22 @@ export function createPlacePicker(options: PlacePickerOptions): PlacePicker {
         if (next) { rect.setAttribute('tabindex', '-1'); next.setAttribute('tabindex', '0'); next.focus(); }
       });
       svg.append(rect);
+      if (stacked) {
+        const label = document.createElementNS(NS, 'text');
+        for (const [k, v] of Object.entries({ x: (a.x * w + cs * 0.12).toFixed(2), y: (a.y * h + cs * 0.3).toFixed(2), 'font-size': (cs * 0.2).toFixed(2), 'aria-hidden': 'true' })) label.setAttribute(k, v);
+        label.setAttribute('class', 'place-cell-name');
+        label.textContent = name;
+        svg.append(label);
+      }
     }
-    replace(host, stacked ? el('h4', { class: 'place-below-title' }, kt('Cuadrantes de {name}', { name: r.name })) : null,
-      el('p', { class: 'hint place-hint' }, kt('Toca el cuadrante de 1 m², o quédate en la habitación.')), svg,
+    if (stacked) {
+      const selName = sel ? cellName(sel.cellX - c0.cellX, sel.cellY - c0.cellY) : null;
+      replace(host, el('p', { class: 'place-map-title' }, kt('{name} ({w} × {h} m): toca un cuadrante si hace falta', { name: r.name, w: String(cols), h: String(rws) })), svg,
+        el('div', { class: 'place-cell-foot' }, el('span', null, selName ? kt('Cuadrante {name}', { name: selName }) : kt('Toda la estancia')),
+          selName ? el('button', { type: 'button', class: 'ghost small place-room-only', onclick: done }, kt('Toda la estancia')) : null));
+      return;
+    }
+    replace(host, el('p', { class: 'hint place-hint' }, kt('Toca el cuadrante de 1 m², o quédate en la habitación.')), svg,
       el('button', { type: 'button', class: 'ghost small place-room-only', onclick: done }, kt('Solo la habitación')));
   }
 

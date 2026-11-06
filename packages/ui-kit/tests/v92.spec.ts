@@ -56,30 +56,38 @@ test.describe('ui-kit · createPlacePicker', () => {
     await page.keyboard.press('Enter');
     // Celdas del dibujo: la Hab 1 empieza en la x = 80 u = 1,6 m → celda 1; y = 60 u = 1,2 m → celda 1.
     expect((await values(page)).at(-1)).toEqual({ spaceId: 'h1', cell: { cellX: 2, cellY: 2, scale: 1 } });
-    await expect(page.locator('.place-here')).toHaveText('Cuadrante 2, 2');
-    expect(await page.evaluate(() => (window as any).picker.path())).toBe('Altura 3 › Albergue › Hab 1 · 1 m²: 2, 2');
+    await expect(page.locator('.place-here')).toHaveText('Cuadrante B2');
+    expect(await page.evaluate(() => (window as any).picker.path())).toBe('Altura 3 › Interior · Albergue › Hab 1 › cuadrante B2');
     await setup(page, { cell: true, value: { spaceId: 'h1', cell: { cellX: 2, cellY: 2, scale: 1 } } });
     await expect(page.locator('.place-crumbs')).toContainText('Hab 1');
     await expect(page.locator('.place-cell.on')).toHaveCount(1);
   });
 
-  test('dos planos a la vez: el del edificio arriba y los cuadrantes de la estancia debajo; cambiar arriba cambia abajo', async ({ page }) => {
+  test('dos planos a la vez (borrador aprobado): chips de altura y lado, plano y estancia con sus cuadrantes', async ({ page }) => {
     await setup(page, { layout: 'stacked' });
+    await expect(page.locator('.place-crumbs')).toBeHidden();
+    // La altura abre ya su edificio; las zonas salen con su lado y siguen a la vista.
     await page.getByRole('button', { name: 'Altura 3' }).click();
-    await page.getByRole('button', { name: 'Albergue' }).click();
-    await expect(page.locator('.place-below .hint')).toContainText('Toca una estancia arriba');
+    await expect(page.getByRole('button', { name: 'Interior · Albergue' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Exterior · Patio' })).toBeVisible();
+    await expect(page.locator('.place-below')).toContainText('Elige una estancia en el plano de arriba');
+    // Tocar la estancia ya es el valor; abajo sale con su retícula y los cuadrantes nombrados.
     await page.locator('.map-shape[data-space-id="h1"]').click();
-    await expect(page.locator('.map-shape[data-space-id="h2"]')).toBeVisible();
-    await expect(page.locator('.place-below-title')).toHaveText('Cuadrantes de Hab 1');
+    expect((await values(page)).at(-1)).toEqual({ spaceId: 'h1' });
+    await expect(page.locator('.place-below .place-map-title')).toContainText('Hab 1 (7 × 7 m)');
     await expect(page.locator('.place-cell')).toHaveCount(7 * 7);
-    // Otra estancia arriba: abajo pasan sus cuadrantes, con el plano aún a la vista.
+    await expect(page.locator('.place-cell-name').first()).toHaveText('A1');
+    // Otra estancia arriba cambia la de abajo, con el plano aún a la vista.
     await page.locator('.map-shape[data-space-id="h2"]').click();
-    await expect(page.locator('.place-below-title')).toHaveText('Cuadrantes de Hab 2');
-    await page.locator('.place-cell[data-cell="0,0"]').click();
-    const v = (await values(page)).at(-1);
-    expect(v.spaceId).toBe('h2');
-    expect(v.cell).toMatchObject({ scale: 1 });
+    await expect(page.locator('.place-below .place-map-title')).toContainText('Hab 2');
+    await page.locator('.place-cell[data-cell="2,1"]').click();
+    expect((await values(page)).at(-1)).toMatchObject({ spaceId: 'h2', cell: { scale: 1 } });
+    await expect(page.locator('.place-cell-foot')).toContainText('Cuadrante B3');
     await expect(page.locator('.map-shape[data-space-id="h1"]')).toBeVisible();
-    await expect(page.locator('.place-here')).toHaveText('Cuadrante 1, 1');
+    expect(await page.evaluate(() => (window as any).picker.path())).toMatch(/^Altura 3 › Interior · Albergue › Hab 2 › cuadrante B3$/);
+    // «Toda la estancia» quita el cuadrante.
+    await page.locator('.place-cell-foot button', { hasText: 'Toda la estancia' }).click();
+    expect((await values(page)).at(-1)).toEqual({ spaceId: 'h2' });
+    await expect(page.locator('.place-cell.on')).toHaveCount(0);
   });
 });
