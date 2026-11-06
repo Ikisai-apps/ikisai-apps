@@ -12,6 +12,7 @@ async function setup(page: Page): Promise<void> {
       { trade_id: 'acs', parent_id: 'fonta', name: 'ACS', path: 'Fontanería › ACS', position: 1 },
       { trade_id: 'riego', parent_id: 'fonta', name: 'Riego', path: 'Fontanería › Riego', position: 2 },
       { trade_id: 'elec', parent_id: null, name: 'Electricidad', path: 'Electricidad', position: 2 },
+      { trade_id: 'cerr', parent_id: null, name: 'Llaves y cierres', path: 'Llaves y cierres', position: 3, icon: 'cerrajeria' },
     ];
     w.values = [];
     const picker = K.createTradePicker({ label: 'Oficio de la tarea', trades: w.trades, feedbackId: 'tasks.ficha.oficio', onChange: (v: string[]) => w.values.push(v) });
@@ -51,5 +52,15 @@ test.describe('ui-kit · createTradePicker', () => {
     expect(await last(page)).toEqual(['fonta']);
     await search.fill('zzz');
     await expect(page.locator('.space-result.empty')).toContainText('Ningún oficio coincide con «zzz».');
+  });
+
+  test('icono por oficio: por la clave de Central o por el nombre; las especialidades, el de su oficio', async ({ page }) => {
+    await setup(page);
+    await page.getByText('Elegir en la lista de oficios').click();
+    for (const name of ['Fontanería', 'Electricidad', 'Llaves y cierres']) await expect(page.locator('.space-tree-group > summary, .space-tree-chip', { hasText: name }).first().locator('svg')).toHaveCount(1);
+    await page.getByRole('combobox').fill('acs');
+    await expect(page.locator('.space-result-name svg')).toHaveCount(1);
+    expect(await page.evaluate(() => { const K = (window as any).ikisaiKit; return [K.tradeIcon(null, 'Fontanería'), K.tradeIcon('piscina'), K.tradeIcon('Climatización'), K.tradeIcon('zzz', 'Otro')]; }))
+      .toEqual(['faucet', 'pool', 'fan', null]);
   });
 });
