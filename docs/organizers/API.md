@@ -842,4 +842,5 @@ Vista `organizers.central_kpi_projection`, con el contrato de `docs/central/API.
 - **Cliente:** `app/replies.ts` (`loadReplies`, `unreadRepliesByReservation`, `repliesOf`, `markRepliesRead`).
 - **Sin correo todavía:** se sumará al aviso de la 0709 (§25) cuando se encienda.
 - **Pruebas:** `tests/core/feedback-replies.test.ts`.
+- **Quien organiza contesta a sus asistentes** (X6, núcleo 0121): en el resumen del retiro, «Responder» bajo cada comentario de «Comentarios de tus asistentes» (`POST feedback/:id/replies`, solo si el informe trae `canReply`). La última respuesta queda a la vista, como «Tu respuesta» o con el nombre de quien contestó. El asistente la ve en Guests, en «Lo que me has enviado» (`reply` del informe), firmada con el nombre de quien organiza. Cliente: `replyTo` en `app/retreat-comments.ts`; estimado en la 0714.
 
