@@ -16,6 +16,8 @@ const revision = async (id: string) => Number((await app.t.db.query<{ r: string 
 const apply = (actor: string, operations: unknown[], requestId = `proposal:${uuid()}`) =>
   app.t.rpc('core_commit', { p_app: 'central', p_actor: actor, p_request_id: requestId, p_digest: 'ap', p_expected_cursor: null, p_operations: operations });
 const forbidden = (error: any) => error.code === 'FORBIDDEN';
+/** El núcleo marca el agente autor al aplicar una propuesta aprobada (0122); aquí, a mano para la sesión de la prueba. */
+const author = (user: string | null) => app.t.db.query(`select set_config('core.proposal_author', $1, false), set_config('core.proposal_id', $2, false)`, [user ?? '', user ? uuid() : '']);
 
 test.before(async () => {
   app = await createTestApp({ app: 'central', slug: 'central-api', origin: CENTRAL_ORIGINS[0]!, createHandler: (c) => createCentralApp({ ...c, origins: [CENTRAL_ORIGINS[0]!] }) });
@@ -42,10 +44,21 @@ test('propuestas · base: decide el owner o la responsable; solo misión, dónde
 
   // Fuera de una propuesta, el editor no toca fichas de agente (tampoco saltándose la Edge).
   await assert.rejects(apply(app.users.editor, await update({ mission: 'Directo' }), `ap-direct-${uuid()}`), forbidden);
+  // Un requestId «proposal:…» puesto por el cliente no cuenta como propuesta (la marca la pone el núcleo).
+  await app.t.db.query(`update central.people set user_id = $1 where id = $2`, [app.users.editor, person]);
+  await assert.rejects(apply(app.users.editor, await update({ mission: 'Propuesta falsa' })), forbidden);
+  await app.t.db.query(`update central.people set user_id = null where id = $1`, [person]);
+  await author(agentUser);
   // En una propuesta, el editor que no responde por el agente, tampoco.
   await assert.rejects(apply(app.users.editor, await update({ mission: 'Sin ser responsable' })), forbidden);
   // La responsable (su ficha enlazada a la cuenta del editor) sí, y solo los campos de la propuesta.
   await app.t.db.query(`update central.people set user_id = $1 where id = $2`, [app.users.editor, person]);
+  // Solo su propia ficha: si propuso otro agente, no.
+  const otherAgent = await app.t.createUser();
+  await app.t.db.query(`insert into core.profiles (user_id, display_name, kind) values ($1, 'Otro Agente', 'agent') on conflict (user_id) do update set kind = 'agent'`, [otherAgent]);
+  await author(otherAgent);
+  await assert.rejects(apply(app.users.editor, await update({ mission: 'De otro agente' })), forbidden);
+  await author(agentUser);
   await apply(app.users.editor, await update({ mission: 'Revisar textos y traducciones', notes: 'Propuesto por el agente' }));
   const [row] = (await app.t.db.query<{ mission: string }>(`select mission from central.agents where id = $1`, [agent])).rows;
   assert.equal(row!.mission, 'Revisar textos y traducciones');
@@ -53,6 +66,7 @@ test('propuestas · base: decide el owner o la responsable; solo misión, dónde
   await assert.rejects(apply(app.users.owner, [{ op: 'update', table: TABLES.people, id: person, expectedRevision: Number((await app.t.db.query<{ r: string }>(`select revision as r from central.people where id = $1`, [person])).rows[0]!.r), fields: { display_name: 'Otra' } }]), forbidden);
   // El owner decide cualquiera.
   await apply(app.users.owner, await update({ work_areas: 'Central y Tasks' }));
+  await author(null);
   // El owner sigue cambiando la ficha como siempre.
   assert.equal((await commit(await update({ active: false }))).status, 200);
 });
